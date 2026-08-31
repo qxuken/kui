@@ -193,6 +193,9 @@ fn parse_spec(t: &Table, is_row: bool) -> mlua::Result<NodeSpec> {
     if let Some(v) = t.get::<Option<mlua::Value>>("on_click")? {
         spec = spec.on_click(lua_to_value(&v)?);
     }
+    if let Some(v) = t.get::<Option<mlua::Value>>("on_key")? {
+        spec = spec.on_key(lua_to_value(&v)?);
+    }
     if t.get::<Option<bool>>("clip")?.unwrap_or(false) {
         spec = spec.clip();
     }

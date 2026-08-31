@@ -307,8 +307,69 @@ impl<A: App> Shell<A> {
         if event.state != ElementState::Pressed {
             return;
         }
-        // Clipboard + select-all shortcuts.
-        if self.primary()
+        // Full-keyboard path: every press also travels as data to the
+        // key-focused sink (`NodeSpec::on_key`); the core drops it when
+        // an edit widget holds focus instead.
+        let kmods = KeyMods {
+            shift: self.modifiers.shift_key(),
+            ctrl: self.modifiers.control_key(),
+            alt: self.modifiers.alt_key(),
+            super_key: self.modifiers.super_key(),
+        };
+        let plain = !kmods.ctrl && !kmods.alt && !kmods.super_key;
+        let (code, ktext) = match &event.logical_key {
+            WinitKey::Character(s) => (
+                KeyCode::Char(s.chars().next().unwrap_or('\u{fffd}')),
+                plain.then(|| s.to_string()),
+            ),
+            WinitKey::Named(n) => (
+                match n {
+                    NamedKey::Space => KeyCode::Space,
+                    NamedKey::ArrowLeft => KeyCode::Left,
+                    NamedKey::ArrowRight => KeyCode::Right,
+                    NamedKey::ArrowUp => KeyCode::Up,
+                    NamedKey::ArrowDown => KeyCode::Down,
+                    NamedKey::Home => KeyCode::Home,
+                    NamedKey::End => KeyCode::End,
+                    NamedKey::PageUp => KeyCode::PageUp,
+                    NamedKey::PageDown => KeyCode::PageDown,
+                    NamedKey::Backspace => KeyCode::Backspace,
+                    NamedKey::Delete => KeyCode::Delete,
+                    NamedKey::Enter => KeyCode::Enter,
+                    NamedKey::Tab => KeyCode::Tab,
+                    NamedKey::Escape => KeyCode::Escape,
+                    NamedKey::Insert => KeyCode::Insert,
+                    NamedKey::F1 => KeyCode::F(1),
+                    NamedKey::F2 => KeyCode::F(2),
+                    NamedKey::F3 => KeyCode::F(3),
+                    NamedKey::F4 => KeyCode::F(4),
+                    NamedKey::F5 => KeyCode::F(5),
+                    NamedKey::F6 => KeyCode::F(6),
+                    NamedKey::F7 => KeyCode::F(7),
+                    NamedKey::F8 => KeyCode::F(8),
+                    NamedKey::F9 => KeyCode::F(9),
+                    NamedKey::F10 => KeyCode::F(10),
+                    NamedKey::F11 => KeyCode::F(11),
+                    NamedKey::F12 => KeyCode::F(12),
+                    _ => KeyCode::Unknown,
+                },
+                (plain && *n == NamedKey::Space).then(|| " ".to_string()),
+            ),
+            _ => (KeyCode::Unknown, None),
+        };
+        if code != KeyCode::Unknown {
+            self.dispatch(InputEvent::KeyDown(KeyPress {
+                code,
+                mods: kmods,
+                text: ktext,
+                repeat: event.repeat,
+            }));
+        }
+
+        // Clipboard + select-all shortcuts (edit widgets only — a key
+        // sink gets the raw chord and brings its own bindings).
+        if self.core.edit.focused().is_some()
+            && self.primary()
             && let WinitKey::Character(c) = &event.logical_key
         {
             match c.to_lowercase().as_str() {
@@ -574,7 +635,12 @@ impl<A: App> ApplicationHandler for Shell<A> {
                     ElementState::Released => InputEvent::MouseUp,
                 });
             }
-            WindowEvent::RedrawRequested => self.redraw(),
+            WindowEvent::RedrawRequested => {
+                self.redraw();
+                // Views can declare window commands too (ui.window_command);
+                // apply them the same frame they were declared.
+                self.apply_window_commands();
+            }
             _ => {}
         }
         if self.exit_requested {

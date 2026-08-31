@@ -32,7 +32,7 @@ pub use display::{DisplayList, NO_CLIP, Quad, QuadKind};
 pub use geom::{Edges, Rect, Size, Vec2};
 pub use edit::EditOptions;
 pub use env::Env;
-pub use input::{EditKey, InputEvent, Mods, UiEvent};
+pub use input::{EditKey, InputEvent, KeyCode, KeyMods, KeyPress, Mods, UiEvent};
 pub use key::Key;
 pub use runtime::{Core, Extension};
 pub use spec::{Align, Dir, FloatAnchor, FloatConfig, FontFamily, NodeSpec, Sizing, TextStyle};

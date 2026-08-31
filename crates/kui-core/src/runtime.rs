@@ -42,6 +42,10 @@ pub struct Core {
     /// Window title declared this frame (immediate-mode: cleared each
     /// `begin_frame`; the driver diffs and applies). None = leave as-is.
     window_title: Option<String>,
+    /// Which key sink (a node that declared `on_key`) receives full-
+    /// keyboard `KeyDown` input. Moved by clicks on sinks; apps that
+    /// own their text model declare it per frame via `set_key_focus`.
+    key_focus: Option<Key>,
     pub(crate) tree: Tree,
     pub(crate) display: DisplayList,
     pub(crate) viewport: Size,
@@ -72,6 +76,7 @@ impl Core {
             stats: FrameStats::default(),
             env: Env::default(),
             window_title: None,
+            key_focus: None,
             tree: Tree::new(),
             display: DisplayList::default(),
             viewport: Size::ZERO,
@@ -119,16 +124,47 @@ impl Core {
                     }
                 }
             }
+            InputEvent::KeyDown(kp) => {
+                // The focused edit widget owns the keyboard (it takes the
+                // Text/EditKey path); otherwise the key-focused sink, if it
+                // still exists in the last frame, gets the press as data.
+                if self.edit.focused().is_none()
+                    && let Some(focus) = self.key_focus
+                    && let Some(h) = self
+                        .interaction
+                        .hits
+                        .iter()
+                        .rev()
+                        .find(|h| h.key == focus && h.key_sink.is_some())
+                {
+                    let mut payload = kp.to_value();
+                    if let Some(tag) = &h.key_sink
+                        && *tag != Value::Null
+                        && let Value::Map(entries) = &mut payload
+                    {
+                        entries.push(("tag".to_string(), tag.clone()));
+                    }
+                    out.push(UiEvent { origin: h.origin, key: h.key, payload });
+                }
+            }
             InputEvent::MouseDown => {
                 // Click-to-focus / caret placement / start drag-selection,
                 // against the previous frame's layout.
                 if let Some(p) = self.interaction.cursor() {
-                    match self.interaction.hit_at(p).map(|h| (h.key, h.edit_origin)) {
-                        Some((key, Some(origin))) => {
+                    let hit = self
+                        .interaction
+                        .hit_at(p)
+                        .map(|h| (h.key, h.edit_origin, h.key_sink.is_some()));
+                    match hit {
+                        Some((key, Some(origin), _)) => {
                             self.edit.set_focus(Some(key));
                             let local = Vec2::new(p.x - origin.x, p.y - origin.y);
                             self.edit.click(key, local, self.text.font_system_mut());
                             self.edit.dragging = Some((key, origin));
+                        }
+                        Some((key, None, true)) => {
+                            self.edit.set_focus(None);
+                            self.key_focus = Some(key);
                         }
                         _ => self.edit.set_focus(None),
                     }
@@ -176,13 +212,14 @@ impl Core {
                 clip: clip.scaled(scale),
             });
         }
-        if spec.on_click.is_some() || spec.window.is_some() {
+        if spec.on_click.is_some() || spec.window.is_some() || spec.on_key.is_some() {
             hits.push(HitRegion {
                 key: self.tree.keys[i],
                 origin: self.tree.origins[i],
                 rect,
                 clip,
                 payload: spec.on_click.clone().unwrap_or(Value::Null),
+                key_sink: spec.on_key.clone(),
                 edit_origin: None,
                 window: spec.window,
             });
@@ -211,6 +248,7 @@ impl Core {
                     clip,
                     payload: Value::Null,
                     edit_origin: Some(content_origin),
+                    key_sink: None,
                     window: None,
                 });
                 let focused = self.edit.focused() == Some(key);
@@ -270,6 +308,26 @@ impl Core {
     /// Drains window intents produced by chrome nodes since the last drain.
     /// Frame drivers call this after each input dispatch and apply the
     /// commands to the real window; headless drivers may simply never call.
+    /// Directs full-keyboard `KeyDown` routing at a node that declared
+    /// `on_key` (None releases it). Apps that own their text model call
+    /// this every frame for whatever they consider focused — like the
+    /// window title, the declaration is idempotent; clicking another
+    /// sink moves focus too, and the next declaration wins it back.
+    pub fn set_key_focus(&mut self, key: Option<Key>) {
+        self.key_focus = key;
+    }
+
+    pub fn key_focus(&self) -> Option<Key> {
+        self.key_focus
+    }
+
+    /// Queues a window command as if chrome had produced it, so apps can
+    /// close/minimize/maximize from a keymap or command line. Drained by
+    /// the frame driver with the rest.
+    pub fn push_window_command(&mut self, cmd: crate::window::WindowCommand) {
+        self.interaction.window_commands.push(cmd);
+    }
+
     pub fn take_window_commands(&mut self) -> Vec<crate::window::WindowCommand> {
         std::mem::take(&mut self.interaction.window_commands)
     }

@@ -10,6 +10,7 @@ use crate::runtime::Core;
 use crate::spec::{NodeSpec, TextStyle};
 use crate::text::Span;
 use crate::tree::OriginId;
+use crate::window::WindowCommand;
 
 pub struct Ui<'a> {
     core: &'a mut Core,
@@ -107,6 +108,24 @@ impl<'a> Ui<'a> {
 
     pub fn edit_text(&self, key: Key) -> Option<String> {
         self.core.edit_text(key)
+    }
+
+    /// Routes full-keyboard input at this node — it must have declared
+    /// `on_key` in its spec. Key presses then arrive in `on_event` as
+    /// `{kind="key", code, ctrl, alt, shift, super, text, repeat, tag}`.
+    /// Declare every frame you care, like the window title.
+    pub fn take_key_focus(&mut self, key: Key) {
+        self.core.set_key_focus(Some(key));
+    }
+
+    pub fn key_focus(&self) -> Option<Key> {
+        self.core.key_focus()
+    }
+
+    /// Asks the frame driver to apply a window command (close from a
+    /// keymap, minimize from a command line).
+    pub fn window_command(&mut self, cmd: WindowCommand) {
+        self.core.push_window_command(cmd);
     }
 
     /// Runs layout and emission; results land in `Core::output()`.

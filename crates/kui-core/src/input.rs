@@ -22,6 +22,10 @@ pub enum InputEvent {
     Text(String),
     /// Navigation/editing key. Routed to the focused editor.
     Key(EditKey, Mods),
+    /// A full key press, routed to whatever holds key focus (see
+    /// `Core::set_key_focus`). Apps that own their own text model take
+    /// keys through this instead of the editor path.
+    KeyDown(KeyPress),
 }
 
 /// Editing keys, decoupled from any windowing library's key codes.
@@ -52,6 +56,130 @@ pub struct Mods {
     pub doc: bool,
 }
 
+/// A physical key press: the full keyboard, decoupled from any windowing
+/// library. [`EditKey`] is the input widget's closed navigation vocabulary;
+/// this is what apps that own their own text model bind against — an editor
+/// with modal keymaps, a game, a scripted panel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyCode {
+    /// A character-producing key, as the active layout produced it — `W`
+    /// and `$` arrive as themselves (shift already applied), which is what
+    /// keymaps bind against.
+    Char(char),
+    /// Function key: `F(1)` .. `F(24)`.
+    F(u8),
+    Left,
+    Right,
+    Up,
+    Down,
+    Home,
+    End,
+    PageUp,
+    PageDown,
+    Backspace,
+    Delete,
+    Enter,
+    Tab,
+    Escape,
+    Space,
+    Insert,
+    /// A key this vocabulary doesn't name; `KeyPress::text` may still carry
+    /// what it would insert.
+    Unknown,
+}
+
+impl KeyCode {
+    /// Stable lowercase name for the data payload: `"a"`, `"f5"`, `"pageup"`.
+    /// Bindings in C and Lua match on these.
+    pub fn name(self) -> String {
+        match self {
+            KeyCode::Char(c) => c.to_string(),
+            KeyCode::F(n) => format!("f{n}"),
+            KeyCode::Left => "left".into(),
+            KeyCode::Right => "right".into(),
+            KeyCode::Up => "up".into(),
+            KeyCode::Down => "down".into(),
+            KeyCode::Home => "home".into(),
+            KeyCode::End => "end".into(),
+            KeyCode::PageUp => "pageup".into(),
+            KeyCode::PageDown => "pagedown".into(),
+            KeyCode::Backspace => "backspace".into(),
+            KeyCode::Delete => "delete".into(),
+            KeyCode::Enter => "enter".into(),
+            KeyCode::Tab => "tab".into(),
+            KeyCode::Escape => "escape".into(),
+            KeyCode::Space => "space".into(),
+            KeyCode::Insert => "insert".into(),
+            KeyCode::Unknown => "unknown".into(),
+        }
+    }
+}
+
+/// Physical modifier state. Unlike [`Mods`] — which abstracts platform
+/// conventions for the input widget (`word`, `doc`) — nothing here is
+/// normalized: an app binding `Ctrl-w` needs to know it was Control and not
+/// Command.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct KeyMods {
+    pub shift: bool,
+    pub ctrl: bool,
+    pub alt: bool,
+    /// Windows key / Command / Super.
+    pub super_key: bool,
+}
+
+impl KeyMods {
+    pub fn any(self) -> bool {
+        self.shift || self.ctrl || self.alt || self.super_key
+    }
+}
+
+/// One key press, delivered to whatever holds key focus. Carries both the
+/// binding view (`code` + `mods`) and the typing view (`text`), so an app can
+/// serve a modal keymap and an insert mode from the same event.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KeyPress {
+    pub code: KeyCode,
+    pub mods: KeyMods,
+    /// What this press would insert, if anything — already resolved through
+    /// the keyboard layout. `None` for pure navigation and chords.
+    pub text: Option<String>,
+    /// Set when the press came from OS key repeat.
+    pub repeat: bool,
+}
+
+impl KeyPress {
+    pub fn new(code: KeyCode, mods: KeyMods) -> Self {
+        Self { code, mods, text: None, repeat: false }
+    }
+
+    pub fn with_text(mut self, text: impl Into<String>) -> Self {
+        self.text = Some(text.into());
+        self
+    }
+
+    /// The payload form crossing into events, C, and Lua:
+    /// `{kind="key", code="w", shift=, ctrl=, alt=, super=, text=, repeat=}`.
+    pub fn to_value(&self) -> Value {
+        Value::map([
+            ("kind", Value::str("key")),
+            ("code", Value::Str(self.code.name())),
+            ("shift", Value::Bool(self.mods.shift)),
+            ("ctrl", Value::Bool(self.mods.ctrl)),
+            ("alt", Value::Bool(self.mods.alt)),
+            ("super", Value::Bool(self.mods.super_key)),
+            (
+                "text",
+                match &self.text {
+                    Some(t) => Value::Str(t.clone()),
+                    None => Value::Null,
+                },
+            ),
+            ("repeat", Value::Bool(self.repeat)),
+        ])
+    }
+}
+
 /// An event produced by the UI, ready for routing.
 #[derive(Clone, Debug, PartialEq)]
 pub struct UiEvent {
@@ -71,6 +199,9 @@ pub struct HitRegion {
     pub payload: Value,
     /// Content-box origin of an editable text node; None for plain hits.
     pub edit_origin: Option<Vec2>,
+    /// Key-sink tag when the node declared `on_key`: clicking it takes
+    /// key focus, and key presses then arrive on it carrying this tag.
+    pub key_sink: Option<Value>,
     /// Window-chrome role: interactions become `WindowCommand`s, not events.
     pub window: Option<WindowRole>,
 }
@@ -163,7 +294,10 @@ impl Interaction {
                 }
             }
             // Routed by the core (they need the retained stores).
-            InputEvent::Scroll(_) | InputEvent::Text(_) | InputEvent::Key(..) => {}
+            InputEvent::Scroll(_)
+            | InputEvent::Text(_)
+            | InputEvent::Key(..)
+            | InputEvent::KeyDown(_) => {}
             InputEvent::MouseUp => {
                 if let (Some(pressed), Some(hovered)) = (self.pressed, self.hovered)
                     && pressed == hovered
@@ -205,6 +339,7 @@ mod tests {
             clip: Rect::new(-1e9, -1e9, 2e9, 2e9),
             payload: Value::str(tag),
             edit_origin: None,
+            key_sink: None,
             window: None,
         }
     }

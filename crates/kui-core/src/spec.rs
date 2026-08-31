@@ -202,6 +202,10 @@ pub struct NodeSpec {
     pub style: VisualStyle,
     /// Payload emitted as a `UiEvent` when this node is clicked.
     pub on_click: Option<Value>,
+    /// Marks this node as a key sink: while it holds key focus, key
+    /// presses arrive as `UiEvent`s on it, with this payload merged in
+    /// under `tag`. Clicking the node takes key focus.
+    pub on_key: Option<Value>,
     /// Window-chrome role (drag handle / window button). A chrome node's
     /// interactions become `WindowCommand`s for the frame driver instead of
     /// `UiEvent`s; `on_click` is ignored on such nodes.
@@ -329,6 +333,14 @@ impl NodeSpec {
 
     pub fn on_click(mut self, payload: impl Into<Value>) -> Self {
         self.on_click = Some(payload.into());
+        self
+    }
+
+    /// Makes this node a key sink (see `NodeSpec::on_key` field). Pass a
+    /// tag the handler can match on; `Value::Null` if the node key is
+    /// identification enough.
+    pub fn on_key(mut self, tag: impl Into<Value>) -> Self {
+        self.on_key = Some(tag.into());
         self
     }
 
