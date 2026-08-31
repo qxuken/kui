@@ -18,3 +18,7 @@ harness = false
 [[bench]]
 name = "editing"
 harness = false
+
+[[bench]]
+name = "highlight"
+harness = false

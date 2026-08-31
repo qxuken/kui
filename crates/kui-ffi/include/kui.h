@@ -39,6 +39,8 @@ enum { KUI_COLUMN = 0, KUI_ROW = 1 };
 enum { KUI_START = 0, KUI_CENTER = 1, KUI_END = 2 };
 /* Quad kinds */
 enum { KUI_QUAD_SOLID = 0, KUI_QUAD_GLYPH_MASK = 1, KUI_QUAD_GLYPH_COLOR = 2 };
+/* Font families (KuiTextStyle.family) */
+enum { KUI_FONT_SANS = 0, KUI_FONT_SERIF = 1, KUI_FONT_MONO = 2 };
 /* Span flags */
 enum { KUI_SPAN_BOLD = 1u << 0, KUI_SPAN_ITALIC = 1u << 1 };
 /* Overflow flags */
@@ -106,6 +108,7 @@ typedef struct KuiTextStyle {
     float size;
     float line_height; /* <= 0: default (size * 1.35) */
     uint32_t color;    /* 0: default foreground */
+    uint32_t family;   /* KUI_FONT_* ; 0 = sans */
 } KuiTextStyle;
 
 typedef struct KuiSpan {

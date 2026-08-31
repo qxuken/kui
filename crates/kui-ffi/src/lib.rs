@@ -115,6 +115,8 @@ pub struct KuiTextStyle {
     pub line_height: f32,
     /// 0xRRGGBBAA; 0 = default foreground
     pub color: u32,
+    /// KUI_FONT_SANS (0, default) / KUI_FONT_SERIF / KUI_FONT_MONO.
+    pub family: u32,
 }
 
 #[repr(C)]
@@ -257,7 +259,11 @@ fn text_style_of(s: &KuiTextStyle) -> TextStyle {
     if s.color != 0 {
         style = style.color(Color::hex(s.color));
     }
-    style
+    style.family(match s.family {
+        1 => kui_core::FontFamily::Serif,
+        2 => kui_core::FontFamily::Mono,
+        _ => kui_core::FontFamily::Sans,
+    })
 }
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {

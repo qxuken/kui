@@ -118,10 +118,11 @@ impl<'a> Span<'a> {
         self
     }
 
-    fn attrs(&self) -> Attrs<'a> {
-        // Pin the family so weight/style variants stay in one typeface
-        // instead of falling back to whatever face matches first.
-        let mut attrs = Attrs::new().family(cosmic_text::Family::SansSerif);
+    fn attrs(&self, family: cosmic_text::Family<'a>) -> Attrs<'a> {
+        // Pin the family (the paragraph base's) so weight/style variants
+        // stay in one typeface instead of falling back to whatever face
+        // matches first.
+        let mut attrs = Attrs::new().family(family);
         if self.bold {
             attrs = attrs.weight(Weight::BOLD);
         }
@@ -282,9 +283,10 @@ impl TextSystem {
             let metrics = Metrics::new(base.size * scale, base.line_height * scale);
             let mut buffer = Buffer::new(fs, metrics);
             buffer.set_size(None, None);
+            let family = family_of(base.family);
             buffer.set_rich_text(
-                spans.iter().map(|s| (s.text, s.attrs())),
-                &Attrs::new().family(cosmic_text::Family::SansSerif),
+                spans.iter().map(|s| (s.text, s.attrs(family))),
+                &Attrs::new().family(family),
                 Shaping::Advanced,
                 None,
             );
