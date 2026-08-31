@@ -4,6 +4,7 @@
 
 use crate::color::Color;
 use crate::edit::EditOptions;
+use crate::geom::Edges;
 use crate::key::Key;
 use crate::spec::{Align, NodeSpec, Sizing, TextStyle};
 use crate::stats::{FrameSample, STATS_CAPACITY};
@@ -358,7 +359,16 @@ fn window_button(ui: &mut Ui<'_>, button: WindowButton, maximized: bool) {
                 );
             }
             WindowButton::Close => {
-                ui.text("\u{00d7}", TextStyle::new(16.0).line_height(16.0).color(fg));
+                // The multiplication sign inks only about 0.42 em, so it
+                // needs a far larger em than the 9-10px bar and box beside
+                // it to read as the same size. It also rides the math axis,
+                // which sits a little under the middle of the line box, so
+                // the bottom padding lifts it back onto the button center.
+                const EM: f32 = 23.0;
+                ui.with(
+                    NodeSpec::row().padding(Edges { b: EM * 0.25, ..Edges::default() }),
+                    |ui| ui.text("\u{00d7}", TextStyle::new(EM).line_height(EM).color(fg)),
+                );
             }
         },
     );
