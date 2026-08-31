@@ -115,6 +115,14 @@ impl Interaction {
         self.cursor
     }
 
+    /// This frame's hit regions in paint order (topmost last) — for hosts
+    /// that mirror chrome regions into OS-level hit testing (e.g. answering
+    /// Windows' WM_NCHITTEST so snap layouts and native caption behavior
+    /// work over custom-drawn controls).
+    pub fn hits(&self) -> &[HitRegion] {
+        &self.hits
+    }
+
     pub(crate) fn hit_at(&self, p: Vec2) -> Option<&HitRegion> {
         self.hits.iter().rev().find(|h| h.rect.contains(p) && h.clip.contains(p))
     }

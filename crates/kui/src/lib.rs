@@ -8,6 +8,9 @@ use std::sync::Arc;
 pub use kui_core::*;
 pub use kui_core::widgets;
 
+#[cfg(target_os = "windows")]
+mod windows_nc;
+
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, Ime, MouseButton, WindowEvent};
@@ -104,6 +107,8 @@ impl Launcher {
             last_titlebar_press: None,
             resize_edge: None,
             exit_requested: false,
+            #[cfg(target_os = "windows")]
+            nc: None,
         };
         event_loop.run_app(&mut shell)?;
         Ok(())
@@ -149,6 +154,10 @@ struct Shell<A: App> {
     resize_edge: Option<ResizeDirection>,
     /// Set by `WindowCommand::Close`; honored at the end of the event.
     exit_requested: bool,
+    /// Windows: answers WM_NCHITTEST from the frame's chrome regions, which
+    /// enables snap layouts + native caption behavior over drawn controls.
+    #[cfg(target_os = "windows")]
+    nc: Option<windows_nc::NcHitTest>,
 }
 
 impl<A: App> Shell<A> {
@@ -193,8 +202,13 @@ impl<A: App> Shell<A> {
 
     /// Undecorated windows get no OS resize borders; the runner synthesizes
     /// them from a band inside the window edges (macOS custom chrome keeps
-    /// native edge resizing, so nothing is synthesized there).
+    /// native edge resizing, and on Windows the non-client subclass answers
+    /// WM_NCHITTEST with real border codes instead, so neither synthesizes).
     fn synthesizes_resize(&self) -> bool {
+        #[cfg(target_os = "windows")]
+        if self.nc.is_some() {
+            return false;
+        }
         self.chrome != Chrome::Native && !cfg!(target_os = "macos")
     }
 
@@ -408,6 +422,20 @@ impl<A: App> Shell<A> {
         ui.finish();
         let layout_ms = t_layout.elapsed().as_secs_f32() * 1e3;
 
+        // Mirror this frame's hit regions into the WM_NCHITTEST answerer.
+        #[cfg(target_os = "windows")]
+        if let Some(nc) = &self.nc {
+            nc.update(
+                scale,
+                window.is_maximized(),
+                self.core
+                    .interaction
+                    .hits()
+                    .iter()
+                    .map(|h| (h.window, h.rect.intersect(&h.clip))),
+            );
+        }
+
         if let Some(t) = self.core.window_title()
             && t != self.applied_title
         {
@@ -472,6 +500,10 @@ impl<A: App> ApplicationHandler for Shell<A> {
             Chrome::Borderless => attrs = attrs.with_decorations(false),
         }
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
+        #[cfg(target_os = "windows")]
+        if self.chrome != Chrome::Native {
+            self.nc = windows_nc::NcHitTest::install(&window, true);
+        }
         window.set_ime_allowed(true);
         let size = window.inner_size();
         let renderer =

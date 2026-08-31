@@ -9,3 +9,12 @@ kui-wgpu.workspace = true
 winit.workspace = true
 pollster.workspace = true
 arboard = "3"
+
+# Same version winit pins, so the tree compiles it once.
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.52", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }

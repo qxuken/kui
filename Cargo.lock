@@ -943,6 +943,7 @@ dependencies = [
  "kui-core",
  "kui-wgpu",
  "pollster",
+ "windows-sys 0.52.0",
  "winit",
 ]
 

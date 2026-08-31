@@ -76,8 +76,12 @@ end
   where do the macOS traffic lights sit?), so `widgets::titlebar` adapts per
   platform by itself. Opt in with `kui::app("title").custom_titlebar().run(app)`:
   macOS keeps native traffic lights over your content; Windows/Linux go
-  undecorated with drawn buttons, synthesized edge resizing, and double-click
-  maximize. Lua declares `window = "drag"` etc.; C sets `KuiSpec.window_role`
+  undecorated with drawn buttons. On Windows the runner also subclasses the
+  window and answers `WM_NCHITTEST` from the frame's chrome regions
+  (HTCAPTION / HTMINBUTTON / HTMAXBUTTON / HTCLOSE + resize borders), so
+  snap layouts, native caption drag, and double-click maximize all work over
+  the drawn controls; Linux falls back to synthesized edge resizing and
+  double-click maximize. Lua declares `window = "drag"` etc.; C sets `KuiSpec.window_role`
   and drains `kui_take_window_commands`.
 - **The C API is translation, not architecture.** Frame building is flat
   calls on one opaque context (`kui_open`/`kui_close`/`kui_text`), payloads
