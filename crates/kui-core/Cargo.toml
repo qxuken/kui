@@ -1,0 +1,16 @@
+[package]
+name = "kui-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+slotmap.workspace = true
+rustc-hash.workspace = true
+cosmic-text.workspace = true
+
+[dev-dependencies]
+divan.workspace = true
+
+[[bench]]
+name = "frame"
+harness = false

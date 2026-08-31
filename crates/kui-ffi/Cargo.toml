@@ -1,0 +1,12 @@
+[package]
+name = "kui-ffi"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "kui_ffi"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+kui-core.workspace = true
+kui.workspace = true

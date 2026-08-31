@@ -1,0 +1,9 @@
+[package]
+name = "kui-wgpu"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+kui-core.workspace = true
+wgpu.workspace = true
+bytemuck.workspace = true

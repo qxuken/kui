@@ -1,0 +1,10 @@
+[package]
+name = "kui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+kui-core.workspace = true
+kui-wgpu.workspace = true
+winit.workspace = true
+pollster.workspace = true

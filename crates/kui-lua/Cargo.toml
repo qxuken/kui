@@ -1,0 +1,11 @@
+[package]
+name = "kui-lua"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+kui-core.workspace = true
+mlua.workspace = true
+
+[dev-dependencies]
+kui.workspace = true
