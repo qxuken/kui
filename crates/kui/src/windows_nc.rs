@@ -12,17 +12,28 @@
 //! moves for hover styling, button presses/releases so the core still
 //! resolves them into `WindowCommand`s (the system's own default click
 //! handling for the caption buttons is swallowed to avoid doubling up).
+//!
+//! Mouse *leave* needs the same treatment in reverse. Windows reports a
+//! client-area leave the moment the cursor crosses onto a region we
+//! hit-test as non-client, even though it never left the window — winit
+//! turns that into `CursorLeft` and the core drops its cursor and hover
+//! (and with them the press target, so the drawn buttons neither highlight
+//! nor click). Client leaves are swallowed while the cursor is still over
+//! our own chrome; the genuine leave is taken from WM_NCMOUSELEAVE.
 
 use std::sync::{Arc, Mutex};
 
 use kui_core::{Rect, Vec2, WindowButton, WindowRole};
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::ScreenToClient;
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+    TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT, TrackMouseEvent,
+};
 use windows_sys::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GetClientRect, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTCLOSE, HTLEFT,
-    HTMAXBUTTON, HTMINBUTTON, HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, PostMessageW, WM_DESTROY,
-    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCHITTEST, WM_NCLBUTTONDBLCLK,
+    GetClientRect, GetCursorPos, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT,
+    HTCLOSE, HTLEFT, HTMAXBUTTON, HTMINBUTTON, HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, PostMessageW,
+    WM_DESTROY, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCHITTEST, WM_NCLBUTTONDBLCLK,
     WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE,
 };
 
@@ -97,24 +108,63 @@ fn point_of(lparam: LPARAM) -> POINT {
 /// Re-posts a non-client mouse message (screen coords) as its client
 /// equivalent so winit — which ignores NC mouse input — still sees it.
 fn forward_as_client(hwnd: HWND, msg: u32, wparam: WPARAM, screen_lparam: LPARAM) {
-    let mut p = point_of(screen_lparam);
-    unsafe {
-        ScreenToClient(hwnd, &mut p);
-        let lparam = (((p.y as u32) << 16) | (p.x as u32 & 0xffff)) as i32 as LPARAM;
-        PostMessageW(hwnd, msg, wparam, lparam);
-    }
+    let p = to_client(hwnd, point_of(screen_lparam));
+    let lparam = (((p.y as u32) << 16) | (p.x as u32 & 0xffff)) as i32 as LPARAM;
+    unsafe { PostMessageW(hwnd, msg, wparam, lparam) };
 }
 
-fn hit_code(state: &Mutex<NcState>, hwnd: HWND, screen_lparam: LPARAM) -> Option<u32> {
-    let s = state.lock().ok()?;
-    let mut p = point_of(screen_lparam);
+fn to_client(hwnd: HWND, mut p: POINT) -> POINT {
     unsafe { ScreenToClient(hwnd, &mut p) };
+    p
+}
+
+fn client_rect(hwnd: HWND) -> RECT {
+    let mut rc = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+    unsafe { GetClientRect(hwnd, &mut rc) };
+    rc
+}
+
+/// Arms mouse-leave tracking. `whole_window` covers the areas we hit-test
+/// as non-client too, so the cursor resting on the drag strip or a drawn
+/// button doesn't read as a client-area leave; the real leave then arrives
+/// as WM_NCMOUSELEAVE instead of WM_MOUSELEAVE.
+fn track_leave(hwnd: HWND, whole_window: bool) {
+    let mut t = TRACKMOUSEEVENT {
+        cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
+        dwFlags: if whole_window { TME_LEAVE | TME_NONCLIENT } else { TME_LEAVE },
+        hwndTrack: hwnd,
+        dwHoverTime: 0,
+    };
+    unsafe { TrackMouseEvent(&mut t) };
+}
+
+/// The cursor in client coordinates, or `None` when it is off the window.
+/// Custom chrome is undecorated, so the client rect is the whole window.
+fn cursor_in_window(hwnd: HWND) -> Option<POINT> {
+    let mut p = POINT { x: 0, y: 0 };
+    if unsafe { GetCursorPos(&mut p) } == 0 {
+        return None;
+    }
+    let p = to_client(hwnd, p);
+    let rc = client_rect(hwnd);
+    (p.x >= rc.left && p.x < rc.right && p.y >= rc.top && p.y < rc.bottom).then_some(p)
+}
+
+/// Whether the cursor currently sits on a region we answer WM_NCHITTEST
+/// for. Recomputed rather than tracked as a flag so it cannot go stale when
+/// a capture or a modal loop swallows the moves that would have cleared it.
+fn on_own_chrome(state: &Mutex<NcState>, hwnd: HWND) -> bool {
+    let Some(p) = cursor_in_window(hwnd) else { return false };
+    matches!(hit_code(state, hwnd, p), Some(code) if code != HTCLIENT)
+}
+
+fn hit_code(state: &Mutex<NcState>, hwnd: HWND, client_pt: POINT) -> Option<u32> {
+    let s = state.lock().ok()?;
     let scale = if s.scale > 0.0 { s.scale } else { 1.0 };
-    let pt = Vec2::new(p.x as f32 / scale, p.y as f32 / scale);
+    let pt = Vec2::new(client_pt.x as f32 / scale, client_pt.y as f32 / scale);
 
     if s.resize_border && !s.maximized {
-        let mut rc = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-        unsafe { GetClientRect(hwnd, &mut rc) };
+        let rc = client_rect(hwnd);
         let w = (rc.right - rc.left) as f32 / scale;
         let h = (rc.bottom - rc.top) as f32 / scale;
         let (l, r) = (pt.x < BAND, pt.x > w - BAND);
@@ -166,26 +216,48 @@ unsafe extern "system" fn subclass_proc(
             if def != HTCLIENT as LRESULT {
                 return def;
             }
-            match hit_code(state, hwnd, lparam) {
+            match hit_code(state, hwnd, to_client(hwnd, point_of(lparam))) {
                 Some(code) => code as LRESULT,
                 None => def,
             }
         }
         // Hover styling: mirror NC moves into the client stream (harmless
         // for HTCAPTION — dragging starts from WM_NCLBUTTONDOWN, not moves).
+        // Tracking is widened to the whole window first so the mirrored move
+        // isn't immediately undone by a client-area leave.
         WM_NCMOUSEMOVE => {
+            track_leave(hwnd, true);
             forward_as_client(hwnd, WM_MOUSEMOVE, 0, lparam);
             unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
         }
+        // Crossing from content onto our chrome counts as leaving the client
+        // area even though the cursor never left the window. Drop those, and
+        // re-widen tracking: winit re-arms client-only tracking every time it
+        // emits CursorEntered, which is what produced this leave.
+        WM_MOUSELEAVE if on_own_chrome(state, hwnd) => {
+            track_leave(hwnd, true);
+            0
+        }
+        // The real leave. If the cursor only moved onto content a client
+        // WM_MOUSEMOVE follows and hover carries on, so just put client-area
+        // tracking back; otherwise it left the window and winit needs the
+        // leave it never got.
         WM_NCMOUSELEAVE => {
-            unsafe { PostMessageW(hwnd, WM_MOUSELEAVE, 0, 0) };
+            if cursor_in_window(hwnd).is_some() {
+                track_leave(hwnd, false);
+            } else {
+                unsafe { PostMessageW(hwnd, WM_MOUSELEAVE, 0, 0) };
+            }
             unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
         }
         // Caption-button clicks are ours: route them through the core so
-        // they become WindowCommands; swallow the system's own handling.
+        // they become WindowCommands; swallow the system's own handling. The
+        // move ahead of the press pins the cursor on the button even when the
+        // press is the first thing we see there.
         WM_NCLBUTTONDOWN | WM_NCLBUTTONDBLCLK
             if matches!(wparam as u32, HTCLOSE | HTMINBUTTON | HTMAXBUTTON) =>
         {
+            forward_as_client(hwnd, WM_MOUSEMOVE, MK_LBUTTON, lparam);
             forward_as_client(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lparam);
             0
         }
