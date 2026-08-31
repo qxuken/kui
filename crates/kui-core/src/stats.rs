@@ -127,8 +127,7 @@ mod tests {
 
     #[test]
     fn pending_input_folds_into_next_sample() {
-        let mut s = FrameStats::default();
-        s.pending_input_ms = 0.5;
+        let mut s = FrameStats { pending_input_ms: 0.5, ..Default::default() };
         s.push(FrameSample { view_ms: 1.0, ..Default::default() });
         let last = s.last().unwrap();
         assert_eq!(last.input_ms, 0.5);

@@ -319,16 +319,16 @@ impl EditStore {
 
     pub(crate) fn wrapped(&mut self, key: Key, max_w: f32, fs: &mut FontSystem) -> Size {
         let Some(s) = self.states.get_mut(&key) else { return Size::ZERO };
-        let target = Some((max_w * s.scale).max(1.0));
-        let differs = match (s.wrap, target) {
-            (Some(a), Some(b)) => (a - b).abs() > 0.5,
-            _ => true,
+        let target = (max_w * s.scale).max(1.0);
+        let differs = match s.wrap {
+            Some(a) => (a - target).abs() > 0.5,
+            None => true,
         };
         if differs {
-            s.editor.with_buffer_mut(|b| b.set_size(fs, target, None));
-            s.wrap = target;
+            s.editor.with_buffer_mut(|b| b.set_size(fs, Some(target), None));
+            s.wrap = Some(target);
         }
-        let stamp = (s.version, target.unwrap_or(0.0).to_bits());
+        let stamp = (s.version, target.to_bits());
         if let Some((v, w, size)) = s.measured
             && (v, w) == stamp
         {

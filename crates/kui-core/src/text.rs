@@ -197,7 +197,7 @@ impl TextSystem {
         self.scale = scale;
         self.frame.clear();
         self.frame_no += 1;
-        if self.frame_no % 240 == 0 {
+        if self.frame_no.is_multiple_of(240) {
             let cutoff = self.frame_no.saturating_sub(EVICT_AFTER_FRAMES);
             self.cache.retain(|_, e| e.last_used >= cutoff);
             // The shape-run cache makes single-line reshapes ~free while
