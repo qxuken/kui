@@ -96,8 +96,8 @@ impl EditStore {
         let state = self.states.entry(key).or_insert_with(|| {
             let metrics = Metrics::new(opts.style.size * scale, opts.style.line_height * scale);
             let mut buffer = Buffer::new(fs, metrics);
-            buffer.set_size(fs, None, None);
-            buffer.set_text(fs, initial, attrs_for(&opts.style), Shaping::Advanced);
+            buffer.set_size(None, None);
+            buffer.set_text(initial, &attrs_for(&opts.style), Shaping::Advanced, None);
             EditState {
                 editor: Editor::new(buffer),
                 style: opts.style,
@@ -118,7 +118,7 @@ impl EditStore {
             state.style = opts.style;
             state.scale = scale;
             let metrics = Metrics::new(opts.style.size * scale, opts.style.line_height * scale);
-            state.editor.with_buffer_mut(|b| b.set_metrics(fs, metrics));
+            state.editor.with_buffer_mut(|b| b.set_metrics(metrics));
             state.wrap = None;
         }
         if opts.autofocus && self.focused.is_none() {
@@ -142,7 +142,7 @@ impl EditStore {
     pub fn set_text(&mut self, key: Key, text: &str, fs: &mut FontSystem) {
         if let Some(s) = self.states.get_mut(&key) {
             let a = attrs_for(&s.style);
-            s.editor.with_buffer_mut(|b| b.set_text(fs, text, a, Shaping::Advanced));
+            s.editor.with_buffer_mut(|b| b.set_text(text, &a, Shaping::Advanced, None));
             s.editor.set_selection(Selection::None);
             s.editor.action(fs, Action::Motion(Motion::BufferEnd));
             s.version += 1;
@@ -325,7 +325,7 @@ impl EditStore {
             None => true,
         };
         if differs {
-            s.editor.with_buffer_mut(|b| b.set_size(fs, Some(target), None));
+            s.editor.with_buffer_mut(|b| b.set_size(Some(target), None));
             s.wrap = Some(target);
         }
         let stamp = (s.version, target.to_bits());
@@ -381,25 +381,26 @@ impl EditStore {
                 .filter(|run| origin.y + run.line_top + line_height >= clip.y)
                 .take_while(|run| origin.y + run.line_top <= clip.y + clip.h);
             for run in runs {
-                // Selection highlight for this run.
-                if let Some((start, end)) = selection
-                    && let Some((x, w)) = run.highlight(start, end)
-                {
-                    out.push(Quad {
-                        rect: Rect::new(
-                            origin.x + x,
-                            origin.y + run.line_top,
-                            w.max(2.0),
-                            line_height,
-                        ),
-                        color: accent,
-                        border_color: Color::TRANSPARENT,
-                        radius: 0.0,
-                        border_w: 0.0,
-                        kind: QuadKind::Solid,
-                        uv: [0; 4],
-                        clip,
-                    });
+                // Selection highlight for this run (mixed BiDi runs can
+                // yield several disjoint spans).
+                if let Some((start, end)) = selection {
+                    for (x, w) in run.highlight(start, end) {
+                        out.push(Quad {
+                            rect: Rect::new(
+                                origin.x + x,
+                                origin.y + run.line_top,
+                                w.max(2.0),
+                                line_height,
+                            ),
+                            color: accent,
+                            border_color: Color::TRANSPARENT,
+                            radius: 0.0,
+                            border_w: 0.0,
+                            kind: QuadKind::Solid,
+                            uv: [0; 4],
+                            clip,
+                        });
+                    }
                 }
                 // Glyphs.
                 for glyph in run.glyphs.iter() {

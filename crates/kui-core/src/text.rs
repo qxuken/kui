@@ -232,8 +232,13 @@ impl TextSystem {
         let entry = self.cache.entry(key).or_insert_with(|| {
             let metrics = Metrics::new(style.size * scale, style.line_height * scale);
             let mut buffer = Buffer::new(fs, metrics);
-            buffer.set_size(fs, None, None);
-            buffer.set_text(fs, content, Attrs::new().family(family_of(style.family)), Shaping::Advanced);
+            buffer.set_size(None, None);
+            buffer.set_text(
+                content,
+                &Attrs::new().family(family_of(style.family)),
+                Shaping::Advanced,
+                None,
+            );
             buffer.shape_until_scroll(fs, false);
             let intrinsic = measure_buffer(&buffer);
             CachedText {
@@ -276,12 +281,12 @@ impl TextSystem {
         let entry = self.cache.entry(key).or_insert_with(|| {
             let metrics = Metrics::new(base.size * scale, base.line_height * scale);
             let mut buffer = Buffer::new(fs, metrics);
-            buffer.set_size(fs, None, None);
+            buffer.set_size(None, None);
             buffer.set_rich_text(
-                fs,
                 spans.iter().map(|s| (s.text, s.attrs())),
-                Attrs::new().family(cosmic_text::Family::SansSerif),
+                &Attrs::new().family(cosmic_text::Family::SansSerif),
                 Shaping::Advanced,
+                None,
             );
             buffer.shape_until_scroll(fs, false);
             let intrinsic = measure_buffer(&buffer);
@@ -317,7 +322,7 @@ impl TextSystem {
             _ => true,
         };
         if differs {
-            entry.buffer.set_size(fs, target, None);
+            entry.buffer.set_size(target, None);
             entry.buffer.shape_until_scroll(fs, false);
             entry.wrap = target;
         }

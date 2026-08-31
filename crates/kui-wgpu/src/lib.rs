@@ -67,13 +67,13 @@ impl Renderer {
         width: u32,
         height: u32,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let instance =
+            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
         let surface = instance.create_surface(target)?;
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
                 compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
+                ..Default::default()
             })
             .await?;
         let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor::default()).await?;
@@ -92,6 +92,7 @@ impl Renderer {
             height: height.max(1),
             present_mode: wgpu::PresentMode::AutoVsync,
             alpha_mode: caps.alpha_modes[0],
+            color_space: wgpu::SurfaceColorSpace::Auto,
             view_formats: vec![],
             // One queued frame: measurably lower input-to-photon latency at
             // the cost of less slack for slow frames.
@@ -138,8 +139,8 @@ impl Renderer {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("kui"),
-            bind_group_layouts: &[&bind_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bind_layout)],
+            immediate_size: 0,
         });
 
         let instance_attrs = wgpu::vertex_attr_array![
@@ -154,11 +155,11 @@ impl Renderer {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
-                buffers: &[wgpu::VertexBufferLayout {
+                buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<Instance>() as u64,
                     step_mode: wgpu::VertexStepMode::Instance,
                     attributes: &instance_attrs,
-                }],
+                })],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -173,7 +174,7 @@ impl Renderer {
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
@@ -250,7 +251,7 @@ impl Renderer {
         &mut self,
         dl: &DisplayList,
         atlas: &mut GlyphAtlas,
-    ) -> Result<RenderReport, wgpu::SurfaceError> {
+    ) -> Result<RenderReport, RenderError> {
         self.sync_atlas(atlas);
 
         self.instances.clear();
@@ -271,7 +272,17 @@ impl Renderer {
         // Acquiring the swapchain image is where vsync backpressure blocks;
         // report it separately so latency graphs show pacing vs work.
         let t_wait = std::time::Instant::now();
-        let frame = self.surface.get_current_texture()?;
+        let frame = match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(f)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
+            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                return Err(RenderError::Skip);
+            }
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                return Err(RenderError::Reconfigure);
+            }
+            wgpu::CurrentSurfaceTexture::Validation => return Err(RenderError::Validation),
+        };
         let vsync_wait_ms = t_wait.elapsed().as_secs_f32() * 1e3;
         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder =
@@ -281,6 +292,7 @@ impl Renderer {
                 label: Some("kui"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
+                    depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(self.clear_color),
@@ -290,6 +302,7 @@ impl Renderer {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             if !self.instances.is_empty() {
                 pass.set_pipeline(&self.pipeline);
@@ -299,7 +312,7 @@ impl Renderer {
             }
         }
         self.queue.submit([encoder.finish()]);
-        frame.present();
+        self.queue.present(frame);
         Ok(RenderReport { vsync_wait_ms })
     }
 }
@@ -310,6 +323,29 @@ pub struct RenderReport {
     /// Time blocked acquiring the swapchain image (vsync backpressure).
     pub vsync_wait_ms: f32,
 }
+
+/// A frame that produced no image, mapped from `CurrentSurfaceTexture`.
+#[derive(Clone, Copy, Debug)]
+pub enum RenderError {
+    /// Surface outdated/lost: `resize` (reconfigure) and redraw.
+    Reconfigure,
+    /// Nothing to present right now (occluded/timeout): try next frame.
+    Skip,
+    /// Validation error acquiring the surface texture.
+    Validation,
+}
+
+impl std::fmt::Display for RenderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Reconfigure => write!(f, "surface outdated or lost; reconfigure"),
+            Self::Skip => write!(f, "no frame available; skip"),
+            Self::Validation => write!(f, "surface texture validation error"),
+        }
+    }
+}
+
+impl std::error::Error for RenderError {}
 
 fn create_atlas_texture(device: &wgpu::Device, size: u32) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {

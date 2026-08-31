@@ -240,10 +240,12 @@ impl<A: App> Shell<A> {
         let mut wait_ms = 0.0;
         match renderer.render(dl, atlas) {
             Ok(report) => wait_ms = report.vsync_wait_ms,
-            Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+            Err(kui_wgpu::RenderError::Reconfigure) => {
                 renderer.resize(size.width, size.height);
                 window.request_redraw();
             }
+            // Occluded or timed out: nothing to present, try next frame.
+            Err(kui_wgpu::RenderError::Skip) => {}
             Err(err) => eprintln!("kui: render error: {err}"),
         }
         let render_ms = (t_render.elapsed().as_secs_f32() * 1e3 - wait_ms).max(0.0);
@@ -341,4 +343,4 @@ impl<A: App> ApplicationHandler for Shell<A> {
 }
 
 // Re-exported so apps can reach the renderer without depending on kui-wgpu.
-pub use kui_wgpu::{Renderer, wgpu};
+pub use kui_wgpu::{RenderError, Renderer, wgpu};

@@ -171,6 +171,7 @@ mod tests {
             font_size_bits: (12.0f32 + (i / 65536) as f32).to_bits(),
             x_bin: cosmic_text::SubpixelBin::Zero,
             y_bin: cosmic_text::SubpixelBin::Zero,
+            font_weight: cosmic_text::fontdb::Weight::NORMAL,
             flags: cosmic_text::CacheKeyFlags::empty(),
         }
     }

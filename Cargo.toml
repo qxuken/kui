@@ -19,12 +19,12 @@ kui = { path = "crates/kui" }
 
 slotmap = "1.0"
 rustc-hash = "2"
-cosmic-text = { version = "0.12", features = ["shape-run-cache"] }
-wgpu = "25"
+cosmic-text = { version = "0.19", features = ["shape-run-cache"] }
+wgpu = "30"
 winit = "0.30"
 bytemuck = { version = "1", features = ["derive"] }
-pollster = "0.4"
-mlua = { version = "0.10", features = ["lua54", "vendored"] }
+pollster = "1"
+mlua = { version = "0.12", features = ["lua55", "vendored"] }
 divan = "0.1"
 
 [profile.dev.package."*"]

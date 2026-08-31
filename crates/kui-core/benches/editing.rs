@@ -59,12 +59,12 @@ fn bench_cosmic_raw() {
     use cosmic_text::{Attrs, Buffer, Edit as _, Editor, FontSystem, Metrics, Motion, Shaping};
     let mut fs = FontSystem::new();
     let mut buffer = Buffer::new(&mut fs, Metrics::new(28.0, 44.0));
-    buffer.set_size(&mut fs, Some(2000.0), None);
+    buffer.set_size(Some(2000.0), None);
     buffer.set_text(
-        &mut fs,
         &doc(500),
-        Attrs::new().family(cosmic_text::Family::Monospace),
+        &Attrs::new().family(cosmic_text::Family::Monospace),
         Shaping::Advanced,
+        None,
     );
     buffer.shape_until_scroll(&mut fs, false);
     let mut editor = Editor::new(buffer);
