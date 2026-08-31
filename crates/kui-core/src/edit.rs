@@ -382,9 +382,16 @@ impl EditStore {
                 .take_while(|run| origin.y + run.line_top <= clip.y + clip.h);
             for run in runs {
                 // Selection highlight for this run (mixed BiDi runs can
-                // yield several disjoint spans).
-                if let Some((start, end)) = selection {
+                // yield several disjoint spans). `highlight` is only valid
+                // for runs on lines inside the selection span — outside it
+                // marks the whole run selected.
+                if let Some((start, end)) = selection
+                    && run.line_i >= start.line
+                    && run.line_i <= end.line
+                {
+                    let mut any = false;
                     for (x, w) in run.highlight(start, end) {
+                        any = true;
                         out.push(Quad {
                             rect: Rect::new(
                                 origin.x + x,
@@ -392,6 +399,20 @@ impl EditStore {
                                 w.max(2.0),
                                 line_height,
                             ),
+                            color: accent,
+                            border_color: Color::TRANSPARENT,
+                            radius: 0.0,
+                            border_w: 0.0,
+                            kind: QuadKind::Solid,
+                            uv: [0; 4],
+                            clip,
+                        });
+                    }
+                    // Empty line inside the selection: a stub for the
+                    // selected newline keeps the highlight continuous.
+                    if !any && run.glyphs.is_empty() && end.line > run.line_i {
+                        out.push(Quad {
+                            rect: Rect::new(origin.x, origin.y + run.line_top, 2.0, line_height),
                             color: accent,
                             border_color: Color::TRANSPARENT,
                             radius: 0.0,

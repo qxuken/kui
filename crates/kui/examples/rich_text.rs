@@ -3,12 +3,32 @@
 //!
 //! Run: cargo run -p kui --example rich_text
 
-use kui::{App, Align, Color, NodeSpec, Sizing, Span, TextStyle, Ui};
+use kui::{Align, App, Color, NodeSpec, Sizing, Span, TextStyle, Ui};
 
-const MUTED: Color = Color { r: 0.54, g: 0.56, b: 0.64, a: 1.0 };
-const ACCENT: Color = Color { r: 0.42, g: 0.62, b: 1.0, a: 1.0 };
-const GREEN: Color = Color { r: 0.45, g: 0.85, b: 0.55, a: 1.0 };
-const AMBER: Color = Color { r: 0.95, g: 0.72, b: 0.35, a: 1.0 };
+const MUTED: Color = Color {
+    r: 0.54,
+    g: 0.56,
+    b: 0.64,
+    a: 1.0,
+};
+const ACCENT: Color = Color {
+    r: 0.42,
+    g: 0.62,
+    b: 1.0,
+    a: 1.0,
+};
+const GREEN: Color = Color {
+    r: 0.45,
+    g: 0.85,
+    b: 0.55,
+    a: 1.0,
+};
+const AMBER: Color = Color {
+    r: 0.95,
+    g: 0.72,
+    b: 0.35,
+    a: 1.0,
+};
 
 struct RichText;
 
@@ -16,7 +36,13 @@ impl App for RichText {
     fn view(&mut self, ui: &mut Ui<'_>) {
         // Scrollable root: when the window is shorter than the content, the
         // wheel/trackpad scrolls it (with a scrollbar indicator).
-        ui.configure_root(NodeSpec::column().fill().cross_align(Align::Center).pad(24.0).scroll_y());
+        ui.configure_root(
+            NodeSpec::column()
+                .fill()
+                .cross_align(Align::Center)
+                .pad(24.0)
+                .scroll_y(),
+        );
 
         ui.with(
             NodeSpec::column()
@@ -53,8 +79,10 @@ impl App for RichText {
                         Span::new("italic").italic(),
                         Span::new(" and "),
                         Span::new("bold-italic").bold().italic().color(AMBER),
-                        Span::new(" all sit on the same baselines. Emoji ride along via the \
-                                   color-glyph atlas path: 🦀🔥✨"),
+                        Span::new(
+                            " all sit on the same baselines. Emoji ride along via the \
+                                   color-glyph atlas path: 🦀🔥✨",
+                        ),
                     ],
                     TextStyle::new(16.0).line_height(26.0),
                 );
@@ -72,9 +100,19 @@ impl App for RichText {
                     TextStyle::new(16.0).line_height(26.0).color(MUTED),
                 );
 
-                ui.with(NodeSpec::row().width(Sizing::Grow(1.0)).main_align(Align::End), |ui| {
-                    ui.text("resize the window to watch it rewrap", TextStyle::new(12.0).color(MUTED));
-                });
+                ui.with(
+                    NodeSpec::row()
+                        .width(Sizing::Grow(1.0))
+                        .main_align(Align::End),
+                    |ui| {
+                        ui.text(
+                            "resize the window to watch it rewrap",
+                            TextStyle::new(12.0).color(MUTED),
+                        );
+                    },
+                );
+
+                kui::widgets::latency_hud(ui);
             },
         );
     }

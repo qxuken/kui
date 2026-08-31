@@ -199,3 +199,34 @@ fn selection_renders_highlight_and_caret() {
     let caret = dl.quads.iter().any(|q| q.kind == kui_core::QuadKind::Solid && q.rect.w == 2.0);
     assert!(caret, "expected a caret quad");
 }
+
+#[test]
+fn selection_highlight_stays_on_its_lines() {
+    let mut rig = Rig::new("line one\nline two\nline three\nline four", true);
+    // Cursor starts at buffer start; select a few chars on line two only.
+    rig.press(EditKey::Down, Mods::default());
+    for _ in 0..4 {
+        rig.press(EditKey::Right, SHIFT);
+    }
+    rig.frame();
+    let (dl, _) = rig.core.output();
+    let ys: Vec<f32> = dl
+        .quads
+        .iter()
+        .filter(|q| {
+            q.kind == kui_core::QuadKind::Solid
+                && q.rect.w > 10.0
+                && q.color.a < 0.9
+                && q.color.a > 0.1
+        })
+        .map(|q| q.rect.y)
+        .collect();
+    assert!(!ys.is_empty(), "expected a selection highlight");
+    let (min_y, max_y) =
+        ys.iter().fold((f32::MAX, f32::MIN), |(lo, hi), y| (lo.min(*y), hi.max(*y)));
+    // A one-line selection must highlight one line, not the rest of the doc.
+    assert!(
+        max_y - min_y < 1.0,
+        "highlight leaked to other lines (quad tops span {min_y}..{max_y})"
+    );
+}
