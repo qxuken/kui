@@ -175,15 +175,9 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
 /// Small floating label hanging below the node it's declared inside.
 /// Typical use: `if ui.is_hovered(key) { widgets::tooltip(ui, "..."); }`
 pub fn tooltip(ui: &mut Ui<'_>, text: &str) {
-    tooltip_at(ui, text, crate::spec::FloatConfig::below());
-}
-
-/// `tooltip` with an explicit attachment (e.g. edge-aligned so a hint near
-/// the window border stays inside it).
-pub fn tooltip_at(ui: &mut Ui<'_>, text: &str, float: crate::spec::FloatConfig) {
     ui.with(
         NodeSpec::column()
-            .float(float)
+            .float(crate::spec::FloatConfig::below())
             .pad_xy(10.0, 6.0)
             .bg(Color::rgb8(0x24, 0x27, 0x33))
             .radius(6.0)
@@ -322,72 +316,49 @@ fn window_button(ui: &mut Ui<'_>, button: WindowButton, maximized: bool) {
             .center()
             .bg(bg)
             .window_button(button),
-        |ui| {
-            // No window manager to hint for us: name the button on hover.
-            // The close hint hangs right-aligned so it stays inside the
-            // window edge.
-            if hovered && !pressed {
-                let (hint, float) = match button {
-                    WindowButton::Minimize => ("Minimize", crate::spec::FloatConfig::below()),
-                    WindowButton::Maximize if maximized => {
-                        ("Restore", crate::spec::FloatConfig::below())
-                    }
-                    WindowButton::Maximize => ("Maximize", crate::spec::FloatConfig::below()),
-                    WindowButton::Close => (
-                        "Close",
-                        crate::spec::FloatConfig::below()
-                            .at(Align::End, Align::End)
-                            .self_at(Align::End, Align::Start),
-                    ),
-                };
-                tooltip_at(ui, hint, float);
+        |ui| match button {
+            WindowButton::Minimize => {
+                ui.with(
+                    NodeSpec::row()
+                        .width(Sizing::Fixed(10.0))
+                        .height(Sizing::Fixed(1.0))
+                        .bg(fg),
+                    |_| {},
+                );
             }
-            match button {
-                WindowButton::Minimize => {
-                    ui.with(
-                        NodeSpec::row()
-                            .width(Sizing::Fixed(10.0))
-                            .height(Sizing::Fixed(1.0))
-                            .bg(fg),
-                        |_| {},
-                    );
-                }
-                WindowButton::Maximize if maximized => {
-                    // Restore: two offset outlines.
-                    ui.with(
-                        NodeSpec::column()
-                            .width(Sizing::Fixed(10.0))
-                            .height(Sizing::Fixed(10.0)),
-                        |ui| {
-                            for (x, y) in [(Align::End, Align::Start), (Align::Start, Align::End)] {
-                                ui.with(
-                                    NodeSpec::column()
-                                        .width(Sizing::Fixed(7.5))
-                                        .height(Sizing::Fixed(7.5))
-                                        .border(1.0, fg)
-                                        .float(
-                                            crate::spec::FloatConfig::parent()
-                                                .at(x, y)
-                                                .self_at(x, y),
-                                        ),
-                                    |_| {},
-                                );
-                            }
-                        },
-                    );
-                }
-                WindowButton::Maximize => {
-                    ui.with(
-                        NodeSpec::column()
-                            .width(Sizing::Fixed(9.0))
-                            .height(Sizing::Fixed(9.0))
-                            .border(1.0, fg),
-                        |_| {},
-                    );
-                }
-                WindowButton::Close => {
-                    ui.text("\u{00d7}", TextStyle::new(16.0).line_height(16.0).color(fg));
-                }
+            WindowButton::Maximize if maximized => {
+                // Restore: two offset outlines.
+                ui.with(
+                    NodeSpec::column()
+                        .width(Sizing::Fixed(10.0))
+                        .height(Sizing::Fixed(10.0)),
+                    |ui| {
+                        for (x, y) in [(Align::End, Align::Start), (Align::Start, Align::End)] {
+                            ui.with(
+                                NodeSpec::column()
+                                    .width(Sizing::Fixed(7.5))
+                                    .height(Sizing::Fixed(7.5))
+                                    .border(1.0, fg)
+                                    .float(
+                                        crate::spec::FloatConfig::parent().at(x, y).self_at(x, y),
+                                    ),
+                                |_| {},
+                            );
+                        }
+                    },
+                );
+            }
+            WindowButton::Maximize => {
+                ui.with(
+                    NodeSpec::column()
+                        .width(Sizing::Fixed(9.0))
+                        .height(Sizing::Fixed(9.0))
+                        .border(1.0, fg),
+                    |_| {},
+                );
+            }
+            WindowButton::Close => {
+                ui.text("\u{00d7}", TextStyle::new(16.0).line_height(16.0).color(fg));
             }
         },
     );
