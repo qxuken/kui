@@ -108,10 +108,10 @@ caches — full frame: build + layout + emit):
 
 | bench | median |
 |---|---|
-| 1k nodes, text + hit regions ("typical app") | ~62 µs |
-| 10k plain rects | ~455 µs |
-| 10k rects + 1.2k texts + 2.5k hit regions | ~675 µs |
-| 16×64-deep nesting chains | ~51 µs |
+| 1k nodes, text + hit regions ("typical app") | ~70 µs |
+| 10k plain rects | ~510 µs |
+| 10k rects + 1.2k texts + 2.5k hit regions | ~740 µs |
+| 16×64-deep nesting chains | ~58 µs |
 
 A built-in latency graph shows per-phase frame cost live —
 `widgets::latency_hud(ui)` floats it in a viewport corner as a translucent
