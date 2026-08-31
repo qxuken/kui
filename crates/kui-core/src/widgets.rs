@@ -9,6 +9,7 @@ use crate::spec::{Align, NodeSpec, Sizing, TextStyle};
 use crate::stats::{FrameSample, STATS_CAPACITY};
 use crate::ui::Ui;
 use crate::value::Value;
+use crate::window::WindowButton;
 
 /// Floating latency HUD: `latency_graph` in a translucent panel pinned to a
 /// viewport corner, above all content and out of layout flow. Call anywhere
@@ -18,13 +19,16 @@ pub fn latency_hud(ui: &mut Ui<'_>) {
 }
 
 pub fn latency_hud_at(ui: &mut Ui<'_>, x: Align, y: Align) {
+    // Under custom chrome the top of the viewport is the app's titlebar;
+    // keep the HUD below it.
+    let top_inset = if ui.env().window.custom_chrome { TITLEBAR_H } else { 0.0 };
     let dx = match x {
         Align::Start => 12.0,
         Align::Center => 0.0,
         Align::End => -12.0,
     };
     let dy = match y {
-        Align::Start => 12.0,
+        Align::Start => 12.0 + top_inset,
         Align::Center => 0.0,
         Align::End => -12.0,
     };
@@ -213,6 +217,151 @@ pub fn text_input(ui: &mut Ui<'_>, label: &str, initial: &str) -> Key {
             .border(1.0, border)
             .clip(),
     )
+}
+
+/// Default titlebar height, logical px. Follows platform conventions (as
+/// measured by gpui): 32 on Windows (the native caption height), 34
+/// elsewhere.
+pub const TITLEBAR_H: f32 = if cfg!(target_os = "windows") { 32.0 } else { 34.0 };
+
+/// A cross-platform titlebar: a full-width drag strip with the window title
+/// left-aligned next to the window controls. Reads `env.window` and adapts
+/// by itself — under macOS custom chrome it insets past the native traffic
+/// lights and draws no buttons; under custom chrome elsewhere it appends
+/// minimize/maximize/close; under native decorations it is just a drag
+/// strip (no duplicate buttons).
+///
+/// Typical use, as the first child of a full-height root:
+/// `widgets::titlebar(ui, "my app")`.
+pub fn titlebar(ui: &mut Ui<'_>, title: &str) {
+    let focused = ui.env().focused;
+    let title = title.to_string();
+    titlebar_with(ui, move |ui| {
+        let color = if focused {
+            Color::rgb8(0xc9, 0xcc, 0xd6)
+        } else {
+            Color::rgb8(0x6e, 0x72, 0x80)
+        };
+        ui.with(
+            NodeSpec::row()
+                .width(Sizing::Grow(1.0))
+                .height(Sizing::Grow(1.0))
+                .cross_align(Align::Center),
+            |ui| ui.text(&title, TextStyle::new(13.0).color(color)),
+        );
+    });
+}
+
+/// Titlebar with custom content (tabs, a search box, …) between the
+/// platform inset and the window buttons. The whole strip is a drag
+/// handle; interactive children declared inside it sit on top and win
+/// hit-testing, so buttons in a titlebar just work.
+pub fn titlebar_with(ui: &mut Ui<'_>, content: impl FnOnce(&mut Ui<'_>)) {
+    let win = ui.env().window;
+    ui.with_keyed(
+        "kui:titlebar",
+        NodeSpec::row()
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Fixed(TITLEBAR_H))
+            .cross_align(Align::Center)
+            .window_drag(),
+        |ui| {
+            // Keep clear of controls the OS draws over our content (the
+            // reported rect already includes the trailing gap); without
+            // them, a plain leading margin.
+            let inset = win.native_controls.map_or(12.0, |r| r.x + r.w);
+            ui.with(NodeSpec::row().width(Sizing::Fixed(inset)), |_| {});
+            content(ui);
+            window_buttons(ui);
+        },
+    );
+}
+
+/// The minimize/maximize/close cluster. Renders nothing when the OS already
+/// provides controls (native decorations, or macOS traffic lights), so it
+/// is always safe to call.
+pub fn window_buttons(ui: &mut Ui<'_>) {
+    let win = ui.env().window;
+    if !win.custom_chrome || win.native_controls.is_some() {
+        return;
+    }
+    ui.with(NodeSpec::row().height(Sizing::Grow(1.0)), |ui| {
+        window_button(ui, WindowButton::Minimize, win.maximized);
+        window_button(ui, WindowButton::Maximize, win.maximized);
+        window_button(ui, WindowButton::Close, win.maximized);
+    });
+}
+
+fn window_button(ui: &mut Ui<'_>, button: WindowButton, maximized: bool) {
+    let label = match button {
+        WindowButton::Minimize => "kui:win-min",
+        WindowButton::Maximize => "kui:win-max",
+        WindowButton::Close => "kui:win-close",
+    };
+    let key = ui.child_key(label);
+    let (hovered, pressed) = (ui.is_hovered(key), ui.is_pressed(key));
+    let fg = Color::rgb8(0xc9, 0xcc, 0xd6);
+    let (bg, fg) = match button {
+        WindowButton::Close if pressed => (Color::rgb8(0xc5, 0x0f, 0x1f), Color::WHITE),
+        WindowButton::Close if hovered => (Color::rgb8(0xe8, 0x11, 0x23), Color::WHITE),
+        _ if pressed => (Color::rgba(1.0, 1.0, 1.0, 0.06), fg),
+        _ if hovered => (Color::rgba(1.0, 1.0, 1.0, 0.10), fg),
+        _ => (Color::TRANSPARENT, fg),
+    };
+    ui.with_keyed(
+        label,
+        NodeSpec::row()
+            .width(Sizing::Fixed(46.0))
+            .height(Sizing::Grow(1.0))
+            .center()
+            .bg(bg)
+            .window_button(button),
+        |ui| match button {
+            WindowButton::Minimize => {
+                ui.with(
+                    NodeSpec::row()
+                        .width(Sizing::Fixed(10.0))
+                        .height(Sizing::Fixed(1.0))
+                        .bg(fg),
+                    |_| {},
+                );
+            }
+            WindowButton::Maximize if maximized => {
+                // Restore: two offset outlines.
+                ui.with(
+                    NodeSpec::column()
+                        .width(Sizing::Fixed(10.0))
+                        .height(Sizing::Fixed(10.0)),
+                    |ui| {
+                        for (x, y) in [(Align::End, Align::Start), (Align::Start, Align::End)] {
+                            ui.with(
+                                NodeSpec::column()
+                                    .width(Sizing::Fixed(7.5))
+                                    .height(Sizing::Fixed(7.5))
+                                    .border(1.0, fg)
+                                    .float(
+                                        crate::spec::FloatConfig::parent().at(x, y).self_at(x, y),
+                                    ),
+                                |_| {},
+                            );
+                        }
+                    },
+                );
+            }
+            WindowButton::Maximize => {
+                ui.with(
+                    NodeSpec::column()
+                        .width(Sizing::Fixed(9.0))
+                        .height(Sizing::Fixed(9.0))
+                        .border(1.0, fg),
+                    |_| {},
+                );
+            }
+            WindowButton::Close => {
+                ui.text("\u{00d7}", TextStyle::new(16.0).line_height(16.0).color(fg));
+            }
+        },
+    );
 }
 
 pub fn button(ui: &mut Ui<'_>, text: &str, payload: impl Into<Value>) {

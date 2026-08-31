@@ -3,6 +3,7 @@
 use crate::color::Color;
 use crate::geom::Edges;
 use crate::value::Value;
+use crate::window::{WindowButton, WindowRole};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Sizing {
@@ -201,6 +202,10 @@ pub struct NodeSpec {
     pub style: VisualStyle,
     /// Payload emitted as a `UiEvent` when this node is clicked.
     pub on_click: Option<Value>,
+    /// Window-chrome role (drag handle / window button). A chrome node's
+    /// interactions become `WindowCommand`s for the frame driver instead of
+    /// `UiEvent`s; `on_click` is ignored on such nodes.
+    pub window: Option<WindowRole>,
 }
 
 impl NodeSpec {
@@ -324,6 +329,19 @@ impl NodeSpec {
 
     pub fn on_click(mut self, payload: impl Into<Value>) -> Self {
         self.on_click = Some(payload.into());
+        self
+    }
+
+    /// Pressing this node starts an OS window drag (drivers promote a quick
+    /// second press to a maximize toggle).
+    pub fn window_drag(mut self) -> Self {
+        self.window = Some(WindowRole::Drag);
+        self
+    }
+
+    /// Clicking this node emits the button's `WindowCommand`.
+    pub fn window_button(mut self, button: WindowButton) -> Self {
+        self.window = Some(WindowRole::Button(button));
         self
     }
 }

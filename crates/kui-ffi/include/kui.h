@@ -56,6 +56,22 @@ enum { KUI_MOD_SHIFT = 1u << 0, KUI_MOD_WORD = 1u << 1, KUI_MOD_DOC = 1u << 2 };
 enum { KUI_EDIT_MULTILINE = 1u << 0, KUI_EDIT_AUTOFOCUS = 1u << 1 };
 /* Float modes (KuiSpec.float_mode) */
 enum { KUI_FLOAT_NONE = 0, KUI_FLOAT_PARENT = 1, KUI_FLOAT_VIEWPORT = 2 };
+/* Window-chrome roles (KuiSpec.window_role). Chrome nodes turn input into
+ * window commands (kui_take_window_commands), never events. */
+enum {
+    KUI_WINDOW_NONE = 0,
+    KUI_WINDOW_DRAG = 1,
+    KUI_WINDOW_CLOSE = 2,
+    KUI_WINDOW_MINIMIZE = 3,
+    KUI_WINDOW_MAXIMIZE = 4,
+};
+/* Window commands drained by kui_take_window_commands. */
+enum {
+    KUI_CMD_START_DRAG = 1,
+    KUI_CMD_CLOSE = 2,
+    KUI_CMD_MINIMIZE = 3,
+    KUI_CMD_TOGGLE_MAXIMIZE = 4,
+};
 
 typedef struct KuiSizing {
     uint32_t tag;
@@ -82,6 +98,7 @@ typedef struct KuiSpec {
     uint32_t float_anchor_x, float_anchor_y;
     uint32_t float_self_x, float_self_y;
     float float_dx, float_dy;
+    uint32_t window_role; /* KUI_WINDOW_*; makes this node window chrome */
 } KuiSpec;
 
 /* Zero-initialized KuiTextStyle picks defaults (16px, default foreground). */
@@ -142,6 +159,14 @@ bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
 /* Host facts for views to read (refresh_hz <= 0 = unknown). Survives across
  * frames; set on change or every frame, either works. */
 void kui_env_set(KuiCtx *ctx, float refresh_hz, bool focused);
+/* Window chrome facts for views (widgets adapt to them). controls_w/h > 0
+ * describe the top-left keep-out rect of OS-drawn controls (macOS traffic
+ * lights under custom chrome). */
+void kui_env_set_window(KuiCtx *ctx, bool custom_chrome, bool maximized,
+                        bool fullscreen, float controls_w, float controls_h);
+/* Drains pending window commands (KUI_CMD_*) into out, returns the count
+ * written. Call after each input dispatch and apply to the real window. */
+size_t kui_take_window_commands(KuiCtx *ctx, uint32_t *out, size_t cap);
 /* Declares this frame's window title (cleared each kui_frame_begin). */
 void kui_window_title(KuiCtx *ctx, KuiStr title);
 /* The title declared this frame, if any — diff and apply after

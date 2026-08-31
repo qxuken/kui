@@ -2,6 +2,8 @@
 //! inbound mirror of events-as-data. The core never touches a window; the
 //! driver (runner, FFI host) reports what it knows and views read it.
 
+use crate::window::WindowEnv;
+
 /// What the host knows about the display/window. Defaults are safe for
 /// headless drivers (tests, benches) that never set anything.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -10,11 +12,13 @@ pub struct Env {
     pub refresh_hz: Option<f32>,
     /// Whether the window has keyboard focus.
     pub focused: bool,
+    /// Window chrome facts (custom chrome, maximized, native control rect).
+    pub window: WindowEnv,
 }
 
 impl Default for Env {
     fn default() -> Self {
-        Self { refresh_hz: None, focused: true }
+        Self { refresh_hz: None, focused: true, window: WindowEnv::default() }
     }
 }
 

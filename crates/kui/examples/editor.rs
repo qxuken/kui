@@ -39,6 +39,10 @@ impl App for Editor {
     fn view(&mut self, ui: &mut Ui<'_>) {
         ui.configure_root(NodeSpec::column().fill());
 
+        // Custom titlebar: drag strip + adaptive window controls (native
+        // traffic lights on macOS, drawn buttons elsewhere).
+        kui::widgets::titlebar(ui, "kui — editor");
+
         // Editor area: the edit node grows its height with content inside a
         // scroll container, so the document scrolls as it grows.
         ui.with(
@@ -113,5 +117,8 @@ impl Editor {
 }
 
 fn main() {
-    kui::run("kui — editor", Editor { saved: true, ..Default::default() }, vec![]).unwrap();
+    kui::app("kui — editor")
+        .custom_titlebar()
+        .run(Editor { saved: true, ..Default::default() })
+        .unwrap();
 }

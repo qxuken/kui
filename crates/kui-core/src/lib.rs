@@ -25,6 +25,7 @@ pub mod tree;
 pub mod ui;
 pub mod value;
 pub mod widgets;
+pub mod window;
 
 pub use color::Color;
 pub use display::{DisplayList, NO_CLIP, Quad, QuadKind};
@@ -40,3 +41,4 @@ pub use text::Span;
 pub use tree::OriginId;
 pub use ui::Ui;
 pub use value::Value;
+pub use window::{WindowButton, WindowCommand, WindowEnv, WindowRole};

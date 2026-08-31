@@ -13,40 +13,129 @@ use winit::dpi::LogicalSize;
 use winit::event::{ElementState, Ime, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
-use winit::window::{Window, WindowId};
+use winit::window::{CursorIcon, ResizeDirection, Window, WindowId};
 
 pub trait App {
     fn view(&mut self, ui: &mut Ui<'_>);
     fn on_event(&mut self, _ev: UiEvent) {}
 }
 
+/// Who draws the window chrome.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Chrome {
+    /// The OS titlebar and buttons (the default).
+    #[default]
+    Native,
+    /// The app draws its own titlebar (`widgets::titlebar`). On macOS the
+    /// native traffic lights stay, overlaid on the content (their rect is
+    /// reported in `env.window.native_controls`); elsewhere the window is
+    /// undecorated and the runner synthesizes edge resizing, double-click
+    /// maximize, and applies the `WindowCommand`s chrome nodes produce.
+    Custom,
+    /// No decorations and no chrome expectations (splash screens, popups).
+    Borderless,
+}
+
+/// Entry point: `kui::app("title").custom_titlebar().run(my_app)`.
+pub fn app(title: &str) -> Launcher {
+    Launcher {
+        title: title.to_string(),
+        chrome: Chrome::Native,
+        size: (960.0, 640.0),
+        extensions: Vec::new(),
+    }
+}
+
+/// Builder for the windowed runner.
+pub struct Launcher {
+    title: String,
+    chrome: Chrome,
+    size: (f64, f64),
+    extensions: Vec<Box<dyn Extension>>,
+}
+
+impl Launcher {
+    pub fn chrome(mut self, chrome: Chrome) -> Self {
+        self.chrome = chrome;
+        self
+    }
+
+    /// Shorthand for `.chrome(Chrome::Custom)`.
+    pub fn custom_titlebar(self) -> Self {
+        self.chrome(Chrome::Custom)
+    }
+
+    /// Shorthand for `.chrome(Chrome::Borderless)`.
+    pub fn borderless(self) -> Self {
+        self.chrome(Chrome::Borderless)
+    }
+
+    /// Initial inner size, logical px (`KUI_WINDOW=WxH` still overrides).
+    pub fn size(mut self, w: f64, h: f64) -> Self {
+        self.size = (w, h);
+        self
+    }
+
+    pub fn extension(mut self, ext: impl Extension + 'static) -> Self {
+        self.extensions.push(Box::new(ext));
+        self
+    }
+
+    pub fn extensions(mut self, exts: Vec<Box<dyn Extension>>) -> Self {
+        self.extensions.extend(exts);
+        self
+    }
+
+    pub fn run<A: App>(self, app: A) -> Result<(), Box<dyn std::error::Error>> {
+        let event_loop = EventLoop::new()?;
+        event_loop.set_control_flow(ControlFlow::Wait);
+        let mut shell = Shell {
+            title: self.title.clone(),
+            applied_title: self.title,
+            chrome: self.chrome,
+            size: self.size,
+            app,
+            extensions: self.extensions,
+            core: Core::new(),
+            window: None,
+            renderer: None,
+            modifiers: ModifiersState::empty(),
+            clipboard: arboard::Clipboard::new().ok(),
+            last_titlebar_press: None,
+            resize_edge: None,
+            exit_requested: false,
+        };
+        event_loop.run_app(&mut shell)?;
+        Ok(())
+    }
+}
+
 pub fn run<A: App>(
     title: &str,
-    app: A,
+    application: A,
     extensions: Vec<Box<dyn Extension>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let event_loop = EventLoop::new()?;
-    event_loop.set_control_flow(ControlFlow::Wait);
-    let mut shell = Shell {
-        title: title.to_string(),
-        applied_title: title.to_string(),
-        app,
-        extensions,
-        core: Core::new(),
-        window: None,
-        renderer: None,
-        modifiers: ModifiersState::empty(),
-        clipboard: arboard::Clipboard::new().ok(),
-    };
-    event_loop.run_app(&mut shell)?;
-    Ok(())
+    app(title).extensions(extensions).run(application)
 }
+
+/// Traffic-light keep-out rect under macOS custom chrome (logical px,
+/// window coords); content starts at its right edge. AppKit gives no stable
+/// public metric, so this uses gpui's measured TRAFFIC_LIGHT_PADDING: 78
+/// with the macOS 26 SDK (71 on older SDKs — the extra pixel on the left is
+/// the window border). We assume a current SDK.
+const MACOS_TRAFFIC_LIGHTS: Rect = Rect { x: 0.0, y: 0.0, w: 78.0, h: 28.0 };
+/// Width of the invisible resize band synthesized on undecorated windows.
+const RESIZE_BAND: f32 = 6.0;
+/// A second titlebar press within this window toggles maximize.
+const DOUBLE_CLICK_MS: u128 = 350;
 
 struct Shell<A: App> {
     title: String,
     /// Last title actually set on the window; views declare per frame and
     /// we only touch the window on change.
     applied_title: String,
+    chrome: Chrome,
+    size: (f64, f64),
     app: A,
     extensions: Vec<Box<dyn Extension>>,
     core: Core,
@@ -54,6 +143,12 @@ struct Shell<A: App> {
     renderer: Option<kui_wgpu::Renderer>,
     modifiers: ModifiersState,
     clipboard: Option<arboard::Clipboard>,
+    /// Time of the last titlebar press, for double-click maximize.
+    last_titlebar_press: Option<std::time::Instant>,
+    /// Resize edge currently under the cursor (undecorated windows only).
+    resize_edge: Option<ResizeDirection>,
+    /// Set by `WindowCommand::Close`; honored at the end of the event.
+    exit_requested: bool,
 }
 
 impl<A: App> Shell<A> {
@@ -61,11 +156,89 @@ impl<A: App> Shell<A> {
         let t0 = std::time::Instant::now();
         let events = self.core.handle_input(ev);
         self.route_events(events);
+        self.apply_window_commands();
         // Hover styling depends on input too, so any input redraws. A damage
         // pass can tighten this later.
         self.core.stats.pending_input_ms += t0.elapsed().as_secs_f32() * 1e3;
         if let Some(w) = &self.window {
             w.request_redraw();
+        }
+    }
+
+    /// Applies window intents produced by chrome nodes (`window_drag`,
+    /// `window_button`) to the real window.
+    fn apply_window_commands(&mut self) {
+        for cmd in self.core.take_window_commands() {
+            let Some(w) = &self.window else { break };
+            match cmd {
+                WindowCommand::StartDrag => {
+                    let now = std::time::Instant::now();
+                    let double = self
+                        .last_titlebar_press
+                        .take()
+                        .is_some_and(|t| now.duration_since(t).as_millis() < DOUBLE_CLICK_MS);
+                    if double {
+                        w.set_maximized(!w.is_maximized());
+                    } else {
+                        self.last_titlebar_press = Some(now);
+                        let _ = w.drag_window();
+                    }
+                }
+                WindowCommand::Close => self.exit_requested = true,
+                WindowCommand::Minimize => w.set_minimized(true),
+                WindowCommand::ToggleMaximize => w.set_maximized(!w.is_maximized()),
+            }
+        }
+    }
+
+    /// Undecorated windows get no OS resize borders; the runner synthesizes
+    /// them from a band inside the window edges (macOS custom chrome keeps
+    /// native edge resizing, so nothing is synthesized there).
+    fn synthesizes_resize(&self) -> bool {
+        self.chrome != Chrome::Native && !cfg!(target_os = "macos")
+    }
+
+    fn resize_edge_at(&self, p: Vec2) -> Option<ResizeDirection> {
+        let w = self.window.as_ref()?;
+        if w.is_maximized() || w.fullscreen().is_some() {
+            return None;
+        }
+        let scale = w.scale_factor() as f32;
+        let size = w.inner_size();
+        let (sw, sh) = (size.width as f32 / scale, size.height as f32 / scale);
+        let (l, r) = (p.x < RESIZE_BAND, p.x > sw - RESIZE_BAND);
+        let (t, b) = (p.y < RESIZE_BAND, p.y > sh - RESIZE_BAND);
+        Some(match (l, r, t, b) {
+            (true, _, true, _) => ResizeDirection::NorthWest,
+            (_, true, true, _) => ResizeDirection::NorthEast,
+            (true, _, _, true) => ResizeDirection::SouthWest,
+            (_, true, _, true) => ResizeDirection::SouthEast,
+            (true, ..) => ResizeDirection::West,
+            (_, true, ..) => ResizeDirection::East,
+            (_, _, true, _) => ResizeDirection::North,
+            (_, _, _, true) => ResizeDirection::South,
+            _ => return None,
+        })
+    }
+
+    fn update_resize_cursor(&mut self, p: Vec2) {
+        let edge = self.resize_edge_at(p);
+        if edge == self.resize_edge {
+            return;
+        }
+        self.resize_edge = edge;
+        if let Some(w) = &self.window {
+            w.set_cursor(match edge {
+                Some(ResizeDirection::West | ResizeDirection::East) => CursorIcon::EwResize,
+                Some(ResizeDirection::North | ResizeDirection::South) => CursorIcon::NsResize,
+                Some(ResizeDirection::NorthWest | ResizeDirection::SouthEast) => {
+                    CursorIcon::NwseResize
+                }
+                Some(ResizeDirection::NorthEast | ResizeDirection::SouthWest) => {
+                    CursorIcon::NeswResize
+                }
+                None => CursorIcon::Default,
+            });
         }
     }
 
@@ -207,6 +380,13 @@ impl<A: App> Shell<A> {
             .current_monitor()
             .and_then(|m| m.refresh_rate_millihertz())
             .map(|mhz| mhz as f32 / 1000.0);
+        self.core.env.window = WindowEnv {
+            custom_chrome: self.chrome != Chrome::Native,
+            maximized: window.is_maximized(),
+            fullscreen: window.fullscreen().is_some(),
+            native_controls: (cfg!(target_os = "macos") && self.chrome == Chrome::Custom)
+                .then_some(MACOS_TRAFFIC_LIGHTS),
+        };
 
         let t_view = std::time::Instant::now();
         let mut ui = self.core.frame(viewport, scale);
@@ -266,16 +446,32 @@ impl<A: App> ApplicationHandler for Shell<A> {
                 let (w, h) = s.split_once('x')?;
                 Some((w.parse().ok()?, h.parse().ok()?))
             })
-            .unwrap_or((960.0, 640.0));
-        let window = Arc::new(
-            event_loop
-                .create_window(
-                    Window::default_attributes()
-                        .with_title(&self.title)
-                        .with_inner_size(LogicalSize::new(w, h)),
-                )
-                .expect("create window"),
-        );
+            .unwrap_or(self.size);
+        #[allow(unused_mut)]
+        let mut attrs = Window::default_attributes()
+            .with_title(&self.title)
+            .with_inner_size(LogicalSize::new(w, h));
+        match self.chrome {
+            Chrome::Native => {}
+            Chrome::Custom => {
+                // macOS: keep the native traffic lights, drawn over our
+                // content; everywhere else drop decorations entirely.
+                #[cfg(target_os = "macos")]
+                {
+                    use winit::platform::macos::WindowAttributesExtMacOS;
+                    attrs = attrs
+                        .with_titlebar_transparent(true)
+                        .with_fullsize_content_view(true)
+                        .with_title_hidden(true);
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    attrs = attrs.with_decorations(false);
+                }
+            }
+            Chrome::Borderless => attrs = attrs.with_decorations(false),
+        }
+        let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
         window.set_ime_allowed(true);
         let size = window.inner_size();
         let renderer =
@@ -303,10 +499,11 @@ impl<A: App> ApplicationHandler for Shell<A> {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let scale = self.window.as_ref().map_or(1.0, |w| w.scale_factor()) as f32;
-                self.dispatch(InputEvent::CursorMoved(Vec2::new(
-                    position.x as f32 / scale,
-                    position.y as f32 / scale,
-                )));
+                let p = Vec2::new(position.x as f32 / scale, position.y as f32 / scale);
+                if self.synthesizes_resize() {
+                    self.update_resize_cursor(p);
+                }
+                self.dispatch(InputEvent::CursorMoved(p));
             }
             WindowEvent::CursorLeft { .. } => self.dispatch(InputEvent::CursorLeft),
             WindowEvent::Focused(focused) => {
@@ -331,6 +528,15 @@ impl<A: App> ApplicationHandler for Shell<A> {
                 self.dispatch(InputEvent::Scroll(d));
             }
             WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
+                // A press on the synthesized resize band starts an OS resize
+                // instead of reaching the UI.
+                if state == ElementState::Pressed
+                    && let Some(dir) = self.resize_edge
+                    && let Some(w) = &self.window
+                {
+                    let _ = w.drag_resize_window(dir);
+                    return;
+                }
                 self.dispatch(match state {
                     ElementState::Pressed => InputEvent::MouseDown,
                     ElementState::Released => InputEvent::MouseUp,
@@ -338,6 +544,9 @@ impl<A: App> ApplicationHandler for Shell<A> {
             }
             WindowEvent::RedrawRequested => self.redraw(),
             _ => {}
+        }
+        if self.exit_requested {
+            event_loop.exit();
         }
     }
 }

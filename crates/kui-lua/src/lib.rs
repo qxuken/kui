@@ -7,7 +7,7 @@
 
 use kui_core::{
     Align, Color, Edges, Extension, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value,
-    widgets,
+    WindowButton, widgets,
 };
 use mlua::{Lua, Table};
 
@@ -81,6 +81,17 @@ fn env_table(lua: &Lua, ui: &Ui<'_>) -> mlua::Result<Table> {
     let vp = ui.viewport();
     t.set("viewport_w", vp.w)?;
     t.set("viewport_h", vp.h)?;
+    let win = env.window;
+    let wt = lua.create_table()?;
+    wt.set("custom_chrome", win.custom_chrome)?;
+    wt.set("maximized", win.maximized)?;
+    wt.set("fullscreen", win.fullscreen)?;
+    if let Some(r) = win.native_controls {
+        // Keep-out extent of OS-drawn controls (macOS traffic lights).
+        wt.set("controls_w", r.x + r.w)?;
+        wt.set("controls_h", r.y + r.h)?;
+    }
+    t.set("window", wt)?;
     Ok(t)
 }
 
@@ -112,6 +123,11 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             let label: String = t.get("label")?;
             let initial: String = t.get::<Option<String>>("initial")?.unwrap_or_default();
             widgets::text_input(ui, &label, &initial);
+            Ok(())
+        }
+        "titlebar" => {
+            let title: String = t.get::<Option<String>>("title")?.unwrap_or_default();
+            widgets::titlebar(ui, &title);
             Ok(())
         }
         "button" => {
@@ -185,6 +201,17 @@ fn parse_spec(t: &Table, is_row: bool) -> mlua::Result<NodeSpec> {
     }
     if t.get::<Option<bool>>("scroll_x")?.unwrap_or(false) {
         spec = spec.scroll_x();
+    }
+    if let Some(role) = t.get::<Option<String>>("window")? {
+        spec = match role.as_str() {
+            "drag" => spec.window_drag(),
+            "close" => spec.window_button(WindowButton::Close),
+            "minimize" => spec.window_button(WindowButton::Minimize),
+            "maximize" => spec.window_button(WindowButton::Maximize),
+            other => {
+                return Err(mlua::Error::runtime(format!("unknown window role '{other}'")));
+            }
+        };
     }
     if let Some(f) = t.get::<Option<Table>>("float")? {
         let mut cfg = match f.get::<Option<String>>("anchor")?.as_deref() {

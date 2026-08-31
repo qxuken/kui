@@ -176,14 +176,15 @@ impl Core {
                 clip: clip.scaled(scale),
             });
         }
-        if let Some(payload) = &spec.on_click {
+        if spec.on_click.is_some() || spec.window.is_some() {
             hits.push(HitRegion {
                 key: self.tree.keys[i],
                 origin: self.tree.origins[i],
                 rect,
                 clip,
-                payload: payload.clone(),
+                payload: spec.on_click.clone().unwrap_or(Value::Null),
                 edit_origin: None,
+                window: spec.window,
             });
         }
         if spec.layout.scroll_x || spec.layout.scroll_y {
@@ -210,6 +211,7 @@ impl Core {
                     clip,
                     payload: Value::Null,
                     edit_origin: Some(content_origin),
+                    window: None,
                 });
                 let focused = self.edit.focused() == Some(key);
                 let origin_phys = Vec2::new(
@@ -263,6 +265,13 @@ impl Core {
     pub fn set_edit_text(&mut self, key: Key, text: &str) {
         let fs = self.text.font_system_mut();
         self.edit.set_text(key, text, fs);
+    }
+
+    /// Drains window intents produced by chrome nodes since the last drain.
+    /// Frame drivers call this after each input dispatch and apply the
+    /// commands to the real window; headless drivers may simply never call.
+    pub fn take_window_commands(&mut self) -> Vec<crate::window::WindowCommand> {
+        std::mem::take(&mut self.interaction.window_commands)
     }
 
     /// Wheel line-deltas (e.g. winit's LineDelta) to logical px.

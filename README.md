@@ -68,6 +68,17 @@ end
   back by key — no `&mut String` captured in a view, which is what keeps
   editing reachable from Lua and C. The runner maps winit keys, IME commits,
   and platform clipboard shortcuts (arboard) onto those events.
+- **Window chrome is data, both directions.** Any node can declare a chrome
+  role (`window_drag()` / `window_button(...)`); interacting with it produces
+  `WindowCommand`s (start drag, close, minimize, toggle maximize) that the
+  frame driver drains and applies — the core never touches a window. Host
+  facts flow the other way through `env.window` (custom chrome? maximized?
+  where do the macOS traffic lights sit?), so `widgets::titlebar` adapts per
+  platform by itself. Opt in with `kui::app("title").custom_titlebar().run(app)`:
+  macOS keeps native traffic lights over your content; Windows/Linux go
+  undecorated with drawn buttons, synthesized edge resizing, and double-click
+  maximize. Lua declares `window = "drag"` etc.; C sets `KuiSpec.window_role`
+  and drains `kui_take_window_commands`.
 - **The C API is translation, not architecture.** Frame building is flat
   calls on one opaque context (`kui_open`/`kui_close`/`kui_text`), payloads
   are opaque `KuiValue` handles with accessors, and `kui_draw_data` hands out

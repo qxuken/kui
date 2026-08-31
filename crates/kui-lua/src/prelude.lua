@@ -29,3 +29,9 @@ function input(t)
   t.type = "input"
   return t
 end
+
+function titlebar(t)
+  t = t or {}
+  t.type = "titlebar"
+  return t
+end

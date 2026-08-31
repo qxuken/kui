@@ -18,7 +18,8 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use kui_core::{
     Align, Color, Core, Edges, EditKey, EditOptions, FloatConfig, InputEvent, Key, Mods, NodeSpec,
-    Size, Sizing, Span, TextStyle, UiEvent, Value, Vec2,
+    Rect, Size, Sizing, Span, TextStyle, UiEvent, Value, Vec2, WindowButton, WindowCommand,
+    WindowEnv,
 };
 
 // ---------------------------------------------------------------------------
@@ -100,6 +101,10 @@ pub struct KuiSpec {
     pub float_self_y: u32,
     pub float_dx: f32,
     pub float_dy: f32,
+    /// Window-chrome role: 0 = none, 1 = drag, 2 = close button,
+    /// 3 = minimize button, 4 = maximize button. Chrome nodes emit window
+    /// commands (kui_take_window_commands), never events.
+    pub window_role: u32,
 }
 
 #[repr(C)]
@@ -228,6 +233,13 @@ fn spec_of(s: &KuiSpec, on_click: *mut KuiValue) -> NodeSpec {
             .self_at(align_of(s.float_self_x), align_of(s.float_self_y))
             .offset(s.float_dx, s.float_dy);
         spec = spec.float(cfg);
+    }
+    match s.window_role {
+        1 => spec = spec.window_drag(),
+        2 => spec = spec.window_button(WindowButton::Close),
+        3 => spec = spec.window_button(WindowButton::Minimize),
+        4 => spec = spec.window_button(WindowButton::Maximize),
+        _ => {}
     }
     if !on_click.is_null() {
         // Consumes the value.
@@ -385,6 +397,61 @@ pub extern "C" fn kui_env_set(ptr: *mut KuiCtx, refresh_hz: f32, focused: bool) 
             c.core().env.focused = focused;
         }
     });
+}
+
+/// Window chrome facts for views to read (widgets::titlebar adapts to
+/// them). `controls_w/h > 0` describe the keep-out rect of controls the OS
+/// draws over the content (macOS traffic lights), anchored top-left.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_env_set_window(
+    ptr: *mut KuiCtx,
+    custom_chrome: bool,
+    maximized: bool,
+    fullscreen: bool,
+    controls_w: f32,
+    controls_h: f32,
+) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().env.window = WindowEnv {
+                custom_chrome,
+                maximized,
+                fullscreen,
+                native_controls: (controls_w > 0.0 && controls_h > 0.0)
+                    .then(|| Rect::new(0.0, 0.0, controls_w, controls_h)),
+            };
+        }
+    });
+}
+
+/// Drains window intents produced by chrome nodes into `out` (each entry:
+/// 1 = start drag, 2 = close, 3 = minimize, 4 = toggle maximize); returns
+/// how many were written. Call after each input until it returns 0, and
+/// apply them to the real window.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_take_window_commands(
+    ptr: *mut KuiCtx,
+    out: *mut u32,
+    cap: usize,
+) -> usize {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else { return 0 };
+        if out.is_null() || cap == 0 {
+            return 0;
+        }
+        let cmds = c.core().take_window_commands();
+        let n = cmds.len().min(cap);
+        for (i, cmd) in cmds.into_iter().take(n).enumerate() {
+            let code = match cmd {
+                WindowCommand::StartDrag => 1,
+                WindowCommand::Close => 2,
+                WindowCommand::Minimize => 3,
+                WindowCommand::ToggleMaximize => 4,
+            };
+            unsafe { out.add(i).write(code) };
+        }
+        n
+    })
 }
 
 /// Declares this frame's window title (cleared each kui_frame_begin).

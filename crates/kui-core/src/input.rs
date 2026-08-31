@@ -7,6 +7,7 @@ use crate::geom::{Rect, Vec2};
 use crate::key::Key;
 use crate::tree::OriginId;
 use crate::value::Value;
+use crate::window::{WindowCommand, WindowRole};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum InputEvent {
@@ -70,6 +71,8 @@ pub struct HitRegion {
     pub payload: Value,
     /// Content-box origin of an editable text node; None for plain hits.
     pub edit_origin: Option<Vec2>,
+    /// Window-chrome role: interactions become `WindowCommand`s, not events.
+    pub window: Option<WindowRole>,
 }
 
 /// A scroll container's on-screen area, for wheel routing.
@@ -86,6 +89,9 @@ pub struct Interaction {
     pub(crate) hits: Vec<HitRegion>,
     /// In paint order: later entries are on top (innermost last).
     pub(crate) scroll_regions: Vec<ScrollRegion>,
+    /// Window intents produced by chrome nodes; drained by the driver via
+    /// `Core::take_window_commands`.
+    pub(crate) window_commands: Vec<WindowCommand>,
     cursor: Option<Vec2>,
     hovered: Option<Key>,
     pressed: Option<Key>,
@@ -139,6 +145,14 @@ impl Interaction {
             }
             InputEvent::MouseDown => {
                 self.pressed = self.hovered;
+                if let Some(h) = self.cursor.and_then(|p| self.hit_at(p))
+                    && h.window == Some(WindowRole::Drag)
+                {
+                    // The OS drag steals subsequent mouse events, so don't
+                    // leave a press pending.
+                    self.pressed = None;
+                    self.window_commands.push(WindowCommand::StartDrag);
+                }
             }
             // Routed by the core (they need the retained stores).
             InputEvent::Scroll(_) | InputEvent::Text(_) | InputEvent::Key(..) => {}
@@ -147,11 +161,15 @@ impl Interaction {
                     && pressed == hovered
                     && let Some(region) = self.hits.iter().rev().find(|h| h.key == pressed)
                 {
-                    out.push(UiEvent {
-                        origin: region.origin,
-                        key: region.key,
-                        payload: region.payload.clone(),
-                    });
+                    match region.window {
+                        Some(WindowRole::Button(b)) => self.window_commands.push(b.command()),
+                        Some(WindowRole::Drag) => {}
+                        None => out.push(UiEvent {
+                            origin: region.origin,
+                            key: region.key,
+                            payload: region.payload.clone(),
+                        }),
+                    }
                 }
                 self.pressed = None;
             }
@@ -179,6 +197,7 @@ mod tests {
             clip: Rect::new(-1e9, -1e9, 2e9, 2e9),
             payload: Value::str(tag),
             edit_origin: None,
+            window: None,
         }
     }
 
