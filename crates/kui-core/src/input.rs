@@ -8,7 +8,7 @@ use crate::key::Key;
 use crate::tree::OriginId;
 use crate::value::Value;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum InputEvent {
     /// Logical coordinates.
     CursorMoved(Vec2),
@@ -17,6 +17,38 @@ pub enum InputEvent {
     MouseUp,
     /// Wheel/trackpad delta in logical px (positive y = scroll up).
     Scroll(Vec2),
+    /// Committed text (typing, IME commit, paste). Routed to the focused editor.
+    Text(String),
+    /// Navigation/editing key. Routed to the focused editor.
+    Key(EditKey, Mods),
+}
+
+/// Editing keys, decoupled from any windowing library's key codes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EditKey {
+    Left,
+    Right,
+    Up,
+    Down,
+    Home,
+    End,
+    PageUp,
+    PageDown,
+    Backspace,
+    Delete,
+    Enter,
+    Tab,
+    SelectAll,
+    Escape,
+}
+
+/// Modifier state for editing keys. `word` is Alt/Option (word-wise motion),
+/// `doc` is the platform primary modifier (line/document-wise motion).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Mods {
+    pub shift: bool,
+    pub word: bool,
+    pub doc: bool,
 }
 
 /// An event produced by the UI, ready for routing.
@@ -36,6 +68,8 @@ pub struct HitRegion {
     /// Ancestor clip; a point must be inside both to hit.
     pub clip: Rect,
     pub payload: Value,
+    /// Content-box origin of an editable text node; None for plain hits.
+    pub edit_origin: Option<Vec2>,
 }
 
 /// A scroll container's on-screen area, for wheel routing.
@@ -75,7 +109,7 @@ impl Interaction {
         self.cursor
     }
 
-    fn hit_at(&self, p: Vec2) -> Option<&HitRegion> {
+    pub(crate) fn hit_at(&self, p: Vec2) -> Option<&HitRegion> {
         self.hits.iter().rev().find(|h| h.rect.contains(p) && h.clip.contains(p))
     }
 
@@ -106,8 +140,8 @@ impl Interaction {
             InputEvent::MouseDown => {
                 self.pressed = self.hovered;
             }
-            // Routed by the core (needs the retained scroll store).
-            InputEvent::Scroll(_) => {}
+            // Routed by the core (they need the retained stores).
+            InputEvent::Scroll(_) | InputEvent::Text(_) | InputEvent::Key(..) => {}
             InputEvent::MouseUp => {
                 if let (Some(pressed), Some(hovered)) = (self.pressed, self.hovered)
                     && pressed == hovered
@@ -144,13 +178,14 @@ mod tests {
             rect: Rect::new(x, y, w, h),
             clip: Rect::new(-1e9, -1e9, 2e9, 2e9),
             payload: Value::str(tag),
+            edit_origin: None,
         }
     }
 
     fn drive(interaction: &mut Interaction, events: &[InputEvent]) -> Vec<UiEvent> {
         let mut out = Vec::new();
-        for &ev in events {
-            interaction.handle(ev, &mut out);
+        for ev in events {
+            interaction.handle(ev.clone(), &mut out);
         }
         out
     }

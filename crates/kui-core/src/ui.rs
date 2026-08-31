@@ -2,6 +2,8 @@
 //! methods (which are also the FFI surface). It never captures user state,
 //! so `view(&state)` and `update(&mut state)` can't conflict.
 
+use crate::edit::EditOptions;
+use crate::env::Env;
 use crate::geom::Size;
 use crate::key::Key;
 use crate::runtime::Core;
@@ -25,6 +27,17 @@ impl<'a> Ui<'a> {
 
     pub fn viewport(&self) -> Size {
         self.core.viewport
+    }
+
+    /// Host facts pushed by the frame driver (refresh rate, focus).
+    pub fn env(&self) -> Env {
+        self.core.env
+    }
+
+    /// Declares this frame's window title (declare every frame you care;
+    /// the driver diffs and applies changes).
+    pub fn window_title(&mut self, title: &str) {
+        self.core.set_window_title(title);
     }
 
     pub fn set_origin(&mut self, origin: OriginId) {
@@ -81,6 +94,19 @@ impl<'a> Ui<'a> {
     /// A paragraph of styled spans, shaped and wrapped as one flow.
     pub fn rich_text(&mut self, spans: &[Span<'_>], base: TextStyle) {
         self.core.rich_text_node(spans, base);
+    }
+
+    /// An editable text node; state retained by key. See `Core::text_edit`.
+    pub fn text_edit(&mut self, label: &str, initial: &str, opts: &EditOptions, spec: NodeSpec) -> Key {
+        self.core.text_edit(label, initial, opts, spec)
+    }
+
+    pub fn is_focused(&self, key: Key) -> bool {
+        self.core.is_focused(key)
+    }
+
+    pub fn edit_text(&self, key: Key) -> Option<String> {
+        self.core.edit_text(key)
     }
 
     /// Runs layout and emission; results land in `Core::output()`.

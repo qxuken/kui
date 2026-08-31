@@ -7,13 +7,17 @@
 use crate::atlas::GlyphAtlas;
 use crate::color::Color;
 use crate::display::{DisplayList, NO_CLIP, Quad, QuadKind};
+use crate::edit::{EditOptions, EditStore};
+use crate::env::Env;
 use crate::geom::{Rect, Size, Vec2};
-use crate::input::{HitRegion, InputEvent, Interaction, ScrollRegion, UiEvent};
+use crate::input::{EditKey, HitRegion, InputEvent, Interaction, ScrollRegion, UiEvent};
 use crate::key::Key;
-use crate::layout;
+use crate::layout::{self, TextMeasure};
+use crate::value::Value;
 use crate::resources::Resources;
 use crate::scroll::ScrollStore;
 use crate::spec::{NodeSpec, Sizing, TextStyle};
+use crate::stats::FrameStats;
 use crate::text::{Span, TextSystem};
 use crate::tree::{NIL, NodeContent, OriginId, Tree};
 use crate::ui::Ui;
@@ -30,6 +34,14 @@ pub struct Core {
     pub interaction: Interaction,
     pub resources: Resources,
     pub scroll: ScrollStore,
+    pub edit: EditStore,
+    /// Frame timing pushed by the frame driver; see `widgets::latency_graph`.
+    pub stats: FrameStats,
+    /// Host facts pushed by the frame driver (refresh rate, focus).
+    pub env: Env,
+    /// Window title declared this frame (immediate-mode: cleared each
+    /// `begin_frame`; the driver diffs and applies). None = leave as-is.
+    window_title: Option<String>,
     pub(crate) tree: Tree,
     pub(crate) display: DisplayList,
     pub(crate) viewport: Size,
@@ -43,6 +55,9 @@ pub struct Core {
     /// Whether any node this frame clips — lets emission skip clip math
     /// entirely for the common unclipped case.
     any_clip: bool,
+    /// Per-node "inside a floating subtree" marker (only filled when needed).
+    in_float: Vec<bool>,
+    any_float: bool,
 }
 
 impl Core {
@@ -53,6 +68,10 @@ impl Core {
             interaction: Interaction::default(),
             resources: Resources::default(),
             scroll: ScrollStore::default(),
+            edit: EditStore::default(),
+            stats: FrameStats::default(),
+            env: Env::default(),
+            window_title: None,
             tree: Tree::new(),
             display: DisplayList::default(),
             viewport: Size::ZERO,
@@ -62,22 +81,188 @@ impl Core {
             origin: OriginId::HOST,
             clips: Vec::new(),
             any_clip: false,
+            in_float: Vec::new(),
+            any_float: false,
         }
     }
 
     /// Feeds one input event; returns any UI events it resolved to,
     /// hit-tested against the previous frame's layout.
     pub fn handle_input(&mut self, ev: InputEvent) -> Vec<UiEvent> {
-        if let InputEvent::Scroll(delta) = ev {
-            // Wheel up (positive y) reveals earlier content: offset decreases.
-            if let Some(key) = self.interaction.scroll_target() {
-                self.scroll.scroll_by(key, Vec2::new(-delta.x, -delta.y));
-            }
-            return Vec::new();
-        }
         let mut out = Vec::new();
-        self.interaction.handle(ev, &mut out);
+        match ev {
+            InputEvent::Scroll(delta) => {
+                // Wheel up (positive y) reveals earlier content: offset decreases.
+                if let Some(key) = self.interaction.scroll_target() {
+                    self.scroll.scroll_by(key, Vec2::new(-delta.x, -delta.y));
+                }
+            }
+            InputEvent::Text(s) => {
+                if let Some(key) = self.edit.focused()
+                    && self.edit.apply_text(key, &s, self.text.font_system_mut())
+                {
+                    self.push_edit_event(key, "changed", &mut out);
+                }
+            }
+            InputEvent::Key(ek, mods) => {
+                if let Some(key) = self.edit.focused() {
+                    let (changed, submit) =
+                        self.edit.apply_key(key, ek, mods, self.text.font_system_mut());
+                    if changed {
+                        self.push_edit_event(key, "changed", &mut out);
+                    }
+                    if submit {
+                        self.push_edit_event(key, "submit", &mut out);
+                    }
+                    if ek == EditKey::Escape {
+                        self.edit.set_focus(None);
+                    }
+                }
+            }
+            InputEvent::MouseDown => {
+                // Click-to-focus / caret placement / start drag-selection,
+                // against the previous frame's layout.
+                if let Some(p) = self.interaction.cursor() {
+                    match self.interaction.hit_at(p).map(|h| (h.key, h.edit_origin)) {
+                        Some((key, Some(origin))) => {
+                            self.edit.set_focus(Some(key));
+                            let local = Vec2::new(p.x - origin.x, p.y - origin.y);
+                            self.edit.click(key, local, self.text.font_system_mut());
+                            self.edit.dragging = Some((key, origin));
+                        }
+                        _ => self.edit.set_focus(None),
+                    }
+                }
+                self.interaction.handle(InputEvent::MouseDown, &mut out);
+            }
+            InputEvent::CursorMoved(p) => {
+                if let Some((key, origin)) = self.edit.dragging {
+                    let local = Vec2::new(p.x - origin.x, p.y - origin.y);
+                    self.edit.drag(key, local, self.text.font_system_mut());
+                }
+                self.interaction.handle(InputEvent::CursorMoved(p), &mut out);
+            }
+            InputEvent::MouseUp => {
+                self.edit.dragging = None;
+                self.interaction.handle(InputEvent::MouseUp, &mut out);
+            }
+            other => self.interaction.handle(other, &mut out),
+        }
         out
+    }
+
+
+    /// Emits one node's quads and registers its hit/scroll regions.
+    fn emit_node(
+        &mut self,
+        i: usize,
+        rect: Rect,
+        clip: Rect,
+        scale: f32,
+        hits: &mut Vec<HitRegion>,
+        scroll_regions: &mut Vec<ScrollRegion>,
+    ) {
+        let spec = &self.tree.specs[i];
+        let style = spec.style;
+        if style.bg.is_visible() || (style.border_w > 0.0 && style.border_color.is_visible()) {
+            self.display.quads.push(Quad {
+                rect: rect.scaled(scale),
+                color: style.bg,
+                border_color: style.border_color,
+                radius: style.radius * scale,
+                border_w: style.border_w * scale,
+                kind: QuadKind::Solid,
+                uv: [0; 4],
+                clip: clip.scaled(scale),
+            });
+        }
+        if let Some(payload) = &spec.on_click {
+            hits.push(HitRegion {
+                key: self.tree.keys[i],
+                origin: self.tree.origins[i],
+                rect,
+                clip,
+                payload: payload.clone(),
+                edit_origin: None,
+            });
+        }
+        if spec.layout.scroll_x || spec.layout.scroll_y {
+            scroll_regions.push(ScrollRegion { key: self.tree.keys[i], rect, clip });
+        }
+        match self.tree.content[i] {
+            NodeContent::Text(tid) => {
+                self.text.emit(
+                    tid,
+                    self.tree.pos[i],
+                    self.tree.size[i].w,
+                    clip.scaled(scale),
+                    &mut self.atlas,
+                    &mut self.display.quads,
+                );
+            }
+            NodeContent::Edit(key) => {
+                let pad = spec.layout.padding;
+                let content_origin = Vec2::new(rect.x + pad.l, rect.y + pad.t);
+                hits.push(HitRegion {
+                    key,
+                    origin: self.tree.origins[i],
+                    rect,
+                    clip,
+                    payload: Value::Null,
+                    edit_origin: Some(content_origin),
+                });
+                let focused = self.edit.focused() == Some(key);
+                let origin_phys = Vec2::new(
+                    (content_origin.x * scale).round(),
+                    (content_origin.y * scale).round(),
+                );
+                self.edit.emit(
+                    key,
+                    origin_phys,
+                    focused,
+                    clip.scaled(scale),
+                    &mut self.text,
+                    &mut self.atlas,
+                    &mut self.display.quads,
+                );
+            }
+            NodeContent::Container => {}
+        }
+    }
+
+    fn push_edit_event(&self, key: Key, kind: &str, out: &mut Vec<UiEvent>) {
+        out.push(UiEvent {
+            origin: self.edit.origin_of(key).unwrap_or(OriginId::HOST),
+            key,
+            payload: Value::map([("kind", kind.into())]),
+        });
+    }
+
+    /// Selected text of the focused editor (for clipboard integration).
+    pub fn copy_selection(&self) -> Option<String> {
+        self.edit.copy_selection(self.edit.focused()?)
+    }
+
+    /// Cuts the focused editor's selection, returning the removed text.
+    pub fn cut_selection(&mut self) -> Option<String> {
+        let key = self.edit.focused()?;
+        let text = self.edit.copy_selection(key)?;
+        self.edit.delete_selection(key, self.text.font_system_mut());
+        Some(text)
+    }
+
+    pub fn is_focused(&self, key: Key) -> bool {
+        self.edit.focused() == Some(key)
+    }
+
+    /// Current text of an editor by key.
+    pub fn edit_text(&self, key: Key) -> Option<String> {
+        self.edit.text(key)
+    }
+
+    pub fn set_edit_text(&mut self, key: Key, text: &str) {
+        let fs = self.text.font_system_mut();
+        self.edit.set_text(key, text, fs);
     }
 
     /// Wheel line-deltas (e.g. winit's LineDelta) to logical px.
@@ -105,6 +290,7 @@ impl Core {
     pub fn begin_frame(&mut self, viewport: Size, scale: f32) {
         self.viewport = viewport;
         self.scale = scale;
+        self.window_title = None;
         self.tree.clear();
         self.display.clear();
         self.text.begin_frame(scale);
@@ -121,6 +307,19 @@ impl Core {
         self.counters.push(0);
         self.origin = OriginId::HOST;
         self.any_clip = false;
+        self.any_float = false;
+    }
+
+    /// Declares this frame's window title. Like all frame state it's data:
+    /// the driver diffs against what's applied and only then touches the
+    /// window. Undeclared frames leave the title alone; last writer wins.
+    pub fn set_window_title(&mut self, title: &str) {
+        self.window_title = Some(title.to_string());
+    }
+
+    /// The title declared this frame, if any (for the frame driver).
+    pub fn window_title(&self) -> Option<&str> {
+        self.window_title.as_deref()
     }
 
     /// Tags subsequently created nodes with an origin (set by the runner
@@ -183,6 +382,9 @@ impl Core {
         if spec.layout.clips() {
             self.any_clip = true;
         }
+        if spec.layout.float.is_some() {
+            self.any_float = true;
+        }
         let parent = self.current();
         let idx = self.tree.push(parent, key, self.origin, spec, NodeContent::Container);
         self.stack.push(idx);
@@ -206,6 +408,26 @@ impl Core {
         self.tree.push(parent, key, self.origin, NodeSpec::default(), NodeContent::Text(tid));
     }
 
+    /// An editable text node. State (buffer, cursor, selection) is retained
+    /// by key across frames; edits arrive via `handle_input` and come back to
+    /// the host as "changed"/"submit" events. Read with `edit_text`.
+    pub fn text_edit(
+        &mut self,
+        label: &str,
+        initial: &str,
+        opts: &EditOptions,
+        spec: NodeSpec,
+    ) -> Key {
+        if self.tree.is_empty() {
+            return Key::ROOT;
+        }
+        let key = self.child_key(label);
+        self.edit.declare(key, initial, opts, self.origin, self.scale, self.text.font_system_mut());
+        let parent = self.current();
+        self.tree.push(parent, key, self.origin, spec, NodeContent::Edit(key));
+        key
+    }
+
     /// A paragraph of styled spans, shaped and wrapped as one flow.
     pub fn rich_text_node(&mut self, spans: &[Span<'_>], base: TextStyle) {
         if self.tree.is_empty() {
@@ -224,7 +446,10 @@ impl Core {
         self.stack.truncate(1);
         self.counters.truncate(1);
 
-        layout::compute(&mut self.tree, &mut self.text, &mut self.scroll, self.viewport);
+        {
+            let mut measure = Measure { text: &mut self.text, edit: &mut self.edit };
+            layout::compute(&mut self.tree, &mut measure, &mut self.scroll, self.viewport);
+        }
 
         let scale = self.scale;
         let mut hits: Vec<HitRegion> = self.interaction.take_hit_buffer();
@@ -235,6 +460,7 @@ impl Core {
         // configure_root can also introduce a clipper.
         let any_clip = self.any_clip
             || (!self.tree.is_empty() && self.tree.specs[0].layout.clips());
+        let any_float = self.any_float;
 
         // inherited clip per node (logical): ancestors only, not the node
         // itself. Only materialized when something actually clips.
@@ -242,14 +468,26 @@ impl Core {
         if any_clip {
             self.clips.resize(self.tree.len(), NO_CLIP);
         }
+        self.in_float.clear();
+        if any_float {
+            self.in_float.resize(self.tree.len(), false);
+        }
 
+        // Pass 1: clip/float propagation + in-flow emission (preorder =
+        // paint order; parents precede children).
         for i in 0..self.tree.len() {
+            let parent = self.tree.parent[i];
+            let floats_here = self.tree.specs[i].layout.float.is_some();
+            if any_float {
+                self.in_float[i] =
+                    floats_here || (parent != NIL && self.in_float[parent as usize]);
+            }
             let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
             let clip = if !any_clip {
                 NO_CLIP
             } else {
-                let parent = self.tree.parent[i];
-                let clip = if parent == NIL {
+                // Floating nodes escape ancestor clips.
+                let clip = if parent == NIL || floats_here {
                     NO_CLIP
                 } else {
                     let p = parent as usize;
@@ -261,52 +499,36 @@ impl Core {
                     }
                 };
                 self.clips[i] = clip;
+                clip
+            };
+            if any_float && self.in_float[i] {
+                continue; // deferred to the float pass
+            }
+            // Entirely clipped away: skip drawing and hit-testing.
+            let visible = rect.intersect(&clip);
+            if visible.w <= 0.0 || visible.h <= 0.0 {
+                continue;
+            }
+            self.emit_node(i, rect, clip, scale, &mut hits, &mut scroll_regions);
+        }
 
-                // Entirely clipped away: skip drawing and hit-testing.
+        // Pass 2: floating subtrees, on top of all in-flow content (their
+        // hit regions land last too, so they're topmost for input).
+        if any_float {
+            for i in 0..self.tree.len() {
+                if !self.in_float[i] {
+                    continue;
+                }
+                let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
+                let clip = if any_clip { self.clips[i] } else { NO_CLIP };
                 let visible = rect.intersect(&clip);
                 if visible.w <= 0.0 || visible.h <= 0.0 {
                     continue;
                 }
-                clip
-            };
-
-            let spec = &self.tree.specs[i];
-            let style = spec.style;
-            if style.bg.is_visible() || (style.border_w > 0.0 && style.border_color.is_visible()) {
-                self.display.quads.push(Quad {
-                    rect: rect.scaled(scale),
-                    color: style.bg,
-                    border_color: style.border_color,
-                    radius: style.radius * scale,
-                    border_w: style.border_w * scale,
-                    kind: QuadKind::Solid,
-                    uv: [0; 4],
-                    clip: clip.scaled(scale),
-                });
-            }
-            if let Some(payload) = &spec.on_click {
-                hits.push(HitRegion {
-                    key: self.tree.keys[i],
-                    origin: self.tree.origins[i],
-                    rect,
-                    clip,
-                    payload: payload.clone(),
-                });
-            }
-            if spec.layout.scroll_x || spec.layout.scroll_y {
-                scroll_regions.push(ScrollRegion { key: self.tree.keys[i], rect, clip });
-            }
-            if let NodeContent::Text(tid) = self.tree.content[i] {
-                self.text.emit(
-                    tid,
-                    self.tree.pos[i],
-                    self.tree.size[i].w,
-                    clip.scaled(scale),
-                    &mut self.atlas,
-                    &mut self.display.quads,
-                );
+                self.emit_node(i, rect, clip, scale, &mut hits, &mut scroll_regions);
             }
         }
+
 
         // Scrollbar indicators, on top of content.
         for r in &scroll_regions {
@@ -347,6 +569,31 @@ impl Core {
 
         self.interaction.set_hits(hits);
         self.interaction.scroll_regions = scroll_regions;
+    }
+}
+
+/// Combined measurer handed to the layout pass: static text through the
+/// shape cache, editors through the edit store (sharing one FontSystem).
+struct Measure<'a> {
+    text: &'a mut TextSystem,
+    edit: &'a mut EditStore,
+}
+
+impl TextMeasure for Measure<'_> {
+    fn intrinsic(&mut self, id: crate::tree::TextId) -> Size {
+        self.text.intrinsic(id)
+    }
+
+    fn wrapped(&mut self, id: crate::tree::TextId, max_w: f32) -> Size {
+        self.text.wrapped(id, max_w)
+    }
+
+    fn edit_intrinsic(&mut self, key: Key) -> Size {
+        self.edit.intrinsic(key, self.text.font_system_mut())
+    }
+
+    fn edit_wrapped(&mut self, key: Key, max_w: f32) -> Size {
+        self.edit.wrapped(key, max_w, self.text.font_system_mut())
     }
 }
 

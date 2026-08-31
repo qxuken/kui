@@ -24,6 +24,8 @@ pub struct TextId(pub u32);
 pub enum NodeContent {
     Container,
     Text(TextId),
+    /// Editable text; retained state lives in the core's `EditStore`.
+    Edit(Key),
 }
 
 #[derive(Default)]

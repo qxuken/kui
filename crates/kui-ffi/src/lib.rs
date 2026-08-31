@@ -9,12 +9,16 @@
 //!   until passed to a function documented as consuming it.
 //! - Every entry point catches panics and turns them into no-ops/false.
 
+// Safe extern fns taking raw pointers is the point of this layer: every
+// entry point null-checks and catches panics instead of being `unsafe`.
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 use std::ffi::c_void;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use kui_core::{
-    Align, Color, Core, Edges, InputEvent, Key, NodeSpec, Size, Sizing, Span, TextStyle, UiEvent,
-    Value, Vec2,
+    Align, Color, Core, Edges, EditKey, EditOptions, FloatConfig, InputEvent, Key, Mods, NodeSpec,
+    Size, Sizing, Span, TextStyle, UiEvent, Value, Vec2,
 };
 
 // ---------------------------------------------------------------------------
@@ -32,6 +36,8 @@ pub struct KuiCtx {
     /// Payload most recently handed out by kui_poll_event; freed on the next
     /// poll (or context free) so C never manages event payload lifetime.
     last_payload: Option<Box<KuiValue>>,
+    /// Text most recently handed out by kui_edit_text; freed on the next call.
+    last_edit_text: Option<String>,
 }
 
 impl KuiCtx {
@@ -85,6 +91,15 @@ pub struct KuiSpec {
     pub radius: f32,
     /// bit 0 = clip, bit 1 = scroll_x, bit 2 = scroll_y
     pub overflow: u32,
+    /// 0 = in flow, 1 = float anchored to parent, 2 = float anchored to viewport
+    pub float_mode: u32,
+    /// Attach points as align values (0 start, 1 center, 2 end).
+    pub float_anchor_x: u32,
+    pub float_anchor_y: u32,
+    pub float_self_x: u32,
+    pub float_self_y: u32,
+    pub float_dx: f32,
+    pub float_dy: f32,
 }
 
 #[repr(C)]
@@ -207,6 +222,13 @@ fn spec_of(s: &KuiSpec, on_click: *mut KuiValue) -> NodeSpec {
     if s.overflow & 4 != 0 {
         spec = spec.scroll_y();
     }
+    if s.float_mode != 0 {
+        let cfg = if s.float_mode == 2 { FloatConfig::viewport() } else { FloatConfig::parent() }
+            .at(align_of(s.float_anchor_x), align_of(s.float_anchor_y))
+            .self_at(align_of(s.float_self_x), align_of(s.float_self_y))
+            .offset(s.float_dx, s.float_dy);
+        spec = spec.float(cfg);
+    }
     if !on_click.is_null() {
         // Consumes the value.
         let v = unsafe { Box::from_raw(on_click) };
@@ -247,6 +269,7 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             _owned: Some(owned),
             events: Vec::new(),
             last_payload: None,
+            last_edit_text: None,
         }))
     })
 }
@@ -289,6 +312,44 @@ pub extern "C" fn kui_input_scroll(ptr: *mut KuiCtx, dx: f32, dy: f32) {
     push_input(ptr, InputEvent::Scroll(Vec2::new(dx, dy)));
 }
 
+/// Committed text input (typing, paste); routed to the focused editor.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_input_text(ptr: *mut KuiCtx, text: KuiStr) {
+    guard((), || {
+        let text = kstr(text).into_owned();
+        push_input(ptr, InputEvent::Text(text));
+    });
+}
+
+fn edit_key_of(key: u32) -> Option<EditKey> {
+    Some(match key {
+        0 => EditKey::Left,
+        1 => EditKey::Right,
+        2 => EditKey::Up,
+        3 => EditKey::Down,
+        4 => EditKey::Home,
+        5 => EditKey::End,
+        6 => EditKey::PageUp,
+        7 => EditKey::PageDown,
+        8 => EditKey::Backspace,
+        9 => EditKey::Delete,
+        10 => EditKey::Enter,
+        11 => EditKey::Tab,
+        12 => EditKey::SelectAll,
+        13 => EditKey::Escape,
+        _ => return None,
+    })
+}
+
+/// Editing key with modifier bits (1 = shift, 2 = word/alt, 4 = doc/primary).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_input_key(ptr: *mut KuiCtx, key: u32, mods: u32) {
+    if let Some(k) = edit_key_of(key) {
+        let mods = Mods { shift: mods & 1 != 0, word: mods & 2 != 0, doc: mods & 4 != 0 };
+        push_input(ptr, InputEvent::Key(k, mods));
+    }
+}
+
 /// Pops the next pending UI event. The payload pointer stays valid until the
 /// next poll call on the same context (or context free).
 #[unsafe(no_mangle)]
@@ -307,6 +368,47 @@ pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
         unsafe {
             *out = KuiEvent { origin: ev.origin.0, key: ev.key.0, payload: payload_ptr };
         }
+        true
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Host environment
+
+/// Host facts for views to read (`refresh_hz <= 0` = unknown). Survives
+/// across frames; set on change or every frame, either works.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_env_set(ptr: *mut KuiCtx, refresh_hz: f32, focused: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().env.refresh_hz = (refresh_hz > 0.0).then_some(refresh_hz);
+            c.core().env.focused = focused;
+        }
+    });
+}
+
+/// Declares this frame's window title (cleared each kui_frame_begin).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_window_title(ptr: *mut KuiCtx, title: KuiStr) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            let title = kstr(title).into_owned();
+            c.core().set_window_title(&title);
+        }
+    });
+}
+
+/// The title declared this frame, if any — for hosts driving their own
+/// window: diff and apply after kui_frame_finish. The view is valid until
+/// the next kui_frame_begin.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_window_title_get(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool {
+    guard(false, || {
+        let (Some(c), Some(out)) = (unsafe { ctx(ptr) }, unsafe { out.as_mut() }) else {
+            return false;
+        };
+        let Some(t) = c.core().window_title() else { return false };
+        *out = KuiStr { ptr: t.as_ptr(), len: t.len() };
         true
     })
 }
@@ -461,6 +563,60 @@ pub extern "C" fn kui_button(ptr: *mut KuiCtx, label: KuiStr, payload: *mut KuiV
         c.core().text_node(&label, TextStyle::new(15.0).color(Color::WHITE));
         c.core().close();
     });
+}
+
+/// Editable text node; flags: 1 = multiline, 2 = autofocus. Returns its key.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_text_edit(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    initial: KuiStr,
+    style: *const KuiTextStyle,
+    flags: u32,
+    spec: *const KuiSpec,
+) -> u64 {
+    guard(0, || {
+        let (Some(c), Some(sp)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else { return 0 };
+        let opts = EditOptions {
+            style: unsafe { style.as_ref() }.map(text_style_of).unwrap_or_default(),
+            multiline: flags & 1 != 0,
+            autofocus: flags & 2 != 0,
+            ..Default::default()
+        };
+        let spec = spec_of(sp, std::ptr::null_mut());
+        c.core().text_edit(&kstr(label), &kstr(initial), &opts, spec).0
+    })
+}
+
+/// Current text of an editor. The returned view is valid until the next
+/// kui_edit_text call (or context free).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_edit_text(ptr: *mut KuiCtx, key: u64, out: *mut KuiStr) -> bool {
+    guard(false, || {
+        let (Some(c), Some(out)) = (unsafe { ctx(ptr) }, unsafe { out.as_mut() }) else {
+            return false;
+        };
+        let Some(text) = c.core().edit_text(Key(key)) else { return false };
+        c.last_edit_text = Some(text);
+        let s = c.last_edit_text.as_ref().unwrap();
+        *out = KuiStr { ptr: s.as_ptr(), len: s.len() };
+        true
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_edit_set_text(ptr: *mut KuiCtx, key: u64, text: KuiStr) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            let text = kstr(text).into_owned();
+            c.core().set_edit_text(Key(key), &text);
+        }
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_is_focused(ptr: *mut KuiCtx, key: u64) -> bool {
+    guard(false, || unsafe { ctx(ptr) }.is_some_and(|c| c.core().is_focused(Key(key))))
 }
 
 #[unsafe(no_mangle)]
@@ -629,6 +785,7 @@ impl kui::App for CApp {
             _owned: None,
             events: Vec::new(),
             last_payload: None,
+            last_edit_text: None,
         };
         (self.view)(self.user, &mut shim);
     }

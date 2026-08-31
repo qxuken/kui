@@ -21,6 +21,7 @@ bundled Lua extension support is table-to-node conversion, not FFI gymnastics.
 ```bash
 cargo run -p kui --example counter        # pure Rust, Elm-ish flow
 cargo run -p kui --example rich_text      # styled spans in one wrapped paragraph
+cargo run -p kui --example editor         # multiline text editing: caret, selection, clipboard
 cargo run -p kui-lua --example lua_panel  # Rust host + Lua panel sharing one frame
 ./examples/c/build.sh && ./examples/c/counter             # the same app from C
 ./examples/c/counter --headless           # C FFI self-test, no window needed
@@ -59,6 +60,14 @@ end
   epoch changes. Renderers receive pre-rasterized atlas quads only. Rich text
   is `Span` lists (color/bold/italic per run) shaped as one paragraph flow, so
   wrapping crosses style boundaries and emoji share baselines.
+- **Text editing is retained state, not captured state.** An edit node's
+  buffer/cursor/selection live in the core keyed by widget identity (cosmic-
+  text's `Editor` underneath, so motion, selection, and click-to-caret share
+  the shaping truth). Input arrives as data (`InputEvent::Text` / `Key`) routed
+  to the focused editor; hosts get "changed"/"submit" events and read text
+  back by key — no `&mut String` captured in a view, which is what keeps
+  editing reachable from Lua and C. The runner maps winit keys, IME commits,
+  and platform clipboard shortcuts (arboard) onto those events.
 - **The C API is translation, not architecture.** Frame building is flat
   calls on one opaque context (`kui_open`/`kui_close`/`kui_text`), payloads
   are opaque `KuiValue` handles with accessors, and `kui_draw_data` hands out
@@ -78,6 +87,14 @@ grow heights → · positions →. Sizing: `Fit`, `Grow(f)`, `Fixed(px)`,
 gives "track the window, cap at reading width" and text rewraps on resize);
 row/column direction, padding, gap, start/center/end alignment on both axes.
 
+Out-of-flow: `.float(FloatConfig)` takes a node out of flex flow — it doesn't
+consume space in its parent, positions by attach points against its parent's
+rect or the viewport (plus an offset), sizes Grow/Percent against that anchor,
+paints on top of in-flow content, hit-tests topmost, and escapes ancestor
+clips. `FloatConfig::below()`/`above()` give tooltip placement in one call
+(`widgets::tooltip` wraps it); `FloatConfig::viewport().at(End, End)` pins a
+HUD to a corner.
+
 Overflow: `.clip()` clips children; `.scroll_y()` / `.scroll_x()` make a
 container scrollable (wheel/trackpad, offsets retained across frames by widget
 key, clamped to content, with a scrollbar indicator). Clip rects ride on each
@@ -96,11 +113,27 @@ caches — full frame: build + layout + emit):
 | 10k rects + 1.2k texts + 2.5k hit regions | ~675 µs |
 | 16×64-deep nesting chains | ~51 µs |
 
-Layout solver, atlas packer, key scheme, event dispatch, and the Lua binding
-are covered by unit tests (`cargo test --workspace`).
+A built-in latency graph shows per-phase frame cost live —
+`widgets::latency_hud(ui)` floats it in a viewport corner as a translucent
+overlay (`latency_hud_at` picks the corner; `latency_graph` is the inline
+form): the last 120 frames as stacked bars (input / view / layout / render /
+vsync wait) against the display's frame budget (`env.refresh_hz`, 120 Hz
+fallback), with a red cap on frames whose work exceeds it. The runner feeds
+`core.stats` and `core.env` automatically; all examples show it.
+
+Editing latency (`cargo bench -p kui-core --bench editing` — one keystroke:
+apply + full frame, warm caches): ~0.1ms at 50-10k lines, ~2ms at 100k lines.
+Glyph emission is viewport-culled (a huge document emits only the visible
+screenful of quads) and single-line reshapes go through cosmic-text's
+shape-run cache.
+
+Layout solver, atlas packer, key scheme, event dispatch, editing, and the Lua
+binding are covered by tests (`cargo test --workspace`).
 
 ## Status / next
 
 v0 scope: no images in the display list yet (resource registry exists), no
-shrink pass, no focus/keyboard input, no scrollbar dragging (wheel/trackpad
-only), mask + color-emoji glyphs only (no subpixel AA).
+shrink pass, no scrollbar dragging (wheel/trackpad only), mask + color-emoji
+glyphs only (no subpixel AA). Editing: no undo/redo, caret blink,
+double-click word select, IME preedit display, Tab focus traversal, or
+scroll-caret-into-view yet.

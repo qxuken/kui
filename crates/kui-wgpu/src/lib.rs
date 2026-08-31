@@ -93,7 +93,9 @@ impl Renderer {
             present_mode: wgpu::PresentMode::AutoVsync,
             alpha_mode: caps.alpha_modes[0],
             view_formats: vec![],
-            desired_maximum_frame_latency: 2,
+            // One queued frame: measurably lower input-to-photon latency at
+            // the cost of less slack for slow frames.
+            desired_maximum_frame_latency: 1,
         };
         surface.configure(&device, &config);
 
@@ -248,7 +250,7 @@ impl Renderer {
         &mut self,
         dl: &DisplayList,
         atlas: &mut GlyphAtlas,
-    ) -> Result<(), wgpu::SurfaceError> {
+    ) -> Result<RenderReport, wgpu::SurfaceError> {
         self.sync_atlas(atlas);
 
         self.instances.clear();
@@ -266,7 +268,11 @@ impl Renderer {
         };
         self.queue.write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(&globals));
 
+        // Acquiring the swapchain image is where vsync backpressure blocks;
+        // report it separately so latency graphs show pacing vs work.
+        let t_wait = std::time::Instant::now();
         let frame = self.surface.get_current_texture()?;
+        let vsync_wait_ms = t_wait.elapsed().as_secs_f32() * 1e3;
         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder =
             self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("kui") });
@@ -294,8 +300,15 @@ impl Renderer {
         }
         self.queue.submit([encoder.finish()]);
         frame.present();
-        Ok(())
+        Ok(RenderReport { vsync_wait_ms })
     }
+}
+
+/// Timing details from one `render` call.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RenderReport {
+    /// Time blocked acquiring the swapchain image (vsync backpressure).
+    pub vsync_wait_ms: f32,
 }
 
 fn create_atlas_texture(device: &wgpu::Device, size: u32) -> wgpu::Texture {

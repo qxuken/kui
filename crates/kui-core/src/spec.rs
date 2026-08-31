@@ -32,6 +32,93 @@ pub enum Align {
     End,
 }
 
+/// What a floating node is positioned against.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FloatAnchor {
+    /// The parent node's border box.
+    #[default]
+    Parent,
+    /// The whole viewport.
+    Viewport,
+}
+
+/// Takes a node out of flex flow: it doesn't consume space in its parent,
+/// sizes Grow/Percent against its anchor, is positioned by attach points,
+/// draws on top of in-flow content, and escapes ancestor clips.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FloatConfig {
+    pub anchor: FloatAnchor,
+    /// Attach point on the anchor rect (horizontal, vertical).
+    pub anchor_point: (Align, Align),
+    /// Attach point on the floating node itself.
+    pub self_point: (Align, Align),
+    /// Extra offset applied after attaching, logical px.
+    pub offset: Vec2Offset,
+}
+
+/// Plain offset pair (kept separate from geometry to stay `Copy` + FFI-flat).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Vec2Offset {
+    pub x: f32,
+    pub y: f32,
+}
+
+impl Default for FloatConfig {
+    fn default() -> Self {
+        Self {
+            anchor: FloatAnchor::Parent,
+            anchor_point: (Align::Start, Align::Start),
+            self_point: (Align::Start, Align::Start),
+            offset: Vec2Offset::default(),
+        }
+    }
+}
+
+impl FloatConfig {
+    pub fn parent() -> Self {
+        Self::default()
+    }
+
+    pub fn viewport() -> Self {
+        Self { anchor: FloatAnchor::Viewport, ..Self::default() }
+    }
+
+    /// Tooltip-style: hang below the parent, centered.
+    pub fn below() -> Self {
+        Self {
+            anchor: FloatAnchor::Parent,
+            anchor_point: (Align::Center, Align::End),
+            self_point: (Align::Center, Align::Start),
+            offset: Vec2Offset { x: 0.0, y: 6.0 },
+        }
+    }
+
+    /// Tooltip-style: hover above the parent, centered.
+    pub fn above() -> Self {
+        Self {
+            anchor: FloatAnchor::Parent,
+            anchor_point: (Align::Center, Align::Start),
+            self_point: (Align::Center, Align::End),
+            offset: Vec2Offset { x: 0.0, y: -6.0 },
+        }
+    }
+
+    pub fn at(mut self, x: Align, y: Align) -> Self {
+        self.anchor_point = (x, y);
+        self
+    }
+
+    pub fn self_at(mut self, x: Align, y: Align) -> Self {
+        self.self_point = (x, y);
+        self
+    }
+
+    pub fn offset(mut self, x: f32, y: f32) -> Self {
+        self.offset = Vec2Offset { x, y };
+        self
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LayoutSpec {
     pub width: Sizing,
@@ -55,6 +142,8 @@ pub struct LayoutSpec {
     /// across frames in the core, keyed by this node's `Key`.
     pub scroll_x: bool,
     pub scroll_y: bool,
+    /// Out-of-flow positioning; see [`FloatConfig`].
+    pub float: Option<FloatConfig>,
 }
 
 impl Default for LayoutSpec {
@@ -74,6 +163,7 @@ impl Default for LayoutSpec {
             clip: false,
             scroll_x: false,
             scroll_y: false,
+            float: None,
         }
     }
 }
@@ -170,6 +260,12 @@ impl NodeSpec {
         self
     }
 
+    /// Take this node out of flex flow; see [`FloatConfig`].
+    pub fn float(mut self, cfg: FloatConfig) -> Self {
+        self.layout.float = Some(cfg);
+        self
+    }
+
     pub fn max_height(mut self, v: f32) -> Self {
         self.layout.max_h = v;
         self
@@ -232,11 +328,20 @@ impl NodeSpec {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FontFamily {
+    #[default]
+    Sans,
+    Serif,
+    Mono,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TextStyle {
     pub size: f32,
     pub line_height: f32,
     pub color: Color,
+    pub family: FontFamily,
 }
 
 impl Default for TextStyle {
@@ -247,7 +352,21 @@ impl Default for TextStyle {
 
 impl TextStyle {
     pub fn new(size: f32) -> Self {
-        Self { size, line_height: (size * 1.35).round(), color: Color::rgb8(0xe8, 0xe8, 0xea) }
+        Self {
+            size,
+            line_height: (size * 1.35).round(),
+            color: Color::rgb8(0xe8, 0xe8, 0xea),
+            family: FontFamily::Sans,
+        }
+    }
+
+    pub fn family(mut self, f: FontFamily) -> Self {
+        self.family = f;
+        self
+    }
+
+    pub fn mono(self) -> Self {
+        self.family(FontFamily::Mono)
     }
 
     pub fn line_height(mut self, lh: f32) -> Self {

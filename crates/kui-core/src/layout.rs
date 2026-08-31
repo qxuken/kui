@@ -9,16 +9,36 @@
 //! Text measurement goes through `TextMeasure` so the solver is testable with
 //! a deterministic stub and never depends on system fonts.
 
-use crate::geom::{Size, Vec2};
+use crate::geom::{Rect, Size, Vec2};
 use crate::scroll::ScrollStore;
-use crate::spec::{Align, Dir, Sizing};
+use crate::spec::{Align, Dir, FloatAnchor, Sizing};
 use crate::tree::{NIL, NodeContent, Tree};
+
+fn is_float(tree: &Tree, i: u32) -> bool {
+    tree.specs[i as usize].layout.float.is_some()
+}
+
+fn align_factor(a: Align) -> f32 {
+    match a {
+        Align::Start => 0.0,
+        Align::Center => 0.5,
+        Align::End => 1.0,
+    }
+}
 
 pub trait TextMeasure {
     /// Unwrapped preferred size.
     fn intrinsic(&mut self, id: crate::tree::TextId) -> Size;
     /// Size when wrapped to `max_w` logical pixels.
     fn wrapped(&mut self, id: crate::tree::TextId, max_w: f32) -> Size;
+    /// Unwrapped content size of an editable text node.
+    fn edit_intrinsic(&mut self, _key: crate::key::Key) -> Size {
+        Size::ZERO
+    }
+    /// Content size of an editable text node wrapped to `max_w`.
+    fn edit_wrapped(&mut self, _key: crate::key::Key, _max_w: f32) -> Size {
+        Size::ZERO
+    }
 }
 
 pub fn compute(
@@ -34,7 +54,7 @@ pub fn compute(
     grow_widths(tree, viewport);
     fit_heights(tree, text);
     grow_heights(tree, viewport);
-    positions(tree, scroll);
+    positions(tree, scroll, viewport);
 }
 
 fn fit_widths(tree: &mut Tree, text: &mut dyn TextMeasure) {
@@ -44,6 +64,14 @@ fn fit_widths(tree: &mut Tree, text: &mut dyn TextMeasure) {
             continue;
         }
         let spec = tree.specs[i].layout;
+        if let NodeContent::Edit(key) = tree.content[i] {
+            tree.size[i].w = spec.clamp_w(match spec.width {
+                Sizing::Fixed(px) => px,
+                Sizing::Grow(_) | Sizing::Percent(_) => 0.0,
+                Sizing::Fit => text.edit_intrinsic(key).w + spec.padding.x(),
+            });
+            continue;
+        }
         tree.size[i].w = spec.clamp_w(match spec.width {
             Sizing::Fixed(px) => px,
             // Resolved against the parent later; contributes nothing to fit.
@@ -52,6 +80,9 @@ fn fit_widths(tree: &mut Tree, text: &mut dyn TextMeasure) {
                 let mut w = 0.0f32;
                 let mut n = 0u32;
                 for c in tree.children(i as u32) {
+                    if is_float(tree, c) {
+                        continue;
+                    }
                     let cw = tree.size[c as usize].w;
                     if spec.dir == Dir::Row {
                         w += cw;
@@ -80,6 +111,17 @@ fn fit_heights(tree: &mut Tree, text: &mut dyn TextMeasure) {
             continue;
         }
         let spec = tree.specs[i].layout;
+        if let NodeContent::Edit(key) = tree.content[i] {
+            // Always wrap to the final content width so emission and input
+            // hit the same line layout, whatever the height sizing is.
+            let inner = text.edit_wrapped(key, (tree.size[i].w - spec.padding.x()).max(0.0));
+            tree.size[i].h = spec.clamp_h(match spec.height {
+                Sizing::Fixed(px) => px,
+                Sizing::Grow(_) | Sizing::Percent(_) => 0.0,
+                Sizing::Fit => inner.h + spec.padding.y(),
+            });
+            continue;
+        }
         tree.size[i].h = spec.clamp_h(match spec.height {
             Sizing::Fixed(px) => px,
             Sizing::Grow(_) | Sizing::Percent(_) => 0.0,
@@ -87,6 +129,9 @@ fn fit_heights(tree: &mut Tree, text: &mut dyn TextMeasure) {
                 let mut h = 0.0f32;
                 let mut n = 0u32;
                 for c in tree.children(i as u32) {
+                    if is_float(tree, c) {
+                        continue;
+                    }
                     let ch = tree.size[c as usize].h;
                     if spec.dir == Dir::Column {
                         h += ch;
@@ -110,7 +155,7 @@ fn grow_widths(tree: &mut Tree, viewport: Size) {
             let spec = tree.specs[i].layout;
             tree.size[i].w = spec.clamp_w(resolve_root(spec.width, tree.size[i].w, viewport.w));
         }
-        distribute_axis(tree, i as u32, AxisSel::Width);
+        distribute_axis(tree, i as u32, AxisSel::Width, viewport);
     }
 }
 
@@ -120,7 +165,7 @@ fn grow_heights(tree: &mut Tree, viewport: Size) {
             let spec = tree.specs[i].layout;
             tree.size[i].h = spec.clamp_h(resolve_root(spec.height, tree.size[i].h, viewport.h));
         }
-        distribute_axis(tree, i as u32, AxisSel::Height);
+        distribute_axis(tree, i as u32, AxisSel::Height, viewport);
     }
 }
 
@@ -141,7 +186,7 @@ enum AxisSel {
 
 /// Resolves Grow/Percent children of `i` along the given axis, assuming `i`'s
 /// own size on that axis is final.
-fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel) {
+fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
     let spec = tree.specs[i as usize].layout;
     let (own, pad) = match axis {
         AxisSel::Width => (tree.size[i as usize].w, spec.padding.x()),
@@ -157,6 +202,10 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel) {
         let mut n = 0u32;
         let mut c = tree.first_child[i as usize];
         while c != NIL {
+            if is_float(tree, c) {
+                c = tree.next_sibling[c as usize];
+                continue;
+            }
             match child_sizing(tree, c, axis) {
                 Sizing::Grow(f) => grow_total += f.max(0.0),
                 Sizing::Percent(p) => {
@@ -175,7 +224,9 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel) {
             let remain = (content - used).max(0.0);
             let mut c = tree.first_child[i as usize];
             while c != NIL {
-                if let Sizing::Grow(f) = child_sizing(tree, c, axis) {
+                if !is_float(tree, c)
+                    && let Sizing::Grow(f) = child_sizing(tree, c, axis)
+                {
                     set_axis_clamped(tree, c, axis, remain * f.max(0.0) / grow_total);
                 }
                 c = tree.next_sibling[c as usize];
@@ -185,13 +236,34 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel) {
         // Cross axis: Grow/Percent resolve against the content box directly.
         let mut c = tree.first_child[i as usize];
         while c != NIL {
-            match child_sizing(tree, c, axis) {
-                Sizing::Grow(_) => set_axis_clamped(tree, c, axis, content),
-                Sizing::Percent(p) => set_axis_clamped(tree, c, axis, content * p),
-                _ => {}
+            if !is_float(tree, c) {
+                match child_sizing(tree, c, axis) {
+                    Sizing::Grow(_) => set_axis_clamped(tree, c, axis, content),
+                    Sizing::Percent(p) => set_axis_clamped(tree, c, axis, content * p),
+                    _ => {}
+                }
             }
             c = tree.next_sibling[c as usize];
         }
+    }
+
+    // Floating children size Grow/Percent against their anchor.
+    let mut c = tree.first_child[i as usize];
+    while c != NIL {
+        if let Some(cfg) = tree.specs[c as usize].layout.float {
+            let anchor_dim = match (cfg.anchor, axis) {
+                (FloatAnchor::Parent, AxisSel::Width) => tree.size[i as usize].w,
+                (FloatAnchor::Parent, AxisSel::Height) => tree.size[i as usize].h,
+                (FloatAnchor::Viewport, AxisSel::Width) => viewport.w,
+                (FloatAnchor::Viewport, AxisSel::Height) => viewport.h,
+            };
+            match child_sizing(tree, c, axis) {
+                Sizing::Grow(_) => set_axis_clamped(tree, c, axis, anchor_dim),
+                Sizing::Percent(p) => set_axis_clamped(tree, c, axis, anchor_dim * p),
+                _ => {}
+            }
+        }
+        c = tree.next_sibling[c as usize];
     }
 
     // Text children have no spec sizing; clamp their width to the content box
@@ -243,7 +315,7 @@ fn set_axis_clamped(tree: &mut Tree, c: u32, axis: AxisSel, v: f32) {
     set_axis(tree, c, axis, v);
 }
 
-fn positions(tree: &mut Tree, scroll: &mut ScrollStore) {
+fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Size) {
     for i in 0..tree.len() {
         if tree.parent[i] == NIL {
             tree.pos[i] = Vec2::ZERO;
@@ -261,6 +333,9 @@ fn positions(tree: &mut Tree, scroll: &mut ScrollStore) {
         let mut max_cross = 0.0f32;
         let mut n = 0u32;
         for c in tree.children(i as u32) {
+            if is_float(tree, c) {
+                continue;
+            }
             let (c_main, c_cross) = match spec.dir {
                 Dir::Row => (tree.size[c as usize].w, tree.size[c as usize].h),
                 Dir::Column => (tree.size[c as usize].h, tree.size[c as usize].w),
@@ -303,6 +378,24 @@ fn positions(tree: &mut Tree, scroll: &mut ScrollStore) {
 
         let mut c = tree.first_child[i];
         while c != NIL {
+            if let Some(cfg) = tree.specs[c as usize].layout.float {
+                // Anchored placement, out of flow.
+                let anchor = match cfg.anchor {
+                    FloatAnchor::Parent => Rect::from_pos_size(origin, size),
+                    FloatAnchor::Viewport => Rect::new(0.0, 0.0, viewport.w, viewport.h),
+                };
+                let cs = tree.size[c as usize];
+                tree.pos[c as usize] = Vec2::new(
+                    anchor.x + align_factor(cfg.anchor_point.0) * anchor.w
+                        - align_factor(cfg.self_point.0) * cs.w
+                        + cfg.offset.x,
+                    anchor.y + align_factor(cfg.anchor_point.1) * anchor.h
+                        - align_factor(cfg.self_point.1) * cs.h
+                        + cfg.offset.y,
+                );
+                c = tree.next_sibling[c as usize];
+                continue;
+            }
             let cs = tree.size[c as usize];
             let (c_main, c_cross) = match spec.dir {
                 Dir::Row => (cs.w, cs.h),

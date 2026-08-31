@@ -5,7 +5,7 @@
 //! Run: cargo run -p kui-lua --example lua_panel
 
 use kui::widgets;
-use kui::{App, Align, Color, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
+use kui::{Align, App, Color, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
 use kui_lua::LuaExtension;
 
 #[derive(Default)]
@@ -30,11 +30,16 @@ impl App for Host {
                 .cross_align(Align::Center)
                 .main_align(Align::Center),
             |ui| {
-                ui.text("host (Rust)", TextStyle::new(12.0).color(Color::rgb8(0x8a, 0x8f, 0xa3)));
+                ui.text(
+                    "host (Rust)",
+                    TextStyle::new(12.0).color(Color::rgb8(0x8a, 0x8f, 0xa3)),
+                );
                 ui.text(&format!("{} clicks", self.clicks), TextStyle::new(40.0));
                 widgets::button(ui, "click me", Value::map([("kind", "click".into())]));
             },
         );
+
+        kui::widgets::latency_hud_at(ui, Align::Start, Align::End);
     }
 
     fn on_event(&mut self, ev: UiEvent) {

@@ -19,7 +19,7 @@ kui = { path = "crates/kui" }
 
 slotmap = "1.0"
 rustc-hash = "2"
-cosmic-text = "0.12"
+cosmic-text = { version = "0.12", features = ["shape-run-cache"] }
 wgpu = "25"
 winit = "0.30"
 bytemuck = { version = "1", features = ["derive"] }

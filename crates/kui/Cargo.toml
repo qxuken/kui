@@ -8,3 +8,4 @@ kui-core.workspace = true
 kui-wgpu.workspace = true
 winit.workspace = true
 pollster.workspace = true
+arboard = "3"

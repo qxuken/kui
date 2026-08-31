@@ -1,10 +1,13 @@
-//! Lua extensions for kui. A script defines `view()` returning a plain table
-//! tree (built with the injected `row`/`column`/`text`/`button` prelude) and
-//! optionally `on_event(ev)`. Because the IR is data all the way down, the
-//! binding is just table-to-node conversion — no closures cross the boundary.
+//! Lua extensions for kui. A script defines `view(env)` returning a plain
+//! table tree (built with the injected `row`/`column`/`text`/`button`
+//! prelude) and optionally `on_event(ev)`. `env` carries host facts
+//! (refresh rate, focus, viewport); the root table may set `window_title`.
+//! Because the IR is data all the way down, the binding is just
+//! table-to-node conversion — no closures cross the boundary.
 
 use kui_core::{
-    Align, Color, Edges, Extension, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value, widgets,
+    Align, Color, Edges, Extension, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value,
+    widgets,
 };
 use mlua::{Lua, Table};
 
@@ -45,7 +48,12 @@ impl Extension for LuaExtension {
             .globals()
             .get("view")
             .map_err(|_| "script defines no view()".to_string())?;
-        let root: Table = view.call(()).map_err(|e| format!("view(): {e}"))?;
+        let env = env_table(&self.lua, ui).map_err(|e| format!("env: {e}"))?;
+        let root: Table = view.call(env).map_err(|e| format!("view(): {e}"))?;
+        // The root table may declare host state alongside the tree.
+        if let Ok(Some(title)) = root.get::<Option<String>>("window_title") {
+            ui.window_title(&title);
+        }
         build_node(ui, &root).map_err(|e| format!("view table: {e}"))
     }
 
@@ -58,6 +66,22 @@ impl Extension for LuaExtension {
             eprintln!("kui-lua: '{}' on_event error: {e}", self.name);
         }
     }
+}
+
+/// Host facts handed to `view(env)`: `refresh_hz` (nil if unknown),
+/// `frame_budget_ms`, `focused`, `viewport_w`/`viewport_h` (logical px).
+fn env_table(lua: &Lua, ui: &Ui<'_>) -> mlua::Result<Table> {
+    let env = ui.env();
+    let t = lua.create_table()?;
+    if let Some(hz) = env.refresh_hz {
+        t.set("refresh_hz", hz)?;
+    }
+    t.set("frame_budget_ms", env.frame_budget_ms())?;
+    t.set("focused", env.focused)?;
+    let vp = ui.viewport();
+    t.set("viewport_w", vp.w)?;
+    t.set("viewport_h", vp.h)?;
+    Ok(t)
 }
 
 // ---------------------------------------------------------------------------
@@ -82,6 +106,12 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
                 style = style.color(Color::hex(c));
             }
             ui.text(&value, style);
+            Ok(())
+        }
+        "input" => {
+            let label: String = t.get("label")?;
+            let initial: String = t.get::<Option<String>>("initial")?.unwrap_or_default();
+            widgets::text_input(ui, &label, &initial);
             Ok(())
         }
         "button" => {
@@ -155,6 +185,29 @@ fn parse_spec(t: &Table, is_row: bool) -> mlua::Result<NodeSpec> {
     }
     if t.get::<Option<bool>>("scroll_x")?.unwrap_or(false) {
         spec = spec.scroll_x();
+    }
+    if let Some(f) = t.get::<Option<Table>>("float")? {
+        let mut cfg = match f.get::<Option<String>>("anchor")?.as_deref() {
+            Some("viewport") => FloatConfig::viewport(),
+            _ => FloatConfig::parent(),
+        };
+        if let Some(at) = f.get::<Option<Table>>("at")? {
+            cfg = cfg.at(
+                parse_align(&at.get::<String>(1)?)?,
+                parse_align(&at.get::<String>(2)?)?,
+            );
+        }
+        if let Some(at) = f.get::<Option<Table>>("self_at")? {
+            cfg = cfg.self_at(
+                parse_align(&at.get::<String>(1)?)?,
+                parse_align(&at.get::<String>(2)?)?,
+            );
+        }
+        cfg = cfg.offset(
+            f.get::<Option<f32>>("dx")?.unwrap_or(0.0),
+            f.get::<Option<f32>>("dy")?.unwrap_or(0.0),
+        );
+        spec = spec.float(cfg);
     }
     Ok(spec)
 }

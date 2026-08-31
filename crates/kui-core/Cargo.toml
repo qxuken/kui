@@ -14,3 +14,7 @@ divan.workspace = true
 [[bench]]
 name = "frame"
 harness = false
+
+[[bench]]
+name = "editing"
+harness = false

@@ -10,13 +10,55 @@ use cosmic_text::{
 };
 use rustc_hash::FxHashMap;
 
-use crate::atlas::{GlyphAtlas, RasterGlyph};
+use crate::atlas::GlyphAtlas;
 use crate::color::Color;
 use crate::display::{Quad, QuadKind};
 use crate::geom::{Rect, Size, Vec2};
 use crate::layout::TextMeasure;
-use crate::spec::TextStyle;
+use crate::spec::{FontFamily, TextStyle};
 use crate::tree::TextId;
+
+pub(crate) fn family_of(f: FontFamily) -> cosmic_text::Family<'static> {
+    match f {
+        FontFamily::Sans => cosmic_text::Family::SansSerif,
+        FontFamily::Serif => cosmic_text::Family::Serif,
+        FontFamily::Mono => cosmic_text::Family::Monospace,
+    }
+}
+
+/// Rasterizes one glyph into the atlas (shared by static text and editors).
+pub(crate) fn raster_glyph(
+    key: cosmic_text::CacheKey,
+    fs: &mut FontSystem,
+    swash: &mut SwashCache,
+    atlas: &mut crate::atlas::GlyphAtlas,
+) -> Option<crate::atlas::GlyphSlot> {
+    atlas.get_or_insert(key, || {
+        let image = swash.get_image_uncached(fs, key)?;
+        if image.placement.width == 0 || image.placement.height == 0 {
+            return None;
+        }
+        let (data, is_color) = match image.content {
+            SwashContent::Mask => {
+                let mut rgba = Vec::with_capacity(image.data.len() * 4);
+                for &a in image.data.iter() {
+                    rgba.extend_from_slice(&[255, 255, 255, a]);
+                }
+                (rgba, false)
+            }
+            SwashContent::Color => (image.data.to_vec(), true),
+            SwashContent::SubpixelMask => return None,
+        };
+        Some(crate::atlas::RasterGlyph {
+            w: image.placement.width,
+            h: image.placement.height,
+            left: image.placement.left,
+            top: image.placement.top,
+            color: is_color,
+            data,
+        })
+    })
+}
 
 /// Evict cache entries unused for this many frames.
 const EVICT_AFTER_FRAMES: u64 = 300;
@@ -138,6 +180,15 @@ impl TextSystem {
         }
     }
 
+    /// Font system + swash rasterizer, split-borrowed for glyph raster.
+    pub(crate) fn raster_parts(&mut self) -> (&mut FontSystem, &mut SwashCache) {
+        (&mut self.font_system, &mut self.swash)
+    }
+
+    pub(crate) fn font_system_mut(&mut self) -> &mut FontSystem {
+        &mut self.font_system
+    }
+
     pub(crate) fn begin_frame(&mut self, scale: f32) {
         // Scale change invalidates every physical-px measurement.
         if (scale - self.scale).abs() > f32::EPSILON {
@@ -149,6 +200,9 @@ impl TextSystem {
         if self.frame_no % 240 == 0 {
             let cutoff = self.frame_no.saturating_sub(EVICT_AFTER_FRAMES);
             self.cache.retain(|_, e| e.last_used >= cutoff);
+            // The shape-run cache makes single-line reshapes ~free while
+            // editing; trim it so long sessions don't grow unboundedly.
+            self.font_system.shape_run_cache.trim(2);
         }
     }
 
@@ -165,6 +219,7 @@ impl TextSystem {
         mix(&style.size.to_bits().to_le_bytes());
         mix(&style.line_height.to_bits().to_le_bytes());
         mix(&scale.to_bits().to_le_bytes());
+        mix(&[style.family as u8]);
         h
     }
 
@@ -178,12 +233,7 @@ impl TextSystem {
             let metrics = Metrics::new(style.size * scale, style.line_height * scale);
             let mut buffer = Buffer::new(fs, metrics);
             buffer.set_size(fs, None, None);
-            buffer.set_text(
-                fs,
-                content,
-                Attrs::new().family(cosmic_text::Family::SansSerif),
-                Shaping::Advanced,
-            );
+            buffer.set_text(fs, content, Attrs::new().family(family_of(style.family)), Shaping::Advanced);
             buffer.shape_until_scroll(fs, false);
             let intrinsic = measure_buffer(&buffer);
             CachedText {
@@ -300,32 +350,9 @@ impl TextSystem {
             for run in entry.buffer.layout_runs() {
                 for glyph in run.glyphs.iter() {
                     let physical = glyph.physical((0.0, 0.0), 1.0);
-                    let slot = atlas.get_or_insert(physical.cache_key, || {
-                        let image = swash.get_image_uncached(fs, physical.cache_key)?;
-                        if image.placement.width == 0 || image.placement.height == 0 {
-                            return None;
-                        }
-                        let (data, is_color) = match image.content {
-                            SwashContent::Mask => {
-                                let mut rgba = Vec::with_capacity(image.data.len() * 4);
-                                for &a in image.data.iter() {
-                                    rgba.extend_from_slice(&[255, 255, 255, a]);
-                                }
-                                (rgba, false)
-                            }
-                            SwashContent::Color => (image.data.to_vec(), true),
-                            SwashContent::SubpixelMask => return None,
-                        };
-                        Some(RasterGlyph {
-                            w: image.placement.width,
-                            h: image.placement.height,
-                            left: image.placement.left,
-                            top: image.placement.top,
-                            color: is_color,
-                            data,
-                        })
-                    });
-                    let Some(slot) = slot else { continue };
+                    let Some(slot) = raster_glyph(physical.cache_key, fs, swash, atlas) else {
+                        continue;
+                    };
                     entry.glyphs.push(GlyphTemplate {
                         x: physical.x as f32 + slot.left as f32,
                         y: run.line_y.round() + physical.y as f32 - slot.top as f32,
@@ -342,16 +369,25 @@ impl TextSystem {
             entry.glyphs_built_for = Some((entry.wrap.map(f32::to_bits), atlas.epoch));
         }
 
-        out.extend(entry.glyphs.iter().map(|g| Quad {
-            rect: Rect::new(ox + g.x, oy + g.y, g.w, g.h),
-            color: g.color.unwrap_or(color),
-            border_color: Color::TRANSPARENT,
-            radius: 0.0,
-            border_w: 0.0,
-            kind: if g.color_glyph { QuadKind::GlyphColor } else { QuadKind::GlyphMask },
-            uv: g.uv,
-            clip,
-        }));
+        // Glyph templates are in layout order; skip everything above the clip
+        // and stop at the first glyph past it (rows below never come back).
+        out.extend(
+            entry
+                .glyphs
+                .iter()
+                .filter(|g| oy + g.y + g.h >= clip.y)
+                .take_while(|g| oy + g.y <= clip.y + clip.h)
+                .map(|g| Quad {
+                    rect: Rect::new(ox + g.x, oy + g.y, g.w, g.h),
+                    color: g.color.unwrap_or(color),
+                    border_color: Color::TRANSPARENT,
+                    radius: 0.0,
+                    border_w: 0.0,
+                    kind: if g.color_glyph { QuadKind::GlyphColor } else { QuadKind::GlyphMask },
+                    uv: g.uv,
+                    clip,
+                }),
+        );
     }
 }
 

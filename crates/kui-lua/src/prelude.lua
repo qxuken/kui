@@ -24,3 +24,8 @@ function button(t)
   t.type = "button"
   return t
 end
+
+function input(t)
+  t.type = "input"
+  return t
+end

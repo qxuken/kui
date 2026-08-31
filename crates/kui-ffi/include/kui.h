@@ -43,6 +43,19 @@ enum { KUI_QUAD_SOLID = 0, KUI_QUAD_GLYPH_MASK = 1, KUI_QUAD_GLYPH_COLOR = 2 };
 enum { KUI_SPAN_BOLD = 1u << 0, KUI_SPAN_ITALIC = 1u << 1 };
 /* Overflow flags */
 enum { KUI_CLIP = 1u << 0, KUI_SCROLL_X = 1u << 1, KUI_SCROLL_Y = 1u << 2 };
+/* Editing keys (kui_input_key) */
+enum {
+    KUI_KEY_LEFT = 0, KUI_KEY_RIGHT, KUI_KEY_UP, KUI_KEY_DOWN,
+    KUI_KEY_HOME, KUI_KEY_END, KUI_KEY_PAGE_UP, KUI_KEY_PAGE_DOWN,
+    KUI_KEY_BACKSPACE, KUI_KEY_DELETE, KUI_KEY_ENTER, KUI_KEY_TAB,
+    KUI_KEY_SELECT_ALL, KUI_KEY_ESCAPE,
+};
+/* Modifier bits (kui_input_key) */
+enum { KUI_MOD_SHIFT = 1u << 0, KUI_MOD_WORD = 1u << 1, KUI_MOD_DOC = 1u << 2 };
+/* Text edit flags (kui_text_edit) */
+enum { KUI_EDIT_MULTILINE = 1u << 0, KUI_EDIT_AUTOFOCUS = 1u << 1 };
+/* Float modes (KuiSpec.float_mode) */
+enum { KUI_FLOAT_NONE = 0, KUI_FLOAT_PARENT = 1, KUI_FLOAT_VIEWPORT = 2 };
 
 typedef struct KuiSizing {
     uint32_t tag;
@@ -63,6 +76,12 @@ typedef struct KuiSpec {
     float border_w;
     float radius;
     uint32_t overflow; /* KUI_CLIP | KUI_SCROLL_X | KUI_SCROLL_Y */
+    /* Out-of-flow positioning: 0 = in flow, KUI_FLOAT_PARENT/VIEWPORT anchors.
+     * Attach points use KUI_START/CENTER/END; dx/dy is a logical-px offset. */
+    uint32_t float_mode;
+    uint32_t float_anchor_x, float_anchor_y;
+    uint32_t float_self_x, float_self_y;
+    float float_dx, float_dy;
 } KuiSpec;
 
 /* Zero-initialized KuiTextStyle picks defaults (16px, default foreground). */
@@ -115,7 +134,19 @@ void kui_input_cursor(KuiCtx *ctx, float x, float y);
 void kui_input_cursor_left(KuiCtx *ctx);
 void kui_input_mouse(KuiCtx *ctx, bool down);
 void kui_input_scroll(KuiCtx *ctx, float dx, float dy); /* +y = scroll up */
+void kui_input_text(KuiCtx *ctx, KuiStr text);   /* typing/paste -> focused editor */
+void kui_input_key(KuiCtx *ctx, uint32_t key, uint32_t mods); /* KUI_KEY_* + KUI_MOD_* */
 bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
+
+/* -- Host environment ---------------------------------------------------- */
+/* Host facts for views to read (refresh_hz <= 0 = unknown). Survives across
+ * frames; set on change or every frame, either works. */
+void kui_env_set(KuiCtx *ctx, float refresh_hz, bool focused);
+/* Declares this frame's window title (cleared each kui_frame_begin). */
+void kui_window_title(KuiCtx *ctx, KuiStr title);
+/* The title declared this frame, if any — diff and apply after
+ * kui_frame_finish. The view is valid until the next kui_frame_begin. */
+bool kui_window_title_get(KuiCtx *ctx, KuiStr *out);
 
 /* -- Frame building ------------------------------------------------------ */
 void kui_frame_begin(KuiCtx *ctx, float w, float h, float scale);
@@ -132,6 +163,14 @@ bool kui_is_hovered(KuiCtx *ctx, uint64_t key);
 bool kui_is_pressed(KuiCtx *ctx, uint64_t key);
 /* Styled button with hover/press states; payload consumed (may be NULL). */
 void kui_button(KuiCtx *ctx, KuiStr label, KuiValue *payload);
+/* Editable text node (state retained by key). Returns the node key;
+ * "changed"/"submit" events arrive via kui_poll_event with that key. */
+uint64_t kui_text_edit(KuiCtx *ctx, KuiStr label, KuiStr initial,
+                       const KuiTextStyle *style, uint32_t flags, const KuiSpec *spec);
+/* Borrowed view of an editor's text; valid until the next kui_edit_text call. */
+bool kui_edit_text(KuiCtx *ctx, uint64_t key, KuiStr *out);
+void kui_edit_set_text(KuiCtx *ctx, uint64_t key, KuiStr text);
+bool kui_is_focused(KuiCtx *ctx, uint64_t key);
 void kui_frame_finish(KuiCtx *ctx);
 /* Pointers valid until the next kui_frame_begin on this context. */
 void kui_draw_data(KuiCtx *ctx, KuiDrawData *out);
