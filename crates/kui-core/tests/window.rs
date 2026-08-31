@@ -119,6 +119,43 @@ fn plain_on_click_nodes_are_unaffected() {
 }
 
 #[test]
+fn hovered_window_button_shows_a_hint_tooltip() {
+    use kui_core::{QuadKind, WindowEnv, widgets};
+    let mut core = Core::new();
+    core.env.window = WindowEnv { custom_chrome: true, ..Default::default() };
+
+    let build = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        widgets::titlebar(&mut ui, "app");
+        ui.finish();
+    };
+    let below_bar = |core: &mut Core| {
+        let (dl, _) = core.output();
+        dl.quads
+            .iter()
+            .filter(|q| q.kind == QuadKind::Solid && q.rect.y >= widgets::TITLEBAR_H)
+            .count()
+    };
+
+    build(&mut core);
+    assert_eq!(below_bar(&mut core), 0, "no hint without hover");
+
+    // Hover the close button (rightmost 46px of the bar), rebuild: the
+    // "Close" tooltip hangs below the bar, right-aligned inside the window.
+    drive(&mut core, &[InputEvent::CursorMoved(Vec2::new(400.0 - 23.0, 20.0))]);
+    build(&mut core);
+    assert!(below_bar(&mut core) > 0, "hover must produce a hint below the bar");
+    let (dl, _) = core.output();
+    let inside = dl
+        .quads
+        .iter()
+        .filter(|q| q.kind == QuadKind::Solid && q.rect.y >= widgets::TITLEBAR_H)
+        .all(|q| q.rect.x + q.rect.w <= 400.0 + 0.5);
+    assert!(inside, "close hint must not overflow the window edge");
+}
+
+#[test]
 fn titlebar_widget_declares_chrome_from_env() {
     use kui_core::{Rect, WindowEnv, widgets};
     let mut core = Core::new();
