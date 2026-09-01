@@ -10,7 +10,10 @@
 //!
 //! Keys — Alt is ⌥ Option on macOS: Alt-v/s split · Alt-o hop panes ·
 //! Alt-w close · Alt-t new tab · Alt-1..9 jump to tab. Click a pane to
-//! focus it.
+//! focus it. Drag the strip between panes to resize a split; drag a tab
+//! along the bar to reorder it (both are plain `on_drag` data — the drag
+//! payload's parent rect gives the divider its ratio, and hover during the
+//! drag gives tabs their live reorder).
 
 use kui::widgets;
 use kui::{Align, App, Color, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value, WindowCommand};
@@ -136,6 +139,10 @@ struct Splitmux {
     /// Path of the divider being dragged, for active styling while the
     /// cursor is off the strip.
     dragging: Option<String>,
+    /// Tab drag in flight: (current slot, sign of the last horizontal
+    /// motion). The sign gates reorder direction so unequal-width tabs
+    /// can't oscillate around the cursor.
+    tab_drag: Option<(usize, f32)>,
     quit: bool,
 }
 
@@ -160,6 +167,7 @@ impl Splitmux {
             tab: 0,
             focused: 1,
             dragging: None,
+            tab_drag: None,
             quit: false,
         }
     }
@@ -241,7 +249,7 @@ impl Splitmux {
 
     // ------------------------------------------------------------ view
 
-    fn tab_bar(&self, ui: &mut Ui<'_>) {
+    fn tab_bar(&mut self, ui: &mut Ui<'_>) {
         let pal = self.pal;
         ui.with(
             NodeSpec::row()
@@ -252,25 +260,62 @@ impl Splitmux {
                 .gap(4.0)
                 .cross_align(Align::Center),
             |ui| {
+                // Live reorder: while a tab drags, hovering another tab in
+                // the direction of motion moves it there. Hover comes from
+                // the previous frame's layout; the direction gate keeps
+                // unequal widths from swap-oscillating under a still cursor.
+                if let Some((from, sign)) = self.tab_drag
+                    && sign != 0.0
+                    && from < self.tabs.len()
+                {
+                    let to = (0..self.tabs.len()).find(|&j| {
+                        j != from
+                            && ui.is_hovered(ui.child_key(&format!("tab{j}")))
+                            && ((j > from && sign > 0.0) || (j < from && sign < 0.0))
+                    });
+                    if let Some(j) = to {
+                        let node = self.tabs.remove(from);
+                        self.tabs.insert(j, node);
+                        self.tab = if self.tab == from {
+                            j
+                        } else if from < self.tab && j >= self.tab {
+                            self.tab - 1
+                        } else if from > self.tab && j <= self.tab {
+                            self.tab + 1
+                        } else {
+                            self.tab
+                        };
+                        self.tab_drag = Some((j, sign));
+                    }
+                }
                 for i in 0..self.tabs.len() {
                     let active = i == self.tab;
+                    let lifted = self.tab_drag.is_some_and(|(s, _)| s == i);
                     let (bg, fg) =
                         if active { (pal.panel, pal.fg) } else { (Color::TRANSPARENT, pal.dim) };
                     let mut ids = Vec::new();
                     self.tabs[i].panes(&mut ids);
-                    ui.with_keyed(
-                        &format!("tab{i}"),
-                        NodeSpec::row().pad_xy(10.0, 4.0).radius(6.0).bg(bg).on_click(Value::map([
+                    let mut spec = NodeSpec::row()
+                        .pad_xy(10.0, 4.0)
+                        .radius(6.0)
+                        .bg(bg)
+                        .on_click(Value::map([
                             ("kind", "tab".into()),
                             ("tab", Value::Int(i as i64)),
-                        ])),
-                        |ui| {
-                            ui.text(
-                                &format!("{}  {} pane(s)", i + 1, ids.len()),
-                                TextStyle::new(12.0).color(fg),
-                            );
-                        },
-                    );
+                        ]))
+                        .on_drag(Value::map([
+                            ("kind", "tabdrag".into()),
+                            ("tab", Value::Int(i as i64)),
+                        ]));
+                    if lifted {
+                        spec = spec.border(1.0, pal.border_focus);
+                    }
+                    ui.with_keyed(&format!("tab{i}"), spec, |ui| {
+                        ui.text(
+                            &format!("{}  {} pane(s)", i + 1, ids.len()),
+                            TextStyle::new(12.0).color(fg),
+                        );
+                    });
                 }
                 ui.with_keyed(
                     "tab+",
@@ -423,40 +468,67 @@ impl App for Splitmux {
             Some("tabnew") => self.new_tab(),
             Some("drag") => {
                 let tag = ev.payload.get("tag");
-                if tag.and_then(|t| t.get("kind")).and_then(Value::as_str) != Some("split") {
-                    return;
-                }
-                let Some(path) = tag.and_then(|t| t.get("path")).and_then(Value::as_str) else {
-                    return;
-                };
-                match ev.payload.get("phase").and_then(Value::as_str) {
-                    Some("end") => self.dragging = None,
-                    Some(_) => {
-                        // Absolute cursor position over the split's own rect
-                        // (carried in the payload) is the new ratio directly.
-                        let horizontal =
-                            tag.and_then(|t| t.get("dir")).and_then(Value::as_str) == Some("h");
-                        let parent = ev.payload.get("parent");
-                        let get = |m: Option<&Value>, k| {
-                            m.and_then(|v| v.get(k)).and_then(Value::as_float).unwrap_or(0.0)
-                        };
-                        let ratio = if horizontal {
-                            let w = get(parent, "w").max(1.0);
-                            (get(Some(&ev.payload), "x") - get(parent, "x")) / w
-                        } else {
-                            let h = get(parent, "h").max(1.0);
-                            (get(Some(&ev.payload), "y") - get(parent, "y")) / h
-                        };
-                        let path = path.to_string();
-                        self.dragging = Some(path.clone());
-                        if let Some(r) = self.tabs[self.tab].ratio_mut(&path) {
-                            *r = (ratio as f32).clamp(0.05, 0.95);
+                match tag.and_then(|t| t.get("kind")).and_then(Value::as_str) {
+                    Some("tabdrag") => match ev.payload.get("phase").and_then(Value::as_str) {
+                        Some("start") => {
+                            if let Some(i) = tag.and_then(|t| t.get("tab")).and_then(Value::as_int)
+                            {
+                                self.tab_drag = Some((i as usize, 0.0));
+                            }
                         }
-                    }
-                    None => {}
+                        Some("move") => {
+                            let dx = ev.payload.get("dx").and_then(Value::as_float).unwrap_or(0.0);
+                            if let Some((_, sign)) = self.tab_drag.as_mut()
+                                && dx != 0.0
+                            {
+                                *sign = dx as f32;
+                            }
+                        }
+                        Some("end") => self.tab_drag = None,
+                        _ => {}
+                    },
+                    Some("split") => self.split_drag(&ev),
+                    _ => {}
                 }
             }
             _ => {}
+        }
+    }
+}
+
+impl Splitmux {
+    /// Divider drags: absolute cursor position over the split's own rect
+    /// (carried in the payload) is the new ratio directly.
+    fn split_drag(&mut self, ev: &UiEvent) {
+        let tag = ev.payload.get("tag");
+        let Some(path) = tag.and_then(|t| t.get("path")).and_then(Value::as_str) else {
+            return;
+        };
+        match ev.payload.get("phase").and_then(Value::as_str) {
+            Some("end") => self.dragging = None,
+            Some(_) => {
+                // Absolute cursor position over the split's own rect
+                // (carried in the payload) is the new ratio directly.
+                let horizontal =
+                    tag.and_then(|t| t.get("dir")).and_then(Value::as_str) == Some("h");
+                let parent = ev.payload.get("parent");
+                let get = |m: Option<&Value>, k| {
+                    m.and_then(|v| v.get(k)).and_then(Value::as_float).unwrap_or(0.0)
+                };
+                let ratio = if horizontal {
+                    let w = get(parent, "w").max(1.0);
+                    (get(Some(&ev.payload), "x") - get(parent, "x")) / w
+                } else {
+                    let h = get(parent, "h").max(1.0);
+                    (get(Some(&ev.payload), "y") - get(parent, "y")) / h
+                };
+                let path = path.to_string();
+                self.dragging = Some(path.clone());
+                if let Some(r) = self.tabs[self.tab].ratio_mut(&path) {
+                    *r = (ratio as f32).clamp(0.05, 0.95);
+                }
+            }
+            None => {}
         }
     }
 }

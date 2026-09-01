@@ -94,6 +94,50 @@ fn scroll_frame(core: &mut Core) -> kui_core::Key {
 }
 
 #[test]
+fn hover_keeps_tracking_other_nodes_during_a_drag() {
+    // Reorderable tabs lean on this: while one node drags, hover still
+    // follows the cursor onto its siblings.
+    let mut core = Core::new();
+    let frame = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::row().fill());
+        for label in ["a", "b"] {
+            ui.with_keyed(
+                label,
+                NodeSpec::column()
+                    .width(Sizing::Fixed(100.0))
+                    .height(Sizing::Fixed(30.0))
+                    .on_drag(Value::str(label)),
+                |_| {},
+            );
+        }
+        ui.finish();
+    };
+    frame(&mut core);
+    let (a, b) = {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::row().fill());
+        let keys = (ui.child_key("a"), ui.child_key("b"));
+        ui.finish();
+        keys
+    };
+    frame(&mut core);
+
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(50.0, 15.0)));
+    core.handle_input(InputEvent::MouseDown(1));
+    assert!(core.interaction.is_hovered(a));
+    // Drag over the sibling: the drag stays captured on `a`, hover moves.
+    let evs = core.handle_input(InputEvent::CursorMoved(Vec2::new(150.0, 15.0)));
+    assert!(core.interaction.is_hovered(b), "hover follows the cursor mid-drag");
+    assert!(
+        evs.iter().any(|e| e.key == a
+            && e.payload.get("phase").and_then(Value::as_str) == Some("move")),
+        "drag events keep landing on the pressed node"
+    );
+    core.handle_input(InputEvent::MouseUp);
+}
+
+#[test]
 fn scrollbar_thumb_drags_the_offset() {
     let mut core = Core::new();
     let key = scroll_frame(&mut core);
