@@ -3,19 +3,28 @@
 
 todos = { "ship the layout solver", "wire up wgpu", "write this panel" }
 done = {}
+filter = ""
+filter_key = nil -- set by a "changed" event; read back in view(env)
 
-function view()
+function view(env)
+  if filter_key then
+    filter = env.edit_text(filter_key) or ""
+  end
+
   local items = {}
   for i, todo in ipairs(todos) do
-    local checked = done[i] and "[x] " or "[ ] "
-    local color = done[i] and 0x5c6174ff or 0xe8e8eaff
-    items[#items + 1] = row {
-      gap = 8,
-      cross_align = "center",
-      on_click = { kind = "toggle", index = i },
-      pad = { t = 4, b = 4 },
-      text(checked .. todo, { size = 14, color = color }),
-    }
+    if filter == "" or todo:find(filter, 1, true) then
+      local checked = done[i] and "[x] " or "[ ] "
+      local color = done[i] and 0x5c6174ff or 0xe8e8eaff
+      items[#items + 1] = row {
+        gap = 8,
+        cross_align = "center",
+        on_click = { kind = "toggle", index = i },
+        tooltip = done[i] and "click to reopen" or "click to finish",
+        pad = { t = 4, b = 4 },
+        text(checked .. todo, { size = 14, color = color }),
+      }
+    end
   end
 
   local remaining = #todos
@@ -31,8 +40,10 @@ function view()
     bg = 0x14161eff,
     radius = 10,
     border = { w = 1, color = 0x2a2d3aff },
-    text("lua panel", { size = 12, color = 0x8a8fa3ff }),
-    text(remaining .. " left", { size = 22 }),
+    text({ "lua panel", { " · " .. remaining .. " left", color = "#8a8fa3" } },
+         { size = 12, color = 0x8a8fa3ff }),
+    edit { key = "filter", initial = "", size = 14, width = "grow",
+           pad = { l = 8, r = 8, t = 6, b = 6 }, bg = 0x0e1016ff, radius = 6 },
     column { height = "grow", scroll = true, table.unpack(items) },
     row {
       gap = 8,
@@ -45,6 +56,8 @@ end
 function on_event(ev)
   if ev.kind == "toggle" then
     done[ev.index] = not done[ev.index]
+  elseif ev.kind == "changed" then
+    filter_key = ev.node_key
   elseif ev.kind == "add" then
     todos[#todos + 1] = "todo #" .. (#todos + 1)
   elseif ev.kind == "clear" then

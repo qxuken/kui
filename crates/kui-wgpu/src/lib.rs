@@ -37,9 +37,19 @@ fn instance_of(q: &Quad) -> Instance {
         pos: [q.rect.x, q.rect.y],
         size: [q.rect.w, q.rect.h],
         color: [q.color.r, q.color.g, q.color.b, q.color.a],
-        border_color: [q.border_color.r, q.border_color.g, q.border_color.b, q.border_color.a],
+        border_color: [
+            q.border_color.r,
+            q.border_color.g,
+            q.border_color.b,
+            q.border_color.a,
+        ],
         params: [q.radius, q.border_w, kind, 0.0],
-        uv: [q.uv[0] as f32, q.uv[1] as f32, q.uv[2] as f32, q.uv[3] as f32],
+        uv: [
+            q.uv[0] as f32,
+            q.uv[1] as f32,
+            q.uv[2] as f32,
+            q.uv[3] as f32,
+        ],
         clip: [q.clip.x, q.clip.y, q.clip.w, q.clip.h],
     }
 }
@@ -77,7 +87,9 @@ impl Renderer {
                 ..Default::default()
             })
             .await?;
-        let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor::default()).await?;
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor::default())
+            .await?;
 
         let caps = surface.get_capabilities(&adapter);
         let format = caps
@@ -188,8 +200,7 @@ impl Renderer {
 
         let atlas_size = kui_core::atlas::ATLAS_SIZE;
         let atlas_tex = create_atlas_texture(&device, atlas_size);
-        let bind_group =
-            create_bind_group(&device, &bind_layout, &globals_buf, &atlas_tex);
+        let bind_group = create_bind_group(&device, &bind_layout, &globals_buf, &atlas_tex);
 
         let instance_cap = 4096;
         let instance_buf = create_instance_buffer(&device, instance_cap);
@@ -209,7 +220,12 @@ impl Renderer {
             instance_buf,
             instance_cap,
             instances: Vec::new(),
-            clear_color: wgpu::Color { r: 0.06, g: 0.065, b: 0.08, a: 1.0 },
+            clear_color: wgpu::Color {
+                r: 0.06,
+                g: 0.065,
+                b: 0.08,
+                a: 1.0,
+            },
         })
     }
 
@@ -223,8 +239,12 @@ impl Renderer {
         if atlas.size != self.atlas_size {
             self.atlas_size = atlas.size;
             self.atlas_tex = create_atlas_texture(&self.device, atlas.size);
-            self.bind_group =
-                create_bind_group(&self.device, &self.bind_layout, &self.globals_buf, &self.atlas_tex);
+            self.bind_group = create_bind_group(
+                &self.device,
+                &self.bind_layout,
+                &self.globals_buf,
+                &self.atlas_tex,
+            );
             self.atlas_epoch = u64::MAX;
         }
         if atlas.dirty || self.atlas_epoch != atlas.epoch {
@@ -241,7 +261,11 @@ impl Renderer {
                     bytes_per_row: Some(atlas.size * 4),
                     rows_per_image: Some(atlas.size),
                 },
-                wgpu::Extent3d { width: atlas.size, height: atlas.size, depth_or_array_layers: 1 },
+                wgpu::Extent3d {
+                    width: atlas.size,
+                    height: atlas.size,
+                    depth_or_array_layers: 1,
+                },
             );
             atlas.dirty = false;
             self.atlas_epoch = atlas.epoch;
@@ -262,13 +286,15 @@ impl Renderer {
             self.instance_buf = create_instance_buffer(&self.device, self.instance_cap);
         }
         if !self.instances.is_empty() {
-            self.queue.write_buffer(&self.instance_buf, 0, bytemuck::cast_slice(&self.instances));
+            self.queue
+                .write_buffer(&self.instance_buf, 0, bytemuck::cast_slice(&self.instances));
         }
         let globals = Globals {
             viewport: [dl.viewport.w.max(1.0), dl.viewport.h.max(1.0)],
             atlas_size: [self.atlas_size as f32, self.atlas_size as f32],
         };
-        self.queue.write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(&globals));
+        self.queue
+            .write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(&globals));
 
         // Acquiring the swapchain image is where vsync backpressure blocks;
         // report it separately so latency graphs show pacing vs work.
@@ -285,9 +311,12 @@ impl Renderer {
             wgpu::CurrentSurfaceTexture::Validation => return Err(RenderError::Validation),
         };
         let vsync_wait_ms = t_wait.elapsed().as_secs_f32() * 1e3;
-        let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder =
-            self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("kui") });
+        let view = frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("kui") });
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("kui"),
@@ -351,7 +380,11 @@ impl std::error::Error for RenderError {}
 fn create_atlas_texture(device: &wgpu::Device, size: u32) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
         label: Some("kui.atlas"),
-        size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -378,9 +411,18 @@ fn create_bind_group(
         label: Some("kui"),
         layout,
         entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: globals.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&view) },
-            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&sampler) },
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: globals.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(&view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Sampler(&sampler),
+            },
         ],
     })
 }

@@ -187,6 +187,11 @@ export function createEncoder(P) {
             n++;
           }
           break;
+        case 'tooltip':
+          f[fi++] = PR.tooltip.id;
+          strRef(String(v));
+          n++;
+          break;
         default: {
           // Schema-driven: unknown names (element-level props included) are
           // ignored, matching the JSON path.

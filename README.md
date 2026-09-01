@@ -56,20 +56,38 @@ into the IR, and `onClick` carries a message value, never a closure.
 A Lua extension in full:
 
 ```lua
-function view()
+function view(env)
+  if note_key then note = env.edit_text(note_key) end   -- read editors back by key
   return column { gap = 8, pad = 16, bg = 0x14161eff,
-    text("count: " .. count, { size = 20 }),
-    button { label = "bump", on_click = { kind = "bump" } },
+    text({ "count: ", { tostring(count), bold = true } }, { size = 20 }),
+    row { tooltip = "adds one", button { label = "bump", on_click = { kind = "bump" } } },
+    edit { key = "note", initial = "", width = "grow" },
   }
 end
 
-function on_event(ev)
+function on_event(ev)                     -- ev = payload + node_key
   if ev.kind == "bump" then count = count + 1 end
+  if ev.kind == "changed" then note_key = ev.node_key end
 end
 ```
 
 ## Design notes
 
+- **One prop schema, three bindings.** `kui_core::schema::PROPS` is the
+  single source of truth for the per-node surface: one row = name, wire id,
+  value kind, apply fn, doc. Node interprets it for JSON, the binary stream,
+  the JS encoder (`protocol()`), and the generated TS prop types; Lua looks
+  each table key up by the same name in snake_case (`minWidth` is
+  `min_width`); the C struct must be static, so `KuiSpec` stays hand-written
+  and a parity test in `kui-ffi` fails when a row has no C field. Adding a
+  simple prop is one row (+ `npm run gen`); the composites (`pad`, `border`,
+  overflow, `float`) keep per-binding shapes on purpose. Elements are the
+  same set everywhere too: containers, text and rich spans, editors, images,
+  buttons, titlebar (plain or with custom content), window buttons, latency
+  graph/HUD, and tooltips — Lua reaches them through the prelude (`edit`,
+  `tooltip`, `window_buttons`, `latency_hud`, ...), C through `kui_*`
+  widget calls with body callbacks for the containers, and a `tooltip =
+  "hint"` prop on any container is hover-gated in every binding.
 - **Events are data, not callbacks.** Nodes declare an `on_click` payload
   (`Value`: null/bool/int/float/str/list/map). Input resolves against the
   previous frame's layout and produces `UiEvent`s tagged with the origin that

@@ -17,6 +17,7 @@ pub mod key;
 pub mod layout;
 pub mod resources;
 pub mod runtime;
+pub mod schema;
 pub mod scroll;
 pub mod spec;
 pub mod stats;

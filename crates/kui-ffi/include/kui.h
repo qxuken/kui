@@ -82,7 +82,8 @@ typedef struct KuiSizing {
 } KuiSizing;
 
 /* Zero-initialized KuiSpec is a fit-sized transparent column. Colors are
- * 0xRRGGBBAA with 0 meaning "none". */
+ * 0xRRGGBBAA with 0 meaning "none". Fields mirror the shared prop schema
+ * (crates/kui-core/src/schema.rs) and are append-only: the layout is ABI. */
 typedef struct KuiSpec {
     KuiSizing width, height;
     float min_w, max_w, min_h, max_h; /* clamps; max 0 = unconstrained */
@@ -197,6 +198,16 @@ uint64_t kui_open_keyed(KuiCtx *ctx, KuiStr label, const KuiSpec *spec, KuiValue
  * on_click. on_click/on_drag are nullable and consumed. */
 uint64_t kui_open_draggable(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
                             KuiValue *on_click, KuiValue *on_drag);
+/* The general container: every message prop at once, each nullable and
+ * consumed. NULL means absent (a NULL on_drag here does NOT make the node
+ * draggable, unlike kui_open_draggable). A non-NULL on_key makes the node a
+ * key sink: focus it with kui_set_key_focus and every press arrives as
+ * {kind="key", code, ctrl, alt, shift, super, text, repeat, tag}. */
+uint64_t kui_open_with(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
+                       KuiValue *on_click, KuiValue *on_drag, KuiValue *on_key);
+/* Routes the keyboard at a key-sink node for this frame (0 clears). Declare
+ * it every frame you want it, like the title; a focused editor still wins. */
+void kui_set_key_focus(KuiCtx *ctx, uint64_t key);
 /* -- Images --------------------------------------------------------------- */
 /* Registers a w*h RGBA image (pixels copied); returns a handle, 0 on
  * failure. Handles are stable until kui_image_remove. */
@@ -214,6 +225,24 @@ bool kui_is_hovered(KuiCtx *ctx, uint64_t key);
 bool kui_is_pressed(KuiCtx *ctx, uint64_t key);
 /* Styled button with hover/press states; payload consumed (may be NULL). */
 void kui_button(KuiCtx *ctx, KuiStr label, KuiValue *payload);
+/* -- Widgets (the same kui_core::widgets every frontend uses) ------------ */
+/* Body callbacks build content through the same ctx (see KuiViewFn). */
+typedef void (*KuiViewFn)(void *user, KuiCtx *ctx);
+/* Adaptive titlebar: drag strip, title, window buttons per the env facts. */
+void kui_titlebar(KuiCtx *ctx, KuiStr title);
+/* Titlebar hosting custom content built by body (tabs, search, ...). */
+void kui_titlebar_with(KuiCtx *ctx, KuiViewFn body, void *user);
+/* Min/max/close cluster; draws nothing when the OS provides controls. */
+void kui_window_buttons(KuiCtx *ctx);
+/* Hint floated below the enclosing node; gate on kui_is_hovered. */
+void kui_tooltip(KuiCtx *ctx, KuiStr text);
+void kui_tooltip_with(KuiCtx *ctx, KuiViewFn body, void *user);
+/* Per-phase frame-latency bars (populated by kui_run; empty headless). */
+void kui_latency_graph(KuiCtx *ctx);
+/* The graph in a corner panel; x/y are KUI_START/CENTER/END. */
+void kui_latency_hud(KuiCtx *ctx, uint32_t x, uint32_t y);
+/* Single-line input with chrome; returns the editor key (kui_edit_text). */
+uint64_t kui_text_input(KuiCtx *ctx, KuiStr label, KuiStr initial);
 /* Editable text node (state retained by key). Returns the node key;
  * "changed"/"submit" events arrive via kui_poll_event with that key. */
 uint64_t kui_text_edit(KuiCtx *ctx, KuiStr label, KuiStr initial,
@@ -240,7 +269,6 @@ bool kui_value_as_str(const KuiValue *v, KuiStr *out);            /* borrowed */
 void kui_value_free(KuiValue *v);
 
 /* -- Windowed runner (winit + wgpu), blocks until the window closes ------ */
-typedef void (*KuiViewFn)(void *user, KuiCtx *ctx);
 typedef void (*KuiEventFn)(void *user, const KuiEvent *ev);
 bool kui_run(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user);
 

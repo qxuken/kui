@@ -29,7 +29,7 @@ use serde_json::{Map as JsonMap, Value as Json};
 
 use crate::schema::{
     self, Kind, P_BORDER, P_DIR, P_FLOAT, P_KEY, P_KEY_FOCUS, P_OVERFLOW, P_PAD, P_SIZE, P_TITLE,
-    Parsed, PropsOut, align_idx, color_num, sizing_num,
+    P_TOOLTIP, Parsed, PropsOut, align_idx, color_num, sizing_num,
 };
 use crate::{Result, err, value_of};
 
@@ -197,6 +197,10 @@ fn read_props(r: &mut Reader<'_>) -> Result<PropsOut> {
             P_KEY_FOCUS => out.key_focus = true,
             P_KEY => out.key = Some(r.req_str()?.to_string()),
             P_TITLE => out.title = Some(r.req_str()?.to_string()),
+            P_TOOLTIP => {
+                out.tooltip = Some(r.req_str()?.to_string());
+                out.with_spec(NodeSpec::hoverable);
+            }
             id => {
                 let def = schema::by_id(id).ok_or_else(|| err(format!("unknown prop id {id}")))?;
                 let parsed = match &def.kind {
@@ -235,6 +239,11 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
                 core.set_key_focus(Some(node_key));
             }
             decode_until_close(r, core)?;
+            if let Some(hint) = &p.tooltip
+                && core.is_hovered(node_key)
+            {
+                widgets::tooltip(&mut kui_core::Ui::wrap(core), hint);
+            }
             core.close();
             Ok(())
         }

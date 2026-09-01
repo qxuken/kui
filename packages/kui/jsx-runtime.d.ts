@@ -118,6 +118,9 @@ export interface CustomSpecProps {
   float?: 'below' | 'above' | 'parent' | 'viewport' | FloatProp;
   /** Grabs key focus declaratively (focused editors still win). */
   keyFocus?: boolean;
+  /** Hover hint: a tooltip floated below this box while it is hovered
+   *  (implies hoverable). */
+  tooltip?: string;
 }
 
 export interface BoxProps extends Keyed, GeneratedSpecProps, CustomSpecProps {

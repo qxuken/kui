@@ -25,21 +25,27 @@ function view(env)
 end
 "#;
 
+// Same tree shape as the Lua view: an extension's table is a child of the
+// frame's root (panels share the host's frame), so the Rust side nests its
+// column under the default root too. Configuring the root instead would
+// change layout, not just lowering — the nested column is a Fit child and
+// the shrink pass squashes it to the viewport, dropping the row backgrounds.
 fn rust_frame(core: &mut Core) {
     let mut ui = core.frame(Size::new(800.0, 600.0), 1.0);
-    ui.configure_root(NodeSpec::column().pad(8.0).gap(2.0));
-    for i in 0..ROWS {
-        ui.with(NodeSpec::row().gap(4.0).bg(Color::hex(0x202030ff)), |ui| {
-            ui.text(&format!("row {i}"), TextStyle::new(14.0));
-            ui.with(
-                NodeSpec::column()
-                    .width(Sizing::Fixed(40.0))
-                    .height(Sizing::Fixed(12.0))
-                    .bg(Color::hex(0x3b5bd4ff)),
-                |_| {},
-            );
-        });
-    }
+    ui.with(NodeSpec::column().pad(8.0).gap(2.0), |ui| {
+        for i in 0..ROWS {
+            ui.with(NodeSpec::row().gap(4.0).bg(Color::hex(0x202030ff)), |ui| {
+                ui.text(&format!("row {i}"), TextStyle::new(14.0));
+                ui.with(
+                    NodeSpec::column()
+                        .width(Sizing::Fixed(40.0))
+                        .height(Sizing::Fixed(12.0))
+                        .bg(Color::hex(0x3b5bd4ff)),
+                    |_| {},
+                );
+            });
+        }
+    });
     ui.finish();
 }
 

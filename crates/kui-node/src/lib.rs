@@ -213,6 +213,13 @@ fn lower_element(core: &mut Core, node: &JsonMap<String, Json>) -> Result<()> {
                 core.set_key_focus(Some(node_key));
             }
             lower(core, children.unwrap_or(&Json::Null))?;
+            // Hover hint: floats below the box while hovered (the parser
+            // made the spec hoverable).
+            if let Some(hint) = &p.tooltip
+                && core.is_hovered(node_key)
+            {
+                kui_core::widgets::tooltip(&mut kui_core::Ui::wrap(core), hint);
+            }
             core.close();
             Ok(())
         }

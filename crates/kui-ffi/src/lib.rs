@@ -186,7 +186,11 @@ fn kstr<'a>(s: KuiStr) -> std::borrow::Cow<'a, str> {
 }
 
 fn color_of(hex: u32) -> Color {
-    if hex == 0 { Color::TRANSPARENT } else { Color::hex(hex) }
+    if hex == 0 {
+        Color::TRANSPARENT
+    } else {
+        Color::hex(hex)
+    }
 }
 
 fn sizing_of(s: KuiSizing) -> Sizing {
@@ -206,16 +210,47 @@ fn align_of(a: u32) -> Align {
     }
 }
 
-fn spec_of(s: &KuiSpec, on_click: *mut KuiValue) -> NodeSpec {
-    let mut spec = if s.dir == 1 { NodeSpec::row() } else { NodeSpec::column() };
+/// Null-able, consumed message payloads (`KuiValue*` owned by the caller
+/// until passed here).
+const NONE: *mut KuiValue = std::ptr::null_mut();
+
+fn take_msg(p: *mut KuiValue) -> Option<Value> {
+    // Consumes the value.
+    (!p.is_null()).then(|| unsafe { Box::from_raw(p) }.0)
+}
+
+fn spec_of(
+    s: &KuiSpec,
+    on_click: *mut KuiValue,
+    on_drag: *mut KuiValue,
+    on_key: *mut KuiValue,
+) -> NodeSpec {
+    let mut spec = if s.dir == 1 {
+        NodeSpec::row()
+    } else {
+        NodeSpec::column()
+    };
     spec = spec
         .width(sizing_of(s.width))
         .height(sizing_of(s.height))
         .min_width(s.min_w.max(0.0))
-        .max_width(if s.max_w > 0.0 { s.max_w } else { f32::INFINITY })
+        .max_width(if s.max_w > 0.0 {
+            s.max_w
+        } else {
+            f32::INFINITY
+        })
         .min_height(s.min_h.max(0.0))
-        .max_height(if s.max_h > 0.0 { s.max_h } else { f32::INFINITY })
-        .padding(Edges { l: s.pad_l, r: s.pad_r, t: s.pad_t, b: s.pad_b })
+        .max_height(if s.max_h > 0.0 {
+            s.max_h
+        } else {
+            f32::INFINITY
+        })
+        .padding(Edges {
+            l: s.pad_l,
+            r: s.pad_r,
+            t: s.pad_t,
+            b: s.pad_b,
+        })
         .gap(s.gap)
         .main_align(align_of(s.main_align))
         .cross_align(align_of(s.cross_align))
@@ -234,10 +269,14 @@ fn spec_of(s: &KuiSpec, on_click: *mut KuiValue) -> NodeSpec {
         spec = spec.scroll_y();
     }
     if s.float_mode != 0 {
-        let mut cfg = if s.float_mode == 2 { FloatConfig::viewport() } else { FloatConfig::parent() }
-            .at(align_of(s.float_anchor_x), align_of(s.float_anchor_y))
-            .self_at(align_of(s.float_self_x), align_of(s.float_self_y))
-            .offset(s.float_dx, s.float_dy);
+        let mut cfg = if s.float_mode == 2 {
+            FloatConfig::viewport()
+        } else {
+            FloatConfig::parent()
+        }
+        .at(align_of(s.float_anchor_x), align_of(s.float_anchor_y))
+        .self_at(align_of(s.float_self_x), align_of(s.float_self_y))
+        .offset(s.float_dx, s.float_dy);
         if s.float_fit != 0 {
             cfg = cfg.fit();
         }
@@ -253,10 +292,14 @@ fn spec_of(s: &KuiSpec, on_click: *mut KuiValue) -> NodeSpec {
         4 => spec = spec.window_button(WindowButton::Maximize),
         _ => {}
     }
-    if !on_click.is_null() {
-        // Consumes the value.
-        let v = unsafe { Box::from_raw(on_click) };
-        spec = spec.on_click(v.0);
+    if let Some(v) = take_msg(on_click) {
+        spec = spec.on_click(v);
+    }
+    if let Some(v) = take_msg(on_drag) {
+        spec = spec.on_drag(v);
+    }
+    if let Some(v) = take_msg(on_key) {
+        spec = spec.on_key(v);
     }
     spec
 }
@@ -382,7 +425,11 @@ fn edit_key_of(key: u32) -> Option<EditKey> {
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_key(ptr: *mut KuiCtx, key: u32, mods: u32) {
     if let Some(k) = edit_key_of(key) {
-        let mods = Mods { shift: mods & 1 != 0, word: mods & 2 != 0, doc: mods & 4 != 0 };
+        let mods = Mods {
+            shift: mods & 1 != 0,
+            word: mods & 2 != 0,
+            doc: mods & 4 != 0,
+        };
         push_input(ptr, InputEvent::Key(k, mods));
     }
 }
@@ -392,7 +439,9 @@ pub extern "C" fn kui_input_key(ptr: *mut KuiCtx, key: u32, mods: u32) {
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
     guard(false, || {
-        let Some(c) = (unsafe { ctx(ptr) }) else { return false };
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
         // Drop the previously handed-out payload.
         c.last_payload = None;
         if c.events.is_empty() || out.is_null() {
@@ -403,7 +452,11 @@ pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
         let payload_ptr: *const KuiValue = &*payload;
         c.last_payload = Some(payload);
         unsafe {
-            *out = KuiEvent { origin: ev.origin.0, key: ev.key.0, payload: payload_ptr };
+            *out = KuiEvent {
+                origin: ev.origin.0,
+                key: ev.key.0,
+                payload: payload_ptr,
+            };
         }
         true
     })
@@ -454,13 +507,11 @@ pub extern "C" fn kui_env_set_window(
 /// how many were written. Call after each input until it returns 0, and
 /// apply them to the real window.
 #[unsafe(no_mangle)]
-pub extern "C" fn kui_take_window_commands(
-    ptr: *mut KuiCtx,
-    out: *mut u32,
-    cap: usize,
-) -> usize {
+pub extern "C" fn kui_take_window_commands(ptr: *mut KuiCtx, out: *mut u32, cap: usize) -> usize {
     guard(0, || {
-        let Some(c) = (unsafe { ctx(ptr) }) else { return 0 };
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
         if out.is_null() || cap == 0 {
             return 0;
         }
@@ -499,8 +550,13 @@ pub extern "C" fn kui_window_title_get(ptr: *mut KuiCtx, out: *mut KuiStr) -> bo
         let (Some(c), Some(out)) = (unsafe { ctx(ptr) }, unsafe { out.as_mut() }) else {
             return false;
         };
-        let Some(t) = c.core().window_title() else { return false };
-        *out = KuiStr { ptr: t.as_ptr(), len: t.len() };
+        let Some(t) = c.core().window_title() else {
+            return false;
+        };
+        *out = KuiStr {
+            ptr: t.as_ptr(),
+            len: t.len(),
+        };
         true
     })
 }
@@ -512,7 +568,8 @@ pub extern "C" fn kui_window_title_get(ptr: *mut KuiCtx, out: *mut KuiStr) -> bo
 pub extern "C" fn kui_frame_begin(ptr: *mut KuiCtx, w: f32, h: f32, scale: f32) {
     guard((), || {
         if let Some(c) = unsafe { ctx(ptr) } {
-            c.core().begin_frame(Size::new(w, h), if scale > 0.0 { scale } else { 1.0 });
+            c.core()
+                .begin_frame(Size::new(w, h), if scale > 0.0 { scale } else { 1.0 });
         }
     });
 }
@@ -522,7 +579,7 @@ pub extern "C" fn kui_frame_begin(ptr: *mut KuiCtx, w: f32, h: f32, scale: f32) 
 pub extern "C" fn kui_root(ptr: *mut KuiCtx, spec: *const KuiSpec) {
     guard((), || {
         if let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) {
-            c.core().configure_root(spec_of(s, std::ptr::null_mut()));
+            c.core().configure_root(spec_of(s, NONE, NONE, NONE));
         }
     });
 }
@@ -530,8 +587,10 @@ pub extern "C" fn kui_root(ptr: *mut KuiCtx, spec: *const KuiSpec) {
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_open(ptr: *mut KuiCtx, spec: *const KuiSpec, on_click: *mut KuiValue) -> u64 {
     guard(0, || {
-        let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else { return 0 };
-        c.core().open(spec_of(s, on_click)).0
+        let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else {
+            return 0;
+        };
+        c.core().open(spec_of(s, on_click, NONE, NONE)).0
     })
 }
 
@@ -543,8 +602,12 @@ pub extern "C" fn kui_open_keyed(
     on_click: *mut KuiValue,
 ) -> u64 {
     guard(0, || {
-        let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else { return 0 };
-        c.core().open_keyed(&kstr(label), spec_of(s, on_click)).0
+        let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else {
+            return 0;
+        };
+        c.core()
+            .open_keyed(&kstr(label), spec_of(s, on_click, NONE, NONE))
+            .0
     })
 }
 
@@ -561,8 +624,8 @@ pub extern "C" fn kui_input_preedit(
 ) {
     guard((), || {
         let text = kstr(text).into_owned();
-        let cursor = (cursor_start != u32::MAX)
-            .then_some((cursor_start as usize, cursor_end as usize));
+        let cursor =
+            (cursor_start != u32::MAX).then_some((cursor_start as usize, cursor_end as usize));
         push_input(ptr, InputEvent::Preedit(text, cursor));
     });
 }
@@ -572,7 +635,9 @@ pub extern "C" fn kui_input_preedit(
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_image_add(ptr: *mut KuiCtx, w: u32, h: u32, rgba: *const u8) -> u64 {
     guard(0, || {
-        let Some(c) = (unsafe { ctx(ptr) }) else { return 0 };
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
         if rgba.is_null() || w == 0 || h == 0 {
             return 0;
         }
@@ -596,7 +661,7 @@ pub extern "C" fn kui_image_remove(ptr: *mut KuiCtx, id: u64) {
 pub extern "C" fn kui_image(ptr: *mut KuiCtx, id: u64, spec: *const KuiSpec) {
     guard((), || {
         if let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) {
-            let spec = spec_of(s, std::ptr::null_mut());
+            let spec = spec_of(s, NONE, NONE, NONE);
             c.core().image_node(kui_core::ImageId::from_ffi(id), spec);
         }
     });
@@ -615,17 +680,49 @@ pub extern "C" fn kui_open_draggable(
     on_drag: *mut KuiValue,
 ) -> u64 {
     guard(0, || {
-        let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else { return 0 };
-        let mut spec = spec_of(s, on_click);
-        let tag = if on_drag.is_null() {
-            Value::Null
-        } else {
-            // Consumes the value.
-            unsafe { Box::from_raw(on_drag) }.0
+        let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else {
+            return 0;
         };
-        spec = spec.on_drag(tag);
+        let spec =
+            spec_of(s, on_click, NONE, NONE).on_drag(take_msg(on_drag).unwrap_or(Value::Null));
         c.core().open_keyed(&kstr(label), spec).0
     })
+}
+
+/// The general container: every message prop at once. NULL = absent (so a
+/// NULL `on_drag` here does NOT make the node draggable, unlike
+/// `kui_open_draggable`). A non-NULL `on_key` makes the node a key sink;
+/// give it focus with `kui_set_key_focus` and presses arrive as
+/// `{kind="key", code, ctrl, alt, shift, super, text, repeat, tag}`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_open_with(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    spec: *const KuiSpec,
+    on_click: *mut KuiValue,
+    on_drag: *mut KuiValue,
+    on_key: *mut KuiValue,
+) -> u64 {
+    guard(0, || {
+        let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else {
+            return 0;
+        };
+        c.core()
+            .open_keyed(&kstr(label), spec_of(s, on_click, on_drag, on_key))
+            .0
+    })
+}
+
+/// Routes the keyboard at a key-sink node (one opened with `on_key`) for
+/// this frame; 0 clears. Declare it every frame you want it, like the
+/// window title. A focused editor still wins.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_key_focus(ptr: *mut KuiCtx, key: u64) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_key_focus((key != 0).then_some(Key(key)));
+        }
+    });
 }
 
 #[unsafe(no_mangle)]
@@ -657,7 +754,9 @@ pub extern "C" fn kui_rich_text(
     base: *const KuiTextStyle,
 ) {
     guard((), || {
-        let Some(c) = (unsafe { ctx(ptr) }) else { return };
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
         if spans.is_null() || span_count == 0 {
             return;
         }
@@ -680,7 +779,9 @@ pub extern "C" fn kui_rich_text(
                 span
             })
             .collect();
-        let base = unsafe { base.as_ref() }.map(text_style_of).unwrap_or_default();
+        let base = unsafe { base.as_ref() }
+            .map(text_style_of)
+            .unwrap_or_default();
         c.core().rich_text_node(&spans, base);
     });
 }
@@ -689,19 +790,110 @@ pub extern "C" fn kui_rich_text(
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_child_key(ptr: *mut KuiCtx, label: KuiStr) -> u64 {
     guard(0, || {
-        let Some(c) = (unsafe { ctx(ptr) }) else { return 0 };
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
         c.core().child_key(&kstr(label)).0
     })
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_is_hovered(ptr: *mut KuiCtx, key: u64) -> bool {
-    guard(false, || unsafe { ctx(ptr) }.is_some_and(|c| c.core().is_hovered(Key(key))))
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().is_hovered(Key(key)))
+    })
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_is_pressed(ptr: *mut KuiCtx, key: u64) -> bool {
-    guard(false, || unsafe { ctx(ptr) }.is_some_and(|c| c.core().is_pressed(Key(key))))
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().is_pressed(Key(key)))
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Widgets: the same `kui_core::widgets` the Rust, Lua and Node frontends
+// use. Container widgets take a body callback that re-enters through the
+// same context pointer — as with kui_run's view callback, the wrapping `Ui`
+// is not touched while C runs.
+
+fn with_ui(ptr: *mut KuiCtx, f: impl FnOnce(&mut kui_core::Ui<'_>)) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            f(&mut kui_core::Ui::wrap(c.core()));
+        }
+    });
+}
+
+/// Adaptive titlebar: drag strip + standard title + window buttons, all
+/// driven by the env facts (`kui_env_set_window`).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_titlebar(ptr: *mut KuiCtx, title: KuiStr) {
+    with_ui(ptr, |ui| kui_core::widgets::titlebar(ui, &kstr(title)));
+}
+
+/// Titlebar hosting custom content (tabs, search): `body` builds it between
+/// the OS-controls inset and the window buttons.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_titlebar_with(ptr: *mut KuiCtx, body: ViewFn, user: *mut c_void) {
+    with_ui(ptr, |ui| {
+        kui_core::widgets::titlebar_with(ui, |_| body(user, ptr))
+    });
+}
+
+/// The minimize/maximize/close cluster; draws nothing when the OS provides
+/// controls, so it is always safe to call.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_window_buttons(ptr: *mut KuiCtx) {
+    with_ui(ptr, kui_core::widgets::window_buttons);
+}
+
+/// A hint floated below the enclosing node. Gate it on `kui_is_hovered` of
+/// a hoverable parent.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_tooltip(ptr: *mut KuiCtx, text: KuiStr) {
+    with_ui(ptr, |ui| kui_core::widgets::tooltip(ui, &kstr(text)));
+}
+
+/// Tooltip chrome around content built by `body`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_tooltip_with(ptr: *mut KuiCtx, body: ViewFn, user: *mut c_void) {
+    with_ui(ptr, |ui| {
+        kui_core::widgets::tooltip_with(ui, |_| body(user, ptr))
+    });
+}
+
+/// Per-phase frame-latency bars vs the display budget. Reads the runner's
+/// frame stats — renders empty chrome in a standalone (headless) context.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_latency_graph(ptr: *mut KuiCtx) {
+    with_ui(ptr, kui_core::widgets::latency_graph);
+}
+
+/// The graph in a translucent panel floating in a viewport corner picked by
+/// KUI_START/CENTER/END attach values.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_latency_hud(ptr: *mut KuiCtx, x: u32, y: u32) {
+    with_ui(ptr, |ui| {
+        kui_core::widgets::latency_hud_at(ui, align_of(x), align_of(y))
+    });
+}
+
+/// Single-line input with chrome (background, focus ring). Returns the node
+/// key; read it with `kui_edit_text`, "changed"/"submit" events carry it.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_text_input(ptr: *mut KuiCtx, label: KuiStr, initial: KuiStr) -> u64 {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        kui_core::widgets::text_input(
+            &mut kui_core::Ui::wrap(c.core()),
+            &kstr(label),
+            &kstr(initial),
+        )
+        .0
+    })
 }
 
 /// Convenience button matching `kui_core::widgets::button`. Consumes payload.
@@ -730,9 +922,15 @@ pub extern "C" fn kui_button(ptr: *mut KuiCtx, label: KuiStr, payload: *mut KuiV
         };
         c.core().open_keyed(
             &label,
-            NodeSpec::row().pad_xy(14.0, 8.0).bg(bg).radius(6.0).center().on_click(value),
+            NodeSpec::row()
+                .pad_xy(14.0, 8.0)
+                .bg(bg)
+                .radius(6.0)
+                .center()
+                .on_click(value),
         );
-        c.core().text_node(&label, TextStyle::new(15.0).color(Color::WHITE));
+        c.core()
+            .text_node(&label, TextStyle::new(15.0).color(Color::WHITE));
         c.core().close();
     });
 }
@@ -748,15 +946,21 @@ pub extern "C" fn kui_text_edit(
     spec: *const KuiSpec,
 ) -> u64 {
     guard(0, || {
-        let (Some(c), Some(sp)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else { return 0 };
+        let (Some(c), Some(sp)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else {
+            return 0;
+        };
         let opts = EditOptions {
-            style: unsafe { style.as_ref() }.map(text_style_of).unwrap_or_default(),
+            style: unsafe { style.as_ref() }
+                .map(text_style_of)
+                .unwrap_or_default(),
             multiline: flags & 1 != 0,
             autofocus: flags & 2 != 0,
             ..Default::default()
         };
-        let spec = spec_of(sp, std::ptr::null_mut());
-        c.core().text_edit(&kstr(label), &kstr(initial), &opts, spec).0
+        let spec = spec_of(sp, NONE, NONE, NONE);
+        c.core()
+            .text_edit(&kstr(label), &kstr(initial), &opts, spec)
+            .0
     })
 }
 
@@ -768,10 +972,15 @@ pub extern "C" fn kui_edit_text(ptr: *mut KuiCtx, key: u64, out: *mut KuiStr) ->
         let (Some(c), Some(out)) = (unsafe { ctx(ptr) }, unsafe { out.as_mut() }) else {
             return false;
         };
-        let Some(text) = c.core().edit_text(Key(key)) else { return false };
+        let Some(text) = c.core().edit_text(Key(key)) else {
+            return false;
+        };
         c.last_edit_text = Some(text);
         let s = c.last_edit_text.as_ref().unwrap();
-        *out = KuiStr { ptr: s.as_ptr(), len: s.len() };
+        *out = KuiStr {
+            ptr: s.as_ptr(),
+            len: s.len(),
+        };
         true
     })
 }
@@ -788,7 +997,9 @@ pub extern "C" fn kui_edit_set_text(ptr: *mut KuiCtx, key: u64, text: KuiStr) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_is_focused(ptr: *mut KuiCtx, key: u64) -> bool {
-    guard(false, || unsafe { ctx(ptr) }.is_some_and(|c| c.core().is_focused(Key(key))))
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().is_focused(Key(key)))
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -806,7 +1017,9 @@ pub extern "C" fn kui_frame_finish(ptr: *mut KuiCtx) {
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_draw_data(ptr: *mut KuiCtx, out: *mut KuiDrawData) {
     guard((), || {
-        let (Some(c), Some(out)) = (unsafe { ctx(ptr) }, unsafe { out.as_mut() }) else { return };
+        let (Some(c), Some(out)) = (unsafe { ctx(ptr) }, unsafe { out.as_mut() }) else {
+            return;
+        };
         let (dl, atlas) = c.core().output();
         *out = KuiDrawData {
             quads: dl.quads.as_ptr().cast(),
@@ -871,7 +1084,9 @@ pub extern "C" fn kui_value_map_set(map: *mut KuiValue, key: KuiStr, val: *mut K
             return;
         }
         let val = unsafe { Box::from_raw(val) };
-        let Some(map) = (unsafe { map.as_mut() }) else { return };
+        let Some(map) = (unsafe { map.as_mut() }) else {
+            return;
+        };
         if let Value::Map(entries) = &mut map.0 {
             let key = kstr(key).into_owned();
             if let Some(e) = entries.iter_mut().find(|(k, _)| *k == key) {
@@ -887,7 +1102,9 @@ pub extern "C" fn kui_value_map_set(map: *mut KuiValue, key: KuiStr, val: *mut K
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_value_get(v: *const KuiValue, key: KuiStr) -> *const KuiValue {
     guard(std::ptr::null(), || {
-        let Some(v) = (unsafe { v.as_ref() }) else { return std::ptr::null() };
+        let Some(v) = (unsafe { v.as_ref() }) else {
+            return std::ptr::null();
+        };
         match v.0.get(&kstr(key)) {
             // Value and KuiValue are layout-identical (single field).
             Some(inner) => (inner as *const Value).cast(),
@@ -921,7 +1138,10 @@ pub extern "C" fn kui_value_as_str(v: *const KuiValue, out: *mut KuiStr) -> bool
         };
         match v.0.as_str() {
             Some(s) => {
-                *out = KuiStr { ptr: s.as_ptr(), len: s.len() };
+                *out = KuiStr {
+                    ptr: s.as_ptr(),
+                    len: s.len(),
+                };
                 true
             }
             None => false,
@@ -965,7 +1185,11 @@ impl kui::App for CApp {
     fn on_event(&mut self, ev: kui::UiEvent) {
         let Some(cb) = self.on_event else { return };
         let payload = KuiValue(ev.payload);
-        let out = KuiEvent { origin: ev.origin.0, key: ev.key.0, payload: &payload };
+        let out = KuiEvent {
+            origin: ev.origin.0,
+            key: ev.key.0,
+            payload: &payload,
+        };
         cb(self.user, &out);
     }
 }
@@ -981,7 +1205,242 @@ pub extern "C" fn kui_run(
 ) -> bool {
     guard(false, || {
         let title = kstr(title).into_owned();
-        let app = CApp { user, view, on_event: Some(on_event) };
+        let app = CApp {
+            user,
+            view,
+            on_event: Some(on_event),
+        };
         kui::run(&title, app, vec![]).is_ok()
     })
+}
+
+// ---------------------------------------------------------------------------
+// Parity with the shared prop schema. `KuiSpec` has to be a static repr(C)
+// layout, so it cannot read `kui_core::schema::PROPS` at runtime the way Lua
+// and Node do — instead these tests pin it to the table: a schema row with
+// no C counterpart fails `every_schema_prop_has_a_c_counterpart`.
+
+#[cfg(test)]
+mod schema_parity {
+    use super::*;
+    use kui_core::schema::{Kind, PROPS, Parsed, PropsOut, Target, apply};
+
+    fn zeroed_spec() -> KuiSpec {
+        // Zero-initialized is the documented C default.
+        unsafe { std::mem::zeroed() }
+    }
+
+    fn zeroed_style() -> KuiTextStyle {
+        unsafe { std::mem::zeroed() }
+    }
+
+    fn msg(v: Value) -> *mut KuiValue {
+        Box::into_raw(Box::new(KuiValue(v)))
+    }
+
+    #[test]
+    fn zeroed_structs_are_the_schema_defaults() {
+        let out = PropsOut::new();
+        assert_eq!(spec_of(&zeroed_spec(), NONE, NONE, NONE), out.spec);
+        assert_eq!(text_style_of(&zeroed_style()), out.style);
+    }
+
+    /// Every `PROPS` row, applied with a sample value through the schema,
+    /// must be reproducible by setting a `KuiSpec`/`KuiTextStyle` field (or
+    /// passing a message pointer). The `match` is the C-side mapping; a new
+    /// row without an arm panics with instructions.
+    #[test]
+    fn every_schema_prop_has_a_c_counterpart() {
+        const F: f32 = 37.0;
+        const C: u32 = 0x11223344;
+        for def in PROPS {
+            let sample = match def.kind {
+                Kind::F32 => Parsed::F32(F),
+                Kind::Color => Parsed::Color(Color::hex(C)),
+                Kind::Flag => Parsed::Flag,
+                Kind::Enum(_) => Parsed::Enum(1),
+                Kind::Sizing => Parsed::Sizing(Sizing::Percent(0.5)),
+                Kind::Msg => Parsed::Msg(Value::Int(7)),
+            };
+            let mut expected = PropsOut::new();
+            apply(def, sample, &mut expected).unwrap();
+
+            let mut s = zeroed_spec();
+            let mut t = zeroed_style();
+            let (mut click, mut drag, mut key) = (NONE, NONE, NONE);
+            let pct = KuiSizing { tag: 3, value: 0.5 };
+            match def.name {
+                "width" => s.width = pct,
+                "height" => s.height = pct,
+                "minWidth" => s.min_w = F,
+                "maxWidth" => s.max_w = F,
+                "minHeight" => s.min_h = F,
+                "maxHeight" => s.max_h = F,
+                "gap" => s.gap = F,
+                "radius" => s.radius = F,
+                "mainAlign" => s.main_align = 1,
+                "crossAlign" => s.cross_align = 1,
+                "center" => (s.main_align, s.cross_align) = (1, 1),
+                "bg" => s.bg = C,
+                "hoverable" => s.hoverable = 1,
+                "window" => s.window_role = 2, // KUI_WINDOW_* = schema index + 1
+                "onClick" => click = msg(Value::Int(7)),
+                "onDrag" => drag = msg(Value::Int(7)),
+                "onKey" => key = msg(Value::Int(7)),
+                "lineHeight" => t.line_height = F,
+                "color" => t.color = C,
+                "family" => t.family = 1,
+                other => panic!(
+                    "schema prop {other:?} has no C counterpart: add a KuiSpec/KuiTextStyle \
+                     field (append-only — the struct is ABI), mirror it in include/kui.h, \
+                     apply it in spec_of/text_style_of, and map it here"
+                ),
+            }
+            match def.target() {
+                Target::Spec => assert_eq!(
+                    spec_of(&s, click, drag, key),
+                    expected.spec,
+                    "{}: C mapping disagrees with the schema",
+                    def.name
+                ),
+                Target::Style => assert_eq!(
+                    text_style_of(&t),
+                    expected.style,
+                    "{}: C mapping disagrees with the schema",
+                    def.name
+                ),
+            }
+        }
+    }
+
+    /// The hand-written composites (dir, pad, border, overflow, float) and
+    /// the whole struct at once against the Rust builder.
+    #[test]
+    fn fully_populated_spec_matches_the_rust_builder() {
+        let s = KuiSpec {
+            width: KuiSizing { tag: 1, value: 2.0 },
+            height: KuiSizing {
+                tag: 2,
+                value: 120.0,
+            },
+            min_w: 10.0,
+            max_w: 500.0,
+            min_h: 5.0,
+            max_h: 300.0,
+            dir: 1,
+            pad_l: 1.0,
+            pad_r: 2.0,
+            pad_t: 3.0,
+            pad_b: 4.0,
+            gap: 8.0,
+            main_align: 1,
+            cross_align: 2,
+            bg: 0x14161eff,
+            border_color: 0x2a2d3aff,
+            border_w: 1.0,
+            radius: 6.0,
+            overflow: 1 | 2 | 4,
+            float_mode: 2,
+            float_anchor_x: 2,
+            float_anchor_y: 2,
+            float_self_x: 2,
+            float_self_y: 2,
+            float_dx: -8.0,
+            float_dy: -8.0,
+            float_fit: 1,
+            hoverable: 1,
+            window_role: 1,
+        };
+        let expected = NodeSpec::row()
+            .width(Sizing::Grow(2.0))
+            .height(Sizing::Fixed(120.0))
+            .min_width(10.0)
+            .max_width(500.0)
+            .min_height(5.0)
+            .max_height(300.0)
+            .padding(Edges {
+                l: 1.0,
+                r: 2.0,
+                t: 3.0,
+                b: 4.0,
+            })
+            .gap(8.0)
+            .main_align(Align::Center)
+            .cross_align(Align::End)
+            .bg(Color::hex(0x14161eff))
+            .radius(6.0)
+            .border(1.0, Color::hex(0x2a2d3aff))
+            .clip()
+            .scroll_x()
+            .scroll_y()
+            .float(
+                FloatConfig::viewport()
+                    .at(Align::End, Align::End)
+                    .self_at(Align::End, Align::End)
+                    .offset(-8.0, -8.0)
+                    .fit(),
+            )
+            .hoverable()
+            .window_drag()
+            .on_click(Value::str("c"))
+            .on_drag(Value::str("d"))
+            .on_key(Value::str("k"));
+        let got = spec_of(&s, msg("c".into()), msg("d".into()), msg("k".into()));
+        assert_eq!(got, expected);
+    }
+}
+
+#[cfg(test)]
+mod widgets_headless {
+    use super::*;
+
+    fn ks(s: &str) -> KuiStr {
+        KuiStr {
+            ptr: s.as_ptr(),
+            len: s.len(),
+        }
+    }
+
+    extern "C" fn tab(_user: *mut c_void, ctx: *mut KuiCtx) {
+        let style: KuiTextStyle = unsafe { std::mem::zeroed() };
+        kui_text(ctx, ks("tab"), &style);
+    }
+
+    /// Every widget entry point builds through a standalone context, the
+    /// body callbacks re-enter through the same pointer, and the editor
+    /// created by kui_text_input reads back.
+    #[test]
+    fn widgets_build_and_draw() {
+        let ctx = kui_ctx_new();
+        assert!(!ctx.is_null());
+        kui_frame_begin(ctx, 800.0, 600.0, 1.0);
+        let root: KuiSpec = unsafe { std::mem::zeroed() };
+        kui_root(ctx, &root);
+        kui_titlebar_with(ctx, tab, std::ptr::null_mut());
+        kui_titlebar(ctx, ks("plain"));
+        kui_window_buttons(ctx);
+        kui_latency_graph(ctx);
+        kui_latency_hud(ctx, 2, 2);
+        let mut badge: KuiSpec = unsafe { std::mem::zeroed() };
+        badge.hoverable = 1;
+        kui_open(ctx, &badge, NONE);
+        kui_tooltip(ctx, ks("hint"));
+        kui_tooltip_with(ctx, tab, std::ptr::null_mut());
+        kui_close(ctx);
+        let key = kui_text_input(ctx, ks("name"), ks("init"));
+        assert_ne!(key, 0);
+        kui_frame_finish(ctx);
+
+        let mut text = KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+        assert!(kui_edit_text(ctx, key, &mut text));
+        assert_eq!(&*kstr(text), "init");
+
+        let mut draw: KuiDrawData = unsafe { std::mem::zeroed() };
+        kui_draw_data(ctx, &mut draw);
+        assert!(draw.quad_count > 20, "got {} quads", draw.quad_count);
+        kui_ctx_free(ctx);
+    }
 }

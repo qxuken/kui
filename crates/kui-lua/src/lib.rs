@@ -1,13 +1,27 @@
 //! Lua extensions for kui. A script defines `view(env)` returning a plain
 //! table tree (built with the injected `row`/`column`/`text`/`button`
 //! prelude) and optionally `on_event(ev)`. `env` carries host facts
-//! (refresh rate, focus, viewport); the root table may set `window_title`.
-//! Because the IR is data all the way down, the binding is just
-//! table-to-node conversion — no closures cross the boundary.
+//! (refresh rate, focus, viewport) and a few queries (`env.edit_text(key)`,
+//! `env.is_focused(key)`, `env.is_hovered(key)`); the root table may set
+//! `window_title`. Because the IR is data all the way down, the binding is
+//! just table-to-node conversion — no closures cross the boundary.
+//!
+//! Props come from the shared schema (`kui_core::schema`): every row is
+//! reachable from Lua under its snake_case name (`min_width`, `on_click`,
+//! `line_height`, ...), so Lua and the Node binding accept the same surface
+//! by construction. Only the composites keep Lua-flavored shapes:
+//! `pad = 8 | {l,r,t,b}`, `border = {w, color}`, `scroll`/`scroll_x`/
+//! `scroll_y`/`clip` booleans, `float = "below" | {anchor, at, self_at, dx,
+//! dy, fit}`, sizing `{pct = 50} | {grow = 2}`, and `tooltip = "hint"` on a
+//! container (hover-gated).
+//!
+//! Events arrive as their payload table plus `node_key` (the emitting
+//! node's key as an integer), which is what `env.edit_text` takes.
 
+use kui_core::schema::{self, Kind, Parsed, PropsOut};
 use kui_core::{
-    Align, Color, Edges, Extension, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value,
-    WindowButton, widgets,
+    Align, Color, Edges, EditOptions, Extension, FloatConfig, Key, Sizing, Span, Ui, UiEvent,
+    Value, widgets,
 };
 use mlua::{Lua, Table};
 
@@ -48,8 +62,17 @@ impl Extension for LuaExtension {
             .globals()
             .get("view")
             .map_err(|_| "script defines no view()".to_string())?;
-        let env = env_table(&self.lua, ui).map_err(|e| format!("env: {e}"))?;
-        let root: Table = view.call(env).map_err(|e| format!("view(): {e}"))?;
+        // The env's query functions borrow the frame for the duration of
+        // view(); the returned table outlives the scope, the borrow does not.
+        let root: Table = {
+            let frame: &Ui<'_> = &*ui;
+            self.lua
+                .scope(|scope| {
+                    let env = env_table(&self.lua, scope, frame)?;
+                    view.call(env)
+                })
+                .map_err(|e| format!("view(): {e}"))?
+        };
         // The root table may declare host state alongside the tree.
         if let Ok(Some(title)) = root.get::<Option<String>>("window_title") {
             ui.window_title(&title);
@@ -61,7 +84,17 @@ impl Extension for LuaExtension {
         let Ok(f) = self.lua.globals().get::<mlua::Function>("on_event") else {
             return;
         };
-        let payload = value_to_lua(&self.lua, &ev.payload);
+        let payload = value_to_lua(&self.lua, &ev.payload).and_then(|p| {
+            // Map payloads learn which node emitted them; edit widgets emit
+            // {kind="changed"|"submit"} and scripts read the text back with
+            // env.edit_text(ev.node_key).
+            if let mlua::Value::Table(t) = &p
+                && !t.contains_key("node_key")?
+            {
+                t.set("node_key", ev.key.0 as i64)?;
+            }
+            Ok(p)
+        });
         if let Err(e) = payload.and_then(|p| f.call::<()>(p)) {
             eprintln!("kui-lua: '{}' on_event error: {e}", self.name);
         }
@@ -69,8 +102,14 @@ impl Extension for LuaExtension {
 }
 
 /// Host facts handed to `view(env)`: `refresh_hz` (nil if unknown),
-/// `frame_budget_ms`, `focused`, `viewport_w`/`viewport_h` (logical px).
-fn env_table(lua: &Lua, ui: &Ui<'_>) -> mlua::Result<Table> {
+/// `frame_budget_ms`, `focused`, `viewport_w`/`viewport_h` (logical px),
+/// `window` chrome facts, and the queries `edit_text(key)`,
+/// `is_focused(key)`, `is_hovered(key)` (keys are the integers events carry).
+fn env_table<'scope, 'env: 'scope>(
+    lua: &Lua,
+    scope: &'scope mlua::Scope<'scope, 'env>,
+    ui: &'env Ui<'_>,
+) -> mlua::Result<Table> {
     let env = ui.env();
     let t = lua.create_table()?;
     if let Some(hz) = env.refresh_hz {
@@ -92,38 +131,100 @@ fn env_table(lua: &Lua, ui: &Ui<'_>) -> mlua::Result<Table> {
         wt.set("controls_h", r.y + r.h)?;
     }
     t.set("window", wt)?;
+    t.set(
+        "edit_text",
+        scope.create_function(move |_, key: i64| Ok(ui.edit_text(Key(key as u64))))?,
+    )?;
+    t.set(
+        "is_focused",
+        scope.create_function(move |_, key: i64| Ok(ui.is_focused(Key(key as u64))))?,
+    )?;
+    t.set(
+        "is_hovered",
+        scope.create_function(move |_, key: i64| Ok(ui.is_hovered(Key(key as u64))))?,
+    )?;
     Ok(t)
 }
 
 // ---------------------------------------------------------------------------
 // Table tree -> IR
 
+fn bad(msg: impl std::fmt::Display) -> mlua::Error {
+    mlua::Error::runtime(msg.to_string())
+}
+
+fn build_children(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
+    for child in t.sequence_values::<Table>() {
+        build_node(ui, &child?)?;
+    }
+    Ok(())
+}
+
+/// Builds `t`'s children inside a widget's content closure, carrying the
+/// first error out (widget closures can't return one).
+fn with_children(
+    ui: &mut Ui<'_>,
+    t: &Table,
+    widget: impl FnOnce(&mut Ui<'_>, &mut dyn FnMut(&mut Ui<'_>)),
+) -> mlua::Result<()> {
+    let mut result = Ok(());
+    widget(ui, &mut |ui| result = build_children(ui, t));
+    result
+}
+
 fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     let ty: String = t.get("type")?;
     match ty.as_str() {
         "row" | "column" => {
-            let spec = parse_spec(t, ty == "row")?;
-            ui.open(spec);
-            for child in t.sequence_values::<Table>() {
-                build_node(ui, &child?)?;
+            let p = parse_props(t, ty == "row")?;
+            let key = match &p.key {
+                Some(label) => ui.open_keyed(label, p.spec),
+                None => ui.open(p.spec),
+            };
+            if p.key_focus {
+                ui.take_key_focus(key);
+            }
+            build_children(ui, t)?;
+            if let Some(hint) = &p.tooltip
+                && ui.is_hovered(key)
+            {
+                widgets::tooltip(ui, hint);
             }
             ui.close();
             Ok(())
         }
         "text" => {
-            let value: String = t.get("value")?;
-            let mut style = TextStyle::new(t.get::<Option<f32>>("size")?.unwrap_or(16.0));
-            if let Some(c) = t.get::<Option<u32>>("color")? {
-                style = style.color(Color::hex(c));
+            let style = parse_props(t, false)?.style;
+            if let Some(spans) = t.get::<Option<Table>>("spans")? {
+                let parts = collect_spans(&spans)?;
+                let spans: Vec<Span<'_>> = parts
+                    .iter()
+                    .map(|p| {
+                        let mut s = Span::new(&p.text);
+                        if p.bold {
+                            s = s.bold();
+                        }
+                        if p.italic {
+                            s = s.italic();
+                        }
+                        if let Some(c) = p.color {
+                            s = s.color(c);
+                        }
+                        s
+                    })
+                    .collect();
+                ui.rich_text(&spans, style);
+            } else {
+                let value: String = t.get("value")?;
+                ui.text(&value, style);
             }
-            ui.text(&value, style);
             Ok(())
         }
         "image" => {
             // Handle from the host (kui_image_add / Resources::add_image),
             // passed to scripts as a plain integer.
             let id: i64 = t.get("id")?;
-            let spec = parse_spec(t, false)?;
+            let spec = parse_props(t, false)?.spec;
             ui.image(kui_core::ImageId::from_ffi(id as u64), spec);
             Ok(())
         }
@@ -133,9 +234,55 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             widgets::text_input(ui, &label, &initial);
             Ok(())
         }
+        "edit" => {
+            let p = parse_props(t, false)?;
+            let label = match p.key.clone().or(t.get::<Option<String>>("label")?) {
+                Some(l) => l,
+                None => return Err(bad("edit needs a key (state is retained by key)")),
+            };
+            let initial: String = t.get::<Option<String>>("initial")?.unwrap_or_default();
+            let opts = EditOptions {
+                style: p.style,
+                multiline: t.get::<Option<bool>>("multiline")?.unwrap_or(false),
+                autofocus: t.get::<Option<bool>>("autofocus")?.unwrap_or(false),
+                ..Default::default()
+            };
+            ui.text_edit(&label, &initial, &opts, p.spec);
+            Ok(())
+        }
         "titlebar" => {
-            let title: String = t.get::<Option<String>>("title")?.unwrap_or_default();
-            widgets::titlebar(ui, &title);
+            if t.raw_len() > 0 {
+                with_children(ui, t, |ui, body| widgets::titlebar_with(ui, body))
+            } else {
+                let title: String = t.get::<Option<String>>("title")?.unwrap_or_default();
+                widgets::titlebar(ui, &title);
+                Ok(())
+            }
+        }
+        "window_buttons" => {
+            widgets::window_buttons(ui);
+            Ok(())
+        }
+        "tooltip" => {
+            if t.raw_len() > 0 {
+                with_children(ui, t, |ui, body| widgets::tooltip_with(ui, body))
+            } else {
+                let value: String = t.get("value")?;
+                widgets::tooltip(ui, &value);
+                Ok(())
+            }
+        }
+        "latency_graph" => {
+            widgets::latency_graph(ui);
+            Ok(())
+        }
+        "latency_hud" => {
+            let (mut x, mut y) = (Align::End, Align::End);
+            if let Some(at) = t.get::<Option<Table>>("at")? {
+                x = parse_align(&at.get::<String>(1)?)?;
+                y = parse_align(&at.get::<String>(2)?)?;
+            }
+            widgets::latency_hud_at(ui, x, y);
             Ok(())
         }
         "button" => {
@@ -151,135 +298,189 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     }
 }
 
-fn parse_spec(t: &Table, is_row: bool) -> mlua::Result<NodeSpec> {
-    let mut spec = if is_row {
-        NodeSpec::row()
-    } else {
-        NodeSpec::column()
-    };
-    if let Some(s) = t.get::<Option<mlua::Value>>("width")? {
-        spec = spec.width(parse_sizing(&s)?);
-    }
-    if let Some(s) = t.get::<Option<mlua::Value>>("height")? {
-        spec = spec.height(parse_sizing(&s)?);
-    }
-    if let Some(v) = t.get::<Option<f32>>("min_width")? {
-        spec = spec.min_width(v);
-    }
-    if let Some(v) = t.get::<Option<f32>>("max_width")? {
-        spec = spec.max_width(v);
-    }
-    if let Some(v) = t.get::<Option<f32>>("min_height")? {
-        spec = spec.min_height(v);
-    }
-    if let Some(v) = t.get::<Option<f32>>("max_height")? {
-        spec = spec.max_height(v);
-    }
-    if let Some(p) = t.get::<Option<mlua::Value>>("pad")? {
-        spec = spec.padding(parse_edges(&p)?);
-    }
-    if let Some(g) = t.get::<Option<f32>>("gap")? {
-        spec = spec.gap(g);
-    }
-    if let Some(c) = t.get::<Option<u32>>("bg")? {
-        spec = spec.bg(Color::hex(c));
-    }
-    if let Some(r) = t.get::<Option<f32>>("radius")? {
-        spec = spec.radius(r);
-    }
-    if let Some(b) = t.get::<Option<Table>>("border")? {
-        let w: f32 = b.get("w")?;
-        let c: u32 = b.get("color")?;
-        spec = spec.border(w, Color::hex(c));
-    }
-    if let Some(a) = t.get::<Option<String>>("main_align")? {
-        spec = spec.main_align(parse_align(&a)?);
-    }
-    if let Some(a) = t.get::<Option<String>>("cross_align")? {
-        spec = spec.cross_align(parse_align(&a)?);
-    }
-    if t.get::<Option<bool>>("hoverable")?.unwrap_or(false) {
-        spec = spec.hoverable();
-    }
-    if let Some(v) = t.get::<Option<mlua::Value>>("on_click")? {
-        spec = spec.on_click(lua_to_value(&v)?);
-    }
-    if let Some(v) = t.get::<Option<mlua::Value>>("on_key")? {
-        spec = spec.on_key(lua_to_value(&v)?);
-    }
-    if let Some(v) = t.get::<Option<mlua::Value>>("on_drag")? {
-        spec = spec.on_drag(lua_to_value(&v)?);
-    }
-    if t.get::<Option<bool>>("clip")?.unwrap_or(false) {
-        spec = spec.clip();
-    }
-    if t.get::<Option<bool>>("scroll")?.unwrap_or(false) {
-        spec = spec.scroll_y();
-    }
-    if t.get::<Option<bool>>("scroll_x")?.unwrap_or(false) {
-        spec = spec.scroll_x();
-    }
-    if let Some(role) = t.get::<Option<String>>("window")? {
-        spec = match role.as_str() {
-            "drag" => spec.window_drag(),
-            "close" => spec.window_button(WindowButton::Close),
-            "minimize" => spec.window_button(WindowButton::Minimize),
-            "maximize" => spec.window_button(WindowButton::Maximize),
+struct SpanPart {
+    text: String,
+    bold: bool,
+    italic: bool,
+    color: Option<Color>,
+}
+
+/// `{ "plain", { "styled", bold = true, italic = true, color = 0x.. }, ... }`
+fn collect_spans(spans: &Table) -> mlua::Result<Vec<SpanPart>> {
+    let mut out = Vec::new();
+    for item in spans.sequence_values::<mlua::Value>() {
+        match item? {
+            mlua::Value::String(s) => out.push(SpanPart {
+                text: s.to_str()?.to_string(),
+                bold: false,
+                italic: false,
+                color: None,
+            }),
+            mlua::Value::Table(t) => {
+                let text: String = t
+                    .get::<Option<String>>(1)?
+                    .ok_or_else(|| bad("span table needs its text at [1]"))?;
+                let color = match t.get::<mlua::Value>("color")? {
+                    mlua::Value::Nil => None,
+                    v => Some(parse_color(&v)?),
+                };
+                out.push(SpanPart {
+                    text,
+                    bold: t.get::<Option<bool>>("bold")?.unwrap_or(false),
+                    italic: t.get::<Option<bool>>("italic")?.unwrap_or(false),
+                    color,
+                });
+            }
             other => {
-                return Err(mlua::Error::runtime(format!(
-                    "unknown window role '{other}'"
+                return Err(bad(format!(
+                    "span must be a string or table, got {}",
+                    other.type_name()
                 )));
             }
-        };
+        }
     }
-    if let Some(f) = t.get::<Option<Table>>("float")? {
-        let mut cfg = match f.get::<Option<String>>("anchor")?.as_deref() {
-            Some("viewport") => FloatConfig::viewport(),
-            _ => FloatConfig::parent(),
-        };
-        if let Some(at) = f.get::<Option<Table>>("at")? {
-            cfg = cfg.at(
-                parse_align(&at.get::<String>(1)?)?,
-                parse_align(&at.get::<String>(2)?)?,
-            );
-        }
-        if let Some(at) = f.get::<Option<Table>>("self_at")? {
-            cfg = cfg.self_at(
-                parse_align(&at.get::<String>(1)?)?,
-                parse_align(&at.get::<String>(2)?)?,
-            );
-        }
-        cfg = cfg.offset(
-            f.get::<Option<f32>>("dx")?.unwrap_or(0.0),
-            f.get::<Option<f32>>("dy")?.unwrap_or(0.0),
-        );
-        if f.get::<Option<bool>>("fit")?.unwrap_or(false) {
-            cfg = cfg.fit();
-        }
-        spec = spec.float(cfg);
+    Ok(out)
+}
+
+/// Table → props. Constructor-order specials first (`dir` from the node
+/// type, `size` before any style prop), then the Lua-shaped composites,
+/// then every schema row by its snake_case name. Unknown keys (`type`,
+/// `value`, `label`, children) fall through.
+pub fn parse_props(t: &Table, is_row: bool) -> mlua::Result<PropsOut> {
+    let mut out = PropsOut::new();
+    if is_row {
+        out.spec = kui_core::NodeSpec::row();
     }
-    Ok(spec)
+    if let Some(size) = t.get::<Option<f32>>("size")? {
+        out.style = kui_core::TextStyle::new(size);
+    }
+    for pair in t.pairs::<mlua::Value, mlua::Value>() {
+        let (k, v) = pair?;
+        let mlua::Value::String(k) = k else { continue };
+        let k = k.to_str()?;
+        match k.as_ref() {
+            "size" => {}
+            "pad" => {
+                let e = parse_edges(&v)?;
+                out.with_spec(|s| s.padding(e));
+            }
+            "border" => {
+                let b = match v {
+                    mlua::Value::Table(b) => b,
+                    _ => return Err(bad("border must be a table {w=, color=}")),
+                };
+                let w: f32 = b.get("w")?;
+                let c = parse_color(&b.get::<mlua::Value>("color")?)?;
+                out.with_spec(|s| s.border(w, c));
+            }
+            "clip" => {
+                if truthy(&v) {
+                    out.with_spec(kui_core::NodeSpec::clip);
+                }
+            }
+            "scroll_x" => {
+                if truthy(&v) {
+                    out.with_spec(kui_core::NodeSpec::scroll_x);
+                }
+            }
+            "scroll" | "scroll_y" => {
+                if truthy(&v) {
+                    out.with_spec(kui_core::NodeSpec::scroll_y);
+                }
+            }
+            "float" => {
+                let cfg = parse_float(&v)?;
+                out.with_spec(|s| s.float(cfg));
+            }
+            "key_focus" => out.key_focus = truthy(&v),
+            "key" => {
+                let mlua::Value::String(s) = &v else {
+                    return Err(bad("key must be a string"));
+                };
+                out.key = Some(s.to_str()?.to_string());
+            }
+            "tooltip" => {
+                let mlua::Value::String(s) = &v else {
+                    return Err(bad("tooltip must be a string"));
+                };
+                out.tooltip = Some(s.to_str()?.to_string());
+                out.with_spec(kui_core::NodeSpec::hoverable);
+            }
+            name => {
+                let Some(def) = schema::by_snake_name(name) else {
+                    continue;
+                };
+                if let Some(parsed) =
+                    parse_value(&def.kind, &v).map_err(|e| bad(format!("{name}: {e}")))?
+                {
+                    schema::apply(def, parsed, &mut out).map_err(bad)?;
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn truthy(v: &mlua::Value) -> bool {
+    matches!(v, mlua::Value::Boolean(true))
+}
+
+fn number(v: &mlua::Value) -> Option<f32> {
+    match v {
+        mlua::Value::Number(n) => Some(*n as f32),
+        mlua::Value::Integer(n) => Some(*n as f32),
+        _ => None,
+    }
+}
+
+/// One schema value from Lua, by kind. `None` = absent (a false flag).
+fn parse_value(kind: &Kind, v: &mlua::Value) -> mlua::Result<Option<Parsed>> {
+    Ok(Some(match kind {
+        Kind::F32 => Parsed::F32(number(v).ok_or_else(|| bad("expected a number"))?),
+        Kind::Color => Parsed::Color(parse_color(v)?),
+        Kind::Flag => {
+            if truthy(v) {
+                Parsed::Flag
+            } else {
+                return Ok(None);
+            }
+        }
+        Kind::Enum(names) => {
+            let mlua::Value::String(s) = v else {
+                return Err(bad(format!("expected one of {names:?}")));
+            };
+            Parsed::Enum(schema::enum_index(names, &s.to_str()?).map_err(bad)?)
+        }
+        Kind::Sizing => Parsed::Sizing(parse_sizing(v)?),
+        Kind::Msg => Parsed::Msg(lua_to_value(v)?),
+    }))
+}
+
+/// `0xRRGGBBAA` integers or `"#hex"` strings.
+fn parse_color(v: &mlua::Value) -> mlua::Result<Color> {
+    match v {
+        mlua::Value::Integer(n) => Ok(schema::color_num(*n as u32)),
+        mlua::Value::Number(n) => Ok(schema::color_num(*n as u32)),
+        mlua::Value::String(s) => schema::color_hex_str(&s.to_str()?).map_err(bad),
+        _ => Err(bad("color must be a 0xRRGGBBAA integer or \"#hex\" string")),
+    }
 }
 
 fn parse_sizing(v: &mlua::Value) -> mlua::Result<Sizing> {
     match v {
         mlua::Value::Number(n) => Ok(Sizing::Fixed(*n as f32)),
         mlua::Value::Integer(n) => Ok(Sizing::Fixed(*n as f32)),
-        mlua::Value::String(s) => match s.to_str()?.as_ref() {
-            "grow" => Ok(Sizing::Grow(1.0)),
-            "fit" => Ok(Sizing::Fit),
-            other => Err(mlua::Error::runtime(format!("unknown sizing '{other}'"))),
-        },
+        mlua::Value::String(s) => schema::sizing_str(&s.to_str()?).map_err(bad),
         mlua::Value::Table(t) => {
             if let Some(p) = t.get::<Option<f32>>("pct")? {
                 Ok(Sizing::Percent(p / 100.0))
             } else if let Some(f) = t.get::<Option<f32>>("grow")? {
                 Ok(Sizing::Grow(f))
             } else {
-                Err(mlua::Error::runtime("sizing table needs pct or grow"))
+                Err(bad("sizing table needs pct or grow"))
             }
         }
-        _ => Err(mlua::Error::runtime("invalid sizing value")),
+        _ => Err(bad("invalid sizing value")),
     }
 }
 
@@ -293,17 +494,54 @@ fn parse_edges(v: &mlua::Value) -> mlua::Result<Edges> {
             t: t.get::<Option<f32>>("t")?.unwrap_or(0.0),
             b: t.get::<Option<f32>>("b")?.unwrap_or(0.0),
         }),
-        _ => Err(mlua::Error::runtime("invalid padding value")),
+        _ => Err(bad("invalid padding value")),
     }
 }
 
 fn parse_align(s: &str) -> mlua::Result<Align> {
-    match s {
-        "start" => Ok(Align::Start),
-        "center" => Ok(Align::Center),
-        "end" => Ok(Align::End),
-        other => Err(mlua::Error::runtime(format!("unknown align '{other}'"))),
+    schema::enum_index(schema::ALIGNS, s)
+        .map(schema::align_idx)
+        .map_err(bad)
+}
+
+fn parse_float(v: &mlua::Value) -> mlua::Result<FloatConfig> {
+    let f = match v {
+        mlua::Value::String(s) => {
+            return match s.to_str()?.as_ref() {
+                "below" => Ok(FloatConfig::below()),
+                "above" => Ok(FloatConfig::above()),
+                "parent" => Ok(FloatConfig::parent()),
+                "viewport" => Ok(FloatConfig::viewport()),
+                other => Err(bad(format!("bad float '{other}'"))),
+            };
+        }
+        mlua::Value::Table(f) => f,
+        _ => return Err(bad("float must be a preset string or a table")),
+    };
+    let mut cfg = match f.get::<Option<String>>("anchor")?.as_deref() {
+        Some("viewport") => FloatConfig::viewport(),
+        _ => FloatConfig::parent(),
+    };
+    if let Some(at) = f.get::<Option<Table>>("at")? {
+        cfg = cfg.at(
+            parse_align(&at.get::<String>(1)?)?,
+            parse_align(&at.get::<String>(2)?)?,
+        );
     }
+    if let Some(at) = f.get::<Option<Table>>("self_at")? {
+        cfg = cfg.self_at(
+            parse_align(&at.get::<String>(1)?)?,
+            parse_align(&at.get::<String>(2)?)?,
+        );
+    }
+    cfg = cfg.offset(
+        f.get::<Option<f32>>("dx")?.unwrap_or(0.0),
+        f.get::<Option<f32>>("dy")?.unwrap_or(0.0),
+    );
+    if f.get::<Option<bool>>("fit")?.unwrap_or(false) {
+        cfg = cfg.fit();
+    }
+    Ok(cfg)
 }
 
 // ---------------------------------------------------------------------------
@@ -369,6 +607,9 @@ pub fn value_to_lua(lua: &Lua, v: &Value) -> mlua::Result<mlua::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kui_core::{
+        Core, FontFamily, InputEvent, NodeSpec, OriginId, Size, TextStyle, Vec2, WindowButton,
+    };
 
     #[test]
     fn value_round_trips_through_lua() {
@@ -393,6 +634,111 @@ mod tests {
         }
     }
 
+    fn eval_table(lua: &Lua, src: &str) -> Table {
+        lua.load(src).eval().unwrap()
+    }
+
+    /// The whole schema surface from a Lua table equals the Rust builder.
+    #[test]
+    fn schema_props_match_the_rust_builder() {
+        let lua = Lua::new();
+        let t = eval_table(
+            &lua,
+            r##"{
+                width = "grow", height = {pct = 50},
+                min_width = 10, max_width = 500, min_height = 5, max_height = 300,
+                pad = {l = 1, r = 2, t = 3, b = 4}, gap = 8,
+                main_align = "center", cross_align = "end", center = false,
+                bg = "#14161e", radius = 6, border = {w = 1, color = 0x2a2d3aff},
+                clip = true, scroll = true, scroll_x = true,
+                float = {anchor = "viewport", at = {"end", "end"}, self_at = {"end", "end"},
+                         dx = -8, dy = -8, fit = true},
+                hoverable = true, window = "close",
+                on_click = {kind = "hit"}, on_drag = "d", on_key = 7,
+                key = "panel", key_focus = true,
+            }"##,
+        );
+        let p = parse_props(&t, true).unwrap();
+        let expected = NodeSpec::row()
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Percent(0.5))
+            .min_width(10.0)
+            .max_width(500.0)
+            .min_height(5.0)
+            .max_height(300.0)
+            .padding(Edges {
+                l: 1.0,
+                r: 2.0,
+                t: 3.0,
+                b: 4.0,
+            })
+            .gap(8.0)
+            .main_align(Align::Center)
+            .cross_align(Align::End)
+            .bg(Color::hex(0x14161eff))
+            .radius(6.0)
+            .border(1.0, Color::hex(0x2a2d3aff))
+            .clip()
+            .scroll_y()
+            .scroll_x()
+            .float(
+                FloatConfig::viewport()
+                    .at(Align::End, Align::End)
+                    .self_at(Align::End, Align::End)
+                    .offset(-8.0, -8.0)
+                    .fit(),
+            )
+            .hoverable()
+            .window_button(WindowButton::Close)
+            .on_click(Value::map([("kind", "hit".into())]))
+            .on_drag("d")
+            .on_key(Value::Int(7));
+        assert_eq!(p.spec, expected);
+        assert_eq!(p.key.as_deref(), Some("panel"));
+        assert!(p.key_focus);
+    }
+
+    #[test]
+    fn text_style_props_match_the_rust_builder() {
+        let lua = Lua::new();
+        let t = eval_table(
+            &lua,
+            r#"{ size = 20, line_height = 30, color = 0x73d98cff, family = "mono" }"#,
+        );
+        let style = parse_props(&t, false).unwrap().style;
+        assert_eq!(
+            style,
+            TextStyle::new(20.0)
+                .line_height(30.0)
+                .color(Color::hex(0x73d98cff))
+                .family(FontFamily::Mono)
+        );
+        // `size` is applied first regardless of table iteration order, so a
+        // color set alongside it survives the TextStyle::new reset.
+        let t = eval_table(&lua, r##"{ color = "#fff", size = 12 }"##);
+        assert_eq!(
+            parse_props(&t, false).unwrap().style,
+            TextStyle::new(12.0).color(Color::hex(0xffffffff))
+        );
+    }
+
+    #[test]
+    fn bad_values_name_the_prop() {
+        let lua = Lua::new();
+        let t = eval_table(&lua, r#"{ main_align = "middle" }"#);
+        let e = parse_props(&t, false).unwrap_err().to_string();
+        assert!(e.contains("main_align"), "{e}");
+        assert!(e.contains("middle"), "{e}");
+    }
+
+    fn frame(core: &mut Core, ext: &mut LuaExtension) -> usize {
+        let mut ui = core.frame(Size::new(800.0, 600.0), 1.0);
+        ui.set_origin(OriginId(1));
+        ext.view(&mut ui).unwrap();
+        ui.finish();
+        core.output().0.quads.len()
+    }
+
     #[test]
     fn script_view_builds_ir_nodes() {
         let mut ext = LuaExtension::from_source(
@@ -412,34 +758,127 @@ mod tests {
         )
         .unwrap();
 
-        let mut core = kui_core::Core::new();
-        let mut ui = core.frame(kui_core::Size::new(800.0, 600.0), 1.0);
-        ui.set_origin(kui_core::OriginId(1));
-        ext.view(&mut ui).unwrap();
-        ui.finish();
-        let (dl, _) = core.output();
+        let mut core = Core::new();
+        let quads = frame(&mut core, &mut ext);
         // Panel bg + button bg + glyphs for two strings.
-        assert!(
-            dl.quads.len() > 10,
-            "expected panel/button/glyph quads, got {}",
-            dl.quads.len()
-        );
+        assert!(quads > 10, "expected panel/button/glyph quads, got {quads}");
 
         // Events round-trip into Lua state.
         ext.on_event(&UiEvent {
-            origin: kui_core::OriginId(1),
-            key: kui_core::Key::ROOT,
+            origin: OriginId(1),
+            key: Key::ROOT,
             payload: Value::map([("kind", "bump".into())]),
         });
         let count: i64 = ext.lua.globals().get("count").unwrap();
         assert_eq!(count, 42);
     }
 
+    /// Every node type the prelude offers lowers without error and draws.
+    #[test]
+    fn every_node_type_lowers() {
+        let mut ext = LuaExtension::from_source(
+            "all",
+            r##"
+                function view(env)
+                  return column { gap = 4, window_title = "all nodes",
+                    titlebar { text("custom title"), window_buttons() },
+                    titlebar { title = "plain title" },
+                    text({ "same IR as ", { "Rust", bold = true, color = "#73d98c" },
+                           { " — flatter", italic = true } }, { size = 13 }),
+                    edit { key = "note", initial = "hello", size = 14, width = 200,
+                           multiline = true },
+                    input { label = "name", initial = "" },
+                    row { tooltip = "hover hint", pad = 4, text("badge") },
+                    row { hoverable = true, text("legend"), tooltip("always shown") },
+                    row { text("rich tip"), tooltip { text("a"), text("b") } },
+                    latency_graph(),
+                    latency_hud { at = { "start", "end" } },
+                    button { label = "ok", on_click = "ok" },
+                  }
+                end
+            "##,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let quads = frame(&mut core, &mut ext);
+        assert!(quads > 60, "got {quads} quads");
+        assert_eq!(core.window_title(), Some("all nodes"));
+    }
+
+    /// `tooltip = "hint"` on a container makes it hoverable and floats the
+    /// hint only while the cursor is over it.
+    #[test]
+    fn tooltip_prop_is_hover_gated() {
+        let mut ext = LuaExtension::from_source(
+            "tip",
+            r#"
+                function view(env)
+                  return column { pad = 10,
+                    row { width = 100, height = 40, bg = 0x333333ff, tooltip = "a long hint" },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let idle = frame(&mut core, &mut ext);
+        core.handle_input(InputEvent::CursorMoved(Vec2::new(50.0, 30.0)));
+        let hovered = frame(&mut core, &mut ext);
+        assert!(
+            hovered > idle + 5,
+            "hover should add the tooltip's quads ({idle} -> {hovered})"
+        );
+        core.handle_input(InputEvent::CursorLeft);
+        assert_eq!(frame(&mut core, &mut ext), idle);
+    }
+
+    /// Editors: autofocus, typing produces a "changed" event carrying the
+    /// node key, and `env.edit_text(key)` reads the buffer back next frame.
+    #[test]
+    fn edit_text_round_trips_through_events() {
+        let mut ext = LuaExtension::from_source(
+            "edit",
+            r#"
+                pending = nil
+                seen = nil
+                function view(env)
+                  if pending then seen = env.edit_text(pending) end
+                  return column {
+                    edit { key = "note", initial = "hi", autofocus = true, width = 200 },
+                  }
+                end
+                function on_event(ev)
+                  if ev.kind == "changed" then pending = ev.node_key end
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let events = core.handle_input(InputEvent::Text("!".into()));
+        assert_eq!(
+            events.len(),
+            1,
+            "typing into the autofocused editor emits one event"
+        );
+        assert_eq!(
+            events[0].payload.get("kind").and_then(Value::as_str),
+            Some("changed")
+        );
+        for ev in &events {
+            ext.on_event(ev);
+        }
+        frame(&mut core, &mut ext);
+        // Autofocus places the caret at the start of the initial text.
+        let seen: Option<String> = ext.lua.globals().get("seen").unwrap();
+        assert_eq!(seen.as_deref(), Some("!hi"));
+    }
+
     #[test]
     fn bad_script_reports_error_not_panic() {
         let mut ext = LuaExtension::from_source("bad", "function view() return 5 end").unwrap();
-        let mut core = kui_core::Core::new();
-        let mut ui = core.frame(kui_core::Size::new(100.0, 100.0), 1.0);
+        let mut core = Core::new();
+        let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
         assert!(ext.view(&mut ui).is_err());
     }
 }
