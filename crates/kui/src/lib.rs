@@ -317,7 +317,16 @@ impl<A: App> Shell<A> {
             super_key: self.modifiers.super_key(),
         };
         let plain = !kmods.ctrl && !kmods.alt && !kmods.super_key;
-        let (code, ktext) = match &event.logical_key {
+        // With Alt held the logical key is the composed character on some
+        // layouts (macOS ⌥o → "ø"); chords want the layout key, so report
+        // the modifier-stripped one instead.
+        let logical = if kmods.alt {
+            use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
+            event.key_without_modifiers()
+        } else {
+            event.logical_key.clone()
+        };
+        let (code, ktext) = match &logical {
             WinitKey::Character(s) => (
                 KeyCode::Char(s.chars().next().unwrap_or('\u{fffd}')),
                 plain.then(|| s.to_string()),
