@@ -105,6 +105,11 @@ impl Launcher {
             modifiers: ModifiersState::empty(),
             clipboard: arboard::Clipboard::new().ok(),
             last_titlebar_press: None,
+            cursor: Vec2::ZERO,
+            last_click: None,
+            blink_visible: true,
+            blink_deadline: None,
+            caret_stamp_seen: 0,
             resize_edge: None,
             exit_requested: false,
             #[cfg(target_os = "windows")]
@@ -133,6 +138,12 @@ const MACOS_TRAFFIC_LIGHTS: Rect = Rect { x: 0.0, y: 0.0, w: 78.0, h: 28.0 };
 const RESIZE_BAND: f32 = 6.0;
 /// A second titlebar press within this window toggles maximize.
 const DOUBLE_CLICK_MS: u128 = 350;
+/// Presses within this window (and `MULTI_CLICK_SLOP` px) count up the
+/// multi-click sent with `InputEvent::MouseDown` (double = word select).
+const MULTI_CLICK_MS: u128 = 400;
+const MULTI_CLICK_SLOP: f32 = 4.0;
+/// Caret blink half-period while an edit widget is focused.
+const BLINK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
 
 struct Shell<A: App> {
     title: String,
@@ -150,6 +161,15 @@ struct Shell<A: App> {
     clipboard: Option<arboard::Clipboard>,
     /// Time of the last titlebar press, for double-click maximize.
     last_titlebar_press: Option<std::time::Instant>,
+    /// Last cursor position (logical px), for multi-click distance checks.
+    cursor: Vec2,
+    /// Last primary press: time, position, and its click count.
+    last_click: Option<(std::time::Instant, Vec2, u8)>,
+    /// Caret blink phase mirror + next toggle time; the clock lives here,
+    /// the core only stores the visible flag.
+    blink_visible: bool,
+    blink_deadline: Option<std::time::Instant>,
+    caret_stamp_seen: u64,
     /// Resize edge currently under the cursor (undecorated windows only).
     resize_edge: Option<ResizeDirection>,
     /// Set by `WindowCommand::Close`; honored at the end of the event.
@@ -605,6 +625,7 @@ impl<A: App> ApplicationHandler for Shell<A> {
                 if self.synthesizes_resize() {
                     self.update_resize_cursor(p);
                 }
+                self.cursor = p;
                 self.dispatch(InputEvent::CursorMoved(p));
             }
             WindowEvent::CursorLeft { .. } => self.dispatch(InputEvent::CursorLeft),
@@ -639,10 +660,26 @@ impl<A: App> ApplicationHandler for Shell<A> {
                     let _ = w.drag_resize_window(dir);
                     return;
                 }
-                self.dispatch(match state {
-                    ElementState::Pressed => InputEvent::MouseDown,
+                let ev = match state {
+                    ElementState::Pressed => {
+                        let now = std::time::Instant::now();
+                        let clicks = match self.last_click {
+                            Some((t, p, n))
+                                if now.duration_since(t).as_millis() < MULTI_CLICK_MS
+                                    && (p.x - self.cursor.x).abs() < MULTI_CLICK_SLOP
+                                    && (p.y - self.cursor.y).abs() < MULTI_CLICK_SLOP =>
+                            {
+                                // Cycle 1 → 2 → 3 → 1 like most editors.
+                                n % 3 + 1
+                            }
+                            _ => 1,
+                        };
+                        self.last_click = Some((now, self.cursor, clicks));
+                        InputEvent::MouseDown(clicks)
+                    }
                     ElementState::Released => InputEvent::MouseUp,
-                });
+                };
+                self.dispatch(ev);
             }
             WindowEvent::RedrawRequested => {
                 self.redraw();
@@ -655,6 +692,42 @@ impl<A: App> ApplicationHandler for Shell<A> {
         if self.exit_requested {
             event_loop.exit();
         }
+    }
+
+    /// Runs after every event batch (including timer wake-ups): the caret
+    /// blink clock. Any caret activity re-arms the timer with the caret
+    /// solid; each expiry toggles the phase and schedules the next.
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if self.core.edit.focused().is_none() {
+            if !self.blink_visible {
+                self.blink_visible = true;
+                self.core.edit.set_blink_visible(true);
+            }
+            self.blink_deadline = None;
+            event_loop.set_control_flow(ControlFlow::Wait);
+            return;
+        }
+        let now = std::time::Instant::now();
+        let stamp = self.core.edit.caret_stamp();
+        if stamp != self.caret_stamp_seen || self.blink_deadline.is_none() {
+            self.caret_stamp_seen = stamp;
+            self.blink_deadline = Some(now + BLINK_INTERVAL);
+            if !self.blink_visible {
+                self.blink_visible = true;
+                self.core.edit.set_blink_visible(true);
+                if let Some(w) = &self.window {
+                    w.request_redraw();
+                }
+            }
+        } else if now >= self.blink_deadline.unwrap() {
+            self.blink_visible = !self.blink_visible;
+            self.core.edit.set_blink_visible(self.blink_visible);
+            self.blink_deadline = Some(now + BLINK_INTERVAL);
+            if let Some(w) = &self.window {
+                w.request_redraw();
+            }
+        }
+        event_loop.set_control_flow(ControlFlow::WaitUntil(self.blink_deadline.unwrap()));
     }
 }
 

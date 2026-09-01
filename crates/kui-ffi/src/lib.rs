@@ -330,8 +330,15 @@ pub extern "C" fn kui_input_cursor_left(ptr: *mut KuiCtx) {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn kui_input_mouse(ptr: *mut KuiCtx, down: bool) {
-    push_input(ptr, if down { InputEvent::MouseDown } else { InputEvent::MouseUp });
+pub extern "C" fn kui_input_mouse(ptr: *mut KuiCtx, down: bool, clicks: u32) {
+    push_input(
+        ptr,
+        if down {
+            InputEvent::MouseDown(clicks.clamp(1, u8::MAX as u32) as u8)
+        } else {
+            InputEvent::MouseUp
+        },
+    );
 }
 
 /// Wheel/trackpad delta in logical px (positive y = scroll up).

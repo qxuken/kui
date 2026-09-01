@@ -54,12 +54,34 @@ pub(crate) struct EditState {
     measured: Option<(u64, u32, Size)>,
 }
 
-#[derive(Default)]
 pub struct EditStore {
     states: FxHashMap<Key, EditState>,
     pub(crate) focused: Option<Key>,
     /// Edit node being drag-selected (with its content origin, logical).
     pub(crate) dragging: Option<(Key, Vec2)>,
+    /// Edit whose caret moved since the last frame; `finish_frame` scrolls
+    /// the nearest scrollable ancestor to keep the caret visible, then clears.
+    pub(crate) caret_moved: Option<Key>,
+    /// Bumped on anything that should restart the caret blink cycle (edits,
+    /// motion, clicks, focus changes). Frame drivers watch it to re-arm
+    /// their blink timer — the core itself stays clock-free.
+    caret_stamp: u64,
+    /// Whether the caret is currently drawn; toggled by the frame driver's
+    /// blink timer. Headless drivers never touch it, so the caret is solid.
+    blink_visible: bool,
+}
+
+impl Default for EditStore {
+    fn default() -> Self {
+        Self {
+            states: FxHashMap::default(),
+            focused: None,
+            dragging: None,
+            caret_moved: None,
+            caret_stamp: 0,
+            blink_visible: true,
+        }
+    }
 }
 
 fn attrs() -> Attrs<'static> {
@@ -80,7 +102,25 @@ impl EditStore {
     }
 
     pub fn set_focus(&mut self, key: Option<Key>) {
+        if self.focused != key {
+            self.caret_stamp += 1;
+        }
         self.focused = key;
+    }
+
+    /// See `caret_stamp` field: compare across frames to restart blink.
+    pub fn caret_stamp(&self) -> u64 {
+        self.caret_stamp
+    }
+
+    /// Blink-phase toggle for frame drivers; `true` draws the caret.
+    pub fn set_blink_visible(&mut self, visible: bool) {
+        self.blink_visible = visible;
+    }
+
+    fn touch_caret(&mut self, key: Key) {
+        self.caret_moved = Some(key);
+        self.caret_stamp += 1;
     }
 
     /// Ensures state exists for `key`, seeding `initial` on first creation.
@@ -148,6 +188,7 @@ impl EditStore {
             s.version += 1;
             s.measured = None;
             s.wrap = None;
+            self.touch_caret(key);
         }
     }
 
@@ -166,6 +207,7 @@ impl EditStore {
         if s.editor.delete_selection() {
             s.version += 1;
             s.measured = None;
+            self.touch_caret(key);
             true
         } else {
             false
@@ -188,6 +230,7 @@ impl EditStore {
         s.editor.shape_as_needed(fs, false);
         s.version += 1;
         s.measured = None;
+        self.touch_caret(key);
         true
     }
 
@@ -280,14 +323,24 @@ impl EditStore {
             s.version += 1;
             s.measured = None;
         }
+        self.touch_caret(key);
         (changed, submit)
     }
 
     /// Mouse press inside the edit at content-local logical position.
-    pub(crate) fn click(&mut self, key: Key, local: Vec2, fs: &mut FontSystem) {
+    /// `clicks` is the driver-counted multi-click: 2 selects the word,
+    /// 3 the line (cosmic-text's double/triple click actions).
+    pub(crate) fn click(&mut self, key: Key, local: Vec2, clicks: u8, fs: &mut FontSystem) {
         if let Some(s) = self.states.get_mut(&key) {
             let (x, y) = ((local.x * s.scale) as i32, (local.y * s.scale) as i32);
-            s.editor.action(fs, Action::Click { x, y });
+            let action = match clicks {
+                0 | 1 => Action::Click { x, y },
+                2 => Action::DoubleClick { x, y },
+                _ => Action::TripleClick { x, y },
+            };
+            s.editor.action(fs, action);
+            s.editor.shape_as_needed(fs, false);
+            self.caret_stamp += 1;
         }
     }
 
@@ -295,7 +348,18 @@ impl EditStore {
         if let Some(s) = self.states.get_mut(&key) {
             let (x, y) = ((local.x * s.scale) as i32, (local.y * s.scale) as i32);
             s.editor.action(fs, Action::Drag { x, y });
+            self.caret_stamp += 1;
         }
+    }
+
+    /// Caret rect in physical px, relative to the edit's content origin.
+    /// None when the caret isn't laid out (e.g. no state for `key`).
+    pub(crate) fn caret_rect(&mut self, key: Key, fs: &mut FontSystem) -> Option<Rect> {
+        let s = self.states.get_mut(&key)?;
+        s.editor.shape_as_needed(fs, false);
+        let (x, y) = s.editor.cursor_position()?;
+        let line_height = s.editor.with_buffer(|b| b.metrics().line_height);
+        Some(Rect::new(x as f32, y as f32, (2.0 * s.scale).max(2.0), line_height))
     }
 
     // -- Layout measurement (logical units)
@@ -362,6 +426,7 @@ impl EditStore {
         atlas: &mut crate::atlas::GlyphAtlas,
         out: &mut Vec<Quad>,
     ) {
+        let blink_visible = self.blink_visible;
         let Some(s) = self.states.get_mut(&key) else { return };
         let (fs, swash) = text_system.raster_parts();
         s.editor.shape_as_needed(fs, false);
@@ -369,7 +434,8 @@ impl EditStore {
         let accent = s.accent;
         let scale = s.scale;
         let selection = s.editor.selection_bounds();
-        let cursor_pos = if focused { s.editor.cursor_position() } else { None };
+        let cursor_pos =
+            if focused && blink_visible { s.editor.cursor_position() } else { None };
 
         s.editor.with_buffer(|b| {
             let line_height = b.metrics().line_height;

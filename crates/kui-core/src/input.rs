@@ -14,7 +14,10 @@ pub enum InputEvent {
     /// Logical coordinates.
     CursorMoved(Vec2),
     CursorLeft,
-    MouseDown,
+    /// Primary button press. The count is driver-measured multi-click state
+    /// (1 = single, 2 = double, 3+ = triple) — the core is clock-free, so
+    /// click timing lives with whoever owns the event loop.
+    MouseDown(u8),
     MouseUp,
     /// Wheel/trackpad delta in logical px (positive y = scroll up).
     Scroll(Vec2),
@@ -284,7 +287,7 @@ impl Interaction {
                 self.cursor = None;
                 self.hovered = None;
             }
-            InputEvent::MouseDown => {
+            InputEvent::MouseDown(_) => {
                 self.pressed = self.hovered;
                 if let Some(h) = self.cursor.and_then(|p| self.hit_at(p))
                     && h.window == Some(WindowRole::Drag)
@@ -361,7 +364,7 @@ mod tests {
         it.set_hits(vec![region(k, 0, 10.0, 10.0, 100.0, 30.0, "go")]);
         let evs = drive(
             &mut it,
-            &[InputEvent::CursorMoved(Vec2::new(50.0, 20.0)), InputEvent::MouseDown, InputEvent::MouseUp],
+            &[InputEvent::CursorMoved(Vec2::new(50.0, 20.0)), InputEvent::MouseDown(1), InputEvent::MouseUp],
         );
         assert_eq!(evs.len(), 1);
         assert_eq!(evs[0].key, k);
@@ -377,7 +380,7 @@ mod tests {
             &mut it,
             &[
                 InputEvent::CursorMoved(Vec2::new(10.0, 10.0)),
-                InputEvent::MouseDown,
+                InputEvent::MouseDown(1),
                 InputEvent::CursorMoved(Vec2::new(500.0, 500.0)),
                 InputEvent::MouseUp,
             ],
@@ -396,7 +399,7 @@ mod tests {
         ]);
         let evs = drive(
             &mut it,
-            &[InputEvent::CursorMoved(Vec2::new(50.0, 50.0)), InputEvent::MouseDown, InputEvent::MouseUp],
+            &[InputEvent::CursorMoved(Vec2::new(50.0, 50.0)), InputEvent::MouseDown(1), InputEvent::MouseUp],
         );
         assert_eq!(evs.len(), 1);
         assert_eq!(evs[0].key, top);
@@ -409,7 +412,7 @@ mod tests {
         it.set_hits(vec![region(k, 3, 0.0, 0.0, 10.0, 10.0, "x")]);
         let evs = drive(
             &mut it,
-            &[InputEvent::CursorMoved(Vec2::new(5.0, 5.0)), InputEvent::MouseDown, InputEvent::MouseUp],
+            &[InputEvent::CursorMoved(Vec2::new(5.0, 5.0)), InputEvent::MouseDown(1), InputEvent::MouseUp],
         );
         assert_eq!(evs[0].origin, OriginId(3));
     }
@@ -424,7 +427,7 @@ mod tests {
         drive(&mut it, &[InputEvent::CursorLeft]);
         assert!(!it.is_hovered(k));
         // Click after leaving produces nothing.
-        let evs = drive(&mut it, &[InputEvent::MouseDown, InputEvent::MouseUp]);
+        let evs = drive(&mut it, &[InputEvent::MouseDown(1), InputEvent::MouseUp]);
         assert!(evs.is_empty());
     }
 

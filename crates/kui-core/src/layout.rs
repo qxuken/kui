@@ -333,7 +333,7 @@ fn set_axis_clamped(tree: &mut Tree, c: u32, axis: AxisSel, v: f32) {
     set_axis(tree, c, axis, v);
 }
 
-fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Size) {
+pub(crate) fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Size) {
     for i in 0..tree.len() {
         if tree.parent[i] == NIL {
             tree.pos[i] = Vec2::ZERO;

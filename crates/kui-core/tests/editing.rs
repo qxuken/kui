@@ -139,7 +139,7 @@ fn click_focuses_and_places_caret() {
 
     // Click near the left edge of the text content.
     rig.core.handle_input(InputEvent::CursorMoved(Vec2::new(17.0, 25.0)));
-    rig.core.handle_input(InputEvent::MouseDown);
+    rig.core.handle_input(InputEvent::MouseDown(1));
     rig.core.handle_input(InputEvent::MouseUp);
     assert!(rig.core.is_focused(rig.key), "click should focus");
 
@@ -151,7 +151,7 @@ fn click_focuses_and_places_caret() {
     // Clicking outside any edit blurs.
     rig.frame();
     rig.core.handle_input(InputEvent::CursorMoved(Vec2::new(395.0, 295.0)));
-    rig.core.handle_input(InputEvent::MouseDown);
+    rig.core.handle_input(InputEvent::MouseDown(1));
     assert!(!rig.core.is_focused(rig.key), "click outside should blur");
 }
 
@@ -161,7 +161,7 @@ fn drag_selects_text() {
     rig.frame();
     // Press near start, drag to the right, release.
     rig.core.handle_input(InputEvent::CursorMoved(Vec2::new(16.0, 25.0)));
-    rig.core.handle_input(InputEvent::MouseDown);
+    rig.core.handle_input(InputEvent::MouseDown(1));
     rig.core.handle_input(InputEvent::CursorMoved(Vec2::new(120.0, 25.0)));
     rig.core.handle_input(InputEvent::MouseUp);
     let sel = rig.core.copy_selection();

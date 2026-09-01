@@ -147,7 +147,7 @@ impl Core {
                     out.push(UiEvent { origin: h.origin, key: h.key, payload });
                 }
             }
-            InputEvent::MouseDown => {
+            InputEvent::MouseDown(clicks) => {
                 // Click-to-focus / caret placement / start drag-selection,
                 // against the previous frame's layout.
                 if let Some(p) = self.interaction.cursor() {
@@ -159,7 +159,7 @@ impl Core {
                         Some((key, Some(origin), _)) => {
                             self.edit.set_focus(Some(key));
                             let local = Vec2::new(p.x - origin.x, p.y - origin.y);
-                            self.edit.click(key, local, self.text.font_system_mut());
+                            self.edit.click(key, local, clicks, self.text.font_system_mut());
                             self.edit.dragging = Some((key, origin));
                         }
                         Some((key, None, true)) => {
@@ -169,7 +169,7 @@ impl Core {
                         _ => self.edit.set_focus(None),
                     }
                 }
-                self.interaction.handle(InputEvent::MouseDown, &mut out);
+                self.interaction.handle(InputEvent::MouseDown(clicks), &mut out);
             }
             InputEvent::CursorMoved(p) => {
                 if let Some((key, origin)) = self.edit.dragging {
@@ -518,6 +518,7 @@ impl Core {
             let mut measure = Measure { text: &mut self.text, edit: &mut self.edit };
             layout::compute(&mut self.tree, &mut measure, &mut self.scroll, self.viewport);
         }
+        self.scroll_caret_into_view();
 
         let scale = self.scale;
         let mut hits: Vec<HitRegion> = self.interaction.take_hit_buffer();
@@ -637,6 +638,63 @@ impl Core {
 
         self.interaction.set_hits(hits);
         self.interaction.scroll_regions = scroll_regions;
+    }
+
+    /// After layout: if the focused edit's caret moved this frame, nudge the
+    /// nearest scrollable ancestor so the caret stays visible, then re-run
+    /// the positions pass with the adjusted offset (positions is the only
+    /// pass scroll offsets feed into, so nothing else needs recomputing).
+    fn scroll_caret_into_view(&mut self) {
+        let Some(key) = self.edit.caret_moved.take() else { return };
+        if self.edit.focused() != Some(key) {
+            return;
+        }
+        let Some(i) =
+            (0..self.tree.len()).find(|&i| self.tree.content[i] == NodeContent::Edit(key))
+        else {
+            return;
+        };
+        let Some(caret_phys) = self.edit.caret_rect(key, self.text.font_system_mut()) else {
+            return;
+        };
+        let pad = self.tree.specs[i].layout.padding;
+        let caret = Rect::new(
+            self.tree.pos[i].x + pad.l + caret_phys.x / self.scale,
+            self.tree.pos[i].y + pad.t + caret_phys.y / self.scale,
+            caret_phys.w / self.scale,
+            caret_phys.h / self.scale,
+        );
+        // Slack so the caret isn't glued to the container edge.
+        const MARGIN: f32 = 4.0;
+        let mut a = self.tree.parent[i];
+        while a != NIL {
+            let spec = self.tree.specs[a as usize].layout;
+            if spec.scroll_x || spec.scroll_y {
+                let view =
+                    Rect::from_pos_size(self.tree.pos[a as usize], self.tree.size[a as usize]);
+                let mut delta = Vec2::ZERO;
+                if spec.scroll_y {
+                    if caret.y < view.y + MARGIN {
+                        delta.y = caret.y - (view.y + MARGIN);
+                    } else if caret.y + caret.h > view.y + view.h - MARGIN {
+                        delta.y = caret.y + caret.h - (view.y + view.h - MARGIN);
+                    }
+                }
+                if spec.scroll_x {
+                    if caret.x < view.x + MARGIN {
+                        delta.x = caret.x - (view.x + MARGIN);
+                    } else if caret.x + caret.w > view.x + view.w - MARGIN {
+                        delta.x = caret.x + caret.w - (view.x + view.w - MARGIN);
+                    }
+                }
+                if delta.x != 0.0 || delta.y != 0.0 {
+                    self.scroll.scroll_by(self.tree.keys[a as usize], delta);
+                    layout::positions(&mut self.tree, &mut self.scroll, self.viewport);
+                }
+                return;
+            }
+            a = self.tree.parent[a as usize];
+        }
     }
 }
 

@@ -44,7 +44,7 @@ fn drive(core: &mut Core, events: &[InputEvent]) -> Vec<UiEvent> {
 }
 
 fn click_at(x: f32, y: f32) -> [InputEvent; 3] {
-    [InputEvent::CursorMoved(Vec2::new(x, y)), InputEvent::MouseDown, InputEvent::MouseUp]
+    [InputEvent::CursorMoved(Vec2::new(x, y)), InputEvent::MouseDown(1), InputEvent::MouseUp]
 }
 
 #[test]
@@ -53,7 +53,7 @@ fn press_on_drag_strip_emits_start_drag_and_no_ui_event() {
     frame(&mut core);
     let evs = drive(
         &mut core,
-        &[InputEvent::CursorMoved(Vec2::new(100.0, 20.0)), InputEvent::MouseDown],
+        &[InputEvent::CursorMoved(Vec2::new(100.0, 20.0)), InputEvent::MouseDown(1)],
     );
     assert!(evs.is_empty(), "chrome nodes must not emit UiEvents, got {evs:?}");
     assert_eq!(core.take_window_commands(), vec![WindowCommand::StartDrag]);
@@ -91,7 +91,7 @@ fn press_then_drag_off_a_button_emits_nothing() {
         &mut core,
         &[
             InputEvent::CursorMoved(Vec2::new(380.0, 20.0)),
-            InputEvent::MouseDown,
+            InputEvent::MouseDown(1),
             InputEvent::CursorMoved(Vec2::new(200.0, 200.0)),
             InputEvent::MouseUp,
         ],
@@ -144,7 +144,7 @@ fn titlebar_widget_declares_chrome_from_env() {
     ui.finish();
     drive(
         &mut core,
-        &[InputEvent::CursorMoved(Vec2::new(400.0 - 23.0, 20.0)), InputEvent::MouseDown],
+        &[InputEvent::CursorMoved(Vec2::new(400.0 - 23.0, 20.0)), InputEvent::MouseDown(1)],
     );
     assert_eq!(core.take_window_commands(), vec![WindowCommand::StartDrag]);
 }

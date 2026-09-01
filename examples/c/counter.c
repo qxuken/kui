@@ -118,8 +118,8 @@ static int headless(void) {
 
     /* Click it (logical == physical at scale 1). */
     kui_input_cursor(ctx, bx, by);
-    kui_input_mouse(ctx, true);
-    kui_input_mouse(ctx, false);
+    kui_input_mouse(ctx, true, 1);
+    kui_input_mouse(ctx, false, 1);
 
     KuiEvent ev;
     int got = 0;

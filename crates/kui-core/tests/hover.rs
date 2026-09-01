@@ -31,7 +31,7 @@ fn hoverable_tracks_hover_but_click_emits_nothing() {
     core.handle_input(InputEvent::CursorMoved(Vec2::new(10.0, 10.0)));
     assert!(core.is_hovered(badge), "hoverable node must register a hit region");
 
-    core.handle_input(InputEvent::MouseDown);
+    core.handle_input(InputEvent::MouseDown(1));
     let evs = core.handle_input(InputEvent::MouseUp);
     assert!(evs.is_empty(), "hover-only region must not emit click events");
 
@@ -53,7 +53,7 @@ fn on_click_still_emits_and_hover_tracks() {
     let badge = frame(&mut core, NodeSpec::column().on_click(Value::str("hit")));
     core.handle_input(InputEvent::CursorMoved(Vec2::new(10.0, 10.0)));
     assert!(core.is_hovered(badge));
-    core.handle_input(InputEvent::MouseDown);
+    core.handle_input(InputEvent::MouseDown(1));
     let evs = core.handle_input(InputEvent::MouseUp);
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].payload.as_str(), Some("hit"));

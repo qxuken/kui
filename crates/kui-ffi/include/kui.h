@@ -154,7 +154,9 @@ void kui_ctx_free(KuiCtx *ctx);
 /* -- Input (logical coordinates) + events -------------------------------- */
 void kui_input_cursor(KuiCtx *ctx, float x, float y);
 void kui_input_cursor_left(KuiCtx *ctx);
-void kui_input_mouse(KuiCtx *ctx, bool down);
+/* clicks: host-counted multi-click for presses (1 single, 2 double = word
+ * select in editors, 3 triple = line select); ignored on release. */
+void kui_input_mouse(KuiCtx *ctx, bool down, uint32_t clicks);
 void kui_input_scroll(KuiCtx *ctx, float dx, float dy); /* +y = scroll up */
 void kui_input_text(KuiCtx *ctx, KuiStr text);   /* typing/paste -> focused editor */
 void kui_input_key(KuiCtx *ctx, uint32_t key, uint32_t mods); /* KUI_KEY_* + KUI_MOD_* */
