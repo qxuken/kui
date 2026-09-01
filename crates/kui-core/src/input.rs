@@ -51,6 +51,11 @@ pub enum EditKey {
     Enter,
     Tab,
     SelectAll,
+    /// Undo/redo of the edit widget's own history (drivers map the platform
+    /// chords; hosts with their own text model never see these — they take
+    /// the raw chord through `KeyDown`).
+    Undo,
+    Redo,
     Escape,
 }
 

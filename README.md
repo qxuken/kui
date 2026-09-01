@@ -178,6 +178,8 @@ binding are covered by tests (`cargo test --workspace`).
 
 v0 scope: mask + color-emoji glyphs only (no subpixel AA); no z-index
 (floats stack in tree order). Editing: caret blink, double/triple-click
-word/line select, scroll-caret-into-view, IME preedit at the caret, and
-Tab focus traversal are in; undo/redo is deliberately left to the host's
-text model (build it on the editor backend, not the widget).
+word/line select, scroll-caret-into-view, IME preedit at the caret, Tab
+focus traversal, and undo/redo (operational deltas with typing/delete
+coalescing — the widget owns its buffer, so it owns its history; hosts
+with their own text model take raw chords through `on_key` and bring
+their own).

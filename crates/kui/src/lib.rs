@@ -429,6 +429,15 @@ impl<A: App> Shell<A> {
                     self.dispatch(InputEvent::Key(EditKey::SelectAll, Mods::default()));
                     return;
                 }
+                "z" => {
+                    let key = if self.modifiers.shift_key() { EditKey::Redo } else { EditKey::Undo };
+                    self.dispatch(InputEvent::Key(key, Mods::default()));
+                    return;
+                }
+                "y" => {
+                    self.dispatch(InputEvent::Key(EditKey::Redo, Mods::default()));
+                    return;
+                }
                 _ => {}
             }
         }

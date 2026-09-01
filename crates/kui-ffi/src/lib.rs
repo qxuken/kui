@@ -372,6 +372,8 @@ fn edit_key_of(key: u32) -> Option<EditKey> {
         11 => EditKey::Tab,
         12 => EditKey::SelectAll,
         13 => EditKey::Escape,
+        14 => EditKey::Undo,
+        15 => EditKey::Redo,
         _ => return None,
     })
 }

@@ -4,8 +4,11 @@
 //! Edits arrive as data (`InputEvent::Text` / `InputEvent::Key`) routed to
 //! the focused editor; hosts read text back with `Core::edit_text`.
 
+use std::collections::VecDeque;
+
 use cosmic_text::{
-    Action, Attrs, Buffer, Edit as _, Editor, FontSystem, Metrics, Motion, Selection, Shaping,
+    Action, Attrs, Buffer, Cursor, Edit as _, Editor, FontSystem, Metrics, Motion, Selection,
+    Shaping,
 };
 use rustc_hash::FxHashMap;
 
@@ -54,6 +57,53 @@ pub(crate) struct EditState {
     measured: Option<(u64, u32, Size)>,
     /// In-progress IME composition, drawn as an overlay at the caret.
     preedit: Option<Preedit>,
+    /// Edit history, oldest first. The widget owns its buffer, so it owns
+    /// undo too — hosts with their own text model (on_key sinks) bring
+    /// their own history and never touch this.
+    undo: VecDeque<EditOp>,
+    redo: VecDeque<EditOp>,
+    /// What the top undo op can still absorb (typing bursts, delete runs).
+    coalesce: Option<Coalesce>,
+}
+
+const UNDO_CAP: usize = 1000;
+/// Max bytes one coalesced op absorbs before a new unit starts.
+const COALESCE_MAX: usize = 64;
+
+/// One reversible edit: `deleted` was removed at `at` and `inserted` put in
+/// its place. Operational, not a snapshot — undo cost tracks the edit size,
+/// never the document size.
+struct EditOp {
+    at: Cursor,
+    deleted: String,
+    inserted: String,
+    /// Caret restore points for undo / redo.
+    cursor_before: Cursor,
+    cursor_after: Cursor,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Coalesce {
+    /// Plain typing: appends to the top op's `inserted`.
+    Insert,
+    /// Backspace runs walking left: prepends to `deleted`.
+    Backspace,
+    /// Forward-delete runs at a fixed spot: appends to `deleted`.
+    Delete,
+}
+
+/// Where a cursor lands after inserting `s` at `at`.
+fn end_cursor(at: Cursor, s: &str) -> Cursor {
+    match s.rsplit_once('\n') {
+        None => Cursor::new(at.line, at.index + s.len()),
+        Some((head, tail)) => Cursor::new(at.line + head.matches('\n').count() + 1, tail.len()),
+    }
+}
+
+/// Position equality, ignoring affinity (which editor cursors carry but
+/// computed ones don't).
+fn same_pos(a: Cursor, b: Cursor) -> bool {
+    a.line == b.line && a.index == b.index
 }
 
 /// IME composition state: the uncommitted text, the caret byte range the
@@ -63,6 +113,140 @@ struct Preedit {
     text: String,
     cursor: Option<(usize, usize)>,
     buffer: Buffer,
+}
+
+impl EditState {
+    /// Pushes a fresh op (clearing redo), merging into the top op when the
+    /// declared coalesce kind matches and the edits are adjacent.
+    fn record(&mut self, op: EditOp, kind: Option<Coalesce>) {
+        self.redo.clear();
+        if let (Some(k), Some(last)) = (kind, self.undo.back_mut())
+            && self.coalesce == Some(k)
+            && last.deleted.len() + last.inserted.len() + op.deleted.len() + op.inserted.len()
+                <= COALESCE_MAX
+        {
+            let merged = match k {
+                Coalesce::Insert => same_pos(op.at, end_cursor(last.at, &last.inserted)) && {
+                    last.inserted.push_str(&op.inserted);
+                    true
+                },
+                Coalesce::Backspace => same_pos(end_cursor(op.at, &op.deleted), last.at) && {
+                    last.at = op.at;
+                    last.deleted.insert_str(0, &op.deleted);
+                    true
+                },
+                Coalesce::Delete => same_pos(op.at, last.at) && {
+                    last.deleted.push_str(&op.deleted);
+                    true
+                },
+            };
+            if merged {
+                last.cursor_after = op.cursor_after;
+                return;
+            }
+        }
+        if self.undo.len() >= UNDO_CAP {
+            self.undo.pop_front();
+        }
+        self.undo.push_back(op);
+        self.coalesce = kind;
+    }
+
+    /// Caret motion, clicks, blur: the next edit starts a new undo unit.
+    fn break_coalesce(&mut self) {
+        self.coalesce = None;
+    }
+
+    /// Replaces `[at .. at+remove]` with `insert`, no recording — the raw
+    /// mechanism undo/redo replay through.
+    fn splice(&mut self, at: Cursor, remove: &str, insert: &str) {
+        if remove.is_empty() {
+            self.editor.set_selection(Selection::None);
+            self.editor.set_cursor(at);
+        } else {
+            self.editor.set_selection(Selection::Normal(at));
+            self.editor.set_cursor(end_cursor(at, remove));
+            self.editor.delete_selection();
+        }
+        if !insert.is_empty() {
+            self.editor.insert_string(insert, None);
+        }
+    }
+
+    /// Replaces the selection (if any) with `text`, as one recorded op.
+    fn insert_recorded(&mut self, text: &str) {
+        let cursor_before = self.editor.cursor();
+        let deleted = self.editor.copy_selection().unwrap_or_default();
+        self.editor.delete_selection();
+        let at = self.editor.cursor();
+        self.editor.insert_string(text, None);
+        let kind = (deleted.is_empty() && !text.contains('\n')).then_some(Coalesce::Insert);
+        self.record(
+            EditOp {
+                at,
+                deleted,
+                inserted: text.to_string(),
+                cursor_before,
+                cursor_after: self.editor.cursor(),
+            },
+            kind,
+        );
+    }
+
+    /// Deletes the selection as one recorded op; false when there is none.
+    fn delete_selection_recorded(&mut self) -> bool {
+        let cursor_before = self.editor.cursor();
+        let Some(deleted) = self.editor.copy_selection() else { return false };
+        if !self.editor.delete_selection() {
+            return false;
+        }
+        let at = self.editor.cursor();
+        self.record(
+            EditOp { at, deleted, inserted: String::new(), cursor_before, cursor_after: at },
+            None,
+        );
+        true
+    }
+
+    /// Backspace/Delete (plain or word): selects via `motion`, deletes as a
+    /// recorded op. False at the buffer boundary (nothing to delete).
+    fn delete_motion_recorded(&mut self, motion: Motion, kind: Coalesce, fs: &mut FontSystem) -> bool {
+        let cursor_before = self.editor.cursor();
+        self.editor.set_selection(Selection::Normal(cursor_before));
+        self.editor.action(fs, Action::Motion(motion));
+        let deleted = self.editor.copy_selection().unwrap_or_default();
+        if deleted.is_empty() {
+            self.editor.set_selection(Selection::None);
+            return false;
+        }
+        self.editor.delete_selection();
+        let at = self.editor.cursor();
+        self.record(
+            EditOp { at, deleted, inserted: String::new(), cursor_before, cursor_after: at },
+            Some(kind),
+        );
+        true
+    }
+
+    fn undo_one(&mut self) -> bool {
+        let Some(op) = self.undo.pop_back() else { return false };
+        self.splice(op.at, &op.inserted, &op.deleted);
+        self.editor.set_cursor(op.cursor_before);
+        self.editor.set_selection(Selection::None);
+        self.redo.push_back(op);
+        self.coalesce = None;
+        true
+    }
+
+    fn redo_one(&mut self) -> bool {
+        let Some(op) = self.redo.pop_back() else { return false };
+        self.splice(op.at, &op.deleted, &op.inserted);
+        self.editor.set_cursor(op.cursor_after);
+        self.editor.set_selection(Selection::None);
+        self.undo.push_back(op);
+        self.coalesce = None;
+        true
+    }
 }
 
 pub struct EditStore {
@@ -166,6 +350,9 @@ impl EditStore {
                 version: 0,
                 measured: None,
                 preedit: None,
+                undo: VecDeque::new(),
+                redo: VecDeque::new(),
+                coalesce: None,
             }
         });
         state.origin = origin;
@@ -206,6 +393,10 @@ impl EditStore {
             s.version += 1;
             s.measured = None;
             s.wrap = None;
+            // A wholesale replacement invalidates the recorded deltas.
+            s.undo.clear();
+            s.redo.clear();
+            s.coalesce = None;
             self.touch_caret(key);
         }
     }
@@ -222,7 +413,7 @@ impl EditStore {
     pub fn delete_selection(&mut self, key: Key, fs: &mut FontSystem) -> bool {
         let Some(s) = self.states.get_mut(&key) else { return false };
         let _ = fs;
-        if s.editor.delete_selection() {
+        if s.delete_selection_recorded() {
             s.version += 1;
             s.measured = None;
             self.touch_caret(key);
@@ -245,8 +436,7 @@ impl EditStore {
         if filtered.is_empty() {
             return false;
         }
-        s.editor.delete_selection();
-        s.editor.insert_string(&filtered, None);
+        s.insert_recorded(&filtered);
         s.editor.shape_as_needed(fs, false);
         s.version += 1;
         s.measured = None;
@@ -296,28 +486,27 @@ impl EditStore {
                     s.editor.set_selection(Selection::None);
                 }
                 s.editor.action(fs, Action::Motion(motion));
+                s.break_coalesce();
             }
             EditKey::Backspace => {
-                if !s.editor.delete_selection() {
-                    if mods.word {
-                        s.editor.set_selection(Selection::Normal(s.editor.cursor()));
-                        s.editor.action(fs, Action::Motion(Motion::LeftWord));
-                        s.editor.delete_selection();
-                    } else {
-                        s.editor.action(fs, Action::Backspace);
-                    }
-                }
-                changed = true;
+                changed = s.delete_selection_recorded()
+                    || s.delete_motion_recorded(
+                        if mods.word { Motion::LeftWord } else { Motion::Left },
+                        Coalesce::Backspace,
+                        fs,
+                    );
             }
             EditKey::Delete => {
-                if !s.editor.delete_selection() {
-                    s.editor.action(fs, Action::Delete);
-                }
-                changed = true;
+                changed = s.delete_selection_recorded()
+                    || s.delete_motion_recorded(
+                        if mods.word { Motion::RightWord } else { Motion::Right },
+                        Coalesce::Delete,
+                        fs,
+                    );
             }
             EditKey::Enter => {
                 if s.multiline {
-                    s.editor.action(fs, Action::Enter);
+                    s.insert_recorded("\n");
                     changed = true;
                 } else {
                     submit = true;
@@ -325,18 +514,21 @@ impl EditStore {
             }
             EditKey::Tab => {
                 if s.multiline {
-                    s.editor.delete_selection();
-                    s.editor.insert_string("    ", None);
+                    s.insert_recorded("    ");
                     changed = true;
                 }
             }
+            EditKey::Undo => changed = s.undo_one(),
+            EditKey::Redo => changed = s.redo_one(),
             EditKey::SelectAll => {
                 s.editor.action(fs, Action::Motion(Motion::BufferStart));
                 s.editor.set_selection(Selection::Normal(s.editor.cursor()));
                 s.editor.action(fs, Action::Motion(Motion::BufferEnd));
+                s.break_coalesce();
             }
             EditKey::Escape => {
                 s.editor.action(fs, Action::Escape);
+                s.break_coalesce();
             }
         }
         s.editor.shape_as_needed(fs, false);
@@ -361,6 +553,7 @@ impl EditStore {
             };
             s.editor.action(fs, action);
             s.editor.shape_as_needed(fs, false);
+            s.break_coalesce();
             self.caret_stamp += 1;
         }
     }
