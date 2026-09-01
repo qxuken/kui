@@ -324,6 +324,28 @@ impl Core {
                     &mut self.display.quads,
                 );
             }
+            NodeContent::Image(id) => {
+                if let Some(entry) = self.resources.images.get(id)
+                    && let Some(slot) = self.atlas.get_or_insert_image(
+                        id,
+                        entry.width,
+                        entry.height,
+                        &entry.rgba,
+                    )
+                {
+                    self.display.quads.push(Quad {
+                        rect: rect.scaled(scale),
+                        // White = untinted; radius rounds like a solid.
+                        color: Color::WHITE,
+                        border_color: Color::TRANSPARENT,
+                        radius: spec.style.radius * scale,
+                        border_w: 0.0,
+                        kind: QuadKind::Image,
+                        uv: [slot.x, slot.y, slot.w, slot.h],
+                        clip: clip.scaled(scale),
+                    });
+                }
+            }
             NodeContent::Container => {}
         }
     }
@@ -563,6 +585,25 @@ impl Core {
         key
     }
 
+    /// A registered image (see `Resources::add_image`). Fit sizing takes
+    /// the image's pixel dimensions as logical px; a Fit height against a
+    /// resolved width preserves the aspect ratio. `style.radius` rounds the
+    /// corners.
+    pub fn image_node(&mut self, id: crate::resources::ImageId, spec: NodeSpec) {
+        if self.tree.is_empty() {
+            return;
+        }
+        let key = self.auto_key();
+        let parent = self.current();
+        self.tree.push(parent, key, self.origin, spec, NodeContent::Image(id));
+    }
+
+    /// Unregisters an image and forgets its atlas slot.
+    pub fn remove_image(&mut self, id: crate::resources::ImageId) {
+        self.resources.remove_image(id);
+        self.atlas.evict_image(id);
+    }
+
     /// A paragraph of styled spans, shaped and wrapped as one flow.
     pub fn rich_text_node(&mut self, spans: &[Span<'_>], base: TextStyle) {
         if self.tree.is_empty() {
@@ -582,7 +623,11 @@ impl Core {
         self.counters.truncate(1);
 
         {
-            let mut measure = Measure { text: &mut self.text, edit: &mut self.edit };
+            let mut measure = Measure {
+                text: &mut self.text,
+                edit: &mut self.edit,
+                resources: &self.resources,
+            };
             layout::compute(&mut self.tree, &mut measure, &mut self.scroll, self.viewport);
         }
         self.scroll_caret_into_view();
@@ -804,10 +849,12 @@ impl Core {
 }
 
 /// Combined measurer handed to the layout pass: static text through the
-/// shape cache, editors through the edit store (sharing one FontSystem).
+/// shape cache, editors through the edit store (sharing one FontSystem),
+/// images through the resource registry.
 struct Measure<'a> {
     text: &'a mut TextSystem,
     edit: &'a mut EditStore,
+    resources: &'a Resources,
 }
 
 impl TextMeasure for Measure<'_> {
@@ -825,6 +872,13 @@ impl TextMeasure for Measure<'_> {
 
     fn edit_wrapped(&mut self, key: Key, max_w: f32) -> Size {
         self.edit.wrapped(key, max_w, self.text.font_system_mut())
+    }
+
+    fn image_size(&mut self, id: crate::resources::ImageId) -> Size {
+        self.resources
+            .images
+            .get(id)
+            .map_or(Size::ZERO, |e| Size::new(e.width as f32, e.height as f32))
     }
 }
 

@@ -119,6 +119,14 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             ui.text(&value, style);
             Ok(())
         }
+        "image" => {
+            // Handle from the host (kui_image_add / Resources::add_image),
+            // passed to scripts as a plain integer.
+            let id: i64 = t.get("id")?;
+            let spec = parse_spec(t, false)?;
+            ui.image(kui_core::ImageId::from_ffi(id as u64), spec);
+            Ok(())
+        }
         "input" => {
             let label: String = t.get("label")?;
             let initial: String = t.get::<Option<String>>("initial")?.unwrap_or_default();

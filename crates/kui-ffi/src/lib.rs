@@ -546,6 +546,41 @@ pub extern "C" fn kui_open_keyed(
     })
 }
 
+/// Registers a w×h RGBA image (pixels copied); returns its handle, 0 on
+/// failure. Draw it with `kui_image`; free it with `kui_image_remove`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_image_add(ptr: *mut KuiCtx, w: u32, h: u32, rgba: *const u8) -> u64 {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else { return 0 };
+        if rgba.is_null() || w == 0 || h == 0 {
+            return 0;
+        }
+        let data = unsafe { std::slice::from_raw_parts(rgba, (w * h * 4) as usize) }.to_vec();
+        c.core().resources.add_image(w, h, data).to_ffi()
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_image_remove(ptr: *mut KuiCtx, id: u64) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().remove_image(kui_core::ImageId::from_ffi(id));
+        }
+    });
+}
+
+/// An image node. Fit sizing takes the image's pixel size as logical px;
+/// Fit height against a resolved width keeps the aspect. radius rounds it.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_image(ptr: *mut KuiCtx, id: u64, spec: *const KuiSpec) {
+    guard((), || {
+        if let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) {
+            let spec = spec_of(s, std::ptr::null_mut());
+            c.core().image_node(kui_core::ImageId::from_ffi(id), spec);
+        }
+    });
+}
+
 /// Like `kui_open_keyed`, but the node is draggable: press-drag emits
 /// `{kind="drag", phase, x, y, dx, dy, tag}` events. `on_drag` (the tag,
 /// nullable) and `on_click` (nullable) are consumed. A drag past the click

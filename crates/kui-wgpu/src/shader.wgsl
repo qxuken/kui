@@ -12,7 +12,8 @@ struct Instance {
     @location(1) size: vec2<f32>,
     @location(2) color: vec4<f32>,
     @location(3) border_color: vec4<f32>,
-    // radius, border_w, kind (0 solid / 1 mask glyph / 2 color glyph), unused
+    // radius, border_w, kind (0 solid / 1 mask glyph / 2 color glyph /
+    // 3 image), unused
     @location(4) params: vec4<f32>,
     // atlas texels: x, y, w, h
     @location(5) uv: vec4<f32>,
@@ -86,11 +87,18 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         return vec4<f32>(t.rgb, t.a * in.color.a * inside);
     }
 
-    // Solid rounded rect with optional border, SDF antialiased.
+    // Solid rounded rect with optional border, SDF antialiased. Images
+    // share the SDF so radius rounds their corners too.
     let half = in.size * 0.5;
     let d = sd_rounded_box(in.local - half, half, in.params.x);
     let aa = 0.75;
     let coverage = 1.0 - smoothstep(-aa, aa, d);
+
+    if kind == 3u {
+        // Registered image tinted by color (white = as-is).
+        let t = textureSample(atlas_tex, atlas_smp, in.uv);
+        return vec4<f32>(t.rgb * in.color.rgb, t.a * in.color.a * coverage * inside);
+    }
 
     var rgba = in.color;
     let bw = in.params.y;

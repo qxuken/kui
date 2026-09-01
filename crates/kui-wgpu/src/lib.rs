@@ -31,6 +31,7 @@ fn instance_of(q: &Quad) -> Instance {
         QuadKind::Solid => 0.0,
         QuadKind::GlyphMask => 1.0,
         QuadKind::GlyphColor => 2.0,
+        QuadKind::Image => 3.0,
     };
     Instance {
         pos: [q.rect.x, q.rect.y],

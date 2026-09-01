@@ -57,6 +57,10 @@ pub trait TextMeasure {
     fn edit_wrapped(&mut self, _key: crate::key::Key, _max_w: f32) -> Size {
         Size::ZERO
     }
+    /// Pixel dimensions of a registered image (ZERO when unknown).
+    fn image_size(&mut self, _id: crate::resources::ImageId) -> Size {
+        Size::ZERO
+    }
 }
 
 pub fn compute(
@@ -87,6 +91,15 @@ fn fit_widths(tree: &mut Tree, text: &mut dyn TextMeasure) {
                 Sizing::Fixed(px) => px,
                 Sizing::Grow(_) | Sizing::Percent(_) => 0.0,
                 Sizing::Fit => text.edit_intrinsic(key).w + spec.padding.x(),
+            });
+            continue;
+        }
+        if let NodeContent::Image(id) = tree.content[i] {
+            tree.size[i].w = spec.clamp_w(match spec.width {
+                Sizing::Fixed(px) => px,
+                Sizing::Grow(_) | Sizing::Percent(_) => 0.0,
+                // Image pixels as logical px (1:1 at scale 1).
+                Sizing::Fit => text.image_size(id).w,
             });
             continue;
         }
@@ -137,6 +150,22 @@ fn fit_heights(tree: &mut Tree, text: &mut dyn TextMeasure) {
                 Sizing::Fixed(px) => px,
                 Sizing::Grow(_) | Sizing::Percent(_) => 0.0,
                 Sizing::Fit => inner.h + spec.padding.y(),
+            });
+            continue;
+        }
+        if let NodeContent::Image(id) = tree.content[i] {
+            tree.size[i].h = spec.clamp_h(match spec.height {
+                Sizing::Fixed(px) => px,
+                Sizing::Grow(_) | Sizing::Percent(_) => 0.0,
+                // Width is final by now: a Fit height preserves the aspect.
+                Sizing::Fit => {
+                    let intrinsic = text.image_size(id);
+                    if intrinsic.w > 0.0 {
+                        intrinsic.h * tree.size[i].w / intrinsic.w
+                    } else {
+                        0.0
+                    }
+                }
             });
             continue;
         }
@@ -322,10 +351,13 @@ fn shrink_axis(tree: &mut Tree, i: u32, axis: AxisSel, mut deficit: f32) {
         if is_float(tree, c) || child_sizing(tree, c, axis) != Sizing::Fit {
             return None;
         }
-        // Squashing text/editors vertically would clip lines; width shrink
-        // rewraps instead.
+        // Squashing text/editors vertically would clip lines, and images
+        // would distort; width shrink rewraps (and re-aspects) instead.
         if axis == AxisSel::Height
-            && matches!(tree.content[c as usize], NodeContent::Text(_) | NodeContent::Edit(_))
+            && matches!(
+                tree.content[c as usize],
+                NodeContent::Text(_) | NodeContent::Edit(_) | NodeContent::Image(_)
+            )
         {
             return None;
         }

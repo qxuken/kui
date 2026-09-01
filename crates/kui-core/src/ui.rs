@@ -97,6 +97,11 @@ impl<'a> Ui<'a> {
         self.core.rich_text_node(spans, base);
     }
 
+    /// A registered image; see `Core::image_node` for sizing semantics.
+    pub fn image(&mut self, id: crate::resources::ImageId, spec: NodeSpec) {
+        self.core.image_node(id, spec);
+    }
+
     /// An editable text node; state retained by key. See `Core::text_edit`.
     pub fn text_edit(&mut self, label: &str, initial: &str, opts: &EditOptions, spec: NodeSpec) -> Key {
         self.core.text_edit(label, initial, opts, spec)

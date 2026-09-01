@@ -14,6 +14,9 @@ pub enum QuadKind {
     GlyphMask,
     /// Color bitmap glyph (emoji): atlas rgb, alpha times `color.a`.
     GlyphColor,
+    /// Registered image blitted into the atlas: atlas rgba tinted by
+    /// `color` (white = as-is), rounded by `radius` like a solid.
+    Image,
 }
 
 #[repr(C)]

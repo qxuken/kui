@@ -26,6 +26,8 @@ pub enum NodeContent {
     Text(TextId),
     /// Editable text; retained state lives in the core's `EditStore`.
     Edit(Key),
+    /// A host-registered image (see `Resources`), drawn via the atlas.
+    Image(crate::resources::ImageId),
 }
 
 #[derive(Default)]

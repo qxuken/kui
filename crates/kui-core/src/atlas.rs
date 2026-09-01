@@ -4,7 +4,11 @@
 use cosmic_text::CacheKey;
 use rustc_hash::FxHashMap;
 
+use crate::resources::ImageId;
+
 pub const ATLAS_SIZE: u32 = 1024;
+/// The atlas doubles up to this when content (typically images) won't fit.
+pub const MAX_ATLAS_SIZE: u32 = 4096;
 
 #[derive(Clone, Copy, Debug)]
 pub struct GlyphSlot {
@@ -44,6 +48,9 @@ pub struct GlyphAtlas {
     /// Bumped when the atlas is reset; renderers drop cached state.
     pub epoch: u64,
     map: FxHashMap<CacheKey, Option<GlyphSlot>>,
+    /// Registered images blitted into the same page (one texture, one draw
+    /// call). Keyed by handle; re-blitted from `Resources` after a reset.
+    images: FxHashMap<ImageId, Option<GlyphSlot>>,
     shelves: Vec<Shelf>,
     next_shelf_y: u32,
 }
@@ -60,6 +67,7 @@ impl GlyphAtlas {
             dirty: false,
             epoch: 0,
             map: FxHashMap::default(),
+            images: FxHashMap::default(),
             shelves: Vec::new(),
             next_shelf_y: 0,
         }
@@ -68,10 +76,45 @@ impl GlyphAtlas {
     fn reset(&mut self) {
         self.pixels.fill(0);
         self.map.clear();
+        self.images.clear();
         self.shelves.clear();
         self.next_shelf_y = 0;
         self.epoch += 1;
         self.dirty = true;
+    }
+
+    /// Reset onto a bigger page (used when content outgrows the current
+    /// one). Everything cached is dropped and re-inserts on demand.
+    fn grow_to(&mut self, size: u32) {
+        self.size = size;
+        self.pixels = vec![0; (size * size * 4) as usize];
+        self.map.clear();
+        self.images.clear();
+        self.shelves.clear();
+        self.next_shelf_y = 0;
+        self.epoch += 1;
+        self.dirty = true;
+    }
+
+    /// Alloc with escalation: on a full page, reset and retry; still no fit,
+    /// double the page (to `MAX_ATLAS_SIZE`) until it fits or can't.
+    fn alloc_or_make_room(&mut self, w: u32, h: u32) -> Option<(u32, u32)> {
+        if let Some(pos) = self.alloc(w, h) {
+            return Some(pos);
+        }
+        // Quads emitted earlier this frame may sample stale UVs for one
+        // frame; the epoch bump forces a re-upload so it self-heals.
+        self.reset();
+        loop {
+            if let Some(pos) = self.alloc(w, h) {
+                return Some(pos);
+            }
+            let bigger = (self.size * 2).min(MAX_ATLAS_SIZE);
+            if bigger == self.size {
+                return None;
+            }
+            self.grow_to(bigger);
+        }
     }
 
     /// Finds space for a w*h glyph (padded by 1px to avoid sampling bleed).
@@ -124,17 +167,7 @@ impl GlyphAtlas {
             self.map.insert(key, None);
             return None;
         };
-        let pos = match self.alloc(glyph.w, glyph.h) {
-            Some(pos) => Some(pos),
-            None => {
-                // Full: reset and retry once. Quads emitted earlier this frame
-                // may sample stale UVs for one frame; epoch bump forces the
-                // renderer to re-upload so it self-heals next frame.
-                self.reset();
-                self.alloc(glyph.w, glyph.h)
-            }
-        };
-        let Some((x, y)) = pos else {
+        let Some((x, y)) = self.alloc_or_make_room(glyph.w, glyph.h) else {
             self.map.insert(key, None);
             return None;
         };
@@ -150,6 +183,35 @@ impl GlyphAtlas {
         };
         self.map.insert(key, Some(slot));
         Some(slot)
+    }
+
+    /// Cached lookup for a registered image; blits `rgba` (w*h*4) on miss.
+    /// `None` means it can't fit even a `MAX_ATLAS_SIZE` page.
+    pub fn get_or_insert_image(
+        &mut self,
+        id: ImageId,
+        w: u32,
+        h: u32,
+        rgba: &[u8],
+    ) -> Option<GlyphSlot> {
+        if let Some(slot) = self.images.get(&id) {
+            return *slot;
+        }
+        debug_assert_eq!(rgba.len(), (w * h * 4) as usize);
+        let Some((x, y)) = self.alloc_or_make_room(w, h) else {
+            self.images.insert(id, None);
+            return None;
+        };
+        self.blit(x, y, w, h, rgba);
+        let slot = GlyphSlot { x, y, w, h, left: 0, top: 0, color_glyph: true };
+        self.images.insert(id, Some(slot));
+        Some(slot)
+    }
+
+    /// Forget an image's slot (its pixels are reclaimed at the next reset).
+    /// Call when the host removes the image from `Resources`.
+    pub fn evict_image(&mut self, id: ImageId) {
+        self.images.remove(&id);
     }
 }
 
@@ -242,10 +304,21 @@ mod tests {
     }
 
     #[test]
-    fn oversized_glyph_is_rejected() {
+    fn oversized_content_grows_the_page() {
         let mut atlas = GlyphAtlas::with_size(64);
         let s = atlas.get_or_insert(fake_key(5), || Some(raster(200, 200)));
-        assert!(s.is_none());
+        assert!(s.is_some(), "the page should double until it fits");
+        assert!(atlas.size >= 256, "size is {}", atlas.size);
         assert!(atlas.get_or_insert(fake_key(6), || Some(raster(10, 10))).is_some());
+    }
+
+    #[test]
+    fn impossible_content_is_rejected() {
+        let mut atlas = GlyphAtlas::with_size(64);
+        let big = MAX_ATLAS_SIZE + 1;
+        let s = atlas.get_or_insert(fake_key(7), || Some(raster(big, 1)));
+        assert!(s.is_none());
+        // Still functional afterwards.
+        assert!(atlas.get_or_insert(fake_key(8), || Some(raster(10, 10))).is_some());
     }
 }

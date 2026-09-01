@@ -38,7 +38,8 @@ enum { KUI_COLUMN = 0, KUI_ROW = 1 };
 /* Alignment */
 enum { KUI_START = 0, KUI_CENTER = 1, KUI_END = 2 };
 /* Quad kinds */
-enum { KUI_QUAD_SOLID = 0, KUI_QUAD_GLYPH_MASK = 1, KUI_QUAD_GLYPH_COLOR = 2 };
+enum { KUI_QUAD_SOLID = 0, KUI_QUAD_GLYPH_MASK = 1, KUI_QUAD_GLYPH_COLOR = 2,
+       KUI_QUAD_IMAGE = 3 };
 /* Font families (KuiTextStyle.family) */
 enum { KUI_FONT_SANS = 0, KUI_FONT_SERIF = 1, KUI_FONT_MONO = 2 };
 /* Span flags */
@@ -191,6 +192,14 @@ uint64_t kui_open_keyed(KuiCtx *ctx, KuiStr label, const KuiSpec *spec, KuiValue
  * on_click. on_click/on_drag are nullable and consumed. */
 uint64_t kui_open_draggable(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
                             KuiValue *on_click, KuiValue *on_drag);
+/* -- Images --------------------------------------------------------------- */
+/* Registers a w*h RGBA image (pixels copied); returns a handle, 0 on
+ * failure. Handles are stable until kui_image_remove. */
+uint64_t kui_image_add(KuiCtx *ctx, uint32_t w, uint32_t h, const uint8_t *rgba);
+void kui_image_remove(KuiCtx *ctx, uint64_t id);
+/* An image node. Fit sizing = the image's pixel size as logical px; a Fit
+ * height against a resolved width keeps the aspect; radius rounds corners. */
+void kui_image(KuiCtx *ctx, uint64_t id, const KuiSpec *spec);
 void kui_close(KuiCtx *ctx);
 void kui_text(KuiCtx *ctx, KuiStr text, const KuiTextStyle *style);
 void kui_rich_text(KuiCtx *ctx, const KuiSpan *spans, size_t span_count,

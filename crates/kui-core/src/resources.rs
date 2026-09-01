@@ -10,6 +10,18 @@ new_key_type! {
     pub struct PainterId;
 }
 
+impl ImageId {
+    /// The handle as a plain integer for C/Lua (generation check intact).
+    pub fn to_ffi(self) -> u64 {
+        use slotmap::Key as _;
+        self.data().as_ffi()
+    }
+
+    pub fn from_ffi(raw: u64) -> Self {
+        Self::from(slotmap::KeyData::from_ffi(raw))
+    }
+}
+
 /// An RGBA image registered by the host (rendering lands in a later pass).
 pub struct ImageEntry {
     pub width: u32,
