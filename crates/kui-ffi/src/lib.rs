@@ -101,6 +101,10 @@ pub struct KuiSpec {
     pub float_self_y: u32,
     pub float_dx: f32,
     pub float_dy: f32,
+    /// Non-zero: flip across the anchor / clamp to stay in the viewport.
+    pub float_fit: u32,
+    /// Non-zero: hover-track this node (kui_is_hovered) without a payload.
+    pub hoverable: u32,
     /// Window-chrome role: 0 = none, 1 = drag, 2 = close button,
     /// 3 = minimize button, 4 = maximize button. Chrome nodes emit window
     /// commands (kui_take_window_commands), never events.
@@ -230,11 +234,17 @@ fn spec_of(s: &KuiSpec, on_click: *mut KuiValue) -> NodeSpec {
         spec = spec.scroll_y();
     }
     if s.float_mode != 0 {
-        let cfg = if s.float_mode == 2 { FloatConfig::viewport() } else { FloatConfig::parent() }
+        let mut cfg = if s.float_mode == 2 { FloatConfig::viewport() } else { FloatConfig::parent() }
             .at(align_of(s.float_anchor_x), align_of(s.float_anchor_y))
             .self_at(align_of(s.float_self_x), align_of(s.float_self_y))
             .offset(s.float_dx, s.float_dy);
+        if s.float_fit != 0 {
+            cfg = cfg.fit();
+        }
         spec = spec.float(cfg);
+    }
+    if s.hoverable != 0 {
+        spec = spec.hoverable();
     }
     match s.window_role {
         1 => spec = spec.window_drag(),

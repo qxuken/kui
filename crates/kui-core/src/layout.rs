@@ -26,6 +26,24 @@ fn align_factor(a: Align) -> f32 {
     }
 }
 
+fn mirror(a: Align) -> Align {
+    match a {
+        Align::Start => Align::End,
+        Align::Center => Align::Center,
+        Align::End => Align::Start,
+    }
+}
+
+/// One axis of float attachment: anchor point minus self point, plus offset.
+fn attach(anchor_pos: f32, anchor_len: f32, self_len: f32, anchor_pt: Align, self_pt: Align, off: f32) -> f32 {
+    anchor_pos + align_factor(anchor_pt) * anchor_len - align_factor(self_pt) * self_len + off
+}
+
+/// How far `[pos, pos+len]` sticks out of `[0, limit]`.
+fn overflow(pos: f32, len: f32, limit: f32) -> f32 {
+    (-pos).max(0.0) + (pos + len - limit).max(0.0)
+}
+
 pub trait TextMeasure {
     /// Unwrapped preferred size.
     fn intrinsic(&mut self, id: crate::tree::TextId) -> Size;
@@ -385,14 +403,25 @@ fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Size) {
                     FloatAnchor::Viewport => Rect::new(0.0, 0.0, viewport.w, viewport.h),
                 };
                 let cs = tree.size[c as usize];
-                tree.pos[c as usize] = Vec2::new(
-                    anchor.x + align_factor(cfg.anchor_point.0) * anchor.w
-                        - align_factor(cfg.self_point.0) * cs.w
-                        + cfg.offset.x,
-                    anchor.y + align_factor(cfg.anchor_point.1) * anchor.h
-                        - align_factor(cfg.self_point.1) * cs.h
-                        + cfg.offset.y,
-                );
+                let mut x = attach(anchor.x, anchor.w, cs.w, cfg.anchor_point.0, cfg.self_point.0, cfg.offset.x);
+                let mut y = attach(anchor.y, anchor.h, cs.h, cfg.anchor_point.1, cfg.self_point.1, cfg.offset.y);
+                if cfg.fit {
+                    // Mirror the attachment across the anchor per axis when
+                    // the mirrored side is less off-screen (ties keep the
+                    // declared side), then clamp the rest. Clamp order pins
+                    // the top/left edge on screen when nothing fits.
+                    let fx = attach(anchor.x, anchor.w, cs.w, mirror(cfg.anchor_point.0), mirror(cfg.self_point.0), -cfg.offset.x);
+                    if overflow(x, cs.w, viewport.w) > overflow(fx, cs.w, viewport.w) {
+                        x = fx;
+                    }
+                    let fy = attach(anchor.y, anchor.h, cs.h, mirror(cfg.anchor_point.1), mirror(cfg.self_point.1), -cfg.offset.y);
+                    if overflow(y, cs.h, viewport.h) > overflow(fy, cs.h, viewport.h) {
+                        y = fy;
+                    }
+                    x = x.min(viewport.w - cs.w).max(0.0);
+                    y = y.min(viewport.h - cs.h).max(0.0);
+                }
+                tree.pos[c as usize] = Vec2::new(x, y);
                 c = tree.next_sibling[c as usize];
                 continue;
             }

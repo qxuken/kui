@@ -190,6 +190,9 @@ fn parse_spec(t: &Table, is_row: bool) -> mlua::Result<NodeSpec> {
     if let Some(a) = t.get::<Option<String>>("cross_align")? {
         spec = spec.cross_align(parse_align(&a)?);
     }
+    if t.get::<Option<bool>>("hoverable")?.unwrap_or(false) {
+        spec = spec.hoverable();
+    }
     if let Some(v) = t.get::<Option<mlua::Value>>("on_click")? {
         spec = spec.on_click(lua_to_value(&v)?);
     }
@@ -237,6 +240,9 @@ fn parse_spec(t: &Table, is_row: bool) -> mlua::Result<NodeSpec> {
             f.get::<Option<f32>>("dx")?.unwrap_or(0.0),
             f.get::<Option<f32>>("dy")?.unwrap_or(0.0),
         );
+        if f.get::<Option<bool>>("fit")?.unwrap_or(false) {
+            cfg = cfg.fit();
+        }
         spec = spec.float(cfg);
     }
     Ok(spec)

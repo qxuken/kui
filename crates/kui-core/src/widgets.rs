@@ -108,10 +108,70 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
         if avg_wait > 0.05 {
             label.push_str(&format!(" · +{avg_wait:.2}ms vsync"));
         }
-        ui.text(
-            &label,
-            TextStyle::new(10.0).color(Color::rgb8(0x8a, 0x8f, 0xa3)),
-        );
+        ui.with(NodeSpec::row().gap(6.0).cross_align(Align::Center), |ui| {
+            ui.text(
+                &label,
+                TextStyle::new(10.0).color(Color::rgb8(0x8a, 0x8f, 0xa3)),
+            );
+            // "?" badge: hover for the color legend. Also the dynamic-float
+            // showcase — in the default bottom-right HUD the tooltip has no
+            // room below or to the right, so it flips above and slides left.
+            let badge = ui.child_key("kui:latency-legend");
+            let badge_bg = if ui.is_hovered(badge) {
+                Color::rgba8(0x8a, 0x8f, 0xa3, 0x50)
+            } else {
+                Color::rgba8(0x8a, 0x8f, 0xa3, 0x28)
+            };
+            ui.with_keyed(
+                "kui:latency-legend",
+                NodeSpec::column()
+                    .width(Sizing::Fixed(13.0))
+                    .height(Sizing::Fixed(13.0))
+                    .center()
+                    .bg(badge_bg)
+                    .radius(6.5)
+                    .hoverable(),
+                |ui| {
+                    ui.text(
+                        "?",
+                        TextStyle::new(9.0).color(Color::rgb8(0xc9, 0xcc, 0xd6)),
+                    );
+                    if ui.is_hovered(badge) {
+                        tooltip_with(ui, |ui| {
+                            ui.with(NodeSpec::column().gap(5.0), |ui| {
+                                for (color, name) in [
+                                    (INPUT, "input — events & edits"),
+                                    (VIEW, "view — rebuilding the tree"),
+                                    (LAYOUT, "layout — sizing & positions"),
+                                    (RENDER, "render — encode + submit"),
+                                    (WAIT, "vsync wait (not work)"),
+                                    (OVER, "cap: work over frame budget"),
+                                ] {
+                                    ui.with(
+                                        NodeSpec::row().gap(7.0).cross_align(Align::Center),
+                                        |ui| {
+                                            ui.with(
+                                                NodeSpec::column()
+                                                    .width(Sizing::Fixed(9.0))
+                                                    .height(Sizing::Fixed(9.0))
+                                                    .bg(color)
+                                                    .radius(2.0),
+                                                |_| {},
+                                            );
+                                            ui.text(
+                                                name,
+                                                TextStyle::new(11.0)
+                                                    .color(Color::rgb8(0xc9, 0xcc, 0xd6)),
+                                            );
+                                        },
+                                    );
+                                }
+                            });
+                        });
+                    }
+                },
+            );
+        });
         ui.with(
             NodeSpec::row()
                 .width(Sizing::Fixed(STATS_CAPACITY as f32 * 2.0))
@@ -173,19 +233,26 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
     });
 }
 
-/// Small floating label hanging below the node it's declared inside.
+/// Small floating label hanging below the node it's declared inside. The
+/// placement is dynamic (`FloatConfig::fit`): it flips above when the
+/// viewport bottom is too close and slides sideways off window edges.
 /// Typical use: `if ui.is_hovered(key) { widgets::tooltip(ui, "..."); }`
 pub fn tooltip(ui: &mut Ui<'_>, text: &str) {
+    tooltip_with(ui, |ui| {
+        ui.text(text, TextStyle::new(12.0));
+    });
+}
+
+/// [`tooltip`] chrome around arbitrary content (legends, shortcut hints, …).
+pub fn tooltip_with(ui: &mut Ui<'_>, content: impl FnOnce(&mut Ui<'_>)) {
     ui.with(
         NodeSpec::column()
-            .float(crate::spec::FloatConfig::below())
+            .float(crate::spec::FloatConfig::below().fit())
             .pad_xy(10.0, 6.0)
             .bg(Color::rgb8(0x24, 0x27, 0x33))
             .radius(6.0)
             .border(1.0, Color::rgb8(0x3a, 0x3e, 0x4e)),
-        |ui| {
-            ui.text(text, TextStyle::new(12.0));
-        },
+        content,
     );
 }
 

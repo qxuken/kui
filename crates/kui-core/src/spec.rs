@@ -55,6 +55,11 @@ pub struct FloatConfig {
     pub self_point: (Align, Align),
     /// Extra offset applied after attaching, logical px.
     pub offset: Vec2Offset,
+    /// Keep the float on screen: if the attached placement leaves the
+    /// viewport on an axis, mirror the attachment across the anchor on that
+    /// axis (below ↔ above, after ↔ before) when that fits better, then
+    /// clamp whatever still overflows. Tooltips/menus want this.
+    pub fit: bool,
 }
 
 /// Plain offset pair (kept separate from geometry to stay `Copy` + FFI-flat).
@@ -71,6 +76,7 @@ impl Default for FloatConfig {
             anchor_point: (Align::Start, Align::Start),
             self_point: (Align::Start, Align::Start),
             offset: Vec2Offset::default(),
+            fit: false,
         }
     }
 }
@@ -91,6 +97,7 @@ impl FloatConfig {
             anchor_point: (Align::Center, Align::End),
             self_point: (Align::Center, Align::Start),
             offset: Vec2Offset { x: 0.0, y: 6.0 },
+            ..Self::default()
         }
     }
 
@@ -101,6 +108,7 @@ impl FloatConfig {
             anchor_point: (Align::Center, Align::Start),
             self_point: (Align::Center, Align::End),
             offset: Vec2Offset { x: 0.0, y: -6.0 },
+            ..Self::default()
         }
     }
 
@@ -116,6 +124,12 @@ impl FloatConfig {
 
     pub fn offset(mut self, x: f32, y: f32) -> Self {
         self.offset = Vec2Offset { x, y };
+        self
+    }
+
+    /// Flip across the anchor / clamp as needed to stay in the viewport.
+    pub fn fit(mut self) -> Self {
+        self.fit = true;
         self
     }
 }
@@ -202,6 +216,11 @@ pub struct NodeSpec {
     pub style: VisualStyle,
     /// Payload emitted as a `UiEvent` when this node is clicked.
     pub on_click: Option<Value>,
+    /// Track pointer hover for this node (`Ui::is_hovered`) without making
+    /// it clickable — tooltips on passive badges. Nodes with `on_click` /
+    /// `on_key` / `window` are always hover-tracked; clicks on a merely
+    /// hoverable node emit nothing.
+    pub hoverable: bool,
     /// Marks this node as a key sink: while it holds key focus, key
     /// presses arrive as `UiEvent`s on it, with this payload merged in
     /// under `tag`. Clicking the node takes key focus.
@@ -328,6 +347,13 @@ impl NodeSpec {
     pub fn border(mut self, w: f32, c: Color) -> Self {
         self.style.border_w = w;
         self.style.border_color = c;
+        self
+    }
+
+    /// Hover-track this node without making it clickable; see the
+    /// `hoverable` field.
+    pub fn hoverable(mut self) -> Self {
+        self.hoverable = true;
         self
     }
 

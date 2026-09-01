@@ -43,7 +43,7 @@ impl App for Counter {
                             .pad_xy(9.0, 4.0)
                             .bg(Color::rgb8(0x24, 0x27, 0x33))
                             .radius(10.0)
-                            .on_click(Value::Null),
+                            .hoverable(),
                         |ui| {
                             ui.text("?", TextStyle::new(13.0));
                             if ui.is_hovered(badge) || self.count == 0 {

@@ -196,7 +196,9 @@ pub struct HitRegion {
     pub rect: Rect,
     /// Ancestor clip; a point must be inside both to hit.
     pub clip: Rect,
-    pub payload: Value,
+    /// Click payload; None for hover-only regions (hoverable, edits) — a
+    /// click on those emits no `UiEvent`.
+    pub payload: Option<Value>,
     /// Content-box origin of an editable text node; None for plain hits.
     pub edit_origin: Option<Vec2>,
     /// Key-sink tag when the node declared `on_key`: clicking it takes
@@ -303,13 +305,13 @@ impl Interaction {
                     && pressed == hovered
                     && let Some(region) = self.hits.iter().rev().find(|h| h.key == pressed)
                 {
-                    match region.window {
-                        Some(WindowRole::Button(b)) => self.window_commands.push(b.command()),
-                        Some(WindowRole::Drag) => {}
-                        None => out.push(UiEvent {
+                    match (region.window, &region.payload) {
+                        (Some(WindowRole::Button(b)), _) => self.window_commands.push(b.command()),
+                        (Some(WindowRole::Drag), _) | (None, None) => {}
+                        (None, Some(payload)) => out.push(UiEvent {
                             origin: region.origin,
                             key: region.key,
-                            payload: region.payload.clone(),
+                            payload: payload.clone(),
                         }),
                     }
                 }
@@ -337,7 +339,7 @@ mod tests {
             origin: OriginId(origin),
             rect: Rect::new(x, y, w, h),
             clip: Rect::new(-1e9, -1e9, 2e9, 2e9),
-            payload: Value::str(tag),
+            payload: Some(Value::str(tag)),
             edit_origin: None,
             key_sink: None,
             window: None,

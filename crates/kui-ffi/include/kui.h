@@ -100,6 +100,8 @@ typedef struct KuiSpec {
     uint32_t float_anchor_x, float_anchor_y;
     uint32_t float_self_x, float_self_y;
     float float_dx, float_dy;
+    uint32_t float_fit; /* non-zero: flip across the anchor / clamp to stay in the viewport */
+    uint32_t hoverable; /* non-zero: hover-track without a click payload (kui_is_hovered) */
     uint32_t window_role; /* KUI_WINDOW_*; makes this node window chrome */
 } KuiSpec;
 

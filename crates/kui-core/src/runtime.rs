@@ -212,13 +212,14 @@ impl Core {
                 clip: clip.scaled(scale),
             });
         }
-        if spec.on_click.is_some() || spec.window.is_some() || spec.on_key.is_some() {
+        if spec.on_click.is_some() || spec.window.is_some() || spec.on_key.is_some() || spec.hoverable
+        {
             hits.push(HitRegion {
                 key: self.tree.keys[i],
                 origin: self.tree.origins[i],
                 rect,
                 clip,
-                payload: spec.on_click.clone().unwrap_or(Value::Null),
+                payload: spec.on_click.clone(),
                 key_sink: spec.on_key.clone(),
                 edit_origin: None,
                 window: spec.window,
@@ -246,7 +247,7 @@ impl Core {
                     origin: self.tree.origins[i],
                     rect,
                     clip,
-                    payload: Value::Null,
+                    payload: None,
                     edit_origin: Some(content_origin),
                     key_sink: None,
                     window: None,
