@@ -238,6 +238,7 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
         if n > 1 {
             used += spec.gap * (n - 1) as f32;
         }
+        let mut total = used;
         if grow_total > 0.0 {
             let remain = (content - used).max(0.0);
             let mut c = tree.first_child[i as usize];
@@ -246,9 +247,19 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
                     && let Sizing::Grow(f) = child_sizing(tree, c, axis)
                 {
                     set_axis_clamped(tree, c, axis, remain * f.max(0.0) / grow_total);
+                    // Clamps can push a grow child past its share.
+                    total += get_axis(tree, c, axis);
                 }
                 c = tree.next_sibling[c as usize];
             }
+        }
+        let scrolls = match axis {
+            AxisSel::Width => spec.scroll_x,
+            AxisSel::Height => spec.scroll_y,
+        };
+        let deficit = total - content;
+        if deficit > 0.5 && !scrolls {
+            shrink_axis(tree, i, axis, deficit);
         }
     } else {
         // Cross axis: Grow/Percent resolve against the content box directly.
@@ -295,6 +306,85 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
                 tree.size[c as usize].w = content;
             }
             c = tree.next_sibling[c as usize];
+        }
+    }
+}
+
+/// The shrink pass: pays off `deficit` (how far in-flow children overflow
+/// the parent's main-axis content box) by compressing Fit-sized children
+/// toward their min (default 0), largest first — so equal children end up
+/// equal, clay-style. Fixed and Percent
+/// keep their declared size; Grow never overflows. Text shrinks in width
+/// (it rewraps at the new width in fit_heights) but never in height. Scroll
+/// axes skip this entirely — overflow is the point of a scroll container.
+fn shrink_axis(tree: &mut Tree, i: u32, axis: AxisSel, mut deficit: f32) {
+    let shrinkable = |tree: &Tree, c: u32| -> Option<f32> {
+        if is_float(tree, c) || child_sizing(tree, c, axis) != Sizing::Fit {
+            return None;
+        }
+        // Squashing text/editors vertically would clip lines; width shrink
+        // rewraps instead.
+        if axis == AxisSel::Height
+            && matches!(tree.content[c as usize], NodeContent::Text(_) | NodeContent::Edit(_))
+        {
+            return None;
+        }
+        let spec = tree.specs[c as usize].layout;
+        Some(match axis {
+            AxisSel::Width => spec.min_w,
+            AxisSel::Height => spec.min_h,
+        })
+    };
+
+    // Largest-first, like grow in reverse: pull the biggest children down
+    // to the second-biggest, repeat until the deficit is paid or every
+    // shrinkable child sits at its min.
+    let mut guard = 0;
+    while deficit > 0.5 && guard < 128 {
+        guard += 1;
+        let mut largest = f32::NEG_INFINITY;
+        let mut second = 0.0f32;
+        let mut count = 0u32;
+        let mut c = tree.first_child[i as usize];
+        while c != NIL {
+            if let Some(min) = shrinkable(tree, c) {
+                let s = get_axis(tree, c, axis);
+                if s > min + 0.01 {
+                    if s > largest + 0.01 {
+                        second = if largest.is_finite() { largest.max(second) } else { second };
+                        largest = s;
+                        count = 1;
+                    } else if s > largest - 0.01 {
+                        count += 1;
+                    } else if s > second {
+                        second = s;
+                    }
+                }
+            }
+            c = tree.next_sibling[c as usize];
+        }
+        if count == 0 {
+            break;
+        }
+        let target = (largest - deficit / count as f32).max(second).max(0.0);
+        let mut shrunk_any = false;
+        let mut c = tree.first_child[i as usize];
+        while c != NIL {
+            if let Some(min) = shrinkable(tree, c) {
+                let s = get_axis(tree, c, axis);
+                if s > largest - 0.01 {
+                    let new = target.max(min);
+                    if new < s {
+                        deficit -= s - new;
+                        set_axis(tree, c, axis, new);
+                        shrunk_any = true;
+                    }
+                }
+            }
+            c = tree.next_sibling[c as usize];
+        }
+        if !shrunk_any {
+            break;
         }
     }
 }
@@ -706,6 +796,82 @@ mod tests {
         let narrow = build(100.0);
         assert_eq!(wide.h, 20.0);
         assert_eq!(narrow.h, 80.0); // 400 / 100 -> 4 lines
+    }
+
+    #[test]
+    fn shrink_compresses_largest_fit_child_first() {
+        let mut t = T::new(NodeSpec::row().width(px(100.0)).height(px(50.0)));
+        let a = t.node(0, NodeSpec::column());
+        t.node(a, NodeSpec::row().width(px(80.0)).height(px(10.0)));
+        let b = t.node(0, NodeSpec::column());
+        t.node(b, NodeSpec::row().width(px(40.0)).height(px(10.0)));
+        t.run(1000.0, 1000.0);
+        // 120 into 100: the 80 child pays the whole 20px deficit.
+        assert_eq!(t.size(a).w, 60.0);
+        assert_eq!(t.size(b).w, 40.0);
+    }
+
+    #[test]
+    fn shrink_respects_min_and_spills_to_the_next() {
+        let mut t = T::new(NodeSpec::row().width(px(100.0)).height(px(50.0)));
+        let a = t.node(0, NodeSpec::column().min_width(70.0));
+        t.node(a, NodeSpec::row().width(px(80.0)).height(px(10.0)));
+        let b = t.node(0, NodeSpec::column());
+        t.node(b, NodeSpec::row().width(px(40.0)).height(px(10.0)));
+        t.run(1000.0, 1000.0);
+        // a stops at its min; b pays the rest.
+        assert_eq!(t.size(a).w, 70.0);
+        assert_eq!(t.size(b).w, 30.0);
+    }
+
+    #[test]
+    fn equal_children_shrink_equally() {
+        let mut t = T::new(NodeSpec::row().width(px(100.0)).height(px(50.0)));
+        let mut kids = Vec::new();
+        for _ in 0..3 {
+            let c = t.node(0, NodeSpec::column());
+            t.node(c, NodeSpec::row().width(px(60.0)).height(px(10.0)));
+            kids.push(c);
+        }
+        t.run(1000.0, 1000.0);
+        for c in kids {
+            assert!((t.size(c).w - 100.0 / 3.0).abs() < 0.1, "got {}", t.size(c).w);
+        }
+    }
+
+    #[test]
+    fn shrunk_text_rewraps() {
+        let mut t = T::new(NodeSpec::row().width(px(200.0)).height(px(500.0)));
+        t.node(0, NodeSpec::column().width(px(80.0)).height(px(10.0)));
+        let txt = t.text(0, 20); // 200px intrinsic
+        t.run(1000.0, 1000.0);
+        // 280 into 200: text pays the deficit, then wraps at 120 -> 2 lines.
+        assert_eq!(t.size(txt).w, 120.0);
+        assert_eq!(t.size(txt).h, 40.0);
+    }
+
+    #[test]
+    fn text_never_shrinks_vertically() {
+        let mut t = T::new(NodeSpec::column().width(px(200.0)).height(px(30.0)));
+        let txt = t.text(0, 30); // wraps to 200 -> 2 lines = 40 > 30 parent
+        t.run(1000.0, 1000.0);
+        assert_eq!(t.size(txt).h, 40.0, "text overflows rather than clipping lines");
+    }
+
+    #[test]
+    fn scroll_axis_skips_shrink() {
+        let mut t = T::new(
+            NodeSpec::column().width(px(100.0)).height(px(100.0)).scroll_y(),
+        );
+        for _ in 0..2 {
+            let c = t.node(0, NodeSpec::column());
+            t.node(c, NodeSpec::row().width(px(10.0)).height(px(80.0)));
+        }
+        t.run(1000.0, 1000.0);
+        // 160 of content in a 100 box stays 160: it scrolls instead.
+        for c in [1u32, 3u32] {
+            assert_eq!(t.size(c).h, 80.0);
+        }
     }
 
     #[test]
