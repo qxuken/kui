@@ -23,6 +23,10 @@ pub enum InputEvent {
     Scroll(Vec2),
     /// Committed text (typing, IME commit, paste). Routed to the focused editor.
     Text(String),
+    /// In-progress IME composition (text and the caret byte range inside
+    /// it), drawn as an overlay at the focused editor's caret. Empty text
+    /// clears it; a commit arrives separately as `Text`.
+    Preedit(String, Option<(usize, usize)>),
     /// Navigation/editing key. Routed to the focused editor.
     Key(EditKey, Mods),
     /// A full key press, routed to whatever holds key focus (see
@@ -429,6 +433,7 @@ impl Interaction {
             // Routed by the core (they need the retained stores).
             InputEvent::Scroll(_)
             | InputEvent::Text(_)
+            | InputEvent::Preedit(..)
             | InputEvent::Key(..)
             | InputEvent::KeyDown(_) => {}
             InputEvent::MouseUp => {

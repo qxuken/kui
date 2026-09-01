@@ -533,6 +533,14 @@ impl<A: App> Shell<A> {
             window.set_title(&self.applied_title);
         }
 
+        // Anchor the OS IME candidate window at the focused caret.
+        if let Some(r) = self.core.ime_rect() {
+            window.set_ime_cursor_area(
+                winit::dpi::LogicalPosition::new(r.x, r.y),
+                winit::dpi::LogicalSize::new(r.w.max(1.0), r.h),
+            );
+        }
+
         let t_render = std::time::Instant::now();
         let (dl, atlas) = self.core.output();
         let mut wait_ms = 0.0;
@@ -638,6 +646,9 @@ impl<A: App> ApplicationHandler for Shell<A> {
             WindowEvent::ModifiersChanged(m) => self.modifiers = m.state(),
             WindowEvent::KeyboardInput { event, .. } => self.on_key(event),
             WindowEvent::Ime(Ime::Commit(text)) => self.dispatch(InputEvent::Text(text)),
+            WindowEvent::Ime(Ime::Preedit(text, cursor)) => {
+                self.dispatch(InputEvent::Preedit(text, cursor));
+            }
             WindowEvent::MouseWheel { delta, .. } => {
                 let scale = self.window.as_ref().map_or(1.0, |w| w.scale_factor()) as f32;
                 let d = match delta {

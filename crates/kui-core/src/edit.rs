@@ -52,6 +52,17 @@ pub(crate) struct EditState {
     pub version: u64,
     /// Cached wrapped measurement: (version, wrap bits, size).
     measured: Option<(u64, u32, Size)>,
+    /// In-progress IME composition, drawn as an overlay at the caret.
+    preedit: Option<Preedit>,
+}
+
+/// IME composition state: the uncommitted text, the caret byte range the
+/// IME reports inside it, and a scratch buffer that shapes it (kept so
+/// repeated preedit updates reuse the allocation).
+struct Preedit {
+    text: String,
+    cursor: Option<(usize, usize)>,
+    buffer: Buffer,
 }
 
 pub struct EditStore {
@@ -104,6 +115,12 @@ impl EditStore {
     pub fn set_focus(&mut self, key: Option<Key>) {
         if self.focused != key {
             self.caret_stamp += 1;
+            // A blurred editor abandons any in-progress composition.
+            if let Some(old) = self.focused
+                && let Some(s) = self.states.get_mut(&old)
+            {
+                s.preedit = None;
+            }
         }
         self.focused = key;
     }
@@ -148,6 +165,7 @@ impl EditStore {
                 wrap: None,
                 version: 0,
                 measured: None,
+                preedit: None,
             }
         });
         state.origin = origin;
@@ -218,6 +236,8 @@ impl EditStore {
 
     pub(crate) fn apply_text(&mut self, key: Key, text: &str, fs: &mut FontSystem) -> bool {
         let Some(s) = self.states.get_mut(&key) else { return false };
+        // A commit ends the composition (winit also clears preedit first).
+        s.preedit = None;
         let filtered: String = text
             .chars()
             .filter(|c| !c.is_control() || (*c == '\n' && s.multiline) || *c == '\t')
@@ -243,6 +263,7 @@ impl EditStore {
         fs: &mut FontSystem,
     ) -> (bool, bool) {
         let Some(s) = self.states.get_mut(&key) else { return (false, false) };
+        s.preedit = None;
         let mut changed = false;
         let mut submit = false;
         match ek {
@@ -352,6 +373,44 @@ impl EditStore {
         }
     }
 
+    /// Replaces the focused editor's IME composition overlay. Empty text
+    /// clears it (winit sends that before every commit). Returns true if
+    /// anything visible changed.
+    pub(crate) fn set_preedit(
+        &mut self,
+        key: Key,
+        text: &str,
+        cursor: Option<(usize, usize)>,
+        fs: &mut FontSystem,
+    ) -> bool {
+        let Some(s) = self.states.get_mut(&key) else { return false };
+        if text.is_empty() {
+            return s.preedit.take().is_some();
+        }
+        let metrics = Metrics::new(s.style.size * s.scale, s.style.line_height * s.scale);
+        let attrs = attrs_for(&s.style);
+        let pre = s.preedit.get_or_insert_with(|| Preedit {
+            text: String::new(),
+            cursor: None,
+            buffer: Buffer::new(fs, metrics),
+        });
+        pre.cursor = cursor;
+        if pre.text != text {
+            pre.text = text.to_string();
+            pre.buffer.set_metrics(metrics);
+            pre.buffer.set_size(None, None);
+            pre.buffer.set_text(text, &attrs, Shaping::Advanced, None);
+            pre.buffer.shape_until_scroll(fs, false);
+        }
+        self.caret_stamp += 1;
+        true
+    }
+
+    /// The active composition text, if any (for tests and hosts).
+    pub fn preedit(&self, key: Key) -> Option<&str> {
+        self.states.get(&key)?.preedit.as_ref().map(|p| p.text.as_str())
+    }
+
     /// Caret rect in physical px, relative to the edit's content origin.
     /// None when the caret isn't laid out (e.g. no state for `key`).
     pub(crate) fn caret_rect(&mut self, key: Key, fs: &mut FontSystem) -> Option<Rect> {
@@ -434,8 +493,13 @@ impl EditStore {
         let accent = s.accent;
         let scale = s.scale;
         let selection = s.editor.selection_bounds();
-        let cursor_pos =
-            if focused && blink_visible { s.editor.cursor_position() } else { None };
+        let pre_anchor = if focused && s.preedit.is_some() { s.editor.cursor_position() } else { None };
+        // The composition overlay brings its own caret; the normal one hides.
+        let cursor_pos = if focused && blink_visible && s.preedit.is_none() {
+            s.editor.cursor_position()
+        } else {
+            None
+        };
 
         s.editor.with_buffer(|b| {
             let line_height = b.metrics().line_height;
@@ -537,6 +601,78 @@ impl EditStore {
                 });
             }
         });
+
+        // IME composition overlay at the caret: backdrop, shaped preedit
+        // glyphs, underline, and a solid caret at the IME-reported offset.
+        // Drawn over the committed text (which doesn't reflow) — the
+        // composition is transient by nature.
+        if let (Some(pre), Some((cx, cy))) = (&s.preedit, pre_anchor) {
+            let line_height = s.style.line_height * scale;
+            let (ox, oy) = (origin.x + cx as f32, origin.y + cy as f32);
+            let mut w = 0.0f32;
+            for run in pre.buffer.layout_runs() {
+                w = w.max(run.line_w);
+            }
+            let solid = |rect: Rect, color: Color| Quad {
+                rect,
+                color,
+                border_color: Color::TRANSPARENT,
+                radius: 0.0,
+                border_w: 0.0,
+                kind: QuadKind::Solid,
+                uv: [0; 4],
+                clip,
+            };
+            out.push(solid(
+                Rect::new(ox, oy, w, line_height),
+                Color { a: 0.3, ..accent },
+            ));
+            let mut caret_x = 0.0f32;
+            for run in pre.buffer.layout_runs() {
+                for glyph in run.glyphs.iter() {
+                    if let Some((start, _)) = pre.cursor
+                        && glyph.end <= start
+                    {
+                        caret_x = caret_x.max(glyph.x + glyph.w);
+                    }
+                    let physical = glyph.physical((0.0, 0.0), 1.0);
+                    let Some(slot) =
+                        crate::text::raster_glyph(physical.cache_key, fs, swash, atlas)
+                    else {
+                        continue;
+                    };
+                    out.push(Quad {
+                        rect: Rect::new(
+                            ox + physical.x as f32 + slot.left as f32,
+                            oy + run.line_y.round() + physical.y as f32 - slot.top as f32,
+                            slot.w as f32,
+                            slot.h as f32,
+                        ),
+                        color,
+                        border_color: Color::TRANSPARENT,
+                        radius: 0.0,
+                        border_w: 0.0,
+                        kind: if slot.color_glyph {
+                            QuadKind::GlyphColor
+                        } else {
+                            QuadKind::GlyphMask
+                        },
+                        uv: [slot.x, slot.y, slot.w, slot.h],
+                        clip,
+                    });
+                }
+            }
+            let underline_h = scale.max(1.0);
+            out.push(solid(
+                Rect::new(ox, oy + line_height - underline_h, w, underline_h),
+                color,
+            ));
+            let caret_x = if pre.cursor.is_some() { caret_x } else { w };
+            out.push(solid(
+                Rect::new(ox + caret_x, oy, (2.0 * scale).max(2.0), line_height),
+                color,
+            ));
+        }
     }
 }
 

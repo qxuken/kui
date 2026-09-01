@@ -546,6 +546,25 @@ pub extern "C" fn kui_open_keyed(
     })
 }
 
+/// In-progress IME composition, shown at the focused editor's caret.
+/// Empty text clears it; the commit arrives via `kui_input_text`.
+/// `cursor_start`/`cursor_end` are byte offsets into `text`, or
+/// `UINT32_MAX` for none.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_input_preedit(
+    ptr: *mut KuiCtx,
+    text: KuiStr,
+    cursor_start: u32,
+    cursor_end: u32,
+) {
+    guard((), || {
+        let text = kstr(text).into_owned();
+        let cursor = (cursor_start != u32::MAX)
+            .then_some((cursor_start as usize, cursor_end as usize));
+        push_input(ptr, InputEvent::Preedit(text, cursor));
+    });
+}
+
 /// Registers a w×h RGBA image (pixels copied); returns its handle, 0 on
 /// failure. Draw it with `kui_image`; free it with `kui_image_remove`.
 #[unsafe(no_mangle)]

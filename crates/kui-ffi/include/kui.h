@@ -160,6 +160,11 @@ void kui_input_cursor_left(KuiCtx *ctx);
 void kui_input_mouse(KuiCtx *ctx, bool down, uint32_t clicks);
 void kui_input_scroll(KuiCtx *ctx, float dx, float dy); /* +y = scroll up */
 void kui_input_text(KuiCtx *ctx, KuiStr text);   /* typing/paste -> focused editor */
+/* In-progress IME composition shown at the focused caret; empty text clears
+ * it, the commit arrives via kui_input_text. cursor_* are byte offsets into
+ * text (UINT32_MAX = none). */
+void kui_input_preedit(KuiCtx *ctx, KuiStr text, uint32_t cursor_start,
+                       uint32_t cursor_end);
 void kui_input_key(KuiCtx *ctx, uint32_t key, uint32_t mods); /* KUI_KEY_* + KUI_MOD_* */
 bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
 

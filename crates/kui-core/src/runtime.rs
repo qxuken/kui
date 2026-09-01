@@ -68,6 +68,9 @@ pub struct Core {
     /// Per-node "inside a floating subtree" marker (only filled when needed).
     in_float: Vec<bool>,
     any_float: bool,
+    /// The focused editor's caret rect (logical, viewport coords) as of the
+    /// last finish_frame — where drivers should anchor the OS IME window.
+    ime_rect: Option<Rect>,
 }
 
 impl Core {
@@ -94,6 +97,7 @@ impl Core {
             any_clip: false,
             in_float: Vec::new(),
             any_float: false,
+            ime_rect: None,
         }
     }
 
@@ -113,6 +117,11 @@ impl Core {
                     && self.edit.apply_text(key, &s, self.text.font_system_mut())
                 {
                     self.push_edit_event(key, "changed", &mut out);
+                }
+            }
+            InputEvent::Preedit(s, cursor) => {
+                if let Some(key) = self.edit.focused() {
+                    self.edit.set_preedit(key, &s, cursor, self.text.font_system_mut());
                 }
             }
             InputEvent::Key(ek, mods) => {
@@ -788,6 +797,25 @@ impl Core {
         self.interaction.set_hits(hits);
         self.interaction.scroll_regions = scroll_regions;
         self.interaction.scrollbars = scrollbars;
+        self.ime_rect = self.focused_caret_rect();
+    }
+
+    /// See the `ime_rect` field. None when no editor is focused.
+    pub fn ime_rect(&self) -> Option<Rect> {
+        self.ime_rect
+    }
+
+    fn focused_caret_rect(&mut self) -> Option<Rect> {
+        let key = self.edit.focused()?;
+        let i = (0..self.tree.len()).find(|&i| self.tree.content[i] == NodeContent::Edit(key))?;
+        let caret = self.edit.caret_rect(key, self.text.font_system_mut())?;
+        let pad = self.tree.specs[i].layout.padding;
+        Some(Rect::new(
+            self.tree.pos[i].x + pad.l + caret.x / self.scale,
+            self.tree.pos[i].y + pad.t + caret.y / self.scale,
+            caret.w / self.scale,
+            caret.h / self.scale,
+        ))
     }
 
     /// After layout: if the focused edit's caret moved this frame, nudge the
