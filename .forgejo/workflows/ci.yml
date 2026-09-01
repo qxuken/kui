@@ -1,0 +1,75 @@
+# Forgejo Actions, docker runner. One job so the cargo target dir is built
+# once and shared by fmt, clippy, the workspace tests, the C example and the
+# Node addon parity tests. The container is the stock rust image; the only
+# system additions are a font (the text tests measure real glyphs) and a
+# pinned Node tarball for packages/kui.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  NODE_VERSION: "22.12.0"
+
+jobs:
+  check:
+    runs-on: docker
+    container:
+      image: rust:1-bookworm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps
+        run: |
+          set -eu
+          apt-get update
+          apt-get install -y --no-install-recommends fonts-dejavu-core xz-utils ca-certificates curl
+          case "$(uname -m)" in
+            x86_64) arch=x64 ;;
+            aarch64) arch=arm64 ;;
+            *) echo "unsupported arch $(uname -m)"; exit 1 ;;
+          esac
+          curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${arch}.tar.xz" \
+            | tar -xJ -C /usr/local --strip-components=1
+          node --version
+          npm --version
+          rustup component add rustfmt clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: C example (FFI self-test)
+        run: |
+          ./examples/c/build.sh
+          ./examples/c/counter --headless
+
+      - name: Node addon parity tests
+        run: |
+          cargo build -p kui-node --release
+          cd packages/kui
+          npm test
+          # The TS prop types are generated from the schema; a stale file
+          # means someone changed PROPS without running `npm run gen`.
+          npm run gen
+          git diff --exit-code -- jsx-runtime.d.ts
