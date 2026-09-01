@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "jsx": "react-jsx",
+    "jsxImportSource": "kui",
+    "strict": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["*.tsx", "*.ts"]
+}

@@ -15,6 +15,7 @@ bundled Lua extension support is table-to-node conversion, not FFI gymnastics.
 | `kui` | Batteries-included runner: winit + wgpu around a `Core`, `App` trait, widget sugar |
 | `kui-lua` | Lua extensions via mlua: scripts return table trees, receive events as tables |
 | `kui-ffi` | C API (cdylib/staticlib + [include/kui.h](crates/kui-ffi/include/kui.h)): flat builder calls, opaque `KuiValue` payloads, `repr(C)` draw data, windowed runner via callbacks |
+| `kui-node` | Node.js addon (napi-rs) + the [`packages/kui`](packages/kui) npm package: JSX views (custom jsx-runtime, no React) lowered into the IR in one call per frame, Elm-style messages as data |
 
 ## Examples
 
@@ -29,6 +30,28 @@ cargo run -p kui --example modal_editor   # helix-flavored modal editing; the ap
 cargo run -p kui --example splitmux       # tmux-style splits, tabs, and focus; the pane tree is data
 cargo run -p kui --example syntax_view    # syntax highlighting as coalesced style runs
 ```
+
+The same app from Node with JSX — build the addon with
+`cargo build -p kui-node --release`, then in [examples/node](examples/node)
+`npm install && npm start` (headless) or `npm run window` (a real winit +
+wgpu window, its event loop pumped from a timer so it shares the main
+thread with libuv):
+
+```tsx
+// tsconfig: "jsx": "react-jsx", "jsxImportSource": "kui"
+const view = (model: Model) => (
+  <box pad={24} gap={16}>
+    <button onClick={{ kind: 'add', by: 1 }}>+1</button>
+    <text size={20}>{`count = ${model.count}`}</text>
+  </box>
+);
+const app = createApp({ init, update, view }, { width: 640, height: 480 });   // headless
+const final = await runWindowed({ init, update, view }, { title: 'counter' }); // a window
+```
+
+JSX elements are plain data, so the tree *is* the frame: the jsx-runtime has
+no reconciler and no React — `Ctx.frame()` lowers the element tree straight
+into the IR, and `onClick` carries a message value, never a closure.
 
 A Lua extension in full:
 

@@ -6,6 +6,7 @@ members = [
     "crates/kui",
     "crates/kui-lua",
     "crates/kui-ffi",
+    "crates/kui-node",
 ]
 
 [workspace.package]

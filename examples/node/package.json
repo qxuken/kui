@@ -1,0 +1,18 @@
+{
+  "name": "kui-node-counter",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild counter.tsx counter-window.tsx --jsx=automatic --jsx-import-source=kui --format=esm --outdir=dist --out-extension:.js=.mjs",
+    "start": "npm run build && node dist/counter.mjs",
+    "window": "npm run build && node dist/counter-window.mjs"
+  },
+  "dependencies": {
+    "kui": "file:../../packages/kui"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.0",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
+  }
+}

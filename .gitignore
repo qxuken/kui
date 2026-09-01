@@ -1,3 +1,5 @@
 /target
 /examples/c/counter
 .DS_Store
+/examples/node/node_modules
+/examples/node/dist

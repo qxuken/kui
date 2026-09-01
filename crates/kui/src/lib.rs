@@ -5,8 +5,8 @@
 
 use std::sync::Arc;
 
-pub use kui_core::*;
 pub use kui_core::widgets;
+pub use kui_core::*;
 
 #[cfg(target_os = "windows")]
 mod windows_nc;
@@ -89,10 +89,8 @@ impl Launcher {
         self
     }
 
-    pub fn run<A: App>(self, app: A) -> Result<(), Box<dyn std::error::Error>> {
-        let event_loop = EventLoop::new()?;
-        event_loop.set_control_flow(ControlFlow::Wait);
-        let mut shell = Shell {
+    fn shell<A: App>(self, app: A) -> Shell<A> {
+        Shell {
             title: self.title.clone(),
             applied_title: self.title,
             chrome: self.chrome,
@@ -114,9 +112,82 @@ impl Launcher {
             exit_requested: false,
             #[cfg(target_os = "windows")]
             nc: None,
-        };
+        }
+    }
+
+    pub fn run<A: App>(self, app: A) -> Result<(), Box<dyn std::error::Error>> {
+        let event_loop = EventLoop::new()?;
+        event_loop.set_control_flow(ControlFlow::Wait);
+        let mut shell = self.shell(app);
         event_loop.run_app(&mut shell)?;
         Ok(())
+    }
+
+    /// Opens the window but keeps the event loop in the caller's hands: the
+    /// returned [`PumpRunner`] processes OS events only when [`PumpRunner::pump`]
+    /// is called, so a foreign loop (Node/libuv, a game loop, a test harness)
+    /// can interleave with winit on the main thread. One per process — winit
+    /// event loops are not recreatable on every platform.
+    pub fn open<A: App>(self, app: A) -> Result<PumpRunner<A>, Box<dyn std::error::Error>> {
+        let mut event_loop = EventLoop::new()?;
+        event_loop.set_control_flow(ControlFlow::Wait);
+        let mut shell = self.shell(app);
+        // First pump delivers `resumed`, creating the window + renderer.
+        let alive = pump_once(&mut event_loop, &mut shell);
+        Ok(PumpRunner {
+            event_loop,
+            shell,
+            alive,
+        })
+    }
+}
+
+fn pump_once<A: App>(event_loop: &mut EventLoop<()>, shell: &mut Shell<A>) -> bool {
+    use winit::platform::pump_events::{EventLoopExtPumpEvents, PumpStatus};
+    match event_loop.pump_app_events(Some(std::time::Duration::ZERO), shell) {
+        PumpStatus::Continue => !shell.exit_requested,
+        PumpStatus::Exit(_) => false,
+    }
+}
+
+/// A windowed runner driven from outside: same [`Shell`] as [`Launcher::run`]
+/// (input mapping, IME, clipboard, chrome, caret blink), but the host calls
+/// [`pump`](Self::pump) on its own cadence instead of parking in `run_app`.
+pub struct PumpRunner<A: App> {
+    event_loop: EventLoop<()>,
+    shell: Shell<A>,
+    alive: bool,
+}
+
+impl<A: App> PumpRunner<A> {
+    /// Processes all pending OS events without blocking. Returns false once
+    /// the window has closed (further pumps are no-ops).
+    pub fn pump(&mut self) -> bool {
+        if !self.alive {
+            return false;
+        }
+        self.alive = pump_once(&mut self.event_loop, &mut self.shell);
+        self.alive
+    }
+
+    pub fn app_mut(&mut self) -> &mut A {
+        &mut self.shell.app
+    }
+
+    pub fn core_mut(&mut self) -> &mut Core {
+        &mut self.shell.core
+    }
+
+    /// Schedules a redraw (call after changing what `view` will produce).
+    pub fn request_redraw(&self) {
+        if let Some(w) = &self.shell.window {
+            w.request_redraw();
+        }
+    }
+
+    /// Asks the window to close; the next `pump` observes it and returns false.
+    pub fn request_exit(&mut self) {
+        self.shell.exit_requested = true;
     }
 }
 
@@ -133,7 +204,12 @@ pub fn run<A: App>(
 /// public metric, so this uses gpui's measured TRAFFIC_LIGHT_PADDING: 78
 /// with the macOS 26 SDK (71 on older SDKs — the extra pixel on the left is
 /// the window border). We assume a current SDK.
-const MACOS_TRAFFIC_LIGHTS: Rect = Rect { x: 0.0, y: 0.0, w: 78.0, h: 28.0 };
+const MACOS_TRAFFIC_LIGHTS: Rect = Rect {
+    x: 0.0,
+    y: 0.0,
+    w: 78.0,
+    h: 28.0,
+};
 /// Width of the invisible resize band synthesized on undecorated windows.
 const RESIZE_BAND: f32 = 6.0;
 /// A second titlebar press within this window toggles maximize.
@@ -430,7 +506,11 @@ impl<A: App> Shell<A> {
                     return;
                 }
                 "z" => {
-                    let key = if self.modifiers.shift_key() { EditKey::Redo } else { EditKey::Undo };
+                    let key = if self.modifiers.shift_key() {
+                        EditKey::Redo
+                    } else {
+                        EditKey::Undo
+                    };
                     self.dispatch(InputEvent::Key(key, Mods::default()));
                     return;
                 }
@@ -565,7 +645,13 @@ impl<A: App> Shell<A> {
         }
         let render_ms = (t_render.elapsed().as_secs_f32() * 1e3 - wait_ms).max(0.0);
 
-        self.core.stats.push(FrameSample { input_ms: 0.0, view_ms, layout_ms, render_ms, wait_ms });
+        self.core.stats.push(FrameSample {
+            input_ms: 0.0,
+            view_ms,
+            layout_ms,
+            render_ms,
+            wait_ms,
+        });
     }
 }
 
@@ -613,9 +699,12 @@ impl<A: App> ApplicationHandler for Shell<A> {
         }
         window.set_ime_allowed(true);
         let size = window.inner_size();
-        let renderer =
-            pollster::block_on(kui_wgpu::Renderer::new(window.clone(), size.width, size.height))
-                .expect("init renderer");
+        let renderer = pollster::block_on(kui_wgpu::Renderer::new(
+            window.clone(),
+            size.width,
+            size.height,
+        ))
+        .expect("init renderer");
         self.window = Some(window);
         self.renderer = Some(renderer);
     }
@@ -670,7 +759,11 @@ impl<A: App> ApplicationHandler for Shell<A> {
                 };
                 self.dispatch(InputEvent::Scroll(d));
             }
-            WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
+            WindowEvent::MouseInput {
+                state,
+                button: MouseButton::Left,
+                ..
+            } => {
                 // A press on the synthesized resize band starts an OS resize
                 // instead of reaching the UI.
                 if state == ElementState::Pressed

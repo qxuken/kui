@@ -1,0 +1,17 @@
+{
+  "name": "kui",
+  "version": "0.1.0",
+  "description": "kui for Node: JSX views lowered into the kui IR, Elm-style messages as data",
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": { "types": "./index.d.ts", "default": "./index.js" },
+    "./jsx-runtime": { "types": "./jsx-runtime.d.ts", "default": "./jsx-runtime.js" },
+    "./jsx-dev-runtime": { "types": "./jsx-runtime.d.ts", "default": "./jsx-dev-runtime.js" }
+  },
+  "scripts": {
+    "build:native": "cargo build -p kui-node --release",
+    "gen": "node gen-types.mjs"
+  }
+}

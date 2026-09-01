@@ -26,6 +26,12 @@ impl<'a> Ui<'a> {
         self.core
     }
 
+    /// The inverse escape hatch: wraps a borrowed core mid-frame so foreign
+    /// frontends that drive `Core` directly (FFI, Node) can call `widgets::*`.
+    pub fn wrap(core: &'a mut Core) -> Self {
+        Self { core }
+    }
+
     pub fn viewport(&self) -> Size {
         self.core.viewport
     }
@@ -103,7 +109,13 @@ impl<'a> Ui<'a> {
     }
 
     /// An editable text node; state retained by key. See `Core::text_edit`.
-    pub fn text_edit(&mut self, label: &str, initial: &str, opts: &EditOptions, spec: NodeSpec) -> Key {
+    pub fn text_edit(
+        &mut self,
+        label: &str,
+        initial: &str,
+        opts: &EditOptions,
+        spec: NodeSpec,
+    ) -> Key {
         self.core.text_edit(label, initial, opts, spec)
     }
 

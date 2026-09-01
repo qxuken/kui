@@ -15,7 +15,6 @@ use crate::input::{
 };
 use crate::key::Key;
 use crate::layout::{self, TextMeasure};
-use crate::value::Value;
 use crate::resources::Resources;
 use crate::scroll::ScrollStore;
 use crate::spec::{NodeSpec, Sizing, TextStyle};
@@ -23,6 +22,7 @@ use crate::stats::FrameStats;
 use crate::text::{Span, TextSystem};
 use crate::tree::{NIL, NodeContent, OriginId, Tree};
 use crate::ui::Ui;
+use crate::value::Value;
 
 /// Wheel line-delta to logical px.
 const SCROLL_LINE_PX: f32 = 40.0;
@@ -121,7 +121,8 @@ impl Core {
             }
             InputEvent::Preedit(s, cursor) => {
                 if let Some(key) = self.edit.focused() {
-                    self.edit.set_preedit(key, &s, cursor, self.text.font_system_mut());
+                    self.edit
+                        .set_preedit(key, &s, cursor, self.text.font_system_mut());
                 }
             }
             InputEvent::Key(ek, mods) => {
@@ -138,7 +139,8 @@ impl Core {
                     self.focus_adjacent_edit(!mods.shift);
                 } else if let Some(key) = self.edit.focused() {
                     let (changed, submit) =
-                        self.edit.apply_key(key, ek, mods, self.text.font_system_mut());
+                        self.edit
+                            .apply_key(key, ek, mods, self.text.font_system_mut());
                     if changed {
                         self.push_edit_event(key, "changed", &mut out);
                     }
@@ -170,7 +172,11 @@ impl Core {
                     {
                         entries.push(("tag".to_string(), tag.clone()));
                     }
-                    out.push(UiEvent { origin: h.origin, key: h.key, payload });
+                    out.push(UiEvent {
+                        origin: h.origin,
+                        key: h.key,
+                        payload,
+                    });
                 }
             }
             InputEvent::MouseDown(clicks) => {
@@ -206,7 +212,8 @@ impl Core {
                         Some((key, Some(origin), _)) => {
                             self.edit.set_focus(Some(key));
                             let local = Vec2::new(p.x - origin.x, p.y - origin.y);
-                            self.edit.click(key, local, clicks, self.text.font_system_mut());
+                            self.edit
+                                .click(key, local, clicks, self.text.font_system_mut());
                             self.edit.dragging = Some((key, origin));
                         }
                         Some((key, None, true)) => {
@@ -216,7 +223,8 @@ impl Core {
                         _ => self.edit.set_focus(None),
                     }
                 }
-                self.interaction.handle(InputEvent::MouseDown(clicks), &mut out);
+                self.interaction
+                    .handle(InputEvent::MouseDown(clicks), &mut out);
             }
             InputEvent::CursorMoved(p) => {
                 if let Some((key, axis, grab)) = self.interaction.scrollbar_drag
@@ -237,7 +245,8 @@ impl Core {
                     let local = Vec2::new(p.x - origin.x, p.y - origin.y);
                     self.edit.drag(key, local, self.text.font_system_mut());
                 }
-                self.interaction.handle(InputEvent::CursorMoved(p), &mut out);
+                self.interaction
+                    .handle(InputEvent::CursorMoved(p), &mut out);
             }
             InputEvent::MouseUp => {
                 self.edit.dragging = None;
@@ -248,7 +257,6 @@ impl Core {
         }
         out
     }
-
 
     /// Emits one node's quads and registers its hit/scroll regions.
     fn emit_node(
@@ -301,7 +309,11 @@ impl Core {
             });
         }
         if spec.layout.scroll_x || spec.layout.scroll_y {
-            scroll_regions.push(ScrollRegion { key: self.tree.keys[i], rect, clip });
+            scroll_regions.push(ScrollRegion {
+                key: self.tree.keys[i],
+                rect,
+                clip,
+            });
         }
         match self.tree.content[i] {
             NodeContent::Text(tid) => {
@@ -346,12 +358,9 @@ impl Core {
             }
             NodeContent::Image(id) => {
                 if let Some(entry) = self.resources.images.get(id)
-                    && let Some(slot) = self.atlas.get_or_insert_image(
-                        id,
-                        entry.width,
-                        entry.height,
-                        &entry.rgba,
-                    )
+                    && let Some(slot) =
+                        self.atlas
+                            .get_or_insert_image(id, entry.width, entry.height, &entry.rgba)
                 {
                     self.display.quads.push(Quad {
                         rect: rect.scaled(scale),
@@ -387,7 +396,10 @@ impl Core {
         if ring.is_empty() {
             return;
         }
-        let target = match self.edit.focused().and_then(|cur| ring.iter().position(|k| *k == cur))
+        let target = match self
+            .edit
+            .focused()
+            .and_then(|cur| ring.iter().position(|k| *k == cur))
         {
             Some(i) if forward => ring[(i + 1) % ring.len()],
             Some(i) => ring[(i + ring.len() - 1) % ring.len()],
@@ -503,7 +515,9 @@ impl Core {
             NIL,
             Key::ROOT,
             OriginId::HOST,
-            NodeSpec::column().width(Sizing::Grow(1.0)).height(Sizing::Grow(1.0)),
+            NodeSpec::column()
+                .width(Sizing::Grow(1.0))
+                .height(Sizing::Grow(1.0)),
             NodeContent::Container,
         );
         self.stack.clear();
@@ -539,6 +553,12 @@ impl Core {
         if !self.tree.is_empty() {
             self.tree.specs[0] = spec;
         }
+    }
+
+    /// The root node's key — for hover/press queries or `set_key_focus` when
+    /// the root itself declares the interaction (e.g. a root-level key sink).
+    pub fn root_key(&self) -> Key {
+        self.tree.keys.first().copied().unwrap_or(Key(0))
     }
 
     fn current(&self) -> u32 {
@@ -591,7 +611,9 @@ impl Core {
             self.any_float = true;
         }
         let parent = self.current();
-        let idx = self.tree.push(parent, key, self.origin, spec, NodeContent::Container);
+        let idx = self
+            .tree
+            .push(parent, key, self.origin, spec, NodeContent::Container);
         self.stack.push(idx);
         self.counters.push(0);
     }
@@ -610,7 +632,13 @@ impl Core {
         let tid = self.text.add(content, &style);
         let key = self.auto_key();
         let parent = self.current();
-        self.tree.push(parent, key, self.origin, NodeSpec::default(), NodeContent::Text(tid));
+        self.tree.push(
+            parent,
+            key,
+            self.origin,
+            NodeSpec::default(),
+            NodeContent::Text(tid),
+        );
     }
 
     /// An editable text node. State (buffer, cursor, selection) is retained
@@ -627,9 +655,17 @@ impl Core {
             return Key::ROOT;
         }
         let key = self.child_key(label);
-        self.edit.declare(key, initial, opts, self.origin, self.scale, self.text.font_system_mut());
+        self.edit.declare(
+            key,
+            initial,
+            opts,
+            self.origin,
+            self.scale,
+            self.text.font_system_mut(),
+        );
         let parent = self.current();
-        self.tree.push(parent, key, self.origin, spec, NodeContent::Edit(key));
+        self.tree
+            .push(parent, key, self.origin, spec, NodeContent::Edit(key));
         key
     }
 
@@ -643,7 +679,8 @@ impl Core {
         }
         let key = self.auto_key();
         let parent = self.current();
-        self.tree.push(parent, key, self.origin, spec, NodeContent::Image(id));
+        self.tree
+            .push(parent, key, self.origin, spec, NodeContent::Image(id));
     }
 
     /// Unregisters an image and forgets its atlas slot.
@@ -660,7 +697,13 @@ impl Core {
         let tid = self.text.add_rich(spans, &base);
         let key = self.auto_key();
         let parent = self.current();
-        self.tree.push(parent, key, self.origin, NodeSpec::default(), NodeContent::Text(tid));
+        self.tree.push(
+            parent,
+            key,
+            self.origin,
+            NodeSpec::default(),
+            NodeContent::Text(tid),
+        );
     }
 
     /// Runs layout and emission into `output()`, and installs this frame's
@@ -676,7 +719,12 @@ impl Core {
                 edit: &mut self.edit,
                 resources: &self.resources,
             };
-            layout::compute(&mut self.tree, &mut measure, &mut self.scroll, self.viewport);
+            layout::compute(
+                &mut self.tree,
+                &mut measure,
+                &mut self.scroll,
+                self.viewport,
+            );
         }
         self.scroll_caret_into_view();
 
@@ -687,8 +735,8 @@ impl Core {
         self.display.scale = scale;
 
         // configure_root can also introduce a clipper.
-        let any_clip = self.any_clip
-            || (!self.tree.is_empty() && self.tree.specs[0].layout.clips());
+        let any_clip =
+            self.any_clip || (!self.tree.is_empty() && self.tree.specs[0].layout.clips());
         let any_float = self.any_float;
 
         // inherited clip per node (logical): ancestors only, not the node
@@ -708,8 +756,7 @@ impl Core {
             let parent = self.tree.parent[i];
             let floats_here = self.tree.specs[i].layout.float.is_some();
             if any_float {
-                self.in_float[i] =
-                    floats_here || (parent != NIL && self.in_float[parent as usize]);
+                self.in_float[i] = floats_here || (parent != NIL && self.in_float[parent as usize]);
             }
             let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
             let clip = if !any_clip {
@@ -758,7 +805,6 @@ impl Core {
             }
         }
 
-
         // Scrollbars, on top of content: indicator quads plus the hit
         // regions that make their thumbs draggable.
         let cursor = self.interaction.cursor();
@@ -785,14 +831,20 @@ impl Core {
                 );
                 let active = self.interaction.is_scrollbar_dragging(r.key, ScrollAxis::Y)
                     || cursor.is_some_and(|p| track.contains(p));
-                let w = if active { SCROLLBAR_ACTIVE_W } else { SCROLLBAR_W };
+                let w = if active {
+                    SCROLLBAR_ACTIVE_W
+                } else {
+                    SCROLLBAR_W
+                };
                 let thumb = Rect::new(
                     r.rect.x + r.rect.w - w - SCROLLBAR_INSET,
                     r.rect.y + SCROLLBAR_INSET + t * (track_h - bar_h),
                     w,
                     bar_h,
                 );
-                self.display.quads.push(scrollbar_quad(thumb, scale, clip, active));
+                self.display
+                    .quads
+                    .push(scrollbar_quad(thumb, scale, clip, active));
                 scrollbars.push(ScrollbarRegion {
                     key: r.key,
                     axis: ScrollAxis::Y,
@@ -814,14 +866,20 @@ impl Core {
                 );
                 let active = self.interaction.is_scrollbar_dragging(r.key, ScrollAxis::X)
                     || cursor.is_some_and(|p| track.contains(p));
-                let w = if active { SCROLLBAR_ACTIVE_W } else { SCROLLBAR_W };
+                let w = if active {
+                    SCROLLBAR_ACTIVE_W
+                } else {
+                    SCROLLBAR_W
+                };
                 let thumb = Rect::new(
                     r.rect.x + SCROLLBAR_INSET + t * (track_w - bar_w),
                     r.rect.y + r.rect.h - w - SCROLLBAR_INSET,
                     bar_w,
                     w,
                 );
-                self.display.quads.push(scrollbar_quad(thumb, scale, clip, active));
+                self.display
+                    .quads
+                    .push(scrollbar_quad(thumb, scale, clip, active));
                 scrollbars.push(ScrollbarRegion {
                     key: r.key,
                     axis: ScrollAxis::X,
@@ -862,7 +920,9 @@ impl Core {
     /// the positions pass with the adjusted offset (positions is the only
     /// pass scroll offsets feed into, so nothing else needs recomputing).
     fn scroll_caret_into_view(&mut self) {
-        let Some(key) = self.edit.caret_moved.take() else { return };
+        let Some(key) = self.edit.caret_moved.take() else {
+            return;
+        };
         if self.edit.focused() != Some(key) {
             return;
         }
