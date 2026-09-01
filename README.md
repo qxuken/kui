@@ -25,7 +25,9 @@ cargo run -p kui --example editor         # multiline text editing: caret, selec
 cargo run -p kui-lua --example lua_panel  # Rust host + Lua panel sharing one frame
 ./examples/c/build.sh && ./examples/c/counter             # the same app from C
 ./examples/c/counter --headless           # C FFI self-test, no window needed
-cargo run -p kui --example edmux          # modal editor + terminal-mux shell; the app owns the model
+cargo run -p kui --example modal_editor   # helix-flavored modal editing; the app owns the keymap
+cargo run -p kui --example splitmux       # tmux-style splits, tabs, and focus; the pane tree is data
+cargo run -p kui --example syntax_view    # syntax highlighting as coalesced style runs
 ```
 
 A Lua extension in full:
@@ -54,7 +56,7 @@ end
   key sink, and while it holds key focus (`ui.take_key_focus`, or a
   click) every press arrives as `{kind="key", code, mods, text}` —
   modal keymaps live in the app, in any language, with no runner hook
-  (the `edmux` example is a helix-flavored shell built on this).
+  (the `modal_editor` and `splitmux` examples are built on this).
 - **Identity is content-addressed.** `Key` is a hash of the path from the
   root (labels/sibling indices), reproducible from any language, with no
   allocation event tying identity to a slot. Slotmap handles are used where

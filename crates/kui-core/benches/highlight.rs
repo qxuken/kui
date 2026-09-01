@@ -1,4 +1,5 @@
-//! Syntax-highlighted editor frames built the way `edmux` builds them: each
+//! Syntax-highlighted editor frames built the way the `syntax_view` and
+//! `modal_editor` examples build them: each
 //! visible line is a row of per-color text runs (one text node per token
 //! run), gutter numbers, selection segments as bg containers, an inline
 //! caret node. Measures whether "highlighting = many small text nodes" holds
@@ -74,7 +75,7 @@ fn line_runs(line: usize, salt: usize) -> Vec<(String, Color)> {
 }
 
 /// One editor pane: gutter + highlighted lines, a 10-line selection band,
-/// a caret, a statusline — the edmux shape.
+/// a caret, a statusline — the `syntax_view` example's shape.
 fn pane(ui: &mut Ui<'_>, pane_no: usize, top: usize, salt: usize, caret_line: usize) {
     let sel_bg = Color::rgba8(0x3b, 0x5b, 0xd4, 0x55);
     ui.with(
