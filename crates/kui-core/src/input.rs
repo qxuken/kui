@@ -162,7 +162,12 @@ pub struct KeyPress {
 
 impl KeyPress {
     pub fn new(code: KeyCode, mods: KeyMods) -> Self {
-        Self { code, mods, text: None, repeat: false }
+        Self {
+            code,
+            mods,
+            text: None,
+            repeat: false,
+        }
     }
 
     pub fn with_text(mut self, text: impl Into<String>) -> Self {
@@ -335,7 +340,10 @@ impl Interaction {
     }
 
     pub(crate) fn hit_at(&self, p: Vec2) -> Option<&HitRegion> {
-        self.hits.iter().rev().find(|h| h.rect.contains(p) && h.clip.contains(p))
+        self.hits
+            .iter()
+            .rev()
+            .find(|h| h.rect.contains(p) && h.clip.contains(p))
     }
 
     /// Topmost scroll container under the cursor, if any.
@@ -355,7 +363,11 @@ impl Interaction {
     /// Topmost scrollbar whose track contains `p` (scrollbars draw over
     /// content, so they win hit-testing over it too).
     pub(crate) fn scrollbar_at(&self, p: Vec2) -> Option<ScrollbarRegion> {
-        self.scrollbars.iter().rev().find(|b| b.track.contains(p)).copied()
+        self.scrollbars
+            .iter()
+            .rev()
+            .find(|b| b.track.contains(p))
+            .copied()
     }
 
     /// Whether this bar is being thumb-dragged (for active styling).
@@ -387,7 +399,11 @@ impl Interaction {
         {
             entries.push(("tag".to_string(), state.tag.clone()));
         }
-        UiEvent { origin: state.origin, key: state.key, payload }
+        UiEvent {
+            origin: state.origin,
+            key: state.key,
+            payload,
+        }
     }
 
     pub fn handle(&mut self, ev: InputEvent, out: &mut Vec<UiEvent>) {
@@ -511,7 +527,11 @@ mod tests {
         it.set_hits(vec![region(k, 0, 10.0, 10.0, 100.0, 30.0, "go")]);
         let evs = drive(
             &mut it,
-            &[InputEvent::CursorMoved(Vec2::new(50.0, 20.0)), InputEvent::MouseDown(1), InputEvent::MouseUp],
+            &[
+                InputEvent::CursorMoved(Vec2::new(50.0, 20.0)),
+                InputEvent::MouseDown(1),
+                InputEvent::MouseUp,
+            ],
         );
         assert_eq!(evs.len(), 1);
         assert_eq!(evs[0].key, k);
@@ -546,7 +566,11 @@ mod tests {
         ]);
         let evs = drive(
             &mut it,
-            &[InputEvent::CursorMoved(Vec2::new(50.0, 50.0)), InputEvent::MouseDown(1), InputEvent::MouseUp],
+            &[
+                InputEvent::CursorMoved(Vec2::new(50.0, 50.0)),
+                InputEvent::MouseDown(1),
+                InputEvent::MouseUp,
+            ],
         );
         assert_eq!(evs.len(), 1);
         assert_eq!(evs[0].key, top);
@@ -559,7 +583,11 @@ mod tests {
         it.set_hits(vec![region(k, 3, 0.0, 0.0, 10.0, 10.0, "x")]);
         let evs = drive(
             &mut it,
-            &[InputEvent::CursorMoved(Vec2::new(5.0, 5.0)), InputEvent::MouseDown(1), InputEvent::MouseUp],
+            &[
+                InputEvent::CursorMoved(Vec2::new(5.0, 5.0)),
+                InputEvent::MouseDown(1),
+                InputEvent::MouseUp,
+            ],
         );
         assert_eq!(evs[0].origin, OriginId(3));
     }

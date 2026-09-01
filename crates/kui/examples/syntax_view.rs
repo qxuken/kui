@@ -76,7 +76,11 @@ struct Doc {
 impl Doc {
     fn new(name: &str, text: &str, lang: Lang) -> Self {
         let lines = text.split('\n').map(|l| l.replace('\t', "    ")).collect();
-        Self { name: name.into(), lines, lang }
+        Self {
+            name: name.into(),
+            lines,
+            lang,
+        }
     }
 }
 
@@ -133,7 +137,10 @@ impl App for SyntaxView {
     fn view(&mut self, ui: &mut Ui<'_>) {
         let pal = self.pal;
         ui.configure_root(NodeSpec::column().fill().bg(pal.bg));
-        widgets::titlebar(ui, "kui — syntax view (highlighting is coalesced style runs)");
+        widgets::titlebar(
+            ui,
+            "kui — syntax view (highlighting is coalesced style runs)",
+        );
 
         let vp = ui.viewport();
         let h = (vp.h - widgets::TITLEBAR_H).max(LH);
@@ -271,18 +278,25 @@ fn status_line(ui: &mut Ui<'_>, pal: &Pal, doc: &Doc, line: usize) {
             .gap(8.0)
             .cross_align(Align::Center),
         |ui| {
-            ui.with(NodeSpec::row().pad_xy(8.0, 2.0).radius(4.0).bg(pal.accent), |ui| {
-                let label = match doc.lang {
-                    Lang::Rust => "RUST",
-                    Lang::Text => "TEXT",
-                };
-                ui.text(label, TextStyle::new(10.0).mono().color(pal.bg));
-            });
+            ui.with(
+                NodeSpec::row().pad_xy(8.0, 2.0).radius(4.0).bg(pal.accent),
+                |ui| {
+                    let label = match doc.lang {
+                        Lang::Rust => "RUST",
+                        Lang::Text => "TEXT",
+                    };
+                    ui.text(label, TextStyle::new(10.0).mono().color(pal.bg));
+                },
+            );
             ui.text(&doc.name, TextStyle::new(12.0).color(pal.fg));
             ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
             ui.text("tab switches buffer", TextStyle::new(11.0).color(pal.faint));
             let total = doc.lines.len();
-            let pct = if total <= 1 { 100 } else { (line * 100) / (total - 1) };
+            let pct = if total <= 1 {
+                100
+            } else {
+                (line * 100) / (total - 1)
+            };
             ui.text(
                 &format!("{}/{total}  {pct}%", line + 1),
                 TextStyle::new(11.0).mono().color(pal.dim),
@@ -294,10 +308,10 @@ fn status_line(ui: &mut Ui<'_>, pal: &Pal, doc: &Doc, line: usize) {
 // ---------------------------------------------------------------- highlighter (a stand-in)
 
 const RUST_KW: &[&str] = &[
-    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum",
-    "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move",
-    "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super", "trait", "true",
-    "type", "unsafe", "use", "where", "while",
+    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern",
+    "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
+    "ref", "return", "self", "Self", "static", "struct", "super", "trait", "true", "type",
+    "unsafe", "use", "where", "while",
 ];
 
 fn is_word(c: char) -> bool {

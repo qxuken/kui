@@ -3,7 +3,11 @@
 
 use kui_core::{Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, Size, Sizing};
 
-const SHIFT: Mods = Mods { shift: true, word: false, doc: false };
+const SHIFT: Mods = Mods {
+    shift: true,
+    word: false,
+    doc: false,
+};
 
 struct Rig {
     core: Core,
@@ -46,7 +50,11 @@ fn frame(core: &mut Core, initial: &str, multiline: bool) -> Key {
     let key = ui.text_edit(
         "field",
         initial,
-        &EditOptions { multiline, autofocus: true, ..Default::default() },
+        &EditOptions {
+            multiline,
+            autofocus: true,
+            ..Default::default()
+        },
         NodeSpec::column().width(Sizing::Grow(1.0)),
     );
     ui.finish();
@@ -165,7 +173,11 @@ fn set_text_clears_history() {
     rig.type_str("typed");
     rig.core.set_edit_text(rig.key, "replaced");
     let events = rig.undo();
-    assert_eq!(rig.text(), "replaced", "no history across a wholesale replace");
+    assert_eq!(
+        rig.text(),
+        "replaced",
+        "no history across a wholesale replace"
+    );
     assert_eq!(events, 0);
 }
 
@@ -190,8 +202,20 @@ fn backspace_at_buffer_start_emits_nothing() {
 fn multiline_edits_round_trip() {
     let mut rig = Rig::new("alpha\nbeta\ngamma", true);
     // Jump to doc end, remove "gamma" word-wise, then undo everything.
-    rig.press(EditKey::End, Mods { doc: true, ..Mods::default() });
-    rig.press(EditKey::Backspace, Mods { word: true, ..Mods::default() });
+    rig.press(
+        EditKey::End,
+        Mods {
+            doc: true,
+            ..Mods::default()
+        },
+    );
+    rig.press(
+        EditKey::Backspace,
+        Mods {
+            word: true,
+            ..Mods::default()
+        },
+    );
     assert_eq!(rig.text(), "alpha\nbeta\n");
     rig.press(EditKey::Backspace, Mods::default());
     assert_eq!(rig.text(), "alpha\nbeta");

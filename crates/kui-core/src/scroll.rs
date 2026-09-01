@@ -64,6 +64,9 @@ mod tests {
     fn unknown_key_is_zero() {
         let mut s = ScrollStore::default();
         assert_eq!(s.offset(Key::ROOT.str("x")), Vec2::ZERO);
-        assert_eq!(s.clamp(Key::ROOT.str("x"), Vec2::new(0.0, 100.0)), Vec2::ZERO);
+        assert_eq!(
+            s.clamp(Key::ROOT.str("x"), Vec2::new(0.0, 100.0)),
+            Vec2::ZERO
+        );
     }
 }

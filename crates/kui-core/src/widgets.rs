@@ -22,7 +22,11 @@ pub fn latency_hud(ui: &mut Ui<'_>) {
 pub fn latency_hud_at(ui: &mut Ui<'_>, x: Align, y: Align) {
     // Under custom chrome the top of the viewport is the app's titlebar;
     // keep the HUD below it.
-    let top_inset = if ui.env().window.custom_chrome { TITLEBAR_H } else { 0.0 };
+    let top_inset = if ui.env().window.custom_chrome {
+        TITLEBAR_H
+    } else {
+        0.0
+    };
     let dx = match x {
         Align::Start => 12.0,
         Align::Center => 0.0,
@@ -290,7 +294,11 @@ pub fn text_input(ui: &mut Ui<'_>, label: &str, initial: &str) -> Key {
 /// Default titlebar height, logical px. Follows platform conventions (as
 /// measured by gpui): 32 on Windows (the native caption height), 34
 /// elsewhere.
-pub const TITLEBAR_H: f32 = if cfg!(target_os = "windows") { 32.0 } else { 34.0 };
+pub const TITLEBAR_H: f32 = if cfg!(target_os = "windows") {
+    32.0
+} else {
+    34.0
+};
 
 /// A cross-platform titlebar: a full-width drag strip with the window title
 /// left-aligned next to the window controls. Reads `env.window` and adapts
@@ -433,7 +441,10 @@ fn window_button(ui: &mut Ui<'_>, button: WindowButton, maximized: bool) {
                 // the bottom padding lifts it back onto the button center.
                 const EM: f32 = 23.0;
                 ui.with(
-                    NodeSpec::row().padding(Edges { b: EM * 0.25, ..Edges::default() }),
+                    NodeSpec::row().padding(Edges {
+                        b: EM * 0.25,
+                        ..Edges::default()
+                    }),
                     |ui| ui.text("\u{00d7}", TextStyle::new(EM).line_height(EM).color(fg)),
                 );
             }

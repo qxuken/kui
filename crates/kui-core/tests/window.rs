@@ -11,10 +11,17 @@ fn frame(core: &mut Core) {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     ui.with(
-        NodeSpec::row().width(Sizing::Grow(1.0)).height(Sizing::Fixed(40.0)).window_drag(),
+        NodeSpec::row()
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Fixed(40.0))
+            .window_drag(),
         |ui| {
             ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
-            for b in [WindowButton::Minimize, WindowButton::Maximize, WindowButton::Close] {
+            for b in [
+                WindowButton::Minimize,
+                WindowButton::Maximize,
+                WindowButton::Close,
+            ] {
                 ui.with(
                     NodeSpec::row()
                         .width(Sizing::Fixed(40.0))
@@ -44,7 +51,11 @@ fn drive(core: &mut Core, events: &[InputEvent]) -> Vec<UiEvent> {
 }
 
 fn click_at(x: f32, y: f32) -> [InputEvent; 3] {
-    [InputEvent::CursorMoved(Vec2::new(x, y)), InputEvent::MouseDown(1), InputEvent::MouseUp]
+    [
+        InputEvent::CursorMoved(Vec2::new(x, y)),
+        InputEvent::MouseDown(1),
+        InputEvent::MouseUp,
+    ]
 }
 
 #[test]
@@ -53,9 +64,15 @@ fn press_on_drag_strip_emits_start_drag_and_no_ui_event() {
     frame(&mut core);
     let evs = drive(
         &mut core,
-        &[InputEvent::CursorMoved(Vec2::new(100.0, 20.0)), InputEvent::MouseDown(1)],
+        &[
+            InputEvent::CursorMoved(Vec2::new(100.0, 20.0)),
+            InputEvent::MouseDown(1),
+        ],
     );
-    assert!(evs.is_empty(), "chrome nodes must not emit UiEvents, got {evs:?}");
+    assert!(
+        evs.is_empty(),
+        "chrome nodes must not emit UiEvents, got {evs:?}"
+    );
     assert_eq!(core.take_window_commands(), vec![WindowCommand::StartDrag]);
 }
 
@@ -67,10 +84,17 @@ fn window_buttons_emit_their_commands_on_click() {
     let mut evs = drive(&mut core, &click_at(300.0, 20.0));
     evs.extend(drive(&mut core, &click_at(340.0, 20.0)));
     evs.extend(drive(&mut core, &click_at(380.0, 20.0)));
-    assert!(evs.is_empty(), "chrome nodes must not emit UiEvents, got {evs:?}");
+    assert!(
+        evs.is_empty(),
+        "chrome nodes must not emit UiEvents, got {evs:?}"
+    );
     assert_eq!(
         core.take_window_commands(),
-        vec![WindowCommand::Minimize, WindowCommand::ToggleMaximize, WindowCommand::Close]
+        vec![
+            WindowCommand::Minimize,
+            WindowCommand::ToggleMaximize,
+            WindowCommand::Close
+        ]
     );
 }
 
@@ -123,7 +147,10 @@ fn titlebar_widget_declares_chrome_from_env() {
     use kui_core::{Rect, WindowEnv, widgets};
     let mut core = Core::new();
     // Custom chrome, no native controls: the widget draws its own buttons.
-    core.env.window = WindowEnv { custom_chrome: true, ..Default::default() };
+    core.env.window = WindowEnv {
+        custom_chrome: true,
+        ..Default::default()
+    };
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     widgets::titlebar(&mut ui, "app");
@@ -144,7 +171,10 @@ fn titlebar_widget_declares_chrome_from_env() {
     ui.finish();
     drive(
         &mut core,
-        &[InputEvent::CursorMoved(Vec2::new(400.0 - 23.0, 20.0)), InputEvent::MouseDown(1)],
+        &[
+            InputEvent::CursorMoved(Vec2::new(400.0 - 23.0, 20.0)),
+            InputEvent::MouseDown(1),
+        ],
     );
     assert_eq!(core.take_window_commands(), vec![WindowCommand::StartDrag]);
 }

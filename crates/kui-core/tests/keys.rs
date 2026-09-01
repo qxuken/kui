@@ -3,8 +3,7 @@
 //! its own text model (a modal editor, a terminal) binds against.
 
 use kui_core::{
-    Core, InputEvent, Key, KeyCode, KeyMods, KeyPress, NodeSpec, Size, Sizing, UiEvent, Value,
-    Vec2,
+    Core, InputEvent, Key, KeyCode, KeyMods, KeyPress, NodeSpec, Size, Sizing, UiEvent, Value, Vec2,
 };
 
 /// Two side-by-side key sinks (think: two editor panes), left one focused.
@@ -54,14 +53,25 @@ fn focused_sink_receives_keys_as_data() {
     assert_eq!(p.get("code").and_then(Value::as_str), Some("i"));
     assert_eq!(p.get("ctrl").and_then(Value::as_bool), Some(false));
     // The sink's on_key payload rides along under "tag".
-    assert_eq!(p.get("tag").and_then(|t| t.get("pane")).and_then(Value::as_int), Some(0));
+    assert_eq!(
+        p.get("tag")
+            .and_then(|t| t.get("pane"))
+            .and_then(Value::as_int),
+        Some(0)
+    );
 }
 
 #[test]
 fn modifiers_and_text_cross_as_data() {
     let mut core = Core::new();
     frame(&mut core, true);
-    let kp = KeyPress::new(KeyCode::Char('w'), KeyMods { ctrl: true, ..Default::default() });
+    let kp = KeyPress::new(
+        KeyCode::Char('w'),
+        KeyMods {
+            ctrl: true,
+            ..Default::default()
+        },
+    );
     let evs = drive(&mut core, &[InputEvent::KeyDown(kp)]);
     let p = &evs[0].payload;
     assert_eq!(p.get("ctrl").and_then(Value::as_bool), Some(true));
@@ -69,7 +79,10 @@ fn modifiers_and_text_cross_as_data() {
 
     let typed = KeyPress::new(KeyCode::Char('w'), KeyMods::default()).with_text("w");
     let evs = drive(&mut core, &[InputEvent::KeyDown(typed)]);
-    assert_eq!(evs[0].payload.get("text").and_then(Value::as_str), Some("w"));
+    assert_eq!(
+        evs[0].payload.get("text").and_then(Value::as_str),
+        Some("w")
+    );
 }
 
 #[test]
@@ -87,12 +100,18 @@ fn clicking_a_sink_moves_key_focus() {
             press(KeyCode::Escape),
         ],
     );
-    let key_evs: Vec<_> =
-        evs.iter().filter(|e| e.payload.get("kind").and_then(Value::as_str) == Some("key")).collect();
+    let key_evs: Vec<_> = evs
+        .iter()
+        .filter(|e| e.payload.get("kind").and_then(Value::as_str) == Some("key"))
+        .collect();
     assert_eq!(key_evs.len(), 1);
     assert_eq!(key_evs[0].key, right);
     assert_eq!(
-        key_evs[0].payload.get("tag").and_then(|t| t.get("pane")).and_then(Value::as_int),
+        key_evs[0]
+            .payload
+            .get("tag")
+            .and_then(|t| t.get("pane"))
+            .and_then(Value::as_int),
         Some(1)
     );
 }
@@ -117,6 +136,9 @@ fn null_tag_omitted_from_payload() {
     ui.finish();
     let evs = drive(&mut core, &[press(KeyCode::Enter)]);
     assert_eq!(evs.len(), 1);
-    assert_eq!(evs[0].payload.get("code").and_then(Value::as_str), Some("enter"));
+    assert_eq!(
+        evs[0].payload.get("code").and_then(Value::as_str),
+        Some("enter")
+    );
     assert_eq!(evs[0].payload.get("tag"), None);
 }

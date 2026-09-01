@@ -29,11 +29,11 @@ pub mod window;
 
 pub use color::Color;
 pub use display::{DisplayList, NO_CLIP, Quad, QuadKind};
-pub use geom::{Edges, Rect, Size, Vec2};
 pub use edit::EditOptions;
 pub use env::Env;
-pub use input::{EditKey, InputEvent, KeyCode, KeyMods, KeyPress, Mods, UiEvent};
+pub use geom::{Edges, Rect, Size, Vec2};
 pub use input::ScrollAxis;
+pub use input::{EditKey, InputEvent, KeyCode, KeyMods, KeyPress, Mods, UiEvent};
 pub use key::Key;
 pub use resources::{ImageId, Resources};
 pub use runtime::{Core, Extension};

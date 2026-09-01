@@ -15,12 +15,19 @@ fn frame(core: &mut Core, initial: &str) -> (Key, Key) {
     let mut edit_key = Key::ROOT;
     let scroll_key = ui.with_keyed(
         "scroll",
-        NodeSpec::column().width(Sizing::Grow(1.0)).height(Sizing::Fixed(VIEW_H)).scroll_y(),
+        NodeSpec::column()
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Fixed(VIEW_H))
+            .scroll_y(),
         |ui| {
             edit_key = ui.text_edit(
                 "doc",
                 initial,
-                &EditOptions { multiline: true, autofocus: true, ..Default::default() },
+                &EditOptions {
+                    multiline: true,
+                    autofocus: true,
+                    ..Default::default()
+                },
                 NodeSpec::column().width(Sizing::Grow(1.0)),
             );
         },
@@ -30,7 +37,10 @@ fn frame(core: &mut Core, initial: &str) -> (Key, Key) {
 }
 
 fn many_lines(n: usize) -> String {
-    (0..n).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n")
+    (0..n)
+        .map(|i| format!("line {i}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[test]
@@ -40,13 +50,28 @@ fn caret_motion_scrolls_container() {
     assert_eq!(core.scroll.offset(scroll_key), Vec2::ZERO);
 
     // Jump to the end of the document: far below the 100px viewport.
-    core.handle_input(InputEvent::Key(EditKey::End, Mods { doc: true, ..Default::default() }));
+    core.handle_input(InputEvent::Key(
+        EditKey::End,
+        Mods {
+            doc: true,
+            ..Default::default()
+        },
+    ));
     frame(&mut core, "");
     let bottom = core.scroll.offset(scroll_key).y;
-    assert!(bottom > VIEW_H, "caret at doc end should scroll far down, got {bottom}");
+    assert!(
+        bottom > VIEW_H,
+        "caret at doc end should scroll far down, got {bottom}"
+    );
 
     // And back to the start scrolls home again.
-    core.handle_input(InputEvent::Key(EditKey::Home, Mods { doc: true, ..Default::default() }));
+    core.handle_input(InputEvent::Key(
+        EditKey::Home,
+        Mods {
+            doc: true,
+            ..Default::default()
+        },
+    ));
     frame(&mut core, "");
     assert_eq!(core.scroll.offset(scroll_key).y, 0.0);
 }
@@ -55,7 +80,13 @@ fn caret_motion_scrolls_container() {
 fn typing_at_bottom_keeps_caret_visible() {
     let mut core = Core::new();
     let (scroll_key, _) = frame(&mut core, &many_lines(6));
-    core.handle_input(InputEvent::Key(EditKey::End, Mods { doc: true, ..Default::default() }));
+    core.handle_input(InputEvent::Key(
+        EditKey::End,
+        Mods {
+            doc: true,
+            ..Default::default()
+        },
+    ));
     frame(&mut core, "");
     let mut last = core.scroll.offset(scroll_key).y;
     // Each new line pushes the caret below the view; the frame must follow.
@@ -73,7 +104,13 @@ fn unfocused_edits_do_not_scroll() {
     let mut core = Core::new();
     let (scroll_key, _) = frame(&mut core, &many_lines(40));
     core.edit.set_focus(None);
-    core.handle_input(InputEvent::Key(EditKey::End, Mods { doc: true, ..Default::default() }));
+    core.handle_input(InputEvent::Key(
+        EditKey::End,
+        Mods {
+            doc: true,
+            ..Default::default()
+        },
+    ));
     frame(&mut core, "");
     assert_eq!(core.scroll.offset(scroll_key), Vec2::ZERO);
 }
@@ -94,7 +131,10 @@ fn double_click_selects_word_triple_selects_line() {
     core.handle_input(InputEvent::MouseDown(3));
     core.handle_input(InputEvent::MouseUp);
     let line = core.copy_selection().unwrap_or_default();
-    assert_eq!(line, "alpha beta gamma", "triple click should select the line");
+    assert_eq!(
+        line, "alpha beta gamma",
+        "triple click should select the line"
+    );
     assert!(core.is_focused(edit_key));
 }
 
@@ -102,12 +142,19 @@ fn double_click_selects_word_triple_selects_line() {
 fn blink_gate_hides_caret_quads() {
     let caret_quads = |core: &mut Core| {
         let (dl, _) = core.output();
-        dl.quads.iter().filter(|q| q.kind == QuadKind::Solid && q.rect.w == 2.0).count()
+        dl.quads
+            .iter()
+            .filter(|q| q.kind == QuadKind::Solid && q.rect.w == 2.0)
+            .count()
     };
 
     let mut core = Core::new();
     frame(&mut core, "hello");
-    assert_eq!(caret_quads(&mut core), 1, "focused edit draws its caret by default");
+    assert_eq!(
+        caret_quads(&mut core),
+        1,
+        "focused edit draws its caret by default"
+    );
 
     core.edit.set_blink_visible(false);
     frame(&mut core, "");

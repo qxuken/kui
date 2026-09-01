@@ -226,7 +226,9 @@ fn parse_spec(t: &Table, is_row: bool) -> mlua::Result<NodeSpec> {
             "minimize" => spec.window_button(WindowButton::Minimize),
             "maximize" => spec.window_button(WindowButton::Maximize),
             other => {
-                return Err(mlua::Error::runtime(format!("unknown window role '{other}'")));
+                return Err(mlua::Error::runtime(format!(
+                    "unknown window role '{other}'"
+                )));
             }
         };
     }

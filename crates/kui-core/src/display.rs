@@ -36,7 +36,12 @@ pub struct Quad {
 }
 
 /// A clip that clips nothing.
-pub const NO_CLIP: Rect = Rect { x: -1e9, y: -1e9, w: 2e9, h: 2e9 };
+pub const NO_CLIP: Rect = Rect {
+    x: -1e9,
+    y: -1e9,
+    w: 2e9,
+    h: 2e9,
+};
 
 #[derive(Default)]
 pub struct DisplayList {

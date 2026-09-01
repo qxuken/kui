@@ -18,7 +18,11 @@ pub struct Env {
 
 impl Default for Env {
     fn default() -> Self {
-        Self { refresh_hz: None, focused: true, window: WindowEnv::default() }
+        Self {
+            refresh_hz: None,
+            focused: true,
+            window: WindowEnv::default(),
+        }
     }
 }
 
@@ -29,7 +33,10 @@ impl Env {
     /// Per-frame time budget in ms: one vsync interval at the display's
     /// refresh rate (120 Hz when unreported).
     pub fn frame_budget_ms(&self) -> f32 {
-        let hz = self.refresh_hz.filter(|hz| *hz > 0.0).unwrap_or(Self::DEFAULT_HZ);
+        let hz = self
+            .refresh_hz
+            .filter(|hz| *hz > 0.0)
+            .unwrap_or(Self::DEFAULT_HZ);
         1000.0 / hz
     }
 }
@@ -40,14 +47,20 @@ mod tests {
 
     #[test]
     fn budget_follows_reported_rate() {
-        let env = Env { refresh_hz: Some(60.0), ..Default::default() };
+        let env = Env {
+            refresh_hz: Some(60.0),
+            ..Default::default()
+        };
         assert!((env.frame_budget_ms() - 16.666).abs() < 1e-2);
     }
 
     #[test]
     fn budget_falls_back_when_unreported_or_bogus() {
         assert!((Env::default().frame_budget_ms() - 8.333).abs() < 1e-2);
-        let bogus = Env { refresh_hz: Some(0.0), ..Default::default() };
+        let bogus = Env {
+            refresh_hz: Some(0.0),
+            ..Default::default()
+        };
         assert!((bogus.frame_budget_ms() - 8.333).abs() < 1e-2);
     }
 }

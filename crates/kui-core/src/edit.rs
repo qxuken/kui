@@ -126,19 +126,25 @@ impl EditState {
                 <= COALESCE_MAX
         {
             let merged = match k {
-                Coalesce::Insert => same_pos(op.at, end_cursor(last.at, &last.inserted)) && {
-                    last.inserted.push_str(&op.inserted);
-                    true
-                },
-                Coalesce::Backspace => same_pos(end_cursor(op.at, &op.deleted), last.at) && {
-                    last.at = op.at;
-                    last.deleted.insert_str(0, &op.deleted);
-                    true
-                },
-                Coalesce::Delete => same_pos(op.at, last.at) && {
-                    last.deleted.push_str(&op.deleted);
-                    true
-                },
+                Coalesce::Insert => {
+                    same_pos(op.at, end_cursor(last.at, &last.inserted)) && {
+                        last.inserted.push_str(&op.inserted);
+                        true
+                    }
+                }
+                Coalesce::Backspace => {
+                    same_pos(end_cursor(op.at, &op.deleted), last.at) && {
+                        last.at = op.at;
+                        last.deleted.insert_str(0, &op.deleted);
+                        true
+                    }
+                }
+                Coalesce::Delete => {
+                    same_pos(op.at, last.at) && {
+                        last.deleted.push_str(&op.deleted);
+                        true
+                    }
+                }
             };
             if merged {
                 last.cursor_after = op.cursor_after;
@@ -196,13 +202,21 @@ impl EditState {
     /// Deletes the selection as one recorded op; false when there is none.
     fn delete_selection_recorded(&mut self) -> bool {
         let cursor_before = self.editor.cursor();
-        let Some(deleted) = self.editor.copy_selection() else { return false };
+        let Some(deleted) = self.editor.copy_selection() else {
+            return false;
+        };
         if !self.editor.delete_selection() {
             return false;
         }
         let at = self.editor.cursor();
         self.record(
-            EditOp { at, deleted, inserted: String::new(), cursor_before, cursor_after: at },
+            EditOp {
+                at,
+                deleted,
+                inserted: String::new(),
+                cursor_before,
+                cursor_after: at,
+            },
             None,
         );
         true
@@ -210,7 +224,12 @@ impl EditState {
 
     /// Backspace/Delete (plain or word): selects via `motion`, deletes as a
     /// recorded op. False at the buffer boundary (nothing to delete).
-    fn delete_motion_recorded(&mut self, motion: Motion, kind: Coalesce, fs: &mut FontSystem) -> bool {
+    fn delete_motion_recorded(
+        &mut self,
+        motion: Motion,
+        kind: Coalesce,
+        fs: &mut FontSystem,
+    ) -> bool {
         let cursor_before = self.editor.cursor();
         self.editor.set_selection(Selection::Normal(cursor_before));
         self.editor.action(fs, Action::Motion(motion));
@@ -222,14 +241,22 @@ impl EditState {
         self.editor.delete_selection();
         let at = self.editor.cursor();
         self.record(
-            EditOp { at, deleted, inserted: String::new(), cursor_before, cursor_after: at },
+            EditOp {
+                at,
+                deleted,
+                inserted: String::new(),
+                cursor_before,
+                cursor_after: at,
+            },
             Some(kind),
         );
         true
     }
 
     fn undo_one(&mut self) -> bool {
-        let Some(op) = self.undo.pop_back() else { return false };
+        let Some(op) = self.undo.pop_back() else {
+            return false;
+        };
         self.splice(op.at, &op.inserted, &op.deleted);
         self.editor.set_cursor(op.cursor_before);
         self.editor.set_selection(Selection::None);
@@ -239,7 +266,9 @@ impl EditState {
     }
 
     fn redo_one(&mut self) -> bool {
-        let Some(op) = self.redo.pop_back() else { return false };
+        let Some(op) = self.redo.pop_back() else {
+            return false;
+        };
         self.splice(op.at, &op.deleted, &op.inserted);
         self.editor.set_cursor(op.cursor_after);
         self.editor.set_selection(Selection::None);
@@ -387,7 +416,8 @@ impl EditStore {
     pub fn set_text(&mut self, key: Key, text: &str, fs: &mut FontSystem) {
         if let Some(s) = self.states.get_mut(&key) {
             let a = attrs_for(&s.style);
-            s.editor.with_buffer_mut(|b| b.set_text(text, &a, Shaping::Advanced, None));
+            s.editor
+                .with_buffer_mut(|b| b.set_text(text, &a, Shaping::Advanced, None));
             s.editor.set_selection(Selection::None);
             s.editor.action(fs, Action::Motion(Motion::BufferEnd));
             s.version += 1;
@@ -411,7 +441,9 @@ impl EditStore {
 
     /// Deletes the selection; returns true if anything was deleted.
     pub fn delete_selection(&mut self, key: Key, fs: &mut FontSystem) -> bool {
-        let Some(s) = self.states.get_mut(&key) else { return false };
+        let Some(s) = self.states.get_mut(&key) else {
+            return false;
+        };
         let _ = fs;
         if s.delete_selection_recorded() {
             s.version += 1;
@@ -426,7 +458,9 @@ impl EditStore {
     // -- Input application (focused editor). Returns true if content changed.
 
     pub(crate) fn apply_text(&mut self, key: Key, text: &str, fs: &mut FontSystem) -> bool {
-        let Some(s) = self.states.get_mut(&key) else { return false };
+        let Some(s) = self.states.get_mut(&key) else {
+            return false;
+        };
         // A commit ends the composition (winit also clears preedit first).
         s.preedit = None;
         let filtered: String = text
@@ -452,13 +486,21 @@ impl EditStore {
         mods: Mods,
         fs: &mut FontSystem,
     ) -> (bool, bool) {
-        let Some(s) = self.states.get_mut(&key) else { return (false, false) };
+        let Some(s) = self.states.get_mut(&key) else {
+            return (false, false);
+        };
         s.preedit = None;
         let mut changed = false;
         let mut submit = false;
         match ek {
-            EditKey::Left | EditKey::Right | EditKey::Up | EditKey::Down
-            | EditKey::Home | EditKey::End | EditKey::PageUp | EditKey::PageDown => {
+            EditKey::Left
+            | EditKey::Right
+            | EditKey::Up
+            | EditKey::Down
+            | EditKey::Home
+            | EditKey::End
+            | EditKey::PageUp
+            | EditKey::PageDown => {
                 let motion = match (ek, mods.word, mods.doc) {
                     (EditKey::Left, true, _) => Motion::LeftWord,
                     (EditKey::Right, true, _) => Motion::RightWord,
@@ -491,7 +533,11 @@ impl EditStore {
             EditKey::Backspace => {
                 changed = s.delete_selection_recorded()
                     || s.delete_motion_recorded(
-                        if mods.word { Motion::LeftWord } else { Motion::Left },
+                        if mods.word {
+                            Motion::LeftWord
+                        } else {
+                            Motion::Left
+                        },
                         Coalesce::Backspace,
                         fs,
                     );
@@ -499,7 +545,11 @@ impl EditStore {
             EditKey::Delete => {
                 changed = s.delete_selection_recorded()
                     || s.delete_motion_recorded(
-                        if mods.word { Motion::RightWord } else { Motion::Right },
+                        if mods.word {
+                            Motion::RightWord
+                        } else {
+                            Motion::Right
+                        },
                         Coalesce::Delete,
                         fs,
                     );
@@ -576,7 +626,9 @@ impl EditStore {
         cursor: Option<(usize, usize)>,
         fs: &mut FontSystem,
     ) -> bool {
-        let Some(s) = self.states.get_mut(&key) else { return false };
+        let Some(s) = self.states.get_mut(&key) else {
+            return false;
+        };
         if text.is_empty() {
             return s.preedit.take().is_some();
         }
@@ -601,7 +653,11 @@ impl EditStore {
 
     /// The active composition text, if any (for tests and hosts).
     pub fn preedit(&self, key: Key) -> Option<&str> {
-        self.states.get(&key)?.preedit.as_ref().map(|p| p.text.as_str())
+        self.states
+            .get(&key)?
+            .preedit
+            .as_ref()
+            .map(|p| p.text.as_str())
     }
 
     pub fn is_multiline(&self, key: Key) -> bool {
@@ -615,13 +671,20 @@ impl EditStore {
         s.editor.shape_as_needed(fs, false);
         let (x, y) = s.editor.cursor_position()?;
         let line_height = s.editor.with_buffer(|b| b.metrics().line_height);
-        Some(Rect::new(x as f32, y as f32, (2.0 * s.scale).max(2.0), line_height))
+        Some(Rect::new(
+            x as f32,
+            y as f32,
+            (2.0 * s.scale).max(2.0),
+            line_height,
+        ))
     }
 
     // -- Layout measurement (logical units)
 
     pub(crate) fn intrinsic(&mut self, key: Key, fs: &mut FontSystem) -> Size {
-        let Some(s) = self.states.get_mut(&key) else { return Size::ZERO };
+        let Some(s) = self.states.get_mut(&key) else {
+            return Size::ZERO;
+        };
         s.editor.shape_as_needed(fs, false);
         let (w, h, lh) = s.editor.with_buffer(|b| {
             let mut w = 0.0f32;
@@ -630,7 +693,11 @@ impl EditStore {
                 w = w.max(run.line_w);
                 lines += 1;
             }
-            (w, lines.max(1) as f32 * b.metrics().line_height, b.metrics().line_height)
+            (
+                w,
+                lines.max(1) as f32 * b.metrics().line_height,
+                b.metrics().line_height,
+            )
         });
         let _ = lh;
         // Caret margin so the cursor at line end isn't clipped.
@@ -638,7 +705,9 @@ impl EditStore {
     }
 
     pub(crate) fn wrapped(&mut self, key: Key, max_w: f32, fs: &mut FontSystem) -> Size {
-        let Some(s) = self.states.get_mut(&key) else { return Size::ZERO };
+        let Some(s) = self.states.get_mut(&key) else {
+            return Size::ZERO;
+        };
         let target = (max_w * s.scale).max(1.0);
         let differs = match s.wrap {
             Some(a) => (a - target).abs() > 0.5,
@@ -683,14 +752,20 @@ impl EditStore {
         out: &mut Vec<Quad>,
     ) {
         let blink_visible = self.blink_visible;
-        let Some(s) = self.states.get_mut(&key) else { return };
+        let Some(s) = self.states.get_mut(&key) else {
+            return;
+        };
         let (fs, swash) = text_system.raster_parts();
         s.editor.shape_as_needed(fs, false);
         let color = s.style.color;
         let accent = s.accent;
         let scale = s.scale;
         let selection = s.editor.selection_bounds();
-        let pre_anchor = if focused && s.preedit.is_some() { s.editor.cursor_position() } else { None };
+        let pre_anchor = if focused && s.preedit.is_some() {
+            s.editor.cursor_position()
+        } else {
+            None
+        };
         // The composition overlay brings its own caret; the normal one hides.
         let cursor_pos = if focused && blink_visible && s.preedit.is_none() {
             s.editor.cursor_position()
@@ -753,7 +828,8 @@ impl EditStore {
                 // Glyphs.
                 for glyph in run.glyphs.iter() {
                     let physical = glyph.physical((0.0, 0.0), 1.0);
-                    let Some(slot) = crate::text::raster_glyph(physical.cache_key, fs, swash, atlas)
+                    let Some(slot) =
+                        crate::text::raster_glyph(physical.cache_key, fs, swash, atlas)
                     else {
                         continue;
                     };

@@ -20,7 +20,12 @@ impl Value {
     }
 
     pub fn map(entries: impl IntoIterator<Item = (&'static str, Value)>) -> Value {
-        Value::Map(entries.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
+        Value::Map(
+            entries
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect(),
+        )
     }
 
     pub fn get(&self, key: &str) -> Option<&Value> {

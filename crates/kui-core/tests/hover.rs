@@ -2,9 +2,7 @@
 //! live `Core`, including the badge-inside-a-floating-HUD arrangement that
 //! motivated the flag.
 
-use kui_core::{
-    Align, Core, FloatConfig, InputEvent, Key, NodeSpec, Size, Sizing, Value, Vec2,
-};
+use kui_core::{Align, Core, FloatConfig, InputEvent, Key, NodeSpec, Size, Sizing, Value, Vec2};
 
 fn frame(core: &mut Core, badge_spec: NodeSpec) -> Key {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
@@ -29,11 +27,17 @@ fn hoverable_tracks_hover_but_click_emits_nothing() {
     let badge = frame(&mut core, NodeSpec::column().hoverable());
 
     core.handle_input(InputEvent::CursorMoved(Vec2::new(10.0, 10.0)));
-    assert!(core.is_hovered(badge), "hoverable node must register a hit region");
+    assert!(
+        core.is_hovered(badge),
+        "hoverable node must register a hit region"
+    );
 
     core.handle_input(InputEvent::MouseDown(1));
     let evs = core.handle_input(InputEvent::MouseUp);
-    assert!(evs.is_empty(), "hover-only region must not emit click events");
+    assert!(
+        evs.is_empty(),
+        "hover-only region must not emit click events"
+    );
 
     core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, 200.0)));
     assert!(!core.is_hovered(badge));
@@ -68,7 +72,11 @@ fn hoverable_badge_inside_viewport_float_hovers() {
     let mut badge = Key(0);
     ui.with(
         NodeSpec::column()
-            .float(FloatConfig::viewport().at(Align::End, Align::End).self_at(Align::End, Align::End))
+            .float(
+                FloatConfig::viewport()
+                    .at(Align::End, Align::End)
+                    .self_at(Align::End, Align::End),
+            )
             .pad(10.0),
         |ui| {
             badge = ui.child_key("badge");
@@ -85,5 +93,8 @@ fn hoverable_badge_inside_viewport_float_hovers() {
     ui.finish();
     // Float is 40x40 at (360,260); the badge sits inside its padding.
     core.handle_input(InputEvent::CursorMoved(Vec2::new(380.0, 280.0)));
-    assert!(core.is_hovered(badge), "hoverable inside a float subtree must hit-test");
+    assert!(
+        core.is_hovered(badge),
+        "hoverable inside a float subtree must hit-test"
+    );
 }

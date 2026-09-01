@@ -32,7 +32,13 @@ fn grid(ui: &mut Ui<'_>, rows: usize, cols: usize, with_text: bool, with_clicks:
     }
 }
 
-fn run_frame(core: &mut Core, rows: usize, cols: usize, with_text: bool, with_clicks: bool) -> usize {
+fn run_frame(
+    core: &mut Core,
+    rows: usize,
+    cols: usize,
+    with_text: bool,
+    with_clicks: bool,
+) -> usize {
     let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
     grid(&mut ui, rows, cols, with_text, with_clicks);
     ui.finish();
@@ -68,7 +74,10 @@ fn deep_nesting_64_levels(bencher: divan::Bencher) {
             ui.text("leaf", TextStyle::default());
             return;
         }
-        ui.with(NodeSpec::column().pad(1.0).bg(Color::rgb8(20, 20, 30)), |ui| nest(ui, depth - 1));
+        ui.with(
+            NodeSpec::column().pad(1.0).bg(Color::rgb8(20, 20, 30)),
+            |ui| nest(ui, depth - 1),
+        );
     }
     let mut core = Core::new();
     bencher.bench_local(|| {

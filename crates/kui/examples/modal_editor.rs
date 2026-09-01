@@ -75,7 +75,11 @@ struct Doc {
 impl Doc {
     fn new(name: &str, text: &str) -> Self {
         let lines = text.split('\n').map(|l| l.replace('\t', "    ")).collect();
-        Self { name: name.into(), lines, modified: false }
+        Self {
+            name: name.into(),
+            lines,
+            modified: false,
+        }
     }
 }
 
@@ -98,7 +102,12 @@ struct View {
 
 impl Default for View {
     fn default() -> Self {
-        Self { cur: Pos::default(), anchor: None, top: 0, rows: 24 }
+        Self {
+            cur: Pos::default(),
+            anchor: None,
+            top: 0,
+            rows: 24,
+        }
     }
 }
 
@@ -249,7 +258,13 @@ impl ModalEditor {
                 open_line(doc, view, 0);
                 self.mode = Mode::Insert;
             }
-            "v" => view.anchor = if view.anchor.is_some() { None } else { Some(view.cur) },
+            "v" => {
+                view.anchor = if view.anchor.is_some() {
+                    None
+                } else {
+                    Some(view.cur)
+                }
+            }
             "x" => {
                 if !delete_sel(doc, view) {
                     delete_char(doc, view);
@@ -315,8 +330,10 @@ impl ModalEditor {
 
     fn write_doc(&mut self) {
         self.doc.modified = false;
-        self.message =
-            format!("wrote {} — well, pretended to; IO belongs to your app", self.doc.name);
+        self.message = format!(
+            "wrote {} — well, pretended to; IO belongs to your app",
+            self.doc.name
+        );
     }
 
     // ------------------------------------------------------------ view
@@ -403,7 +420,10 @@ fn nbsp(s: &str) -> String {
 
 fn caret_bar(ui: &mut Ui<'_>, color: Color) {
     ui.with(
-        NodeSpec::column().width(Sizing::Fixed(2.0)).height(Sizing::Fixed(LH - 4.0)).bg(color),
+        NodeSpec::column()
+            .width(Sizing::Fixed(2.0))
+            .height(Sizing::Fixed(LH - 4.0))
+            .bg(color),
         |_| {},
     );
 }
@@ -427,7 +447,10 @@ fn render_editor(ui: &mut Ui<'_>, pal: &Pal, doc: &Doc, view: &mut View, mode: M
     let last = (view.top + rows).min(doc.lines.len());
 
     ui.with(
-        NodeSpec::row().width(Sizing::Grow(1.0)).height(Sizing::Grow(1.0)).pad_xy(0.0, 4.0),
+        NodeSpec::row()
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Grow(1.0))
+            .pad_xy(0.0, 4.0),
         |ui| {
             // Gutter.
             ui.with(
@@ -437,7 +460,11 @@ fn render_editor(ui: &mut Ui<'_>, pal: &Pal, doc: &Doc, view: &mut View, mode: M
                     .pad_xy(12.0, 0.0),
                 |ui| {
                     for ln in view.top..last {
-                        let color = if ln == view.cur.line { pal.dim } else { pal.faint };
+                        let color = if ln == view.cur.line {
+                            pal.dim
+                        } else {
+                            pal.faint
+                        };
                         ui.with(
                             NodeSpec::row()
                                 .width(Sizing::Grow(1.0))
@@ -456,13 +483,20 @@ fn render_editor(ui: &mut Ui<'_>, pal: &Pal, doc: &Doc, view: &mut View, mode: M
             );
             // Text.
             ui.with(
-                NodeSpec::column().width(Sizing::Grow(1.0)).height(Sizing::Grow(1.0)).clip(),
+                NodeSpec::column()
+                    .width(Sizing::Grow(1.0))
+                    .height(Sizing::Grow(1.0))
+                    .clip(),
                 |ui| {
                     for ln in view.top..last {
                         let caret = (ln == view.cur.line).then(|| {
                             (
                                 view.cur.col,
-                                if mode == Mode::Insert { Caret::Bar } else { Caret::Block },
+                                if mode == Mode::Insert {
+                                    Caret::Bar
+                                } else {
+                                    Caret::Block
+                                },
                             )
                         });
                         emit_line(ui, pal, &doc.lines[ln], sel_on_line(view, doc, ln), caret);
@@ -583,16 +617,23 @@ fn status_line(ui: &mut Ui<'_>, pal: &Pal, mode: Mode, doc: &Doc, view: &View) {
                 Mode::Insert => ("INS", pal.insert),
                 Mode::Command => ("CMD", pal.command),
             };
-            ui.with(NodeSpec::row().pad_xy(8.0, 2.0).radius(4.0).bg(color), |ui| {
-                ui.text(label, TextStyle::new(10.0).mono().color(pal.bg));
-            });
+            ui.with(
+                NodeSpec::row().pad_xy(8.0, 2.0).radius(4.0).bg(color),
+                |ui| {
+                    ui.text(label, TextStyle::new(10.0).mono().color(pal.bg));
+                },
+            );
             ui.text(&doc.name, TextStyle::new(12.0).color(pal.fg));
             if doc.modified {
                 ui.text("●", TextStyle::new(10.0).color(pal.command));
             }
             ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
             let total = doc.lines.len();
-            let pct = if total <= 1 { 100 } else { (view.cur.line * 100) / (total - 1) };
+            let pct = if total <= 1 {
+                100
+            } else {
+                (view.cur.line * 100) / (total - 1)
+            };
             ui.text(
                 &format!("{}:{}  {pct}%", view.cur.line + 1, view.cur.col + 1),
                 TextStyle::new(11.0).mono().color(pal.dim),
@@ -741,7 +782,11 @@ fn delete_line(doc: &mut Doc, view: &mut View) {
 
 fn sel_range(view: &View) -> Option<(Pos, Pos)> {
     let a = view.anchor?;
-    Some(if a <= view.cur { (a, view.cur) } else { (view.cur, a) })
+    Some(if a <= view.cur {
+        (a, view.cur)
+    } else {
+        (view.cur, a)
+    })
 }
 
 /// The selection's intersection with one display line, as a half-open char
@@ -752,7 +797,11 @@ fn sel_on_line(view: &View, doc: &Doc, line: usize) -> Option<(usize, usize)> {
         return None;
     }
     let a = if line == s.line { s.col } else { 0 };
-    let b = if line == e.line { e.col + 1 } else { line_len(doc, line) + 1 };
+    let b = if line == e.line {
+        e.col + 1
+    } else {
+        line_len(doc, line) + 1
+    };
     Some((a, b.min(line_len(doc, line) + 1)))
 }
 
@@ -779,7 +828,9 @@ fn sel_lines(doc: &Doc, view: &View) -> Vec<String> {
 }
 
 fn delete_sel(doc: &mut Doc, view: &mut View) -> bool {
-    let Some((s, e)) = sel_range(view) else { return false };
+    let Some((s, e)) = sel_range(view) else {
+        return false;
+    };
     doc.modified = true;
     let end_tail: String = {
         let chars: Vec<char> = doc.lines[e.line].chars().collect();

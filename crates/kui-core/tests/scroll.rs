@@ -70,8 +70,11 @@ fn clipped_away_rows_are_culled_and_unclickable() {
     let mut core = Core::new();
     frame(&mut core);
     let (dl, _) = core.output();
-    let solid_rows =
-        dl.quads.iter().filter(|q| q.kind == kui_core::QuadKind::Solid && q.rect.w > 100.0).count();
+    let solid_rows = dl
+        .quads
+        .iter()
+        .filter(|q| q.kind == kui_core::QuadKind::Solid && q.rect.w > 100.0)
+        .count();
     // 200/30 -> 7 rows intersect the viewport; the other 13 are culled.
     assert!(solid_rows < ROWS, "expected culling, got {solid_rows} rows");
 
@@ -102,7 +105,10 @@ fn scrollbar_appears_only_when_overflowing() {
     // A short list needs no scrollbar.
     let mut ui = core.frame(Size::new(400.0, VIEW_H), 1.0);
     ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
-        ui.with(NodeSpec::row().height(Sizing::Fixed(50.0)).bg(Color::WHITE), |_| {});
+        ui.with(
+            NodeSpec::row().height(Sizing::Fixed(50.0)).bg(Color::WHITE),
+            |_| {},
+        );
     });
     ui.finish();
     let (dl, _) = core.output();

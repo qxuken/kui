@@ -7,7 +7,12 @@ fn drag_frame(core: &mut Core) {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::row().fill());
     // A 100px left panel, a draggable 10px divider, the rest.
-    ui.with(NodeSpec::column().width(Sizing::Fixed(100.0)).height(Sizing::Grow(1.0)), |_| {});
+    ui.with(
+        NodeSpec::column()
+            .width(Sizing::Fixed(100.0))
+            .height(Sizing::Grow(1.0)),
+        |_| {},
+    );
     ui.with_keyed(
         "divider",
         NodeSpec::column()
@@ -23,7 +28,13 @@ fn drag_frame(core: &mut Core) {
 fn phases(evs: &[UiEvent]) -> Vec<String> {
     evs.iter()
         .filter(|e| e.payload.get("kind").and_then(Value::as_str) == Some("drag"))
-        .map(|e| e.payload.get("phase").and_then(Value::as_str).unwrap_or("?").to_string())
+        .map(|e| {
+            e.payload
+                .get("phase")
+                .and_then(Value::as_str)
+                .unwrap_or("?")
+                .to_string()
+        })
         .collect()
 }
 
@@ -63,7 +74,11 @@ fn undragged_press_still_clicks() {
     all.extend(core.handle_input(InputEvent::CursorMoved(Vec2::new(106.0, 50.0)))); // sub-slop
     all.extend(core.handle_input(InputEvent::MouseUp));
 
-    assert_eq!(phases(&all), ["start", "end"], "sub-slop motion emits no move");
+    assert_eq!(
+        phases(&all),
+        ["start", "end"],
+        "sub-slop motion emits no move"
+    );
     assert!(
         all.iter().any(|e| e.payload.as_str() == Some("clicked")),
         "a press that never left the slop is still a click"
@@ -83,7 +98,9 @@ fn scroll_frame(core: &mut Core) -> kui_core::Key {
         |ui| {
             for _ in 0..20 {
                 ui.with(
-                    NodeSpec::column().width(Sizing::Grow(1.0)).height(Sizing::Fixed(30.0)),
+                    NodeSpec::column()
+                        .width(Sizing::Grow(1.0))
+                        .height(Sizing::Fixed(30.0)),
                     |_| {},
                 );
             }
@@ -128,10 +145,13 @@ fn hover_keeps_tracking_other_nodes_during_a_drag() {
     assert!(core.interaction.is_hovered(a));
     // Drag over the sibling: the drag stays captured on `a`, hover moves.
     let evs = core.handle_input(InputEvent::CursorMoved(Vec2::new(150.0, 15.0)));
-    assert!(core.interaction.is_hovered(b), "hover follows the cursor mid-drag");
     assert!(
-        evs.iter().any(|e| e.key == a
-            && e.payload.get("phase").and_then(Value::as_str) == Some("move")),
+        core.interaction.is_hovered(b),
+        "hover follows the cursor mid-drag"
+    );
+    assert!(
+        evs.iter()
+            .any(|e| e.key == a && e.payload.get("phase").and_then(Value::as_str) == Some("move")),
         "drag events keep landing on the pressed node"
     );
     core.handle_input(InputEvent::MouseUp);
@@ -152,9 +172,15 @@ fn scrollbar_thumb_drags_the_offset() {
     .into_iter()
     .flat_map(|ev| core.handle_input(ev))
     .collect();
-    assert!(evs.is_empty(), "scrollbar interaction emits no UiEvents, got {evs:?}");
+    assert!(
+        evs.is_empty(),
+        "scrollbar interaction emits no UiEvents, got {evs:?}"
+    );
     let dragged = core.scroll.offset(key).y;
-    assert!(dragged > 100.0, "thumb drag should scroll a large fraction, got {dragged}");
+    assert!(
+        dragged > 100.0,
+        "thumb drag should scroll a large fraction, got {dragged}"
+    );
 
     // Release ends the drag: further motion does nothing.
     core.handle_input(InputEvent::MouseUp);

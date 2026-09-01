@@ -87,7 +87,10 @@ impl FrameStats {
     }
 
     pub fn max_total(&self) -> f32 {
-        self.samples.iter().map(FrameSample::total).fold(0.0, f32::max)
+        self.samples
+            .iter()
+            .map(FrameSample::total)
+            .fold(0.0, f32::max)
     }
 
     pub fn avg_work(&self) -> f32 {
@@ -98,7 +101,10 @@ impl FrameStats {
     }
 
     pub fn max_work(&self) -> f32 {
-        self.samples.iter().map(FrameSample::work).fold(0.0, f32::max)
+        self.samples
+            .iter()
+            .map(FrameSample::work)
+            .fold(0.0, f32::max)
     }
 }
 
@@ -107,7 +113,10 @@ mod tests {
     use super::*;
 
     fn sample(ms: f32) -> FrameSample {
-        FrameSample { view_ms: ms, ..Default::default() }
+        FrameSample {
+            view_ms: ms,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -127,8 +136,14 @@ mod tests {
 
     #[test]
     fn pending_input_folds_into_next_sample() {
-        let mut s = FrameStats { pending_input_ms: 0.5, ..Default::default() };
-        s.push(FrameSample { view_ms: 1.0, ..Default::default() });
+        let mut s = FrameStats {
+            pending_input_ms: 0.5,
+            ..Default::default()
+        };
+        s.push(FrameSample {
+            view_ms: 1.0,
+            ..Default::default()
+        });
         let last = s.last().unwrap();
         assert_eq!(last.input_ms, 0.5);
         assert_eq!(s.pending_input_ms, 0.0);

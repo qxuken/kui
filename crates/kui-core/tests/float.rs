@@ -14,8 +14,18 @@ fn solid_quads(core: &mut Core) -> Vec<(f32, f32, f32, f32, Color)> {
         .collect()
 }
 
-const RED: Color = Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 };
-const BLUE: Color = Color { r: 0.0, g: 0.0, b: 1.0, a: 1.0 };
+const RED: Color = Color {
+    r: 1.0,
+    g: 0.0,
+    b: 0.0,
+    a: 1.0,
+};
+const BLUE: Color = Color {
+    r: 0.0,
+    g: 0.0,
+    b: 1.0,
+    a: 1.0,
+};
 
 #[test]
 fn float_does_not_affect_parent_flow() {
@@ -23,7 +33,12 @@ fn float_does_not_affect_parent_flow() {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     // A fit row with one in-flow child and one huge float: fit ignores the float.
     ui.with(NodeSpec::row().gap(10.0).bg(BLUE), |ui| {
-        ui.with(NodeSpec::column().width(Sizing::Fixed(50.0)).height(Sizing::Fixed(20.0)), |_| {});
+        ui.with(
+            NodeSpec::column()
+                .width(Sizing::Fixed(50.0))
+                .height(Sizing::Fixed(20.0)),
+            |_| {},
+        );
         ui.with(
             NodeSpec::column()
                 .width(Sizing::Fixed(500.0))
@@ -35,7 +50,11 @@ fn float_does_not_affect_parent_flow() {
     ui.finish();
     let quads = solid_quads(&mut core);
     let row = quads.iter().find(|q| q.4 == BLUE).unwrap();
-    assert_eq!((row.2, row.3), (50.0, 20.0), "row must size to the in-flow child only");
+    assert_eq!(
+        (row.2, row.3),
+        (50.0, 20.0),
+        "row must size to the in-flow child only"
+    );
 }
 
 #[test]
@@ -47,7 +66,12 @@ fn viewport_anchored_bottom_right() {
             .width(Sizing::Fixed(40.0))
             .height(Sizing::Fixed(30.0))
             .bg(RED)
-            .float(FloatConfig::viewport().at(Align::End, Align::End).self_at(Align::End, Align::End).offset(-8.0, -8.0)),
+            .float(
+                FloatConfig::viewport()
+                    .at(Align::End, Align::End)
+                    .self_at(Align::End, Align::End)
+                    .offset(-8.0, -8.0),
+            ),
         |_| {},
     );
     ui.finish();
@@ -62,7 +86,10 @@ fn tooltip_below_parent_centered() {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill().pad(100.0));
     ui.with(
-        NodeSpec::column().width(Sizing::Fixed(100.0)).height(Sizing::Fixed(40.0)).bg(BLUE),
+        NodeSpec::column()
+            .width(Sizing::Fixed(100.0))
+            .height(Sizing::Fixed(40.0))
+            .bg(BLUE),
         |ui| {
             ui.with(
                 NodeSpec::column()
@@ -95,13 +122,22 @@ fn floats_paint_after_in_flow_siblings() {
                 .float(FloatConfig::parent()),
             |_| {},
         );
-        ui.with(NodeSpec::column().width(Sizing::Fixed(80.0)).height(Sizing::Fixed(80.0)).bg(BLUE), |_| {});
+        ui.with(
+            NodeSpec::column()
+                .width(Sizing::Fixed(80.0))
+                .height(Sizing::Fixed(80.0))
+                .bg(BLUE),
+            |_| {},
+        );
     });
     ui.finish();
     let quads = solid_quads(&mut core);
     let red_idx = quads.iter().position(|q| q.4 == RED).unwrap();
     let blue_idx = quads.iter().position(|q| q.4 == BLUE).unwrap();
-    assert!(red_idx > blue_idx, "float painted after (on top of) in-flow content");
+    assert!(
+        red_idx > blue_idx,
+        "float painted after (on top of) in-flow content"
+    );
 }
 
 #[test]
@@ -111,7 +147,10 @@ fn float_escapes_ancestor_clip_and_hits_topmost() {
         let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
         // Clipping container at top-left; float positioned outside its bounds.
         ui.with(
-            NodeSpec::column().width(Sizing::Fixed(50.0)).height(Sizing::Fixed(50.0)).clip(),
+            NodeSpec::column()
+                .width(Sizing::Fixed(50.0))
+                .height(Sizing::Fixed(50.0))
+                .clip(),
             |ui| {
                 ui.with(
                     NodeSpec::column()
@@ -119,7 +158,11 @@ fn float_escapes_ancestor_clip_and_hits_topmost() {
                         .height(Sizing::Fixed(30.0))
                         .bg(RED)
                         .on_click(Value::str("float"))
-                        .float(FloatConfig::parent().at(Align::Start, Align::End).offset(0.0, 50.0)),
+                        .float(
+                            FloatConfig::parent()
+                                .at(Align::Start, Align::End)
+                                .offset(0.0, 50.0),
+                        ),
                     |_| {},
                 );
             },
@@ -157,7 +200,10 @@ fn fit_flips_below_to_above_near_viewport_bottom() {
     // 300px viewport, the mirrored above-placement fits — so it flips.
     ui.configure_root(NodeSpec::column().fill().main_align(Align::End));
     ui.with(
-        NodeSpec::column().width(Sizing::Fixed(100.0)).height(Sizing::Fixed(40.0)).bg(BLUE),
+        NodeSpec::column()
+            .width(Sizing::Fixed(100.0))
+            .height(Sizing::Fixed(40.0))
+            .bg(BLUE),
         |ui| {
             ui.with(
                 NodeSpec::column()
@@ -184,7 +230,10 @@ fn fit_clamps_when_flipping_cannot_help() {
     // declared and mirrored x-placements stick out equally (Center mirrors
     // to itself), so the declared side is kept and clamped to x = 0.
     ui.with(
-        NodeSpec::column().width(Sizing::Fixed(100.0)).height(Sizing::Fixed(40.0)).bg(BLUE),
+        NodeSpec::column()
+            .width(Sizing::Fixed(100.0))
+            .height(Sizing::Fixed(40.0))
+            .bg(BLUE),
         |ui| {
             ui.with(
                 NodeSpec::column()
@@ -208,7 +257,10 @@ fn fit_keeps_declared_side_when_it_fits() {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill().pad(100.0));
     ui.with(
-        NodeSpec::column().width(Sizing::Fixed(100.0)).height(Sizing::Fixed(40.0)).bg(BLUE),
+        NodeSpec::column()
+            .width(Sizing::Fixed(100.0))
+            .height(Sizing::Fixed(40.0))
+            .bg(BLUE),
         |ui| {
             ui.with(
                 NodeSpec::column()
@@ -231,16 +283,21 @@ fn fit_keeps_declared_side_when_it_fits() {
 fn float_grow_sizes_against_viewport() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
-    ui.with(NodeSpec::column().width(Sizing::Fixed(10.0)).height(Sizing::Fixed(10.0)), |ui| {
-        ui.with(
-            NodeSpec::column()
-                .width(Sizing::Grow(1.0))
-                .height(Sizing::Percent(0.5))
-                .bg(RED)
-                .float(FloatConfig::viewport()),
-            |_| {},
-        );
-    });
+    ui.with(
+        NodeSpec::column()
+            .width(Sizing::Fixed(10.0))
+            .height(Sizing::Fixed(10.0)),
+        |ui| {
+            ui.with(
+                NodeSpec::column()
+                    .width(Sizing::Grow(1.0))
+                    .height(Sizing::Percent(0.5))
+                    .bg(RED)
+                    .float(FloatConfig::viewport()),
+                |_| {},
+            );
+        },
+    );
     ui.finish();
     let quads = solid_quads(&mut core);
     let f = quads.iter().find(|q| q.4 == RED).unwrap();

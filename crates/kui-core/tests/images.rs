@@ -9,7 +9,11 @@ fn rgba(w: u32, h: u32) -> Vec<u8> {
 
 fn image_quads(core: &mut Core) -> Vec<kui_core::Quad> {
     let (dl, _) = core.output();
-    dl.quads.iter().filter(|q| q.kind == QuadKind::Image).cloned().collect()
+    dl.quads
+        .iter()
+        .filter(|q| q.kind == QuadKind::Image)
+        .cloned()
+        .collect()
 }
 
 #[test]
@@ -44,7 +48,12 @@ fn removed_image_emits_nothing() {
     let id = core.resources.add_image(10, 10, rgba(10, 10));
     core.remove_image(id);
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
-    ui.image(id, NodeSpec::column().width(Sizing::Fixed(10.0)).height(Sizing::Fixed(10.0)));
+    ui.image(
+        id,
+        NodeSpec::column()
+            .width(Sizing::Fixed(10.0))
+            .height(Sizing::Fixed(10.0)),
+    );
     ui.finish();
     assert!(image_quads(&mut core).is_empty());
 }
@@ -59,8 +68,16 @@ fn oversized_image_grows_the_atlas() {
     ui.finish();
 
     let quads = image_quads(&mut core);
-    assert_eq!(quads.len(), 1, "wide image should render after atlas growth");
-    assert!(core.atlas.size >= 2048, "atlas should have grown, is {}", core.atlas.size);
+    assert_eq!(
+        quads.len(),
+        1,
+        "wide image should render after atlas growth"
+    );
+    assert!(
+        core.atlas.size >= 2048,
+        "atlas should have grown, is {}",
+        core.atlas.size
+    );
     // Second frame reuses the slot without another reset.
     let epoch = core.atlas.epoch;
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);

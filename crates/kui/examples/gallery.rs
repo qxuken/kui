@@ -35,7 +35,11 @@ fn checker(w: u32, h: u32) -> Vec<u8> {
     for y in 0..h {
         for x in 0..w {
             let on = ((x / 12) + (y / 12)) % 2 == 0;
-            px.extend_from_slice(if on { &[0xd8, 0x86, 0x3b, 0xff] } else { &[0, 0, 0, 0] });
+            px.extend_from_slice(if on {
+                &[0xd8, 0x86, 0x3b, 0xff]
+            } else {
+                &[0, 0, 0, 0]
+            });
         }
     }
     px
@@ -50,8 +54,9 @@ impl App for Gallery {
     fn view(&mut self, ui: &mut Ui<'_>) {
         // Register once, lazily, through the escape hatch — resources are
         // long-lived core state, not per-frame data.
-        let sky_id =
-            *self.sky.get_or_insert_with(|| ui.core().resources.add_image(480, 270, sky(480, 270)));
+        let sky_id = *self
+            .sky
+            .get_or_insert_with(|| ui.core().resources.add_image(480, 270, sky(480, 270)));
         let checker_id = *self
             .checker
             .get_or_insert_with(|| ui.core().resources.add_image(96, 96, checker(96, 96)));
@@ -60,15 +65,28 @@ impl App for Gallery {
         kui::widgets::titlebar(ui, "kui — gallery");
         let muted = TextStyle::new(12.0).color(Color::rgb8(0x8a, 0x8f, 0xa3));
 
-        ui.text("Grow width + Fit height: rescales with the window, keeps aspect", muted);
+        ui.text(
+            "Grow width + Fit height: rescales with the window, keeps aspect",
+            muted,
+        );
         ui.image(
             sky_id,
-            NodeSpec::column().width(Sizing::Grow(1.0)).max_width(720.0).radius(12.0),
+            NodeSpec::column()
+                .width(Sizing::Grow(1.0))
+                .max_width(720.0)
+                .radius(12.0),
         );
 
-        ui.text("Intrinsic size, rounded, over a colored card (alpha shows through)", muted);
+        ui.text(
+            "Intrinsic size, rounded, over a colored card (alpha shows through)",
+            muted,
+        );
         ui.with(
-            NodeSpec::row().pad(16.0).gap(16.0).bg(Color::rgb8(0x14, 0x16, 0x1e)).radius(10.0),
+            NodeSpec::row()
+                .pad(16.0)
+                .gap(16.0)
+                .bg(Color::rgb8(0x14, 0x16, 0x1e))
+                .radius(10.0),
             |ui| {
                 ui.image(checker_id, NodeSpec::column().radius(8.0));
                 ui.image(
@@ -87,5 +105,10 @@ impl App for Gallery {
 }
 
 fn main() {
-    kui::app("kui — gallery").run(Gallery { sky: None, checker: None }).unwrap();
+    kui::app("kui — gallery")
+        .run(Gallery {
+            sky: None,
+            checker: None,
+        })
+        .unwrap();
 }

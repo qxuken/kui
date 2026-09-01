@@ -49,9 +49,10 @@ fn line_runs(line: usize, salt: usize) -> Vec<(String, Color)> {
             ("return".into(), kw),
             ("; }".into(), fg),
         ],
-        2 => vec![
-            (format!("// case {line}: cache keyed on content, salt {salt}"), cm),
-        ],
+        2 => vec![(
+            format!("// case {line}: cache keyed on content, salt {salt}"),
+            cm,
+        )],
         3 => vec![
             ("    ".into(), fg),
             ("writeln!".into(), Color::rgb8(0xe0, 0x9a, 0x6a)),
@@ -79,46 +80,57 @@ fn line_runs(line: usize, salt: usize) -> Vec<(String, Color)> {
 fn pane(ui: &mut Ui<'_>, pane_no: usize, top: usize, salt: usize, caret_line: usize) {
     let sel_bg = Color::rgba8(0x3b, 0x5b, 0xd4, 0x55);
     ui.with(
-        NodeSpec::column().fill().bg(Color::rgb8(0x14, 0x16, 0x1e)).clip(),
+        NodeSpec::column()
+            .fill()
+            .bg(Color::rgb8(0x14, 0x16, 0x1e))
+            .clip(),
         |ui| {
-            ui.with(NodeSpec::row().width(Sizing::Grow(1.0)).height(Sizing::Grow(1.0)), |ui| {
-                ui.with(NodeSpec::column().width(Sizing::Fixed(52.0)), |ui| {
-                    for ln in top..top + LINES_PER_PANE {
-                        ui.with(
-                            NodeSpec::row().height(Sizing::Fixed(LH)).main_align(kui_core::Align::End),
-                            |ui| ui.text(&format!("{}", ln + 1), TextStyle::new(11.0).mono()),
-                        );
-                    }
-                });
-                ui.with(NodeSpec::column().width(Sizing::Grow(1.0)).clip(), |ui| {
-                    for ln in top..top + LINES_PER_PANE {
-                        let selected = pane_no == 0 && (10..20).contains(&(ln - top));
-                        ui.with(NodeSpec::row().height(Sizing::Fixed(LH)), |ui| {
-                            for (i, (run, color)) in line_runs(ln, salt).into_iter().enumerate() {
-                                let style = mono().color(color);
-                                if ln == caret_line && i == 2 {
-                                    // Inline caret node between runs.
-                                    ui.with(
-                                        NodeSpec::column()
-                                            .width(Sizing::Fixed(2.0))
-                                            .height(Sizing::Fixed(LH - 4.0))
-                                            .bg(Color::rgb8(0x6a, 0x8b, 0xff)),
-                                        |_| {},
-                                    );
+            ui.with(
+                NodeSpec::row()
+                    .width(Sizing::Grow(1.0))
+                    .height(Sizing::Grow(1.0)),
+                |ui| {
+                    ui.with(NodeSpec::column().width(Sizing::Fixed(52.0)), |ui| {
+                        for ln in top..top + LINES_PER_PANE {
+                            ui.with(
+                                NodeSpec::row()
+                                    .height(Sizing::Fixed(LH))
+                                    .main_align(kui_core::Align::End),
+                                |ui| ui.text(&format!("{}", ln + 1), TextStyle::new(11.0).mono()),
+                            );
+                        }
+                    });
+                    ui.with(NodeSpec::column().width(Sizing::Grow(1.0)).clip(), |ui| {
+                        for ln in top..top + LINES_PER_PANE {
+                            let selected = pane_no == 0 && (10..20).contains(&(ln - top));
+                            ui.with(NodeSpec::row().height(Sizing::Fixed(LH)), |ui| {
+                                for (i, (run, color)) in line_runs(ln, salt).into_iter().enumerate()
+                                {
+                                    let style = mono().color(color);
+                                    if ln == caret_line && i == 2 {
+                                        // Inline caret node between runs.
+                                        ui.with(
+                                            NodeSpec::column()
+                                                .width(Sizing::Fixed(2.0))
+                                                .height(Sizing::Fixed(LH - 4.0))
+                                                .bg(Color::rgb8(0x6a, 0x8b, 0xff)),
+                                            |_| {},
+                                        );
+                                    }
+                                    if selected && (1..=3).contains(&i) {
+                                        ui.with(
+                                            NodeSpec::row().height(Sizing::Fixed(LH)).bg(sel_bg),
+                                            |ui| ui.text(&run, style),
+                                        );
+                                    } else {
+                                        ui.text(&run, style);
+                                    }
                                 }
-                                if selected && (1..=3).contains(&i) {
-                                    ui.with(
-                                        NodeSpec::row().height(Sizing::Fixed(LH)).bg(sel_bg),
-                                        |ui| ui.text(&run, style),
-                                    );
-                                } else {
-                                    ui.text(&run, style);
-                                }
-                            }
-                        });
-                    }
-                });
-            });
+                            });
+                        }
+                    });
+                },
+            );
             ui.with(
                 NodeSpec::row()
                     .width(Sizing::Grow(1.0))
@@ -134,7 +146,9 @@ fn frame(core: &mut Core, top: usize, salt: usize, caret_line: usize) -> usize {
     let mut ui = core.frame(Size::new(1600.0, 1200.0), 1.0);
     ui.configure_root(NodeSpec::row().fill().gap(1.0));
     for p in 0..PANES {
-        ui.with(NodeSpec::column().fill(), |ui| pane(ui, p, top, salt, caret_line));
+        ui.with(NodeSpec::column().fill(), |ui| {
+            pane(ui, p, top, salt, caret_line)
+        });
     }
     ui.finish();
     let (dl, _) = core.output();

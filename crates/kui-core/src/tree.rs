@@ -112,7 +112,10 @@ impl Tree {
     }
 
     pub fn children(&self, i: u32) -> ChildIter<'_> {
-        ChildIter { tree: self, next: self.first_child[i as usize] }
+        ChildIter {
+            tree: self,
+            next: self.first_child[i as usize],
+        }
     }
 }
 
@@ -141,10 +144,34 @@ mod tests {
     #[test]
     fn sibling_links() {
         let mut t = Tree::new();
-        let root = t.push(NIL, Key::ROOT, OriginId::HOST, NodeSpec::default(), NodeContent::Container);
-        let a = t.push(root, Key::ROOT.index(0), OriginId::HOST, NodeSpec::default(), NodeContent::Container);
-        let a1 = t.push(a, Key::ROOT.index(0).index(0), OriginId::HOST, NodeSpec::default(), NodeContent::Container);
-        let b = t.push(root, Key::ROOT.index(1), OriginId::HOST, NodeSpec::default(), NodeContent::Container);
+        let root = t.push(
+            NIL,
+            Key::ROOT,
+            OriginId::HOST,
+            NodeSpec::default(),
+            NodeContent::Container,
+        );
+        let a = t.push(
+            root,
+            Key::ROOT.index(0),
+            OriginId::HOST,
+            NodeSpec::default(),
+            NodeContent::Container,
+        );
+        let a1 = t.push(
+            a,
+            Key::ROOT.index(0).index(0),
+            OriginId::HOST,
+            NodeSpec::default(),
+            NodeContent::Container,
+        );
+        let b = t.push(
+            root,
+            Key::ROOT.index(1),
+            OriginId::HOST,
+            NodeSpec::default(),
+            NodeContent::Container,
+        );
 
         assert_eq!(t.children(root).collect::<Vec<_>>(), vec![a, b]);
         assert_eq!(t.children(a).collect::<Vec<_>>(), vec![a1]);

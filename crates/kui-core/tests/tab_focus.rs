@@ -3,7 +3,11 @@
 
 use kui_core::{Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, Size, Sizing, Value};
 
-const SHIFT: Mods = Mods { shift: true, word: false, doc: false };
+const SHIFT: Mods = Mods {
+    shift: true,
+    word: false,
+    doc: false,
+};
 
 /// Three single-line fields and one multiline, in order.
 fn frame(core: &mut Core, autofocus_first: bool) -> Vec<Key> {
@@ -55,7 +59,10 @@ fn multiline_keeps_tab_as_indentation() {
     core.edit.set_focus(Some(keys[3]));
     tab(&mut core, Mods::default());
     assert_eq!(core.edit.focused(), Some(keys[3]), "focus stays");
-    assert!(core.edit_text(keys[3]).unwrap().contains("    "), "tab indented");
+    assert!(
+        core.edit_text(keys[3]).unwrap().contains("    "),
+        "tab indented"
+    );
 }
 
 #[test]
@@ -67,7 +74,11 @@ fn tab_with_no_focus_enters_the_ring() {
     assert_eq!(core.edit.focused(), Some(keys[0]));
     core.edit.set_focus(None);
     tab(&mut core, SHIFT);
-    assert_eq!(core.edit.focused(), Some(keys[3]), "shift-tab enters from the end");
+    assert_eq!(
+        core.edit.focused(),
+        Some(keys[3]),
+        "shift-tab enters from the end"
+    );
 }
 
 #[test]

@@ -6,7 +6,7 @@
 //! Run: cargo run -p kui --example editor
 
 use kui::{
-    App, Align, Color, EditOptions, FontFamily, Key, NodeSpec, Sizing, TextStyle, Ui, UiEvent,
+    Align, App, Color, EditOptions, FontFamily, Key, NodeSpec, Sizing, TextStyle, Ui, UiEvent,
     Value,
 };
 
@@ -46,13 +46,18 @@ impl App for Editor {
         // Editor area: the edit node grows its height with content inside a
         // scroll container, so the document scrolls as it grows.
         ui.with(
-            NodeSpec::column().width(Sizing::Grow(1.0)).height(Sizing::Grow(1.0)).scroll_y(),
+            NodeSpec::column()
+                .width(Sizing::Grow(1.0))
+                .height(Sizing::Grow(1.0))
+                .scroll_y(),
             |ui| {
                 let key = ui.text_edit(
                     "doc",
                     INITIAL,
                     &EditOptions {
-                        style: TextStyle::new(14.0).family(FontFamily::Mono).line_height(22.0),
+                        style: TextStyle::new(14.0)
+                            .family(FontFamily::Mono)
+                            .line_height(22.0),
                         multiline: true,
                         autofocus: true,
                         ..Default::default()
@@ -119,6 +124,9 @@ impl Editor {
 fn main() {
     kui::app("kui — editor")
         .custom_titlebar()
-        .run(Editor { saved: true, ..Default::default() })
+        .run(Editor {
+            saved: true,
+            ..Default::default()
+        })
         .unwrap();
 }

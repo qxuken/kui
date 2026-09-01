@@ -69,7 +69,12 @@ enum SplitDir {
 #[derive(Clone)]
 enum Node {
     Pane(u64),
-    Split { dir: SplitDir, ratio: f32, a: Box<Node>, b: Box<Node> },
+    Split {
+        dir: SplitDir,
+        ratio: f32,
+        a: Box<Node>,
+        b: Box<Node>,
+    },
 }
 
 impl Node {
@@ -97,7 +102,9 @@ impl Node {
                 true
             }
             Node::Pane(_) => false,
-            Node::Split { a, b, .. } => a.split(target, dir, new_id) || b.split(target, dir, new_id),
+            Node::Split { a, b, .. } => {
+                a.split(target, dir, new_id) || b.split(target, dir, new_id)
+            }
         }
     }
 
@@ -120,7 +127,12 @@ fn without(node: Node, target: u64) -> Option<Node> {
         Node::Pane(id) if id == target => None,
         Node::Pane(id) => Some(Node::Pane(id)),
         Node::Split { dir, ratio, a, b } => match (without(*a, target), without(*b, target)) {
-            (Some(a), Some(b)) => Some(Node::Split { dir, ratio, a: Box::new(a), b: Box::new(b) }),
+            (Some(a), Some(b)) => Some(Node::Split {
+                dir,
+                ratio,
+                a: Box::new(a),
+                b: Box::new(b),
+            }),
             (Some(x), None) | (None, Some(x)) => Some(x),
             (None, None) => None,
         },
@@ -291,8 +303,11 @@ impl Splitmux {
                 for i in 0..self.tabs.len() {
                     let active = i == self.tab;
                     let lifted = self.tab_drag.is_some_and(|(s, _)| s == i);
-                    let (bg, fg) =
-                        if active { (pal.panel, pal.fg) } else { (Color::TRANSPARENT, pal.dim) };
+                    let (bg, fg) = if active {
+                        (pal.panel, pal.fg)
+                    } else {
+                        (Color::TRANSPARENT, pal.dim)
+                    };
                     let mut ids = Vec::new();
                     self.tabs[i].panes(&mut ids);
                     let mut spec = NodeSpec::row()
@@ -346,8 +361,12 @@ impl Splitmux {
                 ui.with(spec.fill(), |ui| {
                     let (wa, wb) = (ratio.clamp(0.05, 0.95), 1.0 - ratio.clamp(0.05, 0.95));
                     let grow = |f: f32| match dir {
-                        SplitDir::H => NodeSpec::column().width(Sizing::Grow(f)).height(Sizing::Grow(1.0)),
-                        SplitDir::V => NodeSpec::column().width(Sizing::Grow(1.0)).height(Sizing::Grow(f)),
+                        SplitDir::H => NodeSpec::column()
+                            .width(Sizing::Grow(f))
+                            .height(Sizing::Grow(1.0)),
+                        SplitDir::V => NodeSpec::column()
+                            .width(Sizing::Grow(1.0))
+                            .height(Sizing::Grow(f)),
                     };
                     ui.with(grow(wa), |ui| self.render_node(ui, a, &format!("{path}a")));
                     // The divider: a grabbable strip that drags the ratio.
@@ -358,19 +377,27 @@ impl Splitmux {
                         || ui.is_pressed(divider)
                         || self.dragging.as_deref() == Some(path);
                     let bar = match dir {
-                        SplitDir::H => NodeSpec::column().width(Sizing::Fixed(5.0)).height(Sizing::Grow(1.0)),
-                        SplitDir::V => NodeSpec::column().width(Sizing::Grow(1.0)).height(Sizing::Fixed(5.0)),
+                        SplitDir::H => NodeSpec::column()
+                            .width(Sizing::Fixed(5.0))
+                            .height(Sizing::Grow(1.0)),
+                        SplitDir::V => NodeSpec::column()
+                            .width(Sizing::Grow(1.0))
+                            .height(Sizing::Fixed(5.0)),
                     };
                     ui.with_keyed(
                         "divider",
-                        bar.bg(if active { pal.border_focus } else { pal.bg2 }).on_drag(Value::map([
-                            ("kind", "split".into()),
-                            ("path", Value::str(path)),
-                            ("dir", Value::str(match dir {
-                                SplitDir::H => "h",
-                                SplitDir::V => "v",
-                            })),
-                        ])),
+                        bar.bg(if active { pal.border_focus } else { pal.bg2 })
+                            .on_drag(Value::map([
+                                ("kind", "split".into()),
+                                ("path", Value::str(path)),
+                                (
+                                    "dir",
+                                    Value::str(match dir {
+                                        SplitDir::H => "h",
+                                        SplitDir::V => "v",
+                                    }),
+                                ),
+                            ])),
                         |_| {},
                     );
                     ui.with(grow(wb), |ui| self.render_node(ui, b, &format!("{path}b")));
@@ -384,7 +411,11 @@ impl Splitmux {
     fn render_pane(&self, ui: &mut Ui<'_>, id: u64) {
         let pal = self.pal;
         let focused = self.focused == id;
-        let border = if focused { pal.border_focus } else { pal.border };
+        let border = if focused {
+            pal.border_focus
+        } else {
+            pal.border
+        };
         ui.with_keyed(
             &format!("pane{id}"),
             NodeSpec::column()
@@ -424,7 +455,10 @@ impl App for Splitmux {
         }
         let pal = self.pal;
         ui.configure_root(NodeSpec::column().fill().bg(pal.bg));
-        widgets::titlebar(ui, "splitmux — the app owns the pane tree, kui owns the pixels");
+        widgets::titlebar(
+            ui,
+            "splitmux — the app owns the pane tree, kui owns the pixels",
+        );
         self.tab_bar(ui);
 
         let root = self.tabs[self.tab].clone();
@@ -445,9 +479,18 @@ impl App for Splitmux {
         match ev.payload.get("kind").and_then(Value::as_str) {
             Some("key") => {
                 // The chord map: Alt (⌥ Option on macOS) + a letter or digit.
-                let alt = ev.payload.get("alt").and_then(Value::as_bool).unwrap_or(false);
-                let ctrl = ev.payload.get("ctrl").and_then(Value::as_bool).unwrap_or(false);
-                if alt && !ctrl
+                let alt = ev
+                    .payload
+                    .get("alt")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                let ctrl = ev
+                    .payload
+                    .get("ctrl")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                if alt
+                    && !ctrl
                     && let Some(code) = ev.payload.get("code").and_then(Value::as_str)
                 {
                     let code = code.to_string();
@@ -477,7 +520,11 @@ impl App for Splitmux {
                             }
                         }
                         Some("move") => {
-                            let dx = ev.payload.get("dx").and_then(Value::as_float).unwrap_or(0.0);
+                            let dx = ev
+                                .payload
+                                .get("dx")
+                                .and_then(Value::as_float)
+                                .unwrap_or(0.0);
                             if let Some((_, sign)) = self.tab_drag.as_mut()
                                 && dx != 0.0
                             {
@@ -513,7 +560,9 @@ impl Splitmux {
                     tag.and_then(|t| t.get("dir")).and_then(Value::as_str) == Some("h");
                 let parent = ev.payload.get("parent");
                 let get = |m: Option<&Value>, k| {
-                    m.and_then(|v| v.get(k)).and_then(Value::as_float).unwrap_or(0.0)
+                    m.and_then(|v| v.get(k))
+                        .and_then(Value::as_float)
+                        .unwrap_or(0.0)
                 };
                 let ratio = if horizontal {
                     let w = get(parent, "w").max(1.0);
@@ -534,5 +583,9 @@ impl Splitmux {
 }
 
 fn main() {
-    kui::app("splitmux").custom_titlebar().size(1100.0, 720.0).run(Splitmux::new()).unwrap();
+    kui::app("splitmux")
+        .custom_titlebar()
+        .size(1100.0, 720.0)
+        .run(Splitmux::new())
+        .unwrap();
 }

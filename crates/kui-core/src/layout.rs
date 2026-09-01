@@ -35,7 +35,14 @@ fn mirror(a: Align) -> Align {
 }
 
 /// One axis of float attachment: anchor point minus self point, plus offset.
-fn attach(anchor_pos: f32, anchor_len: f32, self_len: f32, anchor_pt: Align, self_pt: Align, off: f32) -> f32 {
+fn attach(
+    anchor_pos: f32,
+    anchor_len: f32,
+    self_len: f32,
+    anchor_pt: Align,
+    self_pt: Align,
+    off: f32,
+) -> f32 {
     anchor_pos + align_factor(anchor_pt) * anchor_len - align_factor(self_pt) * self_len + off
 }
 
@@ -383,7 +390,11 @@ fn shrink_axis(tree: &mut Tree, i: u32, axis: AxisSel, mut deficit: f32) {
                 let s = get_axis(tree, c, axis);
                 if s > min + 0.01 {
                     if s > largest + 0.01 {
-                        second = if largest.is_finite() { largest.max(second) } else { second };
+                        second = if largest.is_finite() {
+                            largest.max(second)
+                        } else {
+                            second
+                        };
                         largest = s;
                         count = 1;
                     } else if s > largest - 0.01 {
@@ -465,8 +476,18 @@ pub(crate) fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Siz
         let size = tree.size[i];
 
         let (main_content, cross_content, main_pad_start, cross_pad_start) = match spec.dir {
-            Dir::Row => (size.w - spec.padding.x(), size.h - spec.padding.y(), spec.padding.l, spec.padding.t),
-            Dir::Column => (size.h - spec.padding.y(), size.w - spec.padding.x(), spec.padding.t, spec.padding.l),
+            Dir::Row => (
+                size.w - spec.padding.x(),
+                size.h - spec.padding.y(),
+                spec.padding.l,
+                spec.padding.t,
+            ),
+            Dir::Column => (
+                size.h - spec.padding.y(),
+                size.w - spec.padding.x(),
+                spec.padding.t,
+                spec.padding.l,
+            ),
         };
 
         let mut total_main = 0.0f32;
@@ -497,8 +518,16 @@ pub(crate) fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Siz
                 Dir::Column => (max_cross + spec.padding.x(), total_main + spec.padding.y()),
             };
             let max = Vec2::new(
-                if spec.scroll_x { (content_w - size.w).max(0.0) } else { 0.0 },
-                if spec.scroll_y { (content_h - size.h).max(0.0) } else { 0.0 },
+                if spec.scroll_x {
+                    (content_w - size.w).max(0.0)
+                } else {
+                    0.0
+                },
+                if spec.scroll_y {
+                    (content_h - size.h).max(0.0)
+                } else {
+                    0.0
+                },
             );
             tree.scroll_max[i] = max;
             offset = scroll.clamp(tree.keys[i], max);
@@ -525,18 +554,46 @@ pub(crate) fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Siz
                     FloatAnchor::Viewport => Rect::new(0.0, 0.0, viewport.w, viewport.h),
                 };
                 let cs = tree.size[c as usize];
-                let mut x = attach(anchor.x, anchor.w, cs.w, cfg.anchor_point.0, cfg.self_point.0, cfg.offset.x);
-                let mut y = attach(anchor.y, anchor.h, cs.h, cfg.anchor_point.1, cfg.self_point.1, cfg.offset.y);
+                let mut x = attach(
+                    anchor.x,
+                    anchor.w,
+                    cs.w,
+                    cfg.anchor_point.0,
+                    cfg.self_point.0,
+                    cfg.offset.x,
+                );
+                let mut y = attach(
+                    anchor.y,
+                    anchor.h,
+                    cs.h,
+                    cfg.anchor_point.1,
+                    cfg.self_point.1,
+                    cfg.offset.y,
+                );
                 if cfg.fit {
                     // Mirror the attachment across the anchor per axis when
                     // the mirrored side is less off-screen (ties keep the
                     // declared side), then clamp the rest. Clamp order pins
                     // the top/left edge on screen when nothing fits.
-                    let fx = attach(anchor.x, anchor.w, cs.w, mirror(cfg.anchor_point.0), mirror(cfg.self_point.0), -cfg.offset.x);
+                    let fx = attach(
+                        anchor.x,
+                        anchor.w,
+                        cs.w,
+                        mirror(cfg.anchor_point.0),
+                        mirror(cfg.self_point.0),
+                        -cfg.offset.x,
+                    );
                     if overflow(x, cs.w, viewport.w) > overflow(fx, cs.w, viewport.w) {
                         x = fx;
                     }
-                    let fy = attach(anchor.y, anchor.h, cs.h, mirror(cfg.anchor_point.1), mirror(cfg.self_point.1), -cfg.offset.y);
+                    let fy = attach(
+                        anchor.y,
+                        anchor.h,
+                        cs.h,
+                        mirror(cfg.anchor_point.1),
+                        mirror(cfg.self_point.1),
+                        -cfg.offset.y,
+                    );
                     if overflow(y, cs.h, viewport.h) > overflow(fy, cs.h, viewport.h) {
                         y = fy;
                     }
@@ -606,23 +663,41 @@ mod tests {
     impl T {
         fn new(root_spec: NodeSpec) -> Self {
             let mut tree = Tree::new();
-            tree.push(NIL, Key::ROOT, OriginId::HOST, root_spec, NodeContent::Container);
+            tree.push(
+                NIL,
+                Key::ROOT,
+                OriginId::HOST,
+                root_spec,
+                NodeContent::Container,
+            );
             T { tree }
         }
 
         fn node(&mut self, parent: u32, spec: NodeSpec) -> u32 {
             let key = Key::ROOT.index(self.tree.len() as u64);
-            self.tree.push(parent, key, OriginId::HOST, spec, NodeContent::Container)
+            self.tree
+                .push(parent, key, OriginId::HOST, spec, NodeContent::Container)
         }
 
         fn text(&mut self, parent: u32, chars: u32) -> u32 {
             let key = Key::ROOT.index(self.tree.len() as u64);
-            self.tree.push(parent, key, OriginId::HOST, NodeSpec::default(), NodeContent::Text(TextId(chars)))
+            self.tree.push(
+                parent,
+                key,
+                OriginId::HOST,
+                NodeSpec::default(),
+                NodeContent::Text(TextId(chars)),
+            )
         }
 
         fn run(&mut self, vw: f32, vh: f32) {
             let mut scroll = ScrollStore::default();
-            compute(&mut self.tree, &mut StubText, &mut scroll, Size::new(vw, vh));
+            compute(
+                &mut self.tree,
+                &mut StubText,
+                &mut scroll,
+                Size::new(vw, vh),
+            );
         }
 
         fn size(&self, i: u32) -> Size {
@@ -663,8 +738,14 @@ mod tests {
     fn grow_splits_remaining_space_by_factor() {
         let mut t = T::new(NodeSpec::row().width(px(300.0)).height(px(100.0)).gap(10.0));
         let a = t.node(0, NodeSpec::column().width(px(50.0)).height(px(10.0)));
-        let b = t.node(0, NodeSpec::column().width(Sizing::Grow(1.0)).height(px(10.0)));
-        let c = t.node(0, NodeSpec::column().width(Sizing::Grow(2.0)).height(px(10.0)));
+        let b = t.node(
+            0,
+            NodeSpec::column().width(Sizing::Grow(1.0)).height(px(10.0)),
+        );
+        let c = t.node(
+            0,
+            NodeSpec::column().width(Sizing::Grow(2.0)).height(px(10.0)),
+        );
         t.run(1000.0, 1000.0);
         // content 300, fixed 50, gaps 20 -> remain 230 split 1:2
         let bw = t.size(b).w;
@@ -677,14 +758,24 @@ mod tests {
     #[test]
     fn percent_resolves_against_content_box() {
         let mut t = T::new(NodeSpec::row().width(px(200.0)).height(px(100.0)).pad(10.0));
-        let a = t.node(0, NodeSpec::column().width(Sizing::Percent(0.5)).height(Sizing::Percent(1.0)));
+        let a = t.node(
+            0,
+            NodeSpec::column()
+                .width(Sizing::Percent(0.5))
+                .height(Sizing::Percent(1.0)),
+        );
         t.run(1000.0, 1000.0);
         assert_eq!(t.size(a), Size::new(90.0, 80.0)); // (200-20)*0.5, (100-20)*1.0
     }
 
     #[test]
     fn cross_axis_grow_fills_content() {
-        let mut t = T::new(NodeSpec::column().width(px(120.0)).height(px(200.0)).pad(8.0));
+        let mut t = T::new(
+            NodeSpec::column()
+                .width(px(120.0))
+                .height(px(200.0))
+                .pad(8.0),
+        );
         let a = t.node(0, NodeSpec::row().width(Sizing::Grow(1.0)).height(px(30.0)));
         t.run(1000.0, 1000.0);
         assert_eq!(t.size(a).w, 104.0);
@@ -710,7 +801,13 @@ mod tests {
 
     #[test]
     fn positions_row_with_gap_and_padding() {
-        let mut t = T::new(NodeSpec::row().width(px(300.0)).height(px(100.0)).pad(10.0).gap(5.0));
+        let mut t = T::new(
+            NodeSpec::row()
+                .width(px(300.0))
+                .height(px(100.0))
+                .pad(10.0)
+                .gap(5.0),
+        );
         let a = t.node(0, NodeSpec::column().width(px(40.0)).height(px(20.0)));
         let b = t.node(0, NodeSpec::column().width(px(40.0)).height(px(20.0)));
         t.run(1000.0, 1000.0);
@@ -728,7 +825,13 @@ mod tests {
 
     #[test]
     fn main_end_alignment() {
-        let mut t = T::new(NodeSpec::column().width(px(100.0)).height(px(100.0)).main_align(Align::End).gap(10.0));
+        let mut t = T::new(
+            NodeSpec::column()
+                .width(px(100.0))
+                .height(px(100.0))
+                .main_align(Align::End)
+                .gap(10.0),
+        );
         let a = t.node(0, NodeSpec::row().width(px(10.0)).height(px(20.0)));
         let b = t.node(0, NodeSpec::row().width(px(10.0)).height(px(20.0)));
         t.run(1000.0, 1000.0);
@@ -746,7 +849,12 @@ mod tests {
 
     #[test]
     fn text_wraps_when_clamped_by_parent() {
-        let mut t = T::new(NodeSpec::column().width(px(100.0)).height(px(500.0)).pad(10.0));
+        let mut t = T::new(
+            NodeSpec::column()
+                .width(px(100.0))
+                .height(px(500.0))
+                .pad(10.0),
+        );
         let txt = t.text(0, 20); // 200px intrinsic, clamped to 80 -> 3 lines
         t.run(1000.0, 1000.0);
         assert_eq!(t.size(txt).w, 80.0);
@@ -766,7 +874,10 @@ mod tests {
     fn grow_with_no_space_left_gets_zero() {
         let mut t = T::new(NodeSpec::row().width(px(100.0)).height(px(50.0)));
         let a = t.node(0, NodeSpec::column().width(px(120.0)).height(px(10.0)));
-        let b = t.node(0, NodeSpec::column().width(Sizing::Grow(1.0)).height(px(10.0)));
+        let b = t.node(
+            0,
+            NodeSpec::column().width(Sizing::Grow(1.0)).height(px(10.0)),
+        );
         t.run(1000.0, 1000.0);
         assert_eq!(t.size(a).w, 120.0); // no shrinking in v0
         assert_eq!(t.size(b).w, 0.0);
@@ -786,12 +897,24 @@ mod tests {
     #[test]
     fn grow_respects_max_width() {
         let mut t = T::new(NodeSpec::row().width(px(800.0)).height(px(100.0)));
-        let a = t.node(0, NodeSpec::column().width(Sizing::Grow(1.0)).max_width(560.0).height(px(10.0)));
+        let a = t.node(
+            0,
+            NodeSpec::column()
+                .width(Sizing::Grow(1.0))
+                .max_width(560.0)
+                .height(px(10.0)),
+        );
         t.run(1000.0, 1000.0);
         assert_eq!(t.size(a).w, 560.0);
         // And tracks the parent when it's smaller than the cap.
         let mut t = T::new(NodeSpec::row().width(px(400.0)).height(px(100.0)));
-        let a = t.node(0, NodeSpec::column().width(Sizing::Grow(1.0)).max_width(560.0).height(px(10.0)));
+        let a = t.node(
+            0,
+            NodeSpec::column()
+                .width(Sizing::Grow(1.0))
+                .max_width(560.0)
+                .height(px(10.0)),
+        );
         t.run(1000.0, 1000.0);
         assert_eq!(t.size(a).w, 400.0);
     }
@@ -810,7 +933,13 @@ mod tests {
     #[test]
     fn percent_respects_max() {
         let mut t = T::new(NodeSpec::column().width(px(1000.0)).height(px(1000.0)));
-        let a = t.node(0, NodeSpec::row().width(Sizing::Percent(0.9)).max_width(300.0).height(px(10.0)));
+        let a = t.node(
+            0,
+            NodeSpec::row()
+                .width(Sizing::Percent(0.9))
+                .max_width(300.0)
+                .height(px(10.0)),
+        );
         t.run(1000.0, 1000.0);
         assert_eq!(t.size(a).w, 300.0);
     }
@@ -867,7 +996,11 @@ mod tests {
         }
         t.run(1000.0, 1000.0);
         for c in kids {
-            assert!((t.size(c).w - 100.0 / 3.0).abs() < 0.1, "got {}", t.size(c).w);
+            assert!(
+                (t.size(c).w - 100.0 / 3.0).abs() < 0.1,
+                "got {}",
+                t.size(c).w
+            );
         }
     }
 
@@ -887,13 +1020,20 @@ mod tests {
         let mut t = T::new(NodeSpec::column().width(px(200.0)).height(px(30.0)));
         let txt = t.text(0, 30); // wraps to 200 -> 2 lines = 40 > 30 parent
         t.run(1000.0, 1000.0);
-        assert_eq!(t.size(txt).h, 40.0, "text overflows rather than clipping lines");
+        assert_eq!(
+            t.size(txt).h,
+            40.0,
+            "text overflows rather than clipping lines"
+        );
     }
 
     #[test]
     fn scroll_axis_skips_shrink() {
         let mut t = T::new(
-            NodeSpec::column().width(px(100.0)).height(px(100.0)).scroll_y(),
+            NodeSpec::column()
+                .width(px(100.0))
+                .height(px(100.0))
+                .scroll_y(),
         );
         for _ in 0..2 {
             let c = t.node(0, NodeSpec::column());
@@ -912,7 +1052,12 @@ mod tests {
             NodeSpec::column()
                 .width(px(100.0))
                 .height(px(100.0))
-                .padding(Edges { l: 1.0, r: 2.0, t: 3.0, b: 4.0 }),
+                .padding(Edges {
+                    l: 1.0,
+                    r: 2.0,
+                    t: 3.0,
+                    b: 4.0,
+                }),
         );
         let a = t.node(0, NodeSpec::row().fill());
         t.run(1000.0, 1000.0);

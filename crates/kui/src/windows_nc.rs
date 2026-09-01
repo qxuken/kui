@@ -102,7 +102,10 @@ impl NcHitTest {
 }
 
 fn point_of(lparam: LPARAM) -> POINT {
-    POINT { x: (lparam & 0xffff) as i16 as i32, y: ((lparam >> 16) & 0xffff) as i16 as i32 }
+    POINT {
+        x: (lparam & 0xffff) as i16 as i32,
+        y: ((lparam >> 16) & 0xffff) as i16 as i32,
+    }
 }
 
 /// Re-posts a non-client mouse message (screen coords) as its client
@@ -119,7 +122,12 @@ fn to_client(hwnd: HWND, mut p: POINT) -> POINT {
 }
 
 fn client_rect(hwnd: HWND) -> RECT {
-    let mut rc = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+    let mut rc = RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
     unsafe { GetClientRect(hwnd, &mut rc) };
     rc
 }
@@ -131,7 +139,11 @@ fn client_rect(hwnd: HWND) -> RECT {
 fn track_leave(hwnd: HWND, whole_window: bool) {
     let mut t = TRACKMOUSEEVENT {
         cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
-        dwFlags: if whole_window { TME_LEAVE | TME_NONCLIENT } else { TME_LEAVE },
+        dwFlags: if whole_window {
+            TME_LEAVE | TME_NONCLIENT
+        } else {
+            TME_LEAVE
+        },
         hwndTrack: hwnd,
         dwHoverTime: 0,
     };
@@ -154,7 +166,9 @@ fn cursor_in_window(hwnd: HWND) -> Option<POINT> {
 /// for. Recomputed rather than tracked as a flag so it cannot go stale when
 /// a capture or a modal loop swallows the moves that would have cleared it.
 fn on_own_chrome(state: &Mutex<NcState>, hwnd: HWND) -> bool {
-    let Some(p) = cursor_in_window(hwnd) else { return false };
+    let Some(p) = cursor_in_window(hwnd) else {
+        return false;
+    };
     matches!(hit_code(state, hwnd, p), Some(code) if code != HTCLIENT)
 }
 

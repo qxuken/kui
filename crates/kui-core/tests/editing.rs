@@ -1,12 +1,18 @@
 //! End-to-end text editing through a live `Core`: focus, typing, motion,
 //! selection, deletion, click-to-position, and event emission.
 
-use kui_core::{
-    Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, Size, Sizing, Vec2,
-};
+use kui_core::{Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, Size, Sizing, Vec2};
 
-const SHIFT: Mods = Mods { shift: true, word: false, doc: false };
-const WORD: Mods = Mods { shift: false, word: true, doc: false };
+const SHIFT: Mods = Mods {
+    shift: true,
+    word: false,
+    doc: false,
+};
+const WORD: Mods = Mods {
+    shift: false,
+    word: true,
+    doc: false,
+};
 
 struct Rig {
     core: Core,
@@ -44,7 +50,11 @@ fn frame(core: &mut Core, initial: &str, multiline: bool) -> Key {
     let key = ui.text_edit(
         "field",
         initial,
-        &EditOptions { multiline, autofocus: true, ..Default::default() },
+        &EditOptions {
+            multiline,
+            autofocus: true,
+            ..Default::default()
+        },
         NodeSpec::column().width(Sizing::Grow(1.0)).pad(5.0),
     );
     ui.finish();
@@ -54,7 +64,10 @@ fn frame(core: &mut Core, initial: &str, multiline: bool) -> Key {
 #[test]
 fn typing_inserts_at_cursor_end() {
     let mut rig = Rig::new("hello", false);
-    assert!(rig.core.is_focused(rig.key), "autofocus should focus the field");
+    assert!(
+        rig.core.is_focused(rig.key),
+        "autofocus should focus the field"
+    );
     // Fresh editors start with the cursor at the buffer start.
     rig.press(EditKey::End, Mods::default());
     let events = rig.type_str(" world");
@@ -125,10 +138,15 @@ fn multiline_enter_splits_singleline_submits() {
 
     let mut single = Rig::new("ab", false);
     single.press(EditKey::End, Mods::default());
-    let evs = single.core.handle_input(InputEvent::Key(EditKey::Enter, Mods::default()));
+    let evs = single
+        .core
+        .handle_input(InputEvent::Key(EditKey::Enter, Mods::default()));
     assert_eq!(single.text(), "ab");
     assert_eq!(evs.len(), 1);
-    assert_eq!(evs[0].payload.get("kind").and_then(kui_core::Value::as_str), Some("submit"));
+    assert_eq!(
+        evs[0].payload.get("kind").and_then(kui_core::Value::as_str),
+        Some("submit")
+    );
 }
 
 #[test]
@@ -138,7 +156,8 @@ fn click_focuses_and_places_caret() {
     rig.frame(); // lay out so hit regions exist
 
     // Click near the left edge of the text content.
-    rig.core.handle_input(InputEvent::CursorMoved(Vec2::new(17.0, 25.0)));
+    rig.core
+        .handle_input(InputEvent::CursorMoved(Vec2::new(17.0, 25.0)));
     rig.core.handle_input(InputEvent::MouseDown(1));
     rig.core.handle_input(InputEvent::MouseUp);
     assert!(rig.core.is_focused(rig.key), "click should focus");
@@ -146,11 +165,15 @@ fn click_focuses_and_places_caret() {
     // Caret near the start: typing lands before most of the text.
     rig.type_str("X");
     let t = rig.text();
-    assert!(t.starts_with('X') || t.starts_with("mX"), "caret should be near start, got {t}");
+    assert!(
+        t.starts_with('X') || t.starts_with("mX"),
+        "caret should be near start, got {t}"
+    );
 
     // Clicking outside any edit blurs.
     rig.frame();
-    rig.core.handle_input(InputEvent::CursorMoved(Vec2::new(395.0, 295.0)));
+    rig.core
+        .handle_input(InputEvent::CursorMoved(Vec2::new(395.0, 295.0)));
     rig.core.handle_input(InputEvent::MouseDown(1));
     assert!(!rig.core.is_focused(rig.key), "click outside should blur");
 }
@@ -160,9 +183,11 @@ fn drag_selects_text() {
     let mut rig = Rig::new("hello world", false);
     rig.frame();
     // Press near start, drag to the right, release.
-    rig.core.handle_input(InputEvent::CursorMoved(Vec2::new(16.0, 25.0)));
+    rig.core
+        .handle_input(InputEvent::CursorMoved(Vec2::new(16.0, 25.0)));
     rig.core.handle_input(InputEvent::MouseDown(1));
-    rig.core.handle_input(InputEvent::CursorMoved(Vec2::new(120.0, 25.0)));
+    rig.core
+        .handle_input(InputEvent::CursorMoved(Vec2::new(120.0, 25.0)));
     rig.core.handle_input(InputEvent::MouseUp);
     let sel = rig.core.copy_selection();
     assert!(
@@ -190,13 +215,15 @@ fn selection_renders_highlight_and_caret() {
     rig.frame();
     let (dl, _) = rig.core.output();
     // Selection highlight: a solid quad wider than the 2px caret, translucent.
-    let highlight = dl
-        .quads
-        .iter()
-        .any(|q| q.kind == kui_core::QuadKind::Solid && q.rect.w > 10.0 && q.color.a < 0.9 && q.color.a > 0.1);
+    let highlight = dl.quads.iter().any(|q| {
+        q.kind == kui_core::QuadKind::Solid && q.rect.w > 10.0 && q.color.a < 0.9 && q.color.a > 0.1
+    });
     assert!(highlight, "expected a selection highlight quad");
     // Caret: a 2px solid quad.
-    let caret = dl.quads.iter().any(|q| q.kind == kui_core::QuadKind::Solid && q.rect.w == 2.0);
+    let caret = dl
+        .quads
+        .iter()
+        .any(|q| q.kind == kui_core::QuadKind::Solid && q.rect.w == 2.0);
     assert!(caret, "expected a caret quad");
 }
 
@@ -222,8 +249,9 @@ fn selection_highlight_stays_on_its_lines() {
         .map(|q| q.rect.y)
         .collect();
     assert!(!ys.is_empty(), "expected a selection highlight");
-    let (min_y, max_y) =
-        ys.iter().fold((f32::MAX, f32::MIN), |(lo, hi), y| (lo.min(*y), hi.max(*y)));
+    let (min_y, max_y) = ys
+        .iter()
+        .fold((f32::MAX, f32::MIN), |(lo, hi), y| (lo.min(*y), hi.max(*y)));
     // A one-line selection must highlight one line, not the rest of the doc.
     assert!(
         max_y - min_y < 1.0,

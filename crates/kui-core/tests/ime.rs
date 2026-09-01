@@ -9,7 +9,11 @@ fn frame(core: &mut Core) -> Key {
     let key = ui.text_edit(
         "field",
         "hello ",
-        &EditOptions { multiline: false, autofocus: true, ..Default::default() },
+        &EditOptions {
+            multiline: false,
+            autofocus: true,
+            ..Default::default()
+        },
         NodeSpec::column().width(Sizing::Grow(1.0)).pad(5.0),
     );
     ui.finish();
@@ -53,14 +57,21 @@ fn blur_abandons_the_composition() {
     assert!(core.edit.preedit(key).is_some());
     core.edit.set_focus(None);
     assert_eq!(core.edit.preedit(key), None);
-    assert_eq!(core.edit_text(key).as_deref(), Some("hello "), "nothing committed");
+    assert_eq!(
+        core.edit_text(key).as_deref(),
+        Some("hello "),
+        "nothing committed"
+    );
 }
 
 #[test]
 fn ime_rect_tracks_the_focused_caret() {
     let mut core = Core::new();
     frame(&mut core);
-    assert!(core.ime_rect().is_some(), "focused edit exposes a caret rect");
+    assert!(
+        core.ime_rect().is_some(),
+        "focused edit exposes a caret rect"
+    );
     let start = core.ime_rect().unwrap();
 
     core.handle_input(InputEvent::Key(
@@ -69,5 +80,10 @@ fn ime_rect_tracks_the_focused_caret() {
     ));
     frame(&mut core);
     let end = core.ime_rect().unwrap();
-    assert!(end.x > start.x, "caret at line end sits further right ({} vs {})", end.x, start.x);
+    assert!(
+        end.x > start.x,
+        "caret at line end sits further right ({} vs {})",
+        end.x,
+        start.x
+    );
 }

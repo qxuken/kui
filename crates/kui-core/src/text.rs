@@ -100,7 +100,12 @@ pub struct Span<'a> {
 
 impl<'a> Span<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, color: None, bold: false, italic: false }
+        Self {
+            text,
+            color: None,
+            bold: false,
+            italic: false,
+        }
     }
 
     pub fn color(mut self, c: Color) -> Self {
@@ -252,7 +257,10 @@ impl TextSystem {
             }
         });
         entry.last_used = frame_no;
-        self.frame.push(FrameText { cache_key: key, color: style.color });
+        self.frame.push(FrameText {
+            cache_key: key,
+            color: style.color,
+        });
         TextId((self.frame.len() - 1) as u32)
     }
 
@@ -302,22 +310,34 @@ impl TextSystem {
             }
         });
         entry.last_used = frame_no;
-        self.frame.push(FrameText { cache_key: key, color: base.color });
+        self.frame.push(FrameText {
+            cache_key: key,
+            color: base.color,
+        });
         TextId((self.frame.len() - 1) as u32)
     }
 
     fn entry_mut(&mut self, id: TextId) -> &mut CachedText {
         let key = self.frame[id.0 as usize].cache_key;
-        self.cache.get_mut(&key).expect("frame text missing from cache")
+        self.cache
+            .get_mut(&key)
+            .expect("frame text missing from cache")
     }
 
     fn ensure_wrap(&mut self, id: TextId, max_w_logical: f32) {
         let scale = self.scale;
         let key = self.frame[id.0 as usize].cache_key;
         let fs = &mut self.font_system;
-        let entry = self.cache.get_mut(&key).expect("frame text missing from cache");
+        let entry = self
+            .cache
+            .get_mut(&key)
+            .expect("frame text missing from cache");
         let intrinsic_fits = entry.intrinsic.w <= max_w_logical * scale + 0.5;
-        let target = if intrinsic_fits { None } else { Some(max_w_logical * scale) };
+        let target = if intrinsic_fits {
+            None
+        } else {
+            Some(max_w_logical * scale)
+        };
         let differs = match (entry.wrap, target) {
             (None, None) => false,
             (Some(a), Some(b)) => (a - b).abs() > 0.5,
@@ -348,7 +368,10 @@ impl TextSystem {
         let oy = (origin.y * self.scale).round();
         let fs = &mut self.font_system;
         let swash = &mut self.swash;
-        let entry = self.cache.get_mut(&key).expect("frame text missing from cache");
+        let entry = self
+            .cache
+            .get_mut(&key)
+            .expect("frame text missing from cache");
 
         // Steady state: same wrap, same atlas — reuse positioned templates.
         let built_for = (entry.wrap.map(f32::to_bits), atlas.epoch);
@@ -367,7 +390,9 @@ impl TextSystem {
                         h: slot.h as f32,
                         uv: [slot.x, slot.y, slot.w, slot.h],
                         color_glyph: slot.color_glyph,
-                        color: glyph.color_opt.map(|c| Color::rgba8(c.r(), c.g(), c.b(), c.a())),
+                        color: glyph
+                            .color_opt
+                            .map(|c| Color::rgba8(c.r(), c.g(), c.b(), c.a())),
                     });
                 }
             }
@@ -390,7 +415,11 @@ impl TextSystem {
                     border_color: Color::TRANSPARENT,
                     radius: 0.0,
                     border_w: 0.0,
-                    kind: if g.color_glyph { QuadKind::GlyphColor } else { QuadKind::GlyphMask },
+                    kind: if g.color_glyph {
+                        QuadKind::GlyphColor
+                    } else {
+                        QuadKind::GlyphMask
+                    },
                     uv: g.uv,
                     clip,
                 }),

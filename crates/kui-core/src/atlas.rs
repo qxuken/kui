@@ -125,7 +125,8 @@ impl GlyphAtlas {
         }
         // Reuse a shelf that's tall enough but not wastefully so.
         for shelf in &mut self.shelves {
-            if ph <= shelf.h && shelf.h <= ph.saturating_mul(2) && shelf.cursor_x + pw <= self.size {
+            if ph <= shelf.h && shelf.h <= ph.saturating_mul(2) && shelf.cursor_x + pw <= self.size
+            {
                 let pos = (shelf.cursor_x, shelf.y);
                 shelf.cursor_x += pw;
                 return Some(pos);
@@ -136,7 +137,11 @@ impl GlyphAtlas {
         if self.next_shelf_y + shelf_h > self.size {
             return None;
         }
-        let shelf = Shelf { y: self.next_shelf_y, h: shelf_h, cursor_x: pw };
+        let shelf = Shelf {
+            y: self.next_shelf_y,
+            h: shelf_h,
+            cursor_x: pw,
+        };
         self.next_shelf_y += shelf_h;
         let pos = (0, shelf.y);
         self.shelves.push(shelf);
@@ -148,7 +153,8 @@ impl GlyphAtlas {
         for row in 0..h as usize {
             let src = row * (w as usize) * 4;
             let dst = (y as usize + row) * stride + (x as usize) * 4;
-            self.pixels[dst..dst + (w as usize) * 4].copy_from_slice(&data[src..src + (w as usize) * 4]);
+            self.pixels[dst..dst + (w as usize) * 4]
+                .copy_from_slice(&data[src..src + (w as usize) * 4]);
         }
         self.dirty = true;
     }
@@ -203,7 +209,15 @@ impl GlyphAtlas {
             return None;
         };
         self.blit(x, y, w, h, rgba);
-        let slot = GlyphSlot { x, y, w, h, left: 0, top: 0, color_glyph: true };
+        let slot = GlyphSlot {
+            x,
+            y,
+            w,
+            h,
+            left: 0,
+            top: 0,
+            color_glyph: true,
+        };
         self.images.insert(id, Some(slot));
         Some(slot)
     }
@@ -239,7 +253,14 @@ mod tests {
     }
 
     fn raster(w: u32, h: u32) -> RasterGlyph {
-        RasterGlyph { w, h, left: 0, top: 0, color: false, data: vec![0xff; (w * h * 4) as usize] }
+        RasterGlyph {
+            w,
+            h,
+            left: 0,
+            top: 0,
+            color: false,
+            data: vec![0xff; (w * h * 4) as usize],
+        }
     }
 
     #[test]
@@ -249,7 +270,10 @@ mod tests {
         for i in 0..200 {
             let (w, h) = (5 + (i % 13), 7 + (i % 9));
             if let Some(s) = atlas.get_or_insert(fake_key(i), || Some(raster(w, h))) {
-                assert!(s.x + s.w <= 256 && s.y + s.h <= 256, "slot out of bounds: {s:?}");
+                assert!(
+                    s.x + s.w <= 256 && s.y + s.h <= 256,
+                    "slot out of bounds: {s:?}"
+                );
                 slots.push(s);
             }
         }
@@ -309,7 +333,11 @@ mod tests {
         let s = atlas.get_or_insert(fake_key(5), || Some(raster(200, 200)));
         assert!(s.is_some(), "the page should double until it fits");
         assert!(atlas.size >= 256, "size is {}", atlas.size);
-        assert!(atlas.get_or_insert(fake_key(6), || Some(raster(10, 10))).is_some());
+        assert!(
+            atlas
+                .get_or_insert(fake_key(6), || Some(raster(10, 10)))
+                .is_some()
+        );
     }
 
     #[test]
@@ -319,6 +347,10 @@ mod tests {
         let s = atlas.get_or_insert(fake_key(7), || Some(raster(big, 1)));
         assert!(s.is_none());
         // Still functional afterwards.
-        assert!(atlas.get_or_insert(fake_key(8), || Some(raster(10, 10))).is_some());
+        assert!(
+            atlas
+                .get_or_insert(fake_key(8), || Some(raster(10, 10)))
+                .is_some()
+        );
     }
 }

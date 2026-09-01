@@ -87,7 +87,10 @@ impl FloatConfig {
     }
 
     pub fn viewport() -> Self {
-        Self { anchor: FloatAnchor::Viewport, ..Self::default() }
+        Self {
+            anchor: FloatAnchor::Viewport,
+            ..Self::default()
+        }
     }
 
     /// Tooltip-style: hang below the parent, centered.
@@ -239,11 +242,23 @@ pub struct NodeSpec {
 
 impl NodeSpec {
     pub fn row() -> Self {
-        Self { layout: LayoutSpec { dir: Dir::Row, ..Default::default() }, ..Default::default() }
+        Self {
+            layout: LayoutSpec {
+                dir: Dir::Row,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
     }
 
     pub fn column() -> Self {
-        Self { layout: LayoutSpec { dir: Dir::Column, ..Default::default() }, ..Default::default() }
+        Self {
+            layout: LayoutSpec {
+                dir: Dir::Column,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
     }
 
     pub fn width(mut self, s: Sizing) -> Self {

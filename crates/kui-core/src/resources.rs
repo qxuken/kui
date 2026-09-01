@@ -37,7 +37,11 @@ pub struct Resources {
 impl Resources {
     pub fn add_image(&mut self, width: u32, height: u32, rgba: Vec<u8>) -> ImageId {
         debug_assert_eq!(rgba.len(), (width * height * 4) as usize);
-        self.images.insert(ImageEntry { width, height, rgba })
+        self.images.insert(ImageEntry {
+            width,
+            height,
+            rgba,
+        })
     }
 
     pub fn remove_image(&mut self, id: ImageId) -> Option<ImageEntry> {

@@ -51,7 +51,11 @@ fn bench_size(lines: usize) -> (f64, f64, usize) {
         frame_total += t1.elapsed().as_secs_f64();
     }
     let (dl, _) = core.output();
-    (apply_total / n as f64 * 1e3, frame_total / n as f64 * 1e3, dl.quads.len())
+    (
+        apply_total / n as f64 * 1e3,
+        frame_total / n as f64 * 1e3,
+        dl.quads.len(),
+    )
 }
 
 /// Isolate cosmic-text costs from kui's: what do insert and reshape cost raw?
@@ -90,7 +94,10 @@ fn bench_cosmic_raw() {
 
 fn main() {
     bench_cosmic_raw();
-    println!("{:>8} | {:>12} | {:>12} | {:>8}", "lines", "apply (ms)", "frame (ms)", "quads");
+    println!(
+        "{:>8} | {:>12} | {:>12} | {:>8}",
+        "lines", "apply (ms)", "frame (ms)", "quads"
+    );
     for lines in [50, 500, 2000, 10000, 100000] {
         let (apply, frame, quads) = bench_size(lines);
         println!("{lines:>8} | {apply:>12.3} | {frame:>12.3} | {quads:>8}");

@@ -43,7 +43,12 @@ impl Rect {
     }
 
     pub fn from_pos_size(pos: Vec2, size: Size) -> Self {
-        Self { x: pos.x, y: pos.y, w: size.w, h: size.h }
+        Self {
+            x: pos.x,
+            y: pos.y,
+            w: size.w,
+            h: size.h,
+        }
     }
 
     pub fn contains(&self, p: Vec2) -> bool {
@@ -51,7 +56,12 @@ impl Rect {
     }
 
     pub fn scaled(&self, s: f32) -> Rect {
-        Rect { x: self.x * s, y: self.y * s, w: self.w * s, h: self.h * s }
+        Rect {
+            x: self.x * s,
+            y: self.y * s,
+            w: self.w * s,
+            h: self.h * s,
+        }
     }
 
     pub fn intersect(&self, other: &Rect) -> Rect {
@@ -59,7 +69,12 @@ impl Rect {
         let y = self.y.max(other.y);
         let r = (self.x + self.w).min(other.x + other.w);
         let b = (self.y + self.h).min(other.y + other.h);
-        Rect { x, y, w: (r - x).max(0.0), h: (b - y).max(0.0) }
+        Rect {
+            x,
+            y,
+            w: (r - x).max(0.0),
+            h: (b - y).max(0.0),
+        }
     }
 }
 
@@ -75,11 +90,21 @@ pub struct Edges {
 
 impl Edges {
     pub fn all(v: f32) -> Self {
-        Self { l: v, r: v, t: v, b: v }
+        Self {
+            l: v,
+            r: v,
+            t: v,
+            b: v,
+        }
     }
 
     pub fn xy(x: f32, y: f32) -> Self {
-        Self { l: x, r: x, t: y, b: y }
+        Self {
+            l: x,
+            r: x,
+            t: y,
+            b: y,
+        }
     }
 
     /// Total horizontal extent.
