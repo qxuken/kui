@@ -74,8 +74,11 @@ end
   the shaping truth). Input arrives as data (`InputEvent::Text` / `Key`) routed
   to the focused editor; hosts get "changed"/"submit" events and read text
   back by key — no `&mut String` captured in a view, which is what keeps
-  editing reachable from Lua and C. The runner maps winit keys, IME commits,
-  and platform clipboard shortcuts (arboard) onto those events.
+  editing reachable from Lua and C. The runner maps winit keys, IME input
+  (preedit drawn at the caret, the OS candidate window anchored there too),
+  and platform clipboard shortcuts (arboard) onto those events; the caret
+  blinks on the runner's clock, scrolls itself into view, and Tab/Shift-Tab
+  hop between edit widgets.
 - **Window chrome is data, both directions.** Any node can declare a chrome
   role (`window_drag()` / `window_button(...)`); interacting with it produces
   `WindowCommand`s (start drag, close, minimize, toggle maximize) that the
@@ -118,11 +121,29 @@ clips. `FloatConfig::below()`/`above()` give tooltip placement in one call
 (`widgets::tooltip` wraps it); `FloatConfig::viewport().at(End, End)` pins a
 HUD to a corner.
 
+Over-constrained: when in-flow children overflow the main axis and it doesn't
+scroll, `Fit` children shrink toward their `min` (default 0), largest first —
+equal children end up equal, clay-style. `Fixed`/`Percent` keep their declared
+size; text and images shrink in width (rewrap / re-aspect) but never height.
+
 Overflow: `.clip()` clips children; `.scroll_y()` / `.scroll_x()` make a
 container scrollable (wheel/trackpad, offsets retained across frames by widget
-key, clamped to content, with a scrollbar indicator). Clip rects ride on each
-quad and are applied in the shader, so the whole UI is still one draw call.
-Fully clipped nodes are culled from both drawing and hit-testing.
+key, clamped to content). Scrollbars are live: thumbs drag, track presses
+jump, hovered bars widen. Clip rects ride on each quad and are applied in the
+shader, so the whole UI is still one draw call. Fully clipped nodes are culled
+from both drawing and hit-testing.
+
+Dragging: `.on_drag(tag)` makes any node a pointer-captured drag source —
+handlers get `{kind="drag", phase, x, y, dx, dy, parent, tag}` events (the
+parent rect turns absolute positions into container fractions, e.g. a
+splitter ratio; see the splitmux example's pane dividers). A drag past the
+click slop suppresses the node's `on_click`.
+
+Images: register RGBA pixels once (`resources.add_image`), then `ui.image(id,
+spec)` draws them through the same atlas page and draw call as glyphs (the
+page doubles up to 4096² when needed). `Fit` takes the pixel size, a `Fit`
+height against a resolved width keeps aspect, and `style.radius` rounds
+corners.
 
 ## Performance
 
@@ -155,8 +176,8 @@ binding are covered by tests (`cargo test --workspace`).
 
 ## Status / next
 
-v0 scope: no images in the display list yet (resource registry exists), no
-shrink pass, no scrollbar dragging (wheel/trackpad only), mask + color-emoji
-glyphs only (no subpixel AA). Editing: no undo/redo, caret blink,
-double-click word select, IME preedit display, Tab focus traversal, or
-scroll-caret-into-view yet.
+v0 scope: mask + color-emoji glyphs only (no subpixel AA); no z-index
+(floats stack in tree order). Editing: caret blink, double/triple-click
+word/line select, scroll-caret-into-view, IME preedit at the caret, and
+Tab focus traversal are in; undo/redo is deliberately left to the host's
+text model (build it on the editor backend, not the widget).

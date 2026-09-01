@@ -411,6 +411,10 @@ impl EditStore {
         self.states.get(&key)?.preedit.as_ref().map(|p| p.text.as_str())
     }
 
+    pub fn is_multiline(&self, key: Key) -> bool {
+        self.states.get(&key).is_some_and(|s| s.multiline)
+    }
+
     /// Caret rect in physical px, relative to the edit's content origin.
     /// None when the caret isn't laid out (e.g. no state for `key`).
     pub(crate) fn caret_rect(&mut self, key: Key, fs: &mut FontSystem) -> Option<Rect> {

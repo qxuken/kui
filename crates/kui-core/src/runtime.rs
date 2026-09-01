@@ -125,7 +125,18 @@ impl Core {
                 }
             }
             InputEvent::Key(ek, mods) => {
-                if let Some(key) = self.edit.focused() {
+                // Tab traverses between edit widgets (Shift-Tab backwards)
+                // unless a multiline editor holds focus — there Tab stays
+                // indentation. With nothing focused it enters the first,
+                // but only when no on_key sink owns the keyboard.
+                let traverse = ek == EditKey::Tab
+                    && match self.edit.focused() {
+                        Some(k) => !self.edit.is_multiline(k),
+                        None => self.key_focus.is_none(),
+                    };
+                if traverse {
+                    self.focus_adjacent_edit(!mods.shift);
+                } else if let Some(key) = self.edit.focused() {
                     let (changed, submit) =
                         self.edit.apply_key(key, ek, mods, self.text.font_system_mut());
                     if changed {
@@ -357,6 +368,34 @@ impl Core {
             }
             NodeContent::Container => {}
         }
+    }
+
+    /// Moves edit focus to the next/previous edit widget in tree order
+    /// (from the last laid-out frame), wrapping around; with no current
+    /// focus, enters the first (or last, going backwards). The landing
+    /// field scrolls its caret into view like any caret motion.
+    fn focus_adjacent_edit(&mut self, forward: bool) {
+        let ring: Vec<Key> = self
+            .tree
+            .content
+            .iter()
+            .filter_map(|c| match c {
+                NodeContent::Edit(k) => Some(*k),
+                _ => None,
+            })
+            .collect();
+        if ring.is_empty() {
+            return;
+        }
+        let target = match self.edit.focused().and_then(|cur| ring.iter().position(|k| *k == cur))
+        {
+            Some(i) if forward => ring[(i + 1) % ring.len()],
+            Some(i) => ring[(i + ring.len() - 1) % ring.len()],
+            None if forward => ring[0],
+            None => ring[ring.len() - 1],
+        };
+        self.edit.set_focus(Some(target));
+        self.edit.caret_moved = Some(target);
     }
 
     /// Sets one axis of a container's scroll offset, keeping the other.
