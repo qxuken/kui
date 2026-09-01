@@ -513,6 +513,20 @@ impl Ctx {
         result
     }
 
+    /// The frame clock for `transition` props: monotonic seconds, any
+    /// origin. Set before each frame; never setting it makes transitions
+    /// snap (the default for headless tests).
+    #[napi]
+    pub fn set_time(&mut self, now_secs: f64) {
+        self.core.set_time(now_secs);
+    }
+
+    /// True when the last frame left a transition mid-flight.
+    #[napi]
+    pub fn animating(&self) -> bool {
+        self.core.animating()
+    }
+
     // -- Input (logical coordinates) ------------------------------------
 
     fn input(&mut self, ev: InputEvent) {

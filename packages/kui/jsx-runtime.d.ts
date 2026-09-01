@@ -59,6 +59,8 @@ export interface GeneratedSpecProps {
   center?: boolean;
   /** Child alignment across the main axis. */
   crossAlign?: 'start' | 'center' | 'end';
+  /** Easing curve for `transition` (default easeOut). */
+  easing?: 'easeOut' | 'linear' | 'easeIn' | 'easeInOut';
   /** Space between children along the main axis. */
   gap?: number;
   /** Cross-axis size: px | "fit" | "grow" | "N%". */
@@ -83,6 +85,8 @@ export interface GeneratedSpecProps {
   onKey?: Msg;
   /** Corner radius (logical px). */
   radius?: number;
+  /** Animate sizing/colors/radius changes over this many ms (needs a stable key). */
+  transition?: number;
   /** Main-axis size: px | "fit" | "grow" | "N%". */
   width?: SizingProp;
   /** Window-chrome role: interactions become window commands, not events. */

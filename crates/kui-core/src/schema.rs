@@ -21,6 +21,7 @@
 
 use std::sync::LazyLock;
 
+use crate::anim::Easing;
 use crate::color::Color;
 use crate::spec::{Align, FontFamily, NodeSpec, Sizing, TextStyle};
 use crate::value::Value;
@@ -57,10 +58,22 @@ pub const P_FAMILY: u32 = 27;
 pub const P_KEY: u32 = 28;
 pub const P_TITLE: u32 = 29;
 pub const P_TOOLTIP: u32 = 30;
+pub const P_TRANSITION: u32 = 31;
+pub const P_EASING: u32 = 32;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
 pub const FAMILIES: &[&str] = &["sans", "serif", "mono"];
+pub const EASINGS: &[&str] = &["easeOut", "linear", "easeIn", "easeInOut"];
+
+pub fn easing_idx(i: usize) -> Easing {
+    match i {
+        1 => Easing::Linear,
+        2 => Easing::EaseIn,
+        3 => Easing::EaseInOut,
+        _ => Easing::EaseOut,
+    }
+}
 
 /// How a prop's value is parsed (per transport) and encoded (binary slots).
 pub enum Kind {
@@ -273,6 +286,20 @@ pub const PROPS: &[PropDef] = &[
             _ => s,
         }),
         doc: "Window-chrome role: interactions become window commands, not events.",
+    },
+    PropDef {
+        name: "transition",
+        id: P_TRANSITION,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.transition(v)),
+        doc: "Animate sizing/colors/radius changes over this many ms (needs a stable key).",
+    },
+    PropDef {
+        name: "easing",
+        id: P_EASING,
+        kind: Kind::Enum(EASINGS),
+        apply: Apply::SpecEnum(|s, i| s.easing(easing_idx(i))),
+        doc: "Easing curve for `transition` (default easeOut).",
     },
     PropDef {
         name: "lineHeight",

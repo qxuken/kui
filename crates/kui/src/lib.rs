@@ -98,6 +98,7 @@ impl Launcher {
             app,
             extensions: self.extensions,
             core: Core::new(),
+            epoch: std::time::Instant::now(),
             window: None,
             renderer: None,
             modifiers: ModifiersState::empty(),
@@ -231,6 +232,8 @@ struct Shell<A: App> {
     app: A,
     extensions: Vec<Box<dyn Extension>>,
     core: Core,
+    /// Origin of the frame clock handed to the core for transitions.
+    epoch: std::time::Instant,
     window: Option<Arc<Window>>,
     renderer: Option<kui_wgpu::Renderer>,
     modifiers: ModifiersState,
@@ -582,6 +585,7 @@ impl<A: App> Shell<A> {
         };
 
         let t_view = std::time::Instant::now();
+        self.core.set_time(self.epoch.elapsed().as_secs_f64());
         let mut ui = self.core.frame(viewport, scale);
         self.app.view(&mut ui);
         for (i, ext) in self.extensions.iter_mut().enumerate() {
@@ -808,9 +812,16 @@ impl<A: App> ApplicationHandler for Shell<A> {
     }
 
     /// Runs after every event batch (including timer wake-ups): the caret
-    /// blink clock. Any caret activity re-arms the timer with the caret
-    /// solid; each expiry toggles the phase and schedules the next.
+    /// blink clock, and the transition clock. Any caret activity re-arms
+    /// the timer with the caret solid; each expiry toggles the phase and
+    /// schedules the next. A transition mid-flight asks for the next frame
+    /// right away (vsync paces it).
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if self.core.animating()
+            && let Some(w) = &self.window
+        {
+            w.request_redraw();
+        }
         if self.core.edit.focused().is_none() {
             if !self.blink_visible {
                 self.blink_visible = true;

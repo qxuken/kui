@@ -68,6 +68,8 @@ enum {
     KUI_WINDOW_MINIMIZE = 3,
     KUI_WINDOW_MAXIMIZE = 4,
 };
+/* Easing curves (KuiSpec.easing). */
+enum { KUI_EASE_OUT = 0, KUI_EASE_LINEAR = 1, KUI_EASE_IN = 2, KUI_EASE_IN_OUT = 3 };
 /* Window commands drained by kui_take_window_commands. */
 enum {
     KUI_CMD_START_DRAG = 1,
@@ -105,6 +107,10 @@ typedef struct KuiSpec {
     uint32_t float_fit; /* non-zero: flip across the anchor / clamp to stay in the viewport */
     uint32_t hoverable; /* non-zero: hover-track without a click payload (kui_is_hovered) */
     uint32_t window_role; /* KUI_WINDOW_*; makes this node window chrome */
+    /* > 0: ease sizing/color/radius changes over this many ms (needs a stable
+     * key via kui_open_keyed, and kui_set_time each frame). */
+    float transition_ms;
+    uint32_t easing; /* KUI_EASE_* */
 } KuiSpec;
 
 /* Zero-initialized KuiTextStyle picks defaults (16px, default foreground). */
@@ -173,6 +179,12 @@ bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
 /* Host facts for views to read (refresh_hz <= 0 = unknown). Survives across
  * frames; set on change or every frame, either works. */
 void kui_env_set(KuiCtx *ctx, float refresh_hz, bool focused);
+/* The frame clock for transitions (monotonic seconds, any origin). Set before
+ * each kui_frame_begin; never setting it makes transitions snap. */
+void kui_set_time(KuiCtx *ctx, double now_secs);
+/* True when the last frame left a transition mid-flight: draw another frame
+ * without waiting for input. */
+bool kui_animating(KuiCtx *ctx);
 /* Window chrome facts for views (widgets adapt to them). controls_w/h > 0
  * describe the top-left keep-out rect of OS-drawn controls (macOS traffic
  * lights under custom chrome). */

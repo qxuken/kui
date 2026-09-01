@@ -13,12 +13,17 @@
 //! focus it. Drag the strip between panes to resize a split; drag a tab
 //! along the bar to reorder it (both are plain `on_drag` data — the drag
 //! payload's parent rect gives the divider its ratio, and hover during the
-//! drag gives tabs their live reorder).
+//! drag gives tabs their live reorder). Splits ease into place: the two
+//! halves carry a `transition`, so a new split slides open and a keyboard
+//! resize glides — except while a divider drags, when the ratio must track
+//! the cursor exactly.
 
 use kui::widgets;
 use kui::{Align, App, Color, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value, WindowCommand};
 
 const TABBAR_H: f32 = 30.0;
+/// How long a split takes to ease into a new ratio.
+const SPLIT_MS: f32 = 180.0;
 
 #[cfg(target_os = "macos")]
 const ALT: &str = "⌥";
@@ -74,6 +79,9 @@ enum Node {
         ratio: f32,
         a: Box<Node>,
         b: Box<Node>,
+        /// Just created: rendered once fully collapsed so the transition
+        /// has somewhere to slide open from (a node's first frame snaps).
+        fresh: bool,
     },
 }
 
@@ -98,6 +106,7 @@ impl Node {
                     ratio: 0.5,
                     a: Box::new(old),
                     b: Box::new(Node::Pane(new_id)),
+                    fresh: true,
                 };
                 true
             }
@@ -105,6 +114,15 @@ impl Node {
             Node::Split { a, b, .. } => {
                 a.split(target, dir, new_id) || b.split(target, dir, new_id)
             }
+        }
+    }
+
+    /// Clears every `fresh` flag (after the collapsed first frame drew).
+    fn settle(&mut self) {
+        if let Node::Split { a, b, fresh, .. } = self {
+            *fresh = false;
+            a.settle();
+            b.settle();
         }
     }
 
@@ -126,12 +144,19 @@ fn without(node: Node, target: u64) -> Option<Node> {
     match node {
         Node::Pane(id) if id == target => None,
         Node::Pane(id) => Some(Node::Pane(id)),
-        Node::Split { dir, ratio, a, b } => match (without(*a, target), without(*b, target)) {
+        Node::Split {
+            dir,
+            ratio,
+            a,
+            b,
+            fresh,
+        } => match (without(*a, target), without(*b, target)) {
             (Some(a), Some(b)) => Some(Node::Split {
                 dir,
                 ratio,
                 a: Box::new(a),
                 b: Box::new(b),
+                fresh,
             }),
             (Some(x), None) | (None, Some(x)) => Some(x),
             (None, None) => None,
@@ -170,7 +195,9 @@ impl Splitmux {
                 ratio: 0.5,
                 a: Box::new(Node::Pane(2)),
                 b: Box::new(Node::Pane(3)),
+                fresh: false,
             }),
+            fresh: false,
         };
         Self {
             pal: Pal::default(),
@@ -314,6 +341,7 @@ impl Splitmux {
                         .pad_xy(10.0, 4.0)
                         .radius(6.0)
                         .bg(bg)
+                        .transition(120.0)
                         .on_click(Value::map([
                             ("kind", "tab".into()),
                             ("tab", Value::Int(i as i64)),
@@ -352,23 +380,49 @@ impl Splitmux {
     fn render_node(&self, ui: &mut Ui<'_>, node: &Node, path: &str) {
         match node {
             Node::Pane(id) => self.render_pane(ui, *id),
-            Node::Split { dir, ratio, a, b } => {
+            Node::Split {
+                dir,
+                ratio,
+                a,
+                b,
+                fresh,
+            } => {
                 let pal = self.pal;
                 let spec = match dir {
                     SplitDir::H => NodeSpec::row(),
                     SplitDir::V => NodeSpec::column(),
                 };
                 ui.with(spec.fill(), |ui| {
-                    let (wa, wb) = (ratio.clamp(0.05, 0.95), 1.0 - ratio.clamp(0.05, 0.95));
-                    let grow = |f: f32| match dir {
-                        SplitDir::H => NodeSpec::column()
-                            .width(Sizing::Grow(f))
-                            .height(Sizing::Grow(1.0)),
-                        SplitDir::V => NodeSpec::column()
-                            .width(Sizing::Grow(1.0))
-                            .height(Sizing::Grow(f)),
+                    // A fresh split draws once with the new half collapsed;
+                    // the transition then slides it open to the real ratio.
+                    let (wa, wb) = if *fresh {
+                        (1.0, 0.0)
+                    } else {
+                        (ratio.clamp(0.05, 0.95), 1.0 - ratio.clamp(0.05, 0.95))
                     };
-                    ui.with(grow(wa), |ui| self.render_node(ui, a, &format!("{path}a")));
+                    // The halves ease between ratios, except under a divider
+                    // drag, where the ratio has to follow the cursor exactly
+                    // (the core snaps a transition that skipped a frame, so
+                    // nothing replays when the drag ends).
+                    let dragging = self.dragging.as_deref() == Some(path);
+                    let grow = |f: f32| {
+                        let spec = match dir {
+                            SplitDir::H => NodeSpec::column()
+                                .width(Sizing::Grow(f))
+                                .height(Sizing::Grow(1.0)),
+                            SplitDir::V => NodeSpec::column()
+                                .width(Sizing::Grow(1.0))
+                                .height(Sizing::Grow(f)),
+                        };
+                        if dragging {
+                            spec
+                        } else {
+                            spec.transition(SPLIT_MS)
+                        }
+                    };
+                    ui.with_keyed("a", grow(wa), |ui| {
+                        self.render_node(ui, a, &format!("{path}a"))
+                    });
                     // The divider: a grabbable strip that drags the ratio.
                     // Its drag events carry the parent (this split) rect, so
                     // the handler turns absolute x/y into a ratio directly.
@@ -400,7 +454,9 @@ impl Splitmux {
                             ])),
                         |_| {},
                     );
-                    ui.with(grow(wb), |ui| self.render_node(ui, b, &format!("{path}b")));
+                    ui.with_keyed("b", grow(wb), |ui| {
+                        self.render_node(ui, b, &format!("{path}b"))
+                    });
                 });
             }
         }
@@ -471,6 +527,7 @@ impl App for Splitmux {
             |ui| self.render_node(ui, &root, ""),
         );
         ui.take_key_focus(sink);
+        self.tabs[self.tab].settle();
 
         widgets::latency_hud(ui);
     }

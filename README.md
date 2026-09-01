@@ -127,6 +127,18 @@ end
   and platform clipboard shortcuts (arboard) onto those events; the caret
   blinks on the runner's clock, scrolls itself into view, and Tab/Shift-Tab
   hop between edit widgets.
+- **Transitions animate layout inputs, not rects.** A node with
+  `transition(ms)` (`transition={150}` in JSX, `transition = 150` in Lua,
+  `KuiSpec.transition_ms` in C) has its sizing amounts, colors and radius
+  eased toward whatever the view declares, keyed by node identity and
+  retained in the core like scroll offsets. Because the *inputs* to layout
+  move, a whole subtree lays out consistently every frame — a split's two
+  halves glide while their contents wrap to the real widths. The core stays
+  clock-free: drivers inject time (`Core::set_time`, `kui_set_time`,
+  `ctx.setTime`) and ask `animating()` whether another frame is owed; a
+  headless driver that never sets time gets snapping, and a node's first
+  frame or a frame without the transition snaps too, so nothing animates in
+  from nowhere and a divider drag doesn't replay when it ends.
 - **Window chrome is data, both directions.** Any node can declare a chrome
   role (`window_drag()` / `window_button(...)`); interacting with it produces
   `WindowCommand`s (start drag, close, minimize, toggle maximize) that the
@@ -225,7 +237,8 @@ binding are covered by tests (`cargo test --workspace`).
 ## Status / next
 
 v0 scope: mask + color-emoji glyphs only (no subpixel AA); no z-index
-(floats stack in tree order). Editing: caret blink, double/triple-click
+(floats stack in tree order). Transitions cover sizing, colors and radius;
+a removed node vanishes at once (there is no exit animation yet). Editing: caret blink, double/triple-click
 word/line select, scroll-caret-into-view, IME preedit at the caret, Tab
 focus traversal, and undo/redo (operational deltas with typing/delete
 coalescing — the widget owns its buffer, so it owns its history; hosts

@@ -6,6 +6,7 @@
 //! - Events as data ([`input`], [`value::Value`]) routed by origin
 //! - Renderer boundary: a flat quad list ([`display::DisplayList`])
 
+pub mod anim;
 pub mod atlas;
 pub mod color;
 pub mod display;
@@ -28,6 +29,7 @@ pub mod value;
 pub mod widgets;
 pub mod window;
 
+pub use anim::{Easing, Transition};
 pub use color::Color;
 pub use display::{DisplayList, NO_CLIP, Quad, QuadKind};
 pub use edit::EditOptions;

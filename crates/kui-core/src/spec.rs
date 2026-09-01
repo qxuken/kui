@@ -1,5 +1,6 @@
 //! Node configuration: plain data, trivially constructible from any language.
 
+use crate::anim::{Easing, Transition};
 use crate::color::Color;
 use crate::geom::Edges;
 use crate::value::Value;
@@ -238,6 +239,10 @@ pub struct NodeSpec {
     /// interactions become `WindowCommand`s for the frame driver instead of
     /// `UiEvent`s; `on_click` is ignored on such nodes.
     pub window: Option<WindowRole>,
+    /// Eases this node's sizing amounts, colors and radius toward what the
+    /// view declares instead of snapping (see [`crate::anim`]). Keyed by
+    /// node identity, so the node needs a stable key across frames.
+    pub transition: Option<Transition>,
 }
 
 impl NodeSpec {
@@ -395,6 +400,26 @@ impl NodeSpec {
     /// identification enough.
     pub fn on_key(mut self, tag: impl Into<Value>) -> Self {
         self.on_key = Some(tag.into());
+        self
+    }
+
+    /// Animates changes to this node's sizing amounts, colors and radius
+    /// over `duration_ms` (cubic ease-out); see [`crate::anim`].
+    pub fn transition(mut self, duration_ms: f32) -> Self {
+        self.transition = Some(Transition::ms(duration_ms));
+        self
+    }
+
+    pub fn transition_with(mut self, t: Transition) -> Self {
+        self.transition = Some(t);
+        self
+    }
+
+    /// Easing for the node's transition (sets a default 200ms one if none
+    /// was declared yet).
+    pub fn easing(mut self, easing: Easing) -> Self {
+        let t = self.transition.get_or_insert(Transition::ms(200.0));
+        t.easing = easing;
         self
     }
 

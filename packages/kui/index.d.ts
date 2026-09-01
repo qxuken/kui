@@ -54,6 +54,11 @@ export declare class Ctx {
   /** `frame` from an already-encoded binary stream, for callers that own
    *  their encoder (`createEncoder(protocol())`). */
   frameBinary(width: number, height: number, scale: number, stream: Float64Array, strings: Uint8Array): void;
+  /** Frame clock for `transition` props (monotonic seconds, any origin).
+   *  Set before each frame; never setting it makes transitions snap. */
+  setTime(nowSecs: number): void;
+  /** True when the last frame left a transition mid-flight. */
+  animating(): boolean;
   cursor(x: number, y: number): void;
   cursorLeft(): void;
   mouse(down: boolean, clicks?: number): void;

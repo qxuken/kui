@@ -109,6 +109,11 @@ pub struct KuiSpec {
     /// 3 = minimize button, 4 = maximize button. Chrome nodes emit window
     /// commands (kui_take_window_commands), never events.
     pub window_role: u32,
+    /// Positive: ease sizing/colors/radius changes over this many ms (the
+    /// node needs a stable key, i.e. kui_open_keyed). Needs kui_set_time.
+    pub transition_ms: f32,
+    /// KUI_EASE_* curve for `transition_ms`.
+    pub easing: u32,
 }
 
 #[repr(C)]
@@ -291,6 +296,12 @@ fn spec_of(
         3 => spec = spec.window_button(WindowButton::Minimize),
         4 => spec = spec.window_button(WindowButton::Maximize),
         _ => {}
+    }
+    if s.transition_ms > 0.0 {
+        spec = spec.transition(s.transition_ms);
+    }
+    if s.easing != 0 {
+        spec = spec.easing(kui_core::schema::easing_idx(s.easing as usize));
     }
     if let Some(v) = take_msg(on_click) {
         spec = spec.on_click(v);
@@ -475,6 +486,27 @@ pub extern "C" fn kui_env_set(ptr: *mut KuiCtx, refresh_hz: f32, focused: bool) 
             c.core().env.focused = focused;
         }
     });
+}
+
+/// The frame clock for transitions (monotonic seconds, any origin). Set it
+/// before each kui_frame_begin; a host that never does sees transitions
+/// snap to their targets.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_time(ptr: *mut KuiCtx, now_secs: f64) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_time(now_secs);
+        }
+    });
+}
+
+/// True when the last frame left a transition mid-flight: draw another
+/// frame without waiting for input.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_animating(ptr: *mut KuiCtx) -> bool {
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().animating())
+    })
 }
 
 /// Window chrome facts for views to read (widgets::titlebar adapts to
@@ -1284,6 +1316,8 @@ mod schema_parity {
                 "bg" => s.bg = C,
                 "hoverable" => s.hoverable = 1,
                 "window" => s.window_role = 2, // KUI_WINDOW_* = schema index + 1
+                "transition" => s.transition_ms = F,
+                "easing" => s.easing = 1,
                 "onClick" => click = msg(Value::Int(7)),
                 "onDrag" => drag = msg(Value::Int(7)),
                 "onKey" => key = msg(Value::Int(7)),
@@ -1350,6 +1384,8 @@ mod schema_parity {
             float_fit: 1,
             hoverable: 1,
             window_role: 1,
+            transition_ms: 150.0,
+            easing: 3,
         };
         let expected = NodeSpec::row()
             .width(Sizing::Grow(2.0))
@@ -1382,6 +1418,8 @@ mod schema_parity {
             )
             .hoverable()
             .window_drag()
+            .transition(150.0)
+            .easing(kui_core::Easing::EaseInOut)
             .on_click(Value::str("c"))
             .on_drag(Value::str("d"))
             .on_key(Value::str("k"));

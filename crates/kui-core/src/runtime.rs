@@ -4,6 +4,7 @@
 //! here (not in a borrowing wrapper) is what lets flat C bindings drive a
 //! frame through one opaque pointer; the Rust `Ui` is a thin safe façade.
 
+use crate::anim::{AnimStore, Slot};
 use crate::atlas::GlyphAtlas;
 use crate::color::Color;
 use crate::display::{DisplayList, NO_CLIP, Quad, QuadKind};
@@ -41,6 +42,8 @@ pub struct Core {
     pub resources: Resources,
     pub scroll: ScrollStore,
     pub edit: EditStore,
+    /// Transition tweens, keyed by node; see `anim`. Fed by `set_time`.
+    pub anim: AnimStore,
     /// Frame timing pushed by the frame driver; see `widgets::latency_graph`.
     pub stats: FrameStats,
     /// Host facts pushed by the frame driver (refresh rate, focus).
@@ -82,6 +85,7 @@ impl Core {
             resources: Resources::default(),
             scroll: ScrollStore::default(),
             edit: EditStore::default(),
+            anim: AnimStore::default(),
             stats: FrameStats::default(),
             env: Env::default(),
             window_title: None,
@@ -487,6 +491,19 @@ impl Core {
         lines * SCROLL_LINE_PX
     }
 
+    /// The frame clock for transitions: monotonic seconds, any origin.
+    /// Drivers set it before every frame; a driver that never does gets
+    /// snapping instead of animation.
+    pub fn set_time(&mut self, now_secs: f64) {
+        self.anim.set_time(now_secs);
+    }
+
+    /// True when the last frame left a transition mid-flight — drivers
+    /// schedule another frame without waiting for input.
+    pub fn animating(&self) -> bool {
+        self.anim.animating()
+    }
+
     /// Starts a frame. Build the tree through the returned `Ui` (or the
     /// `Core` builder methods directly), then `finish_frame()`.
     pub fn frame(&mut self, viewport: Size, scale: f32) -> Ui<'_> {
@@ -511,6 +528,7 @@ impl Core {
         self.tree.clear();
         self.display.clear();
         self.text.begin_frame(scale);
+        self.anim.begin_frame();
         self.tree.push(
             NIL,
             Key::ROOT,
@@ -549,10 +567,40 @@ impl Core {
 
     /// Replaces the implicit root's spec (e.g. to make the top level a row).
     /// Root sizing is resolved against the viewport regardless.
-    pub fn configure_root(&mut self, spec: NodeSpec) {
+    pub fn configure_root(&mut self, mut spec: NodeSpec) {
         if !self.tree.is_empty() {
+            self.ease_spec(Key::ROOT, &mut spec);
             self.tree.specs[0] = spec;
         }
+    }
+
+    /// Replaces a transitioning node's animatable values with this frame's
+    /// eased ones. Nodes without a transition cost one branch.
+    fn ease_spec(&mut self, key: Key, spec: &mut NodeSpec) {
+        let Some(t) = spec.transition else {
+            return;
+        };
+        let anim = &mut self.anim;
+        let mut sizing = |slot: Slot, s: Sizing| match s {
+            Sizing::Fit => Sizing::Fit,
+            Sizing::Grow(v) => Sizing::Grow(anim.drive(key, slot, [v, 0.0, 0.0, 0.0], t)[0]),
+            Sizing::Fixed(v) => Sizing::Fixed(anim.drive(key, slot, [v, 0.0, 0.0, 0.0], t)[0]),
+            Sizing::Percent(v) => Sizing::Percent(anim.drive(key, slot, [v, 0.0, 0.0, 0.0], t)[0]),
+        };
+        spec.layout.width = sizing(Slot::Width, spec.layout.width);
+        spec.layout.height = sizing(Slot::Height, spec.layout.height);
+        let mut color = |slot: Slot, c: Color| {
+            let v = anim.drive(key, slot, [c.r, c.g, c.b, c.a], t);
+            Color {
+                r: v[0],
+                g: v[1],
+                b: v[2],
+                a: v[3],
+            }
+        };
+        spec.style.bg = color(Slot::Bg, spec.style.bg);
+        spec.style.border_color = color(Slot::Border, spec.style.border_color);
+        spec.style.radius = anim.drive(key, Slot::Radius, [spec.style.radius, 0.0, 0.0, 0.0], t)[0];
     }
 
     /// The root node's key — for hover/press queries or `set_key_focus` when
@@ -600,10 +648,11 @@ impl Core {
         key
     }
 
-    fn open_with_key(&mut self, key: Key, spec: NodeSpec) {
+    fn open_with_key(&mut self, key: Key, mut spec: NodeSpec) {
         if self.tree.is_empty() {
             return;
         }
+        self.ease_spec(key, &mut spec);
         if spec.layout.clips() {
             self.any_clip = true;
         }
@@ -649,12 +698,13 @@ impl Core {
         label: &str,
         initial: &str,
         opts: &EditOptions,
-        spec: NodeSpec,
+        mut spec: NodeSpec,
     ) -> Key {
         if self.tree.is_empty() {
             return Key::ROOT;
         }
         let key = self.child_key(label);
+        self.ease_spec(key, &mut spec);
         self.edit.declare(
             key,
             initial,
@@ -673,11 +723,12 @@ impl Core {
     /// the image's pixel dimensions as logical px; a Fit height against a
     /// resolved width preserves the aspect ratio. `style.radius` rounds the
     /// corners.
-    pub fn image_node(&mut self, id: crate::resources::ImageId, spec: NodeSpec) {
+    pub fn image_node(&mut self, id: crate::resources::ImageId, mut spec: NodeSpec) {
         if self.tree.is_empty() {
             return;
         }
         let key = self.auto_key();
+        self.ease_spec(key, &mut spec);
         let parent = self.current();
         self.tree
             .push(parent, key, self.origin, spec, NodeContent::Image(id));
