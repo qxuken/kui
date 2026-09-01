@@ -1,9 +1,12 @@
 //! Node.js addon for kui (napi-rs). Like kui-ffi this layer is translation,
 //! not architecture — but where C makes flat builder calls, JS submits a whole
 //! frame at once: the jsx-runtime produces a plain-data element tree
-//! (`{type, key, props, children}`), and [`Ctx::frame`] lowers it into the IR
-//! in one boundary crossing. Event payloads are plain JSON both ways, which is
-//! exactly the Elm shape: `onClick` carries a message value, never a closure.
+//! (`{type, key, props, children}`), the JS package encodes it into the flat
+//! binary IR stream ([`binary`]), and [`Ctx::frame_binary`] lowers it in one
+//! zero-copy boundary crossing. [`Ctx::frame_object`] (napi walking the
+//! object graph) and [`Ctx::frame_json`] are the slower reference transports.
+//! Event payloads are plain JSON both ways, which is exactly the Elm shape:
+//! `onClick` carries a message value, never a closure.
 
 use kui_core::{
     Align, Color, Core, EditKey, EditOptions, ImageId, InputEvent, Key, KeyCode, KeyMods, KeyPress,
@@ -463,11 +466,14 @@ impl Ctx {
         }
     }
 
-    /// Builds one frame from a jsx-runtime element tree. A root `<box>`
-    /// configures the root node; anything else becomes a child of a default
-    /// column root.
+    /// Builds one frame from a jsx-runtime element tree, napi walking the JS
+    /// object graph property by property (each read is an N-API call into
+    /// V8) — the reference transport, ~10x slower than `frame_binary`. The
+    /// package's `Ctx.frame` encodes to the binary stream instead. A root
+    /// `<box>` configures the root node; anything else becomes a child of a
+    /// default column root.
     #[napi]
-    pub fn frame(&mut self, width: f64, height: f64, scale: f64, tree: Json) -> Result<()> {
+    pub fn frame_object(&mut self, width: f64, height: f64, scale: f64, tree: Json) -> Result<()> {
         let scale = if scale > 0.0 { scale } else { 1.0 };
         self.core
             .begin_frame(Size::new(width as f32, height as f32), scale as f32);
@@ -477,15 +483,14 @@ impl Ctx {
         result
     }
 
-    /// `frame` with the tree as a JSON string. Much faster than the object
-    /// form: one string crosses the boundary and serde parses it, instead of
-    /// napi walking the object graph property by property (each read is an
-    /// N-API call into V8).
+    /// `frame_object` with the tree as a JSON string: one string crosses the
+    /// boundary and serde parses it. Readable on the wire, so it is the
+    /// debugging transport when the binary encoder is suspect.
     #[napi]
     pub fn frame_json(&mut self, width: f64, height: f64, scale: f64, tree: String) -> Result<()> {
         let tree: Json =
             serde_json::from_str(&tree).map_err(|e| err(format!("bad frame JSON: {e}")))?;
-        self.frame(width, height, scale, tree)
+        self.frame_object(width, height, scale, tree)
     }
 
     /// `frame` with the tree as a flat binary instruction stream (see
@@ -768,19 +773,21 @@ impl KuiWindow {
         Ok(KuiWindow { runner })
     }
 
-    /// Stores the tree future redraws lower, and schedules one.
+    /// Stores the tree future redraws lower, and schedules one — napi walks
+    /// the object graph (see `Ctx::frame_object`); the package's `setView`
+    /// encodes to the binary stream instead.
     #[napi]
-    pub fn set_view(&mut self, tree: Json) {
+    pub fn set_view_object(&mut self, tree: Json) {
         self.runner.app_mut().tree = Some(ViewData::Json(tree));
         self.runner.request_redraw();
     }
 
-    /// `setView` with the tree as a JSON string (see `Ctx::frame_json`).
+    /// `setViewObject` with the tree as a JSON string (see `Ctx::frame_json`).
     #[napi]
     pub fn set_view_json(&mut self, tree: String) -> Result<()> {
         let tree: Json =
             serde_json::from_str(&tree).map_err(|e| err(format!("bad view JSON: {e}")))?;
-        self.set_view(tree);
+        self.set_view_object(tree);
         Ok(())
     }
 

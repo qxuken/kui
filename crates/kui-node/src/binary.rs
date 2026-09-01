@@ -33,8 +33,9 @@ use crate::schema::{
 };
 use crate::{Result, err, value_of};
 
-/// Bumped when the wire format changes (v2: enum props became list indices).
-pub const VERSION: u32 = 2;
+/// Bumped when the wire format changes (v2: enum props became list indices;
+/// v3: float configs carry a has-offset flag so bare presets keep their gap).
+pub const VERSION: u32 = 3;
 
 pub const OP_END: u32 = 0;
 pub const OP_ROOT: u32 = 1;
@@ -188,7 +189,14 @@ fn read_props(r: &mut Reader<'_>) -> Result<PropsOut> {
                 if has_self {
                     cfg = cfg.self_at(align_idx(sx as usize), align_idx(sy as usize));
                 }
-                cfg = cfg.offset(r.f()? as f32, r.f()? as f32);
+                // Bare presets (below/above) keep their built-in gap; a config
+                // object always writes an explicit offset, as the JSON path
+                // always applies dx/dy.
+                let has_offset = r.u()? == 1;
+                let (dx, dy) = (r.f()?, r.f()?);
+                if has_offset {
+                    cfg = cfg.offset(dx as f32, dy as f32);
+                }
                 if r.u()? == 1 {
                     cfg = cfg.fit();
                 }
@@ -404,5 +412,202 @@ pub fn lower_binary(core: &mut Core, stream: &[f64], strings: &[u8]) -> Result<(
             OP_END => return Ok(()),
             op => decode_op(op, &mut r, core)?,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kui_core::schema::{CUSTOM, PROPS};
+    use kui_core::{Align, Size, Sizing, Value};
+
+    /// Decodes one prop list from a hand-built stream.
+    fn decode(stream: &[f64], strings: &[u8]) -> PropsOut {
+        let mut r = Reader {
+            s: stream,
+            i: 0,
+            strings,
+        };
+        read_props(&mut r).unwrap()
+    }
+
+    /// Every generic schema row, written by its kind the way encoder.js
+    /// does, decodes to the same `PropsOut` the schema apply produces. The
+    /// stream layout per kind is the protocol; a row the decoder rejects or
+    /// misreads fails here, and a new `Kind` variant fails to compile until
+    /// `read_props` (and the encoder) learn its slots.
+    #[test]
+    fn every_schema_row_round_trips_through_the_stream() {
+        for def in PROPS {
+            let mut stream = vec![1.0, def.id as f64];
+            let strings = b"7";
+            let sample = match def.kind {
+                Kind::F32 => {
+                    stream.push(37.0);
+                    Parsed::F32(37.0)
+                }
+                Kind::Color => {
+                    stream.push(0x11223344u32 as f64);
+                    Parsed::Color(color_num(0x11223344))
+                }
+                Kind::Flag => Parsed::Flag,
+                Kind::Enum(_) => {
+                    stream.push(1.0);
+                    Parsed::Enum(1)
+                }
+                Kind::Sizing => {
+                    stream.extend([3.0, 0.5]);
+                    Parsed::Sizing(Sizing::Percent(0.5))
+                }
+                Kind::Msg => {
+                    stream.extend([0.0, 1.0]);
+                    Parsed::Msg(Value::Int(7))
+                }
+            };
+            let mut expected = PropsOut::new();
+            schema::apply(def, sample, &mut expected).unwrap();
+            assert_eq!(
+                decode(&stream, strings),
+                expected,
+                "{}: binary decode disagrees with the schema",
+                def.name
+            );
+        }
+    }
+
+    /// Every `CUSTOM` row has a hand-written decoder arm: each is written
+    /// the way encoder.js does and checked against the Rust builder. A new
+    /// custom prop without a mapping here panics with instructions.
+    #[test]
+    fn every_custom_prop_has_a_decoder_arm() {
+        for (name, id) in CUSTOM {
+            let mut s = vec![1.0, *id as f64];
+            let mut strings: &[u8] = b"";
+            let mut expected = PropsOut::new();
+            match *name {
+                "dir" => {
+                    s.push(1.0);
+                    expected.spec = NodeSpec::row();
+                }
+                "size" => {
+                    s.push(21.0);
+                    expected.style = TextStyle::new(21.0);
+                }
+                "pad" => {
+                    s.extend([1.0, 2.0, 3.0, 4.0]);
+                    expected.with_spec(|x| {
+                        x.padding(Edges {
+                            l: 1.0,
+                            r: 2.0,
+                            t: 3.0,
+                            b: 4.0,
+                        })
+                    });
+                }
+                "border" => {
+                    s.extend([2.0, 0x2a2d3affu32 as f64]);
+                    expected.with_spec(|x| x.border(2.0, Color::hex(0x2a2d3aff)));
+                }
+                "overflow" => {
+                    s.push(7.0);
+                    expected.with_spec(|x| x.clip().scroll_x().scroll_y());
+                }
+                "float" => {
+                    // viewport, at=(end,end), self=(end,end), offset(-8,-8), fit
+                    s.extend([1.0, 1.0, 2.0, 2.0, 1.0, 2.0, 2.0, 1.0, -8.0, -8.0, 1.0]);
+                    expected.with_spec(|x| {
+                        x.float(
+                            FloatConfig::viewport()
+                                .at(Align::End, Align::End)
+                                .self_at(Align::End, Align::End)
+                                .offset(-8.0, -8.0)
+                                .fit(),
+                        )
+                    });
+                }
+                "keyFocus" => expected.key_focus = true,
+                "key" => {
+                    s.extend([0.0, 3.0]);
+                    strings = b"abc";
+                    expected.key = Some("abc".into());
+                }
+                "title" => {
+                    s.extend([0.0, 3.0]);
+                    strings = b"abc";
+                    expected.title = Some("abc".into());
+                }
+                "tooltip" => {
+                    s.extend([0.0, 3.0]);
+                    strings = b"abc";
+                    expected.tooltip = Some("abc".into());
+                    expected.with_spec(NodeSpec::hoverable);
+                }
+                other => panic!(
+                    "custom prop {other:?} has no binary decoder arm: add one in read_props, \
+                     mirror it in packages/kui/encoder.js, and map it here"
+                ),
+            }
+            assert_eq!(
+                decode(&s, strings),
+                expected,
+                "{name}: binary decode disagrees with the Rust builder"
+            );
+        }
+    }
+
+    /// A bare float preset on the wire keeps the preset's own gap (the bug
+    /// the JS parity test first caught: v2 clobbered it with offset 0,0).
+    #[test]
+    fn bare_float_presets_keep_their_offset() {
+        let s = [
+            1.0,
+            P_FLOAT as f64,
+            2.0, // below
+            0.0,
+            0.0,
+            0.0, // no at
+            0.0,
+            0.0,
+            0.0, // no self
+            0.0,
+            0.0,
+            0.0, // no offset
+            0.0, // fit
+        ];
+        let mut expected = PropsOut::new();
+        expected.with_spec(|x| x.float(FloatConfig::below()));
+        assert_eq!(decode(&s, b""), expected);
+    }
+
+    /// A whole frame lowers headlessly, and the version/root guards hold.
+    #[test]
+    fn lower_binary_smoke_and_guards() {
+        let mut core = Core::new();
+        core.begin_frame(Size::new(200.0, 100.0), 1.0);
+        let v = VERSION as f64;
+        // root {bg}, text "hi" {}, open {} close, end
+        let stream = [
+            v,
+            OP_ROOT as f64,
+            1.0,
+            schema::P_BG as f64,
+            0x202030ffu32 as f64,
+            OP_TEXT as f64,
+            0.0,
+            2.0,
+            0.0,
+            OP_OPEN as f64,
+            0.0,
+            OP_CLOSE as f64,
+            OP_END as f64,
+        ];
+        lower_binary(&mut core, &stream, b"hi").unwrap();
+        core.finish_frame();
+        assert!(!core.output().0.quads.is_empty(), "root bg draws a quad");
+
+        let stale = [v + 1.0, OP_ROOT as f64, 0.0, OP_END as f64];
+        assert!(lower_binary(&mut core, &stale, b"").is_err());
+        assert!(lower_binary(&mut core, &[v, OP_END as f64], b"").is_err());
+        assert!(lower_binary(&mut core, &[v, OP_ROOT as f64], b"").is_err());
     }
 }

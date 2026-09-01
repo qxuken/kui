@@ -6,6 +6,24 @@ import { createEncoder } from './encoder.js';
 export const { Ctx, KuiWindow, quadStride, protocol } = native;
 export { createEncoder };
 
+// The default transport is the binary IR stream: JS encodes the tree into one
+// Float64Array + string table and the addon lowers it zero-copy. The addon's
+// own object walk (`frameObject` / `setViewObject`) stays exposed as the
+// reference path, but every property read there is an N-API call into V8,
+// which makes it ~10x slower — so `frame` / `setView` encode first. One
+// encoder serves every context: its buffers are consumed synchronously.
+const encoder = createEncoder(native.protocol());
+
+Ctx.prototype.frame = function frame(width, height, scale, tree) {
+  const { stream, strings } = encoder.encode(tree);
+  this.frameBinary(width, height, scale, stream, strings);
+};
+
+KuiWindow.prototype.setView = function setView(tree) {
+  const { stream, strings } = encoder.encode(tree);
+  this.setViewBinary(stream, strings);
+};
+
 /**
  * Opens a real kui window (winit + wgpu) and runs the Elm loop against it.
  * The winit event loop is pumped from a timer so it shares the main thread
@@ -19,16 +37,12 @@ export function runWindowed({ init, update, view }, opts = {}) {
   const win = new KuiWindow(opts.title ?? 'kui', { width, height, chrome });
   opts.setup?.(win);
   let model = typeof init === 'function' ? init() : init;
+  // Binary IR path by default; `transport: 'json'` keeps the readable
+  // stringified path for debugging.
   const setView =
     opts.transport === 'json'
       ? (tree) => win.setViewJson(JSON.stringify(tree))
-      : (() => {
-          const enc = createEncoder(native.protocol());
-          return (tree) => {
-            const { stream, strings } = enc.encode(tree);
-            win.setViewBinary(stream, strings);
-          };
-        })();
+      : (tree) => win.setView(tree);
   setView(view(model));
   return new Promise((resolve, reject) => {
     const tick = () => {
@@ -71,7 +85,6 @@ export function createApp({ init, update, view }, opts = {}) {
   const width = opts.width ?? 800;
   const height = opts.height ?? 600;
   const scale = opts.scale ?? 1;
-  const enc = opts.transport === 'json' ? null : createEncoder(native.protocol());
   let model = typeof init === 'function' ? init() : init;
 
   const app = {
@@ -89,8 +102,7 @@ export function createApp({ init, update, view }, opts = {}) {
       if (opts.transport === 'json') {
         ctx.frameJson(width, height, scale, JSON.stringify(view(model)));
       } else {
-        const { stream, strings } = enc.encode(view(model));
-        ctx.frameBinary(width, height, scale, stream, strings);
+        ctx.frame(width, height, scale, view(model));
       }
       return ctx.stats();
     },

@@ -12,6 +12,7 @@
   },
   "scripts": {
     "build:native": "cargo build -p kui-node --release",
-    "gen": "node gen-types.mjs"
+    "gen": "node gen-types.mjs",
+    "test": "node --test test.mjs"
   }
 }

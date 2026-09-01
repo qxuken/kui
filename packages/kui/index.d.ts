@@ -42,11 +42,17 @@ export type EditKeyName =
 /** A headless kui core: build frames from JSX trees, feed input, poll events. */
 export declare class Ctx {
   constructor();
+  /** Lowers a JSX tree into one frame. Encodes it to the flat binary IR
+   *  stream first (the fastest transport, one zero-copy boundary crossing). */
   frame(width: number, height: number, scale: number, tree: KuiNode): void;
-  /** `frame` with a pre-stringified tree (readable debugging fast path). */
+  /** `frame` with the addon walking the JS object graph itself — the
+   *  reference transport, ~10x slower (every property read is an N-API call). */
+  frameObject(width: number, height: number, scale: number, tree: KuiNode): void;
+  /** `frame` with a pre-stringified tree (readable on the wire; the
+   *  debugging transport when the encoder is suspect). */
   frameJson(width: number, height: number, scale: number, tree: string): void;
-  /** `frame` as a flat binary instruction stream — the fastest path, what
-   *  the drivers use. Encode with `createEncoder(protocol())`. */
+  /** `frame` from an already-encoded binary stream, for callers that own
+   *  their encoder (`createEncoder(protocol())`). */
   frameBinary(width: number, height: number, scale: number, stream: Float64Array, strings: Uint8Array): void;
   cursor(x: number, y: number): void;
   cursorLeft(): void;
@@ -95,11 +101,15 @@ export declare function createEncoder(p: ReturnType<typeof protocol>): {
  */
 export declare class KuiWindow {
   constructor(title: string, options?: WindowOptions);
-  /** Stores the tree future redraws lower, and schedules one. */
+  /** Stores the tree future redraws lower, and schedules one. Encodes it to
+   *  the binary IR stream first (the fastest transport). */
   setView(tree: KuiNode): void;
-  /** `setView` with a pre-stringified tree (readable debugging fast path). */
+  /** `setView` with the addon walking the JS object graph itself — the
+   *  reference transport, ~10x slower. */
+  setViewObject(tree: KuiNode): void;
+  /** `setView` with a pre-stringified tree (readable debugging transport). */
   setViewJson(tree: string): void;
-  /** `setView` as a flat binary instruction stream — the fastest path. */
+  /** `setView` from an already-encoded binary stream. */
   setViewBinary(stream: Float64Array, strings: Uint8Array): void;
   /** Processes pending OS events; false once the window has closed. */
   pump(): boolean;

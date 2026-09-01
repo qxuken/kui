@@ -152,10 +152,12 @@ export function createEncoder(P) {
           if (typeof v === 'string') {
             const preset = FLOAT_PRESET[v];
             if (preset === undefined) throw new Error(`bad float ${JSON.stringify(v)}`);
+            // A bare preset keeps its own attach points and offset (below/
+            // above carry a 6px gap), so every "has" flag is off.
             f[fi++] = preset;
             f[fi++] = 0; f[fi++] = 0; f[fi++] = 0; // no at
             f[fi++] = 0; f[fi++] = 0; f[fi++] = 0; // no self
-            f[fi++] = 0; f[fi++] = 0; // dx dy
+            f[fi++] = 0; f[fi++] = 0; f[fi++] = 0; // no offset (dx dy)
             f[fi++] = 0; // fit
           } else {
             f[fi++] = v.anchor === 'viewport' ? 1 : 0;
@@ -167,6 +169,7 @@ export function createEncoder(P) {
             f[fi++] = self ? 1 : 0;
             f[fi++] = self ? alignOf(self[0]) : 0;
             f[fi++] = self ? alignOf(self[1]) : 0;
+            f[fi++] = 1; // explicit offset, like the JSON path's dx/dy defaults
             f[fi++] = v.dx ?? 0;
             f[fi++] = v.dy ?? 0;
             f[fi++] = v.fit ? 1 : 0;

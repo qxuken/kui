@@ -15,3 +15,9 @@ serde_json = "1"
 
 [build-dependencies]
 napi-build = "2"
+
+# Unit tests link as a plain executable, where the N-API symbols the addon
+# expects from the Node host do not exist; `noop` stubs them for cargo test
+# only (dev-dependency features stay out of the shipped cdylib).
+[dev-dependencies]
+napi = { version = "3", default-features = false, features = ["napi8", "serde-json", "noop"] }

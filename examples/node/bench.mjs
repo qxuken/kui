@@ -1,6 +1,7 @@
 // Node side of the frontend-lowering shootout (same view as
 // crates/kui-lua/examples/bench.rs): 300 rows of text + swatch, headless.
-// Splits the cost into JS tree building vs the frame() boundary+lowering.
+// Splits the cost into JS tree building vs encoding vs the boundary+lowering,
+// and compares the default binary frame() against the reference transports.
 import { Ctx, createEncoder, protocol } from 'kui';
 
 const ROWS = 300;
@@ -33,17 +34,17 @@ function bench(name, fn) {
 }
 
 const ctx = new Ctx();
+const enc = createEncoder(protocol());
 
+// frame() is the default transport: encode to the binary stream, lower once.
 const full = bench('node: build + frame', () => ctx.frame(800, 600, 1, tree()));
 const prebuilt = tree();
 const frameOnly = bench('node: frame only', () => ctx.frame(800, 600, 1, prebuilt));
 bench('node: tree build only', () => tree());
-bench('node: stringify+frameJson', () => ctx.frameJson(800, 600, 1, JSON.stringify(tree())));
-const enc = createEncoder(protocol());
-bench('node: encode+frameBinary', () => {
-  const { stream, strings } = enc.encode(tree());
-  ctx.frameBinary(800, 600, 1, stream, strings);
-});
+bench('node: encode only', () => enc.encode(prebuilt));
+// The reference transports, for comparison.
+bench('node: frameObject', () => ctx.frameObject(800, 600, 1, prebuilt));
+bench('node: stringify+frameJson', () => ctx.frameJson(800, 600, 1, JSON.stringify(prebuilt)));
 
-console.log(`object-path boundary share: ${((frameOnly / full) * 100).toFixed(0)}%`);
+console.log(`frame() boundary share: ${((frameOnly / full) * 100).toFixed(0)}%`);
 console.log('quads:', ctx.stats().quadCount);

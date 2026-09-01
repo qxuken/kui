@@ -29,6 +29,7 @@ cargo run -p kui-lua --example lua_panel  # Rust host + Lua panel sharing one fr
 cargo run -p kui --example modal_editor   # helix-flavored modal editing; the app owns the keymap
 cargo run -p kui --example splitmux       # tmux-style splits, tabs, and focus; the pane tree is data
 cargo run -p kui --example syntax_view    # syntax highlighting as coalesced style runs
+cargo run -p kui --example gallery        # registered images: Fit sizing, kept aspect, rounded corners
 ```
 
 The same app from Node with JSX — build the addon with
@@ -50,8 +51,14 @@ const final = await runWindowed({ init, update, view }, { title: 'counter' }); /
 ```
 
 JSX elements are plain data, so the tree *is* the frame: the jsx-runtime has
-no reconciler and no React — `Ctx.frame()` lowers the element tree straight
-into the IR, and `onClick` carries a message value, never a closure.
+no reconciler and no React — `Ctx.frame()` encodes the element tree into a
+flat binary IR stream (one `Float64Array` + a string table) and the addon
+lowers it in a single zero-copy call, and `onClick` carries a message value,
+never a closure. The addon's own object walk (`frameObject`) and a JSON
+string transport (`frameJson`) stay available as readable reference paths;
+`npm test` in [packages/kui](packages/kui) checks that all three produce
+byte-identical quads for every schema prop and element, and
+`examples/node/bench.mjs` compares their cost.
 
 A Lua extension in full:
 
