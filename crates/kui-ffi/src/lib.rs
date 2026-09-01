@@ -546,6 +546,32 @@ pub extern "C" fn kui_open_keyed(
     })
 }
 
+/// Like `kui_open_keyed`, but the node is draggable: press-drag emits
+/// `{kind="drag", phase, x, y, dx, dy, tag}` events. `on_drag` (the tag,
+/// nullable) and `on_click` (nullable) are consumed. A drag past the click
+/// slop suppresses the click.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_open_draggable(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    spec: *const KuiSpec,
+    on_click: *mut KuiValue,
+    on_drag: *mut KuiValue,
+) -> u64 {
+    guard(0, || {
+        let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else { return 0 };
+        let mut spec = spec_of(s, on_click);
+        let tag = if on_drag.is_null() {
+            Value::Null
+        } else {
+            // Consumes the value.
+            unsafe { Box::from_raw(on_drag) }.0
+        };
+        spec = spec.on_drag(tag);
+        c.core().open_keyed(&kstr(label), spec).0
+    })
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_close(ptr: *mut KuiCtx) {
     guard((), || {

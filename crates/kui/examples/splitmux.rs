@@ -66,7 +66,7 @@ enum SplitDir {
 #[derive(Clone)]
 enum Node {
     Pane(u64),
-    Split { dir: SplitDir, a: Box<Node>, b: Box<Node> },
+    Split { dir: SplitDir, ratio: f32, a: Box<Node>, b: Box<Node> },
 }
 
 impl Node {
@@ -85,11 +85,28 @@ impl Node {
         match self {
             Node::Pane(id) if *id == target => {
                 let old = Node::Pane(*id);
-                *self = Node::Split { dir, a: Box::new(old), b: Box::new(Node::Pane(new_id)) };
+                *self = Node::Split {
+                    dir,
+                    ratio: 0.5,
+                    a: Box::new(old),
+                    b: Box::new(Node::Pane(new_id)),
+                };
                 true
             }
             Node::Pane(_) => false,
             Node::Split { a, b, .. } => a.split(target, dir, new_id) || b.split(target, dir, new_id),
+        }
+    }
+
+    /// The split at `path` ("a"/"b" steps from the root), for divider drags.
+    fn ratio_mut(&mut self, path: &str) -> Option<&mut f32> {
+        match self {
+            Node::Pane(_) => None,
+            Node::Split { ratio, a, b, .. } => match path.split_at_checked(1) {
+                None => Some(ratio),
+                Some(("a", rest)) => a.ratio_mut(rest),
+                Some((_, rest)) => b.ratio_mut(rest),
+            },
         }
     }
 }
@@ -99,8 +116,8 @@ fn without(node: Node, target: u64) -> Option<Node> {
     match node {
         Node::Pane(id) if id == target => None,
         Node::Pane(id) => Some(Node::Pane(id)),
-        Node::Split { dir, a, b } => match (without(*a, target), without(*b, target)) {
-            (Some(a), Some(b)) => Some(Node::Split { dir, a: Box::new(a), b: Box::new(b) }),
+        Node::Split { dir, ratio, a, b } => match (without(*a, target), without(*b, target)) {
+            (Some(a), Some(b)) => Some(Node::Split { dir, ratio, a: Box::new(a), b: Box::new(b) }),
             (Some(x), None) | (None, Some(x)) => Some(x),
             (None, None) => None,
         },
@@ -116,6 +133,9 @@ struct Splitmux {
     tabs: Vec<Node>,
     tab: usize,
     focused: u64,
+    /// Path of the divider being dragged, for active styling while the
+    /// cursor is off the strip.
+    dragging: Option<String>,
     quit: bool,
 }
 
@@ -124,14 +144,24 @@ impl Splitmux {
         // Launch looking like the app it wants to be: pane | (pane / pane).
         let root = Node::Split {
             dir: SplitDir::H,
+            ratio: 0.5,
             a: Box::new(Node::Pane(1)),
             b: Box::new(Node::Split {
                 dir: SplitDir::V,
+                ratio: 0.5,
                 a: Box::new(Node::Pane(2)),
                 b: Box::new(Node::Pane(3)),
             }),
         };
-        Self { pal: Pal::default(), next_pane: 4, tabs: vec![root], tab: 0, focused: 1, quit: false }
+        Self {
+            pal: Pal::default(),
+            next_pane: 4,
+            tabs: vec![root],
+            tab: 0,
+            focused: 1,
+            dragging: None,
+            quit: false,
+        }
     }
 
     fn pane_ids(&self) -> Vec<u64> {
@@ -259,17 +289,46 @@ impl Splitmux {
         );
     }
 
-    fn render_node(&self, ui: &mut Ui<'_>, node: &Node) {
+    fn render_node(&self, ui: &mut Ui<'_>, node: &Node, path: &str) {
         match node {
             Node::Pane(id) => self.render_pane(ui, *id),
-            Node::Split { dir, a, b } => {
+            Node::Split { dir, ratio, a, b } => {
+                let pal = self.pal;
                 let spec = match dir {
                     SplitDir::H => NodeSpec::row(),
                     SplitDir::V => NodeSpec::column(),
                 };
-                ui.with(spec.fill().gap(1.0), |ui| {
-                    ui.with(NodeSpec::column().fill(), |ui| self.render_node(ui, a));
-                    ui.with(NodeSpec::column().fill(), |ui| self.render_node(ui, b));
+                ui.with(spec.fill(), |ui| {
+                    let (wa, wb) = (ratio.clamp(0.05, 0.95), 1.0 - ratio.clamp(0.05, 0.95));
+                    let grow = |f: f32| match dir {
+                        SplitDir::H => NodeSpec::column().width(Sizing::Grow(f)).height(Sizing::Grow(1.0)),
+                        SplitDir::V => NodeSpec::column().width(Sizing::Grow(1.0)).height(Sizing::Grow(f)),
+                    };
+                    ui.with(grow(wa), |ui| self.render_node(ui, a, &format!("{path}a")));
+                    // The divider: a grabbable strip that drags the ratio.
+                    // Its drag events carry the parent (this split) rect, so
+                    // the handler turns absolute x/y into a ratio directly.
+                    let divider = ui.child_key("divider");
+                    let active = ui.is_hovered(divider)
+                        || ui.is_pressed(divider)
+                        || self.dragging.as_deref() == Some(path);
+                    let bar = match dir {
+                        SplitDir::H => NodeSpec::column().width(Sizing::Fixed(5.0)).height(Sizing::Grow(1.0)),
+                        SplitDir::V => NodeSpec::column().width(Sizing::Grow(1.0)).height(Sizing::Fixed(5.0)),
+                    };
+                    ui.with_keyed(
+                        "divider",
+                        bar.bg(if active { pal.border_focus } else { pal.bg2 }).on_drag(Value::map([
+                            ("kind", "split".into()),
+                            ("path", Value::str(path)),
+                            ("dir", Value::str(match dir {
+                                SplitDir::H => "h",
+                                SplitDir::V => "v",
+                            })),
+                        ])),
+                        |_| {},
+                    );
+                    ui.with(grow(wb), |ui| self.render_node(ui, b, &format!("{path}b")));
                 });
             }
         }
@@ -330,7 +389,7 @@ impl App for Splitmux {
                 .width(Sizing::Grow(1.0))
                 .height(Sizing::Grow(1.0))
                 .on_key(Value::Null),
-            |ui| self.render_node(ui, &root),
+            |ui| self.render_node(ui, &root, ""),
         );
         ui.take_key_focus(sink);
 
@@ -362,6 +421,41 @@ impl App for Splitmux {
                 }
             }
             Some("tabnew") => self.new_tab(),
+            Some("drag") => {
+                let tag = ev.payload.get("tag");
+                if tag.and_then(|t| t.get("kind")).and_then(Value::as_str) != Some("split") {
+                    return;
+                }
+                let Some(path) = tag.and_then(|t| t.get("path")).and_then(Value::as_str) else {
+                    return;
+                };
+                match ev.payload.get("phase").and_then(Value::as_str) {
+                    Some("end") => self.dragging = None,
+                    Some(_) => {
+                        // Absolute cursor position over the split's own rect
+                        // (carried in the payload) is the new ratio directly.
+                        let horizontal =
+                            tag.and_then(|t| t.get("dir")).and_then(Value::as_str) == Some("h");
+                        let parent = ev.payload.get("parent");
+                        let get = |m: Option<&Value>, k| {
+                            m.and_then(|v| v.get(k)).and_then(Value::as_float).unwrap_or(0.0)
+                        };
+                        let ratio = if horizontal {
+                            let w = get(parent, "w").max(1.0);
+                            (get(Some(&ev.payload), "x") - get(parent, "x")) / w
+                        } else {
+                            let h = get(parent, "h").max(1.0);
+                            (get(Some(&ev.payload), "y") - get(parent, "y")) / h
+                        };
+                        let path = path.to_string();
+                        self.dragging = Some(path.clone());
+                        if let Some(r) = self.tabs[self.tab].ratio_mut(&path) {
+                            *r = (ratio as f32).clamp(0.05, 0.95);
+                        }
+                    }
+                    None => {}
+                }
+            }
             _ => {}
         }
     }

@@ -10,7 +10,9 @@ use crate::display::{DisplayList, NO_CLIP, Quad, QuadKind};
 use crate::edit::{EditOptions, EditStore};
 use crate::env::Env;
 use crate::geom::{Rect, Size, Vec2};
-use crate::input::{EditKey, HitRegion, InputEvent, Interaction, ScrollRegion, UiEvent};
+use crate::input::{
+    EditKey, HitRegion, InputEvent, Interaction, ScrollAxis, ScrollRegion, ScrollbarRegion, UiEvent,
+};
 use crate::key::Key;
 use crate::layout::{self, TextMeasure};
 use crate::value::Value;
@@ -25,6 +27,10 @@ use crate::ui::Ui;
 /// Wheel line-delta to logical px.
 const SCROLL_LINE_PX: f32 = 40.0;
 const SCROLLBAR_W: f32 = 4.0;
+/// Thumb width while hovered or dragged.
+const SCROLLBAR_ACTIVE_W: f32 = 6.0;
+/// Grabbable gutter width (wider than the drawn thumb).
+const SCROLLBAR_HIT_W: f32 = 10.0;
 const SCROLLBAR_INSET: f32 = 2.0;
 const SCROLLBAR_MIN: f32 = 24.0;
 
@@ -148,6 +154,27 @@ impl Core {
                 }
             }
             InputEvent::MouseDown(clicks) => {
+                // Scrollbars win over everything under them (they draw on
+                // top): a thumb press starts a drag, a track press jumps
+                // there first. Neither blurs the focused edit.
+                if let Some(p) = self.interaction.cursor()
+                    && let Some(bar) = self.interaction.scrollbar_at(p)
+                {
+                    let (pos, thumb_start) = match bar.axis {
+                        ScrollAxis::X => (p.x, bar.thumb.x),
+                        ScrollAxis::Y => (p.y, bar.thumb.y),
+                    };
+                    let grab = if pos >= thumb_start && pos <= thumb_start + bar.bar_len {
+                        pos - thumb_start
+                    } else {
+                        let center = bar.bar_len / 2.0;
+                        let off = bar.offset_for(p, center);
+                        self.set_scroll_axis(bar.key, bar.axis, off);
+                        center
+                    };
+                    self.interaction.scrollbar_drag = Some((bar.key, bar.axis, grab));
+                    return out;
+                }
                 // Click-to-focus / caret placement / start drag-selection,
                 // against the previous frame's layout.
                 if let Some(p) = self.interaction.cursor() {
@@ -172,6 +199,20 @@ impl Core {
                 self.interaction.handle(InputEvent::MouseDown(clicks), &mut out);
             }
             InputEvent::CursorMoved(p) => {
+                if let Some((key, axis, grab)) = self.interaction.scrollbar_drag
+                    && let Some(bar) = self
+                        .interaction
+                        .scrollbars
+                        .iter()
+                        .rev()
+                        .find(|b| b.key == key && b.axis == axis)
+                        .copied()
+                {
+                    // Thumb drag: geometry is last frame's, which is fine —
+                    // track length only changes with the container.
+                    let off = bar.offset_for(p, grab);
+                    self.set_scroll_axis(key, axis, off);
+                }
                 if let Some((key, origin)) = self.edit.dragging {
                     let local = Vec2::new(p.x - origin.x, p.y - origin.y);
                     self.edit.drag(key, local, self.text.font_system_mut());
@@ -180,6 +221,7 @@ impl Core {
             }
             InputEvent::MouseUp => {
                 self.edit.dragging = None;
+                self.interaction.scrollbar_drag = None;
                 self.interaction.handle(InputEvent::MouseUp, &mut out);
             }
             other => self.interaction.handle(other, &mut out),
@@ -212,14 +254,27 @@ impl Core {
                 clip: clip.scaled(scale),
             });
         }
-        if spec.on_click.is_some() || spec.window.is_some() || spec.on_key.is_some() || spec.hoverable
+        if spec.on_click.is_some()
+            || spec.window.is_some()
+            || spec.on_key.is_some()
+            || spec.on_drag.is_some()
+            || spec.hoverable
         {
+            let parent = self.tree.parent[i];
+            let parent_rect = if parent == NIL {
+                Rect::new(0.0, 0.0, self.viewport.w, self.viewport.h)
+            } else {
+                let p = parent as usize;
+                Rect::from_pos_size(self.tree.pos[p], self.tree.size[p])
+            };
             hits.push(HitRegion {
                 key: self.tree.keys[i],
                 origin: self.tree.origins[i],
                 rect,
                 clip,
                 payload: spec.on_click.clone(),
+                drag: spec.on_drag.clone(),
+                parent_rect,
                 key_sink: spec.on_key.clone(),
                 edit_origin: None,
                 window: spec.window,
@@ -248,6 +303,8 @@ impl Core {
                     rect,
                     clip,
                     payload: None,
+                    drag: None,
+                    parent_rect: rect,
                     edit_origin: Some(content_origin),
                     key_sink: None,
                     window: None,
@@ -269,6 +326,16 @@ impl Core {
             }
             NodeContent::Container => {}
         }
+    }
+
+    /// Sets one axis of a container's scroll offset, keeping the other.
+    fn set_scroll_axis(&mut self, key: Key, axis: ScrollAxis, value: f32) {
+        let mut off = self.scroll.offset(key);
+        match axis {
+            ScrollAxis::X => off.x = value,
+            ScrollAxis::Y => off.y = value,
+        }
+        self.scroll.set(key, off);
     }
 
     fn push_edit_event(&self, key: Key, kind: &str, out: &mut Vec<UiEvent>) {
@@ -599,7 +666,10 @@ impl Core {
         }
 
 
-        // Scrollbar indicators, on top of content.
+        // Scrollbars, on top of content: indicator quads plus the hit
+        // regions that make their thumbs draggable.
+        let cursor = self.interaction.cursor();
+        let mut scrollbars: Vec<ScrollbarRegion> = Vec::new();
         for r in &scroll_regions {
             let i = self
                 .tree
@@ -614,30 +684,65 @@ impl Core {
                 let track_h = r.rect.h - 2.0 * SCROLLBAR_INSET;
                 let bar_h = (track_h * r.rect.h / (r.rect.h + max.y)).max(SCROLLBAR_MIN);
                 let t = (offset.y / max.y).clamp(0.0, 1.0);
-                let bar = Rect::new(
-                    r.rect.x + r.rect.w - SCROLLBAR_W - SCROLLBAR_INSET,
+                let track = Rect::new(
+                    r.rect.x + r.rect.w - SCROLLBAR_HIT_W,
+                    r.rect.y + SCROLLBAR_INSET,
+                    SCROLLBAR_HIT_W,
+                    track_h,
+                );
+                let active = self.interaction.is_scrollbar_dragging(r.key, ScrollAxis::Y)
+                    || cursor.is_some_and(|p| track.contains(p));
+                let w = if active { SCROLLBAR_ACTIVE_W } else { SCROLLBAR_W };
+                let thumb = Rect::new(
+                    r.rect.x + r.rect.w - w - SCROLLBAR_INSET,
                     r.rect.y + SCROLLBAR_INSET + t * (track_h - bar_h),
-                    SCROLLBAR_W,
+                    w,
                     bar_h,
                 );
-                self.display.quads.push(scrollbar_quad(bar, scale, clip));
+                self.display.quads.push(scrollbar_quad(thumb, scale, clip, active));
+                scrollbars.push(ScrollbarRegion {
+                    key: r.key,
+                    axis: ScrollAxis::Y,
+                    thumb,
+                    track,
+                    bar_len: bar_h,
+                    max: max.y,
+                });
             }
             if max.x > 0.0 {
                 let track_w = r.rect.w - 2.0 * SCROLLBAR_INSET;
                 let bar_w = (track_w * r.rect.w / (r.rect.w + max.x)).max(SCROLLBAR_MIN);
                 let t = (offset.x / max.x).clamp(0.0, 1.0);
-                let bar = Rect::new(
-                    r.rect.x + SCROLLBAR_INSET + t * (track_w - bar_w),
-                    r.rect.y + r.rect.h - SCROLLBAR_W - SCROLLBAR_INSET,
-                    bar_w,
-                    SCROLLBAR_W,
+                let track = Rect::new(
+                    r.rect.x + SCROLLBAR_INSET,
+                    r.rect.y + r.rect.h - SCROLLBAR_HIT_W,
+                    track_w,
+                    SCROLLBAR_HIT_W,
                 );
-                self.display.quads.push(scrollbar_quad(bar, scale, clip));
+                let active = self.interaction.is_scrollbar_dragging(r.key, ScrollAxis::X)
+                    || cursor.is_some_and(|p| track.contains(p));
+                let w = if active { SCROLLBAR_ACTIVE_W } else { SCROLLBAR_W };
+                let thumb = Rect::new(
+                    r.rect.x + SCROLLBAR_INSET + t * (track_w - bar_w),
+                    r.rect.y + r.rect.h - w - SCROLLBAR_INSET,
+                    bar_w,
+                    w,
+                );
+                self.display.quads.push(scrollbar_quad(thumb, scale, clip, active));
+                scrollbars.push(ScrollbarRegion {
+                    key: r.key,
+                    axis: ScrollAxis::X,
+                    thumb,
+                    track,
+                    bar_len: bar_w,
+                    max: max.x,
+                });
             }
         }
 
         self.interaction.set_hits(hits);
         self.interaction.scroll_regions = scroll_regions;
+        self.interaction.scrollbars = scrollbars;
     }
 
     /// After layout: if the focused edit's caret moved this frame, nudge the
@@ -723,12 +828,12 @@ impl TextMeasure for Measure<'_> {
     }
 }
 
-fn scrollbar_quad(bar: Rect, scale: f32, clip: Rect) -> Quad {
+fn scrollbar_quad(bar: Rect, scale: f32, clip: Rect, active: bool) -> Quad {
     Quad {
         rect: bar.scaled(scale),
-        color: Color::rgba(1.0, 1.0, 1.0, 0.18),
+        color: Color::rgba(1.0, 1.0, 1.0, if active { 0.4 } else { 0.18 }),
         border_color: Color::TRANSPARENT,
-        radius: SCROLLBAR_W / 2.0 * scale,
+        radius: bar.w.min(bar.h) / 2.0 * scale,
         border_w: 0.0,
         kind: QuadKind::Solid,
         uv: [0; 4],

@@ -202,6 +202,14 @@ pub struct HitRegion {
     /// Click payload; None for hover-only regions (hoverable, edits) — a
     /// click on those emits no `UiEvent`.
     pub payload: Option<Value>,
+    /// Drag tag when the node declared `on_drag`: pressing it starts a
+    /// pointer-captured drag, and cursor motion until release emits
+    /// `{kind="drag", phase, x, y, dx, dy, parent, tag}` events on this node.
+    pub drag: Option<Value>,
+    /// The node's parent rect (logical) — carried into drag payloads so
+    /// handlers can turn absolute positions into fractions of the container
+    /// (a splitter's ratio) without any geometry query API.
+    pub parent_rect: Rect,
     /// Content-box origin of an editable text node; None for plain hits.
     pub edit_origin: Option<Vec2>,
     /// Key-sink tag when the node declared `on_key`: clicking it takes
@@ -219,15 +227,73 @@ pub struct ScrollRegion {
     pub clip: Rect,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScrollAxis {
+    X,
+    Y,
+}
+
+/// One scrollbar drawn this frame (logical coordinates), for thumb dragging
+/// and track jumps. Rebuilt by `finish_frame` alongside the indicator quads.
+#[derive(Clone, Copy, Debug)]
+pub struct ScrollbarRegion {
+    pub key: Key,
+    pub axis: ScrollAxis,
+    /// The thumb as drawn.
+    pub thumb: Rect,
+    /// The full track strip (the grabbable gutter).
+    pub track: Rect,
+    /// Thumb length along the axis.
+    pub bar_len: f32,
+    /// The container's max scroll offset on this axis.
+    pub max: f32,
+}
+
+impl ScrollbarRegion {
+    /// Offset for a cursor position, given where inside the thumb it grabbed.
+    pub(crate) fn offset_for(&self, p: Vec2, grab: f32) -> f32 {
+        let (pos, track_start, track_len) = match self.axis {
+            ScrollAxis::X => (p.x, self.track.x, self.track.w),
+            ScrollAxis::Y => (p.y, self.track.y, self.track.h),
+        };
+        let range = (track_len - self.bar_len).max(1.0);
+        ((pos - track_start - grab) / range).clamp(0.0, 1.0) * self.max
+    }
+}
+
+/// An in-flight pointer-captured drag on an `on_drag` node.
+#[derive(Clone, Debug)]
+struct DragState {
+    key: Key,
+    origin: OriginId,
+    tag: Value,
+    parent_rect: Rect,
+    last: Vec2,
+    /// Whether motion exceeded the click slop; suppresses the click on
+    /// release so a node can carry both `on_click` and `on_drag`.
+    moved: bool,
+}
+
+/// How far a press may wander before it stops counting as a click.
+const DRAG_SLOP: f32 = 3.0;
+
 #[derive(Default)]
 pub struct Interaction {
     /// In paint order: later entries are on top.
     pub(crate) hits: Vec<HitRegion>,
     /// In paint order: later entries are on top (innermost last).
     pub(crate) scroll_regions: Vec<ScrollRegion>,
+    /// This frame's scrollbars, topmost last (they draw over content).
+    pub(crate) scrollbars: Vec<ScrollbarRegion>,
+    /// Scrollbar thumb being dragged: which bar, and the grab point inside
+    /// the thumb (axis-local). Offset math happens in `Core::handle_input`
+    /// (it needs the `ScrollStore`).
+    pub(crate) scrollbar_drag: Option<(Key, ScrollAxis, f32)>,
     /// Window intents produced by chrome nodes; drained by the driver via
     /// `Core::take_window_commands`.
     pub(crate) window_commands: Vec<WindowCommand>,
+    /// Pointer-captured drag on an `on_drag` node.
+    drag: Option<DragState>,
     cursor: Option<Vec2>,
     hovered: Option<Key>,
     pressed: Option<Key>,
@@ -277,11 +343,61 @@ impl Interaction {
         self.hovered = self.cursor.and_then(|p| self.hit_at(p)).map(|h| h.key);
     }
 
+    /// Topmost scrollbar whose track contains `p` (scrollbars draw over
+    /// content, so they win hit-testing over it too).
+    pub(crate) fn scrollbar_at(&self, p: Vec2) -> Option<ScrollbarRegion> {
+        self.scrollbars.iter().rev().find(|b| b.track.contains(p)).copied()
+    }
+
+    /// Whether this bar is being thumb-dragged (for active styling).
+    pub fn is_scrollbar_dragging(&self, key: Key, axis: ScrollAxis) -> bool {
+        matches!(self.scrollbar_drag, Some((k, a, _)) if k == key && a == axis)
+    }
+
+    fn drag_event(state: &DragState, phase: &str, p: Vec2, d: Vec2) -> UiEvent {
+        let pr = state.parent_rect;
+        let mut payload = Value::map([
+            ("kind", Value::str("drag")),
+            ("phase", Value::str(phase)),
+            ("x", Value::Float(p.x as f64)),
+            ("y", Value::Float(p.y as f64)),
+            ("dx", Value::Float(d.x as f64)),
+            ("dy", Value::Float(d.y as f64)),
+            (
+                "parent",
+                Value::map([
+                    ("x", Value::Float(pr.x as f64)),
+                    ("y", Value::Float(pr.y as f64)),
+                    ("w", Value::Float(pr.w as f64)),
+                    ("h", Value::Float(pr.h as f64)),
+                ]),
+            ),
+        ]);
+        if state.tag != Value::Null
+            && let Value::Map(entries) = &mut payload
+        {
+            entries.push(("tag".to_string(), state.tag.clone()));
+        }
+        UiEvent { origin: state.origin, key: state.key, payload }
+    }
+
     pub fn handle(&mut self, ev: InputEvent, out: &mut Vec<UiEvent>) {
         match ev {
             InputEvent::CursorMoved(p) => {
                 self.cursor = Some(p);
                 self.refresh_hover();
+                if let Some(drag) = &mut self.drag {
+                    let d = Vec2::new(p.x - drag.last.x, p.y - drag.last.y);
+                    if d.x != 0.0 || d.y != 0.0 {
+                        drag.last = p;
+                        if d.x.abs() + d.y.abs() > DRAG_SLOP {
+                            drag.moved = true;
+                        }
+                        if drag.moved {
+                            out.push(Self::drag_event(drag, "move", p, d));
+                        }
+                    }
+                }
             }
             InputEvent::CursorLeft => {
                 self.cursor = None;
@@ -289,13 +405,25 @@ impl Interaction {
             }
             InputEvent::MouseDown(_) => {
                 self.pressed = self.hovered;
-                if let Some(h) = self.cursor.and_then(|p| self.hit_at(p))
-                    && h.window == Some(WindowRole::Drag)
-                {
-                    // The OS drag steals subsequent mouse events, so don't
-                    // leave a press pending.
-                    self.pressed = None;
-                    self.window_commands.push(WindowCommand::StartDrag);
+                if let Some(h) = self.cursor.and_then(|p| self.hit_at(p)) {
+                    if h.window == Some(WindowRole::Drag) {
+                        // The OS drag steals subsequent mouse events, so don't
+                        // leave a press pending.
+                        self.pressed = None;
+                        self.window_commands.push(WindowCommand::StartDrag);
+                    } else if let Some(tag) = &h.drag {
+                        let p = self.cursor.unwrap();
+                        let state = DragState {
+                            key: h.key,
+                            origin: h.origin,
+                            tag: tag.clone(),
+                            parent_rect: h.parent_rect,
+                            last: p,
+                            moved: false,
+                        };
+                        out.push(Self::drag_event(&state, "start", p, Vec2::ZERO));
+                        self.drag = Some(state);
+                    }
                 }
             }
             // Routed by the core (they need the retained stores).
@@ -304,7 +432,14 @@ impl Interaction {
             | InputEvent::Key(..)
             | InputEvent::KeyDown(_) => {}
             InputEvent::MouseUp => {
-                if let (Some(pressed), Some(hovered)) = (self.pressed, self.hovered)
+                let dragged = self.drag.take().inspect(|drag| {
+                    let p = self.cursor.unwrap_or(drag.last);
+                    out.push(Self::drag_event(drag, "end", p, Vec2::ZERO));
+                });
+                // A press that actually dragged is not a click.
+                let click_ok = !dragged.is_some_and(|d| d.moved);
+                if click_ok
+                    && let (Some(pressed), Some(hovered)) = (self.pressed, self.hovered)
                     && pressed == hovered
                     && let Some(region) = self.hits.iter().rev().find(|h| h.key == pressed)
                 {
@@ -343,6 +478,8 @@ mod tests {
             rect: Rect::new(x, y, w, h),
             clip: Rect::new(-1e9, -1e9, 2e9, 2e9),
             payload: Some(Value::str(tag)),
+            drag: None,
+            parent_rect: Rect::new(0.0, 0.0, 0.0, 0.0),
             edit_origin: None,
             key_sink: None,
             window: None,

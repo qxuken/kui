@@ -186,6 +186,11 @@ void kui_root(KuiCtx *ctx, const KuiSpec *spec);
 /* on_click may be NULL; consumed when given. Returns the node key. */
 uint64_t kui_open(KuiCtx *ctx, const KuiSpec *spec, KuiValue *on_click);
 uint64_t kui_open_keyed(KuiCtx *ctx, KuiStr label, const KuiSpec *spec, KuiValue *on_click);
+/* Draggable container: press-drag emits {kind="drag", phase="start"|"move"|
+ * "end", x, y, dx, dy, tag} events; a drag past the click slop suppresses
+ * on_click. on_click/on_drag are nullable and consumed. */
+uint64_t kui_open_draggable(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
+                            KuiValue *on_click, KuiValue *on_drag);
 void kui_close(KuiCtx *ctx);
 void kui_text(KuiCtx *ctx, KuiStr text, const KuiTextStyle *style);
 void kui_rich_text(KuiCtx *ctx, const KuiSpan *spans, size_t span_count,

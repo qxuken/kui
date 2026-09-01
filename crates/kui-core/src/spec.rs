@@ -221,6 +221,12 @@ pub struct NodeSpec {
     /// `on_key` / `window` are always hover-tracked; clicks on a merely
     /// hoverable node emit nothing.
     pub hoverable: bool,
+    /// Makes this node draggable: pressing it starts a pointer-captured
+    /// drag, and cursor motion until release emits `UiEvent`s of the form
+    /// `{kind="drag", phase="start"|"move"|"end", x, y, dx, dy, tag}` with
+    /// this payload merged in under `tag`. A drag past the click slop
+    /// suppresses the node's `on_click`, so both can coexist.
+    pub on_drag: Option<Value>,
     /// Marks this node as a key sink: while it holds key focus, key
     /// presses arrive as `UiEvent`s on it, with this payload merged in
     /// under `tag`. Clicking the node takes key focus.
@@ -359,6 +365,13 @@ impl NodeSpec {
 
     pub fn on_click(mut self, payload: impl Into<Value>) -> Self {
         self.on_click = Some(payload.into());
+        self
+    }
+
+    /// Makes this node draggable (see the `on_drag` field). Pass a tag the
+    /// handler can match on; `Value::Null` if the node key is enough.
+    pub fn on_drag(mut self, tag: impl Into<Value>) -> Self {
+        self.on_drag = Some(tag.into());
         self
     }
 
