@@ -17,6 +17,7 @@ const TS_BY_KIND = {
   msg: 'AppMsg',
   str: 'string',
   resource: 'string',
+  keyframes: 'KeyframeProp[]',
 };
 
 function field([name, def]) {
@@ -60,6 +61,7 @@ const TYPE_DOC = {
   msg: 'message (any plain data)',
   str: 'string',
   resource: 'resource handle',
+  keyframes: 'keyframe list (`[{ at?, width?, height?, bg?, radius? }, …]`)',
 };
 
 const cell = (s) => String(s).replace(/\|/g, '\\|');

@@ -100,6 +100,35 @@ typedef struct KuiSizing {
     float value;
 } KuiSizing;
 
+/* How keyframes cycle (KuiSpec.repeat): CSS animation-direction. */
+enum {
+    KUI_REPEAT_NORMAL = 0,
+    KUI_REPEAT_REVERSE = 1,
+    KUI_REPEAT_ALTERNATE = 2,
+    KUI_REPEAT_ALTERNATE_REVERSE = 3,
+};
+/* Which KuiKeyframe fields are set (KuiKeyframe.set bits). */
+enum {
+    KUI_KF_AT = 1u << 0,
+    KUI_KF_WIDTH = 1u << 1,
+    KUI_KF_HEIGHT = 1u << 2,
+    KUI_KF_BG = 1u << 3,
+    KUI_KF_RADIUS = 1u << 4,
+};
+
+/* One CSS-style keyframe stop. A zeroed stop sets nothing: `set` says which
+ * fields count, so 0 stays a legal value for each. Stops without KUI_KF_AT
+ * spread evenly (a lone stop sits at 1 and animates from the node's own
+ * value); declared `at`s must not decrease. Sizings animate their amount
+ * only, in the form the spec's own width/height declares. */
+typedef struct KuiKeyframe {
+    uint32_t set;
+    float at; /* 0..1 */
+    KuiSizing width, height;
+    uint32_t bg; /* 0xRRGGBBAA */
+    float radius;
+} KuiKeyframe;
+
 /* Zero-initialized KuiSpec is a fit-sized transparent column. Colors are
  * 0xRRGGBBAA with 0 meaning "none". Fields mirror the shared prop schema
  * (crates/kui-core/src/schema.rs) and are append-only: the layout is ABI. */
@@ -142,6 +171,17 @@ typedef struct KuiSpec {
      * ignored; zero keeps the uniform `radius` on every corner. */
     uint32_t per_corner;
     float radius_tl, radius_tr, radius_br, radius_bl;
+    /* CSS-style keyframes: the slots the stops name (width, height, bg,
+     * radius) cycle through them over transition_ms — forever, without the
+     * view redrawing, sampled off kui_set_time's clock — in the `repeat`
+     * direction (KUI_REPEAT_*), held back by delay_ms so siblings given
+     * different delays run out of phase. Slots no stop names still ease
+     * toward what the spec declares. The array is read while the node
+     * opens and not retained; NULL / 0 = none. */
+    uint32_t repeat;
+    float delay_ms;
+    const KuiKeyframe *keyframes;
+    size_t keyframes_len;
 } KuiSpec;
 
 /* Zero-initialized KuiTextStyle picks defaults (16px, default foreground). */

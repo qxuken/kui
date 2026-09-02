@@ -17,9 +17,9 @@ use std::ffi::c_void;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use kui_core::{
-    Align, Color, Core, Edges, EditKey, EditOptions, FloatConfig, InputEvent, Key, Mods, NodeSpec,
-    Rect, Size, Sizing, Span, TextStyle, UiEvent, Value, Vec2, WindowButton, WindowCommand,
-    WindowEnv,
+    Align, Color, Core, Edges, EditKey, EditOptions, FloatConfig, InputEvent, Key, Keyframe, Mods,
+    NodeSpec, Rect, Size, Sizing, Span, TextStyle, UiEvent, Value, Vec2, WindowButton,
+    WindowCommand, WindowEnv,
 };
 
 // ---------------------------------------------------------------------------
@@ -63,6 +63,28 @@ pub struct KuiSizing {
     /// 0 = fit, 1 = grow(value), 2 = fixed(value px), 3 = percent(value 0..1)
     pub tag: u32,
     pub value: f32,
+}
+
+/// Which of a `KuiKeyframe`'s fields are set (its `set` bits).
+pub const KUI_KF_AT: u32 = 1 << 0;
+pub const KUI_KF_WIDTH: u32 = 1 << 1;
+pub const KUI_KF_HEIGHT: u32 = 1 << 2;
+pub const KUI_KF_BG: u32 = 1 << 3;
+pub const KUI_KF_RADIUS: u32 = 1 << 4;
+
+/// One keyframe stop (`KuiSpec.keyframes`): a zeroed stop sets nothing.
+/// `set` says which fields count, so 0 stays a legal value for each.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiKeyframe {
+    pub set: u32,
+    /// 0..1 (KUI_KF_AT); unset stops spread evenly, a lone one sits at 1.
+    pub at: f32,
+    pub width: KuiSizing,
+    pub height: KuiSizing,
+    /// 0xRRGGBBAA
+    pub bg: u32,
+    pub radius: f32,
 }
 
 #[repr(C)]
@@ -133,6 +155,15 @@ pub struct KuiSpec {
     pub radius_tr: f32,
     pub radius_br: f32,
     pub radius_bl: f32,
+    /// KUI_REPEAT_* direction for `keyframes` (CSS animation-direction).
+    pub repeat: u32,
+    /// Holds the keyframe cycle back by this many ms (CSS animation-delay).
+    pub delay_ms: f32,
+    /// CSS-style stops (`keyframes_len` of them; NULL/0 = none): the slots
+    /// they name cycle over `transition_ms`, forever, without the view
+    /// redrawing. Read while the node opens; not retained.
+    pub keyframes: *const KuiKeyframe,
+    pub keyframes_len: usize,
 }
 
 #[repr(C)]
@@ -228,6 +259,26 @@ fn sizing_of(s: KuiSizing) -> Sizing {
         3 => Sizing::Percent(s.value),
         _ => Sizing::Fit,
     }
+}
+
+fn keyframe_of(k: &KuiKeyframe) -> Keyframe {
+    let mut kf = Keyframe::default();
+    if k.set & KUI_KF_AT != 0 {
+        kf = kf.at(k.at);
+    }
+    if k.set & KUI_KF_WIDTH != 0 {
+        kf = kf.width(sizing_of(k.width));
+    }
+    if k.set & KUI_KF_HEIGHT != 0 {
+        kf = kf.height(sizing_of(k.height));
+    }
+    if k.set & KUI_KF_BG != 0 {
+        kf = kf.bg(color_of(k.bg));
+    }
+    if k.set & KUI_KF_RADIUS != 0 {
+        kf = kf.radius(k.radius);
+    }
+    kf
 }
 
 fn align_of(a: u32) -> Align {
@@ -341,6 +392,16 @@ fn spec_of(
     }
     if !s.hover_group.ptr.is_null() && s.hover_group.len > 0 {
         spec = spec.hover_group(&kstr(s.hover_group));
+    }
+    if s.repeat != 0 {
+        spec = spec.repeat(kui_core::schema::repeat_idx(s.repeat as usize));
+    }
+    if s.delay_ms != 0.0 {
+        spec = spec.delay(s.delay_ms);
+    }
+    if !s.keyframes.is_null() && s.keyframes_len > 0 {
+        let stops = unsafe { std::slice::from_raw_parts(s.keyframes, s.keyframes_len) };
+        spec = spec.keyframes(stops.iter().map(keyframe_of).collect());
     }
     if let Some(v) = take_msg(on_click) {
         spec = spec.on_click(v);
@@ -1435,10 +1496,19 @@ mod schema_parity {
                 Kind::Msg => Parsed::Msg(Value::Int(7)),
                 Kind::Str => Parsed::Str("name".into()),
                 Kind::Resource => Parsed::Resource(7),
+                Kind::Keyframes => Parsed::Keyframes(vec![Keyframe::default().at(0.5).radius(F)]),
             };
             let mut expected = PropsOut::new();
             apply(def, sample, &mut expected).unwrap();
 
+            let stops = [KuiKeyframe {
+                set: KUI_KF_AT | KUI_KF_RADIUS,
+                at: 0.5,
+                width: KuiSizing { tag: 0, value: 0.0 },
+                height: KuiSizing { tag: 0, value: 0.0 },
+                bg: 0,
+                radius: F,
+            }];
             let mut s = zeroed_spec();
             let mut t = zeroed_style();
             let (mut click, mut drag, mut key, mut hover) = (NONE, NONE, NONE, NONE);
@@ -1469,6 +1539,9 @@ mod schema_parity {
                 "transition" => s.transition_ms = F,
                 "easing" => s.easing = 1,
                 "slide" => s.slide = 1,
+                "keyframes" => (s.keyframes, s.keyframes_len) = (stops.as_ptr(), 1),
+                "repeat" => s.repeat = 1,
+                "delay" => s.delay_ms = F,
                 "onClick" => click = msg(Value::Int(7)),
                 "onDrag" => drag = msg(Value::Int(7)),
                 "onKey" => key = msg(Value::Int(7)),
@@ -1507,6 +1580,24 @@ mod schema_parity {
     /// the whole struct at once against the Rust builder.
     #[test]
     fn fully_populated_spec_matches_the_rust_builder() {
+        let stops = [
+            KuiKeyframe {
+                set: KUI_KF_WIDTH | KUI_KF_BG,
+                at: 0.0,
+                width: KuiSizing { tag: 1, value: 0.0 },
+                height: KuiSizing { tag: 0, value: 0.0 },
+                bg: 0x11_22_33_ff,
+                radius: 0.0,
+            },
+            KuiKeyframe {
+                set: KUI_KF_AT | KUI_KF_WIDTH | KUI_KF_HEIGHT | KUI_KF_RADIUS,
+                at: 0.75,
+                width: KuiSizing { tag: 1, value: 1.0 },
+                height: KuiSizing { tag: 3, value: 0.5 },
+                bg: 0,
+                radius: 9.0,
+            },
+        ];
         let s = KuiSpec {
             width: KuiSizing { tag: 1, value: 2.0 },
             height: KuiSizing {
@@ -1554,6 +1645,10 @@ mod schema_parity {
             radius_tr: 2.0,
             radius_br: 3.0,
             radius_bl: 4.0,
+            repeat: 2,
+            delay_ms: 50.0,
+            keyframes: stops.as_ptr(),
+            keyframes_len: stops.len(),
         };
         let expected = NodeSpec::row()
             .width(Sizing::Grow(2.0))
@@ -1592,6 +1687,18 @@ mod schema_parity {
             .hover_bg(Color::hex(0x47_6c_e0_ff))
             .pressed_bg(Color::hex(0x2f_54_c4_ff))
             .hover_group("grp")
+            .repeat(kui_core::Repeat::Alternate)
+            .delay(50.0)
+            .keyframes(vec![
+                Keyframe::default()
+                    .width(Sizing::Grow(0.0))
+                    .bg(Color::hex(0x11_22_33_ff)),
+                Keyframe::default()
+                    .at(0.75)
+                    .width(Sizing::Grow(1.0))
+                    .height(Sizing::Percent(0.5))
+                    .radius(9.0),
+            ])
             .on_click(Value::str("c"))
             .on_drag(Value::str("d"))
             .on_key(Value::str("k"))

@@ -63,6 +63,15 @@ package as [props.md](props.md) (`docs/props.md` in the repository).
   For hover-dependent *layout* use `onHover={tag}` and react to
   `{kind: 'hover', phase: 'enter' | 'leave'}` events; `win.isHovered(key)`
   and `isPressed` answer for keys you got from events.
+- **Motion that never settles** is data too: `keyframes` takes CSS-style
+  stops for `width` / `height` / `bg` / `radius`, cycled over
+  `transition` ms in CSS's `animation-direction` (`repeat="alternate"`)
+  and held back by `delay` ms so siblings stagger —
+  `<box transition={1100} easing="easeInOut" repeat="alternate" delay={i * 550}
+  width={{ grow: 0 }} keyframes={[{ width: { grow: 1 } }]} />` slides
+  forever without the app ever waking up to flip it. Stops spread evenly
+  unless they name `at` (0..1); a slot a stop leaves out falls back to the
+  node's own prop, so `[{ at: 0.5, bg: '#f5a97f' }]` is a pulse.
 - **Tooltips**: `tooltip="hint"` on any box (implies hover tracking).
 - **Per-corner radius**: `radius` for all four, `radiusTL` / `radiusTR` /
   `radiusBR` / `radiusBL` after it for the exceptions.

@@ -4,7 +4,7 @@
 //! here (not in a borrowing wrapper) is what lets flat C bindings drive a
 //! frame through one opaque pointer; the Rust `Ui` is a thin safe façade.
 
-use crate::anim::{AnimStore, Slot};
+use crate::anim::{AnimStore, Slot, Track};
 use crate::atlas::GlyphAtlas;
 use crate::color::Color;
 use crate::display::{DisplayList, NO_CLIP, Quad, QuadKind};
@@ -15,6 +15,7 @@ use crate::input::{
     EditKey, HitRegion, InputEvent, Interaction, ScrollAxis, ScrollRegion, ScrollbarRegion, UiEvent,
 };
 use crate::key::Key;
+use crate::keyframes::{self, Keyframe};
 use crate::layout::{self, TextMeasure};
 use crate::resources::Resources;
 use crate::scroll::ScrollStore;
@@ -86,6 +87,48 @@ pub struct Core {
     /// Whether any frame has begun yet: the first one establishes the
     /// viewport instead of resizing it.
     framed: bool,
+}
+
+/// A node's keyframes flattened per slot for `ease_spec`, built once per
+/// node per frame (only for nodes that declare keyframes).
+struct Tracks {
+    width: Option<Vec<(f32, [f32; 4])>>,
+    height: Option<Vec<(f32, [f32; 4])>>,
+    bg: Option<Vec<(f32, [f32; 4])>>,
+    radius: Option<Vec<(f32, [f32; 4])>>,
+}
+
+impl Tracks {
+    fn of(spec: &NodeSpec) -> Self {
+        let frames = &spec.keyframes;
+        let offsets = keyframes::offsets(frames);
+        let one = |v: f32| [v, 0.0, 0.0, 0.0];
+        let sizing = |base: Sizing, pick: fn(&Keyframe) -> Option<Sizing>| {
+            let base = base.amount()?;
+            keyframes::track(frames, &offsets, one(base), |k| pick(k)?.amount().map(one))
+        };
+        let bg = spec.style.bg;
+        Tracks {
+            width: sizing(spec.layout.width, |k| k.width),
+            height: sizing(spec.layout.height, |k| k.height),
+            bg: keyframes::track(frames, &offsets, [bg.r, bg.g, bg.b, bg.a], |k| {
+                k.bg.map(|c| [c.r, c.g, c.b, c.a])
+            }),
+            radius: keyframes::track(frames, &offsets, spec.style.radius, |k| {
+                k.radius.map(|r| [r; 4])
+            }),
+        }
+    }
+
+    fn get(&self, slot: Slot) -> Option<&Track> {
+        match slot {
+            Slot::Width => self.width.as_deref(),
+            Slot::Height => self.height.as_deref(),
+            Slot::Bg => self.bg.as_deref(),
+            Slot::Radius => self.radius.as_deref(),
+            Slot::Border | Slot::Pos => None,
+        }
+    }
 }
 
 impl Core {
@@ -739,22 +782,33 @@ impl Core {
     }
 
     /// Replaces a transitioning node's animatable values with this frame's
-    /// eased ones. Nodes without a transition cost one branch.
+    /// eased ones. Nodes without a transition cost one branch. A slot the
+    /// node's keyframes name is sampled from its cycle instead of tweened.
     fn ease_spec(&mut self, key: Key, spec: &mut NodeSpec) {
         let Some(t) = spec.transition else {
             return;
         };
         let anim = &mut self.anim;
-        let mut sizing = |slot: Slot, s: Sizing| match s {
-            Sizing::Fit => Sizing::Fit,
-            Sizing::Grow(v) => Sizing::Grow(anim.drive(key, slot, [v, 0.0, 0.0, 0.0], t)[0]),
-            Sizing::Fixed(v) => Sizing::Fixed(anim.drive(key, slot, [v, 0.0, 0.0, 0.0], t)[0]),
-            Sizing::Percent(v) => Sizing::Percent(anim.drive(key, slot, [v, 0.0, 0.0, 0.0], t)[0]),
+        let tracks = (!spec.keyframes.is_empty()).then(|| Tracks::of(spec));
+        let track = |slot: Slot| tracks.as_ref().and_then(|k| k.get(slot));
+        let mut sizing = |slot: Slot, s: Sizing| {
+            let Some(v) = s.amount() else {
+                return s;
+            };
+            let eased = match track(slot) {
+                Some(track) => anim.sample(track, t).map_or(v, |v| v[0]),
+                None => anim.drive(key, slot, [v, 0.0, 0.0, 0.0], t)[0],
+            };
+            s.with_amount(eased)
         };
         spec.layout.width = sizing(Slot::Width, spec.layout.width);
         spec.layout.height = sizing(Slot::Height, spec.layout.height);
         let mut color = |slot: Slot, c: Color| {
-            let v = anim.drive(key, slot, [c.r, c.g, c.b, c.a], t);
+            let target = [c.r, c.g, c.b, c.a];
+            let v = match track(slot) {
+                Some(track) => anim.sample(track, t).unwrap_or(target),
+                None => anim.drive(key, slot, target, t),
+            };
             Color {
                 r: v[0],
                 g: v[1],
@@ -764,7 +818,10 @@ impl Core {
         };
         spec.style.bg = color(Slot::Bg, spec.style.bg);
         spec.style.border_color = color(Slot::Border, spec.style.border_color);
-        spec.style.radius = anim.drive(key, Slot::Radius, spec.style.radius, t);
+        spec.style.radius = match track(Slot::Radius) {
+            Some(track) => anim.sample(track, t).unwrap_or(spec.style.radius),
+            None => anim.drive(key, Slot::Radius, spec.style.radius, t),
+        };
     }
 
     /// The root node's key — for hover/press queries or `set_key_focus` when

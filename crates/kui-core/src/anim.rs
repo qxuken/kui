@@ -12,6 +12,13 @@
 //! keeps its momentum instead of restarting, which is what dragged and
 //! reordered things want. For springs `duration_ms` is the response time.
 //!
+//! A node can also declare [`crate::NodeSpec::keyframes`]: CSS-style
+//! stops for any of the same slots, cycled over `duration_ms` in one of
+//! CSS's four directions ([`Repeat`]). A keyframed slot is sampled straight
+//! off the clock instead of retained as a tween, so nothing drifts, siblings
+//! offset by `delay_ms` stay in phase with each other, and a view that
+//! declares a pulse never has to wake up to flip a target.
+//!
 //! The core stays clock-free: the frame driver injects the time with
 //! [`crate::Core::set_time`]. A driver that never does (headless tests, a C
 //! host without a clock) sees every transition snap to its target.
@@ -66,6 +73,42 @@ impl Easing {
     }
 }
 
+/// How keyframes cycle: CSS's `animation-direction`, always infinite.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Repeat {
+    /// Forward, then jump back and replay.
+    #[default]
+    Normal,
+    /// Backward, then jump forward and replay.
+    Reverse,
+    /// Forward, then backward, forever (the easing reverses with it).
+    Alternate,
+    /// Backward first, then forward.
+    AlternateReverse,
+}
+
+impl Repeat {
+    /// Where in the keyframe cycle (0..=1) a clock reading lands, with `u`
+    /// in periods.
+    fn progress(self, u: f64) -> f32 {
+        // `rem_euclid` so a delay past the clock's origin still lands in
+        // the cycle rather than running it backwards.
+        let p = match self {
+            Repeat::Normal => u.rem_euclid(1.0),
+            Repeat::Reverse => 1.0 - u.rem_euclid(1.0),
+            Repeat::Alternate => {
+                let c = u.rem_euclid(2.0);
+                if c < 1.0 { c } else { 2.0 - c }
+            }
+            Repeat::AlternateReverse => {
+                let c = u.rem_euclid(2.0);
+                if c < 1.0 { 1.0 - c } else { c - 1.0 }
+            }
+        };
+        p as f32
+    }
+}
+
 /// Spring integration step (seconds); a frame is split into steps this
 /// long so a stiff spring stays stable at any frame rate.
 const SPRING_STEP: f64 = 0.004;
@@ -78,6 +121,11 @@ const MAX_FRAME_DT: f64 = 0.1;
 pub struct Transition {
     pub duration_ms: f32,
     pub easing: Easing,
+    /// How the node's keyframes cycle (nothing without keyframes).
+    pub repeat: Repeat,
+    /// Holds the keyframe cycle back by this many ms, so siblings given
+    /// different delays run out of phase (CSS's `animation-delay`).
+    pub delay_ms: f32,
 }
 
 impl Transition {
@@ -85,6 +133,8 @@ impl Transition {
         Self {
             duration_ms,
             easing: Easing::EaseOut,
+            repeat: Repeat::Normal,
+            delay_ms: 0.0,
         }
     }
 
@@ -92,7 +142,21 @@ impl Transition {
         self.easing = easing;
         self
     }
+
+    pub fn repeat(mut self, repeat: Repeat) -> Self {
+        self.repeat = repeat;
+        self
+    }
+
+    pub fn delay(mut self, delay_ms: f32) -> Self {
+        self.delay_ms = delay_ms;
+        self
+    }
 }
+
+/// A keyframed slot: `(offset, value)` stops with offsets ascending from 0
+/// to 1 (see [`crate::keyframes`], which builds them).
+pub(crate) type Track = [(f32, [f32; 4])];
 
 /// Which spec value a tween drives. One node can animate several at once.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -193,6 +257,44 @@ impl AnimStore {
             self.tweens
                 .retain(|_, slots| slots.iter().flatten().any(|t| t.last_used >= cutoff));
         }
+    }
+
+    /// Samples a keyframed slot: where the clock lands in the cycle picks
+    /// a segment of `track`, and the transition's easing shapes that
+    /// segment (CSS applies the timing function per keyframe interval, so
+    /// an alternate cycle traverses the same curve backwards on its way
+    /// home). Sampled, not retained: this needs no key and cannot drift,
+    /// so two nodes with the same duration stay locked together. Spring
+    /// easings sample as ease-out — there is no leg to carry momentum
+    /// across.
+    ///
+    /// None without a clock or a duration: the caller keeps the declared
+    /// value, the same snap a plain transition gets.
+    pub(crate) fn sample(&mut self, track: &Track, transition: Transition) -> Option<[f32; 4]> {
+        let dur = transition.duration_ms as f64 / 1000.0;
+        let (Some(now), true, Some(&(_, first))) = (self.now, dur > 0.0, track.first()) else {
+            return None;
+        };
+        // A cycle never finishes, so the driver owes another frame while
+        // a keyframed node is on screen.
+        self.active = true;
+        let u = (now - transition.delay_ms as f64 / 1000.0) / dur;
+        let p = transition.repeat.progress(u);
+        let mut from = (0.0, first);
+        for &(at, value) in track {
+            if p < at {
+                let (a, va) = from;
+                let t = if at > a { (p - a) / (at - a) } else { 1.0 };
+                let e = transition.easing.apply(t);
+                let mut out = [0.0; 4];
+                for i in 0..4 {
+                    out[i] = va[i] + (value[i] - va[i]) * e;
+                }
+                return Some(out);
+            }
+            from = (at, value);
+        }
+        Some(from.1)
     }
 
     /// Eases `key`'s `slot` toward `target`, returning the value to use this
@@ -423,6 +525,75 @@ mod tests {
         a.set_time(0.02);
         a.begin_frame();
         assert_eq!(a.drive(k, Slot::Width, one(100.0), t)[0], 100.0);
+        assert!(!a.animating());
+    }
+
+    /// Two stops, linear: the value reads as a straight function of the
+    /// clock in each of CSS's four directions.
+    #[test]
+    fn keyframes_cycle_in_every_direction() {
+        let track = [(0.0, one(0.0)), (1.0, one(100.0))];
+        let at = |a: &mut AnimStore, repeat: Repeat, now: f64| {
+            let t = Transition::ms(1000.0).easing(Easing::Linear).repeat(repeat);
+            a.set_time(now);
+            a.begin_frame();
+            let v = a.sample(&track, t).unwrap()[0];
+            assert!(a.animating(), "a keyframed slot always owes a frame");
+            v
+        };
+        let mut a = AnimStore::default();
+        for (repeat, expect) in [
+            (Repeat::Normal, [0.0, 25.0, 50.0, 75.0, 0.0, 25.0]),
+            (Repeat::Reverse, [100.0, 75.0, 50.0, 25.0, 100.0, 75.0]),
+            (Repeat::Alternate, [0.0, 25.0, 50.0, 75.0, 100.0, 75.0]),
+            (
+                Repeat::AlternateReverse,
+                [100.0, 75.0, 50.0, 25.0, 0.0, 25.0],
+            ),
+        ] {
+            for (i, e) in expect.iter().enumerate() {
+                let v = at(&mut a, repeat, i as f64 * 0.25);
+                assert!((v - e).abs() < 1e-3, "{repeat:?} at {i}/4: {v} != {e}");
+            }
+        }
+    }
+
+    #[test]
+    fn delay_shifts_the_cycle_and_easing_shapes_each_segment() {
+        let mut a = AnimStore::default();
+        let track = [(0.0, one(0.0)), (0.5, one(10.0)), (1.0, one(0.0))];
+        let t = Transition::ms(1000.0).easing(Easing::Linear);
+        a.set_time(0.25);
+        a.begin_frame();
+        assert!((a.sample(&track, t).unwrap()[0] - 5.0).abs() < 1e-3);
+        // Held back 250ms: reads what an undelayed node read at 0.
+        a.set_time(0.25);
+        a.begin_frame();
+        assert!((a.sample(&track, t.delay(250.0)).unwrap()[0]).abs() < 1e-3);
+        // Ease-in per segment: a quarter of the way through the first leg
+        // sits well below linear's 5.
+        a.set_time(0.125);
+        a.begin_frame();
+        let v = a.sample(&track, t.easing(Easing::EaseIn)).unwrap()[0];
+        assert!(v > 0.0 && v < 2.0, "{v}");
+        // Stops that don't start at 0 hold the first value until they do.
+        let late = [(0.5, one(3.0)), (1.0, one(9.0))];
+        a.set_time(0.1);
+        a.begin_frame();
+        assert_eq!(a.sample(&late, t).unwrap()[0], 3.0);
+    }
+
+    #[test]
+    fn keyframes_need_a_clock_and_a_duration() {
+        let mut a = AnimStore::default();
+        let track = [(0.0, one(0.0)), (1.0, one(1.0))];
+        a.begin_frame();
+        assert!(a.sample(&track, Transition::ms(100.0)).is_none());
+        assert!(!a.animating());
+        a.set_time(1.0);
+        a.begin_frame();
+        assert!(a.sample(&track, Transition::ms(0.0)).is_none());
+        assert!(a.sample(&[], Transition::ms(100.0)).is_none());
         assert!(!a.animating());
     }
 

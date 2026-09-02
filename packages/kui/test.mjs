@@ -42,6 +42,7 @@ const SAMPLE = {
   msg: { kind: 'm', n: 1, list: [1, 'two', null] },
   str: 'group-a',
   resource: '0000000000000007',
+  keyframes: [{ width: { grow: 0 }, bg: '#112233' }, { at: 0.75, width: 'grow', height: '50%', radius: 9 }],
 };
 
 test('protocol exports a version and the schema rows', () => {

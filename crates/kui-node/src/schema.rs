@@ -113,6 +113,9 @@ fn parse_json(kind: &Kind, v: &Json) -> Result<Option<Parsed>> {
             v.as_str()
                 .ok_or_else(|| err("expected a resource id string"))?,
         )?),
+        Kind::Keyframes => {
+            Parsed::Keyframes(kui_core::keyframes::parse(&value_of(v)).map_err(err)?)
+        }
     }))
 }
 
@@ -215,6 +218,7 @@ pub fn protocol_props() -> Json {
             Kind::Msg => ("msg", None),
             Kind::Str => ("str", None),
             Kind::Resource => ("resource", None),
+            Kind::Keyframes => ("keyframes", None),
         };
         p.insert("kind".into(), Json::String(kind.into()));
         if let Some(names) = values {

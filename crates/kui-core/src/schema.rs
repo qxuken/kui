@@ -21,8 +21,9 @@
 
 use std::sync::LazyLock;
 
-use crate::anim::Easing;
+use crate::anim::{Easing, Repeat};
 use crate::color::Color;
+use crate::keyframes::Keyframe;
 use crate::spec::{Align, FontFamily, NodeSpec, Sizing, TextStyle};
 use crate::value::Value;
 use crate::window::WindowButton;
@@ -70,6 +71,9 @@ pub const P_RADIUS_TR: u32 = 39;
 pub const P_RADIUS_BR: u32 = 40;
 pub const P_RADIUS_BL: u32 = 41;
 pub const P_FONT: u32 = 42;
+pub const P_KEYFRAMES: u32 = 43;
+pub const P_REPEAT: u32 = 44;
+pub const P_DELAY: u32 = 45;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -82,6 +86,18 @@ pub const EASINGS: &[&str] = &[
     "spring",
     "bouncy",
 ];
+
+/// CSS's `animation-direction` values, in `Repeat`'s order.
+pub const REPEATS: &[&str] = &["normal", "reverse", "alternate", "alternateReverse"];
+
+pub fn repeat_idx(i: usize) -> Repeat {
+    match i {
+        1 => Repeat::Reverse,
+        2 => Repeat::Alternate,
+        3 => Repeat::AlternateReverse,
+        _ => Repeat::Normal,
+    }
+}
 
 pub fn easing_idx(i: usize) -> Easing {
     match i {
@@ -115,6 +131,10 @@ pub enum Kind {
     /// slotmap key. JSON/binary carry it as the 16-hex string the addon
     /// hands out; Lua as an integer; C as a `uint64_t`.
     Resource,
+    /// A keyframe stop list (`crate::keyframes::parse` reads the plain-data
+    /// form). JSON/binary/Lua carry it like a `Msg` and parse it in the
+    /// core; C passes a `KuiKeyframe` array.
+    Keyframes,
 }
 
 /// Where a parsed value lands. `PropDef::target` derives from this.
@@ -126,6 +146,7 @@ pub enum Apply {
     SpecSizing(fn(NodeSpec, Sizing) -> NodeSpec),
     SpecMsg(fn(NodeSpec, Value) -> NodeSpec),
     SpecStr(fn(NodeSpec, &str) -> NodeSpec),
+    SpecKeyframes(fn(NodeSpec, Vec<Keyframe>) -> NodeSpec),
     StyleF32(fn(TextStyle, f32) -> TextStyle),
     StyleColor(fn(TextStyle, Color) -> TextStyle),
     StyleEnum(fn(TextStyle, usize) -> TextStyle),
@@ -397,6 +418,27 @@ pub const PROPS: &[PropDef] = &[
         doc: "With transition: also ease the node's position (reordered siblings slide).",
     },
     PropDef {
+        name: "keyframes",
+        id: P_KEYFRAMES,
+        kind: Kind::Keyframes,
+        apply: Apply::SpecKeyframes(|s, k| s.keyframes(k)),
+        doc: "CSS-style stops `[{ at?, width?, height?, bg?, radius? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted.",
+    },
+    PropDef {
+        name: "repeat",
+        id: P_REPEAT,
+        kind: Kind::Enum(REPEATS),
+        apply: Apply::SpecEnum(|s, i| s.repeat(repeat_idx(i))),
+        doc: "How `keyframes` cycle (CSS `animation-direction`, default normal). Lua: `direction`, since `repeat` is a keyword.",
+    },
+    PropDef {
+        name: "delay",
+        id: P_DELAY,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.delay(v)),
+        doc: "Holds the `keyframes` cycle back by this many ms (CSS `animation-delay`); siblings with different delays run out of phase.",
+    },
+    PropDef {
         name: "lineHeight",
         id: P_LINE_HEIGHT,
         kind: Kind::F32,
@@ -537,6 +579,12 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     ("window", "`window_role` (`KUI_WINDOW_*`)"),
     ("transition", "`transition_ms`"),
     ("easing", "`easing` (`KUI_EASE_*`)"),
+    (
+        "keyframes",
+        "`keyframes` + `keyframes_len` (`KuiKeyframe[]`)",
+    ),
+    ("repeat", "`repeat` (`KUI_REPEAT_*`)"),
+    ("delay", "`delay_ms`"),
     ("radiusTL", "`radius_tl` with `per_corner`"),
     ("radiusTR", "`radius_tr` with `per_corner`"),
     ("radiusBR", "`radius_br` with `per_corner`"),
@@ -783,6 +831,7 @@ pub enum Parsed {
     Msg(Value),
     Str(String),
     Resource(u64),
+    Keyframes(Vec<Keyframe>),
 }
 
 /// Everything a prop list can carry; elements pick the parts they use.
@@ -836,6 +885,7 @@ pub fn apply(def: &PropDef, value: Parsed, out: &mut PropsOut) -> Result<(), Str
         (Apply::SpecSizing(f), Parsed::Sizing(v)) => out.spec = f(spec, v),
         (Apply::SpecMsg(f), Parsed::Msg(v)) => out.spec = f(spec, v),
         (Apply::SpecStr(f), Parsed::Str(v)) => out.spec = f(spec, &v),
+        (Apply::SpecKeyframes(f), Parsed::Keyframes(v)) => out.spec = f(spec, v),
         (Apply::StyleF32(f), Parsed::F32(v)) => {
             out.spec = spec;
             out.style = f(style, v);
@@ -955,6 +1005,7 @@ mod tests {
                 Kind::Msg => Parsed::Msg(Value::Int(1)),
                 Kind::Str => Parsed::Str("name".into()),
                 Kind::Resource => Parsed::Resource(7),
+                Kind::Keyframes => Parsed::Keyframes(vec![Keyframe::default().radius(7.0)]),
             };
             let mut out = PropsOut::new();
             apply(def, sample, &mut out).unwrap();

@@ -15,12 +15,14 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `bg` | `bg` | `bg` | color (`#hex` or `0xRRGGBBAA`) | Background fill. |
 | `center` | `center` | `main_align` + `cross_align` = `KUI_CENTER` | boolean | Center children on both axes. |
 | `crossAlign` | `cross_align` | `cross_align` | `start` \\| `center` \\| `end` | Child alignment across the main axis. |
+| `delay` | `delay` | `delay_ms` | number | Holds the `keyframes` cycle back by this many ms (CSS `animation-delay`); siblings with different delays run out of phase. |
 | `easing` | `easing` | `easing` (`KUI_EASE_*`) | `easeOut` \\| `linear` \\| `easeIn` \\| `easeInOut` \\| `spring` \\| `bouncy` | Easing for `transition` (default easeOut); spring/bouncy integrate with momentum. |
 | `gap` | `gap` | `gap` | number | Space between children along the main axis. |
 | `height` | `height` | `height` (KuiSizing) | sizing (`number` \\| `"fit"` \\| `"grow"` \\| `"N%"`) | Cross-axis size: px \| "fit" \| "grow" \| "N%". |
 | `hoverBg` | `hover_bg` | `hover_bg` | color (`#hex` or `0xRRGGBBAA`) | Background while hovered (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`. |
 | `hoverGroup` | `hover_group` | `hover_group` (KuiStr) | string | Nodes sharing a group name show hoverBg/pressedBg together (a split button, a multi-piece shape). |
 | `hoverable` | `hoverable` | `hoverable` | boolean | Hover-track without a click payload (for isHovered-driven styling). |
+| `keyframes` | `keyframes` | `keyframes` + `keyframes_len` (`KuiKeyframe[]`) | keyframe list (`[{ at?, width?, height?, bg?, radius? }, …]`) | CSS-style stops `[{ at?, width?, height?, bg?, radius? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. |
 | `mainAlign` | `main_align` | `main_align` | `start` \\| `center` \\| `end` | Child alignment along the main axis. |
 | `maxHeight` | `max_height` | `max_height` | number | Upper height clamp (logical px). |
 | `maxWidth` | `max_width` | `max_width` | number | Upper width clamp; grow+maxWidth is the responsive-width pattern. |
@@ -36,6 +38,7 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `radiusBR` | `radius_br` | `radius_br` with `per_corner` | number | Bottom-right corner radius (logical px). |
 | `radiusTL` | `radius_tl` | `radius_tl` with `per_corner` | number | Top-left corner radius (logical px). |
 | `radiusTR` | `radius_tr` | `radius_tr` with `per_corner` | number | Top-right corner radius (logical px). |
+| `repeat` | `repeat` | `repeat` (`KUI_REPEAT_*`) | `normal` \\| `reverse` \\| `alternate` \\| `alternateReverse` | How `keyframes` cycle (CSS `animation-direction`, default normal). Lua: `direction`, since `repeat` is a keyword. |
 | `slide` | `slide` | `slide` | boolean | With transition: also ease the node's position (reordered siblings slide). |
 | `transition` | `transition` | `transition_ms` | number | Animate sizing/colors/radius changes over this many ms (needs a stable key). |
 | `width` | `width` | `width` (KuiSizing) | sizing (`number` \\| `"fit"` \\| `"grow"` \\| `"N%"`) | Main-axis size: px \| "fit" \| "grow" \| "N%". |

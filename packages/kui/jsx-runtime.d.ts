@@ -56,6 +56,18 @@ export type ColorProp = number | string;
 
 export type AlignProp = 'start' | 'center' | 'end';
 
+/** One CSS-style keyframe stop for `keyframes`. `at` is 0..1 and spreads
+ *  evenly when omitted (a lone stop sits at 1 and animates from the node's
+ *  own value); a slot a stop leaves out is left to its neighbours. Sizings
+ *  animate their amount only, in the form the prop itself declares. */
+export interface KeyframeProp {
+  at?: number;
+  width?: SizingProp;
+  height?: SizingProp;
+  bg?: ColorProp;
+  radius?: number;
+}
+
 export interface FloatProp {
   anchor?: 'parent' | 'viewport';
   /** Attach point on the anchor, [x, y]. */
@@ -81,6 +93,8 @@ export interface GeneratedSpecProps {
   center?: boolean;
   /** Child alignment across the main axis. */
   crossAlign?: 'start' | 'center' | 'end';
+  /** Holds the `keyframes` cycle back by this many ms (CSS `animation-delay`); siblings with different delays run out of phase. */
+  delay?: number;
   /** Easing for `transition` (default easeOut); spring/bouncy integrate with momentum. */
   easing?: 'easeOut' | 'linear' | 'easeIn' | 'easeInOut' | 'spring' | 'bouncy';
   /** Space between children along the main axis. */
@@ -93,6 +107,8 @@ export interface GeneratedSpecProps {
   hoverGroup?: string;
   /** Hover-track without a click payload (for isHovered-driven styling). */
   hoverable?: boolean;
+  /** CSS-style stops `[{ at?, width?, height?, bg?, radius? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. */
+  keyframes?: KeyframeProp[];
   /** Child alignment along the main axis. */
   mainAlign?: 'start' | 'center' | 'end';
   /** Upper height clamp (logical px). */
@@ -123,6 +139,8 @@ export interface GeneratedSpecProps {
   radiusTL?: number;
   /** Top-right corner radius (logical px). */
   radiusTR?: number;
+  /** How `keyframes` cycle (CSS `animation-direction`, default normal). Lua: `direction`, since `repeat` is a keyword. */
+  repeat?: 'normal' | 'reverse' | 'alternate' | 'alternateReverse';
   /** With transition: also ease the node's position (reordered siblings slide). */
   slide?: boolean;
   /** Animate sizing/colors/radius changes over this many ms (needs a stable key). */

@@ -20,7 +20,8 @@
 //! - `P_DIR` and `P_SIZE`, when present, are the first entry of a prop list
 //!   (specs and styles are constructed from them, then mutated).
 //! - String refs are `(offset, len)` pairs into the table; offset -1 = none.
-//! - Message payloads (`onClick` etc.) are JSON strings in the table.
+//! - Message payloads (`onClick` etc.) and keyframe lists are JSON strings
+//!   in the table.
 
 use kui_core::{
     Color, Core, Edges, EditOptions, FloatConfig, ImageId, NodeSpec, Span, TextStyle, widgets,
@@ -232,6 +233,10 @@ fn read_props(r: &mut Reader<'_>) -> Result<PropsOut> {
                     Kind::Msg => Parsed::Msg(payload(r.req_str()?)?),
                     Kind::Str => Parsed::Str(r.req_str()?.to_string()),
                     Kind::Resource => Parsed::Resource(crate::parse_u64(r.req_str()?)?),
+                    // Carried as JSON like a message; the core reads the stops.
+                    Kind::Keyframes => Parsed::Keyframes(
+                        kui_core::keyframes::parse(&payload(r.req_str()?)?).map_err(err)?,
+                    ),
                 };
                 schema::apply(def, parsed, &mut out)?;
             }
@@ -432,7 +437,7 @@ mod tests {
     fn every_schema_row_round_trips_through_the_stream() {
         for def in PROPS {
             let mut stream = vec![1.0, def.id as f64];
-            let strings = b"7";
+            let mut strings: &[u8] = b"7";
             let sample = match def.kind {
                 Kind::F32 => {
                     stream.push(37.0);
@@ -462,6 +467,11 @@ mod tests {
                 Kind::Resource => {
                     stream.extend([0.0, 1.0]);
                     Parsed::Resource(7)
+                }
+                Kind::Keyframes => {
+                    strings = br#"[{"at":0.5,"radius":7}]"#;
+                    stream.extend([0.0, strings.len() as f64]);
+                    Parsed::Keyframes(vec![kui_core::Keyframe::default().at(0.5).radius(7.0)])
                 }
             };
             let mut expected = PropsOut::new();

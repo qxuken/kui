@@ -173,6 +173,15 @@ payload shapes and the resource APIs. It is generated from the schema
   springs: `spring` / `bouncy` integrate a damped spring per frame with a
   velocity that survives retargets (`duration_ms` is the response time),
   so a value chased mid-flight keeps its momentum instead of restarting.
+  For motion that never settles — a pulse, a cascade, a chase light — a
+  node declares `keyframes`: CSS `@keyframes` stops for the same slots
+  (`keyframes={[{ width: { grow: 0 } }, { width: { grow: 1 } }]}` in JSX,
+  a `KuiKeyframe` array in C), cycled over the transition's duration in
+  CSS's `animation-direction` (`repeat="alternate"`) and held back by
+  `delay` ms so siblings stagger. A keyframed slot is sampled straight off
+  the clock rather than retained as a tween, so nothing drifts, siblings
+  stay in phase with each other, and the view never wakes up to flip a
+  target; slots the stops don't name still tween as usual.
 - **Subpixel text where the GPU can blend it.** Glyphs are already placed at
   quarter-pixel x offsets (cosmic-text's subpixel bins); on top of that the
   core can rasterize outline glyphs as LCD subpixel coverage — three

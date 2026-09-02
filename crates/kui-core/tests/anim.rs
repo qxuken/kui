@@ -2,7 +2,7 @@
 //! children's widths across frames when the driver supplies a clock, and
 //! snaps without one.
 
-use kui_core::{Core, Easing, NodeSpec, Size, Sizing, Transition};
+use kui_core::{Color, Core, Easing, Keyframe, NodeSpec, Repeat, Size, Sizing, Transition};
 
 fn left_width(core: &mut Core) -> f32 {
     let (dl, _) = core.output();
@@ -192,4 +192,92 @@ fn request_frame_owes_exactly_one_frame() {
     assert!(core.animating(), "the view asked for another frame");
     frame(&mut core, false);
     assert!(!core.animating(), "and only one");
+}
+
+/// A row whose left half is keyframed between grow 0 and grow 1 against a
+/// grow-1 sibling; returns its laid-out width.
+fn frame_keyframed(core: &mut Core, now: Option<f64>, repeat: Repeat) -> f32 {
+    if let Some(now) = now {
+        core.set_time(now);
+    }
+    let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+    ui.configure_root(NodeSpec::row().fill());
+    let left = NodeSpec::column()
+        .width(Sizing::Grow(0.0))
+        .height(Sizing::Grow(1.0))
+        .bg(Color::WHITE)
+        .transition_with(Transition::ms(1000.0).easing(Easing::Linear).repeat(repeat))
+        .keyframes(vec![
+            Keyframe::default().width(Sizing::Grow(0.0)),
+            Keyframe::default().width(Sizing::Grow(1.0)),
+        ]);
+    let right = NodeSpec::column()
+        .width(Sizing::Grow(1.0))
+        .height(Sizing::Grow(1.0));
+    ui.with_keyed("left", left, |_| {});
+    ui.with_keyed("right", right, |_| {});
+    ui.finish();
+    left_width(core)
+}
+
+#[test]
+fn keyframes_cycle_from_the_first_frame_without_retargets() {
+    // The view never changes: the same spec every frame, and the width
+    // still moves — a keyframed slot reads the clock, not a retarget.
+    let mut core = Core::new();
+    let w = |core: &mut Core, now: f64| frame_keyframed(core, Some(now), Repeat::Alternate);
+    assert_eq!(w(&mut core, 0.0), 0.0);
+    assert!(core.animating(), "a keyframed node always owes a frame");
+    let half = w(&mut core, 0.5);
+    assert!((half - 400.0 / 3.0).abs() < 1.0, "grow 0.5 of 1.5: {half}");
+    assert_eq!(w(&mut core, 1.0), 200.0);
+    // Alternate: on the way back.
+    let back = w(&mut core, 1.5);
+    assert!((back - 400.0 / 3.0).abs() < 1.0, "{back}");
+    assert!(core.animating());
+    // Normal wraps instead.
+    let wrapped = frame_keyframed(&mut core, Some(1.5), Repeat::Normal);
+    assert!((wrapped - 400.0 / 3.0).abs() < 1.0, "{wrapped}");
+    assert_eq!(frame_keyframed(&mut core, Some(2.0), Repeat::Normal), 0.0);
+}
+
+#[test]
+fn keyframes_without_a_clock_hold_the_declared_value() {
+    let mut core = Core::new();
+    assert_eq!(frame_keyframed(&mut core, None, Repeat::Alternate), 0.0);
+    assert_eq!(frame_keyframed(&mut core, None, Repeat::Alternate), 0.0);
+    assert!(!core.animating());
+}
+
+#[test]
+fn a_slot_the_keyframes_skip_still_tweens() {
+    // Keyframes on the width only: a bg change on the same node eases the
+    // usual way, from the value it had.
+    let mut core = Core::new();
+    let frame = |core: &mut Core, now: f64, bg: Color| {
+        core.set_time(now);
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.configure_root(NodeSpec::row().fill());
+        let spec = NodeSpec::column()
+            .width(Sizing::Fixed(100.0))
+            .height(Sizing::Grow(1.0))
+            .bg(bg)
+            .transition_with(Transition::ms(1000.0).easing(Easing::Linear))
+            .keyframes(vec![Keyframe::default().width(Sizing::Fixed(200.0))]);
+        ui.with_keyed("k", spec, |_| {});
+        ui.finish();
+        let (dl, _) = core.output();
+        let q = dl.quads.first().expect("a quad");
+        (q.rect.w, q.color.r)
+    };
+    let (w, r) = frame(&mut core, 0.0, Color::BLACK);
+    assert_eq!((w, r), (100.0, 0.0), "at 0: base width, first sight of bg");
+    let (w, r) = frame(&mut core, 0.5, Color::WHITE);
+    assert!((w - 150.0).abs() < 1e-3, "keyframed: {w}");
+    assert_eq!(r, 0.0, "bg retargets from where it was");
+    let (_, r) = frame(&mut core, 1.0, Color::WHITE);
+    assert!(
+        (r - 0.5).abs() < 1e-3,
+        "bg halfway through its own 1s leg: {r}"
+    );
 }

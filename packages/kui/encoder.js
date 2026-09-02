@@ -226,6 +226,7 @@ export function createEncoder(P) {
               sizing(v);
               break;
             case 'msg':
+            case 'keyframes':
               strRef(JSON.stringify(v));
               break;
             case 'str':

@@ -1,8 +1,9 @@
 //! Node configuration: plain data, trivially constructible from any language.
 
-use crate::anim::{Easing, Transition};
+use crate::anim::{Easing, Repeat, Transition};
 use crate::color::Color;
 use crate::geom::Edges;
+use crate::keyframes::Keyframe;
 use crate::value::Value;
 use crate::window::{WindowButton, WindowRole};
 
@@ -17,6 +18,27 @@ pub enum Sizing {
     Fixed(f32),
     /// Fraction of the parent's content box (0.0..=1.0).
     Percent(f32),
+}
+
+impl Sizing {
+    /// The animatable number inside: a grow factor, a px size, a fraction.
+    /// None for `Fit`, which has nothing to ease.
+    pub fn amount(self) -> Option<f32> {
+        match self {
+            Sizing::Fit => None,
+            Sizing::Grow(v) | Sizing::Fixed(v) | Sizing::Percent(v) => Some(v),
+        }
+    }
+
+    /// The same form with a different amount (`Fit` stays `Fit`).
+    pub fn with_amount(self, v: f32) -> Self {
+        match self {
+            Sizing::Fit => Sizing::Fit,
+            Sizing::Grow(_) => Sizing::Grow(v),
+            Sizing::Fixed(_) => Sizing::Fixed(v),
+            Sizing::Percent(_) => Sizing::Percent(v),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -280,6 +302,12 @@ pub struct NodeSpec {
     /// `tag` — for hover-dependent *layout* (a close button that appears)
     /// where a color swap isn't enough. Implies hover tracking.
     pub on_hover: Option<Value>,
+    /// CSS-style stops for the animatable slots (see [`crate::keyframes`]):
+    /// with a `transition`, the slots a stop names cycle through the stops
+    /// over the transition's duration, in its `repeat` direction, offset by
+    /// its `delay_ms` — forever, and without the view redrawing. Slots no
+    /// stop names still tween toward what the view declares. Empty = none.
+    pub keyframes: Vec<Keyframe>,
 }
 
 impl NodeSpec {
@@ -524,9 +552,12 @@ impl NodeSpec {
     }
 
     /// Animates changes to this node's sizing amounts, colors and radius
-    /// over `duration_ms` (cubic ease-out); see [`crate::anim`].
+    /// over `duration_ms` (cubic ease-out); see [`crate::anim`]. Only the
+    /// duration: an easing or repeat already declared survives, so the
+    /// transition props compose in any order.
     pub fn transition(mut self, duration_ms: f32) -> Self {
-        self.transition = Some(Transition::ms(duration_ms));
+        let t = self.transition.get_or_insert(Transition::ms(duration_ms));
+        t.duration_ms = duration_ms;
         self
     }
 
@@ -548,6 +579,32 @@ impl NodeSpec {
     pub fn easing(mut self, easing: Easing) -> Self {
         let t = self.transition.get_or_insert(Transition::ms(200.0));
         t.easing = easing;
+        self
+    }
+
+    /// How this node's `keyframes` cycle (CSS's `animation-direction`);
+    /// sets a default 200ms transition if none was declared yet.
+    pub fn repeat(mut self, repeat: Repeat) -> Self {
+        let t = self.transition.get_or_insert(Transition::ms(200.0));
+        t.repeat = repeat;
+        self
+    }
+
+    /// Holds this node's keyframe cycle back by `delay_ms` (CSS's
+    /// `animation-delay`), so siblings given different delays run out of
+    /// phase — a cascade, a chase light. Sets a default 200ms transition if
+    /// none was declared yet.
+    pub fn delay(mut self, delay_ms: f32) -> Self {
+        let t = self.transition.get_or_insert(Transition::ms(200.0));
+        t.delay_ms = delay_ms;
+        self
+    }
+
+    /// Cycles the slots these stops name (see the `keyframes` field); sets
+    /// a default 200ms transition if none was declared yet.
+    pub fn keyframes(mut self, stops: Vec<Keyframe>) -> Self {
+        self.transition.get_or_insert(Transition::ms(200.0));
+        self.keyframes = stops;
         self
     }
 

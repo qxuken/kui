@@ -15,6 +15,7 @@ pub mod env;
 pub mod geom;
 pub mod input;
 pub mod key;
+pub mod keyframes;
 pub mod layout;
 pub mod resources;
 pub mod runtime;
@@ -29,7 +30,7 @@ pub mod value;
 pub mod widgets;
 pub mod window;
 
-pub use anim::{Easing, Transition};
+pub use anim::{Easing, Repeat, Transition};
 pub use color::Color;
 pub use display::{DisplayList, NO_CLIP, Quad, QuadKind};
 pub use edit::EditOptions;
@@ -38,6 +39,7 @@ pub use geom::{Edges, Rect, Size, Vec2};
 pub use input::ScrollAxis;
 pub use input::{EditKey, InputEvent, KeyCode, KeyMods, KeyPress, Mods, UiEvent};
 pub use key::Key;
+pub use keyframes::Keyframe;
 pub use resources::{FontId, ImageId, Resources};
 pub use runtime::{Core, Extension};
 pub use spec::{

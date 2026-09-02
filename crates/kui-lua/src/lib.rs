@@ -412,6 +412,9 @@ pub fn parse_props(t: &Table, is_row: bool) -> mlua::Result<PropsOut> {
                 out.with_spec(kui_core::NodeSpec::hoverable);
             }
             name => {
+                // `repeat` is a Lua keyword, so that row also answers to
+                // CSS's own name for it.
+                let name = if name == "direction" { "repeat" } else { name };
                 let Some(def) = schema::by_snake_name(name) else {
                     continue;
                 };
@@ -469,6 +472,9 @@ fn parse_value(kind: &Kind, v: &mlua::Value) -> mlua::Result<Option<Parsed>> {
             mlua::Value::Number(n) => Parsed::Resource(*n as u64),
             _ => return Err(bad("expected a resource handle (integer)")),
         },
+        Kind::Keyframes => {
+            Parsed::Keyframes(kui_core::keyframes::parse(&lua_to_value(v)?).map_err(bad)?)
+        }
     }))
 }
 
