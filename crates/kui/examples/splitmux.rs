@@ -17,9 +17,22 @@
 //! halves carry a `transition`, so a new split slides open and a keyboard
 //! resize glides — except while a divider drags, when the ratio must track
 //! the cursor exactly.
+//!
+//! Hold ⌘ (Ctrl elsewhere) and drag a pane to move it: the modifier state
+//! arrives as a `{kind="modifiers"}` event, the model keeps it, and while it
+//! is held the view floats five drop-zone overlays (edges + center) over
+//! every pane. They are the drag sources *and* the drop targets — no core
+//! knowledge of "pane moving" at all, and without ⌘ the overlays don't
+//! exist, so plain clicks still reach the pane. Hover over a zone during
+//! the drag names the destination; dropping on an edge splits the target
+//! on that side, on the center swaps the two panes. A ghost label follows
+//! the cursor as a viewport-anchored float.
 
 use kui::widgets;
-use kui::{Align, App, Color, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value, WindowCommand};
+use kui::{
+    Align, App, Color, FloatConfig, KeyMods, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value,
+    WindowCommand,
+};
 
 const TABBAR_H: f32 = 30.0;
 /// How long a split takes to ease into a new ratio.
@@ -29,6 +42,10 @@ const SPLIT_MS: f32 = 180.0;
 const ALT: &str = "⌥";
 #[cfg(not(target_os = "macos"))]
 const ALT: &str = "Alt-";
+#[cfg(target_os = "macos")]
+const PRIMARY: &str = "⌘";
+#[cfg(not(target_os = "macos"))]
+const PRIMARY: &str = "Ctrl-";
 
 // ---------------------------------------------------------------- palette
 
@@ -79,9 +96,10 @@ enum Node {
         ratio: f32,
         a: Box<Node>,
         b: Box<Node>,
-        /// Just created: rendered once fully collapsed so the transition
-        /// has somewhere to slide open from (a node's first frame snaps).
-        fresh: bool,
+        /// Just created: rendered once with the new half collapsed so the
+        /// transition has somewhere to slide it open from (a node's first
+        /// frame snaps).
+        fresh: Fresh,
     },
 }
 
@@ -106,7 +124,7 @@ impl Node {
                     ratio: 0.5,
                     a: Box::new(old),
                     b: Box::new(Node::Pane(new_id)),
-                    fresh: true,
+                    fresh: Fresh::B,
                 };
                 true
             }
@@ -120,9 +138,62 @@ impl Node {
     /// Clears every `fresh` flag (after the collapsed first frame drew).
     fn settle(&mut self) {
         if let Node::Split { a, b, fresh, .. } = self {
-            *fresh = false;
+            *fresh = Fresh::No;
             a.settle();
             b.settle();
+        }
+    }
+
+    /// Replaces the leaf `target` with a split of it and `node`, `node`
+    /// going first when `before`.
+    fn split_with(&mut self, target: u64, dir: SplitDir, node: Node, before: bool) -> bool {
+        match self {
+            Node::Pane(id) if *id == target => {
+                let old = Node::Pane(*id);
+                let (a, b, fresh) = if before {
+                    (node, old, Fresh::A)
+                } else {
+                    (old, node, Fresh::B)
+                };
+                *self = Node::Split {
+                    dir,
+                    ratio: 0.5,
+                    a: Box::new(a),
+                    b: Box::new(b),
+                    fresh,
+                };
+                true
+            }
+            Node::Pane(_) => false,
+            Node::Split { a, b, .. } => {
+                // Descend into the side that holds the target so `node`
+                // is moved, not cloned.
+                if a.contains(target) {
+                    a.split_with(target, dir, node, before)
+                } else {
+                    b.split_with(target, dir, node, before)
+                }
+            }
+        }
+    }
+
+    fn contains(&self, target: u64) -> bool {
+        match self {
+            Node::Pane(id) => *id == target,
+            Node::Split { a, b, .. } => a.contains(target) || b.contains(target),
+        }
+    }
+
+    /// Exchanges two leaves in place.
+    fn swap(&mut self, x: u64, y: u64) {
+        match self {
+            Node::Pane(id) if *id == x => *id = y,
+            Node::Pane(id) if *id == y => *id = x,
+            Node::Pane(_) => {}
+            Node::Split { a, b, .. } => {
+                a.swap(x, y);
+                b.swap(x, y);
+            }
         }
     }
 
@@ -164,6 +235,62 @@ fn without(node: Node, target: u64) -> Option<Node> {
     }
 }
 
+/// Which half of a split is new (see `Node::Split::fresh`).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Fresh {
+    No,
+    A,
+    B,
+}
+
+/// Where a dragged pane lands on its target: an edge splits the target on
+/// that side, the center swaps the two.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Zone {
+    Left,
+    Right,
+    Top,
+    Bottom,
+    Center,
+}
+
+impl Zone {
+    const ALL: [Zone; 5] = [
+        Zone::Left,
+        Zone::Right,
+        Zone::Top,
+        Zone::Bottom,
+        Zone::Center,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            Zone::Left => "zl",
+            Zone::Right => "zr",
+            Zone::Top => "zt",
+            Zone::Bottom => "zb",
+            Zone::Center => "zc",
+        }
+    }
+
+    /// The overlay: a percent-sized float pinned to the pane's edge (or its
+    /// middle). Later zones paint and hit-test on top, so the center wins
+    /// over the edges and top/bottom win in the corners.
+    fn spec(self) -> NodeSpec {
+        let (ax, ay, w, h) = match self {
+            Zone::Left => (Align::Start, Align::Start, 0.25, 1.0),
+            Zone::Right => (Align::End, Align::Start, 0.25, 1.0),
+            Zone::Top => (Align::Start, Align::Start, 1.0, 0.25),
+            Zone::Bottom => (Align::Start, Align::End, 1.0, 0.25),
+            Zone::Center => (Align::Center, Align::Center, 0.5, 0.5),
+        };
+        NodeSpec::column()
+            .float(FloatConfig::parent().at(ax, ay).self_at(ax, ay))
+            .width(Sizing::Percent(w))
+            .height(Sizing::Percent(h))
+    }
+}
+
 // ---------------------------------------------------------------- app
 
 struct Splitmux {
@@ -180,6 +307,13 @@ struct Splitmux {
     /// motion). The sign gates reorder direction so unequal-width tabs
     /// can't oscillate around the cursor.
     tab_drag: Option<(usize, f32)>,
+    /// Physical modifiers, straight from `{kind="modifiers"}` events.
+    mods: KeyMods,
+    /// ⌘-drag of a pane in flight: (pane id, cursor x, cursor y).
+    pane_drag: Option<(u64, f32, f32)>,
+    /// Where the pane drag would land, recomputed by the view from which
+    /// zone overlay is hovered (hover is last frame's layout, as always).
+    drop_target: Option<(u64, Zone)>,
     quit: bool,
 }
 
@@ -195,9 +329,9 @@ impl Splitmux {
                 ratio: 0.5,
                 a: Box::new(Node::Pane(2)),
                 b: Box::new(Node::Pane(3)),
-                fresh: false,
+                fresh: Fresh::No,
             }),
-            fresh: false,
+            fresh: Fresh::No,
         };
         Self {
             pal: Pal::default(),
@@ -207,8 +341,44 @@ impl Splitmux {
             focused: 1,
             dragging: None,
             tab_drag: None,
+            mods: KeyMods::default(),
+            pane_drag: None,
+            drop_target: None,
             quit: false,
         }
+    }
+
+    /// Whether the panes wear their drop-zone overlays: while the primary
+    /// modifier is held, and for the whole of a pane drag (the modifier may
+    /// be released mid-drag).
+    fn overlays_on(&self) -> bool {
+        self.mods.primary() || self.pane_drag.is_some()
+    }
+
+    /// Lands `src` on `dst`: an edge zone splits `dst` on that side, the
+    /// center swaps them.
+    fn move_pane(&mut self, src: u64, dst: u64, zone: Zone) {
+        if src == dst {
+            return;
+        }
+        if zone == Zone::Center {
+            self.tabs[self.tab].swap(src, dst);
+            return;
+        }
+        let root = std::mem::replace(&mut self.tabs[self.tab], Node::Pane(u64::MAX));
+        let Some(mut root) = without(root, src) else {
+            return;
+        };
+        let (dir, before) = match zone {
+            Zone::Left => (SplitDir::H, true),
+            Zone::Right => (SplitDir::H, false),
+            Zone::Top => (SplitDir::V, true),
+            Zone::Bottom => (SplitDir::V, false),
+            Zone::Center => unreachable!(),
+        };
+        root.split_with(dst, dir, Node::Pane(src), before);
+        self.tabs[self.tab] = root;
+        self.focused = src;
     }
 
     fn pane_ids(&self) -> Vec<u64> {
@@ -370,14 +540,16 @@ impl Splitmux {
                 );
                 ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
                 ui.text(
-                    &format!("{ALT}v/{ALT}s split · {ALT}o hop · {ALT}w close · {ALT}t tab"),
+                    &format!(
+                        "{ALT}v/{ALT}s split · {ALT}o hop · {ALT}w close · {ALT}t tab · {PRIMARY}drag moves a pane"
+                    ),
                     TextStyle::new(11.0).color(pal.faint),
                 );
             },
         );
     }
 
-    fn render_node(&self, ui: &mut Ui<'_>, node: &Node, path: &str) {
+    fn render_node(&mut self, ui: &mut Ui<'_>, node: &Node, path: &str) {
         match node {
             Node::Pane(id) => self.render_pane(ui, *id),
             Node::Split {
@@ -395,10 +567,10 @@ impl Splitmux {
                 ui.with(spec.fill(), |ui| {
                     // A fresh split draws once with the new half collapsed;
                     // the transition then slides it open to the real ratio.
-                    let (wa, wb) = if *fresh {
-                        (1.0, 0.0)
-                    } else {
-                        (ratio.clamp(0.05, 0.95), 1.0 - ratio.clamp(0.05, 0.95))
+                    let (wa, wb) = match fresh {
+                        Fresh::A => (0.0, 1.0),
+                        Fresh::B => (1.0, 0.0),
+                        Fresh::No => (ratio.clamp(0.05, 0.95), 1.0 - ratio.clamp(0.05, 0.95)),
                     };
                     // The halves ease between ratios, except under a divider
                     // drag, where the ratio has to follow the cursor exactly
@@ -464,9 +636,11 @@ impl Splitmux {
 
     /// A pane is just its number — swap this fn for an editor, a terminal,
     /// whatever; the tree around it doesn't change.
-    fn render_pane(&self, ui: &mut Ui<'_>, id: u64) {
+    fn render_pane(&mut self, ui: &mut Ui<'_>, id: u64) {
         let pal = self.pal;
         let focused = self.focused == id;
+        let overlays = self.overlays_on();
+        let drag = self.pane_drag;
         let border = if focused {
             pal.border_focus
         } else {
@@ -496,6 +670,89 @@ impl Splitmux {
                     &format!("{ALT}v splits me · {ALT}w closes me"),
                     TextStyle::new(11.0).color(pal.faint),
                 );
+                if !overlays {
+                    return;
+                }
+                // Drop-zone overlays: drag sources (any zone starts a drag
+                // of this pane) and drop targets (the hovered zone during
+                // a drag is the destination). Floats hit-test above the
+                // pane's own on_click, so ⌘-clicks never focus by accident.
+                for zone in Zone::ALL {
+                    let key = ui.child_key(zone.label());
+                    let hovered = ui.is_hovered(key);
+                    let mut lit = false;
+                    // Dropping a pane on itself is a no-op; don't advertise it.
+                    if let Some((src, ..)) = drag
+                        && hovered
+                        && src != id
+                    {
+                        self.drop_target = Some((id, zone));
+                        lit = true;
+                    }
+                    let bg = if lit {
+                        Color {
+                            a: 0.35,
+                            ..pal.accent
+                        }
+                    } else if drag.is_none() && hovered {
+                        Color {
+                            a: 0.08,
+                            ..pal.accent
+                        }
+                    } else {
+                        Color::TRANSPARENT
+                    };
+                    ui.with_keyed(
+                        zone.label(),
+                        zone.spec()
+                            .bg(bg)
+                            .transition(80.0)
+                            .hoverable()
+                            .on_drag(Value::map([
+                                ("kind", "panedrag".into()),
+                                ("pane", Value::Int(id as i64)),
+                                ("zone", Value::str(zone.label())),
+                            ])),
+                        |_| {},
+                    );
+                }
+            },
+        );
+    }
+
+    /// The ghost that follows the cursor during a pane drag: a viewport
+    /// float placed from the drag payload's cursor position.
+    fn render_ghost(&self, ui: &mut Ui<'_>) {
+        let Some((id, x, y)) = self.pane_drag else {
+            return;
+        };
+        let pal = self.pal;
+        let target = self
+            .drop_target
+            .map(|(dst, zone)| match zone {
+                Zone::Center => format!("swap with {dst}"),
+                Zone::Left => format!("left of {dst}"),
+                Zone::Right => format!("right of {dst}"),
+                Zone::Top => format!("above {dst}"),
+                Zone::Bottom => format!("below {dst}"),
+            })
+            .unwrap_or_else(|| "drop on a pane".to_string());
+        ui.with_keyed(
+            "ghost",
+            NodeSpec::row()
+                .float(FloatConfig::viewport().offset(x + 14.0, y + 14.0).fit())
+                .pad_xy(10.0, 6.0)
+                .gap(6.0)
+                .radius(6.0)
+                .bg(Color {
+                    a: 0.92,
+                    ..pal.panel
+                })
+                .border(1.0, pal.border_focus)
+                .cross_align(Align::Center),
+            |ui| {
+                ui.text(&format!("pane {id}"), TextStyle::new(13.0).color(pal.fg));
+                ui.text(&format!("→ {target}"), TextStyle::new(12.0).color(pal.dim));
             },
         );
     }
@@ -518,6 +775,9 @@ impl App for Splitmux {
         self.tab_bar(ui);
 
         let root = self.tabs[self.tab].clone();
+        // The view names the drop target from hover; start each frame blank
+        // so a cursor that left every zone means "nowhere".
+        self.drop_target = None;
         let sink = ui.with_keyed(
             "main",
             NodeSpec::column()
@@ -528,6 +788,7 @@ impl App for Splitmux {
         );
         ui.take_key_focus(sink);
         self.tabs[self.tab].settle();
+        self.render_ghost(ui);
 
         widgets::latency_hud(ui);
     }
@@ -552,7 +813,20 @@ impl App for Splitmux {
                 {
                     let code = code.to_string();
                     self.chord(&code);
+                } else if ev.payload.get("code").and_then(Value::as_str) == Some("escape") {
+                    // Abandon a pane drag; the pointer capture runs on
+                    // until release, but its end lands on nothing.
+                    self.pane_drag = None;
                 }
+            }
+            Some("modifiers") => {
+                let flag = |k| ev.payload.get(k).and_then(Value::as_bool).unwrap_or(false);
+                self.mods = KeyMods {
+                    shift: flag("shift"),
+                    ctrl: flag("ctrl"),
+                    alt: flag("alt"),
+                    super_key: flag("super"),
+                };
             }
             Some("focus") => {
                 if let Some(id) = ev.payload.get("pane").and_then(Value::as_int) {
@@ -592,6 +866,7 @@ impl App for Splitmux {
                         _ => {}
                     },
                     Some("split") => self.split_drag(&ev),
+                    Some("panedrag") => self.pane_drag_event(&ev),
                     _ => {}
                 }
             }
@@ -601,6 +876,33 @@ impl App for Splitmux {
 }
 
 impl Splitmux {
+    /// ⌘-drag of a pane: the payload's cursor drives the ghost, the view's
+    /// hover bookkeeping names the target, and release performs the move.
+    fn pane_drag_event(&mut self, ev: &UiEvent) {
+        let num = |k| ev.payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as f32;
+        let tag = ev.payload.get("tag");
+        let Some(pane) = tag.and_then(|t| t.get("pane")).and_then(Value::as_int) else {
+            return;
+        };
+        match ev.payload.get("phase").and_then(Value::as_str) {
+            Some("start") => self.pane_drag = Some((pane as u64, num("x"), num("y"))),
+            Some("move") => {
+                if let Some((_, x, y)) = self.pane_drag.as_mut() {
+                    *x = num("x");
+                    *y = num("y");
+                }
+            }
+            Some("end") => {
+                if let (Some((src, ..)), Some((dst, zone))) = (self.pane_drag, self.drop_target) {
+                    self.move_pane(src, dst, zone);
+                }
+                self.pane_drag = None;
+                self.drop_target = None;
+            }
+            _ => {}
+        }
+    }
+
     /// Divider drags: absolute cursor position over the split's own rect
     /// (carried in the payload) is the new ratio directly.
     fn split_drag(&mut self, ev: &UiEvent) {

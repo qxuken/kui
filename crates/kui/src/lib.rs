@@ -745,7 +745,15 @@ impl<A: App> ApplicationHandler for Shell<A> {
                     w.request_redraw();
                 }
             }
-            WindowEvent::ModifiersChanged(m) => self.modifiers = m.state(),
+            WindowEvent::ModifiersChanged(m) => {
+                self.modifiers = m.state();
+                self.dispatch(InputEvent::Modifiers(KeyMods {
+                    shift: self.modifiers.shift_key(),
+                    ctrl: self.modifiers.control_key(),
+                    alt: self.modifiers.alt_key(),
+                    super_key: self.modifiers.super_key(),
+                }));
+            }
             WindowEvent::KeyboardInput { event, .. } => self.on_key(event),
             WindowEvent::Ime(Ime::Commit(text)) => self.dispatch(InputEvent::Text(text)),
             WindowEvent::Ime(Ime::Preedit(text, cursor)) => {

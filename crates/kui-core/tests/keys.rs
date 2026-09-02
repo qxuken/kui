@@ -142,3 +142,30 @@ fn null_tag_omitted_from_payload() {
     );
     assert_eq!(evs[0].payload.get("tag"), None);
 }
+
+#[test]
+fn modifier_changes_reach_the_host_as_data_and_are_queryable() {
+    let mut core = Core::new();
+    frame(&mut core, true);
+    let cmd = KeyMods {
+        super_key: true,
+        ..Default::default()
+    };
+    let evs = core.handle_input(InputEvent::Modifiers(cmd));
+    assert_eq!(evs.len(), 1);
+    let p = &evs[0].payload;
+    assert_eq!(p.get("kind").and_then(Value::as_str), Some("modifiers"));
+    assert_eq!(p.get("super").and_then(Value::as_bool), Some(true));
+    assert_eq!(p.get("shift").and_then(Value::as_bool), Some(false));
+    assert_eq!(evs[0].key, Key::ROOT);
+    assert_eq!(core.modifiers(), cmd);
+    // Unchanged state is not re-reported.
+    assert!(core.handle_input(InputEvent::Modifiers(cmd)).is_empty());
+    // Release reports again.
+    let evs = core.handle_input(InputEvent::Modifiers(KeyMods::default()));
+    assert_eq!(evs.len(), 1);
+    assert_eq!(
+        evs[0].payload.get("super").and_then(Value::as_bool),
+        Some(false)
+    );
+}

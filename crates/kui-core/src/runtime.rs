@@ -636,6 +636,11 @@ impl Core {
         self.interaction.is_pressed(key)
     }
 
+    /// Physical modifier state as of the last `InputEvent::Modifiers`.
+    pub fn modifiers(&self) -> crate::input::KeyMods {
+        self.interaction.modifiers()
+    }
+
     pub fn open(&mut self, spec: NodeSpec) -> Key {
         let key = self.auto_key();
         self.open_with_key(key, spec);

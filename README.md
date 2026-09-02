@@ -27,7 +27,7 @@ cargo run -p kui-lua --example lua_panel  # Rust host + Lua panel sharing one fr
 ./examples/c/build.sh && ./examples/c/counter             # the same app from C
 ./examples/c/counter --headless           # C FFI self-test, no window needed
 cargo run -p kui --example modal_editor   # helix-flavored modal editing; the app owns the keymap
-cargo run -p kui --example splitmux       # tmux-style splits, tabs, and focus; the pane tree is data
+cargo run -p kui --example splitmux       # tmux-style splits, tabs, focus, ⌘-drag pane moves; the pane tree is data
 cargo run -p kui --example syntax_view    # syntax highlighting as coalesced style runs
 cargo run -p kui --example gallery        # registered images: Fit sizing, kept aspect, rounded corners
 ```
@@ -104,7 +104,12 @@ end
   key sink, and while it holds key focus (`ui.take_key_focus`, or a
   click) every press arrives as `{kind="key", code, mods, text}` —
   modal keymaps live in the app, in any language, with no runner hook
-  (the `modal_editor` and `splitmux` examples are built on this).
+  (the `modal_editor` and `splitmux` examples are built on this). Modifier
+  state is data too: the host gets `{kind="modifiers", shift, ctrl, alt,
+  super}` whenever it changes, keeps it in its model, and lets the view
+  react — splitmux floats drop-zone overlays over every pane while ⌘ is
+  held, so a ⌘-drag moves a pane and a plain click still focuses it, with
+  no "modifier-gated drag" concept in the core at all.
 - **Identity is content-addressed.** `Key` is a hash of the path from the
   root (labels/sibling indices), reproducible from any language, with no
   allocation event tying identity to a slot. Slotmap handles are used where

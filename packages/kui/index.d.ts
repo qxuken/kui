@@ -68,6 +68,9 @@ export declare class Ctx {
   /** Raw key press for onKey sinks: a single character or a name
    *  ("left", "enter", "f5", ...). */
   keyDown(code: string, mods?: KeySinkMods): void;
+  /** Physical modifier state changed; the host gets a
+   *  `{kind:"modifiers", shift, ctrl, alt, super}` message when it differs. */
+  modifiers(mods?: KeySinkMods): void;
   /** Registers a w×h RGBA image; returns its id for `<image src={id}>`. */
   addImage(width: number, height: number, rgba: Buffer): string;
   removeImage(id: string): void;

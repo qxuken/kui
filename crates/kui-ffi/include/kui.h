@@ -55,6 +55,13 @@ enum {
 };
 /* Modifier bits (kui_input_key) */
 enum { KUI_MOD_SHIFT = 1u << 0, KUI_MOD_WORD = 1u << 1, KUI_MOD_DOC = 1u << 2 };
+/* Physical modifier bits (kui_input_modifiers) */
+enum {
+    KUI_KMOD_SHIFT = 1u << 0,
+    KUI_KMOD_CTRL = 1u << 1,
+    KUI_KMOD_ALT = 1u << 2,
+    KUI_KMOD_SUPER = 1u << 3,
+};
 /* Text edit flags (kui_text_edit) */
 enum { KUI_EDIT_MULTILINE = 1u << 0, KUI_EDIT_AUTOFOCUS = 1u << 1 };
 /* Float modes (KuiSpec.float_mode) */
@@ -173,6 +180,9 @@ void kui_input_text(KuiCtx *ctx, KuiStr text);   /* typing/paste -> focused edit
 void kui_input_preedit(KuiCtx *ctx, KuiStr text, uint32_t cursor_start,
                        uint32_t cursor_end);
 void kui_input_key(KuiCtx *ctx, uint32_t key, uint32_t mods); /* KUI_KEY_* + KUI_MOD_* */
+/* Physical modifier state changed (KUI_KMOD_* bits); the host polls a
+ * {kind="modifiers", shift, ctrl, alt, super} event when it differs. */
+void kui_input_modifiers(KuiCtx *ctx, uint32_t mods);
 bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
 
 /* -- Host environment ---------------------------------------------------- */

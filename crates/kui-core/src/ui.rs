@@ -67,6 +67,12 @@ impl<'a> Ui<'a> {
         self.core.is_pressed(key)
     }
 
+    /// Physical modifier state (the host also receives it as a
+    /// `{kind="modifiers"}` event whenever it changes).
+    pub fn modifiers(&self) -> crate::input::KeyMods {
+        self.core.modifiers()
+    }
+
     pub fn open(&mut self, spec: NodeSpec) -> Key {
         self.core.open(spec)
     }

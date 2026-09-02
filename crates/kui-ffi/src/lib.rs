@@ -432,6 +432,22 @@ fn edit_key_of(key: u32) -> Option<EditKey> {
     })
 }
 
+/// Physical modifier state changed (KUI_KMOD_* bits). The host polls a
+/// `{kind="modifiers", shift, ctrl, alt, super}` event when it differs from
+/// the last report.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_input_modifiers(ptr: *mut KuiCtx, mods: u32) {
+    push_input(
+        ptr,
+        InputEvent::Modifiers(kui_core::KeyMods {
+            shift: mods & 1 != 0,
+            ctrl: mods & 2 != 0,
+            alt: mods & 4 != 0,
+            super_key: mods & 8 != 0,
+        }),
+    );
+}
+
 /// Editing key with modifier bits (1 = shift, 2 = word/alt, 4 = doc/primary).
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_key(ptr: *mut KuiCtx, key: u32, mods: u32) {

@@ -33,6 +33,12 @@ pub enum InputEvent {
     /// `Core::set_key_focus`). Apps that own their own text model take
     /// keys through this instead of the editor path.
     KeyDown(KeyPress),
+    /// The physical modifier state changed. Reaches the host as a
+    /// `{kind="modifiers", shift, ctrl, alt, super}` event on the root (an
+    /// Elm-style app keeps it in its model and lets the view react — a
+    /// Cmd-held drag overlay, a hint bar) and is queryable while building
+    /// a frame (`Ui::modifiers`).
+    Modifiers(KeyMods),
 }
 
 /// Editing keys, decoupled from any windowing library's key codes.
@@ -143,6 +149,28 @@ pub struct KeyMods {
 impl KeyMods {
     pub fn any(self) -> bool {
         self.shift || self.ctrl || self.alt || self.super_key
+    }
+
+    /// The platform primary shortcut modifier: Command on macOS, Control
+    /// elsewhere.
+    pub fn primary(self) -> bool {
+        if cfg!(target_os = "macos") {
+            self.super_key
+        } else {
+            self.ctrl
+        }
+    }
+
+    /// The payload form of a modifier change:
+    /// `{kind="modifiers", shift=, ctrl=, alt=, super=}`.
+    pub fn to_value(self) -> Value {
+        Value::map([
+            ("kind", Value::str("modifiers")),
+            ("shift", Value::Bool(self.shift)),
+            ("ctrl", Value::Bool(self.ctrl)),
+            ("alt", Value::Bool(self.alt)),
+            ("super", Value::Bool(self.super_key)),
+        ])
     }
 }
 
@@ -308,6 +336,8 @@ pub struct Interaction {
     pub(crate) window_commands: Vec<WindowCommand>,
     /// Pointer-captured drag on an `on_drag` node.
     drag: Option<DragState>,
+    /// Last reported physical modifier state.
+    modifiers: KeyMods,
     cursor: Option<Vec2>,
     hovered: Option<Key>,
     pressed: Option<Key>,
@@ -329,6 +359,11 @@ impl Interaction {
 
     pub fn cursor(&self) -> Option<Vec2> {
         self.cursor
+    }
+
+    /// Physical modifier state as of the last `InputEvent::Modifiers`.
+    pub fn modifiers(&self) -> KeyMods {
+        self.modifiers
     }
 
     /// This frame's hit regions in paint order (topmost last) — for hosts
@@ -449,6 +484,16 @@ impl Interaction {
                         out.push(Self::drag_event(&state, "start", p, Vec2::ZERO));
                         self.drag = Some(state);
                     }
+                }
+            }
+            InputEvent::Modifiers(m) => {
+                if m != self.modifiers {
+                    self.modifiers = m;
+                    out.push(UiEvent {
+                        origin: OriginId::HOST,
+                        key: Key::ROOT,
+                        payload: m.to_value(),
+                    });
                 }
             }
             // Routed by the core (they need the retained stores).

@@ -303,3 +303,73 @@ fn float_grow_sizes_against_viewport() {
     let f = quads.iter().find(|q| q.4 == RED).unwrap();
     assert_eq!((f.2, f.3), (400.0, 150.0));
 }
+
+/// Drop-zone pattern: percent-sized floats anchored to a parent's edges and
+/// center tile it into hit regions, later floats winning where they overlap.
+#[test]
+fn percent_floats_tile_their_parent_into_zones() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let zone = |ax: Align, ay: Align, w: f32, h: f32, tag: &str| {
+            NodeSpec::column()
+                .float(FloatConfig::parent().at(ax, ay).self_at(ax, ay))
+                .width(Sizing::Percent(w))
+                .height(Sizing::Percent(h))
+                .on_drag(Value::str(tag))
+        };
+        ui.with_keyed(
+            "pane",
+            NodeSpec::column().fill().on_click(Value::str("pane")),
+            |ui| {
+                ui.with_keyed(
+                    "l",
+                    zone(Align::Start, Align::Start, 0.25, 1.0, "l"),
+                    |_| {},
+                );
+                ui.with_keyed("r", zone(Align::End, Align::Start, 0.25, 1.0, "r"), |_| {});
+                ui.with_keyed(
+                    "t",
+                    zone(Align::Start, Align::Start, 1.0, 0.25, "t"),
+                    |_| {},
+                );
+                ui.with_keyed("b", zone(Align::Start, Align::End, 1.0, 0.25, "b"), |_| {});
+                ui.with_keyed(
+                    "c",
+                    zone(Align::Center, Align::Center, 0.5, 0.5, "c"),
+                    |_| {},
+                );
+            },
+        );
+        ui.finish();
+    };
+    frame(&mut core);
+    let probe = |core: &mut Core, x: f32, y: f32| -> String {
+        core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
+        let mut evs = core.handle_input(InputEvent::MouseDown(1));
+        evs.extend(core.handle_input(InputEvent::MouseUp));
+        evs.iter()
+            .find_map(|e| {
+                e.payload
+                    .get("tag")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .or_else(|| {
+                evs.iter()
+                    .find_map(|e| e.payload.as_str().map(str::to_string))
+            })
+            .unwrap_or_default()
+    };
+    assert_eq!(probe(&mut core, 20.0, 150.0), "l", "left quarter");
+    assert_eq!(probe(&mut core, 380.0, 150.0), "r", "right quarter");
+    assert_eq!(probe(&mut core, 200.0, 20.0), "t", "top quarter");
+    assert_eq!(probe(&mut core, 200.0, 280.0), "b", "bottom quarter");
+    assert_eq!(probe(&mut core, 200.0, 150.0), "c", "center tile wins");
+    assert_eq!(
+        probe(&mut core, 20.0, 20.0),
+        "t",
+        "corner: later float on top"
+    );
+}

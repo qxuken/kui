@@ -617,6 +617,23 @@ impl Ctx {
         Ok(())
     }
 
+    /// Physical modifier state changed: `{shift, ctrl, alt, super}`. The
+    /// host receives `{kind:"modifiers", ...}` when it differs from the
+    /// last report.
+    #[napi]
+    pub fn modifiers(&mut self, mods: Option<Json>) {
+        let m = mods
+            .as_ref()
+            .and_then(Json::as_object)
+            .unwrap_or(empty_props());
+        self.input(InputEvent::Modifiers(KeyMods {
+            shift: bool_prop(m, "shift"),
+            ctrl: bool_prop(m, "ctrl"),
+            alt: bool_prop(m, "alt"),
+            super_key: bool_prop(m, "super"),
+        }));
+    }
+
     /// Registers a w×h RGBA image (pixels copied); returns its id for
     /// `<image src={id}>`. Stable until `removeImage`.
     #[napi]
