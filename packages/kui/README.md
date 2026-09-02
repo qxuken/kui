@@ -42,8 +42,8 @@ returns a new model, so a countdown is free between displayed seconds.
 ## Windowed app checklist
 
 Things the package already does that are easy to miss when building a
-real window. The full prop / element / event reference is
-[docs/props.md](../../docs/props.md) in the repository.
+real window. The full prop / element / event reference ships with the
+package as [props.md](props.md) (`docs/props.md` in the repository).
 
 - **Hover and pressed colors** are props, not queries: `hoverBg`,
   `pressedBg`, and `hoverGroup="name"` to light connected pieces together.
