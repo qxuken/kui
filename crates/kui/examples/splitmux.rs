@@ -553,10 +553,13 @@ impl Splitmux {
                             TextStyle::new(12.0).color(fg),
                         );
                         if dragging_tab {
+                            // Hangs from the tab's bottom edge: the tab
+                            // keeps its own hover, so a press-release on
+                            // it is still a click.
                             ui.with_keyed(
                                 "col",
                                 NodeSpec::column()
-                                    .float(FloatConfig::parent())
+                                    .float(FloatConfig::parent().at(Align::Start, Align::End))
                                     .width(Sizing::Percent(1.0))
                                     .height(Sizing::Fixed(column_h))
                                     .hoverable(),
@@ -602,6 +605,11 @@ impl Splitmux {
                 ui.with(spec.fill(), |ui| {
                     // A fresh split draws once with the new half collapsed;
                     // the transition then slides it open to the real ratio.
+                    // That first frame snaps, so nothing is mid-flight yet
+                    // to keep frames coming: ask for the next one.
+                    if *fresh != Fresh::No {
+                        ui.request_frame();
+                    }
                     let (wa, wb) = match fresh {
                         Fresh::A => (0.0, 1.0),
                         Fresh::B => (1.0, 0.0),

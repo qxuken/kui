@@ -145,7 +145,10 @@ end
   `ctx.setTime`) and ask `animating()` whether another frame is owed; a
   headless driver that never sets time gets snapping, and a node's first
   frame or a frame without the transition snaps too, so nothing animates in
-  from nowhere and a divider drag doesn't replay when it ends. `slide`
+  from nowhere and a divider drag doesn't replay when it ends. A view that
+  stages a starting state on purpose (a new split drawn collapsed so it
+  slides open) calls `ui.request_frame()` so the next frame comes without
+  waiting for input. `slide`
   opts a node into easing its laid-out *position* too, subtree and all,
   which is what reordered siblings need (splitmux's tabs slide into their
   new order); it stays opt-in because a node whose position follows an

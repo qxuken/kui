@@ -73,6 +73,11 @@ impl<'a> Ui<'a> {
         self.core.modifiers()
     }
 
+    /// Asks for one more frame after this one; see `Core::request_frame`.
+    pub fn request_frame(&mut self) {
+        self.core.request_frame();
+    }
+
     pub fn open(&mut self, spec: NodeSpec) -> Key {
         self.core.open(spec)
     }

@@ -175,3 +175,21 @@ fn without_slide_a_transition_does_not_move_positions() {
     assert_eq!(xs[0].1, 0.0, "b snaps to its new slot");
     assert!(!core.animating());
 }
+
+#[test]
+fn request_frame_owes_exactly_one_frame() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core, ask: bool| {
+        let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
+        if ask {
+            ui.request_frame();
+        }
+        ui.finish();
+    };
+    frame(&mut core, false);
+    assert!(!core.animating());
+    frame(&mut core, true);
+    assert!(core.animating(), "the view asked for another frame");
+    frame(&mut core, false);
+    assert!(!core.animating(), "and only one");
+}

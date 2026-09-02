@@ -204,3 +204,64 @@ fn scrollbar_track_press_jumps() {
         "track press near the end should jump most of the way (max {max}), got {y}"
     );
 }
+
+/// A press on an `on_drag` node emits a drag start, which hosts often
+/// answer by adding hoverable nodes; those must not sit over the pressed
+/// node or the release stops being a click (the pressed and hovered keys
+/// differ). Pins the tab-bar pattern: a hover column hanging *below* it.
+#[test]
+fn hoverable_added_below_a_pressed_node_keeps_the_click() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core, with_column: bool| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.with_keyed(
+            "tab",
+            NodeSpec::row()
+                .width(Sizing::Fixed(100.0))
+                .height(Sizing::Fixed(30.0))
+                .on_click(Value::str("clicked"))
+                .on_drag(Value::str("lift")),
+            |ui| {
+                if with_column {
+                    ui.with_keyed(
+                        "col",
+                        NodeSpec::column()
+                            .float(
+                                kui_core::FloatConfig::parent()
+                                    .at(kui_core::Align::Start, kui_core::Align::End),
+                            )
+                            .width(Sizing::Percent(1.0))
+                            .height(Sizing::Fixed(300.0))
+                            .hoverable(),
+                        |_| {},
+                    );
+                }
+            },
+        );
+        ui.finish();
+    };
+    frame(&mut core, false);
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(50.0, 15.0)));
+    let start = core.handle_input(InputEvent::MouseDown(1));
+    assert_eq!(phases(&start), ["start"]);
+    // The host reacts to the drag start by growing a column under the tab.
+    frame(&mut core, true);
+    let up = core.handle_input(InputEvent::MouseUp);
+    assert!(
+        up.iter().any(|e| e.payload.as_str() == Some("clicked")),
+        "release on the same tab is still a click: {up:?}"
+    );
+    // And the column below it is what the cursor finds once it leaves.
+    frame(&mut core, true);
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(50.0, 200.0)));
+    let col = {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let k = ui.child_key("tab").str("col");
+        ui.finish();
+        k
+    };
+    frame(&mut core, true);
+    assert!(core.interaction.is_hovered(col));
+}

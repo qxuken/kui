@@ -73,6 +73,9 @@ pub struct Core {
     any_float: bool,
     /// Whether any node this frame eases its position (`NodeSpec::slide`).
     any_slide: bool,
+    /// A view asked for one more frame (`request_frame`); cleared by
+    /// `begin_frame`, reported through `animating`.
+    frame_requested: bool,
     /// The focused editor's caret rect (logical, viewport coords) as of the
     /// last finish_frame — where drivers should anchor the OS IME window.
     ime_rect: Option<Rect>,
@@ -104,6 +107,7 @@ impl Core {
             in_float: Vec::new(),
             any_float: false,
             any_slide: false,
+            frame_requested: false,
             ime_rect: None,
         }
     }
@@ -515,10 +519,20 @@ impl Core {
         self.anim.set_time(now_secs);
     }
 
-    /// True when the last frame left a transition mid-flight — drivers
-    /// schedule another frame without waiting for input.
+    /// True when the last frame left a transition mid-flight, or a view
+    /// asked for another frame — drivers schedule one without waiting for
+    /// input.
     pub fn animating(&self) -> bool {
-        self.anim.animating()
+        self.anim.animating() || self.frame_requested
+    }
+
+    /// Asks the driver for one more frame right after this one. A view
+    /// that sets up a transition by drawing a starting state (a new split
+    /// drawn collapsed so it can slide open) needs the next frame to come
+    /// without waiting for input — the starting state itself snaps, so
+    /// nothing is mid-flight yet to request it.
+    pub fn request_frame(&mut self) {
+        self.frame_requested = true;
     }
 
     /// Starts a frame. Build the tree through the returned `Ui` (or the
@@ -563,6 +577,7 @@ impl Core {
         self.any_clip = false;
         self.any_float = false;
         self.any_slide = false;
+        self.frame_requested = false;
     }
 
     /// Declares this frame's window title. Like all frame state it's data:
