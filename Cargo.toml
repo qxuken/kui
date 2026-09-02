@@ -10,15 +10,15 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 edition = "2024"
 license = "MIT"
 repository = "https://drydock9.qxuken.dev/qxuken/kui"
 
 [workspace.dependencies]
-kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.2", registry = "forgejo" }
-kui-wgpu = { path = "crates/kui-wgpu", version = "0.1.0-alpha.2", registry = "forgejo" }
-kui = { path = "crates/kui", version = "0.1.0-alpha.2", registry = "forgejo" }
+kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.3", registry = "forgejo" }
+kui-wgpu = { path = "crates/kui-wgpu", version = "0.1.0-alpha.3", registry = "forgejo" }
+kui = { path = "crates/kui", version = "0.1.0-alpha.3", registry = "forgejo" }
 
 slotmap = "1.1.1"
 rustc-hash = "2"
