@@ -146,6 +146,20 @@ end
   headless driver that never sets time gets snapping, and a node's first
   frame or a frame without the transition snaps too, so nothing animates in
   from nowhere and a divider drag doesn't replay when it ends.
+- **Subpixel text where the GPU can blend it.** Glyphs are already placed at
+  quarter-pixel x offsets (cosmic-text's subpixel bins); on top of that the
+  core can rasterize outline glyphs as LCD subpixel coverage — three
+  rasterizations a third of a pixel apart landing in r, g and b — and emit
+  them as `GlyphSubpixel` quads. The wgpu backend requests dual-source
+  blending when the adapter has it (Metal, DX12, most Vulkan) and blends
+  per channel: the fragment shader outputs premultiplied color plus a
+  per-channel coverage, `out = src + dst * (1 - coverage)`. The runner turns
+  subpixel rasterization on only when the renderer reports that capability
+  (`kui::app(..).text_aa(TextAa::Grayscale)` or `KUI_TEXT_AA=gray` opt out);
+  headless contexts and C hosts stay grayscale unless they ask
+  (`kui_set_subpixel_text`), and a renderer without per-channel blending
+  still draws subpixel quads correctly from their union coverage. On a 2×
+  display the difference is subtle by design; it is 1× panels that gain.
 - **Window chrome is data, both directions.** Any node can declare a chrome
   role (`window_drag()` / `window_button(...)`); interacting with it produces
   `WindowCommand`s (start drag, close, minimize, toggle maximize) that the
@@ -243,8 +257,7 @@ binding are covered by tests (`cargo test --workspace`).
 
 ## Status / next
 
-v0 scope: mask + color-emoji glyphs only (no subpixel AA); no z-index
-(floats stack in tree order). Transitions cover sizing, colors and radius;
+v0 scope: no z-index (floats stack in tree order). Transitions cover sizing, colors and radius;
 a removed node vanishes at once (there is no exit animation yet). Editing: caret blink, double/triple-click
 word/line select, scroll-caret-into-view, inline IME composition, Tab
 focus traversal, and undo/redo (operational deltas with typing/delete

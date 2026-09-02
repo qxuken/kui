@@ -38,8 +38,11 @@ enum { KUI_COLUMN = 0, KUI_ROW = 1 };
 /* Alignment */
 enum { KUI_START = 0, KUI_CENTER = 1, KUI_END = 2 };
 /* Quad kinds */
+/* KUI_QUAD_GLYPH_SUBPIXEL: atlas rgb are per-channel coverages (needs
+ * per-channel / dual-source blending; else use the atlas alpha as a mask).
+ * Only produced after kui_set_subpixel_text(ctx, true). */
 enum { KUI_QUAD_SOLID = 0, KUI_QUAD_GLYPH_MASK = 1, KUI_QUAD_GLYPH_COLOR = 2,
-       KUI_QUAD_IMAGE = 3 };
+       KUI_QUAD_IMAGE = 3, KUI_QUAD_GLYPH_SUBPIXEL = 4 };
 /* Font families (KuiTextStyle.family) */
 enum { KUI_FONT_SANS = 0, KUI_FONT_SERIF = 1, KUI_FONT_MONO = 2 };
 /* Span flags */
@@ -195,6 +198,10 @@ void kui_set_time(KuiCtx *ctx, double now_secs);
 /* True when the last frame left a transition mid-flight: draw another frame
  * without waiting for input. */
 bool kui_animating(KuiCtx *ctx);
+/* Rasterize outline glyphs as LCD subpixel coverage (KUI_QUAD_GLYPH_SUBPIXEL)
+ * instead of alpha masks. Only turn it on if your renderer blends per
+ * channel. Flipping it re-rasterizes every glyph. */
+void kui_set_subpixel_text(KuiCtx *ctx, bool on);
 /* Window chrome facts for views (widgets adapt to them). controls_w/h > 0
  * describe the top-left keep-out rect of OS-drawn controls (macOS traffic
  * lights under custom chrome). */

@@ -1,6 +1,13 @@
 //! wgpu backend: one über-pipeline drawing instanced quads (rounded rects,
 //! borders, and atlas glyphs unified), so a whole UI is a single draw call.
 //! Consumes `kui_core::DisplayList` and mirrors the core's glyph atlas.
+//!
+//! Where the device offers dual-source blending (Metal, DX12, most Vulkan)
+//! the pipeline blends per channel, which is what LCD subpixel text needs:
+//! the fragment shader emits premultiplied color plus a per-channel
+//! coverage, and the blend is `src + dst * (1 - coverage)` channel-wise.
+//! Otherwise it falls back to ordinary alpha blending and subpixel glyphs
+//! draw from their union coverage (grayscale).
 
 pub use wgpu;
 
@@ -32,6 +39,7 @@ fn instance_of(q: &Quad) -> Instance {
         QuadKind::GlyphMask => 1.0,
         QuadKind::GlyphColor => 2.0,
         QuadKind::Image => 3.0,
+        QuadKind::GlyphSubpixel => 4.0,
     };
     Instance {
         pos: [q.rect.x, q.rect.y],
@@ -69,7 +77,29 @@ pub struct Renderer {
     instance_buf: wgpu::Buffer,
     instance_cap: usize,
     instances: Vec<Instance>,
+    dual_source: bool,
     pub clear_color: wgpu::Color,
+}
+
+/// Picks the `//DUAL:` or `//SINGLE:` lines of the shader template.
+fn preprocess_shader(src: &str, dual: bool) -> String {
+    let (keep, drop) = if dual {
+        ("//DUAL:", "//SINGLE:")
+    } else {
+        ("//SINGLE:", "//DUAL:")
+    };
+    let mut out = String::with_capacity(src.len());
+    for line in src.lines() {
+        if let Some(rest) = line.strip_prefix(keep) {
+            out.push_str(rest);
+        } else if line.starts_with(drop) {
+            continue;
+        } else {
+            out.push_str(line);
+        }
+        out.push('\n');
+    }
+    out
 }
 
 impl Renderer {
@@ -87,8 +117,19 @@ impl Renderer {
                 ..Default::default()
             })
             .await?;
+        // Per-channel blending for LCD subpixel text, when the device has it.
+        let dual_source = adapter
+            .features()
+            .contains(wgpu::Features::DUAL_SOURCE_BLENDING);
         let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default())
+            .request_device(&wgpu::DeviceDescriptor {
+                required_features: if dual_source {
+                    wgpu::Features::DUAL_SOURCE_BLENDING
+                } else {
+                    wgpu::Features::empty()
+                },
+                ..Default::default()
+            })
             .await?;
 
         let caps = surface.get_capabilities(&adapter);
@@ -115,8 +156,30 @@ impl Renderer {
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("kui"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(
+                preprocess_shader(include_str!("shader.wgsl"), dual_source).into(),
+            ),
         });
+        // Dual source: the shader outputs premultiplied color and a
+        // per-channel coverage; out = src + dst * (1 - coverage). For
+        // ordinary quads every channel's coverage equals alpha, which is
+        // exactly premultiplied alpha blending.
+        let blend = if dual_source {
+            wgpu::BlendState {
+                color: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::One,
+                    dst_factor: wgpu::BlendFactor::OneMinusSrc1,
+                    operation: wgpu::BlendOperation::Add,
+                },
+                alpha: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::One,
+                    dst_factor: wgpu::BlendFactor::OneMinusSrc1Alpha,
+                    operation: wgpu::BlendOperation::Add,
+                },
+            }
+        } else {
+            wgpu::BlendState::ALPHA_BLENDING
+        };
 
         let bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("kui.globals"),
@@ -180,7 +243,7 @@ impl Renderer {
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    blend: Some(blend),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
@@ -220,6 +283,7 @@ impl Renderer {
             instance_buf,
             instance_cap,
             instances: Vec::new(),
+            dual_source,
             clear_color: wgpu::Color {
                 r: 0.06,
                 g: 0.065,
@@ -227,6 +291,14 @@ impl Renderer {
                 a: 1.0,
             },
         })
+    }
+
+    /// Whether this device blends per channel, i.e. LCD subpixel glyphs
+    /// (`QuadKind::GlyphSubpixel`) render as intended. Drivers feed this to
+    /// `Core::set_subpixel_text`; without it the core should keep
+    /// rasterizing alpha masks.
+    pub fn subpixel_text(&self) -> bool {
+        self.dual_source
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {

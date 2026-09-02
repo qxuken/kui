@@ -17,6 +17,11 @@ pub enum QuadKind {
     /// Registered image blitted into the atlas: atlas rgba tinted by
     /// `color` (white = as-is), rounded by `radius` like a solid.
     Image,
+    /// LCD subpixel glyph: atlas rgb is per-channel coverage (times
+    /// `color.a`), `color.rgb` the text color. Needs per-channel (dual
+    /// source) blending; a backend without it treats the atlas alpha as a
+    /// plain mask.
+    GlyphSubpixel,
 }
 
 #[repr(C)]

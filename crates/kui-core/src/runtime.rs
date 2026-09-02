@@ -491,6 +491,20 @@ impl Core {
         lines * SCROLL_LINE_PX
     }
 
+    /// Rasterizes outline glyphs as LCD subpixel coverage
+    /// (`QuadKind::GlyphSubpixel`) instead of alpha masks. Drivers set it
+    /// from what their renderer can blend per channel; flipping it drops
+    /// the glyph atlas so every glyph re-rasterizes in the new mode.
+    pub fn set_subpixel_text(&mut self, on: bool) {
+        if self.text.set_subpixel(on) {
+            self.atlas.clear();
+        }
+    }
+
+    pub fn subpixel_text(&self) -> bool {
+        self.text.subpixel()
+    }
+
     /// The frame clock for transitions: monotonic seconds, any origin.
     /// Drivers set it before every frame; a driver that never does gets
     /// snapping instead of animation.

@@ -821,7 +821,7 @@ impl EditStore {
         let Some(s) = self.states.get_mut(&key) else {
             return;
         };
-        let (fs, swash) = text_system.raster_parts();
+        let (fs, raster) = text_system.raster_parts();
         s.editor.shape_as_needed(fs, false);
         let color = s.style.color;
         let accent = s.accent;
@@ -929,7 +929,7 @@ impl EditStore {
                 for glyph in run.glyphs.iter() {
                     let physical = glyph.physical((0.0, 0.0), 1.0);
                     let Some(slot) =
-                        crate::text::raster_glyph(physical.cache_key, fs, swash, atlas)
+                        crate::text::raster_glyph(physical.cache_key, fs, raster, atlas)
                     else {
                         continue;
                     };
@@ -945,11 +945,7 @@ impl EditStore {
                         border_color: Color::TRANSPARENT,
                         radius: 0.0,
                         border_w: 0.0,
-                        kind: if slot.color_glyph {
-                            QuadKind::GlyphColor
-                        } else {
-                            QuadKind::GlyphMask
-                        },
+                        kind: crate::text::glyph_kind(&slot),
                         uv: [slot.x, slot.y, slot.w, slot.h],
                         clip,
                     });

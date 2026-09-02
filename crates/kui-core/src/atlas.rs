@@ -21,6 +21,8 @@ pub struct GlyphSlot {
     pub top: i32,
     /// Color bitmap (emoji) vs alpha mask.
     pub color_glyph: bool,
+    /// LCD subpixel mask: rgb are per-channel coverages.
+    pub subpixel: bool,
 }
 
 pub struct RasterGlyph {
@@ -29,6 +31,7 @@ pub struct RasterGlyph {
     pub left: i32,
     pub top: i32,
     pub color: bool,
+    pub subpixel: bool,
     /// RGBA, w*h*4 bytes.
     pub data: Vec<u8>,
 }
@@ -71,6 +74,13 @@ impl GlyphAtlas {
             shelves: Vec::new(),
             next_shelf_y: 0,
         }
+    }
+
+    /// Drops every cached glyph and image (they re-rasterize on demand) and
+    /// bumps the epoch so renderers re-upload. Used when the raster mode
+    /// changes under the cache.
+    pub fn clear(&mut self) {
+        self.reset();
     }
 
     fn reset(&mut self) {
@@ -186,6 +196,7 @@ impl GlyphAtlas {
             left: glyph.left,
             top: glyph.top,
             color_glyph: glyph.color,
+            subpixel: glyph.subpixel,
         };
         self.map.insert(key, Some(slot));
         Some(slot)
@@ -217,6 +228,7 @@ impl GlyphAtlas {
             left: 0,
             top: 0,
             color_glyph: true,
+            subpixel: false,
         };
         self.images.insert(id, Some(slot));
         Some(slot)
@@ -259,6 +271,7 @@ mod tests {
             left: 0,
             top: 0,
             color: false,
+            subpixel: false,
             data: vec![0xff; (w * h * 4) as usize],
         }
     }

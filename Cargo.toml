@@ -21,6 +21,8 @@ kui = { path = "crates/kui" }
 slotmap = "1.1.1"
 rustc-hash = "2"
 cosmic-text = { version = "0.19", features = ["shape-run-cache"] }
+# Same major cosmic-text builds on: `Font::as_swash()` hands us its FontRef.
+swash = "0.2"
 wgpu = "30"
 winit = "0.30"
 bytemuck = { version = "1", features = ["derive"] }

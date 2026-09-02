@@ -157,6 +157,7 @@ export interface Quad {
   radius: number;
   borderW: number;
   /** 0 solid, 1 mask glyph, 2 color glyph, 3 image. */
+  /** 0 solid, 1 mask glyph, 2 color glyph, 3 image, 4 subpixel glyph. */
   kind: number;
   uv: [number, number, number, number];
   clip: [number, number, number, number];

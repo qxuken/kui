@@ -1040,6 +1040,7 @@ dependencies = [
  "divan",
  "rustc-hash 2.1.3",
  "slotmap",
+ "swash",
 ]
 
 [[package]]

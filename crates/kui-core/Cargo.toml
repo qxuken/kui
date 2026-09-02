@@ -7,6 +7,7 @@ edition.workspace = true
 slotmap.workspace = true
 rustc-hash.workspace = true
 cosmic-text.workspace = true
+swash.workspace = true
 
 [dev-dependencies]
 divan.workspace = true

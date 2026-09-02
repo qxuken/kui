@@ -39,6 +39,17 @@ pub enum Chrome {
     Borderless,
 }
 
+/// How outline glyphs are antialiased.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TextAa {
+    /// LCD subpixel coverage when the GPU can blend per channel, grayscale
+    /// otherwise (the default). `KUI_TEXT_AA=gray|subpixel` overrides.
+    #[default]
+    Auto,
+    Grayscale,
+    Subpixel,
+}
+
 /// Entry point: `kui::app("title").custom_titlebar().run(my_app)`.
 pub fn app(title: &str) -> Launcher {
     Launcher {
@@ -46,6 +57,7 @@ pub fn app(title: &str) -> Launcher {
         chrome: Chrome::Native,
         size: (960.0, 640.0),
         extensions: Vec::new(),
+        text_aa: TextAa::Auto,
     }
 }
 
@@ -55,11 +67,18 @@ pub struct Launcher {
     chrome: Chrome,
     size: (f64, f64),
     extensions: Vec<Box<dyn Extension>>,
+    text_aa: TextAa,
 }
 
 impl Launcher {
     pub fn chrome(mut self, chrome: Chrome) -> Self {
         self.chrome = chrome;
+        self
+    }
+
+    /// Glyph antialiasing; see [`TextAa`].
+    pub fn text_aa(mut self, aa: TextAa) -> Self {
+        self.text_aa = aa;
         self
     }
 
@@ -95,6 +114,7 @@ impl Launcher {
             applied_title: self.title,
             chrome: self.chrome,
             size: self.size,
+            text_aa: self.text_aa,
             app,
             extensions: self.extensions,
             core: Core::new(),
@@ -229,6 +249,7 @@ struct Shell<A: App> {
     applied_title: String,
     chrome: Chrome,
     size: (f64, f64),
+    text_aa: TextAa,
     app: A,
     extensions: Vec<Box<dyn Extension>>,
     core: Core,
@@ -709,6 +730,18 @@ impl<A: App> ApplicationHandler for Shell<A> {
             size.height,
         ))
         .expect("init renderer");
+        // Subpixel text only where the renderer blends per channel; the
+        // env var wins over the builder for quick A/B comparisons.
+        let wanted = match std::env::var("KUI_TEXT_AA").ok().as_deref() {
+            Some("gray") | Some("grayscale") => TextAa::Grayscale,
+            Some("subpixel") | Some("lcd") => TextAa::Subpixel,
+            _ => self.text_aa,
+        };
+        let subpixel = match wanted {
+            TextAa::Grayscale => false,
+            TextAa::Subpixel | TextAa::Auto => renderer.subpixel_text(),
+        };
+        self.core.set_subpixel_text(subpixel);
         self.window = Some(window);
         self.renderer = Some(renderer);
     }

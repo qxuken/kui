@@ -525,6 +525,18 @@ pub extern "C" fn kui_animating(ptr: *mut KuiCtx) -> bool {
     })
 }
 
+/// Rasterize outline glyphs as LCD subpixel coverage (`KUI_QUAD_GLYPH_SUBPIXEL`,
+/// atlas rgb = per-channel coverage) instead of alpha masks. Only for
+/// renderers that blend per channel; flipping it re-rasterizes every glyph.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_subpixel_text(ptr: *mut KuiCtx, on: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_subpixel_text(on);
+        }
+    });
+}
+
 /// Window chrome facts for views to read (widgets::titlebar adapts to
 /// them). `controls_w/h > 0` describe the keep-out rect of controls the OS
 /// draws over the content (macOS traffic lights), anchored top-left.

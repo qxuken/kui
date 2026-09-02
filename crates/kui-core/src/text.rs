@@ -5,8 +5,8 @@
 //! renderers only ever see positioned atlas quads.
 
 use cosmic_text::{
-    Attrs, Buffer, FontSystem, Metrics, Shaping, Style as FontStyle, SwashCache, SwashContent,
-    Weight,
+    Attrs, Buffer, CacheKeyFlags, FontSystem, Metrics, Shaping, Style as FontStyle, SwashCache,
+    SwashContent, Weight,
 };
 use rustc_hash::FxHashMap;
 
@@ -26,28 +26,110 @@ pub(crate) fn family_of(f: FontFamily) -> cosmic_text::Family<'static> {
     }
 }
 
+/// The glyph rasterizer: cosmic-text's swash cache for plain alpha masks and
+/// color bitmaps, plus our own scaler for LCD subpixel masks (cosmic-text's
+/// cache is fixed to `Format::Alpha`).
+pub(crate) struct Raster {
+    swash: SwashCache,
+    ctx: swash::scale::ScaleContext,
+    /// Rasterize outline glyphs as per-channel subpixel coverage. Set by
+    /// the driver from what its renderer can blend; see
+    /// `Core::set_subpixel_text`.
+    pub(crate) subpixel: bool,
+}
+
+impl Raster {
+    fn new() -> Self {
+        Self {
+            swash: SwashCache::new(),
+            ctx: swash::scale::ScaleContext::new(),
+            subpixel: false,
+        }
+    }
+
+    /// cosmic-text's `swash_image`, with `Format::Subpixel`: three
+    /// rasterizations shifted by a third of a pixel land in r, g and b.
+    /// Color sources are tried first so emoji still come out as bitmaps.
+    fn subpixel_image(
+        &mut self,
+        fs: &mut FontSystem,
+        key: cosmic_text::CacheKey,
+    ) -> Option<cosmic_text::SwashImage> {
+        use swash::scale::{Render, Source, StrikeWith};
+        use swash::zeno::{Angle, Format, Transform, Vector};
+        let font = fs.get_font(key.font_id, key.font_weight)?;
+        let swash_font = font.as_swash();
+        let variable_weight = swash_font
+            .variations()
+            .find_by_tag(swash::Tag::from_be_bytes(*b"wght"));
+        let mut scaler = self
+            .ctx
+            .builder(swash_font)
+            .size(f32::from_bits(key.font_size_bits))
+            .hint(!key.flags.contains(CacheKeyFlags::DISABLE_HINTING));
+        if let Some(v) = variable_weight {
+            scaler = scaler.normalized_coords(swash_font.variations().normalized_coords([(
+                swash::Tag::from_be_bytes(*b"wght"),
+                f32::from(key.font_weight.0).clamp(v.min_value(), v.max_value()),
+            )]));
+        }
+        let mut scaler = scaler.build();
+        let offset = if key.flags.contains(CacheKeyFlags::PIXEL_FONT) {
+            Vector::new(key.x_bin.as_float().round(), key.y_bin.as_float().round())
+        } else {
+            Vector::new(key.x_bin.as_float(), key.y_bin.as_float())
+        };
+        Render::new(&[
+            Source::ColorOutline(0),
+            Source::ColorBitmap(StrikeWith::BestFit),
+            Source::Outline,
+        ])
+        .format(Format::Subpixel)
+        .offset(offset)
+        .transform(
+            key.flags
+                .contains(CacheKeyFlags::FAKE_ITALIC)
+                .then(|| Transform::skew(Angle::from_degrees(14.0), Angle::from_degrees(0.0))),
+        )
+        .render(&mut scaler, key.glyph_id)
+    }
+}
+
 /// Rasterizes one glyph into the atlas (shared by static text and editors).
 pub(crate) fn raster_glyph(
     key: cosmic_text::CacheKey,
     fs: &mut FontSystem,
-    swash: &mut SwashCache,
+    raster: &mut Raster,
     atlas: &mut crate::atlas::GlyphAtlas,
 ) -> Option<crate::atlas::GlyphSlot> {
     atlas.get_or_insert(key, || {
-        let image = swash.get_image_uncached(fs, key)?;
+        let image = if raster.subpixel {
+            raster.subpixel_image(fs, key)?
+        } else {
+            raster.swash.get_image_uncached(fs, key)?
+        };
         if image.placement.width == 0 || image.placement.height == 0 {
             return None;
         }
-        let (data, is_color) = match image.content {
+        let (data, is_color, subpixel) = match image.content {
             SwashContent::Mask => {
                 let mut rgba = Vec::with_capacity(image.data.len() * 4);
                 for &a in image.data.iter() {
                     rgba.extend_from_slice(&[255, 255, 255, a]);
                 }
-                (rgba, false)
+                (rgba, false, false)
             }
-            SwashContent::Color => (image.data.to_vec(), true),
-            SwashContent::SubpixelMask => return None,
+            SwashContent::Color => (image.data.to_vec(), true, false),
+            SwashContent::SubpixelMask => {
+                // rgb carry the per-channel coverages; alpha (which zeno
+                // leaves untouched) becomes the union, the value a backend
+                // without per-channel blending falls back to.
+                let mut rgba = image.data.to_vec();
+                for px in rgba.as_chunks_mut::<4>().0 {
+                    px[3] = px[0].max(px[1]).max(px[2]);
+                }
+                (rgba, false, true)
+            }
         };
         Some(crate::atlas::RasterGlyph {
             w: image.placement.width,
@@ -55,9 +137,21 @@ pub(crate) fn raster_glyph(
             left: image.placement.left,
             top: image.placement.top,
             color: is_color,
+            subpixel,
             data,
         })
     })
+}
+
+/// The quad kind a rasterized glyph draws as.
+pub(crate) fn glyph_kind(slot: &crate::atlas::GlyphSlot) -> QuadKind {
+    if slot.color_glyph {
+        QuadKind::GlyphColor
+    } else if slot.subpixel {
+        QuadKind::GlyphSubpixel
+    } else {
+        QuadKind::GlyphMask
+    }
 }
 
 /// Evict cache entries unused for this many frames.
@@ -83,7 +177,7 @@ struct GlyphTemplate {
     w: f32,
     h: f32,
     uv: [u32; 4],
-    color_glyph: bool,
+    kind: QuadKind,
     /// Per-span color override (rich text); falls back to the node color.
     color: Option<Color>,
 }
@@ -153,7 +247,7 @@ struct FrameText {
 
 pub struct TextSystem {
     font_system: FontSystem,
-    swash: SwashCache,
+    raster: Raster,
     cache: FxHashMap<u64, CachedText>,
     frame: Vec<FrameText>,
     scale: f32,
@@ -178,7 +272,7 @@ impl TextSystem {
         }
         Self {
             font_system,
-            swash: SwashCache::new(),
+            raster: Raster::new(),
             cache: FxHashMap::default(),
             frame: Vec::new(),
             scale: 1.0,
@@ -186,9 +280,21 @@ impl TextSystem {
         }
     }
 
-    /// Font system + swash rasterizer, split-borrowed for glyph raster.
-    pub(crate) fn raster_parts(&mut self) -> (&mut FontSystem, &mut SwashCache) {
-        (&mut self.font_system, &mut self.swash)
+    /// Font system + rasterizer, split-borrowed for glyph raster.
+    pub(crate) fn raster_parts(&mut self) -> (&mut FontSystem, &mut Raster) {
+        (&mut self.font_system, &mut self.raster)
+    }
+
+    pub(crate) fn subpixel(&self) -> bool {
+        self.raster.subpixel
+    }
+
+    /// Switches outline rasterization between alpha masks and LCD subpixel
+    /// coverage. Returns whether it changed (the caller resets the atlas).
+    pub(crate) fn set_subpixel(&mut self, on: bool) -> bool {
+        let changed = self.raster.subpixel != on;
+        self.raster.subpixel = on;
+        changed
     }
 
     pub(crate) fn font_system_mut(&mut self) -> &mut FontSystem {
@@ -367,7 +473,7 @@ impl TextSystem {
         let ox = (origin.x * self.scale).round();
         let oy = (origin.y * self.scale).round();
         let fs = &mut self.font_system;
-        let swash = &mut self.swash;
+        let raster = &mut self.raster;
         let entry = self
             .cache
             .get_mut(&key)
@@ -380,7 +486,7 @@ impl TextSystem {
             for run in entry.buffer.layout_runs() {
                 for glyph in run.glyphs.iter() {
                     let physical = glyph.physical((0.0, 0.0), 1.0);
-                    let Some(slot) = raster_glyph(physical.cache_key, fs, swash, atlas) else {
+                    let Some(slot) = raster_glyph(physical.cache_key, fs, raster, atlas) else {
                         continue;
                     };
                     entry.glyphs.push(GlyphTemplate {
@@ -389,7 +495,7 @@ impl TextSystem {
                         w: slot.w as f32,
                         h: slot.h as f32,
                         uv: [slot.x, slot.y, slot.w, slot.h],
-                        color_glyph: slot.color_glyph,
+                        kind: glyph_kind(&slot),
                         color: glyph
                             .color_opt
                             .map(|c| Color::rgba8(c.r(), c.g(), c.b(), c.a())),
@@ -415,11 +521,7 @@ impl TextSystem {
                     border_color: Color::TRANSPARENT,
                     radius: 0.0,
                     border_w: 0.0,
-                    kind: if g.color_glyph {
-                        QuadKind::GlyphColor
-                    } else {
-                        QuadKind::GlyphMask
-                    },
+                    kind: g.kind,
                     uv: g.uv,
                     clip,
                 }),

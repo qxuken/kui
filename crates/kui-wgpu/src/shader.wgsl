@@ -1,3 +1,9 @@
+// Lines prefixed `//DUAL:` are enabled when the device has dual-source
+// blending (per-channel coverage for LCD subpixel text); `//SINGLE:` lines
+// take their place otherwise. The Rust side strips one prefix or the other
+// before compiling — WGSL has no preprocessor and `enable` is all-or-nothing.
+//DUAL:enable dual_source_blending;
+
 struct Globals {
     viewport: vec2<f32>,
     atlas_size: vec2<f32>,
@@ -13,7 +19,7 @@ struct Instance {
     @location(2) color: vec4<f32>,
     @location(3) border_color: vec4<f32>,
     // radius, border_w, kind (0 solid / 1 mask glyph / 2 color glyph /
-    // 3 image), unused
+    // 3 image / 4 subpixel glyph), unused
     @location(4) params: vec4<f32>,
     // atlas texels: x, y, w, h
     @location(5) uv: vec4<f32>,
@@ -63,11 +69,18 @@ fn sd_rounded_box(p: vec2<f32>, half: vec2<f32>, r: f32) -> f32 {
     return length(max(q, vec2<f32>(0.0, 0.0))) + min(max(q.x, q.y), 0.0) - rr;
 }
 
-@fragment
-fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+// A fragment's straight (non-premultiplied) color and its per-channel
+// coverage. For everything but subpixel glyphs the coverage is the same in
+// every channel, i.e. plain alpha.
+struct Shaded {
+    color: vec3<f32>,
+    coverage: vec3<f32>,
+};
+
+fn shade(in: VsOut) -> Shaded {
     // frag_pos is framebuffer coords (physical px, y down) — same space as
-    // clip. Clip via alpha (not discard) to keep texture sampling in uniform
-    // control flow.
+    // clip. Clip via coverage (not discard) to keep texture sampling in
+    // uniform control flow.
     let p = in.frag_pos.xy;
     let inside = f32(
         p.x >= in.clip.x && p.y >= in.clip.y
@@ -79,12 +92,17 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     if kind == 1u {
         // Alpha-mask glyph tinted by color.
         let a = textureSample(atlas_tex, atlas_smp, in.uv).a;
-        return vec4<f32>(in.color.rgb, in.color.a * a * inside);
+        return Shaded(in.color.rgb, vec3<f32>(in.color.a * a * inside));
     }
     if kind == 2u {
         // Color bitmap glyph (emoji).
         let t = textureSample(atlas_tex, atlas_smp, in.uv);
-        return vec4<f32>(t.rgb, t.a * in.color.a * inside);
+        return Shaded(t.rgb, vec3<f32>(t.a * in.color.a * inside));
+    }
+    if kind == 4u {
+        // LCD subpixel glyph: the atlas holds one coverage per channel.
+        let t = textureSample(atlas_tex, atlas_smp, in.uv);
+        return Shaded(in.color.rgb, t.rgb * in.color.a * inside);
     }
 
     // Solid rounded rect with optional border, SDF antialiased. Images
@@ -97,7 +115,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     if kind == 3u {
         // Registered image tinted by color (white = as-is).
         let t = textureSample(atlas_tex, atlas_smp, in.uv);
-        return vec4<f32>(t.rgb * in.color.rgb, t.a * in.color.a * coverage * inside);
+        return Shaded(t.rgb * in.color.rgb, vec3<f32>(t.a * in.color.a * coverage * inside));
     }
 
     var rgba = in.color;
@@ -108,5 +126,28 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         // Border-only nodes (transparent fill) still show their outline.
         rgba.a = mix(in.border_color.a, in.color.a, border_mix);
     }
-    return vec4<f32>(rgba.rgb, rgba.a * coverage * inside);
+    return Shaded(rgba.rgb, vec3<f32>(rgba.a * coverage * inside));
 }
+
+//DUAL:struct FsOut {
+//DUAL:    // Premultiplied color; blended with src = One, dst = 1 - mask.
+//DUAL:    @location(0) @blend_src(0) color: vec4<f32>,
+//DUAL:    // Per-channel coverage: the "alpha" each channel blends with.
+//DUAL:    @location(0) @blend_src(1) mask: vec4<f32>,
+//DUAL:};
+//DUAL:
+//DUAL:@fragment
+//DUAL:fn fs_main(in: VsOut) -> FsOut {
+//DUAL:    let s = shade(in);
+//DUAL:    let a = max(s.coverage.r, max(s.coverage.g, s.coverage.b));
+//DUAL:    return FsOut(vec4<f32>(s.color * s.coverage, a), vec4<f32>(s.coverage, a));
+//DUAL:}
+
+//SINGLE:@fragment
+//SINGLE:fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+//SINGLE:    // No per-channel blending: subpixel coverage collapses to its union
+//SINGLE:    // (the atlas alpha), i.e. a grayscale mask.
+//SINGLE:    let s = shade(in);
+//SINGLE:    let a = max(s.coverage.r, max(s.coverage.g, s.coverage.b));
+//SINGLE:    return vec4<f32>(s.color, a);
+//SINGLE:}
