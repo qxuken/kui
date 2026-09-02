@@ -96,6 +96,34 @@ export interface FrameStats {
   atlasSize: number;
 }
 
+/** One frame's cost in ms, split by phase (what the latency HUD draws). */
+export interface FrameSample {
+  /** Input routing and edits since the previous frame. */
+  inputMs: number;
+  /** The view (tree lowering). */
+  viewMs: number;
+  /** Layout, text measurement and display-list emission. */
+  layoutMs: number;
+  /** GPU encode and present. */
+  renderMs: number;
+  /** Blocked on a swapchain image (vsync pacing, not work). */
+  waitMs: number;
+  totalMs: number;
+  /** Everything but `waitMs`. */
+  workMs: number;
+}
+
+/** The window's frame-timing ring: the last 120 frames. */
+export interface FrameTiming {
+  frames: number;
+  /** Null before the first frame. */
+  last: FrameSample | null;
+  avgTotalMs: number;
+  maxTotalMs: number;
+  avgWorkMs: number;
+  maxWorkMs: number;
+}
+
 export interface KeyMods {
   shift?: boolean;
   /** Word-wise motion (alt). */
@@ -231,6 +259,15 @@ export declare class KuiWindow {
    *  the first frame (in `setup`); changes to it also arrive through
    *  `pollEvents` as a `ResizeMsg`. */
   size(): WindowSize;
+  /** True when the last frame left a transition mid-flight. The window
+   *  schedules its own redraws for that; this is for tests and drivers that
+   *  want to know when motion has settled. */
+  animating(): boolean;
+  /** Summary of the last frame's display list (same shape as `Ctx.stats`). */
+  stats(): FrameStats;
+  /** Frame timing measured by the window's runner — the latency HUD as
+   *  data. `Ctx` has no clock of its own, so this lives on the window. */
+  frameStats(): FrameTiming;
   pollEvents<A = AppMsg | CoreMsg>(): UiEvent<A>[];
   close(): void;
   editText(key: string): string | null;

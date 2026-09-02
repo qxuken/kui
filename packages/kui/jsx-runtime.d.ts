@@ -68,6 +68,20 @@ export interface KeyframeProp {
   radius?: number;
 }
 
+/** Where a node starts the first frame it is seen, for `enter`: the slots
+ *  it names ease in from these values over `transition` ms instead of
+ *  snapping. `dx`/`dy` are logical px the node slides in from; the rest
+ *  take the forms the props themselves take. A node that leaves and comes
+ *  back enters again. */
+export interface EnterProp {
+  dx?: number;
+  dy?: number;
+  width?: SizingProp;
+  height?: SizingProp;
+  bg?: ColorProp;
+  radius?: number;
+}
+
 export interface FloatProp {
   anchor?: 'parent' | 'viewport';
   /** Attach point on the anchor, [x, y]. */
@@ -97,6 +111,8 @@ export interface GeneratedSpecProps {
   delay?: number;
   /** Easing for `transition` (default easeOut); spring/bouncy integrate with momentum. */
   easing?: 'easeOut' | 'linear' | 'easeIn' | 'easeInOut' | 'spring' | 'bouncy';
+  /** Where the node starts the first frame it is seen `{ dx?, dy?, width?, height?, bg?, radius? }`: those slots ease in from there over `transition` ms instead of snapping (`dx`/`dy` slide it in from that far away). */
+  enter?: EnterProp;
   /** Space between children along the main axis. */
   gap?: number;
   /** Cross-axis size: px | "fit" | "grow" | "N%". */

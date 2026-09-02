@@ -475,6 +475,7 @@ fn parse_value(kind: &Kind, v: &mlua::Value) -> mlua::Result<Option<Parsed>> {
         Kind::Keyframes => {
             Parsed::Keyframes(kui_core::keyframes::parse(&lua_to_value(v)?).map_err(bad)?)
         }
+        Kind::Enter => Parsed::Enter(kui_core::enter::parse(&lua_to_value(v)?).map_err(bad)?),
     }))
 }
 

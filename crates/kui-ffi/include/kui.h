@@ -131,6 +131,27 @@ typedef struct KuiKeyframe {
     float radius;
 } KuiKeyframe;
 
+/* Which KuiEnter fields are set (KuiEnter.set bits); 0 = no entrance. */
+enum {
+    KUI_ENTER_OFFSET = 1u << 0,
+    KUI_ENTER_WIDTH = 1u << 1,
+    KUI_ENTER_HEIGHT = 1u << 2,
+    KUI_ENTER_BG = 1u << 3,
+    KUI_ENTER_RADIUS = 1u << 4,
+};
+
+/* Where a node starts the first frame it is seen (KuiSpec.enter): the slots
+ * `set` names ease in from these values over transition_ms instead of
+ * snapping — dx/dy slide it in from that far away (logical px), bg fades it
+ * in. A node drawn again after a frame away enters again. Zeroed = none. */
+typedef struct KuiEnter {
+    uint32_t set;
+    float dx, dy;
+    KuiSizing width, height;
+    uint32_t bg; /* 0xRRGGBBAA */
+    float radius;
+} KuiEnter;
+
 /* Zero-initialized KuiSpec is a fit-sized transparent column. Colors are
  * 0xRRGGBBAA with 0 meaning "none". Fields mirror the shared prop schema
  * (crates/kui-core/src/schema.rs) and are append-only: the layout is ABI. */
@@ -184,6 +205,11 @@ typedef struct KuiSpec {
     float delay_ms;
     const KuiKeyframe *keyframes;
     size_t keyframes_len;
+    /* Entrance transition (see KuiEnter); `set` = 0 leaves first sight
+     * snapping as before. Needs transition_ms (defaults to 200 if 0) and a
+     * stable key; with `slide` the position keeps easing afterwards, without
+     * it only the entrance moves. */
+    KuiEnter enter;
 } KuiSpec;
 
 /* Zero-initialized KuiTextStyle picks defaults (16px, default foreground). */

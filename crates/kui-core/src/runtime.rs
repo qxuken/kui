@@ -72,7 +72,8 @@ pub struct Core {
     /// Per-node "inside a floating subtree" marker (only filled when needed).
     in_float: Vec<bool>,
     any_float: bool,
-    /// Whether any node this frame eases its position (`NodeSpec::slide`).
+    /// Whether any node this frame eases its position (`NodeSpec::slide`,
+    /// or an `enter` with an offset).
     any_slide: bool,
     /// A view asked for one more frame (`request_frame`); cleared by
     /// `begin_frame`, reported through `animating`.
@@ -791,23 +792,26 @@ impl Core {
         let anim = &mut self.anim;
         let tracks = (!spec.keyframes.is_empty()).then(|| Tracks::of(spec));
         let track = |slot: Slot| tracks.as_ref().and_then(|k| k.get(slot));
-        let mut sizing = |slot: Slot, s: Sizing| {
+        let enter = spec.enter.unwrap_or_default();
+        let mut sizing = |slot: Slot, s: Sizing, from: Option<Sizing>| {
             let Some(v) = s.amount() else {
                 return s;
             };
+            let from = from.and_then(|f| f.amount()).map(|f| [f, 0.0, 0.0, 0.0]);
             let eased = match track(slot) {
                 Some(track) => anim.sample(track, t).map_or(v, |v| v[0]),
-                None => anim.drive(key, slot, [v, 0.0, 0.0, 0.0], t)[0],
+                None => anim.drive(key, slot, from, [v, 0.0, 0.0, 0.0], t, true)[0],
             };
             s.with_amount(eased)
         };
-        spec.layout.width = sizing(Slot::Width, spec.layout.width);
-        spec.layout.height = sizing(Slot::Height, spec.layout.height);
-        let mut color = |slot: Slot, c: Color| {
+        spec.layout.width = sizing(Slot::Width, spec.layout.width, enter.width);
+        spec.layout.height = sizing(Slot::Height, spec.layout.height, enter.height);
+        let mut color = |slot: Slot, c: Color, from: Option<Color>| {
             let target = [c.r, c.g, c.b, c.a];
+            let from = from.map(|f| [f.r, f.g, f.b, f.a]);
             let v = match track(slot) {
                 Some(track) => anim.sample(track, t).unwrap_or(target),
-                None => anim.drive(key, slot, target, t),
+                None => anim.drive(key, slot, from, target, t, true),
             };
             Color {
                 r: v[0],
@@ -816,11 +820,18 @@ impl Core {
                 a: v[3],
             }
         };
-        spec.style.bg = color(Slot::Bg, spec.style.bg);
-        spec.style.border_color = color(Slot::Border, spec.style.border_color);
+        spec.style.bg = color(Slot::Bg, spec.style.bg, enter.bg);
+        spec.style.border_color = color(Slot::Border, spec.style.border_color, None);
         spec.style.radius = match track(Slot::Radius) {
             Some(track) => anim.sample(track, t).unwrap_or(spec.style.radius),
-            None => anim.drive(key, Slot::Radius, spec.style.radius, t),
+            None => anim.drive(
+                key,
+                Slot::Radius,
+                enter.radius.map(|r| [r; 4]),
+                spec.style.radius,
+                t,
+                true,
+            ),
         };
     }
 
@@ -927,7 +938,7 @@ impl Core {
         if spec.layout.clips() {
             self.any_clip = true;
         }
-        if spec.slide && spec.transition.is_some() {
+        if spec.transition.is_some() && (spec.slide || spec.enter.is_some_and(|e| e.offsets())) {
             self.any_slide = true;
         }
         if spec.layout.float.is_some() {
@@ -1230,19 +1241,32 @@ impl Core {
     /// After layout: nodes that `slide` ease from last frame's position
     /// toward where layout put them, carrying their subtree along (hit
     /// regions come from the same positions, so input follows the motion).
-    /// Preorder means a parent shifts before its children are visited, so
-    /// nested sliders ease relative to an already-eased parent.
+    /// Nodes whose `enter` has an offset start that far away on first
+    /// sight and ease in the same way; without `slide` that entrance is
+    /// all their position ever eases. Preorder means a parent shifts before
+    /// its children are visited, so nested sliders ease relative to an
+    /// already-eased parent.
     fn ease_positions(&mut self) {
         for i in 0..self.tree.len() {
             let spec = &self.tree.specs[i];
-            let (Some(t), true) = (spec.transition, spec.slide) else {
+            let Some(t) = spec.transition else {
                 continue;
             };
+            let enter = spec.enter.filter(|e| e.offsets());
+            if !spec.slide && enter.is_none() {
+                continue;
+            }
             let key = self.tree.keys[i];
             let target = self.tree.pos[i];
-            let v = self
-                .anim
-                .drive(key, Slot::Pos, [target.x, target.y, 0.0, 0.0], t);
+            let from = enter.map(|e| [target.x + e.dx, target.y + e.dy, 0.0, 0.0]);
+            let v = self.anim.drive(
+                key,
+                Slot::Pos,
+                from,
+                [target.x, target.y, 0.0, 0.0],
+                t,
+                spec.slide,
+            );
             let d = Vec2::new(v[0] - target.x, v[1] - target.y);
             if d.x == 0.0 && d.y == 0.0 {
                 continue;

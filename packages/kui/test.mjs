@@ -43,6 +43,7 @@ const SAMPLE = {
   str: 'group-a',
   resource: '0000000000000007',
   keyframes: [{ width: { grow: 0 }, bg: '#112233' }, { at: 0.75, width: 'grow', height: '50%', radius: 9 }],
+  enter: { dx: -40, dy: 8, width: { grow: 0 }, bg: '#11223300', radius: 0 },
 };
 
 test('protocol exports a version and the schema rows', () => {

@@ -17,6 +17,7 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `crossAlign` | `cross_align` | `cross_align` | `start` \\| `center` \\| `end` | Child alignment across the main axis. |
 | `delay` | `delay` | `delay_ms` | number | Holds the `keyframes` cycle back by this many ms (CSS `animation-delay`); siblings with different delays run out of phase. |
 | `easing` | `easing` | `easing` (`KUI_EASE_*`) | `easeOut` \\| `linear` \\| `easeIn` \\| `easeInOut` \\| `spring` \\| `bouncy` | Easing for `transition` (default easeOut); spring/bouncy integrate with momentum. |
+| `enter` | `enter` | `enter` (`KuiEnter`, with `set` bits) | entrance (`{ dx?, dy?, width?, height?, bg?, radius? }`) | Where the node starts the first frame it is seen `{ dx?, dy?, width?, height?, bg?, radius? }`: those slots ease in from there over `transition` ms instead of snapping (`dx`/`dy` slide it in from that far away). |
 | `gap` | `gap` | `gap` | number | Space between children along the main axis. |
 | `height` | `height` | `height` (KuiSizing) | sizing (`number` \\| `"fit"` \\| `"grow"` \\| `"N%"`) | Cross-axis size: px \| "fit" \| "grow" \| "N%". |
 | `hoverBg` | `hover_bg` | `hover_bg` | color (`#hex` or `0xRRGGBBAA`) | Background while hovered (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`. |

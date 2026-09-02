@@ -72,6 +72,16 @@ package as [props.md](props.md) (`docs/props.md` in the repository).
   forever without the app ever waking up to flip it. Stops spread evenly
   unless they name `at` (0..1); a slot a stop leaves out falls back to the
   node's own prop, so `[{ at: 0.5, bg: '#f5a97f' }]` is a pulse.
+- **Arrivals** are data too. A node's first frame snaps, so a slide-in
+  needed an off-screen frame and a second render; `enter` states the
+  starting point instead: `<box key="toast" float="viewport" transition={200}
+  enter={{ dx: 320, bg: '#00000000' }} …/>` slides in from the right and
+  fades up on the frame it appears, and enters again after being dismissed.
+  Add `slide` if it should also glide when layout moves it later — a float
+  whose `dx`/`dy` changes eases to the new offset with `slide` alone.
+- **Frame timing without the overlay**: `win.frameStats()` is the latency
+  HUD as data (`last.viewMs`, `avgWorkMs`, …), `win.stats()` the display
+  list summary, and `win.animating()` tells a test when motion has settled.
 - **Tooltips**: `tooltip="hint"` on any box (implies hover tracking).
 - **Per-corner radius**: `radius` for all four, `radiusTL` / `radiusTR` /
   `radiusBR` / `radiusBL` after it for the exceptions.

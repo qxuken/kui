@@ -110,7 +110,7 @@ pub fn parse(v: &Value) -> Result<Vec<Keyframe>, String> {
     Ok(frames)
 }
 
-fn sizing_value(v: &Value) -> Result<Sizing, String> {
+pub(crate) fn sizing_value(v: &Value) -> Result<Sizing, String> {
     match v {
         Value::Int(_) | Value::Float(_) => Ok(Sizing::Fixed(v.as_float().unwrap_or(0.0) as f32)),
         Value::Str(s) => sizing_str(s),
@@ -130,7 +130,7 @@ fn sizing_value(v: &Value) -> Result<Sizing, String> {
     }
 }
 
-fn color_value(v: &Value) -> Result<Color, String> {
+pub(crate) fn color_value(v: &Value) -> Result<Color, String> {
     match v {
         Value::Int(n) => Ok(color_num(*n as u32)),
         Value::Float(n) => Ok(color_num(*n as u32)),

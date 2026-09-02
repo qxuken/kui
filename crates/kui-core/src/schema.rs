@@ -23,6 +23,7 @@ use std::sync::LazyLock;
 
 use crate::anim::{Easing, Repeat};
 use crate::color::Color;
+use crate::enter::Enter;
 use crate::keyframes::Keyframe;
 use crate::spec::{Align, FontFamily, NodeSpec, Sizing, TextStyle, TextWrap};
 use crate::value::Value;
@@ -77,6 +78,7 @@ pub const P_DELAY: u32 = 45;
 pub const P_WRAP: u32 = 46;
 pub const P_MAX_LINES: u32 = 47;
 pub const P_ELLIPSIS: u32 = 48;
+pub const P_ENTER: u32 = 49;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -139,6 +141,9 @@ pub enum Kind {
     /// form). JSON/binary/Lua carry it like a `Msg` and parse it in the
     /// core; C passes a `KuiKeyframe` array.
     Keyframes,
+    /// An entrance (`crate::enter::parse` reads the plain-data form).
+    /// Carried like a `Msg` and parsed in the core; C fills a `KuiEnter`.
+    Enter,
 }
 
 /// Where a parsed value lands. `PropDef::target` derives from this.
@@ -151,6 +156,7 @@ pub enum Apply {
     SpecMsg(fn(NodeSpec, Value) -> NodeSpec),
     SpecStr(fn(NodeSpec, &str) -> NodeSpec),
     SpecKeyframes(fn(NodeSpec, Vec<Keyframe>) -> NodeSpec),
+    SpecEnter(fn(NodeSpec, Enter) -> NodeSpec),
     StyleF32(fn(TextStyle, f32) -> TextStyle),
     StyleColor(fn(TextStyle, Color) -> TextStyle),
     StyleEnum(fn(TextStyle, usize) -> TextStyle),
@@ -431,6 +437,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "CSS-style stops `[{ at?, width?, height?, bg?, radius? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted.",
     },
     PropDef {
+        name: "enter",
+        id: P_ENTER,
+        kind: Kind::Enter,
+        apply: Apply::SpecEnter(|s, e| s.enter(e)),
+        doc: "Where the node starts the first frame it is seen `{ dx?, dy?, width?, height?, bg?, radius? }`: those slots ease in from there over `transition` ms instead of snapping (`dx`/`dy` slide it in from that far away).",
+    },
+    PropDef {
         name: "repeat",
         id: P_REPEAT,
         kind: Kind::Enum(REPEATS),
@@ -616,6 +629,7 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     ),
     ("repeat", "`repeat` (`KUI_REPEAT_*`)"),
     ("delay", "`delay_ms`"),
+    ("enter", "`enter` (`KuiEnter`, with `set` bits)"),
     ("radiusTL", "`radius_tl` with `per_corner`"),
     ("radiusTR", "`radius_tr` with `per_corner`"),
     ("radiusBR", "`radius_br` with `per_corner`"),
@@ -866,6 +880,7 @@ pub enum Parsed {
     Str(String),
     Resource(u64),
     Keyframes(Vec<Keyframe>),
+    Enter(Enter),
 }
 
 /// Everything a prop list can carry; elements pick the parts they use.
@@ -920,6 +935,7 @@ pub fn apply(def: &PropDef, value: Parsed, out: &mut PropsOut) -> Result<(), Str
         (Apply::SpecMsg(f), Parsed::Msg(v)) => out.spec = f(spec, v),
         (Apply::SpecStr(f), Parsed::Str(v)) => out.spec = f(spec, &v),
         (Apply::SpecKeyframes(f), Parsed::Keyframes(v)) => out.spec = f(spec, v),
+        (Apply::SpecEnter(f), Parsed::Enter(v)) => out.spec = f(spec, v),
         (Apply::StyleF32(f), Parsed::F32(v)) => {
             out.spec = spec;
             out.style = f(style, v);
@@ -1044,6 +1060,7 @@ mod tests {
                 Kind::Str => Parsed::Str("name".into()),
                 Kind::Resource => Parsed::Resource(7),
                 Kind::Keyframes => Parsed::Keyframes(vec![Keyframe::default().radius(7.0)]),
+                Kind::Enter => Parsed::Enter(Enter::from(-7.0, 0.0)),
             };
             let mut out = PropsOut::new();
             apply(def, sample, &mut out).unwrap();

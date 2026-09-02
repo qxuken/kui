@@ -18,6 +18,7 @@ const TS_BY_KIND = {
   str: 'string',
   resource: 'string',
   keyframes: 'KeyframeProp[]',
+  enter: 'EnterProp',
 };
 
 function field([name, def]) {
@@ -62,6 +63,7 @@ const TYPE_DOC = {
   str: 'string',
   resource: 'resource handle',
   keyframes: 'keyframe list (`[{ at?, width?, height?, bg?, radius? }, …]`)',
+  enter: 'entrance (`{ dx?, dy?, width?, height?, bg?, radius? }`)',
 };
 
 const cell = (s) => String(s).replace(/\|/g, '\\|');

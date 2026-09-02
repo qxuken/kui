@@ -237,6 +237,9 @@ fn read_props(r: &mut Reader<'_>) -> Result<PropsOut> {
                     Kind::Keyframes => Parsed::Keyframes(
                         kui_core::keyframes::parse(&payload(r.req_str()?)?).map_err(err)?,
                     ),
+                    Kind::Enter => {
+                        Parsed::Enter(kui_core::enter::parse(&payload(r.req_str()?)?).map_err(err)?)
+                    }
                 };
                 schema::apply(def, parsed, &mut out)?;
             }
@@ -472,6 +475,11 @@ mod tests {
                     strings = br#"[{"at":0.5,"radius":7}]"#;
                     stream.extend([0.0, strings.len() as f64]);
                     Parsed::Keyframes(vec![kui_core::Keyframe::default().at(0.5).radius(7.0)])
+                }
+                Kind::Enter => {
+                    strings = br#"{"dx":-7,"radius":7}"#;
+                    stream.extend([0.0, strings.len() as f64]);
+                    Parsed::Enter(kui_core::Enter::from(-7.0, 0.0).radius(7.0))
                 }
             };
             let mut expected = PropsOut::new();

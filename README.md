@@ -165,14 +165,23 @@ payload shapes and the resource APIs. It is generated from the schema
   `ctx.setTime`) and ask `animating()` whether another frame is owed; a
   headless driver that never sets time gets snapping, and a node's first
   frame or a frame without the transition snaps too, so nothing animates in
-  from nowhere and a divider drag doesn't replay when it ends. A view that
-  stages a starting state on purpose (a new split drawn collapsed so it
-  slides open) calls `ui.request_frame()` so the next frame comes without
-  waiting for input. `slide`
+  from nowhere and a divider drag doesn't replay when it ends. When a node
+  *should* arrive from somewhere — a toast, a side panel — it says so with
+  `enter` (`enter={{ dx: -320 }}` in JSX, `.enter(Enter::from(-320.0,
+  0.0))` in Rust, `KuiSpec.enter` in C): on first sight the slots it names
+  (an offset for the position, plus width, height, bg, radius) start there
+  and ease to what the view declares, no staging frame needed, and a node
+  that leaves and comes back enters again. A view that stages a starting
+  state by hand instead (a new split drawn collapsed so it slides open)
+  calls `ui.request_frame()` so the next frame comes without waiting for
+  input. `slide`
   opts a node into easing its laid-out *position* too, subtree and all,
   which is what reordered siblings need (splitmux's tabs slide into their
-  new order); it stays opt-in because a node whose position follows an
-  already-easing sibling would lag twice. Easings are timed curves or
+  new order) and what a float whose `dx`/`dy` changes gets for free (its
+  offset is a layout input like any other); it stays opt-in because a node
+  whose position follows an already-easing sibling would lag twice, and an
+  `enter` offset without it moves the node for the entrance only. Easings
+  are timed curves or
   springs: `spring` / `bouncy` integrate a damped spring per frame with a
   velocity that survives retargets (`duration_ms` is the response time),
   so a value chased mid-flight keeps its momentum instead of restarting.
@@ -378,8 +387,8 @@ nothing but that Linux runner: no Mac or Windows machine is involved.
 
 ## Status / next
 
-v0 scope: no z-index (floats stack in tree order). Transitions cover sizing, colors and radius;
-a removed node vanishes at once (there is no exit animation yet). Editing: caret blink, double/triple-click
+v0 scope: no z-index (floats stack in tree order). Transitions cover sizing, colors, radius and
+position (`slide`, `enter`); a removed node vanishes at once (there is no exit animation yet). Editing: caret blink, double/triple-click
 word/line select, scroll-caret-into-view, inline IME composition, Tab
 focus traversal, and undo/redo (operational deltas with typing/delete
 coalescing — the widget owns its buffer, so it owns its history; hosts

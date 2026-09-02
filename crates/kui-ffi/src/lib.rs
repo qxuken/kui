@@ -17,8 +17,8 @@ use std::ffi::c_void;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use kui_core::{
-    Align, Color, Core, Edges, EditKey, EditOptions, FloatConfig, InputEvent, Key, Keyframe, Mods,
-    NodeSpec, Rect, Size, Sizing, Span, TextStyle, UiEvent, Value, Vec2, WindowButton,
+    Align, Color, Core, Edges, EditKey, EditOptions, Enter, FloatConfig, InputEvent, Key, Keyframe,
+    Mods, NodeSpec, Rect, Size, Sizing, Span, TextStyle, UiEvent, Value, Vec2, WindowButton,
     WindowCommand, WindowEnv,
 };
 
@@ -80,6 +80,30 @@ pub struct KuiKeyframe {
     pub set: u32,
     /// 0..1 (KUI_KF_AT); unset stops spread evenly, a lone one sits at 1.
     pub at: f32,
+    pub width: KuiSizing,
+    pub height: KuiSizing,
+    /// 0xRRGGBBAA
+    pub bg: u32,
+    pub radius: f32,
+}
+
+/// Which of a `KuiEnter`'s fields are set (its `set` bits); 0 = no entrance.
+pub const KUI_ENTER_OFFSET: u32 = 1 << 0;
+pub const KUI_ENTER_WIDTH: u32 = 1 << 1;
+pub const KUI_ENTER_HEIGHT: u32 = 1 << 2;
+pub const KUI_ENTER_BG: u32 = 1 << 3;
+pub const KUI_ENTER_RADIUS: u32 = 1 << 4;
+
+/// Where a node starts the first frame it is seen (`KuiSpec.enter`): the
+/// slots `set` names ease in from these values over `transition_ms`
+/// instead of snapping. A zeroed struct is no entrance.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiEnter {
+    pub set: u32,
+    /// Logical px the node slides in from (KUI_ENTER_OFFSET).
+    pub dx: f32,
+    pub dy: f32,
     pub width: KuiSizing,
     pub height: KuiSizing,
     /// 0xRRGGBBAA
@@ -164,6 +188,9 @@ pub struct KuiSpec {
     /// redrawing. Read while the node opens; not retained.
     pub keyframes: *const KuiKeyframe,
     pub keyframes_len: usize,
+    /// Entrance: with `set` non-zero, the named slots ease in from these
+    /// values on the node's first sight (see `KuiEnter`).
+    pub enter: KuiEnter,
 }
 
 #[repr(C)]
@@ -266,6 +293,26 @@ fn sizing_of(s: KuiSizing) -> Sizing {
         3 => Sizing::Percent(s.value),
         _ => Sizing::Fit,
     }
+}
+
+fn enter_of(e: &KuiEnter) -> Enter {
+    let mut en = Enter::default();
+    if e.set & KUI_ENTER_OFFSET != 0 {
+        en = en.offset(e.dx, e.dy);
+    }
+    if e.set & KUI_ENTER_WIDTH != 0 {
+        en = en.width(sizing_of(e.width));
+    }
+    if e.set & KUI_ENTER_HEIGHT != 0 {
+        en = en.height(sizing_of(e.height));
+    }
+    if e.set & KUI_ENTER_BG != 0 {
+        en = en.bg(color_of(e.bg));
+    }
+    if e.set & KUI_ENTER_RADIUS != 0 {
+        en = en.radius(e.radius);
+    }
+    en
 }
 
 fn keyframe_of(k: &KuiKeyframe) -> Keyframe {
@@ -409,6 +456,9 @@ fn spec_of(
     if !s.keyframes.is_null() && s.keyframes_len > 0 {
         let stops = unsafe { std::slice::from_raw_parts(s.keyframes, s.keyframes_len) };
         spec = spec.keyframes(stops.iter().map(keyframe_of).collect());
+    }
+    if s.enter.set != 0 {
+        spec = spec.enter(enter_of(&s.enter));
     }
     if let Some(v) = take_msg(on_click) {
         spec = spec.on_click(v);
@@ -1515,6 +1565,7 @@ mod schema_parity {
                 Kind::Str => Parsed::Str("name".into()),
                 Kind::Resource => Parsed::Resource(7),
                 Kind::Keyframes => Parsed::Keyframes(vec![Keyframe::default().at(0.5).radius(F)]),
+                Kind::Enter => Parsed::Enter(Enter::from(-F, 0.0).radius(F)),
             };
             let mut expected = PropsOut::new();
             apply(def, sample, &mut expected).unwrap();
@@ -1558,6 +1609,17 @@ mod schema_parity {
                 "easing" => s.easing = 1,
                 "slide" => s.slide = 1,
                 "keyframes" => (s.keyframes, s.keyframes_len) = (stops.as_ptr(), 1),
+                "enter" => {
+                    s.enter = KuiEnter {
+                        set: KUI_ENTER_OFFSET | KUI_ENTER_RADIUS,
+                        dx: -F,
+                        dy: 0.0,
+                        width: KuiSizing { tag: 0, value: 0.0 },
+                        height: KuiSizing { tag: 0, value: 0.0 },
+                        bg: 0,
+                        radius: F,
+                    }
+                }
                 "repeat" => s.repeat = 1,
                 "delay" => s.delay_ms = F,
                 "onClick" => click = msg(Value::Int(7)),
@@ -1670,6 +1732,7 @@ mod schema_parity {
             delay_ms: 50.0,
             keyframes: stops.as_ptr(),
             keyframes_len: stops.len(),
+            enter: unsafe { std::mem::zeroed() },
         };
         let expected = NodeSpec::row()
             .width(Sizing::Grow(2.0))

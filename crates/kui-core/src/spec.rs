@@ -2,6 +2,7 @@
 
 use crate::anim::{Easing, Repeat, Transition};
 use crate::color::Color;
+use crate::enter::Enter;
 use crate::geom::Edges;
 use crate::keyframes::Keyframe;
 use crate::value::Value;
@@ -308,6 +309,12 @@ pub struct NodeSpec {
     /// its `delay_ms` — forever, and without the view redrawing. Slots no
     /// stop names still tween toward what the view declares. Empty = none.
     pub keyframes: Vec<Keyframe>,
+    /// Where this node's slots start the first frame it is seen (see
+    /// [`crate::enter`]): with a `transition`, the slots it names ease in
+    /// from there instead of snapping — `dx`/`dy` slide the node in from
+    /// that far away, `bg` fades it in. A node that vanishes and returns
+    /// enters again. None = first sight snaps.
+    pub enter: Option<Enter>,
 }
 
 impl NodeSpec {
@@ -605,6 +612,14 @@ impl NodeSpec {
     pub fn keyframes(mut self, stops: Vec<Keyframe>) -> Self {
         self.transition.get_or_insert(Transition::ms(200.0));
         self.keyframes = stops;
+        self
+    }
+
+    /// Eases this node in from `enter` on its first sight (see the `enter`
+    /// field); sets a default 200ms transition if none was declared yet.
+    pub fn enter(mut self, enter: Enter) -> Self {
+        self.transition.get_or_insert(Transition::ms(200.0));
+        self.enter = Some(enter);
         self
     }
 

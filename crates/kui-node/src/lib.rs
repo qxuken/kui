@@ -9,8 +9,8 @@
 //! `onClick` carries a message value, never a closure.
 
 use kui_core::{
-    Align, Color, Core, EditKey, EditOptions, FontId, ImageId, InputEvent, Key, KeyCode, KeyMods,
-    KeyPress, Mods, Size, Span, TextStyle, UiEvent, Value, Vec2,
+    Align, Color, Core, EditKey, EditOptions, FontId, FrameSample, FrameStats, ImageId, InputEvent,
+    Key, KeyCode, KeyMods, KeyPress, Mods, Size, Span, TextStyle, UiEvent, Value, Vec2,
 };
 use napi::bindgen_prelude::{Buffer, Float64Array, Uint8Array};
 use napi_derive::napi;
@@ -731,14 +731,7 @@ impl Ctx {
     /// Summary of the finished frame's display list.
     #[napi]
     pub fn stats(&mut self) -> Json {
-        let (dl, atlas) = self.core.output();
-        let mut o = JsonMap::new();
-        o.insert("quadCount".into(), Json::from(dl.quads.len()));
-        o.insert("viewportW".into(), Json::from(dl.viewport.w as f64));
-        o.insert("viewportH".into(), Json::from(dl.viewport.h as f64));
-        o.insert("scale".into(), Json::from(dl.scale as f64));
-        o.insert("atlasSize".into(), Json::from(atlas.size));
-        Json::Object(o)
+        stats_json(&mut self.core)
     }
 
     /// Raw quads for the finished frame, `quadStride()` bytes each, laid out
@@ -754,6 +747,44 @@ impl Ctx {
         };
         Buffer::from(bytes.to_vec())
     }
+}
+
+/// `{quadCount, viewportW, viewportH, scale, atlasSize}` for the last frame.
+fn stats_json(core: &mut Core) -> Json {
+    let (dl, atlas) = core.output();
+    let mut o = JsonMap::new();
+    o.insert("quadCount".into(), Json::from(dl.quads.len()));
+    o.insert("viewportW".into(), Json::from(dl.viewport.w as f64));
+    o.insert("viewportH".into(), Json::from(dl.viewport.h as f64));
+    o.insert("scale".into(), Json::from(dl.scale as f64));
+    o.insert("atlasSize".into(), Json::from(atlas.size));
+    Json::Object(o)
+}
+
+fn sample_json(s: FrameSample) -> Json {
+    let mut o = JsonMap::new();
+    o.insert("inputMs".into(), Json::from(s.input_ms as f64));
+    o.insert("viewMs".into(), Json::from(s.view_ms as f64));
+    o.insert("layoutMs".into(), Json::from(s.layout_ms as f64));
+    o.insert("renderMs".into(), Json::from(s.render_ms as f64));
+    o.insert("waitMs".into(), Json::from(s.wait_ms as f64));
+    o.insert("totalMs".into(), Json::from(s.total() as f64));
+    o.insert("workMs".into(), Json::from(s.work() as f64));
+    Json::Object(o)
+}
+
+/// The runner's frame-timing ring as `{frames, last, avgTotalMs,
+/// maxTotalMs, avgWorkMs, maxWorkMs}`; `last` is null before the first
+/// frame. The same numbers the latency HUD draws.
+fn frame_stats_json(stats: &FrameStats) -> Json {
+    let mut o = JsonMap::new();
+    o.insert("frames".into(), Json::from(stats.len()));
+    o.insert("last".into(), stats.last().map_or(Json::Null, sample_json));
+    o.insert("avgTotalMs".into(), Json::from(stats.avg_total() as f64));
+    o.insert("maxTotalMs".into(), Json::from(stats.max_total() as f64));
+    o.insert("avgWorkMs".into(), Json::from(stats.avg_work() as f64));
+    o.insert("maxWorkMs".into(), Json::from(stats.max_work() as f64));
+    Json::Object(o)
 }
 
 /// Byte stride of one quad in the `quads()` buffer.
@@ -905,6 +936,30 @@ impl KuiWindow {
         size_json(size, scale)
     }
 
+    /// True when the last frame left a transition mid-flight. The window
+    /// schedules its own redraws for that; this is for tests and drivers
+    /// that want to know when motion has settled.
+    #[napi]
+    pub fn animating(&mut self) -> bool {
+        self.runner.core_mut().animating()
+    }
+
+    /// Summary of the last frame's display list (same shape as `Ctx.stats`).
+    #[napi]
+    pub fn stats(&mut self) -> Json {
+        stats_json(self.runner.core_mut())
+    }
+
+    /// Frame timing measured by the runner — what the latency HUD draws,
+    /// as data: `{frames, last: {inputMs, viewMs, layoutMs, renderMs,
+    /// waitMs, totalMs, workMs} | null, avgTotalMs, maxTotalMs, avgWorkMs,
+    /// maxWorkMs}` over the last 120 frames. `waitMs` is vsync
+    /// backpressure; `workMs` is everything else.
+    #[napi]
+    pub fn frame_stats(&mut self) -> Json {
+        frame_stats_json(&self.runner.core_mut().stats)
+    }
+
     /// Drains UI events collected since the last call (same shape as
     /// `Ctx.pollEvents`).
     #[napi]
@@ -1051,4 +1106,37 @@ fn add_image_impl(core: &mut Core, width: u32, height: u32, rgba: &[u8]) -> Resu
     }
     let id = core.resources.add_image(width, height, rgba.to_vec());
     Ok(format!("{:016x}", id.to_ffi()))
+}
+
+#[cfg(test)]
+mod frame_stats_tests {
+    use super::*;
+
+    #[test]
+    fn frame_stats_shape_before_and_after_frames() {
+        let mut st = FrameStats::default();
+        let empty = frame_stats_json(&st);
+        assert_eq!(empty["frames"], Json::from(0));
+        assert_eq!(empty["last"], Json::Null);
+        assert_eq!(empty["avgTotalMs"], Json::from(0.0));
+
+        st.push(FrameSample {
+            input_ms: 0.5,
+            view_ms: 1.0,
+            layout_ms: 2.0,
+            render_ms: 3.0,
+            wait_ms: 4.0,
+        });
+        st.push(FrameSample {
+            view_ms: 3.0,
+            ..Default::default()
+        });
+        let o = frame_stats_json(&st);
+        assert_eq!(o["frames"], Json::from(2));
+        assert_eq!(o["last"]["viewMs"], Json::from(3.0));
+        assert_eq!(o["last"]["totalMs"], Json::from(3.0));
+        assert_eq!(o["maxTotalMs"], Json::from(10.5));
+        assert_eq!(o["maxWorkMs"], Json::from(6.5));
+        assert_eq!(o["avgTotalMs"], Json::from(6.75));
+    }
 }

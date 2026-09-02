@@ -2,7 +2,9 @@
 //! children's widths across frames when the driver supplies a clock, and
 //! snaps without one.
 
-use kui_core::{Color, Core, Easing, Keyframe, NodeSpec, Repeat, Size, Sizing, Transition};
+use kui_core::{
+    Color, Core, Easing, Enter, FloatConfig, Keyframe, NodeSpec, Repeat, Size, Sizing, Transition,
+};
 
 fn left_width(core: &mut Core) -> f32 {
     let (dl, _) = core.output();
@@ -280,4 +282,151 @@ fn a_slot_the_keyframes_skip_still_tweens() {
         (r - 0.5).abs() < 1e-3,
         "bg halfway through its own 1s leg: {r}"
     );
+}
+
+/// A viewport float at `dx`; returns its drawn x (its background is the
+/// first quad).
+fn float_x(core: &mut Core, dx: f32, spec: NodeSpec) -> f32 {
+    let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+    ui.configure_root(NodeSpec::row().fill());
+    let spec = spec
+        .width(Sizing::Fixed(50.0))
+        .height(Sizing::Fixed(20.0))
+        .bg(Color::WHITE)
+        .float(FloatConfig::viewport().offset(dx, 0.0));
+    ui.with_keyed("toast", spec, |_| {});
+    ui.finish();
+    let (dl, _) = core.output();
+    dl.quads.first().map_or(f32::NAN, |q| q.rect.x)
+}
+
+fn linear(ms: f32) -> Transition {
+    Transition::ms(ms).easing(Easing::Linear)
+}
+
+#[test]
+fn a_sliding_float_glides_to_its_new_offset() {
+    // `float.dx` is a layout input like any other: with `slide` the node
+    // eases from where it was drawn to where the new offset puts it.
+    let spec = || NodeSpec::column().transition_with(linear(100.0)).slide();
+    let mut core = Core::new();
+    core.set_time(0.0);
+    assert_eq!(
+        float_x(&mut core, -50.0, spec()),
+        -50.0,
+        "first sight snaps"
+    );
+    core.set_time(0.0);
+    assert_eq!(
+        float_x(&mut core, 100.0, spec()),
+        -50.0,
+        "starts from the old offset"
+    );
+    assert!(core.animating());
+    core.set_time(0.05);
+    assert!((float_x(&mut core, 100.0, spec()) - 25.0).abs() < 1e-3);
+    core.set_time(0.2);
+    assert_eq!(float_x(&mut core, 100.0, spec()), 100.0);
+    assert!(!core.animating());
+}
+
+#[test]
+fn enter_slides_a_node_in_on_first_sight() {
+    let spec = || {
+        NodeSpec::column()
+            .transition_with(linear(100.0))
+            .enter(Enter::from(-100.0, 0.0))
+    };
+    let mut core = Core::new();
+    core.set_time(0.0);
+    assert_eq!(
+        float_x(&mut core, 100.0, spec()),
+        0.0,
+        "starts dx away from its place"
+    );
+    assert!(core.animating(), "the entrance owes a frame");
+    core.set_time(0.05);
+    assert!((float_x(&mut core, 100.0, spec()) - 50.0).abs() < 1e-3);
+    core.set_time(0.2);
+    assert_eq!(float_x(&mut core, 100.0, spec()), 100.0);
+    assert!(!core.animating());
+    // Without `slide`, only the entrance moved: a later move snaps.
+    core.set_time(0.2);
+    assert_eq!(float_x(&mut core, 300.0, spec()), 300.0);
+    assert!(!core.animating());
+    // Gone for a frame and back: it enters again.
+    core.set_time(0.3);
+    let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+    ui.configure_root(NodeSpec::row().fill());
+    ui.finish();
+    core.set_time(0.3);
+    assert_eq!(float_x(&mut core, 300.0, spec()), 200.0);
+    assert!(core.animating());
+}
+
+#[test]
+fn enter_with_slide_keeps_following_layout() {
+    let spec = || {
+        NodeSpec::column()
+            .transition_with(linear(100.0))
+            .enter(Enter::from(-100.0, 0.0))
+            .slide()
+    };
+    let mut core = Core::new();
+    core.set_time(0.0);
+    assert_eq!(float_x(&mut core, 100.0, spec()), 0.0);
+    core.set_time(0.2);
+    assert_eq!(float_x(&mut core, 100.0, spec()), 100.0);
+    core.set_time(0.2);
+    assert_eq!(
+        float_x(&mut core, 300.0, spec()),
+        100.0,
+        "a move still eases"
+    );
+    core.set_time(0.25);
+    assert!((float_x(&mut core, 300.0, spec()) - 200.0).abs() < 1e-3);
+}
+
+#[test]
+fn enter_fades_a_background_in() {
+    fn alpha(core: &mut Core, enter: Enter) -> f32 {
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.configure_root(NodeSpec::row().fill());
+        let spec = NodeSpec::column()
+            .width(Sizing::Fixed(50.0))
+            .height(Sizing::Fixed(20.0))
+            .bg(Color::WHITE)
+            .transition_with(linear(100.0))
+            .enter(enter);
+        ui.with_keyed("toast", spec, |_| {});
+        ui.finish();
+        let (dl, _) = core.output();
+        dl.quads.first().map_or(f32::NAN, |q| q.color.a)
+    }
+    // A fully transparent box emits no quad, so enter from a faint one.
+    let faint = Color {
+        a: 0.2,
+        ..Color::WHITE
+    };
+    let mut core = Core::new();
+    core.set_time(0.0);
+    assert!((alpha(&mut core, Enter::default().bg(faint)) - 0.2).abs() < 1e-6);
+    assert!(core.animating());
+    core.set_time(0.05);
+    assert!((alpha(&mut core, Enter::default().bg(faint)) - 0.6).abs() < 1e-3);
+    core.set_time(0.2);
+    assert_eq!(alpha(&mut core, Enter::default().bg(faint)), 1.0);
+    assert!(!core.animating());
+}
+
+#[test]
+fn enter_without_a_clock_snaps_like_everything_else() {
+    let spec = || {
+        NodeSpec::column()
+            .transition_with(linear(100.0))
+            .enter(Enter::from(-100.0, 0.0))
+    };
+    let mut core = Core::new();
+    assert_eq!(float_x(&mut core, 100.0, spec()), 100.0);
+    assert!(!core.animating());
 }
