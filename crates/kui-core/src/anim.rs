@@ -5,6 +5,13 @@
 //! lays out consistently every frame instead of children snapping to a
 //! target size inside a still-moving parent.
 //!
+//! Two kinds of motion: timed curves ([`Easing::EaseOut`] and friends,
+//! which replay a leg from wherever the value was over `duration_ms`) and
+//! springs ([`Easing::Spring`], [`Easing::Bouncy`]), integrated per frame
+//! with a velocity that survives retargets — a value chased mid-flight
+//! keeps its momentum instead of restarting, which is what dragged and
+//! reordered things want. For springs `duration_ms` is the response time.
+//!
 //! The core stays clock-free: the frame driver injects the time with
 //! [`crate::Core::set_time`]. A driver that never does (headless tests, a C
 //! host without a clock) sees every transition snap to its target.
@@ -22,9 +29,24 @@ pub enum Easing {
     Linear,
     EaseIn,
     EaseInOut,
+    /// A damped spring (damping ratio 0.75: a hint of overshoot).
+    /// `duration_ms` is the response time; velocity carries across
+    /// retargets.
+    Spring,
+    /// A springier spring (damping ratio 0.5).
+    Bouncy,
 }
 
 impl Easing {
+    /// Damping ratio for the spring easings; None for timed curves.
+    fn damping(self) -> Option<f32> {
+        match self {
+            Easing::Spring => Some(0.75),
+            Easing::Bouncy => Some(0.5),
+            _ => None,
+        }
+    }
+
     pub fn apply(self, t: f32) -> f32 {
         let t = t.clamp(0.0, 1.0);
         match self {
@@ -38,9 +60,18 @@ impl Easing {
                     1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
                 }
             }
+            // Springs are integrated, not sampled; as a curve, ease out.
+            Easing::Spring | Easing::Bouncy => 1.0 - (1.0 - t).powi(3),
         }
     }
 }
+
+/// Spring integration step (seconds); a frame is split into steps this
+/// long so a stiff spring stays stable at any frame rate.
+const SPRING_STEP: f64 = 0.004;
+/// A pause longer than this (window hidden, debugger) doesn't get replayed
+/// as one giant step.
+const MAX_FRAME_DT: f64 = 0.1;
 
 /// How a node's animatable values move when the view changes them.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -84,8 +115,44 @@ struct Tween {
     value: [f32; 4],
     /// Time the current leg started, in the driver's seconds.
     start: f64,
+    /// Springs: velocity per component and the time last integrated to.
+    velocity: [f32; 4],
+    last_time: f64,
     transition: Transition,
     last_used: u64,
+}
+
+impl Tween {
+    /// Advances a spring toward `to` from `last_time` to `now`; returns
+    /// whether it is still moving. Semi-implicit Euler on a unit-mass
+    /// spring with stiffness and damping from the response time and ratio
+    /// (SwiftUI's parametrization).
+    fn spring_step(&mut self, now: f64, zeta: f32) -> bool {
+        let response = (self.transition.duration_ms.max(1.0) / 1000.0) as f64;
+        let omega = std::f64::consts::TAU / response;
+        let k = (omega * omega) as f32;
+        let c = (2.0 * zeta as f64 * omega) as f32;
+        let dt = (now - self.last_time).clamp(0.0, MAX_FRAME_DT);
+        self.last_time = now;
+        let steps = (dt / SPRING_STEP).ceil().max(1.0);
+        let h = (dt / steps) as f32;
+        for _ in 0..steps as usize {
+            for i in 0..4 {
+                let a = -k * (self.value[i] - self.to[i]) - c * self.velocity[i];
+                self.velocity[i] += a * h;
+                self.value[i] += self.velocity[i] * h;
+            }
+        }
+        // Settled: within a hair of the target and nearly still (units are
+        // px or 0..1 color channels; per second for velocity).
+        let moving = (0..4)
+            .any(|i| (self.value[i] - self.to[i]).abs() > 1e-3 || self.velocity[i].abs() > 5e-2);
+        if !moving {
+            self.value = self.to;
+            self.velocity = [0.0; 4];
+        }
+        moving
+    }
 }
 
 /// Evict tweens not driven for this many frames.
@@ -150,6 +217,8 @@ impl AnimStore {
                 to: target,
                 value: target,
                 start: 0.0,
+                velocity: [0.0; 4],
+                last_time: 0.0,
                 transition,
                 last_used: frame_no,
             });
@@ -163,6 +232,8 @@ impl AnimStore {
                 to: target,
                 value: target,
                 start: f64::NEG_INFINITY,
+                velocity: [0.0; 4],
+                last_time: now,
                 transition,
                 last_used: frame_no,
             });
@@ -170,6 +241,15 @@ impl AnimStore {
         }
         let tw = entry.as_mut().expect("checked above");
         tw.last_used = frame_no;
+        if let Some(zeta) = transition.easing.damping() {
+            // Springs retarget freely: the velocity carries over.
+            tw.to = target;
+            tw.transition = transition;
+            if tw.spring_step(now, zeta) {
+                self.active = true;
+            }
+            return tw.value;
+        }
         if tw.to != target {
             tw.from = tw.value;
             tw.to = target;
@@ -210,6 +290,8 @@ mod tests {
             Easing::EaseOut,
             Easing::EaseIn,
             Easing::EaseInOut,
+            Easing::Spring,
+            Easing::Bouncy,
         ] {
             assert_eq!(e.apply(0.0), 0.0);
             assert_eq!(e.apply(1.0), 1.0);
@@ -276,6 +358,55 @@ mod tests {
         a.set_time(0.10);
         a.begin_frame();
         assert!((a.drive(k, Slot::Width, one(0.0), t)[0] - 25.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn springs_overshoot_settle_and_keep_momentum() {
+        let mut a = AnimStore::default();
+        let k = Key::ROOT.str("x");
+        let t = Transition::ms(200.0).easing(Easing::Bouncy);
+        a.set_time(0.0);
+        a.begin_frame();
+        a.drive(k, Slot::Width, one(0.0), t);
+        // Retarget to 100 and step at 60Hz.
+        let mut max = 0.0f32;
+        let mut settled_at = None;
+        for i in 1..=180 {
+            a.set_time(i as f64 / 60.0);
+            a.begin_frame();
+            let v = a.drive(k, Slot::Width, one(100.0), t)[0];
+            max = max.max(v);
+            if !a.animating() && settled_at.is_none() {
+                settled_at = Some(i);
+            }
+        }
+        assert!(max > 101.0, "bouncy overshoots: peak {max}");
+        let settled = settled_at.expect("settles within 3s");
+        assert!(settled > 6, "not instant: {settled}");
+        a.set_time(4.0);
+        a.begin_frame();
+        assert_eq!(a.drive(k, Slot::Width, one(100.0), t)[0], 100.0);
+
+        // Momentum: retargeting mid-flight continues from the current
+        // velocity rather than restarting, so the value keeps moving up
+        // for a moment even though the new target is behind it.
+        a.set_time(4.0);
+        a.begin_frame();
+        a.drive(k, Slot::Width, one(200.0), t);
+        let mut v_prev = 100.0;
+        for i in 1..=2 {
+            a.set_time(4.0 + i as f64 / 60.0);
+            a.begin_frame();
+            v_prev = a.drive(k, Slot::Width, one(200.0), t)[0];
+        }
+        assert!(v_prev > 100.0);
+        a.set_time(4.0 + 3.0 / 60.0);
+        a.begin_frame();
+        let after = a.drive(k, Slot::Width, one(100.0), t)[0];
+        assert!(
+            after > v_prev,
+            "momentum carries past the retarget: {v_prev} -> {after}"
+        );
     }
 
     #[test]

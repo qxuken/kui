@@ -59,8 +59,8 @@ export interface GeneratedSpecProps {
   center?: boolean;
   /** Child alignment across the main axis. */
   crossAlign?: 'start' | 'center' | 'end';
-  /** Easing curve for `transition` (default easeOut). */
-  easing?: 'easeOut' | 'linear' | 'easeIn' | 'easeInOut';
+  /** Easing for `transition` (default easeOut); spring/bouncy integrate with momentum. */
+  easing?: 'easeOut' | 'linear' | 'easeIn' | 'easeInOut' | 'spring' | 'bouncy';
   /** Space between children along the main axis. */
   gap?: number;
   /** Cross-axis size: px | "fit" | "grow" | "N%". */

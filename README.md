@@ -149,7 +149,10 @@ end
   opts a node into easing its laid-out *position* too, subtree and all,
   which is what reordered siblings need (splitmux's tabs slide into their
   new order); it stays opt-in because a node whose position follows an
-  already-easing sibling would lag twice.
+  already-easing sibling would lag twice. Easings are timed curves or
+  springs: `spring` / `bouncy` integrate a damped spring per frame with a
+  velocity that survives retargets (`duration_ms` is the response time),
+  so a value chased mid-flight keeps its momentum instead of restarting.
 - **Subpixel text where the GPU can blend it.** Glyphs are already placed at
   quarter-pixel x offsets (cosmic-text's subpixel bins); on top of that the
   core can rasterize outline glyphs as LCD subpixel coverage — three

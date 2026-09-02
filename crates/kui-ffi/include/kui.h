@@ -79,7 +79,14 @@ enum {
     KUI_WINDOW_MAXIMIZE = 4,
 };
 /* Easing curves (KuiSpec.easing). */
-enum { KUI_EASE_OUT = 0, KUI_EASE_LINEAR = 1, KUI_EASE_IN = 2, KUI_EASE_IN_OUT = 3 };
+enum {
+    KUI_EASE_OUT = 0,
+    KUI_EASE_LINEAR = 1,
+    KUI_EASE_IN = 2,
+    KUI_EASE_IN_OUT = 3,
+    KUI_EASE_SPRING = 4, /* damped spring; transition_ms is the response time */
+    KUI_EASE_BOUNCY = 5,
+};
 /* Window commands drained by kui_take_window_commands. */
 enum {
     KUI_CMD_START_DRAG = 1,

@@ -65,13 +65,22 @@ pub const P_SLIDE: u32 = 33;
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
 pub const FAMILIES: &[&str] = &["sans", "serif", "mono"];
-pub const EASINGS: &[&str] = &["easeOut", "linear", "easeIn", "easeInOut"];
+pub const EASINGS: &[&str] = &[
+    "easeOut",
+    "linear",
+    "easeIn",
+    "easeInOut",
+    "spring",
+    "bouncy",
+];
 
 pub fn easing_idx(i: usize) -> Easing {
     match i {
         1 => Easing::Linear,
         2 => Easing::EaseIn,
         3 => Easing::EaseInOut,
+        4 => Easing::Spring,
+        5 => Easing::Bouncy,
         _ => Easing::EaseOut,
     }
 }
@@ -300,7 +309,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_EASING,
         kind: Kind::Enum(EASINGS),
         apply: Apply::SpecEnum(|s, i| s.easing(easing_idx(i))),
-        doc: "Easing curve for `transition` (default easeOut).",
+        doc: "Easing for `transition` (default easeOut); spring/bouncy integrate with momentum.",
     },
     PropDef {
         name: "slide",

@@ -30,8 +30,8 @@
 
 use kui::widgets;
 use kui::{
-    Align, App, Color, FloatConfig, KeyMods, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value,
-    WindowCommand,
+    Align, App, Color, Easing, FloatConfig, KeyMods, NodeSpec, Sizing, TextStyle, Ui, UiEvent,
+    Value, WindowCommand,
 };
 
 const TABBAR_H: f32 = 30.0;
@@ -486,13 +486,19 @@ impl Splitmux {
                 // the direction of motion moves it there. Hover comes from
                 // the previous frame's layout; the direction gate keeps
                 // unequal widths from swap-oscillating under a still cursor.
+                // Each tab wears a full-height hover column during the
+                // drag (a transparent float below it), so the cursor's x
+                // keeps reordering after it has left the bar vertically.
+                let dragging_tab = self.tab_drag.is_some();
+                let column_h = ui.viewport().h;
                 if let Some((from, sign)) = self.tab_drag
                     && sign != 0.0
                     && from < self.tabs.len()
                 {
                     let to = (0..self.tabs.len()).find(|&j| {
+                        let tab = ui.child_key(&format!("tab{}", self.tabs[j].id));
                         j != from
-                            && ui.is_hovered(ui.child_key(&format!("tab{}", self.tabs[j].id)))
+                            && (ui.is_hovered(tab) || ui.is_hovered(tab.str("col")))
                             && ((j > from && sign > 0.0) || (j < from && sign < 0.0))
                     });
                     if let Some(j) = to {
@@ -527,7 +533,8 @@ impl Splitmux {
                         .pad_xy(10.0, 4.0)
                         .radius(6.0)
                         .bg(bg)
-                        .transition(120.0)
+                        .transition(220.0)
+                        .easing(Easing::Spring)
                         .slide()
                         .on_click(Value::map([
                             ("kind", "tab".into()),
@@ -545,6 +552,17 @@ impl Splitmux {
                             &format!("{}  {} pane(s)", i + 1, ids.len()),
                             TextStyle::new(12.0).color(fg),
                         );
+                        if dragging_tab {
+                            ui.with_keyed(
+                                "col",
+                                NodeSpec::column()
+                                    .float(FloatConfig::parent())
+                                    .width(Sizing::Percent(1.0))
+                                    .height(Sizing::Fixed(column_h))
+                                    .hoverable(),
+                                |_| {},
+                            );
+                        }
                     });
                 }
                 ui.with_keyed(
