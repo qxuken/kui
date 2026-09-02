@@ -2,17 +2,21 @@
 // Elm loop in JS on top, both sharing the main thread via a pumped event
 // loop. Run with --smoke to auto-close after 2 seconds (CI/sanity).
 import { runWindowed } from '@qxuken/kui';
-import type { KuiWindow, Msg, UiEvent } from '@qxuken/kui';
+import type { CoreMsg, KuiWindow, UiEvent } from '@qxuken/kui';
 
 type Model = { count: number; note: string };
 
+// This app's own payloads plus the core's (`changed`, `key`, `hover`, ...):
+// one discriminated union, switched over directly.
+type CounterMsg = { kind: 'add'; by: number } | { kind: 'reset' };
+type Msg = CounterMsg | CoreMsg;
+
 const init: Model = { count: 0, note: '' };
 
-function update(model: Model, msg: Msg, ev: UiEvent, win: KuiWindow): Model | undefined {
-  if (msg === null || typeof msg !== 'object' || Array.isArray(msg)) return;
-  switch ((msg as { kind: string }).kind) {
+function update(model: Model, msg: Msg, ev: UiEvent<Msg>, win: KuiWindow): Model | undefined {
+  switch (msg.kind) {
     case 'add':
-      return { ...model, count: model.count + (msg as { by: number }).by };
+      return { ...model, count: model.count + msg.by };
     case 'reset':
       return { ...model, count: 0 };
     case 'changed':

@@ -2,19 +2,23 @@
 // Runs headlessly - builds real frames, clicks real buttons via hit-testing,
 // types into a real editor - and prints what happened.
 import { createApp, decodeQuads, Ctx } from '@qxuken/kui';
-import type { App, Msg, UiEvent } from '@qxuken/kui';
+import type { App, CoreMsg, KeyMsg, UiEvent } from '@qxuken/kui';
 
 type Model = { count: number; note: string };
 
+// The payloads this app's own nodes carry, plus the ones the core sends on
+// its own (`changed`, `key`, `hover`, `drag`, ...): one flat discriminated
+// union, so `update` switches over `msg.kind` with no casts and no
+// "is this even an object" preamble.
 type CounterMsg = { kind: 'add'; by: number } | { kind: 'reset' };
+type Msg = CounterMsg | CoreMsg;
 
 const init: Model = { count: 0, note: '' };
 
-function update(model: Model, msg: Msg, ev: UiEvent): Model | undefined {
-  if (msg === null || typeof msg !== 'object' || Array.isArray(msg)) return;
-  switch ((msg as CounterMsg | { kind: string }).kind) {
+function update(model: Model, msg: Msg, ev: UiEvent<Msg>): Model | undefined {
+  switch (msg.kind) {
     case 'add':
-      return { ...model, count: model.count + (msg as { by: number }).by };
+      return { ...model, count: model.count + msg.by };
     case 'reset':
       return { ...model, count: 0 };
     case 'changed':
@@ -44,7 +48,7 @@ const view = (model: Model) => (
   </box>
 );
 
-const app: App<Model> = createApp({ init, update, view }, { width: 640, height: 480 });
+const app: App<Model, Msg> = createApp({ init, update, view }, { width: 640, height: 480 });
 
 // ---------------------------------------------------------------------------
 // Headless drive
@@ -93,8 +97,9 @@ const imageQuads = decodeQuads(modal.quads()).filter((q) => q.kind === 3).length
 console.log(`image quads: ${imageQuads}`);
 
 modal.keyDown('x', { ctrl: true });
-const kev = modal.pollEvents().find((e) => (e.payload as any)?.kind === 'key');
-const p = kev?.payload as any;
+// Poll for one known payload shape: a key press carrying this sink's tag.
+const kev = modal.pollEvents<KeyMsg<{ tool: string }>>().find((e) => e.payload.kind === 'key');
+const p = kev?.payload;
 console.log(`key sink got: code=${p?.code} ctrl=${p?.ctrl} tag=${JSON.stringify(p?.tag)}`);
 
 const ok =

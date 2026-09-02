@@ -1,12 +1,75 @@
-import type { KuiNode, Msg } from './jsx-runtime.js';
+import type { AppMsg, KuiNode } from './jsx-runtime.js';
 
-export type { KuiNode, KuiElement, Msg } from './jsx-runtime.js';
+export type { KuiNode, KuiElement, Msg, KuiMsg, AppMsg } from './jsx-runtime.js';
 
-export interface UiEvent {
+// -- the messages the core itself sends ------------------------------------
+// Payload shapes from `EVENTS` in crates/kui-core/src/schema.rs (the table
+// docs/props.md is generated from). `tag` is the payload declared on the
+// node (`onDrag` / `onHover` / `onKey`), left off when the node declared
+// none.
+
+/** A pointer-captured drag on an `onDrag` node; `parent` is the container
+ *  rect, so fractions need no geometry query. */
+export type DragMsg<T = AppMsg> = {
+  kind: 'drag';
+  phase: 'start' | 'move' | 'end';
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  parent: { x: number; y: number; w: number; h: number };
+  tag?: T;
+};
+
+/** A key press on the focused `onKey` sink; `code` is a character or a name
+ *  ("left", "f5"), `text` what the press would insert (null for chords). */
+export type KeyMsg<T = AppMsg> = {
+  kind: 'key';
+  code: string;
+  shift: boolean;
+  ctrl: boolean;
+  alt: boolean;
+  super: boolean;
+  text: string | null;
+  repeat: boolean;
+  tag?: T;
+};
+
+/** The pointer entered or left an `onHover` node — also when a new frame
+ *  moved it under a still cursor. */
+export type HoverMsg<T = AppMsg> = {
+  kind: 'hover';
+  phase: 'enter' | 'leave';
+  tag?: T;
+};
+
+/** The physical modifier state changed (delivered on the root). */
+export type ModifiersMsg = {
+  kind: 'modifiers';
+  shift: boolean;
+  ctrl: boolean;
+  alt: boolean;
+  super: boolean;
+};
+
+/** An editor's text changed / Enter in a single-line editor; the editor's
+ *  key is on the event, so `editText(ev.key)` reads it back. */
+export type EditMsg = { kind: 'changed' } | { kind: 'submit' };
+
+/** Everything the core sends on its own. Put it in the app's union —
+ *  `type Msg = MyMsg | CoreMsg` — and `update` switches over one flat
+ *  discriminated union, no casts and no narrowing preamble. */
+export type CoreMsg = DragMsg | KeyMsg | HoverMsg | ModifiersMsg | EditMsg;
+
+// --------------------------------------------------------------------------
+
+/** One event out of the loop. `A` is the app's message union; it defaults to
+ *  the registered `AppMsg` plus the core's own messages. */
+export interface UiEvent<A = AppMsg | CoreMsg> {
   origin: number;
   /** Node key as a hex string; pass back to editText()/isFocused()/... */
   key: string;
-  payload: Msg;
+  payload: A;
 }
 
 export interface FrameStats {
@@ -90,7 +153,9 @@ export declare class Ctx {
   removeFont(id: string): void;
   /** Family names of every font the core can see (sorted). */
   systemFontFamilies(): string[];
-  pollEvents(): UiEvent[];
+  /** Events since the last poll. `A` types their payloads — the app's own
+   *  union, or one core message type when only that is being watched. */
+  pollEvents<A = AppMsg | CoreMsg>(): UiEvent<A>[];
   isHovered(key: string): boolean;
   isPressed(key: string): boolean;
   isFocused(key: string): boolean;
@@ -137,7 +202,7 @@ export declare class KuiWindow {
   setViewBinary(stream: Float64Array, strings: Uint8Array): void;
   /** Processes pending OS events; false once the window has closed. */
   pump(): boolean;
-  pollEvents(): UiEvent[];
+  pollEvents<A = AppMsg | CoreMsg>(): UiEvent<A>[];
   close(): void;
   editText(key: string): string | null;
   setEditText(key: string, text: string): void;
@@ -160,22 +225,22 @@ export declare class KuiWindow {
   systemFontFamilies(): string[];
 }
 
-export interface WindowedConfig<M> {
+export interface WindowedConfig<M, A = AppMsg | CoreMsg> {
   init: M | (() => M);
   /** Same contract as AppConfig, plus the window for editText etc. */
-  update: (model: M, msg: Msg, event: UiEvent, win: KuiWindow) => M | undefined | void;
+  update: (model: M, msg: A, event: UiEvent<A>, win: KuiWindow) => M | undefined | void;
   view: (model: M) => KuiNode;
   /** A clock: every `every` ms the loop feeds `msg` (or `msg(now)`, with
    *  `Date.now()`) to `update`. Ticks are frequent, so unlike UI events they
    *  re-render only when `update` returns a new model — a countdown that
    *  returns undefined until the displayed second changes costs nothing in
    *  between. */
-  tick?: { every: number; msg: Msg | ((now: number) => Msg) };
+  tick?: { every: number; msg: A | ((now: number) => A) };
 }
 
 /** Opens a window and runs the Elm loop; resolves with the final model on close. */
-export declare function runWindowed<M>(
-  config: WindowedConfig<M>,
+export declare function runWindowed<M, A = AppMsg | CoreMsg>(
+  config: WindowedConfig<M, A>,
   opts?: WindowOptions & {
     title?: string;
     pumpMs?: number;
@@ -202,17 +267,21 @@ export interface Quad {
 
 export declare function decodeQuads(buffer: Buffer): Quad[];
 
-export interface AppConfig<M> {
+/** `M` is the model, `A` every message `update` can see. Annotate `update`
+ *  with the app's own union (`type Msg = MyMsg | CoreMsg`) and `A` is
+ *  inferred from it; leave it and `A` is the registered `AppMsg` plus the
+ *  core's messages. */
+export interface AppConfig<M, A = AppMsg | CoreMsg> {
   init: M | (() => M);
   /** Returns the next model; returning undefined keeps the current one. */
-  update: (model: M, msg: Msg, event: UiEvent) => M | undefined | void;
+  update: (model: M, msg: A, event: UiEvent<A>) => M | undefined | void;
   view: (model: M) => KuiNode;
 }
 
-export interface App<M> {
+export interface App<M, A = AppMsg | CoreMsg> {
   ctx: Ctx;
   readonly model: M;
-  dispatch(msg: Msg, event?: UiEvent): void;
+  dispatch(msg: A, event?: UiEvent<A>): void;
   render(): FrameStats;
   settle(): void;
   click(x: number, y: number, clicks?: number): void;
@@ -220,7 +289,7 @@ export interface App<M> {
   key(name: EditKeyName, mods?: KeyMods): void;
 }
 
-export declare function createApp<M>(
-  config: AppConfig<M>,
+export declare function createApp<M, A = AppMsg | CoreMsg>(
+  config: AppConfig<M, A>,
   opts?: { width?: number; height?: number; scale?: number },
-): App<M>;
+): App<M, A>;

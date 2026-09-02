@@ -6,7 +6,8 @@
 #           └── build-macos   (arm64, x64, via zig)  ──┘
 #
 # check is one job so the cargo target dir is built once and shared by fmt,
-# clippy, the workspace tests, the C example and the Node addon parity tests:
+# clippy, the workspace tests, the C example, the Node addon parity tests and
+# the Node example typecheck (which is what exercises the shipped .d.ts):
 # separate jobs would each rebuild it (or each restore a multi-GB cache), and
 # it is far too big to hand between jobs as an artifact. What IS handed
 # between jobs is small: each build leg uploads one kui-node cdylib as an
@@ -118,6 +119,14 @@ jobs:
           # running `npm run gen`.
           npm run gen
           git diff --exit-code -- jsx-runtime.d.ts ../../docs/props.md
+
+      # The .d.ts is only exercised by a type checker; the example app is
+      # the one that uses every app-facing type (messages, events, props).
+      - name: Node example typecheck
+        run: |
+          cd examples/node
+          npm ci
+          npm run typecheck
 
   # The three cross jobs share one shape: rustup for the target, the linker
   # for the platform, a cache per target, build, collect, upload. zig and

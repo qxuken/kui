@@ -54,8 +54,12 @@ JSX elements are plain data, so the tree *is* the frame: the jsx-runtime has
 no reconciler and no React — `Ctx.frame()` encodes the element tree into a
 flat binary IR stream (one `Float64Array` + a string table) and the addon
 lowers it in a single zero-copy call, and `onClick` carries a message value,
-never a closure. The addon's own object walk (`frameObject`) and a JSON
-string transport (`frameJson`) stay available as readable reference paths;
+never a closure. That value is the app's own union in TypeScript: annotate
+`update` with `type Msg = MyMsg | CoreMsg` and `createApp` / `runWindowed`
+infer it, so events, `dispatch` and ticks all speak it and `update` is one
+switch over `msg.kind` (see [packages/kui](packages/kui/README.md)). The
+addon's own object walk (`frameObject`) and a JSON string transport
+(`frameJson`) stay available as readable reference paths;
 `npm test` in [packages/kui](packages/kui) checks that all three produce
 byte-identical quads for every schema prop and element, and
 `examples/node/bench.mjs` compares their cost. A one-off measurement of the

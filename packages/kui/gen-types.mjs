@@ -14,7 +14,7 @@ const TS_BY_KIND = {
   color: 'ColorProp',
   flag: 'boolean',
   sizing: 'SizingProp',
-  msg: 'Msg',
+  msg: 'AppMsg',
   str: 'string',
   resource: 'string',
 };
