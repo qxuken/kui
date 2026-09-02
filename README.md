@@ -128,8 +128,10 @@ end
   to the focused editor; hosts get "changed"/"submit" events and read text
   back by key — no `&mut String` captured in a view, which is what keeps
   editing reachable from Lua and C. The runner maps winit keys, IME input
-  (preedit drawn at the caret, the OS candidate window anchored there too),
-  and platform clipboard shortcuts (arboard) onto those events; the caret
+  (the composition lives inline in the buffer as a marked range, so text
+  after it shifts and wraps while you compose, and the OS candidate window
+  is anchored at the caret inside it), and platform clipboard shortcuts
+  (arboard) onto those events; the caret
   blinks on the runner's clock, scrolls itself into view, and Tab/Shift-Tab
   hop between edit widgets.
 - **Transitions animate layout inputs, not rects.** A node with
@@ -244,7 +246,7 @@ binding are covered by tests (`cargo test --workspace`).
 v0 scope: mask + color-emoji glyphs only (no subpixel AA); no z-index
 (floats stack in tree order). Transitions cover sizing, colors and radius;
 a removed node vanishes at once (there is no exit animation yet). Editing: caret blink, double/triple-click
-word/line select, scroll-caret-into-view, IME preedit at the caret, Tab
+word/line select, scroll-caret-into-view, inline IME composition, Tab
 focus traversal, and undo/redo (operational deltas with typing/delete
 coalescing — the widget owns its buffer, so it owns its history; hosts
 with their own text model take raw chords through `on_key` and bring

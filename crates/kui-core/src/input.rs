@@ -24,8 +24,9 @@ pub enum InputEvent {
     /// Committed text (typing, IME commit, paste). Routed to the focused editor.
     Text(String),
     /// In-progress IME composition (text and the caret byte range inside
-    /// it), drawn as an overlay at the focused editor's caret. Empty text
-    /// clears it; a commit arrives separately as `Text`.
+    /// it), inserted inline at the focused editor's caret as an uncommitted
+    /// marked range: following text shifts and the paragraph rewraps.
+    /// Empty text cancels it; a commit arrives separately as `Text`.
     Preedit(String, Option<(usize, usize)>),
     /// Navigation/editing key. Routed to the focused editor.
     Key(EditKey, Mods),
