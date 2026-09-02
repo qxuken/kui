@@ -171,7 +171,7 @@ impl App for Toasts {
 
         self.side_panel(ui);
         self.stack(ui);
-        widgets::latency_hud(ui);
+        widgets::latency_hud_at(ui, Align::Start, Align::End);
     }
 
     fn on_event(&mut self, ev: UiEvent) {
