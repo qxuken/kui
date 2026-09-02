@@ -1,9 +1,9 @@
 # Forgejo Actions. `check` runs on every push and pull request; pushing a
 # `v*` tag additionally runs the release pipeline after it:
 #
-#   check ──┬── build-linux   (x64, arm64)   ──┐
-#           ├── build-windows (x64, via xwin) ──┼── publish
-#           └── build-macos   (arm64, x64)    ──┘
+#   check ──┬── build-linux   (x64, arm64)         ──┐
+#           ├── build-windows (x64, via cargo-xwin) ──┼── publish
+#           └── build-macos   (arm64, x64, via zig) ──┘
 #
 # check is one job so the cargo target dir is built once and shared by fmt,
 # clippy, the workspace tests, the C example and the Node addon parity tests:
@@ -24,17 +24,22 @@
 # Release prerequisites:
 #   * a repository secret PACKAGES_TOKEN: a personal access token with
 #     write:packages (the automatic FORGEJO_TOKEN cannot publish packages);
-#   * a runner labelled `docker` (the Linux legs cross-compile whichever of
-#     x64/arm64 the runner itself is not) and one labelled `macos` - a
-#     forgejo-runner in host mode on a Mac with rustup and node installed.
-#     Without a macos runner the release stalls in "waiting"; to ship
-#     Linux-only prebuilds, drop build-macos and its entry in publish's
-#     `needs`. Windows needs no runner of its own: build-windows
-#     cross-compiles the MSVC target on the docker runner with cargo-xwin
-#     (clang-cl + lld-link from Debian's LLVM, the Windows SDK/CRT fetched
-#     by xwin into a cached dir). napi-sys resolves N-API symbols at load
-#     time through libloading, so nothing links against node.exe; the
-#     mingw target is not an option because napi-build wants a libnode.dll.
+#   * one runner labelled `docker`. Every target is cross-compiled on it
+#     (rustc targets anything; only the linkers and platform SDKs differ):
+#     - Linux: the runner's own arch natively, the other with Debian's
+#       cross gcc;
+#     - Windows: the MSVC target with cargo-xwin (clang-cl + lld-link from
+#       Debian's LLVM, the Windows SDK/CRT fetched by xwin into a cached
+#       dir). napi-sys resolves N-API symbols at load time through
+#       libloading, so nothing links against node.exe; the mingw target is
+#       not an option because napi-build wants a libnode.dll there;
+#     - macOS: cargo-zigbuild (zig's Mach-O linker) against a copy of
+#       Xcode's MacOSX.sdk for the framework stubs (Metal, AppKit, ...),
+#       downloaded once into a cached dir. Apple's Xcode license governs
+#       that SDK - read it before relying on this leg. napi-build links
+#       Apple addons with -undefined dynamic_lookup, so nothing from node
+#       is needed. Verified 2026-09-02: the Linux-built arm64 dylib loads
+#       on a Mac and passes the parity tests.
 name: ci
 
 on:
@@ -236,12 +241,12 @@ jobs:
           path: packages/kui/prebuilds
           if-no-files-found: error
 
-  # Host-mode runner on a Mac: no container, rustup and node from the host.
-  # An Apple Silicon host cross-compiles x86_64 with the same toolchain.
   build-macos:
     needs: check
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: macos
+    runs-on: docker
+    container:
+      image: node:24-bookworm
     strategy:
       fail-fast: true
       matrix:
@@ -251,32 +256,54 @@ jobs:
           - target: x86_64-apple-darwin
             prebuild: darwin-x64
     env:
-      CARGO_HOME: ~/.cargo
-      RUSTUP_HOME: ~/.rustup
+      SDKROOT: /usr/local/MacOSX15.5.sdk
+      MACOS_SDK_URL: https://github.com/joseluisq/macosx-sdks/releases/download/15.5/MacOSX15.5.sdk.tar.xz
+      CARGO_ZIGBUILD_VERSION: "0.23.3"
+      ZIGLANG_VERSION: "0.16.0"
     steps:
       - uses: actions/checkout@v4
 
-      - name: Toolchain
+      # cargo-zigbuild and zig itself both come as pip wheels (x64 and
+      # arm64 Linux), which keeps the runner's own arch out of the picture.
+      - name: Install toolchain
         run: |
           set -eu
-          export PATH="$HOME/.cargo/bin:$PATH"
-          rustup target add "${{ matrix.target }}"
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          cargo --version
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl python3-pip xz-utils
+          curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal \
+            --default-toolchain stable -t "${{ matrix.target }}"
+          echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
+          pip3 install --break-system-packages \
+            "cargo-zigbuild==${CARGO_ZIGBUILD_VERSION}" "ziglang==${ZIGLANG_VERSION}"
+          cargo-zigbuild --version
+
+      - name: Cache the macOS SDK
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/MacOSX15.5.sdk
+          key: macos-sdk-15.5
+
+      - name: Fetch the macOS SDK
+        run: |
+          set -eu
+          if [ ! -f "$SDKROOT/SDKSettings.json" ]; then
+            curl -fL --retry 3 "$MACOS_SDK_URL" | tar -xJ -C /usr/local
+          fi
+          test -f "$SDKROOT/SDKSettings.json"
 
       - name: Cache cargo
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
+            /usr/local/cargo/registry/index
+            /usr/local/cargo/registry/cache
+            /usr/local/cargo/git/db
             target
           key: native-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: native-${{ matrix.target }}-
 
       - name: Build kui-node
-        run: cargo build -p kui-node --release --target "${{ matrix.target }}"
+        run: cargo zigbuild -p kui-node --release --target "${{ matrix.target }}"
 
       - name: Collect prebuild
         run: scripts/collect-prebuild.sh "${{ matrix.target }}" "${{ matrix.prebuild }}"
