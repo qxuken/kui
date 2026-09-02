@@ -1,15 +1,46 @@
-# Forgejo Actions, docker runner. One job so the cargo target dir is built
-# once and shared by fmt, clippy, the workspace tests, the C example and the
-# Node addon parity tests. The container is the stock node image rather than
-# the rust one: actions/checkout and actions/cache are JavaScript actions and
+# Forgejo Actions. `check` runs on every push and pull request; pushing a
+# `v*` tag additionally runs the release pipeline after it:
+#
+#   check ──┬── build-linux   (x64, arm64)   ──┐
+#           ├── build-windows (x64, via xwin) ──┼── publish
+#           └── build-macos   (arm64, x64)    ──┘
+#
+# check is one job so the cargo target dir is built once and shared by fmt,
+# clippy, the workspace tests, the C example and the Node addon parity tests:
+# separate jobs would each rebuild it (or each restore a multi-GB cache), and
+# it is far too big to hand between jobs as an artifact. What IS handed
+# between jobs is small: each build leg uploads one kui-node cdylib as an
+# artifact, and publish downloads them all into packages/kui/prebuilds before
+# `npm publish`, so the tarball ships a native addon per platform. The library
+# crates go to the Forgejo cargo registry (see .cargo/config.toml) in
+# dependency order first.
+#
+# The docker jobs use the stock node image rather than the rust one:
+# actions/checkout, cache and the artifact actions are JavaScript actions and
 # the runner execs `node` inside the job container to run them, so the image
 # has to ship Node. Rust comes from rustup; the only other system addition is
-# a font (the text tests measure real glyphs).
+# a font (the text tests measure real glyphs) and, for a cross leg, a linker.
+#
+# Release prerequisites:
+#   * a repository secret PACKAGES_TOKEN: a personal access token with
+#     write:packages (the automatic FORGEJO_TOKEN cannot publish packages);
+#   * a runner labelled `docker` (the Linux legs cross-compile whichever of
+#     x64/arm64 the runner itself is not) and one labelled `macos` - a
+#     forgejo-runner in host mode on a Mac with rustup and node installed.
+#     Without a macos runner the release stalls in "waiting"; to ship
+#     Linux-only prebuilds, drop build-macos and its entry in publish's
+#     `needs`. Windows needs no runner of its own: build-windows
+#     cross-compiles the MSVC target on the docker runner with cargo-xwin
+#     (clang-cl + lld-link from Debian's LLVM, the Windows SDK/CRT fetched
+#     by xwin into a cached dir). napi-sys resolves N-API symbols at load
+#     time through libloading, so nothing links against node.exe; the
+#     mingw target is not an option because napi-build wants a libnode.dll.
 name: ci
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
 
 env:
@@ -78,3 +109,258 @@ jobs:
           # means someone changed PROPS without running `npm run gen`.
           npm run gen
           git diff --exit-code -- jsx-runtime.d.ts
+
+  # One kui-node cdylib per Linux target. The runner's own architecture builds
+  # natively; the other one cross-compiles with Debian's cross gcc as linker
+  # (winit/wgpu/arboard dlopen X11, Wayland and xkbcommon at run time, so no
+  # target sysroot is needed).
+  build-linux:
+    needs: check
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: docker
+    container:
+      image: node:24-bookworm
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            prebuild: linux-x64
+            arch: x86_64
+            cross-gcc: gcc-x86-64-linux-gnu
+          - target: aarch64-unknown-linux-gnu
+            prebuild: linux-arm64
+            arch: aarch64
+            cross-gcc: gcc-aarch64-linux-gnu
+    env:
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: x86_64-linux-gnu-gcc
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          set -eu
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl
+          if [ "$(uname -m)" != "${{ matrix.arch }}" ]; then
+            apt-get install -y --no-install-recommends "${{ matrix.cross-gcc }}"
+          fi
+          curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal \
+            --default-toolchain stable -t "${{ matrix.target }}"
+          echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/cargo/registry/index
+            /usr/local/cargo/registry/cache
+            /usr/local/cargo/git/db
+            target
+          key: native-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: native-${{ matrix.target }}-
+
+      - name: Build kui-node
+        run: cargo build -p kui-node --release --target "${{ matrix.target }}"
+
+      - name: Collect prebuild
+        run: scripts/collect-prebuild.sh "${{ matrix.target }}" "${{ matrix.prebuild }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuild-${{ matrix.prebuild }}
+          path: packages/kui/prebuilds
+          if-no-files-found: error
+
+  build-windows:
+    needs: check
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: docker
+    container:
+      image: node:24-bookworm
+    env:
+      TARGET: x86_64-pc-windows-msvc
+      PREBUILD: win32-x64
+      XWIN_CACHE_DIR: /usr/local/xwin
+      CARGO_XWIN_VERSION: "0.23.1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          set -eu
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl clang lld llvm
+          curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal \
+            --default-toolchain stable -t "$TARGET"
+          echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
+
+      # The cargo-xwin binary and the SDK it downloads are cached across
+      # runs; the target dir is cached like the other legs.
+      - name: Cache cargo-xwin and the Windows SDK
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/cargo/bin/cargo-xwin
+            /usr/local/xwin
+          key: xwin-${{ runner.os }}-${{ env.CARGO_XWIN_VERSION }}
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/cargo/registry/index
+            /usr/local/cargo/registry/cache
+            /usr/local/cargo/git/db
+            target
+          key: native-${{ env.TARGET }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: native-${{ env.TARGET }}-
+
+      - name: Install cargo-xwin
+        run: |
+          set -eu
+          if ! cargo xwin --version 2>/dev/null | grep -q "$CARGO_XWIN_VERSION"; then
+            cargo install cargo-xwin --locked --version "$CARGO_XWIN_VERSION"
+          fi
+
+      - name: Build kui-node
+        run: cargo xwin build -p kui-node --release --target "$TARGET"
+
+      - name: Collect prebuild
+        run: scripts/collect-prebuild.sh "$TARGET" "$PREBUILD"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuild-${{ env.PREBUILD }}
+          path: packages/kui/prebuilds
+          if-no-files-found: error
+
+  # Host-mode runner on a Mac: no container, rustup and node from the host.
+  # An Apple Silicon host cross-compiles x86_64 with the same toolchain.
+  build-macos:
+    needs: check
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            prebuild: darwin-arm64
+          - target: x86_64-apple-darwin
+            prebuild: darwin-x64
+    env:
+      CARGO_HOME: ~/.cargo
+      RUSTUP_HOME: ~/.rustup
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          set -eu
+          export PATH="$HOME/.cargo/bin:$PATH"
+          rustup target add "${{ matrix.target }}"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          cargo --version
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: native-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: native-${{ matrix.target }}-
+
+      - name: Build kui-node
+        run: cargo build -p kui-node --release --target "${{ matrix.target }}"
+
+      - name: Collect prebuild
+        run: scripts/collect-prebuild.sh "${{ matrix.target }}" "${{ matrix.prebuild }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuild-${{ matrix.prebuild }}
+          path: packages/kui/prebuilds
+          if-no-files-found: error
+
+  publish:
+    needs: [check, build-linux, build-windows, build-macos]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: docker
+    container:
+      image: node:24-bookworm
+    env:
+      PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+      # cargo sends the token verbatim as the Authorization header; Forgejo
+      # wants the Bearer scheme in it.
+      CARGO_REGISTRIES_FORGEJO_TOKEN: Bearer ${{ secrets.PACKAGES_TOKEN }}
+      NPM_REGISTRY: ${{ github.server_url }}/api/packages/${{ github.repository_owner }}/npm/
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          set -eu
+          apt-get update
+          apt-get install -y --no-install-recommends fonts-dejavu-core ca-certificates curl
+          curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+          echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
+          test -n "$PACKAGES_TOKEN" || { echo "PACKAGES_TOKEN secret is not set" >&2; exit 1; }
+
+      # `cargo publish` verifies each crate by building the packaged tarball
+      # under target/package against the registry copies of its dependencies;
+      # keeping that dir and the registry cache makes later releases quick.
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/cargo/registry/index
+            /usr/local/cargo/registry/cache
+            /usr/local/cargo/git/db
+            target/package
+          key: publish-${{ hashFiles('Cargo.lock') }}
+          restore-keys: publish-
+
+      - name: Tag matches the manifests
+        run: scripts/check-version.sh "${GITHUB_REF_NAME#v}"
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: prebuild-*
+          path: packages/kui/prebuilds
+          merge-multiple: true
+
+      # No target dir exists in this job, so native.cjs must find the addon
+      # under prebuilds/ - the parity tests then exercise the shipped binary.
+      - name: Verify the bundled prebuilds
+        run: |
+          set -eu
+          ls -lR packages/kui/prebuilds
+          for p in linux-x64 linux-arm64 darwin-arm64 darwin-x64 win32-x64; do
+            test -f "packages/kui/prebuilds/$p/kui_node.node" || { echo "missing prebuild $p" >&2; exit 1; }
+          done
+          cd packages/kui
+          npm test
+          npm pack --dry-run
+
+      # One invocation publishes in dependency order: each crate's verify
+      # build resolves the earlier ones from the freshly published index.
+      - name: cargo publish
+        run: cargo publish -p kui-core -p kui-wgpu -p kui -p kui-lua -p kui-ffi --registry forgejo
+
+      # Prereleases get their identifier as the dist-tag (0.1.0-alpha.1 ->
+      # `alpha`, installed with `npm i kui@alpha`); plain versions become
+      # `latest`.
+      - name: npm publish
+        run: |
+          set -eu
+          ver=$(node -p 'require("./packages/kui/package.json").version')
+          tag=latest
+          case "$ver" in *-*) tag="${ver#*-}"; tag="${tag%%.*}";; esac
+          printf '%s:_authToken=%s\n' "${NPM_REGISTRY#https:}" "$PACKAGES_TOKEN" > "$HOME/.npmrc"
+          cd packages/kui
+          npm publish --registry "$NPM_REGISTRY" --tag "$tag"

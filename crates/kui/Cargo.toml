@@ -2,6 +2,10 @@
 name = "kui"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Batteries-included kui runner: winit + wgpu around a Core, App trait, widgets"
+publish = ["forgejo"]
 
 [dependencies]
 kui-core.workspace = true

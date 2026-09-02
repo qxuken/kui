@@ -3,3 +3,4 @@
 .DS_Store
 /examples/node/node_modules
 /examples/node/dist
+/packages/kui/prebuilds

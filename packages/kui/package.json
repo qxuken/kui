@@ -1,15 +1,42 @@
 {
   "name": "kui",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "description": "kui for Node: JSX views lowered into the kui IR, Elm-style messages as data",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://drydock9.qxuken.dev/qxuken/kui"
+  },
+  "publishConfig": {
+    "registry": "https://drydock9.qxuken.dev/api/packages/qxuken/npm/"
+  },
   "type": "module",
   "main": "index.js",
   "types": "index.d.ts",
   "exports": {
-    ".": { "types": "./index.d.ts", "default": "./index.js" },
-    "./jsx-runtime": { "types": "./jsx-runtime.d.ts", "default": "./jsx-runtime.js" },
-    "./jsx-dev-runtime": { "types": "./jsx-runtime.d.ts", "default": "./jsx-dev-runtime.js" }
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./jsx-runtime": {
+      "types": "./jsx-runtime.d.ts",
+      "default": "./jsx-runtime.js"
+    },
+    "./jsx-dev-runtime": {
+      "types": "./jsx-runtime.d.ts",
+      "default": "./jsx-dev-runtime.js"
+    }
   },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "jsx-runtime.js",
+    "jsx-runtime.d.ts",
+    "jsx-dev-runtime.js",
+    "encoder.js",
+    "native.cjs",
+    "prebuilds/"
+  ],
   "scripts": {
     "build:native": "cargo build -p kui-node --release",
     "gen": "node gen-types.mjs",

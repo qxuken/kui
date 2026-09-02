@@ -271,6 +271,40 @@ shape-run cache.
 Layout solver, atlas packer, key scheme, event dispatch, editing, and the Lua
 binding are covered by tests (`cargo test --workspace`).
 
+## Releases
+
+Tagged commits publish to the self-hosted Forgejo: the library crates
+(`kui-core`, `kui-wgpu`, `kui`, `kui-lua`, `kui-ffi`) to its cargo registry
+and [`packages/kui`](packages/kui) to its npm registry, with the Node addon
+prebuilt for linux-x64, linux-arm64, darwin-arm64, darwin-x64 and win32-x64 bundled
+under `prebuilds/` (`native.cjs` picks the one matching the running Node;
+`KUI_NODE_LIB` still overrides it, and an in-repo `cargo build` still wins
+for development). Consumers point at the registries once:
+
+```toml
+# .cargo/config.toml
+[registries.forgejo]
+index = "sparse+https://drydock9.qxuken.dev/api/packages/qxuken/cargo/"
+# Cargo.toml
+kui = { version = "0.1.0-alpha.1", registry = "forgejo" }
+```
+
+```bash
+npm config set registry https://drydock9.qxuken.dev/api/packages/qxuken/npm/
+npm install kui@alpha    # prereleases publish under their identifier as the dist-tag
+```
+
+To cut a release: `scripts/set-version.sh 0.1.0-alpha.2` (workspace version,
+the `kui-*` dependency requirements and package.json move together — registries
+refuse a version that already exists), commit, `git tag v0.1.0-alpha.2`, push
+the tag. [ci.yml](.forgejo/workflows/ci.yml) then runs `check`, builds one
+addon per target in parallel (`build-linux` on the docker runner, natively
+plus cross-compiled; `build-windows` on the same runner through cargo-xwin;
+`build-macos` on a host-mode runner labelled `macos`), and `publish` verifies
+the tag against the manifests, downloads the five prebuilds, runs the parity tests against the shipped binaries, publishes the
+crates in dependency order and finally the npm package. It needs a repository
+secret `PACKAGES_TOKEN` (a personal access token with `write:packages`).
+
 ## Status / next
 
 v0 scope: no z-index (floats stack in tree order). Transitions cover sizing, colors and radius;
@@ -280,3 +314,7 @@ focus traversal, and undo/redo (operational deltas with typing/delete
 coalescing — the widget owns its buffer, so it owns its history; hosts
 with their own text model take raw chords through `on_key` and bring
 their own).
+
+## License
+
+MIT, see [LICENSE](LICENSE).
