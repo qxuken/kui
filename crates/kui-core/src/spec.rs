@@ -634,12 +634,31 @@ pub enum FontFamily {
     Custom(crate::resources::FontId),
 }
 
+/// How a text node breaks lines at its width.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TextWrap {
+    /// Break between words; a word wider than the line breaks by glyph.
+    #[default]
+    Word,
+    /// Break anywhere (URLs, hashes, code).
+    Glyph,
+    /// Never break at the width: one line per paragraph, clipped to the
+    /// node's box (explicit newlines still break).
+    None,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TextStyle {
     pub size: f32,
     pub line_height: f32,
     pub color: Color,
     pub family: FontFamily,
+    pub wrap: TextWrap,
+    /// At most this many lines are laid out; 0 = unlimited.
+    pub max_lines: u32,
+    /// End the last line with "…" when the text was cut off. Alone it
+    /// means a single line (`max_lines` 1); with `max_lines` it clamps.
+    pub ellipsis: bool,
 }
 
 impl Default for TextStyle {
@@ -655,6 +674,9 @@ impl TextStyle {
             line_height: (size * 1.35).round(),
             color: Color::rgb8(0xe8, 0xe8, 0xea),
             family: FontFamily::Sans,
+            wrap: TextWrap::Word,
+            max_lines: 0,
+            ellipsis: false,
         }
     }
 
@@ -674,6 +696,29 @@ impl TextStyle {
 
     pub fn line_height(mut self, lh: f32) -> Self {
         self.line_height = lh;
+        self
+    }
+
+    pub fn wrap(mut self, wrap: TextWrap) -> Self {
+        self.wrap = wrap;
+        self
+    }
+
+    /// One line per paragraph, clipped to the node (`TextWrap::None`).
+    pub fn nowrap(self) -> Self {
+        self.wrap(TextWrap::None)
+    }
+
+    /// Lay out at most `n` lines (0 = unlimited).
+    pub fn max_lines(mut self, n: u32) -> Self {
+        self.max_lines = n;
+        self
+    }
+
+    /// Truncate with "…" instead of overflowing: a single line unless
+    /// `max_lines` says otherwise.
+    pub fn ellipsis(mut self) -> Self {
+        self.ellipsis = true;
         self
     }
 

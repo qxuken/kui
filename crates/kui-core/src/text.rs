@@ -5,8 +5,8 @@
 //! renderers only ever see positioned atlas quads.
 
 use cosmic_text::{
-    Attrs, Buffer, CacheKeyFlags, FontSystem, Metrics, Shaping, Style as FontStyle, SwashCache,
-    SwashContent, Weight,
+    Attrs, Buffer, CacheKeyFlags, Ellipsize, EllipsizeHeightLimit, FontSystem, Metrics, Shaping,
+    Style as FontStyle, SwashCache, SwashContent, Weight, Wrap,
 };
 use rustc_hash::FxHashMap;
 
@@ -16,7 +16,7 @@ use crate::display::{Quad, QuadKind};
 use crate::geom::{Rect, Size, Vec2};
 use crate::layout::TextMeasure;
 use crate::resources::Resources;
-use crate::spec::{FontFamily, TextStyle};
+use crate::spec::{FontFamily, TextStyle, TextWrap};
 use crate::tree::TextId;
 
 /// The glyph rasterizer: cosmic-text's swash cache for plain alpha masks and
@@ -156,6 +156,12 @@ struct CachedText {
     wrap: Option<f32>,
     /// Unwrapped measurement, physical px.
     intrinsic: Size,
+    /// Lines past this many are dropped (0 = unlimited): the buffer-wide
+    /// budget; cosmic-text's ellipsize limit is per paragraph.
+    max_lines: usize,
+    /// The content may run past the node's width (no-wrap, ellipsis):
+    /// report the box width and clip glyphs to it.
+    clamp_w: bool,
     last_used: u64,
     /// Positioned glyph quads relative to the text origin, so steady-state
     /// emission is a memcpy-style walk instead of per-glyph atlas lookups.
@@ -328,6 +334,8 @@ impl TextSystem {
         mix(&style.size.to_bits().to_le_bytes());
         mix(&style.line_height.to_bits().to_le_bytes());
         mix(&scale.to_bits().to_le_bytes());
+        mix(&[style.wrap as u8, style.ellipsis as u8]);
+        mix(&style.max_lines.to_le_bytes());
         let (tag, font) = match style.family {
             FontFamily::Sans => (0u8, 0u64),
             FontFamily::Serif => (1, 0),
@@ -346,25 +354,14 @@ impl TextSystem {
         let scale = self.scale;
         let fs = &mut self.font_system;
         let entry = self.cache.entry(key).or_insert_with(|| {
-            let metrics = Metrics::new(style.size * scale, style.line_height * scale);
-            let mut buffer = Buffer::new(fs, metrics);
-            buffer.set_size(None, None);
+            let mut buffer = new_buffer(fs, style, scale);
             buffer.set_text(
                 content,
                 &Attrs::new().family(res.family_of(style.family)),
                 Shaping::Advanced,
                 None,
             );
-            buffer.shape_until_scroll(fs, false);
-            let intrinsic = measure_buffer(&buffer);
-            CachedText {
-                buffer,
-                wrap: None,
-                intrinsic,
-                last_used: frame_no,
-                glyphs: Vec::new(),
-                glyphs_built_for: None,
-            }
+            CachedText::new(buffer, style, fs, frame_no)
         });
         entry.last_used = frame_no;
         self.frame.push(FrameText {
@@ -398,9 +395,7 @@ impl TextSystem {
         let scale = self.scale;
         let fs = &mut self.font_system;
         let entry = self.cache.entry(key).or_insert_with(|| {
-            let metrics = Metrics::new(base.size * scale, base.line_height * scale);
-            let mut buffer = Buffer::new(fs, metrics);
-            buffer.set_size(None, None);
+            let mut buffer = new_buffer(fs, base, scale);
             let family = res.family_of(base.family);
             buffer.set_rich_text(
                 spans.iter().map(|s| (s.text, s.attrs(family))),
@@ -408,16 +403,7 @@ impl TextSystem {
                 Shaping::Advanced,
                 None,
             );
-            buffer.shape_until_scroll(fs, false);
-            let intrinsic = measure_buffer(&buffer);
-            CachedText {
-                buffer,
-                wrap: None,
-                intrinsic,
-                last_used: frame_no,
-                glyphs: Vec::new(),
-                glyphs_built_for: None,
-            }
+            CachedText::new(buffer, base, fs, frame_no)
         });
         entry.last_used = frame_no;
         self.frame.push(FrameText {
@@ -461,21 +447,22 @@ impl TextSystem {
     }
 
     /// Emits positioned glyph quads for a laid-out text node.
-    /// `origin` and `node_w` are logical; output quads are physical px.
+    /// `origin` and `node` are logical; output quads are physical px.
     pub(crate) fn emit(
         &mut self,
         id: TextId,
         origin: Vec2,
-        node_w: f32,
+        node: Size,
         clip: Rect,
         atlas: &mut GlyphAtlas,
         out: &mut Vec<Quad>,
     ) {
-        self.ensure_wrap(id, node_w);
+        self.ensure_wrap(id, node.w);
         let color = self.frame[id.0 as usize].color;
         let key = self.frame[id.0 as usize].cache_key;
-        let ox = (origin.x * self.scale).round();
-        let oy = (origin.y * self.scale).round();
+        let scale = self.scale;
+        let ox = (origin.x * scale).round();
+        let oy = (origin.y * scale).round();
         let fs = &mut self.font_system;
         let raster = &mut self.raster;
         let entry = self
@@ -483,11 +470,21 @@ impl TextSystem {
             .get_mut(&key)
             .expect("frame text missing from cache");
 
+        // Overflowing modes own their box: a line that runs past the node's
+        // width is clipped there rather than painted over siblings.
+        let clip = if entry.clamp_w {
+            let own = Rect::new(ox, oy, (node.w * scale).ceil(), (node.h * scale).ceil());
+            clip.intersect(&own)
+        } else {
+            clip
+        };
+
         // Steady state: same wrap, same atlas — reuse positioned templates.
         let built_for = (entry.wrap.map(f32::to_bits), atlas.epoch);
         if entry.glyphs_built_for != Some(built_for) {
             entry.glyphs.clear();
-            for run in entry.buffer.layout_runs() {
+            let lines = line_cap(entry.max_lines);
+            for run in entry.buffer.layout_runs().take(lines) {
                 for glyph in run.glyphs.iter() {
                     let physical = glyph.physical((0.0, 0.0), 1.0);
                     let Some(slot) = raster_glyph(physical.cache_key, fs, raster, atlas) else {
@@ -513,11 +510,16 @@ impl TextSystem {
 
         // Glyph templates are in layout order; skip everything above the clip
         // and stop at the first glyph past it (rows below never come back).
+        // Horizontally clipped glyphs (an unwrapped line) are dropped too.
         out.extend(
             entry
                 .glyphs
                 .iter()
-                .filter(|g| oy + g.y + g.h >= clip.y)
+                .filter(|g| {
+                    oy + g.y + g.h >= clip.y
+                        && ox + g.x < clip.x + clip.w
+                        && ox + g.x + g.w > clip.x
+                })
                 .take_while(|g| oy + g.y <= clip.y + clip.h)
                 .map(|g| Quad {
                     rect: Rect::new(ox + g.x, oy + g.y, g.w, g.h),
@@ -539,10 +541,66 @@ impl Default for TextSystem {
     }
 }
 
-fn measure_buffer(buffer: &Buffer) -> Size {
+impl CachedText {
+    fn new(mut buffer: Buffer, style: &TextStyle, fs: &mut FontSystem, frame_no: u64) -> Self {
+        buffer.shape_until_scroll(fs, false);
+        let max_lines = line_budget(style);
+        let intrinsic = measure_buffer(&buffer, max_lines);
+        Self {
+            buffer,
+            wrap: None,
+            intrinsic,
+            max_lines,
+            clamp_w: style.wrap == TextWrap::None || style.ellipsis,
+            last_used: frame_no,
+            glyphs: Vec::new(),
+            glyphs_built_for: None,
+        }
+    }
+}
+
+/// A buffer set up for the style's line breaking: cosmic-text's wrap mode,
+/// plus tail ellipsizing at the line budget when asked for.
+fn new_buffer(fs: &mut FontSystem, style: &TextStyle, scale: f32) -> Buffer {
+    let metrics = Metrics::new(style.size * scale, style.line_height * scale);
+    let mut buffer = Buffer::new(fs, metrics);
+    buffer.set_wrap(match style.wrap {
+        TextWrap::Word => Wrap::WordOrGlyph,
+        TextWrap::Glyph => Wrap::Glyph,
+        TextWrap::None => Wrap::None,
+    });
+    if style.ellipsis {
+        let lines = line_budget(style).max(1);
+        buffer.set_ellipsize(Ellipsize::End(EllipsizeHeightLimit::Lines(lines)));
+    }
+    buffer.set_size(None, None);
+    buffer
+}
+
+/// The line budget a style implies: `max_lines`, or one line when only
+/// `ellipsis` is set (0 = unlimited).
+fn line_budget(style: &TextStyle) -> usize {
+    if style.max_lines > 0 {
+        style.max_lines as usize
+    } else if style.ellipsis {
+        1
+    } else {
+        0
+    }
+}
+
+fn line_cap(max_lines: usize) -> usize {
+    if max_lines == 0 {
+        usize::MAX
+    } else {
+        max_lines
+    }
+}
+
+fn measure_buffer(buffer: &Buffer, max_lines: usize) -> Size {
     let mut w = 0.0f32;
     let mut lines = 0u32;
-    for run in buffer.layout_runs() {
+    for run in buffer.layout_runs().take(line_cap(max_lines)) {
         w = w.max(run.line_w);
         lines += 1;
     }
@@ -560,7 +618,12 @@ impl TextMeasure for TextSystem {
         self.ensure_wrap(id, max_w);
         let scale = self.scale;
         let e = self.entry_mut(id);
-        let m = measure_buffer(&e.buffer);
+        let mut m = measure_buffer(&e.buffer, e.max_lines);
+        if e.clamp_w {
+            // The line may run past the box; the box, not the line, is
+            // the node's width (emission clips to it).
+            m.w = m.w.min(max_w * scale);
+        }
         Size::new(m.w / scale, m.h / scale)
     }
 }

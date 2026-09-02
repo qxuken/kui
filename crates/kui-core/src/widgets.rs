@@ -323,7 +323,7 @@ pub fn titlebar(ui: &mut Ui<'_>, title: &str) {
                 .width(Sizing::Grow(1.0))
                 .height(Sizing::Grow(1.0))
                 .cross_align(Align::Center),
-            |ui| ui.text(&title, TextStyle::new(13.0).color(color)),
+            |ui| ui.text(&title, TextStyle::new(13.0).color(color).ellipsis()),
         );
     });
 }

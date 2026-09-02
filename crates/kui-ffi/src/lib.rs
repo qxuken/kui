@@ -179,6 +179,13 @@ pub struct KuiTextStyle {
     /// A registered font handle (kui_font_add / kui_font_add_system);
     /// non-zero overrides `family`.
     pub font: u64,
+    /// KUI_WRAP_WORD (0, default) / KUI_WRAP_GLYPH / KUI_WRAP_NONE.
+    pub wrap: u32,
+    /// Lay out at most this many lines; 0 = unlimited.
+    pub max_lines: u32,
+    /// Non-zero: end the last line with an ellipsis when the text is cut
+    /// off (a single line unless `max_lines` says otherwise).
+    pub ellipsis: u32,
 }
 
 #[repr(C)]
@@ -433,6 +440,17 @@ fn text_style_of(s: &KuiTextStyle) -> TextStyle {
     });
     if s.font != 0 {
         style = style.font(kui_core::FontId::from_ffi(s.font));
+    }
+    style = style.wrap(match s.wrap {
+        1 => kui_core::TextWrap::Glyph,
+        2 => kui_core::TextWrap::None,
+        _ => kui_core::TextWrap::Word,
+    });
+    if s.max_lines > 0 {
+        style = style.max_lines(s.max_lines);
+    }
+    if s.ellipsis != 0 {
+        style = style.ellipsis();
     }
     style
 }
@@ -1553,6 +1571,9 @@ mod schema_parity {
                 "color" => t.color = C,
                 "family" => t.family = 1,
                 "font" => t.font = 7,
+                "wrap" => t.wrap = 1,
+                "maxLines" => t.max_lines = F as u32,
+                "ellipsis" => t.ellipsis = 1,
                 other => panic!(
                     "schema prop {other:?} has no C counterpart: add a KuiSpec/KuiTextStyle \
                      field (append-only — the struct is ABI), mirror it in include/kui.h, \

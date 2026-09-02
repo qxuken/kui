@@ -280,3 +280,30 @@ test('font files and folders load by path', () => {
   const id = ctx.addSystemFont(family);
   assert.equal(ctx.addSystemFont(family), id, 'idempotent per family');
 });
+
+test('wrap, maxLines and ellipsis cut text instead of wrapping it', () => {
+  const ctx = new Ctx();
+  const LONG = 'A window title that is far too long to fit inside a narrow header strip';
+  const glyphs = (props) => {
+    ctx.frame(320, 240, 1, box({ width: 120 }, [text(LONG, props)]));
+    const quads = Buffer.from(ctx.quads());
+    const stride = quads.byteLength / ctx.stats().quadCount;
+    let n = 0;
+    let right = 0;
+    for (let off = 0; off < quads.byteLength; off += stride) {
+      if (quads.readUInt32LE(off + 17 * 4) === 0) continue;
+      n++;
+      right = Math.max(right, quads.readFloatLE(off) + quads.readFloatLE(off + 2 * 4));
+    }
+    return { n, right };
+  };
+  const wrapped = glyphs({});
+  const nowrap = glyphs({ wrap: 'none' });
+  const ellipsis = glyphs({ ellipsis: true });
+  const clamped = glyphs({ maxLines: 2 });
+  assert.ok(nowrap.n < wrapped.n, 'no-wrap emits only the glyphs inside the box');
+  assert.ok(ellipsis.n < nowrap.n, 'ellipsis cuts the line short');
+  assert.ok(ellipsis.right <= 120.5, 'the ellipsized line fits the box');
+  assert.ok(clamped.n < wrapped.n && clamped.n > ellipsis.n, 'two lines sit between one and all');
+  assertParity('wrap props', () => box({ width: 120 }, [text(LONG, { wrap: 'none', maxLines: 2, ellipsis: true })]));
+});

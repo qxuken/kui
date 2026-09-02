@@ -137,7 +137,10 @@ payload shapes and the resource APIs. It is generated from the schema
   emission reuses positioned glyph templates until wrap width or the atlas
   epoch changes. Renderers receive pre-rasterized atlas quads only. Rich text
   is `Span` lists (color/bold/italic per run) shaped as one paragraph flow, so
-  wrapping crosses style boundaries and emoji share baselines.
+  wrapping crosses style boundaries and emoji share baselines. Line breaking
+  is a style choice: `wrap` (word / glyph / none), `max_lines`, and
+  `ellipsis` (a single "…"-terminated line unless `max_lines` says
+  otherwise); unwrapped text takes its box's width and clips to it.
 - **Text editing is retained state, not captured state.** An edit node's
   buffer/cursor/selection live in the core keyed by widget identity (cosmic-
   text's `Editor` underneath, so motion, selection, and click-to-caret share

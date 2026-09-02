@@ -43,7 +43,7 @@ pub use keyframes::Keyframe;
 pub use resources::{FontId, ImageId, Resources};
 pub use runtime::{Core, Extension};
 pub use spec::{
-    Align, Dir, FloatAnchor, FloatConfig, FontFamily, NodeSpec, Sizing, TextStyle, corner,
+    Align, Dir, FloatAnchor, FloatConfig, FontFamily, NodeSpec, Sizing, TextStyle, TextWrap, corner,
 };
 pub use stats::{FrameSample, FrameStats};
 pub use text::Span;

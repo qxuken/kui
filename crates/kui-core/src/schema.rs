@@ -24,7 +24,7 @@ use std::sync::LazyLock;
 use crate::anim::{Easing, Repeat};
 use crate::color::Color;
 use crate::keyframes::Keyframe;
-use crate::spec::{Align, FontFamily, NodeSpec, Sizing, TextStyle};
+use crate::spec::{Align, FontFamily, NodeSpec, Sizing, TextStyle, TextWrap};
 use crate::value::Value;
 use crate::window::WindowButton;
 
@@ -74,10 +74,14 @@ pub const P_FONT: u32 = 42;
 pub const P_KEYFRAMES: u32 = 43;
 pub const P_REPEAT: u32 = 44;
 pub const P_DELAY: u32 = 45;
+pub const P_WRAP: u32 = 46;
+pub const P_MAX_LINES: u32 = 47;
+pub const P_ELLIPSIS: u32 = 48;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
 pub const FAMILIES: &[&str] = &["sans", "serif", "mono"];
+pub const WRAPS: &[&str] = &["word", "glyph", "none"];
 pub const EASINGS: &[&str] = &[
     "easeOut",
     "linear",
@@ -150,6 +154,7 @@ pub enum Apply {
     StyleF32(fn(TextStyle, f32) -> TextStyle),
     StyleColor(fn(TextStyle, Color) -> TextStyle),
     StyleEnum(fn(TextStyle, usize) -> TextStyle),
+    StyleFlag(fn(TextStyle) -> TextStyle),
     StyleResource(fn(TextStyle, u64) -> TextStyle),
 }
 
@@ -176,6 +181,7 @@ impl PropDef {
             Apply::StyleF32(_)
             | Apply::StyleColor(_)
             | Apply::StyleEnum(_)
+            | Apply::StyleFlag(_)
             | Apply::StyleResource(_) => Target::Style,
             _ => Target::Spec,
         }
@@ -470,6 +476,31 @@ pub const PROPS: &[PropDef] = &[
         apply: Apply::StyleResource(|t, id| t.font(crate::resources::FontId::from_ffi(id))),
         doc: "A registered font handle (addFont / addSystemFont); overrides `family`.",
     },
+    PropDef {
+        name: "wrap",
+        id: P_WRAP,
+        kind: Kind::Enum(WRAPS),
+        apply: Apply::StyleEnum(|t, i| match i {
+            1 => t.wrap(TextWrap::Glyph),
+            2 => t.wrap(TextWrap::None),
+            _ => t.wrap(TextWrap::Word),
+        }),
+        doc: "Line breaking at the node's width: between words (default), anywhere, or never (one line per paragraph, clipped to the node).",
+    },
+    PropDef {
+        name: "maxLines",
+        id: P_MAX_LINES,
+        kind: Kind::F32,
+        apply: Apply::StyleF32(|t, v| t.max_lines(v.max(0.0) as u32)),
+        doc: "Lay out at most this many lines (0 = unlimited); with `ellipsis`, a line clamp.",
+    },
+    PropDef {
+        name: "ellipsis",
+        id: P_ELLIPSIS,
+        kind: Kind::Flag,
+        apply: Apply::StyleFlag(|t| t.ellipsis()),
+        doc: "End the last line with an ellipsis when the text is cut off: a single line unless `maxLines` says otherwise.",
+    },
 ];
 
 /// A prop every binding handles by hand (a composite with real logic, or a
@@ -603,6 +634,9 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     ("family", "`KuiTextStyle.family` (`KUI_FONT_*`)"),
     ("font", "`KuiTextStyle.font` (from `kui_font_add*`)"),
     ("lineHeight", "`KuiTextStyle.line_height`"),
+    ("wrap", "`KuiTextStyle.wrap` (`KUI_WRAP_*`)"),
+    ("maxLines", "`KuiTextStyle.max_lines`"),
+    ("ellipsis", "`KuiTextStyle.ellipsis`"),
     ("color", "`KuiTextStyle.color`"),
 ];
 
@@ -640,7 +674,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<text>` with `<span bold italic color>` children",
         lua: "`text(\"s\", {…})`, `text({ \"a\", { \"b\", bold = true } })`",
         c: "`kui_text`, `kui_rich_text`",
-        doc: "Plain or rich text; spans shape as one paragraph, so wrapping crosses style boundaries.",
+        doc: "Plain or rich text; spans shape as one paragraph, so wrapping crosses style boundaries. `wrap`, `maxLines` and `ellipsis` control line breaking.",
     },
     ElementDef {
         name: "button",
@@ -897,6 +931,10 @@ pub fn apply(def: &PropDef, value: Parsed, out: &mut PropsOut) -> Result<(), Str
         (Apply::StyleEnum(f), Parsed::Enum(v)) => {
             out.spec = spec;
             out.style = f(style, v);
+        }
+        (Apply::StyleFlag(f), Parsed::Flag) => {
+            out.spec = spec;
+            out.style = f(style);
         }
         (Apply::StyleResource(f), Parsed::Resource(v)) => {
             out.spec = spec;

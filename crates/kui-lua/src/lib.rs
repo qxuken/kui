@@ -735,6 +735,11 @@ mod tests {
                 .color(Color::hex(0x73d98cff))
                 .family(FontFamily::Mono)
         );
+        let t = eval_table(&lua, r#"{ wrap = "none", max_lines = 2, ellipsis = true }"#);
+        assert_eq!(
+            parse_props(&t, false).unwrap().style,
+            TextStyle::default().nowrap().max_lines(2).ellipsis()
+        );
         // `size` is applied first regardless of table iteration order, so a
         // color set alongside it survives the TextStyle::new reset.
         let t = eval_table(&lua, r##"{ color = "#fff", size = 12 }"##);

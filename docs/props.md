@@ -49,9 +49,12 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | JSX | Lua | C | type | description |
 |---|---|---|---|---|
 | `color` | `color` | `KuiTextStyle.color` | color (`#hex` or `0xRRGGBBAA`) | Text color; default foreground when omitted. |
+| `ellipsis` | `ellipsis` | `KuiTextStyle.ellipsis` | boolean | End the last line with an ellipsis when the text is cut off: a single line unless `maxLines` says otherwise. |
 | `family` | `family` | `KuiTextStyle.family` (`KUI_FONT_*`) | `sans` \\| `serif` \\| `mono` | Font family. |
 | `font` | `font` | `KuiTextStyle.font` (from `kui_font_add*`) | resource handle | A registered font handle (addFont / addSystemFont); overrides `family`. |
 | `lineHeight` | `line_height` | `KuiTextStyle.line_height` | number | Line height (logical px); default size * 1.35. |
+| `maxLines` | `max_lines` | `KuiTextStyle.max_lines` | number | Lay out at most this many lines (0 = unlimited); with `ellipsis`, a line clamp. |
+| `wrap` | `wrap` | `KuiTextStyle.wrap` (`KUI_WRAP_*`) | `word` \\| `glyph` \\| `none` | Line breaking at the node's width: between words (default), anywhere, or never (one line per paragraph, clipped to the node). |
 
 ## Composite props (hand-written per binding)
 
@@ -73,7 +76,7 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | JSX | Lua | C | notes |
 |---|---|---|---|
 | `<box>` | `row { }`, `column { }` | `kui_open*` … `kui_close` | A container: every container prop applies. |
-| `<text>` with `<span bold italic color>` children | `text("s", {…})`, `text({ "a", { "b", bold = true } })` | `kui_text`, `kui_rich_text` | Plain or rich text; spans shape as one paragraph, so wrapping crosses style boundaries. |
+| `<text>` with `<span bold italic color>` children | `text("s", {…})`, `text({ "a", { "b", bold = true } })` | `kui_text`, `kui_rich_text` | Plain or rich text; spans shape as one paragraph, so wrapping crosses style boundaries. `wrap`, `maxLines` and `ellipsis` control line breaking. |
 | `<button onClick>` | `button { label=, on_click= }` | `kui_button` | The stock button: `widgets::button_spec()` with hover/pressed colors declared on the node. |
 | `<edit key initial multiline autofocus>` | `edit { key=, initial=, … }`, `input { label= }` | `kui_text_edit`, `kui_text_input` | Retained editor state by key; read it back with `editText(key)` after a `changed` event. |
 | `<image src={id}>` | `image { id= }` | `kui_image` | A registered RGBA image; `fit` takes the pixel size, a fit height against a resolved width keeps the aspect, radius rounds it. |

@@ -45,6 +45,8 @@ enum { KUI_QUAD_SOLID = 0, KUI_QUAD_GLYPH_MASK = 1, KUI_QUAD_GLYPH_COLOR = 2,
        KUI_QUAD_IMAGE = 3, KUI_QUAD_GLYPH_SUBPIXEL = 4 };
 /* Font families (KuiTextStyle.family) */
 enum { KUI_FONT_SANS = 0, KUI_FONT_SERIF = 1, KUI_FONT_MONO = 2 };
+/* Line breaking (KuiTextStyle.wrap) */
+enum { KUI_WRAP_WORD = 0, KUI_WRAP_GLYPH = 1, KUI_WRAP_NONE = 2 };
 /* Span flags */
 enum { KUI_SPAN_BOLD = 1u << 0, KUI_SPAN_ITALIC = 1u << 1 };
 /* Overflow flags */
@@ -191,6 +193,9 @@ typedef struct KuiTextStyle {
     uint32_t color;    /* 0: default foreground */
     uint32_t family;   /* KUI_FONT_* ; 0 = sans */
     uint64_t font;     /* registered font handle (kui_font_add*); non-zero overrides family */
+    uint32_t wrap;     /* KUI_WRAP_* ; 0 = between words */
+    uint32_t max_lines; /* at most this many lines; 0 = unlimited */
+    uint32_t ellipsis; /* non-zero: end the last line with "..." when cut off (one line unless max_lines) */
 } KuiTextStyle;
 
 typedef struct KuiSpan {

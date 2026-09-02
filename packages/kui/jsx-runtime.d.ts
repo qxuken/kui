@@ -154,12 +154,18 @@ export interface GeneratedSpecProps {
 export interface GeneratedStyleProps {
   /** Text color; default foreground when omitted. */
   color?: ColorProp;
+  /** End the last line with an ellipsis when the text is cut off: a single line unless `maxLines` says otherwise. */
+  ellipsis?: boolean;
   /** Font family. */
   family?: 'sans' | 'serif' | 'mono';
   /** A registered font handle (addFont / addSystemFont); overrides `family`. */
   font?: string;
   /** Line height (logical px); default size * 1.35. */
   lineHeight?: number;
+  /** Lay out at most this many lines (0 = unlimited); with `ellipsis`, a line clamp. */
+  maxLines?: number;
+  /** Line breaking at the node's width: between words (default), anywhere, or never (one line per paragraph, clipped to the node). */
+  wrap?: 'word' | 'glyph' | 'none';
 }
 // -- end generated --
 

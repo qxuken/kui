@@ -380,7 +380,7 @@ impl Core {
                 self.text.emit(
                     tid,
                     self.tree.pos[i],
-                    self.tree.size[i].w,
+                    self.tree.size[i],
                     clip.scaled(scale),
                     &mut self.atlas,
                     &mut self.display.quads,
