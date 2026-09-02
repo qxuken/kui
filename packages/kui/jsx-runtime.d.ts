@@ -1,5 +1,5 @@
 // Types for kui's JSX runtime. Set in tsconfig:
-//   "jsx": "react-jsx", "jsxImportSource": "kui"
+//   "jsx": "react-jsx", "jsxImportSource": "@qxuken/kui"
 
 /** Event message payloads: plain data, both directions (the Elm shape). */
 export type Msg = null | boolean | number | string | Msg[] | { [key: string]: Msg };

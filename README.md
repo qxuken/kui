@@ -39,7 +39,7 @@ wgpu window, its event loop pumped from a timer so it shares the main
 thread with libuv):
 
 ```tsx
-// tsconfig: "jsx": "react-jsx", "jsxImportSource": "kui"
+// tsconfig: "jsx": "react-jsx", "jsxImportSource": "@qxuken/kui"
 const view = (model: Model) => (
   <box pad={24} gap={16}>
     <button onClick={{ kind: 'add', by: 1 }}>+1</button>
@@ -275,7 +275,7 @@ binding are covered by tests (`cargo test --workspace`).
 
 Tagged commits publish to the self-hosted Forgejo: the library crates
 (`kui-core`, `kui-wgpu`, `kui`, `kui-lua`, `kui-ffi`) to its cargo registry
-and [`packages/kui`](packages/kui) to its npm registry, with the Node addon
+and [`packages/kui`](packages/kui) to its npm registry as `@qxuken/kui`, with the Node addon
 prebuilt for linux-x64, linux-arm64, darwin-arm64, darwin-x64 and win32-x64 bundled
 under `prebuilds/` (`native.cjs` picks the one matching the running Node;
 `KUI_NODE_LIB` still overrides it, and an in-repo `cargo build` still wins
@@ -290,8 +290,10 @@ kui = { version = "0.1.0-alpha.1", registry = "forgejo" }
 ```
 
 ```bash
-npm config set registry https://drydock9.qxuken.dev/api/packages/qxuken/npm/
-npm install kui@alpha    # prereleases publish under their identifier as the dist-tag
+# scoped on purpose: Forgejo does not proxy npmjs, so only @qxuken/* goes there
+npm config set @qxuken:registry https://drydock9.qxuken.dev/api/packages/qxuken/npm/
+npm install @qxuken/kui@alpha    # prereleases publish under their identifier as the dist-tag
+npm create @qxuken/kui-node my-app   # or scaffold an app from the template
 ```
 
 To cut a release: `scripts/set-version.sh 0.1.0-alpha.2` (workspace version,

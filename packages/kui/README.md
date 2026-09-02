@@ -4,12 +4,16 @@ kui for Node: JSX views (a custom jsx-runtime, no React) lowered into the kui
 IR in one call per frame, Elm-style messages as data. The library itself is
 documented in the [kui repository](https://drydock9.qxuken.dev/qxuken/kui).
 
-The package is published to that Forgejo's npm registry; point npm at it once:
+The package is published to that Forgejo's npm registry under the `@qxuken`
+scope; route the scope there once (Forgejo does not proxy npmjs, so do not
+override the default registry) and install:
 
 ```
-npm config set registry https://drydock9.qxuken.dev/api/packages/qxuken/npm/
-npm install kui@alpha
+npm config set @qxuken:registry https://drydock9.qxuken.dev/api/packages/qxuken/npm/
+npm install @qxuken/kui@alpha
 ```
+
+Or start from the template: `npm create @qxuken/kui-node my-app`.
 
 The tarball bundles the native addon for linux-x64, linux-arm64, darwin-arm64,
 darwin-x64 and win32-x64 under `prebuilds/`; `native.cjs` picks the one matching
@@ -18,8 +22,8 @@ repo (`cargo build -p kui-node --release`) and set `KUI_NODE_LIB` to the
 resulting library.
 
 ```tsx
-// tsconfig: "jsx": "react-jsx", "jsxImportSource": "kui"
-import { createApp, runWindowed } from 'kui';
+// tsconfig: "jsx": "react-jsx", "jsxImportSource": "@qxuken/kui"
+import { createApp, runWindowed } from '@qxuken/kui';
 
 const view = (model: Model) => (
   <box pad={24} gap={16}>

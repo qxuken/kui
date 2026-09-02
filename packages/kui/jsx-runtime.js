@@ -1,4 +1,4 @@
-// kui's JSX runtime (automatic transform target, `jsxImportSource: "kui"`).
+// kui's JSX runtime (automatic transform target, `jsxImportSource: "@qxuken/kui"`).
 // Elements are plain data - `{type, key, props, children}` - because the tree
 // IS the frame: Ctx.frame() lowers it into the kui IR in one call. Function
 // components are called immediately (stateless, Elm-style); Fragments splice

@@ -1,8 +1,8 @@
 // The counter in a real window, from Node: winit + wgpu underneath, the
 // Elm loop in JS on top, both sharing the main thread via a pumped event
 // loop. Run with --smoke to auto-close after 2 seconds (CI/sanity).
-import { runWindowed } from 'kui';
-import type { KuiWindow, Msg, UiEvent } from 'kui';
+import { runWindowed } from '@qxuken/kui';
+import type { KuiWindow, Msg, UiEvent } from '@qxuken/kui';
 
 type Model = { count: number; note: string };
 

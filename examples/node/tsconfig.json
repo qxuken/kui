@@ -4,7 +4,7 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "jsx": "react-jsx",
-    "jsxImportSource": "kui",
+    "jsxImportSource": "@qxuken/kui",
     "strict": true,
     "noEmit": true,
     "types": ["node"]

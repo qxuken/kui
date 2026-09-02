@@ -1,8 +1,8 @@
 // kui from Node, Elm-style: view(model) is JSX, messages are plain data.
 // Runs headlessly - builds real frames, clicks real buttons via hit-testing,
 // types into a real editor - and prints what happened.
-import { createApp, decodeQuads, Ctx } from 'kui';
-import type { App, Msg, UiEvent } from 'kui';
+import { createApp, decodeQuads, Ctx } from '@qxuken/kui';
+import type { App, Msg, UiEvent } from '@qxuken/kui';
 
 type Model = { count: number; note: string };
 

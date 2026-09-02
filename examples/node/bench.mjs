@@ -2,7 +2,7 @@
 // crates/kui-lua/examples/bench.rs): 300 rows of text + swatch, headless.
 // Splits the cost into JS tree building vs encoding vs the boundary+lowering,
 // and compares the default binary frame() against the reference transports.
-import { Ctx, createEncoder, protocol } from 'kui';
+import { Ctx, createEncoder, protocol } from '@qxuken/kui';
 
 const ROWS = 300;
 const WARMUP = 30;
