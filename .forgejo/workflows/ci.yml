@@ -13,6 +13,12 @@ on:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
+  # Linking the winit+wgpu examples with full debug info needs more memory
+  # than a small runner has (ld gets OOM-killed); line tables keep panic
+  # locations readable at a fraction of the size, and two jobs keep two
+  # linkers from running at once.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  CARGO_BUILD_JOBS: "2"
   NODE_VERSION: "22.12.0"
 
 jobs:
