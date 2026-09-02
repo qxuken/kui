@@ -105,6 +105,8 @@ export interface GeneratedSpecProps {
   bg?: ColorProp;
   /** Center children on both axes. */
   center?: boolean;
+  /** A registered sound (addSound) played when the node is clicked; implies hover tracking. */
+  clickSound?: string;
   /** Child alignment across the main axis. */
   crossAlign?: 'start' | 'center' | 'end';
   /** Holds the `keyframes` cycle back by this many ms (CSS `animation-delay`); siblings with different delays run out of phase. */
@@ -121,6 +123,8 @@ export interface GeneratedSpecProps {
   hoverBg?: ColorProp;
   /** Nodes sharing a group name show hoverBg/pressedBg together (a split button, a multi-piece shape). */
   hoverGroup?: string;
+  /** A registered sound (addSound) played when the pointer enters the node; implies hover tracking. */
+  hoverSound?: string;
   /** Hover-track without a click payload (for isHovered-driven styling). */
   hoverable?: boolean;
   /** CSS-style stops `[{ at?, width?, height?, bg?, radius? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. */
@@ -280,5 +284,10 @@ export declare namespace JSX {
     latencyGraph: Keyed;
     /** latencyGraph in a translucent panel floating in a viewport corner. */
     latencyHud: Keyed & { at?: [AlignProp, AlignProp] };
+    /** A playback retained by node key (id from addSound): present = playing
+     *  (once, or looped), gone = stopped; `volume` / `paused` apply live, a
+     *  changed `src` restarts. `tag` comes back as a `SoundMsg` when it ends
+     *  on its own. Draws nothing and takes no space. */
+    audio: Keyed & { src: string; loop?: boolean; volume?: number; paused?: boolean; tag?: AppMsg };
   }
 }

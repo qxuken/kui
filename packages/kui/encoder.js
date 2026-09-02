@@ -381,6 +381,18 @@ export function createEncoder(P) {
         props(p, null, false);
         return;
       }
+      case 'audio': {
+        if (typeof p.src !== 'string') throw new Error('<audio> needs a src (an id from addSound)');
+        const id = BigInt('0x' + p.src);
+        f[fi++] = OP.audio;
+        strRef(el.key == null ? null : String(el.key));
+        f[fi++] = Number(id >> 32n);
+        f[fi++] = Number(id & 0xffffffffn);
+        f[fi++] = (p.loop ? 1 : 0) | (p.paused ? 2 : 0);
+        f[fi++] = typeof p.volume === 'number' ? p.volume : -1;
+        strRef(p.tag !== undefined ? JSON.stringify(p.tag) : null);
+        return;
+      }
       case 'titlebar': {
         const kids = el.children;
         const empty = kids == null || (Array.isArray(kids) && kids.length === 0);

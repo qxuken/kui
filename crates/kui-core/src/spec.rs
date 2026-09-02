@@ -303,6 +303,13 @@ pub struct NodeSpec {
     /// `tag` — for hover-dependent *layout* (a close button that appears)
     /// where a color swap isn't enough. Implies hover tracking.
     pub on_hover: Option<Value>,
+    /// A registered sound played when this node is clicked (see
+    /// [`crate::audio`]); the click itself still emits `on_click` if one is
+    /// declared. Implies hover tracking.
+    pub click_sound: Option<crate::resources::SoundId>,
+    /// A registered sound played when the pointer enters this node.
+    /// Implies hover tracking.
+    pub hover_sound: Option<crate::resources::SoundId>,
     /// CSS-style stops for the animatable slots (see [`crate::keyframes`]):
     /// with a `transition`, the slots a stop names cycle through the stops
     /// over the transition's duration, in its `repeat` direction, offset by
@@ -330,6 +337,8 @@ impl NodeSpec {
             || self.pressed_bg.is_some()
             || self.hover_group.is_some()
             || self.on_hover.is_some()
+            || self.click_sound.is_some()
+            || self.hover_sound.is_some()
     }
 
     /// The group id `hover_group(name)` assigns — reproducible from any
@@ -540,6 +549,20 @@ impl NodeSpec {
     /// is identification enough.
     pub fn on_hover(mut self, tag: impl Into<Value>) -> Self {
         self.on_hover = Some(tag.into());
+        self
+    }
+
+    /// Plays a registered sound when this node is clicked (see the
+    /// `click_sound` field).
+    pub fn click_sound(mut self, sound: crate::resources::SoundId) -> Self {
+        self.click_sound = Some(sound);
+        self
+    }
+
+    /// Plays a registered sound when the pointer enters this node (see the
+    /// `hover_sound` field).
+    pub fn hover_sound(mut self, sound: crate::resources::SoundId) -> Self {
+        self.hover_sound = Some(sound);
         self
     }
 

@@ -228,6 +228,27 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             ui.image(kui_core::ImageId::from_ffi(id as u64), spec);
             Ok(())
         }
+        "audio" => {
+            // Handle from the host (kui_sound_add / Core::add_sound), passed
+            // to scripts as a plain integer, like images.
+            let src: i64 = t.get("src")?;
+            let mut spec = kui_core::AudioSpec::new(kui_core::SoundId::from_ffi(src as u64));
+            if let Some(v) = t.get::<Option<f32>>("volume")? {
+                spec = spec.volume(v);
+            }
+            if t.get::<Option<bool>>("loop")?.unwrap_or(false) {
+                spec = spec.looped();
+            }
+            spec = spec.paused(t.get::<Option<bool>>("paused")?.unwrap_or(false));
+            if let Some(tag) = t.get::<Option<mlua::Value>>("tag")? {
+                spec.tag = Some(lua_to_value(&tag)?);
+            }
+            match t.get::<Option<String>>("key")? {
+                Some(k) => ui.audio_keyed(&k, spec),
+                None => ui.audio(spec),
+            };
+            Ok(())
+        }
         "input" => {
             let label: String = t.get("label")?;
             let initial: String = t.get::<Option<String>>("initial")?.unwrap_or_default();
@@ -900,6 +921,56 @@ mod tests {
         // Autofocus places the caret at the start of the initial text.
         let seen: Option<String> = ext.lua.globals().get("seen").unwrap();
         assert_eq!(seen.as_deref(), Some("!hi"));
+    }
+
+    /// `audio { }` nodes are retained playbacks: declared → play, declared
+    /// again → nothing, gone → stop. The host hands the sound id to the
+    /// script as an integer, like images.
+    #[test]
+    fn audio_nodes_drive_playback_commands() {
+        use kui_core::AudioCommand;
+        let mut ext = LuaExtension::from_source(
+            "audio",
+            r#"
+                playing = true
+                function view(env)
+                  local items = {}
+                  if playing then
+                    items[1] = audio { src = SOUND, loop = true, volume = 0.5,
+                                       key = "music", tag = { kind = "music" } }
+                  end
+                  return column { table.unpack(items) }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let sound = core.add_sound(vec![0; 8]);
+        ext.lua
+            .globals()
+            .set("SOUND", sound.to_ffi() as i64)
+            .unwrap();
+        frame(&mut core, &mut ext);
+        let cmds = core.take_audio_commands();
+        assert!(
+            matches!(
+                cmds.as_slice(),
+                [AudioCommand::Play { sound: s, looped: true, volume, .. }]
+                    if *s == sound && *volume == 0.5
+            ),
+            "{cmds:?}"
+        );
+        frame(&mut core, &mut ext);
+        assert!(
+            core.take_audio_commands().is_empty(),
+            "re-declaring is silent"
+        );
+        ext.lua.globals().set("playing", false).unwrap();
+        frame(&mut core, &mut ext);
+        assert!(matches!(
+            core.take_audio_commands().as_slice(),
+            [AudioCommand::Stop { .. }]
+        ));
     }
 
     #[test]

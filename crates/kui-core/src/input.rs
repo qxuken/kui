@@ -266,6 +266,11 @@ pub struct HitRegion {
     /// Hover group id (`NodeSpec::hover_group`): hovering or pressing any
     /// member lights up every member.
     pub group: Option<u64>,
+    /// Sounds the node declared (`NodeSpec::click_sound` / `hover_sound`):
+    /// a click / the pointer entering queues them as sound requests the
+    /// core turns into audio commands.
+    pub click_sound: Option<crate::resources::SoundId>,
+    pub hover_sound: Option<crate::resources::SoundId>,
 }
 
 /// A scroll container's on-screen area, for wheel routing.
@@ -341,6 +346,9 @@ pub struct Interaction {
     /// Window intents produced by chrome nodes; drained by the driver via
     /// `Core::take_window_commands`.
     pub(crate) window_commands: Vec<WindowCommand>,
+    /// Sounds nodes asked for (`click_sound` on click, `hover_sound` on
+    /// enter); the core turns them into play commands (`take_sound_requests`).
+    pub(crate) sound_requests: Vec<crate::resources::SoundId>,
     /// Pointer-captured drag on an `on_drag` node.
     drag: Option<DragState>,
     /// Last reported physical modifier state.
@@ -372,6 +380,11 @@ impl Interaction {
     /// not delayed until the next input.
     pub fn take_pending(&mut self) -> Vec<UiEvent> {
         std::mem::take(&mut self.pending)
+    }
+
+    /// Drains the sounds nodes asked for since the last drain.
+    pub(crate) fn take_sound_requests(&mut self) -> Vec<crate::resources::SoundId> {
+        std::mem::take(&mut self.sound_requests)
     }
 
     /// Hands back the previous frame's hit buffer (cleared) so emission can
@@ -440,6 +453,9 @@ impl Interaction {
         if let Some(i) = idx {
             out.extend(Self::hover_event(&self.hits[i], "enter"));
             self.hovered_leave = Self::hover_event(&self.hits[i], "leave");
+            if let Some(sound) = self.hits[i].hover_sound {
+                self.sound_requests.push(sound);
+            }
         }
     }
 
@@ -579,6 +595,9 @@ impl Interaction {
                     && pressed == hovered
                     && let Some(region) = self.hits.iter().rev().find(|h| h.key == pressed)
                 {
+                    if let Some(sound) = region.click_sound {
+                        self.sound_requests.push(sound);
+                    }
                     match (region.window, &region.payload) {
                         (Some(WindowRole::Button(b)), _) => self.window_commands.push(b.command()),
                         (Some(WindowRole::Drag), _) | (None, None) => {}
@@ -647,6 +666,8 @@ mod tests {
             window: None,
             hover: None,
             group: None,
+            click_sound: None,
+            hover_sound: None,
         }
     }
 

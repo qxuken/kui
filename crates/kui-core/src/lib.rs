@@ -8,6 +8,7 @@
 
 pub mod anim;
 pub mod atlas;
+pub mod audio;
 pub mod color;
 pub mod display;
 pub mod edit;
@@ -32,6 +33,7 @@ pub mod widgets;
 pub mod window;
 
 pub use anim::{Easing, Repeat, Transition};
+pub use audio::{AudioCommand, AudioSpec, AudioStore, PlayOptions, PlaybackId};
 pub use color::Color;
 pub use display::{DisplayList, NO_CLIP, Quad, QuadKind};
 pub use edit::EditOptions;
@@ -42,7 +44,7 @@ pub use input::ScrollAxis;
 pub use input::{EditKey, InputEvent, KeyCode, KeyMods, KeyPress, Mods, UiEvent};
 pub use key::Key;
 pub use keyframes::Keyframe;
-pub use resources::{FontId, ImageId, Resources};
+pub use resources::{FontId, ImageId, Resources, SoundId};
 pub use runtime::{Core, Extension};
 pub use spec::{
     Align, Dir, FloatAnchor, FloatConfig, FontFamily, NodeSpec, Sizing, TextStyle, TextWrap, corner,

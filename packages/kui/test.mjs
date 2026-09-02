@@ -121,6 +121,7 @@ test('every element lowers identically', () => {
       el('image', { src: img, width: 16, radius: 2 }),
       el('latencyGraph'),
       el('latencyHud', { at: ['start', 'end'] }),
+      el('audio', { src: ctx.addSound(Buffer.from('RIFF....WAVE')), loop: true, volume: 0.5, tag: { k: 1 } }, [], 'music'),
       'bare text child',
       42,
       [text('nested', { size: 10 }), null, false],
@@ -307,4 +308,62 @@ test('wrap, maxLines and ellipsis cut text instead of wrapping it', () => {
   assert.ok(ellipsis.right <= 120.5, 'the ellipsized line fits the box');
   assert.ok(clamped.n < wrapped.n && clamped.n > ellipsis.n, 'two lines sit between one and all');
   assertParity('wrap props', () => box({ width: 120 }, [text(LONG, { wrap: 'none', maxLines: 2, ellipsis: true })]));
+});
+
+test('sounds: click/hover props, the audio element, tagged playbacks', () => {
+  const ctx = new Ctx();
+  assert.throws(() => ctx.addSound(Buffer.alloc(0)), /empty/);
+  const snd = ctx.addSound(Buffer.from('RIFF....WAVE'));
+  assert.match(snd, /^[0-9a-f]{16}$/);
+  const view = (music) =>
+    box({ pad: 8 }, [
+      box({ width: 60, height: 20, bg: '#333333', clickSound: snd, onClick: { kind: 'go' } }, [], 'btn'),
+      box({ width: 60, height: 20, bg: '#333333', hoverSound: snd }, [], 'hov'),
+      ...(music ? [el('audio', { src: snd, loop: true, volume: 0.5, tag: { kind: 'music' } }, [], 'music')] : []),
+    ]);
+  // The audio node starts its playback when first declared.
+  ctx.frame(320, 240, 1, view(true));
+  let cmds = ctx.audioCommands();
+  assert.equal(cmds.length, 1);
+  assert.equal(cmds[0].kind, 'play');
+  assert.equal(cmds[0].sound, snd);
+  assert.equal(cmds[0].loop, true);
+  assert.equal(cmds[0].volume, 0.5);
+  const music = cmds[0].playback;
+  // A click on a clickSound node plays it and still emits the click.
+  ctx.cursor(20, 18);
+  ctx.mouse(true);
+  ctx.mouse(false);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [{ kind: 'go' }]);
+  cmds = ctx.audioCommands();
+  assert.equal(cmds.length, 1);
+  assert.equal(cmds[0].kind, 'play');
+  assert.equal(cmds[0].loop, false);
+  // Entering the hoverSound node plays; moving inside it does not.
+  ctx.cursor(20, 38);
+  assert.equal(ctx.audioCommands().filter((c) => c.kind === 'play').length, 1);
+  ctx.cursor(25, 40);
+  assert.equal(ctx.audioCommands().length, 0);
+  // Re-rendering keeps the music; dropping the node stops it.
+  ctx.frame(320, 240, 1, view(true));
+  assert.equal(ctx.audioCommands().length, 0);
+  ctx.frame(320, 240, 1, view(false));
+  assert.deepEqual(ctx.audioCommands(), [{ kind: 'stop', playback: music, fade: 0 }]);
+  // play() with a tag reports ended through pollEvents.
+  const p = ctx.play(snd, { volume: 0.75, fadeIn: 50, tag: { kind: 'chime' } });
+  assert.deepEqual(ctx.audioCommands(), [{ kind: 'play', playback: p, sound: snd, volume: 0.75, loop: false, fadeIn: 50 }]);
+  ctx.setVolume(p, 0.25, 100);
+  ctx.pause(p);
+  ctx.resume(p, 10);
+  ctx.setMasterVolume(0.5);
+  assert.deepEqual(
+    ctx.audioCommands().map((c) => c.kind),
+    ['setVolume', 'pause', 'resume', 'masterVolume'],
+  );
+  ctx.audioEnded(p);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [
+    { kind: 'sound', phase: 'ended', playback: p, tag: { kind: 'chime' } },
+  ]);
+  ctx.removeSound(snd);
+  assert.deepEqual(ctx.audioCommands(), [{ kind: 'unload', sound: snd }]);
 });

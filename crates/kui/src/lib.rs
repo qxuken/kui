@@ -8,6 +8,7 @@ use std::sync::Arc;
 pub use kui_core::widgets;
 pub use kui_core::*;
 
+pub mod audio;
 #[cfg(target_os = "windows")]
 mod windows_nc;
 
@@ -152,6 +153,7 @@ impl Launcher {
             blink_visible: true,
             blink_deadline: None,
             caret_stamp_seen: 0,
+            audio: audio::Audio::new(),
             resize_edge: None,
             exit_requested: false,
             #[cfg(target_os = "windows")]
@@ -240,6 +242,13 @@ impl<A: App> PumpRunner<A> {
     pub fn request_exit(&mut self) {
         self.shell.exit_requested = true;
     }
+
+    /// Hands the core's queued audio commands to the device now, rather
+    /// than at the next pump — for hosts that call `Core::play` between
+    /// pumps and want the sound to start at once.
+    pub fn flush_audio(&mut self) {
+        self.shell.apply_audio();
+    }
 }
 
 pub fn run<A: App>(
@@ -288,6 +297,8 @@ const MULTI_CLICK_MS: u128 = 400;
 const MULTI_CLICK_SLOP: f32 = 4.0;
 /// Caret blink half-period while an edit widget is focused.
 const BLINK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+/// How often the loop wakes to notice a playing sound finishing.
+const AUDIO_POLL: std::time::Duration = std::time::Duration::from_millis(50);
 
 struct Shell<A: App> {
     title: String,
@@ -320,6 +331,8 @@ struct Shell<A: App> {
     blink_visible: bool,
     blink_deadline: Option<std::time::Instant>,
     caret_stamp_seen: u64,
+    /// The audio device the core's audio commands drive; see `audio`.
+    audio: audio::Audio,
     /// Resize edge currently under the cursor (undecorated windows only).
     resize_edge: Option<ResizeDirection>,
     /// Set by `WindowCommand::Close`; honored at the end of the event.
@@ -350,6 +363,7 @@ impl<A: App> Shell<A> {
         let events = self.core.handle_input(ev);
         self.route_events(events);
         self.apply_window_commands();
+        self.apply_audio();
         // Hover styling depends on input too, so any input redraws. A damage
         // pass can tighten this later.
         self.core.stats.pending_input_ms += t0.elapsed().as_secs_f32() * 1e3;
@@ -380,6 +394,33 @@ impl<A: App> Shell<A> {
                 WindowCommand::Close => self.exit_requested = true,
                 WindowCommand::Minimize => w.set_minimized(true),
                 WindowCommand::ToggleMaximize => w.set_maximized(!w.is_maximized()),
+            }
+        }
+    }
+
+    /// Hands the core's queued audio commands to the device.
+    fn apply_audio(&mut self) {
+        let cmds = self.core.take_audio_commands();
+        if !cmds.is_empty() {
+            self.audio.apply(cmds, &self.core.resources);
+        }
+    }
+
+    /// Folds playbacks that finished on their own back into the core, and
+    /// routes the `sound` events tagged ones become.
+    fn poll_audio(&mut self) {
+        let ended = self.audio.poll_ended();
+        if ended.is_empty() {
+            return;
+        }
+        for playback in ended {
+            self.core.audio_ended(playback);
+        }
+        let pending = self.core.take_pending_events();
+        if !pending.is_empty() {
+            self.route_events(pending);
+            if let Some(w) = &self.window {
+                w.request_redraw();
             }
         }
     }
@@ -915,8 +956,10 @@ impl<A: App> ApplicationHandler for Shell<A> {
             WindowEvent::RedrawRequested => {
                 self.redraw();
                 // Views can declare window commands too (ui.window_command);
-                // apply them the same frame they were declared.
+                // apply them the same frame they were declared. Likewise
+                // the sounds a frame started (audio nodes, ui.play).
                 self.apply_window_commands();
+                self.apply_audio();
                 // A frame can resize the viewport, and can change what sits
                 // under a still cursor; route the resulting resize / hover
                 // events now rather than with the next input, and redraw for
@@ -937,46 +980,57 @@ impl<A: App> ApplicationHandler for Shell<A> {
     }
 
     /// Runs after every event batch (including timer wake-ups): the caret
-    /// blink clock, and the transition clock. Any caret activity re-arms
-    /// the timer with the caret solid; each expiry toggles the phase and
-    /// schedules the next. A transition mid-flight asks for the next frame
-    /// right away (vsync paces it).
+    /// blink clock, the transition clock, and the audio poll. Any caret
+    /// activity re-arms the blink timer with the caret solid; each expiry
+    /// toggles the phase and schedules the next. A transition mid-flight
+    /// asks for the next frame right away (vsync paces it). While a sound
+    /// plays, the loop wakes every `AUDIO_POLL` to notice it finishing.
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.poll_audio();
+        self.apply_audio();
         if self.core.animating()
             && let Some(w) = &self.window
         {
             w.request_redraw();
         }
+        let now = std::time::Instant::now();
+        let mut deadline: Option<std::time::Instant> = None;
         if self.core.edit.focused().is_none() {
             if !self.blink_visible {
                 self.blink_visible = true;
                 self.core.edit.set_blink_visible(true);
             }
             self.blink_deadline = None;
-            event_loop.set_control_flow(ControlFlow::Wait);
-            return;
-        }
-        let now = std::time::Instant::now();
-        let stamp = self.core.edit.caret_stamp();
-        if stamp != self.caret_stamp_seen || self.blink_deadline.is_none() {
-            self.caret_stamp_seen = stamp;
-            self.blink_deadline = Some(now + BLINK_INTERVAL);
-            if !self.blink_visible {
-                self.blink_visible = true;
-                self.core.edit.set_blink_visible(true);
+        } else {
+            let stamp = self.core.edit.caret_stamp();
+            if stamp != self.caret_stamp_seen || self.blink_deadline.is_none() {
+                self.caret_stamp_seen = stamp;
+                self.blink_deadline = Some(now + BLINK_INTERVAL);
+                if !self.blink_visible {
+                    self.blink_visible = true;
+                    self.core.edit.set_blink_visible(true);
+                    if let Some(w) = &self.window {
+                        w.request_redraw();
+                    }
+                }
+            } else if now >= self.blink_deadline.unwrap() {
+                self.blink_visible = !self.blink_visible;
+                self.core.edit.set_blink_visible(self.blink_visible);
+                self.blink_deadline = Some(now + BLINK_INTERVAL);
                 if let Some(w) = &self.window {
                     w.request_redraw();
                 }
             }
-        } else if now >= self.blink_deadline.unwrap() {
-            self.blink_visible = !self.blink_visible;
-            self.core.edit.set_blink_visible(self.blink_visible);
-            self.blink_deadline = Some(now + BLINK_INTERVAL);
-            if let Some(w) = &self.window {
-                w.request_redraw();
-            }
+            deadline = self.blink_deadline;
         }
-        event_loop.set_control_flow(ControlFlow::WaitUntil(self.blink_deadline.unwrap()));
+        if self.audio.active() {
+            let poll = now + AUDIO_POLL;
+            deadline = Some(deadline.map_or(poll, |d| d.min(poll)));
+        }
+        event_loop.set_control_flow(match deadline {
+            Some(d) => ControlFlow::WaitUntil(d),
+            None => ControlFlow::Wait,
+        });
     }
 }
 

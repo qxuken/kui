@@ -51,6 +51,7 @@ pub const OP_TITLEBAR: u32 = 9;
 pub const OP_WINDOW_BUTTONS: u32 = 10;
 pub const OP_LATENCY_GRAPH: u32 = 11;
 pub const OP_LATENCY_HUD: u32 = 12;
+pub const OP_AUDIO: u32 = 13;
 
 pub fn protocol_json() -> Json {
     let mut o = JsonMap::new();
@@ -72,6 +73,7 @@ pub fn protocol_json() -> Json {
                 ("windowButtons", OP_WINDOW_BUTTONS),
                 ("latencyGraph", OP_LATENCY_GRAPH),
                 ("latencyHud", OP_LATENCY_HUD),
+                ("audio", OP_AUDIO),
             ]
             .into_iter()
             .map(|(k, v)| (k.to_string(), Json::from(v)))
@@ -332,6 +334,30 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
             let (hi, lo) = (r.f()? as u64, r.f()? as u64);
             let p = read_props(r)?;
             core.image_node(ImageId::from_ffi((hi << 32) | lo), p.spec);
+            Ok(())
+        }
+        // key?, src (hi, lo), flags (1 loop | 2 paused), volume (-1 =
+        // absent), tag JSON? — mirrors the JSON path's `<audio>` arm.
+        OP_AUDIO => {
+            let key = r.str_ref()?;
+            let (hi, lo) = (r.f()? as u64, r.f()? as u64);
+            let flags = r.u()?;
+            let volume = r.f()?;
+            let tag = match r.str_ref()? {
+                Some(s) => Some(payload(s)?),
+                None => None,
+            };
+            let spec = crate::audio_spec_of(
+                kui_core::SoundId::from_ffi((hi << 32) | lo),
+                (volume >= 0.0).then_some(volume),
+                flags & 1 != 0,
+                flags & 2 != 0,
+                tag,
+            );
+            match key {
+                Some(label) => core.audio_node_keyed(label, spec),
+                None => core.audio_node(spec),
+            };
             Ok(())
         }
         OP_TITLEBAR => {

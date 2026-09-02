@@ -3,6 +3,8 @@
 //! (`KeyData::as_ffi`) so they cross the scripting boundary as plain integers
 //! with the generation check intact on the way back.
 
+use std::sync::Arc;
+
 use slotmap::{SlotMap, new_key_type};
 
 use crate::spec::FontFamily;
@@ -13,6 +15,22 @@ new_key_type! {
     /// A registered font (`Core::add_font_data` / `add_system_font`), used
     /// through `TextStyle::font`.
     pub struct FontId;
+    /// A registered sound (`Core::add_sound`): encoded file bytes the
+    /// driver's audio backend decodes. Played through `Core::play`, an
+    /// `audio` node, or `NodeSpec::click_sound` / `hover_sound`.
+    pub struct SoundId;
+}
+
+impl SoundId {
+    /// The handle as a plain integer for C/Lua/JS (generation check intact).
+    pub fn to_ffi(self) -> u64 {
+        use slotmap::Key as _;
+        self.data().as_ffi()
+    }
+
+    pub fn from_ffi(raw: u64) -> Self {
+        Self::from(slotmap::KeyData::from_ffi(raw))
+    }
 }
 
 impl FontId {
@@ -53,10 +71,18 @@ pub struct FontEntry {
     pub faces: Vec<cosmic_text::fontdb::ID>,
 }
 
+/// A registered sound: the encoded file (wav/ogg/mp3/flac, whatever the
+/// driver's backend decodes), shared so the backend can hold it without a
+/// copy. The core never decodes — headless drivers have no use for PCM.
+pub struct SoundEntry {
+    pub bytes: Arc<[u8]>,
+}
+
 #[derive(Default)]
 pub struct Resources {
     pub images: SlotMap<ImageId, ImageEntry>,
     pub fonts: SlotMap<FontId, FontEntry>,
+    pub sounds: SlotMap<SoundId, SoundEntry>,
 }
 
 impl Resources {
@@ -102,6 +128,22 @@ impl Resources {
 
     pub fn remove_image(&mut self, id: ImageId) -> Option<ImageEntry> {
         self.images.remove(id)
+    }
+
+    /// Registers a sound from its encoded file bytes.
+    pub fn add_sound(&mut self, bytes: Vec<u8>) -> SoundId {
+        self.sounds.insert(SoundEntry {
+            bytes: Arc::from(bytes),
+        })
+    }
+
+    pub fn remove_sound(&mut self, id: SoundId) -> Option<SoundEntry> {
+        self.sounds.remove(id)
+    }
+
+    /// The encoded bytes behind a sound handle, if it is live.
+    pub fn sound(&self, id: SoundId) -> Option<&Arc<[u8]>> {
+        self.sounds.get(id).map(|s| &s.bytes)
     }
 }
 

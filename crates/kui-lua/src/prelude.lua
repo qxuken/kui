@@ -49,6 +49,15 @@ function image(t)
   return t
 end
 
+-- audio { src = id, loop = true, volume = 0.5, paused = false, tag = {...},
+-- key = "music" }: a playback retained by key while the view declares it
+-- (present = playing, gone = stopped; volume/paused apply live). Draws
+-- nothing. The host registers the sound and hands the id to the script.
+function audio(t)
+  t.type = "audio"
+  return t
+end
+
 -- titlebar { title = "app" } draws the standard title; with children it
 -- hosts custom content between the drag inset and the window buttons.
 function titlebar(t)

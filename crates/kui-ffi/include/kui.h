@@ -210,7 +210,54 @@ typedef struct KuiSpec {
      * stable key; with `slide` the position keeps easing afterwards, without
      * it only the entrance moves. */
     KuiEnter enter;
+    /* Registered sounds (kui_sound_add) played when the node is clicked /
+     * the pointer enters it; 0 = none. Either makes the node hover-tracked. */
+    uint64_t click_sound;
+    uint64_t hover_sound;
 } KuiSpec;
+
+/* -- Audio ----------------------------------------------------------------
+ * Sounds are resources, playback is commands: kui_run plays them through
+ * the bundled device; a host with its own loop drains
+ * kui_take_audio_commands and reports finished playbacks with
+ * kui_audio_ended. Volumes are linear amplitude (0..1), durations ms. */
+
+/* Options for kui_play. NULL = defaults; a struct is read literally, so start
+ * from KUI_PLAY_INIT (volume 1) rather than zero. */
+typedef struct KuiPlay {
+    float volume;
+    uint32_t looped;
+    float fade_in_ms;
+} KuiPlay;
+#define KUI_PLAY_INIT ((KuiPlay){ .volume = 1.0f })
+
+/* What a kui_audio node declares; read literally (start from KUI_AUDIO_INIT). */
+typedef struct KuiAudio {
+    uint64_t src;    /* a registered sound */
+    float volume;
+    uint32_t looped;
+    uint32_t paused; /* holds the playback; resumes when cleared */
+} KuiAudio;
+#define KUI_AUDIO_INIT(id) ((KuiAudio){ .src = (id), .volume = 1.0f })
+
+/* Audio command kinds (KuiAudioCommand.kind). */
+enum {
+    KUI_AUDIO_PLAY = 1,          /* playback, sound, volume, ms = fade-in, looped */
+    KUI_AUDIO_STOP = 2,          /* playback, ms = fade-out */
+    KUI_AUDIO_SET_VOLUME = 3,    /* playback, volume, ms = tween */
+    KUI_AUDIO_PAUSE = 4,         /* playback, ms = fade-out */
+    KUI_AUDIO_RESUME = 5,        /* playback, ms = fade-in */
+    KUI_AUDIO_MASTER_VOLUME = 6, /* volume, ms = tween */
+    KUI_AUDIO_UNLOAD = 7,        /* sound: drop any decoded copy */
+};
+typedef struct KuiAudioCommand {
+    uint32_t kind;
+    uint64_t playback;
+    uint64_t sound;
+    float volume;
+    float ms;
+    uint32_t looped;
+} KuiAudioCommand;
 
 /* Zero-initialized KuiTextStyle picks defaults (16px, default foreground). */
 typedef struct KuiTextStyle {
@@ -356,6 +403,33 @@ void kui_font_remove(KuiCtx *ctx, uint64_t id);
  * failure. Handles are stable until kui_image_remove. */
 uint64_t kui_image_add(KuiCtx *ctx, uint32_t w, uint32_t h, const uint8_t *rgba);
 void kui_image_remove(KuiCtx *ctx, uint64_t id);
+/* -- Sounds --------------------------------------------------------------- */
+/* Registers a sound from its encoded file bytes (wav/ogg/mp3/flac, copied);
+ * returns a handle for KuiSpec.click_sound / hover_sound, kui_audio and
+ * kui_play; 0 when empty. */
+uint64_t kui_sound_add(KuiCtx *ctx, const uint8_t *data, size_t len);
+void kui_sound_remove(KuiCtx *ctx, uint64_t id);
+/* Starts a playback; returns its id. opts may be NULL (defaults). A non-NULL
+ * tag (consumed) asks for a {kind="sound", phase="ended", playback, tag}
+ * event when the playback finishes on its own (never when stopped). */
+uint64_t kui_play(KuiCtx *ctx, uint64_t sound, const KuiPlay *opts, KuiValue *tag);
+void kui_stop(KuiCtx *ctx, uint64_t playback, float fade_ms);
+void kui_set_volume(KuiCtx *ctx, uint64_t playback, float volume, float tween_ms);
+void kui_pause(KuiCtx *ctx, uint64_t playback, float fade_ms);
+void kui_resume(KuiCtx *ctx, uint64_t playback, float fade_ms);
+void kui_set_master_volume(KuiCtx *ctx, float volume, float tween_ms);
+/* An audio node: a playback retained by key while the frame declares it
+ * (present = playing, once or looped; gone = stopped; volume/paused apply
+ * live; a changed src restarts). Draws nothing. Empty label = a key from the
+ * tree position. tag (nullable, consumed) rides the ended event. Returns the
+ * node key the event carries. */
+uint64_t kui_audio(KuiCtx *ctx, KuiStr label, const KuiAudio *spec, KuiValue *tag);
+/* Only for hosts with their own audio device (kui_run needs neither): drains
+ * queued commands into out (up to cap; the rest are dropped), returns the
+ * count; report a playback that finished on its own with kui_audio_ended so
+ * a tagged one becomes a sound event. */
+size_t kui_take_audio_commands(KuiCtx *ctx, KuiAudioCommand *out, size_t cap);
+void kui_audio_ended(KuiCtx *ctx, uint64_t playback);
 /* An image node. Fit sizing = the image's pixel size as logical px; a Fit
  * height against a resolved width keeps the aspect; radius rounds corners. */
 void kui_image(KuiCtx *ctx, uint64_t id, const KuiSpec *spec);

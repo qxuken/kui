@@ -9,8 +9,9 @@
 //! `onClick` carries a message value, never a closure.
 
 use kui_core::{
-    Align, Color, Core, EditKey, EditOptions, FontId, FrameSample, FrameStats, ImageId, InputEvent,
-    Key, KeyCode, KeyMods, KeyPress, Mods, Size, Span, TextStyle, UiEvent, Value, Vec2,
+    Align, AudioCommand, AudioSpec, Color, Core, EditKey, EditOptions, FontId, FrameSample,
+    FrameStats, ImageId, InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, PlayOptions,
+    PlaybackId, Size, SoundId, Span, TextStyle, UiEvent, Value, Vec2,
 };
 use napi::bindgen_prelude::{Buffer, Float64Array, Uint8Array};
 use napi_derive::napi;
@@ -295,6 +296,25 @@ fn lower_element(core: &mut Core, node: &JsonMap<String, Json>) -> Result<()> {
                 ImageId::from_ffi(parse_u64(src)?),
                 parse_props_json(props)?.spec,
             );
+            Ok(())
+        }
+        // A retained playback keyed by node; see `Core::audio_node`.
+        "audio" => {
+            let src = props
+                .get("src")
+                .and_then(Json::as_str)
+                .ok_or_else(|| err("<audio> needs a src (an id from addSound)"))?;
+            let spec = audio_spec_of(
+                SoundId::from_ffi(parse_u64(src)?),
+                props.get("volume").and_then(Json::as_f64),
+                bool_prop(props, "loop"),
+                bool_prop(props, "paused"),
+                props.get("tag").map(value_of),
+            );
+            match key {
+                Some(label) => core.audio_node_keyed(label, spec),
+                None => core.audio_node(spec),
+            };
             Ok(())
         }
         // Adaptive titlebar: drag strip + window buttons per env.window facts.
@@ -677,6 +697,83 @@ impl Ctx {
     #[napi]
     pub fn system_font_families(&self) -> Vec<String> {
         self.core.system_font_families()
+    }
+
+    // -- Audio ----------------------------------------------------------
+    // Headless: nothing plays; the commands queue up for `audioCommands`
+    // (tests, custom drivers). `KuiWindow` has the same calls with a device
+    // behind them.
+
+    /// Registers a sound from its encoded bytes (wav/ogg/mp3/flac); returns
+    /// its id for `<audio src>`, the `clickSound` / `hoverSound` props and
+    /// `play`. Stable until `removeSound`.
+    #[napi]
+    pub fn add_sound(&mut self, data: Buffer) -> Result<String> {
+        add_sound_impl(&mut self.core, &data)
+    }
+
+    #[napi]
+    pub fn remove_sound(&mut self, id: String) -> Result<()> {
+        self.core.remove_sound(SoundId::from_ffi(parse_u64(&id)?));
+        Ok(())
+    }
+
+    /// Starts a playback: `{volume, loop, fadeIn, tag}`; returns its id for
+    /// `stop` / `setVolume` / `pause` / `resume`. A `tag` comes back as
+    /// `{kind:"sound", phase:"ended", playback, tag}` when the playback
+    /// finishes on its own.
+    #[napi]
+    pub fn play(&mut self, sound: String, opts: Option<Json>) -> Result<f64> {
+        play_impl(&mut self.core, &sound, opts.as_ref())
+    }
+
+    #[napi]
+    pub fn stop(&mut self, playback: f64, fade_ms: Option<f64>) {
+        self.core
+            .stop(PlaybackId(playback as u64), fade_ms.unwrap_or(0.0) as f32);
+    }
+
+    #[napi]
+    pub fn set_volume(&mut self, playback: f64, volume: f64, tween_ms: Option<f64>) {
+        self.core.set_volume(
+            PlaybackId(playback as u64),
+            volume as f32,
+            tween_ms.unwrap_or(0.0) as f32,
+        );
+    }
+
+    #[napi]
+    pub fn pause(&mut self, playback: f64, fade_ms: Option<f64>) {
+        self.core
+            .pause(PlaybackId(playback as u64), fade_ms.unwrap_or(0.0) as f32);
+    }
+
+    #[napi]
+    pub fn resume(&mut self, playback: f64, fade_ms: Option<f64>) {
+        self.core
+            .resume(PlaybackId(playback as u64), fade_ms.unwrap_or(0.0) as f32);
+    }
+
+    #[napi]
+    pub fn set_master_volume(&mut self, volume: f64, tween_ms: Option<f64>) {
+        self.core
+            .set_master_volume(volume as f32, tween_ms.unwrap_or(0.0) as f32);
+    }
+
+    /// Drains the audio commands the core queued, as plain objects
+    /// (`{kind:"play", playback, sound, volume, loop, fadeIn}`, ...) — what a
+    /// windowed driver would play. For tests and custom drivers.
+    #[napi]
+    pub fn audio_commands(&mut self) -> Json {
+        audio_commands_json(self.core.take_audio_commands())
+    }
+
+    /// A custom driver reports a playback finished on its own; a tagged
+    /// one becomes a `sound` event in `pollEvents`.
+    #[napi]
+    pub fn audio_ended(&mut self, playback: f64) {
+        self.core.audio_ended(PlaybackId(playback as u64));
+        self.events.extend(self.core.take_pending_events());
     }
 
     /// Drains pending UI events: `[{origin, key, payload}]`, payloads as
@@ -1064,6 +1161,75 @@ impl KuiWindow {
         Ok(())
     }
 
+    // -- Audio: the same calls as `Ctx`, played by the window's device at
+    // once rather than at the next pump.
+
+    /// Registers a sound; see `Ctx.addSound`.
+    #[napi]
+    pub fn add_sound(&mut self, data: Buffer) -> Result<String> {
+        add_sound_impl(self.runner.core_mut(), &data)
+    }
+
+    #[napi]
+    pub fn remove_sound(&mut self, id: String) -> Result<()> {
+        self.runner
+            .core_mut()
+            .remove_sound(SoundId::from_ffi(parse_u64(&id)?));
+        self.runner.flush_audio();
+        Ok(())
+    }
+
+    /// Starts a playback; see `Ctx.play`. Tagged playbacks report
+    /// `{kind:"sound", phase:"ended", playback, tag}` through `pollEvents`.
+    #[napi]
+    pub fn play(&mut self, sound: String, opts: Option<Json>) -> Result<f64> {
+        let id = play_impl(self.runner.core_mut(), &sound, opts.as_ref())?;
+        self.runner.flush_audio();
+        Ok(id)
+    }
+
+    #[napi]
+    pub fn stop(&mut self, playback: f64, fade_ms: Option<f64>) {
+        self.runner
+            .core_mut()
+            .stop(PlaybackId(playback as u64), fade_ms.unwrap_or(0.0) as f32);
+        self.runner.flush_audio();
+    }
+
+    #[napi]
+    pub fn set_volume(&mut self, playback: f64, volume: f64, tween_ms: Option<f64>) {
+        self.runner.core_mut().set_volume(
+            PlaybackId(playback as u64),
+            volume as f32,
+            tween_ms.unwrap_or(0.0) as f32,
+        );
+        self.runner.flush_audio();
+    }
+
+    #[napi]
+    pub fn pause(&mut self, playback: f64, fade_ms: Option<f64>) {
+        self.runner
+            .core_mut()
+            .pause(PlaybackId(playback as u64), fade_ms.unwrap_or(0.0) as f32);
+        self.runner.flush_audio();
+    }
+
+    #[napi]
+    pub fn resume(&mut self, playback: f64, fade_ms: Option<f64>) {
+        self.runner
+            .core_mut()
+            .resume(PlaybackId(playback as u64), fade_ms.unwrap_or(0.0) as f32);
+        self.runner.flush_audio();
+    }
+
+    #[napi]
+    pub fn set_master_volume(&mut self, volume: f64, tween_ms: Option<f64>) {
+        self.runner
+            .core_mut()
+            .set_master_volume(volume as f32, tween_ms.unwrap_or(0.0) as f32);
+        self.runner.flush_audio();
+    }
+
     #[napi]
     pub fn system_font_families(&mut self) -> Vec<String> {
         self.runner.core_mut().system_font_families()
@@ -1088,6 +1254,117 @@ fn load_font_file_impl(core: &mut Core, path: &str) -> Result<String> {
             "no usable font face in {path:?} (unreadable, or not TTF/OTF/TTC)"
         ))
     })
+}
+
+fn sound_str(id: SoundId) -> String {
+    format!("{:016x}", id.to_ffi())
+}
+
+fn add_sound_impl(core: &mut Core, data: &[u8]) -> Result<String> {
+    if data.is_empty() {
+        return Err(err("addSound: empty buffer"));
+    }
+    Ok(sound_str(core.add_sound(data.to_vec())))
+}
+
+/// `<audio>` props to the core's spec; absent `volume` keeps the default.
+fn audio_spec_of(
+    src: SoundId,
+    volume: Option<f64>,
+    looped: bool,
+    paused: bool,
+    tag: Option<Value>,
+) -> AudioSpec {
+    let mut spec = AudioSpec::new(src).paused(paused);
+    if let Some(v) = volume {
+        spec = spec.volume(v as f32);
+    }
+    if looped {
+        spec = spec.looped();
+    }
+    spec.tag = tag;
+    spec
+}
+
+/// `play(sound, {volume, loop, fadeIn, tag})`; the playback id as a JS
+/// number (a small counter, exact).
+fn play_impl(core: &mut Core, sound: &str, opts: Option<&Json>) -> Result<f64> {
+    let o = opts.and_then(Json::as_object).unwrap_or(empty_props());
+    let mut po = PlayOptions::default();
+    if let Some(v) = o.get("volume").and_then(Json::as_f64) {
+        po.volume = v as f32;
+    }
+    po.looped = bool_prop(o, "loop");
+    if let Some(v) = o.get("fadeIn").and_then(Json::as_f64) {
+        po.fade_in_ms = v as f32;
+    }
+    po.tag = o.get("tag").map(value_of);
+    Ok(core.play(SoundId::from_ffi(parse_u64(sound)?), po).0 as f64)
+}
+
+fn audio_commands_json(cmds: Vec<AudioCommand>) -> Json {
+    let obj = |pairs: Vec<(&str, Json)>| {
+        let mut o = JsonMap::new();
+        for (k, v) in pairs {
+            o.insert(k.into(), v);
+        }
+        Json::Object(o)
+    };
+    let pb = |p: PlaybackId| Json::from(p.0);
+    Json::Array(
+        cmds.into_iter()
+            .map(|c| match c {
+                AudioCommand::Play {
+                    playback,
+                    sound,
+                    volume,
+                    looped,
+                    fade_in_ms,
+                } => obj(vec![
+                    ("kind", "play".into()),
+                    ("playback", pb(playback)),
+                    ("sound", Json::String(sound_str(sound))),
+                    ("volume", Json::from(volume as f64)),
+                    ("loop", Json::Bool(looped)),
+                    ("fadeIn", Json::from(fade_in_ms as f64)),
+                ]),
+                AudioCommand::Stop { playback, fade_ms } => obj(vec![
+                    ("kind", "stop".into()),
+                    ("playback", pb(playback)),
+                    ("fade", Json::from(fade_ms as f64)),
+                ]),
+                AudioCommand::SetVolume {
+                    playback,
+                    volume,
+                    tween_ms,
+                } => obj(vec![
+                    ("kind", "setVolume".into()),
+                    ("playback", pb(playback)),
+                    ("volume", Json::from(volume as f64)),
+                    ("tween", Json::from(tween_ms as f64)),
+                ]),
+                AudioCommand::Pause { playback, fade_ms } => obj(vec![
+                    ("kind", "pause".into()),
+                    ("playback", pb(playback)),
+                    ("fade", Json::from(fade_ms as f64)),
+                ]),
+                AudioCommand::Resume { playback, fade_ms } => obj(vec![
+                    ("kind", "resume".into()),
+                    ("playback", pb(playback)),
+                    ("fade", Json::from(fade_ms as f64)),
+                ]),
+                AudioCommand::MasterVolume { volume, tween_ms } => obj(vec![
+                    ("kind", "masterVolume".into()),
+                    ("volume", Json::from(volume as f64)),
+                    ("tween", Json::from(tween_ms as f64)),
+                ]),
+                AudioCommand::Unload { sound } => obj(vec![
+                    ("kind", "unload".into()),
+                    ("sound", Json::String(sound_str(sound))),
+                ]),
+            })
+            .collect(),
+    )
 }
 
 fn add_font_impl(core: &mut Core, data: &[u8]) -> Result<String> {

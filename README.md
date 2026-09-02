@@ -267,6 +267,23 @@ payload shapes and the resource APIs. It is generated from the schema
   via `kui_font_add*`. The shaping cache keys on the handle, editors shape
   through it too, and a removed font's stale handle shapes as sans rather
   than aliasing whatever took its slot.
+- **Audio is data too.** Sounds are registered resources
+  (`Core::add_sound(bytes)` → `SoundId`, any wav/ogg/mp3/flac), and playing
+  one is a command the frame driver drains (`AudioCommand` via
+  `take_audio_commands`) — the core never touches a device, so headless
+  tests assert on the queue the way they assert on window commands. Three
+  ways in: `click_sound` / `hover_sound` props on any node (schema rows, so
+  JSX, Lua and C get them for free); an `audio` node — a playback retained
+  by key: present means playing (once, or looped), gone means stopped,
+  `volume` / `paused` apply live, a changed `src` restarts, like an HTML
+  `<audio autoplay>`; and `play` / `stop` / `set_volume` / `pause` /
+  `resume` / `set_master_volume` for hosts holding the core. A playback
+  started with a tag that finishes on its own comes back as
+  `{kind="sound", phase="ended", playback, tag}`. The runner plays through
+  kira/cpal behind the default-on `audio` feature, opening the device on
+  the first sound (no audio thread for silent apps; a missing device logs
+  once and the UI runs on). Volumes are linear amplitude; `kui::audio::blip`
+  / `wav_pcm16` synthesize test sounds without asset files.
 - **The C API is translation, not architecture.** Frame building is flat
   calls on one opaque context (`kui_open`/`kui_close`/`kui_text`), payloads
   are opaque `KuiValue` handles with accessors, and `kui_draw_data` hands out
@@ -389,7 +406,10 @@ nothing but that Linux runner: no Mac or Windows machine is involved.
 ## Status / next
 
 v0 scope: no z-index (floats stack in tree order). Transitions cover sizing, colors, radius and
-position (`slide`, `enter`); a removed node vanishes at once (there is no exit animation yet). Editing: caret blink, double/triple-click
+position (`slide`, `enter`); a removed node vanishes at once (there is no exit animation yet).
+Audio covers one-shots, loops, volume, pause and a finished-playback event; sounds decode fully
+into memory, and synthesis, effects, positional audio and disk streaming are out of scope.
+Editing: caret blink, double/triple-click
 word/line select, scroll-caret-into-view, inline IME composition, Tab
 focus traversal, and undo/redo (operational deltas with typing/delete
 coalescing — the widget owns its buffer, so it owns its history; hosts

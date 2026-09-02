@@ -85,6 +85,20 @@ package as [props.md](props.md) (`docs/props.md` in the repository).
 - **Tooltips**: `tooltip="hint"` on any box (implies hover tracking).
 - **Per-corner radius**: `radius` for all four, `radiusTL` / `radiusTR` /
   `radiusBR` / `radiusBL` after it for the exceptions.
+- **Sound**: register bytes once (`win.addSound(buf)` in `setup`, any
+  wav/ogg/mp3/flac), then reach for it three ways. As props — `clickSound`
+  and `hoverSound` on any box, the audio equivalent of `hoverBg`. As an
+  element — `<audio key="music" src={id} loop volume={0.3} />` is a playback
+  retained by key: it plays while the view declares it, stops when the view
+  drops it, and `volume` / `paused` changes apply to the running sound
+  rather than restarting it, so `{model.music && <audio … />}` is the whole
+  on/off story. Or imperatively — `win.play(id, { volume, loop, fadeIn,
+  tag })` returns a playback id for `stop` / `setVolume` / `pause` /
+  `resume`, and a `tag` comes back as a `SoundMsg`
+  (`{kind: 'sound', phase: 'ended', tag}`) when that playback finishes on
+  its own, which is how a chime chains into the next state. Volumes are
+  linear amplitude. Headless (`createApp`) nothing plays: `ctx.audioCommands()`
+  hands you what a window would have played, which is what to assert on.
 - **Fonts**: `win.loadFontsDir('fonts')` then `win.addSystemFont('Antonio')`,
   or `win.loadFontFile('fonts/Antonio.ttf')`, `win.addFont(bytes)`, or an
   installed family by name (see `systemFontFamilies()`); then

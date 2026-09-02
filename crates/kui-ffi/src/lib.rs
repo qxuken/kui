@@ -191,6 +191,49 @@ pub struct KuiSpec {
     /// Entrance: with `set` non-zero, the named slots ease in from these
     /// values on the node's first sight (see `KuiEnter`).
     pub enter: KuiEnter,
+    /// Registered sounds (`kui_sound_add`) played when the node is clicked /
+    /// the pointer enters it; 0 = none. Either makes the node hover-tracked.
+    pub click_sound: u64,
+    pub hover_sound: u64,
+}
+
+/// Options for `kui_play`. NULL means defaults; a given struct is read
+/// literally (so `volume` must be set — `KUI_PLAY_INIT` in kui.h does).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiPlay {
+    /// Linear amplitude, 0..1.
+    pub volume: f32,
+    pub looped: u32,
+    pub fade_in_ms: f32,
+}
+
+/// What a `kui_audio` node declares; read literally (`KUI_AUDIO_INIT`).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiAudio {
+    /// A registered sound (`kui_sound_add`).
+    pub src: u64,
+    /// Linear amplitude, 0..1.
+    pub volume: f32,
+    pub looped: u32,
+    pub paused: u32,
+}
+
+/// One audio command for a host that drives its own device
+/// (`kui_take_audio_commands`); `kind` is `KUI_AUDIO_*` and says which of
+/// the other fields mean anything.
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct KuiAudioCommand {
+    pub kind: u32,
+    pub playback: u64,
+    pub sound: u64,
+    /// Linear amplitude (play, set_volume, master_volume).
+    pub volume: f32,
+    /// Fade / tween duration in ms (fade-in for play).
+    pub ms: f32,
+    pub looped: u32,
 }
 
 #[repr(C)]
@@ -459,6 +502,12 @@ fn spec_of(
     }
     if s.enter.set != 0 {
         spec = spec.enter(enter_of(&s.enter));
+    }
+    if s.click_sound != 0 {
+        spec = spec.click_sound(kui_core::SoundId::from_ffi(s.click_sound));
+    }
+    if s.hover_sound != 0 {
+        spec = spec.hover_sound(kui_core::SoundId::from_ffi(s.hover_sound));
     }
     if let Some(v) = take_msg(on_click) {
         spec = spec.on_click(v);
@@ -941,6 +990,231 @@ pub extern "C" fn kui_font_remove(ptr: *mut KuiCtx, id: u64) {
     guard((), || {
         if let Some(c) = unsafe { ctx(ptr) } {
             c.core().remove_font(kui_core::FontId::from_ffi(id));
+        }
+    });
+}
+
+// -- Audio -------------------------------------------------------------------
+// Sounds are resources, playback is commands the driver drains; kui_run
+// plays them itself, a host with its own loop drains kui_take_audio_commands.
+
+/// Registers a sound from its encoded file bytes (wav/ogg/mp3/flac, copied);
+/// returns its handle for `KuiSpec.click_sound` / `kui_audio` / `kui_play`,
+/// 0 when empty.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_sound_add(ptr: *mut KuiCtx, data: *const u8, len: usize) -> u64 {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        if data.is_null() || len == 0 {
+            return 0;
+        }
+        let bytes = unsafe { std::slice::from_raw_parts(data, len) }.to_vec();
+        c.core().add_sound(bytes).to_ffi()
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_sound_remove(ptr: *mut KuiCtx, id: u64) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().remove_sound(kui_core::SoundId::from_ffi(id));
+        }
+    });
+}
+
+/// Starts a playback; returns its id for kui_stop / kui_set_volume /
+/// kui_pause / kui_resume. `opts` may be NULL (defaults). A non-NULL `tag`
+/// (consumed) asks for a `{kind="sound", phase="ended", playback, tag}`
+/// event when the playback finishes on its own.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_play(
+    ptr: *mut KuiCtx,
+    sound: u64,
+    opts: *const KuiPlay,
+    tag: *mut KuiValue,
+) -> u64 {
+    guard(0, || {
+        let tag = take_msg(tag);
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        let mut po = kui_core::PlayOptions::default();
+        if let Some(o) = unsafe { opts.as_ref() } {
+            po.volume = o.volume;
+            po.looped = o.looped != 0;
+            po.fade_in_ms = o.fade_in_ms;
+        }
+        po.tag = tag;
+        c.core().play(kui_core::SoundId::from_ffi(sound), po).0
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_stop(ptr: *mut KuiCtx, playback: u64, fade_ms: f32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().stop(kui_core::PlaybackId(playback), fade_ms);
+        }
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_volume(ptr: *mut KuiCtx, playback: u64, volume: f32, tween_ms: f32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core()
+                .set_volume(kui_core::PlaybackId(playback), volume, tween_ms);
+        }
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_pause(ptr: *mut KuiCtx, playback: u64, fade_ms: f32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().pause(kui_core::PlaybackId(playback), fade_ms);
+        }
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_resume(ptr: *mut KuiCtx, playback: u64, fade_ms: f32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().resume(kui_core::PlaybackId(playback), fade_ms);
+        }
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_master_volume(ptr: *mut KuiCtx, volume: f32, tween_ms: f32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_master_volume(volume, tween_ms);
+        }
+    });
+}
+
+/// An audio node: a playback retained by key while the frame declares it
+/// (present = playing, gone = stopped; volume/paused apply live, a changed
+/// src restarts). Empty label = a key from the tree position. `tag`
+/// (nullable, consumed) rides the `ended` event. Returns the node key.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_audio(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    spec: *const KuiAudio,
+    tag: *mut KuiValue,
+) -> u64 {
+    guard(0, || {
+        let tag = take_msg(tag);
+        let (Some(c), Some(a)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else {
+            return 0;
+        };
+        let mut s = kui_core::AudioSpec::new(kui_core::SoundId::from_ffi(a.src))
+            .volume(a.volume)
+            .paused(a.paused != 0);
+        if a.looped != 0 {
+            s = s.looped();
+        }
+        s.tag = tag;
+        let core = c.core();
+        if label.ptr.is_null() || label.len == 0 {
+            core.audio_node(s).0
+        } else {
+            core.audio_node_keyed(&kstr(label), s).0
+        }
+    })
+}
+
+/// Drains queued audio commands into `out` (up to `cap`; the rest are
+/// dropped, so size it generously); returns the count. Only for hosts
+/// driving their own audio device — kui_run plays them itself.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_take_audio_commands(
+    ptr: *mut KuiCtx,
+    out: *mut KuiAudioCommand,
+    cap: usize,
+) -> usize {
+    use kui_core::AudioCommand as A;
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        if out.is_null() || cap == 0 {
+            return 0;
+        }
+        let cmds = c.core().take_audio_commands();
+        let n = cmds.len().min(cap);
+        for (i, cmd) in cmds.into_iter().take(n).enumerate() {
+            let mut o = KuiAudioCommand::default();
+            match cmd {
+                A::Play {
+                    playback,
+                    sound,
+                    volume,
+                    looped,
+                    fade_in_ms,
+                } => {
+                    o.kind = 1;
+                    o.playback = playback.0;
+                    o.sound = sound.to_ffi();
+                    o.volume = volume;
+                    o.ms = fade_in_ms;
+                    o.looped = looped as u32;
+                }
+                A::Stop { playback, fade_ms } => {
+                    o.kind = 2;
+                    o.playback = playback.0;
+                    o.ms = fade_ms;
+                }
+                A::SetVolume {
+                    playback,
+                    volume,
+                    tween_ms,
+                } => {
+                    o.kind = 3;
+                    o.playback = playback.0;
+                    o.volume = volume;
+                    o.ms = tween_ms;
+                }
+                A::Pause { playback, fade_ms } => {
+                    o.kind = 4;
+                    o.playback = playback.0;
+                    o.ms = fade_ms;
+                }
+                A::Resume { playback, fade_ms } => {
+                    o.kind = 5;
+                    o.playback = playback.0;
+                    o.ms = fade_ms;
+                }
+                A::MasterVolume { volume, tween_ms } => {
+                    o.kind = 6;
+                    o.volume = volume;
+                    o.ms = tween_ms;
+                }
+                A::Unload { sound } => {
+                    o.kind = 7;
+                    o.sound = sound.to_ffi();
+                }
+            }
+            unsafe { out.add(i).write(o) };
+        }
+        n
+    })
+}
+
+/// A host driving its own device reports a playback finished on its own;
+/// a tagged one becomes a `sound` event for kui_poll_event.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_audio_ended(ptr: *mut KuiCtx, playback: u64) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().audio_ended(kui_core::PlaybackId(playback));
+            let pending = c.core().take_pending_events();
+            c.events.extend(pending);
         }
     });
 }
@@ -1629,6 +1903,8 @@ mod schema_parity {
                 "hoverBg" => s.hover_bg = C,
                 "pressedBg" => s.pressed_bg = C,
                 "hoverGroup" => s.hover_group = name,
+                "clickSound" => s.click_sound = 7,
+                "hoverSound" => s.hover_sound = 7,
                 "lineHeight" => t.line_height = F,
                 "color" => t.color = C,
                 "family" => t.family = 1,
@@ -1733,6 +2009,8 @@ mod schema_parity {
             keyframes: stops.as_ptr(),
             keyframes_len: stops.len(),
             enter: unsafe { std::mem::zeroed() },
+            click_sound: 0,
+            hover_sound: 0,
         };
         let expected = NodeSpec::row()
             .width(Sizing::Grow(2.0))
@@ -1851,4 +2129,87 @@ mod widgets_headless {
         assert!(draw.quad_count > 20, "got {} quads", draw.quad_count);
         kui_ctx_free(ctx);
     }
+}
+
+#[cfg(test)]
+mod audio_headless {
+    use super::*;
+
+    /// A click on a `click_sound` node and an audio node both surface as
+    /// commands through the C drain; an ended tagged playback polls out as
+    /// a `sound` event.
+    #[test]
+    fn sounds_flow_through_the_c_api() {
+        let ctx = kui_ctx_new();
+        let wav = b"RIFF....WAVE";
+        let sound = kui_sound_add(ctx, wav.as_ptr(), wav.len());
+        assert_ne!(sound, 0);
+
+        let mut spec = unsafe { std::mem::zeroed::<KuiSpec>() };
+        spec.width = KuiSizing {
+            tag: 2,
+            value: 40.0,
+        };
+        spec.height = KuiSizing {
+            tag: 2,
+            value: 20.0,
+        };
+        spec.click_sound = sound;
+        let audio = KuiAudio {
+            src: sound,
+            volume: 0.5,
+            looped: 1,
+            paused: 0,
+        };
+        let frame = |ctx: *mut KuiCtx| {
+            kui_frame_begin(ctx, 200.0, 100.0, 1.0);
+            kui_open(ctx, &spec, NONE);
+            kui_close(ctx);
+            kui_audio(ctx, KUI_EMPTY, &audio, kui_value_str(KUI_STR_TEST));
+            kui_frame_finish(ctx);
+        };
+        frame(ctx);
+        let mut out = [KuiAudioCommand::default(); 8];
+        let n = kui_take_audio_commands(ctx, out.as_mut_ptr(), out.len());
+        assert_eq!(n, 1, "the audio node started once");
+        assert_eq!((out[0].kind, out[0].sound, out[0].looped), (1, sound, 1));
+        assert_eq!(out[0].volume, 0.5);
+        let music = out[0].playback;
+
+        kui_input_cursor(ctx, 5.0, 5.0);
+        kui_input_mouse(ctx, true, 1);
+        kui_input_mouse(ctx, false, 1);
+        let n = kui_take_audio_commands(ctx, out.as_mut_ptr(), out.len());
+        assert_eq!(n, 1, "the click played its sound");
+        assert_eq!((out[0].kind, out[0].sound), (1, sound));
+
+        // Re-declaring is silent; the driver reporting the music ended
+        // surfaces the tag as an event.
+        frame(ctx);
+        assert_eq!(kui_take_audio_commands(ctx, out.as_mut_ptr(), out.len()), 0);
+        kui_audio_ended(ctx, music);
+        let mut ev = KuiEvent {
+            origin: 0,
+            key: 0,
+            payload: std::ptr::null(),
+        };
+        assert!(kui_poll_event(ctx, &mut ev));
+        let payload = unsafe { &*ev.payload };
+        assert_eq!(payload.0.get("kind").and_then(Value::as_str), Some("sound"));
+        assert_eq!(payload.0.get("tag").and_then(Value::as_str), Some("music"));
+        assert_eq!(
+            payload.0.get("playback").and_then(Value::as_int),
+            Some(music as i64)
+        );
+        kui_ctx_free(ctx);
+    }
+
+    const KUI_EMPTY: KuiStr = KuiStr {
+        ptr: std::ptr::null(),
+        len: 0,
+    };
+    const KUI_STR_TEST: KuiStr = KuiStr {
+        ptr: "music".as_ptr(),
+        len: 5,
+    };
 }

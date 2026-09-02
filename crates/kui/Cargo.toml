@@ -13,6 +13,16 @@ kui-wgpu.workspace = true
 winit.workspace = true
 pollster.workspace = true
 arboard = "3"
+# The audio device behind the core's audio commands (feature `audio`, on by
+# default). Default features are trimmed: no realtime-priority dbus
+# (libdbus), no streaming formats — decoding covers wav/ogg/mp3/flac.
+kira = { version = "0.12", default-features = false, features = ["cpal", "mp3", "ogg", "vorbis", "flac", "wav", "pcm"], optional = true }
+
+[features]
+default = ["audio"]
+# Play sounds through kira/cpal. Off: audio commands are dropped, the UI
+# runs the same, and the crate links no audio libraries (ALSA on Linux).
+audio = ["dep:kira"]
 
 # Same version winit pins, so the tree compiles it once.
 [target.'cfg(target_os = "windows")'.dependencies]

@@ -14,6 +14,7 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 |---|---|---|---|---|
 | `bg` | `bg` | `bg` | color (`#hex` or `0xRRGGBBAA`) | Background fill. |
 | `center` | `center` | `main_align` + `cross_align` = `KUI_CENTER` | boolean | Center children on both axes. |
+| `clickSound` | `click_sound` | `click_sound` | resource handle | A registered sound (addSound) played when the node is clicked; implies hover tracking. |
 | `crossAlign` | `cross_align` | `cross_align` | `start` \\| `center` \\| `end` | Child alignment across the main axis. |
 | `delay` | `delay` | `delay_ms` | number | Holds the `keyframes` cycle back by this many ms (CSS `animation-delay`); siblings with different delays run out of phase. |
 | `easing` | `easing` | `easing` (`KUI_EASE_*`) | `easeOut` \\| `linear` \\| `easeIn` \\| `easeInOut` \\| `spring` \\| `bouncy` | Easing for `transition` (default easeOut); spring/bouncy integrate with momentum. |
@@ -22,6 +23,7 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `height` | `height` | `height` (KuiSizing) | sizing (`number` \\| `"fit"` \\| `"grow"` \\| `"N%"`) | Cross-axis size: px \| "fit" \| "grow" \| "N%". |
 | `hoverBg` | `hover_bg` | `hover_bg` | color (`#hex` or `0xRRGGBBAA`) | Background while hovered (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`. |
 | `hoverGroup` | `hover_group` | `hover_group` (KuiStr) | string | Nodes sharing a group name show hoverBg/pressedBg together (a split button, a multi-piece shape). |
+| `hoverSound` | `hover_sound` | `hover_sound` | resource handle | A registered sound (addSound) played when the pointer enters the node; implies hover tracking. |
 | `hoverable` | `hoverable` | `hoverable` | boolean | Hover-track without a click payload (for isHovered-driven styling). |
 | `keyframes` | `keyframes` | `keyframes` + `keyframes_len` (`KuiKeyframe[]`) | keyframe list (`[{ at?, width?, height?, bg?, radius? }, …]`) | CSS-style stops `[{ at?, width?, height?, bg?, radius? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. |
 | `mainAlign` | `main_align` | `main_align` | `start` \\| `center` \\| `end` | Child alignment along the main axis. |
@@ -85,6 +87,7 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `<windowButtons/>` | `window_buttons()` | `kui_window_buttons` | Just the min/max/close buttons, for fully custom titlebars. |
 | `tooltip="hint"` prop (see composites) | `tooltip("hint")` / `tooltip { … }` nodes, or the prop | `kui_tooltip`, `kui_tooltip_with` | A float hanging below the parent; the node form always draws, the prop form is hover-gated. |
 | `<latencyGraph/>`, `<latencyHud at/>` | `latency_graph()`, `latency_hud { at= }` | `kui_latency_graph`, `kui_latency_hud` | Per-phase frame timing (windowed drivers fill it; headless shows the chrome empty). |
+| `<audio src={id} loop volume paused tag/>` | `audio { src=, loop=, volume=, paused=, tag= }` | `kui_audio` | A playback retained by node key: present = playing (once, or looped), gone = stopped; `volume` / `paused` apply live, a changed `src` restarts; a `tag` brings back `{kind:"sound", phase:"ended", tag}`. Draws nothing. |
 
 ## Events
 
@@ -101,6 +104,7 @@ Node, `on_event(ev)` in Lua (payload fields plus `node_key`), and
 | resize | `{ kind: "resize", width, height, scale }` | The viewport changed size or DPI (logical px, delivered to the host on the root); `KuiWindow.size()` queries the same numbers. |
 | modifiers | `{ kind: "modifiers", shift, ctrl, alt, super }` | The physical modifier state changed (delivered to the host on the root). |
 | changed / submit | `{ kind: "changed" }` / `{ kind: "submit" }`, with the editor's key on the event | An editor's text changed / Enter in a single-line editor. |
+| sound | `{ kind: "sound", phase: "ended", playback, tag }` | A tagged playback (`play(id, { tag })` or `<audio tag>`) finished on its own — never when something stopped it. |
 
 ## Resources
 
@@ -111,6 +115,7 @@ Node, `on_event(ev)` in Lua (payload fields plus `node_key`), and
 | font file by path | `ctx.loadFontFile("fonts/Antonio.ttf")` → id for `font` | the host registers; `font = id` | `kui_font_load_file` |
 | a folder of fonts | `ctx.loadFontsDir("fonts")`, then pick by name | the host loads | `kui_font_load_dir` |
 | font by family name (installed or loaded) | `ctx.addSystemFont("Antonio")` (see `systemFontFamilies()`) | the host registers; `font = id` | `kui_font_add_system` |
+| sound (wav / ogg / mp3 / flac bytes) | `ctx.addSound(buffer)` → id for `<audio src>`, `clickSound`, `play(id)` | the host registers; `audio { src = id }`, `click_sound = id` | `kui_sound_add` → `kui_audio`, `KuiSpec.click_sound`, `kui_play` |
 
 Handles are slotmap keys with a generation: a removed resource's handle is
 rejected (an image draws nothing, a font shapes as sans) rather than

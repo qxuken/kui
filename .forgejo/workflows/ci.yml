@@ -76,7 +76,10 @@ jobs:
         run: |
           set -eu
           apt-get update
-          apt-get install -y --no-install-recommends fonts-dejavu-core ca-certificates curl
+          # ALSA headers: the runner crate's audio backend (kira/cpal) links
+          # libasound on Linux.
+          apt-get install -y --no-install-recommends fonts-dejavu-core ca-certificates curl \
+            pkg-config libasound2-dev
           curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal \
             --default-toolchain stable -c rustfmt -c clippy
           echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
@@ -156,13 +159,27 @@ jobs:
         run: |
           set -eu
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates curl python3-pip
+          apt-get install -y --no-install-recommends ca-certificates curl python3-pip \
+            pkg-config libasound2-dev
           curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal \
             --default-toolchain stable -t "${{ matrix.target }}"
           echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
           pip3 install --break-system-packages \
             "cargo-zigbuild==${CARGO_ZIGBUILD_VERSION}" "ziglang==${ZIGLANG_VERSION}"
           cargo-zigbuild --version
+
+      # The audio backend links ALSA; the arm64 leg cross-links against
+      # Debian's arm64 multiarch copy, which pkg-config finds in cross mode.
+      - name: Install arm64 ALSA
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          set -eu
+          dpkg --add-architecture arm64
+          apt-get update
+          apt-get install -y --no-install-recommends libasound2-dev:arm64
+          echo "PKG_CONFIG_ALLOW_CROSS=1" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig" >> "$GITHUB_ENV"
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -348,7 +365,10 @@ jobs:
         run: |
           set -eu
           apt-get update
-          apt-get install -y --no-install-recommends fonts-dejavu-core ca-certificates curl
+          # ALSA headers: the runner crate's audio backend (kira/cpal) links
+          # libasound on Linux.
+          apt-get install -y --no-install-recommends fonts-dejavu-core ca-certificates curl \
+            pkg-config libasound2-dev
           curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
           echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
           test -n "$PACKAGES_TOKEN" || { echo "PACKAGES_TOKEN secret is not set" >&2; exit 1; }

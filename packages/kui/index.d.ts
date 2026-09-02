@@ -65,10 +65,40 @@ export type ModifiersMsg = {
  *  key is on the event, so `editText(ev.key)` reads it back. */
 export type EditMsg = { kind: 'changed' } | { kind: 'submit' };
 
+/** A tagged playback (`play(id, { tag })` or `<audio tag>`) finished on its
+ *  own — never when something stopped it. On an `<audio>` node's key, or the
+ *  root for `play`. */
+export type SoundMsg<T = AppMsg> = {
+  kind: 'sound';
+  phase: 'ended';
+  playback: number;
+  tag: T;
+};
+
 /** Everything the core sends on its own. Put it in the app's union —
  *  `type Msg = MyMsg | CoreMsg` — and `update` switches over one flat
  *  discriminated union, no casts and no narrowing preamble. */
-export type CoreMsg = DragMsg | KeyMsg | HoverMsg | ResizeMsg | ModifiersMsg | EditMsg;
+export type CoreMsg = DragMsg | KeyMsg | HoverMsg | ResizeMsg | ModifiersMsg | EditMsg | SoundMsg;
+
+/** Options for `play`. Volumes are linear amplitude (0..1), durations ms. */
+export interface PlayOptions {
+  volume?: number;
+  loop?: boolean;
+  fadeIn?: number;
+  /** Asks for a `SoundMsg` when the playback ends on its own. */
+  tag?: AppMsg;
+}
+
+/** What a driver plays; `Ctx.audioCommands()` drains them (headless), a
+ *  `KuiWindow` plays them itself. */
+export type AudioCommand =
+  | { kind: 'play'; playback: number; sound: string; volume: number; loop: boolean; fadeIn: number }
+  | { kind: 'stop'; playback: number; fade: number }
+  | { kind: 'setVolume'; playback: number; volume: number; tween: number }
+  | { kind: 'pause'; playback: number; fade: number }
+  | { kind: 'resume'; playback: number; fade: number }
+  | { kind: 'masterVolume'; volume: number; tween: number }
+  | { kind: 'unload'; sound: string };
 
 // --------------------------------------------------------------------------
 
@@ -197,6 +227,23 @@ export declare class Ctx {
   removeFont(id: string): void;
   /** Family names of every font the core can see (sorted). */
   systemFontFamilies(): string[];
+  /** Registers a sound from its encoded bytes (wav/ogg/mp3/flac); returns
+   *  its id for `<audio src>`, `clickSound` / `hoverSound`, and `play`. */
+  addSound(data: Buffer): string;
+  removeSound(id: string): void;
+  /** Starts a playback; returns its id for stop/setVolume/pause/resume.
+   *  Headless, nothing plays: the command queues for `audioCommands()`. */
+  play(sound: string, opts?: PlayOptions): number;
+  stop(playback: number, fadeMs?: number): void;
+  setVolume(playback: number, volume: number, tweenMs?: number): void;
+  pause(playback: number, fadeMs?: number): void;
+  resume(playback: number, fadeMs?: number): void;
+  setMasterVolume(volume: number, tweenMs?: number): void;
+  /** Drains the audio commands the core queued (tests, custom drivers). */
+  audioCommands(): AudioCommand[];
+  /** A custom driver reports a playback finished on its own; a tagged one
+   *  becomes a `SoundMsg` in `pollEvents`. */
+  audioEnded(playback: number): void;
   /** Events since the last poll. `A` types their payloads — the app's own
    *  union, or one core message type when only that is being watched. */
   pollEvents<A = AppMsg | CoreMsg>(): UiEvent<A>[];
@@ -289,6 +336,17 @@ export declare class KuiWindow {
   loadFontsDir(dir: string): number;
   removeFont(id: string): void;
   systemFontFamilies(): string[];
+  /** Registers a sound; see `Ctx.addSound`. */
+  addSound(data: Buffer): string;
+  removeSound(id: string): void;
+  /** Starts a playback on the window's audio device at once; see `Ctx.play`.
+   *  A `tag` comes back through `pollEvents` as a `SoundMsg`. */
+  play(sound: string, opts?: PlayOptions): number;
+  stop(playback: number, fadeMs?: number): void;
+  setVolume(playback: number, volume: number, tweenMs?: number): void;
+  pause(playback: number, fadeMs?: number): void;
+  resume(playback: number, fadeMs?: number): void;
+  setMasterVolume(volume: number, tweenMs?: number): void;
 }
 
 export interface WindowedConfig<M, A = AppMsg | CoreMsg> {

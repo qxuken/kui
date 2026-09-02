@@ -45,6 +45,8 @@ pub struct Core {
     pub edit: EditStore,
     /// Transition tweens, keyed by node; see `anim`. Fed by `set_time`.
     pub anim: AnimStore,
+    /// Playback bookkeeping and the audio command queue; see `audio`.
+    pub audio: crate::audio::AudioStore,
     /// Frame timing pushed by the frame driver; see `widgets::latency_graph`.
     pub stats: FrameStats,
     /// Host facts pushed by the frame driver (refresh rate, focus).
@@ -142,6 +144,7 @@ impl Core {
             scroll: ScrollStore::default(),
             edit: EditStore::default(),
             anim: AnimStore::default(),
+            audio: crate::audio::AudioStore::default(),
             stats: FrameStats::default(),
             env: Env::default(),
             window_title: None,
@@ -319,7 +322,22 @@ impl Core {
             }
             other => self.interaction.handle(other, &mut out),
         }
+        self.flush_sound_requests();
         out
+    }
+
+    /// Turns the sounds nodes asked for (`click_sound` / `hover_sound`)
+    /// into play commands. Declarative sounds carry no tag, so they never
+    /// report `ended`.
+    fn flush_sound_requests(&mut self) {
+        for sound in self.interaction.take_sound_requests() {
+            self.audio.play(
+                OriginId::HOST,
+                Key::ROOT,
+                sound,
+                crate::audio::PlayOptions::default(),
+            );
+        }
     }
 
     /// Emits one node's quads and registers its hit/scroll regions.
@@ -367,6 +385,8 @@ impl Core {
                 window: spec.window,
                 hover: spec.on_hover.clone(),
                 group: spec.hover_group,
+                click_sound: spec.click_sound,
+                hover_sound: spec.hover_sound,
             });
         }
         if spec.layout.scroll_x || spec.layout.scroll_y {
@@ -403,6 +423,8 @@ impl Core {
                     window: None,
                     hover: None,
                     group: None,
+                    click_sound: None,
+                    hover_sound: None,
                 });
                 let focused = self.edit.focused() == Some(key);
                 let origin_phys = Vec2::new(
@@ -637,6 +659,102 @@ impl Core {
 
     pub fn take_window_commands(&mut self) -> Vec<crate::window::WindowCommand> {
         std::mem::take(&mut self.interaction.window_commands)
+    }
+
+    // -- Audio ----------------------------------------------------------
+    // Sounds are resources, playback is commands the driver drains; see
+    // `audio`. Nothing here touches a device.
+
+    /// Registers a sound from its encoded file bytes (wav/ogg/mp3/flac —
+    /// the driver's backend decodes; the core only keeps the bytes).
+    pub fn add_sound(&mut self, bytes: Vec<u8>) -> crate::resources::SoundId {
+        self.resources.add_sound(bytes)
+    }
+
+    /// Forgets a sound; the driver drops its decoded copy. Playbacks
+    /// already running keep going.
+    pub fn remove_sound(&mut self, id: crate::resources::SoundId) {
+        if self.resources.remove_sound(id).is_some() {
+            self.audio.unload(id);
+        }
+    }
+
+    /// Starts a playback; the returned id addresses it in `stop` /
+    /// `set_volume` / `pause` / `resume`. With a tag in the options, the
+    /// playback finishing on its own comes back as
+    /// `{kind="sound", phase="ended", playback, tag}` on the current
+    /// origin's root — the host's, or the extension's during its view.
+    pub fn play(
+        &mut self,
+        sound: crate::resources::SoundId,
+        opts: crate::audio::PlayOptions,
+    ) -> crate::audio::PlaybackId {
+        self.audio.play(self.origin, Key::ROOT, sound, opts)
+    }
+
+    /// Stops a playback, fading over `fade_ms` (0 = at once). A stopped
+    /// playback never reports `ended`.
+    pub fn stop(&mut self, playback: crate::audio::PlaybackId, fade_ms: f32) {
+        self.audio.stop(playback, fade_ms);
+    }
+
+    /// Sets a playback's volume (linear amplitude), tweening over `tween_ms`.
+    pub fn set_volume(&mut self, playback: crate::audio::PlaybackId, volume: f32, tween_ms: f32) {
+        self.audio.set_volume(playback, volume, tween_ms);
+    }
+
+    pub fn pause(&mut self, playback: crate::audio::PlaybackId, fade_ms: f32) {
+        self.audio.pause(playback, fade_ms);
+    }
+
+    pub fn resume(&mut self, playback: crate::audio::PlaybackId, fade_ms: f32) {
+        self.audio.resume(playback, fade_ms);
+    }
+
+    /// Sets the master volume (linear amplitude), tweening over `tween_ms`.
+    pub fn set_master_volume(&mut self, volume: f32, tween_ms: f32) {
+        self.audio.master_volume(volume, tween_ms);
+    }
+
+    /// An `audio` node: a playback retained by key for as long as the view
+    /// keeps declaring it — present means playing (once, or looped),
+    /// gone means stopped; `volume` / `paused` changes apply live, a
+    /// changed `src` restarts. The key is auto-assigned from the tree
+    /// position; see `audio_node_keyed` for a stable label. Draws nothing
+    /// and takes no layout space.
+    pub fn audio_node(&mut self, spec: crate::audio::AudioSpec) -> Key {
+        if self.tree.is_empty() {
+            return Key::ROOT;
+        }
+        let key = self.auto_key();
+        self.audio.declare(key, self.origin, spec);
+        key
+    }
+
+    /// `audio_node` with a label-derived key (stable across reorders).
+    pub fn audio_node_keyed(&mut self, label: &str, spec: crate::audio::AudioSpec) -> Key {
+        if self.tree.is_empty() {
+            return Key::ROOT;
+        }
+        let key = self.child_key(label);
+        self.audio.declare(key, self.origin, spec);
+        key
+    }
+
+    /// Drains the audio commands queued since the last drain. Frame
+    /// drivers apply them to a real device after each input dispatch and
+    /// after each frame; headless drivers may simply never call.
+    pub fn take_audio_commands(&mut self) -> Vec<crate::audio::AudioCommand> {
+        self.audio.take_commands()
+    }
+
+    /// The driver reports a playback finished on its own (not stopped).
+    /// A tagged playback becomes an `ended` event, pending like a `resize`
+    /// (see `take_pending_events`).
+    pub fn audio_ended(&mut self, playback: crate::audio::PlaybackId) {
+        if let Some(ev) = self.audio.ended(playback) {
+            self.pending.push(ev);
+        }
     }
 
     /// Wheel line-deltas (e.g. winit's LineDelta) to logical px.
@@ -1233,6 +1351,9 @@ impl Core {
         }
 
         self.interaction.set_hits(hits);
+        // A new frame can move a hover-sound node under a still cursor.
+        self.flush_sound_requests();
+        self.audio.reconcile();
         self.interaction.scroll_regions = scroll_regions;
         self.interaction.scrollbars = scrollbars;
         self.ime_rect = self.focused_caret_rect();

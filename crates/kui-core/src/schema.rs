@@ -79,6 +79,8 @@ pub const P_WRAP: u32 = 46;
 pub const P_MAX_LINES: u32 = 47;
 pub const P_ELLIPSIS: u32 = 48;
 pub const P_ENTER: u32 = 49;
+pub const P_CLICK_SOUND: u32 = 50;
+pub const P_HOVER_SOUND: u32 = 51;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -133,9 +135,9 @@ pub enum Kind {
     Msg,
     /// A plain string (a name, not a message). Binary: strref.
     Str,
-    /// A registered resource handle (a font id): the integer form of the
-    /// slotmap key. JSON/binary carry it as the 16-hex string the addon
-    /// hands out; Lua as an integer; C as a `uint64_t`.
+    /// A registered resource handle (a font or sound id): the integer form
+    /// of the slotmap key. JSON/binary carry it as the 16-hex string the
+    /// addon hands out; Lua as an integer; C as a `uint64_t`.
     Resource,
     /// A keyframe stop list (`crate::keyframes::parse` reads the plain-data
     /// form). JSON/binary/Lua carry it like a `Msg` and parse it in the
@@ -157,6 +159,7 @@ pub enum Apply {
     SpecStr(fn(NodeSpec, &str) -> NodeSpec),
     SpecKeyframes(fn(NodeSpec, Vec<Keyframe>) -> NodeSpec),
     SpecEnter(fn(NodeSpec, Enter) -> NodeSpec),
+    SpecResource(fn(NodeSpec, u64) -> NodeSpec),
     StyleF32(fn(TextStyle, f32) -> TextStyle),
     StyleColor(fn(TextStyle, Color) -> TextStyle),
     StyleEnum(fn(TextStyle, usize) -> TextStyle),
@@ -458,6 +461,20 @@ pub const PROPS: &[PropDef] = &[
         doc: "Holds the `keyframes` cycle back by this many ms (CSS `animation-delay`); siblings with different delays run out of phase.",
     },
     PropDef {
+        name: "clickSound",
+        id: P_CLICK_SOUND,
+        kind: Kind::Resource,
+        apply: Apply::SpecResource(|s, id| s.click_sound(crate::resources::SoundId::from_ffi(id))),
+        doc: "A registered sound (addSound) played when the node is clicked; implies hover tracking.",
+    },
+    PropDef {
+        name: "hoverSound",
+        id: P_HOVER_SOUND,
+        kind: Kind::Resource,
+        apply: Apply::SpecResource(|s, id| s.hover_sound(crate::resources::SoundId::from_ffi(id))),
+        doc: "A registered sound (addSound) played when the pointer enters the node; implies hover tracking.",
+    },
+    PropDef {
         name: "lineHeight",
         id: P_LINE_HEIGHT,
         kind: Kind::F32,
@@ -739,6 +756,13 @@ pub const ELEMENTS: &[ElementDef] = &[
         c: "`kui_latency_graph`, `kui_latency_hud`",
         doc: "Per-phase frame timing (windowed drivers fill it; headless shows the chrome empty).",
     },
+    ElementDef {
+        name: "audio",
+        jsx: "`<audio src={id} loop volume paused tag/>`",
+        lua: "`audio { src=, loop=, volume=, paused=, tag= }`",
+        c: "`kui_audio`",
+        doc: "A playback retained by node key: present = playing (once, or looped), gone = stopped; `volume` / `paused` apply live, a changed `src` restarts; a `tag` brings back `{kind:\"sound\", phase:\"ended\", tag}`. Draws nothing.",
+    },
 ];
 
 /// An event kind hosts receive, with its payload shape.
@@ -784,6 +808,11 @@ pub const EVENTS: &[EventDef] = &[
         payload: "`{ kind: \"changed\" }` / `{ kind: \"submit\" }`, with the editor's key on the event",
         doc: "An editor's text changed / Enter in a single-line editor.",
     },
+    EventDef {
+        kind: "sound",
+        payload: "`{ kind: \"sound\", phase: \"ended\", playback, tag }`",
+        doc: "A tagged playback (`play(id, { tag })` or `<audio tag>`) finished on its own — never when something stopped it.",
+    },
 ];
 
 /// A host-registered resource and how each binding registers it.
@@ -824,6 +853,12 @@ pub const RESOURCES: &[ResourceDef] = &[
         node: "`ctx.addSystemFont(\"Antonio\")` (see `systemFontFamilies()`)",
         lua: "the host registers; `font = id`",
         c: "`kui_font_add_system`",
+    },
+    ResourceDef {
+        what: "sound (wav / ogg / mp3 / flac bytes)",
+        node: "`ctx.addSound(buffer)` → id for `<audio src>`, `clickSound`, `play(id)`",
+        lua: "the host registers; `audio { src = id }`, `click_sound = id`",
+        c: "`kui_sound_add` → `kui_audio`, `KuiSpec.click_sound`, `kui_play`",
     },
 ];
 
@@ -936,6 +971,7 @@ pub fn apply(def: &PropDef, value: Parsed, out: &mut PropsOut) -> Result<(), Str
         (Apply::SpecStr(f), Parsed::Str(v)) => out.spec = f(spec, &v),
         (Apply::SpecKeyframes(f), Parsed::Keyframes(v)) => out.spec = f(spec, v),
         (Apply::SpecEnter(f), Parsed::Enter(v)) => out.spec = f(spec, v),
+        (Apply::SpecResource(f), Parsed::Resource(v)) => out.spec = f(spec, v),
         (Apply::StyleF32(f), Parsed::F32(v)) => {
             out.spec = spec;
             out.style = f(style, v);

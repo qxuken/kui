@@ -129,6 +129,27 @@ impl<'a> Ui<'a> {
         self.core.image_node(id, spec);
     }
 
+    /// An `audio` node: a playback retained for as long as the view keeps
+    /// declaring it; see `Core::audio_node`.
+    pub fn audio(&mut self, spec: crate::audio::AudioSpec) -> Key {
+        self.core.audio_node(spec)
+    }
+
+    /// `audio` with a label-derived key; see `Core::audio_node_keyed`.
+    pub fn audio_keyed(&mut self, label: &str, spec: crate::audio::AudioSpec) -> Key {
+        self.core.audio_node_keyed(label, spec)
+    }
+
+    /// Starts a playback from a view; see `Core::play`. Views run every
+    /// frame, so gate it on state that changes once (or use `audio`).
+    pub fn play(
+        &mut self,
+        sound: crate::resources::SoundId,
+        opts: crate::audio::PlayOptions,
+    ) -> crate::audio::PlaybackId {
+        self.core.play(sound, opts)
+    }
+
     /// An editable text node; state retained by key. See `Core::text_edit`.
     pub fn text_edit(
         &mut self,
