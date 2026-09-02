@@ -58,7 +58,13 @@ never a closure. The addon's own object walk (`frameObject`) and a JSON
 string transport (`frameJson`) stay available as readable reference paths;
 `npm test` in [packages/kui](packages/kui) checks that all three produce
 byte-identical quads for every schema prop and element, and
-`examples/node/bench.mjs` compares their cost.
+`examples/node/bench.mjs` compares their cost. A one-off measurement of the
+same view built through Node 26's experimental `node:ffi` module, calling the
+C API in [kui.h](crates/kui-ffi/include/kui.h) directly, put ~1500 flat calls
+per frame at ~0.24 ms against ~0.19 ms for the single binary-stream call,
+while plain C over the same API takes ~0.08 ms — the boundary itself is
+~30 ns/call, the rest is JS-side argument marshalling (raw addresses beat
+Buffer arguments by ~30%), so the binary stream stays the default.
 
 A Lua extension in full:
 
