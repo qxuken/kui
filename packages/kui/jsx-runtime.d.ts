@@ -85,6 +85,8 @@ export interface GeneratedSpecProps {
   onKey?: Msg;
   /** Corner radius (logical px). */
   radius?: number;
+  /** With transition: also ease the node's position (reordered siblings slide). */
+  slide?: boolean;
   /** Animate sizing/colors/radius changes over this many ms (needs a stable key). */
   transition?: number;
   /** Main-axis size: px | "fit" | "grow" | "N%". */

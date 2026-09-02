@@ -373,3 +373,29 @@ fn percent_floats_tile_their_parent_into_zones() {
         "corner: later float on top"
     );
 }
+
+/// A cursor-anchored float (viewport anchor + offset) near the right edge
+/// must stay by the cursor, clamped — not mirror to the far side of the
+/// window the way a parent-anchored tooltip flips above/below.
+#[test]
+fn viewport_fit_clamps_instead_of_mirroring() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with(
+        NodeSpec::column()
+            .float(FloatConfig::viewport().offset(380.0, 100.0).fit())
+            .width(Sizing::Fixed(100.0))
+            .height(Sizing::Fixed(20.0))
+            .bg(RED),
+        |_| {},
+    );
+    ui.finish();
+    let quads = solid_quads(&mut core);
+    let (x, y, ..) = quads[0];
+    assert_eq!(
+        (x, y),
+        (300.0, 100.0),
+        "clamped to the right edge, same row"
+    );
+}

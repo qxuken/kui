@@ -60,6 +60,7 @@ pub const P_TITLE: u32 = 29;
 pub const P_TOOLTIP: u32 = 30;
 pub const P_TRANSITION: u32 = 31;
 pub const P_EASING: u32 = 32;
+pub const P_SLIDE: u32 = 33;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -300,6 +301,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Enum(EASINGS),
         apply: Apply::SpecEnum(|s, i| s.easing(easing_idx(i))),
         doc: "Easing curve for `transition` (default easeOut).",
+    },
+    PropDef {
+        name: "slide",
+        id: P_SLIDE,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.slide()),
+        doc: "With transition: also ease the node's position (reordered siblings slide).",
     },
     PropDef {
         name: "lineHeight",

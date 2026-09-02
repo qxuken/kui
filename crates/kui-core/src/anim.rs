@@ -72,9 +72,10 @@ pub(crate) enum Slot {
     Bg = 2,
     Border = 3,
     Radius = 4,
+    Pos = 5,
 }
 
-const SLOTS: usize = 5;
+const SLOTS: usize = 6;
 
 #[derive(Clone, Copy, Debug)]
 struct Tween {
@@ -155,11 +156,13 @@ impl AnimStore {
             return target;
         };
         if stale {
+            // Settled from the start: a leg that began infinitely long ago
+            // is complete, so nothing is owed until a retarget.
             *entry = Some(Tween {
                 from: target,
                 to: target,
                 value: target,
-                start: now,
+                start: f64::NEG_INFINITY,
                 transition,
                 last_used: frame_no,
             });
@@ -237,6 +240,19 @@ mod tests {
         a.begin_frame();
         assert_eq!(a.drive(k, Slot::Width, one(20.0), t)[0], 20.0);
         assert!(!a.animating(), "settled");
+    }
+
+    #[test]
+    fn unchanged_targets_owe_no_frames() {
+        let mut a = AnimStore::default();
+        let k = Key::ROOT.str("x");
+        let t = Transition::ms(100.0);
+        for i in 0..3 {
+            a.set_time(i as f64 * 0.001);
+            a.begin_frame();
+            a.drive(k, Slot::Width, one(5.0), t);
+            assert!(!a.animating(), "frame {i}: same value, nothing to animate");
+        }
     }
 
     #[test]

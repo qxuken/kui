@@ -145,7 +145,11 @@ end
   `ctx.setTime`) and ask `animating()` whether another frame is owed; a
   headless driver that never sets time gets snapping, and a node's first
   frame or a frame without the transition snaps too, so nothing animates in
-  from nowhere and a divider drag doesn't replay when it ends.
+  from nowhere and a divider drag doesn't replay when it ends. `slide`
+  opts a node into easing its laid-out *position* too, subtree and all,
+  which is what reordered siblings need (splitmux's tabs slide into their
+  new order); it stays opt-in because a node whose position follows an
+  already-easing sibling would lag twice.
 - **Subpixel text where the GPU can blend it.** Glyphs are already placed at
   quarter-pixel x offsets (cosmic-text's subpixel bins); on top of that the
   core can rasterize outline glyphs as LCD subpixel coverage — three

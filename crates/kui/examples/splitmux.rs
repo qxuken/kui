@@ -291,13 +291,21 @@ impl Zone {
     }
 }
 
+/// One tab: its split tree plus a stable id, so the tab's node key survives
+/// reordering and its position transition has something to slide.
+struct Tab {
+    id: u64,
+    root: Node,
+}
+
 // ---------------------------------------------------------------- app
 
 struct Splitmux {
     pal: Pal,
     next_pane: u64,
     /// One split tree per tab — the whole layout is this data.
-    tabs: Vec<Node>,
+    tabs: Vec<Tab>,
+    next_tab: u64,
     tab: usize,
     focused: u64,
     /// Path of the divider being dragged, for active styling while the
@@ -336,7 +344,8 @@ impl Splitmux {
         Self {
             pal: Pal::default(),
             next_pane: 4,
-            tabs: vec![root],
+            tabs: vec![Tab { id: 1, root }],
+            next_tab: 2,
             tab: 0,
             focused: 1,
             dragging: None,
@@ -362,10 +371,10 @@ impl Splitmux {
             return;
         }
         if zone == Zone::Center {
-            self.tabs[self.tab].swap(src, dst);
+            self.tabs[self.tab].root.swap(src, dst);
             return;
         }
-        let root = std::mem::replace(&mut self.tabs[self.tab], Node::Pane(u64::MAX));
+        let root = std::mem::replace(&mut self.tabs[self.tab].root, Node::Pane(u64::MAX));
         let Some(mut root) = without(root, src) else {
             return;
         };
@@ -377,13 +386,13 @@ impl Splitmux {
             Zone::Center => unreachable!(),
         };
         root.split_with(dst, dir, Node::Pane(src), before);
-        self.tabs[self.tab] = root;
+        self.tabs[self.tab].root = root;
         self.focused = src;
     }
 
     fn pane_ids(&self) -> Vec<u64> {
         let mut ids = Vec::new();
-        self.tabs[self.tab].panes(&mut ids);
+        self.tabs[self.tab].root.panes(&mut ids);
         ids
     }
 
@@ -403,15 +412,15 @@ impl Splitmux {
     fn split(&mut self, dir: SplitDir) {
         let id = self.next_pane;
         self.next_pane += 1;
-        self.tabs[self.tab].split(self.focused, dir, id);
+        self.tabs[self.tab].root.split(self.focused, dir, id);
         self.focused = id;
     }
 
     fn close_pane(&mut self) {
-        let root = std::mem::replace(&mut self.tabs[self.tab], Node::Pane(u64::MAX));
+        let root = std::mem::replace(&mut self.tabs[self.tab].root, Node::Pane(u64::MAX));
         match without(root, self.focused) {
             Some(root) => {
-                self.tabs[self.tab] = root;
+                self.tabs[self.tab].root = root;
                 self.refocus();
             }
             None => {
@@ -429,7 +438,11 @@ impl Splitmux {
     fn new_tab(&mut self) {
         let id = self.next_pane;
         self.next_pane += 1;
-        self.tabs.push(Node::Pane(id));
+        self.tabs.push(Tab {
+            id: self.next_tab,
+            root: Node::Pane(id),
+        });
+        self.next_tab += 1;
         self.tab = self.tabs.len() - 1;
         self.focused = id;
     }
@@ -479,7 +492,7 @@ impl Splitmux {
                 {
                     let to = (0..self.tabs.len()).find(|&j| {
                         j != from
-                            && ui.is_hovered(ui.child_key(&format!("tab{j}")))
+                            && ui.is_hovered(ui.child_key(&format!("tab{}", self.tabs[j].id)))
                             && ((j > from && sign > 0.0) || (j < from && sign < 0.0))
                     });
                     if let Some(j) = to {
@@ -506,12 +519,16 @@ impl Splitmux {
                         (Color::TRANSPARENT, pal.dim)
                     };
                     let mut ids = Vec::new();
-                    self.tabs[i].panes(&mut ids);
+                    self.tabs[i].root.panes(&mut ids);
+                    // Keyed by tab id, not slot: a reordered tab keeps its
+                    // identity, so `slide` eases it (and the tabs it
+                    // displaced) into the new order instead of snapping.
                     let mut spec = NodeSpec::row()
                         .pad_xy(10.0, 4.0)
                         .radius(6.0)
                         .bg(bg)
                         .transition(120.0)
+                        .slide()
                         .on_click(Value::map([
                             ("kind", "tab".into()),
                             ("tab", Value::Int(i as i64)),
@@ -523,7 +540,7 @@ impl Splitmux {
                     if lifted {
                         spec = spec.border(1.0, pal.border_focus);
                     }
-                    ui.with_keyed(&format!("tab{i}"), spec, |ui| {
+                    ui.with_keyed(&format!("tab{}", self.tabs[i].id), spec, |ui| {
                         ui.text(
                             &format!("{}  {} pane(s)", i + 1, ids.len()),
                             TextStyle::new(12.0).color(fg),
@@ -694,11 +711,6 @@ impl Splitmux {
                             a: 0.35,
                             ..pal.accent
                         }
-                    } else if drag.is_none() && hovered {
-                        Color {
-                            a: 0.08,
-                            ..pal.accent
-                        }
                     } else {
                         Color::TRANSPARENT
                     };
@@ -727,6 +739,19 @@ impl Splitmux {
             return;
         };
         let pal = self.pal;
+        // Hang off the cursor's bottom-right, or its bottom-left once the
+        // right edge is near (the float's `fit` only clamps for viewport
+        // anchors; flipping sides is the host's call).
+        let vw = ui.viewport().w;
+        let float = if x + 300.0 < vw {
+            FloatConfig::viewport().offset(x + 14.0, y + 14.0)
+        } else {
+            FloatConfig::viewport()
+                .at(Align::End, Align::Start)
+                .self_at(Align::End, Align::Start)
+                .offset(x - vw - 14.0, y + 14.0)
+        }
+        .fit();
         let target = self
             .drop_target
             .map(|(dst, zone)| match zone {
@@ -740,7 +765,7 @@ impl Splitmux {
         ui.with_keyed(
             "ghost",
             NodeSpec::row()
-                .float(FloatConfig::viewport().offset(x + 14.0, y + 14.0).fit())
+                .float(float)
                 .pad_xy(10.0, 6.0)
                 .gap(6.0)
                 .radius(6.0)
@@ -774,7 +799,7 @@ impl App for Splitmux {
         );
         self.tab_bar(ui);
 
-        let root = self.tabs[self.tab].clone();
+        let root = self.tabs[self.tab].root.clone();
         // The view names the drop target from hover; start each frame blank
         // so a cursor that left every zone means "nowhere".
         self.drop_target = None;
@@ -787,7 +812,7 @@ impl App for Splitmux {
             |ui| self.render_node(ui, &root, ""),
         );
         ui.take_key_focus(sink);
-        self.tabs[self.tab].settle();
+        self.tabs[self.tab].root.settle();
         self.render_ghost(ui);
 
         widgets::latency_hud(ui);
@@ -932,7 +957,7 @@ impl Splitmux {
                 };
                 let path = path.to_string();
                 self.dragging = Some(path.clone());
-                if let Some(r) = self.tabs[self.tab].ratio_mut(&path) {
+                if let Some(r) = self.tabs[self.tab].root.ratio_mut(&path) {
                     *r = (ratio as f32).clamp(0.05, 0.95);
                 }
             }

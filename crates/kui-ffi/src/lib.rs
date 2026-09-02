@@ -114,6 +114,9 @@ pub struct KuiSpec {
     pub transition_ms: f32,
     /// KUI_EASE_* curve for `transition_ms`.
     pub easing: u32,
+    /// Non-zero (with `transition_ms`): also ease the node's position, so
+    /// reordered siblings slide into place.
+    pub slide: u32,
 }
 
 #[repr(C)]
@@ -302,6 +305,9 @@ fn spec_of(
     }
     if s.easing != 0 {
         spec = spec.easing(kui_core::schema::easing_idx(s.easing as usize));
+    }
+    if s.slide != 0 {
+        spec = spec.slide();
     }
     if let Some(v) = take_msg(on_click) {
         spec = spec.on_click(v);
@@ -1346,6 +1352,7 @@ mod schema_parity {
                 "window" => s.window_role = 2, // KUI_WINDOW_* = schema index + 1
                 "transition" => s.transition_ms = F,
                 "easing" => s.easing = 1,
+                "slide" => s.slide = 1,
                 "onClick" => click = msg(Value::Int(7)),
                 "onDrag" => drag = msg(Value::Int(7)),
                 "onKey" => key = msg(Value::Int(7)),
@@ -1414,6 +1421,7 @@ mod schema_parity {
             window_role: 1,
             transition_ms: 150.0,
             easing: 3,
+            slide: 1,
         };
         let expected = NodeSpec::row()
             .width(Sizing::Grow(2.0))
@@ -1448,6 +1456,7 @@ mod schema_parity {
             .window_drag()
             .transition(150.0)
             .easing(kui_core::Easing::EaseInOut)
+            .slide()
             .on_click(Value::str("c"))
             .on_drag(Value::str("d"))
             .on_key(Value::str("k"));

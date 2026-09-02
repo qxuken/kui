@@ -71,6 +71,8 @@ pub struct Core {
     /// Per-node "inside a floating subtree" marker (only filled when needed).
     in_float: Vec<bool>,
     any_float: bool,
+    /// Whether any node this frame eases its position (`NodeSpec::slide`).
+    any_slide: bool,
     /// The focused editor's caret rect (logical, viewport coords) as of the
     /// last finish_frame — where drivers should anchor the OS IME window.
     ime_rect: Option<Rect>,
@@ -101,6 +103,7 @@ impl Core {
             any_clip: false,
             in_float: Vec::new(),
             any_float: false,
+            any_slide: false,
             ime_rect: None,
         }
     }
@@ -559,6 +562,7 @@ impl Core {
         self.origin = OriginId::HOST;
         self.any_clip = false;
         self.any_float = false;
+        self.any_slide = false;
     }
 
     /// Declares this frame's window title. Like all frame state it's data:
@@ -674,6 +678,9 @@ impl Core {
         self.ease_spec(key, &mut spec);
         if spec.layout.clips() {
             self.any_clip = true;
+        }
+        if spec.slide && spec.transition.is_some() {
+            self.any_slide = true;
         }
         if spec.layout.float.is_some() {
             self.any_float = true;
@@ -797,6 +804,9 @@ impl Core {
             );
         }
         self.scroll_caret_into_view();
+        if self.any_slide {
+            self.ease_positions();
+        }
 
         let scale = self.scale;
         let mut hits: Vec<HitRegion> = self.interaction.take_hit_buffer();
@@ -965,6 +975,34 @@ impl Core {
         self.interaction.scroll_regions = scroll_regions;
         self.interaction.scrollbars = scrollbars;
         self.ime_rect = self.focused_caret_rect();
+    }
+
+    /// After layout: nodes that `slide` ease from last frame's position
+    /// toward where layout put them, carrying their subtree along (hit
+    /// regions come from the same positions, so input follows the motion).
+    /// Preorder means a parent shifts before its children are visited, so
+    /// nested sliders ease relative to an already-eased parent.
+    fn ease_positions(&mut self) {
+        for i in 0..self.tree.len() {
+            let spec = &self.tree.specs[i];
+            let (Some(t), true) = (spec.transition, spec.slide) else {
+                continue;
+            };
+            let key = self.tree.keys[i];
+            let target = self.tree.pos[i];
+            let v = self
+                .anim
+                .drive(key, Slot::Pos, [target.x, target.y, 0.0, 0.0], t);
+            let d = Vec2::new(v[0] - target.x, v[1] - target.y);
+            if d.x == 0.0 && d.y == 0.0 {
+                continue;
+            }
+            let end = self.tree.subtree_end(i);
+            for p in &mut self.tree.pos[i..end] {
+                p.x += d.x;
+                p.y += d.y;
+            }
+        }
     }
 
     /// See the `ime_rect` field. None when no editor is focused.

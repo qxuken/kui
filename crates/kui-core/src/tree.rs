@@ -30,6 +30,24 @@ pub enum NodeContent {
     Image(crate::resources::ImageId),
 }
 
+impl Tree {
+    /// One past the last node of `i`'s subtree. Preorder storage makes a
+    /// subtree a contiguous index range ending at the next node that is a
+    /// sibling of `i` or of one of its ancestors.
+    pub fn subtree_end(&self, i: usize) -> usize {
+        let mut n = i as u32;
+        loop {
+            if self.next_sibling[n as usize] != NIL {
+                return self.next_sibling[n as usize] as usize;
+            }
+            n = self.parent[n as usize];
+            if n == NIL {
+                return self.len();
+            }
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Tree {
     pub keys: Vec<Key>,

@@ -570,7 +570,10 @@ pub(crate) fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Siz
                     cfg.self_point.1,
                     cfg.offset.y,
                 );
-                if cfg.fit {
+                // Mirroring across the viewport itself would teleport a
+                // cursor-anchored float to the opposite side of the window,
+                // so viewport floats only clamp.
+                if cfg.fit && cfg.anchor == FloatAnchor::Parent {
                     // Mirror the attachment across the anchor per axis when
                     // the mirrored side is less off-screen (ties keep the
                     // declared side), then clamp the rest. Clamp order pins
@@ -597,6 +600,8 @@ pub(crate) fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Siz
                     if overflow(y, cs.h, viewport.h) > overflow(fy, cs.h, viewport.h) {
                         y = fy;
                     }
+                }
+                if cfg.fit {
                     x = x.min(viewport.w - cs.w).max(0.0);
                     y = y.min(viewport.h - cs.h).max(0.0);
                 }

@@ -121,6 +121,7 @@ typedef struct KuiSpec {
      * key via kui_open_keyed, and kui_set_time each frame). */
     float transition_ms;
     uint32_t easing; /* KUI_EASE_* */
+    uint32_t slide;  /* non-zero: also ease the position (siblings slide) */
 } KuiSpec;
 
 /* Zero-initialized KuiTextStyle picks defaults (16px, default foreground). */

@@ -112,3 +112,66 @@ fn colors_ease_too() {
     core.set_time(0.05);
     assert!((paint(&mut core, 1.0) - 0.6).abs() < 1e-3);
 }
+
+/// Two keyed tabs in a row; returns the x of each (they carry backgrounds,
+/// so they are the first two quads in tree order).
+fn tab_xs(core: &mut Core, order: [&str; 2], slide: bool) -> Vec<(String, f32)> {
+    let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+    ui.configure_root(NodeSpec::row().fill().gap(10.0));
+    for label in order {
+        let mut spec = NodeSpec::column()
+            .width(Sizing::Fixed(50.0))
+            .height(Sizing::Fixed(20.0))
+            .bg(kui_core::Color::WHITE)
+            .transition_with(Transition::ms(100.0).easing(Easing::Linear));
+        if slide {
+            spec = spec.slide();
+        }
+        ui.with_keyed(label, spec, |_| {});
+    }
+    ui.finish();
+    let (dl, _) = core.output();
+    order
+        .iter()
+        .zip(dl.quads.iter())
+        .map(|(l, q)| (l.to_string(), q.rect.x))
+        .collect()
+}
+
+#[test]
+fn slide_eases_reordered_siblings_into_place() {
+    let mut core = Core::new();
+    core.set_time(0.0);
+    let xs = tab_xs(&mut core, ["a", "b"], true);
+    assert_eq!(xs[0], ("a".into(), 0.0));
+    assert_eq!(xs[1], ("b".into(), 60.0));
+
+    // Swap: this frame both still draw where they were.
+    core.set_time(0.0);
+    let xs = tab_xs(&mut core, ["b", "a"], true);
+    assert_eq!(xs[0], ("b".into(), 60.0), "b starts from its old slot");
+    assert_eq!(xs[1], ("a".into(), 0.0));
+    assert!(core.animating());
+
+    core.set_time(0.05);
+    let xs = tab_xs(&mut core, ["b", "a"], true);
+    assert!((xs[0].1 - 30.0).abs() < 1.0, "b halfway: {}", xs[0].1);
+    assert!((xs[1].1 - 30.0).abs() < 1.0, "a halfway: {}", xs[1].1);
+
+    core.set_time(0.2);
+    let xs = tab_xs(&mut core, ["b", "a"], true);
+    assert_eq!(xs[0].1, 0.0);
+    assert_eq!(xs[1].1, 60.0);
+    assert!(!core.animating());
+}
+
+#[test]
+fn without_slide_a_transition_does_not_move_positions() {
+    let mut core = Core::new();
+    core.set_time(0.0);
+    tab_xs(&mut core, ["a", "b"], false);
+    core.set_time(0.0);
+    let xs = tab_xs(&mut core, ["b", "a"], false);
+    assert_eq!(xs[0].1, 0.0, "b snaps to its new slot");
+    assert!(!core.animating());
+}

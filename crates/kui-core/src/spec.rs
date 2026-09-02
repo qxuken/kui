@@ -243,6 +243,11 @@ pub struct NodeSpec {
     /// view declares instead of snapping (see [`crate::anim`]). Keyed by
     /// node identity, so the node needs a stable key across frames.
     pub transition: Option<Transition>,
+    /// With `transition`: also ease this node's laid-out *position*, moving
+    /// its whole subtree — reordered siblings slide into their new slots.
+    /// Opt-in because a node whose position follows an already-easing
+    /// sibling (a split's second half) would lag twice.
+    pub slide: bool,
 }
 
 impl NodeSpec {
@@ -412,6 +417,14 @@ impl NodeSpec {
 
     pub fn transition_with(mut self, t: Transition) -> Self {
         self.transition = Some(t);
+        self
+    }
+
+    /// Also ease this node's position (see the `slide` field); sets a
+    /// default 200ms transition if none was declared yet.
+    pub fn slide(mut self) -> Self {
+        self.transition.get_or_insert(Transition::ms(200.0));
+        self.slide = true;
         self
     }
 
