@@ -82,7 +82,10 @@ package as [props.md](props.md) (`docs/props.md` in the repository).
 - **Window size**: `win.size()` gives `{width, height, scale}` (logical px)
   — in `setup(win)` before the first frame, and any time after. Changes
   arrive as `{kind: 'resize', width, height, scale}` events, so a model that
-  tracks the size updates in `update` like anything else.
+  tracks the size updates in `update` like anything else. Bound what the
+  user can resize to with `minWidth` / `minHeight` / `maxWidth` / `maxHeight`
+  next to `width` / `height` at open; either half of a pair may stand alone,
+  and `width`/`height` are clamped into the bounds the OS will enforce.
 - **A clock**: `tick` on `runWindowed`, or `setTimeout` toward the next
   boundary in your own loop; do not call `update` every pump.
 - **Keys**: `onKey` on the root plus `keyFocus`; presses arrive as

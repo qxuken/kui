@@ -56,6 +56,8 @@ pub fn app(title: &str) -> Launcher {
         title: title.to_string(),
         chrome: Chrome::Native,
         size: (960.0, 640.0),
+        min_size: None,
+        max_size: None,
         extensions: Vec::new(),
         text_aa: TextAa::Auto,
     }
@@ -66,6 +68,10 @@ pub struct Launcher {
     title: String,
     chrome: Chrome,
     size: (f64, f64),
+    /// Inner-size bounds (logical px) handed to the OS, which enforces them
+    /// for user resizing; `None` leaves that side unbounded.
+    min_size: Option<(f64, f64)>,
+    max_size: Option<(f64, f64)>,
     extensions: Vec<Box<dyn Extension>>,
     text_aa: TextAa,
 }
@@ -93,8 +99,23 @@ impl Launcher {
     }
 
     /// Initial inner size, logical px (`KUI_WINDOW=WxH` still overrides).
+    /// Clamped into the `min_size`/`max_size` bounds, as the OS would.
     pub fn size(mut self, w: f64, h: f64) -> Self {
         self.size = (w, h);
+        self
+    }
+
+    /// Smallest inner size the user may resize the window to, logical px.
+    /// The OS enforces it; the initial size is clamped up into it.
+    pub fn min_size(mut self, w: f64, h: f64) -> Self {
+        self.min_size = Some((w, h));
+        self
+    }
+
+    /// Largest inner size the user may resize the window to, logical px.
+    /// A bound below the matching `min_size` loses to it, as on the OS side.
+    pub fn max_size(mut self, w: f64, h: f64) -> Self {
+        self.max_size = Some((w, h));
         self
     }
 
@@ -113,7 +134,9 @@ impl Launcher {
             title: self.title.clone(),
             applied_title: self.title,
             chrome: self.chrome,
-            size: self.size,
+            size: clamp_size(self.size, self.min_size, self.max_size),
+            min_size: self.min_size,
+            max_size: self.max_size,
             text_aa: self.text_aa,
             app,
             extensions: self.extensions,
@@ -227,6 +250,23 @@ pub fn run<A: App>(
     app(title).extensions(extensions).run(application)
 }
 
+/// Clamps a requested inner size into `min`/`max` (logical px), the way the
+/// OS clamps a resize once the window exists — so a host reading
+/// `PumpRunner::window_size` before the first frame sees the real size.
+/// `min` wins where the two bounds cross, matching the platforms.
+fn clamp_size(size: (f64, f64), min: Option<(f64, f64)>, max: Option<(f64, f64)>) -> (f64, f64) {
+    let (mut w, mut h) = size;
+    if let Some((mw, mh)) = max {
+        w = w.min(mw);
+        h = h.min(mh);
+    }
+    if let Some((mw, mh)) = min {
+        w = w.max(mw);
+        h = h.max(mh);
+    }
+    (w, h)
+}
+
 /// Traffic-light keep-out rect under macOS custom chrome (logical px,
 /// window coords); content starts at its right edge. AppKit gives no stable
 /// public metric, so this uses gpui's measured TRAFFIC_LIGHT_PADDING: 78
@@ -255,7 +295,10 @@ struct Shell<A: App> {
     /// we only touch the window on change.
     applied_title: String,
     chrome: Chrome,
+    /// Initial inner size (logical px), already clamped into the bounds.
     size: (f64, f64),
+    min_size: Option<(f64, f64)>,
+    max_size: Option<(f64, f64)>,
     text_aa: TextAa,
     app: A,
     extensions: Vec<Box<dyn Extension>>,
@@ -715,11 +758,18 @@ impl<A: App> ApplicationHandler for Shell<A> {
                 let (w, h) = s.split_once('x')?;
                 Some((w.parse().ok()?, h.parse().ok()?))
             })
+            .map(|s| clamp_size(s, self.min_size, self.max_size))
             .unwrap_or(self.size);
         #[allow(unused_mut)]
         let mut attrs = Window::default_attributes()
             .with_title(&self.title)
             .with_inner_size(LogicalSize::new(w, h));
+        if let Some((mw, mh)) = self.min_size {
+            attrs = attrs.with_min_inner_size(LogicalSize::new(mw, mh));
+        }
+        if let Some((mw, mh)) = self.max_size {
+            attrs = attrs.with_max_inner_size(LogicalSize::new(mw, mh));
+        }
         match self.chrome {
             Chrome::Native => {}
             Chrome::Custom => {
@@ -932,3 +982,65 @@ impl<A: App> ApplicationHandler for Shell<A> {
 
 // Re-exported so apps can reach the renderer without depending on kui-wgpu.
 pub use kui_wgpu::{RenderError, Renderer, wgpu};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Empty;
+    impl App for Empty {
+        fn view(&mut self, _ui: &mut Ui<'_>) {}
+    }
+
+    #[test]
+    fn clamp_size_honors_each_bound() {
+        let bounds = (Some((400.0, 300.0)), Some((1200.0, 900.0)));
+        assert_eq!(
+            clamp_size((800.0, 600.0), bounds.0, bounds.1),
+            (800.0, 600.0)
+        );
+        assert_eq!(
+            clamp_size((100.0, 100.0), bounds.0, bounds.1),
+            (400.0, 300.0)
+        );
+        assert_eq!(
+            clamp_size((4000.0, 4000.0), bounds.0, bounds.1),
+            (1200.0, 900.0)
+        );
+        // Per-axis, and unbounded sides pass through untouched.
+        assert_eq!(
+            clamp_size((100.0, 4000.0), bounds.0, bounds.1),
+            (400.0, 900.0)
+        );
+        assert_eq!(clamp_size((10.0, 10.0), None, None), (10.0, 10.0));
+        // A max below the min loses to it, as the platforms resolve it.
+        assert_eq!(
+            clamp_size((800.0, 600.0), Some((500.0, 500.0)), Some((200.0, 200.0))),
+            (500.0, 500.0)
+        );
+    }
+
+    #[test]
+    fn launcher_clamps_the_initial_size_into_the_bounds() {
+        let shell = app("t")
+            .size(320.0, 240.0)
+            .min_size(640.0, 480.0)
+            .shell(Empty);
+        assert_eq!(shell.size, (640.0, 480.0));
+        assert_eq!(shell.min_size, Some((640.0, 480.0)));
+
+        let shell = app("t")
+            .size(1600.0, 1200.0)
+            .max_size(800.0, 600.0)
+            .shell(Empty);
+        assert_eq!(shell.size, (800.0, 600.0));
+        assert_eq!(shell.max_size, Some((800.0, 600.0)));
+
+        // Builder order is irrelevant: the clamp happens once, at `shell`.
+        let shell = app("t")
+            .min_size(640.0, 480.0)
+            .size(320.0, 240.0)
+            .shell(Empty);
+        assert_eq!(shell.size, (640.0, 480.0));
+    }
+}

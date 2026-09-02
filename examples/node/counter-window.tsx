@@ -64,6 +64,8 @@ const done = runWindowed({ init, update, view }, {
   title: 'kui counter',
   width: 640,
   height: 480,
+  minWidth: 420,
+  minHeight: 320,
   chrome: 'custom',
   setup(win) {
     const [w, h] = [64, 32];

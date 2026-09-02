@@ -33,8 +33,10 @@ KuiWindow.prototype.setView = function setView(tree) {
  * process (winit event loops are not recreatable everywhere).
  */
 export function runWindowed({ init, update, view, tick }, opts = {}) {
-  const { width, height, chrome } = opts;
-  const win = new KuiWindow(opts.title ?? 'kui', { width, height, chrome });
+  const { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome } = opts;
+  const win = new KuiWindow(opts.title ?? 'kui', {
+    width, height, minWidth, minHeight, maxWidth, maxHeight, chrome,
+  });
   opts.setup?.(win);
   let model = typeof init === 'function' ? init() : init;
   // Binary IR path by default; `transport: 'json'` keeps the readable

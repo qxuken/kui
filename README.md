@@ -207,6 +207,13 @@ payload shapes and the resource APIs. It is generated from the schema
   other pending events — `App::on_event` in Rust, `pollEvents` in Node, `kui_poll_event`
   in C. As a query it is `KuiWindow.size()` / `PumpRunner::window_size()`,
   which answer before the first frame too (`Core::viewport()` after it).
+  What the user may resize *to* is a launch option: `kui::app("t").min_size(420.0,
+  320.0).max_size(1600.0, 1200.0)` (`minWidth` / `minHeight` / `maxWidth` /
+  `maxHeight` in the Node `WindowOptions`, where either half of a pair may
+  stand alone). The OS enforces the bounds — including the synthesized edge
+  resizing under custom chrome — and the initial size is clamped into them,
+  so the pre-first-frame `window_size()` never reports a size the window
+  cannot have; where the two bounds cross, the minimum wins.
 - **Pointer state is declared, not queried.** A node says what it looks
   like while hovered or pressed (`hover_bg` / `pressed_bg`; JSX `hoverBg`,
   Lua `hover_bg`, `KuiSpec.hover_bg`) and the core swaps the color in when

@@ -801,6 +801,11 @@ impl kui::App for TreeApp {
     }
 }
 
+// Stand-in for "no bound on this axis" when only one half of `maxWidth` /
+// `maxHeight` is given: logical px past any display, and small enough that
+// the platforms still convert it to physical px without overflowing.
+const UNBOUNDED_SIZE: f64 = 65_535.0;
+
 /// A real kui window driven from Node. The event loop is pumped, not run:
 /// call `pump()` from a timer loop (see `runWindowed` in the JS package) so
 /// winit and libuv share the main thread. One window per process — winit
@@ -812,7 +817,9 @@ pub struct KuiWindow {
 
 #[napi]
 impl KuiWindow {
-    /// Options: `{width, height, chrome: "native" | "custom" | "borderless"}`.
+    /// Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
+    /// chrome: "native" | "custom" | "borderless"}`. The min/max pairs bound
+    /// what the user can resize the window to; either half may stand alone.
     #[napi(constructor)]
     pub fn new(title: String, options: Option<Json>) -> Result<Self> {
         let o = options
@@ -824,6 +831,20 @@ impl KuiWindow {
         let h = o.get("height").and_then(Json::as_f64);
         if let (Some(w), Some(h)) = (w, h) {
             launcher = launcher.size(w, h);
+        }
+        let num = |k: &str| o.get(k).and_then(Json::as_f64).filter(|v| v.is_finite());
+        // A lone `minWidth` leaves the other axis free: 0 for a missing min,
+        // and for a missing max a bound no display reaches.
+        let (min_w, min_h) = (num("minWidth"), num("minHeight"));
+        if min_w.is_some() || min_h.is_some() {
+            launcher = launcher.min_size(min_w.unwrap_or(0.0), min_h.unwrap_or(0.0));
+        }
+        let (max_w, max_h) = (num("maxWidth"), num("maxHeight"));
+        if max_w.is_some() || max_h.is_some() {
+            launcher = launcher.max_size(
+                max_w.unwrap_or(UNBOUNDED_SIZE),
+                max_h.unwrap_or(UNBOUNDED_SIZE),
+            );
         }
         launcher = match o.get("chrome").and_then(Json::as_str) {
             Some("custom") => launcher.custom_titlebar(),

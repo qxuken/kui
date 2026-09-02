@@ -186,6 +186,15 @@ export declare function quadStride(): number;
 export interface WindowOptions {
   width?: number;
   height?: number;
+  /** Smallest inner size the user may resize the window to (logical px).
+   *  The OS enforces it; `width`/`height` are clamped up into it. Either
+   *  axis may stand alone — the other stays unbounded. */
+  minWidth?: number;
+  minHeight?: number;
+  /** Largest inner size the user may resize the window to (logical px).
+   *  A bound below the matching minimum loses to it. */
+  maxWidth?: number;
+  maxHeight?: number;
   chrome?: 'native' | 'custom' | 'borderless';
   /** Frame transport: 'binary' (default, fastest) or 'json' (readable, for
    *  debugging encoder suspicions). */
