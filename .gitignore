@@ -4,3 +4,4 @@
 /examples/node/node_modules
 /examples/node/dist
 /packages/kui/prebuilds
+/packages/kui/props.md

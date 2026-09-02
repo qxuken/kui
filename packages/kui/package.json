@@ -1,6 +1,6 @@
 {
   "name": "@qxuken/kui",
-  "version": "0.1.0-alpha.3",
+  "version": "0.1.0-alpha.4",
   "description": "kui for Node: JSX views lowered into the kui IR, Elm-style messages as data",
   "license": "MIT",
   "repository": {
@@ -35,11 +35,13 @@
     "jsx-dev-runtime.js",
     "encoder.js",
     "native.cjs",
-    "prebuilds/"
+    "prebuilds/",
+    "props.md"
   ],
   "scripts": {
     "build:native": "cargo build -p kui-node --release",
     "gen": "node gen-types.mjs",
+    "prepack": "node -e \"require('node:fs').copyFileSync('../../docs/props.md', 'props.md')\"",
     "test": "node --test test.mjs"
   }
 }

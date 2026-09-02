@@ -2,29 +2,35 @@
 // Elm loop in JS on top, both sharing the main thread via a pumped event
 // loop. Run with --smoke to auto-close after 2 seconds (CI/sanity).
 import { runWindowed } from '@qxuken/kui';
-import type { KuiWindow, Msg, UiEvent, WindowSize } from '@qxuken/kui';
+import type { CoreMsg, KuiWindow, UiEvent, WindowSize } from '@qxuken/kui';
 
 type Model = { count: number; note: string; size: WindowSize };
 
+// This app's own payloads plus the core's (`changed`, `key`, `hover`, ...):
+// one discriminated union, switched over directly.
+type CounterMsg = { kind: 'add'; by: number } | { kind: 'reset' };
+type Msg = CounterMsg | CoreMsg;
+
 // setup() runs before init(), so the first model already knows the size the
-// window actually opened at; `resize` events keep it current after that.
+// window actually opened at; `resize` messages keep it current after that.
 let openedAt: WindowSize = { width: 0, height: 0, scale: 1 };
 
 const init = (): Model => ({ count: 0, note: '', size: openedAt });
 
-function update(model: Model, msg: Msg, ev: UiEvent, win: KuiWindow): Model | undefined {
-  if (msg === null || typeof msg !== 'object' || Array.isArray(msg)) return;
-  switch ((msg as { kind: string }).kind) {
+function update(model: Model, msg: Msg, ev: UiEvent<Msg>, win: KuiWindow): Model | undefined {
+  switch (msg.kind) {
     case 'add':
-      return { ...model, count: model.count + (msg as { by: number }).by };
+      return { ...model, count: model.count + msg.by };
     case 'reset':
       return { ...model, count: 0 };
     case 'changed':
       return { ...model, note: win.editText(ev.key) ?? '' };
-    // The payload carries {width, height, scale}; win.size() answers the
-    // same, so the getter is the shorter way to keep the model in step.
-    case 'resize':
-      return { ...model, size: win.size() };
+    // Sent by the core when the window changes size or DPI; `win.size()`
+    // answers the same at any time.
+    case 'resize': {
+      const { width, height, scale } = msg;
+      return { ...model, size: { width, height, scale } };
+    }
   }
 }
 

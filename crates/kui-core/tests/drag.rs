@@ -265,3 +265,74 @@ fn hoverable_added_below_a_pressed_node_keeps_the_click() {
     frame(&mut core, true);
     assert!(core.interaction.is_hovered(col));
 }
+
+#[test]
+fn a_captured_drag_stays_pressed_off_the_node() {
+    // A divider dragged past its own rect (or out of the window) keeps its
+    // pressed / hover styling: the pointer is captured until release.
+    let mut core = Core::new();
+    drag_frame(&mut core);
+    let divider = {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::row().fill());
+        let key = ui.child_key("divider");
+        ui.finish();
+        key
+    };
+    drag_frame(&mut core);
+
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(105.0, 50.0)));
+    core.handle_input(InputEvent::MouseDown(1));
+    assert!(core.interaction.is_pressed(divider));
+
+    // Off the divider entirely: hover follows the cursor, the press doesn't.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(300.0, 50.0)));
+    assert!(!core.interaction.is_hovered(divider));
+    assert!(
+        core.interaction.is_pressed(divider),
+        "the captured drag holds the press"
+    );
+
+    // Same once the cursor leaves the window.
+    core.handle_input(InputEvent::CursorLeft);
+    assert!(core.interaction.is_pressed(divider));
+
+    core.handle_input(InputEvent::MouseUp);
+    assert!(!core.interaction.is_pressed(divider));
+}
+
+#[test]
+fn a_captured_drag_keeps_its_hover_group_pressed() {
+    let group = NodeSpec::hover_group_id("split");
+    let mut core = Core::new();
+    let frame = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::row().fill());
+        ui.with_keyed(
+            "handle",
+            NodeSpec::column()
+                .width(Sizing::Fixed(100.0))
+                .height(Sizing::Fixed(30.0))
+                .hover_group("split")
+                .on_drag(Value::str("split")),
+            |_| {},
+        );
+        ui.finish();
+    };
+    frame(&mut core);
+    frame(&mut core);
+
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(50.0, 15.0)));
+    core.handle_input(InputEvent::MouseDown(1));
+    assert!(core.interaction.is_group_pressed(group));
+
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(300.0, 200.0)));
+    assert!(!core.interaction.is_group_hovered(group));
+    assert!(
+        core.interaction.is_group_pressed(group),
+        "the group stays pressed for the whole captured drag"
+    );
+
+    core.handle_input(InputEvent::MouseUp);
+    assert!(!core.interaction.is_group_pressed(group));
+}

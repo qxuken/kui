@@ -1,8 +1,30 @@
 // Types for kui's JSX runtime. Set in tsconfig:
 //   "jsx": "react-jsx", "jsxImportSource": "@qxuken/kui"
 
-/** Event message payloads: plain data, both directions (the Elm shape). */
+/** Event message payloads: plain data, both directions (the Elm shape).
+ *  This is the wire type — anything JSON-shaped crosses; an app narrows it
+ *  to its own union with `KuiMsg` below. */
 export type Msg = null | boolean | number | string | Msg[] | { [key: string]: Msg };
+
+/** Declare the app's message type once, and every payload prop (`onClick`,
+ *  `onDrag`, `onHover`, `onKey`) plus `createApp` / `runWindowed` take it
+ *  instead of "any plain data":
+ *
+ *  ```ts
+ *  type CounterMsg = { kind: 'add'; by: number } | { kind: 'reset' };
+ *
+ *  declare module '@qxuken/kui/jsx-runtime' {
+ *    interface KuiMsg { msg: CounterMsg }
+ *  }
+ *  ```
+ *
+ *  A payload typo then fails where it is written rather than in `update`.
+ *  Left un-augmented, payloads stay `Msg` and nothing changes. (One app per
+ *  process is the shape kui already has: one window, one event loop.) */
+export interface KuiMsg {}
+
+/** The app's message type: whatever `KuiMsg` was augmented with, else `Msg`. */
+export type AppMsg = KuiMsg extends { msg: infer M } ? M : Msg;
 
 export interface KuiElement {
   type: string;
@@ -82,13 +104,13 @@ export interface GeneratedSpecProps {
   /** Lower width clamp (logical px). */
   minWidth?: number;
   /** Message emitted when clicked (data, not a callback). */
-  onClick?: Msg;
+  onClick?: AppMsg;
   /** Drag tag: emits {kind:"drag", phase, x, y, dx, dy, parent, tag} events. */
-  onDrag?: Msg;
+  onDrag?: AppMsg;
   /** Hover tag: the pointer entering/leaving emits {kind:"hover", phase:"enter"|"leave", tag} events. */
-  onHover?: Msg;
+  onHover?: AppMsg;
   /** Key-sink tag: with key focus held, presses arrive as {kind:"key", ...} events. */
-  onKey?: Msg;
+  onKey?: AppMsg;
   /** Background while pressed (or while its hoverGroup is); implies hover tracking. */
   pressedBg?: ColorProp;
   /** Corner radius for all four corners (logical px); the per-corner props override it when listed after it. */
@@ -168,7 +190,7 @@ export interface SpanProps extends Keyed {
 
 export interface ButtonProps extends Keyed {
   /** Message emitted on click. */
-  onClick?: Msg;
+  onClick?: AppMsg;
   children?: KuiNode;
 }
 

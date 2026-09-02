@@ -24,6 +24,18 @@ resulting library.
 ```tsx
 // tsconfig: "jsx": "react-jsx", "jsxImportSource": "@qxuken/kui"
 import { createApp, runWindowed } from '@qxuken/kui';
+import type { CoreMsg, UiEvent } from '@qxuken/kui';
+
+type Model = { count: number };
+// This app's own messages plus the ones the core sends by itself.
+type Msg = { kind: 'add'; by: number } | { kind: 'reset' } | CoreMsg;
+
+function update(model: Model, msg: Msg, ev: UiEvent<Msg>): Model | undefined {
+  switch (msg.kind) {                       // one union, no casts
+    case 'add': return { count: model.count + msg.by };
+    case 'reset': return { count: 0 };
+  }
+}
 
 const view = (model: Model) => (
   <box pad={24} gap={16}>
@@ -42,8 +54,8 @@ returns a new model, so a countdown is free between displayed seconds.
 ## Windowed app checklist
 
 Things the package already does that are easy to miss when building a
-real window. The full prop / element / event reference is
-[docs/props.md](../../docs/props.md) in the repository.
+real window. The full prop / element / event reference ships with the
+package as [props.md](props.md) (`docs/props.md` in the repository).
 
 - **Hover and pressed colors** are props, not queries: `hoverBg`,
   `pressedBg`, and `hoverGroup="name"` to light connected pieces together.
@@ -76,6 +88,24 @@ real window. The full prop / element / event reference is
 - **Keys**: `onKey` on the root plus `keyFocus`; presses arrive as
   `{ kind: 'key', code, ... }` with `code` a character or a name
   (`'space'`, `'enter'`, `'f5'`).
+- **Messages are yours**: annotate `update` and the loop follows —
+  `createApp` / `runWindowed` infer the union, so `ev`, `dispatch` and
+  `tick.msg` speak it too. `CoreMsg` is what the core sends on its own
+  (`DragMsg`, `KeyMsg`, `HoverMsg`, `ModifiersMsg`, `changed` / `submit`),
+  each with the payload fields spelled out; `pollEvents<KeyMsg<Tag>>()`
+  types a raw poll the same way. To have the *payload props* checked at the
+  node as well, register the app's own union once:
+
+  ```ts
+  declare module '@qxuken/kui/jsx-runtime' {
+    interface KuiMsg { msg: MyMsg }
+  }
+  ```
+
+  `onClick` / `onDrag` / `onHover` / `onKey` then take exactly `MyMsg`
+  rather than any plain data, so a typo fails where it is written. It is a
+  program-wide declaration (one app per tsconfig); left out, payload props
+  stay untyped and nothing else changes.
 - **Testing**: `createApp` runs the same app headless; `ctx.cursor` /
   `mouse` / `keyDown` drive it and `decodeQuads(ctx.quads())` inspects the
   frame (`radii`, `color`, `kind`).

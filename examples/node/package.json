@@ -6,6 +6,7 @@
     "build": "esbuild counter.tsx counter-window.tsx --jsx=automatic --jsx-import-source=@qxuken/kui --format=esm --outdir=dist --out-extension:.js=.mjs",
     "start": "npm run build && node dist/counter.mjs",
     "window": "npm run build && node dist/counter-window.mjs",
+    "typecheck": "tsc --noEmit",
     "bench": "node bench.mjs"
   },
   "dependencies": {
