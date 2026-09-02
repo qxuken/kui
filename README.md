@@ -30,6 +30,7 @@ cargo run -p kui --example modal_editor   # helix-flavored modal editing; the ap
 cargo run -p kui --example splitmux       # tmux-style splits, tabs, focus, ⌘-drag pane moves; the pane tree is data
 cargo run -p kui --example syntax_view    # syntax highlighting as coalesced style runs
 cargo run -p kui --example gallery        # registered images: Fit sizing, kept aspect, rounded corners
+cargo run -p kui --example toasts         # enter: toasts that slide in, a panel that springs open
 ```
 
 The same app from Node with JSX — build the addon with
