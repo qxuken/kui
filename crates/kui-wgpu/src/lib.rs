@@ -24,6 +24,8 @@ struct Instance {
     params: [f32; 4],
     uv: [f32; 4],
     clip: [f32; 4],
+    /// Corner radii, clockwise from the top-left.
+    radii: [f32; 4],
 }
 
 #[repr(C)]
@@ -51,7 +53,7 @@ fn instance_of(q: &Quad) -> Instance {
             q.border_color.b,
             q.border_color.a,
         ],
-        params: [q.radius, q.border_w, kind, 0.0],
+        params: [0.0, q.border_w, kind, 0.0],
         uv: [
             q.uv[0] as f32,
             q.uv[1] as f32,
@@ -59,6 +61,7 @@ fn instance_of(q: &Quad) -> Instance {
             q.uv[3] as f32,
         ],
         clip: [q.clip.x, q.clip.y, q.clip.w, q.clip.h],
+        radii: q.radius,
     }
 }
 
@@ -222,7 +225,7 @@ impl Renderer {
         let instance_attrs = wgpu::vertex_attr_array![
             0 => Float32x2, 1 => Float32x2, 2 => Float32x4,
             3 => Float32x4, 4 => Float32x4, 5 => Float32x4,
-            6 => Float32x4,
+            6 => Float32x4, 7 => Float32x4,
         ];
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("kui.quads"),
@@ -506,4 +509,29 @@ fn create_instance_buffer(device: &wgpu::Device, cap: usize) -> wgpu::Buffer {
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Both preprocessed variants of the shader must parse and validate
+    /// (pipeline creation would otherwise fail at runtime, in a window).
+    #[test]
+    fn shader_variants_validate() {
+        use wgpu::naga::valid::{Capabilities, ValidationFlags, Validator};
+        for dual in [false, true] {
+            let src = preprocess_shader(include_str!("shader.wgsl"), dual);
+            let module = wgpu::naga::front::wgsl::parse_str(&src)
+                .unwrap_or_else(|e| panic!("dual={dual}: {}", e.emit_to_string(&src)));
+            let caps = if dual {
+                Capabilities::DUAL_SOURCE_BLENDING
+            } else {
+                Capabilities::empty()
+            };
+            Validator::new(ValidationFlags::all(), caps)
+                .validate(&module)
+                .unwrap_or_else(|e| panic!("dual={dual}: {e:?}"));
+        }
+    }
 }

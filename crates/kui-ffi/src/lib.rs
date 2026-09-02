@@ -117,6 +117,22 @@ pub struct KuiSpec {
     /// Non-zero (with `transition_ms`): also ease the node's position, so
     /// reordered siblings slide into place.
     pub slide: u32,
+    /// 0xRRGGBBAA background while hovered (or while any node in the same
+    /// hover group is); 0 = none. Implies hover tracking; eases with
+    /// `transition_ms`.
+    pub hover_bg: u32,
+    /// 0xRRGGBBAA background while pressed; 0 = none. Implies hover tracking.
+    pub pressed_bg: u32,
+    /// Hover group name (empty = none): members show hover_bg / pressed_bg
+    /// together. Hashed by the core; the string is not retained.
+    pub hover_group: KuiStr,
+    /// Non-zero: `radius_tl..radius_bl` are the four corner radii and
+    /// `radius` is ignored (zero = uniform `radius` on every corner).
+    pub per_corner: u32,
+    pub radius_tl: f32,
+    pub radius_tr: f32,
+    pub radius_br: f32,
+    pub radius_bl: f32,
 }
 
 #[repr(C)]
@@ -129,6 +145,9 @@ pub struct KuiTextStyle {
     pub color: u32,
     /// KUI_FONT_SANS (0, default) / KUI_FONT_SERIF / KUI_FONT_MONO.
     pub family: u32,
+    /// A registered font handle (kui_font_add / kui_font_add_system);
+    /// non-zero overrides `family`.
+    pub font: u64,
 }
 
 #[repr(C)]
@@ -158,7 +177,8 @@ pub struct KuiQuad {
     pub h: f32,
     pub color: [f32; 4],
     pub border_color: [f32; 4],
-    pub radius: f32,
+    /// Corner radii (physical px), clockwise from the top-left.
+    pub radius: [f32; 4],
     pub border_w: f32,
     /// 0 = solid, 1 = mask glyph, 2 = color glyph
     pub kind: u32,
@@ -232,6 +252,7 @@ fn spec_of(
     on_click: *mut KuiValue,
     on_drag: *mut KuiValue,
     on_key: *mut KuiValue,
+    on_hover: *mut KuiValue,
 ) -> NodeSpec {
     let mut spec = if s.dir == 1 {
         NodeSpec::row()
@@ -264,6 +285,9 @@ fn spec_of(
         .cross_align(align_of(s.cross_align))
         .bg(color_of(s.bg))
         .radius(s.radius);
+    if s.per_corner != 0 {
+        spec = spec.radii(s.radius_tl, s.radius_tr, s.radius_br, s.radius_bl);
+    }
     if s.border_w > 0.0 {
         spec = spec.border(s.border_w, color_of(s.border_color));
     }
@@ -309,6 +333,15 @@ fn spec_of(
     if s.slide != 0 {
         spec = spec.slide();
     }
+    if s.hover_bg != 0 {
+        spec = spec.hover_bg(color_of(s.hover_bg));
+    }
+    if s.pressed_bg != 0 {
+        spec = spec.pressed_bg(color_of(s.pressed_bg));
+    }
+    if !s.hover_group.ptr.is_null() && s.hover_group.len > 0 {
+        spec = spec.hover_group(&kstr(s.hover_group));
+    }
     if let Some(v) = take_msg(on_click) {
         spec = spec.on_click(v);
     }
@@ -317,6 +350,9 @@ fn spec_of(
     }
     if let Some(v) = take_msg(on_key) {
         spec = spec.on_key(v);
+    }
+    if let Some(v) = take_msg(on_hover) {
+        spec = spec.on_hover(v);
     }
     spec
 }
@@ -329,11 +365,15 @@ fn text_style_of(s: &KuiTextStyle) -> TextStyle {
     if s.color != 0 {
         style = style.color(Color::hex(s.color));
     }
-    style.family(match s.family {
+    style = style.family(match s.family {
         1 => kui_core::FontFamily::Serif,
         2 => kui_core::FontFamily::Mono,
         _ => kui_core::FontFamily::Sans,
-    })
+    });
+    if s.font != 0 {
+        style = style.font(kui_core::FontId::from_ffi(s.font));
+    }
+    style
 }
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
@@ -645,7 +685,7 @@ pub extern "C" fn kui_frame_begin(ptr: *mut KuiCtx, w: f32, h: f32, scale: f32) 
 pub extern "C" fn kui_root(ptr: *mut KuiCtx, spec: *const KuiSpec) {
     guard((), || {
         if let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) {
-            c.core().configure_root(spec_of(s, NONE, NONE, NONE));
+            c.core().configure_root(spec_of(s, NONE, NONE, NONE, NONE));
         }
     });
 }
@@ -656,7 +696,7 @@ pub extern "C" fn kui_open(ptr: *mut KuiCtx, spec: *const KuiSpec, on_click: *mu
         let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else {
             return 0;
         };
-        c.core().open(spec_of(s, on_click, NONE, NONE)).0
+        c.core().open(spec_of(s, on_click, NONE, NONE, NONE)).0
     })
 }
 
@@ -672,7 +712,7 @@ pub extern "C" fn kui_open_keyed(
             return 0;
         };
         c.core()
-            .open_keyed(&kstr(label), spec_of(s, on_click, NONE, NONE))
+            .open_keyed(&kstr(label), spec_of(s, on_click, NONE, NONE, NONE))
             .0
     })
 }
@@ -712,6 +752,70 @@ pub extern "C" fn kui_image_add(ptr: *mut KuiCtx, w: u32, h: u32, rgba: *const u
     })
 }
 
+/// Registers a font from file bytes (TTF/OTF/TTC, copied); returns its
+/// handle for `KuiTextStyle.font`, 0 when the data holds no usable face.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_font_add(ptr: *mut KuiCtx, data: *const u8, len: usize) -> u64 {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        if data.is_null() || len == 0 {
+            return 0;
+        }
+        let bytes = unsafe { std::slice::from_raw_parts(data, len) }.to_vec();
+        c.core().add_font_data(bytes).map_or(0, |id| id.to_ffi())
+    })
+}
+
+/// Registers an installed font by family name; 0 when none matches.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_font_add_system(ptr: *mut KuiCtx, name: KuiStr) -> u64 {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        c.core()
+            .add_system_font(&kstr(name))
+            .map_or(0, |id| id.to_ffi())
+    })
+}
+
+/// Registers a font file by path (memory-mapped); 0 when it cannot be read
+/// or holds no usable face.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_font_load_file(ptr: *mut KuiCtx, path: KuiStr) -> u64 {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        let path = kstr(path).into_owned();
+        c.core().load_font_file(path).map_or(0, |id| id.to_ffi())
+    })
+}
+
+/// Loads every font file under a folder (recursively) so its families can
+/// be picked by name with `kui_font_add_system`; returns the face count.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_font_load_dir(ptr: *mut KuiCtx, dir: KuiStr) -> usize {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        let dir = kstr(dir).into_owned();
+        c.core().load_fonts_dir(dir)
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_font_remove(ptr: *mut KuiCtx, id: u64) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().remove_font(kui_core::FontId::from_ffi(id));
+        }
+    });
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_image_remove(ptr: *mut KuiCtx, id: u64) {
     guard((), || {
@@ -727,7 +831,7 @@ pub extern "C" fn kui_image_remove(ptr: *mut KuiCtx, id: u64) {
 pub extern "C" fn kui_image(ptr: *mut KuiCtx, id: u64, spec: *const KuiSpec) {
     guard((), || {
         if let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) {
-            let spec = spec_of(s, NONE, NONE, NONE);
+            let spec = spec_of(s, NONE, NONE, NONE, NONE);
             c.core().image_node(kui_core::ImageId::from_ffi(id), spec);
         }
     });
@@ -749,8 +853,8 @@ pub extern "C" fn kui_open_draggable(
         let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else {
             return 0;
         };
-        let spec =
-            spec_of(s, on_click, NONE, NONE).on_drag(take_msg(on_drag).unwrap_or(Value::Null));
+        let spec = spec_of(s, on_click, NONE, NONE, NONE)
+            .on_drag(take_msg(on_drag).unwrap_or(Value::Null));
         c.core().open_keyed(&kstr(label), spec).0
     })
 }
@@ -768,13 +872,20 @@ pub extern "C" fn kui_open_with(
     on_click: *mut KuiValue,
     on_drag: *mut KuiValue,
     on_key: *mut KuiValue,
+    on_hover: *mut KuiValue,
 ) -> u64 {
     guard(0, || {
         let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else {
+            for p in [on_click, on_drag, on_key, on_hover] {
+                drop(take_msg(p));
+            }
             return 0;
         };
         c.core()
-            .open_keyed(&kstr(label), spec_of(s, on_click, on_drag, on_key))
+            .open_keyed(
+                &kstr(label),
+                spec_of(s, on_click, on_drag, on_key, on_hover),
+            )
             .0
     })
 }
@@ -978,25 +1089,14 @@ pub extern "C" fn kui_button(ptr: *mut KuiCtx, label: KuiStr, payload: *mut KuiV
         } else {
             unsafe { Box::from_raw(payload) }.0
         };
-        let key = c.core().child_key(&label);
-        let bg = if c.core().is_pressed(key) {
-            Color::rgb8(0x2f, 0x54, 0xc4)
-        } else if c.core().is_hovered(key) {
-            Color::rgb8(0x47, 0x6c, 0xe0)
-        } else {
-            Color::rgb8(0x3b, 0x5b, 0xd4)
-        };
-        c.core().open_keyed(
-            &label,
-            NodeSpec::row()
-                .pad_xy(14.0, 8.0)
-                .bg(bg)
-                .radius(6.0)
-                .center()
-                .on_click(value),
-        );
+        // The same data as kui_core::widgets::button: hover/pressed colors
+        // are declared on the spec and resolved by the core.
         c.core()
-            .text_node(&label, TextStyle::new(15.0).color(Color::WHITE));
+            .open_keyed(&label, kui_core::widgets::button_spec().on_click(value));
+        c.core().text_node(
+            &label,
+            TextStyle::new(kui_core::widgets::BUTTON_TEXT).color(Color::WHITE),
+        );
         c.core().close();
     });
 }
@@ -1023,7 +1123,7 @@ pub extern "C" fn kui_text_edit(
             autofocus: flags & 2 != 0,
             ..Default::default()
         };
-        let spec = spec_of(sp, NONE, NONE, NONE);
+        let spec = spec_of(sp, NONE, NONE, NONE, NONE);
         c.core()
             .text_edit(&kstr(label), &kstr(initial), &opts, spec)
             .0
@@ -1073,6 +1173,10 @@ pub extern "C" fn kui_frame_finish(ptr: *mut KuiCtx) {
     guard((), || {
         if let Some(c) = unsafe { ctx(ptr) } {
             c.core().finish_frame();
+            // Hover enter/leave raised by this frame changing what sits
+            // under a still cursor.
+            let pending = c.core().take_pending_events();
+            c.events.extend(pending);
         }
     });
 }
@@ -1307,7 +1411,7 @@ mod schema_parity {
     #[test]
     fn zeroed_structs_are_the_schema_defaults() {
         let out = PropsOut::new();
-        assert_eq!(spec_of(&zeroed_spec(), NONE, NONE, NONE), out.spec);
+        assert_eq!(spec_of(&zeroed_spec(), NONE, NONE, NONE, NONE), out.spec);
         assert_eq!(text_style_of(&zeroed_style()), out.style);
     }
 
@@ -1327,14 +1431,20 @@ mod schema_parity {
                 Kind::Enum(_) => Parsed::Enum(1),
                 Kind::Sizing => Parsed::Sizing(Sizing::Percent(0.5)),
                 Kind::Msg => Parsed::Msg(Value::Int(7)),
+                Kind::Str => Parsed::Str("name".into()),
+                Kind::Resource => Parsed::Resource(7),
             };
             let mut expected = PropsOut::new();
             apply(def, sample, &mut expected).unwrap();
 
             let mut s = zeroed_spec();
             let mut t = zeroed_style();
-            let (mut click, mut drag, mut key) = (NONE, NONE, NONE);
+            let (mut click, mut drag, mut key, mut hover) = (NONE, NONE, NONE, NONE);
             let pct = KuiSizing { tag: 3, value: 0.5 };
+            let name = KuiStr {
+                ptr: "name".as_ptr(),
+                len: 4,
+            };
             match def.name {
                 "width" => s.width = pct,
                 "height" => s.height = pct,
@@ -1344,6 +1454,10 @@ mod schema_parity {
                 "maxHeight" => s.max_h = F,
                 "gap" => s.gap = F,
                 "radius" => s.radius = F,
+                "radiusTL" => (s.per_corner, s.radius_tl) = (1, F),
+                "radiusTR" => (s.per_corner, s.radius_tr) = (1, F),
+                "radiusBR" => (s.per_corner, s.radius_br) = (1, F),
+                "radiusBL" => (s.per_corner, s.radius_bl) = (1, F),
                 "mainAlign" => s.main_align = 1,
                 "crossAlign" => s.cross_align = 1,
                 "center" => (s.main_align, s.cross_align) = (1, 1),
@@ -1356,9 +1470,14 @@ mod schema_parity {
                 "onClick" => click = msg(Value::Int(7)),
                 "onDrag" => drag = msg(Value::Int(7)),
                 "onKey" => key = msg(Value::Int(7)),
+                "onHover" => hover = msg(Value::Int(7)),
+                "hoverBg" => s.hover_bg = C,
+                "pressedBg" => s.pressed_bg = C,
+                "hoverGroup" => s.hover_group = name,
                 "lineHeight" => t.line_height = F,
                 "color" => t.color = C,
                 "family" => t.family = 1,
+                "font" => t.font = 7,
                 other => panic!(
                     "schema prop {other:?} has no C counterpart: add a KuiSpec/KuiTextStyle \
                      field (append-only — the struct is ABI), mirror it in include/kui.h, \
@@ -1367,7 +1486,7 @@ mod schema_parity {
             }
             match def.target() {
                 Target::Spec => assert_eq!(
-                    spec_of(&s, click, drag, key),
+                    spec_of(&s, click, drag, key, hover),
                     expected.spec,
                     "{}: C mapping disagrees with the schema",
                     def.name
@@ -1422,6 +1541,17 @@ mod schema_parity {
             transition_ms: 150.0,
             easing: 3,
             slide: 1,
+            hover_bg: 0x47_6c_e0_ff,
+            pressed_bg: 0x2f_54_c4_ff,
+            hover_group: KuiStr {
+                ptr: "grp".as_ptr(),
+                len: 3,
+            },
+            per_corner: 1,
+            radius_tl: 1.0,
+            radius_tr: 2.0,
+            radius_br: 3.0,
+            radius_bl: 4.0,
         };
         let expected = NodeSpec::row()
             .width(Sizing::Grow(2.0))
@@ -1440,7 +1570,7 @@ mod schema_parity {
             .main_align(Align::Center)
             .cross_align(Align::End)
             .bg(Color::hex(0x14161eff))
-            .radius(6.0)
+            .radii(1.0, 2.0, 3.0, 4.0)
             .border(1.0, Color::hex(0x2a2d3aff))
             .clip()
             .scroll_x()
@@ -1457,10 +1587,20 @@ mod schema_parity {
             .transition(150.0)
             .easing(kui_core::Easing::EaseInOut)
             .slide()
+            .hover_bg(Color::hex(0x47_6c_e0_ff))
+            .pressed_bg(Color::hex(0x2f_54_c4_ff))
+            .hover_group("grp")
             .on_click(Value::str("c"))
             .on_drag(Value::str("d"))
-            .on_key(Value::str("k"));
-        let got = spec_of(&s, msg("c".into()), msg("d".into()), msg("k".into()));
+            .on_key(Value::str("k"))
+            .on_hover(Value::str("h"));
+        let got = spec_of(
+            &s,
+            msg("c".into()),
+            msg("d".into()),
+            msg("k".into()),
+            msg("h".into()),
+        );
         assert_eq!(got, expected);
     }
 }

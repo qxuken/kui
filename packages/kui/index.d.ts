@@ -74,6 +74,22 @@ export declare class Ctx {
   /** Registers a w×h RGBA image; returns its id for `<image src={id}>`. */
   addImage(width: number, height: number, rgba: Buffer): string;
   removeImage(id: string): void;
+  /** Registers a font from file bytes (TTF/OTF/TTC); returns its id for the
+   *  `font` prop on `<text>` / `<edit>`. Throws when no usable face is found. */
+  addFont(data: Buffer): string;
+  /** The id for a font family by name — installed, or loaded with
+   *  `loadFontsDir` / `loadFontFile`; null when none matches. The same
+   *  family always gets the same id. */
+  addSystemFont(name: string): string | null;
+  /** Registers a font file by path (memory-mapped); throws when it cannot be
+   *  read or holds no usable face. */
+  loadFontFile(path: string): string;
+  /** Loads every font file under a folder (recursively) so its families can
+   *  be picked by name with `addSystemFont`; returns the face count. */
+  loadFontsDir(dir: string): number;
+  removeFont(id: string): void;
+  /** Family names of every font the core can see (sorted). */
+  systemFontFamilies(): string[];
   pollEvents(): UiEvent[];
   isHovered(key: string): boolean;
   isPressed(key: string): boolean;
@@ -126,9 +142,22 @@ export declare class KuiWindow {
   editText(key: string): string | null;
   setEditText(key: string, text: string): void;
   isFocused(key: string): boolean;
+  /** Hover state as of the last frame; keys come from events (an `onHover`
+   *  enter, a click). For plain hover styling prefer the `hoverBg` /
+   *  `pressedBg` props — the core resolves those without a JS round trip. */
+  isHovered(key: string): boolean;
+  isPressed(key: string): boolean;
   /** Registers a w×h RGBA image; returns its id for `<image src={id}>`. */
   addImage(width: number, height: number, rgba: Buffer): string;
   removeImage(id: string): void;
+  /** Registers a font from file bytes; see `Ctx.addFont`. */
+  addFont(data: Buffer): string;
+  /** The id for a font family by name; see `Ctx.addSystemFont`. */
+  addSystemFont(name: string): string | null;
+  loadFontFile(path: string): string;
+  loadFontsDir(dir: string): number;
+  removeFont(id: string): void;
+  systemFontFamilies(): string[];
 }
 
 export interface WindowedConfig<M> {
@@ -136,6 +165,12 @@ export interface WindowedConfig<M> {
   /** Same contract as AppConfig, plus the window for editText etc. */
   update: (model: M, msg: Msg, event: UiEvent, win: KuiWindow) => M | undefined | void;
   view: (model: M) => KuiNode;
+  /** A clock: every `every` ms the loop feeds `msg` (or `msg(now)`, with
+   *  `Date.now()`) to `update`. Ticks are frequent, so unlike UI events they
+   *  re-render only when `update` returns a new model — a countdown that
+   *  returns undefined until the displayed second changes costs nothing in
+   *  between. */
+  tick?: { every: number; msg: Msg | ((now: number) => Msg) };
 }
 
 /** Opens a window and runs the Elm loop; resolves with the final model on close. */
@@ -154,9 +189,11 @@ export interface Quad {
   x: number; y: number; w: number; h: number;
   color: [number, number, number, number];
   borderColor: [number, number, number, number];
+  /** Corner radii (physical px) clockwise from the top-left: tl, tr, br, bl. */
+  radii: [number, number, number, number];
+  /** The top-left radius — the uniform value for boxes rounded with `radius`. */
   radius: number;
   borderW: number;
-  /** 0 solid, 1 mask glyph, 2 color glyph, 3 image. */
   /** 0 solid, 1 mask glyph, 2 color glyph, 3 image, 4 subpixel glyph. */
   kind: number;
   uv: [number, number, number, number];

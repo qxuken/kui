@@ -286,19 +286,14 @@ impl Core {
                 rect: rect.scaled(scale),
                 color: style.bg,
                 border_color: style.border_color,
-                radius: style.radius * scale,
+                radius: style.radius.map(|r| r * scale),
                 border_w: style.border_w * scale,
                 kind: QuadKind::Solid,
                 uv: [0; 4],
                 clip: clip.scaled(scale),
             });
         }
-        if spec.on_click.is_some()
-            || spec.window.is_some()
-            || spec.on_key.is_some()
-            || spec.on_drag.is_some()
-            || spec.hoverable
-        {
+        if spec.hover_tracked() {
             let parent = self.tree.parent[i];
             let parent_rect = if parent == NIL {
                 Rect::new(0.0, 0.0, self.viewport.w, self.viewport.h)
@@ -317,6 +312,8 @@ impl Core {
                 key_sink: spec.on_key.clone(),
                 edit_origin: None,
                 window: spec.window,
+                hover: spec.on_hover.clone(),
+                group: spec.hover_group,
             });
         }
         if spec.layout.scroll_x || spec.layout.scroll_y {
@@ -351,6 +348,8 @@ impl Core {
                     edit_origin: Some(content_origin),
                     key_sink: None,
                     window: None,
+                    hover: None,
+                    group: None,
                 });
                 let focused = self.edit.focused() == Some(key);
                 let origin_phys = Vec2::new(
@@ -378,7 +377,7 @@ impl Core {
                         // White = untinted; radius rounds like a solid.
                         color: Color::WHITE,
                         border_color: Color::TRANSPARENT,
-                        radius: spec.style.radius * scale,
+                        radius: spec.style.radius.map(|r| r * scale),
                         border_w: 0.0,
                         kind: QuadKind::Image,
                         uv: [slot.x, slot.y, slot.w, slot.h],
@@ -463,7 +462,101 @@ impl Core {
 
     pub fn set_edit_text(&mut self, key: Key, text: &str) {
         let fs = self.text.font_system_mut();
-        self.edit.set_text(key, text, fs);
+        self.edit.set_text(key, text, fs, &self.resources);
+    }
+
+    // -- Fonts ----------------------------------------------------------
+
+    /// Registers a font from its file bytes (TTF/OTF/TTC); `None` when the
+    /// data holds no usable face. Shape with it via `TextStyle::font`.
+    pub fn add_font_data(&mut self, data: Vec<u8>) -> Option<crate::resources::FontId> {
+        use cosmic_text::fontdb::Source;
+        let db = self.text.font_system_mut().db_mut();
+        let ids = db.load_font_source(Source::Binary(std::sync::Arc::new(data)));
+        let family = db.face(*ids.first()?)?.families.first()?.0.clone();
+        Some(self.resources.add_font(family, ids.to_vec()))
+    }
+
+    /// Registers a font file (TTF/OTF/TTC) by path, memory-mapped by the
+    /// font database; `None` when it cannot be read or holds no usable
+    /// face. Shape with it via `TextStyle::font`.
+    pub fn load_font_file(
+        &mut self,
+        path: impl Into<std::path::PathBuf>,
+    ) -> Option<crate::resources::FontId> {
+        use cosmic_text::fontdb::Source;
+        let db = self.text.font_system_mut().db_mut();
+        let ids = db.load_font_source(Source::File(path.into()));
+        let family = db.face(*ids.first()?)?.families.first()?.0.clone();
+        Some(self.resources.add_font(family, ids.to_vec()))
+    }
+
+    /// Loads every font file under `dir` (recursively) into the font
+    /// database, so their families become available to `add_system_font`
+    /// by name; returns how many faces were added. A bundled `fonts/`
+    /// folder next to the app is the usual case.
+    pub fn load_fonts_dir(&mut self, dir: impl AsRef<std::path::Path>) -> usize {
+        let db = self.text.font_system_mut().db_mut();
+        let before = db.len();
+        db.load_fonts_dir(dir);
+        db.len().saturating_sub(before)
+    }
+
+    /// The handle for a font family by name (`"Menlo"`, `"Antonio"`) —
+    /// installed on the system or loaded with `load_fonts_dir` /
+    /// `load_font_file`; `None` when no face matches (see
+    /// `system_font_families`). Idempotent: the same family gets the same
+    /// handle, so views can call it every frame.
+    pub fn add_system_font(&mut self, name: &str) -> Option<crate::resources::FontId> {
+        use cosmic_text::fontdb::{Family, Query};
+        let db = self.text.font_system().db();
+        let query = Query {
+            families: &[Family::Name(name)],
+            ..Default::default()
+        };
+        let id = db.query(&query)?;
+        // The canonical spelling, so the style matches the way fontdb does.
+        let family = db.face(id)?.families.first()?.0.clone();
+        if let Some((id, _)) = self
+            .resources
+            .fonts
+            .iter()
+            .find(|(_, f)| f.faces.is_empty() && f.family == family)
+        {
+            return Some(id);
+        }
+        Some(self.resources.add_font(family, Vec::new()))
+    }
+
+    /// Forgets a registered font; faces loaded from bytes leave the font
+    /// database. Styles still naming it shape as sans-serif.
+    pub fn remove_font(&mut self, id: crate::resources::FontId) {
+        if let Some(entry) = self.resources.remove_font(id) {
+            let db = self.text.font_system_mut().db_mut();
+            for face in entry.faces {
+                db.remove_face(face);
+            }
+        }
+    }
+
+    /// The registered family name behind a font handle, if it is live.
+    pub fn font_family(&self, id: crate::resources::FontId) -> Option<&str> {
+        self.resources.font_family(id)
+    }
+
+    /// Family names of every installed font the core can see (sorted,
+    /// deduplicated) — what `add_system_font` accepts.
+    pub fn system_font_families(&self) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .text
+            .font_system()
+            .db()
+            .faces()
+            .filter_map(|f| f.families.first().map(|(n, _)| n.clone()))
+            .collect();
+        names.sort();
+        names.dedup();
+        names
     }
 
     /// Drains window intents produced by chrome nodes since the last drain.
@@ -633,7 +726,7 @@ impl Core {
         };
         spec.style.bg = color(Slot::Bg, spec.style.bg);
         spec.style.border_color = color(Slot::Border, spec.style.border_color);
-        spec.style.radius = anim.drive(key, Slot::Radius, [spec.style.radius, 0.0, 0.0, 0.0], t)[0];
+        spec.style.radius = anim.drive(key, Slot::Radius, spec.style.radius, t);
     }
 
     /// The root node's key — for hover/press queries or `set_key_focus` when
@@ -669,6 +762,47 @@ impl Core {
         self.interaction.is_pressed(key)
     }
 
+    /// Whether any member of hover group `group` (see
+    /// `NodeSpec::hover_group`) is hovered.
+    pub fn is_group_hovered(&self, group: u64) -> bool {
+        self.interaction.is_group_hovered(group)
+    }
+
+    /// Whether hover group `group` is pressed (press started on a member,
+    /// pointer still over one).
+    pub fn is_group_pressed(&self, group: u64) -> bool {
+        self.interaction.is_group_pressed(group)
+    }
+
+    /// Events raised outside `handle_input`: `on_hover` enter/leave caused
+    /// by a finished frame changing what sits under a still cursor. Frame
+    /// drivers route these after `finish_frame`; they also ride along with
+    /// the next `handle_input` result, so a driver that never calls this
+    /// merely sees them a little later.
+    pub fn take_pending_events(&mut self) -> Vec<UiEvent> {
+        self.interaction.take_pending()
+    }
+
+    /// Swaps in the hover / pressed background the spec declares for the
+    /// node's (or its group's) current pointer state. Runs before easing so
+    /// a `transition` tweens between the states.
+    fn resolve_hover_style(&self, key: Key, spec: &mut NodeSpec) {
+        if spec.hover_bg.is_none() && spec.pressed_bg.is_none() {
+            return;
+        }
+        let group = spec.hover_group;
+        let pressed = self.interaction.is_pressed(key)
+            || group.is_some_and(|g| self.interaction.is_group_pressed(g));
+        let hovered = pressed
+            || self.interaction.is_hovered(key)
+            || group.is_some_and(|g| self.interaction.is_group_hovered(g));
+        if pressed && let Some(c) = spec.pressed_bg {
+            spec.style.bg = c;
+        } else if hovered && let Some(c) = spec.hover_bg {
+            spec.style.bg = c;
+        }
+    }
+
     /// Physical modifier state as of the last `InputEvent::Modifiers`.
     pub fn modifiers(&self) -> crate::input::KeyMods {
         self.interaction.modifiers()
@@ -690,6 +824,7 @@ impl Core {
         if self.tree.is_empty() {
             return;
         }
+        self.resolve_hover_style(key, &mut spec);
         self.ease_spec(key, &mut spec);
         if spec.layout.clips() {
             self.any_clip = true;
@@ -719,7 +854,7 @@ impl Core {
         if self.tree.is_empty() {
             return;
         }
-        let tid = self.text.add(content, &style);
+        let tid = self.text.add(content, &style, &self.resources);
         let key = self.auto_key();
         let parent = self.current();
         self.tree.push(
@@ -753,6 +888,7 @@ impl Core {
             self.origin,
             self.scale,
             self.text.font_system_mut(),
+            &self.resources,
         );
         let parent = self.current();
         self.tree
@@ -769,6 +905,7 @@ impl Core {
             return;
         }
         let key = self.auto_key();
+        self.resolve_hover_style(key, &mut spec);
         self.ease_spec(key, &mut spec);
         let parent = self.current();
         self.tree
@@ -786,7 +923,7 @@ impl Core {
         if self.tree.is_empty() {
             return;
         }
-        let tid = self.text.add_rich(spans, &base);
+        let tid = self.text.add_rich(spans, &base, &self.resources);
         let key = self.auto_key();
         let parent = self.current();
         self.tree.push(
@@ -1137,7 +1274,7 @@ fn scrollbar_quad(bar: Rect, scale: f32, clip: Rect, active: bool) -> Quad {
         rect: bar.scaled(scale),
         color: Color::rgba(1.0, 1.0, 1.0, if active { 0.4 } else { 0.18 }),
         border_color: Color::TRANSPARENT,
-        radius: bar.w.min(bar.h) / 2.0 * scale,
+        radius: [bar.w.min(bar.h) / 2.0 * scale; 4],
         border_w: 0.0,
         kind: QuadKind::Solid,
         uv: [0; 4],

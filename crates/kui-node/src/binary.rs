@@ -78,6 +78,9 @@ pub fn protocol_json() -> Json {
         ),
     );
     o.insert("prop".into(), schema::protocol_props());
+    for (name, table) in schema::protocol_tables() {
+        o.insert(name.into(), table);
+    }
     Json::Object(o)
 }
 
@@ -227,6 +230,8 @@ fn read_props(r: &mut Reader<'_>) -> Result<PropsOut> {
                         Parsed::Sizing(sizing_num(m, v))
                     }
                     Kind::Msg => Parsed::Msg(payload(r.req_str()?)?),
+                    Kind::Str => Parsed::Str(r.req_str()?.to_string()),
+                    Kind::Resource => Parsed::Resource(crate::parse_u64(r.req_str()?)?),
                 };
                 schema::apply(def, parsed, &mut out)?;
             }
@@ -293,24 +298,11 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
                 None => kui_core::Value::Null,
             };
             let label_key = key.unwrap_or(label);
-            let node_key = core.child_key(label_key);
-            let bg = if core.is_pressed(node_key) {
-                Color::rgb8(0x2f, 0x54, 0xc4)
-            } else if core.is_hovered(node_key) {
-                Color::rgb8(0x47, 0x6c, 0xe0)
-            } else {
-                Color::rgb8(0x3b, 0x5b, 0xd4)
-            };
-            core.open_keyed(
-                label_key,
-                NodeSpec::row()
-                    .pad_xy(14.0, 8.0)
-                    .bg(bg)
-                    .radius(6.0)
-                    .center()
-                    .on_click(msg),
+            core.open_keyed(label_key, widgets::button_spec().on_click(msg));
+            core.text_node(
+                label,
+                TextStyle::new(widgets::BUTTON_TEXT).color(Color::WHITE),
             );
-            core.text_node(label, TextStyle::new(15.0).color(Color::WHITE));
             core.close();
             Ok(())
         }
@@ -463,6 +455,14 @@ mod tests {
                     stream.extend([0.0, 1.0]);
                     Parsed::Msg(Value::Int(7))
                 }
+                Kind::Str => {
+                    stream.extend([0.0, 1.0]);
+                    Parsed::Str("7".into())
+                }
+                Kind::Resource => {
+                    stream.extend([0.0, 1.0]);
+                    Parsed::Resource(7)
+                }
             };
             let mut expected = PropsOut::new();
             schema::apply(def, sample, &mut expected).unwrap();
@@ -480,11 +480,12 @@ mod tests {
     /// custom prop without a mapping here panics with instructions.
     #[test]
     fn every_custom_prop_has_a_decoder_arm() {
-        for (name, id) in CUSTOM {
-            let mut s = vec![1.0, *id as f64];
+        for def in CUSTOM {
+            let (name, id) = (def.name, def.id);
+            let mut s = vec![1.0, id as f64];
             let mut strings: &[u8] = b"";
             let mut expected = PropsOut::new();
-            match *name {
+            match name {
                 "dir" => {
                     s.push(1.0);
                     expected.spec = NodeSpec::row();

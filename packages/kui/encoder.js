@@ -228,6 +228,10 @@ export function createEncoder(P) {
             case 'msg':
               strRef(JSON.stringify(v));
               break;
+            case 'str':
+            case 'resource':
+              strRef(String(v));
+              break;
             default:
               throw new Error(`unhandled schema kind ${def.kind} for ${k}`);
           }

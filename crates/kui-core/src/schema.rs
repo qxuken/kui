@@ -61,6 +61,15 @@ pub const P_TOOLTIP: u32 = 30;
 pub const P_TRANSITION: u32 = 31;
 pub const P_EASING: u32 = 32;
 pub const P_SLIDE: u32 = 33;
+pub const P_HOVER_BG: u32 = 34;
+pub const P_PRESSED_BG: u32 = 35;
+pub const P_HOVER_GROUP: u32 = 36;
+pub const P_ON_HOVER: u32 = 37;
+pub const P_RADIUS_TL: u32 = 38;
+pub const P_RADIUS_TR: u32 = 39;
+pub const P_RADIUS_BR: u32 = 40;
+pub const P_RADIUS_BL: u32 = 41;
+pub const P_FONT: u32 = 42;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -100,6 +109,12 @@ pub enum Kind {
     Sizing,
     /// An arbitrary message payload (a `Value`). Binary: strref to JSON.
     Msg,
+    /// A plain string (a name, not a message). Binary: strref.
+    Str,
+    /// A registered resource handle (a font id): the integer form of the
+    /// slotmap key. JSON/binary carry it as the 16-hex string the addon
+    /// hands out; Lua as an integer; C as a `uint64_t`.
+    Resource,
 }
 
 /// Where a parsed value lands. `PropDef::target` derives from this.
@@ -110,9 +125,11 @@ pub enum Apply {
     SpecEnum(fn(NodeSpec, usize) -> NodeSpec),
     SpecSizing(fn(NodeSpec, Sizing) -> NodeSpec),
     SpecMsg(fn(NodeSpec, Value) -> NodeSpec),
+    SpecStr(fn(NodeSpec, &str) -> NodeSpec),
     StyleF32(fn(TextStyle, f32) -> TextStyle),
     StyleColor(fn(TextStyle, Color) -> TextStyle),
     StyleEnum(fn(TextStyle, usize) -> TextStyle),
+    StyleResource(fn(TextStyle, u64) -> TextStyle),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -135,7 +152,10 @@ pub struct PropDef {
 impl PropDef {
     pub fn target(&self) -> Target {
         match self.apply {
-            Apply::StyleF32(_) | Apply::StyleColor(_) | Apply::StyleEnum(_) => Target::Style,
+            Apply::StyleF32(_)
+            | Apply::StyleColor(_)
+            | Apply::StyleEnum(_)
+            | Apply::StyleResource(_) => Target::Style,
             _ => Target::Spec,
         }
     }
@@ -146,9 +166,11 @@ impl PropDef {
     }
 
     fn index(&self) -> usize {
+        // By name, not by address: `PROPS` is a const, so another crate
+        // iterating it sees its own copy of the rows.
         PROPS
             .iter()
-            .position(|d| std::ptr::eq(d, self))
+            .position(|d| d.name == self.name)
             .expect("PropDef not from PROPS")
     }
 }
@@ -247,7 +269,35 @@ pub const PROPS: &[PropDef] = &[
         id: P_RADIUS,
         kind: Kind::F32,
         apply: Apply::SpecF32(|s, v| s.radius(v)),
-        doc: "Corner radius (logical px).",
+        doc: "Corner radius for all four corners (logical px); the per-corner props override it when listed after it.",
+    },
+    PropDef {
+        name: "radiusTL",
+        id: P_RADIUS_TL,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.radius_tl(v)),
+        doc: "Top-left corner radius (logical px).",
+    },
+    PropDef {
+        name: "radiusTR",
+        id: P_RADIUS_TR,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.radius_tr(v)),
+        doc: "Top-right corner radius (logical px).",
+    },
+    PropDef {
+        name: "radiusBR",
+        id: P_RADIUS_BR,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.radius_br(v)),
+        doc: "Bottom-right corner radius (logical px).",
+    },
+    PropDef {
+        name: "radiusBL",
+        id: P_RADIUS_BL,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.radius_bl(v)),
+        doc: "Bottom-left corner radius (logical px).",
     },
     PropDef {
         name: "center",
@@ -262,6 +312,34 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Flag,
         apply: Apply::SpecFlag(|s| s.hoverable()),
         doc: "Hover-track without a click payload (for isHovered-driven styling).",
+    },
+    PropDef {
+        name: "hoverBg",
+        id: P_HOVER_BG,
+        kind: Kind::Color,
+        apply: Apply::SpecColor(|s, c| s.hover_bg(c)),
+        doc: "Background while hovered (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`.",
+    },
+    PropDef {
+        name: "pressedBg",
+        id: P_PRESSED_BG,
+        kind: Kind::Color,
+        apply: Apply::SpecColor(|s, c| s.pressed_bg(c)),
+        doc: "Background while pressed (or while its hoverGroup is); implies hover tracking.",
+    },
+    PropDef {
+        name: "hoverGroup",
+        id: P_HOVER_GROUP,
+        kind: Kind::Str,
+        apply: Apply::SpecStr(|s, name| s.hover_group(name)),
+        doc: "Nodes sharing a group name show hoverBg/pressedBg together (a split button, a multi-piece shape).",
+    },
+    PropDef {
+        name: "onHover",
+        id: P_ON_HOVER,
+        kind: Kind::Msg,
+        apply: Apply::SpecMsg(|s, v| s.on_hover(v)),
+        doc: "Hover tag: the pointer entering/leaving emits {kind:\"hover\", phase:\"enter\"|\"leave\", tag} events.",
     },
     PropDef {
         name: "onClick",
@@ -343,21 +421,309 @@ pub const PROPS: &[PropDef] = &[
         }),
         doc: "Font family.",
     },
+    PropDef {
+        name: "font",
+        id: P_FONT,
+        kind: Kind::Resource,
+        apply: Apply::StyleResource(|t, id| t.font(crate::resources::FontId::from_ffi(id))),
+        doc: "A registered font handle (addFont / addSystemFont); overrides `family`.",
+    },
 ];
 
-/// Props every binding handles by hand (composites and constructor-order
-/// specials), with their wire ids so transports agree on identity.
-pub const CUSTOM: &[(&str, u32)] = &[
-    ("dir", P_DIR),
-    ("size", P_SIZE),
-    ("pad", P_PAD),
-    ("border", P_BORDER),
-    ("overflow", P_OVERFLOW),
-    ("float", P_FLOAT),
-    ("keyFocus", P_KEY_FOCUS),
-    ("key", P_KEY),
-    ("title", P_TITLE),
-    ("tooltip", P_TOOLTIP),
+/// A prop every binding handles by hand (a composite with real logic, or a
+/// constructor-order special), with its wire id so transports agree on
+/// identity and its per-binding spelling so the docs can say so.
+pub struct CustomProp {
+    pub name: &'static str,
+    pub id: u32,
+    /// How JSX spells it.
+    pub jsx: &'static str,
+    /// How a Lua table spells it.
+    pub lua: &'static str,
+    /// Where it lands in C.
+    pub c: &'static str,
+    pub doc: &'static str,
+}
+
+pub const CUSTOM: &[CustomProp] = &[
+    CustomProp {
+        name: "dir",
+        id: P_DIR,
+        jsx: "`dir=\"row\" | \"column\"`",
+        lua: "`row { }` / `column { }`",
+        c: "`dir` (`KUI_ROW` / `KUI_COLUMN`)",
+        doc: "Main axis; column is the default.",
+    },
+    CustomProp {
+        name: "size",
+        id: P_SIZE,
+        jsx: "`size` (text)",
+        lua: "`size`",
+        c: "`KuiTextStyle.size`",
+        doc: "Font size in logical px; the text style is constructed from it, so declare it for the other style props to apply at that size.",
+    },
+    CustomProp {
+        name: "pad",
+        id: P_PAD,
+        jsx: "`pad`, `padX`, `padY`, `padL`, `padR`, `padT`, `padB`",
+        lua: "`pad = n` or `pad = { l, r, t, b }`",
+        c: "`pad_l`, `pad_r`, `pad_t`, `pad_b`",
+        doc: "Padding; the shorthands resolve to four edges, the specific ones win.",
+    },
+    CustomProp {
+        name: "border",
+        id: P_BORDER,
+        jsx: "`borderW`, `borderColor`",
+        lua: "`border = { w, color }`",
+        c: "`border_w`, `border_color`",
+        doc: "Border width and color (drawn inside the rect).",
+    },
+    CustomProp {
+        name: "overflow",
+        id: P_OVERFLOW,
+        jsx: "`clip`, `scrollX`, `scrollY`",
+        lua: "`clip`, `scroll_x`, `scroll_y` (`scroll` = `scroll_y`)",
+        c: "`overflow` bits `KUI_CLIP` | `KUI_SCROLL_X` | `KUI_SCROLL_Y`",
+        doc: "Clip children; scroll (implies clip) with retained offsets and live scrollbars.",
+    },
+    CustomProp {
+        name: "float",
+        id: P_FLOAT,
+        jsx: "`float=\"below\" | \"above\" | \"parent\" | \"viewport\"` or `{ anchor, at, self, dx, dy, fit }`",
+        lua: "`float = \"below\"` or `float = { anchor=, at=, self=, dx=, dy=, fit= }`",
+        c: "`float_mode`, `float_anchor_x/y`, `float_self_x/y`, `float_dx/dy`, `float_fit`",
+        doc: "Out-of-flow positioning against the parent or the viewport; `fit` flips/clamps to stay on screen.",
+    },
+    CustomProp {
+        name: "keyFocus",
+        id: P_KEY_FOCUS,
+        jsx: "`keyFocus`",
+        lua: "`key_focus`",
+        c: "`kui_set_key_focus`",
+        doc: "Routes the keyboard at this `onKey` sink this frame.",
+    },
+    CustomProp {
+        name: "key",
+        id: P_KEY,
+        jsx: "`key`",
+        lua: "`key`",
+        c: "`kui_open_keyed` label",
+        doc: "Stable identity for retained state (scroll offsets, editors, transitions; keys are hashes of the path from the root).",
+    },
+    CustomProp {
+        name: "title",
+        id: P_TITLE,
+        jsx: "`title` (root box only)",
+        lua: "`title` (root table)",
+        c: "`kui_set_window_title`",
+        doc: "Declares the window title for this frame; the driver diffs and applies.",
+    },
+    CustomProp {
+        name: "tooltip",
+        id: P_TOOLTIP,
+        jsx: "`tooltip=\"hint\"`",
+        lua: "`tooltip = \"hint\"`",
+        c: "`kui_tooltip` inside a hoverable node, gated on `kui_is_hovered`",
+        doc: "Floats a hint below the node while hovered (implies hover tracking).",
+    },
+];
+
+/// Where a schema row lands in C when it is not simply the `KuiSpec` /
+/// `KuiTextStyle` field of the row's snake_case name (`c_field`).
+pub const C_FIELDS: &[(&str, &str)] = &[
+    ("width", "`width` (KuiSizing)"),
+    ("height", "`height` (KuiSizing)"),
+    ("center", "`main_align` + `cross_align` = `KUI_CENTER`"),
+    ("window", "`window_role` (`KUI_WINDOW_*`)"),
+    ("transition", "`transition_ms`"),
+    ("easing", "`easing` (`KUI_EASE_*`)"),
+    ("radiusTL", "`radius_tl` with `per_corner`"),
+    ("radiusTR", "`radius_tr` with `per_corner`"),
+    ("radiusBR", "`radius_br` with `per_corner`"),
+    ("radiusBL", "`radius_bl` with `per_corner`"),
+    ("hoverGroup", "`hover_group` (KuiStr)"),
+    (
+        "onClick",
+        "`on_click` argument of `kui_open` / `kui_open_with`",
+    ),
+    (
+        "onDrag",
+        "`on_drag` argument of `kui_open_draggable` / `kui_open_with`",
+    ),
+    ("onKey", "`on_key` argument of `kui_open_with`"),
+    ("onHover", "`on_hover` argument of `kui_open_with`"),
+    ("family", "`KuiTextStyle.family` (`KUI_FONT_*`)"),
+    ("font", "`KuiTextStyle.font` (from `kui_font_add*`)"),
+    ("lineHeight", "`KuiTextStyle.line_height`"),
+    ("color", "`KuiTextStyle.color`"),
+];
+
+/// The C spelling of a schema row, for docs.
+pub fn c_field(def: &PropDef) -> String {
+    C_FIELDS
+        .iter()
+        .find(|(n, _)| *n == def.name)
+        .map(|(_, c)| (*c).to_string())
+        .unwrap_or_else(|| format!("`{}`", def.snake_name()))
+}
+
+/// An element (node type) and its spelling in each binding. Elements are
+/// hand-lowered per binding (their shapes differ: JSX children, Lua
+/// tables, C calls with body callbacks), so this table is documentation
+/// and a checklist, not a code generator's input.
+pub struct ElementDef {
+    pub name: &'static str,
+    pub jsx: &'static str,
+    pub lua: &'static str,
+    pub c: &'static str,
+    pub doc: &'static str,
+}
+
+pub const ELEMENTS: &[ElementDef] = &[
+    ElementDef {
+        name: "box",
+        jsx: "`<box>`",
+        lua: "`row { }`, `column { }`",
+        c: "`kui_open*` … `kui_close`",
+        doc: "A container: every container prop applies.",
+    },
+    ElementDef {
+        name: "text",
+        jsx: "`<text>` with `<span bold italic color>` children",
+        lua: "`text(\"s\", {…})`, `text({ \"a\", { \"b\", bold = true } })`",
+        c: "`kui_text`, `kui_rich_text`",
+        doc: "Plain or rich text; spans shape as one paragraph, so wrapping crosses style boundaries.",
+    },
+    ElementDef {
+        name: "button",
+        jsx: "`<button onClick>`",
+        lua: "`button { label=, on_click= }`",
+        c: "`kui_button`",
+        doc: "The stock button: `widgets::button_spec()` with hover/pressed colors declared on the node.",
+    },
+    ElementDef {
+        name: "edit",
+        jsx: "`<edit key initial multiline autofocus>`",
+        lua: "`edit { key=, initial=, … }`, `input { label= }`",
+        c: "`kui_text_edit`, `kui_text_input`",
+        doc: "Retained editor state by key; read it back with `editText(key)` after a `changed` event.",
+    },
+    ElementDef {
+        name: "image",
+        jsx: "`<image src={id}>`",
+        lua: "`image { id= }`",
+        c: "`kui_image`",
+        doc: "A registered RGBA image; `fit` takes the pixel size, a fit height against a resolved width keeps the aspect, radius rounds it.",
+    },
+    ElementDef {
+        name: "titlebar",
+        jsx: "`<titlebar title>` or `<titlebar>…</titlebar>`",
+        lua: "`titlebar { title= }` / `titlebar { … }`",
+        c: "`kui_titlebar`, `kui_titlebar_with`",
+        doc: "Adaptive titlebar for custom chrome: drag strip, native-control inset, window buttons.",
+    },
+    ElementDef {
+        name: "windowButtons",
+        jsx: "`<windowButtons/>`",
+        lua: "`window_buttons()`",
+        c: "`kui_window_buttons`",
+        doc: "Just the min/max/close buttons, for fully custom titlebars.",
+    },
+    ElementDef {
+        name: "tooltip",
+        jsx: "`tooltip=\"hint\"` prop (see composites)",
+        lua: "`tooltip(\"hint\")` / `tooltip { … }` nodes, or the prop",
+        c: "`kui_tooltip`, `kui_tooltip_with`",
+        doc: "A float hanging below the parent; the node form always draws, the prop form is hover-gated.",
+    },
+    ElementDef {
+        name: "latencyGraph",
+        jsx: "`<latencyGraph/>`, `<latencyHud at/>`",
+        lua: "`latency_graph()`, `latency_hud { at= }`",
+        c: "`kui_latency_graph`, `kui_latency_hud`",
+        doc: "Per-phase frame timing (windowed drivers fill it; headless shows the chrome empty).",
+    },
+];
+
+/// An event kind hosts receive, with its payload shape.
+pub struct EventDef {
+    pub kind: &'static str,
+    pub payload: &'static str,
+    pub doc: &'static str,
+}
+
+pub const EVENTS: &[EventDef] = &[
+    EventDef {
+        kind: "click",
+        payload: "the `onClick` payload as-is",
+        doc: "A press and release on the node (suppressed when a drag moved past the slop).",
+    },
+    EventDef {
+        kind: "drag",
+        payload: "`{ kind: \"drag\", phase: \"start\" | \"move\" | \"end\", x, y, dx, dy, parent: { x, y, w, h }, tag }`",
+        doc: "A pointer-captured drag on an `onDrag` node; `parent` is the container rect, so fractions need no geometry query.",
+    },
+    EventDef {
+        kind: "key",
+        payload: "`{ kind: \"key\", code, shift, ctrl, alt, super, text, repeat, tag }`",
+        doc: "A key press on the focused `onKey` sink; `code` is a character or a name (`\"left\"`, `\"f5\"`).",
+    },
+    EventDef {
+        kind: "hover",
+        payload: "`{ kind: \"hover\", phase: \"enter\" | \"leave\", tag }`",
+        doc: "The pointer entered or left an `onHover` node — also when a new frame moved it under a still cursor.",
+    },
+    EventDef {
+        kind: "modifiers",
+        payload: "`{ kind: \"modifiers\", shift, ctrl, alt, super }`",
+        doc: "The physical modifier state changed (delivered to the host on the root).",
+    },
+    EventDef {
+        kind: "changed / submit",
+        payload: "`{ kind: \"changed\" }` / `{ kind: \"submit\" }`, with the editor's key on the event",
+        doc: "An editor's text changed / Enter in a single-line editor.",
+    },
+];
+
+/// A host-registered resource and how each binding registers it.
+pub struct ResourceDef {
+    pub what: &'static str,
+    pub node: &'static str,
+    pub lua: &'static str,
+    pub c: &'static str,
+}
+
+pub const RESOURCES: &[ResourceDef] = &[
+    ResourceDef {
+        what: "image",
+        node: "`ctx.addImage(w, h, rgba)` → id for `<image src>`",
+        lua: "the host registers; `image { id }`",
+        c: "`kui_image_add` → `kui_image`",
+    },
+    ResourceDef {
+        what: "font from bytes",
+        node: "`ctx.addFont(buffer)` → id for `font`",
+        lua: "the host registers; `font = id`",
+        c: "`kui_font_add` → `KuiTextStyle.font`",
+    },
+    ResourceDef {
+        what: "font file by path",
+        node: "`ctx.loadFontFile(\"fonts/Antonio.ttf\")` → id for `font`",
+        lua: "the host registers; `font = id`",
+        c: "`kui_font_load_file`",
+    },
+    ResourceDef {
+        what: "a folder of fonts",
+        node: "`ctx.loadFontsDir(\"fonts\")`, then pick by name",
+        lua: "the host loads",
+        c: "`kui_font_load_dir`",
+    },
+    ResourceDef {
+        what: "font by family name (installed or loaded)",
+        node: "`ctx.addSystemFont(\"Antonio\")` (see `systemFontFamilies()`)",
+        lua: "the host registers; `font = id`",
+        c: "`kui_font_add_system`",
+    },
 ];
 
 static SNAKE_NAMES: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
@@ -367,15 +733,21 @@ static SNAKE_NAMES: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
         .collect()
 });
 
-/// `minWidth` → `min_width`; names without capitals pass through.
+/// `minWidth` → `min_width`, `radiusTL` → `radius_tl` (a run of capitals
+/// is one word); names without capitals pass through.
 pub fn snake_case(name: &str) -> String {
     let mut out = String::with_capacity(name.len() + 2);
+    let mut prev_upper = false;
     for c in name.chars() {
         if c.is_ascii_uppercase() {
-            out.push('_');
+            if !prev_upper {
+                out.push('_');
+            }
             out.push(c.to_ascii_lowercase());
+            prev_upper = true;
         } else {
             out.push(c);
+            prev_upper = false;
         }
     }
     out
@@ -404,6 +776,8 @@ pub enum Parsed {
     Enum(usize),
     Sizing(Sizing),
     Msg(Value),
+    Str(String),
+    Resource(u64),
 }
 
 /// Everything a prop list can carry; elements pick the parts they use.
@@ -456,6 +830,7 @@ pub fn apply(def: &PropDef, value: Parsed, out: &mut PropsOut) -> Result<(), Str
         (Apply::SpecEnum(f), Parsed::Enum(v)) => out.spec = f(spec, v),
         (Apply::SpecSizing(f), Parsed::Sizing(v)) => out.spec = f(spec, v),
         (Apply::SpecMsg(f), Parsed::Msg(v)) => out.spec = f(spec, v),
+        (Apply::SpecStr(f), Parsed::Str(v)) => out.spec = f(spec, &v),
         (Apply::StyleF32(f), Parsed::F32(v)) => {
             out.spec = spec;
             out.style = f(style, v);
@@ -465,6 +840,10 @@ pub fn apply(def: &PropDef, value: Parsed, out: &mut PropsOut) -> Result<(), Str
             out.style = f(style, v);
         }
         (Apply::StyleEnum(f), Parsed::Enum(v)) => {
+            out.spec = spec;
+            out.style = f(style, v);
+        }
+        (Apply::StyleResource(f), Parsed::Resource(v)) => {
             out.spec = spec;
             out.style = f(style, v);
         }
@@ -538,7 +917,7 @@ mod tests {
         let all: Vec<(&str, u32)> = PROPS
             .iter()
             .map(|d| (d.name, d.id))
-            .chain(CUSTOM.iter().copied())
+            .chain(CUSTOM.iter().map(|c| (c.name, c.id)))
             .collect();
         for (i, (name, id)) in all.iter().enumerate() {
             for (other_name, other_id) in &all[i + 1..] {
@@ -555,6 +934,8 @@ mod tests {
         assert_eq!(by_snake_name("bg").unwrap().name, "bg");
         assert!(by_snake_name("minWidth").is_none());
         assert_eq!(by_name("lineHeight").unwrap().snake_name(), "line_height");
+        assert_eq!(by_name("radiusTL").unwrap().snake_name(), "radius_tl");
+        assert_eq!(by_snake_name("radius_bl").unwrap().name, "radiusBL");
     }
 
     #[test]
@@ -567,6 +948,8 @@ mod tests {
                 Kind::Enum(_) => Parsed::Enum(1),
                 Kind::Sizing => Parsed::Sizing(Sizing::Percent(0.5)),
                 Kind::Msg => Parsed::Msg(Value::Int(1)),
+                Kind::Str => Parsed::Str("name".into()),
+                Kind::Resource => Parsed::Resource(7),
             };
             let mut out = PropsOut::new();
             apply(def, sample, &mut out).unwrap();

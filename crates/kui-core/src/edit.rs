@@ -17,6 +17,7 @@ use crate::display::{Quad, QuadKind};
 use crate::geom::{Rect, Size, Vec2};
 use crate::input::{EditKey, Mods};
 use crate::key::Key;
+use crate::resources::Resources;
 use crate::spec::TextStyle;
 use crate::text::TextSystem;
 use crate::tree::OriginId;
@@ -333,16 +334,8 @@ impl Default for EditStore {
     }
 }
 
-fn attrs() -> Attrs<'static> {
-    Attrs::new().family(cosmic_text::Family::SansSerif)
-}
-
-fn attrs_for(style: &TextStyle) -> Attrs<'static> {
-    match style.family {
-        crate::spec::FontFamily::Sans => attrs(),
-        crate::spec::FontFamily::Serif => Attrs::new().family(cosmic_text::Family::Serif),
-        crate::spec::FontFamily::Mono => Attrs::new().family(cosmic_text::Family::Monospace),
-    }
+fn attrs_for<'a>(style: &TextStyle, res: &'a Resources) -> Attrs<'a> {
+    Attrs::new().family(res.family_of(style.family))
 }
 
 impl EditStore {
@@ -381,6 +374,7 @@ impl EditStore {
     }
 
     /// Ensures state exists for `key`, seeding `initial` on first creation.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn declare(
         &mut self,
         key: Key,
@@ -389,12 +383,18 @@ impl EditStore {
         origin: OriginId,
         scale: f32,
         fs: &mut FontSystem,
+        res: &Resources,
     ) {
         let state = self.states.entry(key).or_insert_with(|| {
             let metrics = Metrics::new(opts.style.size * scale, opts.style.line_height * scale);
             let mut buffer = Buffer::new(fs, metrics);
             buffer.set_size(None, None);
-            buffer.set_text(initial, &attrs_for(&opts.style), Shaping::Advanced, None);
+            buffer.set_text(
+                initial,
+                &attrs_for(&opts.style, res),
+                Shaping::Advanced,
+                None,
+            );
             EditState {
                 editor: Editor::new(buffer),
                 style: opts.style,
@@ -450,10 +450,10 @@ impl EditStore {
         }))
     }
 
-    pub fn set_text(&mut self, key: Key, text: &str, fs: &mut FontSystem) {
+    pub fn set_text(&mut self, key: Key, text: &str, fs: &mut FontSystem, res: &Resources) {
         if let Some(s) = self.states.get_mut(&key) {
             s.preedit = None;
-            let a = attrs_for(&s.style);
+            let a = attrs_for(&s.style, res);
             s.editor
                 .with_buffer_mut(|b| b.set_text(text, &a, Shaping::Advanced, None));
             s.editor.set_selection(Selection::None);
@@ -871,7 +871,7 @@ impl EditStore {
                             ),
                             color: accent,
                             border_color: Color::TRANSPARENT,
-                            radius: 0.0,
+                            radius: [0.0; 4],
                             border_w: 0.0,
                             kind: QuadKind::Solid,
                             uv: [0; 4],
@@ -885,7 +885,7 @@ impl EditStore {
                             rect: Rect::new(origin.x, origin.y + run.line_top, 2.0, line_height),
                             color: accent,
                             border_color: Color::TRANSPARENT,
-                            radius: 0.0,
+                            radius: [0.0; 4],
                             border_w: 0.0,
                             kind: QuadKind::Solid,
                             uv: [0; 4],
@@ -904,7 +904,7 @@ impl EditStore {
                             rect,
                             color,
                             border_color: Color::TRANSPARENT,
-                            radius: 0.0,
+                            radius: [0.0; 4],
                             border_w: 0.0,
                             kind: QuadKind::Solid,
                             uv: [0; 4],
@@ -943,7 +943,7 @@ impl EditStore {
                         rect: Rect::new(x, y, slot.w as f32, slot.h as f32),
                         color: glyph_color,
                         border_color: Color::TRANSPARENT,
-                        radius: 0.0,
+                        radius: [0.0; 4],
                         border_w: 0.0,
                         kind: crate::text::glyph_kind(&slot),
                         uv: [slot.x, slot.y, slot.w, slot.h],
@@ -962,7 +962,7 @@ impl EditStore {
                     ),
                     color,
                     border_color: Color::TRANSPARENT,
-                    radius: 0.0,
+                    radius: [0.0; 4],
                     border_w: 0.0,
                     kind: QuadKind::Solid,
                     uv: [0; 4],

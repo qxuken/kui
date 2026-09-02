@@ -354,12 +354,17 @@ pub fn parse_props(t: &Table, is_row: bool) -> mlua::Result<PropsOut> {
     if let Some(size) = t.get::<Option<f32>>("size")? {
         out.style = kui_core::TextStyle::new(size);
     }
+    // `radius` sets all four corners, so it must land before any
+    // `radius_tl`-style override — table iteration order is undefined.
+    if let Some(r) = t.get::<Option<f32>>("radius")? {
+        out.with_spec(|s| s.radius(r));
+    }
     for pair in t.pairs::<mlua::Value, mlua::Value>() {
         let (k, v) = pair?;
         let mlua::Value::String(k) = k else { continue };
         let k = k.to_str()?;
         match k.as_ref() {
-            "size" => {}
+            "size" | "radius" => {}
             "pad" => {
                 let e = parse_edges(&v)?;
                 out.with_spec(|s| s.padding(e));
@@ -453,6 +458,17 @@ fn parse_value(kind: &Kind, v: &mlua::Value) -> mlua::Result<Option<Parsed>> {
         }
         Kind::Sizing => Parsed::Sizing(parse_sizing(v)?),
         Kind::Msg => Parsed::Msg(lua_to_value(v)?),
+        Kind::Str => {
+            let mlua::Value::String(s) = v else {
+                return Err(bad("expected a string"));
+            };
+            Parsed::Str(s.to_str()?.to_string())
+        }
+        Kind::Resource => match v {
+            mlua::Value::Integer(n) => Parsed::Resource(*n as u64),
+            mlua::Value::Number(n) => Parsed::Resource(*n as u64),
+            _ => return Err(bad("expected a resource handle (integer)")),
+        },
     }))
 }
 

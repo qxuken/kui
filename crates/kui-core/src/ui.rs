@@ -67,6 +67,16 @@ impl<'a> Ui<'a> {
         self.core.is_pressed(key)
     }
 
+    /// Whether any member of a hover group (`NodeSpec::hover_group`) is
+    /// hovered; the id comes from `NodeSpec::hover_group_id`.
+    pub fn is_group_hovered(&self, group: u64) -> bool {
+        self.core.is_group_hovered(group)
+    }
+
+    pub fn is_group_pressed(&self, group: u64) -> bool {
+        self.core.is_group_pressed(group)
+    }
+
     /// Physical modifier state (the host also receives it as a
     /// `{kind="modifiers"}` event whenever it changes).
     pub fn modifiers(&self) -> crate::input::KeyMods {

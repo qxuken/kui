@@ -15,16 +15,9 @@ use crate::color::Color;
 use crate::display::{Quad, QuadKind};
 use crate::geom::{Rect, Size, Vec2};
 use crate::layout::TextMeasure;
+use crate::resources::Resources;
 use crate::spec::{FontFamily, TextStyle};
 use crate::tree::TextId;
-
-pub(crate) fn family_of(f: FontFamily) -> cosmic_text::Family<'static> {
-    match f {
-        FontFamily::Sans => cosmic_text::Family::SansSerif,
-        FontFamily::Serif => cosmic_text::Family::Serif,
-        FontFamily::Mono => cosmic_text::Family::Monospace,
-    }
-}
 
 /// The glyph rasterizer: cosmic-text's swash cache for plain alpha masks and
 /// color bitmaps, plus our own scaler for LCD subpixel masks (cosmic-text's
@@ -297,6 +290,10 @@ impl TextSystem {
         changed
     }
 
+    pub(crate) fn font_system(&self) -> &FontSystem {
+        &self.font_system
+    }
+
     pub(crate) fn font_system_mut(&mut self) -> &mut FontSystem {
         &mut self.font_system
     }
@@ -331,12 +328,19 @@ impl TextSystem {
         mix(&style.size.to_bits().to_le_bytes());
         mix(&style.line_height.to_bits().to_le_bytes());
         mix(&scale.to_bits().to_le_bytes());
-        mix(&[style.family as u8]);
+        let (tag, font) = match style.family {
+            FontFamily::Sans => (0u8, 0u64),
+            FontFamily::Serif => (1, 0),
+            FontFamily::Mono => (2, 0),
+            FontFamily::Custom(id) => (3, id.to_ffi()),
+        };
+        mix(&[tag]);
+        mix(&font.to_le_bytes());
         h
     }
 
     /// Registers a text for this frame, shaping (or reusing) its buffer.
-    pub fn add(&mut self, content: &str, style: &TextStyle) -> TextId {
+    pub fn add(&mut self, content: &str, style: &TextStyle, res: &Resources) -> TextId {
         let key = Self::style_key(content, style, self.scale);
         let frame_no = self.frame_no;
         let scale = self.scale;
@@ -347,7 +351,7 @@ impl TextSystem {
             buffer.set_size(None, None);
             buffer.set_text(
                 content,
-                &Attrs::new().family(family_of(style.family)),
+                &Attrs::new().family(res.family_of(style.family)),
                 Shaping::Advanced,
                 None,
             );
@@ -372,7 +376,7 @@ impl TextSystem {
 
     /// Registers a rich-text paragraph for this frame. Spans shape as one
     /// flow, so wrapping crosses style boundaries correctly.
-    pub fn add_rich(&mut self, spans: &[Span<'_>], base: &TextStyle) -> TextId {
+    pub fn add_rich(&mut self, spans: &[Span<'_>], base: &TextStyle, res: &Resources) -> TextId {
         let mut key = Self::style_key("", base, self.scale) ^ 0x9e37_79b9_7f4a_7c15;
         for s in spans {
             let mut mix = |bytes: &[u8]| {
@@ -397,7 +401,7 @@ impl TextSystem {
             let metrics = Metrics::new(base.size * scale, base.line_height * scale);
             let mut buffer = Buffer::new(fs, metrics);
             buffer.set_size(None, None);
-            let family = family_of(base.family);
+            let family = res.family_of(base.family);
             buffer.set_rich_text(
                 spans.iter().map(|s| (s.text, s.attrs(family))),
                 &Attrs::new().family(family),
@@ -519,7 +523,7 @@ impl TextSystem {
                     rect: Rect::new(ox + g.x, oy + g.y, g.w, g.h),
                     color: g.color.unwrap_or(color),
                     border_color: Color::TRANSPARENT,
-                    radius: 0.0,
+                    radius: [0.0; 4],
                     border_w: 0.0,
                     kind: g.kind,
                     uv: g.uv,

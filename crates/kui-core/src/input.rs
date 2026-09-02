@@ -260,6 +260,12 @@ pub struct HitRegion {
     pub key_sink: Option<Value>,
     /// Window-chrome role: interactions become `WindowCommand`s, not events.
     pub window: Option<WindowRole>,
+    /// Hover tag when the node declared `on_hover`: the pointer entering or
+    /// leaving emits `{kind="hover", phase="enter"|"leave", tag}` on it.
+    pub hover: Option<Value>,
+    /// Hover group id (`NodeSpec::hover_group`): hovering or pressing any
+    /// member lights up every member.
+    pub group: Option<u64>,
 }
 
 /// A scroll container's on-screen area, for wheel routing.
@@ -342,12 +348,30 @@ pub struct Interaction {
     cursor: Option<Vec2>,
     hovered: Option<Key>,
     pressed: Option<Key>,
+    /// Hover group of the hovered / pressed region, for group styling.
+    hovered_group: Option<u64>,
+    pressed_group: Option<u64>,
+    /// The `on_hover` leave event for the hovered node, prepared on enter.
+    hovered_leave: Option<UiEvent>,
+    /// Hover enter/leave events raised outside `handle` — a new frame's hit
+    /// regions changing what sits under a still cursor. Drained by the next
+    /// `handle` or by `take_pending`.
+    pending: Vec<UiEvent>,
 }
 
 impl Interaction {
     pub fn set_hits(&mut self, hits: Vec<HitRegion>) {
         self.hits = hits;
-        self.refresh_hover();
+        let mut out = std::mem::take(&mut self.pending);
+        self.refresh_hover(&mut out);
+        self.pending = out;
+    }
+
+    /// Events produced outside `handle` (see `pending`); drivers take them
+    /// after finishing a frame so a hover change under a still cursor is
+    /// not delayed until the next input.
+    pub fn take_pending(&mut self) -> Vec<UiEvent> {
+        std::mem::take(&mut self.pending)
     }
 
     /// Hands back the previous frame's hit buffer (cleared) so emission can
@@ -392,8 +416,46 @@ impl Interaction {
             .map(|r| r.key)
     }
 
-    fn refresh_hover(&mut self) {
-        self.hovered = self.cursor.and_then(|p| self.hit_at(p)).map(|h| h.key);
+    /// Re-resolves the hovered region under the cursor, emitting `on_hover`
+    /// leave/enter events when the hovered node changes.
+    fn refresh_hover(&mut self, out: &mut Vec<UiEvent>) {
+        let before = self.hovered;
+        let idx = self.cursor.and_then(|p| {
+            self.hits
+                .iter()
+                .rposition(|h| h.rect.contains(p) && h.clip.contains(p))
+        });
+        let (hovered, group) = match idx {
+            Some(i) => (Some(self.hits[i].key), self.hits[i].group),
+            None => (None, None),
+        };
+        self.hovered = hovered;
+        self.hovered_group = group;
+        if before == hovered {
+            return;
+        }
+        // The old region may be gone from a new frame's hits, so the leave
+        // event was prepared when the node was entered.
+        out.extend(self.hovered_leave.take());
+        if let Some(i) = idx {
+            out.extend(Self::hover_event(&self.hits[i], "enter"));
+            self.hovered_leave = Self::hover_event(&self.hits[i], "leave");
+        }
+    }
+
+    fn hover_event(region: &HitRegion, phase: &str) -> Option<UiEvent> {
+        let tag = region.hover.as_ref()?;
+        let mut payload = Value::map([("kind", Value::str("hover")), ("phase", Value::str(phase))]);
+        if *tag != Value::Null
+            && let Value::Map(entries) = &mut payload
+        {
+            entries.push(("tag".to_string(), tag.clone()));
+        }
+        Some(UiEvent {
+            origin: region.origin,
+            key: region.key,
+            payload,
+        })
     }
 
     /// Topmost scrollbar whose track contains `p` (scrollbars draw over
@@ -443,10 +505,11 @@ impl Interaction {
     }
 
     pub fn handle(&mut self, ev: InputEvent, out: &mut Vec<UiEvent>) {
+        out.append(&mut self.pending);
         match ev {
             InputEvent::CursorMoved(p) => {
                 self.cursor = Some(p);
-                self.refresh_hover();
+                self.refresh_hover(out);
                 if let Some(drag) = &mut self.drag {
                     let d = Vec2::new(p.x - drag.last.x, p.y - drag.last.y);
                     if d.x != 0.0 || d.y != 0.0 {
@@ -462,10 +525,11 @@ impl Interaction {
             }
             InputEvent::CursorLeft => {
                 self.cursor = None;
-                self.hovered = None;
+                self.refresh_hover(out);
             }
             InputEvent::MouseDown(_) => {
                 self.pressed = self.hovered;
+                self.pressed_group = self.hovered_group;
                 if let Some(h) = self.cursor.and_then(|p| self.hit_at(p)) {
                     if h.window == Some(WindowRole::Drag) {
                         // The OS drag steals subsequent mouse events, so don't
@@ -526,6 +590,7 @@ impl Interaction {
                     }
                 }
                 self.pressed = None;
+                self.pressed_group = None;
             }
         }
     }
@@ -536,6 +601,22 @@ impl Interaction {
 
     pub fn is_pressed(&self, key: Key) -> bool {
         self.pressed == Some(key) && self.hovered == Some(key)
+    }
+
+    /// The hovered node, if any (its key from the last finished frame).
+    pub fn hovered(&self) -> Option<Key> {
+        self.hovered
+    }
+
+    /// Whether any member of hover group `group` is hovered.
+    pub fn is_group_hovered(&self, group: u64) -> bool {
+        self.hovered_group == Some(group)
+    }
+
+    /// Whether the press started on a member of `group` and the pointer is
+    /// still over one (the group analogue of `is_pressed`).
+    pub fn is_group_pressed(&self, group: u64) -> bool {
+        self.pressed_group == Some(group) && self.hovered_group == Some(group)
     }
 }
 
@@ -555,6 +636,8 @@ mod tests {
             edit_origin: None,
             key_sink: None,
             window: None,
+            hover: None,
+            group: None,
         }
     }
 

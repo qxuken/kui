@@ -84,6 +84,13 @@ function on_event(ev)                     -- ev = payload + node_key
 end
 ```
 
+## Reference
+
+[docs/props.md](docs/props.md) is the cross-binding reference: every prop
+with its JSX, Lua and C name, the composites, the elements, the event
+payload shapes and the resource APIs. It is generated from the schema
+(`npm run gen` in `packages/kui`), so it cannot drift.
+
 ## Design notes
 
 - **One prop schema, three bindings.** `kui_core::schema::PROPS` is the
@@ -191,6 +198,37 @@ end
   the drawn controls; Linux falls back to synthesized edge resizing and
   double-click maximize. Lua declares `window = "drag"` etc.; C sets `KuiSpec.window_role`
   and drains `kui_take_window_commands`.
+- **Pointer state is declared, not queried.** A node says what it looks
+  like while hovered or pressed (`hover_bg` / `pressed_bg`; JSX `hoverBg`,
+  Lua `hover_bg`, `KuiSpec.hover_bg`) and the core swaps the color in when
+  the node opens, so a data-only view — JSX re-encoded between pumps, a Lua
+  table, flat C calls — gets hover feedback with no round trip and no
+  `is_hovered` in the view; with `transition` the swap eases. `hover_group`
+  ties nodes together (a two-piece elbow, a split button lights up as one).
+  `widgets::button`, `<button>` and `kui_button` are all that same data
+  (`widgets::button_spec()`). When hover must change *layout* — a close
+  button that appears — `on_hover` emits `{kind="hover", phase="enter"|
+  "leave", tag}` events like any other interaction, including when a new
+  frame moves a node under a still cursor (`Core::take_pending_events`,
+  routed by every driver after a frame). `is_hovered` / `is_pressed` stay
+  as queries for Rust and Lua views and are mirrored on `KuiWindow`.
+- **Corners are four radii.** `VisualStyle::radius` is `[tl, tr, br, bl]`:
+  `.radius(r)` rounds all four, `.radius_tl(r)` / `.radius_top(r)` / ...
+  override some (later wins, like CSS shorthand then longhand; JSX
+  `radiusTL`, Lua `radius_tl`, C `radius_tl` + `per_corner`). Quads carry all
+  four and the SDF picks the corner's radius per fragment, so a tab, a
+  header or an LCARS elbow is one box, and transitions ease each corner on
+  its own.
+- **Fonts are registered resources.** Beyond the generic sans / serif /
+  mono families, `Core::load_fonts_dir("fonts")` / `load_font_file(path)` /
+  `add_font_data(bytes)` load TTF/OTF/TTC files into the font database and
+  `Core::add_system_font("Antonio")` names a family — installed or just
+  loaded (`system_font_families()` lists them); all hand back a `FontId`
+  slotmap handle for `TextStyle::font(id)` — JSX `<text font={id}>` via
+  `ctx.addFont` / `addSystemFont`, Lua `font = id`, C `KuiTextStyle.font`
+  via `kui_font_add*`. The shaping cache keys on the handle, editors shape
+  through it too, and a removed font's stale handle shapes as sans rather
+  than aliasing whatever took its slot.
 - **The C API is translation, not architecture.** Frame building is flat
   calls on one opaque context (`kui_open`/`kui_close`/`kui_text`), payloads
   are opaque `KuiValue` handles with accessors, and `kui_draw_data` hands out
@@ -239,8 +277,8 @@ click slop suppresses the node's `on_click`.
 Images: register RGBA pixels once (`resources.add_image`), then `ui.image(id,
 spec)` draws them through the same atlas page and draw call as glyphs (the
 page doubles up to 4096² when needed). `Fit` takes the pixel size, a `Fit`
-height against a resolved width keeps aspect, and `style.radius` rounds
-corners.
+height against a resolved width keeps aspect, and `style.radius` (all four
+corners, or per corner) rounds them.
 
 ## Performance
 

@@ -104,6 +104,15 @@ fn parse_json(kind: &Kind, v: &Json) -> Result<Option<Parsed>> {
         }
         Kind::Sizing => Parsed::Sizing(sizing_of(v)?),
         Kind::Msg => Parsed::Msg(value_of(v)),
+        Kind::Str => Parsed::Str(
+            v.as_str()
+                .ok_or_else(|| err("expected a string"))?
+                .to_string(),
+        ),
+        Kind::Resource => Parsed::Resource(crate::parse_u64(
+            v.as_str()
+                .ok_or_else(|| err("expected a resource id string"))?,
+        )?),
     }))
 }
 
@@ -204,6 +213,8 @@ pub fn protocol_props() -> Json {
             Kind::Enum(names) => ("enum", Some(names)),
             Kind::Sizing => ("sizing", None),
             Kind::Msg => ("msg", None),
+            Kind::Str => ("str", None),
+            Kind::Resource => ("resource", None),
         };
         p.insert("kind".into(), Json::String(kind.into()));
         if let Some(names) = values {
@@ -218,13 +229,81 @@ pub fn protocol_props() -> Json {
         };
         p.insert("target".into(), Json::String(target.into()));
         p.insert("doc".into(), Json::String(def.doc.into()));
+        // Spellings in the other bindings, for the generated reference.
+        p.insert("lua".into(), Json::String(def.snake_name().into()));
+        p.insert("c".into(), Json::String(c_field(def)));
         o.insert(def.name.into(), Json::Object(p));
     }
-    for (name, id) in CUSTOM {
+    for c in CUSTOM {
         let mut p = JsonMap::new();
-        p.insert("id".into(), Json::from(*id));
+        p.insert("id".into(), Json::from(c.id));
         p.insert("kind".into(), Json::String("custom".into()));
-        o.insert((*name).into(), Json::Object(p));
+        p.insert("jsx".into(), Json::String(c.jsx.into()));
+        p.insert("lua".into(), Json::String(c.lua.into()));
+        p.insert("c".into(), Json::String(c.c.into()));
+        p.insert("doc".into(), Json::String(c.doc.into()));
+        o.insert(c.name.into(), Json::Object(p));
     }
     Json::Object(o)
+}
+
+/// A docs table column: its name and the accessor for a row's cell.
+type Column<T> = (&'static str, fn(&T) -> &'static str);
+
+fn table<T>(items: &[T], fields: &[Column<T>]) -> Json {
+    Json::Array(
+        items
+            .iter()
+            .map(|it| {
+                Json::Object(
+                    fields
+                        .iter()
+                        .map(|(k, f)| (k.to_string(), Json::String(f(it).into())))
+                        .collect(),
+                )
+            })
+            .collect(),
+    )
+}
+
+/// The element, event and resource tables as data, for the docs generator.
+pub fn protocol_tables() -> Vec<(&'static str, Json)> {
+    vec![
+        (
+            "elements",
+            table(
+                ELEMENTS,
+                &[
+                    ("name", |e: &ElementDef| e.name),
+                    ("jsx", |e| e.jsx),
+                    ("lua", |e| e.lua),
+                    ("c", |e| e.c),
+                    ("doc", |e| e.doc),
+                ],
+            ),
+        ),
+        (
+            "events",
+            table(
+                EVENTS,
+                &[
+                    ("kind", |e: &EventDef| e.kind),
+                    ("payload", |e| e.payload),
+                    ("doc", |e| e.doc),
+                ],
+            ),
+        ),
+        (
+            "resources",
+            table(
+                RESOURCES,
+                &[
+                    ("what", |r: &ResourceDef| r.what),
+                    ("node", |r| r.node),
+                    ("lua", |r| r.lua),
+                    ("c", |r| r.c),
+                ],
+            ),
+        ),
+    ]
 }

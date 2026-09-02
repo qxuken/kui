@@ -38,9 +38,11 @@ pub use geom::{Edges, Rect, Size, Vec2};
 pub use input::ScrollAxis;
 pub use input::{EditKey, InputEvent, KeyCode, KeyMods, KeyPress, Mods, UiEvent};
 pub use key::Key;
-pub use resources::{ImageId, Resources};
+pub use resources::{FontId, ImageId, Resources};
 pub use runtime::{Core, Extension};
-pub use spec::{Align, Dir, FloatAnchor, FloatConfig, FontFamily, NodeSpec, Sizing, TextStyle};
+pub use spec::{
+    Align, Dir, FloatAnchor, FloatConfig, FontFamily, NodeSpec, Sizing, TextStyle, corner,
+};
 pub use stats::{FrameSample, FrameStats};
 pub use text::Span;
 pub use tree::OriginId;

@@ -9,8 +9,8 @@
 //! `onClick` carries a message value, never a closure.
 
 use kui_core::{
-    Align, Color, Core, EditKey, EditOptions, ImageId, InputEvent, Key, KeyCode, KeyMods, KeyPress,
-    Mods, NodeSpec, Size, Span, TextStyle, UiEvent, Value, Vec2,
+    Align, Color, Core, EditKey, EditOptions, FontId, ImageId, InputEvent, Key, KeyCode, KeyMods,
+    KeyPress, Mods, Size, Span, TextStyle, UiEvent, Value, Vec2,
 };
 use napi::bindgen_prelude::{Buffer, Float64Array, Uint8Array};
 use napi_derive::napi;
@@ -261,25 +261,13 @@ fn lower_element(core: &mut Core, node: &JsonMap<String, Json>) -> Result<()> {
             collect_text(children, &mut label);
             let msg = props.get("onClick").map(value_of).unwrap_or(Value::Null);
             let label_key = key.unwrap_or(&label);
-            let node_key = core.child_key(label_key);
-            // Same palette as kui_core::widgets::button / kui_ffi::kui_button.
-            let bg = if core.is_pressed(node_key) {
-                Color::rgb8(0x2f, 0x54, 0xc4)
-            } else if core.is_hovered(node_key) {
-                Color::rgb8(0x47, 0x6c, 0xe0)
-            } else {
-                Color::rgb8(0x3b, 0x5b, 0xd4)
-            };
-            core.open_keyed(
-                label_key,
-                NodeSpec::row()
-                    .pad_xy(14.0, 8.0)
-                    .bg(bg)
-                    .radius(6.0)
-                    .center()
-                    .on_click(msg),
+            // The same data as kui_core::widgets::button: hover/pressed
+            // colors are declared on the spec, resolved by the core.
+            core.open_keyed(label_key, kui_core::widgets::button_spec().on_click(msg));
+            core.text_node(
+                &label,
+                TextStyle::new(kui_core::widgets::BUTTON_TEXT).color(Color::WHITE),
             );
-            core.text_node(&label, TextStyle::new(15.0).color(Color::WHITE));
             core.close();
             Ok(())
         }
@@ -384,7 +372,7 @@ fn lower_root(core: &mut Core, tree: &Json) -> Result<()> {
 // ---------------------------------------------------------------------------
 // Context
 
-fn parse_u64(s: &str) -> Result<u64> {
+pub(crate) fn parse_u64(s: &str) -> Result<u64> {
     let hex = s.strip_prefix("0x").unwrap_or(s);
     u64::from_str_radix(hex, 16).map_err(|_| err(format!("bad id {s:?}")))
 }
@@ -480,6 +468,7 @@ impl Ctx {
         let result = lower_root(&mut self.core, &tree);
         // Finish even on lowering errors so the context stays usable.
         self.core.finish_frame();
+        self.events.extend(self.core.take_pending_events());
         result
     }
 
@@ -510,6 +499,7 @@ impl Ctx {
             .begin_frame(Size::new(width as f32, height as f32), scale as f32);
         let result = binary::lower_binary(&mut self.core, &stream, &strings);
         self.core.finish_frame();
+        self.events.extend(self.core.take_pending_events());
         result
     }
 
@@ -645,6 +635,48 @@ impl Ctx {
     pub fn remove_image(&mut self, id: String) -> Result<()> {
         self.core.remove_image(ImageId::from_ffi(parse_u64(&id)?));
         Ok(())
+    }
+
+    /// Registers a font from file bytes (TTF/OTF/TTC); returns its id for
+    /// the `font` prop on `<text>` / `<edit>`. Throws when the data holds
+    /// no usable face.
+    #[napi]
+    pub fn add_font(&mut self, data: Buffer) -> Result<String> {
+        add_font_impl(&mut self.core, &data)
+    }
+
+    /// Registers an installed font by family name; null when none matches
+    /// (see `systemFontFamilies`). Also finds families loaded with
+    /// `loadFontsDir` / `loadFontFile`; the same family gets the same id.
+    #[napi]
+    pub fn add_system_font(&mut self, name: String) -> Option<String> {
+        self.core.add_system_font(&name).map(font_str)
+    }
+
+    /// Registers a font file by path (memory-mapped); throws when it cannot
+    /// be read or holds no usable face.
+    #[napi]
+    pub fn load_font_file(&mut self, path: String) -> Result<String> {
+        load_font_file_impl(&mut self.core, &path)
+    }
+
+    /// Loads every font file under a folder (recursively) so its families
+    /// can be picked by name with `addSystemFont`; returns the face count.
+    #[napi]
+    pub fn load_fonts_dir(&mut self, dir: String) -> u32 {
+        self.core.load_fonts_dir(&dir) as u32
+    }
+
+    #[napi]
+    pub fn remove_font(&mut self, id: String) -> Result<()> {
+        self.core.remove_font(FontId::from_ffi(parse_u64(&id)?));
+        Ok(())
+    }
+
+    /// Family names of every installed font (sorted).
+    #[napi]
+    pub fn system_font_families(&self) -> Vec<String> {
+        self.core.system_font_families()
     }
 
     /// Drains pending UI events: `[{origin, key, payload}]`, payloads as
@@ -885,6 +917,19 @@ impl KuiWindow {
         Ok(self.runner.core_mut().is_focused(parse_key(&key)?))
     }
 
+    /// Hover state as of the last frame (keys come from events, e.g. an
+    /// `onHover` enter). For plain hover styling prefer the `hoverBg` /
+    /// `pressedBg` props — the core resolves those without a round trip.
+    #[napi]
+    pub fn is_hovered(&mut self, key: String) -> Result<bool> {
+        Ok(self.runner.core_mut().is_hovered(parse_key(&key)?))
+    }
+
+    #[napi]
+    pub fn is_pressed(&mut self, key: String) -> Result<bool> {
+        Ok(self.runner.core_mut().is_pressed(parse_key(&key)?))
+    }
+
     /// Registers a w×h RGBA image (pixels copied); returns its id for
     /// `<image src={id}>`. Stable until `removeImage`.
     #[napi]
@@ -899,6 +944,61 @@ impl KuiWindow {
             .remove_image(ImageId::from_ffi(parse_u64(&id)?));
         Ok(())
     }
+
+    /// Registers a font from file bytes; see `Ctx.addFont`.
+    #[napi]
+    pub fn add_font(&mut self, data: Buffer) -> Result<String> {
+        add_font_impl(self.runner.core_mut(), &data)
+    }
+
+    /// Registers an installed font by family name; see `Ctx.addSystemFont`.
+    #[napi]
+    pub fn add_system_font(&mut self, name: String) -> Option<String> {
+        self.runner.core_mut().add_system_font(&name).map(font_str)
+    }
+
+    /// Registers a font file by path; see `Ctx.loadFontFile`.
+    #[napi]
+    pub fn load_font_file(&mut self, path: String) -> Result<String> {
+        load_font_file_impl(self.runner.core_mut(), &path)
+    }
+
+    /// Loads a folder of fonts; see `Ctx.loadFontsDir`.
+    #[napi]
+    pub fn load_fonts_dir(&mut self, dir: String) -> u32 {
+        self.runner.core_mut().load_fonts_dir(&dir) as u32
+    }
+
+    #[napi]
+    pub fn remove_font(&mut self, id: String) -> Result<()> {
+        self.runner
+            .core_mut()
+            .remove_font(FontId::from_ffi(parse_u64(&id)?));
+        Ok(())
+    }
+
+    #[napi]
+    pub fn system_font_families(&mut self) -> Vec<String> {
+        self.runner.core_mut().system_font_families()
+    }
+}
+
+fn font_str(id: FontId) -> String {
+    format!("{:016x}", id.to_ffi())
+}
+
+fn load_font_file_impl(core: &mut Core, path: &str) -> Result<String> {
+    core.load_font_file(path).map(font_str).ok_or_else(|| {
+        err(format!(
+            "no usable font face in {path:?} (unreadable, or not TTF/OTF/TTC)"
+        ))
+    })
+}
+
+fn add_font_impl(core: &mut Core, data: &[u8]) -> Result<String> {
+    core.add_font_data(data.to_vec())
+        .map(font_str)
+        .ok_or_else(|| err("no usable font face in the data (expected TTF/OTF/TTC bytes)"))
 }
 
 fn add_image_impl(core: &mut Core, width: u32, height: u32, rgba: &[u8]) -> Result<String> {

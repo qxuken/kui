@@ -129,6 +129,19 @@ typedef struct KuiSpec {
     float transition_ms;
     uint32_t easing; /* KUI_EASE_* */
     uint32_t slide;  /* non-zero: also ease the position (siblings slide) */
+    /* Declarative pointer styling, resolved by the core when the node opens
+     * (no kui_is_hovered round trip; eases with transition_ms). 0 = none.
+     * Any of these makes the node hover-tracked. */
+    uint32_t hover_bg;   /* 0xRRGGBBAA while hovered (or its hover group is) */
+    uint32_t pressed_bg; /* 0xRRGGBBAA while pressed */
+    /* Hover group name (empty = none): members show hover_bg / pressed_bg
+     * together (a split button, a multi-piece shape). Hashed, not retained. */
+    KuiStr hover_group;
+    /* Per-corner radii: with per_corner non-zero, radius_tl..radius_bl are
+     * the four corner radii (clockwise from the top-left) and `radius` is
+     * ignored; zero keeps the uniform `radius` on every corner. */
+    uint32_t per_corner;
+    float radius_tl, radius_tr, radius_br, radius_bl;
 } KuiSpec;
 
 /* Zero-initialized KuiTextStyle picks defaults (16px, default foreground). */
@@ -137,6 +150,7 @@ typedef struct KuiTextStyle {
     float line_height; /* <= 0: default (size * 1.35) */
     uint32_t color;    /* 0: default foreground */
     uint32_t family;   /* KUI_FONT_* ; 0 = sans */
+    uint64_t font;     /* registered font handle (kui_font_add*); non-zero overrides family */
 } KuiTextStyle;
 
 typedef struct KuiSpan {
@@ -155,7 +169,7 @@ typedef struct KuiQuad {
     float x, y, w, h;        /* physical pixels */
     float color[4];
     float border_color[4];
-    float radius;
+    float radius[4];         /* corner radii, clockwise from the top-left */
     float border_w;
     uint32_t kind;           /* KUI_QUAD_* */
     uint32_t uv[4];          /* atlas texels: x, y, w, h */
@@ -239,12 +253,30 @@ uint64_t kui_open_draggable(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
  * consumed. NULL means absent (a NULL on_drag here does NOT make the node
  * draggable, unlike kui_open_draggable). A non-NULL on_key makes the node a
  * key sink: focus it with kui_set_key_focus and every press arrives as
- * {kind="key", code, ctrl, alt, shift, super, text, repeat, tag}. */
+ * {kind="key", code, ctrl, alt, shift, super, text, repeat, tag}. A non-NULL
+ * on_hover makes the pointer entering/leaving emit
+ * {kind="hover", phase="enter"|"leave", tag} — for hover-dependent layout;
+ * plain hover colors belong in KuiSpec.hover_bg / pressed_bg. */
 uint64_t kui_open_with(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
-                       KuiValue *on_click, KuiValue *on_drag, KuiValue *on_key);
+                       KuiValue *on_click, KuiValue *on_drag, KuiValue *on_key,
+                       KuiValue *on_hover);
 /* Routes the keyboard at a key-sink node for this frame (0 clears). Declare
  * it every frame you want it, like the title; a focused editor still wins. */
 void kui_set_key_focus(KuiCtx *ctx, uint64_t key);
+/* -- Fonts ---------------------------------------------------------------- */
+/* Registers a font from file bytes (TTF/OTF/TTC, copied); returns a handle
+ * for KuiTextStyle.font, 0 when the data holds no usable face. */
+uint64_t kui_font_add(KuiCtx *ctx, const uint8_t *data, size_t len);
+/* The handle for a font family by name ("Menlo") — installed, or loaded with
+ * the two calls below; 0 when none matches. Idempotent per family. */
+uint64_t kui_font_add_system(KuiCtx *ctx, KuiStr name);
+/* Registers a font file by path (memory-mapped); 0 on failure. */
+uint64_t kui_font_load_file(KuiCtx *ctx, KuiStr path);
+/* Loads every font file under a folder (recursively) for kui_font_add_system;
+ * returns the number of faces added. */
+size_t kui_font_load_dir(KuiCtx *ctx, KuiStr dir);
+/* Forgets a font; styles still naming it shape as sans. */
+void kui_font_remove(KuiCtx *ctx, uint64_t id);
 /* -- Images --------------------------------------------------------------- */
 /* Registers a w*h RGBA image (pixels copied); returns a handle, 0 on
  * failure. Handles are stable until kui_image_remove. */

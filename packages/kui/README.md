@@ -34,3 +34,44 @@ const view = (model: Model) => (
 const app = createApp({ init, update, view }, { width: 640, height: 480 });   // headless
 const final = await runWindowed({ init, update, view }, { title: 'counter' }); // a window
 ```
+
+The `runWindowed` loop also takes a clock — `tick: { every: 250, msg: (now) =>
+({ kind: 'tick', now }) }` — and re-renders on a tick only when `update`
+returns a new model, so a countdown is free between displayed seconds.
+
+## Windowed app checklist
+
+Things the package already does that are easy to miss when building a
+real window. The full prop / element / event reference is
+[docs/props.md](../../docs/props.md) in the repository.
+
+- **Hover and pressed colors** are props, not queries: `hoverBg`,
+  `pressedBg`, and `hoverGroup="name"` to light connected pieces together.
+  Add `transition={150}` and the swap eases. `<button>` is exactly that data.
+  For hover-dependent *layout* use `onHover={tag}` and react to
+  `{kind: 'hover', phase: 'enter' | 'leave'}` events; `win.isHovered(key)`
+  and `isPressed` answer for keys you got from events.
+- **Tooltips**: `tooltip="hint"` on any box (implies hover tracking).
+- **Per-corner radius**: `radius` for all four, `radiusTL` / `radiusTR` /
+  `radiusBR` / `radiusBL` after it for the exceptions.
+- **Fonts**: `win.loadFontsDir('fonts')` then `win.addSystemFont('Antonio')`,
+  or `win.loadFontFile('fonts/Antonio.ttf')`, `win.addFont(bytes)`, or an
+  installed family by name (see `systemFontFamilies()`); then
+  `<text font={id}>`. Register in `setup(win)` before the first frame.
+- **Window chrome**: open with `chrome: 'custom'`, put a `<titlebar>` (or
+  your own strip with `window="drag"` plus `<windowButtons/>`) in the root;
+  on macOS it insets past the traffic lights itself. The root box's
+  `title` prop names the window each frame.
+- **Overlays**: `float="below" | "above"` or
+  `float={{ anchor: 'viewport', at: ['end','end'], self: ['end','end'] }}`
+  draws on top without shifting anything.
+- **Sliders and dividers**: `onDrag={tag}` gives `{ x, y, dx, dy, parent }`
+  — `parent` is the container rect, so a fraction needs no geometry query.
+- **A clock**: `tick` on `runWindowed`, or `setTimeout` toward the next
+  boundary in your own loop; do not call `update` every pump.
+- **Keys**: `onKey` on the root plus `keyFocus`; presses arrive as
+  `{ kind: 'key', code, ... }` with `code` a character or a name
+  (`'space'`, `'enter'`, `'f5'`).
+- **Testing**: `createApp` runs the same app headless; `ctx.cursor` /
+  `mouse` / `keyDown` drive it and `decodeQuads(ctx.quads())` inspects the
+  frame (`radii`, `color`, `kind`).

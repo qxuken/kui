@@ -844,6 +844,16 @@ impl<A: App> ApplicationHandler for Shell<A> {
                 // Views can declare window commands too (ui.window_command);
                 // apply them the same frame they were declared.
                 self.apply_window_commands();
+                // A frame can change what sits under a still cursor; route
+                // the resulting hover enter/leave events now rather than
+                // with the next input, and redraw for what they change.
+                let pending = self.core.take_pending_events();
+                if !pending.is_empty() {
+                    self.route_events(pending);
+                    if let Some(w) = &self.window {
+                        w.request_redraw();
+                    }
+                }
             }
             _ => {}
         }

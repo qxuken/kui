@@ -452,23 +452,23 @@ fn window_button(ui: &mut Ui<'_>, button: WindowButton, maximized: bool) {
     );
 }
 
+/// The standard button's spec: hover and pressed backgrounds are declared
+/// on the node and resolved by the core, so every binding's button is this
+/// same data. Add the label as a child.
+pub fn button_spec() -> NodeSpec {
+    NodeSpec::row()
+        .pad_xy(14.0, 8.0)
+        .bg(Color::rgb8(0x3b, 0x5b, 0xd4))
+        .hover_bg(Color::rgb8(0x47, 0x6c, 0xe0))
+        .pressed_bg(Color::rgb8(0x2f, 0x54, 0xc4))
+        .radius(6.0)
+        .center()
+}
+
+pub const BUTTON_TEXT: f32 = 15.0;
+
 pub fn button(ui: &mut Ui<'_>, text: &str, payload: impl Into<Value>) {
-    let key = ui.child_key(text);
-    let bg = if ui.is_pressed(key) {
-        Color::rgb8(0x2f, 0x54, 0xc4)
-    } else if ui.is_hovered(key) {
-        Color::rgb8(0x47, 0x6c, 0xe0)
-    } else {
-        Color::rgb8(0x3b, 0x5b, 0xd4)
-    };
-    ui.with_keyed(
-        text,
-        NodeSpec::row()
-            .pad_xy(14.0, 8.0)
-            .bg(bg)
-            .radius(6.0)
-            .center()
-            .on_click(payload.into()),
-        |ui| ui.text(text, TextStyle::new(15.0).color(Color::WHITE)),
-    );
+    ui.with_keyed(text, button_spec().on_click(payload.into()), |ui| {
+        ui.text(text, TextStyle::new(BUTTON_TEXT).color(Color::WHITE))
+    });
 }

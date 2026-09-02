@@ -113,10 +113,11 @@ jobs:
           cargo build -p kui-node --release
           cd packages/kui
           npm test
-          # The TS prop types are generated from the schema; a stale file
-          # means someone changed PROPS without running `npm run gen`.
+          # The TS prop types and docs/props.md are generated from the
+          # schema; a stale file means someone changed PROPS without
+          # running `npm run gen`.
           npm run gen
-          git diff --exit-code -- jsx-runtime.d.ts
+          git diff --exit-code -- jsx-runtime.d.ts ../../docs/props.md
 
   # The three cross jobs share one shape: rustup for the target, the linker
   # for the platform, a cache per target, build, collect, upload. zig and

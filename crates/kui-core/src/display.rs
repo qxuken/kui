@@ -31,7 +31,9 @@ pub struct Quad {
     pub rect: Rect,
     pub color: Color,
     pub border_color: Color,
-    pub radius: f32,
+    /// Corner radii in physical pixels, clockwise from the top-left:
+    /// `[tl, tr, br, bl]`.
+    pub radius: [f32; 4],
     pub border_w: f32,
     pub kind: QuadKind,
     /// Atlas texels: x, y, w, h.

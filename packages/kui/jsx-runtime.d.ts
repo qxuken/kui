@@ -65,6 +65,10 @@ export interface GeneratedSpecProps {
   gap?: number;
   /** Cross-axis size: px | "fit" | "grow" | "N%". */
   height?: SizingProp;
+  /** Background while hovered (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`. */
+  hoverBg?: ColorProp;
+  /** Nodes sharing a group name show hoverBg/pressedBg together (a split button, a multi-piece shape). */
+  hoverGroup?: string;
   /** Hover-track without a click payload (for isHovered-driven styling). */
   hoverable?: boolean;
   /** Child alignment along the main axis. */
@@ -81,10 +85,22 @@ export interface GeneratedSpecProps {
   onClick?: Msg;
   /** Drag tag: emits {kind:"drag", phase, x, y, dx, dy, parent, tag} events. */
   onDrag?: Msg;
+  /** Hover tag: the pointer entering/leaving emits {kind:"hover", phase:"enter"|"leave", tag} events. */
+  onHover?: Msg;
   /** Key-sink tag: with key focus held, presses arrive as {kind:"key", ...} events. */
   onKey?: Msg;
-  /** Corner radius (logical px). */
+  /** Background while pressed (or while its hoverGroup is); implies hover tracking. */
+  pressedBg?: ColorProp;
+  /** Corner radius for all four corners (logical px); the per-corner props override it when listed after it. */
   radius?: number;
+  /** Bottom-left corner radius (logical px). */
+  radiusBL?: number;
+  /** Bottom-right corner radius (logical px). */
+  radiusBR?: number;
+  /** Top-left corner radius (logical px). */
+  radiusTL?: number;
+  /** Top-right corner radius (logical px). */
+  radiusTR?: number;
   /** With transition: also ease the node's position (reordered siblings slide). */
   slide?: boolean;
   /** Animate sizing/colors/radius changes over this many ms (needs a stable key). */
@@ -100,6 +116,8 @@ export interface GeneratedStyleProps {
   color?: ColorProp;
   /** Font family. */
   family?: 'sans' | 'serif' | 'mono';
+  /** A registered font handle (addFont / addSystemFont); overrides `family`. */
+  font?: string;
   /** Line height (logical px); default size * 1.35. */
   lineHeight?: number;
 }

@@ -18,13 +18,15 @@ struct Instance {
     @location(1) size: vec2<f32>,
     @location(2) color: vec4<f32>,
     @location(3) border_color: vec4<f32>,
-    // radius, border_w, kind (0 solid / 1 mask glyph / 2 color glyph /
+    // unused, border_w, kind (0 solid / 1 mask glyph / 2 color glyph /
     // 3 image / 4 subpixel glyph), unused
     @location(4) params: vec4<f32>,
     // atlas texels: x, y, w, h
     @location(5) uv: vec4<f32>,
     // clip rect in physical px: x, y, w, h
     @location(6) clip: vec4<f32>,
+    // corner radii, clockwise from the top-left: tl, tr, br, bl
+    @location(7) radii: vec4<f32>,
 };
 
 struct VsOut {
@@ -36,6 +38,7 @@ struct VsOut {
     @location(4) params: vec4<f32>,
     @location(5) uv: vec2<f32>,
     @location(6) clip: vec4<f32>,
+    @location(7) radii: vec4<f32>,
 };
 
 @vertex
@@ -60,10 +63,19 @@ fn vs_main(@builtin(vertex_index) vi: u32, inst: Instance) -> VsOut {
     out.params = inst.params;
     out.uv = (inst.uv.xy + corner * inst.uv.zw) / globals.atlas_size;
     out.clip = inst.clip;
+    out.radii = inst.radii;
     return out;
 }
 
-fn sd_rounded_box(p: vec2<f32>, half: vec2<f32>, r: f32) -> f32 {
+// Signed distance to a box with one radius per corner. `p` is centered
+// (y down), `radii` is tl, tr, br, bl; each is clamped to the half extents
+// so oversized radii degrade to a pill, never a fold.
+fn sd_rounded_box(p: vec2<f32>, half: vec2<f32>, radii: vec4<f32>) -> f32 {
+    let right = p.x > 0.0;
+    let bottom = p.y > 0.0;
+    let top_r = select(radii.x, radii.y, right);
+    let bottom_r = select(radii.w, radii.z, right);
+    let r = select(top_r, bottom_r, bottom);
     let rr = min(r, min(half.x, half.y));
     let q = abs(p) - half + vec2<f32>(rr, rr);
     return length(max(q, vec2<f32>(0.0, 0.0))) + min(max(q.x, q.y), 0.0) - rr;
@@ -108,7 +120,7 @@ fn shade(in: VsOut) -> Shaded {
     // Solid rounded rect with optional border, SDF antialiased. Images
     // share the SDF so radius rounds their corners too.
     let half = in.size * 0.5;
-    let d = sd_rounded_box(in.local - half, half, in.params.x);
+    let d = sd_rounded_box(in.local - half, half, in.radii);
     let aa = 0.75;
     let coverage = 1.0 - smoothstep(-aa, aa, d);
 

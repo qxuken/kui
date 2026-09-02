@@ -209,7 +209,19 @@ pub struct VisualStyle {
     pub bg: Color,
     pub border_color: Color,
     pub border_w: f32,
-    pub radius: f32,
+    /// Corner radii (logical px), clockwise from the top-left:
+    /// `[tl, tr, br, bl]`. `NodeSpec::radius` sets all four; the per-corner
+    /// builders (`radius_tl`, ...) override one — later calls win, like CSS
+    /// `border-radius` followed by `border-top-left-radius`.
+    pub radius: [f32; 4],
+}
+
+/// Corner indices into `VisualStyle::radius` / `Quad::radius`.
+pub mod corner {
+    pub const TL: usize = 0;
+    pub const TR: usize = 1;
+    pub const BR: usize = 2;
+    pub const BL: usize = 3;
 }
 
 /// Full per-node configuration. This — not any Rust trait — is the contract
@@ -248,9 +260,47 @@ pub struct NodeSpec {
     /// Opt-in because a node whose position follows an already-easing
     /// sibling (a split's second half) would lag twice.
     pub slide: bool,
+    /// Background while the pointer hovers this node (or any node sharing
+    /// its `hover_group`). Resolved by the core when the node opens, so a
+    /// data-only view gets hover styling without querying `is_hovered` —
+    /// and with `transition` the swap eases. Implies hover tracking.
+    pub hover_bg: Option<Color>,
+    /// Background while this node (or its group) is pressed. Implies hover
+    /// tracking. Without a `hover_bg`, hover keeps the plain `bg`.
+    pub pressed_bg: Option<Color>,
+    /// Hover group: nodes sharing an id count as one for `hover_bg` /
+    /// `pressed_bg` — a two-piece elbow, a split button, a row whose cells
+    /// highlight together. The id is a hash of a name (`hover_group`).
+    /// Implies hover tracking.
+    pub hover_group: Option<u64>,
+    /// Hover events: the pointer entering or leaving this node emits
+    /// `{kind="hover", phase="enter"|"leave", tag}` with this payload under
+    /// `tag` — for hover-dependent *layout* (a close button that appears)
+    /// where a color swap isn't enough. Implies hover tracking.
+    pub on_hover: Option<Value>,
 }
 
 impl NodeSpec {
+    /// Whether the core registers a hit region for this node (any of the
+    /// interaction props, or an explicit `hoverable`).
+    pub fn hover_tracked(&self) -> bool {
+        self.hoverable
+            || self.on_click.is_some()
+            || self.on_drag.is_some()
+            || self.on_key.is_some()
+            || self.window.is_some()
+            || self.hover_bg.is_some()
+            || self.pressed_bg.is_some()
+            || self.hover_group.is_some()
+            || self.on_hover.is_some()
+    }
+
+    /// The group id `hover_group(name)` assigns — reproducible from any
+    /// binding (the same FNV mix as `Key`).
+    pub fn hover_group_id(name: &str) -> u64 {
+        crate::key::Key::ROOT.str(name).0
+    }
+
     pub fn row() -> Self {
         Self {
             layout: LayoutSpec {
@@ -370,9 +420,46 @@ impl NodeSpec {
         self
     }
 
+    /// Rounds all four corners by `r`.
     pub fn radius(mut self, r: f32) -> Self {
-        self.style.radius = r;
+        self.style.radius = [r; 4];
         self
+    }
+
+    /// Per-corner radii, clockwise from the top-left.
+    pub fn radii(mut self, tl: f32, tr: f32, br: f32, bl: f32) -> Self {
+        self.style.radius = [tl, tr, br, bl];
+        self
+    }
+
+    pub fn radius_tl(mut self, r: f32) -> Self {
+        self.style.radius[corner::TL] = r;
+        self
+    }
+
+    pub fn radius_tr(mut self, r: f32) -> Self {
+        self.style.radius[corner::TR] = r;
+        self
+    }
+
+    pub fn radius_br(mut self, r: f32) -> Self {
+        self.style.radius[corner::BR] = r;
+        self
+    }
+
+    pub fn radius_bl(mut self, r: f32) -> Self {
+        self.style.radius[corner::BL] = r;
+        self
+    }
+
+    /// Rounds the two top corners (tabs, headers).
+    pub fn radius_top(self, r: f32) -> Self {
+        self.radius_tl(r).radius_tr(r)
+    }
+
+    /// Rounds the two bottom corners.
+    pub fn radius_bottom(self, r: f32) -> Self {
+        self.radius_br(r).radius_bl(r)
     }
 
     pub fn border(mut self, w: f32, c: Color) -> Self {
@@ -390,6 +477,32 @@ impl NodeSpec {
 
     pub fn on_click(mut self, payload: impl Into<Value>) -> Self {
         self.on_click = Some(payload.into());
+        self
+    }
+
+    /// Background while hovered (see the `hover_bg` field).
+    pub fn hover_bg(mut self, c: Color) -> Self {
+        self.hover_bg = Some(c);
+        self
+    }
+
+    /// Background while pressed (see the `pressed_bg` field).
+    pub fn pressed_bg(mut self, c: Color) -> Self {
+        self.pressed_bg = Some(c);
+        self
+    }
+
+    /// Joins the hover group `name` (see the `hover_group` field).
+    pub fn hover_group(mut self, name: &str) -> Self {
+        self.hover_group = Some(Self::hover_group_id(name));
+        self
+    }
+
+    /// Emits enter/leave events for this node (see the `on_hover` field).
+    /// Pass a tag the handler can match on; `Value::Null` if the node key
+    /// is identification enough.
+    pub fn on_hover(mut self, tag: impl Into<Value>) -> Self {
+        self.on_hover = Some(tag.into());
         self
     }
 
@@ -456,6 +569,10 @@ pub enum FontFamily {
     Sans,
     Serif,
     Mono,
+    /// A font registered with the core (`Core::add_font_data` from file
+    /// bytes, or `Core::add_system_font` by installed family name). A
+    /// stale handle shapes as sans-serif.
+    Custom(crate::resources::FontId),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -489,6 +606,11 @@ impl TextStyle {
 
     pub fn mono(self) -> Self {
         self.family(FontFamily::Mono)
+    }
+
+    /// Shape with a registered font (see `FontFamily::Custom`).
+    pub fn font(self, id: crate::resources::FontId) -> Self {
+        self.family(FontFamily::Custom(id))
     }
 
     pub fn line_height(mut self, lh: f32) -> Self {

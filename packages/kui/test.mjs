@@ -5,6 +5,7 @@
 // Needs the addon built: npm run build:native. Run: npm test
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { Ctx, protocol } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
@@ -39,6 +40,8 @@ const SAMPLE = {
   flag: true,
   sizing: '50%',
   msg: { kind: 'm', n: 1, list: [1, 'two', null] },
+  str: 'group-a',
+  resource: '0000000000000007',
 };
 
 test('protocol exports a version and the schema rows', () => {
@@ -126,7 +129,7 @@ test('every element lowers identically', () => {
   const stride = b.quads.byteLength / b.stats.quadCount;
   let images = 0;
   for (let off = 0; off < b.quads.byteLength; off += stride) {
-    if (b.quads.readUInt32LE(off + 14 * 4) === 3) images++;
+    if (b.quads.readUInt32LE(off + 17 * 4) === 3) images++;
   }
   assert.equal(images, 1, 'one image quad');
 });
@@ -144,4 +147,120 @@ test('errors are the same on every transport', () => {
       assert.throws(() => run(transport, build), `${label} should throw on ${transport}`);
     }
   }
+});
+
+// Declarative hover styling: the core swaps hoverBg / pressedBg in while
+// the pointer is over the node (or its hoverGroup), and onHover reports
+// enter/leave as events — no isHovered query in the view.
+const solidColor = (quads, stride, x) => {
+  for (let off = 0; off < quads.byteLength; off += stride) {
+    if (quads.readUInt32LE(off + 17 * 4) !== 0) continue; // solid only
+    if (quads.readFloatLE(off) === x && quads.readFloatLE(off + 2 * 4) === 50) {
+      return [quads.readFloatLE(off + 4 * 4), quads.readFloatLE(off + 5 * 4), quads.readFloatLE(off + 6 * 4)];
+    }
+  }
+  return null;
+};
+
+test('hoverBg, pressedBg and hoverGroup resolve in the core', () => {
+  const ctx = new Ctx();
+  const pair = (extra) =>
+    box({ dir: 'row' }, [
+      box({ width: 50, height: 50, bg: '#102030', hoverBg: '#405060', pressedBg: '#708090', ...extra }, [], 'a'),
+      box({ width: 50, height: 50, bg: '#102030', hoverBg: '#405060', pressedBg: '#708090', ...extra }, [], 'b'),
+    ]);
+  const render = (extra) => {
+    ctx.frame(320, 240, 1, pair(extra));
+    const quads = Buffer.from(ctx.quads());
+    const stride = quads.byteLength / ctx.stats().quadCount;
+    return [solidColor(quads, stride, 0), solidColor(quads, stride, 50)];
+  };
+  const near = (rgb, hex) => {
+    const want = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+    assert.ok(rgb && rgb.every((c, i) => Math.abs(c - want[i]) < 0.01), `${rgb} should be ${hex}`);
+  };
+  let [a, b] = render({});
+  near(a, '#102030');
+  ctx.cursor(10, 10);
+  [a, b] = render({});
+  near(a, '#405060');
+  near(b, '#102030');
+  ctx.mouse(true);
+  [a] = render({});
+  near(a, '#708090');
+  ctx.mouse(false);
+  // A group lights both blocks from either side.
+  [a, b] = render({ hoverGroup: 'pair' });
+  [a, b] = render({ hoverGroup: 'pair' });
+  near(a, '#405060');
+  near(b, '#405060');
+});
+
+test('onHover emits enter and leave with the tag', () => {
+  const ctx = new Ctx();
+  const tree = box({ dir: 'row' }, [
+    box({ width: 50, height: 50, onHover: { kind: 'hov', id: 'a' } }, [], 'a'),
+    box({ width: 50, height: 50, onHover: { kind: 'hov', id: 'b' } }, [], 'b'),
+  ]);
+  ctx.frame(320, 240, 1, tree);
+  ctx.cursor(10, 10);
+  let evs = ctx.pollEvents();
+  assert.deepEqual(evs.map((e) => e.payload), [{ kind: 'hover', phase: 'enter', tag: { kind: 'hov', id: 'a' } }]);
+  const aKey = evs[0].key;
+  assert.ok(ctx.isHovered(aKey));
+  ctx.cursor(60, 10);
+  evs = ctx.pollEvents();
+  assert.deepEqual(
+    evs.map((e) => e.payload.phase + ':' + e.payload.tag.id),
+    ['leave:a', 'enter:b'],
+  );
+  // A frame that removes the hovered node under a still cursor reports the
+  // leave right after the frame, without further input.
+  ctx.frame(320, 240, 1, box({}));
+  evs = ctx.pollEvents();
+  assert.deepEqual(evs.map((e) => e.payload.phase + ':' + e.payload.tag.id), ['leave:b']);
+  ctx.cursorLeft();
+  assert.deepEqual(ctx.pollEvents(), []);
+});
+
+// Registered fonts: installed families by name, file bytes, and the `font`
+// prop shaping through them.
+test('fonts register by installed name or bytes and shape text', () => {
+  const ctx = new Ctx();
+  assert.equal(ctx.addSystemFont('kui-no-such-family-2026'), null);
+  assert.throws(() => ctx.addFont(Buffer.alloc(64)), /no usable font face/);
+  const families = ctx.systemFontFamilies();
+  assert.ok(Array.isArray(families));
+  if (families.length === 0) return; // a fontless machine
+  const id = ctx.addSystemFont(families[0]);
+  assert.match(id, /^[0-9a-f]{16}$/);
+  const glyphs = (tree) => {
+    ctx.frame(320, 240, 1, tree);
+    const quads = Buffer.from(ctx.quads());
+    const stride = quads.byteLength / ctx.stats().quadCount;
+    let n = 0;
+    for (let off = 0; off < quads.byteLength; off += stride) {
+      if (quads.readUInt32LE(off + 17 * 4) !== 0) n++;
+    }
+    return n;
+  };
+  assert.ok(glyphs(box({}, [text('Fonts', { size: 20, font: id })])) > 0);
+  assertParity('font prop', () => box({}, [text('Fonts', { size: 20, font: id })]));
+  ctx.removeFont(id);
+  // A stale handle falls back to sans instead of failing.
+  assert.ok(glyphs(box({}, [text('Fonts', { size: 20, font: id })])) > 0);
+});
+
+test('font files and folders load by path', () => {
+  const ctx = new Ctx();
+  assert.throws(() => ctx.loadFontFile('/no/such/font.ttf'), /no usable font face/);
+  assert.equal(ctx.loadFontsDir('/no/such/dir'), 0);
+  const dirs = ['/usr/share/fonts/truetype/dejavu', '/System/Library/Fonts/Supplemental'];
+  const dir = dirs.find((d) => existsSync(d));
+  if (!dir) return;
+  const n = ctx.loadFontsDir(dir);
+  assert.ok(n > 0);
+  const family = ctx.systemFontFamilies()[0];
+  const id = ctx.addSystemFont(family);
+  assert.equal(ctx.addSystemFont(family), id, 'idempotent per family');
 });

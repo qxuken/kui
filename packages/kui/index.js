@@ -32,7 +32,7 @@ KuiWindow.prototype.setView = function setView(tree) {
  * Resolves with the final model when the window closes. One window per
  * process (winit event loops are not recreatable everywhere).
  */
-export function runWindowed({ init, update, view }, opts = {}) {
+export function runWindowed({ init, update, view, tick }, opts = {}) {
   const { width, height, chrome } = opts;
   const win = new KuiWindow(opts.title ?? 'kui', { width, height, chrome });
   opts.setup?.(win);
@@ -44,19 +44,37 @@ export function runWindowed({ init, update, view }, opts = {}) {
       ? (tree) => win.setViewJson(JSON.stringify(tree))
       : (tree) => win.setView(tree);
   setView(view(model));
+  // The clock, when asked for: `tick.msg` (or `tick.msg(now)`) goes through
+  // `update` every `tick.every` ms. Ticks are frequent, so unlike UI events
+  // they re-render only when `update` returns a new model.
+  const every = tick?.every > 0 ? tick.every : 0;
+  let nextTick = every ? Date.now() + every : Infinity;
   return new Promise((resolve, reject) => {
-    const tick = () => {
+    const pump = () => {
       let alive;
       try {
         alive = win.pump();
+        let render = false;
         const events = win.pollEvents();
-        if (events.length) {
-          for (const ev of events) {
-            const next = update(model, ev.payload, ev, win);
-            if (next !== undefined) model = next;
-          }
-          setView(view(model));
+        for (const ev of events) {
+          const next = update(model, ev.payload, ev, win);
+          if (next !== undefined) model = next;
         }
+        if (events.length) render = true;
+        const now = Date.now();
+        if (now >= nextTick) {
+          // Keep the cadence; if the loop fell behind, resync rather than
+          // firing a burst.
+          nextTick += every;
+          if (nextTick <= now) nextTick = now + every;
+          const msg = typeof tick.msg === 'function' ? tick.msg(now) : tick.msg;
+          const next = update(model, msg, { origin: 0, key: '', payload: msg }, win);
+          if (next !== undefined) {
+            model = next;
+            render = true;
+          }
+        }
+        if (render) setView(view(model));
       } catch (e) {
         reject(e);
         return;
@@ -65,9 +83,9 @@ export function runWindowed({ init, update, view }, opts = {}) {
         resolve(model);
         return;
       }
-      setTimeout(tick, opts.pumpMs ?? 8);
+      setTimeout(pump, opts.pumpMs ?? 8);
     };
-    tick();
+    pump();
   });
 }
 
@@ -147,11 +165,14 @@ export function decodeQuads(buffer) {
       x: f[0], y: f[1], w: f[2], h: f[3],
       color: [f[4], f[5], f[6], f[7]],
       borderColor: [f[8], f[9], f[10], f[11]],
+      // Corner radii clockwise from the top-left; `radius` is the top-left
+      // one, which is the uniform value for boxes rounded with `radius`.
+      radii: [f[12], f[13], f[14], f[15]],
       radius: f[12],
-      borderW: f[13],
-      kind: u[14],
-      uv: [u[15], u[16], u[17], u[18]],
-      clip: [f[19], f[20], f[21], f[22]],
+      borderW: f[16],
+      kind: u[17],
+      uv: [u[18], u[19], u[20], u[21]],
+      clip: [f[22], f[23], f[24], f[25]],
     });
   }
   return quads;
