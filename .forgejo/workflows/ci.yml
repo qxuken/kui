@@ -1,9 +1,9 @@
 # Forgejo Actions. `check` runs on every push and pull request; pushing a
 # `v*` tag additionally runs the release pipeline after it:
 #
-#   check ──┬── build-linux   (x64, arm64)         ──┐
-#           ├── build-windows (x64, via cargo-xwin) ──┼── publish
-#           └── build-macos   (arm64, x64, via zig) ──┘
+#   check ──┬── build-linux   (x64, arm64, via zig)  ──┐
+#           ├── build-windows (x64, via cargo-xwin)  ──┼── publish
+#           └── build-macos   (arm64, x64, via zig)  ──┘
 #
 # check is one job so the cargo target dir is built once and shared by fmt,
 # clippy, the workspace tests, the C example and the Node addon parity tests:
@@ -11,7 +11,9 @@
 # it is far too big to hand between jobs as an artifact. What IS handed
 # between jobs is small: each build leg uploads one kui-node cdylib as an
 # artifact, and publish downloads them all into packages/kui/prebuilds before
-# `npm publish`, so the tarball ships a native addon per platform. The library
+# `npm publish`, so the tarball ships a native addon per platform. The
+# artifact actions are the v3 ones: Forgejo's artifact backend speaks that
+# API, and v4 fails with "not currently supported on GHES". The library
 # crates go to the Forgejo cargo registry (see .cargo/config.toml) in
 # dependency order first.
 #
@@ -26,8 +28,9 @@
 #     write:packages (the automatic FORGEJO_TOKEN cannot publish packages);
 #   * one runner labelled `docker`. Every target is cross-compiled on it
 #     (rustc targets anything; only the linkers and platform SDKs differ):
-#     - Linux: the runner's own arch natively, the other with Debian's
-#       cross gcc;
+#     - Linux: cargo-zigbuild for both arches - zig ships glibc for every
+#       arch and lets the target name pin the floor (`.2.28`), so the
+#       addon runs on distros older than the runner's own bookworm;
 #     - Windows: the MSVC target with cargo-xwin (clang-cl + lld-link from
 #       Debian's LLVM, the Windows SDK/CRT fetched by xwin into a cached
 #       dir). napi-sys resolves N-API symbols at load time through
@@ -115,10 +118,10 @@ jobs:
           npm run gen
           git diff --exit-code -- jsx-runtime.d.ts
 
-  # One kui-node cdylib per Linux target. The runner's own architecture builds
-  # natively; the other one cross-compiles with Debian's cross gcc as linker
-  # (winit/wgpu/arboard dlopen X11, Wayland and xkbcommon at run time, so no
-  # target sysroot is needed).
+  # The three cross jobs share one shape: rustup for the target, the linker
+  # for the platform, a cache per target, build, collect, upload. zig and
+  # cargo-zigbuild come as pip wheels (x64 and arm64 Linux), which keeps the
+  # runner's own arch out of the picture.
   build-linux:
     needs: check
     if: startsWith(github.ref, 'refs/tags/v')
@@ -131,15 +134,11 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             prebuild: linux-x64
-            arch: x86_64
-            cross-gcc: gcc-x86-64-linux-gnu
           - target: aarch64-unknown-linux-gnu
             prebuild: linux-arm64
-            arch: aarch64
-            cross-gcc: gcc-aarch64-linux-gnu
     env:
-      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: x86_64-linux-gnu-gcc
-      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+      CARGO_ZIGBUILD_VERSION: "0.23.3"
+      ZIGLANG_VERSION: "0.16.0"
     steps:
       - uses: actions/checkout@v4
 
@@ -147,13 +146,13 @@ jobs:
         run: |
           set -eu
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates curl
-          if [ "$(uname -m)" != "${{ matrix.arch }}" ]; then
-            apt-get install -y --no-install-recommends "${{ matrix.cross-gcc }}"
-          fi
+          apt-get install -y --no-install-recommends ca-certificates curl python3-pip
           curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal \
             --default-toolchain stable -t "${{ matrix.target }}"
           echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
+          pip3 install --break-system-packages \
+            "cargo-zigbuild==${CARGO_ZIGBUILD_VERSION}" "ziglang==${ZIGLANG_VERSION}"
+          cargo-zigbuild --version
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -166,16 +165,18 @@ jobs:
           key: native-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: native-${{ matrix.target }}-
 
+      # The `.2.28` suffix is the glibc version zig links against; the
+      # output still lands in target/<triple>/release.
       - name: Build kui-node
-        run: cargo build -p kui-node --release --target "${{ matrix.target }}"
+        run: cargo zigbuild -p kui-node --release --target "${{ matrix.target }}.2.28"
 
       - name: Collect prebuild
         run: scripts/collect-prebuild.sh "${{ matrix.target }}" "${{ matrix.prebuild }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v3
         with:
-          name: prebuild-${{ matrix.prebuild }}
-          path: packages/kui/prebuilds
+          name: ${{ matrix.prebuild }}
+          path: packages/kui/prebuilds/${{ matrix.prebuild }}/kui_node.node
           if-no-files-found: error
 
   build-windows:
@@ -184,9 +185,13 @@ jobs:
     runs-on: docker
     container:
       image: node:24-bookworm
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            prebuild: win32-x64
     env:
-      TARGET: x86_64-pc-windows-msvc
-      PREBUILD: win32-x64
       XWIN_CACHE_DIR: /usr/local/xwin
       CARGO_XWIN_VERSION: "0.23.1"
     steps:
@@ -198,7 +203,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends ca-certificates curl clang lld llvm
           curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal \
-            --default-toolchain stable -t "$TARGET"
+            --default-toolchain stable -t "${{ matrix.target }}"
           echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
 
       # The cargo-xwin binary and the SDK it downloads are cached across
@@ -219,8 +224,8 @@ jobs:
             /usr/local/cargo/registry/cache
             /usr/local/cargo/git/db
             target
-          key: native-${{ env.TARGET }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: native-${{ env.TARGET }}-
+          key: native-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: native-${{ matrix.target }}-
 
       - name: Install cargo-xwin
         run: |
@@ -230,15 +235,15 @@ jobs:
           fi
 
       - name: Build kui-node
-        run: cargo xwin build -p kui-node --release --target "$TARGET"
+        run: cargo xwin build -p kui-node --release --target "${{ matrix.target }}"
 
       - name: Collect prebuild
-        run: scripts/collect-prebuild.sh "$TARGET" "$PREBUILD"
+        run: scripts/collect-prebuild.sh "${{ matrix.target }}" "${{ matrix.prebuild }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v3
         with:
-          name: prebuild-${{ env.PREBUILD }}
-          path: packages/kui/prebuilds
+          name: ${{ matrix.prebuild }}
+          path: packages/kui/prebuilds/${{ matrix.prebuild }}/kui_node.node
           if-no-files-found: error
 
   build-macos:
@@ -308,10 +313,10 @@ jobs:
       - name: Collect prebuild
         run: scripts/collect-prebuild.sh "${{ matrix.target }}" "${{ matrix.prebuild }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v3
         with:
-          name: prebuild-${{ matrix.prebuild }}
-          path: packages/kui/prebuilds
+          name: ${{ matrix.prebuild }}
+          path: packages/kui/prebuilds/${{ matrix.prebuild }}/kui_node.node
           if-no-files-found: error
 
   publish:
@@ -355,11 +360,11 @@ jobs:
       - name: Tag matches the manifests
         run: scripts/check-version.sh "${GITHUB_REF_NAME#v}"
 
-      - uses: actions/download-artifact@v4
+      # Without `name`, v3 downloads every artifact of the run into
+      # <path>/<artifact name>/, which is exactly the prebuilds layout.
+      - uses: actions/download-artifact@v3
         with:
-          pattern: prebuild-*
           path: packages/kui/prebuilds
-          merge-multiple: true
 
       # No target dir exists in this job, so native.cjs must find the addon
       # under prebuilds/ - the parity tests then exercise the shipped binary.

@@ -299,9 +299,10 @@ the `kui-*` dependency requirements and package.json move together — registrie
 refuse a version that already exists), commit, `git tag v0.1.0-alpha.2`, push
 the tag. [ci.yml](.forgejo/workflows/ci.yml) then runs `check`, builds one
 addon per target in parallel, all on the one docker runner (`build-linux`
-natively plus cross gcc; `build-windows` through cargo-xwin against the
-Windows SDK; `build-macos` through cargo-zigbuild against a copy of Xcode's
-SDK, whose Apple license applies), and `publish` verifies the tag against the
+through cargo-zigbuild with a glibc 2.28 floor; `build-windows` through
+cargo-xwin against the Windows SDK; `build-macos` through cargo-zigbuild
+against a copy of Xcode's SDK, whose Apple license applies), and `publish`
+verifies the tag against the
 manifests, downloads the five prebuilds, runs the parity tests against the shipped binaries, publishes the
 crates in dependency order and finally the npm package. It needs a repository
 secret `PACKAGES_TOKEN` (a personal access token with `write:packages`) and
