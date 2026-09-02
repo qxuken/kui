@@ -600,7 +600,15 @@ impl Interaction {
     }
 
     pub fn is_pressed(&self, key: Key) -> bool {
-        self.pressed == Some(key) && self.hovered == Some(key)
+        self.pressed == Some(key) && (self.hovered == Some(key) || self.drag_captured(key))
+    }
+
+    /// Whether a pointer-captured drag is running on `key`. The press is
+    /// stuck to that node until release, so it stays pressed even when the
+    /// cursor wanders off it (hover itself keeps following the cursor, so
+    /// drop targets under the drag still light up).
+    fn drag_captured(&self, key: Key) -> bool {
+        self.drag.as_ref().is_some_and(|d| d.key == key)
     }
 
     /// The hovered node, if any (its key from the last finished frame).
@@ -616,7 +624,8 @@ impl Interaction {
     /// Whether the press started on a member of `group` and the pointer is
     /// still over one (the group analogue of `is_pressed`).
     pub fn is_group_pressed(&self, group: u64) -> bool {
-        self.pressed_group == Some(group) && self.hovered_group == Some(group)
+        self.pressed_group == Some(group)
+            && (self.hovered_group == Some(group) || self.drag.is_some())
     }
 }
 

@@ -266,7 +266,9 @@ pub struct NodeSpec {
     /// and with `transition` the swap eases. Implies hover tracking.
     pub hover_bg: Option<Color>,
     /// Background while this node (or its group) is pressed. Implies hover
-    /// tracking. Without a `hover_bg`, hover keeps the plain `bg`.
+    /// tracking. Without a `hover_bg`, hover keeps the plain `bg`. An
+    /// `on_drag` node holds this state for the whole captured drag, even
+    /// while the cursor is off it.
     pub pressed_bg: Option<Color>,
     /// Hover group: nodes sharing an id count as one for `hover_bg` /
     /// `pressed_bg` — a two-piece elbow, a split button, a row whose cells
