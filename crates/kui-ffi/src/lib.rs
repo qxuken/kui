@@ -1173,8 +1173,10 @@ pub extern "C" fn kui_frame_finish(ptr: *mut KuiCtx) {
     guard((), || {
         if let Some(c) = unsafe { ctx(ptr) } {
             c.core().finish_frame();
-            // Hover enter/leave raised by this frame changing what sits
-            // under a still cursor.
+            // Raised by the frame itself, not by input: the resize a
+            // changed viewport produced at kui_frame_begin, and hover
+            // enter/leave from this frame changing what sits under a
+            // still cursor.
             let pending = c.core().take_pending_events();
             c.events.extend(pending);
         }

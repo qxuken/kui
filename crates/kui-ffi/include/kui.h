@@ -239,6 +239,9 @@ void kui_window_title(KuiCtx *ctx, KuiStr title);
 bool kui_window_title_get(KuiCtx *ctx, KuiStr *out);
 
 /* -- Frame building ------------------------------------------------------ */
+/* w/h are logical pixels. A frame begun at a different size or scale than
+ * the last one posts a {kind="resize", width, height, scale} event on the
+ * root, polled after kui_frame_finish like any other. */
 void kui_frame_begin(KuiCtx *ctx, float w, float h, float scale);
 void kui_root(KuiCtx *ctx, const KuiSpec *spec);
 /* on_click may be NULL; consumed when given. Returns the node key. */

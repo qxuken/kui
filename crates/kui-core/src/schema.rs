@@ -674,6 +674,11 @@ pub const EVENTS: &[EventDef] = &[
         doc: "The pointer entered or left an `onHover` node — also when a new frame moved it under a still cursor.",
     },
     EventDef {
+        kind: "resize",
+        payload: "`{ kind: \"resize\", width, height, scale }`",
+        doc: "The viewport changed size or DPI (logical px, delivered to the host on the root); `KuiWindow.size()` queries the same numbers.",
+    },
+    EventDef {
         kind: "modifiers",
         payload: "`{ kind: \"modifiers\", shift, ctrl, alt, super }`",
         doc: "The physical modifier state changed (delivered to the host on the root).",

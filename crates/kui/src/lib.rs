@@ -199,6 +199,13 @@ impl<A: App> PumpRunner<A> {
         &mut self.shell.core
     }
 
+    /// The window's inner size (logical px) and its scale factor — what the
+    /// next frame lays out against. Unlike `core_mut().viewport()` this is
+    /// known before the first frame, so a host can size its model at setup.
+    pub fn window_size(&self) -> (Size, f32) {
+        self.shell.window_size()
+    }
+
     /// Schedules a redraw (call after changing what `view` will produce).
     pub fn request_redraw(&self) {
         if let Some(w) = &self.shell.window {
@@ -281,6 +288,20 @@ struct Shell<A: App> {
 }
 
 impl<A: App> Shell<A> {
+    /// Inner size in logical px plus the scale factor; the launcher's
+    /// requested size until the window exists.
+    fn window_size(&self) -> (Size, f32) {
+        let Some(w) = &self.window else {
+            return (Size::new(self.size.0 as f32, self.size.1 as f32), 1.0);
+        };
+        let scale = w.scale_factor() as f32;
+        let size = w.inner_size();
+        (
+            Size::new(size.width as f32 / scale, size.height as f32 / scale),
+            scale,
+        )
+    }
+
     fn dispatch(&mut self, ev: InputEvent) {
         let t0 = std::time::Instant::now();
         let events = self.core.handle_input(ev);
@@ -591,6 +612,8 @@ impl<A: App> Shell<A> {
         let scale = window.scale_factor() as f32;
         let size = window.inner_size();
         let viewport = Size::new(size.width as f32 / scale, size.height as f32 / scale);
+        // The core turns a changed viewport into a `resize` event, routed
+        // with the rest of the pending events after this frame.
         // Per-frame so it self-corrects when the window moves to another
         // monitor.
         self.core.env.refresh_hz = window
@@ -844,9 +867,10 @@ impl<A: App> ApplicationHandler for Shell<A> {
                 // Views can declare window commands too (ui.window_command);
                 // apply them the same frame they were declared.
                 self.apply_window_commands();
-                // A frame can change what sits under a still cursor; route
-                // the resulting hover enter/leave events now rather than
-                // with the next input, and redraw for what they change.
+                // A frame can resize the viewport, and can change what sits
+                // under a still cursor; route the resulting resize / hover
+                // events now rather than with the next input, and redraw for
+                // what they change.
                 let pending = self.core.take_pending_events();
                 if !pending.is_empty() {
                     self.route_events(pending);

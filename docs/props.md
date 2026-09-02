@@ -91,6 +91,7 @@ Node, `on_event(ev)` in Lua (payload fields plus `node_key`), and
 | drag | `{ kind: "drag", phase: "start" \| "move" \| "end", x, y, dx, dy, parent: { x, y, w, h }, tag }` | A pointer-captured drag on an `onDrag` node; `parent` is the container rect, so fractions need no geometry query. |
 | key | `{ kind: "key", code, shift, ctrl, alt, super, text, repeat, tag }` | A key press on the focused `onKey` sink; `code` is a character or a name (`"left"`, `"f5"`). |
 | hover | `{ kind: "hover", phase: "enter" \| "leave", tag }` | The pointer entered or left an `onHover` node — also when a new frame moved it under a still cursor. |
+| resize | `{ kind: "resize", width, height, scale }` | The viewport changed size or DPI (logical px, delivered to the host on the root); `KuiWindow.size()` queries the same numbers. |
 | modifiers | `{ kind: "modifiers", shift, ctrl, alt, super }` | The physical modifier state changed (delivered to the host on the root). |
 | changed / submit | `{ kind: "changed" }` / `{ kind: "submit" }`, with the editor's key on the event | An editor's text changed / Enter in a single-line editor. |
 

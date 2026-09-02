@@ -9,6 +9,21 @@ export interface UiEvent {
   payload: Msg;
 }
 
+/** Window inner size in logical px plus the device pixel ratio. */
+export interface WindowSize {
+  width: number;
+  height: number;
+  scale: number;
+}
+
+/** The message a viewport change delivers: `win.size()` as an event. */
+export interface ResizeMsg {
+  kind: 'resize';
+  width: number;
+  height: number;
+  scale: number;
+}
+
 export interface FrameStats {
   quadCount: number;
   viewportW: number;
@@ -137,6 +152,10 @@ export declare class KuiWindow {
   setViewBinary(stream: Float64Array, strings: Uint8Array): void;
   /** Processes pending OS events; false once the window has closed. */
   pump(): boolean;
+  /** The window's inner size (logical px) and scale factor. Readable before
+   *  the first frame (in `setup`); changes to it also arrive through
+   *  `pollEvents` as `{kind:'resize', width, height, scale}`. */
+  size(): WindowSize;
   pollEvents(): UiEvent[];
   close(): void;
   editText(key: string): string | null;

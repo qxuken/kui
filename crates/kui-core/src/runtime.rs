@@ -79,6 +79,13 @@ pub struct Core {
     /// The focused editor's caret rect (logical, viewport coords) as of the
     /// last finish_frame — where drivers should anchor the OS IME window.
     ime_rect: Option<Rect>,
+    /// Events raised by the frame driver's own reports rather than by input
+    /// — a changed viewport becoming a `resize`. Drained alongside the
+    /// interaction's pending queue.
+    pending: Vec<UiEvent>,
+    /// Whether any frame has begun yet: the first one establishes the
+    /// viewport instead of resizing it.
+    framed: bool,
 }
 
 impl Core {
@@ -109,13 +116,15 @@ impl Core {
             any_slide: false,
             frame_requested: false,
             ime_rect: None,
+            pending: Vec::new(),
+            framed: false,
         }
     }
 
     /// Feeds one input event; returns any UI events it resolved to,
     /// hit-tested against the previous frame's layout.
     pub fn handle_input(&mut self, ev: InputEvent) -> Vec<UiEvent> {
-        let mut out = Vec::new();
+        let mut out = std::mem::take(&mut self.pending);
         match ev {
             InputEvent::Scroll(delta) => {
                 // Wheel up (positive y) reveals earlier content: offset decreases.
@@ -635,6 +644,17 @@ impl Core {
         Ui::new(self)
     }
 
+    /// The viewport (logical px) the current frame was begun with. Changes
+    /// to it arrive as `resize` events (see `take_pending_events`).
+    pub fn viewport(&self) -> Size {
+        self.viewport
+    }
+
+    /// The device pixel ratio the current frame was begun with.
+    pub fn scale(&self) -> f32 {
+        self.scale
+    }
+
     /// The finished frame's draw data: display list plus the glyph atlas the
     /// renderer mirrors (mutable so it can clear the dirty flag).
     pub fn output(&mut self) -> (&DisplayList, &mut GlyphAtlas) {
@@ -646,6 +666,24 @@ impl Core {
     // building outside a frame) is ignored rather than UB or panic.
 
     pub fn begin_frame(&mut self, viewport: Size, scale: f32) {
+        // A window that changed size is a fact the driver reports, so the
+        // core turns it into data like any other: `{kind="resize", width,
+        // height, scale}` on the root, pending for the driver to route
+        // after the frame. The first frame establishes the viewport rather
+        // than resizing it.
+        if self.framed && (viewport != self.viewport || scale != self.scale) {
+            self.pending.push(UiEvent {
+                origin: OriginId::HOST,
+                key: Key::ROOT,
+                payload: Value::map([
+                    ("kind", Value::str("resize")),
+                    ("width", Value::Float(viewport.w as f64)),
+                    ("height", Value::Float(viewport.h as f64)),
+                    ("scale", Value::Float(scale as f64)),
+                ]),
+            });
+        }
+        self.framed = true;
         self.viewport = viewport;
         self.scale = scale;
         self.window_title = None;
@@ -774,13 +812,16 @@ impl Core {
         self.interaction.is_group_pressed(group)
     }
 
-    /// Events raised outside `handle_input`: `on_hover` enter/leave caused
-    /// by a finished frame changing what sits under a still cursor. Frame
-    /// drivers route these after `finish_frame`; they also ride along with
-    /// the next `handle_input` result, so a driver that never calls this
-    /// merely sees them a little later.
+    /// Events raised outside `handle_input`: the `resize` a changed
+    /// viewport produced at `begin_frame`, and `on_hover` enter/leave
+    /// caused by a finished frame changing what sits under a still cursor.
+    /// Frame drivers route these after `finish_frame`; they also ride along
+    /// with the next `handle_input` result, so a driver that never calls
+    /// this merely sees them a little later.
     pub fn take_pending_events(&mut self) -> Vec<UiEvent> {
-        self.interaction.take_pending()
+        let mut out = std::mem::take(&mut self.pending);
+        out.append(&mut self.interaction.take_pending());
+        out
     }
 
     /// Swaps in the hover / pressed background the spec declares for the

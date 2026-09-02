@@ -2,11 +2,15 @@
 // Elm loop in JS on top, both sharing the main thread via a pumped event
 // loop. Run with --smoke to auto-close after 2 seconds (CI/sanity).
 import { runWindowed } from '@qxuken/kui';
-import type { KuiWindow, Msg, UiEvent } from '@qxuken/kui';
+import type { KuiWindow, Msg, UiEvent, WindowSize } from '@qxuken/kui';
 
-type Model = { count: number; note: string };
+type Model = { count: number; note: string; size: WindowSize };
 
-const init: Model = { count: 0, note: '' };
+// setup() runs before init(), so the first model already knows the size the
+// window actually opened at; `resize` events keep it current after that.
+let openedAt: WindowSize = { width: 0, height: 0, scale: 1 };
+
+const init = (): Model => ({ count: 0, note: '', size: openedAt });
 
 function update(model: Model, msg: Msg, ev: UiEvent, win: KuiWindow): Model | undefined {
   if (msg === null || typeof msg !== 'object' || Array.isArray(msg)) return;
@@ -17,6 +21,10 @@ function update(model: Model, msg: Msg, ev: UiEvent, win: KuiWindow): Model | un
       return { ...model, count: 0 };
     case 'changed':
       return { ...model, note: win.editText(ev.key) ?? '' };
+    // The payload carries {width, height, scale}; win.size() answers the
+    // same, so the getter is the shorter way to keep the model in step.
+    case 'resize':
+      return { ...model, size: win.size() };
   }
 }
 
@@ -38,6 +46,9 @@ const view = (model: Model) => (
     <edit key="note" initial="" size={16} width={280} padX={10} padY={6}
           bg="#1f2030" color="#e8e8f0" radius={4} autofocus />
     <text size={14} color="#99a0b0">{`note: ${model.note || '(empty)'}`}</text>
+    <text size={14} color="#99a0b0">
+      {`window: ${Math.round(model.size.width)}x${Math.round(model.size.height)} @ ${model.size.scale}x`}
+    </text>
     </box>
     <latencyHud />
   </box>
@@ -61,6 +72,7 @@ const done = runWindowed({ init, update, view }, {
       }
     }
     gradient = win.addImage(w, h, px);
+    openedAt = win.size();
   },
 });
 

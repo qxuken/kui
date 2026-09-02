@@ -223,6 +223,21 @@ test('onHover emits enter and leave with the tag', () => {
   assert.deepEqual(ctx.pollEvents(), []);
 });
 
+test('a changed viewport emits one resize event', () => {
+  const ctx = new Ctx();
+  ctx.frame(320, 240, 1, box({}));
+  // The first frame establishes the viewport rather than resizing it.
+  assert.deepEqual(ctx.pollEvents(), []);
+  ctx.frame(640, 480, 2, box({}));
+  assert.deepEqual(
+    ctx.pollEvents().map((e) => e.payload),
+    [{ kind: 'resize', width: 640, height: 480, scale: 2 }],
+  );
+  // Same viewport again: nothing.
+  ctx.frame(640, 480, 2, box({}));
+  assert.deepEqual(ctx.pollEvents(), []);
+});
+
 // Registered fonts: installed families by name, file bytes, and the `font`
 // prop shaping through them.
 test('fonts register by installed name or bytes and shape text', () => {

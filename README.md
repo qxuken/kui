@@ -197,7 +197,12 @@ payload shapes and the resource APIs. It is generated from the schema
   snap layouts, native caption drag, and double-click maximize all work over
   the drawn controls; Linux falls back to synthesized edge resizing and
   double-click maximize. Lua declares `window = "drag"` etc.; C sets `KuiSpec.window_role`
-  and drains `kui_take_window_commands`.
+  and drains `kui_take_window_commands`. The window's *size* travels the same
+  way: a frame begun at a different viewport or DPI than the last one posts
+  `{kind="resize", width, height, scale}` on the root, routed with the frame's
+  other pending events — `App::on_event` in Rust, `pollEvents` in Node, `kui_poll_event`
+  in C. As a query it is `KuiWindow.size()` / `PumpRunner::window_size()`,
+  which answer before the first frame too (`Core::viewport()` after it).
 - **Pointer state is declared, not queried.** A node says what it looks
   like while hovered or pressed (`hover_bg` / `pressed_bg`; JSX `hoverBg`,
   Lua `hover_bg`, `KuiSpec.hover_bg`) and the core swaps the color in when

@@ -873,6 +873,17 @@ impl KuiWindow {
         Ok(alive)
     }
 
+    /// The window's inner size in logical px plus its scale factor:
+    /// `{width, height, scale}`. Readable before the first frame (in
+    /// `setup`), and re-reported as a `{kind:"resize", width, height,
+    /// scale}` event through `pollEvents` whenever the window changes size
+    /// or moves to a display with another DPI.
+    #[napi]
+    pub fn size(&self) -> Json {
+        let (size, scale) = self.runner.window_size();
+        size_json(size, scale)
+    }
+
     /// Drains UI events collected since the last call (same shape as
     /// `Ctx.pollEvents`).
     #[napi]
@@ -981,6 +992,14 @@ impl KuiWindow {
     pub fn system_font_families(&mut self) -> Vec<String> {
         self.runner.core_mut().system_font_families()
     }
+}
+
+fn size_json(size: Size, scale: f32) -> Json {
+    let mut o = JsonMap::new();
+    o.insert("width".into(), Json::from(size.w as f64));
+    o.insert("height".into(), Json::from(size.h as f64));
+    o.insert("scale".into(), Json::from(scale as f64));
+    Json::Object(o)
 }
 
 fn font_str(id: FontId) -> String {
