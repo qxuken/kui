@@ -530,7 +530,15 @@ pub(crate) fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Siz
                 },
             );
             tree.scroll_max[i] = max;
-            offset = scroll.clamp(tree.keys[i], max);
+            // The one place the container's resolved box and its content
+            // size exist together; the store keeps a copy, since the tree
+            // holding them is cleared before the next view reads it.
+            offset = scroll.resolve(
+                tree.keys[i],
+                Rect::from_pos_size(origin, size),
+                Size::new(content_w, content_h),
+                max,
+            );
         }
 
         let free = (main_content - total_main).max(0.0);

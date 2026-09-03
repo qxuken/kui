@@ -1170,6 +1170,82 @@ test('setScroll and scrollOffset round-trip a saved position', () => {
   assert.equal(nodesByName(fresh)['row 5'].rect.y, 0);
 });
 
+test('scrollGeometry reports the container box, its content and the travel', () => {
+  const { ctx, render, list } = listCtx();
+  const g = ctx.scrollGeometry(list);
+  assert.deepEqual(g, {
+    x: 0,
+    y: 0,
+    w: 400,
+    h: LIST_H,
+    contentW: 400,
+    contentH: SCROLL_ROWS * ROW_H,
+    offset: { x: 0, y: 0 },
+    maxOffset: { x: 0, y: SCROLL_ROWS * ROW_H - LIST_H },
+  });
+
+  ctx.cursor(200, 100);
+  ctx.scroll(0, -150);
+  render();
+  assert.deepEqual(ctx.scrollGeometry(list).offset, { x: 0, y: 150 });
+
+  // Null for anything no layout has resolved as a scroll container — a row,
+  // and a key this frame never declared.
+  assert.equal(ctx.scrollGeometry(nodesByName(ctx)['row 0'].key), null);
+  assert.equal(ctx.scrollGeometry('0123456789abcdef'), null);
+});
+
+test('scrollGeometry is one coherent moment, so a view can slice by it', () => {
+  const { ctx, list } = listCtx();
+  // "Jump to the end" leaves a raw number in the store...
+  ctx.setScroll(list, 0, 1e9);
+  assert.deepEqual(ctx.scrollOffset(list), { x: 0, y: 1e9 });
+  // ...but the geometry a view slices by is already a position in the list.
+  const g = ctx.scrollGeometry(list);
+  assert.deepEqual(g.offset, g.maxOffset);
+  assert.equal(g.offset.y, SCROLL_ROWS * ROW_H - LIST_H);
+});
+
+test('a view slices a 10k-row list from the geometry alone', () => {
+  const ctx = new Ctx();
+  const ROWS = 10_000;
+  let built = 0;
+  const key = 'list';
+  let listKey = null;
+  const render = () => {
+    const g = listKey ? ctx.scrollGeometry(listKey) : null;
+    const h = g ? g.h : LIST_H;
+    const top = g ? g.offset.y : 0;
+    const first = Math.min(ROWS, Math.max(0, Math.floor(top / ROW_H)));
+    const last = Math.min(ROWS, Math.ceil((top + h) / ROW_H));
+    built = last - first;
+    const kids = [];
+    if (first > 0) kids.push(box({ width: 'grow', height: first * ROW_H }, [], 'lead'));
+    for (let i = first; i < last; i++) {
+      kids.push(box({ width: 'grow', height: ROW_H, bg: '#282840' }, [], `row${i}`));
+    }
+    if (last < ROWS) kids.push(box({ width: 'grow', height: (ROWS - last) * ROW_H }, [], 'tail'));
+    ctx.frame(400, LIST_H, 1, box({ width: 'grow', height: 'grow' }, [
+      box({ width: 'grow', height: 'grow', scrollY: true }, kids, key),
+    ]));
+  };
+  // First frame has no geometry and falls back to the window height.
+  render();
+  listKey = ctx.accessTree().nodes.find((n) => n.scroll).key;
+  render();
+  assert.equal(built, Math.ceil(LIST_H / ROW_H));
+
+  // The spacers make it the whole list: full travel, and "jump to the end"
+  // lands on the last row even though it was never built.
+  const g = ctx.scrollGeometry(listKey);
+  assert.equal(g.contentH, ROWS * ROW_H);
+  ctx.setScroll(listKey, 0, 1e9);
+  render();
+  render();
+  assert.equal(ctx.scrollOffset(listKey).y, ROWS * ROW_H - LIST_H);
+  assert.equal(built, Math.ceil(LIST_H / ROW_H), 'still a screenful at the far end');
+});
+
 test('setScroll is clamped by the next layout', () => {
   const { ctx, render, list } = listCtx();
   // "Jump to the end" without knowing the content height.

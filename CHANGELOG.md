@@ -116,6 +116,40 @@ upgrades remove code from the apps on it is doing the job.
   Lua, where `view(env)` runs while the tree is being rebuilt. A key that
   frame does not declare is a no-op, and is not held for a later frame.
 
+- **Affordable long lists.** Glyphs have always been culled by viewport;
+  the nodes around them never were, so a view that declared ten thousand
+  rows paid for ten thousand rows of build and layout whether or not they
+  could be seen — a bench of a 10k-row log frame costs ~4.8 ms here, most
+  of it rows nobody sees. An app could not fix this itself: slicing its
+  own data needs the container's scroll offset *and* its resolved height
+  during the build, and the height existed only inside a layout pass that
+  cleared its tree before the next view ran.
+  `scroll_geometry(key)` retains and hands out the whole of it — the
+  container's box, its laid-out content size, where it is scrolled to and
+  how far it can travel — in every binding (`ui.scroll_geometry` in Rust,
+  `ctx.scrollGeometry` / `KuiWindow.scrollGeometry` in Node,
+  `kui_scroll_geometry` in C, `env.scroll_geometry` in Lua). The four
+  numbers describe one moment: the offset is the retained one already
+  clamped to that container's travel, so a `set_scroll(key, huge)`
+  meaning "the end" reads back as the end rather than as a row index a
+  million past the data. `None` (`null`, `nil`, `false`) until a layout
+  has resolved the key as a scroll container — writing an offset at a key
+  does not invent one.
+  `widgets::virtual_column` is the uniform-row case done: it declares the
+  rows crossing the window, two rows of overscan and two spacers holding
+  the space of the rest, so the content height, the scrollbar and
+  `set_scroll` all behave as if the whole list were there. The same 10k
+  rows through it cost **~19 µs instead of ~4.8 ms**, and 100k rows cost
+  the same ~19 µs — the frame stops growing with the data. Rows are
+  opened at their *data* index (`Ui::open_indexed` / `with_indexed`, and
+  `child_key_index` for the key before the node), so a row keeps its key,
+  and with it its hover, focus, edit buffer and tweens, as the built range
+  slides over it; `widgets::visible_rows` is the slice arithmetic alone,
+  for views that build their own container.
+  This is (a) of the two options the backlog listed. A `virtual` flag in
+  the core — (b) — stays unbuilt, and now needs a case this does not
+  serve.
+
 ### Changed
 
 - `KuiSpec` gained `tooltip` (appended; a zeroed struct means what it
@@ -170,6 +204,17 @@ upgrades remove code from the apps on it is doing the job.
   total an app kept beside the core's, wrong the moment content changed
   size and re-clamped the real one. `scroll_offset(key)` is the number the
   last layout actually used, and `set_scroll` puts it back.
+- **The row cap on a log view, a table or a chat history** — the "last
+  500 lines" an app truncated to because the frame could not afford the
+  rest, the paging buttons under a list that should have scrolled, and
+  the `onLayout` handler bolted to a container only to copy its height
+  into the model so the next frame could slice by it. `scroll_geometry`
+  answers during the build, from the frame before, with no event and no
+  model field.
+- **A virtual list's home-made row identity** — the `key={"row" + i}`
+  string built for every row so that hover and focus would not slide when
+  the window scrolled. `open_indexed(i)` is the key auto-keying would
+  have given row `i` anyway, so a virtualized list and a full one agree.
 
 ## 0.1.0-alpha.5 (2026-09-03)
 

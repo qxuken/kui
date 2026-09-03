@@ -55,6 +55,7 @@ pub use key::Key;
 pub use keyframes::Keyframe;
 pub use resources::{FontId, ImageId, Resources, SoundId};
 pub use runtime::{Core, Extension};
+pub use scroll::ScrollGeometry;
 pub use spec::{
     Align, Dir, FloatAnchor, FloatConfig, FontFamily, NodeSpec, Sizing, TextStyle, TextWrap, corner,
 };

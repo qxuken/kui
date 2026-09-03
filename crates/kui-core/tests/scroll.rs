@@ -297,3 +297,217 @@ fn scroll_offset_of_a_node_that_never_scrolled_is_zero() {
         Vec2::ZERO
     );
 }
+
+// -- Geometry and virtual lists ---------------------------------------------
+// `scroll_offset` says how far a container has scrolled; on its own that is
+// not enough to build only the visible rows, because the view cannot see how
+// tall the container came out. `scroll_geometry` is the rest of it, and
+// `widgets::virtual_column` is the two together.
+
+/// A tall list built through the widget, in a `VIEW_H`-high window.
+fn virtual_frame(core: &mut Core, rows: usize) -> usize {
+    let mut built = 0usize;
+    let mut ui = core.frame(Size::new(400.0, VIEW_H), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    kui_core::widgets::virtual_column(
+        &mut ui,
+        "list",
+        NodeSpec::column().fill(),
+        rows,
+        ROW_H,
+        |ui, i| {
+            built += 1;
+            ui.with(
+                NodeSpec::row()
+                    .fill()
+                    .bg(Color::rgb8(40, 40, 60))
+                    .on_click(Value::Int(i as i64)),
+                |_| {},
+            );
+        },
+    );
+    ui.finish();
+    built
+}
+
+/// The geometry a view reads is the box and content the last layout
+/// resolved — the rect an `on_layout` would have posted, without the round
+/// trip, and the content height the scrollbar is drawn from.
+#[test]
+fn geometry_reports_the_container_box_and_its_content() {
+    let mut core = Core::new();
+    assert_eq!(core.scroll_geometry(list_key()), None);
+
+    frame(&mut core);
+    let g = core.scroll_geometry(list_key()).expect("laid out");
+    assert_eq!(g.rect, kui_core::Rect::new(0.0, 0.0, 400.0, VIEW_H));
+    assert_eq!(g.content.h, ROWS as f32 * ROW_H);
+    assert_eq!(g.offset, Vec2::ZERO);
+    // Content minus viewport, which is exactly how far the wheel may go.
+    assert_eq!(g.max_offset.y, ROWS as f32 * ROW_H - VIEW_H);
+
+    wheel(&mut core, -10_000.0);
+    frame(&mut core);
+    let g = core.scroll_geometry(list_key()).expect("laid out");
+    assert_eq!(g.offset, g.max_offset);
+}
+
+/// Writing an offset at a key does not invent a container: the geometry
+/// stays `None` until a layout resolves that key as one.
+#[test]
+fn geometry_is_none_for_a_node_that_is_not_a_scroll_container() {
+    let mut core = Core::new();
+    frame(&mut core);
+    assert_eq!(core.scroll_geometry(row_key(3)), None);
+
+    core.set_scroll(row_key(3), Vec2::new(0.0, 50.0));
+    frame(&mut core);
+    assert_eq!(core.scroll_geometry(row_key(3)), None);
+    assert_eq!(core.scroll_geometry(kui_core::Key::ROOT.str("gone")), None);
+}
+
+/// The geometry is one coherent moment: `scroll_offset` hands back whatever
+/// was written, but the geometry's offset is already clamped to the travel
+/// the last layout found — so a view that slices by it cannot be handed the
+/// "huge value means the end" idiom as a row index.
+#[test]
+fn geometry_offset_is_clamped_where_the_raw_one_is_not() {
+    let mut core = Core::new();
+    frame(&mut core);
+    core.set_scroll(list_key(), Vec2::new(0.0, 1e9));
+
+    assert_eq!(core.scroll_offset(list_key()).y, 1e9);
+    let g = core.scroll_geometry(list_key()).expect("laid out");
+    assert_eq!(g.offset.y, ROWS as f32 * ROW_H - VIEW_H);
+    assert_eq!(g.offset, g.max_offset);
+
+    // And the next layout agrees with what the geometry predicted.
+    frame(&mut core);
+    assert_eq!(core.scroll_offset(list_key()).y, g.offset.y);
+}
+
+/// An axis that does not scroll has no travel, however far its content
+/// overflows — the list scrolls in y only.
+#[test]
+fn max_offset_is_zero_on_an_axis_that_does_not_scroll() {
+    let mut core = Core::new();
+    frame(&mut core);
+    let g = core.scroll_geometry(list_key()).expect("laid out");
+    assert_eq!(g.max_offset.x, 0.0);
+    assert_eq!(g.max_offset.y, ROWS as f32 * ROW_H - VIEW_H);
+}
+
+/// The point of the whole exercise: a list of 10k rows builds a screenful.
+#[test]
+fn a_virtual_column_builds_only_what_shows() {
+    let mut core = Core::new();
+    // First frame has no geometry and slices by the viewport instead.
+    let first = virtual_frame(&mut core, 10_000);
+    assert!(first < 20, "first frame built {first} rows");
+    // Steady state: VIEW_H / ROW_H visible, plus two rows of overscan each
+    // side (the leading side is clipped away at offset 0).
+    let n = virtual_frame(&mut core, 10_000);
+    assert_eq!(n, (VIEW_H / ROW_H).ceil() as usize + 2);
+}
+
+/// Scrolling slides the built range without changing its size, and the rows
+/// it builds are the ones under the window.
+#[test]
+fn the_built_range_follows_the_offset() {
+    let mut core = Core::new();
+    virtual_frame(&mut core, 10_000);
+    let steady = virtual_frame(&mut core, 10_000);
+
+    core.set_scroll(list_key(), Vec2::new(0.0, 300.0 * ROW_H));
+    virtual_frame(&mut core, 10_000);
+    let n = virtual_frame(&mut core, 10_000);
+    // Two rows of overscan on each side now that there is room above.
+    assert_eq!(n, steady + 2);
+
+    // Row 300 is at the top of the window; row 0 and row 9_999 are not built,
+    // so nothing but the spacers stands in for them.
+    let (dl, _) = core.output();
+    let rows = dl
+        .quads
+        .iter()
+        .filter(|q| q.kind == kui_core::QuadKind::Solid && q.rect.w > 100.0)
+        .count();
+    // Two overscan rows above the window and two below it are built but
+    // clipped away, so they cost a node and no quad.
+    assert_eq!(rows, n - 4);
+}
+
+/// A virtualized list is the same list: the content height, and so the
+/// scrollbar and the end of the travel, match a list that builds every row.
+#[test]
+fn a_virtual_column_scrolls_like_a_full_one() {
+    let mut core = Core::new();
+    virtual_frame(&mut core, 1_000);
+    virtual_frame(&mut core, 1_000);
+    let g = core.scroll_geometry(list_key()).expect("laid out");
+    assert_eq!(g.content.h, 1_000.0 * ROW_H);
+    assert_eq!(g.max_offset.y, 1_000.0 * ROW_H - VIEW_H);
+
+    // "Jump to the end" with no content height in the app still lands on the
+    // last row, because the trailing spacer holds the space of the rows the
+    // frame did not build.
+    core.set_scroll(list_key(), Vec2::new(0.0, f32::MAX));
+    virtual_frame(&mut core, 1_000);
+    virtual_frame(&mut core, 1_000);
+    assert_eq!(core.scroll_offset(list_key()).y, 1_000.0 * ROW_H - VIEW_H);
+}
+
+/// Rows are keyed by data index, not by the slot they land in, so the row
+/// under the pointer keeps its identity as the built range slides. This is
+/// what would have to be re-solved inside the core to virtualize there.
+#[test]
+fn virtual_rows_keep_their_key_as_the_range_slides() {
+    let mut core = Core::new();
+    virtual_frame(&mut core, 10_000);
+    virtual_frame(&mut core, 10_000);
+    let key_at_top = list_key().index(0);
+
+    core.set_scroll(list_key(), Vec2::new(0.0, 500.0 * ROW_H));
+    virtual_frame(&mut core, 10_000);
+    virtual_frame(&mut core, 10_000);
+    // Row 0's key is unchanged even though row 0 is no longer built, and it
+    // is not the key of whatever row now sits in the first slot.
+    assert_eq!(key_at_top, list_key().index(0));
+    assert_ne!(key_at_top, list_key().index(500));
+}
+
+/// The spacers stand outside the index namespace the rows use, so the row at
+/// index 0 and the spacer beside it are two nodes, not a duplicate key.
+#[test]
+fn spacers_do_not_collide_with_row_keys() {
+    let mut core = Core::new();
+    virtual_frame(&mut core, 10_000);
+    core.set_scroll(list_key(), Vec2::new(0.0, 300.0 * ROW_H));
+    virtual_frame(&mut core, 10_000);
+    virtual_frame(&mut core, 10_000);
+    let dup = core
+        .take_warnings()
+        .iter()
+        .any(|w| w.code == "duplicate-key");
+    assert!(!dup, "virtual rows and spacers collided");
+}
+
+/// The slice arithmetic on its own, for views that build their own container.
+#[test]
+fn visible_rows_covers_the_band_and_no_more() {
+    use kui_core::widgets::visible_rows;
+    // 200px window over 30px rows at the top: rows 0..7 cross it.
+    assert_eq!(visible_rows(0.0, 200.0, 0.0, 30.0, 10_000, 0), 0..7);
+    // Scrolled to row 100 exactly.
+    assert_eq!(visible_rows(3000.0, 200.0, 0.0, 30.0, 10_000, 0), 100..107);
+    // Overscan widens both ends, clamped to the list.
+    assert_eq!(visible_rows(3000.0, 200.0, 0.0, 30.0, 10_000, 2), 98..109);
+    assert_eq!(visible_rows(0.0, 200.0, 0.0, 30.0, 10_000, 2), 0..9);
+    // Padding above the first row shifts the band down the flow.
+    assert_eq!(visible_rows(3000.0, 200.0, 60.0, 30.0, 10_000, 0), 98..105);
+    // Degenerate inputs answer with an empty range rather than a panic.
+    assert_eq!(visible_rows(0.0, 200.0, 0.0, 30.0, 0, 2), 0..0);
+    assert_eq!(visible_rows(0.0, 200.0, 0.0, 0.0, 10, 2), 0..0);
+    // A list shorter than the window builds all of it, never past the end.
+    assert_eq!(visible_rows(0.0, 200.0, 0.0, 30.0, 3, 2), 0..3);
+}

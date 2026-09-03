@@ -407,6 +407,19 @@ typedef struct KuiTextMetrics {
     uint32_t lines;
 } KuiTextMetrics;
 
+/* What the last layout resolved for a scroll container
+ * (kui_scroll_geometry): its box, its content size and the clamped offset,
+ * logical px in viewport coordinates. */
+typedef struct KuiScrollGeometry {
+    float x, y, w, h;
+    float content_w, content_h;
+    /* Where it is scrolled to, always a position within the content: the
+     * retained offset clamped to the travel below. */
+    float offset_x, offset_y;
+    /* How far it can travel; zero on an axis that does not scroll. */
+    float max_offset_x, max_offset_y;
+} KuiScrollGeometry;
+
 /* A silent misconfiguration the core noticed (kui_take_warnings). `code`
  * is stable — "grow-weight-ignored", "transition-auto-key",
  * "duplicate-key" — `key` the node it is about, `message` for people.
@@ -646,6 +659,17 @@ void kui_set_scroll(KuiCtx *ctx, uint64_t key, float x, float y);
 /* Reads it back as the last layout clamped it — the number to persist and
  * restore. 0,0 for a node that never scrolled; either pointer may be NULL. */
 void kui_scroll_offset(KuiCtx *ctx, uint64_t key, float *x, float *y);
+/* Everything the last layout resolved for a container: its box, its content
+ * size and that offset. False (leaving out untouched) for a key no layout
+ * has resolved as a scroll container.
+ *
+ * This is what makes a long list affordable. The core builds every child a
+ * view declares, so ten thousand rows cost ten thousand rows; a view that
+ * knows h and offset_y declares the rows that fit plus two spacers holding
+ * the space of the rest, and pays for a screenful. Read while building, it
+ * describes the previous frame - so a resize slices one frame late, and a
+ * row or two of overscan at each end covers it. */
+bool kui_scroll_geometry(KuiCtx *ctx, uint64_t key, KuiScrollGeometry *out);
 /* -- Fonts ---------------------------------------------------------------- */
 /* Registers a font from file bytes (TTF/OTF/TTC, copied); returns a handle
  * for KuiTextStyle.font, 0 when the data holds no usable face. */

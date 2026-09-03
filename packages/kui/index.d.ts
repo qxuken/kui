@@ -391,6 +391,25 @@ export interface ScrollOffset {
   y: number;
 }
 
+/** What the last layout resolved for a scroll container: its own box
+ *  (`x`/`y`/`w`/`h`, logical px in viewport coordinates), its laid-out
+ *  content size (padding included) and the offset it clamped. */
+export interface ScrollGeometry {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  contentW: number;
+  contentH: number;
+  /** Where it is scrolled to — the retained offset clamped to `maxOffset`,
+   *  so it is always a position within the content even right after a
+   *  `setScroll` of "a huge number" meaning "the end". */
+  offset: ScrollOffset;
+  /** How far `offset` can travel; zero on an axis that does not scroll.
+   *  `offset.y === maxOffset.y` is "at the bottom". */
+  maxOffset: ScrollOffset;
+}
+
 export declare class Ctx {
   constructor();
   /** Lowers a JSX tree into one frame. Encodes it to the flat binary IR
@@ -524,6 +543,17 @@ export declare class Ctx {
    *  so `(0, 0)` jumps to the top and a huge `y` to the end without knowing
    *  the content height. */
   setScroll(key: string, x: number, y: number): void;
+  /** Everything the last layout resolved for a scroll container — its box,
+   *  its content size and the clamped offset — or `null` for a key no
+   *  layout has resolved as one.
+   *
+   *  This is what makes a long list affordable: the core builds every child
+   *  a view declares, so ten thousand rows cost ten thousand rows, but a
+   *  view that knows `h` and `offset.y` can render the rows that fit plus
+   *  two spacers holding the space of the rest. Read while building it
+   *  describes the previous frame, so a resize slices one frame late —
+   *  render a row or two extra at each end. */
+  scrollGeometry(key: string): ScrollGeometry | null;
   editText(key: string): string | null;
   setEditText(key: string, text: string): void;
   stats(): FrameStats;
@@ -615,6 +645,9 @@ export declare class KuiWindow {
   reveal(key: string): void;
   scrollOffset(key: string): ScrollOffset;
   setScroll(key: string, x: number, y: number): void;
+  /** The container's box, content size and clamped offset as of the last
+   *  layout; `null` until one has resolved it. See `Ctx.scrollGeometry`. */
+  scrollGeometry(key: string): ScrollGeometry | null;
   /** Hover state as of the last frame; keys come from events (an `onHover`
    *  enter, a click). For plain hover styling prefer the `hoverBg` /
    *  `pressedBg` props — the core resolves those without a JS round trip. */

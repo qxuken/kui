@@ -487,3 +487,125 @@ pub fn button(ui: &mut Ui<'_>, text: &str, payload: impl Into<Value>) {
         ui.text(text, TextStyle::new(BUTTON_TEXT).color(Color::WHITE))
     });
 }
+
+// -- Virtual lists ----------------------------------------------------------
+// The core culls glyphs by viewport but builds every child a view declares,
+// so a ten-thousand-row log costs ten thousand rows of build and layout on
+// every frame — most of a 120 Hz budget spent on rows nobody can see. A view
+// that knows the container's height and offset can declare a screenful and
+// two spacers instead. `Core::scroll_geometry` is that knowledge; this is
+// the arithmetic, for the case where every row is the same height.
+
+/// The half-open range of rows a container of `rows` rows, each `row_h`
+/// logical px tall, has any reason to build — those crossing the visible
+/// band, plus `overscan` on each side — given the geometry of the frame
+/// before. Pure arithmetic, exposed for views that build their own
+/// container instead of using [`virtual_column`].
+///
+/// `vh` is the container's height, and `pad_t` the padding above the first
+/// row. `None` geometry means no layout has resolved the container yet:
+/// the caller decides what the first frame builds.
+pub fn visible_rows(
+    offset_y: f32,
+    vh: f32,
+    pad_t: f32,
+    row_h: f32,
+    rows: usize,
+    overscan: usize,
+) -> std::ops::Range<usize> {
+    if rows == 0 || row_h <= 0.0 {
+        return 0..0;
+    }
+    // Flow coordinates: row i spans [i*row_h, (i+1)*row_h), and layout puts
+    // the flow's origin at pad_t - offset_y inside the container's box, so
+    // the visible window is [offset_y - pad_t, that + vh).
+    let top = offset_y - pad_t;
+    let first = (top / row_h).floor().max(0.0) as usize;
+    let last = ((top + vh.max(0.0)) / row_h).ceil().max(0.0) as usize;
+    let first = first.saturating_sub(overscan).min(rows);
+    let last = last.saturating_add(overscan).min(rows);
+    first..last.max(first)
+}
+
+/// A vertically scrolling column of `rows` uniform rows that builds only the
+/// visible ones. `row(ui, i)` declares row `i`; it must come out exactly
+/// `row_h` logical px tall, since that is the arithmetic placing every row
+/// above and below it.
+///
+/// The container is `spec` forced to a scrolling column with no gap — put
+/// the spacing inside `row_h` (a row that pads itself) rather than in a
+/// `gap`, so one number describes the stride. Rows are opened with
+/// [`Ui::open_indexed`] at their *data* index, so a row keeps its key, and
+/// with it its hover, focus, edit buffer and tweens, as the built range
+/// slides over it. Above and below sit two empty spacers holding the space
+/// of the rows not built, so the content height, the scrollbar and
+/// `set_scroll` all behave as if the whole list were there.
+///
+/// The geometry it slices by is the previous frame's, so the first frame —
+/// before any layout has resolved the container — slices by the viewport
+/// height instead and asks for one more frame; a resize is one frame late
+/// and covered by the two rows of overscan. Returns the container's key,
+/// for `set_scroll` (`Vec2::new(0.0, i as f32 * row_h)` scrolls row `i` to
+/// the top, which is how you reach a row that is not built — `reveal` of an
+/// unbuilt row finds nothing).
+pub fn virtual_column(
+    ui: &mut Ui<'_>,
+    label: &str,
+    spec: NodeSpec,
+    rows: usize,
+    row_h: f32,
+    mut row: impl FnMut(&mut Ui<'_>, usize),
+) -> Key {
+    const OVERSCAN: usize = 2;
+
+    let key = ui.child_key(label);
+    let pad_t = spec.layout.padding.t;
+    // Both numbers from the same frame: the geometry's offset is clamped to
+    // that frame's travel, so a `set_scroll(key, huge)` between frames
+    // slices the end of the list instead of a megabyte past it.
+    let (offset_y, vh, first_frame) = match ui.scroll_geometry(key) {
+        Some(g) => (g.offset.y, g.rect.h, false),
+        // Nothing laid out yet: the container cannot be taller than the
+        // window in the ordinary case, so a screenful is a safe over-build
+        // for one frame.
+        None => (ui.scroll_offset(key).y, ui.viewport().h, true),
+    };
+    let range = visible_rows(offset_y, vh, pad_t, row_h, rows, OVERSCAN);
+
+    ui.with_keyed(label, spec.scroll_y().gap(0.0), |ui| {
+        // Keyed, not auto-keyed: an auto key is a sibling index, and the
+        // rows already occupy that namespace at their data indices — an
+        // auto-keyed spacer next to a built row 0 would be row 0's key.
+        let lead = range.start as f32 * row_h;
+        if lead > 0.0 {
+            ui.with_keyed("lead", spacer_spec(lead), |_| {});
+        }
+        for i in range.clone() {
+            ui.with_indexed(i as u64, row_spec(row_h), |ui| row(ui, i));
+        }
+        let tail = (rows - range.end) as f32 * row_h;
+        if tail > 0.0 {
+            ui.with_keyed("tail", spacer_spec(tail), |_| {});
+        }
+    });
+
+    if first_frame {
+        ui.request_frame();
+    }
+    key
+}
+
+/// Each row's own node: the wrapper the callback builds inside, sized to the
+/// stride the arithmetic assumes. A clickable row puts `on_click` on a
+/// `.fill()` child of it.
+fn row_spec(h: f32) -> NodeSpec {
+    NodeSpec::column()
+        .width(Sizing::Grow(1.0))
+        .height(Sizing::Fixed(h))
+}
+
+fn spacer_spec(h: f32) -> NodeSpec {
+    NodeSpec::column()
+        .width(Sizing::Grow(1.0))
+        .height(Sizing::Fixed(h))
+}

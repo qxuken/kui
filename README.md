@@ -442,6 +442,18 @@ knowing the content height. Clip rects ride on each quad and are applied in
 the shader, so the whole UI is still one draw call. Fully clipped nodes are
 culled from both drawing and hit-testing.
 
+Long lists: culling saves the *drawing*, not the building — a view that
+declares 10k rows lays out 10k rows. `ui.scroll_geometry(key)` hands back
+what the last layout resolved for a container (its box, its content size,
+where it is scrolled to and how far it can go), which is everything a view
+needs to declare only the rows that can be seen. `widgets::virtual_column`
+is that for uniform rows: visible rows, two of overscan, and two spacers
+holding the space of the rest, so the content height, the scrollbar and
+`set_scroll` behave as if the whole list were there. 10k rows go from
+~4.8 ms a frame to ~19 µs, and 100k rows cost the same ~19 µs. Rows are
+opened at their data index (`ui.with_indexed`), so a row keeps its hover,
+focus and edit buffer as the built range slides over it.
+
 Dragging: `.on_drag(tag)` makes any node a pointer-captured drag source —
 handlers get `{kind="drag", phase, x, y, dx, dy, parent, tag}` events (the
 parent rect turns absolute positions into container fractions, e.g. a
@@ -477,6 +489,14 @@ caches — full frame: build + layout + emit):
 | 10k plain rects | ~510 µs |
 | 10k rects + 1.2k texts + 2.5k hit regions | ~740 µs |
 | 16×64-deep nesting chains | ~58 µs |
+
+Long lists (`list_10k_rows_naive` / `list_10k_rows_virtual` /
+`list_100k_rows_virtual`): a 10k-row scrolled list, held at its middle so
+rows fall off both ends, costs **~4.8 ms** a frame built row by row and
+**~19 µs** through `widgets::virtual_column` — and 100k rows through the
+widget cost the same ~19 µs, because the frame stops growing with the data.
+Those three were measured together on one machine, a slower one than the
+table above; compare them with each other rather than with the rows above.
 
 A built-in latency graph shows per-phase frame cost live —
 `widgets::latency_hud(ui)` floats it in a viewport corner as a translucent

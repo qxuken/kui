@@ -435,6 +435,20 @@ fn key_str(key: Key) -> String {
 }
 
 /// A scroll offset as `{x, y}` — the shape `setScroll` takes back.
+fn geometry_json(g: Option<kui_core::ScrollGeometry>) -> Option<Json> {
+    let g = g?;
+    let mut o = JsonMap::new();
+    o.insert("x".into(), Json::from(g.rect.x as f64));
+    o.insert("y".into(), Json::from(g.rect.y as f64));
+    o.insert("w".into(), Json::from(g.rect.w as f64));
+    o.insert("h".into(), Json::from(g.rect.h as f64));
+    o.insert("contentW".into(), Json::from(g.content.w as f64));
+    o.insert("contentH".into(), Json::from(g.content.h as f64));
+    o.insert("offset".into(), offset_json(g.offset));
+    o.insert("maxOffset".into(), offset_json(g.max_offset));
+    Some(Json::Object(o))
+}
+
 fn offset_json(off: Vec2) -> Json {
     let mut o = JsonMap::new();
     o.insert("x".into(), Json::from(off.x as f64));
@@ -950,6 +964,22 @@ impl Ctx {
         Ok(offset_json(self.core.scroll_offset(parse_key(&key)?)))
     }
 
+    /// Everything the last layout resolved for the scroll container `key`:
+    /// its box `{x, y, w, h}`, its content size `{contentW, contentH}` and
+    /// the clamped `offset` — `null` for a key no layout has resolved as a
+    /// container.
+    ///
+    /// This is what makes a long list affordable. The core builds every
+    /// child a view declares, so ten thousand rows cost ten thousand rows;
+    /// knowing `h` and `offset.y`, a view renders the rows that fit plus two
+    /// spacers holding the space of the rest. Read while building, it
+    /// describes the previous frame, so a resize slices one frame late —
+    /// render a row or two extra at each end.
+    #[napi]
+    pub fn scroll_geometry(&self, key: String) -> Result<Option<Json>> {
+        Ok(geometry_json(self.core.scroll_geometry(parse_key(&key)?)))
+    }
+
     /// Sets that offset the way the wheel would; the next frame's layout
     /// clamps it, so `(0, 0)` jumps to the top and a huge `y` to the end
     /// without knowing the content height.
@@ -1305,6 +1335,15 @@ impl KuiWindow {
     pub fn scroll_offset(&mut self, key: String) -> Result<Json> {
         Ok(offset_json(
             self.runner.core_mut().scroll_offset(parse_key(&key)?),
+        ))
+    }
+
+    /// The container's box, content size and clamped offset as of the last
+    /// layout; `null` until one has resolved it. See `Ctx.scrollGeometry`.
+    #[napi]
+    pub fn scroll_geometry(&mut self, key: String) -> Result<Option<Json>> {
+        Ok(geometry_json(
+            self.runner.core_mut().scroll_geometry(parse_key(&key)?),
         ))
     }
 

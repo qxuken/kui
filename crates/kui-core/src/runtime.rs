@@ -1186,6 +1186,27 @@ impl Core {
         self.scroll.offset(key)
     }
 
+    /// Everything the last layout resolved for the container `key`: its own
+    /// box, its content size, and the clamped offset — `None` for a key no
+    /// layout has ever resolved as a scroll container.
+    ///
+    /// This is what makes a long list affordable. The core culls glyphs by
+    /// viewport but builds every child a view declares, so ten thousand rows
+    /// cost ten thousand rows; with the offset and the container's height a
+    /// view can declare only the rows that can be seen and two spacers, and
+    /// pay for a screenful. `widgets::virtual_column` is that, done.
+    ///
+    /// Read during a build, it describes the frame before — the tree it came
+    /// from is already cleared. That is one frame of lag on the size, so the
+    /// frame after a resize slices to the old height; a row or two of
+    /// overscan covers it, which is what the widget does. The rect is the
+    /// same one an `on_layout` on that node would post, without the round
+    /// trip through the app's model, and without firing every time an
+    /// enclosing container scrolls the whole list past.
+    pub fn scroll_geometry(&self, key: Key) -> Option<crate::scroll::ScrollGeometry> {
+        self.scroll.geometry(key)
+    }
+
     /// Sets the container `key`'s retained offset, the way the wheel would.
     /// Takes effect on the next frame, whose layout clamps it to that
     /// frame's overflow: `Vec2::ZERO` is "jump to the top", and a large
@@ -1673,6 +1694,12 @@ impl Core {
         self.tree.keys[self.current() as usize].str(label)
     }
 
+    /// The key the `i`th child gets from auto-keying — what `open_indexed`
+    /// opens with, usable before the node exists.
+    pub fn child_key_index(&self, i: u64) -> Key {
+        self.tree.keys[self.current() as usize].index(i)
+    }
+
     pub fn is_hovered(&self, key: Key) -> bool {
         self.interaction.is_hovered(key)
     }
@@ -1745,6 +1772,17 @@ impl Core {
 
     pub fn open_keyed(&mut self, label: &str, spec: NodeSpec) -> Key {
         let key = self.child_key(label);
+        self.open_with_key(key, spec);
+        key
+    }
+
+    /// `open_keyed` in the sibling-index namespace: the key auto-keying
+    /// would have given the `i`th child. A list that builds only rows
+    /// 900..930 opens each with its *data* index, so row 900 keeps the key
+    /// it has when the whole list is built — hover, focus, edit buffers and
+    /// tweens follow the row instead of the slot it happens to occupy.
+    pub fn open_indexed(&mut self, i: u64, spec: NodeSpec) -> Key {
+        let key = self.child_key_index(i);
         self.open_with_key(key, spec);
         key
     }

@@ -59,6 +59,11 @@ impl<'a> Ui<'a> {
         self.core.child_key(label)
     }
 
+    /// The key the `i`th child gets from auto-keying; see `open_indexed`.
+    pub fn child_key_index(&self, i: u64) -> Key {
+        self.core.child_key_index(i)
+    }
+
     pub fn is_hovered(&self, key: Key) -> bool {
         self.core.is_hovered(key)
     }
@@ -119,6 +124,14 @@ impl<'a> Ui<'a> {
         self.core.open_keyed(label, spec)
     }
 
+    /// `open_keyed` by sibling index: the key auto-keying would have given
+    /// the `i`th child. A virtualizing list opens each row with its data
+    /// index, so a row keeps its identity when the built range slides past
+    /// it. See `Core::open_indexed`.
+    pub fn open_indexed(&mut self, i: u64, spec: NodeSpec) -> Key {
+        self.core.open_indexed(i, spec)
+    }
+
     pub fn close(&mut self) {
         self.core.close();
     }
@@ -133,6 +146,15 @@ impl<'a> Ui<'a> {
 
     pub fn with_keyed(&mut self, label: &str, spec: NodeSpec, f: impl FnOnce(&mut Ui<'_>)) -> Key {
         let key = self.open_keyed(label, spec);
+        f(self);
+        self.close();
+        key
+    }
+
+    /// Scoped `open_indexed`: the `i`th child's auto-key, given to a node
+    /// that is not in the `i`th slot.
+    pub fn with_indexed(&mut self, i: u64, spec: NodeSpec, f: impl FnOnce(&mut Ui<'_>)) -> Key {
+        let key = self.open_indexed(i, spec);
         f(self);
         self.close();
         key
@@ -249,6 +271,16 @@ impl<'a> Ui<'a> {
     /// the top, a large value to the end (the next layout clamps it).
     pub fn set_scroll(&mut self, key: Key, offset: Vec2) {
         self.core.set_scroll(key, offset);
+    }
+
+    /// What the last layout resolved for a scroll container — its box, its
+    /// content size and the clamped offset — so a view can build only the
+    /// rows that fit and two spacers instead of ten thousand rows. `None`
+    /// until a layout has resolved `key` as a container. It describes the
+    /// previous frame; see `Core::scroll_geometry`, or
+    /// `widgets::virtual_column` for the uniform-row case.
+    pub fn scroll_geometry(&self, key: Key) -> Option<crate::scroll::ScrollGeometry> {
+        self.core.scroll_geometry(key)
     }
 
     /// Declares this node focused: it takes keyboard focus when the

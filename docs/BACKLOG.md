@@ -453,21 +453,51 @@ This unblocks C5: a virtualizing list needs `scroll_offset` to decide what
 to build, and `reveal` to answer "scroll to row N" when row N is not one of
 the ones it built.
 
-### `~` C5 — Make long lists affordable
+### `~` C5 — Make long lists affordable — **(a) done (2026-09-04)**
 
-Glyph emission is viewport-culled (the editing bench shows the payoff: ~0.1 ms
-per keystroke at 10k lines). Children of a scroll container are not: the README's
-own 10k-rect figure is ~510 µs of build + layout, so a log viewer or data table
-spends most of a 120 Hz budget on rows nobody can see. Userland cannot
-virtualize either — it needs the scroll offset and container height during the
-build, which is C4.
+Option (a) shipped: `Core::scroll_geometry(key)` retains what the last layout
+resolved for a scroll container — its box, its content size, the offset and
+the travel — in all four bindings (`ui.scroll_geometry`,
+`ctx.scrollGeometry` / `KuiWindow.scrollGeometry`, `kui_scroll_geometry`,
+`env.scroll_geometry`). The numbers already existed: `layout::positions`
+computed the container's rect and its overflow on the line it called
+`ScrollStore::clamp`, and threw both away with the tree. `clamp` became
+`resolve`, which keeps them; the export is a getter, as C4's was.
 
-Two options, cheapest first. **(a)** Export the offset and last-known container
-rect so a view slices its own data — needs C4 and nothing else, a few hours,
-covers most real lists. **(b)** A `virtual` flag on a uniform-height scroll
-container where the core skips the off-screen range — a design in its own right
-(it touches auto `Key` assignment, the Tab ring, the access tree and
-`on_layout`). Do not start (b) without a case (a) does not serve.
+**`on_layout` was the alternative and is the wrong shape for this**, though
+it can carry the same rect. It is an event, so learning a number the core
+already has costs a prop, a tag, an `on_event` arm, a model field and a
+re-render. It is edge-triggered, so the first frame has no rect at all and
+builds the whole list — the case being removed. And it reports viewport
+coordinates *after* scrolling, so a list inside another scrolling container
+posts an event on every frame of an unrelated scroll, and every one of them
+forces a rebuild. A query has none of that, and pairs with `scroll_offset`,
+which is already one.
+
+The geometry is deliberately one moment rather than the live store: its
+offset is the retained one already clamped to that container's travel. Without
+that, C4's documented "a huge value means the end" hands a slicing view a row
+index a million past its data — which is exactly what the Lua test did before
+the clamp moved.
+
+`widgets::virtual_column` is the uniform-row case done (visible rows, two of
+overscan, two spacers), `widgets::visible_rows` the arithmetic alone, and
+`Ui::open_indexed` / `with_indexed` / `child_key_index` give a row the key
+auto-keying would have given it, so a virtualized list and a full one agree
+on identity. Benched: `list_10k_rows_naive` ~4.8 ms → `list_10k_rows_virtual`
+~19 µs, and `list_100k_rows_virtual` the same ~19 µs. The pre-existing grid
+benches are unchanged (`resolve` runs only for scroll containers); the ~5%
+they appear to move is the bench binary gaining functions, and goes away when
+both sides are measured with the same set of benches.
+
+**(b) is still not started, and now needs a case (a) does not serve.** A
+`virtual` flag on a uniform-height container where the core skips the
+off-screen range is a design in its own right — it touches auto `Key`
+assignment, the Tab ring (a focusable node that was skipped is not in the
+ring), the access tree and `on_layout` — and (a) answers the log viewer, the
+data table and the chat history. The one thing (a) does not answer is rows of
+*varying* height, where the app cannot compute a spacer without measuring
+every row; a case like that is what would justify (b).
 
 ### `~` C6 — `selected` and `expanded` on the access tree
 
@@ -672,9 +702,11 @@ list until C1 shipped it; the pointer buttons went on it with C2, which routes
 only the secondary one; cursor shapes came off it with C3, and programmatic
 scrolling with C4.)
 
-The performance table also lists four benches where `benches/frame.rs` has five —
+The performance table also lists four benches where `benches/frame.rs` has eight —
 `frame_10k_rects_with_access_tree` is omitted, and it is the one a reader worried
-about the cost of the accessibility work would look for.
+about the cost of the accessibility work would look for. (The three list benches
+C5 added are described in a paragraph under the table rather than as rows,
+because they were measured on a slower machine than the table's.)
 
 ---
 
@@ -689,7 +721,9 @@ By leverage-to-effort, not severity.
    get them free. Worth doing early to confirm the schema mechanism still does
    its job.
 3. ~~**Export what already works.** C4 (`reveal`, `set_scroll`); C3 (derived
-   cursor).~~ Both done — exports of working internals. C5 is now unblocked.
+   cursor).~~ Both done — exports of working internals, and C5(a)
+   (`scroll_geometry`) turned out to be a third: the number was already
+   computed, one line above where it was thrown away.
 4. **D1.** The largest single duplication, mechanical, and it stops the drift
    that has already started in the doc comments.
 5. ~~**P7 — the conformance corpus.**~~ Done (2026-09-03), out of order: it

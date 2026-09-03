@@ -1721,6 +1721,68 @@ pub extern "C" fn kui_scroll_offset(ptr: *mut KuiCtx, key: u64, x: *mut f32, y: 
     });
 }
 
+/// What the last layout resolved for a scroll container (`kui_scroll_geometry`):
+/// its own box, its content size and the clamped offset, all logical px in
+/// viewport coordinates.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiScrollGeometry {
+    /// The container's box, as the last layout placed and sized it.
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    /// Its laid-out content, padding included.
+    pub content_w: f32,
+    pub content_h: f32,
+    /// Where it is scrolled to: the retained offset clamped to the travel
+    /// below, so it is always a position within the content.
+    pub offset_x: f32,
+    pub offset_y: f32,
+    /// How far the offset can travel; zero on an axis that does not scroll.
+    pub max_offset_x: f32,
+    pub max_offset_y: f32,
+}
+
+/// Everything the last layout resolved for the container `key`. Returns
+/// false — leaving `out` untouched — for a bad context, a NULL `out`, or a
+/// key no layout has ever resolved as a scroll container.
+///
+/// This is what makes a long list affordable: the core builds every child a
+/// view declares, so ten thousand rows cost ten thousand rows, but a view
+/// that knows `h` and `offset_y` can declare the rows that fit plus two
+/// spacers holding the space of the rest, and pay for a screenful. Read
+/// during a build it describes the previous frame, so a resize slices one
+/// frame late — build a row or two extra at each end.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_scroll_geometry(
+    ptr: *mut KuiCtx,
+    key: u64,
+    out: *mut KuiScrollGeometry,
+) -> bool {
+    guard(false, || {
+        let (Some(c), Some(out)) = (unsafe { ctx(ptr) }, unsafe { out.as_mut() }) else {
+            return false;
+        };
+        let Some(g) = c.core().scroll_geometry(Key(key)) else {
+            return false;
+        };
+        *out = KuiScrollGeometry {
+            x: g.rect.x,
+            y: g.rect.y,
+            w: g.rect.w,
+            h: g.rect.h,
+            content_w: g.content.w,
+            content_h: g.content.h,
+            offset_x: g.offset.x,
+            offset_y: g.offset.y,
+            max_offset_x: g.max_offset.x,
+            max_offset_y: g.max_offset.y,
+        };
+        true
+    })
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_close(ptr: *mut KuiCtx) {
     guard((), || {
@@ -3416,6 +3478,19 @@ mod abi_parity {
     fn asserts() -> String {
         let mut o = String::from(PRELUDE);
         o.push('\n');
+
+        abi_struct!(o, KuiScrollGeometry {
+            x: f32 => "float",
+            y: f32 => "float",
+            w: f32 => "float",
+            h: f32 => "float",
+            content_w: f32 => "float",
+            content_h: f32 => "float",
+            offset_x: f32 => "float",
+            offset_y: f32 => "float",
+            max_offset_x: f32 => "float",
+            max_offset_y: f32 => "float",
+        });
 
         abi_struct!(o, KuiStr {
             ptr: *const u8 => "const uint8_t *",

@@ -4,7 +4,8 @@
 //! (refresh rate, focus, viewport) and a few queries (`env.edit_text(key)`,
 //! `env.is_focused(key)`, `env.is_hovered(key)`,
 //! `env.measure_text(s, opts, max_w)`) and scroll calls (`env.reveal(key)`,
-//! `env.scroll_offset(key)`, `env.set_scroll(key, x, y)`); the root table may set
+//! `env.scroll_offset(key)`, `env.set_scroll(key, x, y)`,
+//! `env.scroll_geometry(key)`); the root table may set
 //! `window_title`. Because the IR is data all the way down, the binding is
 //! just table-to-node conversion — no closures cross the boundary.
 //!
@@ -110,7 +111,8 @@ impl Extension for LuaExtension {
 /// `window` chrome facts, and the queries `edit_text(key)`,
 /// `is_focused(key)`, `is_hovered(key)` (keys are the integers events
 /// carry), `measure_text(s, opts, max_w)` (see `measure_from_lua`) and the
-/// scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)`.
+/// scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
+/// `scroll_geometry(key)`.
 fn env_table<'scope, 'env: 'scope>(
     lua: &Lua,
     scope: &'scope mlua::Scope<'scope, 'env>,
@@ -184,6 +186,38 @@ fn env_table<'scope, 'env: 'scope>(
             r.set("x", off.x)?;
             r.set("y", off.y)?;
             Ok(r)
+        })?,
+    )?;
+    // Everything the last layout resolved for a container: its box
+    // `{x, y, w, h}`, its content `{content_w, content_h}` and the clamped
+    // `{offset = {x, y}}`; nil for a key no layout has resolved as one.
+    // This is what lets a script draw a long list affordably — the core
+    // builds every child the view declares, so a script that knows `h` and
+    // `offset.y` declares the rows that fit plus two spacers holding the
+    // space of the rest. It describes the frame before this one, so a
+    // resize slices one frame late; declare a row or two extra at each end.
+    t.set(
+        "scroll_geometry",
+        scope.create_function(move |lua, key: i64| {
+            let Some(g) = ui.borrow().scroll_geometry(Key(key as u64)) else {
+                return Ok(mlua::Value::Nil);
+            };
+            let r = lua.create_table()?;
+            r.set("x", g.rect.x)?;
+            r.set("y", g.rect.y)?;
+            r.set("w", g.rect.w)?;
+            r.set("h", g.rect.h)?;
+            r.set("content_w", g.content.w)?;
+            r.set("content_h", g.content.h)?;
+            let off = lua.create_table()?;
+            off.set("x", g.offset.x)?;
+            off.set("y", g.offset.y)?;
+            r.set("offset", off)?;
+            let max = lua.create_table()?;
+            max.set("x", g.max_offset.x)?;
+            max.set("y", g.max_offset.y)?;
+            r.set("max_offset", max)?;
+            Ok(mlua::Value::Table(r))
         })?,
     )?;
     // The wheel's move by hand; the next layout clamps it, so 0,0 is "jump
@@ -1343,6 +1377,70 @@ mod tests {
         assert_eq!(core.scroll_offset(list).y, 120.0);
         frame(&mut core, &mut ext);
         assert_eq!(core.scroll_offset(list).y, 120.0);
+    }
+
+    /// A script virtualizes a 10k-row list with nothing but
+    /// `env.scroll_geometry`: it declares the rows crossing the window and
+    /// two spacers holding the space of the rest, so the frame costs a
+    /// screenful and the scrollbar still spans the whole list.
+    #[test]
+    fn scripts_slice_a_long_list_from_the_geometry() {
+        let mut ext = LuaExtension::from_source(
+            "virtual",
+            r#"
+                ROWS, ROW_H, built = 10000, 30, 0
+                function view(env)
+                  local g = env.scroll_geometry(list_key)
+                  -- No layout yet: fall back to the window for one frame.
+                  local h = g and g.h or 200
+                  local top = g and g.offset.y or 0
+                  local first = math.min(ROWS, math.max(0, math.floor(top / ROW_H)))
+                  local last = math.min(ROWS, math.ceil((top + h) / ROW_H))
+                  local list = { key = "list", width = "grow", height = "grow",
+                                 scroll_y = true }
+                  if first > 0 then
+                    list[#list + 1] = row { key = "lead", width = "grow",
+                                            height = first * ROW_H }
+                  end
+                  for i = first, last - 1 do
+                    list[#list + 1] = row { key = "row" .. i, width = "grow",
+                                            height = ROW_H, bg = 0x282840ff }
+                  end
+                  if last < ROWS then
+                    list[#list + 1] = row { key = "tail", width = "grow",
+                                            height = (ROWS - last) * ROW_H }
+                  end
+                  built = last - first
+                  return column(list)
+                end
+            "#,
+        )
+        .unwrap();
+        let list = Key::ROOT.str("list");
+        ext.lua.globals().set("list_key", list.0 as i64).unwrap();
+        let mut core = Core::new();
+        let frame = |core: &mut Core, ext: &mut LuaExtension| {
+            let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+            ui.set_origin(OriginId(1));
+            ext.view(&mut ui).unwrap();
+            ui.finish();
+        };
+
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        let built: i64 = ext.lua.globals().get("built").unwrap();
+        assert_eq!(built, 7, "200 / 30 rounded up");
+
+        // The spacers make it the same list: full travel, and "jump to the
+        // end" lands on the last row even though it was never built.
+        let g = core.scroll_geometry(list).expect("laid out");
+        assert_eq!(g.content.h, 10_000.0 * 30.0);
+        core.set_scroll(list, Vec2::new(0.0, 1e9));
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        assert_eq!(core.scroll_offset(list).y, 10_000.0 * 30.0 - 200.0);
+        let built: i64 = ext.lua.globals().get("built").unwrap();
+        assert_eq!(built, 7, "still a screenful at the far end");
     }
 
     #[test]
