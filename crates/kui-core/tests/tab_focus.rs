@@ -268,3 +268,26 @@ fn a_modal_with_no_controls_holds_focus_by_holding_none() {
     tab(&mut core, Mods::default());
     assert_eq!(core.focus(), None, "and Tab cannot leave");
 }
+
+#[test]
+fn a_dialog_opened_from_the_keyboard_shows_its_ring_at_once() {
+    // Entering the modal keeps the visibility focus had: Tab-and-Enter
+    // shows the ring on the first control, a click shows none until Tab.
+    let mut core = Core::new();
+    modal_frame(&mut core, false, false);
+    tab(&mut core, Mods::default());
+    assert!(core.focus_visible(), "Tab showed the ring on `open`");
+    let k = modal_frame(&mut core, true, false);
+    assert_eq!(core.focus(), Some(k[3]));
+    assert!(core.focus_visible(), "and the ring came into the dialog");
+
+    let mut core = Core::new();
+    modal_frame(&mut core, false, false);
+    core.handle_input(InputEvent::CursorMoved(kui_core::Vec2::new(50.0, 10.0)));
+    core.handle_input(InputEvent::MouseDown(1));
+    core.handle_input(InputEvent::MouseUp);
+    assert!(!core.focus_visible(), "a click is pointer focus");
+    let k = modal_frame(&mut core, true, false);
+    assert_eq!(core.focus(), Some(k[3]));
+    assert!(!core.focus_visible(), "no ring until the first Tab");
+}

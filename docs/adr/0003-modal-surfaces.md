@@ -81,11 +81,14 @@ can stop declaring the dialog.
    disabled nodes as before; Tab and Shift-Tab wrap inside it. At the end
    of a frame, focus that is not inside the scope is pulled to the first
    focusable node in it — and dropped when the modal holds none, so an
-   empty dialog contains focus by holding none. That entry is not
-   `focus_visible`: the modal appeared because the app decided to show
-   it, not because someone pressed a key, so the ring appears on the
-   first Tab. The access tree reports the moved focus either way, so a
-   screen reader's cursor follows into the dialog immediately.
+   empty dialog contains focus by holding none. That entry keeps the
+   visibility focus already had: a dialog opened by Tab-and-Enter shows
+   its ring on its first control at once, one opened by a click shows
+   nothing until the first Tab — the same rule browsers apply to
+   `showModal()`, and the one that tells a keyboard user where they are
+   without moving them off the first control. The access tree reports
+   the moved focus either way, so a screen reader's cursor follows into
+   the dialog immediately.
 4. **The focus a modal displaced comes back.** The focus at the moment a
    node *starts* declaring `modal` is remembered with it; when that node
    stops being declared, focus returns exactly there — including to
@@ -174,6 +177,11 @@ can stop declaring the dialog.
   that, and AccessKit's modal flag is the supported way to say this. A
   reader that ignores the flag can still review the page, which is what
   its users expect of it.
+- **Entering a modal always without a visible ring.** Rejected: the
+  ring exists to tell a keyboard user where focus went, and a dialog they
+  opened from the keyboard is exactly when it moved without them.
+  Clearing it there would show nothing until a Tab press, which also
+  moves them off the control the dialog opened on.
 - **Containing focus only from the first Tab.** Rejected: it leaves the
   first Tab press free to leave the dialog, and leaves a screen reader
   cursor sitting outside a modal that has just opened.

@@ -321,8 +321,28 @@ AccessKit `set_modal` with a derived `dialog` role, and a
 tree order — the last modal wins, so a confirm inside a dialog needs no
 stack API — and a modal that is itself a float needs nothing special: the
 scope is a tree range, so a dialog's own dropdown stays live.
+Focus entering a modal keeps the visibility it had, so a keyboard-opened
+dialog shows its ring at once (decided 2026-09-04, pinned in
+`tests/tab_focus.rs`).
+
 Deferred, and named in the ADR: a corpus scene for the behaviour, a
-`modal-without-name` warning, and initial focus placement inside a dialog.
+`modal-without-name` warning, initial focus placement inside a dialog
+(`autofocus`), and the ARIA composite patterns (arrow keys inside a menu).
+Found in review and left open, each small:
+
+- An assistive-technology `Focus` request on a node behind the modal still
+  lands there for one frame (`handle_access` checks the tree, not the modal
+  scope) before containment pulls focus back in with the ring showing. The
+  access tree also still advertises `Click` / `Focus` on inert nodes.
+- A press on the modal's own padding drops focus, and containment then
+  pulls it to the *first* control rather than leaving it dropped, so
+  clicking a dialog's background moves focus out of its editor and onto OK.
+  Treating `None` as already contained would keep the ADR 0002 behaviour.
+- `widgets::button` keys a node by its text, so a label that changes on
+  press is a new node: focus drops, and a screen reader is left holding a
+  dead element (the accessibility example hit this with its counter). A
+  `button_keyed` helper, or a warning when the focused key leaves the tree,
+  would make it hard to repeat.
 
 The gap it closed, as found:
 
