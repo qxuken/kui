@@ -374,6 +374,14 @@ pub struct NodeSpec {
     /// Declaring one replaces the ring the core draws by default. Pressed
     /// wins over focus wins over hover; eases with `transition`.
     pub focus_bg: Option<Color>,
+    /// Modal: while this node is declared, the Tab ring is its subtree,
+    /// everything outside it is inert to the pointer, the wheel and
+    /// assistive technology, and Escape or a press outside emits
+    /// `{kind="dismiss", reason, tag}` on it with this payload under
+    /// `tag`. The last node declaring it in tree order is the one in
+    /// effect (a confirm inside a dialog); see
+    /// `docs/adr/0003-modal-surfaces.md`. Null = modal without a tag.
+    pub modal: Option<Value>,
 }
 
 impl NodeSpec {
@@ -382,6 +390,9 @@ impl NodeSpec {
     pub fn hover_tracked(&self) -> bool {
         self.hoverable
             || self.focusable
+            // A modal's own background is not "outside" it: a press there
+            // must find a region (see `docs/adr/0003-modal-surfaces.md`).
+            || self.modal.is_some()
             || self.on_click.is_some()
             || self.on_drag.is_some()
             || self.on_key.is_some()
@@ -607,6 +618,12 @@ impl NodeSpec {
     /// Makes this node inert (see the `disabled` field).
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
+        self
+    }
+
+    /// Makes this node the frame's modal surface (see the `modal` field).
+    pub fn modal(mut self, tag: Value) -> Self {
+        self.modal = Some(tag);
         self
     }
 

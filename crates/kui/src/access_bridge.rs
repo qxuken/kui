@@ -248,6 +248,11 @@ mod imp {
             if n.disabled {
                 node.set_disabled();
             }
+            if n.modal {
+                // aria-modal: a reader confines its cursor to this node
+                // (docs/adr/0003-modal-surfaces.md).
+                node.set_modal();
+            }
             if let Some(v) = n.number {
                 node.set_numeric_value(v as f64);
             }

@@ -478,6 +478,10 @@ pub fn button_spec() -> NodeSpec {
 
 pub const BUTTON_TEXT: f32 = 15.0;
 
+/// A push button showing `text`, keyed by it. A label that changes re-keys
+/// the node — a new node, so it loses keyboard focus and a screen reader's
+/// cursor; declare such a button with `with_keyed` and [`button_spec`]
+/// instead.
 pub fn button(ui: &mut Ui<'_>, text: &str, payload: impl Into<Value>) {
     ui.with_keyed(text, button_spec().on_click(payload.into()), |ui| {
         ui.text(text, TextStyle::new(BUTTON_TEXT).color(Color::WHITE))

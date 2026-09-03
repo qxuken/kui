@@ -287,6 +287,9 @@ pub struct ScrollRegion {
     pub key: Key,
     pub rect: Rect,
     pub clip: Rect,
+    /// Outside the frame's modal scope: the bar still draws, the wheel
+    /// and the thumb do nothing (see `docs/adr/0003-modal-surfaces.md`).
+    pub inert: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -309,6 +312,8 @@ pub struct ScrollbarRegion {
     pub bar_len: f32,
     /// The container's max scroll offset on this axis.
     pub max: f32,
+    /// Behind a modal: drawn, but not grabbable.
+    pub inert: bool,
 }
 
 impl ScrollbarRegion {
@@ -433,7 +438,7 @@ impl Interaction {
         self.scroll_regions
             .iter()
             .rev()
-            .find(|r| r.rect.contains(p) && r.clip.contains(p))
+            .find(|r| !r.inert && r.rect.contains(p) && r.clip.contains(p))
             .map(|r| r.key)
     }
 
@@ -488,7 +493,7 @@ impl Interaction {
         self.scrollbars
             .iter()
             .rev()
-            .find(|b| b.track.contains(p))
+            .find(|b| !b.inert && b.track.contains(p))
             .copied()
     }
 

@@ -389,6 +389,12 @@ pub struct AccessNode {
     pub focused: bool,
     /// Declared `disabled`: inert, and not in the Tab ring.
     pub disabled: bool,
+    /// The frame's modal surface (`aria-modal`): the Tab ring and every
+    /// pointer are confined to it, and everything else is inert. Only the
+    /// modal in effect carries it — the last one declared — so a confirm
+    /// inside a dialog leaves the dialog an ordinary node
+    /// (`docs/adr/0003-modal-surfaces.md`).
+    pub modal: bool,
     pub scroll: Option<ScrollState>,
     /// Bitset of [`AccessAction::bit`].
     pub actions: u32,
@@ -501,6 +507,11 @@ pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
         Some(WindowRole::Drag) => return Some(Role::TitleBar),
         Some(WindowRole::Button(_)) => return Some(Role::Button),
         None => {}
+    }
+    if spec.modal.is_some() {
+        // A modal surface is a dialog to assistive technology; anything
+        // else it might be, the view says with an explicit role.
+        return Some(Role::Dialog);
     }
     if spec.on_click.is_some() {
         return Some(Role::Button);
@@ -625,6 +636,8 @@ pub(crate) struct Sources<'a> {
     pub title: Option<&'a str>,
     /// The core's one keyboard focus (see `Core::focus`).
     pub focus: Option<Key>,
+    /// The frame's modal in effect (see `Core::modal`).
+    pub modal: Option<Key>,
     pub viewport: Size,
     pub scale: f32,
 }
@@ -689,6 +702,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             max: None,
             focused: src.focus == Some(key),
             disabled: spec.disabled,
+            modal: src.modal == Some(key),
             scroll: None,
             actions: 0,
         };
@@ -1095,7 +1109,7 @@ fn hash_of(tree: &AccessTree) -> u64 {
         mix_f32(&mut mix, n.number);
         mix_f32(&mut mix, n.min);
         mix_f32(&mut mix, n.max);
-        mix(&[n.focused as u8, n.disabled as u8]);
+        mix(&[n.focused as u8, n.disabled as u8, n.modal as u8]);
         if let Some(s) = n.scroll {
             for v in [s.x, s.y, s.max_x, s.max_y] {
                 mix(&v.to_bits().to_le_bytes());

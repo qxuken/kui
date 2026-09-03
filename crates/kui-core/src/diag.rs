@@ -55,6 +55,12 @@ pub const DUPLICATE_KEY: &str = "duplicate-key";
 /// An image with no `label`: assistive technology has nothing to say
 /// for it. Decorative images take `role="none"`.
 pub const IMAGE_WITHOUT_LABEL: &str = "image-without-label";
+/// The frame's modal surface is not in a float, and content painted after
+/// it is drawn on top of it: everything the user can see over the modal is
+/// inert, which looks like inert-behind is broken. A modal that has to
+/// cover the app is a float (`float="viewport"`); see
+/// `docs/adr/0003-modal-surfaces.md`.
+pub const MODAL_BEHIND_CONTENT: &str = "modal-behind-content";
 /// A control (a button, link, tab, checkbox, slider, editor) with no
 /// computable name: no `label`, and no text inside it. Icon buttons and
 /// editors need a `label`.
@@ -122,7 +128,48 @@ impl Diagnostics {
         self.check_grow_weights(tree);
         self.check_auto_keyed_transitions(tree);
         self.check_duplicate_keys(tree);
+        self.check_modal(tree);
         self.check_access(tree, text, edit);
+    }
+
+    /// A modal painted under content it makes inert. Paint order is
+    /// preorder with floating subtrees last, so anything after the modal's
+    /// subtree — or any float outside it — draws over it; a modal that is
+    /// itself inside a float is already on top of both.
+    fn check_modal(&mut self, tree: &Tree) {
+        let Some(i) = (0..tree.len())
+            .rev()
+            .find(|&i| tree.specs[i].modal.is_some())
+        else {
+            return;
+        };
+        let end = tree.subtree_end(i);
+        let floating = |mut j: usize| {
+            loop {
+                if tree.specs[j].layout.float.is_some() {
+                    return true;
+                }
+                match tree.parent[j] {
+                    NIL => return false,
+                    p => j = p as usize,
+                }
+            }
+        };
+        if floating(i) {
+            return;
+        }
+        let over = (0..tree.len())
+            .filter(|j| !(i..end).contains(j))
+            .any(|j| j >= end || floating(j));
+        if !over {
+            return;
+        }
+        self.warn(MODAL_BEHIND_CONTENT, tree.keys[i], || {
+            "this modal is not in a float, and content declared after it paints on top of it: \
+             everything drawn over a modal is inert, which reads as a broken dialog (float it \
+             with `float=\"viewport\"`)"
+                .to_string()
+        });
     }
 
     /// Images without a label and controls without a computable name, by

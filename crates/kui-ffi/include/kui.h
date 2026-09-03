@@ -262,6 +262,17 @@ typedef struct KuiSpec {
      * content, call kui_tooltip / kui_tooltip_with yourself. Borrowed
      * while the node opens. */
     KuiStr tooltip;
+    /* Modal surface, NULL = none (docs/adr/0003-modal-surfaces.md): while
+     * this node is declared the Tab ring is its subtree, everything
+     * outside it is inert to the pointer, the wheel and assistive
+     * technology (window chrome stays live), and Escape or a press
+     * outside emits {kind="dismiss", reason="escape"|"outside", tag} on
+     * it — the core closes nothing, the app stops opening the node. The
+     * last one declared in tree order is the one in effect (a confirm
+     * inside a dialog); a modal that must cover the app is a float.
+     * Borrowed: cloned while the node opens, so you keep ownership;
+     * kui_value_null() asks for the behaviour without a tag. */
+    const KuiValue *modal;
 } KuiSpec;
 
 /* Roles (KuiSpec.role, KuiAccessNode.role). The first fifteen can be
@@ -313,6 +324,7 @@ enum {
     KUI_ACCESS_HAS_SCROLL = 1u << 8,
     KUI_ACCESS_HAS_TEXT_SELECTION = 1u << 9,
     KUI_ACCESS_DISABLED = 1u << 10, /* declared disabled: inert, not a Tab stop */
+    KUI_ACCESS_MODAL = 1u << 11,    /* the frame's modal surface (aria-modal) */
 };
 
 /* One node of the access tree (kui_access_tree): what assistive technology

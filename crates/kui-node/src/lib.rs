@@ -1568,6 +1568,7 @@ fn access_tree_json(tree: &kui_core::AccessTree) -> Json {
             o.insert("valueMax".into(), opt_num(n.max));
             o.insert("focused".into(), Json::Bool(n.focused));
             o.insert("disabled".into(), Json::Bool(n.disabled));
+            o.insert("modal".into(), Json::Bool(n.modal));
             o.insert(
                 "scroll".into(),
                 n.scroll.map_or(Json::Null, |s| {

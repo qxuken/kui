@@ -771,6 +771,7 @@ mod tests {
                          dx = -8, dy = -8, fit = true},
                 hoverable = true, window = "close",
                 on_click = {kind = "hit"}, on_drag = "d", on_key = 7,
+                modal = "dlg",
                 key = "panel", key_focus = true,
             }"##,
         );
@@ -808,7 +809,8 @@ mod tests {
             .window_button(WindowButton::Close)
             .on_click(Value::map([("kind", "hit".into())]))
             .on_drag("d")
-            .on_key(Value::Int(7));
+            .on_key(Value::Int(7))
+            .modal("dlg".into());
         assert_eq!(p.spec, expected);
         assert_eq!(p.key.as_deref(), Some("panel"));
         assert!(p.key_focus);

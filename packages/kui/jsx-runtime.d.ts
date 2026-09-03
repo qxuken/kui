@@ -162,6 +162,8 @@ export interface GeneratedSpecProps {
   minHeight?: number;
   /** Lower width clamp (logical px). */
   minWidth?: number;
+  /** Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside emits {kind:"dismiss", reason:"escape"|"outside", tag} on it — the app stops declaring the node. The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float. */
+  modal?: AppMsg | null;
   /** Message emitted when clicked (data, not a callback). */
   onClick?: AppMsg;
   /** Drag tag: emits {kind:"drag", phase, x, y, dx, dy, parent, tag} events. */

@@ -97,6 +97,7 @@ pub const P_SELECTION_ANCHOR: u32 = 60;
 pub const P_FOCUSABLE: u32 = 61;
 pub const P_DISABLED: u32 = 62;
 pub const P_FOCUS_BG: u32 = 63;
+pub const P_MODAL: u32 = 64;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -436,6 +437,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Color,
         apply: Apply::SpecColor(|s, c| s.focus_bg(c)),
         doc: "Background while the node holds keyboard-visible focus (moved there by Tab or assistive technology, not a click); replaces the default focus ring. Pressed wins over focus wins over hover; eases with `transition`.",
+    },
+    PropDef {
+        name: "modal",
+        id: P_MODAL,
+        kind: Kind::Tag,
+        apply: Apply::SpecMsg(|s, v| s.modal(v)),
+        doc: "Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside emits {kind:\"dismiss\", reason:\"escape\"|\"outside\", tag} on it — the app stops declaring the node. The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float.",
     },
     PropDef {
         name: "hoverGroup",
@@ -817,6 +825,10 @@ pub const C_FIELDS: &[(&str, &str)] = &[
         "`on_drag` argument of `kui_open_draggable` / `kui_open_with`",
     ),
     ("onKey", "`on_key` argument of `kui_open_with`"),
+    (
+        "modal",
+        "`modal` (a borrowed `KuiValue*`, cloned while the node opens)",
+    ),
     ("onHover", "`on_hover` argument of `kui_open_with`"),
     (
         "onLayout",
@@ -977,6 +989,11 @@ pub const EVENTS: &[EventDef] = &[
         kind: "sound",
         payload: "`{ kind: \"sound\", phase: \"ended\", playback, tag }`",
         doc: "A tagged playback (`play(id, { tag })` or `<audio tag>`) finished on its own — never when something stopped it.",
+    },
+    EventDef {
+        kind: "dismiss",
+        payload: "`{ kind: \"dismiss\", reason: \"escape\" | \"outside\", tag }`",
+        doc: "The user asked for the frame's `modal` node to go away — Escape, or a press that landed outside it. The core closes nothing: the app stops declaring the node (or asks first). Only the modal in effect gets one.",
     },
     EventDef {
         kind: "access",

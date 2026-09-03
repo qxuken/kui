@@ -59,6 +59,15 @@ export type LayoutMsg<T = AppMsg> = {
   tag?: T;
 };
 
+/** The frame's `modal` node was asked to go away: Escape, or a press that
+ *  landed outside it. The core closes nothing — stop declaring the node
+ *  (or ask first). Only the modal in effect gets one. */
+export type DismissMsg<T = AppMsg> = {
+  kind: 'dismiss';
+  reason: 'escape' | 'outside';
+  tag?: T;
+};
+
 /** The viewport changed size or DPI (logical px, delivered on the root);
  *  `win.size()` queries the same numbers. */
 export type ResizeMsg = {
@@ -99,6 +108,7 @@ export type CoreMsg =
   | KeyMsg
   | HoverMsg
   | LayoutMsg
+  | DismissMsg
   | ResizeMsg
   | ModifiersMsg
   | EditMsg
@@ -210,6 +220,10 @@ export interface AccessNode {
   focused: boolean;
   /** Declared `disabled`: inert, and not a Tab stop. */
   disabled: boolean;
+  /** The frame's `modal` surface (`aria-modal`): focus and input are
+   *  confined to its subtree, everything else is inert. Only the modal in
+   *  effect — the last one declared — carries it. */
+  modal: boolean;
   scroll: { x: number; y: number; maxX: number; maxY: number } | null;
   /** The requests this node accepts. */
   actions: AccessAction[];

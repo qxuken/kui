@@ -253,6 +253,15 @@ pub struct KuiSpec {
     /// its last child while the pointer is over it. `kui_close` draws it,
     /// so it only applies to the `kui_open*` family.
     pub tooltip: KuiStr,
+    /// Modal surface (NULL = none): while this node is declared the Tab
+    /// ring is its subtree, everything outside it is inert to the pointer,
+    /// the wheel and assistive technology, and Escape or a press outside
+    /// emits `{kind="dismiss", reason, tag}` on it — the app stops opening
+    /// the node. The last one declared wins (a confirm inside a dialog);
+    /// a modal that must cover the app is a float. Borrowed — cloned
+    /// while the node opens, so the caller keeps ownership;
+    /// `kui_value_null()` asks for the behaviour without a tag.
+    pub modal: *const KuiValue,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -350,6 +359,9 @@ pub const KUI_ACCESS_HAS_SCROLL: u32 = 1 << 8;
 /// The node is `disabled`: inert, not a Tab stop (bit 9 is
 /// KUI_ACCESS_HAS_TEXT_SELECTION).
 pub const KUI_ACCESS_DISABLED: u32 = 1 << 10;
+/// The node is the frame's `modal` surface (`aria-modal`): focus and input
+/// are confined to it (`docs/adr/0003-modal-surfaces.md`).
+pub const KUI_ACCESS_MODAL: u32 = 1 << 11;
 
 pub const KUI_VALUE_NOW: u32 = 1 << 0;
 pub const KUI_VALUE_MIN: u32 = 1 << 1;
@@ -712,6 +724,9 @@ fn spec_of(
     if let Some(tag) = unsafe { s.on_layout.as_ref() } {
         // Borrowed, unlike the message arguments: the spec is const.
         spec = spec.on_layout(tag.0.clone());
+    }
+    if let Some(tag) = unsafe { s.modal.as_ref() } {
+        spec = spec.modal(tag.0.clone());
     }
     if let Some(role) = role_of_code(s.role) {
         spec = spec.role(role);
@@ -1848,6 +1863,9 @@ pub extern "C" fn kui_access_tree(ptr: *mut KuiCtx, out: *mut KuiAccessNode, cap
             if n.disabled {
                 flags |= KUI_ACCESS_DISABLED;
             }
+            if n.modal {
+                flags |= KUI_ACCESS_MODAL;
+            }
             let scroll = n.scroll.unwrap_or_default();
             let (sel_start, sel_end) = n.selection.unwrap_or((0, 0));
             unsafe {
@@ -2565,6 +2583,7 @@ mod schema_parity {
                 "onKey" => key = msg(Value::Int(7)),
                 "onHover" => hover = msg(Value::Int(7)),
                 "onLayout" => s.on_layout = &layout_tag,
+                "modal" => s.modal = &layout_tag,
                 "hoverBg" => s.hover_bg = C,
                 "pressedBg" => s.pressed_bg = C,
                 "hoverGroup" => s.hover_group = name,
@@ -2635,6 +2654,7 @@ mod schema_parity {
                 radius: 9.0,
             },
         ];
+        let modal_tag = KuiValue(Value::str("m"));
         let s = KuiSpec {
             width: KuiSizing { tag: 1, value: 2.0 },
             height: KuiSizing {
@@ -2709,6 +2729,7 @@ mod schema_parity {
                 ptr: "hint".as_ptr(),
                 len: 4,
             },
+            modal: &modal_tag,
         };
         let expected = NodeSpec::row()
             .width(Sizing::Grow(2.0))
@@ -2772,7 +2793,8 @@ mod schema_parity {
             .on_click(Value::str("c"))
             .on_drag(Value::str("d"))
             .on_key(Value::str("k"))
-            .on_hover(Value::str("h"));
+            .on_hover(Value::str("h"))
+            .modal(Value::str("m"));
         let got = spec_of(
             &s,
             msg("c".into()),
@@ -3378,6 +3400,7 @@ mod abi_parity {
             disabled: u32 => "uint32_t",
             focus_bg: u32 => "uint32_t",
             tooltip: KuiStr => "KuiStr",
+            modal: *const KuiValue => "const KuiValue *",
         });
 
         abi_struct!(o, KuiAccessNode {

@@ -37,6 +37,7 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `maxWidth` | `max_width` | `max_width` | number | Upper width clamp; grow+maxWidth is the responsive-width pattern. |
 | `minHeight` | `min_height` | `min_height` | number | Lower height clamp (logical px). |
 | `minWidth` | `min_width` | `min_width` | number | Lower width clamp (logical px). |
+| `modal` | `modal` | `modal` (a borrowed `KuiValue*`, cloned while the node opens) | tag (a message merged into the event under `tag`, or `null` for none) | Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside emits {kind:"dismiss", reason:"escape"\|"outside", tag} on it — the app stops declaring the node. The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float. |
 | `onClick` | `on_click` | `on_click` argument of `kui_open` / `kui_open_with` | message (any plain data) | Message emitted when clicked (data, not a callback). |
 | `onDrag` | `on_drag` | `on_drag` argument of `kui_open_draggable` / `kui_open_with` | tag (a message merged into the event under `tag`, or `null` for none) | Drag tag: emits {kind:"drag", phase, x, y, dx, dy, parent, tag} events. |
 | `onHover` | `on_hover` | `on_hover` argument of `kui_open_with` | tag (a message merged into the event under `tag`, or `null` for none) | Hover tag: the pointer entering/leaving emits {kind:"hover", phase:"enter"\|"leave", tag} events. |
@@ -118,6 +119,7 @@ Node, `on_event(ev)` in Lua (payload fields plus `node_key`), and
 | modifiers | `{ kind: "modifiers", shift, ctrl, alt, super }` | The physical modifier state changed (delivered to the host on the root). |
 | changed / submit | `{ kind: "changed" }` / `{ kind: "submit" }`, with the editor's key on the event | An editor's text changed / Enter in a single-line editor. |
 | sound | `{ kind: "sound", phase: "ended", playback, tag }` | A tagged playback (`play(id, { tag })` or `<audio tag>`) finished on its own — never when something stopped it. |
+| dismiss | `{ kind: "dismiss", reason: "escape" \| "outside", tag }` | The user asked for the frame's `modal` node to go away — Escape, or a press that landed outside it. The core closes nothing: the app stops declaring the node (or asks first). Only the modal in effect gets one. |
 | access | `{ kind: "access", action, tag, text?, anchor?: { line, offset }, focus?: { line, offset } }` | Assistive technology — or the keyboard — asked for what only the app can do: `increment` / `decrement` on a `slider` role (a reader's nudge, or the arrow keys on the focused slider); `setValue` / `replaceSelectedText` (with `text`) / `setTextSelection` (with `anchor` and `focus` as line ordinals and byte offsets) on a custom editor. `tag` is the node's `onClick` payload (or its `onDrag` / `onKey` tag). Every other request resolves in the core and arrives as the events a pointer would have produced. |
 
 ## Resources

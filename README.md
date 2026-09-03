@@ -219,6 +219,20 @@ that are hard to reverse and would look arbitrary without their context.
   keyboard — and hands focus on with `focus_next`. A screen reader's focus
   request lands on the same focus, so its cursor follows Tab into
   buttons.
+- **Modal surfaces are a row**
+  ([ADR 0003](docs/adr/0003-modal-surfaces.md)). A node declaring `modal`
+  (`modal` in JSX, `modal = true` in Lua, `KuiSpec.modal` in C) is the
+  frame's modal surface: the Tab ring becomes its subtree, focus enters it
+  and comes back where it was when it goes away, and everything outside is
+  inert — no click, drag, hover, wheel, or assistive-technology
+  activation; only window chrome stays live, so a dialog never traps the
+  window. The access tree marks it `aria-modal` (AccessKit's
+  `set_modal`) and derives a `dialog` role. Escape and a press outside
+  emit `{kind: "dismiss", reason}` on the node: the core closes nothing —
+  the app stops declaring it, or asks first. The last modal declared in
+  tree order is the one in effect, so a confirm inside a dialog stacks
+  without a stack, and a modal that has to cover the app is a float (the
+  core warns when it is not).
 - **Transitions animate layout inputs, not rects.** A node with
   `transition(ms)` (`transition={150}` in JSX, `transition = 150` in Lua,
   `KuiSpec.transition_ms` in C) has its sizing amounts, colors and radius
@@ -540,9 +554,9 @@ nothing else can.
 v0 scope: no z-index (floats stack in tree order). Transitions cover sizing, colors, radius and
 position (`slide`, `enter`); a removed node vanishes at once (there is no exit animation yet).
 Layout queries stop at the node: `measure_text` and `on_layout` give whole-string and whole-node
-rects, not the boxes of lines or glyphs inside a paragraph. Accessibility and keyboard focus are
-data (ADR 0001 and 0002); arrow keys inside radio groups, tab lists and lists, and a
-configurable focus ring colour, are the next steps there.
+rects, not the boxes of lines or glyphs inside a paragraph. Accessibility, keyboard focus and
+modality are data (ADR 0001, 0002 and 0003); arrow keys inside radio groups, tab lists and lists,
+a configurable focus ring colour, and initial focus inside a dialog, are the next steps there.
 Audio covers one-shots, loops, volume, pause and a finished-playback event; sounds decode fully
 into memory, and synthesis, effects, positional audio and disk streaming are out of scope.
 Editing: caret blink, double/triple-click

@@ -18,10 +18,17 @@
 //! the switch, the arrows move the slider, Escape lets go. The app-owned
 //! editor is a key sink, so it keeps Tab; its declaration below takes
 //! focus once, on the first frame, and never clobbers a Tab press.
+//!
+//! "Delete…" opens a modal dialog (`docs/adr/0003-modal-surfaces.md`):
+//! Tab cannot leave it, nothing behind it clicks, VoiceOver announces a
+//! modal dialog and stays inside it, and Escape or a click outside asks
+//! it to close — the app decides, and focus returns to the button that
+//! opened it.
 
 use kui::widgets;
 use kui::{
-    Align, App, Color, EditOptions, Key, NodeSpec, Role, Sizing, TextStyle, Ui, UiEvent, Value,
+    Align, App, Color, EditOptions, FloatConfig, Key, NodeSpec, Role, Sizing, TextStyle, Ui,
+    UiEvent, Value,
 };
 
 const DOC: &str = "hello world\nsecond line";
@@ -35,6 +42,9 @@ struct A11y {
     lines: Vec<String>,
     caret: (usize, usize),
     edit: Key,
+    /// Whether the confirm dialog is declared this frame. Nothing else:
+    /// the modal is the frame that declares it.
+    dialog: bool,
 }
 
 impl A11y {
@@ -46,6 +56,7 @@ impl A11y {
             lines: vec!["fn main() {".into(), "    greet()".into(), "}".into()],
             caret: (1, 4),
             edit: Key::ROOT,
+            dialog: false,
         }
     }
 
@@ -74,8 +85,21 @@ impl App for A11y {
         });
 
         // A button named by its content, so a press is visible through
-        // the accessibility API alone.
-        widgets::button(ui, &format!("count {}", self.presses), Value::str("press"));
+        // the accessibility API alone. Keyed by hand: `widgets::button`
+        // keys a node by its text, and this text changes on every press —
+        // a re-keyed node is a new node, which drops keyboard focus and
+        // leaves a screen reader's cursor on an element that no longer
+        // exists.
+        ui.with_keyed(
+            "count",
+            widgets::button_spec().on_click(Value::str("press")),
+            |ui| {
+                ui.text(
+                    &format!("count {}", self.presses),
+                    TextStyle::new(widgets::BUTTON_TEXT).color(Color::WHITE),
+                )
+            },
+        );
 
         // An icon button: nothing to read inside, so it needs a label.
         ui.with_keyed(
@@ -85,6 +109,9 @@ impl App for A11y {
                 .label("Save"),
             |ui| ui.text("⌘", TextStyle::new(15.0).color(Color::WHITE)),
         );
+
+        // The button that opens the modal below.
+        widgets::button(ui, "Delete…", Value::str("open-confirm"));
 
         // A switch: `checked` is the state assistive technology reads.
         ui.with_keyed(
@@ -203,6 +230,40 @@ impl App for A11y {
         ui.take_key_focus(sink);
 
         widgets::latency_hud_at(ui, Align::End, Align::Start);
+
+        // The modal, declared last so it floats over everything (and over
+        // the latency HUD, which is a float too). One row makes it modal:
+        // focus enters it, Tab cannot leave, nothing behind it takes
+        // input, and a screen reader announces a dialog and stays inside.
+        if self.dialog {
+            ui.with_keyed(
+                "confirm",
+                NodeSpec::column()
+                    .float(
+                        FloatConfig::viewport()
+                            .at(Align::Center, Align::Center)
+                            .self_at(Align::Center, Align::Center),
+                    )
+                    .modal(Value::str("confirm"))
+                    .label("Delete note")
+                    .width(Sizing::Fixed(260.0))
+                    .gap(10.0)
+                    .pad(14.0)
+                    .bg(Color::rgb8(0x1d, 0x20, 0x2b))
+                    .border(1.0, Color::rgb8(0x3b, 0x5b, 0xd4))
+                    .radius(8.0),
+                |ui| {
+                    ui.text(
+                        "Delete this note?",
+                        TextStyle::new(15.0).color(Color::WHITE),
+                    );
+                    ui.with(NodeSpec::row().gap(8.0), |ui| {
+                        widgets::button(ui, "Cancel", Value::str("cancel"));
+                        widgets::button(ui, "Delete", Value::str("delete"));
+                    });
+                },
+            );
+        }
     }
 
     fn on_event(&mut self, ev: UiEvent) {
@@ -217,12 +278,37 @@ impl App for A11y {
                 println!("save");
                 return;
             }
+            // Opening the dialog is a field the view reads; closing it is
+            // the same field. The core moves focus into it and hands
+            // focus back to this button when it goes away.
+            Some("open-confirm") => {
+                self.dialog = true;
+                return;
+            }
+            Some("cancel") => {
+                self.dialog = false;
+                println!("cancelled");
+                return;
+            }
+            Some("delete") => {
+                self.dialog = false;
+                println!("deleted");
+                return;
+            }
             Some("mute") => {
                 self.muted = !self.muted;
                 println!("mute -> {}", self.muted);
                 return;
             }
             _ => {}
+        }
+        // Escape, or a click outside the dialog: the core asks, the app
+        // decides. A dialog holding unsaved work could ask again here.
+        if payload.get("kind").and_then(Value::as_str) == Some("dismiss") {
+            let reason = payload.get("reason").and_then(Value::as_str).unwrap_or("");
+            println!("dismiss ({reason})");
+            self.dialog = false;
+            return;
         }
         if payload.get("kind").and_then(Value::as_str) != Some("access") {
             return;

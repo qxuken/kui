@@ -292,6 +292,12 @@ if let code {
 print("\n=== actions")
 if let press {
     check("button advertises press", actions(press.el).contains(kAXPressAction as String))
+    // VoiceOver puts keyboard focus on the element under its cursor before
+    // pressing it. The press renames the button; the node must survive the
+    // rename, or the reader is left holding a dead element and the app
+    // reports no focus at all.
+    AXUIElementSetAttributeValue(press.el, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+    usleep(400_000)
     AXUIElementPerformAction(press.el, kAXPressAction as CFString)
     usleep(400_000)
     all = []
@@ -299,6 +305,14 @@ if let press {
     check(
         "pressing renamed the button",
         find(role: kAXButtonRole as String, title: "count 1") != nil, "count 1")
+    var focusedNow: CFTypeRef?
+    AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &focusedNow)
+    check(
+        "the pressed button keeps focus through its rename",
+        focusedNow.flatMap { str($0 as! AXUIElement, kAXTitleAttribute as String) }, "count 1")
+    check(
+        "the reader's element is still alive after the press",
+        str(press.el, kAXRoleAttribute as String) != nil)
 }
 if let slider = find(role: kAXSliderRole as String, title: "Volume") {
     check("slider advertises increment", actions(slider.el).contains(kAXIncrementAction as String))

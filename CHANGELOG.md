@@ -9,6 +9,27 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **Modal surfaces** (`docs/adr/0003-modal-surfaces.md`). One row,
+  `modal`, makes a node the frame's modal surface in every binding
+  (`modal` in JSX, `modal = true` in Lua, `KuiSpec.modal` in C,
+  `NodeSpec::modal` in Rust): the Tab ring becomes its subtree and wraps
+  inside it, focus enters it when it appears and returns exactly where it
+  was when it goes away, and everything outside it stops taking
+  input — no click, drag, hover, press, wheel, scrollbar thumb, Enter /
+  Space, or assistive-technology activation, all of which resolve against
+  the hit list the modal now scopes. Scrollbars behind it still draw;
+  window chrome stays live, so a dialog never traps the window. The
+  access tree reports `modal` (AccessKit's `set_modal`, ARIA's
+  `aria-modal`, so VoiceOver keeps its cursor inside) and derives
+  `role="dialog"` when the view declares none. Escape, and a press that
+  lands outside, emit `{kind:"dismiss", reason:"escape"|"outside", tag}`
+  on the modal node — the core closes nothing, because only the app can
+  stop declaring the dialog (or ask first). The last modal declared in
+  tree order is the one in effect, so a confirm inside a dialog stacks
+  without a stack API, and a modal that must cover the app is a float —
+  one that is not says so, as a new `modal-behind-content` warning. The
+  accessibility example grew a "Delete…" button and the confirm dialog it
+  opens, which is what a VoiceOver session can be pointed at.
 - **The binding-parity table is a build failure now.** `CUSTOM` and
   `ELEMENTS` in `crates/kui-core/src/schema.rs` name the ten props and ten
   elements every frontend lowers by hand, and until now that agreement was
@@ -165,6 +186,15 @@ upgrades remove code from the apps on it is doing the job.
 
 ### What you can delete
 
+- **The full-viewport `onClick` scrim behind a dialog** — and the half of
+  modality it never bought: a `modal` node blocks Tab, the wheel and
+  assistive technology too, and tells the platform it is a dialog.
+- **The "what was focused before this dialog?" field in the model**, and
+  the `focus(key)` call on the way out: the core remembers what the modal
+  displaced and gives it back.
+- **A hand-rolled Escape binding on every dialog**, and the outside-click
+  hit test under a menu: both arrive as `{kind:"dismiss", reason}` on the
+  node that asked to be modal.
 - **"Does the C build do what the JSX build does?"** — the question, and
   the hand-written probe app written to answer it. One corpus, four
   adapters, one CI job: a binding that lowers a prop differently names

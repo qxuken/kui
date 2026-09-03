@@ -217,6 +217,76 @@ test('tab reaches a button and enter presses it', () => {
   }
 });
 
+// Modal surfaces (docs/adr/0003-modal-surfaces.md): the dialog takes focus
+// and keeps it, the app behind it is inert, and Escape and a press outside
+// both ask it to close — the same on every transport.
+test('a modal contains focus and asks to be dismissed', () => {
+  const build = () =>
+    box({ pad: 4 }, [
+      box(
+        { width: 60, height: 20, bg: '#333333', onClick: { kind: 'open' }, label: 'Open' },
+        [],
+        'open',
+      ),
+      box(
+        {
+          width: 80,
+          height: 40,
+          bg: '#222222',
+          float: { anchor: 'viewport', at: ['end', 'end'], self: ['end', 'end'] },
+          modal: { kind: 'settings' },
+          label: 'Settings',
+        },
+        [
+          box(
+            { width: 60, height: 20, bg: '#444444', onClick: { kind: 'ok' }, label: 'OK' },
+            [],
+            'ok',
+          ),
+        ],
+        'dialog',
+      ),
+    ]);
+  for (const transport of ['binary', 'json', 'object']) {
+    const { ctx } = run(transport, build);
+    const tree = ctx.accessTree();
+    const dialog = tree.nodes.find((n) => n.modal);
+    assert.ok(dialog, `${transport}: the access tree reports the modal`);
+    assert.equal(dialog.role, 'dialog', `${transport}: a modal box is a dialog`);
+    assert.equal(dialog.name, 'Settings');
+    const ok = tree.nodes.find((n) => n.name === 'OK');
+    assert.equal(tree.focus, ok.key, `${transport}: focus entered the modal`);
+    assert.equal(ctx.focused(), ok.key);
+
+    // The one stop in the ring is inside the dialog: Tab cannot leave.
+    ctx.key('tab');
+    assert.equal(ctx.focused(), ok.key, `${transport}: tab stays inside`);
+
+    // A press on the button behind emits no click, only the dismiss.
+    ctx.cursor(10, 10);
+    ctx.mouse(true, 1);
+    ctx.mouse(false, 1);
+    const outside = ctx.pollEvents();
+    assert.equal(outside.length, 1, `${transport}: the button behind is inert`);
+    assert.deepEqual(outside[0].payload, {
+      kind: 'dismiss',
+      reason: 'outside',
+      tag: { kind: 'settings' },
+    });
+
+    ctx.key('escape');
+    const escaped = ctx.pollEvents();
+    assert.equal(escaped.length, 1);
+    assert.deepEqual(escaped[0].payload, {
+      kind: 'dismiss',
+      reason: 'escape',
+      tag: { kind: 'settings' },
+    });
+    assert.equal(escaped[0].key, dialog.key, `${transport}: on the modal node`);
+    assert.equal(ctx.focused(), ok.key, `${transport}: escape does not let go`);
+  }
+});
+
 // Measurement is a query on the same text stack layout uses.
 test('measureText answers what layout gives the text', () => {
   const ctx = new Ctx();

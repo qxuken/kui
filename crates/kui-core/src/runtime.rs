@@ -97,6 +97,17 @@ pub struct Core {
     /// Per-node "inside a floating subtree" marker (only filled when needed).
     in_float: Vec<bool>,
     any_float: bool,
+    /// Whether any node this frame declared `modal`.
+    any_modal: bool,
+    /// The frame's modal scope: the tree range `[i, subtree_end(i))` of the
+    /// last node declaring `modal`, and its key. Everything outside it is
+    /// inert and out of the Tab ring (see
+    /// `docs/adr/0003-modal-surfaces.md`). Recomputed by `finish_frame`.
+    modal: Option<(usize, usize, Key)>,
+    /// The modals declared by the last finished frame, in tree order, each
+    /// with the focus it displaced: a modal that stops being declared gives
+    /// that focus back.
+    modal_focus: Vec<(Key, Option<Key>)>,
     /// Whether any node this frame eases its position (`NodeSpec::slide`,
     /// or an `enter` with an offset).
     any_slide: bool,
@@ -203,6 +214,9 @@ impl Core {
             any_clip: false,
             in_float: Vec::new(),
             any_float: false,
+            any_modal: false,
+            modal: None,
+            modal_focus: Vec::new(),
             any_slide: false,
             any_layout: false,
             frame_requested: false,
@@ -298,6 +312,15 @@ impl Core {
                 }
             }
             InputEvent::Key(ek, mods) => {
+                // A modal owns Escape: it asks to go away, and nothing
+                // else happens (see `docs/adr/0003-modal-surfaces.md`).
+                // The core closes nothing — the app stops declaring it.
+                if ek == EditKey::Escape
+                    && let Some(key) = self.modal()
+                {
+                    self.dismiss(key, "escape", &mut out);
+                    return out;
+                }
                 // Tab walks the focus ring (Shift-Tab backwards) unless a
                 // multiline editor holds focus — there Tab stays
                 // indentation — or a key sink does: a sink is an app that
@@ -400,6 +423,22 @@ impl Core {
                         .interaction
                         .hit_at(p)
                         .map(|h| (h.key, h.edit_origin, h.focusable));
+                    // While a modal is up, a press outside it never
+                    // touches focus: one that finds no region asks the
+                    // modal to go away (a modal is hit-tracked, so its own
+                    // background is not "outside"), and one that finds the
+                    // only live thing out there — window chrome — is the
+                    // platform's business, not the app's.
+                    if let Some(key) = self.modal()
+                        && !hit.as_ref().is_some_and(|(k, _, _)| self.within_modal(*k))
+                    {
+                        if hit.is_none() {
+                            self.dismiss(key, "outside", &mut out);
+                        }
+                        self.interaction
+                            .handle(InputEvent::MouseDown(clicks), &mut out);
+                        return out;
+                    }
                     // A press moves focus (to a focusable node) or drops
                     // it; either way it is pointer focus, not shown.
                     match hit {
@@ -629,6 +668,7 @@ impl Core {
                     scroll: &self.scroll,
                     title: self.window_title.as_deref(),
                     focus: self.focus,
+                    modal: self.modal(),
                     viewport: self.viewport,
                     scale: self.scale,
                 },
@@ -662,6 +702,8 @@ impl Core {
         hits: &mut Vec<HitRegion>,
         scroll_regions: &mut Vec<ScrollRegion>,
     ) {
+        // Behind a modal a node still draws, and stops taking input.
+        let interactive = self.interactive(i);
         let spec = &self.tree.specs[i];
         let style = spec.style;
         if style.bg.is_visible() || (style.border_w > 0.0 && style.border_color.is_visible()) {
@@ -676,7 +718,7 @@ impl Core {
                 clip: clip.scaled(scale),
             });
         }
-        if spec.hover_tracked() {
+        if spec.hover_tracked() && interactive {
             let parent = self.tree.parent[i];
             let parent_rect = if parent == NIL {
                 Rect::new(0.0, 0.0, self.viewport.w, self.viewport.h)
@@ -706,10 +748,13 @@ impl Core {
             });
         }
         if spec.layout.scroll_x || spec.layout.scroll_y {
+            // A container behind a modal keeps its scrollbar drawn and
+            // refuses the wheel and the thumb.
             scroll_regions.push(ScrollRegion {
                 key: self.tree.keys[i],
                 rect,
                 clip,
+                inert: !interactive,
             });
         }
         match self.tree.content[i] {
@@ -726,23 +771,25 @@ impl Core {
             NodeContent::Edit(key) => {
                 let pad = spec.layout.padding;
                 let content_origin = Vec2::new(rect.x + pad.l, rect.y + pad.t);
-                hits.push(HitRegion {
-                    key,
-                    origin: self.tree.origins[i],
-                    rect,
-                    clip,
-                    payload: None,
-                    drag: None,
-                    parent_rect: rect,
-                    edit_origin: Some(content_origin),
-                    key_sink: None,
-                    focusable: !spec.disabled,
-                    window: None,
-                    hover: None,
-                    group: None,
-                    click_sound: None,
-                    hover_sound: None,
-                });
+                if interactive {
+                    hits.push(HitRegion {
+                        key,
+                        origin: self.tree.origins[i],
+                        rect,
+                        clip,
+                        payload: None,
+                        drag: None,
+                        parent_rect: rect,
+                        edit_origin: Some(content_origin),
+                        key_sink: None,
+                        focusable: !spec.disabled,
+                        window: None,
+                        hover: None,
+                        group: None,
+                        click_sound: None,
+                        hover_sound: None,
+                    });
+                }
                 let focused = self.edit.focused() == Some(key);
                 let origin_phys = Vec2::new(
                     (content_origin.x * scale).round(),
@@ -808,11 +855,16 @@ impl Core {
     }
 
     /// The Tab ring: (tree index, key) of every focusable node of the
-    /// last frame in tree order, `role="none"` subtrees skipped whole.
+    /// last frame in tree order, `role="none"` subtrees skipped whole —
+    /// and, when a modal is in effect, of its subtree only (see
+    /// `docs/adr/0003-modal-surfaces.md`).
     fn focus_ring(&self) -> Vec<(usize, Key)> {
         let mut out = Vec::new();
-        let mut i = 0;
-        while i < self.tree.len() {
+        let (mut i, end) = match self.modal {
+            Some((start, end, _)) => (start, end),
+            None => (0, self.tree.len()),
+        };
+        while i < end {
             if self.tree.specs[i].role == Some(crate::access::Role::None) {
                 i = self.tree.subtree_end(i);
                 continue;
@@ -823,6 +875,89 @@ impl Core {
             i += 1;
         }
         out
+    }
+
+    /// The frame's modal scope: the tree range of the last node declaring
+    /// `modal`, and its key. The last one wins, so a confirm declared
+    /// inside (or after) a dialog is the one in effect and the dialog
+    /// under it is as inert as the app under the dialog.
+    fn modal_scope(&self) -> Option<(usize, usize, Key)> {
+        let i = (0..self.tree.len())
+            .rev()
+            .find(|&i| self.tree.specs[i].modal.is_some())?;
+        Some((i, self.tree.subtree_end(i), self.tree.keys[i]))
+    }
+
+    /// The key of the modal in effect this frame, if any.
+    pub fn modal(&self) -> Option<Key> {
+        self.modal.map(|(_, _, key)| key)
+    }
+
+    /// Whether node `i` takes input: everything does, until a modal is in
+    /// effect — then its subtree does, and so does window chrome (the
+    /// window's own controls belong to the platform, not to the dialog).
+    fn interactive(&self, i: usize) -> bool {
+        match self.modal {
+            Some((start, end, _)) => {
+                (start..end).contains(&i) || self.tree.specs[i].window.is_some()
+            }
+            None => true,
+        }
+    }
+
+    /// Whether node `key` is inside the frame's modal scope (nothing is
+    /// outside one when there is no modal).
+    fn within_modal(&self, key: Key) -> bool {
+        let Some((start, end, _)) = self.modal else {
+            return true;
+        };
+        self.tree.keys[start..end].contains(&key)
+    }
+
+    /// Focus follows the modal: a modal that appears remembers the focus
+    /// it displaces and takes focus into itself; one that stops being
+    /// declared gives that focus back. Run once per frame, after the
+    /// scope is known.
+    fn resolve_modal_focus(&mut self) {
+        // This frame's modals in tree order, each carrying the focus it
+        // displaced when it first appeared.
+        let mut now: Vec<(Key, Option<Key>)> = Vec::new();
+        if self.any_modal {
+            for i in 0..self.tree.len() {
+                if self.tree.specs[i].modal.is_none() {
+                    continue;
+                }
+                let key = self.tree.keys[i];
+                let saved = self
+                    .modal_focus
+                    .iter()
+                    .find(|(k, _)| *k == key)
+                    .map_or(self.focus, |(_, f)| *f);
+                now.push((key, saved));
+            }
+        }
+        // The outermost modal that went away hands its focus back, so a
+        // dialog and the confirm inside it closing together land where
+        // the dialog was opened from.
+        let closed = self
+            .modal_focus
+            .iter()
+            .find(|(k, _)| !now.iter().any(|(n, _)| n == k))
+            .map(|(_, saved)| saved.filter(|key| self.tree.keys.contains(key)));
+        if let Some(saved) = closed {
+            // Exactly what it displaced, nothing included: leaving focus
+            // on the dismissed modal's own button would be a focus on a
+            // node that is not there any more.
+            self.set_focus(saved);
+        }
+        self.modal_focus = now;
+        // Containment: focus outside the scope enters it (at its first
+        // focusable node), or is dropped when it holds none. Not
+        // `focus_visible`: the app showed the modal, nobody pressed a key.
+        if self.modal.is_some() && !self.focus.is_some_and(|k| self.within_modal(k)) {
+            let first = self.focus_ring().first().map(|(_, k)| *k);
+            self.set_focus(first);
+        }
     }
 
     /// The focused node's index in the last frame, if it is there.
@@ -874,6 +1009,32 @@ impl Core {
         if takes_focus {
             self.set_focus(Some(key));
         }
+    }
+
+    /// The modal `key` was asked to go away — Escape, or a press outside
+    /// it. Reaches the app as `{kind="dismiss", reason, tag}` on the modal
+    /// node; what happens next is the app's, since only it can stop
+    /// declaring the node (see `docs/adr/0003-modal-surfaces.md`).
+    fn dismiss(&mut self, key: Key, reason: &str, out: &mut Vec<UiEvent>) {
+        let Some(i) = self.tree.keys.iter().position(|k| *k == key) else {
+            return;
+        };
+        let mut entries = vec![
+            ("kind".to_string(), Value::str("dismiss")),
+            ("reason".to_string(), Value::str(reason)),
+        ];
+        if let Some(tag) = self.tree.specs[i]
+            .modal
+            .clone()
+            .filter(|t| *t != Value::Null)
+        {
+            entries.push(("tag".to_string(), tag));
+        }
+        out.push(UiEvent {
+            origin: self.tree.origins[i],
+            key,
+            payload: Value::Map(entries),
+        });
     }
 
     /// A slider nudge on node `i`: the core cannot know what a step means,
@@ -1323,6 +1484,7 @@ impl Core {
         self.origin = OriginId::HOST;
         self.any_clip = false;
         self.any_float = false;
+        self.any_modal = false;
         self.any_slide = false;
         self.any_layout = false;
         self.frame_requested = false;
@@ -1527,6 +1689,9 @@ impl Core {
         if spec.layout.float.is_some() {
             self.any_float = true;
         }
+        if spec.modal.is_some() {
+            self.any_modal = true;
+        }
         if spec.on_layout.is_some() {
             self.any_layout = true;
         }
@@ -1672,6 +1837,14 @@ impl Core {
         }
         self.diag
             .check(&self.tree, &self.text, &self.edit, self.frame_no);
+        // The frame's modal scope, and the focus it moves: emission reads
+        // it (everything outside is inert) and so does the Tab ring.
+        self.modal = if self.any_modal {
+            self.modal_scope()
+        } else {
+            None
+        };
+        self.resolve_modal_focus();
 
         let scale = self.scale;
         let mut hits: Vec<HitRegion> = self.interaction.take_hit_buffer();
@@ -1797,6 +1970,7 @@ impl Core {
                     track,
                     bar_len: bar_h,
                     max: max.y,
+                    inert: r.inert,
                 });
             }
             if max.x > 0.0 {
@@ -1832,6 +2006,7 @@ impl Core {
                     track,
                     bar_len: bar_w,
                     max: max.x,
+                    inert: r.inert,
                 });
             }
         }

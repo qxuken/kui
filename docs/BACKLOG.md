@@ -308,7 +308,23 @@ retained scroll offsets, paint order, the OS window.
 expose today? If no *because the core keeps the state privately*, it belongs in
 the core. If no because the data isn't in the IR, it needs a schema row first.
 
-### `~` C1 — Modal scope
+### `~` C1 — Modal scope — **done (2026-09-03)**
+
+Shipped as `docs/adr/0003-modal-surfaces.md`: a `modal` row (`Kind::Tag`,
+so the node and its dismiss tag are one declaration), the Tab ring scoped
+to the last declaring subtree with focus pulled in and handed back, no hit
+regions outside it (window chrome excepted, so a dialog cannot trap the
+window), inert wheel and scrollbar thumbs behind it, `{kind:"dismiss",
+reason:"escape"|"outside"}` on the modal node, `AccessNode::modal` →
+AccessKit `set_modal` with a derived `dialog` role, and a
+`modal-behind-content` warning for a modal that is not floated. Nesting is
+tree order — the last modal wins, so a confirm inside a dialog needs no
+stack API — and a modal that is itself a float needs nothing special: the
+scope is a tree range, so a dialog's own dropdown stays live.
+Deferred, and named in the ADR: a corpus scene for the behaviour, a
+`modal-without-name` warning, and initial focus placement inside a dialog.
+
+The gap it closed, as found:
 
 `Role::Dialog` is declarable, but `focus_ring()`
 (`crates/kui-core/src/runtime.rs:812`) walks every node from index 0, skipping
@@ -576,8 +592,9 @@ the body is worth keeping human.
 The section is unusually honest about z-index, exit animations, layout-query
 depth, audio and editing scope. That honesty is why the omissions it *doesn't*
 mention read as present: no secondary mouse button (C2), no cursor-shape control
-(C3), no touch or pen input, no programmatic scrolling (C4), no modal containment
-(C1), no flex wrapping (C10). Add them, grouped, in the section's existing tone.
+(C3), no touch or pen input, no programmatic scrolling (C4), no flex wrapping
+(C10). Add them, grouped, in the section's existing tone. (Modal containment was
+on this list until C1 shipped it.)
 
 The performance table also lists four benches where `benches/frame.rs` has five —
 `frame_10k_rects_with_access_tree` is omitted, and it is the one a reader worried
@@ -605,5 +622,6 @@ By leverage-to-effort, not severity.
    describe. P4 (unknown-prop warnings) and D3 (composite parsing in the
    core) are the two that still shrink the surface it has to cover.
 6. **Then the designs.** C1 + C2 unlock dialogs, menus and comboboxes together
-   and deserve an ADR each. C7 is the one to decide on paper now and build later,
+   and deserve an ADR each; C1 has one (ADR 0003), so C2 is what a menu is
+   still waiting on. C7 is the one to decide on paper now and build later,
    before more API assumes a single window.
