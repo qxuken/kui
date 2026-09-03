@@ -506,6 +506,35 @@ crates in dependency order and finally the npm package. It needs a repository
 secret `PACKAGES_TOKEN` (a personal access token with `write:packages`) and
 nothing but that Linux runner: no Mac or Windows machine is involved.
 
+That last property is also the limit of what CI proves. The Windows non-client
+chrome ([windows_nc.rs](crates/kui/src/windows_nc.rs)), the macOS traffic-light
+inset in `widgets::titlebar_with` and the whole AccessKit bridge
+([access_bridge.rs](crates/kui/src/access_bridge.rs)) are compiled and linked by
+the release build and never executed by it — and neither of those two files
+carries a test, so the headless suite pins the data they hand the platform, not
+the platform's acceptance of it. Two optional jobs, `smoke-macos` and
+`smoke-windows`, build and run `cargo test --workspace` natively against the
+real SDK; both are gated on the repository variables `SMOKE_MACOS` /
+`SMOKE_WINDOWS` and skip unless a runner with the matching label is registered.
+
+Before tagging, run the macOS accessibility audit by hand:
+
+```bash
+cargo build -p kui --example accessibility
+./target/debug/examples/accessibility &
+swift scripts/ax-audit.swift $!
+```
+
+36 checks over roles, names, values, the text protocol and the actions, asked
+through the same API VoiceOver uses. It stays a manual step rather than a CI
+job: it needs a logged-in GUI session for the window to exist, a Metal device to
+draw it, and Accessibility permission for the calling terminal (System Settings
+→ Privacy & Security → Accessibility). That last one is a TCC grant — per
+machine, given by hand, and not scriptable without disabling SIP — so an
+ephemeral runner can never hold one. A permanently self-hosted Mac with
+auto-login and the grant already in place could run it inside `smoke-macos`;
+nothing else can.
+
 ## Status / next
 
 v0 scope: no z-index (floats stack in tree order). Transitions cover sizing, colors, radius and

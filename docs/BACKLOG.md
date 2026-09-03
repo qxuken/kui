@@ -244,7 +244,7 @@ Wire all four into the `check` job.
 
 Goal: the parity table becomes a build failure instead of a document.
 
-### `.` P8 — Add macOS and Windows smoke jobs
+### `.` P8 — Add macOS and Windows smoke jobs — **partly done (2026-09-03)**
 
 Everything platform-specific is cross-compiled on one Linux runner and never
 executed on the platform it exists for: `crates/kui/src/windows_nc.rs` (292 lines
@@ -252,10 +252,48 @@ of WM_NCHITTEST / DWM caption work), the macOS traffic-light inset in
 `widgets::titlebar_with`, and the whole AccessKit bridge (UIA, NSAccessibility,
 AT-SPI). `scripts/ax-audit.swift` is manual.
 
-Add non-blocking `cargo test -p kui` jobs on macOS and Windows runners if any are
-available. If not, at minimum amend the CI header — "Verified 2026-09-02: the
-Linux-built arm64 dylib loads on a Mac and passes the parity tests" reads as
-broader coverage than it is.
+What landed is the honest half. The CI header no longer claims more than it has:
+"Verified 2026-09-02: the Linux-built arm64 dylib loads on a Mac and passes the
+parity tests" is now scoped to the addon's N-API surface, and a paragraph beside
+it names the three uncovered pieces outright. `smoke-macos` and `smoke-windows`
+are checked in — `cargo test --workspace` natively, `continue-on-error`, in no
+release path and in no `needs:` — gated on the repository variables
+`SMOKE_MACOS` / `SMOKE_WINDOWS`, because a Forgejo job whose `runs-on` label
+matches no runner queues rather than failing fast, and this instance has only
+the `docker` runner. The macOS command is known good (run on macOS 26.6 / rustc
+1.98: the whole workspace passes with no display, no installed fonts and no GPU,
+since the corpus splits its font-independent checked-in expectations from the
+per-machine glyph digest). Neither job has been run by Forgejo, because there is
+nothing to run it on.
+
+What did not land is the coverage itself — and registering a runner would not
+deliver it either: **neither `windows_nc.rs` nor `access_bridge.rs` contains a
+single `#[test]`**, so both smoke jobs would prove that the platform code
+compiles, links and loads against the real SDK, not that it behaves. Two
+follow-ups, in order of value per unit of work:
+
+* Make the hit-testing pure and test it on the Linux runner that already exists.
+  `hit_code` (`crates/kui/src/windows_nc.rs:175`) reads `NcState` — scale,
+  `resize_border`, `maximized`, the region list — plus a point and the window
+  size, and that size is its only OS dependency (`client_rect(hwnd)`). Split out
+  `hit_code_in(&NcState, size, pt)` and the border band, the
+  topmost-region-wins rule and the role → `HTCAPTION`/`HTCLOSE`/`HTMINBUTTON`/
+  `HTMAXBUTTON` mapping all become testable with no Windows involved — most of
+  the substance of those 292 lines. The catch: the `HT*` constants come from
+  `windows-sys` and the module is `#[cfg(target_os = "windows")]`, so the pure
+  half has to move somewhere compiled everywhere, with the codes as local `u32`
+  consts. They are stable ABI numbers, so that is safe, but it is a deliberate
+  trade rather than a free refactor.
+* What remains after that genuinely needs the OS: `DefSubclassProc`, the
+  non-client mouse-message mirroring, `WM_NCMOUSELEAVE`, and the AccessKit
+  bridges. On macOS that is exactly what `scripts/ax-audit.swift` covers, and it
+  cannot be made unattended on an ephemeral runner — the window needs a
+  logged-in GUI session and a Metal device, and the Accessibility permission is
+  a TCC grant, per machine and given by hand, unscriptable without disabling
+  SIP. So it is now written down as a pre-release step in the README instead of
+  living only in ADR 0001; a permanently self-hosted Mac with auto-login and the
+  grant in place could fold it into `smoke-macos`. On Windows there is no
+  equivalent tool and no plan for one.
 
 ---
 
