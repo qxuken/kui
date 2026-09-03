@@ -2,6 +2,7 @@
 
 use crate::anim::{Easing, Repeat, Transition};
 use crate::color::Color;
+use crate::cursor::CursorShape;
 use crate::enter::Enter;
 use crate::geom::Edges;
 use crate::keyframes::Keyframe;
@@ -384,6 +385,13 @@ pub struct NodeSpec {
     /// Declaring one replaces the ring the core draws by default. Pressed
     /// wins over focus wins over hover; eases with `transition`.
     pub focus_bg: Option<Color>,
+    /// Overrides the pointer shape over this node (see
+    /// [`crate::cursor`]). Unset, the core derives one from what the node
+    /// does — an editor is a caret, a clickable or focusable node a hand,
+    /// an `on_drag` node a grab — so this is only for what the derivation
+    /// cannot know: a splitter that resizes rather than moves, a disabled
+    /// control that wants to say `notAllowed`.
+    pub cursor: Option<CursorShape>,
     /// Modal: while this node is declared, the Tab ring is its subtree,
     /// everything outside it is inert to the pointer, the wheel and
     /// assistive technology, and Escape or a press outside emits
@@ -414,6 +422,9 @@ impl NodeSpec {
             || self.on_hover.is_some()
             || self.click_sound.is_some()
             || self.hover_sound.is_some()
+            // A `cursor` override has to be found under the pointer to be
+            // read, even on an otherwise inert box.
+            || self.cursor.is_some()
     }
 
     /// The group id `hover_group(name)` assigns — reproducible from any
@@ -828,6 +839,12 @@ impl NodeSpec {
     /// Clicking this node emits the button's `WindowCommand`.
     pub fn window_button(mut self, button: WindowButton) -> Self {
         self.window = Some(WindowRole::Button(button));
+        self
+    }
+
+    /// Overrides the pointer shape over this node (see the `cursor` field).
+    pub fn cursor(mut self, shape: CursorShape) -> Self {
+        self.cursor = Some(shape);
         self
     }
 }

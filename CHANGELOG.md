@@ -54,6 +54,27 @@ upgrades remove code from the apps on it is doing the job.
   end to end — the C counter example now opens one, and Escape or a press
   outside takes it away. Nothing routes the middle button or the ones past
   it yet; they arrive as data so a driver need not drop them.
+- **Cursor shapes, derived rather than declared.** The one `set_cursor`
+  in the tree used to be the synthesized resize band, so an editor showed
+  an arrow instead of an I-beam, a button an arrow instead of a hand, a
+  drag handle an arrow instead of a grab. The core is the only thing that
+  knows what is under the pointer, so it is the thing that answers:
+  `Core::cursor_shape()` resolves a `CursorShape` each frame from the
+  topmost node under the pointer — the same node a click would go to — and
+  the driver applies it. Nothing declares a cursor for the ordinary
+  cases: an editor is `text`, an `onClick` or `focusable` node is
+  `pointer`, an `onDrag` node is `grab` and `grabbing` for as long as the
+  drag holds the pointer, window chrome and a plain box are the arrow.
+  A captured drag keeps the dragged node's shape however far the cursor
+  wanders off it, and a scrollbar drawn over content is the arrow rather
+  than whatever is under it — both the way the press already resolves. A
+  `cursor` row covers what the derivation cannot know: a splitter that
+  resizes (`ewResize` / `nsResize`) rather than moves, a `disabled`
+  control that would rather say `notAllowed` than stay quiet. One row, so
+  JSX, Lua, C and Rust all got it; `kui_cursor_shape` reads the resolved
+  shape back in C. It is a query, not a queue — a state a driver applies
+  when it changes — and a headless driver simply never asks, so the core
+  is still device-free.
 - **The binding-parity table is a build failure now.** `CUSTOM` and
   `ELEMENTS` in `crates/kui-core/src/schema.rs` name the ten props and ten
   elements every frontend lowers by hand, and until now that agreement was
@@ -110,6 +131,10 @@ upgrades remove code from the apps on it is doing the job.
 - **A hand-rolled Escape binding on every dialog**, and the outside-click
   hit test under a menu: both arrive as `{kind:"dismiss", reason}` on the
   node that asked to be modal.
+- **Every `set_cursor` an app made from the outside** — the hit test it
+  re-ran against its own layout to guess what the pointer was over, and
+  the arrow it settled for when it could not. The core already knew;
+  `Core::cursor_shape()` says so.
 - **"Does the C build do what the JSX build does?"** — the question, and
   the hand-written probe app written to answer it. One corpus, four
   adapters, one CI job: a binding that lowers a prop differently names

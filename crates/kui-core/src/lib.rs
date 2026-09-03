@@ -12,6 +12,7 @@ pub mod atlas;
 pub mod audio;
 pub mod color;
 pub mod conformance;
+pub mod cursor;
 pub mod diag;
 pub mod display;
 pub mod edit;
@@ -41,6 +42,7 @@ pub use access::{
 pub use anim::{Easing, Repeat, Transition};
 pub use audio::{AudioCommand, AudioSpec, AudioStore, PlayOptions, PlaybackId};
 pub use color::Color;
+pub use cursor::CursorShape;
 pub use diag::Warning;
 pub use display::{DisplayList, NO_CLIP, Quad, QuadKind};
 pub use edit::EditOptions;

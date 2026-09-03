@@ -758,6 +758,7 @@ impl Core {
                 group: spec.hover_group,
                 click_sound: spec.click_sound.filter(|_| live),
                 hover_sound: spec.hover_sound,
+                cursor: spec.cursor,
             });
         }
         if spec.layout.scroll_x || spec.layout.scroll_y {
@@ -802,6 +803,8 @@ impl Core {
                         group: None,
                         click_sound: None,
                         hover_sound: None,
+                        // The editor's own node carries any override.
+                        cursor: spec.cursor,
                     });
                 }
                 let focused = self.edit.focused() == Some(key);
@@ -1279,6 +1282,16 @@ impl Core {
     /// commands to the real window; headless drivers may simply never call.
     pub fn take_window_commands(&mut self) -> Vec<crate::window::WindowCommand> {
         std::mem::take(&mut self.interaction.window_commands)
+    }
+
+    /// The pointer shape for wherever the pointer is now, derived from the
+    /// frame's hit regions (see [`crate::cursor`]). Per-frame output like
+    /// the window commands, but a query rather than a drain: it is a state,
+    /// not a queue, so a driver reads it after each input and each frame and
+    /// only touches the window when the answer changes. Headless drivers
+    /// never read it, and the core stays device-free.
+    pub fn cursor_shape(&self) -> crate::cursor::CursorShape {
+        self.interaction.cursor_shape()
     }
 
     // -- Audio ----------------------------------------------------------

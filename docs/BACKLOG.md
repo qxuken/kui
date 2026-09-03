@@ -389,18 +389,41 @@ all four bindings lower it. Nothing routes `Middle` or `Other(n)` yet:
 no middle-click-to-close, no right-drag, no per-button `on_click`; the
 README's Status section now says so.
 
-### `~` C3 — Derived cursor shape
+### `~` C3 — Derived cursor shape — **done (2026-09-04)**
 
-The only `set_cursor` in the tree is `crates/kui/src/lib.rs:513`, for the
-synthesized resize band. Editors show an arrow instead of an I-beam, buttons an
-arrow instead of a pointer, drag handles an arrow instead of a grab hand. The
-core is the only thing that knows what is under the pointer, and `WindowCommand`
-has no `SetCursor` variant, so no binding can do this either.
+Shipped as `kui_core::cursor::CursorShape` (ten shapes: the arrow, `Text`,
+`Pointer`, `Grab` / `Grabbing`, `NotAllowed`, and the four resize
+diagonals the band already used), resolved by `Interaction::cursor_shape`
+from the topmost hit region under the pointer — the same region a click
+would go to — and read back through `Core::cursor_shape` /
+`kui_cursor_shape`. The derivation is the one the question proposed:
+window chrome and a plain box are the arrow, an editor is `Text`, an
+`on_drag` node is `Grab`, and anything clickable or focusable is
+`Pointer`. A `disabled` node derives nothing, because its payloads are
+already stripped by the time a hit region exists — quiet is the right
+default, and `cursor="notAllowed"` is how a control says otherwise.
 
-Derive it rather than declare it: editor → `Text`, `on_click`/`focusable` →
-`Pointer`, `on_drag` → `Grab`/`Grabbing`. Expose the resolved shape as per-frame
-output the driver drains, alongside `take_window_commands()`. Add a `cursor` row
-for overrides. Headless drivers never read it, so the core stays device-free.
+Two things the topmost-node rule alone would have got wrong, both
+decided in the core:
+
+- **A captured drag owns the pointer.** The shape stays the dragged
+  node's however far the cursor wanders off it, so a splitter that
+  declared `ewResize` keeps it for the whole gesture instead of turning
+  into `grabbing` — the override survives the capture, it does not just
+  seed it.
+- **Scrollbars win the shape, as they win the press.** They draw over
+  content and hit-test over it, so an overlay bar across an editor is the
+  arrow, not an I-beam.
+
+Output is a query, not a drain: the shape is a state rather than a queue,
+so `take_*` would have been the wrong shape of API. The winit runner reads
+it after each input dispatch and each frame, maps it one-to-one onto
+`CursorIcon` and only touches the window when the icon changes; its
+synthesized resize band still wins on top, since a press there resizes the
+window rather than reaching the UI. Headless drivers never read it and the
+core stays device-free. One `PROPS` row (`Kind::Enum(CURSORS)`) gave all
+four bindings the override; `KuiSpec.cursor` is `KUI_CURSOR_*` = index + 1,
+so zero still means "derive".
 
 ### `~` C4 — Export `reveal()` and `set_scroll()`
 
@@ -628,10 +651,11 @@ the body is worth keeping human.
 
 The section is unusually honest about z-index, exit animations, layout-query
 depth, audio and editing scope. That honesty is why the omissions it *doesn't*
-mention read as present: no cursor-shape control (C3), no touch or pen input, no
-programmatic scrolling (C4), no flex wrapping (C10). Add them, grouped, in the
-section's existing tone. (Modal containment was on this list until C1 shipped it;
-the pointer buttons went on it with C2, which routes only the secondary one.)
+mention read as present: no touch or pen input, no programmatic scrolling (C4),
+no flex wrapping (C10). Add them, grouped, in the section's existing tone.
+(Modal containment was on this list until C1 shipped it; the pointer buttons
+went on it with C2, which routes only the secondary one; cursor shapes came off
+it with C3.)
 
 The performance table also lists four benches where `benches/frame.rs` has five —
 `frame_10k_rects_with_access_tree` is omitted, and it is the one a reader worried
@@ -649,8 +673,8 @@ By leverage-to-effort, not severity.
    `access_bridge` line; the parity test forces the C side and all four bindings
    get them free. Worth doing early to confirm the schema mechanism still does
    its job.
-3. **Export what already works.** C4 (`reveal`, `set_scroll`) and C3 (derived
-   cursor). Both are exports of working internals, and C4 gates C5.
+3. **Export what already works.** C4 (`reveal`, `set_scroll`); ~~C3 (derived
+   cursor)~~ is done. Both are exports of working internals, and C4 gates C5.
 4. **D1.** The largest single duplication, mechanical, and it stops the drift
    that has already started in the doc comments.
 5. ~~**P7 — the conformance corpus.**~~ Done (2026-09-03), out of order: it

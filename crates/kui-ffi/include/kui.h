@@ -281,7 +281,23 @@ typedef struct KuiSpec {
      * the one asked. Borrowed: cloned while the node opens, so you keep
      * ownership; kui_value_null() asks for the behaviour without a tag. */
     const KuiValue *on_context_menu;
+    /* KUI_CURSOR_* (0 = unset: the core derives one). Overrides the
+     * pointer shape while the pointer is over this node — the core
+     * otherwise makes an editor a caret, an on_click / focusable node a
+     * hand, an on_drag node a grab, and everything else the arrow. For
+     * what that cannot know: a splitter (KUI_CURSOR_EW_RESIZE), a
+     * disabled control that says KUI_CURSOR_NOT_ALLOWED. A node with
+     * nothing but a cursor is hover-tracked so it can be found. */
+    uint32_t cursor;
 } KuiSpec;
+
+/* Pointer shapes (KuiSpec.cursor), and what kui_cursor_shape answers with. */
+enum {
+    KUI_CURSOR_DEFAULT = 1, KUI_CURSOR_TEXT, KUI_CURSOR_POINTER,
+    KUI_CURSOR_GRAB, KUI_CURSOR_GRABBING, KUI_CURSOR_NOT_ALLOWED,
+    KUI_CURSOR_EW_RESIZE, KUI_CURSOR_NS_RESIZE, KUI_CURSOR_NWSE_RESIZE,
+    KUI_CURSOR_NESW_RESIZE,
+};
 
 /* Roles (KuiSpec.role, KuiAccessNode.role). The first fifteen can be
  * declared; the rest the core derives. */
@@ -550,6 +566,11 @@ void kui_env_set_window(KuiCtx *ctx, bool custom_chrome, bool maximized,
 /* Drains pending window commands (KUI_CMD_*) into out, returns the count
  * written. Call after each input dispatch and apply to the real window. */
 size_t kui_take_window_commands(KuiCtx *ctx, uint32_t *out, size_t cap);
+/* The pointer shape for where the pointer is now (KUI_CURSOR_*, 0 only on a
+ * bad context): derived from the topmost node under it, or its `cursor`
+ * override. A state, not a queue — read after each input dispatch and each
+ * frame, and set the real cursor when the answer changes. */
+uint32_t kui_cursor_shape(KuiCtx *ctx);
 /* Declares this frame's window title (cleared each kui_frame_begin). */
 void kui_window_title(KuiCtx *ctx, KuiStr title);
 /* The title declared this frame, if any — diff and apply after

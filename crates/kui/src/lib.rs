@@ -173,6 +173,7 @@ impl Launcher {
             caret_stamp_seen: 0,
             audio: audio::Audio::new(),
             resize_edge: None,
+            cursor_icon: CursorIcon::Default,
             exit_requested: false,
             proxy: None,
             access: None,
@@ -325,6 +326,23 @@ const BLINK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500
 /// How often the loop wakes to notice a playing sound finishing.
 const AUDIO_POLL: std::time::Duration = std::time::Duration::from_millis(50);
 
+/// The core's derived pointer shape in winit's vocabulary. One-to-one:
+/// `CursorShape` is spelled after the platform names on purpose.
+fn cursor_icon(shape: CursorShape) -> CursorIcon {
+    match shape {
+        CursorShape::Default => CursorIcon::Default,
+        CursorShape::Text => CursorIcon::Text,
+        CursorShape::Pointer => CursorIcon::Pointer,
+        CursorShape::Grab => CursorIcon::Grab,
+        CursorShape::Grabbing => CursorIcon::Grabbing,
+        CursorShape::NotAllowed => CursorIcon::NotAllowed,
+        CursorShape::EwResize => CursorIcon::EwResize,
+        CursorShape::NsResize => CursorIcon::NsResize,
+        CursorShape::NwseResize => CursorIcon::NwseResize,
+        CursorShape::NeswResize => CursorIcon::NeswResize,
+    }
+}
+
 struct Shell<A: App> {
     title: String,
     /// Last title actually set on the window; views declare per frame and
@@ -360,6 +378,9 @@ struct Shell<A: App> {
     audio: audio::Audio,
     /// Resize edge currently under the cursor (undecorated windows only).
     resize_edge: Option<ResizeDirection>,
+    /// Cursor icon last set on the window, so a shape that did not change
+    /// costs nothing.
+    cursor_icon: CursorIcon,
     /// Set by `WindowCommand::Close`; honored at the end of the event.
     exit_requested: bool,
     /// Hands AccessKit a way back into the loop; set before the window
@@ -394,6 +415,7 @@ impl<A: App> Shell<A> {
         self.route_events(events);
         self.apply_window_commands();
         self.apply_audio();
+        self.apply_cursor();
         // Hover styling depends on input too, so any input redraws. A damage
         // pass can tighten this later.
         self.core.stats.pending_input_ms += t0.elapsed().as_secs_f32() * 1e3;
@@ -503,24 +525,25 @@ impl<A: App> Shell<A> {
         })
     }
 
-    fn update_resize_cursor(&mut self, p: Vec2) {
-        let edge = self.resize_edge_at(p);
-        if edge == self.resize_edge {
+    /// Applies the pointer shape the core derived for this frame, with the
+    /// synthesized resize band on top: the band is the runner's own edge,
+    /// invisible to the core, and a press there resizes the window rather
+    /// than reaching the UI, so what it says wins. Only touches the window
+    /// when the answer changes.
+    fn apply_cursor(&mut self) {
+        let icon = match self.resize_edge {
+            Some(ResizeDirection::West | ResizeDirection::East) => CursorIcon::EwResize,
+            Some(ResizeDirection::North | ResizeDirection::South) => CursorIcon::NsResize,
+            Some(ResizeDirection::NorthWest | ResizeDirection::SouthEast) => CursorIcon::NwseResize,
+            Some(ResizeDirection::NorthEast | ResizeDirection::SouthWest) => CursorIcon::NeswResize,
+            None => cursor_icon(self.core.cursor_shape()),
+        };
+        if icon == self.cursor_icon {
             return;
         }
-        self.resize_edge = edge;
+        self.cursor_icon = icon;
         if let Some(w) = &self.window {
-            w.set_cursor(match edge {
-                Some(ResizeDirection::West | ResizeDirection::East) => CursorIcon::EwResize,
-                Some(ResizeDirection::North | ResizeDirection::South) => CursorIcon::NsResize,
-                Some(ResizeDirection::NorthWest | ResizeDirection::SouthEast) => {
-                    CursorIcon::NwseResize
-                }
-                Some(ResizeDirection::NorthEast | ResizeDirection::SouthWest) => {
-                    CursorIcon::NeswResize
-                }
-                None => CursorIcon::Default,
-            });
+            w.set_cursor(icon);
         }
     }
 
@@ -944,7 +967,7 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 let scale = self.window.as_ref().map_or(1.0, |w| w.scale_factor()) as f32;
                 let p = Vec2::new(position.x as f32 / scale, position.y as f32 / scale);
                 if self.synthesizes_resize() {
-                    self.update_resize_cursor(p);
+                    self.resize_edge = self.resize_edge_at(p);
                 }
                 self.cursor = p;
                 self.dispatch(InputEvent::CursorMoved(p));
@@ -1044,6 +1067,8 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 // the sounds a frame started (audio nodes, ui.play).
                 self.apply_window_commands();
                 self.apply_audio();
+                // A new frame can put something else under a still cursor.
+                self.apply_cursor();
                 // A frame can resize the viewport, and can change what sits
                 // under a still cursor; route the resulting resize / hover
                 // events now rather than with the next input, and redraw for

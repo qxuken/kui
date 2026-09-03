@@ -269,6 +269,10 @@ pub struct KuiSpec {
     /// caller keeps ownership; `kui_value_null()` asks for the behaviour
     /// without a tag.
     pub on_context_menu: *const KuiValue,
+    /// KUI_CURSOR_* (0 = unset: the core derives one from what the node
+    /// does). Overrides the pointer shape while the pointer is over this
+    /// node; a node with only a cursor is hover-tracked so it can be found.
+    pub cursor: u32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -738,6 +742,10 @@ fn spec_of(
     if let Some(tag) = unsafe { s.on_context_menu.as_ref() } {
         spec = spec.on_context_menu(tag.0.clone());
     }
+    if s.cursor != 0 {
+        // KUI_CURSOR_* = schema index + 1, so zero can mean "derive".
+        spec = spec.cursor(kui_core::schema::cursor_idx(s.cursor as usize - 1));
+    }
     if let Some(role) = role_of_code(s.role) {
         spec = spec.role(role);
     }
@@ -1098,6 +1106,26 @@ pub extern "C" fn kui_take_window_commands(ptr: *mut KuiCtx, out: *mut u32, cap:
             unsafe { out.add(i).write(code) };
         }
         n
+    })
+}
+
+/// The pointer shape for where the pointer is now (KUI_CURSOR_*, never 0):
+/// derived from the topmost node under it, or whatever that node's `cursor`
+/// overrode it with. A query, not a queue — read it after each input and
+/// each frame and apply it to the real window when it changes. Hosts
+/// without a pointer simply never call.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_cursor_shape(ptr: *mut KuiCtx) -> u32 {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        let shape = c.core().cursor_shape();
+        // KUI_CURSOR_* = schema index + 1, matching KuiSpec.cursor.
+        kui_core::schema::CURSORS
+            .iter()
+            .position(|n| *n == shape.name())
+            .map_or(0, |i| i as u32 + 1)
     })
 }
 
@@ -2608,6 +2636,7 @@ mod schema_parity {
                 "onLayout" => s.on_layout = &layout_tag,
                 "modal" => s.modal = &layout_tag,
                 "onContextMenu" => s.on_context_menu = &layout_tag,
+                "cursor" => s.cursor = 2, // KUI_CURSOR_* = schema index + 1
                 "hoverBg" => s.hover_bg = C,
                 "pressedBg" => s.pressed_bg = C,
                 "hoverGroup" => s.hover_group = name,
@@ -2756,6 +2785,7 @@ mod schema_parity {
             },
             modal: &modal_tag,
             on_context_menu: &menu_tag,
+            cursor: 7, // KUI_CURSOR_EW_RESIZE
         };
         let expected = NodeSpec::row()
             .width(Sizing::Grow(2.0))
@@ -2821,7 +2851,8 @@ mod schema_parity {
             .on_key(Value::str("k"))
             .on_hover(Value::str("h"))
             .modal(Value::str("m"))
-            .on_context_menu(Value::str("cm"));
+            .on_context_menu(Value::str("cm"))
+            .cursor(kui_core::CursorShape::EwResize);
         let got = spec_of(
             &s,
             msg("c".into()),
@@ -3429,6 +3460,7 @@ mod abi_parity {
             tooltip: KuiStr => "KuiStr",
             modal: *const KuiValue => "const KuiValue *",
             on_context_menu: *const KuiValue => "const KuiValue *",
+            cursor: u32 => "uint32_t",
         });
 
         abi_struct!(o, KuiAccessNode {

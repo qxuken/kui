@@ -27,6 +27,7 @@ use std::sync::LazyLock;
 use crate::access::Role;
 use crate::anim::{Easing, Repeat};
 use crate::color::Color;
+use crate::cursor::CursorShape;
 use crate::enter::Enter;
 use crate::keyframes::Keyframe;
 use crate::spec::{Align, FontFamily, NodeSpec, Sizing, TextStyle, TextWrap};
@@ -99,10 +100,32 @@ pub const P_DISABLED: u32 = 62;
 pub const P_FOCUS_BG: u32 = 63;
 pub const P_MODAL: u32 = 64;
 pub const P_ON_CONTEXT_MENU: u32 = 65;
+pub const P_CURSOR: u32 = 66;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
 pub const FAMILIES: &[&str] = &["sans", "serif", "mono"];
+/// The pointer shapes a view can declare (`CursorShape::name` spellings, in
+/// `CursorShape::ALL` order — a `cursor.rs` test pins the two together).
+pub const CURSORS: &[&str] = &[
+    "default",
+    "text",
+    "pointer",
+    "grab",
+    "grabbing",
+    "notAllowed",
+    "ewResize",
+    "nsResize",
+    "nwseResize",
+    "neswResize",
+];
+
+pub fn cursor_idx(i: usize) -> CursorShape {
+    CURSORS
+        .get(i)
+        .and_then(|n| CursorShape::parse(n))
+        .unwrap_or(CursorShape::Default)
+}
 pub const WRAPS: &[&str] = &["word", "glyph", "none"];
 /// The roles a view can declare (`crate::access::Role::name` spellings);
 /// the derived-only roles (window, static text, text input, scroll view)
@@ -509,6 +532,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "Window-chrome role: interactions become window commands, not events.",
     },
     PropDef {
+        name: "cursor",
+        id: P_CURSOR,
+        kind: Kind::Enum(CURSORS),
+        apply: Apply::SpecEnum(|s, i| s.cursor(cursor_idx(i))),
+        doc: "Overrides the pointer shape over this node. Unset, the core derives one from what the node does — an editor is `text`, an `onClick` or `focusable` node `pointer`, an `onDrag` node `grab` (`grabbing` while dragging), window chrome and a plain box `default` — so this is for what that cannot know: a splitter (`ewResize` / `nsResize`), a `disabled` control that says `notAllowed`.",
+    },
+    PropDef {
         name: "transition",
         id: P_TRANSITION,
         kind: Kind::F32,
@@ -806,6 +836,7 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     ("radiusBL", "`radius_bl` with `per_corner`"),
     ("hoverGroup", "`hover_group` (KuiStr)"),
     ("role", "`role` (`KUI_ROLE_*`)"),
+    ("cursor", "`cursor` (`KUI_CURSOR_*`)"),
     ("label", "`label` (KuiStr)"),
     (
         "valueNow",

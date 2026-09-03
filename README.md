@@ -572,6 +572,11 @@ a configurable focus ring colour, and initial focus inside a dialog, are the nex
 Pointer buttons: the secondary one is routed to `on_context_menu` and nothing else; the middle
 button and anything past it (back, forward) reach the core as data and route nowhere, so there is
 no middle-click-to-close, no right-drag and no per-button `on_click`.
+The pointer shape is derived, not declared: the core resolves one per frame from
+whatever is under the pointer, and the `cursor` prop overrides it — but only from
+this list (`text`, `pointer`, `grab`, `grabbing`, `notAllowed`, the four resize
+arrows and the default), so there are no custom bitmap cursors and no hiding the
+pointer. Touch and pen input do not reach the core at all.
 Audio covers one-shots, loops, volume, pause and a finished-playback event; sounds decode fully
 into memory, and synthesis, effects, positional audio and disk streaming are out of scope.
 Editing: caret blink, double/triple-click

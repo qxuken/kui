@@ -3,6 +3,7 @@
 //! data tagged with the origin that declared them, so the runner can route to
 //! the host app or an extension without knowing what either looks like.
 
+use crate::cursor::CursorShape;
 use crate::geom::{Rect, Vec2};
 use crate::key::Key;
 use crate::tree::OriginId;
@@ -371,6 +372,9 @@ pub struct HitRegion {
     /// core turns into audio commands.
     pub click_sound: Option<crate::resources::SoundId>,
     pub hover_sound: Option<crate::resources::SoundId>,
+    /// Pointer shape declared by the node (`NodeSpec::cursor`), overriding
+    /// what the rest of this region would derive. None = derive.
+    pub cursor: Option<CursorShape>,
 }
 
 /// A scroll container's on-screen area, for wheel routing.
@@ -773,6 +777,57 @@ impl Interaction {
         self.hovered
     }
 
+    /// The pointer shape for where the pointer is now (see
+    /// [`crate::cursor`]). Derived from the topmost region under it — the
+    /// same region a click would go to — so nothing declares a cursor for
+    /// the ordinary cases; a region's own `cursor` overrides the
+    /// derivation.
+    pub fn cursor_shape(&self) -> CursorShape {
+        // A captured drag owns the pointer: the shape stays the dragged
+        // node's however far the cursor wanders off it.
+        if let Some(drag) = &self.drag {
+            return self
+                .hits
+                .iter()
+                .rev()
+                .find(|h| h.key == drag.key)
+                .and_then(|h| h.cursor)
+                .unwrap_or(CursorShape::Grabbing);
+        }
+        // Scrollbars draw over content and win the press, so they win the
+        // shape too — an overlay bar across an editor is not an I-beam.
+        if self.scrollbar_drag.is_some() {
+            return CursorShape::Default;
+        }
+        let Some(p) = self.cursor else {
+            return CursorShape::Default;
+        };
+        if self.scrollbar_at(p).is_some() {
+            return CursorShape::Default;
+        }
+        let Some(region) = self.hit_at(p) else {
+            return CursorShape::Default;
+        };
+        region.cursor.unwrap_or_else(|| Self::derived_shape(region))
+    }
+
+    /// The shape a region implies when it declares none.
+    fn derived_shape(region: &HitRegion) -> CursorShape {
+        match region {
+            // Window chrome is the platform's: every desktop points at a
+            // titlebar and its buttons with the plain arrow.
+            _ if region.window.is_some() => CursorShape::Default,
+            _ if region.edit_origin.is_some() => CursorShape::Text,
+            // Draggable before clickable: a node can be both, and the
+            // grab is the gesture that starts on the press.
+            _ if region.drag.is_some() => CursorShape::Grab,
+            _ if region.payload.is_some() || region.focusable => CursorShape::Pointer,
+            // Hover-only regions (a tooltip badge, a modal's backdrop) and
+            // disabled nodes, whose payloads the frame already stripped.
+            _ => CursorShape::Default,
+        }
+    }
+
     /// Whether any member of hover group `group` is hovered.
     pub fn is_group_hovered(&self, group: u64) -> bool {
         self.hovered_group == Some(group)
@@ -808,6 +863,7 @@ mod tests {
             group: None,
             click_sound: None,
             hover_sound: None,
+            cursor: None,
         }
     }
 
