@@ -96,6 +96,25 @@ upgrades remove code from the apps on it is doing the job.
   never checked in: its digests cover real glyph geometry, so it holds
   only for the machine and fonts that made it — which is why all four
   adapters run in CI's single `check` job.
+- **Programmatic scrolling.** Scroll offsets have always been retained by
+  the core and keyed by node; nothing handed them out, so the wheel, the
+  scrollbars, Tab and the caret could move them and an app could not.
+  Three calls now do, in every binding: `reveal(key)` scrolls whatever
+  contains a node so the node shows — what Tab already does to the control
+  it lands on, asked for by name — while `scroll_offset(key)` and
+  `set_scroll(key, offset)` read and write a container's offset directly
+  (`ui.reveal` / `ui.scroll_offset` / `ui.set_scroll` in Rust,
+  `ctx.reveal` / `scrollOffset` / `setScroll` and the same three on
+  `KuiWindow` in Node, `kui_reveal` / `kui_scroll_offset` /
+  `kui_set_scroll` in C, `env.reveal` / `env.scroll_offset` /
+  `env.set_scroll` in Lua). A written offset is clamped by the next
+  layout, so `(0, 0)` is "jump to the top" and a large value is "jump to
+  the end" with no content height in the app. A `reveal` resolves against
+  the *next* frame's layout rather than the last one's — a frame is
+  requested, so one comes — which is what lets a view reveal a row it is
+  declaring for the first time, and what makes `env.reveal` work at all in
+  Lua, where `view(env)` runs while the tree is being rebuilt. A key that
+  frame does not declare is a no-op, and is not held for a later frame.
 
 ### Changed
 
@@ -142,6 +161,15 @@ upgrades remove code from the apps on it is doing the job.
 - **A `kui_is_hovered` round trip around every C tooltip**, and the
   accessible description it silently dropped: `KuiSpec.tooltip` is the
   prop the other three bindings already had.
+- **The "scroll to the selected row" issue that closed as "can't"**, and
+  every approximation under it: the `autofocus` on an off-screen row that
+  was really a scroll request, the fixed row height an app multiplied by an
+  index to guess an offset it had no way to apply, the "press End" hint in
+  a tooltip. `reveal(key)` is the one call, and it needs no geometry.
+- **A scroll position saved by listening to the wheel** — the running
+  total an app kept beside the core's, wrong the moment content changed
+  size and re-clamped the real one. `scroll_offset(key)` is the number the
+  last layout actually used, and `set_scroll` puts it back.
 
 ## 0.1.0-alpha.5 (2026-09-03)
 

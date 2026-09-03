@@ -1671,6 +1671,56 @@ pub extern "C" fn kui_focus_visible(ptr: *mut KuiCtx) -> bool {
     })
 }
 
+/// Scrolls whatever contains `key` so the node shows — what Tab does to
+/// the control it lands on, asked for by name. The request resolves at the
+/// next `kui_frame_finish`, against the frame it lays out (the one being
+/// built when called from a view callback, the one after it otherwise — a
+/// frame is requested, so one comes), so a row a view is about to declare
+/// for the first time reveals fine. A key that frame does not declare, or
+/// one with nothing scrollable above it, is a no-op and is not kept for a
+/// later frame; the last reveal before a frame wins.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_reveal(ptr: *mut KuiCtx, key: u64) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().reveal(Key(key));
+        }
+    });
+}
+
+/// Sets a scroll container's retained offset, the way the wheel would
+/// (positive = content moved up / left). Takes effect on the next frame,
+/// whose layout clamps it to that frame's overflow: 0,0 is "jump to the
+/// top" and a huge value is "jump to the end" without knowing the content
+/// height. An offset written for a key that never scrolls is harmless.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_scroll(ptr: *mut KuiCtx, key: u64, x: f32, y: f32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_scroll(Key(key), kui_core::Vec2::new(x, y));
+        }
+    });
+}
+
+/// Reads that offset back, as the last layout clamped it — the number to
+/// persist and hand to `kui_set_scroll` later. Writes 0,0 for a node that
+/// never scrolled; either out pointer may be NULL.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_scroll_offset(ptr: *mut KuiCtx, key: u64, x: *mut f32, y: *mut f32) {
+    guard((), || {
+        let off =
+            unsafe { ctx(ptr) }.map_or(kui_core::Vec2::ZERO, |c| c.core().scroll_offset(Key(key)));
+        unsafe {
+            if let Some(x) = x.as_mut() {
+                *x = off.x;
+            }
+            if let Some(y) = y.as_mut() {
+                *y = off.y;
+            }
+        }
+    });
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_close(ptr: *mut KuiCtx) {
     guard((), || {

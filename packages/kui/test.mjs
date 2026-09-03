@@ -1066,3 +1066,119 @@ test('every corpus scene lowers the way kui-core does', (t) => {
     }
   }
 });
+
+// -- Scrolling from the app ------------------------------------------------
+// Scroll offsets are retained by the core, keyed by node; `reveal`,
+// `scrollOffset` and `setScroll` are the only way an app reaches them.
+
+const ROW_H = 30;
+const LIST_H = 200;
+const SCROLL_ROWS = 20; // 20 * 30 = 600 of content in a 200-tall window
+
+function scrollingList(rows = SCROLL_ROWS) {
+  return box({ width: 'grow', height: 'grow' }, [
+    box(
+      { width: 'grow', height: 'grow', scrollY: true },
+      Array.from({ length: rows }, (_, i) =>
+        box({ width: 'grow', height: ROW_H, bg: '#282840', role: 'button', label: `row ${i}` }, [], `row${i}`),
+      ),
+      'list',
+    ),
+  ]);
+}
+
+/** Node keys and rects of the last frame, by accessible name — the only
+ *  keys a JS caller has without recomputing the core's hashing. */
+function nodesByName(ctx) {
+  const by = {};
+  for (const n of ctx.accessTree().nodes) if (n.name) by[n.name] = n;
+  return by;
+}
+
+function listCtx(rows = SCROLL_ROWS) {
+  const ctx = new Ctx();
+  const render = (n = rows) => ctx.frame(400, LIST_H, 1, scrollingList(n));
+  render();
+  // The scroll container is the one node reporting scroll state.
+  const list = ctx.accessTree().nodes.find((n) => n.scroll).key;
+  return { ctx, render, list };
+}
+
+test('reveal scrolls a row into view against the frame that follows it', () => {
+  const { ctx, render, list } = listCtx();
+  assert.deepEqual(ctx.scrollOffset(list), { x: 0, y: 0 });
+
+  // Row 15 sits at 450..480 in a 200-tall window: off the bottom.
+  ctx.reveal(nodesByName(ctx)['row 15'].key);
+  render();
+  const after = ctx.scrollOffset(list);
+  assert.ok(after.y > 0, `reveal moved nothing: ${JSON.stringify(after)}`);
+  const row = nodesByName(ctx)['row 15'];
+  assert.ok(row.rect.y >= 0 && row.rect.y + row.rect.h <= LIST_H, `row 15 not in view: ${JSON.stringify(row.rect)}`);
+
+  // Resolved and spent: further frames do not drift, and revealing
+  // something already visible is not a re-alignment.
+  render();
+  assert.deepEqual(ctx.scrollOffset(list), after);
+  ctx.reveal(row.key);
+  render();
+  assert.deepEqual(ctx.scrollOffset(list), after);
+});
+
+test('reveal of a key the next frame does not declare is a no-op', () => {
+  const { ctx, render, list } = listCtx();
+  ctx.reveal('0123456789abcdef');
+  render();
+  assert.deepEqual(ctx.scrollOffset(list), { x: 0, y: 0 });
+  // Not remembered either: the request is spent by the frame that could
+  // not find it, so a later frame does not act on it.
+  render();
+  assert.deepEqual(ctx.scrollOffset(list), { x: 0, y: 0 });
+  assert.throws(() => ctx.reveal('nope'), /bad id/);
+});
+
+test('reveal reaches a row the coming frame declares for the first time', () => {
+  const { ctx, render, list } = listCtx();
+  // The list grows to 40 rows and the app reveals the new last one in the
+  // same update — there is no earlier frame that row appears in.
+  const rows40 = scrollingList(40);
+  const key = (() => {
+    ctx.frame(400, LIST_H, 1, rows40);
+    const k = nodesByName(ctx)['row 39'].key;
+    render(); // back to 20 rows: the key is now absent again
+    return k;
+  })();
+  ctx.reveal(key);
+  ctx.frame(400, LIST_H, 1, rows40);
+  // 40 * 30 = 1200 of content in 200: the last row is flush with the end.
+  assert.deepEqual(ctx.scrollOffset(list), { x: 0, y: 1000 });
+});
+
+test('setScroll and scrollOffset round-trip a saved position', () => {
+  const { ctx, render, list } = listCtx();
+  ctx.cursor(200, 100);
+  ctx.scroll(0, -150);
+  render();
+  const saved = ctx.scrollOffset(list);
+  assert.deepEqual(saved, { x: 0, y: 150 });
+
+  // A fresh context (a restarted app) restores it before its first frame.
+  const fresh = new Ctx();
+  fresh.setScroll(list, saved.x, saved.y);
+  fresh.frame(400, LIST_H, 1, scrollingList());
+  assert.deepEqual(fresh.scrollOffset(list), saved);
+  assert.equal(nodesByName(fresh)['row 5'].rect.y, 0);
+});
+
+test('setScroll is clamped by the next layout', () => {
+  const { ctx, render, list } = listCtx();
+  // "Jump to the end" without knowing the content height.
+  ctx.setScroll(list, 0, 1e9);
+  render();
+  assert.deepEqual(ctx.scrollOffset(list), { x: 0, y: SCROLL_ROWS * ROW_H - LIST_H });
+  ctx.setScroll(list, 0, -1e9);
+  render();
+  assert.deepEqual(ctx.scrollOffset(list), { x: 0, y: 0 });
+  // A node that never scrolled reads zero rather than failing.
+  assert.deepEqual(ctx.scrollOffset(nodesByName(ctx)['row 0'].key), { x: 0, y: 0 });
+});

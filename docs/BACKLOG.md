@@ -425,18 +425,33 @@ core stays device-free. One `PROPS` row (`Kind::Enum(CURSORS)`) gave all
 four bindings the override; `KuiSpec.cursor` is `KUI_CURSOR_*` = index + 1,
 so zero still means "derive".
 
-### `~` C4 — Export `reveal()` and `set_scroll()`
+### `~` C4 — Export `reveal()` and `set_scroll()` — **done (2026-09-04)**
 
-The core already does the hard part: `scroll_rect_into_view`
-(`crates/kui-core/src/runtime.rs:2040`) handles nested containers and relayout,
-and both Tab focus and the editor caret use it. It is private.
-`ScrollStore::scroll_by` (`crates/kui-core/src/scroll.rs:22`) is `pub` on a store
-that is never handed out. So "scroll to the selected row", "jump to top",
-"restore the saved position" are unbuildable from every binding.
+Shipped as `Core::reveal(key)`, `Core::set_scroll(key, offset)` and
+`Core::scroll_offset(key)`, in all four bindings (`ui.reveal` /
+`ui.set_scroll` / `ui.scroll_offset`, `ctx.reveal` and `KuiWindow.reveal`
+with `scrollOffset` / `setScroll`, `kui_reveal` / `kui_set_scroll` /
+`kui_scroll_offset`, `env.reveal` / `env.scroll_offset` /
+`env.set_scroll`). `set_scroll` and `scroll_offset` are the retained
+`ScrollStore` handed out directly, which is all they ever needed to be.
 
-`Core::reveal(key)`, `Core::set_scroll(key, offset)`, `Core::scroll_offset(key)`,
-surfaced in all four bindings. This is an export of working internals, and the
-prerequisite for C5.
+`reveal` is the one that needed a decision. Resolving it immediately
+against the last frame's layout — the obvious reading, and what
+`focus_next` does — would have been useless in two places. Lua's `env`
+only exists inside `view(env)`, where the tree has already been cleared
+and is being rebuilt, so a script's reveal would have found nothing every
+time; and an app that appends a row and reveals it in the same update has
+no earlier frame the row appears in. So a reveal is a request that the
+next `finish_frame` resolves after layout, next to `scroll_caret_into_view`
+and through the same `relayout` path, so the frame it resolves in already
+draws the node in view. It requests a frame, since a retained offset that
+nothing redraws is not a scroll. A key that frame does not declare is a
+no-op and is not held for a later one — the alternative, a request that
+waits, fires at whatever unrelated moment the key next appears.
+
+This unblocks C5: a virtualizing list needs `scroll_offset` to decide what
+to build, and `reveal` to answer "scroll to row N" when row N is not one of
+the ones it built.
 
 ### `~` C5 — Make long lists affordable
 
@@ -651,11 +666,11 @@ the body is worth keeping human.
 
 The section is unusually honest about z-index, exit animations, layout-query
 depth, audio and editing scope. That honesty is why the omissions it *doesn't*
-mention read as present: no touch or pen input, no programmatic scrolling (C4),
-no flex wrapping (C10). Add them, grouped, in the section's existing tone.
-(Modal containment was on this list until C1 shipped it; the pointer buttons
-went on it with C2, which routes only the secondary one; cursor shapes came off
-it with C3.)
+mention read as present: no touch or pen input, no flex wrapping (C10). Add
+them, grouped, in the section's existing tone. (Modal containment was on this
+list until C1 shipped it; the pointer buttons went on it with C2, which routes
+only the secondary one; cursor shapes came off it with C3, and programmatic
+scrolling with C4.)
 
 The performance table also lists four benches where `benches/frame.rs` has five —
 `frame_10k_rects_with_access_tree` is omitted, and it is the one a reader worried
@@ -673,8 +688,8 @@ By leverage-to-effort, not severity.
    `access_bridge` line; the parity test forces the C side and all four bindings
    get them free. Worth doing early to confirm the schema mechanism still does
    its job.
-3. **Export what already works.** C4 (`reveal`, `set_scroll`); ~~C3 (derived
-   cursor)~~ is done. Both are exports of working internals, and C4 gates C5.
+3. ~~**Export what already works.** C4 (`reveal`, `set_scroll`); C3 (derived
+   cursor).~~ Both done — exports of working internals. C5 is now unblocked.
 4. **D1.** The largest single duplication, mechanical, and it stops the drift
    that has already started in the doc comments.
 5. ~~**P7 — the conformance corpus.**~~ Done (2026-09-03), out of order: it

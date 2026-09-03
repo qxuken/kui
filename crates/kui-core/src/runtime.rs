@@ -134,6 +134,10 @@ pub struct Core {
     /// was seen: a different rect, or a node not seen last frame, posts a
     /// `layout` event (see `emit_layout_events`).
     layouts: FxHashMap<Key, (Rect, u64)>,
+    /// A `reveal(key)` waiting for a layout to resolve against: the next
+    /// `finish_frame` scrolls the node's scrolling ancestor to show it,
+    /// then clears this. Last writer wins.
+    pending_reveal: Option<Key>,
     /// Silent-misconfiguration detection; see `diag`.
     diag: Diagnostics,
     /// The access tree of the last finished frame, built on demand (see
@@ -221,6 +225,7 @@ impl Core {
             any_slide: false,
             any_layout: false,
             frame_requested: false,
+            pending_reveal: None,
             ime_rect: None,
             pending: Vec::new(),
             framed: false,
@@ -1149,6 +1154,49 @@ impl Core {
         self.edit.set_text(key, text, fs, &self.resources);
     }
 
+    // -- Scrolling ------------------------------------------------------
+    // Scroll offsets are retained per node key, clamped to the overflow the
+    // last layout found. The wheel, the scrollbars, Tab and the caret all
+    // move them from inside; these three are the same moves from outside,
+    // so "scroll to the selected row", "jump to the top" and "restore the
+    // position I saved" need no layout arithmetic in the app.
+
+    /// Scrolls the nearest scrolling ancestor of `key` so the node is
+    /// inside it — what Tab does to the control it lands on, asked for by
+    /// name. Already-visible nodes stay put.
+    ///
+    /// The request resolves at the next `finish_frame`, against the frame
+    /// that one lays out — the frame being built if this is called from a
+    /// view, the one after it if from an event handler (a frame is
+    /// requested, so one comes). That is what lets a view reveal a row it
+    /// is declaring for the first time. If that frame does not declare
+    /// `key`, or nothing above it scrolls, it is a no-op — the request is
+    /// spent, not held for the frame that might. Two reveals before one
+    /// frame are contradictory, so the last wins.
+    pub fn reveal(&mut self, key: Key) {
+        self.pending_reveal = Some(key);
+        self.request_frame();
+    }
+
+    /// The retained scroll offset of the container `key`, as the last
+    /// layout clamped it (positive = content moved up / left). Zero for a
+    /// node that never scrolled, and for one that is not a container at
+    /// all — the store keeps offsets, not membership.
+    pub fn scroll_offset(&self, key: Key) -> Vec2 {
+        self.scroll.offset(key)
+    }
+
+    /// Sets the container `key`'s retained offset, the way the wheel would.
+    /// Takes effect on the next frame, whose layout clamps it to that
+    /// frame's overflow: `Vec2::ZERO` is "jump to the top", and a large
+    /// value is "jump to the end" without knowing the content height.
+    /// Writing an offset for a key that never scrolls is harmless; it just
+    /// never reads back.
+    pub fn set_scroll(&mut self, key: Key, offset: Vec2) {
+        self.scroll.set(key, offset);
+        self.request_frame();
+    }
+
     // -- Fonts ----------------------------------------------------------
 
     /// Registers a font from its file bytes (TTF/OTF/TTC); `None` when the
@@ -1854,6 +1902,9 @@ impl Core {
             );
         }
         self.scroll_caret_into_view();
+        // An explicit `reveal` after the caret nudge: the app asked for
+        // this one, so it wins the offset if both want to move it.
+        self.apply_pending_reveal();
         if self.any_slide {
             self.ease_positions();
         }
@@ -2232,6 +2283,22 @@ impl Core {
             caret_phys.h / self.scale,
         );
         self.scroll_rect_into_view(i, caret, true);
+    }
+
+    /// After layout: resolves a pending `reveal(key)` against the frame
+    /// just laid out, then forgets it either way — a key this frame did
+    /// not declare is a no-op, not a request that waits for the frame that
+    /// declares it. Like the caret, the positions pass re-runs, so this
+    /// frame already draws the node in view.
+    fn apply_pending_reveal(&mut self) {
+        let Some(key) = self.pending_reveal.take() else {
+            return;
+        };
+        let Some(i) = (0..self.tree.len()).find(|&i| self.tree.keys[i] == key) else {
+            return;
+        };
+        let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
+        self.scroll_rect_into_view(i, rect, true);
     }
 
     /// Nudges the nearest scrolling ancestor of node `i` so `rect`

@@ -3,7 +3,8 @@
 //! prelude) and optionally `on_event(ev)`. `env` carries host facts
 //! (refresh rate, focus, viewport) and a few queries (`env.edit_text(key)`,
 //! `env.is_focused(key)`, `env.is_hovered(key)`,
-//! `env.measure_text(s, opts, max_w)`); the root table may set
+//! `env.measure_text(s, opts, max_w)`) and scroll calls (`env.reveal(key)`,
+//! `env.scroll_offset(key)`, `env.set_scroll(key, x, y)`); the root table may set
 //! `window_title`. Because the IR is data all the way down, the binding is
 //! just table-to-node conversion — no closures cross the boundary.
 //!
@@ -108,7 +109,8 @@ impl Extension for LuaExtension {
 /// `frame_budget_ms`, `focused`, `viewport_w`/`viewport_h` (logical px),
 /// `window` chrome facts, and the queries `edit_text(key)`,
 /// `is_focused(key)`, `is_hovered(key)` (keys are the integers events
-/// carry) and `measure_text(s, opts, max_w)` (see `measure_from_lua`).
+/// carry), `measure_text(s, opts, max_w)` (see `measure_from_lua`) and the
+/// scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)`.
 fn env_table<'scope, 'env: 'scope>(
     lua: &Lua,
     scope: &'scope mlua::Scope<'scope, 'env>,
@@ -155,6 +157,44 @@ fn env_table<'scope, 'env: 'scope>(
     t.set(
         "is_hovered",
         scope.create_function(move |_, key: i64| Ok(ui.borrow().is_hovered(Key(key as u64))))?,
+    )?;
+    // Scrolling from the script: `env.reveal(key)` scrolls whatever
+    // contains a node so it shows, and `env.scroll_offset` /
+    // `env.set_scroll` read and write a container's retained offset.
+    // `view` runs while the frame is being built, so a reveal resolves
+    // against *this* frame's layout when it finishes — which is what lets
+    // a script reveal a row it is declaring right now. A key the frame
+    // does not declare, or one with nothing scrollable above it, is a
+    // no-op; the request is not kept for a later frame.
+    t.set(
+        "reveal",
+        scope.create_function(move |_, key: i64| {
+            ui.borrow_mut().reveal(Key(key as u64));
+            Ok(())
+        })?,
+    )?;
+    // `{x, y}` as the last layout clamped it (positive = content moved up
+    // / left); zeroes for a node that never scrolled. Stash it and hand it
+    // back to `set_scroll` to restore a position.
+    t.set(
+        "scroll_offset",
+        scope.create_function(move |lua, key: i64| {
+            let off = ui.borrow().scroll_offset(Key(key as u64));
+            let r = lua.create_table()?;
+            r.set("x", off.x)?;
+            r.set("y", off.y)?;
+            Ok(r)
+        })?,
+    )?;
+    // The wheel's move by hand; the next layout clamps it, so 0,0 is "jump
+    // to the top" and a huge y is "jump to the end".
+    t.set(
+        "set_scroll",
+        scope.create_function(move |_, (key, x, y): (i64, f32, f32)| {
+            ui.borrow_mut()
+                .set_scroll(Key(key as u64), kui_core::Vec2::new(x, y));
+            Ok(())
+        })?,
     )?;
     t.set(
         "measure_text",
@@ -1217,6 +1257,92 @@ mod tests {
         // Unchanged next frame: silence.
         frame(&mut core, &mut ext);
         assert!(core.take_pending_events().is_empty());
+    }
+
+    /// Scrolling from a script: `env.reveal` scrolls a row into view against
+    /// the frame the script is building, and `env.set_scroll` /
+    /// `env.scroll_offset` write and read the retained offset. Keys are the
+    /// integers events carry, so a script reveals the row it got an
+    /// `on_click` from.
+    #[test]
+    fn scripts_reveal_and_move_scroll_offsets() {
+        let mut ext = LuaExtension::from_source(
+            "scroll",
+            r#"
+                rows, want, jump, seen = 20, nil, nil, nil
+                function view(env)
+                  if want then env.reveal(want) end
+                  if jump then env.set_scroll(jump[1], jump[2], jump[3]) end
+                  want, jump = nil, nil
+                  local list = { key = "list", width = "grow", height = "grow",
+                                 scroll_y = true }
+                  for i = 0, rows - 1 do
+                    list[#list + 1] = row { key = "row" .. i, width = "grow",
+                                            height = 30, bg = 0x282840ff }
+                  end
+                  seen = env.scroll_offset(list_key)
+                  return column(list)
+                end
+            "#,
+        )
+        .unwrap();
+        // 20 rows of 30 in a 200-tall window: 400 of overflow.
+        let list = Key::ROOT.str("list");
+        let row = |i: usize| list.str(&format!("row{i}"));
+        ext.lua.globals().set("list_key", list.0 as i64).unwrap();
+        let mut core = Core::new();
+        let frame = |core: &mut Core, ext: &mut LuaExtension| {
+            let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+            ui.set_origin(OriginId(1));
+            ext.view(&mut ui).unwrap();
+            ui.finish();
+        };
+
+        frame(&mut core, &mut ext);
+        assert_eq!(core.scroll_offset(list), Vec2::ZERO);
+
+        // A reveal made while the frame is being built resolves against that
+        // same frame — the script does not have to wait a frame to see it.
+        ext.lua.globals().set("want", row(15).0 as i64).unwrap();
+        frame(&mut core, &mut ext);
+        let after = core.scroll_offset(list);
+        assert!(after.y > 0.0, "reveal moved nothing: {after:?}");
+        assert!(after.y <= 15.0 * 30.0, "scrolled past row 15: {after:?}");
+        // Spent: the next frame does not drift.
+        frame(&mut core, &mut ext);
+        assert_eq!(core.scroll_offset(list), after);
+
+        // The script reads the offset back (as of the last layout).
+        let seen: Table = ext.lua.globals().get("seen").unwrap();
+        assert_eq!(seen.get::<f32>("y").unwrap(), after.y);
+        assert_eq!(seen.get::<f32>("x").unwrap(), 0.0);
+
+        // set_scroll jumps, and the layout clamps: "to the end", then home.
+        let jump = |ext: &LuaExtension, y: f64| {
+            let t = ext.lua.create_table().unwrap();
+            t.set(1, list.0 as i64).unwrap();
+            t.set(2, 0.0).unwrap();
+            t.set(3, y).unwrap();
+            ext.lua.globals().set("jump", t).unwrap();
+        };
+        jump(&ext, 1e9);
+        frame(&mut core, &mut ext);
+        assert_eq!(core.scroll_offset(list).y, 400.0);
+        jump(&ext, -1e9);
+        frame(&mut core, &mut ext);
+        assert_eq!(core.scroll_offset(list), Vec2::ZERO);
+
+        // A key the frame does not declare is a no-op, and is not kept.
+        jump(&ext, 120.0);
+        frame(&mut core, &mut ext);
+        ext.lua
+            .globals()
+            .set("want", Key::ROOT.str("ghost").0 as i64)
+            .unwrap();
+        frame(&mut core, &mut ext);
+        assert_eq!(core.scroll_offset(list).y, 120.0);
+        frame(&mut core, &mut ext);
+        assert_eq!(core.scroll_offset(list).y, 120.0);
     }
 
     #[test]

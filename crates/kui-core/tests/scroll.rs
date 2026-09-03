@@ -141,3 +141,159 @@ fn scroll_offset_survives_and_reclamps_on_content_shrink() {
     // first one that still intersects the viewport draws at -10 (row 3).
     assert_eq!(row_quad_ys(&mut core).0, -10.0);
 }
+
+// -- The scroll API apps drive from outside -------------------------------
+// `reveal` / `set_scroll` / `scroll_offset` are the wheel's moves asked for
+// by name: the offsets are retained per key, and until these existed only
+// the core could reach them.
+
+fn list_key() -> kui_core::Key {
+    kui_core::Key::ROOT.str("list")
+}
+
+fn row_key(i: usize) -> kui_core::Key {
+    list_key().str(&format!("row{i}"))
+}
+
+/// The y a row's quad drew at, or None when it was culled.
+fn row_y(core: &mut Core, i: usize) -> Option<f32> {
+    // Rows are the wide solids; the i-th is at content y = i * ROW_H, so
+    // identify it by the offset the frame drew it with.
+    let (dl, _) = core.output();
+    let ys: Vec<f32> = dl
+        .quads
+        .iter()
+        .filter(|q| q.kind == kui_core::QuadKind::Solid && q.rect.w > 100.0)
+        .map(|q| q.rect.y)
+        .collect();
+    let want = i as f32 * ROW_H - core.scroll_offset(list_key()).y;
+    ys.into_iter().find(|y| (*y - want).abs() < 0.01)
+}
+
+#[test]
+fn reveal_scrolls_a_row_into_view_and_is_idempotent() {
+    let mut core = Core::new();
+    frame(&mut core);
+    assert_eq!(core.scroll_offset(list_key()), Vec2::ZERO);
+
+    // Row 15 sits at 450..480 in a 200-tall window: off the bottom.
+    core.reveal(row_key(15));
+    frame(&mut core);
+    let y = row_y(&mut core, 15).expect("row 15 should draw");
+    assert!(
+        y >= 0.0 && y + ROW_H <= VIEW_H,
+        "row 15 not inside the viewport: y={y}"
+    );
+    let after = core.scroll_offset(list_key());
+    assert!(after.y > 0.0, "reveal moved nothing: {after:?}");
+
+    // The frame that resolved it also cleared it: another frame drifts nowhere.
+    frame(&mut core);
+    assert_eq!(core.scroll_offset(list_key()), after);
+
+    // Revealing something already visible is a no-op, not a re-alignment.
+    core.reveal(row_key(15));
+    frame(&mut core);
+    assert_eq!(core.scroll_offset(list_key()), after);
+}
+
+#[test]
+fn reveal_scrolls_back_up() {
+    let mut core = Core::new();
+    frame(&mut core);
+    core.set_scroll(list_key(), Vec2::new(0.0, 400.0));
+    frame(&mut core);
+    assert_eq!(core.scroll_offset(list_key()).y, 400.0);
+
+    core.reveal(row_key(0));
+    frame(&mut core);
+    assert_eq!(core.scroll_offset(list_key()), Vec2::ZERO);
+    assert_eq!(row_y(&mut core, 0), Some(0.0));
+}
+
+#[test]
+fn reveal_of_a_key_the_frame_does_not_declare_is_a_no_op() {
+    let mut core = Core::new();
+    frame(&mut core);
+    let before = core.scroll_offset(list_key());
+
+    core.reveal(kui_core::Key::ROOT.str("no-such-node"));
+    frame(&mut core);
+    assert_eq!(core.scroll_offset(list_key()), before);
+
+    // And it is not remembered: a later frame that *does* declare row 15
+    // still does not move, because the request was spent.
+    frame(&mut core);
+    assert_eq!(core.scroll_offset(list_key()), before);
+}
+
+#[test]
+fn reveal_reaches_a_row_the_frame_declares_for_the_first_time() {
+    // The point of resolving against the frame ahead: an app that appends a
+    // row and reveals it in the same update has no last frame to find it in.
+    let mut core = Core::new();
+    frame(&mut core); // 20 rows
+
+    core.reveal(row_key(39));
+    let mut ui = core.frame(Size::new(400.0, VIEW_H), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with_keyed("list", NodeSpec::column().fill().scroll_y(), |ui| {
+        for i in 0..40 {
+            ui.with_keyed(
+                &format!("row{i}"),
+                NodeSpec::row()
+                    .width(Sizing::Grow(1.0))
+                    .height(Sizing::Fixed(ROW_H))
+                    .bg(Color::rgb8(40, 40, 60)),
+                |_| {},
+            );
+        }
+    });
+    ui.finish();
+    // 40 * 30 = 1200 of content in 200: the last row is flush with the end.
+    assert_eq!(core.scroll_offset(list_key()).y, 1000.0);
+}
+
+#[test]
+fn set_scroll_and_scroll_offset_round_trip_through_a_model() {
+    let mut core = Core::new();
+    frame(&mut core);
+    wheel(&mut core, -150.0);
+    frame(&mut core);
+    let saved = core.scroll_offset(list_key());
+    assert_eq!(saved, Vec2::new(0.0, 150.0));
+
+    // A fresh core (a restarted app) restores it before the first frame.
+    let mut restored = Core::new();
+    restored.set_scroll(list_key(), saved);
+    frame(&mut restored);
+    assert_eq!(restored.scroll_offset(list_key()), saved);
+    assert_eq!(row_y(&mut restored, 5), Some(0.0));
+}
+
+#[test]
+fn set_scroll_is_clamped_by_the_next_layout() {
+    let mut core = Core::new();
+    frame(&mut core);
+
+    // "Jump to the end" without knowing the content height.
+    core.set_scroll(list_key(), Vec2::new(0.0, f32::MAX));
+    frame(&mut core);
+    assert_eq!(core.scroll_offset(list_key()).y, 600.0 - VIEW_H);
+
+    // And back to the top, past it.
+    core.set_scroll(list_key(), Vec2::new(0.0, -500.0));
+    frame(&mut core);
+    assert_eq!(core.scroll_offset(list_key()), Vec2::ZERO);
+}
+
+#[test]
+fn scroll_offset_of_a_node_that_never_scrolled_is_zero() {
+    let mut core = Core::new();
+    frame(&mut core);
+    assert_eq!(core.scroll_offset(row_key(0)), Vec2::ZERO);
+    assert_eq!(
+        core.scroll_offset(kui_core::Key::ROOT.str("gone")),
+        Vec2::ZERO
+    );
+}

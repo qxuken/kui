@@ -624,6 +624,28 @@ void kui_focus_next(KuiCtx *ctx, bool forward);
  * there by keyboard or assistive technology, not a click). */
 uint64_t kui_focused(KuiCtx *ctx);
 bool kui_focus_visible(KuiCtx *ctx);
+/* -- Scrolling ------------------------------------------------------------ */
+/* Scroll offsets are retained per node key and clamped by each layout to
+ * that frame's overflow. The wheel, the scrollbars, Tab and the caret move
+ * them from inside; these move them from outside. */
+/* Scrolls whatever contains key so the node shows — what Tab does to the
+ * control it lands on, asked for by name. Already-visible nodes stay put.
+ * The request resolves at the next kui_frame_finish, against the frame it
+ * lays out: the one being built when called from inside a view callback,
+ * the one after it otherwise (a frame is requested, so one comes). That is
+ * what lets a view reveal a row it is declaring for the first time. If that
+ * frame does not declare key, or nothing above it scrolls, it is a no-op —
+ * the request is spent, not kept for a later frame. Last reveal before a
+ * frame wins. */
+void kui_reveal(KuiCtx *ctx, uint64_t key);
+/* Sets a scroll container's offset the way the wheel would (positive =
+ * content moved up / left); the next frame's layout clamps it, so 0,0 is
+ * "jump to the top" and a huge y is "jump to the end" without knowing the
+ * content height. Harmless for a key that never scrolls. */
+void kui_set_scroll(KuiCtx *ctx, uint64_t key, float x, float y);
+/* Reads it back as the last layout clamped it — the number to persist and
+ * restore. 0,0 for a node that never scrolled; either pointer may be NULL. */
+void kui_scroll_offset(KuiCtx *ctx, uint64_t key, float *x, float *y);
 /* -- Fonts ---------------------------------------------------------------- */
 /* Registers a font from file bytes (TTF/OTF/TTC, copied); returns a handle
  * for KuiTextStyle.font, 0 when the data holds no usable face. */

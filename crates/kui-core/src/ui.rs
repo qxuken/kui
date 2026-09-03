@@ -4,7 +4,7 @@
 
 use crate::edit::EditOptions;
 use crate::env::Env;
-use crate::geom::Size;
+use crate::geom::{Size, Vec2};
 use crate::key::Key;
 use crate::runtime::Core;
 use crate::spec::{NodeSpec, TextStyle};
@@ -227,6 +227,28 @@ impl<'a> Ui<'a> {
 
     pub fn edit_text(&self, key: Key) -> Option<String> {
         self.core.edit_text(key)
+    }
+
+    /// Scrolls whatever contains `key` so the node shows — "scroll to the
+    /// selected row", without the container geometry the app cannot see.
+    /// Resolved when this frame finishes laying out, so a row the view is
+    /// declaring right now reveals fine; a key the frame does not declare,
+    /// or one nothing scrollable contains, is a no-op. See `Core::reveal`.
+    pub fn reveal(&mut self, key: Key) {
+        self.core.reveal(key);
+    }
+
+    /// A scroll container's retained offset, clamped as of the last
+    /// layout — the number to stash in a model and hand back to
+    /// `set_scroll` later. Zero for a node that never scrolled.
+    pub fn scroll_offset(&self, key: Key) -> Vec2 {
+        self.core.scroll_offset(key)
+    }
+
+    /// Sets that offset, the way the wheel would: `Vec2::ZERO` jumps to
+    /// the top, a large value to the end (the next layout clamps it).
+    pub fn set_scroll(&mut self, key: Key, offset: Vec2) {
+        self.core.set_scroll(key, offset);
     }
 
     /// Declares this node focused: it takes keyboard focus when the

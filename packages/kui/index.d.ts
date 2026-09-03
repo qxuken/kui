@@ -384,6 +384,13 @@ export type EditKeyName =
   | 'selectall' | 'escape' | 'undo' | 'redo';
 
 /** A headless kui core: build frames from JSX trees, feed input, poll events. */
+/** A scroll container's retained offset, in logical px: positive means the
+ *  content has moved up / left inside it. */
+export interface ScrollOffset {
+  x: number;
+  y: number;
+}
+
 export declare class Ctx {
   constructor();
   /** Lowers a JSX tree into one frame. Encodes it to the flat binary IR
@@ -501,6 +508,22 @@ export declare class Ctx {
    *  Tab itself and wants to hand the keyboard on. */
   focusNext(): void;
   focusPrev(): void;
+  /** Scrolls whatever contains a node so it shows — "scroll to the selected
+   *  row", which needs container geometry only the core has. Resolved
+   *  against the *next* frame's layout (one is requested), so a row the
+   *  view is about to declare for the first time reveals fine; a key that
+   *  frame does not declare, or one with nothing scrollable above it, is a
+   *  no-op and is not kept for a later frame. Last reveal before a frame
+   *  wins. */
+  reveal(key: string): void;
+  /** A scroll container's retained offset as the last layout clamped it
+   *  (positive = content moved up / left) — stash it in a model and hand it
+   *  back to `setScroll`. `{x: 0, y: 0}` for a node that never scrolled. */
+  scrollOffset(key: string): ScrollOffset;
+  /** Sets that offset the way the wheel would; the next layout clamps it,
+   *  so `(0, 0)` jumps to the top and a huge `y` to the end without knowing
+   *  the content height. */
+  setScroll(key: string, x: number, y: number): void;
   editText(key: string): string | null;
   setEditText(key: string, text: string): void;
   stats(): FrameStats;
@@ -585,6 +608,13 @@ export declare class KuiWindow {
   blur(): void;
   focusNext(): void;
   focusPrev(): void;
+  /** Scrolling as data, as on `Ctx`: reveal a node, or read and write a
+   *  container's retained offset (a write requests a redraw). `reveal`
+   *  resolves against the next frame's layout — a key that frame does not
+   *  declare is a no-op. */
+  reveal(key: string): void;
+  scrollOffset(key: string): ScrollOffset;
+  setScroll(key: string, x: number, y: number): void;
   /** Hover state as of the last frame; keys come from events (an `onHover`
    *  enter, a click). For plain hover styling prefer the `hoverBg` /
    *  `pressedBg` props — the core resolves those without a JS round trip. */

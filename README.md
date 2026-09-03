@@ -433,9 +433,14 @@ size; text and images shrink in width (rewrap / re-aspect) but never height.
 Overflow: `.clip()` clips children; `.scroll_y()` / `.scroll_x()` make a
 container scrollable (wheel/trackpad, offsets retained across frames by widget
 key, clamped to content). Scrollbars are live: thumbs drag, track presses
-jump, hovered bars widen. Clip rects ride on each quad and are applied in the
-shader, so the whole UI is still one draw call. Fully clipped nodes are culled
-from both drawing and hit-testing.
+jump, hovered bars widen. An app reaches the same offsets by name:
+`ui.reveal(key)` scrolls whatever contains a node so the node shows (what Tab
+does to the control it lands on), and `ui.scroll_offset(key)` /
+`ui.set_scroll(key, offset)` read and write a container's offset — the next
+layout clamps a written one, so `Vec2::ZERO` is "jump to the top" without
+knowing the content height. Clip rects ride on each quad and are applied in
+the shader, so the whole UI is still one draw call. Fully clipped nodes are
+culled from both drawing and hit-testing.
 
 Dragging: `.on_drag(tag)` makes any node a pointer-captured drag source —
 handlers get `{kind="drag", phase, x, y, dx, dy, parent, tag}` events (the

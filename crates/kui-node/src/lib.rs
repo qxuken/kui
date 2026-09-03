@@ -434,6 +434,14 @@ fn key_str(key: Key) -> String {
     format!("{:016x}", key.0)
 }
 
+/// A scroll offset as `{x, y}` — the shape `setScroll` takes back.
+fn offset_json(off: Vec2) -> Json {
+    let mut o = JsonMap::new();
+    o.insert("x".into(), Json::from(off.x as f64));
+    o.insert("y".into(), Json::from(off.y as f64));
+    Json::Object(o)
+}
+
 fn edit_key_of(name: &str) -> Result<EditKey> {
     Ok(match name {
         "left" => EditKey::Left,
@@ -919,6 +927,39 @@ impl Ctx {
         self.core.focus_next(false);
     }
 
+    /// Scrolls whatever contains a node so it shows — "scroll to the
+    /// selected row", which needs the container geometry only the core has.
+    /// The request resolves against the *next* frame's layout (one is
+    /// requested), so a row the view is about to declare for the first
+    /// time reveals fine. If that frame does not declare the key, or
+    /// nothing above it scrolls, it is a no-op and is not kept for a later
+    /// frame; two reveals before one frame are contradictory, so the last
+    /// wins.
+    #[napi]
+    pub fn reveal(&mut self, key: String) -> Result<()> {
+        self.core.reveal(parse_key(&key)?);
+        Ok(())
+    }
+
+    /// A scroll container's retained offset `{x, y}` as the last layout
+    /// clamped it (positive = content moved up / left) — the number to keep
+    /// in a model and hand back to `setScroll`. Zero for a node that never
+    /// scrolled.
+    #[napi]
+    pub fn scroll_offset(&self, key: String) -> Result<Json> {
+        Ok(offset_json(self.core.scroll_offset(parse_key(&key)?)))
+    }
+
+    /// Sets that offset the way the wheel would; the next frame's layout
+    /// clamps it, so `(0, 0)` jumps to the top and a huge `y` to the end
+    /// without knowing the content height.
+    #[napi]
+    pub fn set_scroll(&mut self, key: String, x: f64, y: f64) -> Result<()> {
+        self.core
+            .set_scroll(parse_key(&key)?, Vec2::new(x as f32, y as f32));
+        Ok(())
+    }
+
     #[napi]
     pub fn edit_text(&self, key: String) -> Result<Option<String>> {
         Ok(self.core.edit_text(parse_key(&key)?))
@@ -1248,6 +1289,32 @@ impl KuiWindow {
     pub fn focus_prev(&mut self) {
         self.runner.core_mut().focus_next(false);
         self.runner.request_redraw();
+    }
+
+    /// Scrolling as data, as on `Ctx`: reveal a node, or read and write a
+    /// container's retained offset. `reveal` resolves against the next
+    /// frame's layout — a key that frame does not declare is a no-op.
+    #[napi]
+    pub fn reveal(&mut self, key: String) -> Result<()> {
+        self.runner.core_mut().reveal(parse_key(&key)?);
+        self.runner.request_redraw();
+        Ok(())
+    }
+
+    #[napi]
+    pub fn scroll_offset(&mut self, key: String) -> Result<Json> {
+        Ok(offset_json(
+            self.runner.core_mut().scroll_offset(parse_key(&key)?),
+        ))
+    }
+
+    #[napi]
+    pub fn set_scroll(&mut self, key: String, x: f64, y: f64) -> Result<()> {
+        self.runner
+            .core_mut()
+            .set_scroll(parse_key(&key)?, Vec2::new(x as f32, y as f32));
+        self.runner.request_redraw();
+        Ok(())
     }
 
     /// Hover state as of the last frame (keys come from events, e.g. an
