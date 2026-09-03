@@ -39,6 +39,9 @@ pub struct KuiCtx {
     last_payload: Option<Box<KuiValue>>,
     /// Text most recently handed out by kui_edit_text; freed on the next call.
     last_edit_text: Option<String>,
+    /// Warnings most recently handed out by kui_take_warnings; their strings
+    /// stay valid until the next call.
+    last_warnings: Vec<kui_core::Warning>,
 }
 
 impl KuiCtx {
@@ -195,6 +198,35 @@ pub struct KuiSpec {
     /// the pointer enters it; 0 = none. Either makes the node hover-tracked.
     pub click_sound: u64,
     pub hover_sound: u64,
+    /// Layout tag (NULL = none): the node's laid-out rect arrives as
+    /// `{kind="layout", x, y, w, h, parent, tag}` on its first frame and
+    /// whenever it changes. Borrowed — cloned while the node opens, so the
+    /// caller keeps ownership and frees it as usual; `kui_value_null()`
+    /// asks for the events without a tag.
+    pub on_layout: *const KuiValue,
+}
+
+/// What a piece of text measures (`kui_measure_text`), logical px at the
+/// scale of the current or last frame.
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct KuiTextMetrics {
+    pub width: f32,
+    pub height: f32,
+    /// Lines after wrapping (capped by `max_lines`).
+    pub lines: u32,
+}
+
+/// One diagnostic (`kui_take_warnings`): a silent misconfiguration the
+/// core noticed. `code` is stable (`grow-weight-ignored`,
+/// `transition-auto-key`, `duplicate-key`); the strings are borrowed until
+/// the next `kui_take_warnings` on the same context.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiWarning {
+    pub code: KuiStr,
+    pub key: u64,
+    pub message: KuiStr,
 }
 
 /// Options for `kui_play`. NULL means defaults; a given struct is read
@@ -509,6 +541,10 @@ fn spec_of(
     if s.hover_sound != 0 {
         spec = spec.hover_sound(kui_core::SoundId::from_ffi(s.hover_sound));
     }
+    if let Some(tag) = unsafe { s.on_layout.as_ref() } {
+        // Borrowed, unlike the message arguments: the spec is const.
+        spec = spec.on_layout(tag.0.clone());
+    }
     if let Some(v) = take_msg(on_click) {
         spec = spec.on_click(v);
     }
@@ -569,6 +605,10 @@ unsafe fn ctx<'a>(ptr: *mut KuiCtx) -> Option<&'a mut KuiCtx> {
 pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
     guard(std::ptr::null_mut(), || {
         let mut owned = Box::new(Core::new());
+        // A host driving its own frames opts into diagnostics explicitly,
+        // like everything else it drains; kui_run follows the runner's
+        // debug-build default.
+        owned.set_diagnostics(false);
         let core: *mut Core = &mut *owned;
         Box::into_raw(Box::new(KuiCtx {
             core,
@@ -576,6 +616,7 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             events: Vec::new(),
             last_payload: None,
             last_edit_text: None,
+            last_warnings: Vec::new(),
         }))
     })
 }
@@ -1326,6 +1367,38 @@ pub extern "C" fn kui_text(ptr: *mut KuiCtx, text: KuiStr, style: *const KuiText
     });
 }
 
+/// Runs `f` over the core `Span`s a `KuiSpan` array describes; None for a
+/// NULL or empty array.
+fn with_spans<R>(
+    spans: *const KuiSpan,
+    span_count: usize,
+    f: impl FnOnce(&[Span<'_>]) -> R,
+) -> Option<R> {
+    if spans.is_null() || span_count == 0 {
+        return None;
+    }
+    let raw = unsafe { std::slice::from_raw_parts(spans, span_count) };
+    let texts: Vec<std::borrow::Cow<'_, str>> = raw.iter().map(|s| kstr(s.text)).collect();
+    let spans: Vec<Span<'_>> = raw
+        .iter()
+        .zip(texts.iter())
+        .map(|(s, t)| {
+            let mut span = Span::new(t.as_ref());
+            if s.flags & 1 != 0 {
+                span = span.bold();
+            }
+            if s.flags & 2 != 0 {
+                span = span.italic();
+            }
+            if s.color != 0 {
+                span = span.color(Color::hex(s.color));
+            }
+            span
+        })
+        .collect();
+    Some(f(&spans))
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_rich_text(
     ptr: *mut KuiCtx,
@@ -1337,32 +1410,124 @@ pub extern "C" fn kui_rich_text(
         let Some(c) = (unsafe { ctx(ptr) }) else {
             return;
         };
-        if spans.is_null() || span_count == 0 {
-            return;
-        }
-        let raw = unsafe { std::slice::from_raw_parts(spans, span_count) };
-        let texts: Vec<std::borrow::Cow<'_, str>> = raw.iter().map(|s| kstr(s.text)).collect();
-        let spans: Vec<Span<'_>> = raw
-            .iter()
-            .zip(texts.iter())
-            .map(|(s, t)| {
-                let mut span = Span::new(t.as_ref());
-                if s.flags & 1 != 0 {
-                    span = span.bold();
-                }
-                if s.flags & 2 != 0 {
-                    span = span.italic();
-                }
-                if s.color != 0 {
-                    span = span.color(Color::hex(s.color));
-                }
-                span
-            })
-            .collect();
         let base = unsafe { base.as_ref() }
             .map(text_style_of)
             .unwrap_or_default();
-        c.core().rich_text_node(&spans, base);
+        with_spans(spans, span_count, |spans| {
+            c.core().rich_text_node(spans, base)
+        });
+    });
+}
+
+fn metrics_of(m: kui_core::TextMetrics) -> KuiTextMetrics {
+    KuiTextMetrics {
+        width: m.width,
+        height: m.height,
+        lines: m.lines,
+    }
+}
+
+/// Measures `text` in `style` the way layout would, without adding a node:
+/// unwrapped with `max_w <= 0`, else wrapped to `max_w` logical px. Logical
+/// px at the scale of the current or last frame (1 before any frame).
+/// `wrap` / `max_lines` / `ellipsis` in the style apply. Returns false only
+/// for a bad context or NULL `out`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_measure_text(
+    ptr: *mut KuiCtx,
+    text: KuiStr,
+    style: *const KuiTextStyle,
+    max_w: f32,
+    out: *mut KuiTextMetrics,
+) -> bool {
+    guard(false, || {
+        let (Some(c), Some(out)) = (unsafe { ctx(ptr) }, unsafe { out.as_mut() }) else {
+            return false;
+        };
+        let style = unsafe { style.as_ref() }
+            .map(text_style_of)
+            .unwrap_or_default();
+        let max_w = (max_w > 0.0).then_some(max_w);
+        *out = metrics_of(c.core().measure_text(&kstr(text), &style, max_w));
+        true
+    })
+}
+
+/// `kui_measure_text` for a rich-text paragraph.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_measure_rich_text(
+    ptr: *mut KuiCtx,
+    spans: *const KuiSpan,
+    span_count: usize,
+    base: *const KuiTextStyle,
+    max_w: f32,
+    out: *mut KuiTextMetrics,
+) -> bool {
+    guard(false, || {
+        let (Some(c), Some(out)) = (unsafe { ctx(ptr) }, unsafe { out.as_mut() }) else {
+            return false;
+        };
+        let base = unsafe { base.as_ref() }
+            .map(text_style_of)
+            .unwrap_or_default();
+        let max_w = (max_w > 0.0).then_some(max_w);
+        match with_spans(spans, span_count, |spans| {
+            c.core().measure_rich_text(spans, &base, max_w)
+        }) {
+            Some(m) => {
+                *out = metrics_of(m);
+                true
+            }
+            None => {
+                *out = KuiTextMetrics::default();
+                true
+            }
+        }
+    })
+}
+
+/// Drains the warnings the core raised since the last call (silent
+/// misconfigurations it noticed while finishing frames; each once) into
+/// `out`, up to `cap`; returns the count. The strings stay valid until the
+/// next call on this context. Standalone contexts start with the checks
+/// off (`kui_set_diagnostics` turns them on); kui_run prints them to
+/// stderr itself in debug builds.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_take_warnings(ptr: *mut KuiCtx, out: *mut KuiWarning, cap: usize) -> usize {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        if out.is_null() || cap == 0 {
+            return 0;
+        }
+        c.last_warnings = c.core().take_warnings();
+        let n = c.last_warnings.len().min(cap);
+        for (i, w) in c.last_warnings.iter().take(n).enumerate() {
+            let s = |s: &str| KuiStr {
+                ptr: s.as_ptr(),
+                len: s.len(),
+            };
+            unsafe {
+                out.add(i).write(KuiWarning {
+                    code: s(w.code),
+                    key: w.key.0,
+                    message: s(&w.message),
+                })
+            };
+        }
+        n
+    })
+}
+
+/// Turns the diagnostic checks behind kui_take_warnings on or off (off by
+/// default for a standalone context: a development build opts in).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_diagnostics(ptr: *mut KuiCtx, on: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_diagnostics(on);
+        }
     });
 }
 
@@ -1753,6 +1918,7 @@ impl kui::App for CApp {
             events: Vec::new(),
             last_payload: None,
             last_edit_text: None,
+            last_warnings: Vec::new(),
         };
         (self.view)(self.user, &mut shim);
     }
@@ -1835,7 +2001,7 @@ mod schema_parity {
                 Kind::Flag => Parsed::Flag,
                 Kind::Enum(_) => Parsed::Enum(1),
                 Kind::Sizing => Parsed::Sizing(Sizing::Percent(0.5)),
-                Kind::Msg => Parsed::Msg(Value::Int(7)),
+                Kind::Msg | Kind::Tag => Parsed::Msg(Value::Int(7)),
                 Kind::Str => Parsed::Str("name".into()),
                 Kind::Resource => Parsed::Resource(7),
                 Kind::Keyframes => Parsed::Keyframes(vec![Keyframe::default().at(0.5).radius(F)]),
@@ -1843,6 +2009,7 @@ mod schema_parity {
             };
             let mut expected = PropsOut::new();
             apply(def, sample, &mut expected).unwrap();
+            let layout_tag = KuiValue(Value::Int(7));
 
             let stops = [KuiKeyframe {
                 set: KUI_KF_AT | KUI_KF_RADIUS,
@@ -1900,6 +2067,7 @@ mod schema_parity {
                 "onDrag" => drag = msg(Value::Int(7)),
                 "onKey" => key = msg(Value::Int(7)),
                 "onHover" => hover = msg(Value::Int(7)),
+                "onLayout" => s.on_layout = &layout_tag,
                 "hoverBg" => s.hover_bg = C,
                 "pressedBg" => s.pressed_bg = C,
                 "hoverGroup" => s.hover_group = name,
@@ -2011,6 +2179,7 @@ mod schema_parity {
             enter: unsafe { std::mem::zeroed() },
             click_sound: 0,
             hover_sound: 0,
+            on_layout: std::ptr::null(),
         };
         let expected = NodeSpec::row()
             .width(Sizing::Grow(2.0))
@@ -2211,5 +2380,94 @@ mod audio_headless {
     const KUI_STR_TEST: KuiStr = KuiStr {
         ptr: "music".as_ptr(),
         len: 5,
+    };
+}
+
+#[cfg(test)]
+mod queries_headless {
+    use super::*;
+
+    fn ks(s: &str) -> KuiStr {
+        KuiStr {
+            ptr: s.as_ptr(),
+            len: s.len(),
+        }
+    }
+
+    /// Measurement, layout events and warnings all reach C: the measured
+    /// width of a label is what layout gives its node, a `layout` event
+    /// polls out with the node's rect, and a lone weighted grow child
+    /// warns once.
+    #[test]
+    fn measure_layout_and_warnings_flow_through_the_c_api() {
+        let ctx = kui_ctx_new();
+        // Standalone contexts start quiet; a host opts in.
+        kui_set_diagnostics(ctx, true);
+        let style: KuiTextStyle = unsafe { std::mem::zeroed() };
+        let mut m = KuiTextMetrics::default();
+        assert!(kui_measure_text(ctx, ks("hello"), &style, 0.0, &mut m));
+        assert!(m.width > 0.0 && m.height > 0.0 && m.lines == 1);
+        let mut wrapped = KuiTextMetrics::default();
+        assert!(kui_measure_text(
+            ctx,
+            ks("hello world again"),
+            &style,
+            m.width,
+            &mut wrapped
+        ));
+        assert!(
+            wrapped.lines > 1,
+            "wraps at the width of one word: {}",
+            wrapped.lines
+        );
+
+        let tag = KuiValue(Value::str("panel"));
+        let mut spec: KuiSpec = unsafe { std::mem::zeroed() };
+        spec.width = KuiSizing { tag: 1, value: 2.0 };
+        spec.height = KuiSizing {
+            tag: 2,
+            value: 20.0,
+        };
+        spec.on_layout = &tag;
+        kui_frame_begin(ctx, 300.0, 100.0, 1.0);
+        let mut root: KuiSpec = unsafe { std::mem::zeroed() };
+        root.dir = 1;
+        root.width = KuiSizing { tag: 1, value: 1.0 };
+        kui_root(ctx, &root);
+        let key = kui_open_keyed(ctx, ks("panel"), &spec, NONE);
+        kui_close(ctx);
+        kui_frame_finish(ctx);
+
+        let mut ev = KuiEvent {
+            origin: 0,
+            key: 0,
+            payload: std::ptr::null(),
+        };
+        assert!(kui_poll_event(ctx, &mut ev));
+        assert_eq!(ev.key, key);
+        let payload = unsafe { &*ev.payload };
+        assert_eq!(
+            payload.0.get("kind").and_then(Value::as_str),
+            Some("layout")
+        );
+        assert_eq!(payload.0.get("w").and_then(Value::as_float), Some(300.0));
+        assert_eq!(payload.0.get("tag").and_then(Value::as_str), Some("panel"));
+
+        let mut out = [KuiWarning {
+            code: KUI_EMPTY,
+            key: 0,
+            message: KUI_EMPTY,
+        }; 4];
+        let n = kui_take_warnings(ctx, out.as_mut_ptr(), out.len());
+        assert_eq!(n, 1, "the lone grow-2 child warns");
+        assert_eq!(&*kstr(out[0].code), "grow-weight-ignored");
+        assert_eq!(out[0].key, key);
+        assert!(kstr(out[0].message).contains("only grow child"));
+        kui_ctx_free(ctx);
+    }
+
+    const KUI_EMPTY: KuiStr = KuiStr {
+        ptr: std::ptr::null(),
+        len: 0,
     };
 }

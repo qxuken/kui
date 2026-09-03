@@ -232,7 +232,7 @@ fn read_props(r: &mut Reader<'_>) -> Result<PropsOut> {
                         let (m, v) = (r.u()?, r.f()?);
                         Parsed::Sizing(sizing_num(m, v))
                     }
-                    Kind::Msg => Parsed::Msg(payload(r.req_str()?)?),
+                    Kind::Msg | Kind::Tag => Parsed::Msg(payload(r.req_str()?)?),
                     Kind::Str => Parsed::Str(r.req_str()?.to_string()),
                     Kind::Resource => Parsed::Resource(crate::parse_u64(r.req_str()?)?),
                     // Carried as JSON like a message; the core reads the stops.
@@ -485,7 +485,7 @@ mod tests {
                     stream.extend([3.0, 0.5]);
                     Parsed::Sizing(Sizing::Percent(0.5))
                 }
-                Kind::Msg => {
+                Kind::Msg | Kind::Tag => {
                     stream.extend([0.0, 1.0]);
                     Parsed::Msg(Value::Int(7))
                 }

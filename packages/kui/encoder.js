@@ -130,7 +130,14 @@ export function createEncoder(P) {
     let overflow = 0;
     for (const k in p) {
       const v = p[k];
-      if (v == null) continue;
+      if (v === undefined) continue;
+      if (v === null) {
+        // A null tag (onKey / onDrag / onHover / onLayout) still declares
+        // the behaviour, just with no `tag` on its events; every other
+        // null is absent, as on the JSON path.
+        const def = PR[k];
+        if (def === undefined || def.kind !== 'tag') continue;
+      }
       switch (k) {
         case 'dir':
         case 'size':
@@ -226,6 +233,7 @@ export function createEncoder(P) {
               sizing(v);
               break;
             case 'msg':
+            case 'tag':
             case 'keyframes':
             case 'enter':
               strRef(JSON.stringify(v));

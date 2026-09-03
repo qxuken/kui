@@ -17,6 +17,39 @@ bundled Lua extension support is table-to-node conversion, not FFI gymnastics.
 | `kui-ffi` | C API (cdylib/staticlib + [include/kui.h](crates/kui-ffi/include/kui.h)): flat builder calls, opaque `KuiValue` payloads, `repr(C)` draw data, windowed runner via callbacks |
 | `kui-node` | Node.js addon (napi-rs) + the [`packages/kui`](packages/kui) npm package: JSX views (custom jsx-runtime, no React) lowered into the IR in one call per frame, Elm-style messages as data |
 
+## Testing without a window
+
+The core owns no clock, no window and no device: a frame is a function of
+the tree, the input so far and the time the driver hands in, and everything
+the frame produces — the display list, the events, the audio commands, the
+warnings — comes back as data. So the same app runs headless, and a test
+drives it the way a user would and asserts on what the core produced,
+instead of testing the model and hoping about the view:
+
+```ts
+// A sketch of a real test against a volume slider (Node, node:test).
+const app = createApp({ init, update, view }, { width: 320, height: 240 });
+app.render();
+app.ctx.setTime(0);                                   // the clock is yours
+const knob = decodeQuads(app.ctx.quads()).find((q) => q.kind === 0 && q.radius === 8);
+app.ctx.cursor(knob.x + 4, knob.y + 4);               // a drag is just input
+app.ctx.mouse(true);
+app.ctx.cursor(knob.x + 64, knob.y + 4);
+app.ctx.mouse(false);
+app.settle();                                         // events → update → render
+assert.equal(app.model.volume, 0.5);
+assert.deepEqual(app.ctx.audioCommands().map((c) => c.kind), ['setVolume']);
+assert.ok(decodeQuads(app.ctx.quads()).every((q) => q.x + q.w <= 320), 'nothing overflows');
+assert.deepEqual(app.warnings, []);                   // nothing misconfigured
+```
+
+A button inside a drag strip still takes its own click, a compact tier fits
+its window with nothing overflowing, the chime plays when it should: all of
+it is assertable because all of it is data the core emits rather than a side
+effect it performs. Rust tests drive `Core` the same way
+([crates/kui-core/tests](crates/kui-core/tests)), and C runs the same API
+headless (`./examples/c/counter --headless`).
+
 ## Examples
 
 ```bash
@@ -250,6 +283,42 @@ payload shapes and the resource APIs. It is generated from the schema
   frame moves a node under a still cursor (`Core::take_pending_events`,
   routed by every driver after a frame). `is_hovered` / `is_pressed` stay
   as queries for Rust and Lua views and are mirrored on `KuiWindow`.
+- **Measurement and layout are data, in that order.** "Declare it, the
+  core resolves it" is a strategy of enumeration, and the first behaviour
+  nobody enumerated needs a way out that is not an imperative hook. The
+  way out is the numbers layout already computes, handed back as data.
+  Before layout, `measure_text` (`ui.measure_text(s, &style, max_w)`,
+  `ctx.measureText(content, style, maxWidth)` in Node, `env.measure_text`
+  in Lua, `kui_measure_text` in C) answers what a string will take —
+  width, height, lines — with the same shaping the node will use, wrapped
+  to a width when asked, so a breakpoint table is arithmetic on the labels
+  rather than constants found by screenshot, and it follows the font. After
+  layout, a node that declares `on_layout` (`onLayout` in JSX, `on_layout`
+  in Lua, `KuiSpec.on_layout` in C) gets its rect back as
+  `{kind="layout", x, y, w, h, parent, tag}` on its first frame and
+  whenever it changes — never on a frame that left it alone, so storing it
+  in the model and redrawing does not loop; a `slide` reports every frame
+  it moves. Together they cover the case that has no declared prop yet:
+  a popover under a word is the measured prefix as a float offset, a
+  minimap is the layout events of the panes. Line and glyph boxes inside a
+  paragraph are the next payload on this road, not a different road.
+- **Diagnostics are data.** The failures that used to be silent — a
+  `Grow(2)` that is the only grow child (or grows across the parent's main
+  axis) and so has no weight to split, a `transition` on an auto-keyed child
+  whose siblings changed count so it snapped, two nodes on one key — are
+  `Warning { code, key, message }`s the core raises while finishing a
+  frame, each distinct (code, node) once (the checks walk the tree, so
+  they run on the first frames and every 16th after — a misconfiguration
+  persists, so it surfaces within that, at no steady-state cost).
+  `Core::take_warnings` drains them;
+  the windowed runners print them, `createApp` collects them on
+  `app.warnings`, C drains `kui_take_warnings`, and a test asserts the list
+  is empty. They are a development aid, so the drivers decide by build: the
+  Rust runner runs them in debug builds only (`Launcher::diagnostics`
+  overrides), the Node loops unless `NODE_ENV=production`, a standalone C
+  context not until `kui_set_diagnostics`; a bare `Core` has them on, since
+  a headless test is development by definition. Correct behaviour that
+  looks like a bug gets a sentence instead of a regression report.
 - **Corners are four radii.** `VisualStyle::radius` is `[tl, tr, br, bl]`:
   `.radius(r)` rounds all four, `.radius_tl(r)` / `.radius_top(r)` / ...
   override some (later wins, like CSS shorthand then longhand; JSX
@@ -361,8 +430,11 @@ Glyph emission is viewport-culled (a huge document emits only the visible
 screenful of quads) and single-line reshapes go through cosmic-text's
 shape-run cache.
 
-Layout solver, atlas packer, key scheme, event dispatch, editing, and the Lua
-binding are covered by tests (`cargo test --workspace`).
+Layout solver, atlas packer, key scheme, event dispatch, editing,
+measurement, layout events, diagnostics and the Lua binding are covered by
+tests (`cargo test --workspace`); `npm test` in `packages/kui` covers the
+three Node transports against each other. [CHANGELOG.md](CHANGELOG.md)
+lists per release what was added and, separately, what an app can delete.
 
 ## Releases
 
@@ -407,6 +479,9 @@ nothing but that Linux runner: no Mac or Windows machine is involved.
 
 v0 scope: no z-index (floats stack in tree order). Transitions cover sizing, colors, radius and
 position (`slide`, `enter`); a removed node vanishes at once (there is no exit animation yet).
+Layout queries stop at the node: `measure_text` and `on_layout` give whole-string and whole-node
+rects, not the boxes of lines or glyphs inside a paragraph. No accessibility layer yet; whether
+the tree should carry semantics is a decision still to be made, not a default.
 Audio covers one-shots, loops, volume, pause and a finished-playback event; sounds decode fully
 into memory, and synthesis, effects, positional audio and disk streaming are out of scope.
 Editing: caret blink, double/triple-click

@@ -214,7 +214,31 @@ typedef struct KuiSpec {
      * the pointer enters it; 0 = none. Either makes the node hover-tracked. */
     uint64_t click_sound;
     uint64_t hover_sound;
+    /* Layout tag (NULL = none): the rect layout gave the node arrives as
+     * {kind="layout", x, y, w, h, parent={x,y,w,h}, tag} (logical px,
+     * viewport coords) on its first frame and whenever it changes — never
+     * on a frame that left it alone. Borrowed: cloned while the node opens,
+     * so you keep ownership; kui_value_null() asks for untagged events.
+     * Needs a stable key (kui_open_keyed). */
+    const KuiValue *on_layout;
 } KuiSpec;
+
+/* What text measures (kui_measure_text): logical px at the scale of the
+ * current or last frame; `lines` after wrapping. */
+typedef struct KuiTextMetrics {
+    float width, height;
+    uint32_t lines;
+} KuiTextMetrics;
+
+/* A silent misconfiguration the core noticed (kui_take_warnings). `code`
+ * is stable — "grow-weight-ignored", "transition-auto-key",
+ * "duplicate-key" — `key` the node it is about, `message` for people.
+ * Strings are borrowed until the next kui_take_warnings on the context. */
+typedef struct KuiWarning {
+    KuiStr code;
+    uint64_t key;
+    KuiStr message;
+} KuiWarning;
 
 /* -- Audio ----------------------------------------------------------------
  * Sounds are resources, playback is commands: kui_run plays them through
@@ -377,7 +401,9 @@ uint64_t kui_open_draggable(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
  * {kind="key", code, ctrl, alt, shift, super, text, repeat, tag}. A non-NULL
  * on_hover makes the pointer entering/leaving emit
  * {kind="hover", phase="enter"|"leave", tag} — for hover-dependent layout;
- * plain hover colors belong in KuiSpec.hover_bg / pressed_bg. */
+ * plain hover colors belong in KuiSpec.hover_bg / pressed_bg. A tag of
+ * kui_value_null() keeps the behaviour and leaves `tag` off the events.
+ * Layout events come from KuiSpec.on_layout, not an argument. */
 uint64_t kui_open_with(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
                        KuiValue *on_click, KuiValue *on_drag, KuiValue *on_key,
                        KuiValue *on_hover);
@@ -440,6 +466,25 @@ void kui_rich_text(KuiCtx *ctx, const KuiSpan *spans, size_t span_count,
 uint64_t kui_child_key(KuiCtx *ctx, KuiStr label);
 bool kui_is_hovered(KuiCtx *ctx, uint64_t key);
 bool kui_is_pressed(KuiCtx *ctx, uint64_t key);
+/* -- Measurement ---------------------------------------------------------- */
+/* Measures text the way layout would, without adding a node: unwrapped with
+ * max_w <= 0, else wrapped to max_w logical px; the style's wrap /
+ * max_lines / ellipsis apply. Works before the first frame (at scale 1).
+ * Size a column to its widest label, or pick the tier that fits, from these
+ * numbers instead of constants. */
+bool kui_measure_text(KuiCtx *ctx, KuiStr text, const KuiTextStyle *style,
+                      float max_w, KuiTextMetrics *out);
+bool kui_measure_rich_text(KuiCtx *ctx, const KuiSpan *spans, size_t span_count,
+                           const KuiTextStyle *base, float max_w, KuiTextMetrics *out);
+/* -- Diagnostics ---------------------------------------------------------- */
+/* Drains the warnings the core raised since the last call into out (up to
+ * cap; the rest wait), returns the count. Each distinct (code, node) pair
+ * is raised once. A host driving kui_frame_* drains them here, a test
+ * asserts on them; kui_run prints them to stderr by itself in debug builds. */
+size_t kui_take_warnings(KuiCtx *ctx, KuiWarning *out, size_t cap);
+/* A standalone context starts with the checks OFF — a development build
+ * turns them on; off costs nothing per frame. */
+void kui_set_diagnostics(KuiCtx *ctx, bool on);
 /* Styled button with hover/press states; payload consumed (may be NULL). */
 void kui_button(KuiCtx *ctx, KuiStr label, KuiValue *payload);
 /* -- Widgets (the same kui_core::widgets every frontend uses) ------------ */

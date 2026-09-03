@@ -4,9 +4,12 @@
 //! here (not in a borrowing wrapper) is what lets flat C bindings drive a
 //! frame through one opaque pointer; the Rust `Ui` is a thin safe façade.
 
+use rustc_hash::FxHashMap;
+
 use crate::anim::{AnimStore, Slot, Track};
 use crate::atlas::GlyphAtlas;
 use crate::color::Color;
+use crate::diag::{Diagnostics, Warning};
 use crate::display::{DisplayList, NO_CLIP, Quad, QuadKind};
 use crate::edit::{EditOptions, EditStore};
 use crate::env::Env;
@@ -21,7 +24,7 @@ use crate::resources::Resources;
 use crate::scroll::ScrollStore;
 use crate::spec::{NodeSpec, Sizing, TextStyle};
 use crate::stats::FrameStats;
-use crate::text::{Span, TextSystem};
+use crate::text::{Span, TextMetrics, TextSystem};
 use crate::tree::{NIL, NodeContent, OriginId, Tree};
 use crate::ui::Ui;
 use crate::value::Value;
@@ -77,6 +80,9 @@ pub struct Core {
     /// Whether any node this frame eases its position (`NodeSpec::slide`,
     /// or an `enter` with an offset).
     any_slide: bool,
+    /// Whether any node this frame declared `on_layout` — lets the rect
+    /// report skip the tree walk for the common case.
+    any_layout: bool,
     /// A view asked for one more frame (`request_frame`); cleared by
     /// `begin_frame`, reported through `animating`.
     frame_requested: bool,
@@ -90,6 +96,14 @@ pub struct Core {
     /// Whether any frame has begun yet: the first one establishes the
     /// viewport instead of resizing it.
     framed: bool,
+    /// Frames begun so far; stamps the per-key stores below.
+    frame_no: u64,
+    /// The rect last reported for each `on_layout` node and the frame it
+    /// was seen: a different rect, or a node not seen last frame, posts a
+    /// `layout` event (see `emit_layout_events`).
+    layouts: FxHashMap<Key, (Rect, u64)>,
+    /// Silent-misconfiguration detection; see `diag`.
+    diag: Diagnostics,
 }
 
 /// A node's keyframes flattened per slot for `ease_spec`, built once per
@@ -161,11 +175,67 @@ impl Core {
             in_float: Vec::new(),
             any_float: false,
             any_slide: false,
+            any_layout: false,
             frame_requested: false,
             ime_rect: None,
             pending: Vec::new(),
             framed: false,
+            frame_no: 0,
+            layouts: FxHashMap::default(),
+            diag: Diagnostics::default(),
         }
+    }
+
+    // -- Measurement ----------------------------------------------------
+    // The layout engine measures text every frame; these hand the same
+    // numbers to the view, so it never re-derives them by hand.
+
+    /// Measures `content` in `style` without adding a node: its unwrapped
+    /// size, or with `max_w` (logical px) its size once wrapped to that
+    /// width — what layout would give a text node with that content and
+    /// style, `wrap` / `max_lines` / `ellipsis` included. Logical px at
+    /// the scale of the current or last frame (1 before any frame).
+    /// Shapes through the text cache, so measuring a string and then
+    /// drawing it shapes once.
+    pub fn measure_text(
+        &mut self,
+        content: &str,
+        style: &TextStyle,
+        max_w: Option<f32>,
+    ) -> TextMetrics {
+        self.text.measure(content, style, &self.resources, max_w)
+    }
+
+    /// `measure_text` for a rich-text paragraph.
+    pub fn measure_rich_text(
+        &mut self,
+        spans: &[Span<'_>],
+        base: &TextStyle,
+        max_w: Option<f32>,
+    ) -> TextMetrics {
+        self.text.measure_rich(spans, base, &self.resources, max_w)
+    }
+
+    // -- Diagnostics ----------------------------------------------------
+
+    /// Drains the warnings raised since the last drain (see [`crate::diag`]):
+    /// silent misconfigurations the core noticed while finishing frames,
+    /// each distinct (code, node) pair once. Windowed runners print them;
+    /// headless tests assert on them.
+    pub fn take_warnings(&mut self) -> Vec<Warning> {
+        self.diag.take()
+    }
+
+    /// Turns the diagnostic checks on or off. A bare `Core` has them on;
+    /// drivers set them for the build they are in (the runner: debug on,
+    /// release off; Node loops: off under `NODE_ENV=production`; a
+    /// standalone C context: off until asked).
+    pub fn set_diagnostics(&mut self, on: bool) {
+        self.diag.enabled = on;
+    }
+
+    pub fn diagnostics(&self) -> bool {
+        self.diag.enabled
     }
 
     /// Feeds one input event; returns any UI events it resolved to,
@@ -846,6 +916,11 @@ impl Core {
             });
         }
         self.framed = true;
+        self.frame_no += 1;
+        if self.frame_no.is_multiple_of(240) {
+            let cutoff = self.frame_no.saturating_sub(300);
+            self.layouts.retain(|_, (_, seen)| *seen >= cutoff);
+        }
         self.viewport = viewport;
         self.scale = scale;
         self.window_title = None;
@@ -870,6 +945,7 @@ impl Core {
         self.any_clip = false;
         self.any_float = false;
         self.any_slide = false;
+        self.any_layout = false;
         self.frame_requested = false;
     }
 
@@ -896,6 +972,9 @@ impl Core {
     pub fn configure_root(&mut self, mut spec: NodeSpec) {
         if !self.tree.is_empty() {
             self.ease_spec(Key::ROOT, &mut spec);
+            if spec.on_layout.is_some() {
+                self.any_layout = true;
+            }
             self.tree.specs[0] = spec;
         }
     }
@@ -1062,6 +1141,9 @@ impl Core {
         if spec.layout.float.is_some() {
             self.any_float = true;
         }
+        if spec.on_layout.is_some() {
+            self.any_layout = true;
+        }
         let parent = self.current();
         let idx = self
             .tree
@@ -1108,6 +1190,9 @@ impl Core {
         }
         let key = self.child_key(label);
         self.ease_spec(key, &mut spec);
+        if spec.on_layout.is_some() {
+            self.any_layout = true;
+        }
         self.edit.declare(
             key,
             initial,
@@ -1134,6 +1219,9 @@ impl Core {
         let key = self.auto_key();
         self.resolve_hover_style(key, &mut spec);
         self.ease_spec(key, &mut spec);
+        if spec.on_layout.is_some() {
+            self.any_layout = true;
+        }
         let parent = self.current();
         self.tree
             .push(parent, key, self.origin, spec, NodeContent::Image(id));
@@ -1186,6 +1274,12 @@ impl Core {
         if self.any_slide {
             self.ease_positions();
         }
+        // Positions are final: report the rects views asked about, and
+        // look for the misconfigurations that would otherwise fail silently.
+        if self.any_layout {
+            self.emit_layout_events();
+        }
+        self.diag.check(&self.tree, self.frame_no);
 
         let scale = self.scale;
         let mut hits: Vec<HitRegion> = self.interaction.take_hit_buffer();
@@ -1397,6 +1491,61 @@ impl Core {
                 p.x += d.x;
                 p.y += d.y;
             }
+        }
+    }
+
+    /// After layout: every `on_layout` node whose rect differs from the one
+    /// last reported for its key — or that was not seen last frame — posts
+    /// `{kind="layout", x, y, w, h, parent, tag}`, pending like a `resize`.
+    /// A frame that leaves a node where it was posts nothing, so a view
+    /// that stores the rect in its model and redraws does not loop.
+    fn emit_layout_events(&mut self) {
+        let frame_no = self.frame_no;
+        for i in 0..self.tree.len() {
+            let Some(tag) = &self.tree.specs[i].on_layout else {
+                continue;
+            };
+            let key = self.tree.keys[i];
+            let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
+            let changed = match self.layouts.get(&key) {
+                Some((last, seen)) if *seen + 1 == frame_no => *last != rect,
+                _ => true,
+            };
+            self.layouts.insert(key, (rect, frame_no));
+            if !changed {
+                continue;
+            }
+            let parent = self.tree.parent[i];
+            let parent_rect = if parent == NIL {
+                Rect::new(0.0, 0.0, self.viewport.w, self.viewport.h)
+            } else {
+                let p = parent as usize;
+                Rect::from_pos_size(self.tree.pos[p], self.tree.size[p])
+            };
+            let rect_value = |r: Rect| {
+                Value::map([
+                    ("x", Value::Float(r.x as f64)),
+                    ("y", Value::Float(r.y as f64)),
+                    ("w", Value::Float(r.w as f64)),
+                    ("h", Value::Float(r.h as f64)),
+                ])
+            };
+            let mut entries = vec![
+                ("kind".to_string(), Value::str("layout")),
+                ("x".to_string(), Value::Float(rect.x as f64)),
+                ("y".to_string(), Value::Float(rect.y as f64)),
+                ("w".to_string(), Value::Float(rect.w as f64)),
+                ("h".to_string(), Value::Float(rect.h as f64)),
+                ("parent".to_string(), rect_value(parent_rect)),
+            ];
+            if *tag != Value::Null {
+                entries.push(("tag".to_string(), tag.clone()));
+            }
+            self.pending.push(UiEvent {
+                origin: self.tree.origins[i],
+                key,
+                payload: Value::Map(entries),
+            });
         }
     }
 

@@ -61,6 +61,7 @@ pub fn app(title: &str) -> Launcher {
         max_size: None,
         extensions: Vec::new(),
         text_aa: TextAa::Auto,
+        diagnostics: None,
     }
 }
 
@@ -75,6 +76,9 @@ pub struct Launcher {
     max_size: Option<(f64, f64)>,
     extensions: Vec<Box<dyn Extension>>,
     text_aa: TextAa,
+    /// Whether the core's diagnostics run (see `kui_core::diag`); None =
+    /// on in debug builds, off in release.
+    diagnostics: Option<bool>,
 }
 
 impl Launcher {
@@ -86,6 +90,15 @@ impl Launcher {
     /// Glyph antialiasing; see [`TextAa`].
     pub fn text_aa(mut self, aa: TextAa) -> Self {
         self.text_aa = aa;
+        self
+    }
+
+    /// Whether the core looks for silent misconfigurations and the runner
+    /// prints them to stderr (see `kui_core::diag`). Default: on in debug
+    /// builds, off in release — a shipped app stays quiet, a development
+    /// build says why the grow weight did nothing.
+    pub fn diagnostics(mut self, on: bool) -> Self {
+        self.diagnostics = Some(on);
         self
     }
 
@@ -131,6 +144,10 @@ impl Launcher {
     }
 
     fn shell<A: App>(self, app: A) -> Shell<A> {
+        // Diagnostics are a development aid: on in debug builds unless the
+        // launcher says otherwise, so a shipped app pays and prints nothing.
+        let mut core = Core::new();
+        core.set_diagnostics(self.diagnostics.unwrap_or(cfg!(debug_assertions)));
         Shell {
             title: self.title.clone(),
             applied_title: self.title,
@@ -141,7 +158,7 @@ impl Launcher {
             text_aa: self.text_aa,
             app,
             extensions: self.extensions,
-            core: Core::new(),
+            core,
             epoch: std::time::Instant::now(),
             window: None,
             renderer: None,
@@ -733,6 +750,17 @@ impl<A: App> Shell<A> {
         ui.finish();
         let layout_ms = t_layout.elapsed().as_secs_f32() * 1e3;
 
+        // Silent misconfigurations the core noticed (a grow weight with
+        // nothing to split against, a transition on a positional key, two
+        // nodes on one key): each once, to stderr, so they stop looking
+        // like "the feature is broken".
+        for w in self.core.take_warnings() {
+            eprintln!(
+                "kui: warning [{}] node {:016x}: {}",
+                w.code, w.key.0, w.message
+            );
+        }
+
         // Mirror this frame's hit regions into the WM_NCHITTEST answerer.
         #[cfg(target_os = "windows")]
         if let Some(nc) = &self.nc {
@@ -1072,6 +1100,16 @@ mod tests {
             clamp_size((800.0, 600.0), Some((500.0, 500.0)), Some((200.0, 200.0))),
             (500.0, 500.0)
         );
+    }
+
+    #[test]
+    fn diagnostics_follow_the_build_unless_told_otherwise() {
+        assert_eq!(
+            app("t").shell(Empty).core.diagnostics(),
+            cfg!(debug_assertions)
+        );
+        assert!(app("t").diagnostics(true).shell(Empty).core.diagnostics());
+        assert!(!app("t").diagnostics(false).shell(Empty).core.diagnostics());
     }
 
     #[test]

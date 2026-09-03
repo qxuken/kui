@@ -32,9 +32,10 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `minHeight` | `min_height` | `min_height` | number | Lower height clamp (logical px). |
 | `minWidth` | `min_width` | `min_width` | number | Lower width clamp (logical px). |
 | `onClick` | `on_click` | `on_click` argument of `kui_open` / `kui_open_with` | message (any plain data) | Message emitted when clicked (data, not a callback). |
-| `onDrag` | `on_drag` | `on_drag` argument of `kui_open_draggable` / `kui_open_with` | message (any plain data) | Drag tag: emits {kind:"drag", phase, x, y, dx, dy, parent, tag} events. |
-| `onHover` | `on_hover` | `on_hover` argument of `kui_open_with` | message (any plain data) | Hover tag: the pointer entering/leaving emits {kind:"hover", phase:"enter"\|"leave", tag} events. |
-| `onKey` | `on_key` | `on_key` argument of `kui_open_with` | message (any plain data) | Key-sink tag: with key focus held, presses arrive as {kind:"key", ...} events. |
+| `onDrag` | `on_drag` | `on_drag` argument of `kui_open_draggable` / `kui_open_with` | tag (a message merged into the event under `tag`, or `null` for none) | Drag tag: emits {kind:"drag", phase, x, y, dx, dy, parent, tag} events. |
+| `onHover` | `on_hover` | `on_hover` argument of `kui_open_with` | tag (a message merged into the event under `tag`, or `null` for none) | Hover tag: the pointer entering/leaving emits {kind:"hover", phase:"enter"\|"leave", tag} events. |
+| `onKey` | `on_key` | `on_key` argument of `kui_open_with` | tag (a message merged into the event under `tag`, or `null` for none) | Key-sink tag: with key focus held, presses arrive as {kind:"key", ...} events. |
+| `onLayout` | `on_layout` | `on_layout` (a borrowed `KuiValue*`, cloned while the node opens) | tag (a message merged into the event under `tag`, or `null` for none) | Layout tag: the node's laid-out rect arrives as {kind:"layout", x, y, w, h, parent, tag} on its first frame and whenever it changes (needs a stable key). |
 | `pressedBg` | `pressed_bg` | `pressed_bg` | color (`#hex` or `0xRRGGBBAA`) | Background while pressed (or while its hoverGroup is); implies hover tracking. |
 | `radius` | `radius` | `radius` | number | Corner radius for all four corners (logical px); the per-corner props override it when listed after it. |
 | `radiusBL` | `radius_bl` | `radius_bl` with `per_corner` | number | Bottom-left corner radius (logical px). |
@@ -101,6 +102,7 @@ Node, `on_event(ev)` in Lua (payload fields plus `node_key`), and
 | drag | `{ kind: "drag", phase: "start" \| "move" \| "end", x, y, dx, dy, parent: { x, y, w, h }, tag }` | A pointer-captured drag on an `onDrag` node; `parent` is the container rect, so fractions need no geometry query. |
 | key | `{ kind: "key", code, shift, ctrl, alt, super, text, repeat, tag }` | A key press on the focused `onKey` sink; `code` is a character or a name (`"left"`, `"f5"`). |
 | hover | `{ kind: "hover", phase: "enter" \| "leave", tag }` | The pointer entered or left an `onHover` node — also when a new frame moved it under a still cursor. |
+| layout | `{ kind: "layout", x, y, w, h, parent: { x, y, w, h }, tag }` | The rect layout gave an `onLayout` node (logical px, viewport coords, after scrolling and easing): on its first frame and whenever it changes, never on a frame that left it alone. |
 | resize | `{ kind: "resize", width, height, scale }` | The viewport changed size or DPI (logical px, delivered to the host on the root); `KuiWindow.size()` queries the same numbers. |
 | modifiers | `{ kind: "modifiers", shift, ctrl, alt, super }` | The physical modifier state changed (delivered to the host on the root). |
 | changed / submit | `{ kind: "changed" }` / `{ kind: "submit" }`, with the editor's key on the event | An editor's text changed / Enter in a single-line editor. |

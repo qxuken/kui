@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { Ctx, protocol } from './index.js';
+import { Ctx, createApp, decodeQuads, protocol } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
@@ -40,6 +40,7 @@ const SAMPLE = {
   flag: true,
   sizing: '50%',
   msg: { kind: 'm', n: 1, list: [1, 'two', null] },
+  tag: { kind: 't' },
   str: 'group-a',
   resource: '0000000000000007',
   keyframes: [{ width: { grow: 0 }, bg: '#112233' }, { at: 0.75, width: 'grow', height: '50%', radius: 9 }],
@@ -150,6 +151,113 @@ test('errors are the same on every transport', () => {
       assert.throws(() => run(transport, build), `${label} should throw on ${transport}`);
     }
   }
+});
+
+// A null tag declares the behaviour (here: a key sink) and leaves `tag` off
+// the event — the same on every transport, so a typed app needs no inert
+// message for a sink that only needs the node key.
+test('a null tag declares the behaviour without a tag on the event', () => {
+  const build = () => box({}, [box({ onKey: null, keyFocus: true, width: 100, height: 50 }, [], 'sink')]);
+  const payloads = ['binary', 'json', 'object'].map((transport) => {
+    const { ctx } = run(transport, build);
+    ctx.keyDown('a');
+    const evs = ctx.pollEvents();
+    assert.equal(evs.length, 1, `${transport}: the sink got the key`);
+    return evs[0].payload;
+  });
+  for (const p of payloads) {
+    assert.equal(p.kind, 'key');
+    assert.equal(p.code, 'a');
+    assert.ok(!('tag' in p), 'no tag field');
+  }
+  assert.deepEqual(payloads[0], payloads[1]);
+  assert.deepEqual(payloads[0], payloads[2]);
+});
+
+// Measurement is a query on the same text stack layout uses.
+test('measureText answers what layout gives the text', () => {
+  const ctx = new Ctx();
+  const m = ctx.measureText('hello world', { size: 14 });
+  assert.ok(m.width > 0 && m.height > 0 && m.lines === 1, JSON.stringify(m));
+  // A fit-sized box with a background is exactly its text's size.
+  ctx.frame(320, 240, 1, box({}, [box({ bg: '#ffffff' }, [text('hello world', { size: 14 })])]));
+  const q = decodeQuads(ctx.quads()).find((q) => q.kind === 0);
+  assert.equal(q.w, m.width);
+  assert.equal(q.h, m.height);
+  const narrow = ctx.measureText('hello world again', { size: 14 }, m.width / 2);
+  assert.ok(narrow.lines > 1 && narrow.width < m.width, JSON.stringify(narrow));
+  const clamped = ctx.measureText('hello world again', { size: 14, ellipsis: true }, m.width / 2);
+  assert.equal(clamped.lines, 1);
+  const rich = ctx.measureText(['hello ', el('span', { bold: true }, ['world'])], { size: 14 });
+  assert.ok(rich.width > 0 && rich.lines === 1);
+});
+
+// Layout is data: an onLayout node reports its rect on first sight and on
+// change, identically on every transport.
+test('onLayout reports the rect once and again when it changes', () => {
+  const tree = (w) =>
+    box({ dir: 'row', width: 'grow', height: 'grow' }, [
+      box({ width: w, height: 'grow', onLayout: { kind: 'panel' } }, [], 'panel'),
+    ]);
+  for (const transport of ['binary', 'json', 'object']) {
+    const { ctx } = run(transport, () => tree(100));
+    const evs = ctx.pollEvents().filter((e) => e.payload.kind === 'layout');
+    assert.equal(evs.length, 1, `${transport}: one layout event`);
+    assert.deepEqual(evs[0].payload, {
+      kind: 'layout',
+      x: 0, y: 0, w: 100, h: 240,
+      parent: { x: 0, y: 0, w: 320, h: 240 },
+      tag: { kind: 'panel' },
+    });
+    ctx.frame(320, 240, 1, tree(100));
+    assert.equal(ctx.pollEvents().length, 0, `${transport}: same rect, silence`);
+    ctx.frame(320, 240, 1, tree(150));
+    const again = ctx.pollEvents();
+    assert.equal(again.length, 1);
+    assert.equal(again[0].payload.w, 150);
+  }
+});
+
+// Silent misconfigurations come back as data, once each.
+test('warnings report a lone weighted grow child once', () => {
+  const tree = box({ dir: 'row', width: 'grow', height: 'grow' }, [
+    box({ width: 50, height: 10 }),
+    box({ width: { grow: 2 }, height: 10 }, [], 'wide'),
+  ]);
+  const ctx = new Ctx();
+  ctx.frame(320, 240, 1, tree);
+  const ws = ctx.warnings();
+  assert.equal(ws.length, 1);
+  assert.equal(ws[0].code, 'grow-weight-ignored');
+  assert.match(ws[0].message, /only grow child/);
+  ctx.frame(320, 240, 1, tree);
+  assert.equal(ctx.warnings().length, 0, 'once');
+  const quiet = new Ctx();
+  quiet.setDiagnostics(false);
+  quiet.frame(320, 240, 1, tree);
+  assert.equal(quiet.warnings().length, 0);
+});
+
+test('createApp collects warnings on the app', () => {
+  const app = createApp(
+    {
+      init: 0,
+      update: () => undefined,
+      view: () => box({ dir: 'row' }, [box({ width: { grow: 2 }, height: 10 })]),
+    },
+    { warnings: false },
+  );
+  app.render();
+  app.render();
+  assert.equal(app.warnings.length, 1);
+  assert.equal(app.warnings[0].code, 'grow-weight-ignored');
+  // A production build runs no checks at all.
+  const shipped = createApp(
+    { init: 0, update: () => undefined, view: () => box({ dir: 'row' }, [box({ width: { grow: 2 }, height: 10 })]) },
+    { diagnostics: false },
+  );
+  shipped.render();
+  assert.equal(shipped.warnings.length, 0);
 });
 
 // Declarative hover styling: the core swaps hoverBg / pressedBg in while

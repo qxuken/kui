@@ -303,6 +303,14 @@ pub struct NodeSpec {
     /// `tag` — for hover-dependent *layout* (a close button that appears)
     /// where a color swap isn't enough. Implies hover tracking.
     pub on_hover: Option<Value>,
+    /// Layout events: the rect layout gave this node arrives as
+    /// `{kind="layout", x, y, w, h, parent: {x, y, w, h}, tag}` (logical px,
+    /// viewport coordinates, after scrolling and position easing) — on the
+    /// node's first frame and again whenever the rect changes, never on a
+    /// frame that left it alone. The view reads the numbers layout already
+    /// produced instead of re-deriving them; a transition that moves the
+    /// node reports every frame it moves. Needs a stable key across frames.
+    pub on_layout: Option<Value>,
     /// A registered sound played when this node is clicked (see
     /// [`crate::audio`]); the click itself still emits `on_click` if one is
     /// declared. Implies hover tracking.
@@ -570,6 +578,14 @@ impl NodeSpec {
     /// handler can match on; `Value::Null` if the node key is enough.
     pub fn on_drag(mut self, tag: impl Into<Value>) -> Self {
         self.on_drag = Some(tag.into());
+        self
+    }
+
+    /// Reports this node's laid-out rect as an event whenever it changes
+    /// (see the `on_layout` field). Pass a tag the handler can match on;
+    /// `Value::Null` if the node key is identification enough.
+    pub fn on_layout(mut self, tag: impl Into<Value>) -> Self {
+        self.on_layout = Some(tag.into());
         self
     }
 

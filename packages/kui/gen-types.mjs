@@ -15,6 +15,8 @@ const TS_BY_KIND = {
   flag: 'boolean',
   sizing: 'SizingProp',
   msg: 'AppMsg',
+  // A tag may be null: the behaviour without a tag on its events.
+  tag: 'AppMsg | null',
   str: 'string',
   resource: 'string',
   keyframes: 'KeyframeProp[]',
@@ -60,6 +62,7 @@ const TYPE_DOC = {
   flag: 'boolean',
   sizing: 'sizing (`number` \\| `"fit"` \\| `"grow"` \\| `"N%"`)',
   msg: 'message (any plain data)',
+  tag: 'tag (a message merged into the event under `tag`, or `null` for none)',
   str: 'string',
   resource: 'resource handle',
   keyframes: 'keyframe list (`[{ at?, width?, height?, bg?, radius? }, …]`)',

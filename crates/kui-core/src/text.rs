@@ -244,6 +244,18 @@ struct FrameText {
     color: Color,
 }
 
+/// What a piece of text measures, in logical px at the current scale —
+/// the same numbers layout uses for a text node with that content and
+/// style, so a view can size a column to its widest label or pick a tier
+/// that fits without hand-tuned magic numbers.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TextMetrics {
+    pub width: f32,
+    pub height: f32,
+    /// Lines after wrapping (capped by `max_lines`).
+    pub lines: u32,
+}
+
 pub struct TextSystem {
     font_system: FontSystem,
     raster: Raster,
@@ -347,8 +359,10 @@ impl TextSystem {
         h
     }
 
-    /// Registers a text for this frame, shaping (or reusing) its buffer.
-    pub fn add(&mut self, content: &str, style: &TextStyle, res: &Resources) -> TextId {
+    /// Shapes (or reuses) the buffer for `content` in `style`; returns its
+    /// cache key. Shared by text nodes and measurement, so measuring a
+    /// string and then drawing it shapes once.
+    fn intern(&mut self, content: &str, style: &TextStyle, res: &Resources) -> u64 {
         let key = Self::style_key(content, style, self.scale);
         let frame_no = self.frame_no;
         let scale = self.scale;
@@ -364,6 +378,12 @@ impl TextSystem {
             CachedText::new(buffer, style, fs, frame_no)
         });
         entry.last_used = frame_no;
+        key
+    }
+
+    /// Registers a text for this frame, shaping (or reusing) its buffer.
+    pub fn add(&mut self, content: &str, style: &TextStyle, res: &Resources) -> TextId {
+        let key = self.intern(content, style, res);
         self.frame.push(FrameText {
             cache_key: key,
             color: style.color,
@@ -371,9 +391,65 @@ impl TextSystem {
         TextId((self.frame.len() - 1) as u32)
     }
 
+    /// Measures `content` in `style` without adding a node: its unwrapped
+    /// size, or with `max_w` (logical px) its size once wrapped to that
+    /// width. The answer is what layout would give a text node with the
+    /// same content and style at the current scale, `wrap` / `max_lines` /
+    /// `ellipsis` included.
+    pub fn measure(
+        &mut self,
+        content: &str,
+        style: &TextStyle,
+        res: &Resources,
+        max_w: Option<f32>,
+    ) -> TextMetrics {
+        let key = self.intern(content, style, res);
+        self.measure_key(key, max_w)
+    }
+
+    /// `measure` for a rich-text paragraph.
+    pub fn measure_rich(
+        &mut self,
+        spans: &[Span<'_>],
+        base: &TextStyle,
+        res: &Resources,
+        max_w: Option<f32>,
+    ) -> TextMetrics {
+        let key = self.intern_rich(spans, base, res);
+        self.measure_key(key, max_w)
+    }
+
+    fn measure_key(&mut self, key: u64, max_w: Option<f32>) -> TextMetrics {
+        let scale = self.scale;
+        let fs = &mut self.font_system;
+        let entry = self.cache.get_mut(&key).expect("just interned");
+        let target = wrap_target(entry, max_w, scale);
+        wrap_entry(entry, fs, target);
+        let (mut m, lines) = measure_buffer(&entry.buffer, entry.max_lines);
+        if entry.clamp_w
+            && let Some(t) = target
+        {
+            m.w = m.w.min(t);
+        }
+        TextMetrics {
+            width: m.w / scale,
+            height: m.h / scale,
+            lines,
+        }
+    }
+
     /// Registers a rich-text paragraph for this frame. Spans shape as one
     /// flow, so wrapping crosses style boundaries correctly.
     pub fn add_rich(&mut self, spans: &[Span<'_>], base: &TextStyle, res: &Resources) -> TextId {
+        let key = self.intern_rich(spans, base, res);
+        self.frame.push(FrameText {
+            cache_key: key,
+            color: base.color,
+        });
+        TextId((self.frame.len() - 1) as u32)
+    }
+
+    fn intern_rich(&mut self, spans: &[Span<'_>], base: &TextStyle, res: &Resources) -> u64 {
         let mut key = Self::style_key("", base, self.scale) ^ 0x9e37_79b9_7f4a_7c15;
         for s in spans {
             let mut mix = |bytes: &[u8]| {
@@ -406,11 +482,7 @@ impl TextSystem {
             CachedText::new(buffer, base, fs, frame_no)
         });
         entry.last_used = frame_no;
-        self.frame.push(FrameText {
-            cache_key: key,
-            color: base.color,
-        });
-        TextId((self.frame.len() - 1) as u32)
+        key
     }
 
     fn entry_mut(&mut self, id: TextId) -> &mut CachedText {
@@ -428,22 +500,8 @@ impl TextSystem {
             .cache
             .get_mut(&key)
             .expect("frame text missing from cache");
-        let intrinsic_fits = entry.intrinsic.w <= max_w_logical * scale + 0.5;
-        let target = if intrinsic_fits {
-            None
-        } else {
-            Some(max_w_logical * scale)
-        };
-        let differs = match (entry.wrap, target) {
-            (None, None) => false,
-            (Some(a), Some(b)) => (a - b).abs() > 0.5,
-            _ => true,
-        };
-        if differs {
-            entry.buffer.set_size(target, None);
-            entry.buffer.shape_until_scroll(fs, false);
-            entry.wrap = target;
-        }
+        let target = wrap_target(entry, Some(max_w_logical), scale);
+        wrap_entry(entry, fs, target);
     }
 
     /// Emits positioned glyph quads for a laid-out text node.
@@ -541,11 +599,34 @@ impl Default for TextSystem {
     }
 }
 
+/// The physical wrap width an entry needs for a logical `max_w`: none when
+/// the unwrapped text already fits (or no width was given).
+fn wrap_target(entry: &CachedText, max_w_logical: Option<f32>, scale: f32) -> Option<f32> {
+    let max_w = max_w_logical?;
+    let intrinsic_fits = entry.intrinsic.w <= max_w * scale + 0.5;
+    (!intrinsic_fits).then_some(max_w * scale)
+}
+
+/// Re-lays the entry's buffer out at `target` (physical px) if it is not
+/// already there.
+fn wrap_entry(entry: &mut CachedText, fs: &mut FontSystem, target: Option<f32>) {
+    let differs = match (entry.wrap, target) {
+        (None, None) => false,
+        (Some(a), Some(b)) => (a - b).abs() > 0.5,
+        _ => true,
+    };
+    if differs {
+        entry.buffer.set_size(target, None);
+        entry.buffer.shape_until_scroll(fs, false);
+        entry.wrap = target;
+    }
+}
+
 impl CachedText {
     fn new(mut buffer: Buffer, style: &TextStyle, fs: &mut FontSystem, frame_no: u64) -> Self {
         buffer.shape_until_scroll(fs, false);
         let max_lines = line_budget(style);
-        let intrinsic = measure_buffer(&buffer, max_lines);
+        let (intrinsic, _) = measure_buffer(&buffer, max_lines);
         Self {
             buffer,
             wrap: None,
@@ -597,14 +678,19 @@ fn line_cap(max_lines: usize) -> usize {
     }
 }
 
-fn measure_buffer(buffer: &Buffer, max_lines: usize) -> Size {
+/// Physical size of the laid-out buffer plus its line count (both capped
+/// by the line budget).
+fn measure_buffer(buffer: &Buffer, max_lines: usize) -> (Size, u32) {
     let mut w = 0.0f32;
     let mut lines = 0u32;
     for run in buffer.layout_runs().take(line_cap(max_lines)) {
         w = w.max(run.line_w);
         lines += 1;
     }
-    Size::new(w, lines as f32 * buffer.metrics().line_height)
+    (
+        Size::new(w, lines as f32 * buffer.metrics().line_height),
+        lines,
+    )
 }
 
 impl TextMeasure for TextSystem {
@@ -618,7 +704,7 @@ impl TextMeasure for TextSystem {
         self.ensure_wrap(id, max_w);
         let scale = self.scale;
         let e = self.entry_mut(id);
-        let mut m = measure_buffer(&e.buffer, e.max_lines);
+        let (mut m, _) = measure_buffer(&e.buffer, e.max_lines);
         if e.clamp_w {
             // The line may run past the box; the box, not the line, is
             // the node's width (emission clips to it).

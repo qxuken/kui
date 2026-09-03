@@ -81,6 +81,7 @@ pub const P_ELLIPSIS: u32 = 48;
 pub const P_ENTER: u32 = 49;
 pub const P_CLICK_SOUND: u32 = 50;
 pub const P_HOVER_SOUND: u32 = 51;
+pub const P_ON_LAYOUT: u32 = 52;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -133,6 +134,13 @@ pub enum Kind {
     Sizing,
     /// An arbitrary message payload (a `Value`). Binary: strref to JSON.
     Msg,
+    /// A message merged into the core's own event under `tag` (`onDrag`,
+    /// `onKey`, `onHover`, `onLayout`). Parsed and carried exactly like a
+    /// `Msg`, but null is a legal value: the node still gets the behaviour
+    /// (a key sink, a drag source) and its events simply carry no `tag` —
+    /// so an app whose messages are a typed union needs no inert member
+    /// just to name a sink.
+    Tag,
     /// A plain string (a name, not a message). Binary: strref.
     Str,
     /// A registered resource handle (a font or sound id): the integer form
@@ -373,9 +381,16 @@ pub const PROPS: &[PropDef] = &[
     PropDef {
         name: "onHover",
         id: P_ON_HOVER,
-        kind: Kind::Msg,
+        kind: Kind::Tag,
         apply: Apply::SpecMsg(|s, v| s.on_hover(v)),
         doc: "Hover tag: the pointer entering/leaving emits {kind:\"hover\", phase:\"enter\"|\"leave\", tag} events.",
+    },
+    PropDef {
+        name: "onLayout",
+        id: P_ON_LAYOUT,
+        kind: Kind::Tag,
+        apply: Apply::SpecMsg(|s, v| s.on_layout(v)),
+        doc: "Layout tag: the node's laid-out rect arrives as {kind:\"layout\", x, y, w, h, parent, tag} on its first frame and whenever it changes (needs a stable key).",
     },
     PropDef {
         name: "onClick",
@@ -387,14 +402,14 @@ pub const PROPS: &[PropDef] = &[
     PropDef {
         name: "onDrag",
         id: P_ON_DRAG,
-        kind: Kind::Msg,
+        kind: Kind::Tag,
         apply: Apply::SpecMsg(|s, v| s.on_drag(v)),
         doc: "Drag tag: emits {kind:\"drag\", phase, x, y, dx, dy, parent, tag} events.",
     },
     PropDef {
         name: "onKey",
         id: P_ON_KEY,
-        kind: Kind::Msg,
+        kind: Kind::Tag,
         apply: Apply::SpecMsg(|s, v| s.on_key(v)),
         doc: "Key-sink tag: with key focus held, presses arrive as {kind:\"key\", ...} events.",
     },
@@ -662,6 +677,10 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     ),
     ("onKey", "`on_key` argument of `kui_open_with`"),
     ("onHover", "`on_hover` argument of `kui_open_with`"),
+    (
+        "onLayout",
+        "`on_layout` (a borrowed `KuiValue*`, cloned while the node opens)",
+    ),
     ("family", "`KuiTextStyle.family` (`KUI_FONT_*`)"),
     ("font", "`KuiTextStyle.font` (from `kui_font_add*`)"),
     ("lineHeight", "`KuiTextStyle.line_height`"),
@@ -792,6 +811,11 @@ pub const EVENTS: &[EventDef] = &[
         kind: "hover",
         payload: "`{ kind: \"hover\", phase: \"enter\" | \"leave\", tag }`",
         doc: "The pointer entered or left an `onHover` node — also when a new frame moved it under a still cursor.",
+    },
+    EventDef {
+        kind: "layout",
+        payload: "`{ kind: \"layout\", x, y, w, h, parent: { x, y, w, h }, tag }`",
+        doc: "The rect layout gave an `onLayout` node (logical px, viewport coords, after scrolling and easing): on its first frame and whenever it changes, never on a frame that left it alone.",
     },
     EventDef {
         kind: "resize",
@@ -1092,7 +1116,7 @@ mod tests {
                 Kind::Flag => Parsed::Flag,
                 Kind::Enum(_) => Parsed::Enum(1),
                 Kind::Sizing => Parsed::Sizing(Sizing::Percent(0.5)),
-                Kind::Msg => Parsed::Msg(Value::Int(1)),
+                Kind::Msg | Kind::Tag => Parsed::Msg(Value::Int(1)),
                 Kind::Str => Parsed::Str("name".into()),
                 Kind::Resource => Parsed::Resource(7),
                 Kind::Keyframes => Parsed::Keyframes(vec![Keyframe::default().radius(7.0)]),
@@ -1106,6 +1130,29 @@ mod tests {
             };
             assert!(changed, "{} applied a sample but nothing changed", def.name);
         }
+    }
+
+    /// A null tag keeps the behaviour and drops the `tag` field; the
+    /// contract every transport relies on to accept `null` for `Tag` rows.
+    #[test]
+    fn a_null_tag_still_declares_the_behaviour() {
+        let mut out = PropsOut::new();
+        apply(
+            by_name("onKey").unwrap(),
+            Parsed::Msg(Value::Null),
+            &mut out,
+        )
+        .unwrap();
+        assert_eq!(out.spec.on_key, Some(Value::Null));
+        assert!(out.spec.hover_tracked());
+        let mut out = PropsOut::new();
+        apply(
+            by_name("onLayout").unwrap(),
+            Parsed::Msg(Value::Null),
+            &mut out,
+        )
+        .unwrap();
+        assert_eq!(out.spec.on_layout, Some(Value::Null));
     }
 
     #[test]

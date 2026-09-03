@@ -2,7 +2,8 @@
 //! table tree (built with the injected `row`/`column`/`text`/`button`
 //! prelude) and optionally `on_event(ev)`. `env` carries host facts
 //! (refresh rate, focus, viewport) and a few queries (`env.edit_text(key)`,
-//! `env.is_focused(key)`, `env.is_hovered(key)`); the root table may set
+//! `env.is_focused(key)`, `env.is_hovered(key)`,
+//! `env.measure_text(s, opts, max_w)`); the root table may set
 //! `window_title`. Because the IR is data all the way down, the binding is
 //! just table-to-node conversion — no closures cross the boundary.
 //!
@@ -63,12 +64,14 @@ impl Extension for LuaExtension {
             .get("view")
             .map_err(|_| "script defines no view()".to_string())?;
         // The env's query functions borrow the frame for the duration of
-        // view(); the returned table outlives the scope, the borrow does not.
+        // view(); the returned table outlives the scope, the borrow does
+        // not. A RefCell because measurement shapes text (a mutable query)
+        // while the rest only read; Lua calls them one at a time.
         let root: Table = {
-            let frame: &Ui<'_> = &*ui;
+            let frame = std::cell::RefCell::new(&mut *ui);
             self.lua
                 .scope(|scope| {
-                    let env = env_table(&self.lua, scope, frame)?;
+                    let env = env_table(&self.lua, scope, &frame)?;
                     view.call(env)
                 })
                 .map_err(|e| format!("view(): {e}"))?
@@ -104,20 +107,23 @@ impl Extension for LuaExtension {
 /// Host facts handed to `view(env)`: `refresh_hz` (nil if unknown),
 /// `frame_budget_ms`, `focused`, `viewport_w`/`viewport_h` (logical px),
 /// `window` chrome facts, and the queries `edit_text(key)`,
-/// `is_focused(key)`, `is_hovered(key)` (keys are the integers events carry).
+/// `is_focused(key)`, `is_hovered(key)` (keys are the integers events
+/// carry) and `measure_text(s, opts, max_w)` (see `measure_from_lua`).
 fn env_table<'scope, 'env: 'scope>(
     lua: &Lua,
     scope: &'scope mlua::Scope<'scope, 'env>,
-    ui: &'env Ui<'_>,
+    ui: &'env std::cell::RefCell<&'env mut Ui<'_>>,
 ) -> mlua::Result<Table> {
-    let env = ui.env();
+    let (env, vp) = {
+        let ui = ui.borrow();
+        (ui.env(), ui.viewport())
+    };
     let t = lua.create_table()?;
     if let Some(hz) = env.refresh_hz {
         t.set("refresh_hz", hz)?;
     }
     t.set("frame_budget_ms", env.frame_budget_ms())?;
     t.set("focused", env.focused)?;
-    let vp = ui.viewport();
     t.set("viewport_w", vp.w)?;
     t.set("viewport_h", vp.h)?;
     let win = env.window;
@@ -133,17 +139,75 @@ fn env_table<'scope, 'env: 'scope>(
     t.set("window", wt)?;
     t.set(
         "edit_text",
-        scope.create_function(move |_, key: i64| Ok(ui.edit_text(Key(key as u64))))?,
+        scope.create_function(move |_, key: i64| Ok(ui.borrow().edit_text(Key(key as u64))))?,
     )?;
     t.set(
         "is_focused",
-        scope.create_function(move |_, key: i64| Ok(ui.is_focused(Key(key as u64))))?,
+        scope.create_function(move |_, key: i64| Ok(ui.borrow().is_focused(Key(key as u64))))?,
     )?;
     t.set(
         "is_hovered",
-        scope.create_function(move |_, key: i64| Ok(ui.is_hovered(Key(key as u64))))?,
+        scope.create_function(move |_, key: i64| Ok(ui.borrow().is_hovered(Key(key as u64))))?,
+    )?;
+    t.set(
+        "measure_text",
+        scope.create_function(
+            move |lua, (s, opts, max_w): (mlua::Value, Option<Table>, Option<f32>)| {
+                let mut guard = ui.borrow_mut();
+                let m = measure_from_lua(&mut guard, &s, opts.as_ref(), max_w)?;
+                let r = lua.create_table()?;
+                r.set("width", m.width)?;
+                r.set("height", m.height)?;
+                r.set("lines", m.lines)?;
+                Ok(r)
+            },
+        )?,
     )?;
     Ok(t)
+}
+
+/// `env.measure_text(s, opts, max_w)` → `{ width, height, lines }` (logical
+/// px): what layout would give a text node with that content and style,
+/// wrapped to `max_w` when given. `s` is a string, a span list (the same
+/// shape `text({...})` takes) or a whole `text(...)` node table, whose own
+/// props are then the style; `opts` is a style table (`size`, `font`,
+/// `wrap`, `max_lines`, `ellipsis`, ...).
+fn measure_from_lua(
+    ui: &mut Ui<'_>,
+    s: &mlua::Value,
+    opts: Option<&Table>,
+    max_w: Option<f32>,
+) -> mlua::Result<kui_core::TextMetrics> {
+    let style = match opts {
+        Some(t) => parse_props(t, false)?.style,
+        None => kui_core::TextStyle::default(),
+    };
+    let measure_spans = |ui: &mut Ui<'_>, spans: &Table, style: &kui_core::TextStyle| {
+        let parts = collect_spans(spans)?;
+        let spans: Vec<Span<'_>> = parts.iter().map(span_of).collect();
+        Ok(ui.measure_rich_text(&spans, style, max_w))
+    };
+    match s {
+        mlua::Value::String(s) => Ok(ui.measure_text(&s.to_str()?, &style, max_w)),
+        mlua::Value::Table(t) => {
+            if t.get::<Option<String>>("type")?.as_deref() == Some("text") {
+                let style = parse_props(t, false)?.style;
+                match t.get::<Option<Table>>("spans")? {
+                    Some(spans) => measure_spans(ui, &spans, &style),
+                    None => {
+                        let value: String = t.get("value")?;
+                        Ok(ui.measure_text(&value, &style, max_w))
+                    }
+                }
+            } else {
+                measure_spans(ui, t, &style)
+            }
+        }
+        other => Err(bad(format!(
+            "measure_text: expected a string, a span list or a text node, got {}",
+            other.type_name()
+        ))),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -197,22 +261,7 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             let style = parse_props(t, false)?.style;
             if let Some(spans) = t.get::<Option<Table>>("spans")? {
                 let parts = collect_spans(&spans)?;
-                let spans: Vec<Span<'_>> = parts
-                    .iter()
-                    .map(|p| {
-                        let mut s = Span::new(&p.text);
-                        if p.bold {
-                            s = s.bold();
-                        }
-                        if p.italic {
-                            s = s.italic();
-                        }
-                        if let Some(c) = p.color {
-                            s = s.color(c);
-                        }
-                        s
-                    })
-                    .collect();
+                let spans: Vec<Span<'_>> = parts.iter().map(span_of).collect();
                 ui.rich_text(&spans, style);
             } else {
                 let value: String = t.get("value")?;
@@ -324,6 +373,20 @@ struct SpanPart {
     bold: bool,
     italic: bool,
     color: Option<Color>,
+}
+
+fn span_of(p: &SpanPart) -> Span<'_> {
+    let mut s = Span::new(&p.text);
+    if p.bold {
+        s = s.bold();
+    }
+    if p.italic {
+        s = s.italic();
+    }
+    if let Some(c) = p.color {
+        s = s.color(c);
+    }
+    s
 }
 
 /// `{ "plain", { "styled", bold = true, italic = true, color = 0x.. }, ... }`
@@ -481,7 +544,7 @@ fn parse_value(kind: &Kind, v: &mlua::Value) -> mlua::Result<Option<Parsed>> {
             Parsed::Enum(schema::enum_index(names, &s.to_str()?).map_err(bad)?)
         }
         Kind::Sizing => Parsed::Sizing(parse_sizing(v)?),
-        Kind::Msg => Parsed::Msg(lua_to_value(v)?),
+        Kind::Msg | Kind::Tag => Parsed::Msg(lua_to_value(v)?),
         Kind::Str => {
             let mlua::Value::String(s) = v else {
                 return Err(bad("expected a string"));
@@ -971,6 +1034,51 @@ mod tests {
             core.take_audio_commands().as_slice(),
             [AudioCommand::Stop { .. }]
         ));
+    }
+
+    /// `env.measure_text` answers what layout gives the same text, in every
+    /// input shape, and `on_layout` rects arrive in `on_event` with the
+    /// node key like any other event.
+    #[test]
+    fn measure_and_layout_events_reach_scripts() {
+        let mut ext = LuaExtension::from_source(
+            "measure",
+            r#"
+                seen = nil
+                function view(env)
+                  local plain = env.measure_text("hello world", { size = 14 })
+                  local node = env.measure_text(text("hello world", { size = 14 }))
+                  local rich = env.measure_text({ "hello ", { "world", bold = true } }, { size = 14 })
+                  local narrow = env.measure_text("hello world", { size = 14 }, plain.width / 2)
+                  assert(plain.width > 0 and plain.lines == 1)
+                  assert(node.width == plain.width and node.height == plain.height)
+                  assert(rich.width > 0)
+                  assert(narrow.lines > 1 and narrow.width <= plain.width / 2 + 0.5)
+                  return column {
+                    row { key = "panel", width = plain.width, height = 20, on_layout = "panel" },
+                  }
+                end
+                function on_event(ev)
+                  if ev.kind == "layout" then seen = ev end
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let evs = core.take_pending_events();
+        assert_eq!(evs.len(), 1, "one layout event on first sight");
+        for ev in &evs {
+            ext.on_event(ev);
+        }
+        let seen: Table = ext.lua.globals().get("seen").unwrap();
+        assert_eq!(seen.get::<String>("tag").unwrap(), "panel");
+        assert_eq!(seen.get::<f64>("h").unwrap(), 20.0);
+        assert!(seen.get::<f64>("w").unwrap() > 0.0);
+        assert_eq!(seen.get::<i64>("node_key").unwrap(), evs[0].key.0 as i64);
+        // Unchanged next frame: silence.
+        frame(&mut core, &mut ext);
+        assert!(core.take_pending_events().is_empty());
     }
 
     #[test]

@@ -88,6 +88,29 @@ impl<'a> Ui<'a> {
         self.core.request_frame();
     }
 
+    /// Measures text the way layout would, without adding a node; see
+    /// `Core::measure_text`. Sizing a column to its widest label, or
+    /// choosing a tier that fits, is arithmetic on these numbers instead
+    /// of hand-tuned constants.
+    pub fn measure_text(
+        &mut self,
+        content: &str,
+        style: &TextStyle,
+        max_w: Option<f32>,
+    ) -> crate::text::TextMetrics {
+        self.core.measure_text(content, style, max_w)
+    }
+
+    /// `measure_text` for a rich-text paragraph.
+    pub fn measure_rich_text(
+        &mut self,
+        spans: &[Span<'_>],
+        base: &TextStyle,
+        max_w: Option<f32>,
+    ) -> crate::text::TextMetrics {
+        self.core.measure_rich_text(spans, base, max_w)
+    }
+
     pub fn open(&mut self, spec: NodeSpec) -> Key {
         self.core.open(spec)
     }

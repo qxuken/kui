@@ -19,6 +19,14 @@ Ctx.prototype.frame = function frame(width, height, scale, tree) {
   this.frameBinary(width, height, scale, stream, strings);
 };
 
+// The core reports silent misconfigurations (a grow weight with nothing to
+// split against, a transition on a positional key, two nodes on one key) as
+// data. The loops below run the checks in development only (off under
+// NODE_ENV=production, so a shipped app pays and prints nothing) and print
+// each once unless `warnings: false`; `setDiagnostics` overrides either way.
+const formatWarning = (w) => `kui: warning [${w.code}] node ${w.key}: ${w.message}`;
+const diagnosticsByDefault = () => process.env.NODE_ENV !== 'production';
+
 KuiWindow.prototype.setView = function setView(tree) {
   const { stream, strings } = encoder.encode(tree);
   this.setViewBinary(stream, strings);
@@ -37,6 +45,7 @@ export function runWindowed({ init, update, view, tick }, opts = {}) {
   const win = new KuiWindow(opts.title ?? 'kui', {
     width, height, minWidth, minHeight, maxWidth, maxHeight, chrome,
   });
+  win.setDiagnostics(opts.diagnostics ?? diagnosticsByDefault());
   opts.setup?.(win);
   let model = typeof init === 'function' ? init() : init;
   // Binary IR path by default; `transport: 'json'` keeps the readable
@@ -57,6 +66,9 @@ export function runWindowed({ init, update, view, tick }, opts = {}) {
       let alive;
       try {
         alive = win.pump();
+        if (opts.warnings !== false) {
+          for (const w of win.warnings()) console.warn(formatWarning(w));
+        }
         let render = false;
         const events = win.pollEvents();
         for (const ev of events) {
@@ -103,6 +115,7 @@ export function runWindowed({ init, update, view, tick }, opts = {}) {
  */
 export function createApp({ init, update, view }, opts = {}) {
   const ctx = new Ctx();
+  ctx.setDiagnostics(opts.diagnostics ?? diagnosticsByDefault());
   const width = opts.width ?? 800;
   const height = opts.height ?? 600;
   const scale = opts.scale ?? 1;
@@ -110,6 +123,10 @@ export function createApp({ init, update, view }, opts = {}) {
 
   const app = {
     ctx,
+    /** Every warning the core raised while rendering, in order (each is
+     *  also printed unless `warnings: false`). Assert on it, or on its
+     *  emptiness. */
+    warnings: [],
     get model() {
       return model;
     },
@@ -124,6 +141,11 @@ export function createApp({ init, update, view }, opts = {}) {
         ctx.frameJson(width, height, scale, JSON.stringify(view(model)));
       } else {
         ctx.frame(width, height, scale, view(model));
+      }
+      const ws = ctx.warnings();
+      if (ws.length) {
+        app.warnings.push(...ws);
+        if (opts.warnings !== false) for (const w of ws) console.warn(formatWarning(w));
       }
       return ctx.stats();
     },

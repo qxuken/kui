@@ -10,6 +10,7 @@ pub mod anim;
 pub mod atlas;
 pub mod audio;
 pub mod color;
+pub mod diag;
 pub mod display;
 pub mod edit;
 pub mod enter;
@@ -35,6 +36,7 @@ pub mod window;
 pub use anim::{Easing, Repeat, Transition};
 pub use audio::{AudioCommand, AudioSpec, AudioStore, PlayOptions, PlaybackId};
 pub use color::Color;
+pub use diag::Warning;
 pub use display::{DisplayList, NO_CLIP, Quad, QuadKind};
 pub use edit::EditOptions;
 pub use enter::Enter;
@@ -50,7 +52,7 @@ pub use spec::{
     Align, Dir, FloatAnchor, FloatConfig, FontFamily, NodeSpec, Sizing, TextStyle, TextWrap, corner,
 };
 pub use stats::{FrameSample, FrameStats};
-pub use text::Span;
+pub use text::{Span, TextMetrics};
 pub use tree::OriginId;
 pub use ui::Ui;
 pub use value::Value;

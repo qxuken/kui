@@ -52,6 +52,28 @@ The `runWindowed` loop also takes a clock — `tick: { every: 250, msg: (now) =>
 returns a new model, so a countdown is free between displayed seconds. That
 contract cuts both ways; see **A clock** below.
 
+## Testing
+
+`createApp` runs the same app headless, and everything a frame produces
+comes back as data, so a test drives the app the way a user would and
+asserts on what the core produced:
+
+- **Input**: `app.click(x, y)`, `app.type(s)`, `app.key(name)` settle the
+  loop for you; `app.ctx.cursor` / `mouse` / `scroll` / `keyDown` /
+  `modifiers` are the raw events (a drag is cursor, mouse down, cursor,
+  mouse up). `app.ctx.setTime(s)` is the clock — never set, transitions
+  snap, which is what most tests want.
+- **The frame**: `decodeQuads(app.ctx.quads())` is the display list
+  (`x`, `y`, `w`, `h`, `color`, `radii`, `kind`), so "the compact tier fits
+  its window" is `every((q) => q.x + q.w <= width)`.
+- **Events and sound**: `app.ctx.pollEvents()`, and `app.ctx.audioCommands()`
+  is what a window would have played.
+- **Measurement**: `app.ctx.measureText(content, style, maxWidth)` is what
+  layout gives the same `<text>`, so a breakpoint assertion is arithmetic.
+- **Warnings**: `app.warnings` is every silent misconfiguration the core
+  noticed (a `grow` weight with nothing to split, a transition on an unkeyed
+  list item, a duplicate key); assert it is empty.
+
 ## Windowed app checklist
 
 Things the package already does that are easy to miss when building a
@@ -113,6 +135,25 @@ package as [props.md](props.md) (`docs/props.md` in the repository).
   draws on top without shifting anything.
 - **Sliders and dividers**: `onDrag={tag}` gives `{ x, y, dx, dy, parent }`
   — `parent` is the container rect, so a fraction needs no geometry query.
+- **Measuring text**: `win.measureText('1,234', { size: 48, font })` (and
+  `ctx.measureText` headless) returns `{ width, height, lines }` — what
+  layout gives a `<text>` with that content and those props, at the
+  window's scale; pass a `maxWidth` to see it wrapped, and `wrap` /
+  `maxLines` / `ellipsis` apply. Size a column to its widest label, or pick
+  the tier whose labels fit, from these numbers; they follow the font.
+- **Where did layout put it**: `onLayout={tag}` on a keyed box brings back
+  `{ kind: 'layout', x, y, w, h, parent, tag }` — on its first frame and
+  whenever the rect changes, never on a frame that left it alone, so
+  keeping it in the model and re-rendering does not loop. A `slide` reports
+  every frame it moves. It is the numbers layout already computed, handed
+  back, for the case no prop covers yet.
+- **Warnings**: the core notices what used to fail silently — a `{ grow: 2 }`
+  on the only grow child (or across the parent's main axis), a `transition`
+  on an unkeyed list item whose siblings changed count, two nodes on one
+  `key` — and `runWindowed` prints each once (`warnings: false` in the
+  options to stop it; `win.warnings()` drains them yourself). The checks
+  are a development aid: under `NODE_ENV=production` they do not run at
+  all (`diagnostics: true` forces them on).
 - **Window size**: `win.size()` gives `{width, height, scale}` (logical px)
   — in `setup(win)` before the first frame, and any time after. Changes
   arrive as `{kind: 'resize', width, height, scale}` events, so a model that
@@ -132,7 +173,9 @@ package as [props.md](props.md) (`docs/props.md` in the repository).
   the whole fix.
 - **Keys**: `onKey` on the root plus `keyFocus`; presses arrive as
   `{ kind: 'key', code, ... }` with `code` a character or a name
-  (`'space'`, `'enter'`, `'f5'`).
+  (`'space'`, `'enter'`, `'f5'`). `onKey={null}` is a sink whose events
+  carry no `tag` (the same goes for `onDrag`, `onHover` and `onLayout`),
+  so a root sink needs no inert message in the app's union.
 - **Messages are yours**: annotate `update` and the loop follows —
   `createApp` / `runWindowed` infer the union, so `ev`, `dispatch` and
   `tick.msg` speak it too. `CoreMsg` is what the core sends on its own
@@ -147,10 +190,11 @@ package as [props.md](props.md) (`docs/props.md` in the repository).
   }
   ```
 
-  `onClick` / `onDrag` / `onHover` / `onKey` then take exactly `MyMsg`
-  rather than any plain data, so a typo fails where it is written. It is a
-  program-wide declaration (one app per tsconfig); left out, payload props
-  stay untyped and nothing else changes.
-- **Testing**: `createApp` runs the same app headless; `ctx.cursor` /
-  `mouse` / `keyDown` drive it and `decodeQuads(ctx.quads())` inspects the
-  frame (`radii`, `color`, `kind`).
+  `onClick` then takes exactly `MyMsg` (and `onDrag` / `onHover` / `onKey` /
+  `onLayout` take `MyMsg | null`) rather than any plain data, so a typo
+  fails where it is written. Register the messages you wrote, not
+  `MyMsg | CoreMsg`: `CoreMsg` is typed in terms of the registration (its
+  `tag` fields carry your messages), so naming it there makes the alias
+  circular — keep that union for `update`. It is a program-wide
+  declaration (one app per tsconfig); left out, payload props stay untyped
+  and nothing else changes.

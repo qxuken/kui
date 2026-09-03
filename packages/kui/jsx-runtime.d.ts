@@ -6,9 +6,9 @@
  *  to its own union with `KuiMsg` below. */
 export type Msg = null | boolean | number | string | Msg[] | { [key: string]: Msg };
 
-/** Declare the app's message type once, and every payload prop (`onClick`,
- *  `onDrag`, `onHover`, `onKey`) plus `createApp` / `runWindowed` take it
- *  instead of "any plain data":
+/** Declare the app's message type once, and the payload prop (`onClick`),
+ *  the tag props (`onDrag`, `onHover`, `onKey`, `onLayout`) and `createApp`
+ *  / `runWindowed` take it instead of "any plain data":
  *
  *  ```ts
  *  type CounterMsg = { kind: 'add'; by: number } | { kind: 'reset' };
@@ -18,9 +18,20 @@ export type Msg = null | boolean | number | string | Msg[] | { [key: string]: Ms
  *  }
  *  ```
  *
+ *  Register the messages you wrote — not `CounterMsg | CoreMsg`. `CoreMsg`
+ *  (what the core sends by itself) is typed in terms of this registration:
+ *  its `tag` fields carry your messages. Naming it here makes the alias
+ *  refer to itself, and TypeScript reports a circular type. Keep the full
+ *  union for `update` (`type Msg = CounterMsg | CoreMsg`); the loop types
+ *  infer it from there.
+ *
+ *  A tag prop also takes `null`: `<box onKey={null} keyFocus>` is a key
+ *  sink whose events carry no `tag`, so a sink that only needs the node key
+ *  costs no inert member in the union.
+ *
  *  A payload typo then fails where it is written rather than in `update`.
  *  Left un-augmented, payloads stay `Msg` and nothing changes. (One app per
- *  process is the shape kui already has: one window, one event loop.) */
+ *  tsconfig is the shape kui already has: one window, one event loop.) */
 export interface KuiMsg {}
 
 /** The app's message type: whatever `KuiMsg` was augmented with, else `Msg`. */
@@ -142,11 +153,13 @@ export interface GeneratedSpecProps {
   /** Message emitted when clicked (data, not a callback). */
   onClick?: AppMsg;
   /** Drag tag: emits {kind:"drag", phase, x, y, dx, dy, parent, tag} events. */
-  onDrag?: AppMsg;
+  onDrag?: AppMsg | null;
   /** Hover tag: the pointer entering/leaving emits {kind:"hover", phase:"enter"|"leave", tag} events. */
-  onHover?: AppMsg;
+  onHover?: AppMsg | null;
   /** Key-sink tag: with key focus held, presses arrive as {kind:"key", ...} events. */
-  onKey?: AppMsg;
+  onKey?: AppMsg | null;
+  /** Layout tag: the node's laid-out rect arrives as {kind:"layout", x, y, w, h, parent, tag} on its first frame and whenever it changes (needs a stable key). */
+  onLayout?: AppMsg | null;
   /** Background while pressed (or while its hoverGroup is); implies hover tracking. */
   pressedBg?: ColorProp;
   /** Corner radius for all four corners (logical px); the per-corner props override it when listed after it. */

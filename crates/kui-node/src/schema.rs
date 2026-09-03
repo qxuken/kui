@@ -103,7 +103,7 @@ fn parse_json(kind: &Kind, v: &Json) -> Result<Option<Parsed>> {
             Parsed::Enum(enum_index(names, s).map_err(err)?)
         }
         Kind::Sizing => Parsed::Sizing(sizing_of(v)?),
-        Kind::Msg => Parsed::Msg(value_of(v)),
+        Kind::Msg | Kind::Tag => Parsed::Msg(value_of(v)),
         Kind::Str => Parsed::Str(
             v.as_str()
                 .ok_or_else(|| err("expected a string"))?
@@ -188,12 +188,14 @@ pub fn parse_props_json(props: &JsonMap<String, Json>) -> Result<PropsOut> {
         .and_then(Json::as_str)
         .map(str::to_string);
     // The table drives the rest; unknown names are ignored (element-level
-    // props like `initial` or `src` land here too and fall through).
+    // props like `initial` or `src` land here too and fall through). A null
+    // is absent — except for a tag, where it declares the behaviour
+    // without a tag on its events.
     for (k, v) in props {
-        if v.is_null() {
+        let Some(def) = by_name(k) else { continue };
+        if v.is_null() && !matches!(def.kind, Kind::Tag) {
             continue;
         }
-        let Some(def) = by_name(k) else { continue };
         if let Some(parsed) = parse_json(&def.kind, v)? {
             apply(def, parsed, &mut out)?;
         }
@@ -217,6 +219,7 @@ pub fn protocol_props() -> Json {
             Kind::Enum(names) => ("enum", Some(names)),
             Kind::Sizing => ("sizing", None),
             Kind::Msg => ("msg", None),
+            Kind::Tag => ("tag", None),
             Kind::Str => ("str", None),
             Kind::Resource => ("resource", None),
             Kind::Keyframes => ("keyframes", None),

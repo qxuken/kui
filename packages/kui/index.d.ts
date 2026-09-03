@@ -1,4 +1,4 @@
-import type { AppMsg, KuiNode } from './jsx-runtime.js';
+import type { AppMsg, KuiNode, TextProps } from './jsx-runtime.js';
 
 export type { KuiNode, KuiElement, Msg, KuiMsg, AppMsg } from './jsx-runtime.js';
 
@@ -43,6 +43,22 @@ export type HoverMsg<T = AppMsg> = {
   tag?: T;
 };
 
+/** The rect layout gave an `onLayout` node — logical px, viewport
+ *  coordinates, after scrolling and position easing — on its first frame
+ *  and whenever it changes, never on a frame that left it alone (a
+ *  transition that moves the node reports every frame it moves). `parent`
+ *  is the container rect, as on drags. Layout's numbers, so the view never
+ *  re-derives them by hand. */
+export type LayoutMsg<T = AppMsg> = {
+  kind: 'layout';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  parent: { x: number; y: number; w: number; h: number };
+  tag?: T;
+};
+
 /** The viewport changed size or DPI (logical px, delivered on the root);
  *  `win.size()` queries the same numbers. */
 export type ResizeMsg = {
@@ -78,7 +94,40 @@ export type SoundMsg<T = AppMsg> = {
 /** Everything the core sends on its own. Put it in the app's union —
  *  `type Msg = MyMsg | CoreMsg` — and `update` switches over one flat
  *  discriminated union, no casts and no narrowing preamble. */
-export type CoreMsg = DragMsg | KeyMsg | HoverMsg | ResizeMsg | ModifiersMsg | EditMsg | SoundMsg;
+export type CoreMsg =
+  | DragMsg
+  | KeyMsg
+  | HoverMsg
+  | LayoutMsg
+  | ResizeMsg
+  | ModifiersMsg
+  | EditMsg
+  | SoundMsg;
+
+/** What text measures (`measureText`): logical px at the scale of the
+ *  current or last frame; `lines` after wrapping. The same numbers layout
+ *  gives a `<text>` with that content and style. */
+export interface TextMetrics {
+  width: number;
+  height: number;
+  lines: number;
+}
+
+/** A silent misconfiguration the core noticed while finishing a frame —
+ *  the kind that otherwise looks like "the feature is broken". Each
+ *  distinct (code, node) pair is raised once. */
+export interface Warning {
+  /** Stable: match on it. `grow-weight-ignored` — a `{ grow: n }` with
+   *  nothing to split against (the only grow child, or across the parent's
+   *  main axis); `transition-auto-key` — a node's child count changed while
+   *  an unkeyed child carries a `transition`, so the shifted children
+   *  snapped (give list items a `key`); `duplicate-key` — two nodes share
+   *  a key in one frame. */
+  code: 'grow-weight-ignored' | 'transition-auto-key' | 'duplicate-key' | (string & {});
+  /** The node it is about (hex, like event keys). */
+  key: string;
+  message: string;
+}
 
 /** Options for `play`. Volumes are linear amplitude (0..1), durations ms. */
 export interface PlayOptions {
@@ -247,6 +296,20 @@ export declare class Ctx {
   /** Events since the last poll. `A` types their payloads — the app's own
    *  union, or one core message type when only that is being watched. */
   pollEvents<A = AppMsg | CoreMsg>(): UiEvent<A>[];
+  /** Measures text the way layout would, without adding a node: `content`
+   *  is whatever `<text>` takes (a string, or children with `<span>`s),
+   *  `style` its props (`size`, `font`, `wrap`, `maxLines`, `ellipsis`, …),
+   *  `maxWidth` the width to wrap at. Works before the first frame. Size a
+   *  column to its widest label, or pick the tier that fits, from these
+   *  numbers instead of constants found by screenshot. */
+  measureText(content: KuiNode, style?: TextProps, maxWidth?: number): TextMetrics;
+  /** Drains the warnings the core raised since the last call; `createApp`
+   *  collects them on `app.warnings` for you. */
+  warnings(): Warning[];
+  /** Whether the core runs the checks behind `warnings`. A bare `Ctx` has
+   *  them on; `createApp` / `runWindowed` turn them off under
+   *  `NODE_ENV=production`. */
+  setDiagnostics(on: boolean): void;
   isHovered(key: string): boolean;
   isPressed(key: string): boolean;
   isFocused(key: string): boolean;
@@ -274,6 +337,12 @@ export interface WindowOptions {
   /** Frame transport: 'binary' (default, fastest) or 'json' (readable, for
    *  debugging encoder suspicions). */
   transport?: 'binary' | 'json';
+  /** `false` stops the loop printing the core's warnings (see `Warning`);
+   *  `win.warnings()` still drains them. */
+  warnings?: boolean;
+  /** Whether the core runs the checks at all. Default: on unless
+   *  `NODE_ENV` is `production`, so a shipped app pays and prints nothing. */
+  diagnostics?: boolean;
 }
 
 /** The binary-frame protocol tables ({version, op, prop}) from the addon. */
@@ -347,6 +416,13 @@ export declare class KuiWindow {
   pause(playback: number, fadeMs?: number): void;
   resume(playback: number, fadeMs?: number): void;
   setMasterVolume(volume: number, tweenMs?: number): void;
+  /** Measures text the way layout would; see `Ctx.measureText`. At the
+   *  window's scale once a frame has run. */
+  measureText(content: KuiNode, style?: TextProps, maxWidth?: number): TextMetrics;
+  /** Drains the core's warnings; `runWindowed` prints them itself unless
+   *  opened with `warnings: false`. */
+  warnings(): Warning[];
+  setDiagnostics(on: boolean): void;
 }
 
 export interface WindowedConfig<M, A = AppMsg | CoreMsg> {
@@ -408,6 +484,10 @@ export interface AppConfig<M, A = AppMsg | CoreMsg> {
 export interface App<M, A = AppMsg | CoreMsg> {
   ctx: Ctx;
   readonly model: M;
+  /** Every warning the core raised while rendering, in order; each is also
+   *  printed unless created with `warnings: false`. A test asserts it is
+   *  empty, or that a specific code showed up. */
+  readonly warnings: Warning[];
   dispatch(msg: A, event?: UiEvent<A>): void;
   render(): FrameStats;
   settle(): void;
@@ -418,5 +498,17 @@ export interface App<M, A = AppMsg | CoreMsg> {
 
 export declare function createApp<M, A = AppMsg | CoreMsg>(
   config: AppConfig<M, A>,
-  opts?: { width?: number; height?: number; scale?: number },
+  opts?: {
+    width?: number;
+    height?: number;
+    scale?: number;
+    /** Frame transport, as for `runWindowed`. */
+    transport?: 'binary' | 'json';
+    /** `false` keeps the core's warnings off the console; they still
+     *  collect on `app.warnings`. */
+    warnings?: boolean;
+    /** Whether the core runs the checks at all; default on unless
+     *  `NODE_ENV` is `production`. */
+    diagnostics?: boolean;
+  },
 ): App<M, A>;

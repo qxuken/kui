@@ -126,6 +126,20 @@ struct SpanPart {
     style: SpanStyle,
 }
 
+fn span_of(p: &SpanPart) -> Span<'_> {
+    let mut s = Span::new(&p.text);
+    if p.style.bold {
+        s = s.bold();
+    }
+    if p.style.italic {
+        s = s.italic();
+    }
+    if let Some(c) = p.style.color {
+        s = s.color(c);
+    }
+    s
+}
+
 fn has_span(node: Option<&Json>) -> bool {
     match node {
         Some(Json::Array(items)) => items.iter().any(|i| has_span(Some(i))),
@@ -232,22 +246,7 @@ fn lower_element(core: &mut Core, node: &JsonMap<String, Json>) -> Result<()> {
             if has_span(children) {
                 let mut parts_out = Vec::new();
                 collect_spans(children, SpanStyle::default(), &mut parts_out)?;
-                let spans: Vec<Span<'_>> = parts_out
-                    .iter()
-                    .map(|p| {
-                        let mut s = Span::new(&p.text);
-                        if p.style.bold {
-                            s = s.bold();
-                        }
-                        if p.style.italic {
-                            s = s.italic();
-                        }
-                        if let Some(c) = p.style.color {
-                            s = s.color(c);
-                        }
-                        s
-                    })
-                    .collect();
+                let spans: Vec<Span<'_>> = parts_out.iter().map(span_of).collect();
                 core.rich_text_node(&spans, style);
             } else {
                 let mut content = String::new();
@@ -797,6 +796,35 @@ impl Ctx {
 
     // -- Queries ---------------------------------------------------------
 
+    /// Measures text the way layout would, without adding a node:
+    /// `{width, height, lines}` in logical px, wrapped to `maxWidth` when
+    /// given. `content` is whatever `<text>` takes (a string, or children
+    /// with `<span>`s); `style` the `<text>` props (`size`, `font`, `wrap`,
+    /// `maxLines`, `ellipsis`, ...). Works before the first frame.
+    #[napi]
+    pub fn measure_text(
+        &mut self,
+        content: Json,
+        style: Option<Json>,
+        max_width: Option<f64>,
+    ) -> Result<Json> {
+        measure_text_impl(&mut self.core, &content, style.as_ref(), max_width)
+    }
+
+    /// Drains the warnings the core raised since the last call:
+    /// `[{code, key, message}]`, each distinct (code, node) pair once. See
+    /// `Warning` in index.d.ts.
+    #[napi]
+    pub fn warnings(&mut self) -> Json {
+        warnings_json(self.core.take_warnings())
+    }
+
+    /// Turns the per-frame diagnostic checks behind `warnings` on or off.
+    #[napi]
+    pub fn set_diagnostics(&mut self, on: bool) {
+        self.core.set_diagnostics(on);
+    }
+
     #[napi]
     pub fn is_hovered(&self, key: String) -> Result<bool> {
         Ok(self.core.is_hovered(parse_key(&key)?))
@@ -1234,6 +1262,74 @@ impl KuiWindow {
     pub fn system_font_families(&mut self) -> Vec<String> {
         self.runner.core_mut().system_font_families()
     }
+
+    /// Measures text the way layout would; see `Ctx.measureText`. Answers
+    /// at the window's scale once a frame has run.
+    #[napi]
+    pub fn measure_text(
+        &mut self,
+        content: Json,
+        style: Option<Json>,
+        max_width: Option<f64>,
+    ) -> Result<Json> {
+        measure_text_impl(self.runner.core_mut(), &content, style.as_ref(), max_width)
+    }
+
+    /// Drains the core's warnings; see `Ctx.warnings`. `runWindowed`
+    /// drains and prints them itself unless told not to.
+    #[napi]
+    pub fn warnings(&mut self) -> Json {
+        warnings_json(self.runner.core_mut().take_warnings())
+    }
+
+    #[napi]
+    pub fn set_diagnostics(&mut self, on: bool) {
+        self.runner.core_mut().set_diagnostics(on);
+    }
+}
+
+/// `measureText(content, style, maxWidth)` → `{width, height, lines}`.
+fn measure_text_impl(
+    core: &mut Core,
+    content: &Json,
+    style: Option<&Json>,
+    max_width: Option<f64>,
+) -> Result<Json> {
+    let props = style.and_then(Json::as_object).unwrap_or(empty_props());
+    let style = parse_props_json(props)?.style;
+    let max_w = max_width
+        .filter(|w| w.is_finite() && *w > 0.0)
+        .map(|w| w as f32);
+    let m = if has_span(Some(content)) {
+        let mut parts_out = Vec::new();
+        collect_spans(Some(content), SpanStyle::default(), &mut parts_out)?;
+        let spans: Vec<Span<'_>> = parts_out.iter().map(span_of).collect();
+        core.measure_rich_text(&spans, &style, max_w)
+    } else {
+        let mut text = String::new();
+        collect_text(Some(content), &mut text);
+        core.measure_text(&text, &style, max_w)
+    };
+    let mut o = JsonMap::new();
+    o.insert("width".into(), Json::from(m.width as f64));
+    o.insert("height".into(), Json::from(m.height as f64));
+    o.insert("lines".into(), Json::from(m.lines));
+    Ok(Json::Object(o))
+}
+
+fn warnings_json(warnings: Vec<kui_core::Warning>) -> Json {
+    Json::Array(
+        warnings
+            .into_iter()
+            .map(|w| {
+                let mut o = JsonMap::new();
+                o.insert("code".into(), Json::String(w.code.into()));
+                o.insert("key".into(), Json::String(key_str(w.key)));
+                o.insert("message".into(), Json::String(w.message));
+                Json::Object(o)
+            })
+            .collect(),
+    )
 }
 
 fn size_json(size: Size, scale: f32) -> Json {
