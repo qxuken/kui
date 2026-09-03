@@ -206,6 +206,34 @@ resolve in the edit store. Static text keeps its name only: labels are
 read whole, and giving every label runs would double a text-heavy tree
 for no reader benefit.
 
+### Verified against the platform (macOS, 2026-09-03)
+
+The headless tests pin the data; they cannot tell whether the OS accepts
+it. `scripts/ax-audit.swift` drives a running window through the macOS
+accessibility API — the same one VoiceOver calls — against the
+`examples/accessibility` fixture: 36 checks over roles, names, values,
+the whole text protocol (`AXNumberOfCharacters`, `AXStringForRange`,
+`AXLineForIndex`, `AXRangeForLine`, `AXBoundsForRange`,
+`AXSelectedTextRange` read *and* written, `AXSelectedText`,
+`AXInsertionPointLineNumber`) and the actions (`AXPress`, increment,
+decrement, setting a selection), each confirmed by the change it makes.
+It needs Accessibility permission for the calling terminal, so it stays
+a manual tool rather than CI.
+
+Two things it caught that no headless test would have. A drawn titlebar
+was named the window title *and* kept its text child, so the title was
+announced twice; the strip is now unnamed, since the window already
+carries it and the strip has to keep its children for the window
+buttons. And the latency HUD was exposed as static text between the
+controls, so `widgets::latency_graph` is now `role="none"` — a
+development overlay is not content.
+
+Still open by ear: AccessKit maps `Role::Heading` to the literal role
+string `"Heading"` rather than a standard `AX` constant, so how
+VoiceOver announces headings is worth listening to; and nothing here
+tests announcement phrasing or focus-following, which only a real screen
+reader session shows.
+
 An app that owns its text is the same tree with the markup inverted: the
 `on_key` sink declares an editor role, every drawn line a `role="line"`
 row (its text nodes, in whatever pieces the app draws them, are that

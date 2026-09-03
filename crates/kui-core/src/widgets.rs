@@ -107,134 +107,142 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
         samples.iter().map(|s| s.wait_ms).sum::<f32>() / samples.len() as f32
     };
 
-    ui.with(NodeSpec::column().gap(3.0).cross_align(Align::End), |ui| {
-        let mut label = format!("work {avg_work:.2}ms avg · {max_work:.2}ms max");
-        if avg_wait > 0.05 {
-            label.push_str(&format!(" · +{avg_wait:.2}ms vsync"));
-        }
-        ui.with(NodeSpec::row().gap(6.0).cross_align(Align::Center), |ui| {
-            ui.text(
-                &label,
-                TextStyle::new(10.0).color(Color::rgb8(0x8a, 0x8f, 0xa3)),
-            );
-            // "?" badge: hover for the color legend. Also the dynamic-float
-            // showcase — in the default bottom-right HUD the tooltip has no
-            // room below or to the right, so it flips above and slides left.
-            let badge = ui.child_key("kui:latency-legend");
-            let badge_bg = if ui.is_hovered(badge) {
-                Color::rgba8(0x8a, 0x8f, 0xa3, 0x50)
-            } else {
-                Color::rgba8(0x8a, 0x8f, 0xa3, 0x28)
-            };
-            ui.with_keyed(
-                "kui:latency-legend",
-                NodeSpec::column()
-                    .width(Sizing::Fixed(13.0))
-                    .height(Sizing::Fixed(13.0))
-                    .center()
-                    .bg(badge_bg)
-                    .radius(6.5)
-                    .hoverable(),
+    // A development overlay, not app content: kept out of the access tree
+    // so a screen reader does not read frame timings between the controls.
+    ui.with(
+        NodeSpec::column()
+            .gap(3.0)
+            .cross_align(Align::End)
+            .role(crate::access::Role::None),
+        |ui| {
+            let mut label = format!("work {avg_work:.2}ms avg · {max_work:.2}ms max");
+            if avg_wait > 0.05 {
+                label.push_str(&format!(" · +{avg_wait:.2}ms vsync"));
+            }
+            ui.with(NodeSpec::row().gap(6.0).cross_align(Align::Center), |ui| {
+                ui.text(
+                    &label,
+                    TextStyle::new(10.0).color(Color::rgb8(0x8a, 0x8f, 0xa3)),
+                );
+                // "?" badge: hover for the color legend. Also the dynamic-float
+                // showcase — in the default bottom-right HUD the tooltip has no
+                // room below or to the right, so it flips above and slides left.
+                let badge = ui.child_key("kui:latency-legend");
+                let badge_bg = if ui.is_hovered(badge) {
+                    Color::rgba8(0x8a, 0x8f, 0xa3, 0x50)
+                } else {
+                    Color::rgba8(0x8a, 0x8f, 0xa3, 0x28)
+                };
+                ui.with_keyed(
+                    "kui:latency-legend",
+                    NodeSpec::column()
+                        .width(Sizing::Fixed(13.0))
+                        .height(Sizing::Fixed(13.0))
+                        .center()
+                        .bg(badge_bg)
+                        .radius(6.5)
+                        .hoverable(),
+                    |ui| {
+                        ui.text(
+                            "?",
+                            TextStyle::new(9.0).color(Color::rgb8(0xc9, 0xcc, 0xd6)),
+                        );
+                        if ui.is_hovered(badge) {
+                            tooltip_with(ui, |ui| {
+                                ui.with(NodeSpec::column().gap(5.0), |ui| {
+                                    for (color, name) in [
+                                        (INPUT, "input — events & edits"),
+                                        (VIEW, "view — rebuilding the tree"),
+                                        (LAYOUT, "layout — sizing & positions"),
+                                        (RENDER, "render — encode + submit"),
+                                        (WAIT, "vsync wait (not work)"),
+                                        (OVER, "cap: work over frame budget"),
+                                    ] {
+                                        ui.with(
+                                            NodeSpec::row().gap(7.0).cross_align(Align::Center),
+                                            |ui| {
+                                                ui.with(
+                                                    NodeSpec::column()
+                                                        .width(Sizing::Fixed(9.0))
+                                                        .height(Sizing::Fixed(9.0))
+                                                        .bg(color)
+                                                        .radius(2.0),
+                                                    |_| {},
+                                                );
+                                                ui.text(
+                                                    name,
+                                                    TextStyle::new(11.0)
+                                                        .color(Color::rgb8(0xc9, 0xcc, 0xd6)),
+                                                );
+                                            },
+                                        );
+                                    }
+                                });
+                            });
+                        }
+                    },
+                );
+            });
+            ui.with(
+                NodeSpec::row()
+                    .width(Sizing::Fixed(STATS_CAPACITY as f32 * 2.0))
+                    .height(Sizing::Fixed(GRAPH_H))
+                    .gap(1.0)
+                    .main_align(Align::End)
+                    .cross_align(Align::End)
+                    .bg(Color::rgba8(0x0c, 0x0e, 0x14, 0x99))
+                    .radius(3.0)
+                    .clip(),
                 |ui| {
-                    ui.text(
-                        "?",
-                        TextStyle::new(9.0).color(Color::rgb8(0xc9, 0xcc, 0xd6)),
-                    );
-                    if ui.is_hovered(badge) {
-                        tooltip_with(ui, |ui| {
-                            ui.with(NodeSpec::column().gap(5.0), |ui| {
-                                for (color, name) in [
-                                    (INPUT, "input — events & edits"),
-                                    (VIEW, "view — rebuilding the tree"),
-                                    (LAYOUT, "layout — sizing & positions"),
-                                    (RENDER, "render — encode + submit"),
-                                    (WAIT, "vsync wait (not work)"),
-                                    (OVER, "cap: work over frame budget"),
-                                ] {
+                    let px_per_ms = GRAPH_H / budget_ms;
+                    for s in &samples {
+                        // Phases keep their colors even over budget — a spike
+                        // you can't attribute is a spike you can't fix. Work
+                        // (not vsync pacing) over budget gets a red cap.
+                        let over = s.work() > budget_ms;
+                        ui.with(
+                            NodeSpec::column()
+                                .width(Sizing::Fixed(1.0))
+                                .main_align(Align::End)
+                                .max_height(GRAPH_H),
+                            |ui| {
+                                if over {
                                     ui.with(
-                                        NodeSpec::row().gap(7.0).cross_align(Align::Center),
-                                        |ui| {
-                                            ui.with(
-                                                NodeSpec::column()
-                                                    .width(Sizing::Fixed(9.0))
-                                                    .height(Sizing::Fixed(9.0))
-                                                    .bg(color)
-                                                    .radius(2.0),
-                                                |_| {},
-                                            );
-                                            ui.text(
-                                                name,
-                                                TextStyle::new(11.0)
-                                                    .color(Color::rgb8(0xc9, 0xcc, 0xd6)),
-                                            );
-                                        },
+                                        NodeSpec::column()
+                                            .width(Sizing::Fixed(1.0))
+                                            .height(Sizing::Fixed(3.0))
+                                            .bg(OVER),
+                                        |_| {},
                                     );
                                 }
-                            });
-                        });
+                                // Column children run top->bottom; push in
+                                // reverse so input sits at the bottom.
+                                for (ms, color) in [
+                                    (s.wait_ms, WAIT),
+                                    (s.render_ms, RENDER),
+                                    (s.layout_ms, LAYOUT),
+                                    (s.view_ms, VIEW),
+                                    (s.input_ms, INPUT),
+                                ] {
+                                    if ms <= 0.0 {
+                                        continue;
+                                    }
+                                    let h = (ms * px_per_ms).max(1.0);
+                                    ui.with(
+                                        NodeSpec::column()
+                                            .width(Sizing::Fixed(1.0))
+                                            .height(Sizing::Fixed(h))
+                                            .bg(color),
+                                        |_| {},
+                                    );
+                                }
+                            },
+                        );
                     }
                 },
             );
-        });
-        ui.with(
-            NodeSpec::row()
-                .width(Sizing::Fixed(STATS_CAPACITY as f32 * 2.0))
-                .height(Sizing::Fixed(GRAPH_H))
-                .gap(1.0)
-                .main_align(Align::End)
-                .cross_align(Align::End)
-                .bg(Color::rgba8(0x0c, 0x0e, 0x14, 0x99))
-                .radius(3.0)
-                .clip(),
-            |ui| {
-                let px_per_ms = GRAPH_H / budget_ms;
-                for s in &samples {
-                    // Phases keep their colors even over budget — a spike
-                    // you can't attribute is a spike you can't fix. Work
-                    // (not vsync pacing) over budget gets a red cap.
-                    let over = s.work() > budget_ms;
-                    ui.with(
-                        NodeSpec::column()
-                            .width(Sizing::Fixed(1.0))
-                            .main_align(Align::End)
-                            .max_height(GRAPH_H),
-                        |ui| {
-                            if over {
-                                ui.with(
-                                    NodeSpec::column()
-                                        .width(Sizing::Fixed(1.0))
-                                        .height(Sizing::Fixed(3.0))
-                                        .bg(OVER),
-                                    |_| {},
-                                );
-                            }
-                            // Column children run top->bottom; push in
-                            // reverse so input sits at the bottom.
-                            for (ms, color) in [
-                                (s.wait_ms, WAIT),
-                                (s.render_ms, RENDER),
-                                (s.layout_ms, LAYOUT),
-                                (s.view_ms, VIEW),
-                                (s.input_ms, INPUT),
-                            ] {
-                                if ms <= 0.0 {
-                                    continue;
-                                }
-                                let h = (ms * px_per_ms).max(1.0);
-                                ui.with(
-                                    NodeSpec::column()
-                                        .width(Sizing::Fixed(1.0))
-                                        .height(Sizing::Fixed(h))
-                                        .bg(color),
-                                    |_| {},
-                                );
-                            }
-                        },
-                    );
-                }
-            },
-        );
-    });
+        },
+    );
 }
 
 /// Small floating label hanging below the node it's declared inside. The

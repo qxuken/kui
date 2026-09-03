@@ -47,6 +47,14 @@ upgrades remove code from the apps on it is doing the job.
   text, anchor: { line, offset }, focus }` messages. The modal editor
   example is wired up this way. A key sink with no role is now a
   focusable group instead of nothing.
+- **A platform audit.** `examples/accessibility` puts every prop in one
+  window, and `scripts/ax-audit.swift` drives it through the macOS
+  accessibility API — the one VoiceOver calls — checking roles, names,
+  values, the text protocol and the actions, each by the change it
+  makes. It found the two things headless tests could not: a drawn
+  titlebar announced the window title twice (the strip is now unnamed;
+  the window carries it), and the latency HUD was read out between the
+  controls (`widgets::latency_graph` is now `role="none"`).
 - **Text measurement as a query.** `Core::measure_text` and
   `measure_rich_text` (`ui.measure_text` in Rust, `ctx.measureText` /
   `win.measureText(content, style, maxWidth)` in Node, `env.measure_text(s,

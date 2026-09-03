@@ -111,7 +111,19 @@ fn roles_derive_from_behaviour_and_plain_boxes_are_elided() {
     // text button by its content — with the two plain boxes around it
     // gone, so it hangs off the window directly.
     let got = names(&tree);
-    assert_eq!(got[1], (Role::TitleBar, Some("Demo")));
+    // The strip stays unnamed on purpose: it keeps its children (window
+    // buttons have to stay reachable), so naming it the window title too
+    // would have a screen reader read the title twice. Verified against
+    // the macOS accessibility API in scripts/ax-audit.swift.
+    assert_eq!(got[1], (Role::TitleBar, None));
+    assert_eq!(
+        tree.nodes
+            .iter()
+            .filter(|n| n.name.as_deref() == Some("Demo"))
+            .count(),
+        1,
+        "the window title is announced once"
+    );
     assert_eq!(got[2], (Role::Button, Some("Close")));
     assert_eq!(got[3], (Role::Button, Some("Save")));
     assert_eq!(got[4], (Role::Button, Some("Go now")));

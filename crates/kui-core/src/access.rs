@@ -557,7 +557,10 @@ pub(crate) fn semantic(
                 NodeContent::Text(id) => Some(text.content(id).to_string()),
                 _ => None,
             },
-            Role::Window | Role::TitleBar => title.map(str::to_string),
+            // The window carries the title; a drawn titlebar naming
+            // itself the same thing would have a screen reader read it
+            // twice (it keeps its children, so its own text is read).
+            Role::Window => title.map(str::to_string),
             _ if role.presentational() => content_name(tree, text, i),
             _ => None,
         },
