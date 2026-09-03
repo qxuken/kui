@@ -228,7 +228,7 @@ typedef struct KuiSpec {
      * accessible name (empty = none; a button, link, tab or heading is then
      * named by the text inside it, an image or icon button has no name and
      * the core warns). checked: a checkbox / radio / switch role's on
-     * state. value_*: a slider role's position and range, each present
+     * state (selected / expanded are below). value_*: a slider role's position and range, each present
      * when its KUI_VALUE_* bit is in value_set. */
     uint32_t role;
     KuiStr label;
@@ -289,7 +289,26 @@ typedef struct KuiSpec {
      * disabled control that says KUI_CURSOR_NOT_ALLOWED. A node with
      * nothing but a cursor is hover-tracked so it can be found. */
     uint32_t cursor;
+    /* Selection and disclosure. selected: non-zero when this node is the
+     * current one of its set - the shown tab, the picked row, the link for
+     * the page you are on. A KUI_ROLE_TAB reports the state either way (its
+     * siblings read as "not selected"); a row or a link reports it only
+     * where this is set, since an ordinary list or navigation bar is not a
+     * selection. expanded: KUI_EXPANDED_* for a node that shows and hides
+     * something (0 = unset: it does not expand, and a reader says nothing
+     * about it). "3 of 7" is not declared - the core numbers a
+     * KUI_ROLE_LIST's rows and a KUI_ROLE_TAB_LIST's tabs itself, and
+     * reports them in KuiAccessNode.pos_in_set / set_size. */
+    uint32_t selected;
+    uint32_t expanded;
 } KuiSpec;
+
+/* Disclosure state (KuiSpec.expanded): the schema index plus one, so zero
+ * can mean "this node does not expand". */
+enum {
+    KUI_EXPANDED_COLLAPSED = 1,
+    KUI_EXPANDED_EXPANDED = 2,
+};
 
 /* Pointer shapes (KuiSpec.cursor), and what kui_cursor_shape answers with. */
 enum {
@@ -349,6 +368,15 @@ enum {
     KUI_ACCESS_HAS_TEXT_SELECTION = 1u << 9,
     KUI_ACCESS_DISABLED = 1u << 10, /* declared disabled: inert, not a Tab stop */
     KUI_ACCESS_MODAL = 1u << 11,    /* the frame's modal surface (aria-modal) */
+    /* Whether the node has a selected state at all, and what it is. */
+    KUI_ACCESS_SELECTED_SET = 1u << 12,
+    KUI_ACCESS_SELECTED = 1u << 13,
+    /* Whether the node expands, and whether it is open. */
+    KUI_ACCESS_EXPANDED_SET = 1u << 14,
+    KUI_ACCESS_EXPANDED = 1u << 15,
+    /* pos_in_set holds (on an item), set_size holds (on its container). */
+    KUI_ACCESS_HAS_POS_IN_SET = 1u << 16,
+    KUI_ACCESS_HAS_SET_SIZE = 1u << 17,
 };
 
 /* One node of the access tree (kui_access_tree): what assistive technology
@@ -360,7 +388,7 @@ typedef struct KuiAccessNode {
     uint64_t parent;
     uint32_t origin;
     uint32_t role;    /* KUI_ROLE_* */
-    uint32_t flags;   /* KUI_ACCESS_HAS_* / FOCUSED / CHECKED */
+    uint32_t flags;   /* KUI_ACCESS_HAS_* / FOCUSED / CHECKED / SELECTED / EXPANDED */
     uint32_t actions; /* KUI_ACCESS_* the node accepts */
     KuiStr name;
     KuiStr description;
@@ -377,6 +405,13 @@ typedef struct KuiAccessNode {
     uint64_t focus_run;
     uint32_t focus_char;
     uint32_t run_count; /* how many runs kui_access_runs returns */
+    /* "3 of 7", derived from the list or tab list holding this node: the
+     * item's zero-based ordinal (KUI_ACCESS_HAS_POS_IN_SET) and, on that
+     * container, how many items it holds (KUI_ACCESS_HAS_SET_SIZE). The
+     * count sits on the container, not on each item, which is how
+     * AccessKit models a set (ARIA repeats aria-setsize on every item). */
+    uint32_t pos_in_set;
+    uint32_t set_size;
 } KuiAccessNode;
 
 /* One laid-out run of an editor's text (kui_access_runs): what a screen

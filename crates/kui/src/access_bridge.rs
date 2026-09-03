@@ -245,6 +245,23 @@ mod imp {
             if let Some(c) = n.checked {
                 node.set_toggled(if c { Toggled::True } else { Toggled::False });
             }
+            // `toggled` and `selected` are different states to AccessKit:
+            // a switch is on, a tab is the current one. Both are absent
+            // rather than false where the concept does not apply.
+            if let Some(c) = n.selected {
+                node.set_selected(c);
+            }
+            if let Some(c) = n.expanded {
+                node.set_expanded(c);
+            }
+            // AccessKit puts the count on the container and the
+            // zero-based ordinal on the item (see `AccessNode::set_size`).
+            if let Some(p) = n.pos_in_set {
+                node.set_position_in_set(p);
+            }
+            if let Some(sz) = n.set_size {
+                node.set_size_of_set(sz);
+            }
             if n.disabled {
                 node.set_disabled();
             }

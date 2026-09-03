@@ -253,6 +253,151 @@ fn explicit_roles_win_and_carry_their_state() {
     assert_eq!(tree.get(tab).unwrap().name.as_deref(), Some("General"));
 }
 
+/// A tab list and a picked row: `selected` distinguishes the current one
+/// of a set from `checked`'s on/off, and the core says so only where the
+/// state means something.
+#[test]
+fn selected_marks_the_current_one_of_a_set() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    let tabs = ui.with_keyed("tabs", NodeSpec::row().role(Role::TabList), |ui| {
+        for (i, name) in ["General", "Network", "About"].iter().enumerate() {
+            ui.with_keyed(
+                name,
+                NodeSpec::row()
+                    .role(Role::Tab)
+                    .selected(i == 1)
+                    .on_click(Value::Int(i as i64)),
+                |ui| ui.text(name, TextStyle::new(12.0)),
+            );
+        }
+    });
+    let list = ui.with_keyed("rows", NodeSpec::column().role(Role::List), |ui| {
+        for (i, name) in ["one", "two"].iter().enumerate() {
+            ui.with_keyed(
+                name,
+                NodeSpec::row().role(Role::ListItem).selected(i == 0),
+                |ui| ui.text(name, TextStyle::new(12.0)),
+            );
+        }
+    });
+    // A link that is not the current page, and one that is.
+    let away = ui.with_keyed("away", NodeSpec::row().role(Role::Link), |ui| {
+        ui.text("Docs", TextStyle::new(12.0))
+    });
+    let here = ui.with_keyed(
+        "here",
+        NodeSpec::row().role(Role::Link).selected(true),
+        |ui| ui.text("Home", TextStyle::new(12.0)),
+    );
+    ui.finish();
+    let tree = core.access_tree().clone();
+
+    let states: Vec<Option<bool>> = tree.children(tabs).map(|n| n.selected).collect();
+    assert_eq!(
+        states,
+        vec![Some(false), Some(true), Some(false)],
+        "every tab reports the state, so a reader can say which one is on"
+    );
+    let rows: Vec<Option<bool>> = tree.children(list).map(|n| n.selected).collect();
+    assert_eq!(
+        rows,
+        vec![Some(true), None],
+        "a row says so only when picked: an ordinary list is not a selection"
+    );
+    assert_eq!(tree.get(away).unwrap().selected, None);
+    assert_eq!(tree.get(here).unwrap().selected, Some(true));
+    assert_eq!(
+        tree.get(tabs).unwrap().selected,
+        None,
+        "the container itself is not selectable"
+    );
+    // Not the same state as `checked`.
+    assert!(tree.children(tabs).all(|n| n.checked.is_none()));
+}
+
+/// A disclosure names its state, so "collapsed" is sayable; a node that
+/// does not expand says nothing about it.
+#[test]
+fn expanded_is_three_state_so_a_shut_disclosure_can_say_so() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    let shut = ui.with_keyed(
+        "shut",
+        NodeSpec::row()
+            .expanded(false)
+            .on_click(Value::str("toggle")),
+        |ui| ui.text("Advanced", TextStyle::new(12.0)),
+    );
+    let open = ui.with_keyed(
+        "open",
+        NodeSpec::row()
+            .expanded(true)
+            .on_click(Value::str("toggle")),
+        |ui| ui.text("Network", TextStyle::new(12.0)),
+    );
+    let plain = ui.with_keyed("plain", NodeSpec::row().on_click(Value::str("go")), |ui| {
+        ui.text("Save", TextStyle::new(12.0))
+    });
+    ui.finish();
+    let tree = core.access_tree().clone();
+
+    assert_eq!(tree.get(shut).unwrap().expanded, Some(false));
+    assert_eq!(tree.get(open).unwrap().expanded, Some(true));
+    assert_eq!(
+        tree.get(plain).unwrap().expanded,
+        None,
+        "an ordinary button does not expand, and says nothing about it"
+    );
+}
+
+/// "3 of 7" is derived, not declared: the core numbers what a `list` or
+/// `tabList` already holds.
+#[test]
+fn a_list_numbers_its_own_items() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    let list = ui.with_keyed("rows", NodeSpec::column().role(Role::List), |ui| {
+        for name in ["one", "two", "three"] {
+            ui.with_keyed(name, NodeSpec::row().role(Role::ListItem), |ui| {
+                ui.text(name, TextStyle::new(12.0))
+            });
+        }
+        // A caption inside the list is not an item, so it is not counted.
+        ui.with_keyed("caption", NodeSpec::row().role(Role::Heading), |ui| {
+            ui.text("3 rows", TextStyle::new(12.0))
+        });
+    });
+    let loose = ui.with_keyed("loose", NodeSpec::row().role(Role::ListItem), |ui| {
+        ui.text("orphan", TextStyle::new(12.0))
+    });
+    ui.finish();
+    let tree = core.access_tree().clone();
+
+    assert_eq!(
+        tree.get(list).unwrap().set_size,
+        Some(3),
+        "the count sits on the container, the way AccessKit models a set"
+    );
+    assert_eq!(tree.get(list).unwrap().pos_in_set, None);
+    let ordinals: Vec<Option<usize>> = tree
+        .children(list)
+        .filter(|n| n.role == Role::ListItem)
+        .map(|n| n.pos_in_set)
+        .collect();
+    assert_eq!(ordinals, vec![Some(0), Some(1), Some(2)], "zero-based");
+    assert!(
+        tree.children(list)
+            .all(|n| n.role == Role::ListItem || n.pos_in_set.is_none()),
+        "a heading among the rows is not one of them"
+    );
+    assert_eq!(
+        tree.get(loose).unwrap().pos_in_set,
+        None,
+        "an item outside a list belongs to no set"
+    );
+}
+
 #[test]
 fn a_click_request_emits_what_a_pointer_click_would() {
     let mut core = Core::new();

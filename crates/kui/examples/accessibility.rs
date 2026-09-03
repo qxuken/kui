@@ -19,6 +19,18 @@
 //! editor is a key sink, so it keeps Tab; its declaration below takes
 //! focus once, on the first frame, and never clobbers a Tab press.
 //!
+//! The tab list reads as "General, tab, 1 of 3, selected" and the
+//! disclosure below it as "Advanced, collapsed": `selected` says which of
+//! a set is the current one (distinct from a switch being on), `expanded`
+//! names a disclosure's state so a shut one can say it is shut, and "1 of
+//! 3" is not declared at all — the core numbers the tabs a `tabList`
+//! holds.
+//!
+//! The list under them is the other half of `selected`: a picked row
+//! reads as selected where a tab reads as on, and macOS spells those two
+//! differently (`AXSelected` against `AXValue`), which is what
+//! `scripts/ax-audit.swift` is there to check.
+//!
 //! "Delete…" opens a modal dialog (`docs/adr/0003-modal-surfaces.md`):
 //! Tab cannot leave it, nothing behind it clicks, VoiceOver announces a
 //! modal dialog and stays inside it, and Escape or a click outside asks
@@ -45,6 +57,13 @@ struct A11y {
     /// Whether the confirm dialog is declared this frame. Nothing else:
     /// the modal is the frame that declares it.
     dialog: bool,
+    /// Which tab the tab list shows, and whether the disclosure below is
+    /// open: `selected` and `expanded` are these two fields, read out.
+    tab: usize,
+    advanced: bool,
+    /// The picked row of the list below — `selected` again, on the other
+    /// role that carries it.
+    row: usize,
 }
 
 impl A11y {
@@ -57,6 +76,9 @@ impl A11y {
             caret: (1, 4),
             edit: Key::ROOT,
             dialog: false,
+            tab: 0,
+            advanced: false,
+            row: 1,
         }
     }
 
@@ -83,6 +105,109 @@ impl App for A11y {
         ui.with(NodeSpec::row().role(Role::Heading), |ui| {
             ui.text("Controls", TextStyle::new(20.0).color(Color::WHITE))
         });
+
+        // A tab list: `selected` is which one the view shows, and every
+        // tab reports the state so a reader can say which is on. Nothing
+        // here says "1 of 3" — the core counts what the list holds.
+        ui.with_keyed("tabs", NodeSpec::row().role(Role::TabList).gap(4.0), |ui| {
+            for (i, name) in ["General", "Network", "About"].iter().enumerate() {
+                let on = i == self.tab;
+                ui.with_keyed(
+                    name,
+                    NodeSpec::row()
+                        .role(Role::Tab)
+                        .selected(on)
+                        .on_click(Value::Int(i as i64))
+                        .pad_xy(10.0, 6.0)
+                        .bg(if on {
+                            Color::rgb8(0x3b, 0x5b, 0xd4)
+                        } else {
+                            Color::rgb8(0x1d, 0x20, 0x2b)
+                        })
+                        .radius(6.0),
+                    |ui| {
+                        ui.text(
+                            name,
+                            TextStyle::new(13.0).color(if on {
+                                Color::WHITE
+                            } else {
+                                Color::rgb8(0x8a, 0x8f, 0xa3)
+                            }),
+                        )
+                    },
+                );
+            }
+        });
+
+        // A disclosure: `expanded` names its state, so a reader says
+        // "collapsed" rather than nothing at all when it is shut.
+        ui.with_keyed(
+            "advanced",
+            widgets::button_spec()
+                .expanded(self.advanced)
+                .on_click(Value::str("advanced"))
+                .label("Advanced"),
+            |ui| {
+                ui.text(
+                    if self.advanced {
+                        "▾ Advanced"
+                    } else {
+                        "▸ Advanced"
+                    },
+                    TextStyle::new(widgets::BUTTON_TEXT).color(Color::WHITE),
+                )
+            },
+        );
+        if self.advanced {
+            ui.with(
+                NodeSpec::row()
+                    .pad_xy(10.0, 6.0)
+                    .bg(Color::rgb8(0x0e, 0x10, 0x16))
+                    .radius(6.0),
+                |ui| ui.text("Nothing here yet.", text),
+            );
+        }
+
+        // A list whose rows can be picked. A row is not named by its
+        // content the way a button is — it is a container of content, and
+        // giving it a label as well would have it read twice — so its
+        // text child is what a reader announces. Nothing here says "2 of
+        // 3" either: the core numbers the rows it holds.
+        ui.with_keyed(
+            "mailboxes",
+            NodeSpec::column().role(Role::List).gap(2.0),
+            |ui| {
+                for (i, name) in ["Inbox", "Drafts", "Sent"].iter().enumerate() {
+                    let on = i == self.row;
+                    ui.with_keyed(
+                        name,
+                        NodeSpec::row()
+                            .role(Role::ListItem)
+                            .selected(on)
+                            .focusable()
+                            .on_click(Value::str(format!("row{i}")))
+                            .width(Sizing::Fixed(200.0))
+                            .pad_xy(10.0, 5.0)
+                            .bg(if on {
+                                Color::rgb8(0x2f, 0x54, 0xc4)
+                            } else {
+                                Color::rgb8(0x1d, 0x20, 0x2b)
+                            })
+                            .radius(4.0),
+                        |ui| {
+                            ui.text(
+                                name,
+                                TextStyle::new(13.0).color(if on {
+                                    Color::WHITE
+                                } else {
+                                    Color::rgb8(0x8a, 0x8f, 0xa3)
+                                }),
+                            )
+                        },
+                    );
+                }
+            },
+        );
 
         // A button named by its content, so a press is visible through
         // the accessibility API alone. Keyed by hand: `widgets::button`
@@ -295,12 +420,34 @@ impl App for A11y {
                 println!("deleted");
                 return;
             }
+            Some("advanced") => {
+                self.advanced = !self.advanced;
+                println!("advanced -> {}", self.advanced);
+                return;
+            }
             Some("mute") => {
                 self.muted = !self.muted;
                 println!("mute -> {}", self.muted);
                 return;
             }
             _ => {}
+        }
+        // The rows carry their ordinal in a tagged string, so they do not
+        // collide with the tabs' plain indices.
+        if let Some(i) = payload
+            .as_str()
+            .and_then(|s| s.strip_prefix("row"))
+            .and_then(|s| s.parse::<usize>().ok())
+        {
+            self.row = i;
+            println!("row -> {}", self.row);
+            return;
+        }
+        // The tabs carry their index as the payload.
+        if let Some(i) = payload.as_int() {
+            self.tab = i as usize;
+            println!("tab -> {}", self.tab);
+            return;
         }
         // Escape, or a click outside the dialog: the core asks, the app
         // decides. A dialog holding unsaved work could ask again here.
@@ -351,6 +498,10 @@ impl App for A11y {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     kui::app("kui — accessibility")
-        .size(520.0, 620.0)
+        // Every control in one column, so the window has to be tall
+        // enough for all of them: a column that overflows squeezes its
+        // children, and squeezed rows are exactly what a fixture must not
+        // show when the point of it is that the rows read correctly.
+        .size(560.0, 820.0)
         .run(A11y::new())
 }

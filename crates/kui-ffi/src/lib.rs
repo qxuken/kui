@@ -273,6 +273,15 @@ pub struct KuiSpec {
     /// does). Overrides the pointer shape while the pointer is over this
     /// node; a node with only a cursor is hover-tracked so it can be found.
     pub cursor: u32,
+    /// Non-zero: this node is the current one of its set — the shown tab,
+    /// the picked row, the link for the page you are on. A KUI_ROLE_TAB
+    /// reports the state either way; a row or a link reports it only when
+    /// this is set.
+    pub selected: u32,
+    /// KUI_EXPANDED_* (0 = unset: the node does not expand and says
+    /// nothing about it). What a twisty, an accordion header or a menu
+    /// button reads as.
+    pub expanded: u32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -356,6 +365,11 @@ pub struct KuiAccessNode {
     pub focus_char: u32,
     /// How many runs `kui_access_runs` returns for this node.
     pub run_count: u32,
+    /// "3 of 7" (KUI_ACCESS_HAS_POS_IN_SET / HAS_SET_SIZE): the item's
+    /// zero-based ordinal among its list's or tab list's items, and the
+    /// count on that container.
+    pub pos_in_set: u32,
+    pub set_size: u32,
 }
 
 pub const KUI_ACCESS_HAS_VALUE: u32 = 1 << 0;
@@ -373,6 +387,21 @@ pub const KUI_ACCESS_DISABLED: u32 = 1 << 10;
 /// The node is the frame's `modal` surface (`aria-modal`): focus and input
 /// are confined to it (`docs/adr/0003-modal-surfaces.md`).
 pub const KUI_ACCESS_MODAL: u32 = 1 << 11;
+/// The node has a selected state at all, and what it is: every
+/// KUI_ROLE_TAB, and a row or link the view marked (see `KuiSpec.selected`).
+pub const KUI_ACCESS_SELECTED_SET: u32 = 1 << 12;
+pub const KUI_ACCESS_SELECTED: u32 = 1 << 13;
+/// The node expands, and whether it is open (see `KuiSpec.expanded`).
+pub const KUI_ACCESS_EXPANDED_SET: u32 = 1 << 14;
+pub const KUI_ACCESS_EXPANDED: u32 = 1 << 15;
+/// `pos_in_set` holds (on an item), `set_size` holds (on its container).
+pub const KUI_ACCESS_HAS_POS_IN_SET: u32 = 1 << 16;
+pub const KUI_ACCESS_HAS_SET_SIZE: u32 = 1 << 17;
+
+/// KUI_EXPANDED_* is the position in `schema::EXPANDED` plus one (0 = unset:
+/// the node does not expand).
+pub const KUI_EXPANDED_COLLAPSED: u32 = 1;
+pub const KUI_EXPANDED_EXPANDED: u32 = 2;
 
 pub const KUI_VALUE_NOW: u32 = 1 << 0;
 pub const KUI_VALUE_MIN: u32 = 1 << 1;
@@ -754,6 +783,13 @@ fn spec_of(
     }
     if s.checked != 0 {
         spec = spec.checked(true);
+    }
+    if s.selected != 0 {
+        spec = spec.selected(true);
+    }
+    if s.expanded != 0 {
+        // KUI_EXPANDED_* = schema index + 1, so zero can mean "unset".
+        spec = spec.expanded(s.expanded == KUI_EXPANDED_EXPANDED);
     }
     if s.value_set & KUI_VALUE_NOW != 0 {
         spec = spec.value_now(s.value_now);
@@ -2026,6 +2062,24 @@ pub extern "C" fn kui_access_tree(ptr: *mut KuiCtx, out: *mut KuiAccessNode, cap
             if n.disabled {
                 flags |= KUI_ACCESS_DISABLED;
             }
+            if let Some(selected) = n.selected {
+                flags |= KUI_ACCESS_SELECTED_SET;
+                if selected {
+                    flags |= KUI_ACCESS_SELECTED;
+                }
+            }
+            if let Some(expanded) = n.expanded {
+                flags |= KUI_ACCESS_EXPANDED_SET;
+                if expanded {
+                    flags |= KUI_ACCESS_EXPANDED;
+                }
+            }
+            if n.pos_in_set.is_some() {
+                flags |= KUI_ACCESS_HAS_POS_IN_SET;
+            }
+            if n.set_size.is_some() {
+                flags |= KUI_ACCESS_HAS_SET_SIZE;
+            }
             if n.modal {
                 flags |= KUI_ACCESS_MODAL;
             }
@@ -2061,6 +2115,8 @@ pub extern "C" fn kui_access_tree(ptr: *mut KuiCtx, out: *mut KuiAccessNode, cap
                     focus_run: n.focus.map_or(0, |p| p.run.0),
                     focus_char: n.focus.map_or(0, |p| p.character as u32),
                     run_count: n.runs.len() as u32,
+                    pos_in_set: n.pos_in_set.unwrap_or(0) as u32,
+                    set_size: n.set_size.unwrap_or(0) as u32,
                 })
             };
         }
@@ -2760,6 +2816,8 @@ mod schema_parity {
                 "role" => s.role = 2, // KUI_ROLE_* = Role::ALL index + 1; ROLES[1] = button
                 "label" => s.label = name,
                 "checked" => s.checked = 1,
+                "selected" => s.selected = 1,
+                "expanded" => s.expanded = KUI_EXPANDED_EXPANDED,
                 "valueNow" => (s.value_set, s.value_now) = (KUI_VALUE_NOW, F),
                 "valueMin" => (s.value_set, s.value_min) = (KUI_VALUE_MIN, F),
                 "valueMax" => (s.value_set, s.value_max) = (KUI_VALUE_MAX, F),
@@ -2898,6 +2956,8 @@ mod schema_parity {
             modal: &modal_tag,
             on_context_menu: &menu_tag,
             cursor: 7, // KUI_CURSOR_EW_RESIZE
+            selected: 1,
+            expanded: KUI_EXPANDED_EXPANDED,
         };
         let expected = NodeSpec::row()
             .width(Sizing::Grow(2.0))
@@ -2943,6 +3003,8 @@ mod schema_parity {
             .role(kui_core::Role::Button)
             .label("lbl")
             .checked(true)
+            .selected(true)
+            .expanded(true)
             .value_now(3.0)
             .value_min(0.0)
             .value_max(10.0)
@@ -3586,6 +3648,8 @@ mod abi_parity {
             modal: *const KuiValue => "const KuiValue *",
             on_context_menu: *const KuiValue => "const KuiValue *",
             cursor: u32 => "uint32_t",
+            selected: u32 => "uint32_t",
+            expanded: u32 => "uint32_t",
         });
 
         abi_struct!(o, KuiAccessNode {
@@ -3617,6 +3681,8 @@ mod abi_parity {
             focus_run: u64 => "uint64_t",
             focus_char: u32 => "uint32_t",
             run_count: u32 => "uint32_t",
+            pos_in_set: u32 => "uint32_t",
+            set_size: u32 => "uint32_t",
         });
 
         abi_struct!(o, KuiAccessRun {

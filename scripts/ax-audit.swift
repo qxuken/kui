@@ -214,6 +214,89 @@ if let slider {
     check("slider max", num(slider.el, kAXMaxValueAttribute as String), 10.0)
 }
 
+// -- Selection and disclosure --------------------------------------------
+// AccessKit maps these three facts very differently on macOS, and the
+// point of checking them here is that only the OS can say which landed:
+// a tab list becomes an AXTabGroup whose AXTabs are AXRadioButtons with
+// an AXTabButton subrole, and a tab's `selected` arrives as its AXValue,
+// not as AXSelected (accesskit_macos treats a tab as checkable and keeps
+// AXSelected for item-like nodes such as list rows). VoiceOver derives
+// "1 of 3" from AXTabs itself, which is why the tree's `set_size` has no
+// macOS attribute behind it.
+
+print("\n=== selection")
+let tabGroup = all.first { $0.role == "AXTabGroup" }
+check("the tab list is an AXTabGroup", tabGroup != nil)
+let tabs = all.filter { $0.role == kAXRadioButtonRole as String }
+check("three tabs are exposed", tabs.count, 3)
+check("tabs are named by their content", tabs.map(\.title), ["General", "Network", "About"])
+check(
+    "a tab carries the AXTabButton subrole",
+    tabs.first.flatMap { str($0.el, kAXSubroleAttribute as String) }, "AXTabButton")
+if let tabGroup {
+    // AXTabs is what a reader walks to count them; it is the tab list's
+    // Tab children, so it must not pick up the labels inside them.
+    let exposed = (attr(tabGroup.el, "AXTabs") as? [AXUIElement]) ?? []
+    check("the tab group exposes its tabs", exposed.count, 3)
+    check(
+        "and only the tabs",
+        exposed.allSatisfy { str($0, kAXRoleAttribute as String) == kAXRadioButtonRole as String })
+}
+// The whole point of the `selected` row: before it every tab read 0, and
+// a reader could not say which one the window was showing.
+check(
+    "the shown tab reads as on, the others off",
+    tabs.map { num($0.el, kAXValueAttribute as String) ?? -1 }, [1.0, 0.0, 0.0])
+// `selected` is not `toggled`, and on macOS a tab's state is its AXValue:
+// AXSelected is for item-like nodes (a list row), and accesskit_macos
+// excludes tabs from it, so a tab must not answer to it.
+check(
+    "a tab does not answer AXSelected",
+    tabs.allSatisfy { (attr($0.el, "AXSelected") as? Bool) != true })
+
+// A list row takes the other spelling. `Role::ListItem` becomes an
+// AXGroup (macOS has no row role outside tables), and because a row is
+// item-like there, `selected` arrives as AXSelected — the attribute a tab
+// deliberately does not answer. AXSelected is also settable, which is the
+// interesting half: accesskit_macos only honours it on a node that is
+// already *selectable*, and a node is selectable only when it carries the
+// state at all.
+let list = all.first { $0.role == "AXList" }
+check("the list is an AXList", list != nil)
+let rows = list.map { children($0.el) } ?? []
+check("three rows are exposed", rows.count, 3)
+if rows.count == 3 {
+    check(
+        "a row is an AXGroup (macOS has no row role outside tables)",
+        rows.allSatisfy { str($0, kAXRoleAttribute as String) == kAXGroupRole as String })
+    // The row's text child is its content; the row itself is unnamed, so
+    // nothing is announced twice.
+    check("a row is unnamed, its text is the content", rows.allSatisfy { str($0, kAXTitleAttribute as String) == nil })
+    check(
+        "the picked row reads as selected",
+        rows.map { (attr($0, "AXSelected") as? Bool) ?? false }, [false, true, false])
+    // The state a tab carries in AXValue, a row carries in AXSelected:
+    // the two roles must not answer each other's attribute.
+    check(
+        "a row does not carry its state in AXValue",
+        rows.allSatisfy { num($0, kAXValueAttribute as String) == nil })
+}
+
+print("\n=== disclosure")
+let disclosure = find(role: kAXButtonRole as String, title: "Advanced")
+check("the disclosure is exposed with a stable name", disclosure != nil, "Advanced")
+if let disclosure {
+    // The tree carries `expanded` (kui-core's tests pin it) and UIA and
+    // AT-SPI receive it, but accesskit_macos 0.27 maps no disclosure
+    // state at all — there is no isAccessibilityExpanded in it. So a
+    // VoiceOver user currently hears nothing about a disclosure being
+    // shut. This check exists to fail the day that changes, so the note
+    // in docs/adr/0001-accessibility-as-data.md can come out.
+    check(
+        "macOS exposes no AXExpanded yet (AccessKit 0.27 maps none)",
+        attr(disclosure.el, "AXExpanded") == nil)
+}
+
 // -- The built-in editor's text protocol ---------------------------------
 
 print("\n=== built-in editor text")
@@ -328,6 +411,89 @@ if let mute = find(role: kAXCheckBoxRole as String, title: "Mute") {
     usleep(400_000)
     check("pressing the switch toggled it", num(mute.el, kAXValueAttribute as String), 1.0)
 }
+// Pressing a tab: the app switches, and the next frame moves the state
+// from one tab to another. Both halves matter — a tab that turned on
+// without its sibling turning off is what a reader announces as two open
+// tabs, which is the failure `checked` would have given us.
+if let network = all.first(where: { $0.role == kAXRadioButtonRole as String && $0.title == "Network" }) {
+    check("a tab advertises press", actions(network.el).contains(kAXPressAction as String))
+    AXUIElementPerformAction(network.el, kAXPressAction as CFString)
+    usleep(400_000)
+    all = []
+    walk(window, 0)
+    let after = all.filter { $0.role == kAXRadioButtonRole as String }
+    check(
+        "pressing a tab moved the selection",
+        after.map { num($0.el, kAXValueAttribute as String) ?? -1 }, [0.0, 1.0, 0.0])
+    check("and renamed nothing", after.map(\.title), ["General", "Network", "About"])
+} else {
+    check("the tab is pressable", false, "Network not found")
+}
+// Picking a row. Two routes lead here and they do not behave alike:
+// AXPress goes through the row's click payload like any button, while
+// setting AXSelected is honoured only on a node accesskit_macos already
+// considers selectable — `is_selected().is_some()`. A row that carries no
+// selected state at all is therefore unselectable through that route,
+// which is what the second half of this checks.
+if let list = all.first(where: { $0.role == "AXList" }) {
+    let rowsNow = { children(list.el) }
+    let selection = { rowsNow().map { (attr($0, "AXSelected") as? Bool) ?? false } }
+    let sent = rowsNow()[2]
+    check("a row advertises press", actions(sent).contains(kAXPressAction as String))
+    AXUIElementPerformAction(sent, kAXPressAction as CFString)
+    usleep(400_000)
+    all = []
+    walk(window, 0)
+    check("pressing a row moved the selection", selection(), [false, false, true])
+    // Setting AXSelected on the row that already has the state: it is
+    // selectable, so the request reaches the app as a click and the
+    // selection is unchanged (it was already there).
+    check(
+        "the selected row answers AXSelected",
+        (attr(rowsNow()[2], "AXSelected") as? Bool) ?? false)
+    // Setting it on a row that carries no state: accesskit_macos drops
+    // the request, because a row without the attribute is not selectable.
+    // kui gives an unpicked row no state, so this is every other row —
+    // a reader cannot select through AXSelected, only through AXPress.
+    // Pinned so it fails if either side changes.
+    AXUIElementSetAttributeValue(rowsNow()[0], "AXSelected" as CFString, kCFBooleanTrue)
+    usleep(400_000)
+    all = []
+    walk(window, 0)
+    check(
+        "AXSelected does not move a selection onto a stateless row",
+        selection(), [false, false, true])
+    // AXPress still does, so the row is reachable either way.
+    AXUIElementPerformAction(rowsNow()[0], kAXPressAction as CFString)
+    usleep(400_000)
+    all = []
+    walk(window, 0)
+    check("but AXPress does", selection(), [true, false, false])
+} else {
+    check("the list is pressable", false, "AXList not found")
+}
+// Pressing the disclosure: macOS is told nothing about the state itself
+// (see the AXExpanded note above), so what a reader can observe is the
+// panel arriving in the tree. That is the whole platform story today.
+if let disclosure = find(role: kAXButtonRole as String, title: "Advanced") {
+    let panel = { all.contains { $0.title == "Nothing here yet." || $0.value == "Nothing here yet." } }
+    check("the disclosure starts shut", !panel())
+    AXUIElementPerformAction(disclosure.el, kAXPressAction as CFString)
+    usleep(400_000)
+    all = []
+    walk(window, 0)
+    check("pressing it revealed the panel", panel())
+    check(
+        "the disclosure keeps its name across the state change",
+        find(role: kAXButtonRole as String, title: "Advanced") != nil, "Advanced")
+    AXUIElementPerformAction(disclosure.el, kAXPressAction as CFString)
+    usleep(400_000)
+    all = []
+    walk(window, 0)
+    check("pressing it again took the panel away", !panel())
+} else {
+    check("the disclosure is pressable", false, "Advanced not found")
+}
 // Moving the caret in the app-owned editor: the app applies it and the
 // next frame reports the new position, so the round trip is observable.
 if let code = all.first(where: { $0.title == "Source" }) {
@@ -353,6 +519,16 @@ func focusedTitle() -> String? {
     let e = el as! AXUIElement
     return str(e, kAXTitleAttribute as String)
 }
+/// What focus landed on, for a failure message: an unnamed node reports
+/// its role and its first text child, so "nil" never has to be guessed at.
+func focusedDesc() -> String {
+    guard let el = attr(app, kAXFocusedUIElementAttribute as String) else { return "nothing" }
+    let e = el as! AXUIElement
+    let role = str(e, kAXRoleAttribute as String) ?? "?"
+    let title = str(e, kAXTitleAttribute as String)
+    let inner = children(e).compactMap { str($0, kAXValueAttribute as String) }.first
+    return "\(role) \(title ?? inner ?? "unnamed")"
+}
 if let press = find(role: kAXButtonRole as String, title: "count 1") {
     check(
         "the button accepts focus",
@@ -370,7 +546,7 @@ if let press = find(role: kAXButtonRole as String, title: "count 1") {
         down.postToPid(pid)
         up.postToPid(pid)
         usleep(400_000)
-        check("Tab moved focus to the next control", focusedTitle(), "Save")
+        check("Tab moved focus to the next control", focusedTitle() ?? focusedDesc(), "Save")
     } else {
         check("Tab keystroke", false, "could not build a CGEvent")
     }

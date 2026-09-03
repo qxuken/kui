@@ -359,6 +359,14 @@ pub struct NodeSpec {
     pub description: Option<Label>,
     /// For checkbox / radio / switch roles: the on state.
     pub checked: bool,
+    /// The current one of a set: a `Role::Tab`, a picked `Role::ListItem`,
+    /// the `Role::Link` for the page you are on. A tab reports the state
+    /// either way; a row or a link reports it only where it is set (see
+    /// [`crate::access`]).
+    pub selected: bool,
+    /// For a node that shows and hides something: expanded, or collapsed.
+    /// None = it does not expand, and says nothing about it.
+    pub expanded: Option<bool>,
     /// For a slider role: the current value and its range, so assistive
     /// technology can read the position (the drawing stays the view's).
     pub value_now: Option<f32>,
@@ -715,6 +723,18 @@ impl NodeSpec {
     /// The on state for a checkbox / radio / switch role.
     pub fn checked(mut self, checked: bool) -> Self {
         self.checked = checked;
+        self
+    }
+
+    /// The current one of a set (see the `selected` field).
+    pub fn selected(mut self, selected: bool) -> Self {
+        self.selected = selected;
+        self
+    }
+
+    /// A disclosure's state (see the `expanded` field).
+    pub fn expanded(mut self, expanded: bool) -> Self {
+        self.expanded = Some(expanded);
         self
     }
 

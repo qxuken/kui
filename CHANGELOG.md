@@ -9,6 +9,42 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **Selection and disclosure state** (`docs/adr/0001-accessibility-as-data.md`).
+  `checked` covered checkbox / radio / switch and stopped there, so a row
+  of tabs read out with no way to hear which one was open — AccessKit and
+  ARIA keep "toggled" and "selected" apart, and kui only had the first.
+  Two rows close it in every binding. `selected` marks the current one of
+  a set: a `tab` reports the state either way, so its siblings read as
+  "not selected", while a `listItem` or a `link` reports it only where the
+  view sets it (an ordinary list is not a selection, and a reader saying
+  "not selected" on each of its rows is noise). `expanded` names its state
+  — `"collapsed"` or `"expanded"` — instead of being a flag, because a
+  flag cannot say "collapsed": absent has to keep meaning "this node does
+  not expand", and a shut disclosure that says nothing never tells you it
+  opens. It lands wherever it is declared, since a twisty, an accordion
+  header and a menu button share no role. The bridge maps them to
+  AccessKit's `set_selected` and `set_expanded`. **"3 of 7" is not
+  declared at all**: a `list` already holds its rows and a `tabList` its
+  tabs, so the core numbers them itself — the zero-based ordinal on each
+  item, the count on the container, the way AccessKit models a set — and
+  reports them as `pos_in_set` / `set_size` (`posInSet` / `setSize` in
+  Node, `KUI_ACCESS_HAS_POS_IN_SET` / `HAS_SET_SIZE` in C). The
+  accessibility example grew a tab list and a disclosure, and
+  `scripts/ax-audit.swift` grew 25 checks over them against the real macOS
+  accessibility API (70 in total, all passing). That pass found two gaps
+  that are AccessKit's, not kui's: a tab's state arrives as its `AXValue`
+  rather than `AXSelected` (so the audit pins both halves, including that
+  pressing a tab moves the state *off* the one that had it), and
+  `accesskit_macos` maps no disclosure state and no set position at all —
+  so `expanded` reaches UIA and AT-SPI but not VoiceOver, which the audit
+  asserts so it fails the day that changes. It also found one gap that
+  *is* kui's: because an unpicked `listItem` carries no selected state at
+  all, macOS treats it as unselectable and drops a reader's request to
+  select it — `AXPress` works, `AXSelected` does not. The audit pins both
+  halves and ADR 0001 records the fix that would close it. Live regions and announcements
+  stay out: an announcement is an event on a timeline, not a property of
+  a tree, and it wants its own design (noted in ADR 0001's follow-ups,
+  along with `required` / `invalid` and a heading's `level`).
 - **Modal surfaces** (`docs/adr/0003-modal-surfaces.md`). One row,
   `modal`, makes a node the frame's modal surface in every binding
   (`modal` in JSX, `modal = true` in Lua, `KuiSpec.modal` in C,
@@ -168,6 +204,16 @@ upgrades remove code from the apps on it is doing the job.
 
 ### What you can delete
 
+- **The label that spelled out the state of a tab** — `label="General
+  (current)"`, or the "selected" suffix an app appended so a reader would
+  say *something*: `selected` is the state, and the name stays the name.
+- **The `aria-posinset` equivalent an app was computing** — the index and
+  the total it threaded through every row of a list so it could put "3 of
+  7" into a label. The core counts the items it already holds.
+- **The two-props-for-one-state workaround on a disclosure**: a `label`
+  that changed between "Advanced (collapsed)" and "Advanced (expanded)",
+  or a `checked` misused as an open flag on a node that is not a
+  checkbox. One `expanded` row, and a reader that says the right word.
 - **"kui can't right-click"**, and every workaround under it: the
   Ctrl-click convention an app invented, the long-press timer on a
   desktop UI, the "menu" button bolted next to a row that should have had

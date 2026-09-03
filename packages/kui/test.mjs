@@ -439,6 +439,53 @@ test('the access tree derives roles and names, and requests drive the app', () =
   assert.throws(() => app.access(name.key, 'teleport'), /unknown access action/);
 });
 
+// `selected` and `expanded` are one schema row each, so all three
+// transports carry them; "3 of 7" is not a row at all — the core numbers
+// what a list holds.
+test('selection, disclosure and set position reach the access tree', () => {
+  const build = () =>
+    box({ pad: 4 }, [
+      box({ role: 'tabList', gap: 2 }, [
+        box({ role: 'tab', selected: false, onClick: 0 }, [text('General', { size: 12 })], 't0'),
+        box({ role: 'tab', selected: true, onClick: 1 }, [text('Network', { size: 12 })], 't1'),
+      ]),
+      box({ role: 'list' }, [
+        box({ role: 'listItem', selected: true }, [text('one', { size: 12 })], 'r0'),
+        box({ role: 'listItem' }, [text('two', { size: 12 })], 'r1'),
+      ]),
+      box({ onClick: 'toggle', expanded: 'collapsed' }, [text('Advanced', { size: 12 })], 'adv'),
+      box({ onClick: 'go' }, [text('Save', { size: 12 })], 'save'),
+    ]);
+  for (const transport of ['binary', 'json', 'object']) {
+    const { ctx } = run(transport, build);
+    const nodes = ctx.accessTree().nodes;
+    const byName = (n) => nodes.find((x) => x.name === n);
+    const t = `${transport}:`;
+
+    // Every tab reports the state; a reader can say which one is on.
+    assert.deepEqual([byName('General').selected, byName('Network').selected], [false, true], t);
+    // A row says so only where it is picked: a plain list is not a
+    // selection. A `listItem` is not named by its content, so the rows
+    // are found through the list that holds them.
+    const list = nodes.find((n) => n.role === 'list');
+    const rows = nodes.filter((n) => n.parent === list.key && n.role === 'listItem');
+    assert.deepEqual(rows.map((n) => n.selected), [true, null], t);
+    // A shut disclosure says it is shut; an ordinary button says nothing.
+    assert.equal(byName('Advanced').expanded, false, t);
+    assert.equal(byName('Save').expanded, null, t);
+    assert.equal(byName('Save').selected, null, t);
+
+    // Derived, not declared: the ordinal on the item, the count on the
+    // container, and nothing outside a list or tab list.
+    const tabs = nodes.find((n) => n.role === 'tabList');
+    assert.deepEqual([tabs.setSize, list.setSize], [2, 2], t);
+    assert.equal(tabs.posInSet, null, t);
+    assert.deepEqual([byName('General').posInSet, byName('Network').posInSet], [0, 1], t);
+    assert.deepEqual(rows.map((n) => n.posInSet), [0, 1], t);
+    assert.equal(byName('Save').posInSet, null, t);
+  }
+});
+
 test('editors expose runs and take selection requests; custom editors get them as messages', () => {
   const app = createApp(
     {

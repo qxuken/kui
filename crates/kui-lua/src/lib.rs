@@ -1030,8 +1030,9 @@ mod tests {
         assert_eq!(frame(&mut core, &mut ext), idle);
     }
 
-    /// `role` / `label` / `checked` / `value_*` are schema rows, so a script
-    /// declares semantics like any other prop; the access tree shows them,
+    /// `role` / `label` / `checked` / `selected` / `expanded` / `value_*`
+    /// are schema rows, so a script declares semantics like any other
+    /// prop; the access tree shows them (and numbers a tab list itself),
     /// and an assistive request on a script's button emits its message.
     #[test]
     fn semantics_reach_the_access_tree() {
@@ -1046,6 +1047,12 @@ mod tests {
                           value_now = 3, value_min = 0, value_max = 10 },
                     row { key = "art", role = "none", on_click = "art", text("Art") },
                     row { key = "tip", tooltip = "more here", on_click = "t", text("Tip") },
+                    row { key = "tabs", role = "tabList",
+                      row { key = "t0", role = "tab", text("General") },
+                      row { key = "t1", role = "tab", selected = true, text("Network") },
+                    },
+                    row { key = "adv", on_click = "adv", expanded = "collapsed",
+                          label = "Advanced" },
                   }
                 end
             "#,
@@ -1074,6 +1081,20 @@ mod tests {
         assert!(named("Art").is_none(), "role none hides a would-be button");
         let tip = named("Tip").expect("button");
         assert_eq!(tip.description.as_deref(), Some("more here"));
+        // Every tab reports the state; the ordinals are the core's, not
+        // the script's.
+        let (t0, t1) = (named("General").unwrap(), named("Network").unwrap());
+        assert_eq!((t0.selected, t1.selected), (Some(false), Some(true)));
+        assert_eq!((t0.pos_in_set, t1.pos_in_set), (Some(0), Some(1)));
+        let tabs = tree
+            .nodes
+            .iter()
+            .find(|n| n.role == kui_core::Role::TabList)
+            .expect("tab list");
+        assert_eq!(tabs.set_size, Some(2));
+        // An enum row, so a shut disclosure can say it is shut.
+        let adv = named("Advanced").expect("disclosure");
+        assert_eq!(adv.expanded, Some(false));
 
         let evs = core.handle_input(InputEvent::Access(kui_core::AccessRequest {
             key: save.key,

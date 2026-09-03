@@ -380,6 +380,23 @@ pub struct AccessNode {
     pub focus: Option<TextPos>,
     /// `checked` for checkbox / radio / switch roles.
     pub checked: Option<bool>,
+    /// The current one of a set: every `tab` carries it, a `listItem` or a
+    /// `link` only where the view set it (an ordinary list is not a
+    /// selection, and "not selected" on every row of one is noise).
+    /// None = the node has no such state.
+    pub selected: Option<bool>,
+    /// A disclosure's state, exactly as declared. None = it does not
+    /// expand, and a reader says nothing about it.
+    pub expanded: Option<bool>,
+    /// "3 of 7": this node's zero-based ordinal among the items of the
+    /// `list` / `tabList` holding it, with `set_size` on that container.
+    /// Derived, never declared — the core counts the semantic children it
+    /// already has (see `set_size`).
+    pub pos_in_set: Option<usize>,
+    /// On a `list` / `tabList`: how many items it holds. AccessKit puts
+    /// the count on the container and the ordinal on the item, unlike
+    /// ARIA's `aria-setsize` on every item; this follows AccessKit.
+    pub set_size: Option<usize>,
     /// `valueNow` / `valueMin` / `valueMax` for a slider.
     pub number: Option<f32>,
     pub min: Option<f32>,
@@ -697,6 +714,10 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             anchor: None,
             focus: None,
             checked: None,
+            selected: None,
+            expanded: None,
+            pos_in_set: None,
+            set_size: None,
             number: None,
             min: None,
             max: None,
@@ -748,8 +769,18 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
                     | AccessAction::ReplaceSelectedText.bit();
             }
         }
+        // A disclosure names its own state, so it lands wherever it is
+        // declared: no role means "shows and hides something".
+        node.expanded = spec.expanded;
         match sem.role {
             Role::Checkbox | Role::Radio | Role::Switch => node.checked = Some(spec.checked),
+            // A tab is one of a set by definition, so it reports either
+            // state; a row or a link reports only the one it declares,
+            // since most lists and every navigation bar are not
+            // selections and "not selected" on each of their nodes is the
+            // noise AccessKit warns about.
+            Role::Tab => node.selected = Some(spec.selected),
+            Role::ListItem | Role::Link if spec.selected => node.selected = Some(true),
             Role::Slider => {
                 node.number = spec.value_now;
                 node.min = spec.value_min;
@@ -789,8 +820,46 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
         }
         i += 1;
     }
+    set_positions(&mut out);
     out.hash = hash_of(&out);
     out
+}
+
+/// "3 of 7", derived rather than declared: a `list` or `tabList` already
+/// holds its items as semantic children, so the core counts them and
+/// numbers each one instead of making every view repeat itself (and get
+/// it wrong the moment a row is filtered out). The count lands on the
+/// container and the zero-based ordinal on the item, which is how
+/// AccessKit models a set.
+fn set_positions(out: &mut AccessTree) {
+    let containers: Vec<(Key, Role)> = out
+        .nodes
+        .iter()
+        .filter_map(|n| match n.role {
+            Role::List => Some((n.key, Role::ListItem)),
+            Role::TabList => Some((n.key, Role::Tab)),
+            _ => None,
+        })
+        .collect();
+    for (container, item) in containers {
+        let items: Vec<Key> = out
+            .nodes
+            .iter()
+            .filter(|n| n.parent == Some(container) && n.role == item)
+            .map(|n| n.key)
+            .collect();
+        if items.is_empty() {
+            continue;
+        }
+        let size = items.len();
+        for n in &mut out.nodes {
+            if n.key == container {
+                n.set_size = Some(size);
+            } else if let Some(pos) = items.iter().position(|k| *k == n.key) {
+                n.pos_in_set = Some(pos);
+            }
+        }
+    }
 }
 
 /// A custom editor's text: its `role="line"` descendants in order, each
@@ -1106,6 +1175,10 @@ fn hash_of(tree: &AccessTree) -> u64 {
         mix_pos(&mut mix, n.anchor);
         mix_pos(&mut mix, n.focus);
         mix(&[n.checked.map_or(2, |c| c as u8)]);
+        mix(&[n.selected.map_or(2, |c| c as u8)]);
+        mix(&[n.expanded.map_or(2, |c| c as u8)]);
+        mix(&n.pos_in_set.unwrap_or(usize::MAX).to_le_bytes());
+        mix(&n.set_size.unwrap_or(usize::MAX).to_le_bytes());
         mix_f32(&mut mix, n.number);
         mix_f32(&mut mix, n.min);
         mix_f32(&mut mix, n.max);

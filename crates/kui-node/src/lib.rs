@@ -1681,6 +1681,16 @@ fn access_tree_json(tree: &kui_core::AccessTree) -> Json {
                 ),
             );
             o.insert("checked".into(), n.checked.map_or(Json::Null, Json::Bool));
+            o.insert("selected".into(), n.selected.map_or(Json::Null, Json::Bool));
+            o.insert("expanded".into(), n.expanded.map_or(Json::Null, Json::Bool));
+            o.insert(
+                "posInSet".into(),
+                n.pos_in_set.map_or(Json::Null, |v| Json::from(v as u64)),
+            );
+            o.insert(
+                "setSize".into(),
+                n.set_size.map_or(Json::Null, |v| Json::from(v as u64)),
+            );
             o.insert("valueNow".into(), opt_num(n.number));
             o.insert("valueMin".into(), opt_num(n.min));
             o.insert("valueMax".into(), opt_num(n.max));

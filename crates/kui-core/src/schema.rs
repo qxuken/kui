@@ -101,6 +101,8 @@ pub const P_FOCUS_BG: u32 = 63;
 pub const P_MODAL: u32 = 64;
 pub const P_ON_CONTEXT_MENU: u32 = 65;
 pub const P_CURSOR: u32 = 66;
+pub const P_SELECTED: u32 = 67;
+pub const P_EXPANDED: u32 = 68;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -127,6 +129,11 @@ pub fn cursor_idx(i: usize) -> CursorShape {
         .unwrap_or(CursorShape::Default)
 }
 pub const WRAPS: &[&str] = &["word", "glyph", "none"];
+/// `expanded` names its state rather than being a flag: a disclosure that
+/// is shut has to say "collapsed", and an absent flag cannot — absent has
+/// to keep meaning "this node does not expand" (AccessKit's `expanded`,
+/// ARIA's `aria-expanded`, are three-state for the same reason).
+pub const EXPANDED: &[&str] = &["collapsed", "expanded"];
 /// The roles a view can declare (`crate::access::Role::name` spellings);
 /// the derived-only roles (window, static text, text input, scroll view)
 /// are not on the list.
@@ -680,6 +687,20 @@ pub const PROPS: &[PropDef] = &[
         doc: "The on state of a `checkbox` / `radio` / `switch` role.",
     },
     PropDef {
+        name: "selected",
+        id: P_SELECTED,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.selected(true)),
+        doc: "The current one of a set: which `tab` a `tabList` shows, which `listItem` a list has picked, which `link` is the page you are on. A `tab` always carries the state — its siblings read as \"not selected\" — while a list row or a link carries it only where it is set, since an ordinary list or navigation bar is not a selection and a reader saying \"not selected\" on every row of it is noise.",
+    },
+    PropDef {
+        name: "expanded",
+        id: P_EXPANDED,
+        kind: Kind::Enum(EXPANDED),
+        apply: Apply::SpecEnum(|s, i| s.expanded(i == 1)),
+        doc: "A disclosure's state: what a node that shows and hides something (a twisty, an accordion header, a menu button) reads as. Unset, the node does not expand at all — which is why this names its state instead of being a flag.",
+    },
+    PropDef {
         name: "valueNow",
         id: P_VALUE_NOW,
         kind: Kind::F32,
@@ -836,6 +857,7 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     ("radiusBL", "`radius_bl` with `per_corner`"),
     ("hoverGroup", "`hover_group` (KuiStr)"),
     ("role", "`role` (`KUI_ROLE_*`)"),
+    ("expanded", "`expanded` (`KUI_EXPANDED_*`)"),
     ("cursor", "`cursor` (`KUI_CURSOR_*`)"),
     ("label", "`label` (KuiStr)"),
     (

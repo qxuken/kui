@@ -134,6 +134,8 @@ export interface GeneratedSpecProps {
   easing?: 'easeOut' | 'linear' | 'easeIn' | 'easeInOut' | 'spring' | 'bouncy';
   /** Where the node starts the first frame it is seen `{ dx?, dy?, width?, height?, bg?, radius? }`: those slots ease in from there over `transition` ms instead of snapping (`dx`/`dy` slide it in from that far away). */
   enter?: EnterProp;
+  /** A disclosure's state: what a node that shows and hides something (a twisty, an accordion header, a menu button) reads as. Unset, the node does not expand at all — which is why this names its state instead of being a flag. */
+  expanded?: 'collapsed' | 'expanded';
   /** Background while the node holds keyboard-visible focus (moved there by Tab or assistive technology, not a click); replaces the default focus ring. Pressed wins over focus wins over hover; eases with `transition`. */
   focusBg?: ColorProp;
   /** Reachable by Tab (and focused by a click) without a click payload or a control role — a row that opens on Enter. Editors, key sinks, `onClick` boxes and the control roles are focusable already. */
@@ -194,6 +196,8 @@ export interface GeneratedSpecProps {
   repeat?: 'normal' | 'reverse' | 'alternate' | 'alternateReverse';
   /** What the node is to assistive technology. Unset, the core derives one (an `onClick` node is a button, an editor a text input, a scrolling box a scroll view, a plain box nothing); `none` hides the node and its subtree from the access tree. */
   role?: 'none' | 'button' | 'checkbox' | 'radio' | 'switch' | 'slider' | 'tab' | 'tabList' | 'link' | 'heading' | 'list' | 'listItem' | 'image' | 'dialog' | 'group' | 'textInput' | 'multilineTextInput' | 'line';
+  /** The current one of a set: which `tab` a `tabList` shows, which `listItem` a list has picked, which `link` is the page you are on. A `tab` always carries the state — its siblings read as "not selected" — while a list row or a link carries it only where it is set, since an ordinary list or navigation bar is not a selection and a reader saying "not selected" on every row of it is noise. */
+  selected?: boolean;
   /** On a `line` of a custom editor: the byte offset where the selection's other end sits (the caret is `caret`, possibly on another line). */
   selectionAnchor?: number;
   /** With transition: also ease the node's position (reordered siblings slide). */

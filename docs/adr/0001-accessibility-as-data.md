@@ -193,6 +193,24 @@ warnings already are.
   a lint on contrast between `bg` and text `color` fits the warnings
   channel later).
 
+### Follow-ups
+
+- **Live regions and announcements.** A node whose changed text a reader
+  should read without being asked (`aria-live`), and a one-off
+  announcement with no node behind it at all ("Saved", "3 results"), are
+  both still missing. The second is the reason this is not just another
+  row: an announcement is an event on a timeline, not a property of a
+  tree, and a frame-by-frame IR that re-declares the whole tree has no
+  natural place to say "this, once". A polite/assertive row on the node
+  plus a per-frame announcement channel alongside the tree is the shape
+  to design, and it wants its own ADR rather than a prop.
+- **`required` and `invalid` on form fields.** AccessKit has both (and
+  `invalid` distinguishes spelling and grammar); nothing in the IR
+  carries them, so an editor cannot say it must be filled in or that
+  what it holds is wrong. Two schema rows when the first app needs them.
+- **`level` on a heading.** `Role::Heading` has no depth, so every
+  heading is the same size to a reader walking by heading.
+
 ## Outcome: text (2026-09-03)
 
 The tree goes below the node for editors only. An editor's access node
@@ -211,7 +229,7 @@ for no reader benefit.
 The headless tests pin the data; they cannot tell whether the OS accepts
 it. `scripts/ax-audit.swift` drives a running window through the macOS
 accessibility API — the same one VoiceOver calls — against the
-`examples/accessibility` fixture: 36 checks over roles, names, values,
+`examples/accessibility` fixture: 70 checks over roles, names, values,
 the whole text protocol (`AXNumberOfCharacters`, `AXStringForRange`,
 `AXLineForIndex`, `AXRangeForLine`, `AXBoundsForRange`,
 `AXSelectedTextRange` read *and* written, `AXSelectedText`,
@@ -246,3 +264,107 @@ lines, byte offset), exactly as a slider nudge does. A virtualised editor
 therefore exposes the lines it draws; `label` is the place to say "line
 120 of 4000". A key sink with no role became a focusable group, since a
 sink that was elided could not be reached at all.
+
+## Outcome: selection state (2026-09-04)
+
+`checked` covered checkbox / radio / switch and nothing else, so a row of
+tabs read out with no way to tell which was open. Three more facts now
+reach the tree, and the split between them is the point — AccessKit and
+ARIA both keep `toggled` and `selected` apart, and a screen reader says
+different things for each:
+
+- **`selected`** (a flag) is the current one of a set. A `tab` reports it
+  either way, so its siblings read as "not selected"; a `listItem` or a
+  `link` reports it only where the view sets it. That asymmetry is
+  deliberate: a tab is one of a set by definition, while most lists are
+  not selections and every navigation bar is not one, and AccessKit's own
+  documentation calls a stray "not selected" on each of them the common
+  annoyance to avoid. The bridge maps it to `set_selected`, not
+  `set_toggled`.
+- **`expanded`** names its state (`"collapsed"` / `"expanded"`) rather
+  than being a flag. A flag cannot say "collapsed": absent has to keep
+  meaning "this node does not expand", and a disclosure that is shut has
+  to announce that it is shut or the user never learns it opens. It lands
+  wherever it is declared — a twisty, an accordion header and a menu
+  button share no role, and gating it on one would have excluded the
+  others.
+- **"3 of 7" is derived, not declared.** A `list` already holds its rows
+  and a `tabList` its tabs as semantic children, so the core numbers them
+  itself: the zero-based ordinal on each item, the count on the container
+  (AccessKit's model; ARIA repeats the count on every item instead). A
+  view that had to declare both would restate what the tree knows and get
+  it wrong the first time a row was filtered out — the same reason names
+  come from content rather than from a required `label`.
+
+`selected` and `expanded` are one `PROPS` row each, so all four bindings
+carry them; the ordinals are core-side and no binding declares anything.
+The AccessKit bridge gained four lines.
+
+### What macOS actually does with them (2026-09-04)
+
+`scripts/ax-audit.swift` grew a tab list and a disclosure in the fixture
+and 14 checks over them, and the three facts land in three quite
+different places — which is the reason to ask the OS rather than trust
+the tree:
+
+- A `tabList` becomes an `AXTabGroup` exposing `AXTabs`; a `tab` becomes
+  an `AXRadioButton` with the `AXTabButton` subrole, and **`selected`
+  arrives as its `AXValue`**, not as `AXSelected`. `accesskit_macos`
+  treats a tab as checkable and keeps `AXSelected` for item-like nodes
+  (a list row), so the audit pins both halves: one tab reads 1 and the
+  others 0, and no tab answers `AXSelected`. Pressing a tab moves the
+  state to it and off the one that had it — a tab that switched on
+  without its sibling switching off is what a reader announces as two
+  open tabs, and it is the failure a `checked`-shaped API would have
+  given us.
+- **`expanded` reaches macOS nowhere.** `accesskit_macos` 0.27 maps no
+  disclosure state at all — there is no `isAccessibilityExpanded` in it —
+  so the tree carries the fact, UIA and AT-SPI receive it, and VoiceOver
+  hears nothing. The audit asserts the absence so it fails the day
+  AccessKit adds it. What a reader can observe today is the panel
+  arriving in the tree, which the audit checks instead. Putting the state
+  back into the label would paper over this and is exactly what the
+  release notes say to delete, so the fixture does not.
+- A `listItem` takes the other spelling entirely: it becomes an `AXGroup`
+  (macOS has no row role outside tables) and, because a row is item-like
+  there, its `selected` arrives as **`AXSelected`** — the attribute a tab
+  deliberately does not answer. So the two roles that share one `selected`
+  row in the schema are read through two different platform attributes,
+  and the audit pins both directions: a tab carries no `AXSelected`, a row
+  carries no `AXValue`.
+- **`set_size` has no macOS attribute behind it.** Neither
+  `position_in_set` nor `size_of_set` is mapped there; VoiceOver derives
+  "1 of 3" for a tab group from `AXTabs` itself. So the ordinals are for
+  UIA and AT-SPI, and on macOS they are carried by the platform's own
+  notion of a tab group — which the audit checks holds three tabs and
+  only tabs.
+
+Two platform gaps, then, neither of them kui's to fix: they belong to
+`accesskit_macos`, and the data is already there when it grows them.
+
+### A gap that *is* ours: an unpicked row cannot be selected
+
+Adding the list turned up something the headless tests could not have.
+`AXSelected` is settable, and a reader uses it to move a selection — but
+`accesskit_macos` honours it only on a node it already considers
+*selectable*, and `accesskit_consumer` defines that as
+`is_selected().is_some()`: carrying the state at all, true or false.
+
+The gate this ADR chose for rows — `Role::ListItem if spec.selected` —
+gives an unpicked row `None`. `Some(false)` is unreachable for a row: a
+view has no way to say "part of this selection, not the current one". So
+setting `AXSelected` on any row but the one that already has it is
+dropped, and a reader can only move the selection with `AXPress`. The
+audit pins exactly that, in both halves, so the day either side changes it
+says so.
+
+The trade was made to keep an ordinary bullet list quiet — a reader saying
+"not selected" on each of its rows is the annoyance AccessKit's own
+documentation warns about — and it was made before the platform had a
+vote. The way to keep both is to derive the selection set the way the
+ordinals already are: `set_positions` is walking a `list`'s `listItem`
+children anyway, so if *any* of them declares `selected` the list is a
+selection and all of them get `Some(spec.selected)`, and if none does they
+all stay `None`. A quiet list stays quiet, and a real selection becomes
+settable. That is a change to accepted semantics, so it is written down
+here rather than made in passing.

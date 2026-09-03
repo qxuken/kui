@@ -224,6 +224,15 @@ export interface AccessNode {
   focus: TextPos | null;
   /** `checked` for checkbox / radio / switch roles. */
   checked: boolean | null;
+  /** The current one of a set. Every `tab` carries it; a `listItem` or a
+   *  `link` only where the view set `selected`. */
+  selected: boolean | null;
+  /** A disclosure's state, as declared. `null` = it does not expand. */
+  expanded: boolean | null;
+  /** "3 of 7", derived from the `list` / `tabList` holding this node: the
+   *  zero-based ordinal on each item, the count on the container. */
+  posInSet: number | null;
+  setSize: number | null;
   /** `valueNow` / `valueMin` / `valueMax` for a slider. */
   valueNow: number | null;
   valueMin: number | null;
