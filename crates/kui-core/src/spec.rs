@@ -86,6 +86,13 @@ pub struct FloatConfig {
     /// viewport on an axis, mirror the attachment across the anchor on that
     /// axis (below ↔ above, after ↔ before) when that fits better, then
     /// clamp whatever still overflows. Tooltips/menus want this.
+    ///
+    /// This is the *in-window* approximation of an OS popup, and it is the
+    /// one to reach for first: a float costs one tree, one hit list and one
+    /// draw call. What it cannot do is leave the window — a dropdown taller
+    /// than the viewport, or a menu with nowhere in-window to go, gets
+    /// clamped rather than placed. Those want a popup window; see
+    /// `docs/adr/0004-multi-window.md`.
     pub fit: bool,
 }
 
@@ -157,7 +164,8 @@ impl FloatConfig {
         self
     }
 
-    /// Flip across the anchor / clamp as needed to stay in the viewport.
+    /// Flip across the anchor / clamp as needed to stay in the viewport;
+    /// see [`FloatConfig::fit`] for where that stops being enough.
     pub fn fit(mut self) -> Self {
         self.fit = true;
         self

@@ -515,7 +515,42 @@ could be derived from a `Role::List` parent rather than declared, which fits the
 design better. Live regions are a side channel, not a tree property — note them
 in ADR 0001's follow-ups and leave them out of scope.
 
-### `.` C7 — Decide the multi-window story on paper
+### `.` C7 — Decide the multi-window story on paper — **done (2026-09-04)**
+
+`docs/adr/0004-multi-window.md`, accepted. kui is multi-window; a window is a
+`Core` (not a root in a shared one), since `Core` already owns every per-frame
+singleton a window has — viewport, scale, `Env`, focus, the modal scope, the hit
+list, the display list — while the four expensive shared halves (`Resources`,
+`TextSystem`, `GlyphAtlas`, `AudioStore`) hoist into a `Session` a `Core` is
+built against, so `Core::new()` and every headless path stay as they are. A
+window's **existence is declared** and diffed the way `window_title` and `modal`
+already are, edge-triggered like `set_key_focus` so an OS close is not undone by
+the next frame; its **geometry stays a command** (`SetSize`, `Focus`), because
+the user owns a window's size once it exists. `UiEvent` gains `window` — one app
+keeps one `update`, and `origin` is not reused, since it answers which
+*frontend* drew the node and an extension draws into every window. An OS popup
+is `WindowKind::Popup`: borderless, owned, anchored to a rect `on_layout`
+already reports, non-activating so opening a combobox does not blur its field,
+and dismissed by the same `{kind:"dismiss", reason}` ADR 0003 gave a modal — so
+graduating a dropdown from a `modal` float to a real surface changes the
+declaration and not the handler. Modality is per-window (a modal cannot make
+another window's hit list inert, and should not: a modal that freezes every
+window is a hung app — ADR 0003's own reasoning for keeping chrome live). No
+entry point changes shape: `kui::app().run()`, `kui_run` and one `runWindowed`
+promise all stay, with `view` called once per live window. Two named C breaks
+when it is built, neither reaching the other three bindings:
+`kui_take_window_commands` stops being a `uint32_t` array (a source break —
+hosts edit their drain loop), and `KuiEvent` gains an appended `window`
+(source-compatible, but the struct is caller-allocated, so every C host
+recompiles). An `Open` carries no title — a new window's own first frame
+declares one through `window_title` — so `WindowCommand` stays `Copy` and
+pointer-free.
+
+Nothing shipped, which is the point — the ADR exists so the next twelve
+additions stop assuming one window. `FloatConfig::fit` now documents itself as
+the in-window approximation and names what it cannot do. The build work is C11.
+
+The original finding:
 
 `runWindowed` says "One window per process" outright; `kui_run` takes one app;
 `WindowCommand` covers drag, close, minimize, maximize and nothing else. A native
@@ -574,6 +609,38 @@ children group into lines before main-axis distribution, and the cross-axis fit
 becomes a sum of line heights. Read `shrink_axis`'s comment carefully: wrapping
 and shrinking are alternative responses to the same overflow and need a defined
 interaction. Bench it; the solver is the hot path.
+
+### `.` C11 — Build multi-window
+
+The work ADR 0004 (C7) decided but did not do. Each step ships alone, in order:
+
+1. **`Session`.** Hoist `Resources`, `TextSystem`, `GlyphAtlas` and
+   `AudioStore` out of `Core` and behind a session a `Core` is constructed
+   against; `Core::new()` becomes sugar for a private session of one, so
+   nothing headless changes. `kui-wgpu` grows a shared `wgpu::Device`/`Queue`
+   with a surface per window — `Renderer::new` builds its own instance and
+   device today (`crates/kui-wgpu/src/lib.rs:109`), so N windows would mean N
+   GPU devices. Invisible to every binding.
+2. **`WindowId` plumbing.** `UiEvent.window`, `WindowEnv::id`, `KuiEvent.window`
+   (appended), the Node event object and the TS message types. Always 0 until
+   step 3, so it is pure plumbing that can land and be reviewed on its own.
+3. **The declared set.** `declared_windows` / `declared_windows_last` beside
+   the focus pair, the diff into `WindowCommand::Open`/`Close(WindowId)`, the
+   `{kind:"window", phase}` event, and the runner opening real `Normal`
+   windows. `kui_take_window_commands` becomes a `KuiWindowCommand`
+   out-param here — a command now carries a `window` beside its verb, which
+   no longer fits a `uint32_t` — and C hosts edit their drain loop. Keep the
+   struct pointer-free: an `Open` carries no title (ADR 0004 decision 5), so
+   `WindowCommand` stays `Copy` and no borrowed string enters the drain.
+4. **`WindowKind::Popup`.** Anchoring in screen coordinates, ownership,
+   non-activating focus routing, and `dismiss` on the window.
+5. **`SetSize` / `Focus`**, queued the way `reveal` and `play` are.
+
+Testing splits the way the ADR says: the conformance corpus can pin the
+declaration diff (declare a window, stop declaring it, assert the command
+sequence — all four transports reproduce it byte-identically), but a popup
+window has no headless equivalent, so its behaviour belongs in P8's
+macOS/Windows smoke jobs.
 
 ---
 
@@ -734,6 +801,10 @@ By leverage-to-effort, not severity.
 6. **Then the designs.** ~~C1 + C2 unlock dialogs, menus and comboboxes
    together~~ — both shipped (ADR 0003 for C1; C2 needed no ADR of its own,
    since it only adds a row and a button to the model 0003 settled), and a
-   context menu is now an `onContextMenu` tag plus a `modal` float. C7 is
+   context menu is now an `onContextMenu` tag plus a `modal` float. ~~C7 is
    the one to decide on paper now and build later, before more API assumes
-   a single window.
+   a single window.~~ Decided (ADR 0004): a `Core` per window, a declared
+   window set, `window` on the event, popups as a window kind. The build is
+   C11, and its first step (a `Session` for the shared caches, one wgpu
+   device) is worth doing early even alone — it is invisible to the
+   bindings and it is what every later step sits on.
