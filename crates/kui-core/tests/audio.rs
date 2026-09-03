@@ -44,8 +44,8 @@ fn click_sound_plays_on_click_alongside_the_click_event() {
         None,
     );
     core.handle_input(InputEvent::CursorMoved(Vec2::new(10.0, 10.0)));
-    core.handle_input(InputEvent::MouseDown(1));
-    let evs = core.handle_input(InputEvent::MouseUp);
+    core.handle_input(InputEvent::mouse_down(1));
+    let evs = core.handle_input(InputEvent::mouse_up());
     assert_eq!(evs.len(), 1, "the click event still fires");
     let cmds = core.take_audio_commands();
     assert!(
@@ -62,8 +62,8 @@ fn click_sound_alone_makes_the_node_hit_tracked_but_emits_no_event() {
     let (key, _) = frame(&mut core, NodeSpec::column().click_sound(s), None);
     core.handle_input(InputEvent::CursorMoved(Vec2::new(10.0, 10.0)));
     assert!(core.is_hovered(key));
-    core.handle_input(InputEvent::MouseDown(1));
-    let evs = core.handle_input(InputEvent::MouseUp);
+    core.handle_input(InputEvent::mouse_down(1));
+    let evs = core.handle_input(InputEvent::mouse_up());
     assert!(evs.is_empty());
     assert_eq!(core.take_audio_commands().len(), 1);
 }

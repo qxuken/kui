@@ -186,8 +186,8 @@ fn float_escapes_ancestor_clip_and_hits_topmost() {
 
     // Click inside the float area: the float wins over the in-flow region.
     core.handle_input(InputEvent::CursorMoved(Vec2::new(30.0, 110.0)));
-    core.handle_input(InputEvent::MouseDown(1));
-    let evs = core.handle_input(InputEvent::MouseUp);
+    core.handle_input(InputEvent::mouse_down(1));
+    let evs = core.handle_input(InputEvent::mouse_up());
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].payload.as_str(), Some("float"));
 }
@@ -347,8 +347,8 @@ fn percent_floats_tile_their_parent_into_zones() {
     frame(&mut core);
     let probe = |core: &mut Core, x: f32, y: f32| -> String {
         core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
-        let mut evs = core.handle_input(InputEvent::MouseDown(1));
-        evs.extend(core.handle_input(InputEvent::MouseUp));
+        let mut evs = core.handle_input(InputEvent::mouse_down(1));
+        evs.extend(core.handle_input(InputEvent::mouse_up()));
         evs.iter()
             .find_map(|e| {
                 e.payload

@@ -5,7 +5,7 @@ the workaround, the model field or the arithmetic the release made
 unnecessary. The second list is the point of the first — a library whose
 upgrades remove code from the apps on it is doing the job.
 
-## 0.1.0-alpha.5 (unreleased)
+## 0.1.0-alpha.6 (unreleased)
 
 ### Added
 
@@ -30,6 +30,30 @@ upgrades remove code from the apps on it is doing the job.
   one that is not says so, as a new `modal-behind-content` warning. The
   accessibility example grew a "Delete…" button and the confirm dialog it
   opens, which is what a VoiceOver session can be pointed at.
+- **The secondary mouse button, and `on_context_menu`.** `InputEvent` was
+  built around one button — `MouseDown(u8)` carried the *click count*, not
+  which button — so nothing in kui could right-click. It is now
+  `MouseDown { button, clicks }` / `MouseUp { button }` over a
+  driver-facing `MouseButton` (`Primary` / `Secondary` / `Middle` /
+  `Other(n)`, so back and forward reach a driver without a vocabulary
+  change), and every binding carries it: `kui_input_mouse_button` in C
+  (`kui_input_mouse` still means the primary button, unchanged ABI),
+  `ctx.mouse(down, clicks, "secondary")` in Node, `InputEvent::mouse_down`
+  / `mouse_up` for the primary spellings in Rust. A new `onContextMenu`
+  row (a `Kind::Tag`, so a null tag declares the behaviour without a
+  payload, like `onKey`) emits `{kind:"contextmenu", x, y, tag}` on the
+  node the press landed on, at the logical viewport point to open the menu
+  at. **The press does nothing else**: it moves no keyboard focus, places
+  no caret, starts no drag and produces no click, so right-clicking a
+  selection still has that selection when the menu opens — that is what
+  every platform does, and it is what makes a "Copy" item possible.
+  Routing is a click's: the topmost node under the pointer answers, a
+  disabled one answers nothing, and a modal scopes it like every other
+  input (a press outside still dismisses, which is how a menu closes when
+  you right-click elsewhere). With modal surfaces, that is a context menu
+  end to end — the C counter example now opens one, and Escape or a press
+  outside takes it away. Nothing routes the middle button or the ones past
+  it yet; they arrive as data so a driver need not drop them.
 - **The binding-parity table is a build failure now.** `CUSTOM` and
   `ELEMENTS` in `crates/kui-core/src/schema.rs` name the ten props and ten
   elements every frontend lowers by hand, and until now that agreement was
@@ -51,6 +75,53 @@ upgrades remove code from the apps on it is doing the job.
   never checked in: its digests cover real glyph geometry, so it holds
   only for the machine and fonts that made it — which is why all four
   adapters run in CI's single `check` job.
+
+### Changed
+
+- `KuiSpec` gained `tooltip` (appended; a zeroed struct means what it
+  meant): the C spelling of the `tooltip` prop the other bindings have —
+  it makes the node hover-tracked, becomes its accessible description,
+  and `kui_close` floats the hint below it while hovered. `kui_tooltip` /
+  `kui_tooltip_with` stay what they were, a hint that always draws.
+  `Ctx.windowTitle()` in Node reports the title a frame declared.
+- The Node counter example clicks into its editor before typing, and CI
+  runs it instead of only typechecking it. It had been failing since
+  0.1.0-alpha.5 made a click take the keyboard (ADR 0002): `autofocus`
+  only claims the keyboard while nothing holds it, so after the example
+  clicked a button its typing went nowhere and its own self-check said
+  MISMATCH — to nobody, because the CI step stopped at `tsc`. The example
+  is a self-checking headless drive; it is worth a `node` run.
+
+### What you can delete
+
+- **"kui can't right-click"**, and every workaround under it: the
+  Ctrl-click convention an app invented, the long-press timer on a
+  desktop UI, the "menu" button bolted next to a row that should have had
+  a context menu. A `onContextMenu` tag and the point to open at.
+- **A blur-then-restore dance around a right-click** — the focus and
+  selection an app saved before opening its own menu and put back after:
+  a secondary press never moved them.
+- **The full-viewport `onClick` scrim behind a dialog** — and the half of
+  modality it never bought: a `modal` node blocks Tab, the wheel and
+  assistive technology too, and tells the platform it is a dialog.
+- **The "what was focused before this dialog?" field in the model**, and
+  the `focus(key)` call on the way out: the core remembers what the modal
+  displaced and gives it back.
+- **A hand-rolled Escape binding on every dialog**, and the outside-click
+  hit test under a menu: both arrive as `{kind:"dismiss", reason}` on the
+  node that asked to be modal.
+- **"Does the C build do what the JSX build does?"** — the question, and
+  the hand-written probe app written to answer it. One corpus, four
+  adapters, one CI job: a binding that lowers a prop differently names
+  the scene and the line.
+- **A `kui_is_hovered` round trip around every C tooltip**, and the
+  accessible description it silently dropped: `KuiSpec.tooltip` is the
+  prop the other three bindings already had.
+
+## 0.1.0-alpha.5 (2026-09-03)
+
+### Added
+
 - **Keyboard focus as data** (`docs/adr/0002-keyboard-focus-as-data.md`).
   One focus in the core for every node, and every control the access
   tree knows is a Tab stop: editors, `onKey` sinks, `onClick` boxes, the
@@ -161,12 +232,6 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Changed
 
-- `KuiSpec` gained `tooltip` (appended; a zeroed struct means what it
-  meant): the C spelling of the `tooltip` prop the other bindings have —
-  it makes the node hover-tracked, becomes its accessible description,
-  and `kui_close` floats the hint below it while hovered. `kui_tooltip` /
-  `kui_tooltip_with` stay what they were, a hint that always draws.
-  `Ctx.windowTitle()` in Node reports the title a frame declared.
 - `ui.take_key_focus(key)` / `<box keyFocus>` / `key_focus = true` /
   `kui_set_key_focus` are edge-triggered: the node takes focus on the
   first frame it is declared, and a declaration repeated every frame no
@@ -186,22 +251,6 @@ upgrades remove code from the apps on it is doing the job.
 
 ### What you can delete
 
-- **The full-viewport `onClick` scrim behind a dialog** — and the half of
-  modality it never bought: a `modal` node blocks Tab, the wheel and
-  assistive technology too, and tells the platform it is a dialog.
-- **The "what was focused before this dialog?" field in the model**, and
-  the `focus(key)` call on the way out: the core remembers what the modal
-  displaced and gives it back.
-- **A hand-rolled Escape binding on every dialog**, and the outside-click
-  hit test under a menu: both arrive as `{kind:"dismiss", reason}` on the
-  node that asked to be modal.
-- **"Does the C build do what the JSX build does?"** — the question, and
-  the hand-written probe app written to answer it. One corpus, four
-  adapters, one CI job: a binding that lowers a prop differently names
-  the scene and the line.
-- **A `kui_is_hovered` round trip around every C tooltip**, and the
-  accessible description it silently dropped: `KuiSpec.tooltip` is the
-  prop the other three bindings already had.
 - **A "keyboard users can't reach the buttons" issue**, and the custom
   Tab handling an app wrote around it: every control is a Tab stop, Enter
   and Space press it, and the ring draws itself.

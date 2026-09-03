@@ -75,7 +75,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         "#
         .to_string(),
         "controls" => r#"
-            return column { pad = 10, gap = 6,
+            return column { pad = 10, gap = 6, on_context_menu = { kind = "menu" },
               button { label = "go", on_click = { kind = "go" } },
               edit { key = "note", initial = "hello", size = 13, width = 160,
                      label = "Note" },

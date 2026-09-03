@@ -272,6 +272,16 @@ pub struct NodeSpec {
     /// presses arrive as `UiEvent`s on it, with this payload merged in
     /// under `tag`. Clicking the node takes key focus.
     pub on_key: Option<Value>,
+    /// Asks for a context menu: a secondary-button press over this node
+    /// emits `{kind="contextmenu", x, y, tag}` on it with this payload
+    /// under `tag`, and does nothing else — the press moves no focus,
+    /// places no caret and produces no click, so right-clicking a
+    /// selection leaves it selected. `x`/`y` are the press in logical
+    /// viewport coordinates, which is where the menu goes. Routed like a
+    /// click: the topmost node under the pointer is the one asked, so an
+    /// interactive child takes the press unless it declares its own.
+    /// Null = the behaviour without a tag.
+    pub on_context_menu: Option<Value>,
     /// Window-chrome role (drag handle / window button). A chrome node's
     /// interactions become `WindowCommand`s for the frame driver instead of
     /// `UiEvent`s; `on_click` is ignored on such nodes.
@@ -396,6 +406,7 @@ impl NodeSpec {
             || self.on_click.is_some()
             || self.on_drag.is_some()
             || self.on_key.is_some()
+            || self.on_context_menu.is_some()
             || self.window.is_some()
             || self.hover_bg.is_some()
             || self.pressed_bg.is_some()
@@ -731,6 +742,14 @@ impl NodeSpec {
     /// identification enough.
     pub fn on_key(mut self, tag: impl Into<Value>) -> Self {
         self.on_key = Some(tag.into());
+        self
+    }
+
+    /// Asks for a context menu on this node (see the `on_context_menu`
+    /// field). Pass a tag the handler can match on; `Value::Null` if the
+    /// node key is identification enough.
+    pub fn on_context_menu(mut self, tag: impl Into<Value>) -> Self {
+        self.on_context_menu = Some(tag.into());
         self
     }
 

@@ -166,6 +166,8 @@ export interface GeneratedSpecProps {
   modal?: AppMsg | null;
   /** Message emitted when clicked (data, not a callback). */
   onClick?: AppMsg;
+  /** Context-menu tag: a secondary-button (right) press emits {kind:"contextmenu", x, y, tag} on the node, at the logical viewport point to open the menu at. The press moves no focus, places no caret and produces no click, so right-clicking a selection keeps it; the topmost node under the pointer is the one asked, as for a click. */
+  onContextMenu?: AppMsg | null;
   /** Drag tag: emits {kind:"drag", phase, x, y, dx, dy, parent, tag} events. */
   onDrag?: AppMsg | null;
   /** Hover tag: the pointer entering/leaving emits {kind:"hover", phase:"enter"|"leave", tag} events. */

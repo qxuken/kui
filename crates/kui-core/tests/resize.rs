@@ -63,7 +63,7 @@ fn undrained_resizes_ride_along_with_the_next_input() {
     core.take_pending_events();
 
     frame(&mut core, 500.0, 300.0, 1.0);
-    let evs = core.handle_input(InputEvent::MouseDown(1));
+    let evs = core.handle_input(InputEvent::mouse_down(1));
     assert_eq!(resizes(&evs), [(500.0, 300.0, 1.0)]);
     // Drained by the input, not left for the next drain.
     assert!(resizes(&core.take_pending_events()).is_empty());

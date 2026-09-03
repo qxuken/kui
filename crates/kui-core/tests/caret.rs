@@ -122,14 +122,14 @@ fn double_click_selects_word_triple_selects_line() {
 
     // Double-click on the first word.
     core.handle_input(InputEvent::CursorMoved(Vec2::new(12.0, 8.0)));
-    core.handle_input(InputEvent::MouseDown(2));
-    core.handle_input(InputEvent::MouseUp);
+    core.handle_input(InputEvent::mouse_down(2));
+    core.handle_input(InputEvent::mouse_up());
     let word = core.copy_selection().unwrap_or_default();
     assert_eq!(word, "alpha", "double click should select the word");
 
     // Triple-click selects the whole line.
-    core.handle_input(InputEvent::MouseDown(3));
-    core.handle_input(InputEvent::MouseUp);
+    core.handle_input(InputEvent::mouse_down(3));
+    core.handle_input(InputEvent::mouse_up());
     let line = core.copy_selection().unwrap_or_default();
     assert_eq!(
         line, "alpha beta gamma",

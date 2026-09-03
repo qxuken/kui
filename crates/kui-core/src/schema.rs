@@ -98,6 +98,7 @@ pub const P_FOCUSABLE: u32 = 61;
 pub const P_DISABLED: u32 = 62;
 pub const P_FOCUS_BG: u32 = 63;
 pub const P_MODAL: u32 = 64;
+pub const P_ON_CONTEXT_MENU: u32 = 65;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -488,6 +489,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "Key-sink tag: with key focus held, presses arrive as {kind:\"key\", ...} events.",
     },
     PropDef {
+        name: "onContextMenu",
+        id: P_ON_CONTEXT_MENU,
+        kind: Kind::Tag,
+        apply: Apply::SpecMsg(|s, v| s.on_context_menu(v)),
+        doc: "Context-menu tag: a secondary-button (right) press emits {kind:\"contextmenu\", x, y, tag} on the node, at the logical viewport point to open the menu at. The press moves no focus, places no caret and produces no click, so right-clicking a selection keeps it; the topmost node under the pointer is the one asked, as for a click.",
+    },
+    PropDef {
         name: "window",
         id: P_WINDOW,
         kind: Kind::Enum(WINDOW_ROLES),
@@ -826,6 +834,10 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     ),
     ("onKey", "`on_key` argument of `kui_open_with`"),
     (
+        "onContextMenu",
+        "`on_context_menu` (a borrowed `KuiValue*`, cloned while the node opens)",
+    ),
+    (
         "modal",
         "`modal` (a borrowed `KuiValue*`, cloned while the node opens)",
     ),
@@ -959,6 +971,11 @@ pub const EVENTS: &[EventDef] = &[
         kind: "key",
         payload: "`{ kind: \"key\", code, shift, ctrl, alt, super, text, repeat, tag }`",
         doc: "A key press on the focused `onKey` sink; `code` is a character or a name (`\"left\"`, `\"f5\"`).",
+    },
+    EventDef {
+        kind: "contextmenu",
+        payload: "`{ kind: \"contextmenu\", x, y, tag }`",
+        doc: "A secondary-button press on an `onContextMenu` node, on the press rather than the release; `x`/`y` are logical viewport coordinates — where the menu goes. The core opens nothing: the app declares the menu (a `modal` float) and stops declaring it on `dismiss`.",
     },
     EventDef {
         kind: "hover",

@@ -14,11 +14,19 @@ pub enum InputEvent {
     /// Logical coordinates.
     CursorMoved(Vec2),
     CursorLeft,
-    /// Primary button press. The count is driver-measured multi-click state
+    /// A button press. `clicks` is driver-measured multi-click state
     /// (1 = single, 2 = double, 3+ = triple) — the core is clock-free, so
-    /// click timing lives with whoever owns the event loop.
-    MouseDown(u8),
-    MouseUp,
+    /// click timing lives with whoever owns the event loop. Only the
+    /// primary button presses, drags and clicks; see [`MouseButton`].
+    MouseDown {
+        button: MouseButton,
+        clicks: u8,
+    },
+    /// The release of `button`. A non-primary release resolves nothing:
+    /// the primary button is the one that can be holding a press.
+    MouseUp {
+        button: MouseButton,
+    },
     /// Wheel/trackpad delta in logical px (positive y = scroll up).
     Scroll(Vec2),
     /// Committed text (typing, IME commit, paste). Routed to the focused editor.
@@ -45,6 +53,85 @@ pub enum InputEvent {
     /// Cmd-held drag overlay, a hint bar) and is queryable while building
     /// a frame (`Ui::modifiers`).
     Modifiers(KeyMods),
+}
+
+/// Which button a press came from — driver-facing rather than shaped after
+/// any one windowing library, so every driver maps its own vocabulary onto
+/// this one.
+///
+/// Only [`MouseButton::Primary`] drives the pointer model: it presses,
+/// drags, places the caret and produces `on_click`. A
+/// [`MouseButton::Secondary`] press asks the node under it for a context
+/// menu (`NodeSpec::on_context_menu`) and touches nothing else — not
+/// focus, not the caret, not a scrollbar thumb — because a right-click on
+/// a selection has to leave that selection alone. Nothing routes the
+/// remaining buttons yet; they arrive so a driver need not drop them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MouseButton {
+    /// The button that clicks and drags. The OS has already applied a
+    /// left-handed swap, so this is not necessarily the left one.
+    #[default]
+    Primary,
+    /// The context-menu button.
+    Secondary,
+    Middle,
+    /// A button this vocabulary does not name (back, forward, thumb
+    /// buttons), by driver index.
+    Other(u8),
+}
+
+impl MouseButton {
+    /// The number bindings pass buttons as: 0 primary, 1 secondary,
+    /// 2 middle, `3 + n` for `Other(n)`.
+    pub fn code(self) -> u32 {
+        match self {
+            MouseButton::Primary => 0,
+            MouseButton::Secondary => 1,
+            MouseButton::Middle => 2,
+            MouseButton::Other(n) => 3 + n as u32,
+        }
+    }
+
+    /// Inverse of [`MouseButton::code`]; anything past the named three is
+    /// an `Other`, saturating rather than wrapping.
+    pub fn from_code(code: u32) -> Self {
+        match code {
+            0 => MouseButton::Primary,
+            1 => MouseButton::Secondary,
+            2 => MouseButton::Middle,
+            n => MouseButton::Other((n - 3).min(u8::MAX as u32) as u8),
+        }
+    }
+
+    /// The three named buttons by name, for bindings that spell them as
+    /// strings (`"primary"`, `"secondary"`, `"middle"`). `Other` has no
+    /// name: a binding that needs one takes a [`MouseButton::code`].
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "primary" => Some(MouseButton::Primary),
+            "secondary" => Some(MouseButton::Secondary),
+            "middle" => Some(MouseButton::Middle),
+            _ => None,
+        }
+    }
+}
+
+impl InputEvent {
+    /// A primary-button press — the spelling drivers and tests want when
+    /// they only ever send one button.
+    pub fn mouse_down(clicks: u8) -> Self {
+        InputEvent::MouseDown {
+            button: MouseButton::Primary,
+            clicks,
+        }
+    }
+
+    /// A primary-button release.
+    pub fn mouse_up() -> Self {
+        InputEvent::MouseUp {
+            button: MouseButton::Primary,
+        }
+    }
 }
 
 /// Editing keys, decoupled from any windowing library's key codes.
@@ -263,6 +350,11 @@ pub struct HitRegion {
     /// Key-sink tag when the node declared `on_key`: clicking it takes
     /// key focus, and key presses then arrive on it carrying this tag.
     pub key_sink: Option<Value>,
+    /// Context-menu tag when the node declared `on_context_menu`: a
+    /// secondary-button press emits `{kind="contextmenu", x, y, tag}` on
+    /// it. Like a click, the topmost region under the pointer is the one
+    /// asked — a region that declared none swallows the press.
+    pub context_menu: Option<Value>,
     /// A press on this node moves keyboard focus to it (an editor, a
     /// sink, a control, a `focusable` node — never a disabled one).
     pub focusable: bool,
@@ -487,6 +579,25 @@ impl Interaction {
         })
     }
 
+    fn context_menu_event(region: &HitRegion, p: Vec2) -> Option<UiEvent> {
+        let tag = region.context_menu.as_ref()?;
+        let mut payload = Value::map([
+            ("kind", Value::str("contextmenu")),
+            ("x", Value::Float(p.x as f64)),
+            ("y", Value::Float(p.y as f64)),
+        ]);
+        if *tag != Value::Null
+            && let Value::Map(entries) = &mut payload
+        {
+            entries.push(("tag".to_string(), tag.clone()));
+        }
+        Some(UiEvent {
+            origin: region.origin,
+            key: region.key,
+            payload,
+        })
+    }
+
     /// Topmost scrollbar whose track contains `p` (scrollbars draw over
     /// content, so they win hit-testing over it too).
     pub(crate) fn scrollbar_at(&self, p: Vec2) -> Option<ScrollbarRegion> {
@@ -556,7 +667,19 @@ impl Interaction {
                 self.cursor = None;
                 self.refresh_hover(out);
             }
-            InputEvent::MouseDown(_) => {
+            InputEvent::MouseDown { button, .. } if button != MouseButton::Primary => {
+                // Nothing but the primary button presses: no pressed
+                // state, so a release cannot become a click, and a drag
+                // already in flight keeps its capture. A secondary press
+                // asks whatever is under the pointer for a context menu.
+                if button == MouseButton::Secondary
+                    && let Some(p) = self.cursor
+                    && let Some(ev) = self.hit_at(p).and_then(|h| Self::context_menu_event(h, p))
+                {
+                    out.push(ev);
+                }
+            }
+            InputEvent::MouseDown { .. } => {
                 self.pressed = self.hovered;
                 self.pressed_group = self.hovered_group;
                 if let Some(h) = self.cursor.and_then(|p| self.hit_at(p)) {
@@ -597,7 +720,8 @@ impl Interaction {
             | InputEvent::Key(..)
             | InputEvent::KeyDown(_)
             | InputEvent::Access(_) => {}
-            InputEvent::MouseUp => {
+            InputEvent::MouseUp { button } if button != MouseButton::Primary => {}
+            InputEvent::MouseUp { .. } => {
                 let dragged = self.drag.take().inspect(|drag| {
                     let p = self.cursor.unwrap_or(drag.last);
                     out.push(Self::drag_event(drag, "end", p, Vec2::ZERO));
@@ -677,6 +801,7 @@ mod tests {
             parent_rect: Rect::new(0.0, 0.0, 0.0, 0.0),
             edit_origin: None,
             key_sink: None,
+            context_menu: None,
             focusable: true,
             window: None,
             hover: None,
@@ -703,8 +828,8 @@ mod tests {
             &mut it,
             &[
                 InputEvent::CursorMoved(Vec2::new(50.0, 20.0)),
-                InputEvent::MouseDown(1),
-                InputEvent::MouseUp,
+                InputEvent::mouse_down(1),
+                InputEvent::mouse_up(),
             ],
         );
         assert_eq!(evs.len(), 1);
@@ -721,9 +846,9 @@ mod tests {
             &mut it,
             &[
                 InputEvent::CursorMoved(Vec2::new(10.0, 10.0)),
-                InputEvent::MouseDown(1),
+                InputEvent::mouse_down(1),
                 InputEvent::CursorMoved(Vec2::new(500.0, 500.0)),
-                InputEvent::MouseUp,
+                InputEvent::mouse_up(),
             ],
         );
         assert!(evs.is_empty());
@@ -742,8 +867,8 @@ mod tests {
             &mut it,
             &[
                 InputEvent::CursorMoved(Vec2::new(50.0, 50.0)),
-                InputEvent::MouseDown(1),
-                InputEvent::MouseUp,
+                InputEvent::mouse_down(1),
+                InputEvent::mouse_up(),
             ],
         );
         assert_eq!(evs.len(), 1);
@@ -759,8 +884,8 @@ mod tests {
             &mut it,
             &[
                 InputEvent::CursorMoved(Vec2::new(5.0, 5.0)),
-                InputEvent::MouseDown(1),
-                InputEvent::MouseUp,
+                InputEvent::mouse_down(1),
+                InputEvent::mouse_up(),
             ],
         );
         assert_eq!(evs[0].origin, OriginId(3));
@@ -776,8 +901,133 @@ mod tests {
         drive(&mut it, &[InputEvent::CursorLeft]);
         assert!(!it.is_hovered(k));
         // Click after leaving produces nothing.
-        let evs = drive(&mut it, &[InputEvent::MouseDown(1), InputEvent::MouseUp]);
+        let evs = drive(
+            &mut it,
+            &[InputEvent::mouse_down(1), InputEvent::mouse_up()],
+        );
         assert!(evs.is_empty());
+    }
+
+    #[test]
+    fn secondary_press_asks_the_node_under_it_for_a_menu() {
+        let mut it = Interaction::default();
+        let k = Key::ROOT.str("panel");
+        let mut r = region(k, 0, 0.0, 0.0, 100.0, 100.0, "click-me");
+        r.context_menu = Some(Value::str("panel-menu"));
+        it.set_hits(vec![r]);
+        let evs = drive(
+            &mut it,
+            &[
+                InputEvent::CursorMoved(Vec2::new(40.0, 30.0)),
+                InputEvent::MouseDown {
+                    button: MouseButton::Secondary,
+                    clicks: 1,
+                },
+                InputEvent::MouseUp {
+                    button: MouseButton::Secondary,
+                },
+            ],
+        );
+        // The menu arrives on the press, with the point to open it at, and
+        // the release adds nothing — no click, though the node has one.
+        assert_eq!(evs.len(), 1);
+        assert_eq!(evs[0].key, k);
+        assert_eq!(
+            evs[0].payload.get("kind").unwrap().as_str(),
+            Some("contextmenu")
+        );
+        assert_eq!(evs[0].payload.get("x").unwrap().as_float(), Some(40.0));
+        assert_eq!(evs[0].payload.get("y").unwrap().as_float(), Some(30.0));
+        assert_eq!(
+            evs[0].payload.get("tag").unwrap().as_str(),
+            Some("panel-menu")
+        );
+        assert!(!it.is_pressed(k));
+    }
+
+    #[test]
+    fn secondary_press_on_a_node_without_a_menu_emits_nothing() {
+        let mut it = Interaction::default();
+        let k = Key::ROOT.str("btn");
+        it.set_hits(vec![region(k, 0, 0.0, 0.0, 100.0, 100.0, "go")]);
+        let evs = drive(
+            &mut it,
+            &[
+                InputEvent::CursorMoved(Vec2::new(40.0, 30.0)),
+                InputEvent::MouseDown {
+                    button: MouseButton::Secondary,
+                    clicks: 1,
+                },
+                InputEvent::MouseUp {
+                    button: MouseButton::Secondary,
+                },
+            ],
+        );
+        assert!(evs.is_empty());
+    }
+
+    /// A secondary press in the middle of a primary one leaves the press
+    /// alone: the primary release still clicks.
+    #[test]
+    fn secondary_press_does_not_interrupt_a_held_primary() {
+        let mut it = Interaction::default();
+        let k = Key::ROOT.str("btn");
+        it.set_hits(vec![region(k, 0, 0.0, 0.0, 100.0, 100.0, "go")]);
+        let evs = drive(
+            &mut it,
+            &[
+                InputEvent::CursorMoved(Vec2::new(40.0, 30.0)),
+                InputEvent::mouse_down(1),
+                InputEvent::MouseDown {
+                    button: MouseButton::Secondary,
+                    clicks: 1,
+                },
+                InputEvent::MouseUp {
+                    button: MouseButton::Secondary,
+                },
+            ],
+        );
+        assert!(evs.is_empty());
+        assert!(it.is_pressed(k));
+        let evs = drive(&mut it, &[InputEvent::mouse_up()]);
+        assert_eq!(evs.len(), 1);
+        assert_eq!(evs[0].payload.as_str(), Some("go"));
+    }
+
+    #[test]
+    fn middle_press_routes_nowhere() {
+        let mut it = Interaction::default();
+        let k = Key::ROOT.str("panel");
+        let mut r = region(k, 0, 0.0, 0.0, 100.0, 100.0, "go");
+        r.context_menu = Some(Value::str("panel-menu"));
+        it.set_hits(vec![r]);
+        let evs = drive(
+            &mut it,
+            &[
+                InputEvent::CursorMoved(Vec2::new(40.0, 30.0)),
+                InputEvent::MouseDown {
+                    button: MouseButton::Middle,
+                    clicks: 1,
+                },
+                InputEvent::MouseUp {
+                    button: MouseButton::Middle,
+                },
+            ],
+        );
+        assert!(evs.is_empty());
+    }
+
+    #[test]
+    fn button_codes_round_trip() {
+        for b in [
+            MouseButton::Primary,
+            MouseButton::Secondary,
+            MouseButton::Middle,
+            MouseButton::Other(0),
+            MouseButton::Other(9),
+        ] {
+            assert_eq!(MouseButton::from_code(b.code()), b);
+        }
     }
 
     #[test]

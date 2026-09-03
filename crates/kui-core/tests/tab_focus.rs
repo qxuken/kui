@@ -284,8 +284,8 @@ fn a_dialog_opened_from_the_keyboard_shows_its_ring_at_once() {
     let mut core = Core::new();
     modal_frame(&mut core, false, false);
     core.handle_input(InputEvent::CursorMoved(kui_core::Vec2::new(50.0, 10.0)));
-    core.handle_input(InputEvent::MouseDown(1));
-    core.handle_input(InputEvent::MouseUp);
+    core.handle_input(InputEvent::mouse_down(1));
+    core.handle_input(InputEvent::mouse_up());
     assert!(!core.focus_visible(), "a click is pointer focus");
     let k = modal_frame(&mut core, true, false);
     assert_eq!(core.focus(), Some(k[3]));

@@ -443,6 +443,18 @@ parent rect turns absolute positions into container fractions, e.g. a
 splitter ratio; see the splitmux example's pane dividers). A drag past the
 click slop suppresses the node's `on_click`.
 
+Pointer buttons: only the primary one presses, drags, places the caret and
+clicks. A secondary (right) press goes to `on_context_menu`, which emits
+`{kind="contextmenu", x, y, tag}` — logical viewport coordinates, i.e. where
+the menu goes — and moves nothing else: no focus, no caret, no click, so
+right-clicking a selection keeps it. It is routed like a click, so the
+topmost node under the pointer answers. The menu is then an ordinary
+`modal` float the app declares and stops declaring on `dismiss`; the C
+counter example builds one. Drivers pass the button through
+(`kui_input_mouse_button`, `ctx.mouse(down, clicks, "secondary")`,
+`InputEvent::MouseDown { button, clicks }`), and `kui_input_mouse` /
+`ctx.mouse(down, clicks)` still mean the primary one.
+
 Images: register RGBA pixels once (`resources.add_image`), then `ui.image(id,
 spec)` draws them through the same atlas page and draw call as glyphs (the
 page doubles up to 4096² when needed). `Fit` takes the pixel size, a `Fit`
@@ -557,6 +569,9 @@ Layout queries stop at the node: `measure_text` and `on_layout` give whole-strin
 rects, not the boxes of lines or glyphs inside a paragraph. Accessibility, keyboard focus and
 modality are data (ADR 0001, 0002 and 0003); arrow keys inside radio groups, tab lists and lists,
 a configurable focus ring colour, and initial focus inside a dialog, are the next steps there.
+Pointer buttons: the secondary one is routed to `on_context_menu` and nothing else; the middle
+button and anything past it (back, forward) reach the core as data and route nowhere, so there is
+no middle-click-to-close, no right-drag and no per-button `on_click`.
 Audio covers one-shots, loops, volume, pause and a finished-playback event; sounds decode fully
 into memory, and synthesis, effects, positional audio and disk streaming are out of scope.
 Editing: caret blink, double/triple-click

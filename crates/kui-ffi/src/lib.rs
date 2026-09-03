@@ -18,8 +18,8 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use kui_core::{
     Align, Color, Core, Edges, EditKey, EditOptions, Enter, FloatConfig, InputEvent, Key, Keyframe,
-    Mods, NodeSpec, Rect, Size, Sizing, Span, TextStyle, UiEvent, Value, Vec2, WindowButton,
-    WindowCommand, WindowEnv,
+    Mods, MouseButton, NodeSpec, Rect, Size, Sizing, Span, TextStyle, UiEvent, Value, Vec2,
+    WindowButton, WindowCommand, WindowEnv,
 };
 
 // ---------------------------------------------------------------------------
@@ -262,6 +262,13 @@ pub struct KuiSpec {
     /// while the node opens, so the caller keeps ownership;
     /// `kui_value_null()` asks for the behaviour without a tag.
     pub modal: *const KuiValue,
+    /// Context menu (NULL = none): a secondary-button press over this node
+    /// emits `{kind="contextmenu", x, y, tag}` on it, at the logical point
+    /// to open the menu at. The press moves no focus, places no caret and
+    /// produces no click. Borrowed — cloned while the node opens, so the
+    /// caller keeps ownership; `kui_value_null()` asks for the behaviour
+    /// without a tag.
+    pub on_context_menu: *const KuiValue,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -728,6 +735,9 @@ fn spec_of(
     if let Some(tag) = unsafe { s.modal.as_ref() } {
         spec = spec.modal(tag.0.clone());
     }
+    if let Some(tag) = unsafe { s.on_context_menu.as_ref() } {
+        spec = spec.on_context_menu(tag.0.clone());
+    }
     if let Some(role) = role_of_code(s.role) {
         spec = spec.role(role);
     }
@@ -871,14 +881,27 @@ pub extern "C" fn kui_input_cursor_left(ptr: *mut KuiCtx) {
     push_input(ptr, InputEvent::CursorLeft);
 }
 
+/// A primary-button press or release; `kui_input_mouse_button` carries the
+/// others. Kept as it was: it is exported ABI.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_mouse(ptr: *mut KuiCtx, down: bool, clicks: u32) {
+    kui_input_mouse_button(ptr, down, MouseButton::Primary.code(), clicks);
+}
+
+/// `kui_input_mouse` for a named button (`KUI_MOUSE_*`, or `3 + n` for a
+/// further button `n`).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_input_mouse_button(ptr: *mut KuiCtx, down: bool, button: u32, clicks: u32) {
+    let button = MouseButton::from_code(button);
     push_input(
         ptr,
         if down {
-            InputEvent::MouseDown(clicks.clamp(1, u8::MAX as u32) as u8)
+            InputEvent::MouseDown {
+                button,
+                clicks: clicks.clamp(1, u8::MAX as u32) as u8,
+            }
         } else {
-            InputEvent::MouseUp
+            InputEvent::MouseUp { button }
         },
     );
 }
@@ -2584,6 +2607,7 @@ mod schema_parity {
                 "onHover" => hover = msg(Value::Int(7)),
                 "onLayout" => s.on_layout = &layout_tag,
                 "modal" => s.modal = &layout_tag,
+                "onContextMenu" => s.on_context_menu = &layout_tag,
                 "hoverBg" => s.hover_bg = C,
                 "pressedBg" => s.pressed_bg = C,
                 "hoverGroup" => s.hover_group = name,
@@ -2655,6 +2679,7 @@ mod schema_parity {
             },
         ];
         let modal_tag = KuiValue(Value::str("m"));
+        let menu_tag = KuiValue(Value::str("cm"));
         let s = KuiSpec {
             width: KuiSizing { tag: 1, value: 2.0 },
             height: KuiSizing {
@@ -2730,6 +2755,7 @@ mod schema_parity {
                 len: 4,
             },
             modal: &modal_tag,
+            on_context_menu: &menu_tag,
         };
         let expected = NodeSpec::row()
             .width(Sizing::Grow(2.0))
@@ -2794,7 +2820,8 @@ mod schema_parity {
             .on_drag(Value::str("d"))
             .on_key(Value::str("k"))
             .on_hover(Value::str("h"))
-            .modal(Value::str("m"));
+            .modal(Value::str("m"))
+            .on_context_menu(Value::str("cm"));
         let got = spec_of(
             &s,
             msg("c".into()),
@@ -3401,6 +3428,7 @@ mod abi_parity {
             focus_bg: u32 => "uint32_t",
             tooltip: KuiStr => "KuiStr",
             modal: *const KuiValue => "const KuiValue *",
+            on_context_menu: *const KuiValue => "const KuiValue *",
         });
 
         abi_struct!(o, KuiAccessNode {

@@ -35,6 +35,17 @@ export type KeyMsg<T = AppMsg> = {
   tag?: T;
 };
 
+/** A secondary-button (right) press on an `onContextMenu` node — on the
+ *  press, not the release. `x`/`y` are logical viewport coordinates: where
+ *  the menu goes. The core opens nothing; declare the menu as a `modal`
+ *  float and stop declaring it on `dismiss`. */
+export type ContextMenuMsg<T = AppMsg> = {
+  kind: 'contextmenu';
+  x: number;
+  y: number;
+  tag?: T;
+};
+
 /** The pointer entered or left an `onHover` node — also when a new frame
  *  moved it under a still cursor. */
 export type HoverMsg<T = AppMsg> = {
@@ -106,6 +117,7 @@ export type SoundMsg<T = AppMsg> = {
 export type CoreMsg =
   | DragMsg
   | KeyMsg
+  | ContextMenuMsg
   | HoverMsg
   | LayoutMsg
   | DismissMsg
@@ -363,6 +375,8 @@ export interface KeySinkMods {
   super?: boolean;
 }
 
+export type MouseButtonName = 'primary' | 'secondary' | 'middle';
+
 export type EditKeyName =
   | 'left' | 'right' | 'up' | 'down'
   | 'home' | 'end' | 'pageup' | 'pagedown'
@@ -391,7 +405,11 @@ export declare class Ctx {
   animating(): boolean;
   cursor(x: number, y: number): void;
   cursorLeft(): void;
-  mouse(down: boolean, clicks?: number): void;
+  /** A button press or release. `button` defaults to 'primary'; only that
+   *  one presses, drags, places the caret and clicks. 'secondary' asks the
+   *  node under the pointer for a context menu and moves nothing else;
+   *  nothing routes 'middle' yet. */
+  mouse(down: boolean, clicks?: number, button?: MouseButtonName): void;
   scroll(dx: number, dy: number): void;
   text(text: string): void;
   key(name: EditKeyName, mods?: KeyMods): void;
@@ -675,6 +693,9 @@ export interface App<M, A = AppMsg | CoreMsg> {
   render(): FrameStats;
   settle(): void;
   click(x: number, y: number, clicks?: number): void;
+  /** A secondary-button press and release at `(x, y)`: an `onContextMenu`
+   *  node under it gets a `contextmenu` message, and nothing else moves. */
+  rightClick(x: number, y: number): void;
   type(text: string): void;
   key(name: EditKeyName, mods?: KeyMods): void;
   /** What assistive technology sees of the last render. */

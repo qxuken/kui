@@ -273,6 +273,14 @@ typedef struct KuiSpec {
      * Borrowed: cloned while the node opens, so you keep ownership;
      * kui_value_null() asks for the behaviour without a tag. */
     const KuiValue *modal;
+    /* Context menu, NULL = none: a secondary-button press over this node
+     * emits {kind="contextmenu", x, y, tag} on it, at the logical point to
+     * open the menu at. The press does nothing else — it moves no focus,
+     * places no caret and produces no click, so right-clicking a selection
+     * keeps it. Routed like a click: the topmost node under the pointer is
+     * the one asked. Borrowed: cloned while the node opens, so you keep
+     * ownership; kui_value_null() asks for the behaviour without a tag. */
+    const KuiValue *on_context_menu;
 } KuiSpec;
 
 /* Roles (KuiSpec.role, KuiAccessNode.role). The first fifteen can be
@@ -490,8 +498,23 @@ void kui_ctx_free(KuiCtx *ctx);
 void kui_input_cursor(KuiCtx *ctx, float x, float y);
 void kui_input_cursor_left(KuiCtx *ctx);
 /* clicks: host-counted multi-click for presses (1 single, 2 double = word
- * select in editors, 3 triple = line select); ignored on release. */
+ * select in editors, 3 triple = line select); ignored on release. This is
+ * the primary button; kui_input_mouse_button carries the others. */
 void kui_input_mouse(KuiCtx *ctx, bool down, uint32_t clicks);
+/* Buttons (kui_input_mouse_button). Only the primary one presses, drags,
+ * places the caret and clicks; the secondary one asks the node under it
+ * for a context menu (KuiSpec.on_context_menu) and moves nothing else.
+ * Nothing routes the rest yet; pass 3 + n for a further button n so a
+ * driver need not drop it. */
+enum {
+    KUI_MOUSE_PRIMARY = 0,
+    KUI_MOUSE_SECONDARY = 1,
+    KUI_MOUSE_MIDDLE = 2,
+    KUI_MOUSE_OTHER = 3,
+};
+/* kui_input_mouse for a named button (KUI_MOUSE_*). */
+void kui_input_mouse_button(KuiCtx *ctx, bool down, uint32_t button,
+                            uint32_t clicks);
 void kui_input_scroll(KuiCtx *ctx, float dx, float dy); /* +y = scroll up */
 void kui_input_text(KuiCtx *ctx, KuiStr text);   /* typing/paste -> focused editor */
 /* In-progress IME composition shown at the focused caret; empty text clears

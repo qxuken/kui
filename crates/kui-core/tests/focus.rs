@@ -165,8 +165,8 @@ fn key(core: &mut Core, k: EditKey) -> Vec<UiEvent> {
 
 fn click_at(core: &mut Core, x: f32, y: f32) -> Vec<UiEvent> {
     let mut out = core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
-    out.extend(core.handle_input(InputEvent::MouseDown(1)));
-    out.extend(core.handle_input(InputEvent::MouseUp));
+    out.extend(core.handle_input(InputEvent::mouse_down(1)));
+    out.extend(core.handle_input(InputEvent::mouse_up()));
     out
 }
 
@@ -985,14 +985,14 @@ fn a_drag_in_flight_when_a_modal_appears_still_ends() {
     drag_frame(&mut core, false);
     let mut all = Vec::new();
     all.extend(core.handle_input(InputEvent::CursorMoved(Vec2::new(50.0, H / 2.0))));
-    all.extend(core.handle_input(InputEvent::MouseDown(1)));
+    all.extend(core.handle_input(InputEvent::mouse_down(1)));
     all.extend(core.handle_input(InputEvent::CursorMoved(Vec2::new(60.0, H / 2.0))));
     assert_eq!(drag_phases(&all), ["start", "move"]);
 
     drag_frame(&mut core, true);
     let mut after = Vec::new();
     after.extend(core.handle_input(InputEvent::CursorMoved(Vec2::new(70.0, H / 2.0))));
-    after.extend(core.handle_input(InputEvent::MouseUp));
+    after.extend(core.handle_input(InputEvent::mouse_up()));
     assert_eq!(
         drag_phases(&after),
         ["move", "end"],
@@ -1015,13 +1015,13 @@ fn a_press_behind_released_after_a_modal_appears_is_not_a_click() {
     let mut core = Core::new();
     let (_, button) = drag_frame(&mut core, false);
     core.handle_input(InputEvent::CursorMoved(Vec2::new(50.0, H + H / 2.0)));
-    core.handle_input(InputEvent::MouseDown(1));
+    core.handle_input(InputEvent::mouse_down(1));
     assert!(core.is_pressed(button));
 
     // The modal appears between press and release: the button behind is
     // no longer under the pointer as far as the hit list knows.
     drag_frame(&mut core, true);
     assert!(!core.is_hovered(button));
-    let out = core.handle_input(InputEvent::MouseUp);
+    let out = core.handle_input(InputEvent::mouse_up());
     assert!(payloads(&out).is_empty(), "{:?}", payloads(&out));
 }

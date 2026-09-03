@@ -95,8 +95,8 @@ fn clicking_a_sink_moves_key_focus() {
         &mut core,
         &[
             InputEvent::CursorMoved(Vec2::new(300.0, 150.0)),
-            InputEvent::MouseDown(1),
-            InputEvent::MouseUp,
+            InputEvent::mouse_down(1),
+            InputEvent::mouse_up(),
             press(KeyCode::Escape),
         ],
     );

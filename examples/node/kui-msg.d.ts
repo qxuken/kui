@@ -10,6 +10,9 @@ type AppMessages =
   | { kind: 'add'; by: number }
   | { kind: 'reset' }
   | { kind: 'hum' }
+  // The context menu's tag: what onContextMenu sends back, and what the
+  // menu declares as its modal tag.
+  | { kind: 'menu' }
   // The key sink's tag in counter.tsx: tags are messages too.
   | { tool: string };
 

@@ -53,8 +53,8 @@ fn drive(core: &mut Core, events: &[InputEvent]) -> Vec<UiEvent> {
 fn click_at(x: f32, y: f32) -> [InputEvent; 3] {
     [
         InputEvent::CursorMoved(Vec2::new(x, y)),
-        InputEvent::MouseDown(1),
-        InputEvent::MouseUp,
+        InputEvent::mouse_down(1),
+        InputEvent::mouse_up(),
     ]
 }
 
@@ -66,7 +66,7 @@ fn press_on_drag_strip_emits_start_drag_and_no_ui_event() {
         &mut core,
         &[
             InputEvent::CursorMoved(Vec2::new(100.0, 20.0)),
-            InputEvent::MouseDown(1),
+            InputEvent::mouse_down(1),
         ],
     );
     assert!(
@@ -115,9 +115,9 @@ fn press_then_drag_off_a_button_emits_nothing() {
         &mut core,
         &[
             InputEvent::CursorMoved(Vec2::new(380.0, 20.0)),
-            InputEvent::MouseDown(1),
+            InputEvent::mouse_down(1),
             InputEvent::CursorMoved(Vec2::new(200.0, 200.0)),
-            InputEvent::MouseUp,
+            InputEvent::mouse_up(),
         ],
     );
     assert!(core.take_window_commands().is_empty());
@@ -173,7 +173,7 @@ fn titlebar_widget_declares_chrome_from_env() {
         &mut core,
         &[
             InputEvent::CursorMoved(Vec2::new(400.0 - 23.0, 20.0)),
-            InputEvent::MouseDown(1),
+            InputEvent::mouse_down(1),
         ],
     );
     assert_eq!(core.take_window_commands(), vec![WindowCommand::StartDrag]);

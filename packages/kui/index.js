@@ -164,6 +164,12 @@ export function createApp({ init, update, view }, opts = {}) {
       ctx.mouse(false, clicks);
       app.settle();
     },
+    rightClick(x, y) {
+      ctx.cursor(x, y);
+      ctx.mouse(true, 1, 'secondary');
+      ctx.mouse(false, 1, 'secondary');
+      app.settle();
+    },
     type(text) {
       ctx.text(text);
       app.settle();

@@ -80,8 +80,8 @@ fn clipped_away_rows_are_culled_and_unclickable() {
 
     // A click at y=100 hits the visible row 3, not some scrolled-away row.
     core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, 100.0)));
-    core.handle_input(InputEvent::MouseDown(1));
-    let evs = core.handle_input(InputEvent::MouseUp);
+    core.handle_input(InputEvent::mouse_down(1));
+    let evs = core.handle_input(InputEvent::mouse_up());
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].payload.as_int(), Some(3));
 
@@ -89,8 +89,8 @@ fn clipped_away_rows_are_culled_and_unclickable() {
     wheel(&mut core, -60.0);
     frame(&mut core);
     core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, 100.0)));
-    core.handle_input(InputEvent::MouseDown(1));
-    let evs = core.handle_input(InputEvent::MouseUp);
+    core.handle_input(InputEvent::mouse_down(1));
+    let evs = core.handle_input(InputEvent::mouse_up());
     assert_eq!(evs[0].payload.as_int(), Some(5));
 }
 

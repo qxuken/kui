@@ -10,8 +10,8 @@
 
 use kui_core::{
     Align, AudioCommand, AudioSpec, Color, Core, EditKey, EditOptions, FontId, FrameSample,
-    FrameStats, ImageId, InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, PlayOptions,
-    PlaybackId, Size, SoundId, Span, TextStyle, UiEvent, Value, Vec2,
+    FrameStats, ImageId, InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, MouseButton,
+    PlayOptions, PlaybackId, Size, SoundId, Span, TextStyle, UiEvent, Value, Vec2,
 };
 use napi::bindgen_prelude::{Buffer, Float64Array, Uint8Array};
 use napi_derive::napi;
@@ -553,13 +553,25 @@ impl Ctx {
     }
 
     /// `clicks`: 1 single, 2 double (word select), 3 triple (line select).
+    /// `button`: "primary" (the default), "secondary" — which asks the node
+    /// under the pointer for a context menu and moves nothing else — or
+    /// "middle", which nothing routes yet.
     #[napi]
-    pub fn mouse(&mut self, down: bool, clicks: Option<u32>) {
+    pub fn mouse(&mut self, down: bool, clicks: Option<u32>, button: Option<String>) -> Result<()> {
+        let button = match &button {
+            Some(name) => MouseButton::from_name(name)
+                .ok_or_else(|| err(format!("unknown mouse button {name:?}")))?,
+            None => MouseButton::Primary,
+        };
         self.input(if down {
-            InputEvent::MouseDown(clicks.unwrap_or(1).clamp(1, 255) as u8)
+            InputEvent::MouseDown {
+                button,
+                clicks: clicks.unwrap_or(1).clamp(1, 255) as u8,
+            }
         } else {
-            InputEvent::MouseUp
+            InputEvent::MouseUp { button }
         });
+        Ok(())
     }
 
     #[napi]

@@ -15,7 +15,7 @@ mod windows_nc;
 
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{ElementState, Ime, MouseButton, WindowEvent};
+use winit::event::{ElementState, Ime, MouseButton as WinitButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
 use winit::window::{CursorIcon, ResizeDirection, Window, WindowId};
@@ -982,14 +982,25 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 };
                 self.dispatch(InputEvent::Scroll(d));
             }
-            WindowEvent::MouseInput {
-                state,
-                button: MouseButton::Left,
-                ..
-            } => {
+            WindowEvent::MouseInput { state, button, .. } => {
+                let button = match button {
+                    WinitButton::Left => MouseButton::Primary,
+                    WinitButton::Right => MouseButton::Secondary,
+                    WinitButton::Middle => MouseButton::Middle,
+                    // Nothing routes these, so the numbering only has to be
+                    // stable: back, forward, then whatever the platform
+                    // reports beyond them.
+                    WinitButton::Back => MouseButton::Other(0),
+                    WinitButton::Forward => MouseButton::Other(1),
+                    WinitButton::Other(n) => {
+                        MouseButton::Other(n.saturating_add(2).min(u8::MAX as u16) as u8)
+                    }
+                };
+                let primary = button == MouseButton::Primary;
                 // A press on the synthesized resize band starts an OS resize
                 // instead of reaching the UI.
-                if state == ElementState::Pressed
+                if primary
+                    && state == ElementState::Pressed
                     && let Some(dir) = self.resize_edge
                     && let Some(w) = &self.window
                 {
@@ -998,22 +1009,30 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 }
                 let ev = match state {
                     ElementState::Pressed => {
-                        let now = std::time::Instant::now();
-                        let clicks = match self.last_click {
-                            Some((t, p, n))
-                                if now.duration_since(t).as_millis() < MULTI_CLICK_MS
-                                    && (p.x - self.cursor.x).abs() < MULTI_CLICK_SLOP
-                                    && (p.y - self.cursor.y).abs() < MULTI_CLICK_SLOP =>
-                            {
-                                // Cycle 1 → 2 → 3 → 1 like most editors.
-                                n % 3 + 1
-                            }
-                            _ => 1,
+                        // Multi-click is the primary button's: a right
+                        // press between two left ones does not break the
+                        // run, and never counts up one of its own.
+                        let clicks = if primary {
+                            let now = std::time::Instant::now();
+                            let clicks = match self.last_click {
+                                Some((t, p, n))
+                                    if now.duration_since(t).as_millis() < MULTI_CLICK_MS
+                                        && (p.x - self.cursor.x).abs() < MULTI_CLICK_SLOP
+                                        && (p.y - self.cursor.y).abs() < MULTI_CLICK_SLOP =>
+                                {
+                                    // Cycle 1 → 2 → 3 → 1 like most editors.
+                                    n % 3 + 1
+                                }
+                                _ => 1,
+                            };
+                            self.last_click = Some((now, self.cursor, clicks));
+                            clicks
+                        } else {
+                            1
                         };
-                        self.last_click = Some((now, self.cursor, clicks));
-                        InputEvent::MouseDown(clicks)
+                        InputEvent::MouseDown { button, clicks }
                     }
-                    ElementState::Released => InputEvent::MouseUp,
+                    ElementState::Released => InputEvent::MouseUp { button },
                 };
                 self.dispatch(ev);
             }

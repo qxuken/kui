@@ -88,6 +88,9 @@ pub enum Step {
     CursorLeft,
     MouseDown,
     MouseUp,
+    /// The secondary (context-menu) button.
+    SecondaryDown,
+    SecondaryUp,
     /// Wheel delta in logical px; positive y scrolls up.
     Scroll(i32, i32),
 }
@@ -102,6 +105,8 @@ impl Step {
             Step::CursorLeft => out.push_str("step cursorleft\n"),
             Step::MouseDown => out.push_str("step mousedown\n"),
             Step::MouseUp => out.push_str("step mouseup\n"),
+            Step::SecondaryDown => out.push_str("step secondarydown\n"),
+            Step::SecondaryUp => out.push_str("step secondaryup\n"),
             Step::Scroll(x, y) => {
                 let _ = writeln!(out, "step scroll {x} {y}");
             }
@@ -112,8 +117,15 @@ impl Step {
         match *self {
             Step::Cursor(x, y) => InputEvent::CursorMoved(Vec2::new(x as f32, y as f32)),
             Step::CursorLeft => InputEvent::CursorLeft,
-            Step::MouseDown => InputEvent::MouseDown(1),
-            Step::MouseUp => InputEvent::MouseUp,
+            Step::MouseDown => InputEvent::mouse_down(1),
+            Step::MouseUp => InputEvent::mouse_up(),
+            Step::SecondaryDown => InputEvent::MouseDown {
+                button: crate::input::MouseButton::Secondary,
+                clicks: 1,
+            },
+            Step::SecondaryUp => InputEvent::MouseUp {
+                button: crate::input::MouseButton::Secondary,
+            },
             Step::Scroll(x, y) => InputEvent::Scroll(Vec2::new(x as f32, y as f32)),
         }
     }
@@ -272,17 +284,26 @@ pub const SCENES: &[Scene] = &[
     },
     Scene {
         name: "controls",
-        doc: "A clicked button and a keyed editor.",
+        doc: "A clicked button and a keyed editor, inside a panel that asks \
+              for a context menu: the secondary press routes to the panel \
+              and moves neither focus nor the caret.",
         custom: &["key", "size"],
         elements: &["button", "edit", "box", "text"],
         build: build_controls,
-        steps: &[Step::Cursor(30, 24), Step::MouseDown, Step::MouseUp],
+        steps: &[
+            Step::Cursor(30, 24),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::Cursor(4, 4),
+            Step::SecondaryDown,
+            Step::SecondaryUp,
+        ],
         expect: Expect {
             solid: 1,
             images: 0,
             glyphs_min: 7,
             access: &["0 window ||", "1 button go||", "1 textInput Note||hello"],
-            events: &["go -"],
+            events: &["go -", "contextmenu menu"],
             warnings: &[],
             title: None,
         },
@@ -460,7 +481,11 @@ fn build_chrome(ui: &mut Ui<'_>, _f: &Fixtures) {
 }
 
 fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures) {
-    ui.with(NodeSpec::column().pad(10.0).gap(6.0), |ui| {
+    let panel = NodeSpec::column()
+        .pad(10.0)
+        .gap(6.0)
+        .on_context_menu(Value::map([("kind", Value::str("menu"))]));
+    ui.with(panel, |ui| {
         widgets::button(ui, "go", Value::map([("kind", Value::str("go"))]));
         ui.text_edit(
             "note",

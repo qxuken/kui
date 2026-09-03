@@ -114,7 +114,7 @@ fn a_node_that_leaves_and_returns_reports_again() {
 fn undrained_layout_events_ride_along_with_the_next_input() {
     let mut core = Core::new();
     frame(&mut core, 100.0, false, Value::Null, false);
-    let evs = core.handle_input(InputEvent::MouseDown(1));
+    let evs = core.handle_input(InputEvent::mouse_down(1));
     assert_eq!(rects(&evs).len(), 1);
     assert!(rects(&core.take_pending_events()).is_empty());
 }

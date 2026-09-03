@@ -358,19 +358,36 @@ Sketch: a `modal` row; `focus_ring()` scoped to the last declaring subtree;
 hit-testing outside it inert; Escape emitting `{kind:"dismiss"}`; the access tree
 marking it modal for AccessKit. Decide nested modals and modal-that-is-a-float.
 
-Unblocks dialogs, popovers and menus together, with C2.
+Unblocks dialogs, popovers and menus together, with C2 (also done).
 
-### `~` C2 — Secondary mouse button and `onContextMenu`
+### `~` C2 — Secondary mouse button and `onContextMenu` — **done (2026-09-04)**
 
-`InputEvent::MouseDown(u8)` carries the *click count*, not the button. No
-right-click, no middle-click, no context menus, no right-drag anywhere in kui —
-and it is not on the README's known-omissions list, so a reader assumes it works.
+Shipped as `MouseDown { button, clicks }` / `MouseUp { button }` over a
+`MouseButton` enum (`Primary` / `Secondary` / `Middle` / `Other(n)`, with
+`code()` / `from_code()` / `from_name()` so C takes a number and Node a
+name), plus an `onContextMenu` `PROPS` row (`Kind::Tag`) that emits
+`{kind:"contextmenu", x, y, tag}` on the topmost node under the press, at
+the logical viewport point to open a menu at. The two decisions, both the
+way the question expected:
 
-`MouseDown { button, clicks }` with a `MouseButton` enum; the enum is already
-driver-facing rather than winit-shaped, so this is additive across four drivers
-(keep the existing C entry point working alongside a button-carrying variant).
-Then an `onContextMenu` row as `Kind::Tag`. Decide whether a secondary press
-moves focus (it should not) and whether it suppresses `on_click`.
+- **A secondary press moves no focus** — and places no caret, starts no
+  drag, grabs no scrollbar thumb. Right-clicking a selection has to leave
+  it selected, or a "Copy" item cannot work; the platforms agree.
+- **It suppresses `on_click` by construction**: only the primary button
+  sets `Interaction::pressed`, so nothing is held to release, a right
+  press in the middle of a held left one changes nothing, and the menu
+  comes out on the press rather than the release.
+
+Additive across the drivers as predicted: `kui_input_mouse` still means
+the primary button (exported ABI, untouched) alongside
+`kui_input_mouse_button`; `ctx.mouse(down, clicks, button?)` takes an
+optional name; winit maps Left/Right/Middle/Back/Forward/Other, and
+counts multi-clicks for the primary button only. `InputEvent::mouse_down`
+/ `mouse_up` are the primary spellings the Rust drivers and tests use.
+The corpus's `controls` scene grew the prop and two secondary steps, so
+all four bindings lower it. Nothing routes `Middle` or `Other(n)` yet:
+no middle-click-to-close, no right-drag, no per-button `on_click`; the
+README's Status section now says so.
 
 ### `~` C3 — Derived cursor shape
 
@@ -611,10 +628,10 @@ the body is worth keeping human.
 
 The section is unusually honest about z-index, exit animations, layout-query
 depth, audio and editing scope. That honesty is why the omissions it *doesn't*
-mention read as present: no secondary mouse button (C2), no cursor-shape control
-(C3), no touch or pen input, no programmatic scrolling (C4), no flex wrapping
-(C10). Add them, grouped, in the section's existing tone. (Modal containment was
-on this list until C1 shipped it.)
+mention read as present: no cursor-shape control (C3), no touch or pen input, no
+programmatic scrolling (C4), no flex wrapping (C10). Add them, grouped, in the
+section's existing tone. (Modal containment was on this list until C1 shipped it;
+the pointer buttons went on it with C2, which routes only the secondary one.)
 
 The performance table also lists four benches where `benches/frame.rs` has five —
 `frame_10k_rects_with_access_tree` is omitted, and it is the one a reader worried
@@ -641,7 +658,9 @@ By leverage-to-effort, not severity.
    fix with no scene behind it is the state this document exists to
    describe. P4 (unknown-prop warnings) and D3 (composite parsing in the
    core) are the two that still shrink the surface it has to cover.
-6. **Then the designs.** C1 + C2 unlock dialogs, menus and comboboxes together
-   and deserve an ADR each; C1 has one (ADR 0003), so C2 is what a menu is
-   still waiting on. C7 is the one to decide on paper now and build later,
-   before more API assumes a single window.
+6. **Then the designs.** ~~C1 + C2 unlock dialogs, menus and comboboxes
+   together~~ — both shipped (ADR 0003 for C1; C2 needed no ADR of its own,
+   since it only adds a row and a button to the model 0003 settled), and a
+   context menu is now an `onContextMenu` tag plus a `modal` float. C7 is
+   the one to decide on paper now and build later, before more API assumes
+   a single window.

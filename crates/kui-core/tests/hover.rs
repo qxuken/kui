@@ -32,8 +32,8 @@ fn hoverable_tracks_hover_but_click_emits_nothing() {
         "hoverable node must register a hit region"
     );
 
-    core.handle_input(InputEvent::MouseDown(1));
-    let evs = core.handle_input(InputEvent::MouseUp);
+    core.handle_input(InputEvent::mouse_down(1));
+    let evs = core.handle_input(InputEvent::mouse_up());
     assert!(
         evs.is_empty(),
         "hover-only region must not emit click events"
@@ -57,8 +57,8 @@ fn on_click_still_emits_and_hover_tracks() {
     let badge = frame(&mut core, NodeSpec::column().on_click(Value::str("hit")));
     core.handle_input(InputEvent::CursorMoved(Vec2::new(10.0, 10.0)));
     assert!(core.is_hovered(badge));
-    core.handle_input(InputEvent::MouseDown(1));
-    let evs = core.handle_input(InputEvent::MouseUp);
+    core.handle_input(InputEvent::mouse_down(1));
+    let evs = core.handle_input(InputEvent::mouse_up());
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].payload.as_str(), Some("hit"));
 }
@@ -167,7 +167,7 @@ fn hover_bg_and_pressed_bg_resolve_in_the_core() {
     assert_eq!(bg_at(&mut core, 0.0), HOVER, "hovered block takes hover_bg");
     assert_eq!(bg_at(&mut core, 50.0), BASE, "its neighbour does not");
 
-    core.handle_input(InputEvent::MouseDown(1));
+    core.handle_input(InputEvent::mouse_down(1));
     pair_frame(&mut core, spec);
     assert_eq!(
         bg_at(&mut core, 0.0),
@@ -175,7 +175,7 @@ fn hover_bg_and_pressed_bg_resolve_in_the_core() {
         "pressed block takes pressed_bg"
     );
 
-    core.handle_input(InputEvent::MouseUp);
+    core.handle_input(InputEvent::mouse_up());
     core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, 200.0)));
     pair_frame(&mut core, spec);
     assert_eq!(bg_at(&mut core, 0.0), BASE, "back to the plain bg");
@@ -196,7 +196,7 @@ fn hover_group_lights_every_member() {
     assert_eq!(bg_at(&mut core, 0.0), HOVER);
     assert_eq!(bg_at(&mut core, 50.0), HOVER, "the other member hovers too");
 
-    core.handle_input(InputEvent::MouseDown(1));
+    core.handle_input(InputEvent::mouse_down(1));
     pair_frame(&mut core, spec);
     assert_eq!(
         bg_at(&mut core, 50.0),
@@ -215,7 +215,7 @@ fn hover_group_lights_every_member() {
         let s = NodeSpec::column().hover_group("pair");
         if label == "a" { s.hover_bg(HOVER) } else { s }
     };
-    core.handle_input(InputEvent::MouseUp);
+    core.handle_input(InputEvent::mouse_up());
     core.handle_input(InputEvent::CursorMoved(Vec2::new(60.0, 10.0)));
     pair_frame(&mut core, mixed);
     pair_frame(&mut core, mixed);
@@ -293,7 +293,7 @@ fn on_hover_fires_when_a_frame_moves_a_node_under_a_still_cursor() {
 
     // Left un-drained, they ride along with the next input instead.
     pair_frame(&mut core, |l| NodeSpec::column().on_hover(Value::str(l)));
-    let next = core.handle_input(InputEvent::MouseDown(1));
+    let next = core.handle_input(InputEvent::mouse_down(1));
     assert_eq!(hover_phases(&next), [(a, "enter".to_string())]);
 }
 

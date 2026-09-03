@@ -45,10 +45,10 @@ fn drag_emits_start_move_end_with_geometry() {
 
     let mut all = Vec::new();
     all.extend(core.handle_input(InputEvent::CursorMoved(Vec2::new(105.0, 50.0))));
-    all.extend(core.handle_input(InputEvent::MouseDown(1)));
+    all.extend(core.handle_input(InputEvent::mouse_down(1)));
     all.extend(core.handle_input(InputEvent::CursorMoved(Vec2::new(150.0, 55.0))));
     all.extend(core.handle_input(InputEvent::CursorMoved(Vec2::new(160.0, 55.0))));
-    all.extend(core.handle_input(InputEvent::MouseUp));
+    all.extend(core.handle_input(InputEvent::mouse_up()));
 
     assert_eq!(phases(&all), ["start", "move", "move", "end"]);
     let mv = &all[1].payload;
@@ -70,9 +70,9 @@ fn undragged_press_still_clicks() {
 
     let mut all = Vec::new();
     all.extend(core.handle_input(InputEvent::CursorMoved(Vec2::new(105.0, 50.0))));
-    all.extend(core.handle_input(InputEvent::MouseDown(1)));
+    all.extend(core.handle_input(InputEvent::mouse_down(1)));
     all.extend(core.handle_input(InputEvent::CursorMoved(Vec2::new(106.0, 50.0)))); // sub-slop
-    all.extend(core.handle_input(InputEvent::MouseUp));
+    all.extend(core.handle_input(InputEvent::mouse_up()));
 
     assert_eq!(
         phases(&all),
@@ -141,7 +141,7 @@ fn hover_keeps_tracking_other_nodes_during_a_drag() {
     frame(&mut core);
 
     core.handle_input(InputEvent::CursorMoved(Vec2::new(50.0, 15.0)));
-    core.handle_input(InputEvent::MouseDown(1));
+    core.handle_input(InputEvent::mouse_down(1));
     assert!(core.interaction.is_hovered(a));
     // Drag over the sibling: the drag stays captured on `a`, hover moves.
     let evs = core.handle_input(InputEvent::CursorMoved(Vec2::new(150.0, 15.0)));
@@ -154,7 +154,7 @@ fn hover_keeps_tracking_other_nodes_during_a_drag() {
             .any(|e| e.key == a && e.payload.get("phase").and_then(Value::as_str) == Some("move")),
         "drag events keep landing on the pressed node"
     );
-    core.handle_input(InputEvent::MouseUp);
+    core.handle_input(InputEvent::mouse_up());
 }
 
 #[test]
@@ -166,7 +166,7 @@ fn scrollbar_thumb_drags_the_offset() {
     // Grab the thumb (top of the right gutter) and pull it down.
     let evs: Vec<UiEvent> = [
         InputEvent::CursorMoved(Vec2::new(395.0, 10.0)),
-        InputEvent::MouseDown(1),
+        InputEvent::mouse_down(1),
         InputEvent::CursorMoved(Vec2::new(395.0, 60.0)),
     ]
     .into_iter()
@@ -183,7 +183,7 @@ fn scrollbar_thumb_drags_the_offset() {
     );
 
     // Release ends the drag: further motion does nothing.
-    core.handle_input(InputEvent::MouseUp);
+    core.handle_input(InputEvent::mouse_up());
     core.handle_input(InputEvent::CursorMoved(Vec2::new(395.0, 90.0)));
     assert_eq!(core.scroll.offset(key).y, dragged);
 }
@@ -195,8 +195,8 @@ fn scrollbar_track_press_jumps() {
 
     // Press the bottom of the track, far from the thumb.
     core.handle_input(InputEvent::CursorMoved(Vec2::new(395.0, 95.0)));
-    core.handle_input(InputEvent::MouseDown(1));
-    core.handle_input(InputEvent::MouseUp);
+    core.handle_input(InputEvent::mouse_down(1));
+    core.handle_input(InputEvent::mouse_up());
     let max = 20.0 * 30.0 - 100.0;
     let y = core.scroll.offset(key).y;
     assert!(
@@ -243,11 +243,11 @@ fn hoverable_added_below_a_pressed_node_keeps_the_click() {
     };
     frame(&mut core, false);
     core.handle_input(InputEvent::CursorMoved(Vec2::new(50.0, 15.0)));
-    let start = core.handle_input(InputEvent::MouseDown(1));
+    let start = core.handle_input(InputEvent::mouse_down(1));
     assert_eq!(phases(&start), ["start"]);
     // The host reacts to the drag start by growing a column under the tab.
     frame(&mut core, true);
-    let up = core.handle_input(InputEvent::MouseUp);
+    let up = core.handle_input(InputEvent::mouse_up());
     assert!(
         up.iter().any(|e| e.payload.as_str() == Some("clicked")),
         "release on the same tab is still a click: {up:?}"
@@ -282,7 +282,7 @@ fn a_captured_drag_stays_pressed_off_the_node() {
     drag_frame(&mut core);
 
     core.handle_input(InputEvent::CursorMoved(Vec2::new(105.0, 50.0)));
-    core.handle_input(InputEvent::MouseDown(1));
+    core.handle_input(InputEvent::mouse_down(1));
     assert!(core.interaction.is_pressed(divider));
 
     // Off the divider entirely: hover follows the cursor, the press doesn't.
@@ -297,7 +297,7 @@ fn a_captured_drag_stays_pressed_off_the_node() {
     core.handle_input(InputEvent::CursorLeft);
     assert!(core.interaction.is_pressed(divider));
 
-    core.handle_input(InputEvent::MouseUp);
+    core.handle_input(InputEvent::mouse_up());
     assert!(!core.interaction.is_pressed(divider));
 }
 
@@ -323,7 +323,7 @@ fn a_captured_drag_keeps_its_hover_group_pressed() {
     frame(&mut core);
 
     core.handle_input(InputEvent::CursorMoved(Vec2::new(50.0, 15.0)));
-    core.handle_input(InputEvent::MouseDown(1));
+    core.handle_input(InputEvent::mouse_down(1));
     assert!(core.interaction.is_group_pressed(group));
 
     core.handle_input(InputEvent::CursorMoved(Vec2::new(300.0, 200.0)));
@@ -333,6 +333,6 @@ fn a_captured_drag_keeps_its_hover_group_pressed() {
         "the group stays pressed for the whole captured drag"
     );
 
-    core.handle_input(InputEvent::MouseUp);
+    core.handle_input(InputEvent::mouse_up());
     assert!(!core.interaction.is_group_pressed(group));
 }

@@ -48,7 +48,7 @@ pub use enter::Enter;
 pub use env::Env;
 pub use geom::{Edges, Rect, Size, Vec2};
 pub use input::ScrollAxis;
-pub use input::{EditKey, InputEvent, KeyCode, KeyMods, KeyPress, Mods, UiEvent};
+pub use input::{EditKey, InputEvent, KeyCode, KeyMods, KeyPress, Mods, MouseButton, UiEvent};
 pub use key::Key;
 pub use keyframes::Keyframe;
 pub use resources::{FontId, ImageId, Resources, SoundId};

@@ -180,11 +180,20 @@ jobs:
 
       # The .d.ts is only exercised by a type checker; the example app is
       # the one that uses every app-facing type (messages, events, props).
-      - name: Node example typecheck
+      # It is also a self-checking headless drive - it clicks its own
+      # buttons by hit-testing, types into its editor, opens its context
+      # menu, and exits 1 on "MISMATCH" - so run it too: typechecking alone
+      # let a stale focus assumption sit in it from 0.1.0-alpha.5 (a click
+      # takes the keyboard, so `autofocus` no longer held when it typed)
+      # without anything going red. Only the headless one: counter-window
+      # opens a window and has no display here.
+      - name: Node example typecheck and run
         run: |
           cd examples/node
           npm ci
           npm run typecheck
+          npm run build
+          node dist/counter.mjs
 
   # Native platform coverage: additive, opt-in and non-blocking. Neither
   # job appears in `publish`'s `needs` and neither can fail a run

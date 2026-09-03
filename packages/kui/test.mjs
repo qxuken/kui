@@ -610,6 +610,75 @@ test('onHover emits enter and leave with the tag', () => {
   assert.deepEqual(ctx.pollEvents(), []);
 });
 
+test('onContextMenu answers the secondary button and nothing else', () => {
+  const ctx = new Ctx();
+  const tree = box({ width: 'grow', height: 'grow', onContextMenu: { kind: 'menu', on: 'panel' } }, [
+    box({ width: 50, height: 50, onClick: { kind: 'open' }, onContextMenu: { kind: 'menu', on: 'row' } }, [], 'row'),
+  ]);
+  ctx.frame(320, 240, 1, tree);
+
+  // The press is what opens a menu, at the point to open it at, and the
+  // release adds nothing — the node's onClick stays out of it.
+  ctx.cursor(20, 30);
+  ctx.mouse(true, 1, 'secondary');
+  let evs = ctx.pollEvents();
+  assert.deepEqual(
+    evs.map((e) => e.payload),
+    [{ kind: 'contextmenu', x: 20, y: 30, tag: { kind: 'menu', on: 'row' } }],
+  );
+  const rowKey = evs[0].key;
+  ctx.mouse(false, 1, 'secondary');
+  assert.deepEqual(ctx.pollEvents(), []);
+
+  // The same node still clicks with the primary button.
+  ctx.mouse(true, 1);
+  ctx.mouse(false, 1);
+  assert.deepEqual(
+    ctx.pollEvents().map((e) => e.payload),
+    [{ kind: 'open' }],
+  );
+
+  // Routed like a click: the container answers where no child covers it.
+  ctx.cursor(200, 100);
+  ctx.mouse(true, 1, 'secondary');
+  evs = ctx.pollEvents();
+  assert.deepEqual(evs.map((e) => e.payload.tag.on), ['panel']);
+  assert.notEqual(evs[0].key, rowKey);
+  ctx.mouse(false, 1, 'secondary');
+
+  // Nothing routes the middle button yet.
+  ctx.mouse(true, 1, 'middle');
+  ctx.mouse(false, 1, 'middle');
+  assert.deepEqual(ctx.pollEvents(), []);
+  assert.throws(() => ctx.mouse(true, 1, 'left'), /unknown mouse button/);
+});
+
+test('a right-click leaves keyboard focus where it was', () => {
+  const ctx = new Ctx();
+  const tree = box({}, [
+    el('edit', { initial: 'hello', size: 13, width: 160, height: 40, label: 'Note', autofocus: true }, [], 'note'),
+    box({ width: 100, height: 40, onClick: { kind: 'open' }, onContextMenu: null }, [], 'row'),
+  ]);
+  ctx.frame(320, 240, 1, tree);
+  const noteKey = ctx.accessTree().nodes.find((n) => n.name === 'Note').key;
+  assert.equal(ctx.focused(), noteKey);
+
+  // A null tag declares the behaviour without a payload, as onKey does.
+  ctx.cursor(20, 60);
+  ctx.mouse(true, 1, 'secondary');
+  assert.deepEqual(
+    ctx.pollEvents().map((e) => e.payload),
+    [{ kind: 'contextmenu', x: 20, y: 60 }],
+  );
+  ctx.mouse(false, 1, 'secondary');
+  assert.equal(ctx.focused(), noteKey, 'the editor is still focused');
+
+  // Where the primary button moves focus to the row it pressed.
+  ctx.mouse(true, 1);
+  ctx.mouse(false, 1);
+  assert.notEqual(ctx.focused(), noteKey);
+});
+
 test('a changed viewport emits one resize event', () => {
   const ctx = new Ctx();
   ctx.frame(320, 240, 1, box({}));
@@ -832,7 +901,7 @@ const SCENE_TREES = {
     ]),
   controls: () =>
     root({}, [
-      box({ pad: 10, gap: 6 }, [
+      box({ pad: 10, gap: 6, onContextMenu: { kind: 'menu' } }, [
         el('button', { onClick: { kind: 'go' } }, ['go']),
         el('edit', { initial: 'hello', size: 13, width: 160, label: 'Note' }, [], 'note'),
       ]),
@@ -900,6 +969,8 @@ function driveScene(transport, steps, build) {
     else if (step[0] === 'cursorleft') ctx.cursorLeft();
     else if (step[0] === 'mousedown') ctx.mouse(true, 1);
     else if (step[0] === 'mouseup') ctx.mouse(false);
+    else if (step[0] === 'secondarydown') ctx.mouse(true, 1, 'secondary');
+    else if (step[0] === 'secondaryup') ctx.mouse(false, 1, 'secondary');
     else if (step[0] === 'scroll') ctx.scroll(step[1], step[2]);
     else throw new Error(`unknown conformance step ${step[0]}`);
     events.push(...ctx.pollEvents());

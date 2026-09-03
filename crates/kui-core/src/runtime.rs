@@ -15,7 +15,8 @@ use crate::edit::{EditOptions, EditStore};
 use crate::env::Env;
 use crate::geom::{Rect, Size, Vec2};
 use crate::input::{
-    EditKey, HitRegion, InputEvent, Interaction, ScrollAxis, ScrollRegion, ScrollbarRegion, UiEvent,
+    EditKey, HitRegion, InputEvent, Interaction, MouseButton, ScrollAxis, ScrollRegion,
+    ScrollbarRegion, UiEvent,
 };
 use crate::key::Key;
 use crate::keyframes::{self, Keyframe};
@@ -394,11 +395,17 @@ impl Core {
                     });
                 }
             }
-            InputEvent::MouseDown(clicks) => {
+            InputEvent::MouseDown { button, clicks } => {
+                // Only the primary button moves anything: a secondary
+                // press asks for a context menu where it landed and leaves
+                // focus, the caret and the scrollbars exactly as they were
+                // (a right-click on a selection has to keep it).
+                let primary = button == MouseButton::Primary;
                 // Scrollbars win over everything under them (they draw on
                 // top): a thumb press starts a drag, a track press jumps
                 // there first. Neither blurs the focused edit.
-                if let Some(p) = self.interaction.cursor()
+                if primary
+                    && let Some(p) = self.interaction.cursor()
                     && let Some(bar) = self.interaction.scrollbar_at(p)
                 {
                     let (pos, thumb_start) = match bar.axis {
@@ -436,26 +443,28 @@ impl Core {
                             self.dismiss(key, "outside", &mut out);
                         }
                         self.interaction
-                            .handle(InputEvent::MouseDown(clicks), &mut out);
+                            .handle(InputEvent::MouseDown { button, clicks }, &mut out);
                         return out;
                     }
                     // A press moves focus (to a focusable node) or drops
                     // it; either way it is pointer focus, not shown.
-                    match hit {
-                        Some((key, Some(origin), true)) => {
-                            self.set_focus(Some(key));
-                            let local = Vec2::new(p.x - origin.x, p.y - origin.y);
-                            self.edit
-                                .click(key, local, clicks, self.text.font_system_mut());
-                            self.edit.dragging = Some((key, origin));
+                    if primary {
+                        match hit {
+                            Some((key, Some(origin), true)) => {
+                                self.set_focus(Some(key));
+                                let local = Vec2::new(p.x - origin.x, p.y - origin.y);
+                                self.edit
+                                    .click(key, local, clicks, self.text.font_system_mut());
+                                self.edit.dragging = Some((key, origin));
+                            }
+                            Some((key, None, true)) => self.set_focus(Some(key)),
+                            _ => self.set_focus(None),
                         }
-                        Some((key, None, true)) => self.set_focus(Some(key)),
-                        _ => self.set_focus(None),
+                        self.focus_visible = false;
                     }
-                    self.focus_visible = false;
                 }
                 self.interaction
-                    .handle(InputEvent::MouseDown(clicks), &mut out);
+                    .handle(InputEvent::MouseDown { button, clicks }, &mut out);
             }
             InputEvent::CursorMoved(p) => {
                 if let Some((key, axis, grab)) = self.interaction.scrollbar_drag
@@ -479,10 +488,13 @@ impl Core {
                 self.interaction
                     .handle(InputEvent::CursorMoved(p), &mut out);
             }
-            InputEvent::MouseUp => {
-                self.edit.dragging = None;
-                self.interaction.scrollbar_drag = None;
-                self.interaction.handle(InputEvent::MouseUp, &mut out);
+            InputEvent::MouseUp { button } => {
+                if button == MouseButton::Primary {
+                    self.edit.dragging = None;
+                    self.interaction.scrollbar_drag = None;
+                }
+                self.interaction
+                    .handle(InputEvent::MouseUp { button }, &mut out);
             }
             InputEvent::Access(req) => self.handle_access(req, &mut out),
             other => self.interaction.handle(other, &mut out),
@@ -738,6 +750,7 @@ impl Core {
                 drag: spec.on_drag.clone().filter(|_| live),
                 parent_rect,
                 key_sink: spec.on_key.clone().filter(|_| live),
+                context_menu: spec.on_context_menu.clone().filter(|_| live),
                 focusable: crate::access::focusable(&self.tree, i),
                 edit_origin: None,
                 window: spec.window,
@@ -782,6 +795,7 @@ impl Core {
                         parent_rect: rect,
                         edit_origin: Some(content_origin),
                         key_sink: None,
+                        context_menu: None,
                         focusable: !spec.disabled,
                         window: None,
                         hover: None,
