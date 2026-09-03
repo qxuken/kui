@@ -107,7 +107,12 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
-      - name: C example (FFI self-test)
+      # build.sh first compiles the generated ABI asserts (mod abi_parity in
+      # crates/kui-ffi/src/lib.rs) against include/kui.h - the header is
+      # hand-written and otherwise unchecked against the repr(C) structs -
+      # and then builds the example, which is the only thing that links
+      # against the real header.
+      - name: C example (header ABI check + FFI self-test)
         run: |
           ./examples/c/build.sh
           ./examples/c/counter --headless
