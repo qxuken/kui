@@ -129,6 +129,9 @@ with its JSX, Lua and C name, the composites, the elements, the event
 payload shapes and the resource APIs. It is generated from the schema
 (`npm run gen` in `packages/kui`), so it cannot drift.
 
+[docs/adr](docs/adr) holds the architecture decision records: the choices
+that are hard to reverse and would look arbitrary without their context.
+
 ## Design notes
 
 - **One prop schema, three bindings.** `kui_core::schema::PROPS` is the
@@ -161,6 +164,22 @@ payload shapes and the resource APIs. It is generated from the schema
   react — splitmux floats drop-zone overlays over every pane while ⌘ is
   held, so a ⌘-drag moves a pane and a plain click still focuses it, with
   no "modifier-gated drag" concept in the core at all.
+- **Accessibility is data too** ([ADR 0001](docs/adr/0001-accessibility-as-data.md)).
+  `role` and `label` are two more schema rows; from them and from what
+  nodes already do (`on_click`, editors, scroll containers, window chrome)
+  the core derives an *access tree* — roles, names, rects, values, the
+  actions each node accepts — with plain boxes elided, as data any driver
+  can ask for (`Core::access_tree`, `app.accessTree()`, `kui_access_tree`).
+  Requests from assistive technology come back in as `InputEvent::Access`
+  and resolve like their pointer equivalents, so a headless test can drive
+  an app the way a screen reader would. The Rust runner hands the tree to
+  the platform through AccessKit, and only once something attaches; an
+  unnamed control or an unlabelled image is a warning, not a mystery.
+  Editors go one level deeper: their laid-out lines are *runs* with every
+  character placed, so a reader walks text by character and word and
+  hears the caret move. An app that owns its text (the modal editor
+  example) gets the same treatment from `role="line"` rows and two byte
+  offsets, with selection requests coming back as events.
 - **Identity is content-addressed.** `Key` is a hash of the path from the
   root (labels/sibling indices), reproducible from any language, with no
   allocation event tying identity to a slot. Slotmap handles are used where

@@ -260,6 +260,169 @@ test('createApp collects warnings on the app', () => {
   assert.equal(shipped.warnings.length, 0);
 });
 
+test('the access tree derives roles and names, and requests drive the app', () => {
+  const app = createApp(
+    {
+      init: { n: 0, text: 'hi', nudged: null, tag: null },
+      update: (m, msg, ev) => {
+        if (msg === 'bump') return { ...m, n: m.n + 1 };
+        if (msg?.kind === 'changed') return { ...m, text: app.ctx.editText(ev.key) };
+        if (msg?.kind === 'access') return { ...m, nudged: msg.action, tag: msg.tag };
+      },
+      view: (m) =>
+        box({ title: 'Demo', gap: 4, pad: 4 }, [
+          // Named by its text; the text is read as part of the button.
+          box({ onClick: 'bump', pad: 4, bg: '#333333' }, [text(`count ${m.n}`)], 'bump'),
+          // An icon button, named by its label.
+          box({ onClick: 'save', label: 'Save', width: 20, height: 20, bg: '#333333' }, [], 'save'),
+          box(
+            { role: 'slider', label: 'Volume', valueNow: 3, valueMin: 0, valueMax: 10, onDrag: 'vol', width: 100, height: 10 },
+            [],
+            'vol',
+          ),
+          // Decoration: gone from the tree, subtree included.
+          box({ role: 'none', onClick: 'hidden' }, [text('Hidden')]),
+          // Plain structure: elided, its editor hangs off the window.
+          box({ pad: 8 }, [el('edit', { initial: 'hi', label: 'Name', width: 100 }, [], 'name')]),
+        ]),
+    },
+    { warnings: false },
+  );
+  app.render();
+  const tree = app.accessTree();
+  assert.equal(tree.nodes[0].role, 'window');
+  assert.equal(tree.nodes[0].name, 'Demo');
+  const byName = (n) => tree.nodes.find((x) => x.name === n);
+  const bump = byName('count 0');
+  assert.equal(bump.role, 'button');
+  assert.equal(bump.parent, tree.nodes[0].key);
+  assert.ok(bump.actions.includes('click'));
+  assert.equal(byName('Save').role, 'button');
+  const vol = byName('Volume');
+  assert.equal(vol.role, 'slider');
+  assert.deepEqual([vol.valueNow, vol.valueMin, vol.valueMax], [3, 0, 10]);
+  assert.ok(vol.actions.includes('increment'));
+  assert.equal(byName('Hidden'), undefined);
+  const name = byName('Name');
+  assert.equal(name.role, 'textInput');
+  assert.equal(name.value, 'hi');
+  assert.equal(name.parent, tree.nodes[0].key);
+  assert.equal(tree.nodes.length, 5, 'window, two buttons, slider, editor');
+  assert.equal(tree.focus, null);
+  assert.equal(typeof tree.hash, 'string');
+
+  app.access(bump.key, 'click');
+  assert.equal(app.model.n, 1);
+  assert.equal(app.accessTree().nodes[1].name, 'count 1');
+  app.access(vol.key, 'increment');
+  assert.deepEqual([app.model.nudged, app.model.tag], ['increment', 'vol']);
+  app.access(name.key, 'setValue', 'world');
+  assert.equal(app.model.text, 'world');
+  app.access(name.key, 'focus');
+  app.render();
+  assert.equal(app.accessTree().focus, name.key);
+  assert.ok(app.accessTree().nodes.find((x) => x.key === name.key).focused);
+  assert.equal(app.warnings.length, 0);
+  assert.throws(() => app.access(name.key, 'teleport'), /unknown access action/);
+});
+
+test('editors expose runs and take selection requests; custom editors get them as messages', () => {
+  const app = createApp(
+    {
+      init: { text: 'hello world\nsecond', sel: null, replaced: null },
+      update: (m, msg, ev) => {
+        if (msg?.kind === 'changed') return { ...m, text: app.ctx.editText(ev.key) };
+        if (msg?.kind === 'access' && msg.action === 'setTextSelection')
+          return { ...m, sel: [msg.anchor, msg.focus, msg.tag] };
+        if (msg?.kind === 'access' && msg.action === 'replaceSelectedText')
+          return { ...m, replaced: msg.text };
+      },
+      view: () =>
+        box({ gap: 8, pad: 8 }, [
+          el('edit', { initial: 'hello world\nsecond', multiline: true, autofocus: true, label: 'Doc', width: 300 }, [], 'doc'),
+          // An editor the app draws itself: two lines, the caret at the
+          // end of the second, the anchor three bytes into the first.
+          box({ role: 'multilineTextInput', label: 'Mine', onKey: 'k' }, [
+            box({ role: 'none' }, [text('1'), text('2')]),
+            box({ role: 'line', selectionAnchor: 3 }, [text('fn ma'), text('in()')]),
+            box({ role: 'line', caret: 2 }, [text('hi')]),
+          ], 'mine'),
+        ]),
+    },
+    { warnings: false },
+  );
+  app.render();
+  let tree = app.accessTree();
+  const doc = tree.nodes.find((n) => n.name === 'Doc');
+  assert.equal(doc.role, 'multilineTextInput');
+  assert.equal(doc.value, 'hello world\nsecond');
+  assert.equal(doc.runs.length, 2);
+  assert.equal(doc.runs[0].text, 'hello world\n');
+  assert.deepEqual(doc.runs[0].wordStarts, [0, 6]);
+  assert.equal(doc.runs[0].charLengths.length, 12);
+  assert.equal(doc.runs[0].charPositions[0], 0);
+  assert.ok(doc.runs[0].charWidths[0] > 0);
+  assert.deepEqual(doc.focus, { run: doc.runs[0].key, character: 0 });
+  assert.ok(doc.actions.includes('setTextSelection'));
+
+  // Select "world\nsec" and type over it.
+  app.access(doc.key, 'setTextSelection', {
+    anchor: { run: doc.runs[0].key, character: 6 },
+    focus: { run: doc.runs[1].key, character: 3 },
+  });
+  app.render();
+  tree = app.accessTree();
+  const doc2 = tree.nodes.find((n) => n.name === 'Doc');
+  assert.deepEqual(doc2.selection, [6, 15]);
+  assert.deepEqual(doc2.anchor, { run: doc2.runs[0].key, character: 6 });
+  app.access(doc.key, 'replaceSelectedText', 'there ');
+  assert.equal(app.model.text, 'hello there ond');
+
+  // The custom editor: value from its lines, runs from their text nodes,
+  // caret and anchor from the props; a request comes back as a message.
+  const mine = tree.nodes.find((n) => n.name === 'Mine');
+  assert.equal(mine.role, 'multilineTextInput');
+  assert.equal(mine.value, 'fn main()\nhi');
+  assert.equal(mine.runs.length, 3);
+  assert.equal(mine.runs[1].text, 'in()\n');
+  assert.deepEqual([mine.runs[1].line, mine.runs[1].start, mine.runs[1].end], [0, 5, 9]);
+  assert.deepEqual(mine.anchor, { run: mine.runs[0].key, character: 3 });
+  assert.deepEqual(mine.focus, { run: mine.runs[2].key, character: 2 });
+  assert.equal(mine.caret, 12);
+  assert.deepEqual(mine.selection, [3, 12]);
+  assert.equal(tree.nodes.filter((n) => n.role === 'staticText').length, 0, 'lines and gutter are the editor');
+  app.access(mine.key, 'setTextSelection', {
+    anchor: { run: mine.runs[1].key, character: 1 },
+    focus: { run: mine.runs[2].key, character: 0 },
+  });
+  assert.deepEqual(app.model.sel, [{ line: 0, offset: 6 }, { line: 1, offset: 0 }, 'k']);
+  app.access(mine.key, 'replaceSelectedText', 'x');
+  assert.equal(app.model.replaced, 'x');
+  assert.equal(app.warnings.length, 0);
+});
+
+test('unnamed controls and unlabelled images warn once', () => {
+  const ctx = new Ctx();
+  const id = ctx.addImage(1, 1, Buffer.alloc(4, 255));
+  const tree = box({}, [
+    el('image', { src: id, width: 10, height: 10 }),
+    el('image', { src: id, width: 10, height: 10, label: 'Logo' }),
+    el('image', { src: id, width: 10, height: 10, role: 'none' }),
+    box({ onClick: 'x', width: 10, height: 10 }),
+    box({ onClick: 'y', width: 10, height: 10, tooltip: 'Do y' }, [text('Y')]),
+  ]);
+  ctx.frame(320, 240, 1, tree);
+  const ws = ctx.warnings();
+  assert.deepEqual(
+    ws.map((w) => w.code),
+    ['image-without-label', 'control-without-name'],
+  );
+  ctx.frame(320, 240, 1, tree);
+  assert.equal(ctx.warnings().length, 0, 'once');
+  const y = ctx.accessTree().nodes.find((n) => n.name === 'Y');
+  assert.equal(y.description, 'Do y', 'the tooltip is the description');
+});
+
 // Declarative hover styling: the core swaps hoverBg / pressedBg in while
 // the pointer is over the node (or its hoverGroup), and onHover reports
 // enter/leave as events — no isHovered query in the view.

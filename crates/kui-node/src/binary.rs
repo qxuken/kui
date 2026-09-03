@@ -212,8 +212,10 @@ fn read_props(r: &mut Reader<'_>) -> Result<PropsOut> {
             P_KEY => out.key = Some(r.req_str()?.to_string()),
             P_TITLE => out.title = Some(r.req_str()?.to_string()),
             P_TOOLTIP => {
-                out.tooltip = Some(r.req_str()?.to_string());
-                out.with_spec(NodeSpec::hoverable);
+                let hint = r.req_str()?.to_string();
+                // The hint is the accessible description too.
+                out.with_spec(|s| s.hoverable().description(hint.as_str()));
+                out.tooltip = Some(hint);
             }
             id => {
                 let def = schema::by_id(id).ok_or_else(|| err(format!("unknown prop id {id}")))?;
@@ -585,7 +587,7 @@ mod tests {
                     s.extend([0.0, 3.0]);
                     strings = b"abc";
                     expected.tooltip = Some("abc".into());
-                    expected.with_spec(NodeSpec::hoverable);
+                    expected.with_spec(|x| x.hoverable().description("abc"));
                 }
                 other => panic!(
                     "custom prop {other:?} has no binary decoder arm: add one in read_props, \

@@ -6,6 +6,7 @@
 //! - Events as data ([`input`], [`value::Value`]) routed by origin
 //! - Renderer boundary: a flat quad list ([`display::DisplayList`])
 
+pub mod access;
 pub mod anim;
 pub mod atlas;
 pub mod audio;
@@ -33,6 +34,9 @@ pub mod value;
 pub mod widgets;
 pub mod window;
 
+pub use access::{
+    AccessAction, AccessNode, AccessRequest, AccessRun, AccessTree, Role, ScrollState, TextPos,
+};
 pub use anim::{Easing, Repeat, Transition};
 pub use audio::{AudioCommand, AudioSpec, AudioStore, PlayOptions, PlaybackId};
 pub use color::Color;

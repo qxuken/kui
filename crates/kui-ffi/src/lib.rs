@@ -42,6 +42,9 @@ pub struct KuiCtx {
     /// Warnings most recently handed out by kui_take_warnings; their strings
     /// stay valid until the next call.
     last_warnings: Vec<kui_core::Warning>,
+    /// Access tree most recently handed out by kui_access_tree; its strings
+    /// stay valid until the next call.
+    last_access: kui_core::AccessTree,
 }
 
 impl KuiCtx {
@@ -204,6 +207,135 @@ pub struct KuiSpec {
     /// caller keeps ownership and frees it as usual; `kui_value_null()`
     /// asks for the events without a tag.
     pub on_layout: *const KuiValue,
+    /// KUI_ROLE_* (0 = unset: the core derives one). What the node is to
+    /// assistive technology; KUI_ROLE_NONE hides it and its subtree.
+    pub role: u32,
+    /// Accessible name (empty = none). Copied while the node opens.
+    pub label: KuiStr,
+    /// Non-zero: a checkbox / radio / switch role is on.
+    pub checked: u32,
+    /// KUI_VALUE_NOW / MIN / MAX bits saying which of the three below are
+    /// set (a slider role's position and range).
+    pub value_set: u32,
+    pub value_now: f32,
+    pub value_min: f32,
+    pub value_max: f32,
+    /// On a KUI_ROLE_LINE of a custom editor: the caret's byte offset into
+    /// the line's text, and the selection's other end (KUI_VALUE_CARET /
+    /// KUI_VALUE_ANCHOR in `value_set` say which are present).
+    pub caret: u32,
+    pub selection_anchor: u32,
+}
+
+/// One laid-out run of an editor's text (`kui_access_runs`): what a
+/// screen reader reads by character and word. `text` ends with `"\n"`
+/// (counted as a zero-width character) when the line continues into
+/// another. Character positions are relative to `x`. Arrays and strings
+/// are borrowed until the next `kui_access_tree` / `kui_access_runs` on
+/// the context.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiAccessRun {
+    /// The run's own id (a `KuiAccessNode.anchor_run` / `focus_run`, and
+    /// what `kui_input_access_text` takes).
+    pub key: u64,
+    /// The line it belongs to (a buffer line, or a KUI_ROLE_LINE ordinal
+    /// for a custom editor) and its byte range in that line's text.
+    pub line: u32,
+    pub start: u32,
+    pub end: u32,
+    pub text: KuiStr,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub char_count: u32,
+    pub char_lengths: *const u8,
+    pub char_positions: *const f32,
+    pub char_widths: *const f32,
+    pub word_start_count: u32,
+    pub word_starts: *const u8,
+    pub rtl: u32,
+}
+
+pub const KUI_VALUE_CARET: u32 = 1 << 3;
+pub const KUI_VALUE_ANCHOR: u32 = 1 << 4;
+pub const KUI_ACCESS_HAS_TEXT_SELECTION: u32 = 1 << 9;
+
+/// One node of the access tree (`kui_access_tree`): what assistive
+/// technology sees. `role` is KUI_ROLE_*, `flags` KUI_ACCESS_HAS_* /
+/// FOCUSED / CHECKED bits saying which optional fields hold, `actions`
+/// the KUI_ACCESS_* bits the node accepts through `kui_input_access`.
+/// Strings are borrowed until the next `kui_access_tree` on the context.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiAccessNode {
+    pub key: u64,
+    /// The nearest semantic ancestor; 0 for the root.
+    pub parent: u64,
+    pub origin: u32,
+    pub role: u32,
+    pub flags: u32,
+    pub actions: u32,
+    pub name: KuiStr,
+    pub description: KuiStr,
+    /// An editor's text (KUI_ACCESS_HAS_VALUE).
+    pub value: KuiStr,
+    /// Logical px, viewport coordinates.
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    /// Byte offsets into `value` (KUI_ACCESS_HAS_VALUE / HAS_SELECTION).
+    pub caret: u32,
+    pub selection_start: u32,
+    pub selection_end: u32,
+    /// A slider's position and range (KUI_ACCESS_HAS_NUMBER / MIN / MAX).
+    pub value_now: f32,
+    pub value_min: f32,
+    pub value_max: f32,
+    /// A scroll view's offsets and range (KUI_ACCESS_HAS_SCROLL).
+    pub scroll_x: f32,
+    pub scroll_y: f32,
+    pub scroll_max_x: f32,
+    pub scroll_max_y: f32,
+    /// An editor's caret (`focus_*`) and the selection's other end
+    /// (`anchor_*`) as run positions (KUI_ACCESS_HAS_TEXT_SELECTION):
+    /// a run key from `kui_access_runs` and a character index into it.
+    pub anchor_run: u64,
+    pub anchor_char: u32,
+    pub focus_run: u64,
+    pub focus_char: u32,
+    /// How many runs `kui_access_runs` returns for this node.
+    pub run_count: u32,
+}
+
+pub const KUI_ACCESS_HAS_VALUE: u32 = 1 << 0;
+pub const KUI_ACCESS_HAS_SELECTION: u32 = 1 << 1;
+pub const KUI_ACCESS_FOCUSED: u32 = 1 << 2;
+pub const KUI_ACCESS_CHECKED_SET: u32 = 1 << 3;
+pub const KUI_ACCESS_CHECKED: u32 = 1 << 4;
+pub const KUI_ACCESS_HAS_NUMBER: u32 = 1 << 5;
+pub const KUI_ACCESS_HAS_MIN: u32 = 1 << 6;
+pub const KUI_ACCESS_HAS_MAX: u32 = 1 << 7;
+pub const KUI_ACCESS_HAS_SCROLL: u32 = 1 << 8;
+
+pub const KUI_VALUE_NOW: u32 = 1 << 0;
+pub const KUI_VALUE_MIN: u32 = 1 << 1;
+pub const KUI_VALUE_MAX: u32 = 1 << 2;
+
+/// KUI_ROLE_* is the position in `Role::ALL` plus one (0 = unset).
+fn role_code(role: kui_core::Role) -> u32 {
+    kui_core::Role::ALL
+        .iter()
+        .position(|r| *r == role)
+        .map_or(0, |i| i as u32 + 1)
+}
+
+fn role_of_code(code: u32) -> Option<kui_core::Role> {
+    (code > 0)
+        .then(|| kui_core::Role::ALL.get(code as usize - 1).copied())
+        .flatten()
 }
 
 /// What a piece of text measures (`kui_measure_text`), logical px at the
@@ -545,6 +677,30 @@ fn spec_of(
         // Borrowed, unlike the message arguments: the spec is const.
         spec = spec.on_layout(tag.0.clone());
     }
+    if let Some(role) = role_of_code(s.role) {
+        spec = spec.role(role);
+    }
+    if !s.label.ptr.is_null() && s.label.len > 0 {
+        spec = spec.label(kstr(s.label).as_ref());
+    }
+    if s.checked != 0 {
+        spec = spec.checked(true);
+    }
+    if s.value_set & KUI_VALUE_NOW != 0 {
+        spec = spec.value_now(s.value_now);
+    }
+    if s.value_set & KUI_VALUE_MIN != 0 {
+        spec = spec.value_min(s.value_min);
+    }
+    if s.value_set & KUI_VALUE_MAX != 0 {
+        spec = spec.value_max(s.value_max);
+    }
+    if s.value_set & KUI_VALUE_CARET != 0 {
+        spec = spec.caret(s.caret);
+    }
+    if s.value_set & KUI_VALUE_ANCHOR != 0 {
+        spec = spec.selection_anchor(s.selection_anchor);
+    }
     if let Some(v) = take_msg(on_click) {
         spec = spec.on_click(v);
     }
@@ -617,6 +773,7 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             last_payload: None,
             last_edit_text: None,
             last_warnings: Vec::new(),
+            last_access: Default::default(),
         }))
     })
 }
@@ -1520,6 +1677,232 @@ pub extern "C" fn kui_take_warnings(ptr: *mut KuiCtx, out: *mut KuiWarning, cap:
     })
 }
 
+/// The access tree of the last finished frame (what assistive technology
+/// sees; see docs/adr/0001-accessibility-as-data.md): fills `out` with up
+/// to `cap` nodes in tree order (the root first) and returns the total
+/// count, so a short buffer can be resized and the call repeated. Strings
+/// stay valid until the next call on this context. A host that never
+/// asks pays nothing.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_access_tree(ptr: *mut KuiCtx, out: *mut KuiAccessNode, cap: usize) -> usize {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        c.last_access = c.core().access_tree().clone();
+        let total = c.last_access.nodes.len();
+        if out.is_null() || cap == 0 {
+            return total;
+        }
+        let s = |s: &Option<String>| match s {
+            Some(s) => KuiStr {
+                ptr: s.as_ptr(),
+                len: s.len(),
+            },
+            None => KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
+        };
+        for (i, n) in c.last_access.nodes.iter().take(cap).enumerate() {
+            let mut flags = 0;
+            if n.value.is_some() {
+                flags |= KUI_ACCESS_HAS_VALUE;
+            }
+            if n.selection.is_some() {
+                flags |= KUI_ACCESS_HAS_SELECTION;
+            }
+            if n.focused {
+                flags |= KUI_ACCESS_FOCUSED;
+            }
+            if let Some(checked) = n.checked {
+                flags |= KUI_ACCESS_CHECKED_SET;
+                if checked {
+                    flags |= KUI_ACCESS_CHECKED;
+                }
+            }
+            if n.number.is_some() {
+                flags |= KUI_ACCESS_HAS_NUMBER;
+            }
+            if n.min.is_some() {
+                flags |= KUI_ACCESS_HAS_MIN;
+            }
+            if n.max.is_some() {
+                flags |= KUI_ACCESS_HAS_MAX;
+            }
+            if n.scroll.is_some() {
+                flags |= KUI_ACCESS_HAS_SCROLL;
+            }
+            if n.anchor.is_some() && n.focus.is_some() {
+                flags |= KUI_ACCESS_HAS_TEXT_SELECTION;
+            }
+            let scroll = n.scroll.unwrap_or_default();
+            let (sel_start, sel_end) = n.selection.unwrap_or((0, 0));
+            unsafe {
+                out.add(i).write(KuiAccessNode {
+                    key: n.key.0,
+                    parent: n.parent.map_or(0, |k| k.0),
+                    origin: n.origin.0 as u32,
+                    role: role_code(n.role),
+                    flags,
+                    actions: n.actions,
+                    name: s(&n.name),
+                    description: s(&n.description),
+                    value: s(&n.value),
+                    x: n.rect.x,
+                    y: n.rect.y,
+                    w: n.rect.w,
+                    h: n.rect.h,
+                    caret: n.caret.unwrap_or(0) as u32,
+                    selection_start: sel_start as u32,
+                    selection_end: sel_end as u32,
+                    value_now: n.number.unwrap_or(0.0),
+                    value_min: n.min.unwrap_or(0.0),
+                    value_max: n.max.unwrap_or(0.0),
+                    scroll_x: scroll.x,
+                    scroll_y: scroll.y,
+                    scroll_max_x: scroll.max_x,
+                    scroll_max_y: scroll.max_y,
+                    anchor_run: n.anchor.map_or(0, |p| p.run.0),
+                    anchor_char: n.anchor.map_or(0, |p| p.character as u32),
+                    focus_run: n.focus.map_or(0, |p| p.run.0),
+                    focus_char: n.focus.map_or(0, |p| p.character as u32),
+                    run_count: n.runs.len() as u32,
+                })
+            };
+        }
+        total
+    })
+}
+
+/// A request from assistive technology on node `key`: one KUI_ACCESS_*
+/// action bit (the node must advertise it in `KuiAccessNode.actions`),
+/// with `value` the new text for KUI_ACCESS_SET_VALUE (empty otherwise).
+/// Resolved the way the pointer or keyboard equivalent would be: a click
+/// emits the node's payload, focus lands on an editor, a slider nudge
+/// arrives as a `{kind="access", action, tag}` event.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_input_access(ptr: *mut KuiCtx, key: u64, action: u32, value: KuiStr) {
+    guard((), || {
+        let Some(action) = kui_core::AccessAction::ALL
+            .iter()
+            .copied()
+            .find(|a| a.bit() == action)
+        else {
+            return;
+        };
+        let value = (!value.ptr.is_null() && value.len > 0).then(|| kstr(value).into_owned());
+        push_input(
+            ptr,
+            InputEvent::Access(kui_core::AccessRequest {
+                key: Key(key),
+                action,
+                value,
+                anchor: None,
+                focus: None,
+            }),
+        );
+    });
+}
+
+/// The laid-out text of editor node `key` as runs (see `KuiAccessRun`):
+/// fills `out` with up to `cap` of them and returns the total. Runs are
+/// what `KuiAccessNode.anchor_run` / `focus_run` and
+/// `kui_input_access_text` refer to. Borrowed until the next
+/// `kui_access_tree` / `kui_access_runs` on the context; a node with no
+/// text (or no such node) has none.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_access_runs(
+    ptr: *mut KuiCtx,
+    key: u64,
+    out: *mut KuiAccessRun,
+    cap: usize,
+) -> usize {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        c.last_access = c.core().access_tree().clone();
+        let Some(node) = c.last_access.get(Key(key)) else {
+            return 0;
+        };
+        let total = node.runs.len();
+        if out.is_null() || cap == 0 {
+            return total;
+        }
+        for (i, r) in node.runs.iter().take(cap).enumerate() {
+            unsafe {
+                out.add(i).write(KuiAccessRun {
+                    key: r.key.0,
+                    line: r.line as u32,
+                    start: r.start as u32,
+                    end: r.end as u32,
+                    text: KuiStr {
+                        ptr: r.text.as_ptr(),
+                        len: r.text.len(),
+                    },
+                    x: r.rect.x,
+                    y: r.rect.y,
+                    w: r.rect.w,
+                    h: r.rect.h,
+                    char_count: r.char_lengths.len() as u32,
+                    char_lengths: r.char_lengths.as_ptr(),
+                    char_positions: r.char_positions.as_ptr(),
+                    char_widths: r.char_widths.as_ptr(),
+                    word_start_count: r.word_starts.len() as u32,
+                    word_starts: r.word_starts.as_ptr(),
+                    rtl: r.rtl as u32,
+                })
+            };
+        }
+        total
+    })
+}
+
+/// A text request from assistive technology on editor node `key`:
+/// KUI_ACCESS_SET_TEXT_SELECTION with the selection as run positions
+/// (`anchor_*` the end that stays, `focus_*` the caret), or
+/// KUI_ACCESS_REPLACE_SELECTED_TEXT / KUI_ACCESS_SET_VALUE with `value`.
+/// A built-in editor applies it (a `changed` event follows an edit); a
+/// custom editor gets it as a `{kind="access", action, anchor, focus,
+/// text, tag}` event to apply itself.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_input_access_text(
+    ptr: *mut KuiCtx,
+    key: u64,
+    action: u32,
+    anchor_run: u64,
+    anchor_char: u32,
+    focus_run: u64,
+    focus_char: u32,
+    value: KuiStr,
+) {
+    guard((), || {
+        let Some(action) = kui_core::AccessAction::ALL
+            .iter()
+            .copied()
+            .find(|a| a.bit() == action)
+        else {
+            return;
+        };
+        let mut req = kui_core::AccessRequest::new(Key(key), action);
+        if !value.ptr.is_null() && value.len > 0 {
+            req.value = Some(kstr(value).into_owned());
+        }
+        if action == kui_core::AccessAction::SetTextSelection {
+            req.anchor = Some(kui_core::TextPos {
+                run: Key(anchor_run),
+                character: anchor_char as usize,
+            });
+            req.focus = Some(kui_core::TextPos {
+                run: Key(focus_run),
+                character: focus_char as usize,
+            });
+        }
+        push_input(ptr, InputEvent::Access(req));
+    });
+}
+
 /// Turns the diagnostic checks behind kui_take_warnings on or off (off by
 /// default for a standalone context: a development build opts in).
 #[unsafe(no_mangle)]
@@ -1919,6 +2302,7 @@ impl kui::App for CApp {
             last_payload: None,
             last_edit_text: None,
             last_warnings: Vec::new(),
+            last_access: Default::default(),
         };
         (self.view)(self.user, &mut shim);
     }
@@ -2073,6 +2457,16 @@ mod schema_parity {
                 "hoverGroup" => s.hover_group = name,
                 "clickSound" => s.click_sound = 7,
                 "hoverSound" => s.hover_sound = 7,
+                "role" => s.role = 2, // KUI_ROLE_* = Role::ALL index + 1; ROLES[1] = button
+                "label" => s.label = name,
+                "checked" => s.checked = 1,
+                "valueNow" => (s.value_set, s.value_now) = (KUI_VALUE_NOW, F),
+                "valueMin" => (s.value_set, s.value_min) = (KUI_VALUE_MIN, F),
+                "valueMax" => (s.value_set, s.value_max) = (KUI_VALUE_MAX, F),
+                "caret" => (s.value_set, s.caret) = (KUI_VALUE_CARET, F as u32),
+                "selectionAnchor" => {
+                    (s.value_set, s.selection_anchor) = (KUI_VALUE_ANCHOR, F as u32)
+                }
                 "lineHeight" => t.line_height = F,
                 "color" => t.color = C,
                 "family" => t.family = 1,
@@ -2180,6 +2574,18 @@ mod schema_parity {
             click_sound: 0,
             hover_sound: 0,
             on_layout: std::ptr::null(),
+            role: 2,
+            label: KuiStr {
+                ptr: "lbl".as_ptr(),
+                len: 3,
+            },
+            checked: 1,
+            value_set: KUI_VALUE_NOW | KUI_VALUE_MIN | KUI_VALUE_MAX,
+            value_now: 3.0,
+            value_min: 0.0,
+            value_max: 10.0,
+            caret: 0,
+            selection_anchor: 0,
         };
         let expected = NodeSpec::row()
             .width(Sizing::Grow(2.0))
@@ -2218,6 +2624,12 @@ mod schema_parity {
             .hover_bg(Color::hex(0x47_6c_e0_ff))
             .pressed_bg(Color::hex(0x2f_54_c4_ff))
             .hover_group("grp")
+            .role(kui_core::Role::Button)
+            .label("lbl")
+            .checked(true)
+            .value_now(3.0)
+            .value_min(0.0)
+            .value_max(10.0)
             .repeat(kui_core::Repeat::Alternate)
             .delay(50.0)
             .keyframes(vec![
@@ -2392,6 +2804,197 @@ mod queries_headless {
             ptr: s.as_ptr(),
             len: s.len(),
         }
+    }
+
+    /// An editor's runs cross as rows with borrowed arrays, and a text
+    /// request addresses them: select "world" by run positions, type
+    /// over it, read the text back.
+    #[test]
+    fn editor_runs_and_text_requests_cross_the_boundary() {
+        let ctx = kui_ctx_new();
+        let mut spec = unsafe { std::mem::zeroed::<KuiSpec>() };
+        spec.width = KuiSizing {
+            tag: 2,
+            value: 300.0,
+        };
+        spec.label = ks("Doc");
+        kui_frame_begin(ctx, 400.0, 200.0, 1.0);
+        let key = kui_text_edit(
+            ctx,
+            ks("doc"),
+            ks("hello world"),
+            std::ptr::null(),
+            2, // KUI_EDIT_AUTOFOCUS
+            &spec,
+        );
+        kui_frame_finish(ctx);
+
+        let mut nodes = [unsafe { std::mem::zeroed::<KuiAccessNode>() }; 4];
+        assert_eq!(kui_access_tree(ctx, nodes.as_mut_ptr(), nodes.len()), 2);
+        let ed = nodes[1];
+        assert_eq!(ed.key, key);
+        assert_eq!(ed.role, role_code(kui_core::Role::TextInput));
+        assert_eq!(ed.run_count, 1);
+        assert_ne!(ed.flags & KUI_ACCESS_HAS_TEXT_SELECTION, 0);
+        assert_ne!(ed.flags & KUI_ACCESS_FOCUSED, 0);
+        assert_eq!((ed.focus_char, ed.anchor_char), (0, 0));
+
+        let mut runs = [unsafe { std::mem::zeroed::<KuiAccessRun>() }; 4];
+        assert_eq!(kui_access_runs(ctx, key, runs.as_mut_ptr(), runs.len()), 1);
+        let r = runs[0];
+        assert_eq!(r.key, ed.focus_run);
+        assert_eq!(kstr(r.text).as_ref(), "hello world");
+        assert_eq!((r.line, r.start, r.end), (0, 0, 11));
+        assert_eq!(r.char_count, 11);
+        let starts =
+            unsafe { std::slice::from_raw_parts(r.word_starts, r.word_start_count as usize) };
+        assert_eq!(starts, [0, 6]);
+        let positions =
+            unsafe { std::slice::from_raw_parts(r.char_positions, r.char_count as usize) };
+        assert_eq!(positions[0], 0.0);
+        assert!(positions[6] > positions[0]);
+        assert_eq!(kui_access_runs(ctx, 12345, runs.as_mut_ptr(), 4), 0);
+
+        kui_input_access_text(
+            ctx,
+            key,
+            kui_core::AccessAction::SetTextSelection.bit(),
+            r.key,
+            6,
+            r.key,
+            11,
+            ks(""),
+        );
+        kui_input_access_text(
+            ctx,
+            key,
+            kui_core::AccessAction::ReplaceSelectedText.bit(),
+            0,
+            0,
+            0,
+            0,
+            ks("there"),
+        );
+        let mut text = KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+        assert!(kui_edit_text(ctx, key, &mut text));
+        assert_eq!(kstr(text).as_ref(), "hello there");
+        let mut ev = KuiEvent {
+            origin: 0,
+            key: 0,
+            payload: std::ptr::null(),
+        };
+        assert!(kui_poll_event(ctx, &mut ev));
+        assert_eq!(
+            unsafe { &*ev.payload }
+                .0
+                .get("kind")
+                .and_then(Value::as_str),
+            Some("changed")
+        );
+        kui_ctx_free(ctx);
+    }
+
+    /// The access tree crosses as rows (plain boxes elided), and an
+    /// assistive request comes back in as input: a click on a labelled
+    /// button emits its payload, a slider nudge arrives as an `access`
+    /// event.
+    #[test]
+    fn access_tree_and_requests_cross_the_boundary() {
+        let ctx = kui_ctx_new();
+        let mut button = unsafe { std::mem::zeroed::<KuiSpec>() };
+        button.width = KuiSizing {
+            tag: 2,
+            value: 40.0,
+        };
+        button.height = KuiSizing {
+            tag: 2,
+            value: 20.0,
+        };
+        button.label = ks("Save");
+        let mut slider = unsafe { std::mem::zeroed::<KuiSpec>() };
+        slider.width = KuiSizing {
+            tag: 2,
+            value: 100.0,
+        };
+        slider.height = KuiSizing {
+            tag: 2,
+            value: 10.0,
+        };
+        slider.role = role_code(kui_core::Role::Slider);
+        slider.label = ks("Volume");
+        slider.value_set = KUI_VALUE_NOW | KUI_VALUE_MAX;
+        slider.value_now = 3.0;
+        slider.value_max = 10.0;
+        let plain = unsafe { std::mem::zeroed::<KuiSpec>() };
+        kui_frame_begin(ctx, 200.0, 100.0, 1.0);
+        kui_open_keyed(ctx, ks("save"), &button, kui_value_str(ks("save")));
+        kui_close(ctx);
+        kui_open_keyed(ctx, ks("plain"), &plain, NONE);
+        kui_close(ctx);
+        kui_open_keyed(ctx, ks("vol"), &slider, NONE);
+        kui_close(ctx);
+        kui_frame_finish(ctx);
+
+        assert_eq!(
+            kui_access_tree(ctx, std::ptr::null_mut(), 0),
+            3,
+            "window, button, slider: the plain box is elided"
+        );
+        let mut out = [unsafe { std::mem::zeroed::<KuiAccessNode>() }; 8];
+        assert_eq!(kui_access_tree(ctx, out.as_mut_ptr(), out.len()), 3);
+        assert_eq!(out[0].role, role_code(kui_core::Role::Window));
+        assert_eq!(out[0].parent, 0);
+        assert_eq!(out[1].role, role_code(kui_core::Role::Button));
+        assert_eq!(kstr(out[1].name).as_ref(), "Save");
+        assert_eq!(out[1].parent, out[0].key);
+        assert_ne!(out[1].actions & kui_core::AccessAction::Click.bit(), 0);
+        assert_eq!(
+            (out[1].x, out[1].y, out[1].w, out[1].h),
+            (0.0, 0.0, 40.0, 20.0)
+        );
+        assert_eq!(out[2].role, role_code(kui_core::Role::Slider));
+        assert_eq!(kstr(out[2].name).as_ref(), "Volume");
+        assert_eq!(
+            out[2].flags & (KUI_ACCESS_HAS_NUMBER | KUI_ACCESS_HAS_MIN | KUI_ACCESS_HAS_MAX),
+            KUI_ACCESS_HAS_NUMBER | KUI_ACCESS_HAS_MAX
+        );
+        assert_eq!((out[2].value_now, out[2].value_max), (3.0, 10.0));
+        // A short buffer still reports the total.
+        assert_eq!(kui_access_tree(ctx, out.as_mut_ptr(), 1), 3);
+
+        kui_input_access(ctx, out[1].key, kui_core::AccessAction::Click.bit(), ks(""));
+        let mut ev = KuiEvent {
+            origin: 0,
+            key: 0,
+            payload: std::ptr::null(),
+        };
+        assert!(kui_poll_event(ctx, &mut ev));
+        assert_eq!(ev.key, out[1].key);
+        assert_eq!(unsafe { &*ev.payload }.0.as_str(), Some("save"));
+        kui_input_access(
+            ctx,
+            out[2].key,
+            kui_core::AccessAction::Increment.bit(),
+            ks(""),
+        );
+        assert!(kui_poll_event(ctx, &mut ev));
+        let payload = unsafe { &*ev.payload };
+        assert_eq!(
+            payload.0.get("kind").and_then(Value::as_str),
+            Some("access")
+        );
+        assert_eq!(
+            payload.0.get("action").and_then(Value::as_str),
+            Some("increment")
+        );
+        assert!(!kui_poll_event(ctx, &mut ev));
+        // An unknown action bit is ignored, not a crash.
+        kui_input_access(ctx, out[1].key, 1 << 30, ks(""));
+        assert!(!kui_poll_event(ctx, &mut ev));
+        kui_ctx_free(ctx);
     }
 
     /// Measurement, layout events and warnings all reach C: the measured

@@ -8,6 +8,8 @@ use crate::keyframes::Keyframe;
 use crate::value::Value;
 use crate::window::{WindowButton, WindowRole};
 
+pub use crate::access::{Label, Role};
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Sizing {
     /// Size to content.
@@ -330,6 +332,32 @@ pub struct NodeSpec {
     /// that far away, `bg` fades it in. A node that vanishes and returns
     /// enters again. None = first sight snaps.
     pub enter: Option<Enter>,
+    /// What this node is to assistive technology (see [`crate::access`]).
+    /// Unset, the core derives one: a node with `on_click` is a button,
+    /// an editor a text input, a scrolling container a scroll view, and
+    /// a plain box is structure that leaves no trace. `Role::None` hides
+    /// the node and its subtree from the access tree (decoration).
+    pub role: Option<Role>,
+    /// The accessible name. Without one a button, link, tab or heading is
+    /// named by the text inside it; an image or an icon button has no
+    /// name at all, and the core says so (`control-without-name`,
+    /// `image-without-label` warnings).
+    pub label: Option<Label>,
+    /// The accessible description — what the `tooltip` prop sets in the
+    /// bindings, read after the name.
+    pub description: Option<Label>,
+    /// For checkbox / radio / switch roles: the on state.
+    pub checked: bool,
+    /// For a slider role: the current value and its range, so assistive
+    /// technology can read the position (the drawing stays the view's).
+    pub value_now: Option<f32>,
+    pub value_min: Option<f32>,
+    pub value_max: Option<f32>,
+    /// On a `Role::Line` of a custom editor: the caret's byte offset into
+    /// the line's text, and the byte offset of the selection's other end
+    /// (see [`crate::access`]).
+    pub caret: Option<u32>,
+    pub selection_anchor: Option<u32>,
 }
 
 impl NodeSpec {
@@ -586,6 +614,62 @@ impl NodeSpec {
     /// `Value::Null` if the node key is identification enough.
     pub fn on_layout(mut self, tag: impl Into<Value>) -> Self {
         self.on_layout = Some(tag.into());
+        self
+    }
+
+    /// What this node is to assistive technology (see the `role` field).
+    pub fn role(mut self, role: Role) -> Self {
+        self.role = Some(role);
+        self
+    }
+
+    /// The accessible name (see the `label` field). Takes an `Arc<str>`
+    /// as well as a `&str`, so a view can keep one and hand it out every
+    /// frame without allocating.
+    pub fn label(mut self, label: impl Into<Label>) -> Self {
+        self.label = Some(label.into());
+        self
+    }
+
+    /// The accessible description (see the `description` field).
+    pub fn description(mut self, description: impl Into<Label>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    /// The on state for a checkbox / radio / switch role.
+    pub fn checked(mut self, checked: bool) -> Self {
+        self.checked = checked;
+        self
+    }
+
+    /// A slider role's current value.
+    pub fn value_now(mut self, v: f32) -> Self {
+        self.value_now = Some(v);
+        self
+    }
+
+    pub fn value_min(mut self, v: f32) -> Self {
+        self.value_min = Some(v);
+        self
+    }
+
+    pub fn value_max(mut self, v: f32) -> Self {
+        self.value_max = Some(v);
+        self
+    }
+
+    /// On a `Role::Line` of a custom editor: the caret's byte offset into
+    /// this line's text (see the `caret` field).
+    pub fn caret(mut self, offset: u32) -> Self {
+        self.caret = Some(offset);
+        self
+    }
+
+    /// On a `Role::Line` of a custom editor: the byte offset where the
+    /// selection's other end sits (see the `selection_anchor` field).
+    pub fn selection_anchor(mut self, offset: u32) -> Self {
+        self.selection_anchor = Some(offset);
         self
     }
 

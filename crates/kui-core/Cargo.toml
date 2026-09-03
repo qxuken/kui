@@ -12,6 +12,8 @@ slotmap.workspace = true
 rustc-hash.workspace = true
 cosmic-text.workspace = true
 swash.workspace = true
+# Word boundaries for the access tree's text runs (already in the tree via cosmic-text).
+unicode-segmentation = "1"
 
 [dev-dependencies]
 divan.workspace = true

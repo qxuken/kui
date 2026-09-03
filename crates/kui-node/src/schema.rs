@@ -180,8 +180,9 @@ pub fn parse_props_json(props: &JsonMap<String, Json>) -> Result<PropsOut> {
         .get("tooltip")
         .and_then(Json::as_str)
         .map(str::to_string);
-    if out.tooltip.is_some() {
-        out.with_spec(NodeSpec::hoverable);
+    if let Some(hint) = out.tooltip.clone() {
+        // The hint is the accessible description too.
+        out.with_spec(|s| s.hoverable().description(hint.as_str()));
     }
     out.title = props
         .get("title")

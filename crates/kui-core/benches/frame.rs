@@ -60,6 +60,19 @@ fn frame_10k_rects_with_text_and_hits(bencher: divan::Bencher) {
     bencher.bench_local(|| run_frame(&mut core, 100, 100, true, true));
 }
 
+/// The same frame with the access tree derived after it — what a frame
+/// costs while assistive technology is attached. Every fourth cell is a
+/// button (a semantic node); the other rects are elided.
+#[divan::bench]
+fn frame_10k_rects_with_access_tree(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    run_frame(&mut core, 100, 100, true, true);
+    bencher.bench_local(|| {
+        run_frame(&mut core, 100, 100, true, true);
+        core.access_tree().nodes.len()
+    });
+}
+
 #[divan::bench]
 fn frame_1k_typical(bencher: divan::Bencher) {
     let mut core = Core::new();

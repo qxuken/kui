@@ -102,7 +102,125 @@ export type CoreMsg =
   | ResizeMsg
   | ModifiersMsg
   | EditMsg
-  | SoundMsg;
+  | SoundMsg
+  | AccessMsg;
+
+/** Assistive technology nudged a `slider` role. `tag` is the node's
+ *  `onClick` payload (or its `onDrag` / `onKey` tag). Activation, focus,
+ *  text and scrolling requests resolve in the core and arrive as the
+ *  messages a pointer would have produced. */
+export interface AccessMsg {
+  kind: 'access';
+  /** `increment` / `decrement` on a `slider` role; `setValue`,
+   *  `replaceSelectedText` (with `text`) and `setTextSelection` (with
+   *  `anchor` / `focus`) on a custom editor — an `onKey` sink declared
+   *  `role="multilineTextInput"` that draws its own `role="line"` rows. */
+  action: 'increment' | 'decrement' | 'setValue' | 'replaceSelectedText' | 'setTextSelection';
+  text?: string;
+  /** Line ordinals among the drawn `role="line"` rows and byte offsets
+   *  into their text. */
+  anchor?: { line: number; offset: number };
+  focus?: { line: number; offset: number };
+  tag?: unknown;
+}
+
+/** A position in an editor's text: one of its `runs` and a character
+ *  index into it (the run's character count is its end). */
+export interface TextPos {
+  run: string;
+  character: number;
+}
+
+/** One laid-out line (or a piece of one) of an editor's text, with every
+ *  character placed — what a screen reader reads by character and word.
+ *  A line that continues ends with its `"\n"`, a character of no width. */
+export interface AccessRun {
+  key: string;
+  /** The line it belongs to and its byte range in that line's text. */
+  line: number;
+  start: number;
+  end: number;
+  text: string;
+  rect: { x: number; y: number; w: number; h: number };
+  charLengths: number[];
+  /** Each character's x relative to `rect.x`, and its width. */
+  charPositions: number[];
+  charWidths: number[];
+  /** Character indices where words start. */
+  wordStarts: number[];
+  rtl: boolean;
+}
+
+/** The argument of `access(key, 'setTextSelection', …)`: the end that
+ *  stays (`anchor`) and the caret (`focus`); `text` rides along for the
+ *  text actions when given as an object. */
+export interface AccessArg {
+  anchor?: TextPos;
+  focus?: TextPos;
+  text?: string;
+}
+
+/** What a node is to assistive technology. The first group can be declared
+ *  with the `role` prop; the rest the core derives (an `onClick` box is a
+ *  button, an editor a text input, a scrolling box a scroll view, the root
+ *  the window). */
+export type AccessRole =
+  | 'none' | 'button' | 'checkbox' | 'radio' | 'switch' | 'slider' | 'tab'
+  | 'tabList' | 'link' | 'heading' | 'list' | 'listItem' | 'image' | 'dialog'
+  | 'group' | 'textInput' | 'multilineTextInput' | 'line'
+  | 'window' | 'titleBar' | 'staticText' | 'scrollView';
+
+/** What assistive technology can ask of a node (`access(key, action)`). */
+export type AccessAction =
+  | 'click' | 'focus' | 'blur' | 'setValue' | 'increment' | 'decrement'
+  | 'scrollIntoView' | 'scrollUp' | 'scrollDown' | 'scrollLeft' | 'scrollRight'
+  | 'setTextSelection' | 'replaceSelectedText';
+
+/** One semantic node of a frame. Plain boxes are elided, so `parent` is
+ *  the nearest semantic ancestor. */
+export interface AccessNode {
+  key: string;
+  parent: string | null;
+  origin: number;
+  role: AccessRole;
+  /** `label`, else the node's own text, else (for buttons, links, tabs,
+   *  headings) the text inside it, else the window title for the root. */
+  name: string | null;
+  /** What the `tooltip` prop sets. */
+  description: string | null;
+  /** Logical px, viewport coordinates. */
+  rect: { x: number; y: number; w: number; h: number };
+  /** An editor's text, with its caret and non-empty selection as byte offsets. */
+  value: string | null;
+  caret: number | null;
+  selection: [number, number] | null;
+  /** An editor's laid-out text, run by run; empty for anything else. */
+  runs: AccessRun[];
+  /** The caret (`focus`) and the selection's other end (`anchor`, equal
+   *  to `focus` without a selection) as run positions. */
+  anchor: TextPos | null;
+  focus: TextPos | null;
+  /** `checked` for checkbox / radio / switch roles. */
+  checked: boolean | null;
+  /** `valueNow` / `valueMin` / `valueMax` for a slider. */
+  valueNow: number | null;
+  valueMin: number | null;
+  valueMax: number | null;
+  focused: boolean;
+  scroll: { x: number; y: number; maxX: number; maxY: number } | null;
+  /** The requests this node accepts. */
+  actions: AccessAction[];
+}
+
+/** The semantic nodes of a frame in tree order (root first) — what a
+ *  screen reader sees, as data. Assert on it in tests. */
+export interface AccessTree {
+  nodes: AccessNode[];
+  /** The node holding keyboard focus. */
+  focus: string | null;
+  /** Changes when anything above does. */
+  hash: string;
+}
 
 /** What text measures (`measureText`): logical px at the scale of the
  *  current or last frame; `lines` after wrapping. The same numbers layout
@@ -123,7 +241,16 @@ export interface Warning {
    *  an unkeyed child carries a `transition`, so the shifted children
    *  snapped (give list items a `key`); `duplicate-key` — two nodes share
    *  a key in one frame. */
-  code: 'grow-weight-ignored' | 'transition-auto-key' | 'duplicate-key' | (string & {});
+  code:
+    | 'grow-weight-ignored'
+    | 'transition-auto-key'
+    | 'duplicate-key'
+    /** An `<image>` with no `label` (decorative ones take `role="none"`). */
+    | 'image-without-label'
+    /** A button, link, tab, checkbox, slider or editor with no `label` and
+     *  no text inside it: a screen reader announces an unnamed control. */
+    | 'control-without-name'
+    | (string & {});
   /** The node it is about (hex, like event keys). */
   key: string;
   message: string;
@@ -310,6 +437,12 @@ export declare class Ctx {
    *  them on; `createApp` / `runWindowed` turn them off under
    *  `NODE_ENV=production`. */
   setDiagnostics(on: boolean): void;
+  /** What assistive technology sees of the last frame (see `AccessTree`). */
+  accessTree(): AccessTree;
+  /** A request from assistive technology on a node: an action it
+   *  advertises, with `value` the new text for `setValue`. Resolved like
+   *  its pointer/keyboard equivalent, so the events land in `pollEvents`. */
+  access(key: string, action: AccessAction, value?: string | AccessArg): void;
   isHovered(key: string): boolean;
   isPressed(key: string): boolean;
   isFocused(key: string): boolean;
@@ -423,6 +556,11 @@ export declare class KuiWindow {
    *  opened with `warnings: false`. */
   warnings(): Warning[];
   setDiagnostics(on: boolean): void;
+  /** The last frame's access tree; the window hands it to the platform
+   *  (AccessKit) by itself — this is for tests and tooling. */
+  accessTree(): AccessTree;
+  /** See `Ctx.access`; a real screen reader's requests arrive on their own. */
+  access(key: string, action: AccessAction, value?: string | AccessArg): void;
 }
 
 export interface WindowedConfig<M, A = AppMsg | CoreMsg> {
@@ -494,6 +632,12 @@ export interface App<M, A = AppMsg | CoreMsg> {
   click(x: number, y: number, clicks?: number): void;
   type(text: string): void;
   key(name: EditKeyName, mods?: KeyMods): void;
+  /** What assistive technology sees of the last render. */
+  accessTree(): AccessTree;
+  /** Drives the app the way a screen reader would — `access(key, 'click')`
+   *  activates a node, `access(key, 'setValue', text)` types into an
+   *  editor — and settles the events that follow through `update`. */
+  access(key: string, action: AccessAction, value?: string | AccessArg): void;
 }
 
 export declare function createApp<M, A = AppMsg | CoreMsg>(

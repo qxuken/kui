@@ -42,7 +42,7 @@ const view = (model: Model) => (
   <box pad={24} gap={16} bg="#14141c" width="grow" height="grow">
     <text size={24} color="#ffffff"><span bold color="#7aa2ff">kui</span> × Node × JSX</text>
     <Counter count={model.count} />
-    <edit key="note" initial="" size={16} width={280} padX={10} padY={6}
+    <edit key="note" label="note" initial="" size={16} width={280} padX={10} padY={6}
           bg="#1f2030" color="#e8e8f0" radius={4} autofocus />
     <text size={14} color="#99a0b0">{`note: ${model.note || '(empty)'}`}</text>
   </box>
@@ -89,7 +89,7 @@ const img = modal.addImage(8, 8, pixels);
 
 modal.frame(240, 240, 1, (
   <box pad={12} gap={8} keyFocus onKey={{ tool: 'brush' }}>
-    <image src={img} width={32} radius={4} />
+    <image src={img} width={32} radius={4} label="swatch" />
     <text><span bold>bold</span> and <span italic color="#ff8888">red italic</span></text>
   </box>
 ));

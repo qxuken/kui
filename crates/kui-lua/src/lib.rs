@@ -492,8 +492,10 @@ pub fn parse_props(t: &Table, is_row: bool) -> mlua::Result<PropsOut> {
                 let mlua::Value::String(s) = &v else {
                     return Err(bad("tooltip must be a string"));
                 };
-                out.tooltip = Some(s.to_str()?.to_string());
-                out.with_spec(kui_core::NodeSpec::hoverable);
+                let hint = s.to_str()?.to_string();
+                // The hint is the accessible description too.
+                out.with_spec(|s| s.hoverable().description(hint.as_str()));
+                out.tooltip = Some(hint);
             }
             name => {
                 // `repeat` is a Lua keyword, so that row also answers to
@@ -942,6 +944,132 @@ mod tests {
         );
         core.handle_input(InputEvent::CursorLeft);
         assert_eq!(frame(&mut core, &mut ext), idle);
+    }
+
+    /// `role` / `label` / `checked` / `value_*` are schema rows, so a script
+    /// declares semantics like any other prop; the access tree shows them,
+    /// and an assistive request on a script's button emits its message.
+    #[test]
+    fn semantics_reach_the_access_tree() {
+        let mut ext = LuaExtension::from_source(
+            "a11y",
+            r#"
+                function view(env)
+                  return column { pad = 10,
+                    row { key = "save", on_click = "save", label = "Save", width = 20, height = 20 },
+                    row { key = "check", role = "checkbox", checked = true, text("Remember") },
+                    row { key = "vol", role = "slider", label = "Volume",
+                          value_now = 3, value_min = 0, value_max = 10 },
+                    row { key = "art", role = "none", on_click = "art", text("Art") },
+                    row { key = "tip", tooltip = "more here", on_click = "t", text("Tip") },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let tree = core.access_tree().clone();
+        let named = |n: &str| {
+            tree.nodes
+                .iter()
+                .find(|node| node.name.as_deref() == Some(n))
+                .cloned()
+        };
+        let save = named("Save").expect("labelled button");
+        assert_eq!(save.role, kui_core::Role::Button);
+        assert_eq!(save.origin, OriginId(1));
+        let check = named("Remember").expect("checkbox named by its text");
+        assert_eq!(check.role, kui_core::Role::Checkbox);
+        assert_eq!(check.checked, Some(true));
+        let vol = named("Volume").expect("slider");
+        assert_eq!(
+            (vol.number, vol.min, vol.max),
+            (Some(3.0), Some(0.0), Some(10.0))
+        );
+        assert!(named("Art").is_none(), "role none hides a would-be button");
+        let tip = named("Tip").expect("button");
+        assert_eq!(tip.description.as_deref(), Some("more here"));
+
+        let evs = core.handle_input(InputEvent::Access(kui_core::AccessRequest {
+            key: save.key,
+            action: kui_core::AccessAction::Click,
+            value: None,
+            anchor: None,
+            focus: None,
+        }));
+        assert_eq!(evs.len(), 1);
+        assert_eq!(evs[0].origin, OriginId(1));
+        assert_eq!(evs[0].payload.as_str(), Some("save"));
+    }
+
+    /// A script that draws its own editor: `role = "multilineTextInput"`
+    /// on the sink, `role = "line"` rows with `caret` / `selection_anchor`
+    /// byte offsets, and a selection request coming back as a table.
+    #[test]
+    fn a_custom_editor_in_lua_reaches_the_access_tree() {
+        let mut ext = LuaExtension::from_source(
+            "ed",
+            r#"
+                function view(env)
+                  return column { key = "ed", role = "multilineTextInput", label = "Doc",
+                    on_key = "keys",
+                    row { role = "line", selection_anchor = 1, text("ab"), text("cd") },
+                    row { role = "line", caret = 2, text("ef") },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let tree = core.access_tree().clone();
+        let ed = tree
+            .nodes
+            .iter()
+            .find(|n| n.name.as_deref() == Some("Doc"))
+            .expect("the sink is the editor")
+            .clone();
+        assert_eq!(ed.role, kui_core::Role::MultilineTextInput);
+        assert_eq!(ed.value.as_deref(), Some("abcd\nef"));
+        assert_eq!(ed.runs.len(), 3);
+        assert_eq!(ed.runs[1].text, "cd\n");
+        assert_eq!(ed.caret, Some(7));
+        assert_eq!(ed.selection, Some((1, 7)));
+        let (a, f) = (ed.anchor.unwrap(), ed.focus.unwrap());
+        assert_eq!((a.run, a.character), (ed.runs[0].key, 1));
+        assert_eq!((f.run, f.character), (ed.runs[2].key, 2));
+
+        let evs = core.handle_input(InputEvent::Access(
+            kui_core::AccessRequest::new(ed.key, kui_core::AccessAction::SetTextSelection)
+                .with_selection(
+                    kui_core::TextPos {
+                        run: ed.runs[1].key,
+                        character: 1,
+                    },
+                    kui_core::TextPos {
+                        run: ed.runs[2].key,
+                        character: 0,
+                    },
+                ),
+        ));
+        assert_eq!(evs.len(), 1);
+        assert_eq!(evs[0].origin, OriginId(1));
+        let p = &evs[0].payload;
+        assert_eq!(
+            p.get("action").and_then(Value::as_str),
+            Some("setTextSelection")
+        );
+        let at = |k: &str, f: &str| p.get(k).and_then(|v| v.get(f)).and_then(Value::as_int);
+        assert_eq!(
+            (at("anchor", "line"), at("anchor", "offset")),
+            (Some(0), Some(3))
+        );
+        assert_eq!(
+            (at("focus", "line"), at("focus", "offset")),
+            (Some(1), Some(0))
+        );
+        assert_eq!(p.get("tag").and_then(Value::as_str), Some("keys"));
     }
 
     /// Editors: autofocus, typing produces a "changed" event carrying the

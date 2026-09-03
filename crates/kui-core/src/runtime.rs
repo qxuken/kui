@@ -104,6 +104,10 @@ pub struct Core {
     layouts: FxHashMap<Key, (Rect, u64)>,
     /// Silent-misconfiguration detection; see `diag`.
     diag: Diagnostics,
+    /// The access tree of the last finished frame, built on demand (see
+    /// `access_tree`) and stamped with the frame it was built from.
+    access: crate::access::AccessTree,
+    access_built: u64,
 }
 
 /// A node's keyframes flattened per slot for `ease_spec`, built once per
@@ -163,6 +167,8 @@ impl Core {
             env: Env::default(),
             window_title: None,
             key_focus: None,
+            access: Default::default(),
+            access_built: 0,
             tree: Tree::new(),
             display: DisplayList::default(),
             viewport: Size::ZERO,
@@ -390,10 +396,242 @@ impl Core {
                 self.interaction.scrollbar_drag = None;
                 self.interaction.handle(InputEvent::MouseUp, &mut out);
             }
+            InputEvent::Access(req) => self.handle_access(req, &mut out),
             other => self.interaction.handle(other, &mut out),
         }
         self.flush_sound_requests();
         out
+    }
+
+    /// Resolves a request from assistive technology against the last
+    /// frame the way the pointer or keyboard equivalent would be (see
+    /// [`crate::access::AccessAction`]).
+    fn handle_access(&mut self, req: crate::access::AccessRequest, out: &mut Vec<UiEvent>) {
+        use crate::access::AccessAction;
+        let key = req.key;
+        let idx = self.tree.keys.iter().position(|k| *k == key);
+        match req.action {
+            AccessAction::Click => {
+                let Some(h) = self.interaction.hits.iter().rev().find(|h| h.key == key) else {
+                    return;
+                };
+                let (origin, payload, window, sound) =
+                    (h.origin, h.payload.clone(), h.window, h.click_sound);
+                let (is_edit, is_sink) = (h.edit_origin.is_some(), h.key_sink.is_some());
+                if let Some(sound) = sound {
+                    self.interaction.sound_requests.push(sound);
+                }
+                match (window, payload) {
+                    (Some(crate::window::WindowRole::Button(b)), _) => {
+                        self.interaction.window_commands.push(b.command())
+                    }
+                    (None, Some(payload)) => out.push(UiEvent {
+                        origin,
+                        key,
+                        payload,
+                    }),
+                    _ => {}
+                }
+                if is_edit {
+                    self.edit.set_focus(Some(key));
+                    self.edit.caret_moved = Some(key);
+                } else if is_sink {
+                    self.edit.set_focus(None);
+                    self.key_focus = Some(key);
+                }
+            }
+            AccessAction::Focus => {
+                if self.edit.contains(key) {
+                    self.edit.set_focus(Some(key));
+                    self.edit.caret_moved = Some(key);
+                } else if idx.is_some_and(|i| self.tree.specs[i].on_key.is_some()) {
+                    self.edit.set_focus(None);
+                    self.key_focus = Some(key);
+                }
+            }
+            AccessAction::Blur => {
+                if self.edit.focused() == Some(key) {
+                    self.edit.set_focus(None);
+                }
+                if self.key_focus == Some(key) {
+                    self.key_focus = None;
+                }
+            }
+            AccessAction::SetValue => {
+                if self.edit.contains(key) {
+                    let value = req.value.unwrap_or_default();
+                    if self.edit.text(key).as_deref() != Some(value.as_str()) {
+                        self.set_edit_text(key, &value);
+                        self.push_edit_event(key, "changed", out);
+                    }
+                } else if let Some(i) = idx
+                    && crate::access::is_custom_editor(&self.tree, i)
+                {
+                    // The app owns the text: hand the request over as data.
+                    let mut entries = vec![
+                        ("kind".to_string(), Value::str("access")),
+                        ("action".to_string(), Value::str(req.action.name())),
+                        (
+                            "text".to_string(),
+                            Value::str(req.value.unwrap_or_default()),
+                        ),
+                    ];
+                    if let Some(tag) = self.access_tag(i) {
+                        entries.push(("tag".to_string(), tag));
+                    }
+                    out.push(UiEvent {
+                        origin: self.tree.origins[i],
+                        key,
+                        payload: Value::Map(entries),
+                    });
+                }
+            }
+            AccessAction::Increment | AccessAction::Decrement => {
+                let Some(i) = idx else { return };
+                let spec = &self.tree.specs[i];
+                let tag = spec
+                    .on_click
+                    .clone()
+                    .or_else(|| spec.on_drag.clone())
+                    .or_else(|| spec.on_key.clone());
+                let mut entries = vec![
+                    ("kind".to_string(), Value::str("access")),
+                    ("action".to_string(), Value::str(req.action.name())),
+                ];
+                if let Some(tag) = tag.filter(|t| *t != Value::Null) {
+                    entries.push(("tag".to_string(), tag));
+                }
+                out.push(UiEvent {
+                    origin: self.tree.origins[i],
+                    key,
+                    payload: Value::Map(entries),
+                });
+            }
+            AccessAction::SetTextSelection | AccessAction::ReplaceSelectedText => {
+                let Some(i) = idx else { return };
+                if self.edit.contains(key) {
+                    match req.action {
+                        AccessAction::SetTextSelection => {
+                            let (Some(anchor), Some(focus)) = (req.anchor, req.focus) else {
+                                return;
+                            };
+                            // Run positions resolve against the tree of
+                            // the last frame, which is what the request
+                            // was made from.
+                            let tree = self.access_tree();
+                            let Some(node) = tree.get(key) else { return };
+                            let (Some(a), Some(f)) =
+                                (node.line_offset(anchor), node.line_offset(focus))
+                            else {
+                                return;
+                            };
+                            self.edit.set_selection(key, a, f);
+                        }
+                        _ => {
+                            let text = req.value.unwrap_or_default();
+                            if self
+                                .edit
+                                .replace_selection(key, &text, self.text.font_system_mut())
+                            {
+                                self.push_edit_event(key, "changed", out);
+                            }
+                        }
+                    }
+                } else if crate::access::is_custom_editor(&self.tree, i) {
+                    // The app owns the text: hand the request over as data.
+                    let mut entries = vec![
+                        ("kind".to_string(), Value::str("access")),
+                        ("action".to_string(), Value::str(req.action.name())),
+                    ];
+                    if let Some(text) = req.value {
+                        entries.push(("text".to_string(), Value::str(text)));
+                    }
+                    if let (Some(anchor), Some(focus)) = (req.anchor, req.focus) {
+                        let tree = self.access_tree();
+                        let Some(node) = tree.get(key) else { return };
+                        let (Some(a), Some(f)) =
+                            (node.line_offset(anchor), node.line_offset(focus))
+                        else {
+                            return;
+                        };
+                        let pos = |(line, offset): (usize, usize)| {
+                            Value::map([
+                                ("line", Value::Int(line as i64)),
+                                ("offset", Value::Int(offset as i64)),
+                            ])
+                        };
+                        entries.push(("anchor".to_string(), pos(a)));
+                        entries.push(("focus".to_string(), pos(f)));
+                    }
+                    let spec = &self.tree.specs[i];
+                    let tag = spec
+                        .on_click
+                        .clone()
+                        .or_else(|| spec.on_drag.clone())
+                        .or_else(|| spec.on_key.clone());
+                    if let Some(tag) = tag.filter(|t| *t != Value::Null) {
+                        entries.push(("tag".to_string(), tag));
+                    }
+                    out.push(UiEvent {
+                        origin: self.tree.origins[i],
+                        key,
+                        payload: Value::Map(entries),
+                    });
+                }
+            }
+            AccessAction::ScrollIntoView => {
+                let Some(i) = idx else { return };
+                let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
+                self.scroll_rect_into_view(i, rect, false);
+            }
+            AccessAction::ScrollUp
+            | AccessAction::ScrollDown
+            | AccessAction::ScrollLeft
+            | AccessAction::ScrollRight => {
+                let Some(i) = idx else { return };
+                let size = self.tree.size[i];
+                let delta = match req.action {
+                    AccessAction::ScrollUp => Vec2::new(0.0, -size.h * 0.8),
+                    AccessAction::ScrollDown => Vec2::new(0.0, size.h * 0.8),
+                    AccessAction::ScrollLeft => Vec2::new(-size.w * 0.8, 0.0),
+                    _ => Vec2::new(size.w * 0.8, 0.0),
+                };
+                self.scroll.scroll_by(key, delta);
+            }
+        }
+    }
+
+    /// The `tag` an `access` event on node `i` carries: its click payload,
+    /// else its drag or key tag; None when there is none (or it is null).
+    fn access_tag(&self, i: usize) -> Option<Value> {
+        let spec = &self.tree.specs[i];
+        spec.on_click
+            .clone()
+            .or_else(|| spec.on_drag.clone())
+            .or_else(|| spec.on_key.clone())
+            .filter(|t| *t != Value::Null)
+    }
+
+    /// The access tree of the last finished frame (see [`crate::access`]):
+    /// derived on the first call after a frame, then reused. A driver that
+    /// never asks pays nothing.
+    pub fn access_tree(&mut self) -> &crate::access::AccessTree {
+        if self.access_built != self.frame_no {
+            self.access = crate::access::build(
+                &self.tree,
+                &crate::access::Sources {
+                    text: &self.text,
+                    edit: &self.edit,
+                    scroll: &self.scroll,
+                    title: self.window_title.as_deref(),
+                    key_focus: self.key_focus,
+                    viewport: self.viewport,
+                    scale: self.scale,
+                },
+            );
+            self.access_built = self.frame_no;
+        }
+        &self.access
     }
 
     /// Turns the sounds nodes asked for (`click_sound` / `hover_sound`)
@@ -1279,7 +1517,8 @@ impl Core {
         if self.any_layout {
             self.emit_layout_events();
         }
-        self.diag.check(&self.tree, self.frame_no);
+        self.diag
+            .check(&self.tree, &self.text, &self.edit, self.frame_no);
 
         let scale = self.scale;
         let mut hits: Vec<HitRegion> = self.interaction.take_hit_buffer();
@@ -1593,7 +1832,16 @@ impl Core {
             caret_phys.w / self.scale,
             caret_phys.h / self.scale,
         );
-        // Slack so the caret isn't glued to the container edge.
+        self.scroll_rect_into_view(i, caret, true);
+    }
+
+    /// Nudges the nearest scrolling ancestor of node `i` so `rect`
+    /// (viewport coordinates) is inside it. With `relayout`, re-runs the
+    /// positions pass so this frame already shows the new offset
+    /// (positions is the only pass scroll offsets feed into); without it
+    /// the next frame does.
+    fn scroll_rect_into_view(&mut self, i: usize, rect: Rect, relayout: bool) {
+        // Slack so the target isn't glued to the container edge.
         const MARGIN: f32 = 4.0;
         let mut a = self.tree.parent[i];
         while a != NIL {
@@ -1603,22 +1851,24 @@ impl Core {
                     Rect::from_pos_size(self.tree.pos[a as usize], self.tree.size[a as usize]);
                 let mut delta = Vec2::ZERO;
                 if spec.scroll_y {
-                    if caret.y < view.y + MARGIN {
-                        delta.y = caret.y - (view.y + MARGIN);
-                    } else if caret.y + caret.h > view.y + view.h - MARGIN {
-                        delta.y = caret.y + caret.h - (view.y + view.h - MARGIN);
+                    if rect.y < view.y + MARGIN {
+                        delta.y = rect.y - (view.y + MARGIN);
+                    } else if rect.y + rect.h > view.y + view.h - MARGIN {
+                        delta.y = rect.y + rect.h - (view.y + view.h - MARGIN);
                     }
                 }
                 if spec.scroll_x {
-                    if caret.x < view.x + MARGIN {
-                        delta.x = caret.x - (view.x + MARGIN);
-                    } else if caret.x + caret.w > view.x + view.w - MARGIN {
-                        delta.x = caret.x + caret.w - (view.x + view.w - MARGIN);
+                    if rect.x < view.x + MARGIN {
+                        delta.x = rect.x - (view.x + MARGIN);
+                    } else if rect.x + rect.w > view.x + view.w - MARGIN {
+                        delta.x = rect.x + rect.w - (view.x + view.w - MARGIN);
                     }
                 }
                 if delta.x != 0.0 || delta.y != 0.0 {
                     self.scroll.scroll_by(self.tree.keys[a as usize], delta);
-                    layout::positions(&mut self.tree, &mut self.scroll, self.viewport);
+                    if relayout {
+                        layout::positions(&mut self.tree, &mut self.scroll, self.viewport);
+                    }
                 }
                 return;
             }

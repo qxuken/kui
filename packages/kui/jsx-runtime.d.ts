@@ -114,8 +114,12 @@ interface Keyed {
 export interface GeneratedSpecProps {
   /** Background fill. */
   bg?: ColorProp;
+  /** On a `line` of a custom editor (a `textInput` / `multilineTextInput` role drawn by the app): the caret's byte offset into that line's text. */
+  caret?: number;
   /** Center children on both axes. */
   center?: boolean;
+  /** The on state of a `checkbox` / `radio` / `switch` role. */
+  checked?: boolean;
   /** A registered sound (addSound) played when the node is clicked; implies hover tracking. */
   clickSound?: string;
   /** Child alignment across the main axis. */
@@ -140,6 +144,8 @@ export interface GeneratedSpecProps {
   hoverable?: boolean;
   /** CSS-style stops `[{ at?, width?, height?, bg?, radius? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. */
   keyframes?: KeyframeProp[];
+  /** The accessible name. Without one a button, link, tab or heading is named by the text inside it; an image or an icon-only button has none, and the core warns (`image-without-label`, `control-without-name`). */
+  label?: string;
   /** Child alignment along the main axis. */
   mainAlign?: 'start' | 'center' | 'end';
   /** Upper height clamp (logical px). */
@@ -174,10 +180,20 @@ export interface GeneratedSpecProps {
   radiusTR?: number;
   /** How `keyframes` cycle (CSS `animation-direction`, default normal). Lua: `direction`, since `repeat` is a keyword. */
   repeat?: 'normal' | 'reverse' | 'alternate' | 'alternateReverse';
+  /** What the node is to assistive technology. Unset, the core derives one (an `onClick` node is a button, an editor a text input, a scrolling box a scroll view, a plain box nothing); `none` hides the node and its subtree from the access tree. */
+  role?: 'none' | 'button' | 'checkbox' | 'radio' | 'switch' | 'slider' | 'tab' | 'tabList' | 'link' | 'heading' | 'list' | 'listItem' | 'image' | 'dialog' | 'group' | 'textInput' | 'multilineTextInput' | 'line';
+  /** On a `line` of a custom editor: the byte offset where the selection's other end sits (the caret is `caret`, possibly on another line). */
+  selectionAnchor?: number;
   /** With transition: also ease the node's position (reordered siblings slide). */
   slide?: boolean;
   /** Animate sizing/colors/radius changes over this many ms (needs a stable key). */
   transition?: number;
+  /** A `slider` role's maximum. */
+  valueMax?: number;
+  /** A `slider` role's minimum. */
+  valueMin?: number;
+  /** A `slider` role's current value (the drawing stays yours; this is what assistive technology reads). */
+  valueNow?: number;
   /** Main-axis size: px | "fit" | "grow" | "N%". */
   width?: SizingProp;
   /** Window-chrome role: interactions become window commands, not events. */

@@ -13,7 +13,9 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | JSX | Lua | C | type | description |
 |---|---|---|---|---|
 | `bg` | `bg` | `bg` | color (`#hex` or `0xRRGGBBAA`) | Background fill. |
+| `caret` | `caret` | `caret` with `KUI_VALUE_CARET` in `value_set` | number | On a `line` of a custom editor (a `textInput` / `multilineTextInput` role drawn by the app): the caret's byte offset into that line's text. |
 | `center` | `center` | `main_align` + `cross_align` = `KUI_CENTER` | boolean | Center children on both axes. |
+| `checked` | `checked` | `checked` | boolean | The on state of a `checkbox` / `radio` / `switch` role. |
 | `clickSound` | `click_sound` | `click_sound` | resource handle | A registered sound (addSound) played when the node is clicked; implies hover tracking. |
 | `crossAlign` | `cross_align` | `cross_align` | `start` \\| `center` \\| `end` | Child alignment across the main axis. |
 | `delay` | `delay` | `delay_ms` | number | Holds the `keyframes` cycle back by this many ms (CSS `animation-delay`); siblings with different delays run out of phase. |
@@ -26,6 +28,7 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `hoverSound` | `hover_sound` | `hover_sound` | resource handle | A registered sound (addSound) played when the pointer enters the node; implies hover tracking. |
 | `hoverable` | `hoverable` | `hoverable` | boolean | Hover-track without a click payload (for isHovered-driven styling). |
 | `keyframes` | `keyframes` | `keyframes` + `keyframes_len` (`KuiKeyframe[]`) | keyframe list (`[{ at?, width?, height?, bg?, radius? }, …]`) | CSS-style stops `[{ at?, width?, height?, bg?, radius? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. |
+| `label` | `label` | `label` (KuiStr) | string | The accessible name. Without one a button, link, tab or heading is named by the text inside it; an image or an icon-only button has none, and the core warns (`image-without-label`, `control-without-name`). |
 | `mainAlign` | `main_align` | `main_align` | `start` \\| `center` \\| `end` | Child alignment along the main axis. |
 | `maxHeight` | `max_height` | `max_height` | number | Upper height clamp (logical px). |
 | `maxWidth` | `max_width` | `max_width` | number | Upper width clamp; grow+maxWidth is the responsive-width pattern. |
@@ -43,8 +46,13 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `radiusTL` | `radius_tl` | `radius_tl` with `per_corner` | number | Top-left corner radius (logical px). |
 | `radiusTR` | `radius_tr` | `radius_tr` with `per_corner` | number | Top-right corner radius (logical px). |
 | `repeat` | `repeat` | `repeat` (`KUI_REPEAT_*`) | `normal` \\| `reverse` \\| `alternate` \\| `alternateReverse` | How `keyframes` cycle (CSS `animation-direction`, default normal). Lua: `direction`, since `repeat` is a keyword. |
+| `role` | `role` | `role` (`KUI_ROLE_*`) | `none` \\| `button` \\| `checkbox` \\| `radio` \\| `switch` \\| `slider` \\| `tab` \\| `tabList` \\| `link` \\| `heading` \\| `list` \\| `listItem` \\| `image` \\| `dialog` \\| `group` \\| `textInput` \\| `multilineTextInput` \\| `line` | What the node is to assistive technology. Unset, the core derives one (an `onClick` node is a button, an editor a text input, a scrolling box a scroll view, a plain box nothing); `none` hides the node and its subtree from the access tree. |
+| `selectionAnchor` | `selection_anchor` | `selection_anchor` with `KUI_VALUE_ANCHOR` in `value_set` | number | On a `line` of a custom editor: the byte offset where the selection's other end sits (the caret is `caret`, possibly on another line). |
 | `slide` | `slide` | `slide` | boolean | With transition: also ease the node's position (reordered siblings slide). |
 | `transition` | `transition` | `transition_ms` | number | Animate sizing/colors/radius changes over this many ms (needs a stable key). |
+| `valueMax` | `value_max` | `value_max` with `KUI_VALUE_MAX` in `value_set` | number | A `slider` role's maximum. |
+| `valueMin` | `value_min` | `value_min` with `KUI_VALUE_MIN` in `value_set` | number | A `slider` role's minimum. |
+| `valueNow` | `value_now` | `value_now` with `KUI_VALUE_NOW` in `value_set` | number | A `slider` role's current value (the drawing stays yours; this is what assistive technology reads). |
 | `width` | `width` | `width` (KuiSizing) | sizing (`number` \\| `"fit"` \\| `"grow"` \\| `"N%"`) | Main-axis size: px \| "fit" \| "grow" \| "N%". |
 | `window` | `window` | `window_role` (`KUI_WINDOW_*`) | `drag` \\| `close` \\| `minimize` \\| `maximize` | Window-chrome role: interactions become window commands, not events. |
 
@@ -107,6 +115,7 @@ Node, `on_event(ev)` in Lua (payload fields plus `node_key`), and
 | modifiers | `{ kind: "modifiers", shift, ctrl, alt, super }` | The physical modifier state changed (delivered to the host on the root). |
 | changed / submit | `{ kind: "changed" }` / `{ kind: "submit" }`, with the editor's key on the event | An editor's text changed / Enter in a single-line editor. |
 | sound | `{ kind: "sound", phase: "ended", playback, tag }` | A tagged playback (`play(id, { tag })` or `<audio tag>`) finished on its own — never when something stopped it. |
+| access | `{ kind: "access", action, tag, text?, anchor?: { line, offset }, focus?: { line, offset } }` | Assistive technology asked for what only the app can do: `increment` / `decrement` on a `slider` role; `setValue` / `replaceSelectedText` (with `text`) / `setTextSelection` (with `anchor` and `focus` as line ordinals and byte offsets) on a custom editor. `tag` is the node's `onClick` payload (or its `onDrag` / `onKey` tag). Every other request resolves in the core and arrives as the events a pointer would have produced. |
 
 ## Resources
 

@@ -819,6 +819,24 @@ impl Ctx {
         warnings_json(self.core.take_warnings())
     }
 
+    /// The access tree of the last frame — what assistive technology
+    /// sees; see `AccessTree` in index.d.ts.
+    #[napi]
+    pub fn access_tree(&mut self) -> Json {
+        access_tree_json(self.core.access_tree())
+    }
+
+    /// A request from assistive technology on a node (`key`, hex as in
+    /// events): an `AccessAction` name the node advertises, with `value`
+    /// the new text for `setValue`. Resolved like its pointer/keyboard
+    /// equivalent, so the resulting events come out of `pollEvents`.
+    #[napi]
+    pub fn access(&mut self, key: String, action: String, value: Option<Json>) -> Result<()> {
+        let req = access_request(&key, &action, value)?;
+        self.input(InputEvent::Access(req));
+        Ok(())
+    }
+
     /// Turns the per-frame diagnostic checks behind `warnings` on or off.
     #[napi]
     pub fn set_diagnostics(&mut self, on: bool) {
@@ -1282,6 +1300,25 @@ impl KuiWindow {
         warnings_json(self.runner.core_mut().take_warnings())
     }
 
+    /// The access tree of the last frame; see `Ctx.accessTree`. The window
+    /// hands it to the platform by itself (AccessKit); this is for tests
+    /// and tooling.
+    #[napi]
+    pub fn access_tree(&mut self) -> Json {
+        access_tree_json(self.runner.core_mut().access_tree())
+    }
+
+    /// A request from assistive technology; see `Ctx.access`. A real
+    /// screen reader's requests arrive through the window on their own.
+    #[napi]
+    pub fn access(&mut self, key: String, action: String, value: Option<Json>) -> Result<()> {
+        let req = access_request(&key, &action, value)?;
+        let events = self.runner.core_mut().handle_input(InputEvent::Access(req));
+        self.runner.app_mut().events.extend(events);
+        self.runner.request_redraw();
+        Ok(())
+    }
+
     #[napi]
     pub fn set_diagnostics(&mut self, on: bool) {
         self.runner.core_mut().set_diagnostics(on);
@@ -1315,6 +1352,161 @@ fn measure_text_impl(
     o.insert("height".into(), Json::from(m.height as f64));
     o.insert("lines".into(), Json::from(m.lines));
     Ok(Json::Object(o))
+}
+
+/// `access(key, action, arg)`: `arg` is the new text as a string
+/// (`setValue`, `replaceSelectedText`), or `{anchor: {run, character},
+/// focus: {run, character}}` for `setTextSelection` (run keys from the
+/// node's `runs`; an object may also carry `text`).
+fn access_request(key: &str, action: &str, arg: Option<Json>) -> Result<kui_core::AccessRequest> {
+    let action = kui_core::AccessAction::parse(action)
+        .ok_or_else(|| err(format!("unknown access action {action:?}")))?;
+    let mut req = kui_core::AccessRequest::new(parse_key(key)?, action);
+    let pos = |v: &Json| -> Result<kui_core::TextPos> {
+        let run = v
+            .get("run")
+            .and_then(Json::as_str)
+            .ok_or_else(|| err("a text position needs a run key"))?;
+        let character = v
+            .get("character")
+            .and_then(Json::as_u64)
+            .ok_or_else(|| err("a text position needs a character index"))?;
+        Ok(kui_core::TextPos {
+            run: parse_key(run)?,
+            character: character as usize,
+        })
+    };
+    match arg {
+        None | Some(Json::Null) => {}
+        Some(Json::String(s)) => req.value = Some(s),
+        Some(Json::Object(o)) => {
+            if let Some(t) = o.get("text").and_then(Json::as_str) {
+                req.value = Some(t.to_string());
+            }
+            if let (Some(a), Some(f)) = (o.get("anchor"), o.get("focus")) {
+                req.anchor = Some(pos(a)?);
+                req.focus = Some(pos(f)?);
+            }
+        }
+        Some(other) => return Err(err(format!("bad access argument {other}"))),
+    }
+    Ok(req)
+}
+
+/// `{nodes: [...], focus, hash}`; see `AccessTree` in index.d.ts.
+fn access_tree_json(tree: &kui_core::AccessTree) -> Json {
+    let opt_str = |s: &Option<String>| s.as_ref().map_or(Json::Null, |s| Json::String(s.clone()));
+    let opt_num = |v: Option<f32>| v.map_or(Json::Null, |v| Json::from(v as f64));
+    let nodes = tree
+        .nodes
+        .iter()
+        .map(|n| {
+            let mut o = JsonMap::new();
+            o.insert("key".into(), Json::String(key_str(n.key)));
+            o.insert(
+                "parent".into(),
+                n.parent.map_or(Json::Null, |k| Json::String(key_str(k))),
+            );
+            o.insert("origin".into(), Json::from(n.origin.0));
+            o.insert("role".into(), Json::String(n.role.name().into()));
+            o.insert("name".into(), opt_str(&n.name));
+            o.insert("description".into(), opt_str(&n.description));
+            let mut rect = JsonMap::new();
+            rect.insert("x".into(), Json::from(n.rect.x as f64));
+            rect.insert("y".into(), Json::from(n.rect.y as f64));
+            rect.insert("w".into(), Json::from(n.rect.w as f64));
+            rect.insert("h".into(), Json::from(n.rect.h as f64));
+            o.insert("rect".into(), Json::Object(rect));
+            o.insert("value".into(), opt_str(&n.value));
+            o.insert(
+                "caret".into(),
+                n.caret.map_or(Json::Null, |c| Json::from(c as u64)),
+            );
+            o.insert(
+                "selection".into(),
+                n.selection.map_or(Json::Null, |(a, b)| {
+                    Json::Array(vec![Json::from(a as u64), Json::from(b as u64)])
+                }),
+            );
+            let pos_json = |p: Option<kui_core::TextPos>| {
+                p.map_or(Json::Null, |p| {
+                    let mut o = JsonMap::new();
+                    o.insert("run".into(), Json::String(key_str(p.run)));
+                    o.insert("character".into(), Json::from(p.character as u64));
+                    Json::Object(o)
+                })
+            };
+            o.insert("anchor".into(), pos_json(n.anchor));
+            o.insert("focus".into(), pos_json(n.focus));
+            o.insert(
+                "runs".into(),
+                Json::Array(
+                    n.runs
+                        .iter()
+                        .map(|r| {
+                            let mut o = JsonMap::new();
+                            o.insert("key".into(), Json::String(key_str(r.key)));
+                            o.insert("line".into(), Json::from(r.line as u64));
+                            o.insert("start".into(), Json::from(r.start as u64));
+                            o.insert("end".into(), Json::from(r.end as u64));
+                            o.insert("text".into(), Json::String(r.text.clone()));
+                            let mut rect = JsonMap::new();
+                            rect.insert("x".into(), Json::from(r.rect.x as f64));
+                            rect.insert("y".into(), Json::from(r.rect.y as f64));
+                            rect.insert("w".into(), Json::from(r.rect.w as f64));
+                            rect.insert("h".into(), Json::from(r.rect.h as f64));
+                            o.insert("rect".into(), Json::Object(rect));
+                            let nums = |v: &[f32]| {
+                                Json::Array(v.iter().map(|x| Json::from(*x as f64)).collect())
+                            };
+                            let bytes =
+                                |v: &[u8]| Json::Array(v.iter().map(|x| Json::from(*x)).collect());
+                            o.insert("charLengths".into(), bytes(&r.char_lengths));
+                            o.insert("charPositions".into(), nums(&r.char_positions));
+                            o.insert("charWidths".into(), nums(&r.char_widths));
+                            o.insert("wordStarts".into(), bytes(&r.word_starts));
+                            o.insert("rtl".into(), Json::Bool(r.rtl));
+                            Json::Object(o)
+                        })
+                        .collect(),
+                ),
+            );
+            o.insert("checked".into(), n.checked.map_or(Json::Null, Json::Bool));
+            o.insert("valueNow".into(), opt_num(n.number));
+            o.insert("valueMin".into(), opt_num(n.min));
+            o.insert("valueMax".into(), opt_num(n.max));
+            o.insert("focused".into(), Json::Bool(n.focused));
+            o.insert(
+                "scroll".into(),
+                n.scroll.map_or(Json::Null, |s| {
+                    let mut sc = JsonMap::new();
+                    sc.insert("x".into(), Json::from(s.x as f64));
+                    sc.insert("y".into(), Json::from(s.y as f64));
+                    sc.insert("maxX".into(), Json::from(s.max_x as f64));
+                    sc.insert("maxY".into(), Json::from(s.max_y as f64));
+                    Json::Object(sc)
+                }),
+            );
+            o.insert(
+                "actions".into(),
+                Json::Array(
+                    n.action_list()
+                        .into_iter()
+                        .map(|a| Json::String(a.name().into()))
+                        .collect(),
+                ),
+            );
+            Json::Object(o)
+        })
+        .collect();
+    let mut o = JsonMap::new();
+    o.insert("nodes".into(), Json::Array(nodes));
+    o.insert(
+        "focus".into(),
+        tree.focus.map_or(Json::Null, |k| Json::String(key_str(k))),
+    );
+    o.insert("hash".into(), Json::String(format!("{:016x}", tree.hash)));
+    Json::Object(o)
 }
 
 fn warnings_json(warnings: Vec<kui_core::Warning>) -> Json {

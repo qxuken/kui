@@ -34,6 +34,11 @@ pub enum InputEvent {
     /// `Core::set_key_focus`). Apps that own their own text model take
     /// keys through this instead of the editor path.
     KeyDown(KeyPress),
+    /// A request from assistive technology (see [`crate::access`]):
+    /// activate, focus, set an editor's text, scroll. Resolved in the core
+    /// the way the pointer or keyboard equivalent would be, so the app
+    /// sees the same events either way.
+    Access(crate::access::AccessRequest),
     /// The physical modifier state changed. Reaches the host as a
     /// `{kind="modifiers", shift, ctrl, alt, super}` event on the root (an
     /// Elm-style app keeps it in its model and lets the view react — a
@@ -582,7 +587,8 @@ impl Interaction {
             | InputEvent::Text(_)
             | InputEvent::Preedit(..)
             | InputEvent::Key(..)
-            | InputEvent::KeyDown(_) => {}
+            | InputEvent::KeyDown(_)
+            | InputEvent::Access(_) => {}
             InputEvent::MouseUp => {
                 let dragged = self.drag.take().inspect(|drag| {
                     let p = self.cursor.unwrap_or(drag.last);

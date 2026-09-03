@@ -14,7 +14,9 @@
 //! Keys: see the buffer text (`:help` puts a summary in the minibuffer).
 
 use kui::widgets;
-use kui::{Align, App, Color, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value, WindowCommand};
+use kui::{
+    Align, App, Color, NodeSpec, Role, Sizing, TextStyle, Ui, UiEvent, Value, WindowCommand,
+};
 
 const FONT: f32 = 13.5;
 const LH: f32 = 20.0;
@@ -388,7 +390,13 @@ impl App for ModalEditor {
                 .height(Sizing::Grow(1.0))
                 .bg(pal.panel)
                 .clip()
-                .on_key(Value::Null),
+                .on_key(Value::Null)
+                // The app owns the text, so it says what the sink is; the
+                // lines it draws (`Role::Line` rows) are the editor's text
+                // to a screen reader, and selection requests come back as
+                // `{kind="access"}` events (see `on_access`).
+                .role(Role::MultilineTextInput)
+                .label(doc.name.as_str()),
             |ui| render_editor(ui, &pal, doc, view, mode, editor_h),
         );
         ui.take_key_focus(sink);
@@ -398,12 +406,68 @@ impl App for ModalEditor {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if ev.payload.get("kind").and_then(Value::as_str) == Some("key")
-            && let Some(k) = KeyEv::from_payload(&ev.payload)
-        {
-            self.on_key(k);
+        match ev.payload.get("kind").and_then(Value::as_str) {
+            Some("key") => {
+                if let Some(k) = KeyEv::from_payload(&ev.payload) {
+                    self.on_key(k);
+                }
+            }
+            Some("access") => self.on_access(&ev.payload),
+            _ => {}
         }
     }
+}
+
+impl ModalEditor {
+    /// A screen reader's text requests, in the app's own terms: lines are
+    /// ordinals among the drawn lines (so `view.top` maps them back into
+    /// the document), offsets are bytes.
+    fn on_access(&mut self, p: &Value) {
+        let text = p.get("text").and_then(Value::as_str).unwrap_or("");
+        match p.get("action").and_then(Value::as_str) {
+            Some("setTextSelection") => {
+                let (Some(anchor), Some(focus)) = (
+                    p.get("anchor").and_then(|v| self.access_pos(v)),
+                    p.get("focus").and_then(|v| self.access_pos(v)),
+                ) else {
+                    return;
+                };
+                self.view.cur = focus;
+                self.view.anchor = (anchor != focus).then_some(anchor);
+            }
+            Some("replaceSelectedText") => {
+                delete_sel(&mut self.doc, &mut self.view);
+                insert_text(&mut self.doc, &mut self.view, text);
+            }
+            Some("setValue") => {
+                self.doc.lines = text.split('\n').map(String::from).collect();
+                self.doc.modified = true;
+                self.view.cur = Pos::default();
+                self.view.anchor = None;
+            }
+            _ => {}
+        }
+    }
+
+    fn access_pos(&self, v: &Value) -> Option<Pos> {
+        let line = v.get("line")?.as_int()? as usize + self.view.top;
+        let line = line.min(self.doc.lines.len().saturating_sub(1));
+        let offset = v.get("offset")?.as_int()? as usize;
+        Some(Pos {
+            line,
+            col: col_at(&self.doc.lines[line], offset),
+        })
+    }
+}
+
+/// Byte offset of character column `col` in `text` (its length past the end).
+fn byte_at(text: &str, col: usize) -> u32 {
+    text.char_indices().nth(col).map_or(text.len(), |(b, _)| b) as u32
+}
+
+/// Character column of byte offset `offset` in `text`.
+fn col_at(text: &str, offset: usize) -> usize {
+    text[..offset.min(text.len())].chars().count()
 }
 
 // ---------------------------------------------------------------- rendering
@@ -457,7 +521,9 @@ fn render_editor(ui: &mut Ui<'_>, pal: &Pal, doc: &Doc, view: &mut View, mode: M
                 NodeSpec::column()
                     .width(Sizing::Fixed(GUTTER_W))
                     .height(Sizing::Grow(1.0))
-                    .pad_xy(12.0, 0.0),
+                    .pad_xy(12.0, 0.0)
+                    // Decoration: not part of the editor's text.
+                    .role(Role::None),
                 |ui| {
                     for ln in view.top..last {
                         let color = if ln == view.cur.line {
@@ -499,7 +565,23 @@ fn render_editor(ui: &mut Ui<'_>, pal: &Pal, doc: &Doc, view: &mut View, mode: M
                                 },
                             )
                         });
-                        emit_line(ui, pal, &doc.lines[ln], sel_on_line(view, doc, ln), caret);
+                        // Where the caret and the selection's other end
+                        // sit on this line, as byte offsets, for the
+                        // access tree.
+                        let access = (
+                            (ln == view.cur.line).then(|| byte_at(&doc.lines[ln], view.cur.col)),
+                            view.anchor
+                                .filter(|a| a.line == ln)
+                                .map(|a| byte_at(&doc.lines[ln], a.col)),
+                        );
+                        emit_line(
+                            ui,
+                            pal,
+                            &doc.lines[ln],
+                            sel_on_line(view, doc, ln),
+                            caret,
+                            access,
+                        );
                     }
                 },
             );
@@ -518,6 +600,7 @@ fn emit_line(
     text: &str,
     sel: Option<(usize, usize)>,
     caret: Option<(usize, Caret)>,
+    access: (Option<u32>, Option<u32>),
 ) {
     let chars: Vec<char> = text.chars().collect();
     let (caret_col, caret_kind) = match caret {
@@ -526,80 +609,87 @@ fn emit_line(
     };
     let at_sel = |i: usize| sel.is_some_and(|(a, b)| i >= a && i < b);
 
-    ui.with(
-        NodeSpec::row()
-            .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(LH))
-            .cross_align(Align::Center),
-        |ui| {
-            let mut i = 0;
-            let mut bar_done = false;
-            while i < chars.len() {
-                if !bar_done && caret_col == Some(i) && caret_kind == Some(Caret::Bar) {
-                    caret_bar(ui, pal.accent);
-                    bar_done = true;
-                }
-                if caret_col == Some(i) && caret_kind == Some(Caret::Block) {
-                    // Block caret: one inverted cell.
-                    ui.with(
-                        NodeSpec::row()
-                            .height(Sizing::Fixed(LH))
-                            .cross_align(Align::Center)
-                            .bg(pal.accent),
-                        |ui| ui.text(&nbsp(&chars[i].to_string()), mono(pal).color(pal.bg)),
-                    );
-                    i += 1;
-                    continue;
-                }
-                // Extend a run of chars sharing selection state, breaking at
-                // the caret cell so it can be emitted inline.
-                let selected = at_sel(i);
-                let start = i;
-                i += 1;
-                while i < chars.len() && at_sel(i) == selected && caret_col != Some(i) {
-                    i += 1;
-                }
-                let run: String = chars[start..i].iter().collect();
-                if selected {
-                    ui.with(
-                        NodeSpec::row()
-                            .height(Sizing::Fixed(LH))
-                            .cross_align(Align::Center)
-                            .bg(pal.select),
-                        |ui| ui.text(&nbsp(&run), mono(pal)),
-                    );
-                } else {
-                    ui.text(&nbsp(&run), mono(pal));
-                }
+    // One line of the editor's text to assistive technology: the text
+    // nodes inside this row, whatever they are split into for drawing.
+    let mut row = NodeSpec::row()
+        .width(Sizing::Grow(1.0))
+        .height(Sizing::Fixed(LH))
+        .cross_align(Align::Center)
+        .role(Role::Line);
+    if let Some(c) = access.0 {
+        row = row.caret(c);
+    }
+    if let Some(a) = access.1 {
+        row = row.selection_anchor(a);
+    }
+    ui.with(row, |ui| {
+        let mut i = 0;
+        let mut bar_done = false;
+        while i < chars.len() {
+            if !bar_done && caret_col == Some(i) && caret_kind == Some(Caret::Bar) {
+                caret_bar(ui, pal.accent);
+                bar_done = true;
             }
-            // Caret at end of line.
-            if caret_col == Some(chars.len()) {
-                match caret_kind {
-                    Some(Caret::Bar) => caret_bar(ui, pal.accent),
-                    Some(Caret::Block) => {
-                        ui.with(
-                            NodeSpec::column()
-                                .width(Sizing::Fixed(8.0))
-                                .height(Sizing::Fixed(LH - 4.0))
-                                .bg(pal.accent),
-                            |_| {},
-                        );
-                    }
-                    None => {}
-                }
-            }
-            // Selection running past the newline.
-            if sel.is_some_and(|(_, b)| b > chars.len()) && caret_col != Some(chars.len()) {
+            if caret_col == Some(i) && caret_kind == Some(Caret::Block) {
+                // Block caret: one inverted cell.
                 ui.with(
-                    NodeSpec::column()
-                        .width(Sizing::Fixed(8.0))
+                    NodeSpec::row()
                         .height(Sizing::Fixed(LH))
-                        .bg(pal.select),
-                    |_| {},
+                        .cross_align(Align::Center)
+                        .bg(pal.accent),
+                    |ui| ui.text(&nbsp(&chars[i].to_string()), mono(pal).color(pal.bg)),
                 );
+                i += 1;
+                continue;
             }
-        },
-    );
+            // Extend a run of chars sharing selection state, breaking at
+            // the caret cell so it can be emitted inline.
+            let selected = at_sel(i);
+            let start = i;
+            i += 1;
+            while i < chars.len() && at_sel(i) == selected && caret_col != Some(i) {
+                i += 1;
+            }
+            let run: String = chars[start..i].iter().collect();
+            if selected {
+                ui.with(
+                    NodeSpec::row()
+                        .height(Sizing::Fixed(LH))
+                        .cross_align(Align::Center)
+                        .bg(pal.select),
+                    |ui| ui.text(&nbsp(&run), mono(pal)),
+                );
+            } else {
+                ui.text(&nbsp(&run), mono(pal));
+            }
+        }
+        // Caret at end of line.
+        if caret_col == Some(chars.len()) {
+            match caret_kind {
+                Some(Caret::Bar) => caret_bar(ui, pal.accent),
+                Some(Caret::Block) => {
+                    ui.with(
+                        NodeSpec::column()
+                            .width(Sizing::Fixed(8.0))
+                            .height(Sizing::Fixed(LH - 4.0))
+                            .bg(pal.accent),
+                        |_| {},
+                    );
+                }
+                None => {}
+            }
+        }
+        // Selection running past the newline.
+        if sel.is_some_and(|(_, b)| b > chars.len()) && caret_col != Some(chars.len()) {
+            ui.with(
+                NodeSpec::column()
+                    .width(Sizing::Fixed(8.0))
+                    .height(Sizing::Fixed(LH))
+                    .bg(pal.select),
+                |_| {},
+            );
+        }
+    });
 }
 
 fn status_line(ui: &mut Ui<'_>, pal: &Pal, mode: Mode, doc: &Doc, view: &View) {

@@ -9,6 +9,44 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **Accessibility as data** (`docs/adr/0001-accessibility-as-data.md`).
+  Two props on every node in every binding, `role` and `label` (with
+  `checked` for checkbox / radio / switch roles and `valueNow` /
+  `valueMin` / `valueMax` for a slider; `role="none"` hides decoration),
+  and the core derives an **access tree** from them and from what nodes
+  already do: an `onClick` box is a button named by the text inside it,
+  an editor a text input carrying its text and caret, a scrolling box a
+  scroll view, the root the window named by `title`, window chrome its
+  buttons and title bar; the `tooltip` prop is the description. Plain
+  boxes are elided, so ten thousand rects yield a handful of nodes.
+  `Core::access_tree()` (`ctx.accessTree()` / `app.accessTree()` in Node,
+  `kui_access_tree` in C) returns it as data, hashed so a driver sends
+  it on only when it changed. Requests from assistive technology come
+  back in as `InputEvent::Access` (`ctx.access(key, action, value)`,
+  `kui_input_access`) and resolve the way pointer input would: a click
+  emits the node's payload, focus lands on an editor, `setValue` writes
+  it and raises `changed`, scroll requests move the scroll view; a slider
+  nudge reaches the app as `{ kind: "access", action, tag }`. The Rust
+  runner (and so `runWindowed`) hands the tree to screen readers through
+  AccessKit (UIA, NSAccessibility, AT-SPI; cargo feature `accesskit`, on
+  by default) and costs nothing until one attaches. Missing names are
+  warnings: `image-without-label`, `control-without-name`.
+- **Text a screen reader can walk.** An editor's access node carries its
+  laid-out lines as *runs* (every character's byte length, position and
+  width, word starts, the trailing newline as a zero-width character),
+  and its caret and selection as positions in them, so a reader moves by
+  character, word and line and hears where the caret went. Two more
+  requests, `setTextSelection` and `replaceSelectedText`, resolve in the
+  core for the built-in editors (`app.access(key, 'setTextSelection', {
+  anchor, focus })`, `kui_input_access_text`). An app that owns its text
+  gets the same tree: `role="multilineTextInput"` on its `onKey` sink,
+  `role="line"` on each row it draws (the text nodes inside are that
+  line; a `role="none"` gutter does not count), `caret` /
+  `selectionAnchor` byte offsets on the lines holding them — and the text
+  requests it alone can honour arrive as `{ kind: "access", action,
+  text, anchor: { line, offset }, focus }` messages. The modal editor
+  example is wired up this way. A key sink with no role is now a
+  focusable group instead of nothing.
 - **Text measurement as a query.** `Core::measure_text` and
   `measure_rich_text` (`ui.measure_text` in Rust, `ctx.measureText` /
   `win.measureText(content, style, maxWidth)` in Node, `env.measure_text(s,
@@ -57,6 +95,14 @@ upgrades remove code from the apps on it is doing the job.
 
 ### What you can delete
 
+- **The "we'll do accessibility later" ticket.** A screen reader sees the
+  buttons, editors and lists a view already declares; what it cannot
+  name, the warnings list by node.
+- **A hand-run screen-reader pass** to know a control is reachable:
+  `app.access(key, 'click')` in a headless test emits what the pointer
+  would, and `app.accessTree()` is what the reader would see.
+- **The "our editor is a canvas to screen readers" caveat.** A row role,
+  two offsets, and the buffer stays yours.
 - **Breakpoint tables found by screenshot.** Digit-cell widths, elbow
   widths, "does this label fit at this tier": measure the strings in the
   style you draw them and compare against the width you have. The numbers

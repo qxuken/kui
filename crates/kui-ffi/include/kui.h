@@ -221,7 +221,127 @@ typedef struct KuiSpec {
      * so you keep ownership; kui_value_null() asks for untagged events.
      * Needs a stable key (kui_open_keyed). */
     const KuiValue *on_layout;
+    /* Accessibility (docs/adr/0001-accessibility-as-data.md). role: KUI_ROLE_*
+     * (0 = unset: the core derives one — an on_click node is a button, an
+     * editor a text input, a scrolling box a scroll view, a plain box
+     * nothing; KUI_ROLE_NONE hides the node and its subtree). label: the
+     * accessible name (empty = none; a button, link, tab or heading is then
+     * named by the text inside it, an image or icon button has no name and
+     * the core warns). checked: a checkbox / radio / switch role's on
+     * state. value_*: a slider role's position and range, each present
+     * when its KUI_VALUE_* bit is in value_set. */
+    uint32_t role;
+    KuiStr label;
+    uint32_t checked;
+    uint32_t value_set;
+    float value_now, value_min, value_max;
+    /* On a KUI_ROLE_LINE of a custom editor (an on_key sink with a
+     * KUI_ROLE_TEXT_INPUT / MULTILINE_TEXT_INPUT role that draws its own
+     * text): the caret's byte offset into the line's text, and the byte
+     * offset of the selection's other end; present when KUI_VALUE_CARET /
+     * KUI_VALUE_ANCHOR are in value_set. */
+    uint32_t caret;
+    uint32_t selection_anchor;
 } KuiSpec;
+
+/* Roles (KuiSpec.role, KuiAccessNode.role). The first fifteen can be
+ * declared; the rest the core derives. */
+enum {
+    KUI_ROLE_NONE = 1, KUI_ROLE_BUTTON, KUI_ROLE_CHECKBOX, KUI_ROLE_RADIO,
+    KUI_ROLE_SWITCH, KUI_ROLE_SLIDER, KUI_ROLE_TAB, KUI_ROLE_TAB_LIST,
+    KUI_ROLE_LINK, KUI_ROLE_HEADING, KUI_ROLE_LIST, KUI_ROLE_LIST_ITEM,
+    KUI_ROLE_IMAGE, KUI_ROLE_DIALOG, KUI_ROLE_GROUP,
+    KUI_ROLE_WINDOW, KUI_ROLE_TITLE_BAR, KUI_ROLE_STATIC_TEXT,
+    KUI_ROLE_TEXT_INPUT, KUI_ROLE_MULTILINE_TEXT_INPUT, KUI_ROLE_SCROLL_VIEW,
+};
+/* Which of KuiSpec.value_now / value_min / value_max / caret /
+ * selection_anchor are set */
+enum {
+    KUI_VALUE_NOW = 1u << 0,
+    KUI_VALUE_MIN = 1u << 1,
+    KUI_VALUE_MAX = 1u << 2,
+    KUI_VALUE_CARET = 1u << 3,
+    KUI_VALUE_ANCHOR = 1u << 4,
+};
+/* Actions assistive technology can request (KuiAccessNode.actions bits,
+ * kui_input_access). */
+enum {
+    KUI_ACCESS_CLICK = 1u << 0,
+    KUI_ACCESS_FOCUS = 1u << 1,
+    KUI_ACCESS_BLUR = 1u << 2,
+    KUI_ACCESS_SET_VALUE = 1u << 3,
+    KUI_ACCESS_INCREMENT = 1u << 4,
+    KUI_ACCESS_DECREMENT = 1u << 5,
+    KUI_ACCESS_SCROLL_INTO_VIEW = 1u << 6,
+    KUI_ACCESS_SCROLL_UP = 1u << 7,
+    KUI_ACCESS_SCROLL_DOWN = 1u << 8,
+    KUI_ACCESS_SCROLL_LEFT = 1u << 9,
+    KUI_ACCESS_SCROLL_RIGHT = 1u << 10,
+    KUI_ACCESS_SET_TEXT_SELECTION = 1u << 11,
+    KUI_ACCESS_REPLACE_SELECTED_TEXT = 1u << 12,
+};
+/* KuiAccessNode.flags: which optional fields hold, and state. */
+enum {
+    KUI_ACCESS_HAS_VALUE = 1u << 0,
+    KUI_ACCESS_HAS_SELECTION = 1u << 1,
+    KUI_ACCESS_FOCUSED = 1u << 2,
+    KUI_ACCESS_CHECKED_SET = 1u << 3,
+    KUI_ACCESS_CHECKED = 1u << 4,
+    KUI_ACCESS_HAS_NUMBER = 1u << 5,
+    KUI_ACCESS_HAS_MIN = 1u << 6,
+    KUI_ACCESS_HAS_MAX = 1u << 7,
+    KUI_ACCESS_HAS_SCROLL = 1u << 8,
+    KUI_ACCESS_HAS_TEXT_SELECTION = 1u << 9,
+};
+
+/* One node of the access tree (kui_access_tree): what assistive technology
+ * sees. Plain boxes are elided, so `parent` is the nearest semantic
+ * ancestor (0 for the root). Rects are logical px in viewport coordinates.
+ * Strings are borrowed until the next kui_access_tree on the context. */
+typedef struct KuiAccessNode {
+    uint64_t key;
+    uint64_t parent;
+    uint32_t origin;
+    uint32_t role;    /* KUI_ROLE_* */
+    uint32_t flags;   /* KUI_ACCESS_HAS_* / FOCUSED / CHECKED */
+    uint32_t actions; /* KUI_ACCESS_* the node accepts */
+    KuiStr name;
+    KuiStr description;
+    KuiStr value; /* an editor's text (KUI_ACCESS_HAS_VALUE) */
+    float x, y, w, h;
+    uint32_t caret, selection_start, selection_end; /* byte offsets into value */
+    float value_now, value_min, value_max;          /* a slider's position and range */
+    float scroll_x, scroll_y, scroll_max_x, scroll_max_y; /* a scroll view's offsets */
+    /* An editor's caret (focus_*) and the selection's other end (anchor_*)
+     * as run positions (KUI_ACCESS_HAS_TEXT_SELECTION): a run key from
+     * kui_access_runs and a character index into that run. */
+    uint64_t anchor_run;
+    uint32_t anchor_char;
+    uint64_t focus_run;
+    uint32_t focus_char;
+    uint32_t run_count; /* how many runs kui_access_runs returns */
+} KuiAccessNode;
+
+/* One laid-out run of an editor's text (kui_access_runs): what a screen
+ * reader reads by character and word. `text` ends with "\n" (a character
+ * of zero width) when the line continues into another; `line` is a
+ * buffer line (a KUI_ROLE_LINE ordinal for a custom editor) and
+ * start/end the run's byte range in that line's text. Character positions
+ * are relative to x. Arrays and strings are borrowed until the next
+ * kui_access_tree / kui_access_runs on the context. */
+typedef struct KuiAccessRun {
+    uint64_t key;
+    uint32_t line, start, end;
+    KuiStr text;
+    float x, y, w, h;
+    uint32_t char_count;
+    const uint8_t *char_lengths;
+    const float *char_positions;
+    const float *char_widths;
+    uint32_t word_start_count;
+    const uint8_t *word_starts;
+    uint32_t rtl;
+} KuiAccessRun;
 
 /* What text measures (kui_measure_text): logical px at the scale of the
  * current or last frame; `lines` after wrapping. */
@@ -485,6 +605,31 @@ size_t kui_take_warnings(KuiCtx *ctx, KuiWarning *out, size_t cap);
 /* A standalone context starts with the checks OFF — a development build
  * turns them on; off costs nothing per frame. */
 void kui_set_diagnostics(KuiCtx *ctx, bool on);
+/* -- Accessibility (docs/adr/0001-accessibility-as-data.md) ---------------- */
+/* The access tree of the last finished frame: fills out with up to cap
+ * nodes in tree order (root first) and returns the total count, so a short
+ * buffer can be resized and the call repeated. A host wiring its own
+ * platform accessibility layer reads it after each frame; a test asserts
+ * on it. Never asking costs nothing. */
+size_t kui_access_tree(KuiCtx *ctx, KuiAccessNode *out, size_t cap);
+/* A request from assistive technology on a node: one KUI_ACCESS_* bit the
+ * node advertises, with value the new text for KUI_ACCESS_SET_VALUE (empty
+ * otherwise). Resolved like its pointer/keyboard equivalent: a click emits
+ * the node's payload, focus lands on an editor, a slider nudge arrives as
+ * a {kind="access", action, tag} event. */
+void kui_input_access(KuiCtx *ctx, uint64_t key, uint32_t action, KuiStr value);
+/* The laid-out text of editor node key as runs (KuiAccessRun): fills out
+ * with up to cap of them, returns the total. */
+size_t kui_access_runs(KuiCtx *ctx, uint64_t key, KuiAccessRun *out, size_t cap);
+/* A text request on an editor: KUI_ACCESS_SET_TEXT_SELECTION with the
+ * selection as run positions (anchor the end that stays, focus the caret),
+ * or KUI_ACCESS_REPLACE_SELECTED_TEXT / KUI_ACCESS_SET_VALUE with value. A
+ * built-in editor applies it (a changed event follows an edit); a custom
+ * editor gets it as a {kind="access", action, anchor={line, offset},
+ * focus={line, offset}, text, tag} event to apply itself. */
+void kui_input_access_text(KuiCtx *ctx, uint64_t key, uint32_t action,
+                           uint64_t anchor_run, uint32_t anchor_char,
+                           uint64_t focus_run, uint32_t focus_char, KuiStr value);
 /* Styled button with hover/press states; payload consumed (may be NULL). */
 void kui_button(KuiCtx *ctx, KuiStr label, KuiValue *payload);
 /* -- Widgets (the same kui_core::widgets every frontend uses) ------------ */

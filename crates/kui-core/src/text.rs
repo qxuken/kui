@@ -152,6 +152,9 @@ const EVICT_AFTER_FRAMES: u64 = 300;
 
 struct CachedText {
     buffer: Buffer,
+    /// The text itself (spans concatenated, for rich text): what the
+    /// access tree names a control by.
+    content: String,
     /// Wrap width (physical px) the buffer is currently laid out at.
     wrap: Option<f32>,
     /// Unwrapped measurement, physical px.
@@ -375,10 +378,23 @@ impl TextSystem {
                 Shaping::Advanced,
                 None,
             );
-            CachedText::new(buffer, style, fs, frame_no)
+            CachedText::new(buffer, content.to_string(), style, fs, frame_no)
         });
         entry.last_used = frame_no;
         key
+    }
+
+    /// The content of one of this frame's texts (spans concatenated).
+    pub(crate) fn content(&self, id: TextId) -> &str {
+        let key = self.frame[id.0 as usize].cache_key;
+        self.cache.get(&key).map_or("", |e| e.content.as_str())
+    }
+
+    /// Reads one of this frame's laid-out buffers (the access tree walks
+    /// its runs).
+    pub(crate) fn with_buffer<T>(&self, id: TextId, f: impl FnOnce(&Buffer) -> T) -> Option<T> {
+        let key = self.frame.get(id.0 as usize)?.cache_key;
+        self.cache.get(&key).map(|e| f(&e.buffer))
     }
 
     /// Registers a text for this frame, shaping (or reusing) its buffer.
@@ -479,7 +495,8 @@ impl TextSystem {
                 Shaping::Advanced,
                 None,
             );
-            CachedText::new(buffer, base, fs, frame_no)
+            let content = spans.iter().map(|s| s.text).collect::<String>();
+            CachedText::new(buffer, content, base, fs, frame_no)
         });
         entry.last_used = frame_no;
         key
@@ -623,12 +640,19 @@ fn wrap_entry(entry: &mut CachedText, fs: &mut FontSystem, target: Option<f32>) 
 }
 
 impl CachedText {
-    fn new(mut buffer: Buffer, style: &TextStyle, fs: &mut FontSystem, frame_no: u64) -> Self {
+    fn new(
+        mut buffer: Buffer,
+        content: String,
+        style: &TextStyle,
+        fs: &mut FontSystem,
+        frame_no: u64,
+    ) -> Self {
         buffer.shape_until_scroll(fs, false);
         let max_lines = line_budget(style);
         let (intrinsic, _) = measure_buffer(&buffer, max_lines);
         Self {
             buffer,
+            content,
             wrap: None,
             intrinsic,
             max_lines,

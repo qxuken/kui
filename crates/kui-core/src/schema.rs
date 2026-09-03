@@ -21,6 +21,7 @@
 
 use std::sync::LazyLock;
 
+use crate::access::Role;
 use crate::anim::{Easing, Repeat};
 use crate::color::Color;
 use crate::enter::Enter;
@@ -82,11 +83,49 @@ pub const P_ENTER: u32 = 49;
 pub const P_CLICK_SOUND: u32 = 50;
 pub const P_HOVER_SOUND: u32 = 51;
 pub const P_ON_LAYOUT: u32 = 52;
+pub const P_ROLE: u32 = 53;
+pub const P_LABEL: u32 = 54;
+pub const P_CHECKED: u32 = 55;
+pub const P_VALUE_NOW: u32 = 56;
+pub const P_VALUE_MIN: u32 = 57;
+pub const P_VALUE_MAX: u32 = 58;
+pub const P_CARET: u32 = 59;
+pub const P_SELECTION_ANCHOR: u32 = 60;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
 pub const FAMILIES: &[&str] = &["sans", "serif", "mono"];
 pub const WRAPS: &[&str] = &["word", "glyph", "none"];
+/// The roles a view can declare (`crate::access::Role::name` spellings);
+/// the derived-only roles (window, static text, text input, scroll view)
+/// are not on the list.
+pub const ROLES: &[&str] = &[
+    "none",
+    "button",
+    "checkbox",
+    "radio",
+    "switch",
+    "slider",
+    "tab",
+    "tabList",
+    "link",
+    "heading",
+    "list",
+    "listItem",
+    "image",
+    "dialog",
+    "group",
+    "textInput",
+    "multilineTextInput",
+    "line",
+];
+
+pub fn role_idx(i: usize) -> Role {
+    ROLES
+        .get(i)
+        .and_then(|n| Role::parse(n))
+        .unwrap_or(Role::None)
+}
 pub const EASINGS: &[&str] = &[
     "easeOut",
     "linear",
@@ -546,6 +585,62 @@ pub const PROPS: &[PropDef] = &[
         apply: Apply::StyleFlag(|t| t.ellipsis()),
         doc: "End the last line with an ellipsis when the text is cut off: a single line unless `maxLines` says otherwise.",
     },
+    PropDef {
+        name: "role",
+        id: P_ROLE,
+        kind: Kind::Enum(ROLES),
+        apply: Apply::SpecEnum(|s, i| s.role(role_idx(i))),
+        doc: "What the node is to assistive technology. Unset, the core derives one (an `onClick` node is a button, an editor a text input, a scrolling box a scroll view, a plain box nothing); `none` hides the node and its subtree from the access tree.",
+    },
+    PropDef {
+        name: "label",
+        id: P_LABEL,
+        kind: Kind::Str,
+        apply: Apply::SpecStr(|s, v| s.label(v)),
+        doc: "The accessible name. Without one a button, link, tab or heading is named by the text inside it; an image or an icon-only button has none, and the core warns (`image-without-label`, `control-without-name`).",
+    },
+    PropDef {
+        name: "checked",
+        id: P_CHECKED,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.checked(true)),
+        doc: "The on state of a `checkbox` / `radio` / `switch` role.",
+    },
+    PropDef {
+        name: "valueNow",
+        id: P_VALUE_NOW,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.value_now(v)),
+        doc: "A `slider` role's current value (the drawing stays yours; this is what assistive technology reads).",
+    },
+    PropDef {
+        name: "valueMin",
+        id: P_VALUE_MIN,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.value_min(v)),
+        doc: "A `slider` role's minimum.",
+    },
+    PropDef {
+        name: "valueMax",
+        id: P_VALUE_MAX,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.value_max(v)),
+        doc: "A `slider` role's maximum.",
+    },
+    PropDef {
+        name: "caret",
+        id: P_CARET,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.caret(v.max(0.0) as u32)),
+        doc: "On a `line` of a custom editor (a `textInput` / `multilineTextInput` role drawn by the app): the caret's byte offset into that line's text.",
+    },
+    PropDef {
+        name: "selectionAnchor",
+        id: P_SELECTION_ANCHOR,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.selection_anchor(v.max(0.0) as u32)),
+        doc: "On a `line` of a custom editor: the byte offset where the selection's other end sits (the caret is `caret`, possibly on another line).",
+    },
 ];
 
 /// A prop every binding handles by hand (a composite with real logic, or a
@@ -667,6 +762,25 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     ("radiusBR", "`radius_br` with `per_corner`"),
     ("radiusBL", "`radius_bl` with `per_corner`"),
     ("hoverGroup", "`hover_group` (KuiStr)"),
+    ("role", "`role` (`KUI_ROLE_*`)"),
+    ("label", "`label` (KuiStr)"),
+    (
+        "valueNow",
+        "`value_now` with `KUI_VALUE_NOW` in `value_set`",
+    ),
+    (
+        "valueMin",
+        "`value_min` with `KUI_VALUE_MIN` in `value_set`",
+    ),
+    (
+        "valueMax",
+        "`value_max` with `KUI_VALUE_MAX` in `value_set`",
+    ),
+    ("caret", "`caret` with `KUI_VALUE_CARET` in `value_set`"),
+    (
+        "selectionAnchor",
+        "`selection_anchor` with `KUI_VALUE_ANCHOR` in `value_set`",
+    ),
     (
         "onClick",
         "`on_click` argument of `kui_open` / `kui_open_with`",
@@ -836,6 +950,11 @@ pub const EVENTS: &[EventDef] = &[
         kind: "sound",
         payload: "`{ kind: \"sound\", phase: \"ended\", playback, tag }`",
         doc: "A tagged playback (`play(id, { tag })` or `<audio tag>`) finished on its own — never when something stopped it.",
+    },
+    EventDef {
+        kind: "access",
+        payload: "`{ kind: \"access\", action, tag, text?, anchor?: { line, offset }, focus?: { line, offset } }`",
+        doc: "Assistive technology asked for what only the app can do: `increment` / `decrement` on a `slider` role; `setValue` / `replaceSelectedText` (with `text`) / `setTextSelection` (with `anchor` and `focus` as line ordinals and byte offsets) on a custom editor. `tag` is the node's `onClick` payload (or its `onDrag` / `onKey` tag). Every other request resolves in the core and arrives as the events a pointer would have produced.",
     },
 ];
 

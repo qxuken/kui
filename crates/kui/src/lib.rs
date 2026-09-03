@@ -8,6 +8,7 @@ use std::sync::Arc;
 pub use kui_core::widgets;
 pub use kui_core::*;
 
+mod access_bridge;
 pub mod audio;
 #[cfg(target_os = "windows")]
 mod windows_nc;
@@ -15,7 +16,7 @@ mod windows_nc;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, Ime, MouseButton, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
 use winit::window::{CursorIcon, ResizeDirection, Window, WindowId};
 
@@ -173,15 +174,18 @@ impl Launcher {
             audio: audio::Audio::new(),
             resize_edge: None,
             exit_requested: false,
+            proxy: None,
+            access: None,
             #[cfg(target_os = "windows")]
             nc: None,
         }
     }
 
     pub fn run<A: App>(self, app: A) -> Result<(), Box<dyn std::error::Error>> {
-        let event_loop = EventLoop::new()?;
+        let event_loop = EventLoop::<access_bridge::UserEvent>::with_user_event().build()?;
         event_loop.set_control_flow(ControlFlow::Wait);
         let mut shell = self.shell(app);
+        shell.proxy = Some(event_loop.create_proxy());
         event_loop.run_app(&mut shell)?;
         Ok(())
     }
@@ -192,9 +196,10 @@ impl Launcher {
     /// can interleave with winit on the main thread. One per process — winit
     /// event loops are not recreatable on every platform.
     pub fn open<A: App>(self, app: A) -> Result<PumpRunner<A>, Box<dyn std::error::Error>> {
-        let mut event_loop = EventLoop::new()?;
+        let mut event_loop = EventLoop::<access_bridge::UserEvent>::with_user_event().build()?;
         event_loop.set_control_flow(ControlFlow::Wait);
         let mut shell = self.shell(app);
+        shell.proxy = Some(event_loop.create_proxy());
         // First pump delivers `resumed`, creating the window + renderer.
         let alive = pump_once(&mut event_loop, &mut shell);
         Ok(PumpRunner {
@@ -205,7 +210,10 @@ impl Launcher {
     }
 }
 
-fn pump_once<A: App>(event_loop: &mut EventLoop<()>, shell: &mut Shell<A>) -> bool {
+fn pump_once<A: App>(
+    event_loop: &mut EventLoop<access_bridge::UserEvent>,
+    shell: &mut Shell<A>,
+) -> bool {
     use winit::platform::pump_events::{EventLoopExtPumpEvents, PumpStatus};
     match event_loop.pump_app_events(Some(std::time::Duration::ZERO), shell) {
         PumpStatus::Continue => !shell.exit_requested,
@@ -217,7 +225,7 @@ fn pump_once<A: App>(event_loop: &mut EventLoop<()>, shell: &mut Shell<A>) -> bo
 /// (input mapping, IME, clipboard, chrome, caret blink), but the host calls
 /// [`pump`](Self::pump) on its own cadence instead of parking in `run_app`.
 pub struct PumpRunner<A: App> {
-    event_loop: EventLoop<()>,
+    event_loop: EventLoop<access_bridge::UserEvent>,
     shell: Shell<A>,
     alive: bool,
 }
@@ -354,6 +362,11 @@ struct Shell<A: App> {
     resize_edge: Option<ResizeDirection>,
     /// Set by `WindowCommand::Close`; honored at the end of the event.
     exit_requested: bool,
+    /// Hands AccessKit a way back into the loop; set before the window
+    /// exists.
+    proxy: Option<EventLoopProxy<access_bridge::UserEvent>>,
+    /// The platform accessibility bridge, once the window exists.
+    access: Option<access_bridge::Bridge>,
     /// Windows: answers WM_NCHITTEST from the frame's chrome regions, which
     /// enables snap layouts + native caption behavior over drawn controls.
     #[cfg(target_os = "windows")]
@@ -387,6 +400,19 @@ impl<A: App> Shell<A> {
         if let Some(w) = &self.window {
             w.request_redraw();
         }
+    }
+
+    /// Hands the frame's access tree to the platform when assistive
+    /// technology is attached and the tree changed; nothing otherwise.
+    fn publish_access(&mut self) {
+        let Some(bridge) = self.access.as_mut() else {
+            return;
+        };
+        if !bridge.active() {
+            return;
+        }
+        let scale = self.window.as_ref().map_or(1.0, |w| w.scale_factor()) as f32;
+        bridge.publish(self.core.access_tree(), scale);
     }
 
     /// Applies window intents produced by chrome nodes (`window_drag`,
@@ -815,7 +841,7 @@ impl<A: App> Shell<A> {
     }
 }
 
-impl<A: App> ApplicationHandler for Shell<A> {
+impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
@@ -830,9 +856,12 @@ impl<A: App> ApplicationHandler for Shell<A> {
             .map(|s| clamp_size(s, self.min_size, self.max_size))
             .unwrap_or(self.size);
         #[allow(unused_mut)]
+        // Hidden until the accessibility adapter has hooked it: the
+        // platform adapters must see the window before it is shown.
         let mut attrs = Window::default_attributes()
             .with_title(&self.title)
-            .with_inner_size(LogicalSize::new(w, h));
+            .with_inner_size(LogicalSize::new(w, h))
+            .with_visible(false);
         if let Some((mw, mh)) = self.min_size {
             attrs = attrs.with_min_inner_size(LogicalSize::new(mw, mh));
         }
@@ -860,10 +889,14 @@ impl<A: App> ApplicationHandler for Shell<A> {
             Chrome::Borderless => attrs = attrs.with_decorations(false),
         }
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
+        if let Some(proxy) = self.proxy.clone() {
+            self.access = access_bridge::Bridge::new(event_loop, &window, proxy);
+        }
         #[cfg(target_os = "windows")]
         if self.chrome != Chrome::Native {
             self.nc = windows_nc::NcHitTest::install(&window, true);
         }
+        window.set_visible(true);
         window.set_ime_allowed(true);
         let size = window.inner_size();
         let renderer = pollster::block_on(kui_wgpu::Renderer::new(
@@ -889,6 +922,9 @@ impl<A: App> ApplicationHandler for Shell<A> {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        if let (Some(bridge), Some(window)) = (&mut self.access, &self.window) {
+            bridge.process_event(window, &event);
+        }
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
@@ -983,6 +1019,7 @@ impl<A: App> ApplicationHandler for Shell<A> {
             }
             WindowEvent::RedrawRequested => {
                 self.redraw();
+                self.publish_access();
                 // Views can declare window commands too (ui.window_command);
                 // apply them the same frame they were declared. Likewise
                 // the sounds a frame started (audio nodes, ui.play).
@@ -1005,6 +1042,18 @@ impl<A: App> ApplicationHandler for Shell<A> {
         if self.exit_requested {
             event_loop.exit();
         }
+    }
+
+    /// AccessKit's side of the conversation: assistive technology attaching
+    /// (send it the tree), detaching, or asking for an action (input).
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: access_bridge::UserEvent) {
+        let Some(bridge) = &mut self.access else {
+            return;
+        };
+        if let Some(req) = bridge.on_event(event) {
+            self.dispatch(InputEvent::Access(req));
+        }
+        self.publish_access();
     }
 
     /// Runs after every event batch (including timer wake-ups): the caret

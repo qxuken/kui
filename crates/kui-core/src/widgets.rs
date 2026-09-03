@@ -266,7 +266,9 @@ pub fn label(ui: &mut Ui<'_>, text: &str) {
 
 /// Single-line text input with chrome (background, focus ring).
 /// Read the value with `ui.edit_text(key)`; "changed"/"submit" events arrive
-/// in `on_event` with this key.
+/// in `on_event` with this key. The `label` is the key and the accessible
+/// name both (`"search"`, `"name"`), so a screen reader has something to
+/// announce; use `ui.text_edit` with `NodeSpec::label` when they differ.
 pub fn text_input(ui: &mut Ui<'_>, label: &str, initial: &str) -> Key {
     let key = ui.child_key(label);
     let border = if ui.is_focused(key) {
@@ -287,7 +289,8 @@ pub fn text_input(ui: &mut Ui<'_>, label: &str, initial: &str) -> Key {
             .bg(Color::rgb8(0x0e, 0x10, 0x16))
             .radius(6.0)
             .border(1.0, border)
-            .clip(),
+            .clip()
+            .label(label),
     )
 }
 

@@ -473,6 +473,115 @@ impl EditStore {
         self.states.get(&key).map_or(0, |s| s.version)
     }
 
+    /// The caret as a byte offset into the committed text, and the
+    /// non-empty selection as a byte range, for the access tree.
+    pub fn caret_and_selection(&self, key: Key) -> Option<(usize, Option<(usize, usize)>)> {
+        let s = self.states.get(&key)?;
+        Some(s.editor.with_buffer(|b| {
+            let caret = abs_offset(b, s.editor.cursor());
+            let selection = s
+                .editor
+                .selection_bounds()
+                .map(|(a, z)| (abs_offset(b, a), abs_offset(b, z)))
+                .filter(|(a, z)| a != z);
+            (caret, selection)
+        }))
+    }
+
+    /// The selection's anchor and the caret as (line, byte index) pairs
+    /// (equal without a selection), for the access tree.
+    pub fn selection_cursors(&self, key: Key) -> Option<((usize, usize), (usize, usize))> {
+        let s = self.states.get(&key)?;
+        let caret = s.editor.cursor();
+        let anchor = match s.editor.selection() {
+            Selection::Normal(c) | Selection::Line(c) | Selection::Word(c) => c,
+            Selection::None => caret,
+        };
+        Some(((anchor.line, anchor.index), (caret.line, caret.index)))
+    }
+
+    /// The editor's laid-out lines as access runs (see
+    /// [`crate::access::AccessRun`]); `origin` is where the content box
+    /// starts, logical px.
+    pub(crate) fn runs(
+        &self,
+        key: Key,
+        node: Key,
+        origin: Vec2,
+        scale: f32,
+    ) -> Vec<crate::access::AccessRun> {
+        let Some(s) = self.states.get(&key) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        let mut n = 0;
+        s.editor.with_buffer(|b| {
+            crate::access::runs_of_buffer(
+                b,
+                crate::access::RunSource {
+                    key: node,
+                    line: 0,
+                    byte_base: 0,
+                    origin,
+                    scale,
+                    newline_after_last: false,
+                },
+                &mut n,
+                &mut out,
+            )
+        });
+        out
+    }
+
+    /// Moves the caret to `focus` and the selection's other end to
+    /// `anchor`, both (line, byte index) pairs clamped into the text; equal
+    /// pairs clear the selection. What a screen reader's "select from here
+    /// to there" becomes.
+    pub fn set_selection(&mut self, key: Key, anchor: (usize, usize), focus: (usize, usize)) {
+        let Some(s) = self.states.get_mut(&key) else {
+            return;
+        };
+        s.abandon_preedit();
+        let clamp = |b: &Buffer, (line, index): (usize, usize)| {
+            let line = line.min(b.lines.len().saturating_sub(1));
+            let text = b.lines[line].text();
+            let mut index = index.min(text.len());
+            while !text.is_char_boundary(index) {
+                index -= 1;
+            }
+            Cursor::new(line, index)
+        };
+        let (a, f) = s
+            .editor
+            .with_buffer(|b| (clamp(b, anchor), clamp(b, focus)));
+        s.editor.set_cursor(f);
+        s.editor.set_selection(if a == f {
+            Selection::None
+        } else {
+            Selection::Normal(a)
+        });
+        s.break_coalesce();
+        self.touch_caret(key);
+    }
+
+    /// Types `text` over the selection (or at the caret), as one undo
+    /// step; true when the content changed.
+    pub fn replace_selection(&mut self, key: Key, text: &str, fs: &mut FontSystem) -> bool {
+        let Some(s) = self.states.get_mut(&key) else {
+            return false;
+        };
+        s.abandon_preedit();
+        if text.is_empty() && s.editor.selection_bounds().is_none() {
+            return false;
+        }
+        s.insert_recorded(text);
+        s.editor.shape_as_needed(fs, false);
+        s.version += 1;
+        s.measured = None;
+        self.touch_caret(key);
+        true
+    }
+
     pub fn copy_selection(&self, key: Key) -> Option<String> {
         self.states.get(&key)?.editor.copy_selection()
     }

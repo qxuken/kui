@@ -19,8 +19,11 @@
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::access::{self, Role};
+use crate::edit::EditStore;
 use crate::key::Key;
 use crate::spec::{Dir, Sizing};
+use crate::text::TextSystem;
 use crate::tree::{NIL, Tree};
 
 /// A silent misconfiguration the core noticed while finishing a frame.
@@ -49,6 +52,13 @@ pub const TRANSITION_AUTO_KEY: &str = "transition-auto-key";
 /// (transitions, scroll offsets, editors, layout events, hover state) is
 /// mixed between them. Siblings need distinct labels.
 pub const DUPLICATE_KEY: &str = "duplicate-key";
+/// An image with no `label`: assistive technology has nothing to say
+/// for it. Decorative images take `role="none"`.
+pub const IMAGE_WITHOUT_LABEL: &str = "image-without-label";
+/// A control (a button, link, tab, checkbox, slider, editor) with no
+/// computable name: no `label`, and no text inside it. Icon buttons and
+/// editors need a `label`.
+pub const CONTROL_WITHOUT_NAME: &str = "control-without-name";
 
 /// Pending warnings are capped so a host that never drains them cannot
 /// grow the queue without bound.
@@ -96,7 +106,13 @@ impl Diagnostics {
 
     /// Runs every check over the finished frame's tree, on the frames the
     /// cadence picks (see the module docs).
-    pub(crate) fn check(&mut self, tree: &Tree, frame_no: u64) {
+    pub(crate) fn check(
+        &mut self,
+        tree: &Tree,
+        text: &TextSystem,
+        edit: &EditStore,
+        frame_no: u64,
+    ) {
         if !self.enabled || tree.is_empty() {
             return;
         }
@@ -106,6 +122,43 @@ impl Diagnostics {
         self.check_grow_weights(tree);
         self.check_auto_keyed_transitions(tree);
         self.check_duplicate_keys(tree);
+        self.check_access(tree, text, edit);
+    }
+
+    /// Images without a label and controls without a computable name, by
+    /// the same derivation the access tree uses (see `access::semantic`).
+    fn check_access(&mut self, tree: &Tree, text: &TextSystem, edit: &EditStore) {
+        let mut skip_until = 0usize;
+        for i in 0..tree.len() {
+            if i < skip_until {
+                continue;
+            }
+            let Some(sem) = access::semantic(tree, text, edit, None, i) else {
+                continue;
+            };
+            if sem.role == Role::None || sem.presentational {
+                skip_until = tree.subtree_end(i);
+            }
+            if sem.name.is_some() || sem.role == Role::None {
+                continue;
+            }
+            let key = tree.keys[i];
+            if sem.role == Role::Image {
+                self.warn(IMAGE_WITHOUT_LABEL, key, || {
+                    "this image has no label: assistive technology has nothing to say for it \
+                     (give it a `label`, or `role=\"none\"` if it is decoration)"
+                        .to_string()
+                });
+            } else if sem.role.is_control() {
+                let what = sem.role.name();
+                self.warn(CONTROL_WITHOUT_NAME, key, || {
+                    format!(
+                        "this {what} has no accessible name: no `label`, and no text inside it \
+                         — a screen reader announces an unnamed {what} (give it a `label`)"
+                    )
+                });
+            }
+        }
     }
 
     fn check_grow_weights(&mut self, tree: &Tree) {

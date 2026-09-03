@@ -67,7 +67,7 @@ const view = (model: Model) => (
     <titlebar title="kui counter" />
     <box pad={24} gap={16}>
     <text size={24} color="#ffffff"><span bold color="#7aa2ff">kui</span> × Node × JSX</text>
-    <image src={gradient} width={128} radius={8} />
+    <image src={gradient} width={128} radius={8} label="gradient" />
     <box dir="row" gap={12} crossAlign="center">
       <button onClick={{ kind: 'add', by: 1 }}>+1</button>
       <button onClick={{ kind: 'add', by: -1 }}>-1</button>
@@ -81,7 +81,7 @@ const view = (model: Model) => (
       </box>
       {model.hum && <audio key="hum" src={hum} loop volume={0.3} />}
     </box>
-    <edit key="note" initial="" size={16} width={280} padX={10} padY={6}
+    <edit key="note" label="note" initial="" size={16} width={280} padX={10} padY={6}
           bg="#1f2030" color="#e8e8f0" radius={4} autofocus />
     <text size={14} color="#99a0b0">{`note: ${model.note || '(empty)'}`}</text>
     <text size={14} color="#99a0b0">

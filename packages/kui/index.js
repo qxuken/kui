@@ -172,6 +172,17 @@ export function createApp({ init, update, view }, opts = {}) {
       ctx.key(name, mods);
       app.settle();
     },
+    /** What assistive technology sees of the last render. */
+    accessTree() {
+      return ctx.accessTree();
+    },
+    /** Drive the app the way a screen reader would: `access(key, 'click')`
+     *  activates a node, `access(key, 'setValue', text)` types into an
+     *  editor; the events that follow go through `update`. */
+    access(key, action, value) {
+      ctx.access(key, action, value);
+      app.settle();
+    },
   };
   return app;
 }
