@@ -184,22 +184,62 @@ impl<'a> Ui<'a> {
         self.core.text_edit(label, initial, opts, spec)
     }
 
+    /// Whether `key` holds keyboard focus — any node: an editor, a key
+    /// sink, a button Tab landed on (see `Core::focus`).
     pub fn is_focused(&self, key: Key) -> bool {
         self.core.is_focused(key)
+    }
+
+    /// The node holding keyboard focus, if any.
+    pub fn focused(&self) -> Option<Key> {
+        self.core.focus()
+    }
+
+    /// Whether focus got where it is by keyboard or assistive technology
+    /// (a Tab press, a reader's request) rather than a click — when a
+    /// view that styles its own focus should show it.
+    pub fn focus_visible(&self) -> bool {
+        self.core.focus_visible()
+    }
+
+    /// Moves keyboard focus to `key` now (an editor, an `on_key` sink, a
+    /// control, a `focusable` node); see `Core::set_focus`.
+    pub fn focus(&mut self, key: Key) {
+        self.core.set_focus(Some(key));
+    }
+
+    /// Drops keyboard focus.
+    pub fn blur(&mut self) {
+        self.core.set_focus(None);
+    }
+
+    /// Moves focus to the next focusable node in tree order, wrapping —
+    /// what Tab does. A key sink that binds Tab itself calls this to hand
+    /// the keyboard on.
+    pub fn focus_next(&mut self) {
+        self.core.focus_next(true);
+    }
+
+    /// Shift-Tab: the previous focusable node.
+    pub fn focus_prev(&mut self) {
+        self.core.focus_next(false);
     }
 
     pub fn edit_text(&self, key: Key) -> Option<String> {
         self.core.edit_text(key)
     }
 
-    /// Routes full-keyboard input at this node — it must have declared
-    /// `on_key` in its spec. Key presses then arrive in `on_event` as
-    /// `{kind="key", code, ctrl, alt, shift, super, text, repeat, tag}`.
-    /// Declare every frame you care, like the window title.
+    /// Declares this node focused: it takes keyboard focus when the
+    /// declaration *starts* (the first frame it is made), and a Tab press
+    /// afterwards is not clobbered by the view repeating it. An `on_key`
+    /// sink then gets presses in `on_event` as `{kind="key", code, ctrl,
+    /// alt, shift, super, text, repeat, tag}`. To move focus at any time,
+    /// `focus(key)`.
     pub fn take_key_focus(&mut self, key: Key) {
         self.core.set_key_focus(Some(key));
     }
 
+    /// The node holding keyboard focus (the same as `focused`).
     pub fn key_focus(&self) -> Option<Key> {
         self.core.key_focus()
     }

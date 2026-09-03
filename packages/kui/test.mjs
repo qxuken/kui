@@ -174,6 +174,48 @@ test('a null tag declares the behaviour without a tag on the event', () => {
   assert.deepEqual(payloads[0], payloads[2]);
 });
 
+// Keyboard focus as data: Tab reaches a button on every transport, a
+// disabled box is not a stop, Enter presses the focused button, and the
+// access tree reports the same focus.
+test('tab reaches a button and enter presses it', () => {
+  const build = () =>
+    box({ pad: 4 }, [
+      box({ width: 60, height: 20, bg: '#333333', onClick: { kind: 'go' } }, [text('go', { size: 12 })], 'go'),
+      box({ width: 60, height: 20, bg: '#333333', focusable: true, disabled: true }, [], 'off'),
+    ]);
+  for (const transport of ['binary', 'json', 'object']) {
+    const { ctx } = run(transport, build);
+    assert.equal(ctx.focused(), null, `${transport}: nothing focused at first`);
+    ctx.key('tab');
+    const focused = ctx.focused();
+    assert.ok(focused, `${transport}: tab landed on the button`);
+    assert.ok(ctx.focusVisible(), `${transport}: keyboard focus shows`);
+    assert.ok(ctx.isFocused(focused));
+    const tree = ctx.accessTree();
+    assert.equal(tree.focus, focused);
+    const node = tree.nodes.find((n) => n.key === focused);
+    assert.equal(node.role, 'button');
+    assert.ok(node.focused && !node.disabled);
+    assert.ok(node.actions.includes('focus'));
+    const off = tree.nodes.find((n) => n.disabled);
+    assert.equal(off.role, 'group', `${transport}: a focusable box is in the tree`);
+    assert.ok(!off.actions.includes('focus'), `${transport}: disabled: not focusable`);
+    ctx.key('tab');
+    assert.equal(ctx.focused(), focused, `${transport}: the disabled box is not a stop`);
+    ctx.key('enter');
+    const evs = ctx.pollEvents();
+    assert.equal(evs.length, 1, `${transport}: enter pressed the button`);
+    assert.deepEqual(evs[0].payload, { kind: 'go' });
+    ctx.blur();
+    assert.equal(ctx.focused(), null);
+    ctx.focus(focused);
+    assert.equal(ctx.focused(), focused, `${transport}: focus(key) moves focus`);
+    assert.ok(ctx.focusVisible(), `${transport}: programmatic focus keeps the keyboard modality`);
+    ctx.focusNext();
+    assert.equal(ctx.focused(), focused, `${transport}: the only stop wraps to itself`);
+  }
+});
+
 // Measurement is a query on the same text stack layout uses.
 test('measureText answers what layout gives the text', () => {
   const ctx = new Ctx();

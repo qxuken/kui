@@ -26,7 +26,8 @@ use crate::tree::OriginId;
 pub struct EditOptions {
     pub style: TextStyle,
     pub multiline: bool,
-    /// Grab focus when first created (if nothing else is focused).
+    /// Takes keyboard focus whenever nothing else holds it (on creation,
+    /// and again after a blur) — never from a focused control.
     pub autofocus: bool,
     /// Selection highlight color.
     pub accent: Color,
@@ -422,9 +423,7 @@ impl EditStore {
             state.editor.with_buffer_mut(|b| b.set_metrics(metrics));
             state.wrap = None;
         }
-        if opts.autofocus && self.focused.is_none() {
-            self.focused = Some(key);
-        }
+        // `autofocus` is the core's decision (it owns the one focus).
     }
 
     pub fn contains(&self, key: Key) -> bool {

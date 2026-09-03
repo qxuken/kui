@@ -205,8 +205,20 @@ that are hard to reverse and would look arbitrary without their context.
   after it shifts and wraps while you compose, and the OS candidate window
   is anchored at the caret inside it), and platform clipboard shortcuts
   (arboard) onto those events; the caret
-  blinks on the runner's clock, scrolls itself into view, and Tab/Shift-Tab
-  hop between edit widgets.
+  blinks on the runner's clock and scrolls itself into view.
+- **Keyboard focus is data** ([ADR 0002](docs/adr/0002-keyboard-focus-as-data.md)).
+  The core keeps one focus for every node, and every control the access
+  tree knows is a Tab stop in tree order: editors, `on_key` sinks,
+  `on_click` boxes, the control roles, and any node declaring `focusable`;
+  never a `disabled` node, decoration or window chrome. Enter and Space
+  press the focused control (the event a click would emit), the arrows
+  nudge a focused slider (the access events a screen reader would send),
+  and keyboard focus draws a ring on top of the frame in every binding
+  unless the node declares `focus_bg`. A click's focus draws nothing. A
+  key sink keeps every key, Tab included — it is an app that owns its
+  keyboard — and hands focus on with `focus_next`. A screen reader's focus
+  request lands on the same focus, so its cursor follows Tab into
+  buttons.
 - **Transitions animate layout inputs, not rects.** A node with
   `transition(ms)` (`transition={150}` in JSX, `transition = 150` in Lua,
   `KuiSpec.transition_ms` in C) has its sizing amounts, colors and radius
@@ -499,8 +511,9 @@ nothing but that Linux runner: no Mac or Windows machine is involved.
 v0 scope: no z-index (floats stack in tree order). Transitions cover sizing, colors, radius and
 position (`slide`, `enter`); a removed node vanishes at once (there is no exit animation yet).
 Layout queries stop at the node: `measure_text` and `on_layout` give whole-string and whole-node
-rects, not the boxes of lines or glyphs inside a paragraph. No accessibility layer yet; whether
-the tree should carry semantics is a decision still to be made, not a default.
+rects, not the boxes of lines or glyphs inside a paragraph. Accessibility and keyboard focus are
+data (ADR 0001 and 0002); arrow keys inside radio groups, tab lists and lists, and a
+configurable focus ring colour, are the next steps there.
 Audio covers one-shots, loops, volume, pause and a finished-playback event; sounds decode fully
 into memory, and synthesis, effects, positional audio and disk streaming are out of scope.
 Editing: caret blink, double/triple-click

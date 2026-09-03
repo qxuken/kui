@@ -38,6 +38,17 @@ const SCROLLBAR_ACTIVE_W: f32 = 6.0;
 const SCROLLBAR_HIT_W: f32 = 10.0;
 const SCROLLBAR_INSET: f32 = 2.0;
 const SCROLLBAR_MIN: f32 = 24.0;
+/// The default focus ring (see `docs/adr/0002-keyboard-focus-as-data.md`):
+/// drawn this far outside the focused node, this thick, in this colour,
+/// when focus is keyboard-visible and the node styles nothing itself.
+const FOCUS_RING_GAP: f32 = 2.0;
+const FOCUS_RING_W: f32 = 2.0;
+const FOCUS_RING: Color = Color {
+    r: 0x7f as f32 / 255.0,
+    g: 0x9c as f32 / 255.0,
+    b: 0xf5 as f32 / 255.0,
+    a: 1.0,
+};
 
 pub struct Core {
     pub text: TextSystem,
@@ -57,10 +68,19 @@ pub struct Core {
     /// Window title declared this frame (immediate-mode: cleared each
     /// `begin_frame`; the driver diffs and applies). None = leave as-is.
     window_title: Option<String>,
-    /// Which key sink (a node that declared `on_key`) receives full-
-    /// keyboard `KeyDown` input. Moved by clicks on sinks; apps that
-    /// own their text model declare it per frame via `set_key_focus`.
-    key_focus: Option<Key>,
+    /// Keyboard focus: the one node key input goes to — an editor (the
+    /// edit store mirrors it), an `on_key` sink, a control Tab landed on
+    /// (see `docs/adr/0002-keyboard-focus-as-data.md`). `set_focus` is
+    /// the only writer.
+    focus: Option<Key>,
+    /// Focus got there by keyboard or assistive technology, so it shows:
+    /// the default ring, or the node's `focus_bg`. A mouse press clears it.
+    focus_visible: bool,
+    /// Nodes that declared focus this frame and last (`set_key_focus`):
+    /// a declaration takes focus only when it starts, so a repeated one
+    /// does not clobber a Tab press.
+    declared_focus: Vec<Key>,
+    declared_focus_last: Vec<Key>,
     pub(crate) tree: Tree,
     pub(crate) display: DisplayList,
     pub(crate) viewport: Size,
@@ -166,7 +186,10 @@ impl Core {
             stats: FrameStats::default(),
             env: Env::default(),
             window_title: None,
-            key_focus: None,
+            focus: None,
+            focus_visible: false,
+            declared_focus: Vec::new(),
+            declared_focus_last: Vec::new(),
             access: Default::default(),
             access_built: 0,
             tree: Tree::new(),
@@ -256,10 +279,16 @@ impl Core {
                 }
             }
             InputEvent::Text(s) => {
-                if let Some(key) = self.edit.focused()
-                    && self.edit.apply_text(key, &s, self.text.font_system_mut())
+                if let Some(key) = self.edit.focused() {
+                    if self.edit.apply_text(key, &s, self.text.font_system_mut()) {
+                        self.push_edit_event(key, "changed", &mut out);
+                    }
+                } else if s == " "
+                    && let Some(i) = self.focused_control()
                 {
-                    self.push_edit_event(key, "changed", &mut out);
+                    // Space presses the focused control (a sink would have
+                    // taken the press as data; an editor took the text).
+                    self.click_node(self.tree.keys[i], &mut out);
                 }
             }
             InputEvent::Preedit(s, cursor) => {
@@ -269,17 +298,19 @@ impl Core {
                 }
             }
             InputEvent::Key(ek, mods) => {
-                // Tab traverses between edit widgets (Shift-Tab backwards)
-                // unless a multiline editor holds focus — there Tab stays
-                // indentation. With nothing focused it enters the first,
-                // but only when no on_key sink owns the keyboard.
+                // Tab walks the focus ring (Shift-Tab backwards) unless a
+                // multiline editor holds focus — there Tab stays
+                // indentation — or a key sink does: a sink is an app that
+                // owns its keyboard, Tab included (it hands focus on with
+                // `focus_next`). With nothing focused Tab enters the ring.
+                let sink = self.focused_sink();
                 let traverse = ek == EditKey::Tab
                     && match self.edit.focused() {
                         Some(k) => !self.edit.is_multiline(k),
-                        None => self.key_focus.is_none(),
+                        None => !sink,
                     };
                 if traverse {
-                    self.focus_adjacent_edit(!mods.shift);
+                    self.focus_next(!mods.shift);
                 } else if let Some(key) = self.edit.focused() {
                     let (changed, submit) =
                         self.edit
@@ -291,16 +322,34 @@ impl Core {
                         self.push_edit_event(key, "submit", &mut out);
                     }
                     if ek == EditKey::Escape {
-                        self.edit.set_focus(None);
+                        self.set_focus(None);
+                    }
+                } else if let Some(i) = self.focused_control() {
+                    // A control that is neither an editor nor a sink:
+                    // Enter presses it, the arrows nudge a slider (the
+                    // same events assistive technology produces), Escape
+                    // lets go.
+                    use crate::access::AccessAction;
+                    let slider = self.tree.specs[i].role == Some(crate::access::Role::Slider);
+                    match ek {
+                        EditKey::Enter => self.click_node(self.tree.keys[i], &mut out),
+                        EditKey::Escape => self.set_focus(None),
+                        EditKey::Right | EditKey::Up if slider => {
+                            self.nudge(i, AccessAction::Increment, &mut out)
+                        }
+                        EditKey::Left | EditKey::Down if slider => {
+                            self.nudge(i, AccessAction::Decrement, &mut out)
+                        }
+                        _ => {}
                     }
                 }
             }
             InputEvent::KeyDown(kp) => {
                 // The focused edit widget owns the keyboard (it takes the
-                // Text/EditKey path); otherwise the key-focused sink, if it
+                // Text/EditKey path); otherwise the focused sink, if it
                 // still exists in the last frame, gets the press as data.
                 if self.edit.focused().is_none()
-                    && let Some(focus) = self.key_focus
+                    && let Some(focus) = self.focus
                     && let Some(h) = self
                         .interaction
                         .hits
@@ -350,21 +399,21 @@ impl Core {
                     let hit = self
                         .interaction
                         .hit_at(p)
-                        .map(|h| (h.key, h.edit_origin, h.key_sink.is_some()));
+                        .map(|h| (h.key, h.edit_origin, h.focusable));
+                    // A press moves focus (to a focusable node) or drops
+                    // it; either way it is pointer focus, not shown.
                     match hit {
-                        Some((key, Some(origin), _)) => {
-                            self.edit.set_focus(Some(key));
+                        Some((key, Some(origin), true)) => {
+                            self.set_focus(Some(key));
                             let local = Vec2::new(p.x - origin.x, p.y - origin.y);
                             self.edit
                                 .click(key, local, clicks, self.text.font_system_mut());
                             self.edit.dragging = Some((key, origin));
                         }
-                        Some((key, None, true)) => {
-                            self.edit.set_focus(None);
-                            self.key_focus = Some(key);
-                        }
-                        _ => self.edit.set_focus(None),
+                        Some((key, None, true)) => self.set_focus(Some(key)),
+                        _ => self.set_focus(None),
                     }
+                    self.focus_visible = false;
                 }
                 self.interaction
                     .handle(InputEvent::MouseDown(clicks), &mut out);
@@ -400,6 +449,9 @@ impl Core {
             other => self.interaction.handle(other, &mut out),
         }
         self.flush_sound_requests();
+        // Input moves focus, carets and scroll offsets: an access tree
+        // derived earlier this frame no longer describes it.
+        self.access_built = 0;
         out
     }
 
@@ -411,50 +463,19 @@ impl Core {
         let key = req.key;
         let idx = self.tree.keys.iter().position(|k| *k == key);
         match req.action {
-            AccessAction::Click => {
-                let Some(h) = self.interaction.hits.iter().rev().find(|h| h.key == key) else {
-                    return;
-                };
-                let (origin, payload, window, sound) =
-                    (h.origin, h.payload.clone(), h.window, h.click_sound);
-                let (is_edit, is_sink) = (h.edit_origin.is_some(), h.key_sink.is_some());
-                if let Some(sound) = sound {
-                    self.interaction.sound_requests.push(sound);
-                }
-                match (window, payload) {
-                    (Some(crate::window::WindowRole::Button(b)), _) => {
-                        self.interaction.window_commands.push(b.command())
-                    }
-                    (None, Some(payload)) => out.push(UiEvent {
-                        origin,
-                        key,
-                        payload,
-                    }),
-                    _ => {}
-                }
-                if is_edit {
-                    self.edit.set_focus(Some(key));
-                    self.edit.caret_moved = Some(key);
-                } else if is_sink {
-                    self.edit.set_focus(None);
-                    self.key_focus = Some(key);
-                }
-            }
+            AccessAction::Click => self.click_node(key, out),
             AccessAction::Focus => {
-                if self.edit.contains(key) {
-                    self.edit.set_focus(Some(key));
-                    self.edit.caret_moved = Some(key);
-                } else if idx.is_some_and(|i| self.tree.specs[i].on_key.is_some()) {
-                    self.edit.set_focus(None);
-                    self.key_focus = Some(key);
+                // The reader's cursor lands where Tab would — on a node it
+                // can see (decoration is not in its tree); show it.
+                let exposed = self.access_tree().get(key).is_some();
+                if exposed && idx.is_some_and(|i| crate::access::focusable(&self.tree, i)) {
+                    self.set_focus(Some(key));
+                    self.focus_visible = true;
                 }
             }
             AccessAction::Blur => {
-                if self.edit.focused() == Some(key) {
-                    self.edit.set_focus(None);
-                }
-                if self.key_focus == Some(key) {
-                    self.key_focus = None;
+                if self.focus == Some(key) {
+                    self.set_focus(None);
                 }
             }
             AccessAction::SetValue => {
@@ -488,24 +509,7 @@ impl Core {
             }
             AccessAction::Increment | AccessAction::Decrement => {
                 let Some(i) = idx else { return };
-                let spec = &self.tree.specs[i];
-                let tag = spec
-                    .on_click
-                    .clone()
-                    .or_else(|| spec.on_drag.clone())
-                    .or_else(|| spec.on_key.clone());
-                let mut entries = vec![
-                    ("kind".to_string(), Value::str("access")),
-                    ("action".to_string(), Value::str(req.action.name())),
-                ];
-                if let Some(tag) = tag.filter(|t| *t != Value::Null) {
-                    entries.push(("tag".to_string(), tag));
-                }
-                out.push(UiEvent {
-                    origin: self.tree.origins[i],
-                    key,
-                    payload: Value::Map(entries),
-                });
+                self.nudge(i, req.action, out);
             }
             AccessAction::SetTextSelection | AccessAction::ReplaceSelectedText => {
                 let Some(i) = idx else { return };
@@ -624,7 +628,7 @@ impl Core {
                     edit: &self.edit,
                     scroll: &self.scroll,
                     title: self.window_title.as_deref(),
-                    key_focus: self.key_focus,
+                    focus: self.focus,
                     viewport: self.viewport,
                     scale: self.scale,
                 },
@@ -680,20 +684,24 @@ impl Core {
                 let p = parent as usize;
                 Rect::from_pos_size(self.tree.pos[p], self.tree.size[p])
             };
+            // A disabled node keeps hover (a tooltip can say why) and loses
+            // every interaction: it emits nothing and takes no focus.
+            let live = !spec.disabled;
             hits.push(HitRegion {
                 key: self.tree.keys[i],
                 origin: self.tree.origins[i],
                 rect,
                 clip,
-                payload: spec.on_click.clone(),
-                drag: spec.on_drag.clone(),
+                payload: spec.on_click.clone().filter(|_| live),
+                drag: spec.on_drag.clone().filter(|_| live),
                 parent_rect,
-                key_sink: spec.on_key.clone(),
+                key_sink: spec.on_key.clone().filter(|_| live),
+                focusable: crate::access::focusable(&self.tree, i),
                 edit_origin: None,
                 window: spec.window,
                 hover: spec.on_hover.clone(),
                 group: spec.hover_group,
-                click_sound: spec.click_sound,
+                click_sound: spec.click_sound.filter(|_| live),
                 hover_sound: spec.hover_sound,
             });
         }
@@ -728,6 +736,7 @@ impl Core {
                     parent_rect: rect,
                     edit_origin: Some(content_origin),
                     key_sink: None,
+                    focusable: !spec.disabled,
                     window: None,
                     hover: None,
                     group: None,
@@ -772,35 +781,120 @@ impl Core {
         }
     }
 
-    /// Moves edit focus to the next/previous edit widget in tree order
-    /// (from the last laid-out frame), wrapping around; with no current
-    /// focus, enters the first (or last, going backwards). The landing
-    /// field scrolls its caret into view like any caret motion.
-    fn focus_adjacent_edit(&mut self, forward: bool) {
-        let ring: Vec<Key> = self
-            .tree
-            .content
-            .iter()
-            .filter_map(|c| match c {
-                NodeContent::Edit(k) => Some(*k),
-                _ => None,
-            })
-            .collect();
+    /// Moves keyboard focus to the next / previous focusable node in tree
+    /// order (from the last laid-out frame; see `access::focusable`),
+    /// wrapping around; with no current focus, enters the first (or last,
+    /// going backwards). What Tab does. The landing node scrolls into
+    /// view, and the focus shows (ring or `focus_bg`), as keyboard focus
+    /// should.
+    pub fn focus_next(&mut self, forward: bool) {
+        let ring = self.focus_ring();
         if ring.is_empty() {
             return;
         }
-        let target = match self
-            .edit
-            .focused()
-            .and_then(|cur| ring.iter().position(|k| *k == cur))
-        {
-            Some(i) if forward => ring[(i + 1) % ring.len()],
-            Some(i) => ring[(i + ring.len() - 1) % ring.len()],
+        let at = self
+            .focus
+            .and_then(|cur| ring.iter().position(|(_, k)| *k == cur));
+        let (i, key) = match at {
+            Some(p) if forward => ring[(p + 1) % ring.len()],
+            Some(p) => ring[(p + ring.len() - 1) % ring.len()],
             None if forward => ring[0],
             None => ring[ring.len() - 1],
         };
-        self.edit.set_focus(Some(target));
-        self.edit.caret_moved = Some(target);
+        self.set_focus(Some(key));
+        self.focus_visible = true;
+        let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
+        self.scroll_rect_into_view(i, rect, false);
+    }
+
+    /// The Tab ring: (tree index, key) of every focusable node of the
+    /// last frame in tree order, `role="none"` subtrees skipped whole.
+    fn focus_ring(&self) -> Vec<(usize, Key)> {
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < self.tree.len() {
+            if self.tree.specs[i].role == Some(crate::access::Role::None) {
+                i = self.tree.subtree_end(i);
+                continue;
+            }
+            if crate::access::focusable(&self.tree, i) {
+                out.push((i, self.tree.keys[i]));
+            }
+            i += 1;
+        }
+        out
+    }
+
+    /// The focused node's index in the last frame, if it is there.
+    fn focus_index(&self) -> Option<usize> {
+        let key = self.focus?;
+        self.tree.keys.iter().position(|k| *k == key)
+    }
+
+    /// Whether the focused node is a key sink (it owns its keys).
+    fn focused_sink(&self) -> bool {
+        self.focus_index()
+            .is_some_and(|i| self.tree.specs[i].on_key.is_some())
+    }
+
+    /// The focused node when it is a control the core presses itself:
+    /// not an editor, not a key sink, and still focusable.
+    fn focused_control(&self) -> Option<usize> {
+        let i = self.focus_index()?;
+        let spec = &self.tree.specs[i];
+        let editor = matches!(self.tree.content[i], NodeContent::Edit(_));
+        (!editor && spec.on_key.is_none() && crate::access::focusable(&self.tree, i)).then_some(i)
+    }
+
+    /// Activates node `key` the way a pointer click would — against the
+    /// last frame's hit regions, so a disabled node emits nothing — for
+    /// Enter, Space and an assistive-technology `click`. Focus follows
+    /// into an editor or a sink, as a click's would.
+    fn click_node(&mut self, key: Key, out: &mut Vec<UiEvent>) {
+        let Some(h) = self.interaction.hits.iter().rev().find(|h| h.key == key) else {
+            return;
+        };
+        let (origin, payload, window, sound) =
+            (h.origin, h.payload.clone(), h.window, h.click_sound);
+        let takes_focus = h.focusable && (h.edit_origin.is_some() || h.key_sink.is_some());
+        if let Some(sound) = sound {
+            self.interaction.sound_requests.push(sound);
+        }
+        match (window, payload) {
+            (Some(crate::window::WindowRole::Button(b)), _) => {
+                self.interaction.window_commands.push(b.command())
+            }
+            (None, Some(payload)) => out.push(UiEvent {
+                origin,
+                key,
+                payload,
+            }),
+            _ => {}
+        }
+        if takes_focus {
+            self.set_focus(Some(key));
+        }
+    }
+
+    /// A slider nudge on node `i`: the core cannot know what a step means,
+    /// so it reaches the app as `{kind="access", action, tag}` — from the
+    /// arrow keys and from assistive technology alike.
+    fn nudge(&mut self, i: usize, action: crate::access::AccessAction, out: &mut Vec<UiEvent>) {
+        if self.tree.specs[i].disabled {
+            return;
+        }
+        let mut entries = vec![
+            ("kind".to_string(), Value::str("access")),
+            ("action".to_string(), Value::str(action.name())),
+        ];
+        if let Some(tag) = self.access_tag(i) {
+            entries.push(("tag".to_string(), tag));
+        }
+        out.push(UiEvent {
+            origin: self.tree.origins[i],
+            key: self.tree.keys[i],
+            payload: Value::Map(entries),
+        });
     }
 
     /// Sets one axis of a container's scroll offset, keeping the other.
@@ -834,8 +928,37 @@ impl Core {
         Some(text)
     }
 
+    /// Whether `key` holds keyboard focus — any node (see `focus`).
     pub fn is_focused(&self, key: Key) -> bool {
-        self.edit.focused() == Some(key)
+        self.focus == Some(key)
+    }
+
+    /// The node holding keyboard focus: an editor, an `on_key` sink, or
+    /// a control Tab (or assistive technology, or `set_focus`) put it on.
+    pub fn focus(&self) -> Option<Key> {
+        self.focus
+    }
+
+    /// Whether focus got where it is by keyboard or assistive technology
+    /// rather than a click — when it shows (the default ring, or the
+    /// node's `focus_bg`).
+    pub fn focus_visible(&self) -> bool {
+        self.focus_visible
+    }
+
+    /// Moves keyboard focus (None blurs). The one writer: the edit store
+    /// mirrors it for editor keys, and a landing editor scrolls its caret
+    /// into view. Any node can be focused this way; only focusable ones
+    /// (see `access::focusable`) are reached by Tab.
+    pub fn set_focus(&mut self, key: Option<Key>) {
+        let edit_key = key.filter(|k| self.edit.contains(*k));
+        if self.focus != key
+            && let Some(k) = edit_key
+        {
+            self.edit.caret_moved = Some(k);
+        }
+        self.focus = key;
+        self.edit.set_focus(edit_key);
     }
 
     /// Current text of an editor by key.
@@ -942,20 +1065,31 @@ impl Core {
         names
     }
 
-    /// Drains window intents produced by chrome nodes since the last drain.
-    /// Frame drivers call this after each input dispatch and apply the
-    /// commands to the real window; headless drivers may simply never call.
-    /// Directs full-keyboard `KeyDown` routing at a node that declared
-    /// `on_key` (None releases it). Apps that own their text model call
-    /// this every frame for whatever they consider focused — like the
-    /// window title, the declaration is idempotent; clicking another
-    /// sink moves focus too, and the next declaration wins it back.
+    /// Declares a node focused this frame (None blurs at once). The
+    /// declaration is edge-triggered: the node takes focus on the first
+    /// frame it is declared and keeps being declared without effect
+    /// afterwards, so a view that repeats it every frame (an app that
+    /// owns its keyboard, a `keyFocus` prop) does not clobber the focus a
+    /// Tab press or a click moved. Programmatic focus keeps the modality
+    /// of the last input (it shows after keyboard use, not after a
+    /// click). To move focus at any time, `set_focus`.
     pub fn set_key_focus(&mut self, key: Option<Key>) {
-        self.key_focus = key;
+        let Some(k) = key else {
+            self.set_focus(None);
+            return;
+        };
+        if !self.declared_focus.contains(&k) {
+            self.declared_focus.push(k);
+        }
+        if !self.declared_focus_last.contains(&k) {
+            self.set_focus(Some(k));
+        }
     }
 
+    /// The node holding keyboard focus (the same as `focus`; kept from
+    /// when only key sinks and editors could).
     pub fn key_focus(&self) -> Option<Key> {
-        self.key_focus
+        self.focus
     }
 
     /// Queues a window command as if chrome had produced it, so apps can
@@ -965,6 +1099,9 @@ impl Core {
         self.interaction.window_commands.push(cmd);
     }
 
+    /// Drains window intents produced by chrome nodes since the last drain.
+    /// Frame drivers call this after each input dispatch and apply the
+    /// commands to the real window; headless drivers may simply never call.
     pub fn take_window_commands(&mut self) -> Vec<crate::window::WindowCommand> {
         std::mem::take(&mut self.interaction.window_commands)
     }
@@ -1162,6 +1299,10 @@ impl Core {
         self.viewport = viewport;
         self.scale = scale;
         self.window_title = None;
+        // Last frame's focus declarations are what this frame's are
+        // compared against (see `set_key_focus`).
+        std::mem::swap(&mut self.declared_focus, &mut self.declared_focus_last);
+        self.declared_focus.clear();
         self.tree.clear();
         self.display.clear();
         self.text.begin_frame(scale);
@@ -1327,11 +1468,15 @@ impl Core {
         out
     }
 
-    /// Swaps in the hover / pressed background the spec declares for the
-    /// node's (or its group's) current pointer state. Runs before easing so
-    /// a `transition` tweens between the states.
+    /// Swaps in the hover / pressed / focus background the spec declares
+    /// for the node's (or its group's) current state: pressed wins over
+    /// keyboard-visible focus wins over hover. A disabled node keeps its
+    /// plain `bg`. Runs before easing so a `transition` tweens between
+    /// the states.
     fn resolve_hover_style(&self, key: Key, spec: &mut NodeSpec) {
-        if spec.hover_bg.is_none() && spec.pressed_bg.is_none() {
+        if spec.disabled
+            || (spec.hover_bg.is_none() && spec.pressed_bg.is_none() && spec.focus_bg.is_none())
+        {
             return;
         }
         let group = spec.hover_group;
@@ -1340,7 +1485,10 @@ impl Core {
         let hovered = pressed
             || self.interaction.is_hovered(key)
             || group.is_some_and(|g| self.interaction.is_group_hovered(g));
+        let focused = self.focus_visible && self.focus == Some(key);
         if pressed && let Some(c) = spec.pressed_bg {
+            spec.style.bg = c;
+        } else if focused && let Some(c) = spec.focus_bg {
             spec.style.bg = c;
         } else if hovered && let Some(c) = spec.hover_bg {
             spec.style.bg = c;
@@ -1440,6 +1588,11 @@ impl Core {
             self.text.font_system_mut(),
             &self.resources,
         );
+        // Autofocus takes the keyboard only while nothing holds it — never
+        // from a control Tab landed on.
+        if opts.autofocus && self.focus.is_none() && !spec.disabled {
+            self.set_focus(Some(key));
+        }
         let parent = self.current();
         self.tree
             .push(parent, key, self.origin, spec, NodeContent::Edit(key));
@@ -1683,6 +1836,8 @@ impl Core {
             }
         }
 
+        self.emit_focus_ring(scale);
+
         self.interaction.set_hits(hits);
         // A new frame can move a hover-sound node under a still cursor.
         self.flush_sound_requests();
@@ -1786,6 +1941,48 @@ impl Core {
                 payload: Value::Map(entries),
             });
         }
+    }
+
+    /// After content and scrollbars: the default focus ring around the
+    /// keyboard-visibly focused node, on top of everything, in the same
+    /// display list every binding draws. Not for editors (the caret shows
+    /// focus), key sinks (an app surface styles itself, through
+    /// `is_focused` / `focus_visible`) or nodes declaring `focus_bg`.
+    fn emit_focus_ring(&mut self, scale: f32) {
+        if !self.focus_visible {
+            return;
+        }
+        let Some(i) = self.focus_index() else {
+            return;
+        };
+        let spec = &self.tree.specs[i];
+        let editor = matches!(self.tree.content[i], NodeContent::Edit(_))
+            || spec.role.is_some_and(crate::access::Role::is_editor);
+        if editor || spec.on_key.is_some() || spec.focus_bg.is_some() || spec.disabled {
+            return;
+        }
+        let node = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
+        let rect = Rect::new(
+            node.x - FOCUS_RING_GAP,
+            node.y - FOCUS_RING_GAP,
+            node.w + 2.0 * FOCUS_RING_GAP,
+            node.h + 2.0 * FOCUS_RING_GAP,
+        );
+        let clip = self.clips.get(i).copied().unwrap_or(NO_CLIP);
+        let visible = rect.intersect(&clip);
+        if visible.w <= 0.0 || visible.h <= 0.0 {
+            return;
+        }
+        self.display.quads.push(Quad {
+            rect: rect.scaled(scale),
+            color: Color::TRANSPARENT,
+            border_color: FOCUS_RING,
+            radius: spec.style.radius.map(|r| (r + FOCUS_RING_GAP) * scale),
+            border_w: FOCUS_RING_W * scale,
+            kind: QuadKind::Solid,
+            uv: [0; 4],
+            clip: clip.scaled(scale),
+        });
     }
 
     /// See the `ime_rect` field. None when no editor is focused.

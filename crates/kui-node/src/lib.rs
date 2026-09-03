@@ -853,9 +853,50 @@ impl Ctx {
         Ok(self.core.is_pressed(parse_key(&key)?))
     }
 
+    /// Whether a node holds keyboard focus — any node: an editor, an
+    /// `onKey` sink, a button Tab landed on (see `focused`).
     #[napi]
     pub fn is_focused(&self, key: String) -> Result<bool> {
         Ok(self.core.is_focused(parse_key(&key)?))
+    }
+
+    /// The node holding keyboard focus (hex key), or null.
+    #[napi]
+    pub fn focused(&self) -> Option<String> {
+        self.core.focus().map(key_str)
+    }
+
+    /// Whether focus got where it is by keyboard or assistive technology
+    /// rather than a click — when it shows (the ring, or `focusBg`).
+    #[napi]
+    pub fn focus_visible(&self) -> bool {
+        self.core.focus_visible()
+    }
+
+    /// Moves keyboard focus to a node now (an editor, an `onKey` sink, a
+    /// control, a `focusable` box); `keyFocus` on a box is the declarative,
+    /// edge-triggered form.
+    #[napi]
+    pub fn focus(&mut self, key: String) -> Result<()> {
+        self.core.set_focus(Some(parse_key(&key)?));
+        Ok(())
+    }
+
+    #[napi]
+    pub fn blur(&mut self) {
+        self.core.set_focus(None);
+    }
+
+    /// What Tab does: the next focusable node in tree order, wrapping.
+    #[napi]
+    pub fn focus_next(&mut self) {
+        self.core.focus_next(true);
+    }
+
+    /// What Shift-Tab does.
+    #[napi]
+    pub fn focus_prev(&mut self) {
+        self.core.focus_next(false);
     }
 
     #[napi]
@@ -1145,6 +1186,48 @@ impl KuiWindow {
     #[napi]
     pub fn is_focused(&mut self, key: String) -> Result<bool> {
         Ok(self.runner.core_mut().is_focused(parse_key(&key)?))
+    }
+
+    /// The node holding keyboard focus (hex key), or null.
+    #[napi]
+    pub fn focused(&mut self) -> Option<String> {
+        self.runner.core_mut().focus().map(key_str)
+    }
+
+    /// Whether focus got where it is by keyboard or assistive technology
+    /// rather than a click (when the ring / `focusBg` shows).
+    #[napi]
+    pub fn focus_visible(&mut self) -> bool {
+        self.runner.core_mut().focus_visible()
+    }
+
+    /// Moves keyboard focus to a node now; `keyFocus` on a box is the
+    /// declarative, edge-triggered form.
+    #[napi]
+    pub fn focus(&mut self, key: String) -> Result<()> {
+        self.runner.core_mut().set_focus(Some(parse_key(&key)?));
+        self.runner.request_redraw();
+        Ok(())
+    }
+
+    #[napi]
+    pub fn blur(&mut self) {
+        self.runner.core_mut().set_focus(None);
+        self.runner.request_redraw();
+    }
+
+    /// What Tab does: the next focusable node in tree order, wrapping.
+    #[napi]
+    pub fn focus_next(&mut self) {
+        self.runner.core_mut().focus_next(true);
+        self.runner.request_redraw();
+    }
+
+    /// What Shift-Tab does.
+    #[napi]
+    pub fn focus_prev(&mut self) {
+        self.runner.core_mut().focus_next(false);
+        self.runner.request_redraw();
     }
 
     /// Hover state as of the last frame (keys come from events, e.g. an
@@ -1476,6 +1559,7 @@ fn access_tree_json(tree: &kui_core::AccessTree) -> Json {
             o.insert("valueMin".into(), opt_num(n.min));
             o.insert("valueMax".into(), opt_num(n.max));
             o.insert("focused".into(), Json::Bool(n.focused));
+            o.insert("disabled".into(), Json::Bool(n.disabled));
             o.insert(
                 "scroll".into(),
                 n.scroll.map_or(Json::Null, |s| {

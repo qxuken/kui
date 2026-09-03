@@ -91,6 +91,9 @@ pub const P_VALUE_MIN: u32 = 57;
 pub const P_VALUE_MAX: u32 = 58;
 pub const P_CARET: u32 = 59;
 pub const P_SELECTION_ANCHOR: u32 = 60;
+pub const P_FOCUSABLE: u32 = 61;
+pub const P_DISABLED: u32 = 62;
+pub const P_FOCUS_BG: u32 = 63;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -397,6 +400,20 @@ pub const PROPS: &[PropDef] = &[
         doc: "Hover-track without a click payload (for isHovered-driven styling).",
     },
     PropDef {
+        name: "focusable",
+        id: P_FOCUSABLE,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.focusable()),
+        doc: "Reachable by Tab (and focused by a click) without a click payload or a control role — a row that opens on Enter. Editors, key sinks, `onClick` boxes and the control roles are focusable already.",
+    },
+    PropDef {
+        name: "disabled",
+        id: P_DISABLED,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.disabled(true)),
+        doc: "Inert: no click, drag or key sink, no hover / pressed / focus background, skipped by Tab, reported disabled to assistive technology; hover tracking stays so a `tooltip` can say why.",
+    },
+    PropDef {
         name: "hoverBg",
         id: P_HOVER_BG,
         kind: Kind::Color,
@@ -409,6 +426,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Color,
         apply: Apply::SpecColor(|s, c| s.pressed_bg(c)),
         doc: "Background while pressed (or while its hoverGroup is); implies hover tracking.",
+    },
+    PropDef {
+        name: "focusBg",
+        id: P_FOCUS_BG,
+        kind: Kind::Color,
+        apply: Apply::SpecColor(|s, c| s.focus_bg(c)),
+        doc: "Background while the node holds keyboard-visible focus (moved there by Tab or assistive technology, not a click); replaces the default focus ring. Pressed wins over focus wins over hover; eases with `transition`.",
     },
     PropDef {
         name: "hoverGroup",
@@ -713,7 +737,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`keyFocus`",
         lua: "`key_focus`",
         c: "`kui_set_key_focus`",
-        doc: "Routes the keyboard at this `onKey` sink this frame.",
+        doc: "Focuses this node (an `onKey` sink, an editor, any focusable node) when it starts being declared: declared every frame it takes focus once, so a later Tab press is not clobbered. To move focus at any time call `focus(key)` (`ctx.focus`, `kui_focus`).",
     },
     CustomProp {
         name: "key",
@@ -954,7 +978,7 @@ pub const EVENTS: &[EventDef] = &[
     EventDef {
         kind: "access",
         payload: "`{ kind: \"access\", action, tag, text?, anchor?: { line, offset }, focus?: { line, offset } }`",
-        doc: "Assistive technology asked for what only the app can do: `increment` / `decrement` on a `slider` role; `setValue` / `replaceSelectedText` (with `text`) / `setTextSelection` (with `anchor` and `focus` as line ordinals and byte offsets) on a custom editor. `tag` is the node's `onClick` payload (or its `onDrag` / `onKey` tag). Every other request resolves in the core and arrives as the events a pointer would have produced.",
+        doc: "Assistive technology — or the keyboard — asked for what only the app can do: `increment` / `decrement` on a `slider` role (a reader's nudge, or the arrow keys on the focused slider); `setValue` / `replaceSelectedText` (with `text`) / `setTextSelection` (with `anchor` and `focus` as line ordinals and byte offsets) on a custom editor. `tag` is the node's `onClick` payload (or its `onDrag` / `onKey` tag). Every other request resolves in the core and arrives as the events a pointer would have produced.",
     },
 ];
 

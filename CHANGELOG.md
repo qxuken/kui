@@ -9,6 +9,30 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **Keyboard focus as data** (`docs/adr/0002-keyboard-focus-as-data.md`).
+  One focus in the core for every node, and every control the access
+  tree knows is a Tab stop: editors, `onKey` sinks, `onClick` boxes, the
+  control roles (`button`, `checkbox`, `radio`, `switch`, `slider`,
+  `tab`, `link`) and any node declaring the new `focusable` flag — in
+  tree order, wrapping, never a `disabled` node, `role="none"` decoration
+  or window chrome. Enter and Space press the focused control (the same
+  event a click emits), the arrows nudge a focused slider (the same
+  `increment` / `decrement` access events), Escape lets go. Keyboard
+  focus scrolls its node into view and draws a ring on top of the frame,
+  in every binding, unless the node declares `focusBg` (pressed wins over
+  focus wins over hover); a click's focus draws nothing, like the web's
+  `:focus-visible`. `disabled` is a row: an inert node that keeps its
+  tooltip and tells a screen reader so. The access tree reports `focused`
+  and `disabled` on every node, every focusable node advertises `focus`
+  / `blur`, and a reader's focus request lands where Tab would — which is
+  what makes VoiceOver's cursor follow into buttons instead of stopping
+  at editors. New calls: `ui.focus(key)` / `blur()` / `focus_next()` /
+  `focus_prev()` / `focused()` / `focus_visible()` (`ctx.focus(key)`,
+  `ctx.focused()`, ... in Node; `kui_focus`, `kui_focus_next`,
+  `kui_focused`, `kui_focus_visible` in C; `env.focus` /
+  `env.focus_visible` in Lua). `scripts/ax-audit.swift` gained a
+  keyboard-focus section: a reader focusing a button, and a real Tab
+  keystroke moving on.
 - **Accessibility as data** (`docs/adr/0001-accessibility-as-data.md`).
   Two props on every node in every binding, `role` and `label` (with
   `checked` for checkbox / radio / switch roles and `valueNow` /
@@ -95,6 +119,17 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Changed
 
+- `ui.take_key_focus(key)` / `<box keyFocus>` / `key_focus = true` /
+  `kui_set_key_focus` are edge-triggered: the node takes focus on the
+  first frame it is declared, and a declaration repeated every frame no
+  longer wins focus back from a Tab press or a click. Apps that relied on
+  that call `focus(key)` when they mean it. `is_focused` (`isFocused`,
+  `kui_is_focused`, `env.is_focused`) answers for any node, not editors
+  only; `key_focus()` answers the same unified focus. An `autofocus`
+  editor no longer takes focus from a focused control.
+- `KuiSpec` gained `focusable`, `disabled` and `focus_bg` (appended; a
+  zeroed struct means what it meant); `KuiAccessNode.flags` gained
+  `KUI_ACCESS_DISABLED`.
 - `KuiMsg`: the docs now say to register only the app's own messages.
   `CoreMsg` is typed in terms of the registration, so registering
   `MyMsg | CoreMsg` made the alias circular.
@@ -103,6 +138,16 @@ upgrades remove code from the apps on it is doing the job.
 
 ### What you can delete
 
+- **A "keyboard users can't reach the buttons" issue**, and the custom
+  Tab handling an app wrote around it: every control is a Tab stop, Enter
+  and Space press it, and the ring draws itself.
+- **A `focused` field in the model** mirrored into styling by hand, and
+  the per-frame `take_key_focus` that pinned it: `is_focused` answers for
+  any node, `focus_visible` says whether to show it, and `focusBg` does
+  the styling with no query at all.
+- **A "disabled" bool that only changed a colour** while the click still
+  fired: `disabled` makes the node inert everywhere at once — pointer,
+  keyboard, screen reader.
 - **The "we'll do accessibility later" ticket.** A screen reader sees the
   buttons, editors and lists a view already declares; what it cannot
   name, the warnings list by node.

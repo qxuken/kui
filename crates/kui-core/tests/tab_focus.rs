@@ -56,7 +56,7 @@ fn tab_cycles_and_shift_tab_reverses() {
 fn multiline_keeps_tab_as_indentation() {
     let mut core = Core::new();
     let keys = frame(&mut core, false);
-    core.edit.set_focus(Some(keys[3]));
+    core.set_focus(Some(keys[3]));
     tab(&mut core, Mods::default());
     assert_eq!(core.edit.focused(), Some(keys[3]), "focus stays");
     assert!(
@@ -72,7 +72,7 @@ fn tab_with_no_focus_enters_the_ring() {
     assert_eq!(core.edit.focused(), None);
     tab(&mut core, Mods::default());
     assert_eq!(core.edit.focused(), Some(keys[0]));
-    core.edit.set_focus(None);
+    core.set_focus(None);
     tab(&mut core, SHIFT);
     assert_eq!(
         core.edit.focused(),

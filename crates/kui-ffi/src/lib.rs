@@ -225,6 +225,17 @@ pub struct KuiSpec {
     /// KUI_VALUE_ANCHOR in `value_set` say which are present).
     pub caret: u32,
     pub selection_anchor: u32,
+    /// Non-zero: reachable by Tab (and focused by a click) without a click
+    /// payload or a control role (docs/adr/0002-keyboard-focus-as-data.md).
+    pub focusable: u32,
+    /// Non-zero: inert — no click, drag or key sink, no hover / pressed /
+    /// focus background, skipped by Tab, reported disabled to assistive
+    /// technology; hover tracking stays so a tooltip can say why.
+    pub disabled: u32,
+    /// 0xRRGGBBAA background while the node holds keyboard-visible focus
+    /// (Tab or assistive technology put it there); 0 = the core's default
+    /// ring.
+    pub focus_bg: u32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -319,6 +330,9 @@ pub const KUI_ACCESS_HAS_NUMBER: u32 = 1 << 5;
 pub const KUI_ACCESS_HAS_MIN: u32 = 1 << 6;
 pub const KUI_ACCESS_HAS_MAX: u32 = 1 << 7;
 pub const KUI_ACCESS_HAS_SCROLL: u32 = 1 << 8;
+/// The node is `disabled`: inert, not a Tab stop (bit 9 is
+/// KUI_ACCESS_HAS_TEXT_SELECTION).
+pub const KUI_ACCESS_DISABLED: u32 = 1 << 10;
 
 pub const KUI_VALUE_NOW: u32 = 1 << 0;
 pub const KUI_VALUE_MIN: u32 = 1 << 1;
@@ -700,6 +714,15 @@ fn spec_of(
     }
     if s.value_set & KUI_VALUE_ANCHOR != 0 {
         spec = spec.selection_anchor(s.selection_anchor);
+    }
+    if s.focusable != 0 {
+        spec = spec.focusable();
+    }
+    if s.disabled != 0 {
+        spec = spec.disabled(true);
+    }
+    if s.focus_bg != 0 {
+        spec = spec.focus_bg(color_of(s.focus_bg));
     }
     if let Some(v) = take_msg(on_click) {
         spec = spec.on_click(v);
@@ -1491,9 +1514,11 @@ pub extern "C" fn kui_open_with(
     })
 }
 
-/// Routes the keyboard at a key-sink node (one opened with `on_key`) for
-/// this frame; 0 clears. Declare it every frame you want it, like the
-/// window title. A focused editor still wins.
+/// Declares `key` focused this frame (0 blurs at once). Edge-triggered: the
+/// node takes focus on the first frame it is declared, and a declaration
+/// repeated every frame does not clobber a Tab press or a click. Any
+/// focusable node (an editor, an `on_key` sink, a control, a `focusable`
+/// box). To move focus at any time, `kui_focus`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_set_key_focus(ptr: *mut KuiCtx, key: u64) {
     guard((), || {
@@ -1501,6 +1526,46 @@ pub extern "C" fn kui_set_key_focus(ptr: *mut KuiCtx, key: u64) {
             c.core().set_key_focus((key != 0).then_some(Key(key)));
         }
     });
+}
+
+/// Moves keyboard focus to `key` now (0 blurs); see
+/// docs/adr/0002-keyboard-focus-as-data.md.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_focus(ptr: *mut KuiCtx, key: u64) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_focus((key != 0).then_some(Key(key)));
+        }
+    });
+}
+
+/// What Tab (`forward`) / Shift-Tab does: focus the next / previous
+/// focusable node in tree order, wrapping. A key sink that binds Tab
+/// itself calls this to hand the keyboard on.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_focus_next(ptr: *mut KuiCtx, forward: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().focus_next(forward);
+        }
+    });
+}
+
+/// The node holding keyboard focus; 0 for none.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_focused(ptr: *mut KuiCtx) -> u64 {
+    guard(0, || {
+        unsafe { ctx(ptr) }.map_or(0, |c| c.core().focus().map_or(0, |k| k.0))
+    })
+}
+
+/// Whether focus got where it is by keyboard or assistive technology
+/// rather than a click — when it shows (the core's ring, or `focus_bg`).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_focus_visible(ptr: *mut KuiCtx) -> bool {
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().focus_visible())
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -1735,6 +1800,9 @@ pub extern "C" fn kui_access_tree(ptr: *mut KuiCtx, out: *mut KuiAccessNode, cap
             }
             if n.anchor.is_some() && n.focus.is_some() {
                 flags |= KUI_ACCESS_HAS_TEXT_SELECTION;
+            }
+            if n.disabled {
+                flags |= KUI_ACCESS_DISABLED;
             }
             let scroll = n.scroll.unwrap_or_default();
             let (sel_start, sel_end) = n.selection.unwrap_or((0, 0));
@@ -2455,6 +2523,9 @@ mod schema_parity {
                 "hoverBg" => s.hover_bg = C,
                 "pressedBg" => s.pressed_bg = C,
                 "hoverGroup" => s.hover_group = name,
+                "focusable" => s.focusable = 1,
+                "disabled" => s.disabled = 1,
+                "focusBg" => s.focus_bg = C,
                 "clickSound" => s.click_sound = 7,
                 "hoverSound" => s.hover_sound = 7,
                 "role" => s.role = 2, // KUI_ROLE_* = Role::ALL index + 1; ROLES[1] = button
@@ -2586,6 +2657,9 @@ mod schema_parity {
             value_max: 10.0,
             caret: 0,
             selection_anchor: 0,
+            focusable: 1,
+            disabled: 1,
+            focus_bg: 0x11_22_33_ff,
         };
         let expected = NodeSpec::row()
             .width(Sizing::Grow(2.0))
@@ -2624,6 +2698,9 @@ mod schema_parity {
             .hover_bg(Color::hex(0x47_6c_e0_ff))
             .pressed_bg(Color::hex(0x2f_54_c4_ff))
             .hover_group("grp")
+            .focusable()
+            .disabled(true)
+            .focus_bg(Color::hex(0x11_22_33_ff))
             .role(kui_core::Role::Button)
             .label("lbl")
             .checked(true)

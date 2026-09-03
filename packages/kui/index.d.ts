@@ -206,7 +206,10 @@ export interface AccessNode {
   valueNow: number | null;
   valueMin: number | null;
   valueMax: number | null;
+  /** Holds keyboard focus (`focused()` names the same node). */
   focused: boolean;
+  /** Declared `disabled`: inert, and not a Tab stop. */
+  disabled: boolean;
   scroll: { x: number; y: number; maxX: number; maxY: number } | null;
   /** The requests this node accepts. */
   actions: AccessAction[];
@@ -445,7 +448,24 @@ export declare class Ctx {
   access(key: string, action: AccessAction, value?: string | AccessArg): void;
   isHovered(key: string): boolean;
   isPressed(key: string): boolean;
+  /** Whether a node holds keyboard focus — any node: an editor, an `onKey`
+   *  sink, a button Tab landed on. */
   isFocused(key: string): boolean;
+  /** The node holding keyboard focus, or null. Tab / Shift-Tab (`key('tab')`)
+   *  walk every control in tree order; Enter and Space press the focused
+   *  one; the arrows nudge a focused slider. */
+  focused(): string | null;
+  /** Whether focus got where it is by keyboard or assistive technology
+   *  rather than a click — when the focus ring (or `focusBg`) shows. */
+  focusVisible(): boolean;
+  /** Moves keyboard focus to a node now; `<box keyFocus>` is the
+   *  declarative form (it takes focus when it starts being declared). */
+  focus(key: string): void;
+  blur(): void;
+  /** What Tab / Shift-Tab do, as calls — for an `onKey` sink that binds
+   *  Tab itself and wants to hand the keyboard on. */
+  focusNext(): void;
+  focusPrev(): void;
   editText(key: string): string | null;
   setEditText(key: string, text: string): void;
   stats(): FrameStats;
@@ -522,6 +542,14 @@ export declare class KuiWindow {
   editText(key: string): string | null;
   setEditText(key: string, text: string): void;
   isFocused(key: string): boolean;
+  /** Keyboard focus as data, as on `Ctx`: the focused node, whether the
+   *  focus shows, and moving it (a move requests a redraw). */
+  focused(): string | null;
+  focusVisible(): boolean;
+  focus(key: string): void;
+  blur(): void;
+  focusNext(): void;
+  focusPrev(): void;
   /** Hover state as of the last frame; keys come from events (an `onHover`
    *  enter, a click). For plain hover styling prefer the `hoverBg` /
    *  `pressedBg` props — the core resolves those without a JS round trip. */

@@ -126,10 +126,16 @@ export interface GeneratedSpecProps {
   crossAlign?: 'start' | 'center' | 'end';
   /** Holds the `keyframes` cycle back by this many ms (CSS `animation-delay`); siblings with different delays run out of phase. */
   delay?: number;
+  /** Inert: no click, drag or key sink, no hover / pressed / focus background, skipped by Tab, reported disabled to assistive technology; hover tracking stays so a `tooltip` can say why. */
+  disabled?: boolean;
   /** Easing for `transition` (default easeOut); spring/bouncy integrate with momentum. */
   easing?: 'easeOut' | 'linear' | 'easeIn' | 'easeInOut' | 'spring' | 'bouncy';
   /** Where the node starts the first frame it is seen `{ dx?, dy?, width?, height?, bg?, radius? }`: those slots ease in from there over `transition` ms instead of snapping (`dx`/`dy` slide it in from that far away). */
   enter?: EnterProp;
+  /** Background while the node holds keyboard-visible focus (moved there by Tab or assistive technology, not a click); replaces the default focus ring. Pressed wins over focus wins over hover; eases with `transition`. */
+  focusBg?: ColorProp;
+  /** Reachable by Tab (and focused by a click) without a click payload or a control role — a row that opens on Enter. Editors, key sinks, `onClick` boxes and the control roles are focusable already. */
+  focusable?: boolean;
   /** Space between children along the main axis. */
   gap?: number;
   /** Cross-axis size: px | "fit" | "grow" | "N%". */
@@ -235,7 +241,10 @@ export interface CustomSpecProps {
   scrollX?: boolean;
   scrollY?: boolean;
   float?: 'below' | 'above' | 'parent' | 'viewport' | FloatProp;
-  /** Grabs key focus declaratively (focused editors still win). */
+  /** Focuses this node (an `onKey` sink, an editor, any focusable node)
+   *  when it starts being declared: declared every frame it takes focus
+   *  once, so a later Tab press is not clobbered. `ctx.focus(key)` moves
+   *  focus at any time. */
   keyFocus?: boolean;
   /** Hover hint: a tooltip floated below this box while it is hovered
    *  (implies hoverable). */

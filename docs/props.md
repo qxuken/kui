@@ -19,8 +19,11 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `clickSound` | `click_sound` | `click_sound` | resource handle | A registered sound (addSound) played when the node is clicked; implies hover tracking. |
 | `crossAlign` | `cross_align` | `cross_align` | `start` \\| `center` \\| `end` | Child alignment across the main axis. |
 | `delay` | `delay` | `delay_ms` | number | Holds the `keyframes` cycle back by this many ms (CSS `animation-delay`); siblings with different delays run out of phase. |
+| `disabled` | `disabled` | `disabled` | boolean | Inert: no click, drag or key sink, no hover / pressed / focus background, skipped by Tab, reported disabled to assistive technology; hover tracking stays so a `tooltip` can say why. |
 | `easing` | `easing` | `easing` (`KUI_EASE_*`) | `easeOut` \\| `linear` \\| `easeIn` \\| `easeInOut` \\| `spring` \\| `bouncy` | Easing for `transition` (default easeOut); spring/bouncy integrate with momentum. |
 | `enter` | `enter` | `enter` (`KuiEnter`, with `set` bits) | entrance (`{ dx?, dy?, width?, height?, bg?, radius? }`) | Where the node starts the first frame it is seen `{ dx?, dy?, width?, height?, bg?, radius? }`: those slots ease in from there over `transition` ms instead of snapping (`dx`/`dy` slide it in from that far away). |
+| `focusBg` | `focus_bg` | `focus_bg` | color (`#hex` or `0xRRGGBBAA`) | Background while the node holds keyboard-visible focus (moved there by Tab or assistive technology, not a click); replaces the default focus ring. Pressed wins over focus wins over hover; eases with `transition`. |
+| `focusable` | `focusable` | `focusable` | boolean | Reachable by Tab (and focused by a click) without a click payload or a control role — a row that opens on Enter. Editors, key sinks, `onClick` boxes and the control roles are focusable already. |
 | `gap` | `gap` | `gap` | number | Space between children along the main axis. |
 | `height` | `height` | `height` (KuiSizing) | sizing (`number` \\| `"fit"` \\| `"grow"` \\| `"N%"`) | Cross-axis size: px \| "fit" \| "grow" \| "N%". |
 | `hoverBg` | `hover_bg` | `hover_bg` | color (`#hex` or `0xRRGGBBAA`) | Background while hovered (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`. |
@@ -76,7 +79,7 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `dir="row" \| "column"` | `row { }` / `column { }` | `dir` (`KUI_ROW` / `KUI_COLUMN`) | Main axis; column is the default. |
 | `float="below" \| "above" \| "parent" \| "viewport"` or `{ anchor, at, self, dx, dy, fit }` | `float = "below"` or `float = { anchor=, at=, self=, dx=, dy=, fit= }` | `float_mode`, `float_anchor_x/y`, `float_self_x/y`, `float_dx/dy`, `float_fit` | Out-of-flow positioning against the parent or the viewport; `fit` flips/clamps to stay on screen. |
 | `key` | `key` | `kui_open_keyed` label | Stable identity for retained state (scroll offsets, editors, transitions; keys are hashes of the path from the root). |
-| `keyFocus` | `key_focus` | `kui_set_key_focus` | Routes the keyboard at this `onKey` sink this frame. |
+| `keyFocus` | `key_focus` | `kui_set_key_focus` | Focuses this node (an `onKey` sink, an editor, any focusable node) when it starts being declared: declared every frame it takes focus once, so a later Tab press is not clobbered. To move focus at any time call `focus(key)` (`ctx.focus`, `kui_focus`). |
 | `clip`, `scrollX`, `scrollY` | `clip`, `scroll_x`, `scroll_y` (`scroll` = `scroll_y`) | `overflow` bits `KUI_CLIP` \| `KUI_SCROLL_X` \| `KUI_SCROLL_Y` | Clip children; scroll (implies clip) with retained offsets and live scrollbars. |
 | `pad`, `padX`, `padY`, `padL`, `padR`, `padT`, `padB` | `pad = n` or `pad = { l, r, t, b }` | `pad_l`, `pad_r`, `pad_t`, `pad_b` | Padding; the shorthands resolve to four edges, the specific ones win. |
 | `size` (text) | `size` | `KuiTextStyle.size` | Font size in logical px; the text style is constructed from it, so declare it for the other style props to apply at that size. |
@@ -115,7 +118,7 @@ Node, `on_event(ev)` in Lua (payload fields plus `node_key`), and
 | modifiers | `{ kind: "modifiers", shift, ctrl, alt, super }` | The physical modifier state changed (delivered to the host on the root). |
 | changed / submit | `{ kind: "changed" }` / `{ kind: "submit" }`, with the editor's key on the event | An editor's text changed / Enter in a single-line editor. |
 | sound | `{ kind: "sound", phase: "ended", playback, tag }` | A tagged playback (`play(id, { tag })` or `<audio tag>`) finished on its own — never when something stopped it. |
-| access | `{ kind: "access", action, tag, text?, anchor?: { line, offset }, focus?: { line, offset } }` | Assistive technology asked for what only the app can do: `increment` / `decrement` on a `slider` role; `setValue` / `replaceSelectedText` (with `text`) / `setTextSelection` (with `anchor` and `focus` as line ordinals and byte offsets) on a custom editor. `tag` is the node's `onClick` payload (or its `onDrag` / `onKey` tag). Every other request resolves in the core and arrives as the events a pointer would have produced. |
+| access | `{ kind: "access", action, tag, text?, anchor?: { line, offset }, focus?: { line, offset } }` | Assistive technology — or the keyboard — asked for what only the app can do: `increment` / `decrement` on a `slider` role (a reader's nudge, or the arrow keys on the focused slider); `setValue` / `replaceSelectedText` (with `text`) / `setTextSelection` (with `anchor` and `focus` as line ordinals and byte offsets) on a custom editor. `tag` is the node's `onClick` payload (or its `onDrag` / `onKey` tag). Every other request resolves in the core and arrives as the events a pointer would have produced. |
 
 ## Resources
 

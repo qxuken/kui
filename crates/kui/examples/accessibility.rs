@@ -10,6 +10,14 @@
 //! With VoiceOver (⌘F5): VO-right walks the controls, VO-space presses
 //! the button, and inside either editor the arrow keys read by character
 //! and VO-arrows by word and line.
+//!
+//! With the keyboard alone (`docs/adr/0002-keyboard-focus-as-data.md`):
+//! Tab walks every control in order — the button, the icon button, the
+//! switch, the slider, the built-in editor, the app-owned editor — with a
+//! ring around the focused one; Enter or Space presses a button or flips
+//! the switch, the arrows move the slider, Escape lets go. The app-owned
+//! editor is a key sink, so it keeps Tab; its declaration below takes
+//! focus once, on the first frame, and never clobbers a Tab press.
 
 use kui::widgets;
 use kui::{

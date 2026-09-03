@@ -114,9 +114,9 @@ fn env_table<'scope, 'env: 'scope>(
     scope: &'scope mlua::Scope<'scope, 'env>,
     ui: &'env std::cell::RefCell<&'env mut Ui<'_>>,
 ) -> mlua::Result<Table> {
-    let (env, vp) = {
+    let (env, vp, focus, focus_visible) = {
         let ui = ui.borrow();
-        (ui.env(), ui.viewport())
+        (ui.env(), ui.viewport(), ui.focused(), ui.focus_visible())
     };
     let t = lua.create_table()?;
     if let Some(hz) = env.refresh_hz {
@@ -124,6 +124,13 @@ fn env_table<'scope, 'env: 'scope>(
     }
     t.set("frame_budget_ms", env.frame_budget_ms())?;
     t.set("focused", env.focused)?;
+    // Keyboard focus as data: the focused node's key (an integer, as
+    // events carry them; nil for none) and whether it shows — it got there
+    // by Tab or assistive technology rather than a click.
+    if let Some(k) = focus {
+        t.set("focus", k.0 as i64)?;
+    }
+    t.set("focus_visible", focus_visible)?;
     t.set("viewport_w", vp.w)?;
     t.set("viewport_h", vp.h)?;
     let win = env.window;

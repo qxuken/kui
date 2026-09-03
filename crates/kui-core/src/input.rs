@@ -263,6 +263,9 @@ pub struct HitRegion {
     /// Key-sink tag when the node declared `on_key`: clicking it takes
     /// key focus, and key presses then arrive on it carrying this tag.
     pub key_sink: Option<Value>,
+    /// A press on this node moves keyboard focus to it (an editor, a
+    /// sink, a control, a `focusable` node — never a disabled one).
+    pub focusable: bool,
     /// Window-chrome role: interactions become `WindowCommand`s, not events.
     pub window: Option<WindowRole>,
     /// Hover tag when the node declared `on_hover`: the pointer entering or
@@ -669,6 +672,7 @@ mod tests {
             parent_rect: Rect::new(0.0, 0.0, 0.0, 0.0),
             edit_origin: None,
             key_sink: None,
+            focusable: true,
             window: None,
             hover: None,
             group: None,

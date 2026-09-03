@@ -242,6 +242,18 @@ typedef struct KuiSpec {
      * KUI_VALUE_ANCHOR are in value_set. */
     uint32_t caret;
     uint32_t selection_anchor;
+    /* Keyboard focus (docs/adr/0002-keyboard-focus-as-data.md). focusable:
+     * non-zero puts the node in the Tab ring (and a click focuses it)
+     * without a click payload or a control role; editors, on_key sinks,
+     * on_click nodes and the control roles are focusable already.
+     * disabled: non-zero makes the node inert — no click, drag or key sink,
+     * no hover / pressed / focus background, skipped by Tab, reported to
+     * assistive technology (hover tracking stays so a tooltip can say why).
+     * focus_bg: 0xRRGGBBAA while the node holds keyboard-visible focus (Tab
+     * or assistive technology put it there); 0 = the core's default ring. */
+    uint32_t focusable;
+    uint32_t disabled;
+    uint32_t focus_bg;
 } KuiSpec;
 
 /* Roles (KuiSpec.role, KuiAccessNode.role). The first fifteen can be
@@ -292,6 +304,7 @@ enum {
     KUI_ACCESS_HAS_MAX = 1u << 7,
     KUI_ACCESS_HAS_SCROLL = 1u << 8,
     KUI_ACCESS_HAS_TEXT_SELECTION = 1u << 9,
+    KUI_ACCESS_DISABLED = 1u << 10, /* declared disabled: inert, not a Tab stop */
 };
 
 /* One node of the access tree (kui_access_tree): what assistive technology
@@ -527,9 +540,26 @@ uint64_t kui_open_draggable(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
 uint64_t kui_open_with(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
                        KuiValue *on_click, KuiValue *on_drag, KuiValue *on_key,
                        KuiValue *on_hover);
-/* Routes the keyboard at a key-sink node for this frame (0 clears). Declare
- * it every frame you want it, like the title; a focused editor still wins. */
+/* -- Keyboard focus (docs/adr/0002-keyboard-focus-as-data.md) ------------ */
+/* One focus for every node: editors, on_key sinks, on_click nodes, the
+ * control roles and `focusable` boxes are Tab stops in tree order; Enter
+ * and Space press the focused control, the arrows nudge a focused slider
+ * (increment / decrement access events), a key sink keeps every key (Tab
+ * included) and hands focus on with kui_focus_next. Keyboard focus draws a
+ * ring (or the node's focus_bg); a click's does not. */
+/* Declares key focused this frame (0 blurs at once). Edge-triggered: the
+ * node takes focus on the first frame it is declared, and a declaration
+ * repeated every frame does not clobber a Tab press or a click. */
 void kui_set_key_focus(KuiCtx *ctx, uint64_t key);
+/* Moves focus to key now (0 blurs). */
+void kui_focus(KuiCtx *ctx, uint64_t key);
+/* What Tab (forward) / Shift-Tab does: the next / previous focusable node,
+ * wrapping. */
+void kui_focus_next(KuiCtx *ctx, bool forward);
+/* The focused node's key, 0 for none; and whether the focus shows (it got
+ * there by keyboard or assistive technology, not a click). */
+uint64_t kui_focused(KuiCtx *ctx);
+bool kui_focus_visible(KuiCtx *ctx);
 /* -- Fonts ---------------------------------------------------------------- */
 /* Registers a font from file bytes (TTF/OTF/TTC, copied); returns a handle
  * for KuiTextStyle.font, 0 when the data holds no usable face. */

@@ -358,6 +358,22 @@ pub struct NodeSpec {
     /// (see [`crate::access`]).
     pub caret: Option<u32>,
     pub selection_anchor: Option<u32>,
+    /// Reachable by Tab, and focused by a click or an assistive-technology
+    /// request, without a click payload or a control role — a list row
+    /// that opens on Enter, a card. Controls (editors, key sinks,
+    /// `on_click` boxes, the control roles) are focusable already; see
+    /// `docs/adr/0002-keyboard-focus-as-data.md`.
+    pub focusable: bool,
+    /// Inert: keeps its hit region (so a tooltip can say why) and loses
+    /// everything else — no click, drag or key sink, no hover / pressed /
+    /// focus background, no place in the Tab ring; the access tree
+    /// reports it disabled.
+    pub disabled: bool,
+    /// Background while this node holds keyboard-visible focus (focus
+    /// moved by Tab or by assistive technology, not by a click).
+    /// Declaring one replaces the ring the core draws by default. Pressed
+    /// wins over focus wins over hover; eases with `transition`.
+    pub focus_bg: Option<Color>,
 }
 
 impl NodeSpec {
@@ -365,6 +381,7 @@ impl NodeSpec {
     /// interaction props, or an explicit `hoverable`).
     pub fn hover_tracked(&self) -> bool {
         self.hoverable
+            || self.focusable
             || self.on_click.is_some()
             || self.on_drag.is_some()
             || self.on_key.is_some()
@@ -571,6 +588,25 @@ impl NodeSpec {
     /// Background while pressed (see the `pressed_bg` field).
     pub fn pressed_bg(mut self, c: Color) -> Self {
         self.pressed_bg = Some(c);
+        self
+    }
+
+    /// Background while keyboard-visibly focused (see the `focus_bg`
+    /// field); replaces the default focus ring.
+    pub fn focus_bg(mut self, c: Color) -> Self {
+        self.focus_bg = Some(c);
+        self
+    }
+
+    /// Puts this node in the Tab ring (see the `focusable` field).
+    pub fn focusable(mut self) -> Self {
+        self.focusable = true;
+        self
+    }
+
+    /// Makes this node inert (see the `disabled` field).
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
         self
     }
 

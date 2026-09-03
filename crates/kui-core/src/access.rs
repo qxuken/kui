@@ -188,7 +188,8 @@ pub enum AccessAction {
     /// Activate: the node's `on_click` payload is emitted (a window button
     /// issues its command; an editor or key sink takes focus).
     Click,
-    /// Give the node keyboard focus (editors and `on_key` sinks).
+    /// Give the node keyboard focus — any focusable node (an editor, a key
+    /// sink, a control, a `focusable` box); it shows, as after Tab.
     Focus,
     Blur,
     /// Replace an editor's text (`AccessRequest::value`); a `changed` event
@@ -383,8 +384,11 @@ pub struct AccessNode {
     pub number: Option<f32>,
     pub min: Option<f32>,
     pub max: Option<f32>,
-    /// Holds keyboard focus (an editor, or the key sink declared focused).
+    /// Holds keyboard focus (`Core::focus`; see
+    /// `docs/adr/0002-keyboard-focus-as-data.md`).
     pub focused: bool,
+    /// Declared `disabled`: inert, and not in the Tab ring.
+    pub disabled: bool,
     pub scroll: Option<ScrollState>,
     /// Bitset of [`AccessAction::bit`].
     pub actions: u32,
@@ -504,8 +508,9 @@ pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
     if spec.layout.scroll_x || spec.layout.scroll_y {
         return Some(Role::ScrollView);
     }
-    if spec.on_key.is_some() {
-        // A key sink is at least somewhere focus can land.
+    if spec.on_key.is_some() || spec.focusable {
+        // A key sink or a focusable box is at least somewhere focus can
+        // land, so a reader has to be able to see it there.
         return Some(Role::Group);
     }
     None
@@ -516,6 +521,26 @@ pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
 pub(crate) fn is_custom_editor(tree: &Tree, i: usize) -> bool {
     tree.specs[i].role.is_some_and(Role::is_editor)
         && !matches!(tree.content[i], NodeContent::Edit(_))
+}
+
+/// Whether node `i` can hold keyboard focus (see
+/// `docs/adr/0002-keyboard-focus-as-data.md`): an editor, a key sink, a
+/// control role, a derived button (`on_click`), or a node declaring
+/// `focusable` — never a disabled node, decoration or window chrome. The
+/// Tab ring is these nodes in tree order; a `role="none"` subtree is
+/// skipped by the walk, not here.
+pub(crate) fn focusable(tree: &Tree, i: usize) -> bool {
+    let spec = &tree.specs[i];
+    if spec.disabled || spec.role == Some(Role::None) || spec.window.is_some() {
+        return false;
+    }
+    if spec.focusable || spec.on_key.is_some() || matches!(tree.content[i], NodeContent::Edit(_)) {
+        return true;
+    }
+    match spec.role {
+        Some(r) => r.is_control(),
+        None => spec.on_click.is_some(),
+    }
 }
 
 /// The role, name and presentation of node `i`, or None when it is plain
@@ -598,7 +623,8 @@ pub(crate) struct Sources<'a> {
     pub edit: &'a EditStore,
     pub scroll: &'a ScrollStore,
     pub title: Option<&'a str>,
-    pub key_focus: Option<Key>,
+    /// The core's one keyboard focus (see `Core::focus`).
+    pub focus: Option<Key>,
     pub viewport: Size,
     pub scale: f32,
 }
@@ -612,7 +638,6 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
     // Per tree node: the key of the nearest semantic ancestor (for elided
     // nodes, inherited from the parent).
     let mut parents: Vec<Option<Key>> = vec![None; tree.len()];
-    let edit_focus = src.edit.focused();
     let mut skip_until = 0usize;
     let mut i = 0usize;
     while i < tree.len() {
@@ -662,7 +687,8 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             number: None,
             min: None,
             max: None,
-            focused: false,
+            focused: src.focus == Some(key),
+            disabled: spec.disabled,
             scroll: None,
             actions: 0,
         };
@@ -671,14 +697,15 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             Some(WindowRole::Button(_)) => actions |= AccessAction::Click.bit(),
             Some(WindowRole::Drag) => {}
             None => {
-                if spec.on_click.is_some() {
+                if spec.on_click.is_some() && !spec.disabled {
                     actions |= AccessAction::Click.bit();
                 }
-                if spec.on_key.is_some() {
-                    actions |= AccessAction::Focus.bit() | AccessAction::Blur.bit();
-                    node.focused = src.key_focus == Some(key) && edit_focus.is_none();
-                }
             }
+        }
+        // Anything the keyboard can reach, assistive technology can focus
+        // (and AccessKit calls focusable only what supports `Focus`).
+        if focusable(tree, i) {
+            actions |= AccessAction::Focus.bit() | AccessAction::Blur.bit();
         }
         if let NodeContent::Edit(edit_key) = tree.content[i] {
             let pad = spec.layout.padding;
@@ -693,18 +720,19 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
                 node.anchor = node.text_pos(anchor.0, anchor.1);
                 node.focus = node.text_pos(focus.0, focus.1);
             }
-            node.focused = edit_focus == Some(edit_key);
-            actions |= AccessAction::Click.bit()
-                | AccessAction::Focus.bit()
-                | AccessAction::Blur.bit()
-                | AccessAction::SetValue.bit()
-                | AccessAction::SetTextSelection.bit()
-                | AccessAction::ReplaceSelectedText.bit();
+            if !spec.disabled {
+                actions |= AccessAction::Click.bit()
+                    | AccessAction::SetValue.bit()
+                    | AccessAction::SetTextSelection.bit()
+                    | AccessAction::ReplaceSelectedText.bit();
+            }
         } else if is_custom_editor(tree, i) {
             custom_editor(tree, src, i, &mut node);
-            actions |= AccessAction::SetValue.bit()
-                | AccessAction::SetTextSelection.bit()
-                | AccessAction::ReplaceSelectedText.bit();
+            if !spec.disabled {
+                actions |= AccessAction::SetValue.bit()
+                    | AccessAction::SetTextSelection.bit()
+                    | AccessAction::ReplaceSelectedText.bit();
+            }
         }
         match sem.role {
             Role::Checkbox | Role::Radio | Role::Switch => node.checked = Some(spec.checked),
@@ -712,7 +740,9 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
                 node.number = spec.value_now;
                 node.min = spec.value_min;
                 node.max = spec.value_max;
-                actions |= AccessAction::Increment.bit() | AccessAction::Decrement.bit();
+                if !spec.disabled {
+                    actions |= AccessAction::Increment.bit() | AccessAction::Decrement.bit();
+                }
             }
             _ => {}
         }
@@ -1065,7 +1095,7 @@ fn hash_of(tree: &AccessTree) -> u64 {
         mix_f32(&mut mix, n.number);
         mix_f32(&mut mix, n.min);
         mix_f32(&mut mix, n.max);
-        mix(&[n.focused as u8]);
+        mix(&[n.focused as u8, n.disabled as u8]);
         if let Some(s) = n.scroll {
             for v in [s.x, s.y, s.max_x, s.max_y] {
                 mix(&v.to_bits().to_le_bytes());

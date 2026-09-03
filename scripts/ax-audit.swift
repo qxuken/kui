@@ -328,5 +328,41 @@ if let code = all.first(where: { $0.title == "Source" }) {
     }
 }
 
+// -- Keyboard focus (docs/adr/0002-keyboard-focus-as-data.md) ------------
+// A reader moves keyboard focus by setting AXFocused; the core lands it
+// where Tab would, and reports it back as the application's focused
+// element. Then a real Tab keystroke moves it on to the next control.
+
+print("\n=== keyboard focus")
+func focusedTitle() -> String? {
+    guard let el = attr(app, kAXFocusedUIElementAttribute as String) else { return nil }
+    let e = el as! AXUIElement
+    return str(e, kAXTitleAttribute as String)
+}
+if let press = find(role: kAXButtonRole as String, title: "count 1") {
+    check(
+        "the button accepts focus",
+        AXUIElementSetAttributeValue(press.el, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+            == .success)
+    usleep(400_000)
+    check("the app reports it focused", focusedTitle(), "count 1")
+    check(
+        "AXFocused reads back",
+        (attr(press.el, kAXFocusedAttribute as String) as? Bool) ?? false)
+    // Tab: the next control in tree order (the icon button).
+    if let down = CGEvent(keyboardEventSource: nil, virtualKey: 0x30, keyDown: true),
+       let up = CGEvent(keyboardEventSource: nil, virtualKey: 0x30, keyDown: false)
+    {
+        down.postToPid(pid)
+        up.postToPid(pid)
+        usleep(400_000)
+        check("Tab moved focus to the next control", focusedTitle(), "Save")
+    } else {
+        check("Tab keystroke", false, "could not build a CGEvent")
+    }
+} else {
+    check("the button is focusable", false, "count 1 not found")
+}
+
 print("\n\(checks - failures)/\(checks) checks passed")
 exit(failures == 0 ? 0 : 1)

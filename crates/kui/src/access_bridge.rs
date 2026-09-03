@@ -245,6 +245,9 @@ mod imp {
             if let Some(c) = n.checked {
                 node.set_toggled(if c { Toggled::True } else { Toggled::False });
             }
+            if n.disabled {
+                node.set_disabled();
+            }
             if let Some(v) = n.number {
                 node.set_numeric_value(v as f64);
             }
