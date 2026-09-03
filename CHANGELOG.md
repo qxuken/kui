@@ -9,6 +9,27 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **The binding-parity table is a build failure now.** `CUSTOM` and
+  `ELEMENTS` in `crates/kui-core/src/schema.rs` name the ten props and ten
+  elements every frontend lowers by hand, and until now that agreement was
+  about *names* only — nothing checked that four bindings did the same
+  thing with them. `kui_core::conformance` is a **scene corpus**: small
+  named scenes with the input to replay and the semantics to expect, each
+  declaring which `CUSTOM` and `ELEMENTS` rows it covers (a test fails
+  when a row has no scene). `conformance::drive` runs one and
+  `conformance::report` renders it as a line-oriented block with no
+  formatted floats in it — quad geometry travels as one FNV-1a digest —
+  so four languages can produce the same bytes. Four thin adapters read
+  the one corpus: Rust asserts it natively
+  (`crates/kui-core/tests/conformance.rs`), Lua re-expresses each scene as
+  the table a script returns (`crates/kui-lua/tests/conformance.rs`), C
+  rebuilds them through the C API alone (`./counter --conformance`), and
+  Node runs each scene on all three transports beside its existing
+  `assertParity` (`packages/kui/test.mjs`). The reference report is
+  generated per run (`cargo run -p kui-core --example conformance-dump`),
+  never checked in: its digests cover real glyph geometry, so it holds
+  only for the machine and fonts that made it — which is why all four
+  adapters run in CI's single `check` job.
 - **Keyboard focus as data** (`docs/adr/0002-keyboard-focus-as-data.md`).
   One focus in the core for every node, and every control the access
   tree knows is a Tab stop: editors, `onKey` sinks, `onClick` boxes, the
@@ -119,6 +140,12 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Changed
 
+- `KuiSpec` gained `tooltip` (appended; a zeroed struct means what it
+  meant): the C spelling of the `tooltip` prop the other bindings have —
+  it makes the node hover-tracked, becomes its accessible description,
+  and `kui_close` floats the hint below it while hovered. `kui_tooltip` /
+  `kui_tooltip_with` stay what they were, a hint that always draws.
+  `Ctx.windowTitle()` in Node reports the title a frame declared.
 - `ui.take_key_focus(key)` / `<box keyFocus>` / `key_focus = true` /
   `kui_set_key_focus` are edge-triggered: the node takes focus on the
   first frame it is declared, and a declaration repeated every frame no
@@ -138,6 +165,13 @@ upgrades remove code from the apps on it is doing the job.
 
 ### What you can delete
 
+- **"Does the C build do what the JSX build does?"** — the question, and
+  the hand-written probe app written to answer it. One corpus, four
+  adapters, one CI job: a binding that lowers a prop differently names
+  the scene and the line.
+- **A `kui_is_hovered` round trip around every C tooltip**, and the
+  accessible description it silently dropped: `KuiSpec.tooltip` is the
+  prop the other three bindings already had.
 - **A "keyboard users can't reach the buttons" issue**, and the custom
   Tab handling an app wrote around it: every control is a Tab stop, Enter
   and Space press it, and the ring draws itself.

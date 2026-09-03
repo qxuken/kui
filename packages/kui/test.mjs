@@ -5,8 +5,9 @@
 // Needs the addon built: npm run build:native. Run: npm test
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
-import { Ctx, createApp, decodeQuads, protocol } from './index.js';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { Ctx, createApp, decodeQuads, protocol, quadStride } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
@@ -679,4 +680,248 @@ test('sounds: click/hover props, the audio element, tagged playbacks', () => {
   ]);
   ctx.removeSound(snd);
   assert.deepEqual(ctx.audioCommands(), [{ kind: 'unload', sound: snd }]);
+});
+
+// ---------------------------------------------------------------------------
+// The scene corpus (crates/kui-core/src/conformance.rs)
+//
+// Transport parity above proves the three JS encoders agree with each other.
+// This proves they agree with the *reference*: kui-core builds the same
+// named scenes natively, dumps a report, and every binding reproduces it.
+// The dump is generated, not checked in — its quad digests cover real glyph
+// geometry — so it is only compared when the reference file is there.
+
+const CONFORMANCE =
+  process.env.KUI_CONFORMANCE ?? fileURLToPath(new URL('../../target/conformance.txt', import.meta.url));
+
+/** The corpus in JSX-object form, one builder per scene of `SCENES`.
+ *  Every scene's top level is a root `<box>` sized exactly like the core's
+ *  implicit root, so it configures the root without changing it — which is
+ *  what leaves the tree below it identical to the reference's. */
+const SCENE_TREES = {
+  layout: () =>
+    root({}, [
+      box({ pad: 8, gap: 6, bg: '#14161e' }, [
+        box(
+          {
+            dir: 'row',
+            padL: 12, padR: 10, padT: 6, padB: 4,
+            gap: 4,
+            bg: '#202030',
+            borderW: 2, borderColor: '#2a2d3a',
+            radius: 5,
+            width: 180, height: 40,
+          },
+          [text('ab', { size: 12 }), text('cd', { size: 12 })],
+          'card',
+        ),
+        text(
+          ['a ', el('span', { bold: true, color: '#73d98c' }, ['b']), el('span', { italic: true }, [' c'])],
+          { size: 13 },
+        ),
+      ]),
+    ]),
+  overflow: () =>
+    root({}, [
+      box({ pad: 4, clip: true }, [
+        box(
+          { width: 120, height: 60, gap: 4, scrollY: true, bg: '#101018' },
+          ITEM_KEYS.map((k) => box({ width: 100, height: 20, bg: '#30344a' }, [], k)),
+          'list',
+        ),
+      ]),
+    ]),
+  float: () =>
+    root({}, [
+      box({ pad: 20, gap: 4 }, [
+        box({ width: 80, height: 24, bg: '#333333' }, [
+          box({ float: 'below', width: 40, height: 12, bg: '#ff0000' }),
+        ], 'anchor'),
+        box({
+          float: { anchor: 'viewport', at: ['end', 'end'], self: ['end', 'end'], dx: -4, dy: -4, fit: true },
+          width: 10, height: 10, bg: '#00ff00',
+        }),
+      ]),
+    ]),
+  tooltip: () =>
+    root({}, [
+      box({ pad: 10 }, [
+        box(
+          { dir: 'row', width: 100, height: 40, bg: '#333333', role: 'group', tooltip: 'a hint' },
+          [text('badge', { size: 12 })],
+          'tip',
+        ),
+      ]),
+    ]),
+  chrome: () =>
+    root({ title: 'kui conformance' }, [
+      box({ gap: 6 }, [
+        el('titlebar', {}, [text('app', { size: 12 }), el('windowButtons')]),
+        box({ width: 40, height: 16, bg: '#22242c', focusable: true, keyFocus: true, label: 'Sink' }, [], 'sink'),
+      ]),
+    ]),
+  controls: () =>
+    root({}, [
+      box({ pad: 10, gap: 6 }, [
+        el('button', { onClick: { kind: 'go' } }, ['go']),
+        el('edit', { initial: 'hello', size: 13, width: 160, label: 'Note' }, [], 'note'),
+      ]),
+    ]),
+  media: (ctx) =>
+    root({}, [
+      box({ pad: 6, gap: 4 }, [
+        el('image', { src: addFixtureImage(ctx), width: 16, radius: 2 }),
+        el('audio', { src: addFixtureSound(ctx), volume: 0.5, loop: true }, [], 'music'),
+        el('latencyGraph'),
+      ]),
+    ]),
+};
+
+const ITEM_KEYS = ['i0', 'i1', 'i2', 'i3', 'i4', 'i5'];
+/** A root box sized like the core's implicit root: `configure_root` with
+ *  the same data it already has, so only `title` actually lands. */
+const root = (props, children) => box({ width: 'grow', height: 'grow', ...props }, children);
+/** The corpus fixtures, byte-identical to `conformance::image_pixels` /
+ *  `SOUND_BYTES` so the handles and the atlas come out the same. */
+const addFixtureImage = (ctx) => ctx.addImage(4, 4, Buffer.alloc(4 * 4 * 4, 0xff));
+const addFixtureSound = (ctx) => ctx.addSound(Buffer.from('RIFF....WAVE'));
+
+const FNV_OFFSET = 0xcbf29ce484222325n;
+const FNV_PRIME = 0x100000001b3n;
+const MASK = 0xffffffffffffffffn;
+
+/** FNV-1a over each quad's words 0..17 and 22..25 — `KuiQuad` without its
+ *  `uv`, which depends on glyph insertion order. Mirrors
+ *  `conformance::quad_digest`. */
+function quadDigest(buffer) {
+  const stride = quadStride();
+  const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  let h = FNV_OFFSET;
+  for (let off = 0; off + stride <= buffer.byteLength; off += stride) {
+    for (const i of [...Array(18).keys(), 22, 23, 24, 25]) {
+      let word = BigInt(view.getUint32(off + i * 4, true));
+      for (let b = 0; b < 4; b++) {
+        h = (h ^ (word & 0xffn)) & MASK;
+        h = (h * FNV_PRIME) & MASK;
+        word >>= 8n;
+      }
+    }
+  }
+  return h.toString(16).padStart(16, '0');
+}
+
+/** The protocol every binding drives: a frame, then each replayed step
+ *  followed by another frame, then the last frame's output. Mirrors
+ *  `conformance::drive`. */
+function driveScene(transport, steps, build) {
+  const ctx = new Ctx();
+  ctx.setDiagnostics(true);
+  const tree = build(ctx);
+  const events = [];
+  const frame = () => {
+    if (transport === 'binary') ctx.frame(320, 240, 1, tree);
+    else if (transport === 'json') ctx.frameJson(320, 240, 1, JSON.stringify(tree));
+    else ctx.frameObject(320, 240, 1, tree);
+    events.push(...ctx.pollEvents());
+  };
+  frame();
+  for (const step of steps) {
+    if (step[0] === 'cursor') ctx.cursor(step[1], step[2]);
+    else if (step[0] === 'cursorleft') ctx.cursorLeft();
+    else if (step[0] === 'mousedown') ctx.mouse(true, 1);
+    else if (step[0] === 'mouseup') ctx.mouse(false);
+    else if (step[0] === 'scroll') ctx.scroll(step[1], step[2]);
+    else throw new Error(`unknown conformance step ${step[0]}`);
+    events.push(...ctx.pollEvents());
+    frame();
+  }
+  return { ctx, events };
+}
+
+/** Renders a scene block in the report format `conformance::report`
+ *  documents: integers, hex and strings only, so the bytes match Rust's. */
+function sceneReport(name, steps, { ctx, events }) {
+  const lines = [`scene ${name}`];
+  for (const step of steps) lines.push(`step ${step.join(' ')}`);
+  lines.push(`title ${ctx.windowTitle() ?? '-'}`);
+  const quads = Buffer.from(ctx.quads());
+  const stride = quadStride();
+  const count = quads.byteLength / stride;
+  lines.push(`quads ${count} ${quadDigest(quads)}`);
+  const kinds = [0, 0, 0, 0, 0];
+  for (let off = 0; off < quads.byteLength; off += stride) kinds[quads.readUInt32LE(off + 17 * 4)]++;
+  lines.push(`kinds ${kinds.join(' ')}`);
+  const depth = new Map();
+  for (const n of ctx.accessTree().nodes) {
+    const d = n.parent === null ? 0 : depth.get(n.parent) + 1;
+    depth.set(n.key, d);
+    lines.push(
+      [
+        'node', d, n.key, n.role,
+        n.focused ? 1 : 0,
+        n.disabled ? 1 : 0,
+        n.checked === null || n.checked === undefined ? '-' : n.checked ? 1 : 0,
+        n.scroll ? 1 : 0,
+        n.actions.length ? n.actions.join(',') : '-',
+        `${n.name ?? ''} | ${n.description ?? ''} | ${n.value ?? ''}`,
+      ].join(' '),
+    );
+  }
+  for (const ev of events) {
+    lines.push(`event ${ev.payload?.kind ?? '-'} ${ev.payload?.tag?.kind ?? '-'}`);
+  }
+  for (const w of ctx.warnings()) lines.push(`warn ${w.code}`);
+  lines.push('end', '');
+  return lines.join('\n');
+}
+
+/** Splits the reference dump into `{name, steps, block}` — mirrors
+ *  `conformance::blocks`, and reads the steps back out so the scenes need
+ *  not restate the input they replay. */
+function referenceBlocks(text) {
+  const out = [];
+  let cur = null;
+  for (const line of text.split('\n')) {
+    if (line.startsWith('scene ')) cur = { name: line.slice(6), steps: [], lines: [] };
+    if (!cur) continue;
+    if (line.startsWith('step ')) {
+      const [kind, ...args] = line.slice(5).split(' ');
+      cur.steps.push([kind, ...args.map(Number)]);
+    }
+    cur.lines.push(line);
+    if (line === 'end') {
+      out.push({ ...cur, block: cur.lines.join('\n') + '\n' });
+      cur = null;
+    }
+  }
+  return out;
+}
+
+test('every corpus scene lowers the way kui-core does', (t) => {
+  if (!existsSync(CONFORMANCE)) {
+    t.skip(
+      `no reference report at ${CONFORMANCE} — generate it with ` +
+        '`cargo run -p kui-core --example conformance-dump -- target/conformance.txt`',
+    );
+    return;
+  }
+  const blocks = referenceBlocks(readFileSync(CONFORMANCE, 'utf8'));
+  assert.ok(blocks.length > 0, 'the reference report has no scenes');
+  assert.deepEqual(
+    Object.keys(SCENE_TREES).sort(),
+    blocks.map((b) => b.name).sort(),
+    'the JSX scenes and the corpus have drifted apart',
+  );
+  for (const { name, steps, block } of blocks) {
+    const build = SCENE_TREES[name];
+    assert.ok(build, `no JSX scene for ${name} — every corpus scene needs one`);
+    // The three encoders still have to agree with each other on frame one;
+    // that is what assertParity is for. The reference says what that frame
+    // has to *be*.
+    assertParity(name, build);
+    for (const transport of ['binary', 'json', 'object']) {
+      const actual = sceneReport(name, steps, driveScene(transport, steps, build));
+      assert.equal(actual, block, `scene ${name} lowers differently on the ${transport} transport`);
+    }
+  }
 });

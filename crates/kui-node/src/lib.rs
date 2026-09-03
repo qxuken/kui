@@ -819,6 +819,14 @@ impl Ctx {
         warnings_json(self.core.take_warnings())
     }
 
+    /// The window title the last frame declared (a root `<box title>`), or
+    /// null when it declared none. `runWindowed` applies it to the real
+    /// window; a bare `Ctx` hands it back so a test can assert on it.
+    #[napi]
+    pub fn window_title(&self) -> Option<String> {
+        self.core.window_title().map(str::to_string)
+    }
+
     /// The access tree of the last frame — what assistive technology
     /// sees; see `AccessTree` in index.d.ts.
     #[napi]

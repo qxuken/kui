@@ -17,7 +17,10 @@
 //! (the pad shorthand family, border, overflow bits, float configs) and the
 //! constructor-ordering specials (`dir`, `size`, `key`, `title`, `keyFocus`)
 //! stay hand-written per binding; `CUSTOM` lists them by name and wire id so
-//! transports still agree on identity.
+//! transports agree on identity, and `crate::conformance` makes them agree
+//! on behaviour — every `CUSTOM` and `ELEMENTS` row has to appear in a
+//! scene that all four bindings reproduce byte for byte, or the build
+//! fails.
 
 use std::sync::LazyLock;
 
@@ -703,7 +706,7 @@ pub const CUSTOM: &[CustomProp] = &[
         name: "pad",
         id: P_PAD,
         jsx: "`pad`, `padX`, `padY`, `padL`, `padR`, `padT`, `padB`",
-        lua: "`pad = n` or `pad = { l, r, t, b }`",
+        lua: "`pad = n` or `pad = { l=, r=, t=, b= }`",
         c: "`pad_l`, `pad_r`, `pad_t`, `pad_b`",
         doc: "Padding; the shorthands resolve to four edges, the specific ones win.",
     },
@@ -711,7 +714,7 @@ pub const CUSTOM: &[CustomProp] = &[
         name: "border",
         id: P_BORDER,
         jsx: "`borderW`, `borderColor`",
-        lua: "`border = { w, color }`",
+        lua: "`border = { w=, color= }`",
         c: "`border_w`, `border_color`",
         doc: "Border width and color (drawn inside the rect).",
     },
@@ -727,7 +730,7 @@ pub const CUSTOM: &[CustomProp] = &[
         name: "float",
         id: P_FLOAT,
         jsx: "`float=\"below\" | \"above\" | \"parent\" | \"viewport\"` or `{ anchor, at, self, dx, dy, fit }`",
-        lua: "`float = \"below\"` or `float = { anchor=, at=, self=, dx=, dy=, fit= }`",
+        lua: "`float = \"below\"` or `float = { anchor=, at=, self_at=, dx=, dy=, fit= }`",
         c: "`float_mode`, `float_anchor_x/y`, `float_self_x/y`, `float_dx/dy`, `float_fit`",
         doc: "Out-of-flow positioning against the parent or the viewport; `fit` flips/clamps to stay on screen.",
     },
@@ -752,7 +755,7 @@ pub const CUSTOM: &[CustomProp] = &[
         id: P_TITLE,
         jsx: "`title` (root box only)",
         lua: "`title` (root table)",
-        c: "`kui_set_window_title`",
+        c: "`kui_window_title`",
         doc: "Declares the window title for this frame; the driver diffs and applies.",
     },
     CustomProp {
@@ -760,7 +763,7 @@ pub const CUSTOM: &[CustomProp] = &[
         id: P_TOOLTIP,
         jsx: "`tooltip=\"hint\"`",
         lua: "`tooltip = \"hint\"`",
-        c: "`kui_tooltip` inside a hoverable node, gated on `kui_is_hovered`",
+        c: "`KuiSpec.tooltip` (`kui_tooltip` / `kui_tooltip_with` draw a hint that is not hover-gated)",
         doc: "Floats a hint below the node while hovered (implies hover tracking).",
     },
 ];

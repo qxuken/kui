@@ -45,11 +45,22 @@ pub struct KuiCtx {
     /// Access tree most recently handed out by kui_access_tree; its strings
     /// stay valid until the next call.
     last_access: kui_core::AccessTree,
+    /// One entry per node the `kui_open*` family has open, holding its key
+    /// and `KuiSpec.tooltip` hint. `kui_close` pops it and floats the hint
+    /// as the node's last child while it is hovered — which is what the
+    /// other bindings' `tooltip` prop does at the same point.
+    open_tooltips: Vec<Option<(kui_core::Key, String)>>,
 }
 
 impl KuiCtx {
     fn core(&mut self) -> &mut Core {
         unsafe { &mut *self.core }
+    }
+
+    /// Records a just-opened node's hover hint for `kui_close`.
+    fn push_tooltip(&mut self, key: kui_core::Key, hint: KuiStr) {
+        self.open_tooltips
+            .push(opt_str(hint).map(|h| (key, h.into_owned())));
     }
 }
 
@@ -236,6 +247,12 @@ pub struct KuiSpec {
     /// (Tab or assistive technology put it there); 0 = the core's default
     /// ring.
     pub focus_bg: u32,
+    /// Hover hint (empty = none), the `tooltip` prop of the other
+    /// bindings: makes the node hover-tracked, becomes its accessible
+    /// description, and floats `kui_core::widgets::tooltip` below it as
+    /// its last child while the pointer is over it. `kui_close` draws it,
+    /// so it only applies to the `kui_open*` family.
+    pub tooltip: KuiStr,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -573,6 +590,11 @@ fn take_msg(p: *mut KuiValue) -> Option<Value> {
     (!p.is_null()).then(|| unsafe { Box::from_raw(p) }.0)
 }
 
+/// A `KuiStr` as a borrowed `&str`, or None when it is empty/NULL.
+fn opt_str<'a>(s: KuiStr) -> Option<std::borrow::Cow<'a, str>> {
+    (!s.ptr.is_null() && s.len > 0).then(|| kstr(s))
+}
+
 fn spec_of(
     s: &KuiSpec,
     on_click: *mut KuiValue,
@@ -724,6 +746,11 @@ fn spec_of(
     if s.focus_bg != 0 {
         spec = spec.focus_bg(color_of(s.focus_bg));
     }
+    if let Some(hint) = opt_str(s.tooltip) {
+        // The same two things the Lua and Node parsers do with the prop;
+        // `kui_close` adds the third (the float, while hovered).
+        spec = spec.hoverable().description(hint);
+    }
     if let Some(v) = take_msg(on_click) {
         spec = spec.on_click(v);
     }
@@ -797,6 +824,7 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             last_edit_text: None,
             last_warnings: Vec::new(),
             last_access: Default::default(),
+            open_tooltips: Vec::new(),
         }))
     })
 }
@@ -1073,6 +1101,9 @@ pub extern "C" fn kui_window_title_get(ptr: *mut KuiCtx, out: *mut KuiStr) -> bo
 pub extern "C" fn kui_frame_begin(ptr: *mut KuiCtx, w: f32, h: f32, scale: f32) {
     guard((), || {
         if let Some(c) = unsafe { ctx(ptr) } {
+            // A frame that ended with nodes unclosed must not leak its
+            // hints into the next one.
+            c.open_tooltips.clear();
             c.core()
                 .begin_frame(Size::new(w, h), if scale > 0.0 { scale } else { 1.0 });
         }
@@ -1095,7 +1126,9 @@ pub extern "C" fn kui_open(ptr: *mut KuiCtx, spec: *const KuiSpec, on_click: *mu
         let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else {
             return 0;
         };
-        c.core().open(spec_of(s, on_click, NONE, NONE, NONE)).0
+        let key = c.core().open(spec_of(s, on_click, NONE, NONE, NONE));
+        c.push_tooltip(key, s.tooltip);
+        key.0
     })
 }
 
@@ -1110,9 +1143,11 @@ pub extern "C" fn kui_open_keyed(
         let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else {
             return 0;
         };
-        c.core()
-            .open_keyed(&kstr(label), spec_of(s, on_click, NONE, NONE, NONE))
-            .0
+        let key = c
+            .core()
+            .open_keyed(&kstr(label), spec_of(s, on_click, NONE, NONE, NONE));
+        c.push_tooltip(key, s.tooltip);
+        key.0
     })
 }
 
@@ -1479,7 +1514,9 @@ pub extern "C" fn kui_open_draggable(
         };
         let spec = spec_of(s, on_click, NONE, NONE, NONE)
             .on_drag(take_msg(on_drag).unwrap_or(Value::Null));
-        c.core().open_keyed(&kstr(label), spec).0
+        let key = c.core().open_keyed(&kstr(label), spec);
+        c.push_tooltip(key, s.tooltip);
+        key.0
     })
 }
 
@@ -1505,12 +1542,12 @@ pub extern "C" fn kui_open_with(
             }
             return 0;
         };
-        c.core()
-            .open_keyed(
-                &kstr(label),
-                spec_of(s, on_click, on_drag, on_key, on_hover),
-            )
-            .0
+        let key = c.core().open_keyed(
+            &kstr(label),
+            spec_of(s, on_click, on_drag, on_key, on_hover),
+        );
+        c.push_tooltip(key, s.tooltip);
+        key.0
     })
 }
 
@@ -1572,6 +1609,13 @@ pub extern "C" fn kui_focus_visible(ptr: *mut KuiCtx) -> bool {
 pub extern "C" fn kui_close(ptr: *mut KuiCtx) {
     guard((), || {
         if let Some(c) = unsafe { ctx(ptr) } {
+            // The tooltip prop's third effect, at the point the Lua and
+            // Node lowerings apply it: the node's last child, while hovered.
+            if let Some((key, hint)) = c.open_tooltips.pop().flatten()
+                && c.core().is_hovered(key)
+            {
+                kui_core::widgets::tooltip(&mut kui_core::Ui::wrap(c.core()), &hint);
+            }
             c.core().close();
         }
     });
@@ -2371,6 +2415,7 @@ impl kui::App for CApp {
             last_edit_text: None,
             last_warnings: Vec::new(),
             last_access: Default::default(),
+            open_tooltips: Vec::new(),
         };
         (self.view)(self.user, &mut shim);
     }
@@ -2660,6 +2705,10 @@ mod schema_parity {
             focusable: 1,
             disabled: 1,
             focus_bg: 0x11_22_33_ff,
+            tooltip: KuiStr {
+                ptr: "hint".as_ptr(),
+                len: 4,
+            },
         };
         let expected = NodeSpec::row()
             .width(Sizing::Grow(2.0))
@@ -2701,6 +2750,7 @@ mod schema_parity {
             .focusable()
             .disabled(true)
             .focus_bg(Color::hex(0x11_22_33_ff))
+            .description("hint")
             .role(kui_core::Role::Button)
             .label("lbl")
             .checked(true)
@@ -3327,6 +3377,7 @@ mod abi_parity {
             focusable: u32 => "uint32_t",
             disabled: u32 => "uint32_t",
             focus_bg: u32 => "uint32_t",
+            tooltip: KuiStr => "KuiStr",
         });
 
         abi_struct!(o, KuiAccessNode {

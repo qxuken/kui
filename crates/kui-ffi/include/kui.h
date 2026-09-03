@@ -254,6 +254,14 @@ typedef struct KuiSpec {
     uint32_t focusable;
     uint32_t disabled;
     uint32_t focus_bg;
+    /* Hover hint (empty = none), the `tooltip` prop of the other bindings:
+     * makes the node hover-tracked, becomes its accessible description,
+     * and floats the hint below it while the pointer is over it. kui_close
+     * draws that float, so this only applies to nodes opened with the
+     * kui_open* family; for a hint that always draws, or one around custom
+     * content, call kui_tooltip / kui_tooltip_with yourself. Borrowed
+     * while the node opens. */
+    KuiStr tooltip;
 } KuiSpec;
 
 /* Roles (KuiSpec.role, KuiAccessNode.role). The first fifteen can be

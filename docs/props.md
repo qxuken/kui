@@ -75,16 +75,16 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 
 | JSX | Lua | C | description |
 |---|---|---|---|
-| `borderW`, `borderColor` | `border = { w, color }` | `border_w`, `border_color` | Border width and color (drawn inside the rect). |
+| `borderW`, `borderColor` | `border = { w=, color= }` | `border_w`, `border_color` | Border width and color (drawn inside the rect). |
 | `dir="row" \| "column"` | `row { }` / `column { }` | `dir` (`KUI_ROW` / `KUI_COLUMN`) | Main axis; column is the default. |
-| `float="below" \| "above" \| "parent" \| "viewport"` or `{ anchor, at, self, dx, dy, fit }` | `float = "below"` or `float = { anchor=, at=, self=, dx=, dy=, fit= }` | `float_mode`, `float_anchor_x/y`, `float_self_x/y`, `float_dx/dy`, `float_fit` | Out-of-flow positioning against the parent or the viewport; `fit` flips/clamps to stay on screen. |
+| `float="below" \| "above" \| "parent" \| "viewport"` or `{ anchor, at, self, dx, dy, fit }` | `float = "below"` or `float = { anchor=, at=, self_at=, dx=, dy=, fit= }` | `float_mode`, `float_anchor_x/y`, `float_self_x/y`, `float_dx/dy`, `float_fit` | Out-of-flow positioning against the parent or the viewport; `fit` flips/clamps to stay on screen. |
 | `key` | `key` | `kui_open_keyed` label | Stable identity for retained state (scroll offsets, editors, transitions; keys are hashes of the path from the root). |
 | `keyFocus` | `key_focus` | `kui_set_key_focus` | Focuses this node (an `onKey` sink, an editor, any focusable node) when it starts being declared: declared every frame it takes focus once, so a later Tab press is not clobbered. To move focus at any time call `focus(key)` (`ctx.focus`, `kui_focus`). |
 | `clip`, `scrollX`, `scrollY` | `clip`, `scroll_x`, `scroll_y` (`scroll` = `scroll_y`) | `overflow` bits `KUI_CLIP` \| `KUI_SCROLL_X` \| `KUI_SCROLL_Y` | Clip children; scroll (implies clip) with retained offsets and live scrollbars. |
-| `pad`, `padX`, `padY`, `padL`, `padR`, `padT`, `padB` | `pad = n` or `pad = { l, r, t, b }` | `pad_l`, `pad_r`, `pad_t`, `pad_b` | Padding; the shorthands resolve to four edges, the specific ones win. |
+| `pad`, `padX`, `padY`, `padL`, `padR`, `padT`, `padB` | `pad = n` or `pad = { l=, r=, t=, b= }` | `pad_l`, `pad_r`, `pad_t`, `pad_b` | Padding; the shorthands resolve to four edges, the specific ones win. |
 | `size` (text) | `size` | `KuiTextStyle.size` | Font size in logical px; the text style is constructed from it, so declare it for the other style props to apply at that size. |
-| `title` (root box only) | `title` (root table) | `kui_set_window_title` | Declares the window title for this frame; the driver diffs and applies. |
-| `tooltip="hint"` | `tooltip = "hint"` | `kui_tooltip` inside a hoverable node, gated on `kui_is_hovered` | Floats a hint below the node while hovered (implies hover tracking). |
+| `title` (root box only) | `title` (root table) | `kui_window_title` | Declares the window title for this frame; the driver diffs and applies. |
+| `tooltip="hint"` | `tooltip = "hint"` | `KuiSpec.tooltip` (`kui_tooltip` / `kui_tooltip_with` draw a hint that is not hover-gated) | Floats a hint below the node while hovered (implies hover tracking). |
 
 ## Elements
 

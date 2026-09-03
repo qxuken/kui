@@ -7,9 +7,14 @@
 #
 # check is one job so the cargo target dir is built once and shared by fmt,
 # clippy, the workspace tests, the C example, the Node addon parity tests and
-# the Node example typecheck (which is what exercises the shipped .d.ts):
-# separate jobs would each rebuild it (or each restore a multi-GB cache), and
-# it is far too big to hand between jobs as an artifact. What IS handed
+# the Node example typecheck (which is what exercises the shipped .d.ts).
+# It is also what makes the scene corpus work: all four adapters over
+# crates/kui-core/src/conformance.rs run here, on one machine with one set
+# of fonts, against one generated reference report - which is why the
+# report is never checked in and the C and Node steps depend on the
+# `Conformance reference report` step above them. Separate jobs would each
+# rebuild the target dir (or each restore a multi-GB cache), and it is far
+# too big to hand between jobs as an artifact. What IS handed
 # between jobs is small: each build leg uploads one kui-node cdylib as an
 # artifact, and publish downloads them all into packages/kui/prebuilds before
 # `npm publish`, so the tarball ships a native addon per platform. The
@@ -104,19 +109,37 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # Covers the Rust and Lua adapters over the scene corpus
+      # (crates/kui-core/src/conformance.rs): kui-core asserts the scenes
+      # against their checked-in expectations and that they still cover
+      # every schema::CUSTOM and schema::ELEMENTS row; kui-lua rebuilds
+      # them from Lua tables and diffs report against report.
       - name: Test
         run: cargo test --workspace
+
+      # The conformance reference: quad digests over real glyph geometry,
+      # so it holds only for this machine's fonts and is never checked in.
+      # The C and Node adapters below diff their own scenes against it.
+      - name: Conformance reference report
+        run: |
+          cargo run -p kui-core --example conformance-dump -- target/conformance.txt
+          echo "KUI_CONFORMANCE=$(pwd)/target/conformance.txt" >> "$GITHUB_ENV"
 
       # build.sh first compiles the generated ABI asserts (mod abi_parity in
       # crates/kui-ffi/src/lib.rs) against include/kui.h - the header is
       # hand-written and otherwise unchecked against the repr(C) structs -
       # and then builds the example, which is the only thing that links
       # against the real header.
-      - name: C example (header ABI check + FFI self-test)
+      - name: C example (header ABI check + FFI self-test + conformance)
         run: |
           ./examples/c/build.sh
           ./examples/c/counter --headless
+          ./examples/c/counter --conformance target/conformance.txt
 
+      # npm test covers both the transport parity tests and the Node
+      # adapter over the corpus, which needs KUI_CONFORMANCE to run (it
+      # skips without it, so that the publish job - which has no cargo
+      # target dir - can still run the rest against the prebuilds).
       - name: Node addon parity tests
         run: |
           cargo build -p kui-node --release

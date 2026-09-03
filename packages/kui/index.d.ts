@@ -440,6 +440,9 @@ export declare class Ctx {
    *  them on; `createApp` / `runWindowed` turn them off under
    *  `NODE_ENV=production`. */
   setDiagnostics(on: boolean): void;
+  /** The window title the last frame declared (a root `<box title>`), or
+   *  null when it declared none. */
+  windowTitle(): string | null;
   /** What assistive technology sees of the last frame (see `AccessTree`). */
   accessTree(): AccessTree;
   /** A request from assistive technology on a node: an action it

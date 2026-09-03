@@ -11,6 +11,7 @@ pub mod anim;
 pub mod atlas;
 pub mod audio;
 pub mod color;
+pub mod conformance;
 pub mod diag;
 pub mod display;
 pub mod edit;

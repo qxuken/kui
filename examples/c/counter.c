@@ -5,8 +5,14 @@
  *   ./counter --headless  # no window: builds a frame, simulates a click,
  *                         # verifies the event round-trip, prints draw stats,
  *                         # then walks the rest of the header (see surface())
+ *   ./counter --conformance [report]
+ *                         # rebuilds the shared scene corpus through the C
+ *                         # API and diffs it against kui-core's reference
+ *                         # report (see conformance() at the bottom)
  */
 #include <stdio.h>
+#include <stdarg.h>
+#include <stdlib.h>
 #include <string.h>
 #include "kui.h"
 
@@ -545,9 +551,531 @@ static int surface(void) {
     return 0;
 }
 
+/* -- conformance: the shared scene corpus -------------------------------
+ *
+ * The self-tests above prove the C API works. They do not prove it agrees
+ * with the other bindings, and `CUSTOM` in crates/kui-core/src/schema.rs
+ * only ever claimed the four transports agree on a prop's *name*. The
+ * corpus (crates/kui-core/src/conformance.rs) is the missing half: a list
+ * of small named scenes, built natively by kui-core into a reference
+ * report, and rebuilt here through the C API alone. The two reports have
+ * to be the same bytes.
+ *
+ *     cargo run -p kui-core --example conformance-dump -- target/conformance.txt
+ *     ./examples/c/counter --conformance target/conformance.txt
+ *
+ * The report format is documented on `conformance::report`; it carries no
+ * formatted floats (quad geometry travels as one FNV-1a digest) precisely
+ * so C and Rust and JavaScript can print the same thing.
+ */
+
+/* A growable report buffer. Scenes are small; a failure to fit is a bug
+ * here, not something to paper over, so appends past the end are fatal. */
+typedef struct Rep {
+    char *buf;
+    size_t len, cap;
+} Rep;
+
+static void rep_init(Rep *r) {
+    r->cap = 1 << 14;
+    r->len = 0;
+    r->buf = malloc(r->cap);
+    if (!r->buf) abort();
+    r->buf[0] = 0;
+}
+
+static void rep_free(Rep *r) { free(r->buf); }
+
+static void repf(Rep *r, const char *fmt, ...) {
+    for (;;) {
+        va_list ap;
+        va_start(ap, fmt);
+        int n = vsnprintf(r->buf + r->len, r->cap - r->len, fmt, ap);
+        va_end(ap);
+        if (n < 0) abort();
+        if ((size_t)n < r->cap - r->len) {
+            r->len += (size_t)n;
+            return;
+        }
+        r->cap *= 2;
+        char *grown = realloc(r->buf, r->cap);
+        if (!grown) abort();
+        r->buf = grown;
+    }
+}
+
+/* FNV-1a over each quad's words 0..17 and 22..25 - KuiQuad without its uv,
+ * which follows glyph insertion order. Mirrors conformance::quad_digest. */
+_Static_assert(sizeof(KuiQuad) == 26 * sizeof(uint32_t), "KuiQuad is not 26 words");
+
+static uint64_t quad_digest(const KuiQuad *quads, size_t count) {
+    uint64_t h = 0xcbf29ce484222325ull;
+    for (size_t i = 0; i < count; i++) {
+        uint32_t w[26];
+        memcpy(w, &quads[i], sizeof w);
+        for (int j = 0; j < 26; j++) {
+            if (j >= 18 && j <= 21) continue; /* uv */
+            uint32_t v = w[j];
+            for (int b = 0; b < 4; b++) {
+                h ^= (uint8_t)(v & 0xff);
+                h *= 0x100000001b3ull;
+                v >>= 8;
+            }
+        }
+    }
+    return h;
+}
+
+/* KUI_ROLE_* back to the camelCase spelling every binding prints
+ * (kui_core::Role::name); index 0 is unused, the enum starts at 1. */
+static const char *role_name(uint32_t role) {
+    static const char *names[] = {
+        "?", "none", "button", "checkbox", "radio", "switch", "slider", "tab",
+        "tabList", "link", "heading", "list", "listItem", "image", "dialog",
+        "group", "window", "titleBar", "staticText", "textInput",
+        "multilineTextInput", "scrollView", "line",
+    };
+    return role < sizeof names / sizeof *names ? names[role] : "?";
+}
+
+/* AccessAction names in bit order (kui_core::AccessAction::ALL). */
+static const char *ACTION_NAMES[] = {
+    "click", "focus", "blur", "setValue", "increment", "decrement",
+    "scrollIntoView", "scrollUp", "scrollDown", "scrollLeft", "scrollRight",
+    "setTextSelection", "replaceSelectedText",
+};
+
+/* The corpus fixtures, registered in the order conformance::fixtures uses
+ * so the handles - and the atlas the image lands in - come out the same. */
+typedef struct Fixtures {
+    uint64_t image;
+    uint64_t sound;
+} Fixtures;
+
+static Fixtures conf_fixtures(KuiCtx *ctx) {
+    uint8_t rgba[4 * 4 * 4];
+    memset(rgba, 0xff, sizeof rgba);
+    Fixtures f;
+    f.image = kui_image_add(ctx, 4, 4, rgba);
+    f.sound = kui_sound_add(ctx, (const uint8_t *)"RIFF....WAVE", 12);
+    return f;
+}
+
+/* -- the scenes, in C ---------------------------------------------------- */
+
+static void conf_layout(KuiCtx *ui, const Fixtures *f) {
+    (void)f;
+    KuiSpec outer = {.pad_l = 8, .pad_r = 8, .pad_t = 8, .pad_b = 8, .gap = 6,
+                     .bg = 0x14161eff};
+    kui_open(ui, &outer, NULL);
+    KuiSpec card = {
+        .dir = KUI_ROW, .pad_l = 12, .pad_r = 10, .pad_t = 6, .pad_b = 4,
+        .gap = 4, .bg = 0x202030ff, .border_w = 2, .border_color = 0x2a2d3aff,
+        .radius = 5, .width = {KUI_FIXED, 180}, .height = {KUI_FIXED, 40},
+    };
+    kui_open_keyed(ui, KUI_STR("card"), &card, NULL);
+    KuiTextStyle s12 = {.size = 12};
+    kui_text(ui, KUI_STR("ab"), &s12);
+    kui_text(ui, KUI_STR("cd"), &s12);
+    kui_close(ui);
+    KuiSpan spans[] = {
+        {KUI_STR("a "), 0, 0},
+        {KUI_STR("b"), 0x73d98cff, KUI_SPAN_BOLD},
+        {KUI_STR(" c"), 0, KUI_SPAN_ITALIC},
+    };
+    KuiTextStyle s13 = {.size = 13};
+    kui_rich_text(ui, spans, 3, &s13);
+    kui_close(ui);
+}
+
+static void conf_overflow(KuiCtx *ui, const Fixtures *f) {
+    (void)f;
+    KuiSpec outer = {.pad_l = 4, .pad_r = 4, .pad_t = 4, .pad_b = 4,
+                     .overflow = KUI_CLIP};
+    kui_open(ui, &outer, NULL);
+    KuiSpec list = {.width = {KUI_FIXED, 120}, .height = {KUI_FIXED, 60},
+                    .gap = 4, .overflow = KUI_SCROLL_Y, .bg = 0x101018ff};
+    kui_open_keyed(ui, KUI_STR("list"), &list, NULL);
+    KuiSpec item = {.width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 20},
+                    .bg = 0x30344aff};
+    for (int i = 0; i < 6; i++) {
+        char key[8];
+        snprintf(key, sizeof key, "i%d", i);
+        kui_open_keyed(ui, KUI_STR(key), &item, NULL);
+        kui_close(ui);
+    }
+    kui_close(ui);
+    kui_close(ui);
+}
+
+static void conf_float(KuiCtx *ui, const Fixtures *f) {
+    (void)f;
+    KuiSpec outer = {.pad_l = 20, .pad_r = 20, .pad_t = 20, .pad_b = 20, .gap = 4};
+    kui_open(ui, &outer, NULL);
+    KuiSpec anchor = {.width = {KUI_FIXED, 80}, .height = {KUI_FIXED, 24},
+                      .bg = 0x333333ff};
+    kui_open_keyed(ui, KUI_STR("anchor"), &anchor, NULL);
+    /* The "below" preset spelled out: centered under the parent, 6px down. */
+    KuiSpec below = {
+        .float_mode = KUI_FLOAT_PARENT,
+        .float_anchor_x = KUI_CENTER, .float_anchor_y = KUI_END,
+        .float_self_x = KUI_CENTER, .float_self_y = KUI_START,
+        .float_dy = 6,
+        .width = {KUI_FIXED, 40}, .height = {KUI_FIXED, 12}, .bg = 0xff0000ff,
+    };
+    kui_open(ui, &below, NULL);
+    kui_close(ui);
+    kui_close(ui);
+    KuiSpec corner = {
+        .float_mode = KUI_FLOAT_VIEWPORT,
+        .float_anchor_x = KUI_END, .float_anchor_y = KUI_END,
+        .float_self_x = KUI_END, .float_self_y = KUI_END,
+        .float_dx = -4, .float_dy = -4, .float_fit = 1,
+        .width = {KUI_FIXED, 10}, .height = {KUI_FIXED, 10}, .bg = 0x00ff00ff,
+    };
+    kui_open(ui, &corner, NULL);
+    kui_close(ui);
+    kui_close(ui);
+}
+
+static void conf_tooltip(KuiCtx *ui, const Fixtures *f) {
+    (void)f;
+    KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10};
+    kui_open(ui, &outer, NULL);
+    /* KuiSpec.tooltip is the `tooltip` prop: hover tracking, the accessible
+     * description, and the float kui_close hangs below while hovered. */
+    KuiSpec tip = {.dir = KUI_ROW, .width = {KUI_FIXED, 100},
+                   .height = {KUI_FIXED, 40}, .bg = 0x333333ff,
+                   .role = KUI_ROLE_GROUP, .tooltip = KUI_STR("a hint")};
+    kui_open_keyed(ui, KUI_STR("tip"), &tip, NULL);
+    KuiTextStyle s12 = {.size = 12};
+    kui_text(ui, KUI_STR("badge"), &s12);
+    kui_close(ui);
+    kui_close(ui);
+}
+
+static void conf_titlebar_body(void *user, KuiCtx *ui) {
+    (void)user;
+    KuiTextStyle s12 = {.size = 12};
+    kui_text(ui, KUI_STR("app"), &s12);
+    kui_window_buttons(ui);
+}
+
+static void conf_chrome(KuiCtx *ui, const Fixtures *f) {
+    (void)f;
+    kui_window_title(ui, KUI_STR("kui conformance"));
+    KuiSpec outer = {.gap = 6};
+    kui_open(ui, &outer, NULL);
+    kui_titlebar_with(ui, conf_titlebar_body, NULL);
+    KuiSpec sink = {.width = {KUI_FIXED, 40}, .height = {KUI_FIXED, 16},
+                    .bg = 0x22242cff, .focusable = 1, .label = KUI_STR("Sink")};
+    uint64_t key = kui_open_keyed(ui, KUI_STR("sink"), &sink, NULL);
+    kui_set_key_focus(ui, key);
+    kui_close(ui);
+    kui_close(ui);
+}
+
+static void conf_controls(KuiCtx *ui, const Fixtures *f) {
+    (void)f;
+    KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10, .gap = 6};
+    kui_open(ui, &outer, NULL);
+    KuiValue *go = kui_value_map();
+    kui_value_map_set(go, KUI_STR("kind"), kui_value_str(KUI_STR("go")));
+    kui_button(ui, KUI_STR("go"), go);
+    KuiTextStyle s13 = {.size = 13};
+    KuiSpec note = {.width = {KUI_FIXED, 160}, .label = KUI_STR("Note")};
+    kui_text_edit(ui, KUI_STR("note"), KUI_STR("hello"), &s13, 0, &note);
+    kui_close(ui);
+}
+
+static void conf_media(KuiCtx *ui, const Fixtures *f) {
+    KuiSpec outer = {.pad_l = 6, .pad_r = 6, .pad_t = 6, .pad_b = 6, .gap = 4};
+    kui_open(ui, &outer, NULL);
+    KuiSpec img = {.width = {KUI_FIXED, 16}, .radius = 2};
+    kui_image(ui, f->image, &img);
+    KuiAudio music = {.src = f->sound, .volume = 0.5f, .looped = 1};
+    kui_audio(ui, KUI_STR("music"), &music, NULL);
+    kui_latency_graph(ui);
+    kui_close(ui);
+}
+
+typedef struct ConfScene {
+    const char *name;
+    void (*build)(KuiCtx *ui, const Fixtures *f);
+} ConfScene;
+
+/* One entry per scene of conformance::SCENES; a scene in the reference with
+ * no entry here fails the run rather than being skipped. */
+static const ConfScene CONF_SCENES[] = {
+    {"layout", conf_layout},
+    {"overflow", conf_overflow},
+    {"float", conf_float},
+    {"tooltip", conf_tooltip},
+    {"chrome", conf_chrome},
+    {"controls", conf_controls},
+    {"media", conf_media},
+};
+
+/* -- driving one scene --------------------------------------------------- */
+
+/* A replayed input, parsed back out of the reference report's step lines so
+ * the scenes need not restate it. */
+typedef struct ConfStep {
+    char kind[16];
+    int a, b;
+} ConfStep;
+
+static void conf_apply(KuiCtx *ctx, const ConfStep *s) {
+    if (strcmp(s->kind, "cursor") == 0) kui_input_cursor(ctx, (float)s->a, (float)s->b);
+    else if (strcmp(s->kind, "cursorleft") == 0) kui_input_cursor_left(ctx);
+    else if (strcmp(s->kind, "mousedown") == 0) kui_input_mouse(ctx, true, 1);
+    else if (strcmp(s->kind, "mouseup") == 0) kui_input_mouse(ctx, false, 1);
+    else if (strcmp(s->kind, "scroll") == 0) kui_input_scroll(ctx, (float)s->a, (float)s->b);
+    else {
+        fprintf(stderr, "conformance: unknown step '%s'\n", s->kind);
+        exit(1);
+    }
+}
+
+/* Drains the queue into `events`; payloads are borrowed until the next
+ * poll, so each is formatted before the next call. */
+static void conf_drain(KuiCtx *ctx, Rep *events) {
+    KuiEvent ev;
+    while (kui_poll_event(ctx, &ev)) {
+        KuiStr kind = KUI_STR("-"), tag = KUI_STR("-");
+        const KuiValue *k = ev.payload ? kui_value_get(ev.payload, KUI_STR("kind")) : NULL;
+        if (k) kui_value_as_str(k, &kind);
+        const KuiValue *t = ev.payload ? kui_value_get(ev.payload, KUI_STR("tag")) : NULL;
+        const KuiValue *tk = t ? kui_value_get(t, KUI_STR("kind")) : NULL;
+        if (tk) kui_value_as_str(tk, &tag);
+        repf(events, "event %.*s %.*s\n", (int)kind.len, kind.ptr, (int)tag.len, tag.ptr);
+    }
+}
+
+/* The protocol conformance::drive documents: a frame, then each step
+ * followed by another frame, then the last frame's output. */
+static void conf_run(const ConfScene *scene, const ConfStep *steps, int nsteps, Rep *out) {
+    KuiCtx *ctx = kui_ctx_new();
+    kui_set_diagnostics(ctx, true);
+    Fixtures f = conf_fixtures(ctx);
+
+    Rep events;
+    rep_init(&events);
+    for (int i = 0; i <= nsteps; i++) {
+        if (i > 0) {
+            conf_apply(ctx, &steps[i - 1]);
+            conf_drain(ctx, &events);
+        }
+        kui_frame_begin(ctx, 320, 240, 1);
+        scene->build(ctx, &f);
+        kui_frame_finish(ctx);
+        conf_drain(ctx, &events);
+    }
+
+    repf(out, "scene %s\n", scene->name);
+    for (int i = 0; i < nsteps; i++) {
+        if (strcmp(steps[i].kind, "cursor") == 0 || strcmp(steps[i].kind, "scroll") == 0)
+            repf(out, "step %s %d %d\n", steps[i].kind, steps[i].a, steps[i].b);
+        else
+            repf(out, "step %s\n", steps[i].kind);
+    }
+
+    KuiStr title;
+    if (kui_window_title_get(ctx, &title)) repf(out, "title %.*s\n", (int)title.len, title.ptr);
+    else repf(out, "title -\n");
+
+    KuiDrawData dd;
+    kui_draw_data(ctx, &dd);
+    repf(out, "quads %zu %016llx\n", dd.quad_count,
+         (unsigned long long)quad_digest(dd.quads, dd.quad_count));
+    size_t kinds[5] = {0};
+    for (size_t i = 0; i < dd.quad_count; i++) {
+        if (dd.quads[i].kind < 5) kinds[dd.quads[i].kind]++;
+    }
+    repf(out, "kinds %zu %zu %zu %zu %zu\n", kinds[0], kinds[1], kinds[2], kinds[3], kinds[4]);
+
+    KuiAccessNode nodes[128];
+    size_t total = kui_access_tree(ctx, nodes, 128);
+    if (total > 128) {
+        fprintf(stderr, "conformance: scene '%s' has %zu access nodes, buffer holds 128\n",
+                scene->name, total);
+        exit(1);
+    }
+    size_t n = total;
+    /* Depth from the parent chain: the tree comes back in tree order, so a
+     * node's parent is always already in the table. */
+    uint64_t keys[128];
+    int depths[128];
+    for (size_t i = 0; i < n; i++) {
+        const KuiAccessNode *a = &nodes[i];
+        int depth = 0;
+        for (size_t j = 0; j < i; j++) {
+            if (keys[j] == a->parent) { depth = depths[j] + 1; break; }
+        }
+        keys[i] = a->key;
+        depths[i] = depth;
+        char actions[256];
+        size_t off = 0;
+        for (int bit = 0; bit < 13; bit++) {
+            if (!(a->actions & (1u << bit))) continue;
+            off += (size_t)snprintf(actions + off, sizeof actions - off, "%s%s",
+                                    off ? "," : "", ACTION_NAMES[bit]);
+        }
+        const char *checked = !(a->flags & KUI_ACCESS_CHECKED_SET) ? "-"
+                              : (a->flags & KUI_ACCESS_CHECKED)    ? "1"
+                                                                   : "0";
+        repf(out, "node %d %016llx %s %d %d %s %d %s %.*s | %.*s | %.*s\n",
+             depth, (unsigned long long)a->key, role_name(a->role),
+             (a->flags & KUI_ACCESS_FOCUSED) ? 1 : 0,
+             (a->flags & KUI_ACCESS_DISABLED) ? 1 : 0,
+             checked,
+             (a->flags & KUI_ACCESS_HAS_SCROLL) ? 1 : 0,
+             off ? actions : "-",
+             (int)a->name.len, a->name.ptr,
+             (int)a->description.len, a->description.ptr,
+             (int)a->value.len, a->value.ptr);
+    }
+
+    repf(out, "%s", events.buf);
+    rep_free(&events);
+
+    KuiWarning warnings[32];
+    size_t nw = kui_take_warnings(ctx, warnings, 32);
+    for (size_t i = 0; i < nw && i < 32; i++) {
+        repf(out, "warn %.*s\n", (int)warnings[i].code.len, warnings[i].code.ptr);
+    }
+    repf(out, "end\n");
+    kui_ctx_free(ctx);
+}
+
+/* -- reading the reference ----------------------------------------------- */
+
+static char *read_file(const char *path) {
+    FILE *fp = fopen(path, "rb");
+    if (!fp) return NULL;
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+    rewind(fp);
+    char *buf = malloc((size_t)size + 1);
+    if (!buf || fread(buf, 1, (size_t)size, fp) != (size_t)size) {
+        free(buf);
+        fclose(fp);
+        return NULL;
+    }
+    buf[size] = 0;
+    fclose(fp);
+    return buf;
+}
+
+static const ConfScene *conf_find(const char *name) {
+    for (size_t i = 0; i < sizeof CONF_SCENES / sizeof *CONF_SCENES; i++) {
+        if (strcmp(CONF_SCENES[i].name, name) == 0) return &CONF_SCENES[i];
+    }
+    return NULL;
+}
+
+/* Prints the first line the two reports disagree on - a mismatched digest
+ * says "the geometry moved", a mismatched node line says where. */
+static void conf_diff(const char *want, const char *got) {
+    const char *a = want, *b = got;
+    int line = 1;
+    while (*a && *b) {
+        const char *ae = strchr(a, '\n'), *be = strchr(b, '\n');
+        size_t alen = ae ? (size_t)(ae - a) : strlen(a);
+        size_t blen = be ? (size_t)(be - b) : strlen(b);
+        if (alen != blen || memcmp(a, b, alen) != 0) {
+            fprintf(stderr, "  line %d:\n    reference: %.*s\n    C:         %.*s\n",
+                    line, (int)alen, a, (int)blen, b);
+            return;
+        }
+        if (!ae || !be) break;
+        a = ae + 1;
+        b = be + 1;
+        line++;
+    }
+    fprintf(stderr, "  the reports differ in length (reference %zu bytes, C %zu)\n",
+            strlen(want), strlen(got));
+}
+
+static int conformance(const char *path) {
+    char *text = read_file(path);
+    if (!text) {
+        fprintf(stderr,
+                "conformance: cannot read %s\n"
+                "  generate it with: cargo run -p kui-core --example conformance-dump -- %s\n",
+                path, path);
+        return 1;
+    }
+
+    int scenes = 0, bad = 0;
+    char *cursor = text;
+    while ((cursor = strstr(cursor, "scene ")) != NULL) {
+        /* A block runs from its "scene " line to the "end\n" that closes it. */
+        char *stop = strstr(cursor, "\nend\n");
+        if (!stop) break;
+        size_t block_len = (size_t)(stop - cursor) + 5;
+        char *block = malloc(block_len + 1);
+        memcpy(block, cursor, block_len);
+        block[block_len] = 0;
+        cursor += block_len;
+
+        char name[64] = {0};
+        sscanf(block, "scene %63s", name);
+        ConfStep steps[16];
+        int nsteps = 0;
+        for (char *line = block; line; ) {
+            char *next = strchr(line, '\n');
+            if (strncmp(line, "step ", 5) == 0 && nsteps < 16) {
+                ConfStep *s = &steps[nsteps++];
+                s->a = s->b = 0;
+                sscanf(line, "step %15s %d %d", s->kind, &s->a, &s->b);
+            }
+            line = next ? next + 1 : NULL;
+        }
+
+        const ConfScene *scene = conf_find(name);
+        if (!scene) {
+            fprintf(stderr, "FAIL: no C scene for '%s' - every corpus scene needs one\n", name);
+            bad++;
+        } else {
+            Rep got;
+            rep_init(&got);
+            conf_run(scene, steps, nsteps, &got);
+            if (strcmp(got.buf, block) != 0) {
+                fprintf(stderr, "FAIL: scene '%s' lowers differently from C than from kui-core\n", name);
+                conf_diff(block, got.buf);
+                bad++;
+            }
+            rep_free(&got);
+        }
+        scenes++;
+        free(block);
+    }
+    free(text);
+
+    if (scenes == 0) {
+        fprintf(stderr, "conformance: %s holds no scenes\n", path);
+        return 1;
+    }
+    size_t known = sizeof CONF_SCENES / sizeof *CONF_SCENES;
+    if ((size_t)scenes != known) {
+        fprintf(stderr, "FAIL: the reference has %d scenes, C builds %zu\n", scenes, known);
+        bad++;
+    }
+    if (bad) {
+        fprintf(stderr, "conformance: %d of %d scene(s) failed\n", bad, scenes);
+        return 1;
+    }
+    printf("conformance OK (%d scenes)\n", scenes);
+    return 0;
+}
+
 int main(int argc, char **argv) {
     if (argc > 1 && strcmp(argv[1], "--headless") == 0) {
         return headless() || surface();
+    }
+    if (argc > 1 && strcmp(argv[1], "--conformance") == 0) {
+        return conformance(argc > 2 ? argv[2] : "target/conformance.txt");
     }
     AppState state = {0};
     return kui_run(KUI_STR("kui — C counter"), view, on_event, &state) ? 0 : 1;
