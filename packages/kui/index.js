@@ -48,7 +48,8 @@ export function runWindowed({ init, update, view, tick }, opts = {}) {
   setView(view(model));
   // The clock, when asked for: `tick.msg` (or `tick.msg(now)`) goes through
   // `update` every `tick.every` ms. Ticks are frequent, so unlike UI events
-  // they re-render only when `update` returns a new model.
+  // they re-render only when `update` returns a new model — so a tick that
+  // mutates in place has to return the model to be drawn.
   const every = tick?.every > 0 ? tick.every : 0;
   let nextTick = every ? Date.now() + every : Infinity;
   return new Promise((resolve, reject) => {

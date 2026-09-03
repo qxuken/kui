@@ -358,7 +358,10 @@ export interface WindowedConfig<M, A = AppMsg | CoreMsg> {
    *  `Date.now()`) to `update`. Ticks are frequent, so unlike UI events they
    *  re-render only when `update` returns a new model — a countdown that
    *  returns undefined until the displayed second changes costs nothing in
-   *  between. */
+   *  between. Read backwards, that is the trap: a tick handler that mutates
+   *  the model in place and returns undefined never reaches the screen.
+   *  Return the model (any non-undefined return renders) on the ticks that
+   *  should draw. */
   tick?: { every: number; msg: A | ((now: number) => A) };
 }
 

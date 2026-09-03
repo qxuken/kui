@@ -49,7 +49,8 @@ const final = await runWindowed({ init, update, view }, { title: 'counter' }); /
 
 The `runWindowed` loop also takes a clock — `tick: { every: 250, msg: (now) =>
 ({ kind: 'tick', now }) }` — and re-renders on a tick only when `update`
-returns a new model, so a countdown is free between displayed seconds.
+returns a new model, so a countdown is free between displayed seconds. That
+contract cuts both ways; see **A clock** below.
 
 ## Windowed app checklist
 
@@ -119,8 +120,16 @@ package as [props.md](props.md) (`docs/props.md` in the repository).
   user can resize to with `minWidth` / `minHeight` / `maxWidth` / `maxHeight`
   next to `width` / `height` at open; either half of a pair may stand alone,
   and `width`/`height` are clamped into the bounds the OS will enforce.
-- **A clock**: `tick` on `runWindowed`, or `setTimeout` toward the next
-  boundary in your own loop; do not call `update` every pump.
+- **A clock**: `tick: { every, msg }` on `runWindowed`, or `setTimeout`
+  toward the next boundary in your own loop; do not call `update` every
+  pump. Ticks are frequent, so unlike UI events **a tick re-renders only
+  when `update` returns a new model** — a countdown that returns
+  `undefined` until the displayed second changes costs nothing in
+  between. The same rule read backwards is the trap: a tick handler that
+  mutates the model in place and returns `undefined` (the escape hatch
+  the rest of `update` allows) never reaches the screen. Any
+  non-`undefined` return renders, so `return model` after a mutation is
+  the whole fix.
 - **Keys**: `onKey` on the root plus `keyFocus`; presses arrive as
   `{ kind: 'key', code, ... }` with `code` a character or a name
   (`'space'`, `'enter'`, `'f5'`).
