@@ -426,15 +426,9 @@ export interface ScrollGeometry {
 
 export declare class Ctx {
   constructor();
-  /** Lowers a JSX tree into one frame. Encodes it to the flat binary IR
-   *  stream first (the fastest transport, one zero-copy boundary crossing). */
+  /** Lowers a JSX tree into one frame: encodes it to the flat binary IR
+   *  stream, then one zero-copy boundary crossing lowers it. */
   frame(width: number, height: number, scale: number, tree: KuiNode): void;
-  /** `frame` with the addon walking the JS object graph itself — the
-   *  reference transport, ~10x slower (every property read is an N-API call). */
-  frameObject(width: number, height: number, scale: number, tree: KuiNode): void;
-  /** `frame` with a pre-stringified tree (readable on the wire; the
-   *  debugging transport when the encoder is suspect). */
-  frameJson(width: number, height: number, scale: number, tree: string): void;
   /** `frame` from an already-encoded binary stream, for callers that own
    *  their encoder (`createEncoder(protocol())`). */
   frameBinary(width: number, height: number, scale: number, stream: Float64Array, strings: Uint8Array): void;
@@ -592,9 +586,6 @@ export interface WindowOptions {
   maxWidth?: number;
   maxHeight?: number;
   chrome?: 'native' | 'custom' | 'borderless';
-  /** Frame transport: 'binary' (default, fastest) or 'json' (readable, for
-   *  debugging encoder suspicions). */
-  transport?: 'binary' | 'json';
   /** `false` stops the loop printing the core's warnings (see `Warning`);
    *  `win.warnings()` still drains them. */
   warnings?: boolean;
@@ -618,13 +609,8 @@ export declare function createEncoder(p: ReturnType<typeof protocol>): {
 export declare class KuiWindow {
   constructor(title: string, options?: WindowOptions);
   /** Stores the tree future redraws lower, and schedules one. Encodes it to
-   *  the binary IR stream first (the fastest transport). */
+   *  the binary IR stream first. */
   setView(tree: KuiNode): void;
-  /** `setView` with the addon walking the JS object graph itself — the
-   *  reference transport, ~10x slower. */
-  setViewObject(tree: KuiNode): void;
-  /** `setView` with a pre-stringified tree (readable debugging transport). */
-  setViewJson(tree: string): void;
   /** `setView` from an already-encoded binary stream. */
   setViewBinary(stream: Float64Array, strings: Uint8Array): void;
   /** Processes pending OS events; false once the window has closed. */
@@ -792,8 +778,6 @@ export declare function createApp<M, A = AppMsg | CoreMsg>(
     width?: number;
     height?: number;
     scale?: number;
-    /** Frame transport, as for `runWindowed`. */
-    transport?: 'binary' | 'json';
     /** `false` keeps the core's warnings off the console; they still
      *  collect on `app.warnings`. */
     warnings?: boolean;

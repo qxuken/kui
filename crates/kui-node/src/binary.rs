@@ -5,11 +5,11 @@
 //! from the table — no `serde_json::Value` tree ever exists.
 //!
 //! The prop surface is defined once in `schema.rs`; this decoder reads
-//! generic props by their schema kind and applies them through the same
-//! table the JSON path uses, so the two transports cannot disagree. Only
+//! generic props by their schema kind and applies them through the shared
+//! table, so a prop cannot mean one thing here and another in the core. Only
 //! composite props (pad/border/overflow/float) and the constructor specials
 //! (dir/size/key/title/keyFocus) have hand-written arms here, mirrored in
-//! the encoder.
+//! the encoder. This is the addon's only element dispatcher.
 //!
 //! JS never hardcodes ids: `protocol()` exports the tables, and the encoder
 //! reads them at module init. `VERSION` is stamped into slot 0 of every
@@ -196,8 +196,8 @@ fn read_props(r: &mut Reader<'_>) -> Result<PropsOut> {
                     cfg = cfg.self_at(align_idx(sx as usize), align_idx(sy as usize));
                 }
                 // Bare presets (below/above) keep their built-in gap; a config
-                // object always writes an explicit offset, as the JSON path
-                // always applies dx/dy.
+                // object always writes an explicit offset, since its dx/dy
+                // default to 0 rather than to the preset's gap.
                 let has_offset = r.u()? == 1;
                 let (dx, dy) = (r.f()?, r.f()?);
                 if has_offset {
@@ -302,7 +302,8 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
             Ok(())
         }
         OP_BUTTON => {
-            // Mirrors the JSON path's button styling exactly.
+            // The same data as kui_core::widgets::button: hover/pressed
+            // colors are declared on the spec, resolved by the core.
             let label = r.req_str()?;
             let key = r.str_ref()?;
             let msg = match r.str_ref()? {
@@ -339,7 +340,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
             Ok(())
         }
         // key?, src (hi, lo), flags (1 loop | 2 paused), volume (-1 =
-        // absent), tag JSON? — mirrors the JSON path's `<audio>` arm.
+        // absent), tag JSON? — a retained playback keyed by node.
         OP_AUDIO => {
             let key = r.str_ref()?;
             let (hi, lo) = (r.f()? as u64, r.f()? as u64);

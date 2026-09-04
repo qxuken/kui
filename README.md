@@ -92,11 +92,12 @@ never a closure. That value is the app's own union in TypeScript: annotate
 `update` with `type Msg = MyMsg | CoreMsg` and `createApp` / `runWindowed`
 infer it, so events, `dispatch` and ticks all speak it and `update` is one
 switch over `msg.kind` (see [packages/kui](packages/kui/README.md)). The
-addon's own object walk (`frameObject`) and a JSON string transport
-(`frameJson`) stay available as readable reference paths;
-`npm test` in [packages/kui](packages/kui) checks that all three produce
-byte-identical quads for every schema prop and element, and
-`examples/node/bench.mjs` compares their cost. A one-off measurement of the
+encoder is the only door: there is one element dispatcher in the addon, not
+one per transport, and a malformed view is rejected in JS before anything
+crosses the boundary. `npm test` in [packages/kui](packages/kui) pins the
+encoder from both ends — every schema prop and element has to reach the
+stream and lower — and the corpus scenes say what the result must be.
+A one-off measurement of the
 same view built through Node 26's experimental `node:ffi` module, calling the
 C API in [kui.h](crates/kui-ffi/include/kui.h) directly, put ~1500 flat calls
 per frame at ~0.24 ms against ~0.19 ms for the single binary-stream call,
@@ -542,7 +543,7 @@ shape-run cache.
 Layout solver, atlas packer, key scheme, event dispatch, editing,
 measurement, layout events, diagnostics and the Lua binding are covered by
 tests (`cargo test --workspace`); `npm test` in `packages/kui` covers the
-three Node transports against each other. [CHANGELOG.md](CHANGELOG.md)
+Node encoder and the corpus scenes. [CHANGELOG.md](CHANGELOG.md)
 lists per release what was added and, separately, what an app can delete.
 
 ## Releases

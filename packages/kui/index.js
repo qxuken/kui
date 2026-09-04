@@ -6,12 +6,9 @@ import { createEncoder } from './encoder.js';
 export const { Ctx, KuiWindow, quadStride, protocol } = native;
 export { createEncoder };
 
-// The default transport is the binary IR stream: JS encodes the tree into one
-// Float64Array + string table and the addon lowers it zero-copy. The addon's
-// own object walk (`frameObject` / `setViewObject`) stays exposed as the
-// reference path, but every property read there is an N-API call into V8,
-// which makes it ~10x slower — so `frame` / `setView` encode first. One
-// encoder serves every context: its buffers are consumed synchronously.
+// A frame crosses the boundary one way: JS encodes the tree into one
+// Float64Array + string table and the addon lowers it zero-copy. One encoder
+// serves every context — its buffers are consumed synchronously.
 const encoder = createEncoder(native.protocol());
 
 Ctx.prototype.frame = function frame(width, height, scale, tree) {
@@ -48,13 +45,7 @@ export function runWindowed({ init, update, view, tick }, opts = {}) {
   win.setDiagnostics(opts.diagnostics ?? diagnosticsByDefault());
   opts.setup?.(win);
   let model = typeof init === 'function' ? init() : init;
-  // Binary IR path by default; `transport: 'json'` keeps the readable
-  // stringified path for debugging.
-  const setView =
-    opts.transport === 'json'
-      ? (tree) => win.setViewJson(JSON.stringify(tree))
-      : (tree) => win.setView(tree);
-  setView(view(model));
+  win.setView(view(model));
   // The clock, when asked for: `tick.msg` (or `tick.msg(now)`) goes through
   // `update` every `tick.every` ms. Ticks are frequent, so unlike UI events
   // they re-render only when `update` returns a new model — so a tick that
@@ -89,7 +80,7 @@ export function runWindowed({ init, update, view, tick }, opts = {}) {
             render = true;
           }
         }
-        if (render) setView(view(model));
+        if (render) win.setView(view(model));
       } catch (e) {
         reject(e);
         return;
@@ -135,13 +126,7 @@ export function createApp({ init, update, view }, opts = {}) {
       if (next !== undefined) model = next;
     },
     render() {
-      // Binary IR path by default; `transport: 'json'` keeps the readable
-      // stringified path for debugging.
-      if (opts.transport === 'json') {
-        ctx.frameJson(width, height, scale, JSON.stringify(view(model)));
-      } else {
-        ctx.frame(width, height, scale, view(model));
-      }
+      ctx.frame(width, height, scale, view(model));
       const ws = ctx.warnings();
       if (ws.length) {
         app.warnings.push(...ws);

@@ -159,8 +159,8 @@ upgrades remove code from the apps on it is doing the job.
   (`crates/kui-core/tests/conformance.rs`), Lua re-expresses each scene as
   the table a script returns (`crates/kui-lua/tests/conformance.rs`), C
   rebuilds them through the C API alone (`./counter --conformance`), and
-  Node runs each scene on all three transports beside its existing
-  `assertParity` (`packages/kui/test.mjs`). The reference report is
+  Node drives each scene through its encoder (`packages/kui/test.mjs`).
+  The reference report is
   generated per run (`cargo run -p kui-core --example conformance-dump`),
   never checked in: its digests cover real glyph geometry, so it holds
   only for the machine and fonts that made it — which is why all four
@@ -285,6 +285,25 @@ upgrades remove code from the apps on it is doing the job.
   clicked a button its typing went nowhere and its own self-check said
   MISMATCH — to nobody, because the CI step stopped at `tsc`. The example
   is a self-checking headless drive; it is worth a `node` run.
+- **Node has one frame transport, not three** (backlog D2). `frameObject`
+  (napi walking the JS object graph) and `frameJson` (a stringified tree
+  through serde) are **removed**, with `setViewObject`, `setViewJson` and
+  the `transport: 'json'` option on `createApp` / `runWindowed`. They were
+  reference paths: two ~200-line element dispatchers in the addon, one
+  carrying the comment "Mirrors the JSON path's button styling exactly",
+  kept equal by a test that compared their quads. What made them
+  unnecessary was P7 — the corpus scenes check each frame against a report
+  `kui-core` generates, which says what the frame must *be* rather than
+  only that two hand-written dispatchers agree. `binary.rs` is now the
+  addon's only dispatcher; `frame()` and `setView()` are what they always
+  were.
+  Errors came out ahead. They now all come from the encoder, in JS, before
+  anything crosses the boundary, and they name the value: `bad dir
+  "diagonal" (row | column)`, `bad value "middle" for mainAlign (one of
+  start | center | end)`. The one message only the JSON dispatcher had —
+  "element without a type — did it come from kui/jsx-runtime?" — moved to
+  the encoder. `measureText` and `play` still take plain JS objects; those
+  are queries, not a transport, and the JSON prop parser stays for them.
 
 ### What you can delete
 

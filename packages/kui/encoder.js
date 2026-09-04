@@ -5,8 +5,9 @@
 // reused across frames (no per-frame GC churn); encode() returns subarray
 // views that are valid until the next encode() on the same encoder.
 //
-// Semantics mirror the JSON lowering path exactly: same defaults, same
-// prop names, same error cases.
+// This is also the only place a view is validated: a malformed tree is
+// rejected here, in JS, before anything crosses the boundary — so the
+// messages name the element or the prop and what it would have accepted.
 
 const ALIGN = { start: 0, center: 1, end: 2 };
 const FLOAT_PRESET = { parent: 0, viewport: 1, below: 2, above: 3 };
@@ -134,7 +135,7 @@ export function createEncoder(P) {
       if (v === null) {
         // A null tag (onKey / onDrag / onHover / onLayout) still declares
         // the behaviour, just with no `tag` on its events; every other
-        // null is absent, as on the JSON path.
+        // null means absent.
         const def = PR[k];
         if (def === undefined || def.kind !== 'tag') continue;
       }
@@ -176,7 +177,7 @@ export function createEncoder(P) {
             f[fi++] = self ? 1 : 0;
             f[fi++] = self ? alignOf(self[0]) : 0;
             f[fi++] = self ? alignOf(self[1]) : 0;
-            f[fi++] = 1; // explicit offset, like the JSON path's dx/dy defaults
+            f[fi++] = 1; // an explicit config always carries dx/dy (0 by default)
             f[fi++] = v.dx ?? 0;
             f[fi++] = v.dy ?? 0;
             f[fi++] = v.fit ? 1 : 0;
@@ -204,7 +205,7 @@ export function createEncoder(P) {
           break;
         default: {
           // Schema-driven: unknown names (element-level props included) are
-          // ignored, matching the JSON path.
+          // ignored — an element's own props live beside the node's.
           const def = PR[k];
           if (def === undefined || def.kind === 'custom') break;
           if (def.kind === 'flag') {
@@ -318,7 +319,7 @@ export function createEncoder(P) {
   function children(node) {
     if (node == null || typeof node === 'boolean') return;
     if (typeof node === 'string' || typeof node === 'number') {
-      // Bare text child: a default-styled text node, same as the JSON path.
+      // Bare text child: a default-styled text node.
       reserve(8);
       f[fi++] = OP.text;
       strRef(String(node));
@@ -430,6 +431,8 @@ export function createEncoder(P) {
       case 'fragment':
         children(el.children);
         return;
+      case undefined:
+        throw new Error('element without a type — did it come from kui/jsx-runtime?');
       default:
         throw new Error(`unknown element <${el.type}>`);
     }

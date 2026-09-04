@@ -208,9 +208,9 @@ enumerate a map.
 The four adapters: Rust asserts natively; `crates/kui-lua/tests/conformance.rs`
 re-expresses each scene as the table a script returns and diffs in-process;
 `./examples/c/counter --conformance <report>` rebuilds them through the C
-API alone; `packages/kui/test.mjs` runs each scene on all three transports
-beside its existing `assertParity` (it skips when no reference is present,
-so the publish job can still `npm test` against the prebuilds).
+API alone; `packages/kui/test.mjs` drives each scene through the JS encoder
+(it skips when no reference is present, so the publish job can still
+`npm test` against the prebuilds).
 
 Two traps worth knowing before adding a scene. **The root node**: Lua's root
 table is a *child* (`build_node` opens it) while a JSX top-level `<box>`
@@ -712,21 +712,44 @@ genuinely divergent methods hand-written (constructors, `pump`, `size`,
 `frame_*` vs `set_view_*`, `quads`, input injection). With P5, three copies
 become one.
 
-### `.` D2 — Route Node's JSON lowering through the encoder
+### `.` D2 — Route Node's JSON lowering through the encoder — **done (2026-09-04), the other way**
 
-`crates/kui-node/src/lib.rs` dispatches JSON element names and
-`crates/kui-node/src/binary.rs` dispatches opcodes — two ~200-line functions, one
-carrying the comment "Mirrors the JSON path's button styling exactly."
-`test.mjs` genuinely holds them equal, so this is maintenance cost rather than a
-correctness risk — but `index.js` documents the cost being paid: the object walk
-is "~10x slower" because every property read is an N-API call into V8.
+The proposal was to parse JSON in JS and feed the existing encoder. What
+shipped is simpler: the JSON and object transports were **deleted**, so
+there is no second lowering to route anywhere. `frameObject` / `frameJson`
+/ `setViewObject` / `setViewJson` and the `transport: 'json'` option are
+gone, `lower` / `lower_element` / `lower_root` with them, and
+`binary.rs`'s dispatcher is the addon's only one. The `TreeApp` view is a
+`(Vec<f64>, Vec<u8>)` rather than a two-variant enum.
 
-Parse JSON in JS and feed the existing encoder, lowering once. Then decide the
-fate of `frameObject` / `setViewObject`: keep them only if something needs the
-debug reference, otherwise retire them with their share of the parity test.
-Check what this does to error messages first — `test.mjs` has an "errors are the
-same on every transport" test, and whatever replaces the JSON-path errors has to
-be at least as good.
+Nothing needed the debug reference: the transports existed to check each
+other, and the corpus scenes (P7) had already taken over that job against a
+report `kui-core` generates — a stronger oracle than a second hand-written
+dispatcher, because it says what the frame must *be* rather than only that
+two implementations agree.
+
+Error messages came out ahead, not level. They now all come from the
+encoder, in JS, before anything crosses the boundary, and they name the
+value: `bad dir "diagonal" (row | column)` and `bad value "middle" for
+mainAlign (one of start | center | end)` where serde's arm said only that
+the prop was wrong. The one message the JSON dispatcher had and the encoder
+did not — "element without a type — did it come from kui/jsx-runtime?" —
+was ported over; without it a `{props, children}` object read as `unknown
+element <undefined>`.
+
+What replaced the parity test is the part worth arguing with. `assertParity`
+compared three transports byte-for-byte; with one transport left, the tests
+that used it would have become "it did not throw". They now check that
+**every schema prop reaches the stream** — declaring a prop must change the
+encoded bytes, since every prop writes at least its own id — and then that
+the stream lowers without desyncing the decoder. That is the failure the
+JSON path used to catch (a `switch` arm nobody wrote, a name the encoder
+falls through on) and it catches it for `msg`/`tag` props too, which the old
+quad comparison could not see. It does **not** check that a prop means the
+same thing on both sides; only the corpus scenes do that, and only for the
+props a scene exercises. A prop the encoder writes with the wrong arity is
+caught (the decoder desyncs); a prop it writes into the wrong slot of a
+composite is not, unless a scene covers it.
 
 ### `.` D3 — Lift composite parsing into `kui-core`
 

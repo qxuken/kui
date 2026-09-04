@@ -3,15 +3,15 @@
 //! frame at once: the jsx-runtime produces a plain-data element tree
 //! (`{type, key, props, children}`), the JS package encodes it into the flat
 //! binary IR stream ([`binary`]), and [`Ctx::frame_binary`] lowers it in one
-//! zero-copy boundary crossing. [`Ctx::frame_object`] (napi walking the
-//! object graph) and [`Ctx::frame_json`] are the slower reference transports.
+//! zero-copy boundary crossing. That is the only way a frame gets in: there
+//! is one element dispatcher ([`binary`]'s), not one per transport.
 //! Event payloads are plain JSON both ways, which is exactly the Elm shape:
 //! `onClick` carries a message value, never a closure.
 
 use kui_core::{
-    Align, AudioCommand, AudioSpec, Color, Core, EditKey, EditOptions, FontId, FrameSample,
-    FrameStats, ImageId, InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, MouseButton,
-    PlayOptions, PlaybackId, Size, SoundId, Span, TextStyle, UiEvent, Value, Vec2,
+    AudioCommand, AudioSpec, Color, Core, EditKey, FontId, FrameSample, FrameStats, ImageId,
+    InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, MouseButton, PlayOptions, PlaybackId, Size,
+    SoundId, Span, UiEvent, Value, Vec2,
 };
 use napi::bindgen_prelude::{Buffer, Float64Array, Uint8Array};
 use napi_derive::napi;
@@ -20,7 +20,7 @@ use serde_json::{Map as JsonMap, Value as Json};
 mod binary;
 mod schema;
 
-use schema::{align_of, color_of, parse_props_json};
+use schema::{color_of, parse_props_json};
 
 type Result<T> = napi::Result<T>;
 
@@ -73,14 +73,16 @@ fn json_of(v: &Value) -> Json {
 }
 
 // ---------------------------------------------------------------------------
-// Prop parsing
+// Plain-object arguments
+//
+// Frames arrive as the binary IR stream and never as objects, but the
+// imperative calls beside them still take plain JS values: `measureText`
+// takes the same `<text>` content and style props a view would declare, and
+// `play` takes an options bag. These helpers read those.
 
 fn bool_prop(props: &JsonMap<String, Json>, key: &str) -> bool {
     props.get(key).and_then(Json::as_bool).unwrap_or(false)
 }
-
-// ---------------------------------------------------------------------------
-// Element-tree lowering
 
 fn empty_props() -> &'static JsonMap<String, Json> {
     static EMPTY: std::sync::OnceLock<JsonMap<String, Json>> = std::sync::OnceLock::new();
@@ -191,203 +193,6 @@ fn collect_spans(node: Option<&Json>, inherit: SpanStyle, out: &mut Vec<SpanPart
     }
 }
 
-fn lower(core: &mut Core, node: &Json) -> Result<()> {
-    match node {
-        Json::Null | Json::Bool(_) => Ok(()),
-        Json::String(s) => {
-            core.text_node(s, TextStyle::default());
-            Ok(())
-        }
-        Json::Number(n) => {
-            core.text_node(&n.to_string(), TextStyle::default());
-            Ok(())
-        }
-        Json::Array(items) => {
-            for item in items {
-                lower(core, item)?;
-            }
-            Ok(())
-        }
-        Json::Object(o) => lower_element(core, o),
-    }
-}
-
-fn lower_element(core: &mut Core, node: &JsonMap<String, Json>) -> Result<()> {
-    let ty = node
-        .get("type")
-        .and_then(Json::as_str)
-        .ok_or_else(|| err("element without a type — did it come from kui/jsx-runtime?"))?;
-    let (props, children, key) = parts(node);
-    match ty {
-        "box" => {
-            let p = parse_props_json(props)?;
-            let node_key = match key {
-                Some(label) => core.open_keyed(label, p.spec),
-                None => core.open(p.spec),
-            };
-            // A key sink can grab the keyboard declaratively (modal apps);
-            // the core still routes to a focused edit widget first.
-            if p.key_focus {
-                core.set_key_focus(Some(node_key));
-            }
-            lower(core, children.unwrap_or(&Json::Null))?;
-            // Hover hint: floats below the box while hovered (the parser
-            // made the spec hoverable).
-            if let Some(hint) = &p.tooltip
-                && core.is_hovered(node_key)
-            {
-                kui_core::widgets::tooltip(&mut kui_core::Ui::wrap(core), hint);
-            }
-            core.close();
-            Ok(())
-        }
-        "text" => {
-            let style = parse_props_json(props)?.style;
-            if has_span(children) {
-                let mut parts_out = Vec::new();
-                collect_spans(children, SpanStyle::default(), &mut parts_out)?;
-                let spans: Vec<Span<'_>> = parts_out.iter().map(span_of).collect();
-                core.rich_text_node(&spans, style);
-            } else {
-                let mut content = String::new();
-                collect_text(children, &mut content);
-                core.text_node(&content, style);
-            }
-            Ok(())
-        }
-        "span" => Err(err("<span> only works inside <text>")),
-        "button" => {
-            let mut label = String::new();
-            collect_text(children, &mut label);
-            let msg = props.get("onClick").map(value_of).unwrap_or(Value::Null);
-            let label_key = key.unwrap_or(&label);
-            // The same data as kui_core::widgets::button: hover/pressed
-            // colors are declared on the spec, resolved by the core.
-            core.open_keyed(label_key, kui_core::widgets::button_spec().on_click(msg));
-            core.text_node(
-                &label,
-                TextStyle::new(kui_core::widgets::BUTTON_TEXT).color(Color::WHITE),
-            );
-            core.close();
-            Ok(())
-        }
-        "edit" => {
-            let label = key
-                .or_else(|| props.get("id").and_then(Json::as_str))
-                .ok_or_else(|| err("<edit> needs a key or id prop (state is retained by key)"))?;
-            let initial = props.get("initial").and_then(Json::as_str).unwrap_or("");
-            let p = parse_props_json(props)?;
-            let opts = EditOptions {
-                style: p.style,
-                multiline: bool_prop(props, "multiline"),
-                autofocus: bool_prop(props, "autofocus"),
-                ..Default::default()
-            };
-            core.text_edit(label, initial, &opts, p.spec);
-            Ok(())
-        }
-        "image" => {
-            let src = props
-                .get("src")
-                .and_then(Json::as_str)
-                .ok_or_else(|| err("<image> needs a src (an id from addImage)"))?;
-            core.image_node(
-                ImageId::from_ffi(parse_u64(src)?),
-                parse_props_json(props)?.spec,
-            );
-            Ok(())
-        }
-        // A retained playback keyed by node; see `Core::audio_node`.
-        "audio" => {
-            let src = props
-                .get("src")
-                .and_then(Json::as_str)
-                .ok_or_else(|| err("<audio> needs a src (an id from addSound)"))?;
-            let spec = audio_spec_of(
-                SoundId::from_ffi(parse_u64(src)?),
-                props.get("volume").and_then(Json::as_f64),
-                bool_prop(props, "loop"),
-                bool_prop(props, "paused"),
-                props.get("tag").map(value_of),
-            );
-            match key {
-                Some(label) => core.audio_node_keyed(label, spec),
-                None => core.audio_node(spec),
-            };
-            Ok(())
-        }
-        // Adaptive titlebar: drag strip + window buttons per env.window facts.
-        // With children it hosts custom content (tabs etc.); with only a
-        // `title` prop it draws the standard centered-left title.
-        "titlebar" => {
-            let empty = match children {
-                None | Some(Json::Null) => true,
-                Some(Json::Array(a)) => a.is_empty(),
-                _ => false,
-            };
-            let mut ui = kui_core::Ui::wrap(core);
-            if empty {
-                let title = props.get("title").and_then(Json::as_str).unwrap_or("");
-                kui_core::widgets::titlebar(&mut ui, title);
-                Ok(())
-            } else {
-                let mut result = Ok(());
-                kui_core::widgets::titlebar_with(&mut ui, |ui| {
-                    result = lower(ui.core(), children.unwrap_or(&Json::Null));
-                });
-                result
-            }
-        }
-        "windowButtons" => {
-            kui_core::widgets::window_buttons(&mut kui_core::Ui::wrap(core));
-            Ok(())
-        }
-        // Per-phase frame-latency bars vs the display's budget. Reads
-        // core.stats — populated by the windowed runner; empty when headless.
-        "latencyGraph" => {
-            kui_core::widgets::latency_graph(&mut kui_core::Ui::wrap(core));
-            Ok(())
-        }
-        // The graph in a translucent panel floating in a viewport corner.
-        // `at` picks the corner, [x, y] align values; default end/end.
-        "latencyHud" => {
-            let (mut x, mut y) = (Align::End, Align::End);
-            if let Some(at) = props.get("at").and_then(Json::as_array)
-                && at.len() == 2
-            {
-                x = align_of(&at[0])?;
-                y = align_of(&at[1])?;
-            }
-            kui_core::widgets::latency_hud_at(&mut kui_core::Ui::wrap(core), x, y);
-            Ok(())
-        }
-        "fragment" => lower(core, children.unwrap_or(&Json::Null)),
-        other => Err(err(format!("unknown element <{other}>"))),
-    }
-}
-
-/// Lowers a whole frame: a root `<box>` configures the root node; anything
-/// else becomes a child of a default column root.
-fn lower_root(core: &mut Core, tree: &Json) -> Result<()> {
-    if let Json::Object(o) = tree
-        && o.get("type").and_then(Json::as_str) == Some("box")
-    {
-        let (props, children, _) = parts(o);
-        let p = parse_props_json(props)?;
-        // The root box may declare this frame's window title; the windowed
-        // driver diffs and applies it.
-        if let Some(t) = &p.title {
-            core.set_window_title(t);
-        }
-        core.configure_root(p.spec);
-        if p.key_focus {
-            core.set_key_focus(Some(core.root_key()));
-        }
-        return lower(core, children.unwrap_or(&Json::Null));
-    }
-    lower(core, tree)
-}
-
 // ---------------------------------------------------------------------------
 // Context
 
@@ -467,34 +272,6 @@ impl Ctx {
             core: Core::new(),
             events: Vec::new(),
         }
-    }
-
-    /// Builds one frame from a jsx-runtime element tree, napi walking the JS
-    /// object graph property by property (each read is an N-API call into
-    /// V8) — the reference transport, ~10x slower than `frame_binary`. The
-    /// package's `Ctx.frame` encodes to the binary stream instead. A root
-    /// `<box>` configures the root node; anything else becomes a child of a
-    /// default column root.
-    #[napi]
-    pub fn frame_object(&mut self, width: f64, height: f64, scale: f64, tree: Json) -> Result<()> {
-        let scale = if scale > 0.0 { scale } else { 1.0 };
-        self.core
-            .begin_frame(Size::new(width as f32, height as f32), scale as f32);
-        let result = lower_root(&mut self.core, &tree);
-        // Finish even on lowering errors so the context stays usable.
-        self.core.finish_frame();
-        self.events.extend(self.core.take_pending_events());
-        result
-    }
-
-    /// `frame_object` with the tree as a JSON string: one string crosses the
-    /// boundary and serde parses it. Readable on the wire, so it is the
-    /// debugging transport when the binary encoder is suspect.
-    #[napi]
-    pub fn frame_json(&mut self, width: f64, height: f64, scale: f64, tree: String) -> Result<()> {
-        let tree: Json =
-            serde_json::from_str(&tree).map_err(|e| err(format!("bad frame JSON: {e}")))?;
-        self.frame_object(width, height, scale, tree)
     }
 
     /// `frame` with the tree as a flat binary instruction stream (see
@@ -767,28 +544,21 @@ pub fn quad_stride() -> u32 {
 /// lowers the stored tree whenever the runner redraws. Events collect here
 /// and JS drains them after each pump — the same data-only boundary as the
 /// headless `Ctx`, now with a real window around it.
-enum ViewData {
-    Json(Json),
-    Binary(Vec<f64>, Vec<u8>),
-}
-
 #[derive(Default)]
 struct TreeApp {
-    tree: Option<ViewData>,
+    /// The last frame JS submitted: the binary IR stream and its string
+    /// table, kept so a redraw between pumps can re-lower it.
+    tree: Option<(Vec<f64>, Vec<u8>)>,
     events: Vec<UiEvent>,
     error: Option<String>,
 }
 
 impl kui::App for TreeApp {
     fn view(&mut self, ui: &mut kui::Ui<'_>) {
-        let result = match &self.tree {
-            None => return,
-            Some(ViewData::Json(tree)) => lower_root(ui.core(), tree),
-            Some(ViewData::Binary(stream, strings)) => {
-                binary::lower_binary(ui.core(), stream, strings)
-            }
+        let Some((stream, strings)) = &self.tree else {
+            return;
         };
-        if let Err(e) = result {
+        if let Err(e) = binary::lower_binary(ui.core(), stream, strings) {
             self.error = Some(e.reason.to_string());
         }
     }
@@ -854,29 +624,11 @@ impl KuiWindow {
         Ok(KuiWindow { runner })
     }
 
-    /// Stores the tree future redraws lower, and schedules one — napi walks
-    /// the object graph (see `Ctx::frame_object`); the package's `setView`
-    /// encodes to the binary stream instead.
-    #[napi]
-    pub fn set_view_object(&mut self, tree: Json) {
-        self.runner.app_mut().tree = Some(ViewData::Json(tree));
-        self.runner.request_redraw();
-    }
-
-    /// `setViewObject` with the tree as a JSON string (see `Ctx::frame_json`).
-    #[napi]
-    pub fn set_view_json(&mut self, tree: String) -> Result<()> {
-        let tree: Json =
-            serde_json::from_str(&tree).map_err(|e| err(format!("bad view JSON: {e}")))?;
-        self.set_view_object(tree);
-        Ok(())
-    }
-
     /// `setView` with a flat binary instruction stream (see `Ctx::frame_binary`).
     /// Copied once so redraws (resize, hover) can re-lower it between pumps.
     #[napi]
     pub fn set_view_binary(&mut self, stream: Float64Array, strings: Uint8Array) {
-        self.runner.app_mut().tree = Some(ViewData::Binary(stream.to_vec(), strings.to_vec()));
+        self.runner.app_mut().tree = Some((stream.to_vec(), strings.to_vec()));
         self.runner.request_redraw();
     }
 

@@ -163,11 +163,11 @@ jobs:
           ./examples/c/counter --headless
           ./examples/c/counter --conformance target/conformance.txt
 
-      # npm test covers both the transport parity tests and the Node
-      # adapter over the corpus, which needs KUI_CONFORMANCE to run (it
-      # skips without it, so that the publish job - which has no cargo
-      # target dir - can still run the rest against the prebuilds).
-      - name: Node addon parity tests
+      # npm test covers both the encoder tests and the Node adapter over
+      # the corpus, which needs KUI_CONFORMANCE to run (it skips without
+      # it, so that the publish job - which has no cargo target dir - can
+      # still run the rest against the prebuilds).
+      - name: Node addon tests
         run: |
           cargo build -p kui-node --release
           cd packages/kui

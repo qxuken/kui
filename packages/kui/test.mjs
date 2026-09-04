@@ -1,13 +1,16 @@
-// Transport parity: the same tree through frame() (binary stream), frameJson
-// and frameObject must yield byte-identical quads — for every schema prop,
-// the hand-written composites, and every element. The Rust side pins each
-// decoder to the schema; this pins the JS encoder to the addon's JSON path.
+// The encoder is the addon's only door: `frame()` turns a tree into the flat
+// binary IR and `binary.rs` lowers it, with no second dispatcher to check it
+// against. So the tests below pin it from both ends — every schema prop, the
+// hand-written composites and every element have to reach the stream (a
+// dropped prop encodes to the same bytes as not declaring it) and then lower
+// without desyncing the decoder, and the corpus scenes say what the result
+// has to *be*, against a report kui-core generates.
 // Needs the addon built: npm run build:native. Run: npm test
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Ctx, createApp, decodeQuads, protocol, quadStride } from './index.js';
+import { Ctx, createApp, createEncoder, decodeQuads, protocol, quadStride } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
@@ -20,24 +23,30 @@ const KIND_WORD = 18;
 
 // `build(ctx)` returns the tree so per-context resources (images) can be
 // registered first.
-function run(transport, build) {
+function run(build) {
   const ctx = new Ctx();
   const tree = build(ctx);
-  if (transport === 'binary') ctx.frame(320, 240, 1, tree);
-  else if (transport === 'json') ctx.frameJson(320, 240, 1, JSON.stringify(tree));
-  else ctx.frameObject(320, 240, 1, tree);
+  ctx.frame(320, 240, 1, tree);
   return { quads: Buffer.from(ctx.quads()), stats: ctx.stats(), ctx };
 }
 
-function assertParity(label, build) {
-  const b = run('binary', build);
-  const j = run('json', build);
-  const o = run('object', build);
-  assert.ok(b.stats.quadCount > 0, `${label}: no quads`);
-  assert.equal(b.stats.quadCount, j.stats.quadCount, `${label}: binary/json quad counts`);
-  assert.ok(b.quads.equals(j.quads), `${label}: binary and json quads differ`);
-  assert.ok(b.quads.equals(o.quads), `${label}: binary and object quads differ`);
-  return b;
+// A private encoder, so the bytes can be looked at without disturbing the
+// one `frame()` uses (its buffers are only valid until the next encode).
+const probe = createEncoder(protocol());
+function encoded(tree) {
+  const { stream, strings } = probe.encode(tree);
+  return Buffer.concat([
+    Buffer.from(new Uint8Array(stream.buffer, stream.byteOffset, stream.byteLength)),
+    Buffer.from(strings),
+  ]);
+}
+
+/** The tree encodes to something, and the addon lowers it into quads
+ *  without the decoder desyncing. */
+function assertLowers(label, build) {
+  const r = run(build);
+  assert.ok(r.stats.quadCount > 0, `${label}: no quads`);
+  return r;
 }
 
 const SAMPLE = {
@@ -68,25 +77,32 @@ test('protocol exports a version and the schema rows', () => {
   assert.ok(Object.keys(p.prop).length > 20);
 });
 
-test('every generic schema prop lowers identically on all transports', () => {
+// Every prop writes at least its own id, so declaring one has to change the
+// encoded bytes. That is the check the JSON transport used to provide by
+// disagreeing: it catches the `switch` arm that never got written, or the
+// name the encoder quietly falls through on.
+test('every generic schema prop reaches the stream and lowers', () => {
   const { prop } = protocol();
   for (const [name, def] of Object.entries(prop)) {
     if (def.kind === 'custom') continue;
     const value =
       SAMPLE_BY_NAME[name] ?? (def.kind === 'enum' ? def.values[def.values.length - 1] : SAMPLE[def.kind]);
     assert.notEqual(value, undefined, `${name}: no sample for kind ${def.kind}`);
-    const build =
+    const build = (props) =>
       def.target === 'style'
-        ? () => box({ pad: 4, bg: '#101010' }, [text('sample', { size: 14, [name]: value })])
-        : () =>
-            box({ pad: 4, bg: '#101010' }, [
-              box({ width: 60, height: 20, bg: '#333333', [name]: value }, [text('x', { size: 12 })]),
-            ]);
-    assertParity(name, build);
+        ? box({ pad: 4, bg: '#101010' }, [text('sample', { size: 14, ...props })])
+        : box({ pad: 4, bg: '#101010' }, [
+            box({ width: 60, height: 20, bg: '#333333', ...props }, [text('x', { size: 12 })]),
+          ]);
+    assert.ok(
+      !encoded(build({ [name]: value })).equals(encoded(build({}))),
+      `${name}: the encoder dropped it — the stream is the same as without it`,
+    );
+    assertLowers(name, () => build({ [name]: value }));
   }
 });
 
-test('composites and constructor specials lower identically', () => {
+test('the hand-written composites and constructor specials lower', () => {
   const build = () =>
     box({ title: 'frame', pad: 6, gap: 3, bg: '#14161e', keyFocus: true, onKey: 'k' }, [
       box(
@@ -119,10 +135,10 @@ test('composites and constructor specials lower identically', () => {
         },
       ),
     ]);
-  assertParity('composites', build);
+  assertLowers('composites', build);
 });
 
-test('every element lowers identically', () => {
+test('every element lowers', () => {
   const build = (ctx) => {
     const px = Buffer.alloc(4 * 4 * 4, 0xff);
     const img = ctx.addImage(4, 4, px);
@@ -143,7 +159,7 @@ test('every element lowers identically', () => {
       [text('nested', { size: 10 }), null, false],
     ]);
   };
-  const b = assertParity('elements', build);
+  const b = assertLowers('elements', build);
   // Image quads (kind 3) prove the registered image reached the atlas.
   const stride = b.quads.byteLength / b.stats.quadCount;
   let images = 0;
@@ -153,40 +169,40 @@ test('every element lowers identically', () => {
   assert.equal(images, 1, 'one image quad');
 });
 
-test('errors are the same on every transport', () => {
+// A malformed view is rejected in JS, before anything crosses the boundary,
+// and the message names the element or the prop and what it accepts.
+test('a malformed view is rejected, with the offending name in the message', () => {
   const bad = [
-    ['unknown element', () => el('nope')],
-    ['edit without key', () => el('edit', { initial: '' })],
-    ['span outside text', () => el('span', {}, ['x'])],
-    ['bad dir', () => box({ dir: 'diagonal' })],
-    ['bad align', () => box({ mainAlign: 'middle' })],
+    [() => el('nope'), /unknown element <nope>/],
+    [() => ({ props: {}, children: [] }), /element without a type/],
+    [() => el('edit', { initial: '' }), /<edit> needs a key or id prop/],
+    [() => el('span', {}, ['x']), /<span> only works inside <text>/],
+    [() => el('image', {}), /<image> needs a src/],
+    [() => box({ dir: 'diagonal' }), /bad dir "diagonal" \(row \| column\)/],
+    [() => box({ mainAlign: 'middle' }), /bad value "middle" for mainAlign \(one of start \| center \| end\)/],
+    [() => box({ bg: 'blue' }), /bad color "blue"/],
+    [() => box({ width: 'huge' }), /bad sizing "huge"/],
+    [
+      () => text([el('span', {}, ['x']), el('button', {}, ['y'])]),
+      /only strings and <span> may nest inside rich <text>/,
+    ],
   ];
-  for (const [label, build] of bad) {
-    for (const transport of ['binary', 'json', 'object']) {
-      assert.throws(() => run(transport, build), `${label} should throw on ${transport}`);
-    }
-  }
+  for (const [build, message] of bad) assert.throws(() => run(build), message);
 });
 
 // A null tag declares the behaviour (here: a key sink) and leaves `tag` off
-// the event — the same on every transport, so a typed app needs no inert
-// message for a sink that only needs the node key.
+// the event, so a typed app needs no inert message for a sink that only
+// needs the node key.
 test('a null tag declares the behaviour without a tag on the event', () => {
   const build = () => box({}, [box({ onKey: null, keyFocus: true, width: 100, height: 50 }, [], 'sink')]);
-  const payloads = ['binary', 'json', 'object'].map((transport) => {
-    const { ctx } = run(transport, build);
-    ctx.keyDown('a');
-    const evs = ctx.pollEvents();
-    assert.equal(evs.length, 1, `${transport}: the sink got the key`);
-    return evs[0].payload;
-  });
-  for (const p of payloads) {
-    assert.equal(p.kind, 'key');
-    assert.equal(p.code, 'a');
-    assert.ok(!('tag' in p), 'no tag field');
-  }
-  assert.deepEqual(payloads[0], payloads[1]);
-  assert.deepEqual(payloads[0], payloads[2]);
+  const { ctx } = run(build);
+  ctx.keyDown('a');
+  const evs = ctx.pollEvents();
+  assert.equal(evs.length, 1, 'the sink got the key');
+  const p = evs[0].payload;
+  assert.equal(p.kind, 'key');
+  assert.equal(p.code, 'a');
+  assert.ok(!('tag' in p), 'no tag field');
 });
 
 // Held keys: a press and its release are one payload shape apart by `phase`,
@@ -199,34 +215,32 @@ test('a key sink hears both halves of a held key', () => {
       box({ onKey: { pane: 0 }, keyFocus: true, width: 100, height: 50 }, [], 'a'),
       box({ onKey: { pane: 1 }, width: 100, height: 50 }, [], 'b'),
     ]);
-  for (const transport of ['binary', 'json', 'object']) {
-    const { ctx } = run(transport, build);
-    ctx.keyDown('w');
-    ctx.keyDown('w', {}, true); // OS auto-repeat: still the same key down
-    ctx.keyUp('w');
-    const evs = ctx.pollEvents().map((e) => e.payload);
-    assert.deepEqual(
-      evs.map((p) => [p.phase, p.code, p.text, p.repeat]),
-      [
-        ['down', 'w', 'w', false],
-        ['down', 'w', 'w', true],
-        ['up', 'w', null, false],
-      ],
-      `${transport}: down, repeat, up`,
-    );
-    for (const p of evs) {
-      assert.equal(p.kind, 'key', `${transport}: one kind for both phases`);
-      assert.deepEqual(p.tag, { pane: 0 }, `${transport}: the sink's tag rides along`);
-    }
-    // A release the sink never saw the press of resolves nothing.
-    ctx.keyUp('w');
-    assert.equal(ctx.pollEvents().length, 0, `${transport}: no phantom release`);
+  const { ctx } = run(build);
+  ctx.keyDown('w');
+  ctx.keyDown('w', {}, true); // OS auto-repeat: still the same key down
+  ctx.keyUp('w');
+  const evs = ctx.pollEvents().map((e) => e.payload);
+  assert.deepEqual(
+    evs.map((p) => [p.phase, p.code, p.text, p.repeat]),
+    [
+      ['down', 'w', 'w', false],
+      ['down', 'w', 'w', true],
+      ['up', 'w', null, false],
+    ],
+    'down, repeat, up',
+  );
+  for (const p of evs) {
+    assert.equal(p.kind, 'key', 'one kind for both phases');
+    assert.deepEqual(p.tag, { pane: 0 }, "the sink's tag rides along");
   }
+  // A release the sink never saw the press of resolves nothing.
+  ctx.keyUp('w');
+  assert.equal(ctx.pollEvents().length, 0, 'no phantom release');
 });
 
 test('focus moving releases the keys the old sink held', () => {
   const build = () => box({ onKey: { pane: 0 }, keyFocus: true, width: 100, height: 50 }, [], 'a');
-  const { ctx } = run('object', build);
+  const { ctx } = run(build);
   ctx.keyDown('w');
   ctx.keyDown('a');
   const downs = ctx.pollEvents();
@@ -256,51 +270,49 @@ test('focus moving releases the keys the old sink held', () => {
   assert.equal(ctx.pollEvents().length, 0);
 });
 
-// Keyboard focus as data: Tab reaches a button on every transport, a
-// disabled box is not a stop, Enter presses the focused button, and the
-// access tree reports the same focus.
+// Keyboard focus as data: Tab reaches a button, a disabled box is not a
+// stop, Enter presses the focused button, and the access tree reports the
+// same focus.
 test('tab reaches a button and enter presses it', () => {
   const build = () =>
     box({ pad: 4 }, [
       box({ width: 60, height: 20, bg: '#333333', onClick: { kind: 'go' } }, [text('go', { size: 12 })], 'go'),
       box({ width: 60, height: 20, bg: '#333333', focusable: true, disabled: true }, [], 'off'),
     ]);
-  for (const transport of ['binary', 'json', 'object']) {
-    const { ctx } = run(transport, build);
-    assert.equal(ctx.focused(), null, `${transport}: nothing focused at first`);
-    ctx.key('tab');
-    const focused = ctx.focused();
-    assert.ok(focused, `${transport}: tab landed on the button`);
-    assert.ok(ctx.focusVisible(), `${transport}: keyboard focus shows`);
-    assert.ok(ctx.isFocused(focused));
-    const tree = ctx.accessTree();
-    assert.equal(tree.focus, focused);
-    const node = tree.nodes.find((n) => n.key === focused);
-    assert.equal(node.role, 'button');
-    assert.ok(node.focused && !node.disabled);
-    assert.ok(node.actions.includes('focus'));
-    const off = tree.nodes.find((n) => n.disabled);
-    assert.equal(off.role, 'group', `${transport}: a focusable box is in the tree`);
-    assert.ok(!off.actions.includes('focus'), `${transport}: disabled: not focusable`);
-    ctx.key('tab');
-    assert.equal(ctx.focused(), focused, `${transport}: the disabled box is not a stop`);
-    ctx.key('enter');
-    const evs = ctx.pollEvents();
-    assert.equal(evs.length, 1, `${transport}: enter pressed the button`);
-    assert.deepEqual(evs[0].payload, { kind: 'go' });
-    ctx.blur();
-    assert.equal(ctx.focused(), null);
-    ctx.focus(focused);
-    assert.equal(ctx.focused(), focused, `${transport}: focus(key) moves focus`);
-    assert.ok(ctx.focusVisible(), `${transport}: programmatic focus keeps the keyboard modality`);
-    ctx.focusNext();
-    assert.equal(ctx.focused(), focused, `${transport}: the only stop wraps to itself`);
-  }
+  const { ctx } = run(build);
+  assert.equal(ctx.focused(), null, 'nothing focused at first');
+  ctx.key('tab');
+  const focused = ctx.focused();
+  assert.ok(focused, 'tab landed on the button');
+  assert.ok(ctx.focusVisible(), 'keyboard focus shows');
+  assert.ok(ctx.isFocused(focused));
+  const tree = ctx.accessTree();
+  assert.equal(tree.focus, focused);
+  const node = tree.nodes.find((n) => n.key === focused);
+  assert.equal(node.role, 'button');
+  assert.ok(node.focused && !node.disabled);
+  assert.ok(node.actions.includes('focus'));
+  const off = tree.nodes.find((n) => n.disabled);
+  assert.equal(off.role, 'group', 'a focusable box is in the tree');
+  assert.ok(!off.actions.includes('focus'), 'disabled: not focusable');
+  ctx.key('tab');
+  assert.equal(ctx.focused(), focused, 'the disabled box is not a stop');
+  ctx.key('enter');
+  const evs = ctx.pollEvents();
+  assert.equal(evs.length, 1, 'enter pressed the button');
+  assert.deepEqual(evs[0].payload, { kind: 'go' });
+  ctx.blur();
+  assert.equal(ctx.focused(), null);
+  ctx.focus(focused);
+  assert.equal(ctx.focused(), focused, 'focus(key) moves focus');
+  assert.ok(ctx.focusVisible(), 'programmatic focus keeps the keyboard modality');
+  ctx.focusNext();
+  assert.equal(ctx.focused(), focused, 'the only stop wraps to itself');
 });
 
 // Modal surfaces (docs/adr/0003-modal-surfaces.md): the dialog takes focus
 // and keeps it, the app behind it is inert, and Escape and a press outside
-// both ask it to close — the same on every transport.
+// both ask it to close.
 test('a modal contains focus and asks to be dismissed', () => {
   const build = () =>
     box({ pad: 4 }, [
@@ -328,44 +340,42 @@ test('a modal contains focus and asks to be dismissed', () => {
         'dialog',
       ),
     ]);
-  for (const transport of ['binary', 'json', 'object']) {
-    const { ctx } = run(transport, build);
-    const tree = ctx.accessTree();
-    const dialog = tree.nodes.find((n) => n.modal);
-    assert.ok(dialog, `${transport}: the access tree reports the modal`);
-    assert.equal(dialog.role, 'dialog', `${transport}: a modal box is a dialog`);
-    assert.equal(dialog.name, 'Settings');
-    const ok = tree.nodes.find((n) => n.name === 'OK');
-    assert.equal(tree.focus, ok.key, `${transport}: focus entered the modal`);
-    assert.equal(ctx.focused(), ok.key);
+  const { ctx } = run(build);
+  const tree = ctx.accessTree();
+  const dialog = tree.nodes.find((n) => n.modal);
+  assert.ok(dialog, 'the access tree reports the modal');
+  assert.equal(dialog.role, 'dialog', 'a modal box is a dialog');
+  assert.equal(dialog.name, 'Settings');
+  const ok = tree.nodes.find((n) => n.name === 'OK');
+  assert.equal(tree.focus, ok.key, 'focus entered the modal');
+  assert.equal(ctx.focused(), ok.key);
 
-    // The one stop in the ring is inside the dialog: Tab cannot leave.
-    ctx.key('tab');
-    assert.equal(ctx.focused(), ok.key, `${transport}: tab stays inside`);
+  // The one stop in the ring is inside the dialog: Tab cannot leave.
+  ctx.key('tab');
+  assert.equal(ctx.focused(), ok.key, 'tab stays inside');
 
-    // A press on the button behind emits no click, only the dismiss.
-    ctx.cursor(10, 10);
-    ctx.mouse(true, 1);
-    ctx.mouse(false, 1);
-    const outside = ctx.pollEvents();
-    assert.equal(outside.length, 1, `${transport}: the button behind is inert`);
-    assert.deepEqual(outside[0].payload, {
-      kind: 'dismiss',
-      reason: 'outside',
-      tag: { kind: 'settings' },
-    });
+  // A press on the button behind emits no click, only the dismiss.
+  ctx.cursor(10, 10);
+  ctx.mouse(true, 1);
+  ctx.mouse(false, 1);
+  const outside = ctx.pollEvents();
+  assert.equal(outside.length, 1, 'the button behind is inert');
+  assert.deepEqual(outside[0].payload, {
+    kind: 'dismiss',
+    reason: 'outside',
+    tag: { kind: 'settings' },
+  });
 
-    ctx.key('escape');
-    const escaped = ctx.pollEvents();
-    assert.equal(escaped.length, 1);
-    assert.deepEqual(escaped[0].payload, {
-      kind: 'dismiss',
-      reason: 'escape',
-      tag: { kind: 'settings' },
-    });
-    assert.equal(escaped[0].key, dialog.key, `${transport}: on the modal node`);
-    assert.equal(ctx.focused(), ok.key, `${transport}: escape does not let go`);
-  }
+  ctx.key('escape');
+  const escaped = ctx.pollEvents();
+  assert.equal(escaped.length, 1);
+  assert.deepEqual(escaped[0].payload, {
+    kind: 'dismiss',
+    reason: 'escape',
+    tag: { kind: 'settings' },
+  });
+  assert.equal(escaped[0].key, dialog.key, 'on the modal node');
+  assert.equal(ctx.focused(), ok.key, 'escape does not let go');
 });
 
 // Measurement is a query on the same text stack layout uses.
@@ -386,30 +396,28 @@ test('measureText answers what layout gives the text', () => {
   assert.ok(rich.width > 0 && rich.lines === 1);
 });
 
-// Layout is data: an onLayout node reports its rect on first sight and on
-// change, identically on every transport.
+// Layout is data: an onLayout node reports its rect on first sight and
+// again when it changes.
 test('onLayout reports the rect once and again when it changes', () => {
   const tree = (w) =>
     box({ dir: 'row', width: 'grow', height: 'grow' }, [
       box({ width: w, height: 'grow', onLayout: { kind: 'panel' } }, [], 'panel'),
     ]);
-  for (const transport of ['binary', 'json', 'object']) {
-    const { ctx } = run(transport, () => tree(100));
-    const evs = ctx.pollEvents().filter((e) => e.payload.kind === 'layout');
-    assert.equal(evs.length, 1, `${transport}: one layout event`);
-    assert.deepEqual(evs[0].payload, {
-      kind: 'layout',
-      x: 0, y: 0, w: 100, h: 240,
-      parent: { x: 0, y: 0, w: 320, h: 240 },
-      tag: { kind: 'panel' },
-    });
-    ctx.frame(320, 240, 1, tree(100));
-    assert.equal(ctx.pollEvents().length, 0, `${transport}: same rect, silence`);
-    ctx.frame(320, 240, 1, tree(150));
-    const again = ctx.pollEvents();
-    assert.equal(again.length, 1);
-    assert.equal(again[0].payload.w, 150);
-  }
+  const { ctx } = run(() => tree(100));
+  const evs = ctx.pollEvents().filter((e) => e.payload.kind === 'layout');
+  assert.equal(evs.length, 1, 'one layout event');
+  assert.deepEqual(evs[0].payload, {
+    kind: 'layout',
+    x: 0, y: 0, w: 100, h: 240,
+    parent: { x: 0, y: 0, w: 320, h: 240 },
+    tag: { kind: 'panel' },
+  });
+  ctx.frame(320, 240, 1, tree(100));
+  assert.equal(ctx.pollEvents().length, 0, 'same rect, silence');
+  ctx.frame(320, 240, 1, tree(150));
+  const again = ctx.pollEvents();
+  assert.equal(again.length, 1);
+  assert.equal(again[0].payload.w, 150);
 });
 
 // Silent misconfigurations come back as data, once each.
@@ -520,9 +528,9 @@ test('the access tree derives roles and names, and requests drive the app', () =
   assert.throws(() => app.access(name.key, 'teleport'), /unknown access action/);
 });
 
-// `selected` and `expanded` are one schema row each, so all three
-// transports carry them; "3 of 7" is not a row at all — the core numbers
-// what a list holds.
+// `selected` and `expanded` are one schema row each, so every binding
+// carries them; "3 of 7" is not a row at all — the core numbers what a
+// list holds.
 test('selection, disclosure and set position reach the access tree', () => {
   const build = () =>
     box({ pad: 4 }, [
@@ -537,34 +545,31 @@ test('selection, disclosure and set position reach the access tree', () => {
       box({ onClick: 'toggle', expanded: 'collapsed' }, [text('Advanced', { size: 12 })], 'adv'),
       box({ onClick: 'go' }, [text('Save', { size: 12 })], 'save'),
     ]);
-  for (const transport of ['binary', 'json', 'object']) {
-    const { ctx } = run(transport, build);
-    const nodes = ctx.accessTree().nodes;
-    const byName = (n) => nodes.find((x) => x.name === n);
-    const t = `${transport}:`;
+  const { ctx } = run(build);
+  const nodes = ctx.accessTree().nodes;
+  const byName = (n) => nodes.find((x) => x.name === n);
 
-    // Every tab reports the state; a reader can say which one is on.
-    assert.deepEqual([byName('General').selected, byName('Network').selected], [false, true], t);
-    // A row says so only where it is picked: a plain list is not a
-    // selection. A `listItem` is not named by its content, so the rows
-    // are found through the list that holds them.
-    const list = nodes.find((n) => n.role === 'list');
-    const rows = nodes.filter((n) => n.parent === list.key && n.role === 'listItem');
-    assert.deepEqual(rows.map((n) => n.selected), [true, null], t);
-    // A shut disclosure says it is shut; an ordinary button says nothing.
-    assert.equal(byName('Advanced').expanded, false, t);
-    assert.equal(byName('Save').expanded, null, t);
-    assert.equal(byName('Save').selected, null, t);
+  // Every tab reports the state; a reader can say which one is on.
+  assert.deepEqual([byName('General').selected, byName('Network').selected], [false, true]);
+  // A row says so only where it is picked: a plain list is not a
+  // selection. A `listItem` is not named by its content, so the rows
+  // are found through the list that holds them.
+  const list = nodes.find((n) => n.role === 'list');
+  const rows = nodes.filter((n) => n.parent === list.key && n.role === 'listItem');
+  assert.deepEqual(rows.map((n) => n.selected), [true, null]);
+  // A shut disclosure says it is shut; an ordinary button says nothing.
+  assert.equal(byName('Advanced').expanded, false);
+  assert.equal(byName('Save').expanded, null);
+  assert.equal(byName('Save').selected, null);
 
-    // Derived, not declared: the ordinal on the item, the count on the
-    // container, and nothing outside a list or tab list.
-    const tabs = nodes.find((n) => n.role === 'tabList');
-    assert.deepEqual([tabs.setSize, list.setSize], [2, 2], t);
-    assert.equal(tabs.posInSet, null, t);
-    assert.deepEqual([byName('General').posInSet, byName('Network').posInSet], [0, 1], t);
-    assert.deepEqual(rows.map((n) => n.posInSet), [0, 1], t);
-    assert.equal(byName('Save').posInSet, null, t);
-  }
+  // Derived, not declared: the ordinal on the item, the count on the
+  // container, and nothing outside a list or tab list.
+  const tabs = nodes.find((n) => n.role === 'tabList');
+  assert.deepEqual([tabs.setSize, list.setSize], [2, 2]);
+  assert.equal(tabs.posInSet, null);
+  assert.deepEqual([byName('General').posInSet, byName('Network').posInSet], [0, 1]);
+  assert.deepEqual(rows.map((n) => n.posInSet), [0, 1]);
+  assert.equal(byName('Save').posInSet, null);
 });
 
 test('editors expose runs and take selection requests; custom editors get them as messages', () => {
@@ -844,7 +849,7 @@ test('fonts register by installed name or bytes and shape text', () => {
     return n;
   };
   assert.ok(glyphs(box({}, [text('Fonts', { size: 20, font: id })])) > 0);
-  assertParity('font prop', () => box({}, [text('Fonts', { size: 20, font: id })]));
+  assertLowers('font prop', () => box({}, [text('Fonts', { size: 20, font: id })]));
   ctx.removeFont(id);
   // A stale handle falls back to sans instead of failing.
   assert.ok(glyphs(box({}, [text('Fonts', { size: 20, font: id })])) > 0);
@@ -888,7 +893,7 @@ test('wrap, maxLines and ellipsis cut text instead of wrapping it', () => {
   assert.ok(ellipsis.n < nowrap.n, 'ellipsis cuts the line short');
   assert.ok(ellipsis.right <= 120.5, 'the ellipsized line fits the box');
   assert.ok(clamped.n < wrapped.n && clamped.n > ellipsis.n, 'two lines sit between one and all');
-  assertParity('wrap props', () => box({ width: 120 }, [text(LONG, { wrap: 'none', maxLines: 2, ellipsis: true })]));
+  assertLowers('wrap props', () => box({ width: 120 }, [text(LONG, { wrap: 'none', maxLines: 2, ellipsis: true })]));
 });
 
 test('sounds: click/hover props, the audio element, tagged playbacks', () => {
@@ -1082,15 +1087,13 @@ function quadDigest(buffer) {
 /** The protocol every binding drives: a frame, then each replayed step
  *  followed by another frame, then the last frame's output. Mirrors
  *  `conformance::drive`. */
-function driveScene(transport, steps, build) {
+function driveScene(steps, build) {
   const ctx = new Ctx();
   ctx.setDiagnostics(true);
   const tree = build(ctx);
   const events = [];
   const frame = () => {
-    if (transport === 'binary') ctx.frame(320, 240, 1, tree);
-    else if (transport === 'json') ctx.frameJson(320, 240, 1, JSON.stringify(tree));
-    else ctx.frameObject(320, 240, 1, tree);
+    ctx.frame(320, 240, 1, tree);
     events.push(...ctx.pollEvents());
   };
   frame();
@@ -1186,14 +1189,8 @@ test('every corpus scene lowers the way kui-core does', (t) => {
   for (const { name, steps, block } of blocks) {
     const build = SCENE_TREES[name];
     assert.ok(build, `no JSX scene for ${name} — every corpus scene needs one`);
-    // The three encoders still have to agree with each other on frame one;
-    // that is what assertParity is for. The reference says what that frame
-    // has to *be*.
-    assertParity(name, build);
-    for (const transport of ['binary', 'json', 'object']) {
-      const actual = sceneReport(name, steps, driveScene(transport, steps, build));
-      assert.equal(actual, block, `scene ${name} lowers differently on the ${transport} transport`);
-    }
+    const actual = sceneReport(name, steps, driveScene(steps, build));
+    assert.equal(actual, block, `scene ${name} lowers differently than kui-core does`);
   }
 });
 
