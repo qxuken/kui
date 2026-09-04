@@ -586,6 +586,45 @@ click-outside-to-dismiss (and how that meets C1); what the four entry points loo
 like. `FloatConfig::fit` is the in-window approximation and should be documented
 as such.
 
+### `.` P9 — Version the C ABI — **done (2026-09-04)**
+
+`docs/adr/0006-c-abi-versioning.md`, accepted and built. Closes the gap ADR
+0004 named in its own decision 12 and left open: P6's static asserts settle
+`include/kui.h` against the Rust layout at build time, but a C host does not
+build the library it links, and nothing caught an old binary against a new
+one. `KuiEvent` is caller-allocated, ADR 0004 appends a `window` to it, and
+a newer library writing the longer struct into an older host's shorter one
+is silent memory corruption.
+
+Both guards shipped, because they cover different failures.
+`kui_abi_version()` versus `KUI_ABI_VERSION` is the universal one — checked
+for equality, bumped only when something the library *writes or allocates*
+changes layout, so a `KuiSpec` prop a release does not make it noise. The
+leading `uint32_t size` on the four structs the library writes into host
+memory (`KuiEvent`, `KuiDrawData`, `KuiTextMetrics`, `KuiScrollGeometry`,
+each with a `KUI_*_INIT`) is the stronger one: the library writes no further
+than the host reserved, so the *next* append to one of them is compatible
+rather than fatal. A `size` below the ABI-1 layout is refused, and
+`kui_poll_event` refuses before it pops, so a rejected poll does not swallow
+the event.
+
+The audit was the other half of the finding and it lives in the header, as a
+"Who writes what" block and an `[in]` / `[out]` / `[out[]]` / `[lib]` tag on
+every struct. It also names what the size field cannot fix: the four array
+out-params and the `KuiQuad` array a host strides through `KuiDrawData`,
+where the stride is the problem, the write lands before any in-band
+handshake could be read, and the version check is the whole guard — growing
+one of those means an explicit stride argument, a source break, not a quiet
+append. `mod abi_parity` gained `KUI_OUT_STRUCT`, asserting that `size` leads
+each [out] struct and that none has fallen below its ABI-1 layout, plus a
+`_Static_assert` that the header's `KUI_ABI_VERSION` is Rust's.
+
+`examples/c/counter.c` checks the version in `main` before anything else —
+the worked example — and its `--headless` pass asserts the refusal, that a
+short reservation is turned away and the event it refused is still queued.
+One C source break, at the declaration only: `KuiEvent ev;` becomes
+`KuiEvent ev = KUI_EVENT_INIT;`.
+
 ### `.` C8 — Extend the paint vocabulary — **mostly done (2026-09-04)**
 
 Decided and recorded in `docs/adr/0005-the-paint-vocabulary.md`. Two of the

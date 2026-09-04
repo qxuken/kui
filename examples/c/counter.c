@@ -168,7 +168,7 @@ static int headless(void) {
     view(&state, ctx);
     kui_frame_finish(ctx);
 
-    KuiDrawData dd;
+    KuiDrawData dd = KUI_DRAW_DATA_INIT;
     kui_draw_data(ctx, &dd);
     printf("frame 1: %zu quads, viewport %.0fx%.0f, atlas %ux%u (dirty=%d)\n",
            dd.quad_count, dd.viewport_w, dd.viewport_h, dd.atlas_size, dd.atlas_size,
@@ -198,7 +198,7 @@ static int headless(void) {
     kui_input_mouse(ctx, true, 1);
     kui_input_mouse(ctx, false, 1);
 
-    KuiEvent ev;
+    KuiEvent ev = KUI_EVENT_INIT;
     int got = 0;
     while (kui_poll_event(ctx, &ev)) {
         apply_event(&state, &ev);
@@ -439,7 +439,8 @@ static int surface(void) {
 
     /* Measurement works before the first frame. */
     KuiTextStyle body = {.size = 16};
-    KuiTextMetrics one = {0}, wrapped = {0}, rich = {0};
+    KuiTextMetrics one = KUI_TEXT_METRICS_INIT, wrapped = KUI_TEXT_METRICS_INIT,
+                   rich = KUI_TEXT_METRICS_INIT;
     check(kui_measure_text(ui, KUI_STR("measure me"), &body, 0, &one), "kui_measure_text");
     check(one.width > 0 && one.height > 0 && one.lines == 1, "unwrapped is one line");
     check(kui_measure_text(ui, KUI_STR("measure me measure me"), &body, one.width, &wrapped),
@@ -485,7 +486,7 @@ static int surface(void) {
     KuiStr title = {0};
     check(kui_window_title_get(ui, &title) && has(title, "surface"), "kui_window_title_get");
 
-    KuiDrawData dd;
+    KuiDrawData dd = KUI_DRAW_DATA_INIT;
     kui_draw_data(ui, &dd);
     check(dd.quad_count > 0 && dd.scale == 2.0f, "the surface frame drew at scale 2");
     check(dd.atlas_size > 0 && dd.atlas_pixels != NULL, "the glyph atlas is there");
@@ -614,8 +615,24 @@ static int surface(void) {
     uint32_t wcmds[8];
     kui_take_window_commands(ui, wcmds, sizeof wcmds / sizeof wcmds[0]);
 
+    /* What the size handshake buys, standing in for a host that predates
+     * it: a reservation the library cannot recognise is refused outright
+     * instead of being written into, and the refusal costs nothing - the
+     * event is still queued for the caller that asks properly, below. */
+    {
+        KuiEvent stale = KUI_EVENT_INIT;
+        stale.size = 4; /* what an un-set or pre-handshake `size` looks like */
+        stale.key = 0xabcd;
+        check(!kui_poll_event(ui, &stale), "a short reservation is refused");
+        check(stale.key == 0xabcd, "and nothing was written into it");
+
+        KuiDrawData shortdd = KUI_DRAW_DATA_INIT;
+        shortdd.size = 1;
+        check(!kui_draw_data(ui, &shortdd), "kui_draw_data refuses it too");
+    }
+
     /* Everything above lands as data. */
-    KuiEvent ev;
+    KuiEvent ev = KUI_EVENT_INIT;
     int events = 0, layouts = 0, access = 0, downs = 0, ups = 0;
     while (kui_poll_event(ui, &ev)) {
         events++;
@@ -1036,7 +1053,7 @@ static void conf_apply(KuiCtx *ctx, const ConfStep *s) {
 /* Drains the queue into `events`; payloads are borrowed until the next
  * poll, so each is formatted before the next call. */
 static void conf_drain(KuiCtx *ctx, Rep *events) {
-    KuiEvent ev;
+    KuiEvent ev = KUI_EVENT_INIT;
     while (kui_poll_event(ctx, &ev)) {
         KuiStr kind = KUI_STR("-"), tag = KUI_STR("-");
         const KuiValue *k = ev.payload ? kui_value_get(ev.payload, KUI_STR("kind")) : NULL;
@@ -1080,7 +1097,7 @@ static void conf_run(const ConfScene *scene, const ConfStep *steps, int nsteps, 
     if (kui_window_title_get(ctx, &title)) repf(out, "title %.*s\n", (int)title.len, title.ptr);
     else repf(out, "title -\n");
 
-    KuiDrawData dd;
+    KuiDrawData dd = KUI_DRAW_DATA_INIT;
     kui_draw_data(ctx, &dd);
     repf(out, "quads %zu %016llx\n", dd.quad_count,
          (unsigned long long)quad_digest(dd.quads, dd.quad_count));
@@ -1267,7 +1284,35 @@ static int conformance(const char *path) {
     return 0;
 }
 
+/* The first thing a C host should do, before it allocates a context or a
+ * struct the library will write into.
+ *
+ * This file and libkui_ffi are settled against each other by build.sh, but
+ * that only covers the pair you built. Ship the binary, let it load a
+ * libkui_ffi from somewhere else, and the two can disagree - and the way
+ * they disagree is not a missing symbol. KuiEvent is caller-allocated: main
+ * reserves sizeof(KuiEvent) as this header declares it, and a newer library
+ * that appended a field would write past the end of that. The `size` in
+ * KUI_EVENT_INIT stops exactly that one, but only for [out] structs; the
+ * arrays below (KuiAccessNode, KuiWarning) and the KuiQuad array we stride
+ * through KuiDrawData have no in-band guard at all, and this check is what
+ * stands in for one. Equality, not >=, for the reason kui.h gives. */
+static int abi_ok(void) {
+    uint32_t lib = kui_abi_version();
+    if (lib == KUI_ABI_VERSION) return 1;
+    fprintf(stderr,
+            "FAIL: libkui_ffi implements ABI %u, this binary was built "
+            "against ABI %u.\n"
+            "      Rebuild against the matching kui.h, or link the matching "
+            "library.\n",
+            lib, (unsigned)KUI_ABI_VERSION);
+    return 0;
+}
+
 int main(int argc, char **argv) {
+    if (!abi_ok()) {
+        return 1;
+    }
     if (argc > 1 && strcmp(argv[1], "--headless") == 0) {
         return headless() || surface();
     }
