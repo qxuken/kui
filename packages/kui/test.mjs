@@ -182,6 +182,60 @@ test('every element lowers', () => {
   const [rightX, topY] = corner(['end', 'start']);
   assert.ok(leftX < rightX, 'latencyHud: at[0] places it horizontally');
   assert.ok(topY < bottomY, 'latencyHud: at[1] places it vertically');
+
+  // Every prop above is one some table claims. This scene is the
+  // allow-list's fixture: an element prop nobody put in `ELEMENTS.jsx_own`
+  // fails here rather than warning at whoever writes it next.
+  assert.deepEqual(b.ctx.warnings().filter((w) => w.code === 'unknown-prop'), []);
+});
+
+// A name outside the schema has no wire id, so the encoder is the only side
+// that ever sees it. It reports what it dropped instead of dropping it in
+// silence.
+test('an unknown prop warns once, with the name it was probably meant to be', () => {
+  const view = () =>
+    box({ pad: 4 }, [
+      box({ hover_bg: '#333333', width: 10, height: 10 }),
+      box({ hover_bg: '#333333', width: 10, height: 10 }),
+      el('edit', { initial: 'hi', autofocus: true, colour: '#fff' }, [], 'note'),
+    ]);
+  const ctx = new Ctx();
+  ctx.frame(320, 240, 1, view());
+  const ws = ctx.warnings().filter((w) => w.code === 'unknown-prop');
+  assert.equal(ws.length, 2, `one per name, not per node: ${JSON.stringify(ws)}`);
+  const hover = ws.find((w) => w.message.includes('hover_bg'));
+  assert.match(hover.message, /is not a prop of box/);
+  assert.match(hover.message, /did you mean `hoverBg`\?/);
+  // Nothing near `colour`, so no guess is offered — and the element it was
+  // written on is named.
+  const colour = ws.find((w) => w.message.includes('colour'));
+  assert.match(colour.message, /is not a prop of edit/);
+  assert.doesNotMatch(colour.message, /did you mean/);
+  // Once per name: the second frame is silent, like every other check.
+  ctx.frame(320, 240, 1, view());
+  assert.deepEqual(ctx.warnings(), []);
+  // And behind the same gate.
+  const quiet = new Ctx();
+  quiet.setDiagnostics(false);
+  quiet.frame(320, 240, 1, view());
+  assert.deepEqual(quiet.warnings(), []);
+});
+
+test('createApp reports unknown props too, and a shipped build does not', () => {
+  const app = createApp(
+    { init: 0, update: () => undefined, view: () => box({ onclick: 'go', width: 10, height: 10 }) },
+    { warnings: false },
+  );
+  app.render();
+  assert.equal(app.warnings.length, 1);
+  assert.equal(app.warnings[0].code, 'unknown-prop');
+  assert.match(app.warnings[0].message, /did you mean `onClick`\?/);
+  const shipped = createApp(
+    { init: 0, update: () => undefined, view: () => box({ onclick: 'go', width: 10, height: 10 }) },
+    { diagnostics: false },
+  );
+  shipped.render();
+  assert.deepEqual(shipped.warnings, []);
 });
 
 // A malformed view is rejected in JS, before anything crosses the boundary,

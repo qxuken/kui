@@ -295,6 +295,15 @@ impl Core {
         self.diag.take()
     }
 
+    /// Raises a warning a binding built (see [`crate::diag::unknown_prop`]):
+    /// a frontend sees declarations the tree walk cannot, because a prop
+    /// name nothing claims never becomes part of a node. Behind the same
+    /// [`Self::set_diagnostics`] gate and the same once-per-(code, key)
+    /// dedup as the checks, so a binding may raise one per node per frame.
+    pub fn warn(&mut self, warning: Warning) {
+        self.diag.raise(warning);
+    }
+
     /// Turns the diagnostic checks on or off. A bare `Core` has them on;
     /// drivers set them for the build they are in (the runner: debug on,
     /// release off; Node loops: off under `NODE_ENV=production`; a

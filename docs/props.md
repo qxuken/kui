@@ -96,7 +96,7 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `clip`, `scrollX`, `scrollY` | `clip`, `scroll_x`, `scroll_y` (`scroll` = `scroll_y`) | `overflow` bits `KUI_CLIP` \| `KUI_SCROLL_X` \| `KUI_SCROLL_Y` | Clip children; scroll (implies clip) with retained offsets and live scrollbars. |
 | `pad`, `padX`, `padY`, `padL`, `padR`, `padT`, `padB` | `pad = n` or `pad = { l=, r=, t=, b= }` | `pad_l`, `pad_r`, `pad_t`, `pad_b` | Padding; the shorthands resolve to four edges, the specific ones win. |
 | `size` (text) | `size` | `KuiTextStyle.size` | Font size in logical px; the text style is constructed from it, so declare it for the other style props to apply at that size. |
-| `title` (root box only) | `title` (root table) | `kui_window_title` | Declares the window title for this frame; the driver diffs and applies. |
+| `title` (root box only) | `window_title` (root table) | `kui_window_title` | Declares the window title for this frame; the driver diffs and applies. |
 | `tooltip="hint"` | `tooltip = "hint"` | `KuiSpec.tooltip` (`kui_tooltip` / `kui_tooltip_with` draw a hint that is not hover-gated) | Floats a hint below the node while hovered (implies hover tracking). |
 
 ## Elements

@@ -16,12 +16,18 @@
 //! for shipped apps — the Rust runner and the Node loops turn them on in
 //! development builds only, a standalone C context starts with them off —
 //! through [`crate::Core::set_diagnostics`].
+//!
+//! One code does not come from the tree walk: a prop name no table claims
+//! ([`UNKNOWN_PROP`]) is gone by the time the frame is a tree, so the
+//! binding that dropped it raises it through [`crate::Core::warn`], behind
+//! the same gate and the same dedup.
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::access::{self, Role};
 use crate::edit::EditStore;
 use crate::key::Key;
+use crate::schema;
 use crate::spec::{Dir, Sizing};
 use crate::text::TextSystem;
 use crate::tree::{NIL, Tree};
@@ -71,6 +77,33 @@ pub const CONTROL_WITHOUT_NAME: &str = "control-without-name";
 /// why a column cannot have it.
 pub const WRAP_IGNORED: &str = "wrap-ignored";
 
+/// A prop name nothing claims: not a schema row, not a composite, not one of
+/// the element's own props (see `schema::known_prop`). The binding threw the
+/// declaration away — `hoverBg` in a Lua table, `onclick` in JSX — so unlike
+/// every other code here this one is raised by the frontend that saw it,
+/// through [`crate::Core::warn`]: by the time a frame is a tree the name is
+/// gone.
+pub const UNKNOWN_PROP: &str = "unknown-prop";
+
+/// The [`UNKNOWN_PROP`] warning for one dropped name, with the nearest
+/// legitimate spelling when there is an obvious one. The key is derived from
+/// the element and the name rather than from a node, so a misspelling costs
+/// one line however many nodes carry it and however many frames draw them.
+pub fn unknown_prop(element: &str, name: &str, spelling: schema::Spelling) -> Warning {
+    let hint = match schema::suggest(element, name, spelling) {
+        Some(near) => format!(" (did you mean `{near}`?)"),
+        None => String::new(),
+    };
+    Warning {
+        code: UNKNOWN_PROP,
+        key: Key::ROOT.str(UNKNOWN_PROP).str(element).str(name),
+        message: format!(
+            "`{name}` is not a prop of {element}: no binding reads it, so this declaration is \
+             dropped{hint}"
+        ),
+    }
+}
+
 /// Pending warnings are capped so a host that never drains them cannot
 /// grow the queue without bound.
 const MAX_PENDING: usize = 256;
@@ -102,6 +135,20 @@ impl Default for Diagnostics {
 impl Diagnostics {
     pub(crate) fn take(&mut self) -> Vec<Warning> {
         std::mem::take(&mut self.pending)
+    }
+
+    /// A warning built elsewhere — by a binding, for what it saw before the
+    /// tree existed. Same gate and same once-per-(code, key) dedup as the
+    /// checks below, so a frontend can raise one per node per frame and the
+    /// host still reads one line.
+    pub(crate) fn raise(&mut self, w: Warning) {
+        if !self.enabled
+            || self.pending.len() >= MAX_PENDING
+            || !self.warned.insert((w.code, w.key))
+        {
+            return;
+        }
+        self.pending.push(w);
     }
 
     fn warn(&mut self, code: &'static str, key: Key, message: impl FnOnce() -> String) {

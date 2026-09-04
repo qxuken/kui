@@ -317,8 +317,43 @@ fn with_children(
     result
 }
 
+/// The `ELEMENTS` row a Lua node type is: the two container constructors are
+/// one element, `input` is the chrome around an `edit`, and the widget
+/// functions spell their names with underscores.
+fn element_of(ty: &str) -> &str {
+    match ty {
+        "row" | "column" => "box",
+        "input" => "edit",
+        "window_buttons" => "windowButtons",
+        "latency_graph" | "latency_hud" => "latencyGraph",
+        other => other,
+    }
+}
+
+/// Warns about every key in the node table that no table claims — the
+/// binding is about to drop it (see `diag::UNKNOWN_PROP`). Only string keys:
+/// children sit at the integer ones.
+fn check_props(ui: &mut Ui<'_>, t: &Table, element: &str) -> mlua::Result<()> {
+    if !ui.core().diagnostics() {
+        return Ok(());
+    }
+    for pair in t.pairs::<mlua::Value, mlua::Value>() {
+        let (k, _) = pair?;
+        let mlua::Value::String(k) = k else { continue };
+        let name = k.to_str()?;
+        // `type` is the prelude's element tag, not a prop.
+        if name.as_ref() == "type" || schema::known_prop(element, &name, schema::Spelling::Snake) {
+            continue;
+        }
+        let w = kui_core::diag::unknown_prop(element, &name, schema::Spelling::Snake);
+        ui.core().warn(w);
+    }
+    Ok(())
+}
+
 fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     let ty: String = t.get("type")?;
+    check_props(ui, t, element_of(&ty))?;
     match ty.as_str() {
         "row" | "column" => {
             let p = parse_props(t, ty == "row")?;
@@ -580,8 +615,9 @@ pub fn parse_props(t: &Table, is_row: bool) -> mlua::Result<PropsOut> {
             }
             name => {
                 // `repeat` is a Lua keyword, so that row also answers to
-                // CSS's own name for it.
-                let name = if name == "direction" { "repeat" } else { name };
+                // CSS's own name for it (`schema::LUA_ALIASES`, which the
+                // unknown-prop check reads too).
+                let name = schema::lua_alias(name).unwrap_or(name);
                 let Some(def) = schema::by_snake_name(name) else {
                     continue;
                 };
@@ -1001,6 +1037,94 @@ mod tests {
         let quads = frame(&mut core, &mut ext);
         assert!(quads > 60, "got {quads} quads");
         assert_eq!(core.window_title(), Some("all nodes"));
+        // And every key above is one some table claims: this scene is the
+        // allow-list's fixture, so a new element prop that nobody adds to
+        // `ELEMENTS.lua_own` fails here instead of warning at a user.
+        let unknown: Vec<String> = core
+            .take_warnings()
+            .into_iter()
+            .filter(|w| w.code == kui_core::diag::UNKNOWN_PROP)
+            .map(|w| w.message)
+            .collect();
+        assert!(unknown.is_empty(), "{unknown:#?}");
+    }
+
+    /// A key no table claims is thrown on the floor by the binding — so it
+    /// says so, once, in the spelling Lua actually takes.
+    #[test]
+    fn unknown_props_warn_once_in_lua_spelling() {
+        let mut ext = LuaExtension::from_source(
+            "typos",
+            r#"
+                function view(env)
+                  return column { pad = 8,
+                    row { hoverBg = 0x333333ff, width = 10, height = 10 },
+                    row { hoverBg = 0x333333ff, width = 10, height = 10 },
+                    row { colour = 0x333333ff, width = 10, height = 10 },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let mut warned: Vec<String> = core
+            .take_warnings()
+            .into_iter()
+            .filter(|w| w.code == kui_core::diag::UNKNOWN_PROP)
+            .map(|w| w.message)
+            .collect();
+        warned.sort();
+        assert_eq!(warned.len(), 2, "one per name, not per node: {warned:#?}");
+        assert!(
+            warned[1].contains("`hoverBg` is not a prop of box")
+                && warned[1].contains("did you mean `hover_bg`?"),
+            "{warned:#?}"
+        );
+        // Nothing near `colour`, so no guess is offered.
+        assert!(warned[0].contains("`colour`") && !warned[0].contains("did you mean"));
+        // The second frame is silent: (code, key) dedup, as for every check.
+        frame(&mut core, &mut ext);
+        assert!(core.take_warnings().is_empty());
+    }
+
+    /// `direction` is the Lua spelling of the `repeat` row (a Lua keyword),
+    /// and the check reads the same alias table the parser remaps through.
+    #[test]
+    fn the_repeat_alias_does_not_warn() {
+        let mut ext = LuaExtension::from_source(
+            "alias",
+            r#"
+                function view(env)
+                  return column {
+                    row { width = 10, height = 10, keyframes = { { bg = 0x000000ff } },
+                          transition = 100, direction = "alternate" },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        assert!(core.take_warnings().is_empty());
+    }
+
+    /// The check is behind the same gate as every other diagnostic.
+    #[test]
+    fn unknown_props_stay_quiet_with_diagnostics_off() {
+        let mut ext = LuaExtension::from_source(
+            "quiet",
+            r#"
+                function view(env)
+                  return column { hoverBg = 0x333333ff }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        core.set_diagnostics(false);
+        frame(&mut core, &mut ext);
+        assert!(core.take_warnings().is_empty());
     }
 
     /// `tooltip = "hint"` on a container makes it hoverable and floats the

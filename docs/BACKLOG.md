@@ -111,20 +111,36 @@ alpha.5 shipped, so renaming `env.focus` is now breaking. Prefer additive:
 `env.focus_prev` / `env.is_pressed` as the verbs, and a deprecation note on
 `env.focus` so a later major release can converge on the Node/C spelling.
 
-### `~` P4 — Warn on unknown props
+### `.` P4 — Warn on unknown props — **done (2026-09-04)**
 
-Both dynamic bindings end their prop loop by ignoring unknown names
-(`crates/kui-lua/src/lib.rs:511`; the equivalent in `crates/kui-node/src/schema.rs`),
-because element-level props like `initial` and `src` fall through the same path.
-So `hoverBg` in Lua, or `onclick` in JSX, does nothing and says nothing. This is
-the class of silent misconfiguration `crates/kui-core/src/diag.rs` exists to
-catch, and a bigger one than `grow-weight-ignored`.
+`hoverBg` in a Lua table and `onclick` in JSX now say so, as an
+`unknown-prop` warning naming the element and the spelling it was probably
+meant to be. The allow-list is the schema tables themselves: `CUSTOM` rows
+carry `jsx_names` / `lua_names` (every spelling of each composite —
+`borderW` here, `border = {…}` there) and `ELEMENTS` rows carry `jsx_own` /
+`lua_own` (the props an element lowers itself: `<edit initial>`,
+`<image src>`), so `schema::known_prop(element, name, spelling)` answers
+both bindings from one place and `schema::suggest` supplies the guess.
 
-Add an `unknown-prop` code. Put the per-element allow-list of legitimate
-non-schema props in `schema.rs` so both bindings read it from one place, and warn
-on anything outside schema ∪ allow-list. The warning has to be raised from the
-binding, so a small `Core` entry point may be needed; keep it behind
-`set_diagnostics`.
+Per spelling, not per binding-with-a-shared-list: JSX's camelCase and Lua's
+snake_case are separate allow-lists, so `hover_bg` in JSX is as unknown as
+`hoverBgg` — which is the truth, since neither binding reads the other's
+names. `schema::LUA_ALIASES` holds the one exception (`direction` for the
+`repeat` row, `repeat` being a Lua keyword) and the Lua parser remaps
+through the same table it is checked against.
+
+The warning is raised by the binding rather than by the tree walk, since a
+name nothing claims never becomes part of a node: `Core::warn` takes a
+built `Warning`, behind the same `set_diagnostics` gate and the same
+once-per-(code, key) dedup, and the key is derived from (element, name) so
+a misspelling costs one line however many nodes carry it. Lua checks the
+node table in `build_node`; for Node the *encoder* is the only side that
+ever sees the name (an unknown one has no wire id, so it cannot reach the
+stream), so it collects `[element, name]` pairs and `frame` / `setView`
+hand them to `warnUnknownProps`.
+
+Found on the way: the `title` composite's Lua spelling was documented as
+`title`, but the root table has always read `window_title`.
 
 ### `.` P5 — Generate `index.d.ts` instead of hand-writing it — **done (2026-09-04)**
 
@@ -1262,8 +1278,10 @@ By leverage-to-effort, not severity.
 5. ~~**P7 — the conformance corpus.**~~ Done (2026-09-03), out of order: it
    was cheaper to fix P1 and P2 *through* the corpus than beside it, and a
    fix with no scene behind it is the state this document exists to
-   describe. P4 (unknown-prop warnings) and D3 (composite parsing in the
-   core) are the two that still shrink the surface it has to cover.
+   describe. ~~P4 (unknown-prop warnings)~~ — done (2026-09-04), and it
+   leant on the corpus the same way: the "every element lowers" scenes are
+   what pin the allow-list. D3 (composite parsing in the core) is the one
+   left that still shrinks the surface it has to cover.
 6. **Then the designs.** ~~C1 + C2 unlock dialogs, menus and comboboxes
    together~~ — both shipped (ADR 0003 for C1; C2 needed no ADR of its own,
    since it only adds a row and a button to the model 0003 settled), and a

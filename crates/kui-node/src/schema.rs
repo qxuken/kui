@@ -189,9 +189,12 @@ pub fn parse_props_json(props: &JsonMap<String, Json>) -> Result<PropsOut> {
         .and_then(Json::as_str)
         .map(str::to_string);
     // The table drives the rest; unknown names are ignored (element-level
-    // props like `initial` or `src` land here too and fall through). A null
-    // is absent — except for a tag, where it declares the behaviour
-    // without a tag on its events.
+    // props like `initial` or `src` land here too and fall through). This
+    // path is `measureText`'s — a query, not a frame — so it stays silent
+    // about them; a view's names are checked in the encoder, which is the
+    // only side that sees a name with no wire id. A null is absent — except
+    // for a tag, where it declares the behaviour without a tag on its
+    // events.
     for (k, v) in props {
         let Some(def) = by_name(k) else { continue };
         if v.is_null() && !matches!(def.kind, Kind::Tag) {
@@ -248,6 +251,17 @@ pub fn protocol_props() -> Json {
         let mut p = JsonMap::new();
         p.insert("id".into(), Json::from(c.id));
         p.insert("kind".into(), Json::String("custom".into()));
+        // Every JSX spelling of the composite, so the encoder can tell one
+        // from a misspelling (`borderW` is real, `borderWidth` is not).
+        p.insert(
+            "names".into(),
+            Json::Array(
+                c.jsx_names
+                    .iter()
+                    .map(|n| Json::String((*n).into()))
+                    .collect(),
+            ),
+        );
         p.insert("jsx".into(), Json::String(c.jsx.into()));
         p.insert("lua".into(), Json::String(c.lua.into()));
         p.insert("c".into(), Json::String(c.c.into()));
@@ -279,9 +293,8 @@ fn table<T>(items: &[T], fields: &[Column<T>]) -> Json {
 /// The element, event and resource tables as data, for the docs generator.
 pub fn protocol_tables() -> Vec<(&'static str, Json)> {
     vec![
-        (
-            "elements",
-            table(
+        ("elements", {
+            let mut rows = table(
                 ELEMENTS,
                 &[
                     ("name", |e: &ElementDef| e.name),
@@ -290,8 +303,20 @@ pub fn protocol_tables() -> Vec<(&'static str, Json)> {
                     ("c", |e| e.c),
                     ("doc", |e| e.doc),
                 ],
-            ),
-        ),
+            );
+            // The element's own props, for the encoder's unknown-prop
+            // check; the docs generator reads the columns by name and
+            // ignores this one.
+            for (row, def) in rows.as_array_mut().into_iter().flatten().zip(ELEMENTS) {
+                row["own"] = Json::Array(
+                    def.jsx_own
+                        .iter()
+                        .map(|n| Json::String((*n).into()))
+                        .collect(),
+                );
+            }
+            rows
+        }),
         (
             "events",
             table(

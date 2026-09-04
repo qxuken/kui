@@ -17,6 +17,36 @@ export function createEncoder(P) {
   const PR = P.prop;
   const VERSION = P.version;
 
+  // The allow-list a view is checked against, straight off the protocol: the
+  // schema rows, every JSX spelling of every composite, and — per element —
+  // the props the element lowers itself (`<edit initial>`, `<image src>`).
+  // A name outside it has no id, so the encoder would silently drop it; it
+  // collects those instead, and encode() hands them back for the addon to
+  // warn about.
+  const KNOWN = new Set();
+  for (const [name, def] of Object.entries(PR)) {
+    // A composite's row name is its identity on the wire, not a prop a view
+    // writes (`overflow` is `clip` / `scrollX` / `scrollY`), so those rows
+    // contribute their spellings and nothing else.
+    if (def.kind === 'custom') for (const n of def.names) KNOWN.add(n);
+    else KNOWN.add(name);
+  }
+  const OWN = new Map((P.elements ?? []).map((e) => [e.name, new Set(e.own ?? [])]));
+  // `<span>` is part of the text element (its props are read by collectSpans),
+  // and the hud is the graph's other spelling.
+  const ELEMENT_OF = { span: 'text', latencyHud: 'latencyGraph' };
+  let unknown = [];
+
+  function checkProps(type, p) {
+    const element = ELEMENT_OF[type] ?? type;
+    const own = OWN.get(element);
+    if (own === undefined) return; // fragment, or an element that already threw
+    for (const k in p) {
+      if (KNOWN.has(k) || own.has(k)) continue;
+      unknown.push([element, k]);
+    }
+  }
+
   let f = new Float64Array(1 << 14);
   let u = new Uint8Array(1 << 16);
   let fi = 0;
@@ -335,6 +365,7 @@ export function createEncoder(P) {
 
   function element(el) {
     const p = el.props ?? {};
+    checkProps(el.type, p);
     reserve(96);
     switch (el.type) {
       case 'box':
@@ -442,10 +473,12 @@ export function createEncoder(P) {
     encode(tree) {
       fi = 0;
       ui = 0;
+      unknown = [];
       reserve(96);
       f[fi++] = VERSION;
       f[fi++] = OP.root;
       if (tree != null && typeof tree === 'object' && !Array.isArray(tree) && tree.type === 'box') {
+        checkProps('box', tree.props ?? {});
         props(tree.props ?? {}, null, true);
         children(tree.children);
       } else {
@@ -454,7 +487,10 @@ export function createEncoder(P) {
       }
       reserve(4);
       f[fi++] = OP.end;
-      return { stream: f.subarray(0, fi), strings: u.subarray(0, ui) };
+      // `unknown` is the names this pass had no id for — `[element, name]`
+      // pairs the caller hands to `warnUnknownProps`. Like the buffers, it
+      // is valid until the next encode().
+      return { stream: f.subarray(0, fi), strings: u.subarray(0, ui), unknown };
     },
   };
 }

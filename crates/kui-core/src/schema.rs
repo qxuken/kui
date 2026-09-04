@@ -21,8 +21,18 @@
 //! on behaviour — every `CUSTOM` and `ELEMENTS` row has to appear in a
 //! scene that all four bindings reproduce byte for byte, or the build
 //! fails.
+//!
+//! Those rows are also the allow-list: a dynamic binding drops a name it
+//! cannot place, so the names it may legitimately drop have to be written
+//! down somewhere both bindings read. `CUSTOM` carries every spelling of
+//! each composite and `ELEMENTS` the props an element lowers itself
+//! (`<edit initial>`, `<image src>`), each in both conventions;
+//! [`known_prop`] answers from them and everything else is a
+//! `diag::UNKNOWN_PROP` warning.
 
 use std::sync::LazyLock;
+
+use rustc_hash::FxHashSet;
 
 use crate::access::Role;
 use crate::anim::{Easing, Repeat};
@@ -810,6 +820,15 @@ pub const PROPS: &[PropDef] = &[
 pub struct CustomProp {
     pub name: &'static str,
     pub id: u32,
+    /// Every prop name a JSX view may write for it — the machine-readable
+    /// half of `jsx`, which is prose for the docs. A composite is spelled
+    /// differently in each binding (`borderW` here, `border = {…}` there),
+    /// so the two lists are separate; together with `PROPS` and an element's
+    /// own props they are the whole allow-list a binding checks a view
+    /// against (see [`known_prop`]).
+    pub jsx_names: &'static [&'static str],
+    /// The same for a Lua node table.
+    pub lua_names: &'static [&'static str],
     /// How JSX spells it.
     pub jsx: &'static str,
     /// How a Lua table spells it.
@@ -823,6 +842,8 @@ pub const CUSTOM: &[CustomProp] = &[
     CustomProp {
         name: "dir",
         id: P_DIR,
+        jsx_names: &["dir"],
+        lua_names: &[],
         jsx: "`dir=\"row\" | \"column\"`",
         lua: "`row { }` / `column { }`",
         c: "`dir` (`KUI_ROW` / `KUI_COLUMN`)",
@@ -831,6 +852,8 @@ pub const CUSTOM: &[CustomProp] = &[
     CustomProp {
         name: "size",
         id: P_SIZE,
+        jsx_names: &["size"],
+        lua_names: &["size"],
         jsx: "`size` (text)",
         lua: "`size`",
         c: "`KuiTextStyle.size`",
@@ -839,6 +862,8 @@ pub const CUSTOM: &[CustomProp] = &[
     CustomProp {
         name: "pad",
         id: P_PAD,
+        jsx_names: &["pad", "padX", "padY", "padL", "padR", "padT", "padB"],
+        lua_names: &["pad"],
         jsx: "`pad`, `padX`, `padY`, `padL`, `padR`, `padT`, `padB`",
         lua: "`pad = n` or `pad = { l=, r=, t=, b= }`",
         c: "`pad_l`, `pad_r`, `pad_t`, `pad_b`",
@@ -847,6 +872,8 @@ pub const CUSTOM: &[CustomProp] = &[
     CustomProp {
         name: "border",
         id: P_BORDER,
+        jsx_names: &["borderW", "borderColor"],
+        lua_names: &["border"],
         jsx: "`borderW`, `borderColor`",
         lua: "`border = { w=, color= }`",
         c: "`border_w`, `border_color`",
@@ -855,6 +882,8 @@ pub const CUSTOM: &[CustomProp] = &[
     CustomProp {
         name: "overflow",
         id: P_OVERFLOW,
+        jsx_names: &["clip", "scrollX", "scrollY"],
+        lua_names: &["clip", "scroll", "scroll_x", "scroll_y"],
         jsx: "`clip`, `scrollX`, `scrollY`",
         lua: "`clip`, `scroll_x`, `scroll_y` (`scroll` = `scroll_y`)",
         c: "`overflow` bits `KUI_CLIP` | `KUI_SCROLL_X` | `KUI_SCROLL_Y`",
@@ -863,6 +892,8 @@ pub const CUSTOM: &[CustomProp] = &[
     CustomProp {
         name: "float",
         id: P_FLOAT,
+        jsx_names: &["float"],
+        lua_names: &["float"],
         jsx: "`float=\"below\" | \"above\" | \"parent\" | \"viewport\"` or `{ anchor, at, self, dx, dy, fit }`",
         lua: "`float = \"below\"` or `float = { anchor=, at=, self_at=, dx=, dy=, fit= }`",
         c: "`float_mode`, `float_anchor_x/y`, `float_self_x/y`, `float_dx/dy`, `float_fit`",
@@ -871,6 +902,8 @@ pub const CUSTOM: &[CustomProp] = &[
     CustomProp {
         name: "keyFocus",
         id: P_KEY_FOCUS,
+        jsx_names: &["keyFocus"],
+        lua_names: &["key_focus"],
         jsx: "`keyFocus`",
         lua: "`key_focus`",
         c: "`kui_set_key_focus`",
@@ -879,6 +912,8 @@ pub const CUSTOM: &[CustomProp] = &[
     CustomProp {
         name: "key",
         id: P_KEY,
+        jsx_names: &["key"],
+        lua_names: &["key"],
         jsx: "`key`",
         lua: "`key`",
         c: "`kui_open_keyed` label",
@@ -887,14 +922,18 @@ pub const CUSTOM: &[CustomProp] = &[
     CustomProp {
         name: "title",
         id: P_TITLE,
+        jsx_names: &["title"],
+        lua_names: &["window_title"],
         jsx: "`title` (root box only)",
-        lua: "`title` (root table)",
+        lua: "`window_title` (root table)",
         c: "`kui_window_title`",
         doc: "Declares the window title for this frame; the driver diffs and applies.",
     },
     CustomProp {
         name: "tooltip",
         id: P_TOOLTIP,
+        jsx_names: &["tooltip"],
+        lua_names: &["tooltip"],
         jsx: "`tooltip=\"hint\"`",
         lua: "`tooltip = \"hint\"`",
         c: "`KuiSpec.tooltip` (`kui_tooltip` / `kui_tooltip_with` draw a hint that is not hover-gated)",
@@ -991,6 +1030,14 @@ pub fn c_field(def: &PropDef) -> String {
 /// and a checklist, not a code generator's input.
 pub struct ElementDef {
     pub name: &'static str,
+    /// The props this element lowers itself, which are therefore in neither
+    /// `PROPS` nor `CUSTOM`: `<edit initial multiline>`, `<image src>`. They
+    /// ride in the same prop list as the node's, so a binding needs them to
+    /// tell a legitimate element prop from a misspelling (see
+    /// [`known_prop`]) — JSX's spellings here, Lua's below.
+    pub jsx_own: &'static [&'static str],
+    /// The same for a Lua node table.
+    pub lua_own: &'static [&'static str],
     pub jsx: &'static str,
     pub lua: &'static str,
     pub c: &'static str,
@@ -1000,6 +1047,8 @@ pub struct ElementDef {
 pub const ELEMENTS: &[ElementDef] = &[
     ElementDef {
         name: "box",
+        jsx_own: &[],
+        lua_own: &[],
         jsx: "`<box>`",
         lua: "`row { }`, `column { }`",
         c: "`kui_open*` … `kui_close`",
@@ -1007,6 +1056,8 @@ pub const ELEMENTS: &[ElementDef] = &[
     },
     ElementDef {
         name: "text",
+        jsx_own: &["bold", "italic"],
+        lua_own: &["value", "spans"],
         jsx: "`<text>` with `<span bold italic color>` children",
         lua: "`text(\"s\", {…})`, `text({ \"a\", { \"b\", bold = true } })`",
         c: "`kui_text`, `kui_rich_text`",
@@ -1014,6 +1065,8 @@ pub const ELEMENTS: &[ElementDef] = &[
     },
     ElementDef {
         name: "button",
+        jsx_own: &[],
+        lua_own: &[],
         jsx: "`<button onClick>`",
         lua: "`button { label=, on_click= }`",
         c: "`kui_button`",
@@ -1021,6 +1074,8 @@ pub const ELEMENTS: &[ElementDef] = &[
     },
     ElementDef {
         name: "edit",
+        jsx_own: &["id", "initial", "multiline", "autofocus"],
+        lua_own: &["initial", "multiline", "autofocus"],
         jsx: "`<edit key initial multiline autofocus>`",
         lua: "`edit { key=, initial=, … }`, `input { label= }`",
         c: "`kui_text_edit`, `kui_text_input`",
@@ -1028,6 +1083,8 @@ pub const ELEMENTS: &[ElementDef] = &[
     },
     ElementDef {
         name: "image",
+        jsx_own: &["src"],
+        lua_own: &["id"],
         jsx: "`<image src={id}>`",
         lua: "`image { id= }`",
         c: "`kui_image`",
@@ -1035,6 +1092,10 @@ pub const ELEMENTS: &[ElementDef] = &[
     },
     ElementDef {
         name: "titlebar",
+        jsx_own: &[],
+        // The window's own title is `window_title` on the root table; this
+        // is the string the titlebar draws.
+        lua_own: &["title"],
         jsx: "`<titlebar title>` or `<titlebar>…</titlebar>`",
         lua: "`titlebar { title= }` / `titlebar { … }`",
         c: "`kui_titlebar`, `kui_titlebar_with`",
@@ -1042,6 +1103,8 @@ pub const ELEMENTS: &[ElementDef] = &[
     },
     ElementDef {
         name: "windowButtons",
+        jsx_own: &[],
+        lua_own: &[],
         jsx: "`<windowButtons/>`",
         lua: "`window_buttons()`",
         c: "`kui_window_buttons`",
@@ -1049,6 +1112,8 @@ pub const ELEMENTS: &[ElementDef] = &[
     },
     ElementDef {
         name: "tooltip",
+        jsx_own: &[],
+        lua_own: &["value"],
         jsx: "`tooltip=\"hint\"` prop (see composites)",
         lua: "`tooltip(\"hint\")` / `tooltip { … }` nodes, or the prop",
         c: "`kui_tooltip`, `kui_tooltip_with`",
@@ -1056,6 +1121,8 @@ pub const ELEMENTS: &[ElementDef] = &[
     },
     ElementDef {
         name: "latencyGraph",
+        jsx_own: &["at"],
+        lua_own: &["at"],
         jsx: "`<latencyGraph/>`, `<latencyHud at/>`",
         lua: "`latency_graph()`, `latency_hud { at= }`",
         c: "`kui_latency_graph`, `kui_latency_hud`",
@@ -1063,6 +1130,8 @@ pub const ELEMENTS: &[ElementDef] = &[
     },
     ElementDef {
         name: "audio",
+        jsx_own: &["src", "loop", "volume", "paused", "tag"],
+        lua_own: &["src", "loop", "volume", "paused", "tag"],
         jsx: "`<audio src={id} loop volume paused tag/>`",
         lua: "`audio { src=, loop=, volume=, paused=, tag= }`",
         c: "`kui_audio`",
@@ -1227,6 +1296,79 @@ pub fn by_snake_name(name: &str) -> Option<&'static PropDef> {
 
 pub fn by_id(id: u32) -> Option<&'static PropDef> {
     PROPS.iter().find(|d| d.id == id)
+}
+
+/// The spelling a binding writes prop names in: JSX's camelCase rows, or the
+/// snake_case ones a Lua table takes. The allow-list below is per spelling,
+/// so `hover_bg` in JSX and `hoverBg` in Lua are each as unknown as a typo —
+/// which is what they are: neither binding reads the other's spelling.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Spelling {
+    Camel,
+    Snake,
+}
+
+/// A name one binding takes for a row it cannot spell the usual way, with
+/// the row's own snake_case name: `repeat` is a Lua keyword, so that row
+/// also answers to CSS's own name for it. The Lua binding remaps through
+/// this table, and the check below accepts both sides of it.
+pub const LUA_ALIASES: &[(&str, &str)] = &[("direction", "repeat")];
+
+/// `direction` → `repeat`: the schema name a Lua table key stands for, when
+/// it is not the name itself.
+pub fn lua_alias(name: &str) -> Option<&'static str> {
+    LUA_ALIASES
+        .iter()
+        .find(|(alias, _)| *alias == name)
+        .map(|(_, real)| *real)
+}
+
+/// Every prop name that is not tied to one element, per spelling: the schema
+/// rows, every spelling of every composite, and the aliases.
+static SHARED_NAMES: LazyLock<[FxHashSet<&'static str>; 2]> = LazyLock::new(|| {
+    let mut camel: FxHashSet<&'static str> = PROPS.iter().map(|d| d.name).collect();
+    let mut snake: FxHashSet<&'static str> = PROPS.iter().map(|d| d.snake_name()).collect();
+    for c in CUSTOM {
+        camel.extend(c.jsx_names);
+        snake.extend(c.lua_names);
+    }
+    snake.extend(LUA_ALIASES.iter().map(|(alias, _)| *alias));
+    [camel, snake]
+});
+
+fn shared_names(spelling: Spelling) -> &'static FxHashSet<&'static str> {
+    &SHARED_NAMES[(spelling == Spelling::Snake) as usize]
+}
+
+/// The props only this element takes, in `spelling`. An element the table
+/// does not know has none.
+pub fn element_own(element: &str, spelling: Spelling) -> &'static [&'static str] {
+    match ELEMENTS.iter().find(|e| e.name == element) {
+        Some(e) if spelling == Spelling::Camel => e.jsx_own,
+        Some(e) => e.lua_own,
+        None => &[],
+    }
+}
+
+/// Is `name` a prop `element` reads — a schema row, a composite, an alias,
+/// or one of the element's own? A binding drops everything else on the
+/// floor, so everything else is a `diag::UNKNOWN_PROP` warning.
+pub fn known_prop(element: &str, name: &str, spelling: Spelling) -> bool {
+    shared_names(spelling).contains(name) || element_own(element, spelling).contains(&name)
+}
+
+/// The name an unknown one was probably meant to be: the same word in the
+/// other convention (`hoverBg` for `hover_bg`, `onClick` for `onclick`),
+/// which is what a wrong spelling almost always is. Nothing fuzzier — a
+/// confident suggestion or none.
+pub fn suggest(element: &str, name: &str, spelling: Spelling) -> Option<&'static str> {
+    let squash = |s: &str| s.replace('_', "").to_ascii_lowercase();
+    let want = squash(name);
+    shared_names(spelling)
+        .iter()
+        .chain(element_own(element, spelling))
+        .copied()
+        .find(|c| squash(c) == want)
 }
 
 /// A parsed prop value, transport-independent.
@@ -1406,6 +1548,63 @@ mod tests {
         assert_eq!(by_name("lineHeight").unwrap().snake_name(), "line_height");
         assert_eq!(by_name("radiusTL").unwrap().snake_name(), "radius_tl");
         assert_eq!(by_snake_name("radius_bl").unwrap().name, "radiusBL");
+    }
+
+    /// The allow-list is per spelling, so each binding's own names pass and
+    /// the other's do not — which is the point: neither binding reads the
+    /// other's, so `hover_bg` in JSX is as dropped as `hoverBgg` would be.
+    #[test]
+    fn the_allow_list_is_per_spelling() {
+        use Spelling::{Camel, Snake};
+        assert!(known_prop("box", "hoverBg", Camel));
+        assert!(known_prop("box", "hover_bg", Snake));
+        assert!(!known_prop("box", "hover_bg", Camel));
+        assert!(!known_prop("box", "hoverBg", Snake));
+        // Composites, each in the spelling its binding takes.
+        assert!(known_prop("box", "padX", Camel) && !known_prop("box", "padX", Snake));
+        assert!(known_prop("box", "scroll", Snake) && !known_prop("box", "scroll", Camel));
+        // `repeat` is a Lua keyword; the alias stands in for the row.
+        assert!(known_prop("box", "direction", Snake));
+        assert_eq!(lua_alias("direction"), Some("repeat"));
+        // An element's own props are its own: `initial` is an editor's.
+        assert!(known_prop("edit", "initial", Camel));
+        assert!(!known_prop("box", "initial", Camel));
+        assert!(known_prop("image", "src", Camel) && known_prop("image", "id", Snake));
+        // And nothing claims a typo.
+        assert!(!known_prop("box", "colour", Camel));
+    }
+
+    #[test]
+    fn a_suggestion_is_the_same_word_in_the_right_convention() {
+        use Spelling::{Camel, Snake};
+        assert_eq!(suggest("box", "hoverBg", Snake), Some("hover_bg"));
+        assert_eq!(suggest("box", "onclick", Camel), Some("onClick"));
+        assert_eq!(suggest("box", "SCROLL_X", Camel), Some("scrollX"));
+        assert_eq!(suggest("edit", "Initial", Camel), Some("initial"));
+        // Nothing fuzzy: a guess or nothing.
+        assert_eq!(suggest("box", "colour", Camel), None);
+    }
+
+    /// Every name a binding hand-lowers has to be in one of the tables, or
+    /// the binding warns about a prop it reads perfectly well.
+    #[test]
+    fn every_composite_and_element_prop_is_in_the_allow_list() {
+        for c in CUSTOM {
+            for n in c.jsx_names {
+                assert!(known_prop("box", n, Spelling::Camel), "jsx `{n}`");
+            }
+            for n in c.lua_names {
+                assert!(known_prop("box", n, Spelling::Snake), "lua `{n}`");
+            }
+        }
+        for e in ELEMENTS {
+            for n in e.jsx_own {
+                assert!(known_prop(e.name, n, Spelling::Camel), "{}.{n}", e.name);
+            }
+            for n in e.lua_own {
+                assert!(known_prop(e.name, n, Spelling::Snake), "{}.{n}", e.name);
+            }
+        }
     }
 
     #[test]

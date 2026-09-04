@@ -293,6 +293,17 @@ export interface Warning {
     /** A button, link, tab, checkbox, slider or editor with no `label` and
      *  no text inside it: a screen reader announces an unnamed control. */
     | 'control-without-name'
+    /** `wrapChildren` where nothing can break: a column, or a `scrollX`
+     *  row. It lays out exactly as if the flag were absent. */
+    | 'wrap-ignored'
+    /** A `modal` that is not in a float, with content declared after it
+     *  painting over it — everything drawn over a modal is inert. */
+    | 'modal-behind-content'
+    /** A prop name nothing reads — not a schema row, not a composite, not
+     *  one of the element's own — so the encoder dropped the declaration
+     *  before it crossed. Usually the other binding's spelling
+     *  (`hover_bg`) or a typo; the message names the likely one. */
+    | 'unknown-prop'
     | (string & {});
   /** The node it is about (hex, like event keys). */
   key: string;
@@ -646,6 +657,15 @@ export declare class Ctx {
    */
   setDiagnostics(on: boolean): void
   /**
+   * The prop names the encoder threw away while lowering a tree,
+   * as `[element, name]` pairs, raised as `unknown-prop` warnings
+   * (see `Warning`). A name outside the schema never reaches the
+   * binary stream, so the encoder is the only side that sees it;
+   * `frame` / `setView` report what they dropped through here.
+   * Behind the same `setDiagnostics` gate, and once per name.
+   */
+  warnUnknownProps(props: [string, string][]): void
+  /**
    * What assistive technology sees of the last frame (see
    * `AccessTree`). A window hands it to the platform by itself
    * (AccessKit); this is for tests and tooling.
@@ -884,6 +904,15 @@ export declare class KuiWindow {
    * turn them off under `NODE_ENV=production`.
    */
   setDiagnostics(on: boolean): void
+  /**
+   * The prop names the encoder threw away while lowering a tree,
+   * as `[element, name]` pairs, raised as `unknown-prop` warnings
+   * (see `Warning`). A name outside the schema never reaches the
+   * binary stream, so the encoder is the only side that sees it;
+   * `frame` / `setView` report what they dropped through here.
+   * Behind the same `setDiagnostics` gate, and once per name.
+   */
+  warnUnknownProps(props: [string, string][]): void
   /**
    * What assistive technology sees of the last frame (see
    * `AccessTree`). A window hands it to the platform by itself

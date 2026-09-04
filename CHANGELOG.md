@@ -9,6 +9,39 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **`unknown-prop`: a misspelled prop says so** (backlog P4). Both dynamic
+  bindings ended their prop loop by ignoring names they could not place —
+  deliberately, since an element's own props (`initial`, `src`, `multiline`)
+  ride in the same list as the node's. The cost was that `hoverBg` in a Lua
+  table and `onclick` in JSX did nothing and said nothing, which is a bigger
+  silent misconfiguration than any the core already reported: it is the
+  declaration you wrote being thrown away.
+  **The allow-list is the schema tables themselves.** `CUSTOM` rows now
+  carry every spelling of their composite (`jsx_names`, `lua_names` —
+  `borderW` here, `border = { w=, color= }` there) and `ELEMENTS` rows the
+  props each element lowers itself (`jsx_own`, `lua_own`), so
+  `schema::known_prop` answers both bindings from one table instead of each
+  binding restating what it accepts.
+  **Per spelling, not one shared list.** JSX's camelCase and Lua's
+  snake_case are separate, so `hover_bg` in JSX is as unknown as `hoverBgg`
+  — which is the truth of it, since neither binding reads the other's
+  names. That is also what makes the guess in the message reliable: the
+  suggestion is the same word in the convention the binding actually takes
+  (`did you mean \`hover_bg\`?`), and nothing fuzzier, so it is a confident
+  suggestion or none.
+  The warning comes from the binding rather than the tree walk, because a
+  name nothing claims never becomes part of a node — `Core::warn` takes a
+  built `Warning` behind the same `setDiagnostics` gate and the same
+  once-per-(code, key) dedup as every check, keyed on (element, name) so a
+  misspelling costs one line however many nodes carry it. For Node the
+  encoder is the only side that ever sees such a name (without a wire id it
+  cannot reach the stream), so it reports what it dropped and `frame` /
+  `setView` pass it on.
+  **What you can delete:** the JSX prop types kept around only to catch
+  typos the runtime would not, and the "why is this prop doing nothing"
+  bisect — commenting props out one at a time until the frame changes. The
+  frame now names the prop.
+
 - **Flex wrapping: `wrapChildren` and `crossGap`** (backlog C10). A row of
   tags, a toolbar of chips, a button row that has to survive a narrow
   window — none of them could be written. The solver's only answer to
@@ -348,6 +381,11 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Changed
 
+- **`docs/props.md` says `window_title`, not `title`, for Lua's window
+  title.** The root table has always been read for `window_title`; the
+  `title` composite's Lua column claimed `title`, which does nothing. Found
+  by the `unknown-prop` allow-list above, which had to write the real
+  spelling down.
 - **`KuiEvent`, `KuiDrawData`, `KuiTextMetrics` and `KuiScrollGeometry`
   gained a leading `size`**, which is a source break every C host fixes at
   the declaration: `KuiEvent ev;` becomes `KuiEvent ev = KUI_EVENT_INIT;`.

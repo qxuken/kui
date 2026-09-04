@@ -932,6 +932,25 @@ macro_rules! core_methods {
                 self.$core().set_diagnostics(on);
             }
 
+            /// The prop names the encoder threw away while lowering a tree,
+            /// as `[element, name]` pairs, raised as `unknown-prop` warnings
+            /// (see `Warning`). A name outside the schema never reaches the
+            /// binary stream, so the encoder is the only side that sees it;
+            /// `frame` / `setView` report what they dropped through here.
+            /// Behind the same `setDiagnostics` gate, and once per name.
+            #[napi(ts_args_type = "props: [string, string][]")]
+            pub fn warn_unknown_props(&mut self, props: Vec<Vec<String>>) {
+                for pair in &props {
+                    let [element, name] = &pair[..] else { continue };
+                    let w = kui_core::diag::unknown_prop(
+                        element,
+                        name,
+                        kui_core::schema::Spelling::Camel,
+                    );
+                    self.$core().warn(w);
+                }
+            }
+
             // -- Accessibility ---------------------------------------------
 
             /// What assistive technology sees of the last frame (see

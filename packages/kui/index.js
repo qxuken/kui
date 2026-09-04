@@ -11,14 +11,23 @@ export { createEncoder };
 // serves every context — its buffers are consumed synchronously.
 const encoder = createEncoder(native.protocol());
 
+// A prop name the schema does not know has no wire id, so it never crosses:
+// the encoder is the only side that can see it, and it reports what it
+// dropped so the core can warn about it like any other misconfiguration.
+function reportUnknown(surface, unknown) {
+  if (unknown.length) surface.warnUnknownProps(unknown);
+}
+
 Ctx.prototype.frame = function frame(width, height, scale, tree) {
-  const { stream, strings } = encoder.encode(tree);
+  const { stream, strings, unknown } = encoder.encode(tree);
   this.frameBinary(width, height, scale, stream, strings);
+  reportUnknown(this, unknown);
 };
 
 KuiWindow.prototype.setView = function setView(tree) {
-  const { stream, strings } = encoder.encode(tree);
+  const { stream, strings, unknown } = encoder.encode(tree);
   this.setViewBinary(stream, strings);
+  reportUnknown(this, unknown);
 };
 
 // ---------------------------------------------------------------------------

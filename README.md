@@ -374,6 +374,11 @@ that are hard to reverse and would look arbitrary without their context.
   frame, each distinct (code, node) once (the checks walk the tree, so
   they run on the first frames and every 16th after — a misconfiguration
   persists, so it surfaces within that, at no steady-state cost).
+  A prop name no table
+  claims (`unknown-prop`) is the one code a frame cannot show, since the
+  name is gone before the tree exists — so the binding that dropped it
+  raises it, through `Core::warn`, behind the same gate and dedup, with
+  the spelling it was probably meant to be.
   `Core::take_warnings` drains them;
   the windowed runners print them, the Node loop collects them on
   `app.warnings` either way, C drains `kui_take_warnings`, and a test
