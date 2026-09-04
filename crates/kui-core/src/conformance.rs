@@ -26,6 +26,14 @@
 //!   the other three bindings — Lua, C, Node — reproduce their scenes and
 //!   compare against that dump, on the same machine, in the same CI job.
 //!
+//! Most scenes are one tree replayed against a list of inputs. Two steps
+//! are not input at all, and exist because one behaviour needs more than a
+//! tree: [`Step::Phase`] is the view changing its mind (a node only departs
+//! because the view stopped declaring it) and [`Step::Time`] is the frame
+//! clock (without one every transition snaps, so there is nothing to
+//! depart). A report keeps one frame, so a scene that uses them has to end
+//! its steps where the states it wants to tell apart actually differ.
+//!
 //! Adding a binding-visible prop or element means adding it to a scene
 //! here; a binding that lowers it differently then fails to build.
 
@@ -37,6 +45,7 @@ use crate::audio::AudioSpec;
 use crate::color::Color;
 use crate::display::{Quad, QuadKind};
 use crate::edit::EditOptions;
+use crate::enter::Enter;
 use crate::geom::{Edges, Size, Vec2};
 use crate::input::{EditKey, InputEvent, Mods};
 use crate::key::Key;
@@ -110,6 +119,16 @@ pub enum Step {
     ShiftTab,
     /// Escape: lets go of a focused control, or asks a modal to go away.
     Escape,
+    /// Not an input: the view is a function of a phase, and this is the
+    /// view changing its mind. Every scene but `exit` builds the same tree
+    /// for every phase; a departing node is one the later phases stop
+    /// declaring, which is the only way to ask for an exit at all.
+    Phase(u32),
+    /// Not an input either: the frame clock, in milliseconds from an
+    /// origin the scene picks. A core with no clock snaps every transition
+    /// (and an exit that snaps is the plain disappearance it always was),
+    /// so a scene that never sets one is a scene where time does not pass.
+    Time(u32),
 }
 
 impl Step {
@@ -130,11 +149,21 @@ impl Step {
             Step::Tab => out.push_str("step tab\n"),
             Step::ShiftTab => out.push_str("step shifttab\n"),
             Step::Escape => out.push_str("step escape\n"),
+            Step::Phase(n) => {
+                let _ = writeln!(out, "step phase {n}");
+            }
+            Step::Time(ms) => {
+                let _ = writeln!(out, "step time {ms}");
+            }
         }
     }
 
-    pub fn event(&self) -> InputEvent {
-        match *self {
+    /// The input this step replays, or `None` for the two that move the
+    /// world around the view rather than poking it — see [`Step::Phase`]
+    /// and [`Step::Time`].
+    pub fn event(&self) -> Option<InputEvent> {
+        Some(match *self {
+            Step::Phase(_) | Step::Time(_) => return None,
             Step::Cursor(x, y) => InputEvent::CursorMoved(Vec2::new(x as f32, y as f32)),
             Step::CursorLeft => InputEvent::CursorLeft,
             Step::MouseDown => InputEvent::mouse_down(1),
@@ -156,7 +185,7 @@ impl Step {
                 },
             ),
             Step::Escape => InputEvent::Key(EditKey::Escape, Mods::default()),
-        }
+        })
     }
 }
 
@@ -196,8 +225,10 @@ pub struct Scene {
     /// `schema::ELEMENTS` names this scene exercises, checked the same way.
     pub elements: &'static [&'static str],
     /// The reference lowering. Every other binding expresses the same tree
-    /// in its own surface; the report says whether it did.
-    pub build: fn(&mut Ui<'_>, &Fixtures),
+    /// in its own surface; the report says whether it did. The `u32` is
+    /// the phase [`Step::Phase`] leaves behind — 0 until a step says
+    /// otherwise, and ignored by every scene that never changes its mind.
+    pub build: fn(&mut Ui<'_>, &Fixtures, u32),
     pub steps: &'static [Step],
     pub expect: Expect,
 }
@@ -483,9 +514,68 @@ pub const SCENES: &[Scene] = &[
             title: None,
         },
     },
+    Scene {
+        name: "exit",
+        doc: "Exit transitions (`docs/adr/0005-the-paint-vocabulary.md`): \
+              the first feature that lets a node outlive the frame that \
+              declared it. `exit` is a schema row and lowers mechanically \
+              everywhere; what no binding gets for free is how the ghost \
+              behaves, and a report keeps one frame, so the steps end where \
+              the four claims differ. `fade` is 80ms into a 400ms exit: it \
+              still draws (with its text, which is the previous frame's \
+              text list and not just its tree), eased to neither end of the \
+              run — and it is inert three ways, since a press on ground \
+              covered by both where the node was and where its ghost now \
+              is emits nothing, two Tabs walk past it from `A` to `B`, and \
+              the access tree does not list it. `blink` ran 50ms and is \
+              over, so it is gone by the same frame `fade` is not. `flash` \
+              left and came back mid-flight, so the frame holds one picture \
+              of it, not two. `bulk` is one node past the budget and was \
+              refused whole: no ghost, and an `exit-budget` warning.",
+        custom: &["key", "size"],
+        elements: &["box", "text"],
+        build: build_exit,
+        steps: &[
+            // Start the clock. Without one every transition snaps and the
+            // store is cleared, so there would be no ghost to look at.
+            Step::Time(0),
+            // The press that proves `fade`'s click is live while it is.
+            Step::Cursor(58, 42),
+            Step::MouseDown,
+            Step::MouseUp,
+            // The view stops declaring four subtrees at once.
+            Step::Phase(1),
+            // 80ms in: `fade` and `flash` are mid-flight, `blink` is over.
+            Step::Time(80),
+            // `flash` comes back while its own exit is still running.
+            Step::Phase(2),
+            // A second press, on ground covered by both where the node was
+            // and where its ghost now is: neither is a hit region.
+            Step::Cursor(90, 42),
+            Step::MouseDown,
+            Step::MouseUp,
+            // The ring is `A`, `B` and nothing between them.
+            Step::Tab,
+            Step::Tab,
+        ],
+        expect: Expect {
+            // Seven live boxes and the focus ring on `B`, plus exactly one
+            // ghost: `flash`'s was retired by its return and `blink`'s
+            // expired, so a store that kept either would count ten, both
+            // eleven.
+            solid: 9,
+            shadows: 0,
+            images: 0,
+            glyphs_min: 3,
+            access: &["0 window ||", "1 group A||", "1 group B||"],
+            events: &["hit -"],
+            warnings: &["exit-budget"],
+            title: None,
+        },
+    },
 ];
 
-fn build_layout(ui: &mut Ui<'_>, _f: &Fixtures) {
+fn build_layout(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with(
         NodeSpec::column()
             .pad(8.0)
@@ -549,7 +639,7 @@ fn build_layout(ui: &mut Ui<'_>, _f: &Fixtures) {
 
 /// The four sizing modes side by side in a parent whose width is known, so
 /// each resolves to a width no other mode produces.
-fn build_sizing(ui: &mut Ui<'_>, _f: &Fixtures) {
+fn build_sizing(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with(
         NodeSpec::column().padding(Edges {
             l: 14.0,
@@ -595,7 +685,7 @@ fn build_sizing(ui: &mut Ui<'_>, _f: &Fixtures) {
 /// 92px of content, a 6px gap: 30 + 40 fit, 50 + 20 go to the second line.
 /// The heights differ per box so the two lines have different cross
 /// extents and a binding that dropped `crossGap` lands them elsewhere.
-fn build_wrap(ui: &mut Ui<'_>, _f: &Fixtures) {
+fn build_wrap(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with(
         NodeSpec::row()
             .wrap()
@@ -618,7 +708,7 @@ fn build_wrap(ui: &mut Ui<'_>, _f: &Fixtures) {
     );
 }
 
-fn build_overflow(ui: &mut Ui<'_>, _f: &Fixtures) {
+fn build_overflow(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with(NodeSpec::column().pad(4.0).clip(), |ui| {
         ui.with_keyed(
             "list",
@@ -653,7 +743,7 @@ fn build_overflow(ui: &mut Ui<'_>, _f: &Fixtures) {
 /// same strings, since keys are hashes of the path.
 pub const ITEM_KEYS: [&str; 6] = ["i0", "i1", "i2", "i3", "i4", "i5"];
 
-fn build_float(ui: &mut Ui<'_>, _f: &Fixtures) {
+fn build_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with(NodeSpec::column().pad(20.0).gap(4.0), |ui| {
         ui.with_keyed(
             "anchor",
@@ -727,7 +817,7 @@ fn build_float(ui: &mut Ui<'_>, _f: &Fixtures) {
 /// The tooltip prop, spelled out: the bindings' parsers turn `tooltip`
 /// into `hoverable` plus an accessible `description`, and draw
 /// `widgets::tooltip` as the node's last child while it is hovered.
-fn build_tooltip(ui: &mut Ui<'_>, _f: &Fixtures) {
+fn build_tooltip(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with(NodeSpec::column().pad(10.0), |ui| {
         let key = ui.child_key("tip");
         ui.with_keyed(
@@ -749,7 +839,7 @@ fn build_tooltip(ui: &mut Ui<'_>, _f: &Fixtures) {
     });
 }
 
-fn build_chrome(ui: &mut Ui<'_>, _f: &Fixtures) {
+fn build_chrome(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.window_title("kui conformance");
     ui.with(NodeSpec::column().gap(6.0), |ui| {
         widgets::titlebar_with(ui, |ui| {
@@ -770,7 +860,7 @@ fn build_chrome(ui: &mut Ui<'_>, _f: &Fixtures) {
     });
 }
 
-fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures) {
+fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     let panel = NodeSpec::column()
         .pad(10.0)
         .gap(6.0)
@@ -789,7 +879,7 @@ fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures) {
     });
 }
 
-fn build_media(ui: &mut Ui<'_>, f: &Fixtures) {
+fn build_media(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
     ui.with(NodeSpec::column().pad(6.0).gap(4.0), |ui| {
         ui.image(
             f.image,
@@ -808,7 +898,7 @@ fn build_media(ui: &mut Ui<'_>, f: &Fixtures) {
 /// while the modal is up. The titlebar is the one platform-dependent
 /// height in the tree (34 logical px, 32 on Windows), so the two points
 /// above it and below it are chosen to land the same way on either.
-fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures) {
+fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     let button = |kind: &str, label: &str| {
         NodeSpec::row()
             .width(Sizing::Fixed(100.0))
@@ -855,6 +945,118 @@ fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures) {
             },
         );
     });
+}
+
+/// How many children `bulk` carries. With its own root that is
+/// `depart::MAX_NODES + 1` nodes — one past the budget, so the whole
+/// subtree is refused rather than half-retained.
+pub const EXIT_BULK_ROWS: usize = crate::depart::MAX_NODES;
+
+/// The `exit` scene. Four departing nodes and two that stay, laid out so
+/// that dropping one moves nothing else: each departing node sits alone in
+/// a fixed-size slot, and `bulk` is last, so the only geometry that changes
+/// between phases is the ghosts'.
+///
+/// - `fade` (phase 1) is the one still in flight at the end: 400ms, and the
+///   clock stops 80ms in. It is focusable, clickable and labelled *while
+///   live*, so its inertness afterwards is three separate observations.
+///   The text inside it is what makes the ghost need the previous frame's
+///   text list as well as its tree.
+/// - `blink` (phase 1) runs 50ms, so by 80ms it is over and gone.
+/// - `flash` (phase 1) leaves and comes back in phase 2 while its exit is
+///   still running: the live node wins and the ghost goes, so the frame
+///   holds one picture of it and not two.
+/// - `bulk` (phase 1) is one node past [`crate::depart::MAX_NODES`], so it
+///   is refused whole, with an `exit-budget` warning and no ghost.
+fn build_exit(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
+    let slot = |h: f32| {
+        NodeSpec::column()
+            .width(Sizing::Fixed(140.0))
+            .height(Sizing::Fixed(h))
+            .bg(Color::hex(0x101018ff))
+    };
+    let keep = |label: &'static str| {
+        NodeSpec::row()
+            .width(Sizing::Fixed(60.0))
+            .height(Sizing::Fixed(16.0))
+            .bg(Color::hex(0x22242cff))
+            .focusable()
+            .label(label)
+    };
+    ui.with(
+        NodeSpec::column()
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Grow(1.0))
+            .pad(8.0)
+            .gap(6.0)
+            .bg(Color::hex(0x14161eff)),
+        |ui| {
+            ui.with_keyed("a", keep("A"), |_| {});
+            ui.with_keyed("slotFade", slot(40.0), |ui| {
+                if phase == 0 {
+                    ui.with_keyed(
+                        "fade",
+                        NodeSpec::column()
+                            .width(Sizing::Fixed(100.0))
+                            .height(Sizing::Fixed(24.0))
+                            .bg(Color::hex(0x3b5bd4ff))
+                            .transition(400.0)
+                            .exit(Enter::from(40.0, 0.0).opacity(0.0))
+                            .focusable()
+                            .label("Fade")
+                            .on_click(Value::map([("kind", Value::str("hit"))])),
+                        |ui| {
+                            ui.text("bye", TextStyle::new(12.0));
+                        },
+                    );
+                }
+            });
+            ui.with_keyed("slotBlink", slot(16.0), |ui| {
+                if phase == 0 {
+                    ui.with_keyed(
+                        "blink",
+                        NodeSpec::column()
+                            .width(Sizing::Fixed(100.0))
+                            .height(Sizing::Fixed(12.0))
+                            .bg(Color::hex(0x73d98cff))
+                            .transition(50.0)
+                            .exit(Enter::from(20.0, 0.0)),
+                        |_| {},
+                    );
+                }
+            });
+            ui.with_keyed("slotFlash", slot(16.0), |ui| {
+                if phase != 1 {
+                    ui.with_keyed(
+                        "flash",
+                        NodeSpec::column()
+                            .width(Sizing::Fixed(100.0))
+                            .height(Sizing::Fixed(12.0))
+                            .bg(Color::hex(0xffcc00ff))
+                            .transition(400.0)
+                            .exit(Enter::from(-20.0, 0.0)),
+                        |_| {},
+                    );
+                }
+            });
+            ui.with_keyed("b", keep("B"), |_| {});
+            // Last, and sized by its children, which have no size: dropping
+            // it takes only the trailing gap with it.
+            if phase == 0 {
+                ui.with_keyed(
+                    "bulk",
+                    NodeSpec::column()
+                        .transition(400.0)
+                        .exit(Enter::default().opacity(0.0)),
+                    |ui| {
+                        for _ in 0..EXIT_BULK_ROWS {
+                            ui.with(NodeSpec::column(), |_| {});
+                        }
+                    },
+                );
+            }
+        },
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1173,27 +1375,36 @@ fn event_row(payload: &Value) -> (String, String) {
 /// The [`Coverage`] it also returns is Rust-only bookkeeping over the tree
 /// each frame built, not part of the protocol: the other bindings have
 /// nothing to reproduce there.
-pub fn drive(core: &mut Core, steps: &[Step], mut build: impl FnMut(&mut Ui<'_>)) -> Output {
+pub fn drive(core: &mut Core, steps: &[Step], mut build: impl FnMut(&mut Ui<'_>, u32)) -> Output {
     core.set_diagnostics(true);
     let mut events = Vec::new();
     let mut coverage = Coverage::default();
-    let mut frame =
-        |core: &mut Core, events: &mut Vec<(String, String)>, coverage: &mut Coverage| {
-            let mut ui = core.frame(VIEWPORT, SCALE);
-            build(&mut ui);
-            ui.finish();
-            observe(core, coverage);
-            events.extend(
-                core.take_pending_events()
-                    .iter()
-                    .map(|e| event_row(&e.payload)),
-            );
-        };
-    frame(core, &mut events, &mut coverage);
+    let mut phase = 0u32;
+    let mut frame = |core: &mut Core,
+                     phase: u32,
+                     events: &mut Vec<(String, String)>,
+                     coverage: &mut Coverage| {
+        let mut ui = core.frame(VIEWPORT, SCALE);
+        build(&mut ui, phase);
+        ui.finish();
+        observe(core, coverage);
+        events.extend(
+            core.take_pending_events()
+                .iter()
+                .map(|e| event_row(&e.payload)),
+        );
+    };
+    frame(core, phase, &mut events, &mut coverage);
     for step in steps {
-        let evs = core.handle_input(step.event());
-        events.extend(evs.iter().map(|e| event_row(&e.payload)));
-        frame(core, &mut events, &mut coverage);
+        match *step {
+            Step::Phase(n) => phase = n,
+            Step::Time(ms) => core.set_time(ms as f64 / 1000.0),
+            _ => {
+                let evs = core.handle_input(step.event().expect("an input step"));
+                events.extend(evs.iter().map(|e| event_row(&e.payload)));
+            }
+        }
+        frame(core, phase, &mut events, &mut coverage);
     }
 
     let title = core.window_title().map(str::to_string);
@@ -1227,7 +1438,9 @@ pub fn drive(core: &mut Core, steps: &[Step], mut build: impl FnMut(&mut Ui<'_>)
 pub fn run(scene: &Scene) -> Output {
     let mut core = Core::new();
     let f = fixtures(&mut core);
-    drive(&mut core, scene.steps, |ui| (scene.build)(ui, &f))
+    drive(&mut core, scene.steps, |ui, phase| {
+        (scene.build)(ui, &f, phase)
+    })
 }
 
 // ---------------------------------------------------------------------------

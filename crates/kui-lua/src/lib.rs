@@ -74,6 +74,14 @@ impl LuaExtension {
         Ok(Self { lua, name })
     }
 
+    /// The script's own interpreter. A host reaches for this to seed a
+    /// global the script reads — the escape hatch for facts that are not
+    /// `env` and not events, which is what the conformance corpus needs to
+    /// tell a script which phase of a scene to build.
+    pub fn lua(&self) -> &Lua {
+        &self.lua
+    }
+
     pub fn from_file(path: impl AsRef<std::path::Path>) -> mlua::Result<Self> {
         let path = path.as_ref();
         let source = std::fs::read_to_string(path).map_err(mlua::Error::external)?;

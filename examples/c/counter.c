@@ -807,8 +807,9 @@ static Fixtures conf_fixtures(KuiCtx *ctx) {
 
 /* -- the scenes, in C ---------------------------------------------------- */
 
-static void conf_layout(KuiCtx *ui, const Fixtures *f) {
+static void conf_layout(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
+    (void)phase;
     KuiSpec outer = {.pad_l = 8, .pad_r = 8, .pad_t = 8, .pad_b = 8, .gap = 6,
                      .bg = 0x14161eff};
     kui_open(ui, &outer, NULL);
@@ -843,8 +844,9 @@ static void conf_layout(KuiCtx *ui, const Fixtures *f) {
 
 /* conformance::WRAP_BOXES: 92px of content and a 6px gap put 30 + 40 on the
  * first line and 50 + 20 on the second. */
-static void conf_wrap(KuiCtx *ui, const Fixtures *f) {
+static void conf_wrap(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
+    (void)phase;
     static const float boxes[4][2] = {{30, 12}, {40, 16}, {50, 20}, {20, 24}};
     KuiSpec row = {
         .dir = KUI_ROW, .wrap_children = 1,
@@ -863,8 +865,9 @@ static void conf_wrap(KuiCtx *ui, const Fixtures *f) {
     kui_close(ui);
 }
 
-static void conf_overflow(KuiCtx *ui, const Fixtures *f) {
+static void conf_overflow(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
+    (void)phase;
     KuiSpec outer = {.pad_l = 4, .pad_r = 4, .pad_t = 4, .pad_b = 4,
                      .overflow = KUI_CLIP};
     kui_open(ui, &outer, NULL);
@@ -887,8 +890,9 @@ static void conf_overflow(KuiCtx *ui, const Fixtures *f) {
 /* The four sizing modes in a parent of known width, so each resolves to a
  * width no other mode gives: 30 fixed, 25% of 200 = 50, fit around a
  * 20-wide child, and grow taking the remaining 100. */
-static void conf_sizing(KuiCtx *ui, const Fixtures *f) {
+static void conf_sizing(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
+    (void)phase;
     KuiSpec outer = {.pad_l = 14, .pad_r = 14, .pad_t = 6, .pad_b = 6};
     kui_open(ui, &outer, NULL);
     KuiSpec bar = {.dir = KUI_ROW, .width = {KUI_FIXED, 200},
@@ -918,8 +922,9 @@ static void conf_sizing(KuiCtx *ui, const Fixtures *f) {
     kui_close(ui);
 }
 
-static void conf_float(KuiCtx *ui, const Fixtures *f) {
+static void conf_float(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
+    (void)phase;
     KuiSpec outer = {.pad_l = 20, .pad_r = 20, .pad_t = 20, .pad_b = 20, .gap = 4};
     kui_open(ui, &outer, NULL);
     KuiSpec anchor = {.width = {KUI_FIXED, 80}, .height = {KUI_FIXED, 24},
@@ -962,8 +967,9 @@ static void conf_float(KuiCtx *ui, const Fixtures *f) {
     kui_close(ui);
 }
 
-static void conf_tooltip(KuiCtx *ui, const Fixtures *f) {
+static void conf_tooltip(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
+    (void)phase;
     KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10};
     kui_open(ui, &outer, NULL);
     /* KuiSpec.tooltip is the `tooltip` prop: hover tracking, the accessible
@@ -985,8 +991,9 @@ static void conf_titlebar_body(void *user, KuiCtx *ui) {
     kui_window_buttons(ui);
 }
 
-static void conf_chrome(KuiCtx *ui, const Fixtures *f) {
+static void conf_chrome(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
+    (void)phase;
     kui_window_title(ui, KUI_STR("kui conformance"));
     KuiSpec outer = {.gap = 6};
     kui_open(ui, &outer, NULL);
@@ -999,8 +1006,9 @@ static void conf_chrome(KuiCtx *ui, const Fixtures *f) {
     kui_close(ui);
 }
 
-static void conf_controls(KuiCtx *ui, const Fixtures *f) {
+static void conf_controls(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
+    (void)phase;
     KuiValue *menu = kui_value_map();
     kui_value_map_set(menu, KUI_STR("kind"), kui_value_str(KUI_STR("menu")));
     KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10, .gap = 6,
@@ -1016,7 +1024,8 @@ static void conf_controls(KuiCtx *ui, const Fixtures *f) {
     kui_value_free(menu);
 }
 
-static void conf_media(KuiCtx *ui, const Fixtures *f) {
+static void conf_media(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)phase;
     KuiSpec outer = {.pad_l = 6, .pad_r = 6, .pad_t = 6, .pad_b = 6, .gap = 4};
     kui_open(ui, &outer, NULL);
     KuiSpec img = {.width = {KUI_FIXED, 16}, .radius = 2};
@@ -1050,8 +1059,9 @@ static void conf_modal_button(KuiCtx *ui, const char *key, const char *kind,
  * docs/adr/0003-modal-surfaces.md). The column grows so the titlebar is a
  * full-width strip: the scene presses it to show that chrome stays live
  * under a modal. */
-static void conf_modal(KuiCtx *ui, const Fixtures *f) {
+static void conf_modal(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
+    (void)phase;
     KuiSpec outer = {.gap = 6, .width = {KUI_GROW, 1}};
     kui_open(ui, &outer, NULL);
     kui_titlebar_with(ui, conf_modal_titlebar, NULL);
@@ -1084,9 +1094,106 @@ static void conf_modal(KuiCtx *ui, const Fixtures *f) {
     kui_value_free(modal);
 }
 
+/* conformance::EXIT_BULK_ROWS: with its own root that is one node past
+ * kui_core::depart::MAX_NODES, so the whole subtree is refused. */
+#define CONF_EXIT_BULK_ROWS 512
+
+/* One of the exit scene's fixed-size slots: dropping the node inside it
+ * moves nothing else, so the only geometry that changes between phases is
+ * the ghosts'. */
+static void conf_exit_slot(KuiCtx *ui, const char *key, float h) {
+    KuiSpec slot = {.width = {KUI_FIXED, 140}, .height = {KUI_FIXED, h},
+                    .bg = 0x101018ff};
+    kui_open_keyed(ui, KUI_STR(key), &slot, NULL);
+}
+
+/* A live Tab stop either side of the departing ones, so two Tabs at the end
+ * say whether the ring has a place for a ghost. */
+static void conf_exit_keep(KuiCtx *ui, const char *key, const char *label) {
+    KuiSpec keep = {.dir = KUI_ROW, .width = {KUI_FIXED, 60}, .height = {KUI_FIXED, 16},
+                    .bg = 0x22242cff, .focusable = 1, .label = KUI_STR(label)};
+    kui_open_keyed(ui, KUI_STR(key), &keep, NULL);
+    kui_close(ui);
+}
+
+/* Exit transitions (docs/adr/0005-the-paint-vocabulary.md). Four subtrees
+ * the view stops declaring in phase 1 - one still in flight at the end, one
+ * already over, one that comes back in phase 2, and one past the budget -
+ * and two that never leave. */
+static void conf_exit(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    KuiSpec outer = {.width = {KUI_GROW, 1}, .height = {KUI_GROW, 1},
+                     .pad_l = 8, .pad_r = 8, .pad_t = 8, .pad_b = 8,
+                     .gap = 6, .bg = 0x14161eff};
+    kui_open(ui, &outer, NULL);
+    conf_exit_keep(ui, "a", "A");
+
+    conf_exit_slot(ui, "slotFade", 40);
+    if (phase == 0) {
+        /* Consumed by kui_open_keyed, like every other on_click payload. */
+        KuiValue *hit = kui_value_map();
+        kui_value_map_set(hit, KUI_STR("kind"), kui_value_str(KUI_STR("hit")));
+        /* Focusable, clickable and labelled while it is live, so each of
+         * those is a separate thing the ghost has to stop being. */
+        KuiSpec fade = {
+            .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 24}, .bg = 0x3b5bd4ff,
+            .transition_ms = 400,
+            .exit = {.set = KUI_ENTER_OFFSET | KUI_ENTER_OPACITY, .dx = 40, .opacity = 0},
+            .focusable = 1, .label = KUI_STR("Fade"),
+        };
+        kui_open_keyed(ui, KUI_STR("fade"), &fade, hit);
+        KuiTextStyle s12 = {.size = 12};
+        kui_text(ui, KUI_STR("bye"), &s12);
+        kui_close(ui);
+    }
+    kui_close(ui);
+
+    conf_exit_slot(ui, "slotBlink", 16);
+    if (phase == 0) {
+        KuiSpec blink = {
+            .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 12}, .bg = 0x73d98cff,
+            .transition_ms = 50, .exit = {.set = KUI_ENTER_OFFSET, .dx = 20},
+        };
+        kui_open_keyed(ui, KUI_STR("blink"), &blink, NULL);
+        kui_close(ui);
+    }
+    kui_close(ui);
+
+    conf_exit_slot(ui, "slotFlash", 16);
+    if (phase != 1) {
+        KuiSpec flash = {
+            .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 12}, .bg = 0xffcc00ff,
+            .transition_ms = 400, .exit = {.set = KUI_ENTER_OFFSET, .dx = -20},
+        };
+        kui_open_keyed(ui, KUI_STR("flash"), &flash, NULL);
+        kui_close(ui);
+    }
+    kui_close(ui);
+
+    conf_exit_keep(ui, "b", "B");
+
+    /* Last, and sized by children that have no size: dropping it takes only
+     * the trailing gap with it. */
+    if (phase == 0) {
+        KuiSpec bulk = {.transition_ms = 400,
+                        .exit = {.set = KUI_ENTER_OPACITY, .opacity = 0}};
+        kui_open_keyed(ui, KUI_STR("bulk"), &bulk, NULL);
+        KuiSpec row = {0};
+        for (int i = 0; i < CONF_EXIT_BULK_ROWS; i++) {
+            kui_open(ui, &row, NULL);
+            kui_close(ui);
+        }
+        kui_close(ui);
+    }
+
+    kui_close(ui);
+}
+
 typedef struct ConfScene {
     const char *name;
-    void (*build)(KuiCtx *ui, const Fixtures *f);
+    /* `phase` is what the "step phase N" lines leave behind: the view's own
+     * mind, which only the exit scene ever changes. */
+    void (*build)(KuiCtx *ui, const Fixtures *f, int phase);
 } ConfScene;
 
 /* One entry per scene of conformance::SCENES; a scene in the reference with
@@ -1102,6 +1209,7 @@ static const ConfScene CONF_SCENES[] = {
     {"controls", conf_controls},
     {"media", conf_media},
     {"modal", conf_modal},
+    {"exit", conf_exit},
 };
 
 /* -- driving one scene --------------------------------------------------- */
@@ -1113,6 +1221,9 @@ static const ConfScene CONF_SCENES[] = {
 typedef struct ConfStep {
     char kind[16];
     int a, b;
+    /* How many numbers followed the kind: "phase" and "time" carry one,
+     * "cursor" and "scroll" two, the rest none. */
+    int args;
 } ConfStep;
 
 static void conf_apply(KuiCtx *ctx, const ConfStep *s) {
@@ -1158,23 +1269,32 @@ static void conf_run(const ConfScene *scene, const ConfStep *steps, int nsteps, 
 
     Rep events;
     rep_init(&events);
+    int phase = 0;
     for (int i = 0; i <= nsteps; i++) {
         if (i > 0) {
-            conf_apply(ctx, &steps[i - 1]);
-            conf_drain(ctx, &events);
+            /* Two steps are not input: one moves the clock the transitions
+             * read, the other is the view changing its mind. */
+            const ConfStep *s = &steps[i - 1];
+            if (strcmp(s->kind, "phase") == 0) {
+                phase = s->a;
+            } else if (strcmp(s->kind, "time") == 0) {
+                kui_set_time(ctx, s->a / 1000.0);
+            } else {
+                conf_apply(ctx, s);
+                conf_drain(ctx, &events);
+            }
         }
         kui_frame_begin(ctx, 320, 240, 1);
-        scene->build(ctx, &f);
+        scene->build(ctx, &f, phase);
         kui_frame_finish(ctx);
         conf_drain(ctx, &events);
     }
 
     repf(out, "scene %s\n", scene->name);
     for (int i = 0; i < nsteps; i++) {
-        if (strcmp(steps[i].kind, "cursor") == 0 || strcmp(steps[i].kind, "scroll") == 0)
-            repf(out, "step %s %d %d\n", steps[i].kind, steps[i].a, steps[i].b);
-        else
-            repf(out, "step %s\n", steps[i].kind);
+        if (steps[i].args >= 2) repf(out, "step %s %d %d\n", steps[i].kind, steps[i].a, steps[i].b);
+        else if (steps[i].args == 1) repf(out, "step %s %d\n", steps[i].kind, steps[i].a);
+        else repf(out, "step %s\n", steps[i].kind);
     }
 
     KuiStr title;
@@ -1333,7 +1453,7 @@ static int conformance(const char *path) {
                 }
                 ConfStep *s = &steps[nsteps++];
                 s->a = s->b = 0;
-                sscanf(line, "step %15s %d %d", s->kind, &s->a, &s->b);
+                s->args = sscanf(line, "step %15s %d %d", s->kind, &s->a, &s->b) - 1;
             }
             line = next ? next + 1 : NULL;
         }

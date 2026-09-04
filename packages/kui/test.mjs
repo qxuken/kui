@@ -1360,15 +1360,64 @@ const SCENE_TREES = {
         ),
       ]),
     ]),
-  media: (ctx) =>
+  media: (fx) =>
     root({}, [
       box({ pad: 6, gap: 4 }, [
-        el('image', { src: addFixtureImage(ctx), width: 16, radius: 2 }),
-        el('audio', { src: addFixtureSound(ctx), volume: 0.5, loop: true }, [], 'music'),
+        el('image', { src: fx().image, width: 16, radius: 2 }),
+        el('audio', { src: fx().sound, volume: 0.5, loop: true }, [], 'music'),
         el('latencyGraph'),
       ]),
     ]),
+  // docs/adr/0005-the-paint-vocabulary.md: four subtrees the view stops
+  // declaring in phase 1 — `fade` still in flight at the end, `blink`
+  // already over, `flash` back in phase 2 while its own exit runs, and
+  // `bulk` one node past the budget — and two that never leave, so two
+  // Tabs at the end say whether the ring has a place for a ghost.
+  exit: (_fx, phase) =>
+    root({}, [
+      box({ width: 'grow', height: 'grow', pad: 8, gap: 6, bg: '#14161e' }, [
+        keep('a', 'A'),
+        slot('slotFade', 40, phase === 0 && box(
+          {
+            width: 100, height: 24, bg: '#3b5bd4',
+            transition: 400, exit: { dx: 40, opacity: 0 },
+            focusable: true, label: 'Fade', onClick: { kind: 'hit' },
+          },
+          [text('bye', { size: 12 })],
+          'fade',
+        )),
+        slot('slotBlink', 16, phase === 0 && box(
+          { width: 100, height: 12, bg: '#73d98c', transition: 50, exit: { dx: 20 } },
+          [],
+          'blink',
+        )),
+        slot('slotFlash', 16, phase !== 1 && box(
+          { width: 100, height: 12, bg: '#ffcc00', transition: 400, exit: { dx: -20 } },
+          [],
+          'flash',
+        )),
+        keep('b', 'B'),
+        // Last, and sized by children that have no size: dropping it takes
+        // only the trailing gap with it.
+        phase === 0 && box(
+          { transition: 400, exit: { opacity: 0 } },
+          Array.from({ length: EXIT_BULK_ROWS }, () => box({})),
+          'bulk',
+        ),
+      ].filter(Boolean)),
+    ]),
 };
+
+/** `conformance::EXIT_BULK_ROWS`: with its own root, one node past
+ *  `kui_core::depart::MAX_NODES`, so the whole subtree is refused. */
+const EXIT_BULK_ROWS = 512;
+/** A fixed-size box holding at most one departing node, so dropping that
+ *  node moves nothing else on the frame the ghost is compared on. */
+const slot = (key, h, child) =>
+  box({ width: 140, height: h, bg: '#101018' }, child ? [child] : [], key);
+/** A live Tab stop either side of the departing ones. */
+const keep = (key, label) =>
+  box({ dir: 'row', width: 60, height: 16, bg: '#22242c', focusable: true, label }, [], key);
 
 const ITEM_KEYS = ['i0', 'i1', 'i2', 'i3', 'i4', 'i5'];
 /** A root box sized like the core's implicit root: `configure_root` with
@@ -1409,15 +1458,26 @@ function quadDigest(buffer) {
 function driveScene(steps, build) {
   const ctx = new Ctx();
   ctx.setDiagnostics(true);
-  const tree = build(ctx);
+  // The scene is rebuilt every frame, because `exit` only happens to a node
+  // the view stops declaring — `phase` is what it stops declaring for. The
+  // fixtures behind it are registered once, on the first build that asks,
+  // so the handles stay what `conformance::fixtures` hands out.
+  let registered = null;
+  const fx = () =>
+    (registered ??= { image: addFixtureImage(ctx), sound: addFixtureSound(ctx) });
+  let phase = 0;
   const events = [];
   const frame = () => {
-    ctx.frame(320, 240, 1, tree);
+    ctx.frame(320, 240, 1, build(fx, phase));
     events.push(...ctx.pollEvents());
   };
   frame();
   for (const step of steps) {
-    if (step[0] === 'cursor') ctx.cursor(step[1], step[2]);
+    // Neither of the first two is input: one is the frame clock the
+    // transitions read, the other is the view changing its mind.
+    if (step[0] === 'phase') phase = step[1];
+    else if (step[0] === 'time') ctx.setTime(step[1] / 1000);
+    else if (step[0] === 'cursor') ctx.cursor(step[1], step[2]);
     else if (step[0] === 'cursorleft') ctx.cursorLeft();
     else if (step[0] === 'mousedown') ctx.mouse(true, 1);
     else if (step[0] === 'mouseup') ctx.mouse(false);

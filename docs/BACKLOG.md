@@ -1528,6 +1528,55 @@ would make a stale claim fail.
 
 ---
 
+## From the C8 review (2026-09-04)
+
+Exit animations shipped with the corpus untouched, on an argument written
+into `docs/adr/0005-the-paint-vocabulary.md` ("No corpus scene, and why").
+This is that argument re-read against what the corpus actually compares.
+
+### `~` B3 — Ten corpus scenes, and none of them exits — **done (2026-09-04)**
+
+Shipped as an eleventh scene, `exit`, and two additions to the corpus
+protocol. The ADR's argument was that `exit` is a plain `PROPS` row three
+bindings lower by table lookup and the fourth is forced to by
+`every_schema_prop_has_a_c_counterpart`, so there is no per-binding
+*lowering* left for a scene to catch. True, and beside the point: the corpus
+compares quads, access rows and events across driven steps, and a ghost is
+the first node that draws while being absent from the hit regions, the Tab
+ring and the access tree at the same time. Nothing but a scene checks that
+four languages keep those three out of step in the same way.
+
+A report keeps one frame, so — the lesson A1's `modal` scene wrote down — the
+steps end where the claims differ. They end 80 ms into a 400 ms exit:
+
+- `fade` is mid-flight and **draws**, text and all, which is the previous
+  frame's *text list* as well as its tree.
+- It is **inert** three separate ways in that one frame: a press on ground
+  covered by both where the node was and where its ghost now is emits
+  nothing, where the earlier press on the live node emitted `hit`; two Tabs
+  walk from `A` to `B`; and the access tree lists neither.
+- `flash` left and came back mid-exit, so the frame holds **one** picture of
+  it — the toast-dismissed-and-reshown case — and `blink` ran 50 ms and is
+  **over**, so a store that kept either would count one solid quad more.
+- `bulk` is one node past `depart::MAX_NODES`, so the **budget** refused it
+  whole: no ghost, and an `exit-budget` warning.
+
+`Step::Phase(n)` and `Step::Time(ms)` are the two protocol additions, and
+neither is specific to exits or to input: the phase is the view changing its
+mind (a builder is a function of it; the other ten scenes ignore it), the
+time is the frame clock (without one every transition snaps). Each adapter
+grew one arm that does not call `handle_input`. Node builds its tree per
+frame now rather than once — a departure *is* a changed tree — with the
+fixtures registered on the first build that asks, so its handles are
+unchanged; Lua seeds the phase as a script global through a new
+`LuaExtension::lua()`.
+
+It caught nothing: all four agreed on the first run that compiled, which is
+what a mechanically lowered row should do. The scene is worth its keep for
+the next change to `depart.rs`, which now has four readers instead of one.
+
+---
+
 ## Suggested sequence
 
 By leverage-to-effort, not severity.

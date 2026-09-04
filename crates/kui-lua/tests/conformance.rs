@@ -145,6 +145,39 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             img = f.image.to_ffi(),
             snd = f.sound.to_ffi(),
         ),
+        // The one scene whose view changes its mind: `phase` is a global
+        // the host writes before each frame (see `every_scene_lowers_...`),
+        // and the four subtrees it gates are the departures.
+        "exit" => format!(
+            r#"
+            local function bulk()
+              local t = {{ key = "bulk", transition = 400, exit = {{ opacity = 0 }} }}
+              for _ = 1, {rows} do t[#t + 1] = column {{}} end
+              return column(t)
+            end
+            return column {{ width = {{ grow = 1 }}, height = {{ grow = 1 }},
+                            pad = 8, gap = 6, bg = 0x14161eff,
+              row {{ key = "a", width = 60, height = 16, bg = 0x22242cff,
+                    focusable = true, label = "A" }},
+              column {{ key = "slotFade", width = 140, height = 40, bg = 0x101018ff,
+                phase == 0 and column {{ key = "fade", width = 100, height = 24,
+                  bg = 0x3b5bd4ff, transition = 400,
+                  exit = {{ dx = 40, opacity = 0 }},
+                  focusable = true, label = "Fade", on_click = {{ kind = "hit" }},
+                  text("bye", {{ size = 12 }}) }} or nil }},
+              column {{ key = "slotBlink", width = 140, height = 16, bg = 0x101018ff,
+                phase == 0 and column {{ key = "blink", width = 100, height = 12,
+                  bg = 0x73d98cff, transition = 50, exit = {{ dx = 20 }} }} or nil }},
+              column {{ key = "slotFlash", width = 140, height = 16, bg = 0x101018ff,
+                phase ~= 1 and column {{ key = "flash", width = 100, height = 12,
+                  bg = 0xffcc00ff, transition = 400, exit = {{ dx = -20 }} }} or nil }},
+              row {{ key = "b", width = 60, height = 16, bg = 0x22242cff,
+                    focusable = true, label = "B" }},
+              phase == 0 and bulk() or nil,
+            }}
+        "#,
+            rows = conformance::EXIT_BULK_ROWS,
+        ),
         other => panic!("no Lua scene for {other:?} — every corpus scene needs one"),
     };
     format!("function view(env)\n{body}\nend\n")
@@ -160,7 +193,14 @@ fn every_scene_lowers_identically_from_lua() {
         let source = lua_source(scene, &f);
         let mut ext = LuaExtension::from_source(scene.name, &source)
             .unwrap_or_else(|e| panic!("{}: {e}", scene.name));
-        let out = conformance::drive(&mut core, scene.steps, |ui| {
+        let out = conformance::drive(&mut core, scene.steps, |ui, phase| {
+            // A script has no `env` reading for "which phase of a scene is
+            // this"; the host seeds one, which is what a real host does
+            // with any fact the core does not carry.
+            ext.lua()
+                .globals()
+                .set("phase", phase)
+                .unwrap_or_else(|e| panic!("{}: {e}", scene.name));
             ext.view(ui)
                 .unwrap_or_else(|e| panic!("{}: {e}", scene.name))
         });

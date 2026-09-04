@@ -117,6 +117,40 @@ upgrades remove code from the apps on it is doing the job.
   animation finished, and the frame requests that kept the window awake for
   it. Drop the item when it is gone; the core plays out the picture.
 
+- **The corpus watches a node outlive its frame** (backlog B3,
+  `docs/adr/0005-the-paint-vocabulary.md` amended again). `exit` shipped
+  with ten corpus scenes and none of them exiting: the ADR argued a
+  mechanically lowered row needs no scene, which is true about *lowering*
+  and wrong about the thing the corpus actually compares. A ghost is the
+  first node that draws while being absent from the hit regions, the Tab
+  ring and the access tree at the same time, and nothing but a scene checks
+  that four languages keep those three out of step in the same way.
+  There is now an **`exit` scene**, and it ends its steps 80 ms into a
+  400 ms exit because a report keeps one frame: `fade` is mid-flight and
+  draws, text and all, from the previous frame's text list; a press on
+  ground covered by both where the node was and where its ghost now is
+  emits nothing, where the earlier press on the live node emitted `hit`;
+  two Tabs walk past it from one live stop to the next; the access tree
+  lists neither. `blink` ran 50 ms and is over,
+  `flash` left and came back mid-exit so the frame holds one picture of it
+  and not two, and `bulk` is one node past the 512-node budget, so it is
+  refused whole with an `exit-budget` warning.
+  **Two additions to the corpus protocol**, both of which the ADR had
+  declined and neither of which is specific to exits. `Step::Phase(n)`
+  (`step phase 1` in a report) is the view changing its mind — a builder is
+  now a function of it, and every scene that never changes its tree ignores
+  it — and `Step::Time(ms)` (`step time 80`) is the frame clock, without
+  which every transition snaps and there is no ghost to see. Neither is an
+  input, so each of the four adapters grew one arm that does not call
+  `handle_input`. The Node adapter builds its tree per frame instead of once
+  (a departure *is* a changed tree), with the corpus fixtures registered on
+  the first build that asks for them so its handles are unchanged; the Lua
+  adapter seeds the phase as a script global, for which `LuaExtension::lua()`
+  now hands a host the interpreter.
+  It caught nothing on the first run that compiled, which is the expected
+  result for a row three bindings lower by table lookup — and the point is
+  the next change to `depart.rs`, which now has four readers instead of one.
+
 - **A C extension, not just a C host: `kui_ffi::CExtension`.** `kui-ffi`
   showed one direction only — C owns `main`, calls `kui_run`, links
   `libkui_ffi`, and the whole app is C. That is an all-or-nothing choice,

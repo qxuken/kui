@@ -17,6 +17,11 @@ amended: 2026-09-04
 > [Amendment: rounded clipping, built](#amendment-rounded-clipping-built)
 > replaces the estimate with the measurement, which is about 1% of a frame
 > that never clips. Both amendments are at the end of this document.
+>
+> **Amended again 2026-09-04:** the exit amendment's "No corpus scene, and
+> why" is superseded — there is one, and the two corpus-protocol additions
+> it declined (a clock step, a per-frame builder in Node) were built. See
+> [the superseding note](#no-corpus-scene-and-why--superseded-there-is-one-backlog-b3).
 
 `crates/kui-core/src/display.rs` was the whole renderer contract — fill,
 border, four radii, glyph, image — and three things a real UI wants were
@@ -355,27 +360,65 @@ the `exit-budget` warning exists to argue with. A mass removal costs about
 the frame it happens; replaying them afterwards is 12 µs a frame, which is
 what makes "keep drawing until the exit finishes" affordable at all.
 
-### No corpus scene, and why
+### No corpus scene, and why — **superseded: there is one (backlog B3)**
 
-`exit` is a plain `PROPS` row of the kind three of the four bindings lower
-by table lookup: Lua reads it by snake\_name, Node's encoder takes its id
-straight off the protocol, and C — the one that maps by hand — is forced by
-`every_schema_prop_has_a_c_counterpart`, which fails the build for a row
-with no `KuiSpec` field. Node's own sweep ("every generic schema prop
-reaches the stream and lowers") covers the wire. What is left is the ghost,
-and that is entirely `kui-core`: there is no per-binding behaviour for a
-scene to catch four of.
+The original argument, kept because half of it still holds:
 
-Pinning it in the corpus anyway would need two changes to the corpus
-protocol that serve nothing else. A **clock step**, because without one
-every transition snaps and there is no ghost to see, in all four adapters.
-And a **per-frame builder** in the Node adapter, which builds its scene tree
-once and reuses it for every frame — a departure is a tree that changed, so
-a scene that never changes its tree cannot express one. Both are
-worthwhile if a second cross-binding behaviour ever wants a clock; neither
-is worth doing for a row that is already forced twice. The behaviour is
-pinned in `crates/kui-core/tests/exit.rs` instead, including the toast-stack
-shape the policy was decided against.
+> `exit` is a plain `PROPS` row of the kind three of the four bindings lower
+> by table lookup: Lua reads it by snake\_name, Node's encoder takes its id
+> straight off the protocol, and C — the one that maps by hand — is forced by
+> `every_schema_prop_has_a_c_counterpart`, which fails the build for a row
+> with no `KuiSpec` field. Node's own sweep ("every generic schema prop
+> reaches the stream and lowers") covers the wire. What is left is the ghost,
+> and that is entirely `kui-core`: there is no per-binding behaviour for a
+> scene to catch four of.
+>
+> Pinning it in the corpus anyway would need two changes to the corpus
+> protocol that serve nothing else. A **clock step**, because without one
+> every transition snaps and there is no ghost to see, in all four adapters.
+> And a **per-frame builder** in the Node adapter, which builds its scene tree
+> once and reuses it for every frame — a departure is a tree that changed, so
+> a scene that never changes its tree cannot express one. Both are
+> worthwhile if a second cross-binding behaviour ever wants a clock; neither
+> is worth doing for a row that is already forced twice.
+
+What the argument got wrong is the sentence "there is no per-binding
+behaviour for a scene to catch". The corpus does not only compare
+*lowerings*; it compares quads, access rows and events over driven steps,
+and `exit` is the first feature where those three disagree with each other
+on purpose — the ghost draws, and is at the same time absent from the hit
+regions, the Tab ring and the access tree. Nothing but a scene checks that
+the three stay out of step in the same way in four languages, and "this
+row lowers, therefore this row behaves" is exactly the inference this
+corpus exists because the project stopped making.
+
+The two protocol changes were built rather than avoided, and both are
+smaller than they read: `Step::Phase(n)` leaves a number the builder is a
+function of (every other scene ignores it), `Step::Time(ms)` sets the frame
+clock, and neither is an input, so each adapter grew one arm that does not
+call `handle_input`. The Node adapter now builds its tree per frame, with
+the corpus fixtures registered once on the first build that asks for them,
+so its handles are still the ones `conformance::fixtures` hands out.
+
+The `exit` scene ends its steps 80 ms into a 400 ms exit, because a report
+keeps one frame and that is the only frame where all four claims differ at
+once — the same lesson the `modal` scene wrote down about the Tab ring.
+`fade` is mid-flight (it draws, with the text from the *previous* frame's
+text list, which is the other half of the buffer swap); `blink` ran 50 ms
+and is over; `flash` left and came back while its own exit was running, so
+the frame holds one picture of it and not two; and `bulk` is one node past
+the budget, so it is refused whole with an `exit-budget` warning. The
+inertness is three separate observations in that frame: a press on ground
+covered by both where the node was and where its ghost now is emits nothing,
+where the earlier press on the live node emitted `hit`; two Tabs walk from
+`A` to `B`; and the access tree lists neither.
+
+Honest outcome: **it caught nothing**. All four adapters agreed on the first
+run that compiled. That is the expected result for a mechanically lowered
+row, and it is not the reason to keep the scene — the reason is that the
+next change to `depart.rs` now has four readers instead of one.
+`crates/kui-core/tests/exit.rs` still holds the finer-grained behaviour,
+including the toast-stack shape the policy was decided against.
 
 ## Amendment: rounded clipping, built
 
