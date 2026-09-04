@@ -5,23 +5,84 @@
 
 use kui_core::{Color, Core, Key, NodeSpec, Size, Sizing, TextStyle, Ui, Value, Vec2, widgets};
 
-fn grid(ui: &mut Ui<'_>, rows: usize, cols: usize, with_text: bool, with_clicks: bool) {
-    ui.configure_root(NodeSpec::column().fill().pad(8.0).gap(4.0));
-    for r in 0..rows {
+/// What one grid frame contains. Every grid bench below goes through the
+/// same builder and differs only in these switches, so their medians can be
+/// compared with each other directly.
+#[derive(Clone, Copy)]
+struct Grid {
+    rows: usize,
+    cols: usize,
+    /// Every eighth cell holds a label.
+    text: bool,
+    /// Every fourth cell is clickable (a hit region, and a semantic node in
+    /// the access tree).
+    clicks: bool,
+    /// Every cell casts an outer drop shadow — one more quad each.
+    shadows: bool,
+    /// The root is faded, so emission alpha-multiplies every quad.
+    opacity: bool,
+}
+
+impl Grid {
+    fn new(rows: usize, cols: usize) -> Self {
+        Self {
+            rows,
+            cols,
+            text: false,
+            clicks: false,
+            shadows: false,
+            opacity: false,
+        }
+    }
+
+    fn text(mut self) -> Self {
+        self.text = true;
+        self
+    }
+
+    fn clicks(mut self) -> Self {
+        self.clicks = true;
+        self
+    }
+
+    fn shadows(mut self) -> Self {
+        self.shadows = true;
+        self
+    }
+
+    fn opacity(mut self) -> Self {
+        self.opacity = true;
+        self
+    }
+}
+
+fn grid(ui: &mut Ui<'_>, g: Grid) {
+    let mut root = NodeSpec::column().fill().pad(8.0).gap(4.0);
+    if g.opacity {
+        root = root.opacity(0.85);
+    }
+    ui.configure_root(root);
+    for r in 0..g.rows {
         ui.with(NodeSpec::row().width(Sizing::Grow(1.0)).gap(4.0), |ui| {
-            for c in 0..cols {
+            for c in 0..g.cols {
                 let mut spec = NodeSpec::column()
                     .width(Sizing::Grow(1.0))
                     .height(Sizing::Fixed(14.0))
                     .bg(Color::rgb8((r % 255) as u8, (c % 255) as u8, 128))
                     .radius(2.0);
-                if with_clicks && c % 4 == 0 {
-                    spec = spec.on_click(Value::Int((r * cols + c) as i64));
+                if g.shadows {
+                    spec = spec
+                        .shadow_color(Color::rgba8(0, 0, 0, 96))
+                        .shadow_blur(6.0)
+                        .shadow_y(2.0);
                 }
-                if with_text && c % 8 == 0 {
+                if g.clicks && c % 4 == 0 {
+                    spec = spec.on_click(Value::Int((r * g.cols + c) as i64));
+                }
+                if g.text && c % 8 == 0 {
                     ui.with(spec, |ui| {
                         // 64 distinct strings -> realistic warm-cache text load.
-                        let s = format!("cell {}", (r * cols + c) % 64);
+                        let s = format!("cell {}", (r * g.cols + c) % 64);
                         ui.text(&s, TextStyle::new(10.0));
                     });
                 } else {
@@ -32,15 +93,9 @@ fn grid(ui: &mut Ui<'_>, rows: usize, cols: usize, with_text: bool, with_clicks:
     }
 }
 
-fn run_frame(
-    core: &mut Core,
-    rows: usize,
-    cols: usize,
-    with_text: bool,
-    with_clicks: bool,
-) -> usize {
+fn run_frame(core: &mut Core, g: Grid) -> usize {
     let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
-    grid(&mut ui, rows, cols, with_text, with_clicks);
+    grid(&mut ui, g);
     ui.finish();
     let (dl, _) = core.output();
     dl.quads.len()
@@ -48,16 +103,18 @@ fn run_frame(
 
 #[divan::bench]
 fn frame_10k_rects(bencher: divan::Bencher) {
+    let g = Grid::new(100, 100);
     let mut core = Core::new();
-    run_frame(&mut core, 100, 100, false, false);
-    bencher.bench_local(|| run_frame(&mut core, 100, 100, false, false));
+    run_frame(&mut core, g);
+    bencher.bench_local(|| run_frame(&mut core, g));
 }
 
 #[divan::bench]
 fn frame_10k_rects_with_text_and_hits(bencher: divan::Bencher) {
+    let g = Grid::new(100, 100).text().clicks();
     let mut core = Core::new();
-    run_frame(&mut core, 100, 100, true, true);
-    bencher.bench_local(|| run_frame(&mut core, 100, 100, true, true));
+    run_frame(&mut core, g);
+    bencher.bench_local(|| run_frame(&mut core, g));
 }
 
 /// The same frame with the access tree derived after it — what a frame
@@ -65,54 +122,34 @@ fn frame_10k_rects_with_text_and_hits(bencher: divan::Bencher) {
 /// button (a semantic node); the other rects are elided.
 #[divan::bench]
 fn frame_10k_rects_with_access_tree(bencher: divan::Bencher) {
+    let g = Grid::new(100, 100).text().clicks();
     let mut core = Core::new();
-    run_frame(&mut core, 100, 100, true, true);
+    run_frame(&mut core, g);
     bencher.bench_local(|| {
-        run_frame(&mut core, 100, 100, true, true);
+        run_frame(&mut core, g);
         core.access_tree().nodes.len()
     });
 }
 
 #[divan::bench]
 fn frame_1k_typical(bencher: divan::Bencher) {
+    let g = Grid::new(32, 32).text().clicks();
     let mut core = Core::new();
-    run_frame(&mut core, 32, 32, true, true);
-    bencher.bench_local(|| run_frame(&mut core, 32, 32, true, true));
+    run_frame(&mut core, g);
+    bencher.bench_local(|| run_frame(&mut core, g));
 }
 
-/// The same 10k grid with the paint props that cost extra work: every cell
-/// casts a shadow (one more quad each) under a faded root (an alpha
-/// multiply over every quad emitted). What group opacity and shadows cost
-/// when a frame is made of them.
+/// The same 10k grid as `frame_10k_rects` with the paint props that cost
+/// extra work switched on: every cell casts a shadow (one more quad each)
+/// under a faded root (an alpha multiply over every quad emitted). Same
+/// builder, same geometry, so the difference between the two is what group
+/// opacity and shadows cost.
 #[divan::bench]
 fn frame_10k_rects_with_shadows_and_opacity(bencher: divan::Bencher) {
-    fn frame(core: &mut Core) -> usize {
-        let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
-        ui.configure_root(NodeSpec::column().fill().pad(8.0).gap(4.0).opacity(0.85));
-        for r in 0..100 {
-            ui.with(NodeSpec::row().width(Sizing::Grow(1.0)).gap(4.0), |ui| {
-                for c in 0..100 {
-                    ui.with(
-                        NodeSpec::column()
-                            .width(Sizing::Grow(1.0))
-                            .height(Sizing::Fixed(14.0))
-                            .bg(Color::rgb8((r % 255) as u8, (c % 255) as u8, 128))
-                            .radius(2.0)
-                            .shadow_color(Color::rgba8(0, 0, 0, 96))
-                            .shadow_blur(6.0)
-                            .shadow_y(2.0),
-                        |_| {},
-                    );
-                }
-            });
-        }
-        ui.finish();
-        let (dl, _) = core.output();
-        dl.quads.len()
-    }
+    let g = Grid::new(100, 100).shadows().opacity();
     let mut core = Core::new();
-    frame(&mut core);
-    bencher.bench_local(|| frame(&mut core));
+    run_frame(&mut core, g);
+    bencher.bench_local(|| run_frame(&mut core, g));
 }
 
 /// The wrapping row at scale: 10k chips of varying width in 100 rows that

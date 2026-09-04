@@ -883,26 +883,32 @@ found, at which point writing the section is the obvious next move.
 The change itself is not in the changelog: that file lists what an app gains
 and what it can delete, and release tooling is neither.
 
-### `.` X3 — List the missing input modes in Status / next
+### `.` X3 — List the missing input modes in Status / next — **mostly done (2026-09-04)**
 
-The section is unusually honest about z-index, exit animations, layout-query
-depth, audio and editing scope. That honesty is why the omissions it *doesn't*
-mention read as present: no touch or pen input. (Flex wrapping was on this
-list until C10 shipped it; what is left of that gap — a column that cannot
-wrap, no `align-content`, no `space-between`, no baseline, no aspect ratio —
-belongs in the section in its place.) Add them, grouped, in the section's
-existing tone. (Modal containment was on this
+Both halves landed. The section now names the layout gap and the benches
+paragraph covers every frame bench: `frame_10k_rects_with_access_tree` and
+`frame_10k_rects_with_shadows_and_opacity` as ratios against the frames they
+extend, and C10 added the `frame_10k_chips_wrapped` / `_unwrapped` pair the
+same way. All of them are ratios rather than rows because they were measured
+on a different machine from the table's.
+
+The flex-wrap line was written as "no flex wrapping" and then rewritten by
+C10, which shipped it: what the section carries now is the remainder — a
+column that cannot wrap, no `align-content`, no `space-between` / `around` /
+`evenly`, no baseline, no aspect ratio, and `Dir` with no reverse. That is
+the shape this row wanted, and a gap being closed between writing it down and
+reading it back is the system working.
+
+**Still open: no touch or pen input.** It does not reach the core at all, and
+the section says nothing about it, so it reads as present. Add it in the
+section's existing tone, grouped with the pointer paragraph.
+
+The precedent, for whoever writes that line: modal containment was on this
 list until C1 shipped it; the pointer buttons went on it with C2, which routes
 only the secondary one; cursor shapes came off it with C3, and programmatic
 scrolling with C4. C9 put key releases in the section as a *fixed* line and
 left the real remainder there: no physical scancodes, no left/right modifier
-identity, and unnamed keys dropped rather than delivered.)
-
-The performance table also lists four benches where `benches/frame.rs` has eight —
-`frame_10k_rects_with_access_tree` is omitted, and it is the one a reader worried
-about the cost of the accessibility work would look for. (The three list benches
-C5 added are described in a paragraph under the table rather than as rows,
-because they were measured on a slower machine than the table's.)
+identity, and unnamed keys dropped rather than delivered.
 
 ---
 

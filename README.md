@@ -534,11 +534,22 @@ caches — full frame: build + layout + emit):
 | 10k rects + 1.2k texts + 2.5k hit regions | ~740 µs |
 | 16×64-deep nesting chains | ~58 µs |
 
-Wrapping costs what it does (`frame_10k_chips_wrapped` /
-`frame_10k_chips_unwrapped`): 10k chips in 100 rows that each break into
-several lines run about **1.16×** the same tree laid out in one line
-per row — the worst case, since every row wraps. A row that does not wrap
-pays nothing: the break, the per-line grow and the per-line alignment are
+Four more frame benches are not in the table because they were measured on a
+different (slower) machine; each is a ratio against the frame it extends, so
+compare it with that one rather than with the rows above.
+`frame_10k_rects_with_access_tree` is the "10k rects + 1.2k texts + 2.5k hit
+regions" frame with `core.access_tree()` derived after it — what a frame costs
+while assistive technology is attached — and runs **~1.27×** that frame
+(~2.05 ms against ~1.62 ms there). `frame_10k_rects_with_shadows_and_opacity`
+is the plain 10k grid with only the paint props switched on: every cell casts a
+shadow under a faded root, which is **twice the quads** (20k against 10k) for
+**~10%** more frame time (~1.35 ms against ~1.22 ms there), because most of a
+frame is build and layout rather than emitting quads. And
+`frame_10k_chips_wrapped` / `frame_10k_chips_unwrapped` are the same pair for
+wrapping: 10k chips in 100 rows that each break onto several lines run
+**~1.16×** the same tree laid out one line per row (~1.24 ms against ~1.06 ms
+there) — the worst case, since every row wraps. A row that does not wrap pays
+nothing, because the break, the per-line grow and the per-line alignment are
 all behind the flag.
 
 Long lists (`list_10k_rows_naive` / `list_10k_rows_virtual` /
@@ -655,12 +666,15 @@ paint prop's worth of work — use an image or stack solids), no inset or multip
 opacity is a per-quad alpha multiply rather than an offscreen composite, so overlapping pieces
 of one faded subtree show their seams. Clipping is rect-only, so a rounded scroll container
 does not round its children's corners.
-Layout wraps rows and not columns, for the pass-order reason above, and stops there:
-there is no `align-content` (lines always share the leftover cross space equally), no
-`space-between` / `around` / `evenly` on either axis (a `grow` spacer node covers the first
-of the three), no baseline cross-alignment — two text sizes on one row align by box, so
-they sit on different lines — and no aspect ratio, so "square" or "16:9" needs one of the
-two dimensions known.
+Wrapping is rows only, for the pass-order reason above: a **column** that outgrows its
+height is still one line, so it shrinks its `Fit` children toward their `min` (or
+overflows) rather than moving anything into a second column, and `Dir` is `Row` or
+`Column` with no reverse. Beyond that the alignment vocabulary is start/center/end and
+nothing else — no `align-content` (a wrapping row's lines always share the leftover cross
+space equally), no `space-between` / `around` / `evenly` on either axis (a `grow` spacer
+node covers the first of the three), and no baseline cross-alignment, so two text sizes on
+one row align by box and sit on different lines. There is no aspect ratio either: "square"
+or "16:9" needs one of the two dimensions known.
 Layout queries stop at the node: `measure_text` and `on_layout` give whole-string and whole-node
 rects, not the boxes of lines or glyphs inside a paragraph. Accessibility, keyboard focus and
 modality are data (ADR 0001, 0002 and 0003); arrow keys inside radio groups, tab lists and lists,
