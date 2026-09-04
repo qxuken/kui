@@ -293,6 +293,9 @@ export interface Warning {
     /** A button, link, tab, checkbox, slider or editor with no `label` and
      *  no text inside it: a screen reader announces an unnamed control. */
     | 'control-without-name'
+    /** A `modal` with no `label`: a dialog is not named by the text inside
+     *  it, so a reader announces an unnamed dialog. */
+    | 'modal-without-name'
     /** `wrapChildren` where nothing can break: a column, or a `scrollX`
      *  row. It lays out exactly as if the flag were absent. */
     | 'wrap-ignored'

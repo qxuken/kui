@@ -112,6 +112,24 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        "modal" => r#"
+            return column { width = { grow = 1 }, gap = 6,
+              titlebar { text("app", { size = 12 }) },
+              row { key = "open", width = 100, height = 20, bg = 0x30344aff,
+                    on_click = { kind = "open" }, label = "Open" },
+              column { key = "dialog", width = 120, height = 100, pad = 8, gap = 6,
+                       bg = 0x202030ff,
+                       float = { anchor = "viewport", at = { "end", "end" },
+                                 self_at = { "end", "end" } },
+                       modal = { kind = "dlg" }, label = "Settings",
+                row { key = "ok", width = 100, height = 24, bg = 0x3b5bd4ff,
+                      on_click = { kind = "ok" }, label = "OK" },
+                row { key = "cancel", width = 100, height = 24, bg = 0x3b5bd4ff,
+                      on_click = { kind = "cancel" }, label = "Cancel" },
+              },
+            }
+        "#
+        .to_string(),
         "media" => format!(
             r#"
             return column {{ pad = 6, gap = 4,

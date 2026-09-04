@@ -42,6 +42,31 @@ upgrades remove code from the apps on it is doing the job.
   bisect — commenting props out one at a time until the frame changes. The
   frame now names the prop.
 
+- **A modal scene in the corpus, and a `modal-without-name` warning**
+  (`docs/adr/0003-modal-surfaces.md`, backlog A1). The ADR named both as
+  small things it had left, and they are two halves of one gap: `modal` is
+  a schema row, so all four transports lowered it mechanically and nothing
+  checked what it *does*. The new **`modal`** scene checks the part that is
+  not mechanical. A floated dialog sits over an app with a titlebar, and
+  the replay presses the button behind it (no click, one `dismiss` — the
+  app is inert), then the titlebar (nothing at all: window chrome stays
+  live under a modal, so it is not "outside" and asks for no dismissal),
+  then the dialog's own button (a click, because the scope is live), then
+  walks the ring, then Escape — so both dismiss reasons are in the event
+  list with a live event between them. A report keeps one frame, so the
+  three ring steps are chosen to land where only a *scoped* ring can:
+  over the dialog's two stops Shift-Tab, Shift-Tab, Tab end on Cancel,
+  over the whole tree's three they would end on the button behind. The
+  corpus's step vocabulary grew `tab`, `shifttab` and `escape` for it, and
+  all four adapters replay them.
+  The warning is the other half. A dialog is not named by the text inside
+  it — it is not one of ARIA's name-from-content roles — so an unlabelled
+  modal is announced as an unnamed dialog to the user it has just moved
+  focus to, which is the defect `control-without-name` already catches one
+  node over. `modal-without-name` says so, from the same check and on the
+  same terms. Its first two hits were our own context menus: the C and
+  Node examples gained the `label` it asked for.
+
 - **Flex wrapping: `wrapChildren` and `crossGap`** (backlog C10). A row of
   tags, a toolbar of chips, a button row that has to survive a narrow
   window — none of them could be written. The solver's only answer to

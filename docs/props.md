@@ -34,7 +34,7 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `hoverSound` | `hover_sound` | `hover_sound` | resource handle | A registered sound (addSound) played when the pointer enters the node; implies hover tracking. |
 | `hoverable` | `hoverable` | `hoverable` | boolean | Hover-track without a click payload (for isHovered-driven styling). |
 | `keyframes` | `keyframes` | `keyframes` + `keyframes_len` (`KuiKeyframe[]`) | keyframe list (`[{ at?, width?, height?, bg?, radius?, opacity? }, …]`) | CSS-style stops `[{ at?, width?, height?, bg?, radius?, opacity? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. |
-| `label` | `label` | `label` (KuiStr) | string | The accessible name. Without one a button, link, tab or heading is named by the text inside it; an image or an icon-only button has none, and the core warns (`image-without-label`, `control-without-name`). |
+| `label` | `label` | `label` (KuiStr) | string | The accessible name. Without one a button, link, tab or heading is named by the text inside it; an image, an icon-only button and a `modal` dialog have none, and the core warns (`image-without-label`, `control-without-name`, `modal-without-name`). |
 | `mainAlign` | `main_align` | `main_align` | `start` \\| `center` \\| `end` | Child alignment along the main axis. |
 | `maxHeight` | `max_height` | `max_height` | number | Upper height clamp (logical px). |
 | `maxWidth` | `max_width` | `max_width` | number | Upper width clamp; grow+maxWidth is the responsive-width pattern. |

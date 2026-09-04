@@ -796,6 +796,50 @@ fn the_access_tree_reports_the_modal_and_derives_a_dialog() {
     assert_ne!(tree.hash, hash);
 }
 
+/// A dialog is named by its `label` alone (it is not one of ARIA's
+/// name-from-content roles), so an unlabelled one is announced as an
+/// unnamed dialog — the `control-without-name` defect, on the node that
+/// just took focus.
+#[test]
+fn a_modal_without_a_name_warns() {
+    let dialog = |label: Option<&'static str>| {
+        let mut core = Core::new();
+        let mut ui = core.frame(Size::new(200.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let mut spec = NodeSpec::column()
+            .width(Sizing::Fixed(100.0))
+            .height(Sizing::Fixed(2.0 * H))
+            .float(FloatConfig::viewport())
+            .modal(Value::str("dlg"));
+        if let Some(label) = label {
+            spec = spec.label(label);
+        }
+        let key = ui.with_keyed("dialog", spec, |ui| {
+            // Text inside is not a name for a dialog, so it does not
+            // silence the warning the way it would for a button.
+            ui.text("Delete everything?", TextStyle::default());
+        });
+        ui.finish();
+        (core.take_warnings(), key)
+    };
+
+    let (ws, key) = dialog(None);
+    let named: Vec<_> = ws
+        .iter()
+        .filter(|w| w.code == kui_core::diag::MODAL_WITHOUT_NAME)
+        .collect();
+    assert_eq!(named.len(), 1);
+    assert_eq!(named[0].key, key);
+    assert!(named[0].message.contains("`label`"), "{}", named[0].message);
+
+    let (ws, _) = dialog(Some("Confirm"));
+    assert!(
+        !ws.iter()
+            .any(|w| w.code == kui_core::diag::MODAL_WITHOUT_NAME),
+        "a labelled dialog says nothing: {ws:?}"
+    );
+}
+
 #[test]
 fn a_modal_that_is_not_floated_warns() {
     let mut core = Core::new();
