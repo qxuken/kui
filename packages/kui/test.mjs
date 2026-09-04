@@ -447,6 +447,68 @@ test('a modal contains focus and asks to be dismissed', () => {
   assert.equal(ctx.focused(), ok.key, 'escape does not let go');
 });
 
+// The row that says where a modal opens focused: a destructive confirm on
+// its Cancel rather than on whichever control is declared first.
+test('initialFocus names the control a modal opens on', () => {
+  const build = (withRow) =>
+    box({ pad: 4 }, [
+      box(
+        { width: 60, height: 20, bg: '#333333', onClick: { kind: 'open' }, label: 'Open' },
+        [],
+        'open',
+      ),
+      box(
+        {
+          width: 80,
+          height: 60,
+          bg: '#222222',
+          float: { anchor: 'viewport', at: ['end', 'end'], self: ['end', 'end'] },
+          modal: null,
+          label: 'Delete note',
+        },
+        [
+          // The destructive one first: declaration order alone would open
+          // the dialog on it.
+          box(
+            { width: 60, height: 20, bg: '#444444', onClick: { kind: 'delete' }, label: 'Delete' },
+            [],
+            'delete',
+          ),
+          box(
+            {
+              width: 60,
+              height: 20,
+              bg: '#444444',
+              onClick: { kind: 'cancel' },
+              label: 'Cancel',
+              ...(withRow ? { initialFocus: true } : {}),
+            },
+            [],
+            'cancel',
+          ),
+        ],
+        'dialog',
+      ),
+    ]);
+
+  const named = new Ctx();
+  named.frame(320, 240, 1, build(true));
+  const keyOf = (name) => named.accessTree().nodes.find((n) => n.name === name).key;
+  assert.equal(named.focused(), keyOf('Cancel'), 'opened on the safe option');
+  // Read on entry only: a Tab press moves off it, and the next frame -
+  // declaring the same row again - leaves focus where the user put it.
+  named.key('tab');
+  assert.equal(named.focused(), keyOf('Delete'));
+  named.frame(320, 240, 1, build(true));
+  assert.equal(named.focused(), keyOf('Delete'), 'a redeclaration is not an entry');
+
+  // Without the row, ADR 0003's first-focusable rule stands.
+  const plain = new Ctx();
+  plain.frame(320, 240, 1, build(false));
+  const delete_ = plain.accessTree().nodes.find((n) => n.name === 'Delete').key;
+  assert.equal(plain.focused(), delete_, 'the first control, as before');
+});
+
 // Measurement is a query on the same text stack layout uses.
 test('measureText answers what layout gives the text', () => {
   const ctx = new Ctx();

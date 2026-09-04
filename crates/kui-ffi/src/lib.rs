@@ -465,6 +465,12 @@ pub struct KuiSpec {
     /// Space between wrap lines, across the main axis (`gap` stays the
     /// space between children along it).
     pub cross_gap: f32,
+    /// Non-zero: where focus lands when the enclosing `modal` scope is
+    /// entered - the first node in the modal's Tab ring declaring it,
+    /// instead of the ring's first, so a destructive confirm opens on its
+    /// Cancel. Read on entry only; nothing declaring it (or only nodes
+    /// the ring skips) keeps the ring's first node.
+    pub initial_focus: u32,
     /// Exit: with `set` non-zero and a `transition_ms`, the frame after the
     /// view stops declaring this node its subtree is copied out of the last
     /// frame that had it and replayed — frozen where layout left it, on top
@@ -1102,6 +1108,9 @@ fn spec_of(
     }
     if s.focusable != 0 {
         spec = spec.focusable();
+    }
+    if s.initial_focus != 0 {
+        spec = spec.initial_focus();
     }
     if s.disabled != 0 {
         spec = spec.disabled(true);
@@ -3262,6 +3271,7 @@ mod schema_parity {
                 "pressedBg" => s.pressed_bg = C,
                 "hoverGroup" => s.hover_group = name,
                 "focusable" => s.focusable = 1,
+                "initialFocus" => s.initial_focus = 1,
                 "disabled" => s.disabled = 1,
                 "focusBg" => s.focus_bg = C,
                 "clickSound" => s.click_sound = 7,
@@ -3422,6 +3432,7 @@ mod schema_parity {
             shadow_spread: -2.0,
             wrap_children: 1,
             cross_gap: 6.0,
+            initial_focus: 1,
             exit: unsafe { std::mem::zeroed() },
         };
         let expected = NodeSpec::row()
@@ -3464,6 +3475,7 @@ mod schema_parity {
             .pressed_bg(Color::hex(0x2f_54_c4_ff))
             .hover_group("grp")
             .focusable()
+            .initial_focus()
             .disabled(true)
             .focus_bg(Color::hex(0x11_22_33_ff))
             .description("hint")
@@ -4437,6 +4449,7 @@ mod abi_parity {
             shadow_spread: f32 => "float",
             wrap_children: u32 => "uint32_t",
             cross_gap: f32 => "float",
+            initial_focus: u32 => "uint32_t",
             exit: KuiEnter => "KuiEnter",
         });
 

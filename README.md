@@ -242,8 +242,9 @@ that are hard to reverse and would look arbitrary without their context.
   ([ADR 0003](docs/adr/0003-modal-surfaces.md)). A node declaring `modal`
   (`modal` in JSX, `modal = true` in Lua, `KuiSpec.modal` in C) is the
   frame's modal surface: the Tab ring becomes its subtree, focus enters it
-  and comes back where it was when it goes away, and everything outside is
-  inert — no click, drag, hover, wheel, or assistive-technology
+  (at its first control, or at whichever one declares `initialFocus` — so a
+  destructive confirm opens on Cancel) and comes back where it was when it
+  goes away, and everything outside is inert — no click, drag, hover, wheel, or assistive-technology
   activation; only window chrome stays live, so a dialog never traps the
   window. The access tree marks it `aria-modal` (AccessKit's
   `set_modal`) and derives a `dialog` role. Escape and a press outside

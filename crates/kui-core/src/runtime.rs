@@ -1037,12 +1037,22 @@ impl Core {
             self.set_focus(saved);
         }
         self.modal_focus = now;
-        // Containment: focus outside the scope enters it (at its first
-        // focusable node), or is dropped when it holds none. Not
-        // `focus_visible`: the app showed the modal, nobody pressed a key.
+        // Containment: focus outside the scope enters it, or is dropped
+        // when it holds none. Not `focus_visible`: the app showed the
+        // modal, nobody pressed a key. The entry is the first node in the
+        // ring declaring `initial_focus` — a destructive confirm opening
+        // on its Cancel — and the ring's first when none does. Only
+        // *entry* reads it: focus already inside the scope never reaches
+        // here, so a Tab press stands and a nested confirm closing leaves
+        // focus where it handed it back.
         if self.modal.is_some() && !self.focus.is_some_and(|k| self.within_modal(k)) {
-            let first = self.focus_ring().first().map(|(_, k)| *k);
-            self.set_focus(first);
+            let ring = self.focus_ring();
+            let entry = ring
+                .iter()
+                .find(|(i, _)| self.tree.specs[*i].initial_focus)
+                .or_else(|| ring.first())
+                .map(|(_, k)| *k);
+            self.set_focus(entry);
         }
     }
 

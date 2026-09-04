@@ -465,6 +465,15 @@ pub struct NodeSpec {
     /// `on_click` boxes, the control roles) are focusable already; see
     /// `docs/adr/0002-keyboard-focus-as-data.md`.
     pub focusable: bool,
+    /// Where focus lands when the `modal` scope containing this node is
+    /// entered: the first node in the modal's Tab ring declaring it,
+    /// instead of simply the ring's first — a destructive confirm opening
+    /// on its Cancel rather than on whichever control is declared first.
+    /// Read on entry only, so a Tab press afterwards stands; a node the
+    /// ring skips (disabled, decoration, not focusable) is not a
+    /// candidate, and with no candidate the entry is the ring's first
+    /// node as before. See `docs/adr/0003-modal-surfaces.md`.
+    pub initial_focus: bool,
     /// Inert: keeps its hit region (so a tooltip can say why) and loses
     /// everything else — no click, drag or key sink, no hover / pressed /
     /// focus background, no place in the Tab ring; the access tree
@@ -782,6 +791,13 @@ impl NodeSpec {
     /// Puts this node in the Tab ring (see the `focusable` field).
     pub fn focusable(mut self) -> Self {
         self.focusable = true;
+        self
+    }
+
+    /// Makes this node the modal scope's entry focus (see the
+    /// `initial_focus` field).
+    pub fn initial_focus(mut self) -> Self {
+        self.initial_focus = true;
         self
     }
 

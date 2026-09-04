@@ -882,6 +882,7 @@ mod tests {
                 hoverable = true, window = "close",
                 on_click = {kind = "hit"}, on_drag = "d", on_key = 7,
                 modal = "dlg", on_context_menu = {kind = "menu"},
+                initial_focus = true,
                 key = "panel", key_focus = true,
             }"##,
         );
@@ -921,6 +922,7 @@ mod tests {
             .on_drag("d")
             .on_key(Value::Int(7))
             .modal("dlg".into())
+            .initial_focus()
             .on_context_menu(Value::map([("kind", "menu".into())]));
         assert_eq!(p.spec, expected);
         assert_eq!(p.key.as_deref(), Some("panel"));

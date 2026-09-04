@@ -121,7 +121,8 @@ pub const P_SHADOW_Y: u32 = 73;
 pub const P_SHADOW_SPREAD: u32 = 74;
 pub const P_WRAP_CHILDREN: u32 = 75;
 pub const P_CROSS_GAP: u32 = 76;
-pub const P_EXIT: u32 = 77;
+pub const P_INITIAL_FOCUS: u32 = 77;
+pub const P_EXIT: u32 = 78;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -553,6 +554,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Tag,
         apply: Apply::SpecMsg(|s, v| s.modal(v)),
         doc: "Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside emits {kind:\"dismiss\", reason:\"escape\"|\"outside\", tag} on it — the app stops declaring the node. The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float.",
+    },
+    PropDef {
+        name: "initialFocus",
+        id: P_INITIAL_FOCUS,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.initial_focus()),
+        doc: "Where focus lands when the enclosing `modal` scope is entered: the first node in the modal\'s Tab ring declaring it, so a destructive confirm opens on its Cancel rather than on whichever control is declared first. Read on entry only — a Tab press afterwards stands, and the scope re-entered (a nested confirm closing) leaves focus where it was. Declared on nothing, or only on nodes the ring skips (disabled, `role=\"none\"`, not focusable), entry stays the ring\'s first node.",
     },
     PropDef {
         name: "hoverGroup",

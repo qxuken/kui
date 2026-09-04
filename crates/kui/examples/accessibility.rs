@@ -35,7 +35,9 @@
 //! Tab cannot leave it, nothing behind it clicks, VoiceOver announces a
 //! modal dialog and stays inside it, and Escape or a click outside asks
 //! it to close — the app decides, and focus returns to the button that
-//! opened it.
+//! opened it. It opens on Cancel, because Cancel says `initialFocus`:
+//! a destructive confirm should not be one habitual Enter away from
+//! confirming.
 
 use kui::widgets;
 use kui::{
@@ -383,7 +385,26 @@ impl App for A11y {
                         TextStyle::new(15.0).color(Color::WHITE),
                     );
                     ui.with(NodeSpec::row().gap(8.0), |ui| {
-                        widgets::button(ui, "Cancel", Value::str("cancel"));
+                        // Where focus lands when the dialog opens, said
+                        // rather than inherited from declaration order: a
+                        // destructive confirm opens on its safe option, so
+                        // Enter out of habit cancels. Without the row the
+                        // ring's first node wins, which is Cancel here only
+                        // because Cancel happens to be declared first — and
+                        // that is exactly the thing an app should not have
+                        // to keep true by hand.
+                        ui.with_keyed(
+                            "Cancel",
+                            widgets::button_spec()
+                                .on_click(Value::str("cancel"))
+                                .initial_focus(),
+                            |ui| {
+                                ui.text(
+                                    "Cancel",
+                                    TextStyle::new(widgets::BUTTON_TEXT).color(Color::WHITE),
+                                )
+                            },
+                        );
                         widgets::button(ui, "Delete", Value::str("delete"));
                     });
                 },

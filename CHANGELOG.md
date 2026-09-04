@@ -84,6 +84,34 @@ upgrades remove code from the apps on it is doing the job.
   bisect — commenting props out one at a time until the frame changes. The
   frame now names the prop.
 
+- **`initialFocus`: a dialog says which control it opens on**
+  (`docs/adr/0003-modal-surfaces.md`, backlog A2). ADR 0003 entered a modal
+  at the *first* focusable node in its scope, which makes a destructive
+  confirm open on Delete whenever Delete is declared first — and a keyboard
+  user who opens it and presses Enter out of habit has confirmed the
+  deletion. Platform convention is that such a dialog opens on its safe
+  option; `initialFocus` is how a view says so. The first node in the
+  modal's Tab ring declaring it is the entry, and **the ring's first when
+  none does**, so every dialog that says nothing behaves exactly as it did.
+  **It is entry-triggered, which is a third thing from the two rows nearby.**
+  `keyFocus` fires when a node *starts being declared* and `<edit autofocus>`
+  when nothing else holds the keyboard; this fires when the modal *scope is
+  entered*. Only focus outside the scope reaches the rule, so a Tab press
+  afterwards stands, a redeclaration every frame is not a second entry, and
+  a nested confirm handing focus back into the dialog does not re-read the
+  dialog's own entry.
+  **`keyFocus` was tried first and does not serve**, though the edge lines
+  up: it moves focus while the frame is being built, so the modal remembers
+  *it* as the focus it displaced, and the dialog closing then drops the
+  keyboard instead of returning it to the button that opened the dialog.
+  The new row resolves after the scope is known, which is what lets it
+  compose with that rule rather than defeat it.
+  The accessibility example's confirm — what `scripts/ax-audit.swift` is
+  driven against — now declares it on Cancel.
+  **What you can delete:** the declaration-order juggling that kept a
+  dialog's safe control first, and any comment explaining why the buttons
+  in a confirm are in the order they are in.
+
 - **A modal scene in the corpus, and a `modal-without-name` warning**
   (`docs/adr/0003-modal-surfaces.md`, backlog A1). The ADR named both as
   small things it had left, and they are two halves of one gap: `modal` is
