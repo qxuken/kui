@@ -227,13 +227,22 @@ if let slider {
 print("\n=== selection")
 let tabGroup = all.first { $0.role == "AXTabGroup" }
 check("the tab list is an AXTabGroup", tabGroup != nil)
-let tabs = all.filter { $0.role == kAXRadioButtonRole as String }
+// A radio is an AXRadioButton too, so the tabs are the ones carrying the
+// AXTabButton subrole — which is also the distinction the next check is
+// about, made load-bearing here rather than only asserted.
+let tabs = all.filter {
+    $0.role == kAXRadioButtonRole as String
+        && str($0.el, kAXSubroleAttribute as String) == "AXTabButton"
+}
 check("three tabs are exposed", tabs.count, 3)
 check("tabs are named by their content", tabs.map(\.title), ["General", "Network", "About"])
 check(
     "a tab carries the AXTabButton subrole",
     tabs.first.flatMap { str($0.el, kAXSubroleAttribute as String) }, "AXTabButton")
 if let tabGroup {
+    check(
+        "the tab list is horizontal, from its dir",
+        str(tabGroup.el, "AXOrientation"), "AXHorizontalOrientation")
     // AXTabs is what a reader walks to count them; it is the tab list's
     // Tab children, so it must not pick up the labels inside them.
     let exposed = (attr(tabGroup.el, "AXTabs") as? [AXUIElement]) ?? []
@@ -421,7 +430,12 @@ if let network = all.first(where: { $0.role == kAXRadioButtonRole as String && $
     usleep(400_000)
     all = []
     walk(window, 0)
-    let after = all.filter { $0.role == kAXRadioButtonRole as String }
+    // The subrole again: the theme radios are AXRadioButtons too, and only
+    // the tabs carry AXTabButton.
+    let after = all.filter {
+        $0.role == kAXRadioButtonRole as String
+            && str($0.el, kAXSubroleAttribute as String) == "AXTabButton"
+    }
     check(
         "pressing a tab moved the selection",
         after.map { num($0.el, kAXValueAttribute as String) ?? -1 }, [0.0, 1.0, 0.0])
@@ -552,6 +566,127 @@ if let press = find(role: kAXButtonRole as String, title: "count 1") {
     }
 } else {
     check("the button is focusable", false, "count 1 not found")
+}
+
+// -- Composites (docs/adr/0007-composite-keyboard-patterns.md) -----------
+// The four container roles whose items are focusable are one Tab stop
+// each with the arrows moving inside. Only the OS can answer two halves
+// of that: whether the platform sees a radio group and a menu at all (and
+// with the orientation the container's `dir` derived), and whether a real
+// Tab keystroke leaves a tab bar in one step instead of walking its tabs.
+
+print("\n=== composites")
+
+/// Posts one key by virtual keycode and lets the app draw the next frame.
+func postKey(_ code: CGKeyCode) -> Bool {
+    guard let down = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true),
+          let up = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: false)
+    else { return false }
+    down.postToPid(pid)
+    up.postToPid(pid)
+    usleep(400_000)
+    return true
+}
+let kTab: CGKeyCode = 0x30
+let kRight: CGKeyCode = 0x7C
+let kEscape: CGKeyCode = 0x35
+
+// A radio group: the pattern with no example before this ADR, and the one
+// whose arrows must also check the radio they land on.
+all = []
+walk(window, 0)
+let group = all.first { $0.role == kAXRadioGroupRole as String }
+check("the radio group is an AXRadioGroup", group != nil)
+if let group {
+    check("named by its label", group.title, "Theme")
+    // AXOrientation is derived from the container's own `dir`, so a row
+    // of radios announces itself horizontal. AppKit takes an
+    // NSAccessibilityOrientation from the app and hands a *string* to the
+    // client, which is the kind of thing only a real platform run says.
+    check("and horizontal, from its dir", str(group.el, "AXOrientation"), "AXHorizontalOrientation")
+    let radios = children(group.el)
+    check("three radios are exposed", radios.count, 3)
+    check(
+        "named by their content",
+        radios.compactMap { str($0, kAXTitleAttribute as String) },
+        ["Light", "Dark", "Auto"])
+    // A radio takes AXValue like a checkbox, not AXSelected like a row —
+    // the group is what makes it one of a set.
+    check(
+        "the checked radio reads as on",
+        radios.map { num($0, kAXValueAttribute as String) ?? -1 }, [0.0, 1.0, 0.0])
+
+    // Focus the checked one — where Tab would enter — and press Right.
+    // Both halves, as with the tab press: a radio group where the new one
+    // turns on without the old one turning off is two checked radios.
+    AXUIElementSetAttributeValue(radios[1], kAXFocusedAttribute as CFString, kCFBooleanTrue)
+    usleep(400_000)
+    if postKey(kRight) {
+        all = []
+        walk(window, 0)
+        let after = all.first { $0.role == kAXRadioGroupRole as String }.map { children($0.el) } ?? []
+        check(
+            "an arrow key moved the checked radio",
+            after.map { num($0, kAXValueAttribute as String) ?? -1 }, [0.0, 0.0, 1.0])
+    } else {
+        check("arrow keystroke", false, "could not build a CGEvent")
+    }
+}
+
+// The ring shrinks, and this is the check the ADR exists for: from a tab,
+// one Tab lands on the disclosure below the bar — not on the second tab,
+// which is what the ring did before a composite was one stop.
+if let general = tabs.first(where: { $0.title == "General" }) {
+    AXUIElementSetAttributeValue(general.el, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+    usleep(400_000)
+    check("a tab takes focus", focusedTitle(), "General")
+    if postKey(kTab) {
+        check(
+            "Tab left the whole tab bar in one step",
+            focusedTitle() ?? focusedDesc(), "Advanced")
+    } else {
+        check("Tab keystroke", false, "could not build a CGEvent")
+    }
+} else {
+    check("the tab bar is one stop", false, "General not found")
+}
+
+// A menu: `modal` plus `role="menu"`, which is what a context menu is
+// here. Nothing exposes it until the app declares it, so the button that
+// opens it is pressed first.
+if let actions = find(role: kAXButtonRole as String, title: "Actions ▾") {
+    AXUIElementPerformAction(actions.el, kAXPressAction as CFString)
+    usleep(400_000)
+    all = []
+    walk(window, 0)
+    let menu = all.first { $0.role == kAXMenuRole as String }
+    check("the menu is an AXMenu", menu != nil)
+    if let menu {
+        check("named by its label", menu.title, "Actions")
+        check("and vertical, from its dir", str(menu.el, "AXOrientation"), "AXVerticalOrientation")
+        let items = children(menu.el)
+        check(
+            "holding three AXMenuItems",
+            items.map { str($0, kAXRoleAttribute as String) ?? "?" },
+            Array(repeating: kAXMenuItemRole as String, count: 3))
+        check(
+            "named by their content",
+            items.compactMap { str($0, kAXTitleAttribute as String) },
+            ["Rename", "Duplicate", "Archive"])
+        // A menu is modal, so focus is inside it; the arrows move between
+        // its items and — unlike a radio group — run none of them.
+        check("focus entered the menu", focusedTitle(), "Rename")
+        if postKey(kRight) {
+            check("an arrow moved inside the menu", focusedTitle() ?? focusedDesc(), "Duplicate")
+        }
+        // Escape asks it to go away, and the app stops declaring it.
+        _ = postKey(kEscape)
+        all = []
+        walk(window, 0)
+        check("Escape closed the menu", !all.contains { $0.role == kAXMenuRole as String })
+    }
+} else {
+    check("the menu opens", false, "Actions ▾ not found")
 }
 
 print("\n\(checks - failures)/\(checks) checks passed")

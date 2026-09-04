@@ -19,6 +19,19 @@
 //! editor is a key sink, so it keeps Tab; its declaration below takes
 //! focus once, on the first frame, and never clobbers a Tab press.
 //!
+//! Four things here are **composites**
+//! (`docs/adr/0007-composite-keyboard-patterns.md`): the tab list, the
+//! theme radio group, the mailbox list and the Actions menu are **one**
+//! Tab stop each, not one per item. Tab enters on the item that is
+//! selected (or checked, or first), and inside it the arrow keys — both
+//! pairs — move the selection, Home and End reach the ends, and typing a
+//! name jumps to it. The tab list and the radio group *activate* as focus
+//! moves, because that is what those two patterns mean on every platform;
+//! the list and the menu leave activation to Enter or Space. Nothing
+//! below declares any of that: the core derives a composite from a
+//! container role whose items are focusable, so the tab list and the list
+//! read exactly as they did before this and behave differently.
+//!
 //! The tab list reads as "General, tab, 1 of 3, selected" and the
 //! disclosure below it as "Advanced, collapsed": `selected` says which of
 //! a set is the current one (distinct from a switch being on), `expanded`
@@ -66,6 +79,14 @@ struct A11y {
     /// The picked row of the list below — `selected` again, on the other
     /// role that carries it.
     row: usize,
+    /// The checked radio of the theme group. `checked`, not `selected`:
+    /// a radio is on or off the way a checkbox is, and the *group* is
+    /// what makes it one of a set.
+    theme: usize,
+    /// Whether the Actions menu is declared this frame. Like `dialog`,
+    /// nothing else: a menu is a modal float that the app stops
+    /// declaring.
+    menu: bool,
 }
 
 impl A11y {
@@ -81,6 +102,8 @@ impl A11y {
             tab: 0,
             advanced: false,
             row: 1,
+            theme: 1,
+            menu: false,
         }
     }
 
@@ -170,6 +193,52 @@ impl App for A11y {
             );
         }
 
+        // A radio group: the one pattern whose arrows *must* also check
+        // the radio they land on, which is why the group is here at all.
+        // `radioGroup` is the container; each `radio` says `checked`, and
+        // the group's own `dir` is what tells the platform the set is
+        // laid out horizontally. Nothing declares a Tab stop or an arrow
+        // key — the group holds focusable radios, and that is a composite.
+        ui.with(NodeSpec::row().role(Role::Heading), |ui| {
+            ui.text("Theme", TextStyle::new(15.0).color(Color::WHITE))
+        });
+        ui.with_keyed(
+            "theme",
+            NodeSpec::row()
+                .role(Role::RadioGroup)
+                .gap(4.0)
+                .label("Theme"),
+            |ui| {
+                for (i, name) in ["Light", "Dark", "Auto"].iter().enumerate() {
+                    let on = i == self.theme;
+                    ui.with_keyed(
+                        name,
+                        NodeSpec::row()
+                            .role(Role::Radio)
+                            .checked(on)
+                            .on_click(Value::str(format!("theme{i}")))
+                            .pad_xy(10.0, 6.0)
+                            .bg(if on {
+                                Color::rgb8(0x3b, 0x5b, 0xd4)
+                            } else {
+                                Color::rgb8(0x1d, 0x20, 0x2b)
+                            })
+                            .radius(6.0),
+                        |ui| {
+                            ui.text(
+                                name,
+                                TextStyle::new(13.0).color(if on {
+                                    Color::WHITE
+                                } else {
+                                    Color::rgb8(0x8a, 0x8f, 0xa3)
+                                }),
+                            )
+                        },
+                    );
+                }
+            },
+        );
+
         // A list whose rows can be picked. A row is not named by its
         // content the way a button is — it is a container of content, and
         // giving it a label as well would have it read twice — so its
@@ -239,6 +308,54 @@ impl App for A11y {
 
         // The button that opens the modal below.
         widgets::button(ui, "Delete…", Value::str("open-confirm"));
+
+        // A menu, opened from a button: `modal` plus `role="menu"`, which
+        // is the shape a context menu takes. It floats below its trigger,
+        // so the plain box around the pair is what the float anchors to —
+        // a button is read as one control, and a menu declared inside it
+        // would be read as part of that control rather than as a menu.
+        // Focus enters it, the arrows move between its items *without*
+        // running them (a menu that ran whatever you passed over would be
+        // unusable), and Enter, Space or Escape ends it.
+        ui.with(NodeSpec::column(), |ui| {
+            widgets::button(ui, "Actions ▾", Value::str("open-menu"));
+            if self.menu {
+                ui.with_keyed(
+                    "menu",
+                    NodeSpec::column()
+                        .float(FloatConfig::below())
+                        .modal(Value::str("menu"))
+                        .role(Role::Menu)
+                        .label("Actions")
+                        .width(Sizing::Fixed(180.0))
+                        .pad(4.0)
+                        .gap(2.0)
+                        .bg(Color::rgb8(0x1d, 0x20, 0x2b))
+                        .border(1.0, Color::rgb8(0x3b, 0x5b, 0xd4))
+                        .radius(6.0),
+                    |ui| {
+                        for name in ["Rename", "Duplicate", "Archive"] {
+                            ui.with_keyed(
+                                name,
+                                NodeSpec::row()
+                                    .role(Role::MenuItem)
+                                    .on_click(Value::str(format!("menu:{name}")))
+                                    .width(Sizing::Grow(1.0))
+                                    .pad_xy(8.0, 5.0)
+                                    .radius(4.0)
+                                    .focus_bg(Color::rgb8(0x3b, 0x5b, 0xd4)),
+                                |ui| {
+                                    ui.text(
+                                        name,
+                                        TextStyle::new(13.0).color(Color::rgb8(0xd6, 0xd8, 0xe0)),
+                                    )
+                                },
+                            );
+                        }
+                    },
+                );
+            }
+        });
 
         // A switch: `checked` is the state assistive technology reads.
         ui.with_keyed(
@@ -431,6 +548,10 @@ impl App for A11y {
                 self.dialog = true;
                 return;
             }
+            Some("open-menu") => {
+                self.menu = true;
+                return;
+            }
             Some("cancel") => {
                 self.dialog = false;
                 println!("cancelled");
@@ -453,6 +574,25 @@ impl App for A11y {
             }
             _ => {}
         }
+        // A menu item runs and the menu goes away — the app closes it,
+        // as it opened it. Prefixed like the rows, for the same reason.
+        if let Some(item) = payload.as_str().and_then(|s| s.strip_prefix("menu:")) {
+            self.menu = false;
+            println!("menu -> {item}");
+            return;
+        }
+        // The radios. Arrow keys reach here too, unchanged: moving focus
+        // inside a radio group emits the radio's own click payload, which
+        // is the whole of what decision 11 buys an app.
+        if let Some(i) = payload
+            .as_str()
+            .and_then(|s| s.strip_prefix("theme"))
+            .and_then(|s| s.parse::<usize>().ok())
+        {
+            self.theme = i;
+            println!("theme -> {}", self.theme);
+            return;
+        }
         // The rows carry their ordinal in a tagged string, so they do not
         // collide with the tabs' plain indices.
         if let Some(i) = payload
@@ -474,8 +614,13 @@ impl App for A11y {
         // decides. A dialog holding unsaved work could ask again here.
         if payload.get("kind").and_then(Value::as_str) == Some("dismiss") {
             let reason = payload.get("reason").and_then(Value::as_str).unwrap_or("");
-            println!("dismiss ({reason})");
-            self.dialog = false;
+            // Two modals now, so the tag says which one asked to go.
+            let which = payload.get("tag").and_then(Value::as_str).unwrap_or("");
+            println!("dismiss {which} ({reason})");
+            match which {
+                "menu" => self.menu = false,
+                _ => self.dialog = false,
+            }
             return;
         }
         if payload.get("kind").and_then(Value::as_str) != Some("access") {
