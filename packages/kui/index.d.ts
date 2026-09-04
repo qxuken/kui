@@ -195,6 +195,7 @@ export type AccessRole =
   | 'none' | 'button' | 'checkbox' | 'radio' | 'switch' | 'slider' | 'tab'
   | 'tabList' | 'link' | 'heading' | 'list' | 'listItem' | 'image' | 'dialog'
   | 'group' | 'textInput' | 'multilineTextInput' | 'line'
+  | 'radioGroup' | 'menu' | 'menuItem'
   | 'window' | 'titleBar' | 'staticText' | 'scrollView';
 
 /** What assistive technology can ask of a node (`access(key, action)`). */
@@ -234,10 +235,13 @@ export interface AccessNode {
   selected: boolean | null;
   /** A disclosure's state, as declared. `null` = it does not expand. */
   expanded: boolean | null;
-  /** "3 of 7", derived from the `list` / `tabList` holding this node: the
+  /** "3 of 7", derived from the composite container holding this node: the
    *  zero-based ordinal on each item, the count on the container. */
   posInSet: number | null;
   setSize: number | null;
+  /** How a composite container (`radioGroup`, `tabList`, `menu`, `list`)
+   *  arranges its items, from its own `dir`. `null` for anything else. */
+  orientation: 'horizontal' | 'vertical' | null;
   /** `valueNow` / `valueMin` / `valueMax` for a slider. */
   valueNow: number | null;
   valueMin: number | null;

@@ -1503,6 +1503,11 @@ fn access_tree_json(tree: &kui_core::AccessTree) -> Json {
                 "setSize".into(),
                 n.set_size.map_or(Json::Null, |v| Json::from(v as u64)),
             );
+            o.insert(
+                "orientation".into(),
+                n.orientation
+                    .map_or(Json::Null, |o| Json::String(o.name().to_string())),
+            );
             o.insert("valueNow".into(), opt_num(n.number));
             o.insert("valueMin".into(), opt_num(n.min));
             o.insert("valueMax".into(), opt_num(n.max));

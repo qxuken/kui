@@ -10,11 +10,12 @@
 #[cfg(feature = "accesskit")]
 mod imp {
     use accesskit::{
-        Action, ActionData, Affine, Node, NodeId, Rect, Role as AkRole, TextDirection,
-        TextPosition, TextSelection, Toggled, TreeId, TreeInfo, TreeUpdate,
+        Action, ActionData, Affine, Node, NodeId, Orientation as AkOrientation, Rect,
+        Role as AkRole, TextDirection, TextPosition, TextSelection, Toggled, TreeId, TreeInfo,
+        TreeUpdate,
     };
     use accesskit_winit::{Adapter, Event, WindowEvent as AkWindowEvent};
-    use kui_core::{AccessAction, AccessRequest, AccessTree, Key, Role, TextPos};
+    use kui_core::{AccessAction, AccessRequest, AccessTree, Key, Orientation, Role, TextPos};
     use winit::event::WindowEvent;
     use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
     use winit::window::Window;
@@ -150,6 +151,11 @@ mod imp {
             Role::Image => AkRole::Image,
             Role::Dialog => AkRole::Dialog,
             Role::Group => AkRole::Group,
+            // `accesskit_macos` 0.27 spells these three AXRadioGroup,
+            // AXMenu and AXMenuItem (docs/adr/0007).
+            Role::RadioGroup => AkRole::RadioGroup,
+            Role::Menu => AkRole::Menu,
+            Role::MenuItem => AkRole::MenuItem,
             Role::Window => AkRole::Window,
             Role::TitleBar => AkRole::TitleBar,
             Role::StaticText => AkRole::Label,
@@ -253,6 +259,15 @@ mod imp {
             }
             if let Some(c) = n.expanded {
                 node.set_expanded(c);
+            }
+            // How a composite arranges its items, so the platform can say
+            // so (macOS AXOrientation). Derived from the container's `dir`
+            // (docs/adr/0007-composite-keyboard-patterns.md).
+            if let Some(o) = n.orientation {
+                node.set_orientation(match o {
+                    Orientation::Horizontal => AkOrientation::Horizontal,
+                    Orientation::Vertical => AkOrientation::Vertical,
+                });
             }
             // AccessKit puts the count on the container and the
             // zero-based ordinal on the item (see `AccessNode::set_size`).

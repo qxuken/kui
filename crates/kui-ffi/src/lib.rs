@@ -81,7 +81,7 @@ use kui_core::{
 /// [in] struct, which old hosts survive by construction, nor for a new
 /// function: a host that does not call one is unaffected, and one that does
 /// fails to *link*, which is loud.
-pub const KUI_ABI_VERSION: u32 = 2;
+pub const KUI_ABI_VERSION: u32 = 3;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its
@@ -603,6 +603,10 @@ pub struct KuiAccessNode {
     /// count on that container.
     pub pos_in_set: u32,
     pub set_size: u32,
+    /// KUI_ORIENTATION_* (0 = unset: this node is not a composite
+    /// container). How the container arranges its items, from its own
+    /// `dir` (`docs/adr/0007-composite-keyboard-patterns.md`).
+    pub orientation: u32,
 }
 
 pub const KUI_ACCESS_HAS_VALUE: u32 = 1 << 0;
@@ -630,6 +634,16 @@ pub const KUI_ACCESS_EXPANDED: u32 = 1 << 15;
 /// `pos_in_set` holds (on an item), `set_size` holds (on its container).
 pub const KUI_ACCESS_HAS_POS_IN_SET: u32 = 1 << 16;
 pub const KUI_ACCESS_HAS_SET_SIZE: u32 = 1 << 17;
+
+/// KUI_ORIENTATION_* is the position in `Orientation::ALL` plus one
+/// (0 = unset: the node is not a composite container).
+pub const KUI_ORIENTATION_HORIZONTAL: u32 = 1;
+pub const KUI_ORIENTATION_VERTICAL: u32 = 2;
+
+fn orientation_code(o: Option<kui_core::Orientation>) -> u32 {
+    o.and_then(|o| kui_core::Orientation::ALL.iter().position(|x| *x == o))
+        .map_or(0, |i| i as u32 + 1)
+}
 
 /// KUI_EXPANDED_* is the position in `schema::EXPANDED` plus one (0 = unset:
 /// the node does not expand).
@@ -2612,6 +2626,7 @@ pub extern "C" fn kui_access_tree(ptr: *mut KuiCtx, out: *mut KuiAccessNode, cap
                     run_count: n.runs.len() as u32,
                     pos_in_set: n.pos_in_set.unwrap_or(0) as u32,
                     set_size: n.set_size.unwrap_or(0) as u32,
+                    orientation: orientation_code(n.orientation),
                 })
             };
         }
@@ -4492,6 +4507,10 @@ mod abi_parity {
             "KUI_ROLE_WINDOW", "KUI_ROLE_TITLE_BAR", "KUI_ROLE_STATIC_TEXT",
             "KUI_ROLE_TEXT_INPUT", "KUI_ROLE_MULTILINE_TEXT_INPUT",
             "KUI_ROLE_SCROLL_VIEW", "KUI_ROLE_LINE",
+            "KUI_ROLE_RADIO_GROUP", "KUI_ROLE_MENU", "KUI_ROLE_MENU_ITEM",
+        ]);
+        abi_enum!(o, kui_core::schema::ORIENTATIONS, 1 => [
+            "KUI_ORIENTATION_HORIZONTAL", "KUI_ORIENTATION_VERTICAL",
         ]);
         abi_enum!(o, kui_core::schema::CURSORS, 1 => [
             "KUI_CURSOR_DEFAULT", "KUI_CURSOR_TEXT", "KUI_CURSOR_POINTER",
@@ -4681,6 +4700,7 @@ mod abi_parity {
             run_count: u32 => "uint32_t",
             pos_in_set: u32 => "uint32_t",
             set_size: u32 => "uint32_t",
+            orientation: u32 => "uint32_t",
         });
 
         abi_struct!(o, KuiAccessRun {
