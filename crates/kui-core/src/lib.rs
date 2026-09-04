@@ -11,6 +11,7 @@ pub mod anim;
 pub mod atlas;
 pub mod audio;
 pub mod color;
+pub(crate) mod composite;
 pub mod conformance;
 pub mod cursor;
 pub mod depart;
@@ -39,7 +40,8 @@ pub mod widgets;
 pub mod window;
 
 pub use access::{
-    AccessAction, AccessNode, AccessRequest, AccessRun, AccessTree, Role, ScrollState, TextPos,
+    AccessAction, AccessNode, AccessRequest, AccessRun, AccessTree, Orientation, Role, ScrollState,
+    TextPos,
 };
 pub use anim::{Easing, Repeat, Transition};
 pub use audio::{AudioCommand, AudioSpec, AudioStore, PlayOptions, PlaybackId};

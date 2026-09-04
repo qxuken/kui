@@ -185,7 +185,20 @@ pub const ROLES: &[&str] = &[
     "textInput",
     "multilineTextInput",
     "line",
+    // Appended by ADR 0007. The tail is the only free position (ADR 0006),
+    // which is what makes "the first fifteen can be declared" a list rather
+    // than a range.
+    "radioGroup",
+    "menu",
+    "menuItem",
 ];
+
+/// How a composite container arranges its items
+/// (`crate::access::Orientation::name` spellings), in wire order. Derived
+/// from the container's `dir` and reported on its access node, never
+/// declared — so unlike [`ROLES`] this is not a prop's enum, only a list
+/// the C header restates.
+pub const ORIENTATIONS: &[&str] = &["horizontal", "vertical"];
 
 /// The roles no view can declare, because the core derives them itself
 /// ([`crate::access::derived_role`]), with what derives each one. Every
