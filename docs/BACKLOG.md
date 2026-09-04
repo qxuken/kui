@@ -426,7 +426,7 @@ follow-ups, in order of value per unit of work:
   grant in place could fold it into `smoke-macos`. On Windows there is no
   equivalent tool and no plan for one.
 
-### `~` P9 — Let the corpus drive a frame under custom chrome — **done (2026-09-04)**
+### `~` P9 — Let the corpus drive a frame under custom chrome — **done and independently verified (2026-09-04)**
 
 A scene declares the window facts it is driven under. `Scene` gained an
 `env: WindowEnv` (`NATIVE_CHROME` for every scene but the two about chrome),
@@ -497,6 +497,27 @@ instead by `titlebar_insets_past_the_native_controls` in
 `crates/kui-core/tests/window.rs`, which asserts 12 / 78 / 82 across the
 widget's two branches; the report carries no coordinates, so a position is
 not something a checked-in `Expect` can hold.
+
+**Verified from outside the session that wrote it**, since the failure this
+item existed to fix was a claim that passed while building nothing, and a
+second such claim would look exactly like a green run. Four adapters over the
+regenerated reference: `cargo test --workspace` (Rust and Lua), the C example
+against `target/conformance.txt` (`conformance OK (12 scenes)`), the dlopen
+extension, and `npm test` under `KUI_CONFORMANCE_REQUIRED=1` — 51 tests, none
+skipped, which is the point of the flag. All three mutations named above
+reproduce, each still failing at its own layer.
+
+**The "other nine scenes" question was settled by measurement rather than by
+scoping**, which is the stronger of the two options the item offered. A
+worktree at `b2e9e6d^` dumped the pre-P9 reference, split both reports per
+scene and diffed: `layout`, `sizing`, `wrap`, `overflow`, `float`, `tooltip`,
+`controls`, `media`, `modal` and `exit` are byte-identical, `chrome` moved,
+`chrome-inset` is new. That result is structural rather than lucky — a scene
+equal to `NATIVE_CHROME` writes no `env` line at all, so an adapter that sees
+none drives under the defaults it already had, and the only way to disturb a
+non-chrome scene is to give it an env it did not ask for. Worth repeating the
+same way if `drive` ever grows a second declared fact: the reference report
+makes the check cost one dump and a diff.
 
 The original finding:
 
