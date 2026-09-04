@@ -95,6 +95,26 @@ pub const CUSTOM_CHROME: WindowEnv = WindowEnv {
     native_controls: None,
 };
 
+/// Custom chrome *and* controls the OS keeps drawing over our content: the
+/// macOS traffic lights, at the rect `kui::MACOS_TRAFFIC_LIGHTS` reports
+/// (78x28 logical px at the window origin, gpui's measured
+/// `TRAFFIC_LIGHT_PADDING` under the macOS 26 SDK). The same tree that
+/// builds two button clusters under [`CUSTOM_CHROME`] builds none under
+/// this one, and its titlebar starts at 78 instead of the bare 12pt
+/// margin — which is the whole of what `widgets::titlebar` adapting "per
+/// platform by itself" means.
+pub const CUSTOM_CHROME_INSET: WindowEnv = WindowEnv {
+    custom_chrome: true,
+    maximized: false,
+    fullscreen: false,
+    native_controls: Some(Rect {
+        x: 0.0,
+        y: 0.0,
+        w: 78.0,
+        h: 28.0,
+    }),
+};
+
 /// The fixture image: 4x4 opaque white RGBA. Every binding registers the
 /// same bytes in the same order, so the handles match and the image quad
 /// comes out of the same atlas slot.
@@ -457,6 +477,40 @@ pub const SCENES: &[Scene] = &[
                 "1 button Minimize||",
                 "1 button Maximize||",
                 "1 button Close||",
+                "1 group Sink||",
+            ],
+            events: &[],
+            warnings: &[],
+            title: Some("kui conformance"),
+        },
+    },
+    Scene {
+        name: "chrome-inset",
+        doc: "The same tree as `chrome`, under the same custom chrome plus \
+              the macOS traffic lights: env is the only difference between \
+              the two scenes, and it takes both button clusters away and \
+              moves the title from the bare 12pt margin out to the controls' \
+              right edge. `widgets::titlebar` adapting per platform by \
+              itself, pinned across four bindings instead of described.",
+        custom: &["title", "keyFocus", "size"],
+        // Not `windowButtons`: the element is called and builds nothing,
+        // which is the behaviour under test. `chrome` is where that row is
+        // claimed, and `observe` would not derive it here.
+        elements: &["titlebar", "box", "text"],
+        build: build_chrome,
+        env: CUSTOM_CHROME_INSET,
+        steps: &[],
+        expect: Expect {
+            // Just the sink: the OS draws the controls, so neither cluster
+            // draws its glyph boxes.
+            solid: 1,
+            shadows: 0,
+            images: 0,
+            glyphs_min: 3,
+            access: &[
+                "0 window kui conformance||",
+                "1 titleBar ||",
+                "2 staticText app||",
                 "1 group Sink||",
             ],
             events: &[],

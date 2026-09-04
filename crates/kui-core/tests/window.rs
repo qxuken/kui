@@ -178,3 +178,40 @@ fn titlebar_widget_declares_chrome_from_env() {
     );
     assert_eq!(core.take_window_commands(), vec![WindowCommand::StartDrag]);
 }
+/// The other half of the same env read, and the half the corpus cannot pin:
+/// the conformance report carries no coordinates, so `chrome-inset`'s
+/// checked-in `Expect` can say the buttons went away (a quad count) but not
+/// that the title moved (a position). Only the quad *digest* covers that,
+/// and the digest is font-dependent and never checked in.
+///
+/// The numbers are the widget's two branches: a bare 12pt margin with no
+/// native controls, and the reported keep-out extent — `r.x + r.w`, the
+/// trailing gap already in it — with them.
+#[test]
+fn titlebar_insets_past_the_native_controls() {
+    use kui_core::{Rect, WindowEnv, widgets};
+    let title_x = |controls: Option<Rect>| {
+        let mut core = Core::new();
+        core.env.window = WindowEnv {
+            custom_chrome: true,
+            native_controls: controls,
+            ..Default::default()
+        };
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        widgets::titlebar(&mut ui, "app");
+        ui.finish();
+        core.access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.name.as_deref() == Some("app"))
+            .expect("the titlebar draws its title")
+            .rect
+            .x
+    };
+    assert_eq!(title_x(None), 12.0);
+    assert_eq!(title_x(Some(Rect::new(0.0, 0.0, 78.0, 28.0))), 78.0);
+    // The rect is a keep-out area, not a width: an origin that is not the
+    // window's still has to be cleared, which is why the widget adds `x`.
+    assert_eq!(title_x(Some(Rect::new(4.0, 0.0, 78.0, 28.0))), 82.0);
+}

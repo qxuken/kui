@@ -100,7 +100,9 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
-        "chrome" => r#"
+        // One source for both: the two scenes differ only in the env they
+        // are driven under, which is the thing being pinned.
+        "chrome" | "chrome-inset" => r#"
             return column { window_title = "kui conformance", gap = 6,
               titlebar { text("app", { size = 12 }) },
               row { width = { grow = 1 }, window_buttons() },

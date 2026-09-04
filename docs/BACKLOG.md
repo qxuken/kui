@@ -477,14 +477,26 @@ calling `setEnv` fails the corpus test on the `chrome` block; and C's
 `conf_run` skipping `kui_env_set_window` fails with `quads 4` against the
 reference's `quads 10`.
 
-**One thing this does not cover.** The chrome scene must leave
-`native_controls` unset, because a controls rect makes `window_buttons`
-return early — so the macOS traffic-lights *inset* (`titlebar_with` insetting
-by `r.x + r.w`, and the cluster suppressed) has no corpus scene. The protocol
-carries it already; it needs a second chrome scene, which costs a builder in
-each of four adapters. Node has a unit test for both halves
-(`nativeControls inset the titlebar and take its buttons away`), so it is not
-unpinned, only unpinned *across bindings*.
+**The traffic-lights inset got its own scene** (`chrome-inset`, added the
+same day). A controls rect makes `window_buttons` return early, so one scene
+cannot show both halves — but it costs no second builder: `chrome-inset` is
+the *same tree* under `CUSTOM_CHROME_INSET` (custom chrome plus the real
+78x28 rect `kui::MACOS_TRAFFIC_LIGHTS` reports), and the adapters point their
+existing chrome builder at the new name. The env being the only difference is
+the point: both clusters go away and the title moves from the bare 12pt
+margin out to the controls' right edge.
+
+That leaves one term the corpus provably cannot reach, found by mutating the
+widget rather than assumed: `titlebar_with` insets by `r.x + r.w`, and
+changing it to `r.w` **does not move the digest**, because the protocol
+carries the controls as a `w`/`h` extent at the origin (what
+`kui_env_set_window` can express) and `r.x` is therefore always 0 in a scene.
+An inset wrong in the ordinary way *is* caught — a five-pixel error changes
+`chrome-inset`'s digest at an unchanged quad count. The `r.x` term is covered
+instead by `titlebar_insets_past_the_native_controls` in
+`crates/kui-core/tests/window.rs`, which asserts 12 / 78 / 82 across the
+widget's two branches; the report carries no coordinates, so a position is
+not something a checked-in `Expect` can hold.
 
 The original finding:
 
@@ -1790,7 +1802,7 @@ C8's second half shipped: `exit` (P_EXIT = 78), a `DepartStore`, ghosts that
 self-ease, opt-in with a 512-node budget. It is the first feature that makes a
 node **outlive the frame that declared it** — the previous frame's tree and
 text list are kept by buffer swap — and it is the only behaviour to land this
-round without a conformance scene. Ten scenes; none of them exits.
+round without a conformance scene. Eleven scenes; none of them exits.
 
 That matters more here than for a paint prop. The corpus drives steps and
 compares quads, access rows and events, which is exactly the shape a ghost

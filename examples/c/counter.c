@@ -1212,6 +1212,9 @@ static const ConfScene CONF_SCENES[] = {
     {"float", conf_float},
     {"tooltip", conf_tooltip},
     {"chrome", conf_chrome},
+    /* Same builder: chrome-inset is the same tree under an env that also
+     * reports the OS controls, so the two scenes differ only in the env. */
+    {"chrome-inset", conf_chrome},
     {"controls", conf_controls},
     {"media", conf_media},
     {"modal", conf_modal},

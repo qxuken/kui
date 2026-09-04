@@ -1231,6 +1231,8 @@ const CONFORMANCE =
 /** `conformance::WRAP_BOXES`, as (width, height). */
 const WRAP_BOXES = [[30, 12], [40, 16], [50, 20], [20, 24]];
 
+// `chrome` and `chrome-inset` are one tree driven under two envs, so the
+// second is defined off the first below rather than restated.
 const SCENE_TREES = {
   layout: () =>
     root({}, [
@@ -1410,6 +1412,11 @@ const SCENE_TREES = {
       ].filter(Boolean)),
     ]),
 };
+
+// The traffic-lights half: the same tree, driven under a custom chrome that
+// also reports the OS controls. Both button clusters go away and the title
+// insets past them — the env is the only difference, which is the point.
+SCENE_TREES['chrome-inset'] = SCENE_TREES.chrome;
 
 /** `conformance::EXIT_BULK_ROWS`: with its own root, one node past
  *  `kui_core::depart::MAX_NODES`, so the whole subtree is refused. */

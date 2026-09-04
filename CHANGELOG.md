@@ -44,12 +44,29 @@ upgrades remove code from the apps on it is doing the job.
   Node. The strip is a plain row rather than a second `window_drag`, since a
   drag handle would derive a second `titleBar` role — a thing to tell a
   screen reader, not a side effect of where the corpus put a box.
+  **And the traffic lights got the other scene.** A controls rect makes
+  `window_buttons` return early, so one scene cannot show both halves — but
+  the second one costs no second builder: `chrome-inset` is the *same tree*
+  under `CUSTOM_CHROME_INSET` (custom chrome plus the 78x28 rect
+  `MACOS_TRAFFIC_LIGHTS` reports), and each adapter points its existing
+  chrome builder at the new name. The env being the only difference between
+  the two scenes is exactly what is under test: both clusters go away and the
+  title moves from the bare 12pt margin out to the controls' right edge —
+  `widgets::titlebar` "adapting per platform by itself", pinned across four
+  bindings instead of described.
+  One term of that the corpus provably cannot reach, and it was found by
+  mutating the widget rather than assumed: the inset is `r.x + r.w`, and
+  changing it to `r.w` **does not move the digest**, because the protocol
+  carries the controls as a `w`/`h` extent at the window origin (what
+  `kui_env_set_window` can express), so `r.x` is always 0 in a scene. An
+  inset wrong in the ordinary way *is* caught — a five-pixel error changes
+  `chrome-inset`'s digest at an unchanged quad count. The `r.x` term is
+  covered by `titlebar_insets_past_the_native_controls` instead, a new
+  `kui-core` test asserting 12 / 78 / 82 across the widget's two branches:
+  the report carries no coordinates, so a *position* is not a thing a
+  checked-in `Expect` can hold, only a quad count is.
   **What you can delete:** the `windowButtons` line from `UNDERIVED`, and the
-  habit of reading the `chrome` scene as if its buttons were checked. Not yet
-  deletable: the traffic-lights *inset* still has no cross-binding scene,
-  because a controls rect suppresses the cluster and one scene cannot show
-  both. Node unit-tests both halves; the protocol already carries what a
-  second scene would need.
+  habit of reading the `chrome` scene as if its buttons were checked.
 
 - **Node can see `env`, and a headless one can declare it** (backlog B2,
   and the half of P9 that was blocking it). The other three bindings all
