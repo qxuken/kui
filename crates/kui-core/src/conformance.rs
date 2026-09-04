@@ -147,6 +147,17 @@ pub fn fixtures(core: &mut Core) -> Fixtures {
     Fixtures { image, sound }
 }
 
+/// The arrow keys [`Step::Arrow`] indexes, in the order a step line
+/// carries. Left / Up move to the previous item of a composite, Right /
+/// Down to the next; in a wrapped container the cross-axis pair moves by
+/// a line instead.
+pub const ARROWS: [EditKey; 4] = [EditKey::Left, EditKey::Right, EditKey::Up, EditKey::Down];
+/// [`ARROWS`] positions, for a scene to read as words.
+pub const LEFT: u32 = 0;
+pub const RIGHT: u32 = 1;
+pub const UP: u32 = 2;
+pub const DOWN: u32 = 3;
+
 /// One replayed input. Values are integers so every adapter can print and
 /// parse the step list without agreeing on float formatting.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -168,6 +179,20 @@ pub enum Step {
     ShiftTab,
     /// Escape: lets go of a focused control, or asks a modal to go away.
     Escape,
+    /// An arrow key, as an index into [`ARROWS`] — inside a composite it
+    /// moves the inner selection
+    /// (`docs/adr/0007-composite-keyboard-patterns.md`), and a slider it
+    /// nudges. An index rather than four step kinds of its own, so every
+    /// argument in a step line stays an integer.
+    Arrow(u32),
+    /// Home and End: the first and last item of a composite.
+    Home,
+    End,
+    /// One printable character, as its Unicode scalar value — the same
+    /// integer discipline, since a report has to be produced byte-identically
+    /// by four languages. Inside a composite it searches the items by name;
+    /// a space presses the focused item unless a search is under way.
+    Type(u32),
     /// Not an input: the view is a function of a phase, and this is the
     /// view changing its mind. Every scene but `exit` builds the same tree
     /// for every phase; a departing node is one the later phases stop
@@ -198,6 +223,14 @@ impl Step {
             Step::Tab => out.push_str("step tab\n"),
             Step::ShiftTab => out.push_str("step shifttab\n"),
             Step::Escape => out.push_str("step escape\n"),
+            Step::Arrow(d) => {
+                let _ = writeln!(out, "step arrow {d}");
+            }
+            Step::Home => out.push_str("step home\n"),
+            Step::End => out.push_str("step end\n"),
+            Step::Type(c) => {
+                let _ = writeln!(out, "step type {c}");
+            }
             Step::Phase(n) => {
                 let _ = writeln!(out, "step phase {n}");
             }
@@ -234,6 +267,14 @@ impl Step {
                 },
             ),
             Step::Escape => InputEvent::Key(EditKey::Escape, Mods::default()),
+            Step::Arrow(d) => InputEvent::Key(ARROWS[d as usize], Mods::default()),
+            Step::Home => InputEvent::Key(EditKey::Home, Mods::default()),
+            Step::End => InputEvent::Key(EditKey::End, Mods::default()),
+            Step::Type(c) => InputEvent::Text(
+                char::from_u32(c)
+                    .expect("a printable step character")
+                    .to_string(),
+            ),
         })
     }
 }
@@ -623,6 +664,86 @@ pub const SCENES: &[Scene] = &[
                 "2 button Cancel||",
             ],
             events: &["dismiss dlg", "ok -", "dismiss dlg"],
+            warnings: &[],
+            title: None,
+        },
+    },
+    Scene {
+        name: "composite",
+        doc: "Composite keyboard patterns \
+              (`docs/adr/0007-composite-keyboard-patterns.md`). Nothing \
+              here is declared: a `tabList` and a `list` whose items are \
+              focusable *are* composites, so what a scene pins is the \
+              behaviour the derivation produces, and none of it is \
+              mechanical lowering. The tab bar is one Tab stop and it \
+              enters on the selected tab, not the first; an arrow and End \
+              move focus inside it and each emits the tab's own click \
+              payload, because `tab` is one of the two roles whose pattern \
+              defines selection as following focus. The `add` button after \
+              it is one Tab away — over three tabs collapsed to one stop, \
+              not over two more tabs — and the next Tab enters the list, \
+              whose rows move under the arrows and emit *nothing*, since a \
+              list activates manually. Then type-ahead: `b` finds Bravo by \
+              name, a space extends that search instead of pressing (the \
+              one interaction with ADR 0002's Space-activates), the clock \
+              moves past a second so the buffer ages at the next frame, \
+              and the same space now presses. A last Up shows the list \
+              clamping where the tab bar wrapped. The frame the report \
+              keeps has focus on Alpha, the tab bar still showing the tab \
+              the *view* selected — the core moved focus and never wrote \
+              `selected` — and the two containers' derived orientations, \
+              horizontal and vertical, on their nodes.",
+        custom: &["key", "size"],
+        elements: &["box", "text"],
+        build: build_composite,
+        env: NATIVE_CHROME,
+        steps: &[
+            // A clock, so type-ahead can age (decision 9). Without one
+            // every keystroke starts a fresh search and the two spaces
+            // below could not differ.
+            Step::Time(0),
+            // Into the tab bar: one stop, entered on the selected tab —
+            // the second, so Home moves and pins that the entry was not
+            // simply the first item.
+            Step::Tab,
+            Step::Home,
+            Step::Arrow(RIGHT),
+            Step::End,
+            // Out of it in one step, over the button beside it, and into
+            // the list — which enters on its first row, nothing selected.
+            Step::Tab,
+            Step::Tab,
+            Step::Arrow(DOWN),
+            // Type-ahead: a name, then a space that extends the search
+            // rather than pressing.
+            Step::Type('a' as u32),
+            Step::Type(' ' as u32),
+            // Past a second: the buffer ages at the next frame, so the
+            // same space presses instead.
+            Step::Time(2000),
+            Step::Type(' ' as u32),
+            // A list clamps where a tab bar wraps.
+            Step::Arrow(UP),
+        ],
+        expect: Expect {
+            solid: 7,
+            shadows: 0,
+            images: 0,
+            glyphs_min: 20,
+            access: &[
+                "0 window ||",
+                "1 tabList ||",
+                "2 tab One||",
+                "2 tab Two||",
+                "2 tab Three||",
+                "1 button Add||",
+                "1 list ||",
+                "2 listItem ||",
+                "3 staticText Alpha||",
+                "2 listItem ||",
+                "3 staticText Bravo||",
+            ],
+            events: &["one -", "two -", "three -", "alpha -"],
             warnings: &[],
             title: None,
         },
@@ -1073,6 +1194,60 @@ fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     });
 }
 
+/// A tab bar and a picker list, each a composite because its items are
+/// focusable, with an ordinary button between them that keeps its own Tab
+/// stop. The tabs are a row and the list a column, so the two derived
+/// orientations differ.
+fn build_composite(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    ui.with(NodeSpec::column().gap(6.0).width(Sizing::Grow(1.0)), |ui| {
+        ui.with_keyed("tabs", NodeSpec::row().role(Role::TabList).gap(4.0), |ui| {
+            for (i, name) in ["One", "Two", "Three"].iter().enumerate() {
+                ui.with_keyed(
+                    name,
+                    NodeSpec::row()
+                        .role(Role::Tab)
+                        // The view's own selection, and the entry the
+                        // ring takes: the second tab, not the first.
+                        .selected(i == 1)
+                        .width(Sizing::Fixed(60.0))
+                        .height(Sizing::Fixed(20.0))
+                        .bg(Color::hex(0x30344aff))
+                        .on_click(Value::map([("kind", Value::str(name.to_lowercase()))])),
+                    |ui| ui.text(name, TextStyle::new(12.0)),
+                );
+            }
+        });
+        ui.with_keyed(
+            "add",
+            NodeSpec::row()
+                .width(Sizing::Fixed(40.0))
+                .height(Sizing::Fixed(20.0))
+                .bg(Color::hex(0x3b5bd4ff))
+                .on_click(Value::map([("kind", Value::str("add"))]))
+                .label("Add"),
+            |_| {},
+        );
+        ui.with_keyed("rows", NodeSpec::column().role(Role::List).gap(2.0), |ui| {
+            for name in ["Alpha", "Bravo"] {
+                ui.with_keyed(
+                    name,
+                    NodeSpec::row()
+                        // A picker, not a navigation list: the row
+                        // itself is focusable, which is the whole of
+                        // what makes this list a composite.
+                        .role(Role::ListItem)
+                        .focusable()
+                        .width(Sizing::Fixed(80.0))
+                        .height(Sizing::Fixed(18.0))
+                        .bg(Color::hex(0x202030ff))
+                        .on_click(Value::map([("kind", Value::str(name.to_lowercase()))])),
+                    |ui| ui.text(name, TextStyle::new(12.0)),
+                );
+            }
+        });
+    });
+}
+
 /// How many children `bulk` carries. With its own root that is
 /// `depart::MAX_NODES + 1` nodes — one past the budget, so the whole
 /// subtree is refused rather than half-retained.
@@ -1374,6 +1549,12 @@ pub struct NodeRow {
     pub disabled: bool,
     /// `-` / `0` / `1`.
     pub checked: Option<bool>,
+    /// `-` / `0` / `1`. In the report because the core moving focus inside
+    /// a composite must be visible *not* to have moved this
+    /// (`docs/adr/0007-composite-keyboard-patterns.md`, decision 10).
+    pub selected: Option<bool>,
+    /// `-` / `h` / `v`: how a composite container arranges its items.
+    pub orientation: &'static str,
     pub scrollable: bool,
     /// Action names in `AccessAction::ALL` (bit) order, comma-joined.
     pub actions: String,
@@ -1459,6 +1640,12 @@ fn rows(tree: &AccessTree) -> Vec<NodeRow> {
                 focused: n.focused,
                 disabled: n.disabled,
                 checked: n.checked,
+                selected: n.selected,
+                orientation: match n.orientation {
+                    Some(crate::access::Orientation::Horizontal) => "h",
+                    Some(crate::access::Orientation::Vertical) => "v",
+                    None => "-",
+                },
                 scrollable: n.scroll.is_some(),
                 actions: n
                     .action_list()
@@ -1634,13 +1821,16 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
     for n in &out.nodes {
         let _ = writeln!(
             s,
-            "node {} {:016x} {} {} {} {} {} {} {} | {} | {}",
+            "node {} {:016x} {} {} {} {} {} {} {} {} {} | {} | {}",
             n.depth,
             n.key.0,
             n.role,
             n.focused as u8,
             n.disabled as u8,
             n.checked.map_or("-".to_string(), |c| (c as u8).to_string()),
+            n.selected
+                .map_or("-".to_string(), |c| (c as u8).to_string()),
+            n.orientation,
             n.scrollable as u8,
             if n.actions.is_empty() {
                 "-"

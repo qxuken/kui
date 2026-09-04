@@ -65,14 +65,6 @@ pub enum Role {
     Image,
     Dialog,
     Group,
-    // -- Appended by ADR 0007; a role can only be appended (ADR 0006) ------
-    /// A set of `radio`s: one Tab stop, arrows moving the checked one.
-    RadioGroup,
-    /// A menu: one Tab stop, arrows moving focus without activating.
-    Menu,
-    /// One item of a `menu`. A control, so it is focusable by its role and
-    /// an unnamed one is reported.
-    MenuItem,
     // -- Derived, and declarable on a custom editor ------------------------
     /// The root, named by the window title.
     Window,
@@ -92,6 +84,19 @@ pub enum Role {
     /// and its `caret` / `selectionAnchor` are byte offsets into it. Not a
     /// node of its own.
     Line,
+    // -- Appended by ADR 0007 ----------------------------------------------
+    // At the tail, and in the order [`Role::ALL`] lists them, because the
+    // tail is the only free position: `KUI_ROLE_*` is an `ALL` index plus
+    // one and the Lua and Node wires carry the `ROLES` index, so a role
+    // inserted anywhere else renumbers every role after it
+    // (`docs/adr/0006-c-abi-versioning.md`).
+    /// A set of `radio`s: one Tab stop, arrows moving the checked one.
+    RadioGroup,
+    /// A menu: one Tab stop, arrows moving focus without activating.
+    Menu,
+    /// One item of a `menu`. A control, so it is focusable by its role and
+    /// an unnamed one is reported.
+    MenuItem,
 }
 
 impl Role {
@@ -146,9 +151,6 @@ impl Role {
         Role::Image,
         Role::Dialog,
         Role::Group,
-        Role::RadioGroup,
-        Role::Menu,
-        Role::MenuItem,
         Role::Window,
         Role::TitleBar,
         Role::StaticText,
@@ -156,6 +158,9 @@ impl Role {
         Role::MultilineTextInput,
         Role::ScrollView,
         Role::Line,
+        Role::RadioGroup,
+        Role::Menu,
+        Role::MenuItem,
     ];
 
     /// A control needs a name; one without is reported as a warning.

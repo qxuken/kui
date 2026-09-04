@@ -778,6 +778,7 @@ static const char *role_name(uint32_t role) {
         "tabList", "link", "heading", "list", "listItem", "image", "dialog",
         "group", "window", "titleBar", "staticText", "textInput",
         "multilineTextInput", "scrollView", "line",
+        "radioGroup", "menu", "menuItem",
     };
     return role < sizeof names / sizeof *names ? names[role] : "?";
 }
@@ -1195,6 +1196,57 @@ static void conf_exit(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* One item of a composite: a click payload, its own text, and (for a row)
+ * `focusable`, which is what makes the list around it a composite at all
+ * rather than a navigation list of links. */
+static void conf_composite_item(KuiCtx *ui, const char *name, const char *kind,
+                                uint32_t role, int selected, int focusable,
+                                float w, float h, uint32_t bg) {
+    KuiValue *tag = kui_value_map();
+    kui_value_map_set(tag, KUI_STR("kind"), kui_value_str(KUI_STR(kind)));
+    KuiSpec spec = {.dir = KUI_ROW, .role = role, .selected = (uint32_t)selected,
+                    .focusable = (uint32_t)focusable,
+                    .width = {KUI_FIXED, w}, .height = {KUI_FIXED, h}, .bg = bg};
+    kui_open_keyed(ui, KUI_STR(name), &spec, tag);
+    KuiTextStyle s12 = {.size = 12};
+    kui_text(ui, KUI_STR(name), &s12);
+    kui_close(ui);
+}
+
+/* A tab bar and a picker list, each one Tab stop with the arrows moving
+ * inside it (docs/adr/0007-composite-keyboard-patterns.md), and an
+ * ordinary button between them that keeps a stop of its own. Nothing here
+ * declares "composite": the core derives it from the roles and from which
+ * nodes are focusable. */
+static void conf_composite(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec outer = {.gap = 6, .width = {KUI_GROW, 1}};
+    kui_open(ui, &outer, NULL);
+
+    KuiSpec tabs = {.dir = KUI_ROW, .role = KUI_ROLE_TAB_LIST, .gap = 4};
+    kui_open_keyed(ui, KUI_STR("tabs"), &tabs, NULL);
+    conf_composite_item(ui, "One", "one", KUI_ROLE_TAB, 0, 0, 60, 20, 0x30344aff);
+    conf_composite_item(ui, "Two", "two", KUI_ROLE_TAB, 1, 0, 60, 20, 0x30344aff);
+    conf_composite_item(ui, "Three", "three", KUI_ROLE_TAB, 0, 0, 60, 20, 0x30344aff);
+    kui_close(ui);
+
+    KuiValue *add_tag = kui_value_map();
+    kui_value_map_set(add_tag, KUI_STR("kind"), kui_value_str(KUI_STR("add")));
+    KuiSpec add = {.dir = KUI_ROW, .width = {KUI_FIXED, 40}, .height = {KUI_FIXED, 20},
+                   .bg = 0x3b5bd4ff, .label = KUI_STR("Add")};
+    kui_open_keyed(ui, KUI_STR("add"), &add, add_tag);
+    kui_close(ui);
+
+    KuiSpec rows = {.role = KUI_ROLE_LIST, .gap = 2};
+    kui_open_keyed(ui, KUI_STR("rows"), &rows, NULL);
+    conf_composite_item(ui, "Alpha", "alpha", KUI_ROLE_LIST_ITEM, 0, 1, 80, 18, 0x202030ff);
+    conf_composite_item(ui, "Bravo", "bravo", KUI_ROLE_LIST_ITEM, 0, 1, 80, 18, 0x202030ff);
+    kui_close(ui);
+
+    kui_close(ui);
+}
+
 typedef struct ConfScene {
     const char *name;
     /* `phase` is what the "step phase N" lines leave behind: the view's own
@@ -1218,6 +1270,7 @@ static const ConfScene CONF_SCENES[] = {
     {"controls", conf_controls},
     {"media", conf_media},
     {"modal", conf_modal},
+    {"composite", conf_composite},
     {"exit", conf_exit},
 };
 
@@ -1257,6 +1310,17 @@ static void conf_apply(KuiCtx *ctx, const ConfStep *s) {
     else if (strcmp(s->kind, "tab") == 0) kui_input_key(ctx, KUI_KEY_TAB, 0);
     else if (strcmp(s->kind, "shifttab") == 0) kui_input_key(ctx, KUI_KEY_TAB, KUI_MOD_SHIFT);
     else if (strcmp(s->kind, "escape") == 0) kui_input_key(ctx, KUI_KEY_ESCAPE, 0);
+    /* conformance::ARROWS order: left, right, up, down - which is
+     * KUI_KEY_LEFT..KUI_KEY_DOWN, so the index is the key. */
+    else if (strcmp(s->kind, "arrow") == 0) kui_input_key(ctx, KUI_KEY_LEFT + (uint32_t)s->a, 0);
+    else if (strcmp(s->kind, "home") == 0) kui_input_key(ctx, KUI_KEY_HOME, 0);
+    else if (strcmp(s->kind, "end") == 0) kui_input_key(ctx, KUI_KEY_END, 0);
+    /* A Unicode scalar value, so a step line carries only integers. The
+     * corpus types ASCII, which is one UTF-8 byte. */
+    else if (strcmp(s->kind, "type") == 0) {
+        uint8_t c = (uint8_t)s->a;
+        kui_input_text(ctx, (KuiStr){&c, 1});
+    }
     else {
         fprintf(stderr, "conformance: unknown step '%s'\n", s->kind);
         exit(1);
@@ -1372,11 +1436,17 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
         const char *checked = !(a->flags & KUI_ACCESS_CHECKED_SET) ? "-"
                               : (a->flags & KUI_ACCESS_CHECKED)    ? "1"
                                                                    : "0";
-        repf(out, "node %d %016llx %s %d %d %s %d %s %.*s | %.*s | %.*s\n",
+        const char *selected = !(a->flags & KUI_ACCESS_SELECTED_SET) ? "-"
+                               : (a->flags & KUI_ACCESS_SELECTED)    ? "1"
+                                                                     : "0";
+        const char *orientation = a->orientation == KUI_ORIENTATION_HORIZONTAL ? "h"
+                                  : a->orientation == KUI_ORIENTATION_VERTICAL ? "v"
+                                                                               : "-";
+        repf(out, "node %d %016llx %s %d %d %s %s %s %d %s %.*s | %.*s | %.*s\n",
              depth, (unsigned long long)a->key, role_name(a->role),
              (a->flags & KUI_ACCESS_FOCUSED) ? 1 : 0,
              (a->flags & KUI_ACCESS_DISABLED) ? 1 : 0,
-             checked,
+             checked, selected, orientation,
              (a->flags & KUI_ACCESS_HAS_SCROLL) ? 1 : 0,
              off ? actions : "-",
              (int)a->name.len, a->name.ptr,

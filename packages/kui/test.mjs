@@ -1365,6 +1365,49 @@ const SCENE_TREES = {
         ),
       ]),
     ]),
+  // docs/adr/0007-composite-keyboard-patterns.md: a tab bar and a picker
+  // list, each one Tab stop because its items are focusable, with an
+  // ordinary button between them that keeps a stop of its own. Nothing
+  // says "composite" — the core derives it from the roles.
+  composite: () => {
+    const tab = (name, kind, selected) =>
+      box(
+        {
+          dir: 'row', role: 'tab', selected,
+          width: 60, height: 20, bg: '#30344a',
+          onClick: { kind },
+        },
+        [text(name, { size: 12 })],
+        name,
+      );
+    // `focusable` on the row is what makes the list a composite: a
+    // navigation list holds links, a picker holds rows.
+    const pick = (name, kind) =>
+      box(
+        {
+          dir: 'row', role: 'listItem', focusable: true,
+          width: 80, height: 18, bg: '#202030',
+          onClick: { kind },
+        },
+        [text(name, { size: 12 })],
+        name,
+      );
+    return root({}, [
+      box({ width: 'grow', gap: 6 }, [
+        box({ dir: 'row', role: 'tabList', gap: 4 }, [
+          tab('One', 'one', false),
+          tab('Two', 'two', true),
+          tab('Three', 'three', false),
+        ], 'tabs'),
+        box(
+          { dir: 'row', width: 40, height: 20, bg: '#3b5bd4', onClick: { kind: 'add' }, label: 'Add' },
+          [],
+          'add',
+        ),
+        box({ role: 'list', gap: 2 }, [pick('Alpha', 'alpha'), pick('Bravo', 'bravo')], 'rows'),
+      ]),
+    ]);
+  },
   media: (fx) =>
     root({}, [
       box({ pad: 6, gap: 4 }, [
@@ -1502,6 +1545,12 @@ function driveScene(env, steps, build) {
     else if (step[0] === 'tab') ctx.key('tab');
     else if (step[0] === 'shifttab') ctx.key('tab', { shift: true });
     else if (step[0] === 'escape') ctx.key('escape');
+    // `conformance::ARROWS` order: left, right, up, down.
+    else if (step[0] === 'arrow') ctx.key(['left', 'right', 'up', 'down'][step[1]]);
+    else if (step[0] === 'home') ctx.key('home');
+    else if (step[0] === 'end') ctx.key('end');
+    // A Unicode scalar value, so a step line carries only integers.
+    else if (step[0] === 'type') ctx.text(String.fromCodePoint(step[1]));
     else throw new Error(`unknown conformance step ${step[0]}`);
     events.push(...ctx.pollEvents());
     frame();
@@ -1537,6 +1586,8 @@ function sceneReport(name, env, steps, { ctx, events }) {
         n.focused ? 1 : 0,
         n.disabled ? 1 : 0,
         n.checked === null || n.checked === undefined ? '-' : n.checked ? 1 : 0,
+        n.selected === null || n.selected === undefined ? '-' : n.selected ? 1 : 0,
+        n.orientation === 'horizontal' ? 'h' : n.orientation === 'vertical' ? 'v' : '-',
         n.scroll ? 1 : 0,
         n.actions.length ? n.actions.join(',') : '-',
         `${n.name ?? ''} | ${n.description ?? ''} | ${n.value ?? ''}`,
