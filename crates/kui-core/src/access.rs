@@ -84,6 +84,19 @@ pub enum Role {
     /// and its `caret` / `selectionAnchor` are byte offsets into it. Not a
     /// node of its own.
     Line,
+    // -- Appended by ADR 0007 ----------------------------------------------
+    // At the tail, and in the order [`Role::ALL`] lists them, because the
+    // tail is the only free position: `KUI_ROLE_*` is an `ALL` index plus
+    // one and the Lua and Node wires carry the `ROLES` index, so a role
+    // inserted anywhere else renumbers every role after it
+    // (`docs/adr/0006-c-abi-versioning.md`).
+    /// A set of `radio`s: one Tab stop, arrows moving the checked one.
+    RadioGroup,
+    /// A menu: one Tab stop, arrows moving focus without activating.
+    Menu,
+    /// One item of a `menu`. A control, so it is focusable by its role and
+    /// an unnamed one is reported.
+    MenuItem,
 }
 
 impl Role {
@@ -105,6 +118,9 @@ impl Role {
             Role::Image => "image",
             Role::Dialog => "dialog",
             Role::Group => "group",
+            Role::RadioGroup => "radioGroup",
+            Role::Menu => "menu",
+            Role::MenuItem => "menuItem",
             Role::Window => "window",
             Role::TitleBar => "titleBar",
             Role::StaticText => "staticText",
@@ -119,7 +135,7 @@ impl Role {
         Role::ALL.iter().copied().find(|r| r.name() == name)
     }
 
-    pub const ALL: [Role; 22] = [
+    pub const ALL: [Role; 25] = [
         Role::None,
         Role::Button,
         Role::Checkbox,
@@ -142,6 +158,9 @@ impl Role {
         Role::MultilineTextInput,
         Role::ScrollView,
         Role::Line,
+        Role::RadioGroup,
+        Role::Menu,
+        Role::MenuItem,
     ];
 
     /// A control needs a name; one without is reported as a warning.
@@ -154,6 +173,7 @@ impl Role {
                 | Role::Switch
                 | Role::Slider
                 | Role::Tab
+                | Role::MenuItem
                 | Role::Link
                 | Role::TextInput
                 | Role::MultilineTextInput
@@ -168,7 +188,7 @@ impl Role {
     /// Roles whose name, absent a `label`, is the text inside them (ARIA's
     /// name-from-content), and whose children are presentational: the
     /// subtree is read as the control, not as separate items.
-    fn presentational(self) -> bool {
+    pub(crate) fn presentational(self) -> bool {
         matches!(
             self,
             Role::Button
@@ -177,11 +197,41 @@ impl Role {
                 | Role::Switch
                 | Role::Slider
                 | Role::Tab
+                | Role::MenuItem
                 | Role::Link
                 | Role::Heading
                 | Role::Image
         )
     }
+}
+
+/// How a container arranges its items, for the platform to announce
+/// (`AXOrientation`, UIA's `Orientation`). Derived from the container's
+/// `dir` and never declared: the layout is what arranges the items, so a
+/// row that says it is a column would be a fact with two owners (see
+/// `docs/adr/0007-composite-keyboard-patterns.md`, decision 7). It is an
+/// announcement and not a gate — the arrows move both ways whatever this
+/// says — so a container whose visual arrangement does not match its `dir`
+/// costs a less precise announcement rather than a dead keyboard.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Orientation {
+    Horizontal,
+    Vertical,
+}
+
+impl Orientation {
+    pub fn name(self) -> &'static str {
+        match self {
+            Orientation::Horizontal => "horizontal",
+            Orientation::Vertical => "vertical",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<Orientation> {
+        Orientation::ALL.iter().copied().find(|o| o.name() == name)
+    }
+
+    pub const ALL: [Orientation; 2] = [Orientation::Horizontal, Orientation::Vertical];
 }
 
 /// What assistive technology can ask of a node. Each node advertises the
@@ -397,6 +447,10 @@ pub struct AccessNode {
     /// Derived, never declared — the core counts the semantic children it
     /// already has (see `set_size`).
     pub pos_in_set: Option<usize>,
+    /// How a composite container arranges its items, from its `dir` (see
+    /// [`Orientation`]). None = the node is not one of the four composite
+    /// containers, and says nothing about arrangement.
+    pub orientation: Option<Orientation>,
     /// On a `list` / `tabList`: how many items it holds. AccessKit puts
     /// the count on the container and the ordinal on the item, unlike
     /// ARIA's `aria-setsize` on every item; this follows AccessKit.
@@ -720,6 +774,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             checked: None,
             selected: None,
             expanded: None,
+            orientation: crate::composite::orientation(tree, i),
             pos_in_set: None,
             set_size: None,
             number: None,
@@ -824,42 +879,44 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
         }
         i += 1;
     }
-    set_positions(&mut out);
+    set_positions(tree, &mut out);
     out.hash = hash_of(&out);
     out
 }
 
-/// "3 of 7", derived rather than declared: a `list` or `tabList` already
-/// holds its items as semantic children, so the core counts them and
-/// numbers each one instead of making every view repeat itself (and get
-/// it wrong the moment a row is filtered out). The count lands on the
-/// container and the zero-based ordinal on the item, which is how
-/// AccessKit models a set.
-fn set_positions(out: &mut AccessTree) {
-    let containers: Vec<(Key, Role)> = out
-        .nodes
-        .iter()
-        .filter_map(|n| match n.role {
-            Role::List => Some((n.key, Role::ListItem)),
-            Role::TabList => Some((n.key, Role::Tab)),
-            _ => None,
+/// "3 of 7", derived rather than declared: a composite container already
+/// holds its items, so the core counts them and numbers each one instead
+/// of making every view repeat itself (and get it wrong the moment a row
+/// is filtered out). The count lands on the container and the zero-based
+/// ordinal on the item, which is how AccessKit models a set.
+///
+/// The items come from `composite::items`, which is also the order the
+/// arrow keys walk (`docs/adr/0007-composite-keyboard-patterns.md`,
+/// decision 3): "3 of 7" and that walk must be the same seven in the same
+/// order or the announcement is a lie, so they are one function rather
+/// than two that agree by inspection. A disabled item is still one of the
+/// set — "2 of 3" is what a reader should hear on a disabled tab — even
+/// though the arrows step over it, as the Tab ring does.
+fn set_positions(tree: &Tree, out: &mut AccessTree) {
+    let containers: Vec<(usize, Role)> = (0..tree.len())
+        .filter_map(|i| {
+            let item = crate::composite::item_role(tree.specs[i].role?)?;
+            Some((i, item))
         })
         .collect();
+    let mut items: Vec<usize> = Vec::new();
     for (container, item) in containers {
-        let items: Vec<Key> = out
-            .nodes
-            .iter()
-            .filter(|n| n.parent == Some(container) && n.role == item)
-            .map(|n| n.key)
-            .collect();
+        crate::composite::items(tree, container, item, &mut items);
         if items.is_empty() {
             continue;
         }
         let size = items.len();
+        let container = tree.keys[container];
+        let keys: Vec<Key> = items.iter().map(|&i| tree.keys[i]).collect();
         for n in &mut out.nodes {
             if n.key == container {
                 n.set_size = Some(size);
-            } else if let Some(pos) = items.iter().position(|k| *k == n.key) {
+            } else if let Some(pos) = keys.iter().position(|k| *k == n.key) {
                 n.pos_in_set = Some(pos);
             }
         }

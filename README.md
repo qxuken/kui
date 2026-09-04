@@ -783,7 +783,10 @@ modality are data (ADR 0001, 0002 and 0003); arrow keys inside radio groups, tab
 a configurable focus ring colour, and initial focus inside a dialog, are the next steps there.
 Pointer buttons: the secondary one is routed to `on_context_menu` and nothing else; the middle
 button and anything past it (back, forward) reach the core as data and route nowhere, so there is
-no middle-click-to-close, no right-drag and no per-button `on_click`.
+no middle-click-to-close, no right-drag and no per-button `on_click`. Touch and pen are not
+input modes of their own: a finger on a touchscreen arrives as whatever the platform synthesises
+as mouse input, so a tap presses and clicks and nothing past that exists — no multi-touch, no
+pinch, rotate or two-finger gestures, no pressure and no stylus tilt. v0 is desktop-first.
 Keys are layout-resolved characters and a closed list of names, with no physical
 scancode and no left/right distinction on the modifiers, so a keymap cannot bind a
 position on the board (WASD on AZERTY is ZQSD); a key the list does not name is
@@ -794,7 +797,7 @@ The pointer shape is derived, not declared: the core resolves one per frame from
 whatever is under the pointer, and the `cursor` prop overrides it — but only from
 this list (`text`, `pointer`, `grab`, `grabbing`, `notAllowed`, the four resize
 arrows and the default), so there are no custom bitmap cursors and no hiding the
-pointer. Touch and pen input do not reach the core at all.
+pointer.
 Audio covers one-shots, loops, volume, pause and a finished-playback event; sounds decode fully
 into memory, and synthesis, effects, positional audio and disk streaming are out of scope.
 Editing: caret blink, double/triple-click

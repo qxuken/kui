@@ -71,6 +71,14 @@ pub const MODAL_BEHIND_CONTENT: &str = "modal-behind-content";
 /// computable name: no `label`, and no text inside it. Icon buttons and
 /// editors need a `label`.
 pub const CONTROL_WITHOUT_NAME: &str = "control-without-name";
+/// A focusable node inside a composite's *item* — a button inside a list
+/// row, a link inside a tab. The item is one roving stop of a composite
+/// (`docs/adr/0007-composite-keyboard-patterns.md`), so the Tab ring
+/// stops at the item and nothing reaches what is inside it: declared, and
+/// impossible, which is what [`MODAL_BEHIND_CONTENT`] set the precedent
+/// for. A focusable node inside the *container* but outside every item —
+/// a "+" at the end of a tab bar — is reachable and is not reported.
+pub const FOCUSABLE_INSIDE_ITEM: &str = "focusable-inside-item";
 /// A `modal` surface with no `label`. A dialog is not named by the text
 /// inside it (it is not one of ARIA's name-from-content roles), so a
 /// screen reader announces it as an unnamed dialog — the same silent
@@ -198,6 +206,7 @@ impl Diagnostics {
         self.check_auto_keyed_transitions(tree);
         self.check_duplicate_keys(tree);
         self.check_modal(tree);
+        self.check_composites(tree);
         self.check_access(tree, text, edit);
     }
 
@@ -239,6 +248,39 @@ impl Diagnostics {
              with `float=\"viewport\"`)"
                 .to_string()
         });
+    }
+
+    /// Focusable nodes buried inside a composite's items, which nothing
+    /// can reach (see [`FOCUSABLE_INSIDE_ITEM`]). One walk per composite,
+    /// on the same cadence as every other check here.
+    fn check_composites(&mut self, tree: &Tree) {
+        let mut items: Vec<usize> = Vec::new();
+        for c in 0..tree.len() {
+            let Some(item) = tree.specs[c].role.and_then(crate::composite::item_role) else {
+                continue;
+            };
+            crate::composite::items(tree, c, item, &mut items);
+            if !crate::composite::is_composite(tree, c, &items) {
+                continue;
+            }
+            for &i in &items {
+                let end = tree.subtree_end(i);
+                for j in i + 1..end {
+                    if !access::focusable(tree, j) {
+                        continue;
+                    }
+                    let what = item.name();
+                    self.warn(FOCUSABLE_INSIDE_ITEM, tree.keys[j], || {
+                        format!(
+                            "this node is focusable but sits inside a `{what}`, which is one \
+                             roving Tab stop of a composite: the ring stops at the item, so \
+                             nothing reaches this node (move it outside the item, or drop its \
+                             focusable behaviour)"
+                        )
+                    });
+                }
+            }
+        }
     }
 
     /// Images without a label, controls without a computable name and

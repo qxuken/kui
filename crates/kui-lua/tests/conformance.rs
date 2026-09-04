@@ -137,6 +137,34 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        "composite" => r#"
+            local function tab(name, kind, selected)
+              return row { key = name, role = "tab", selected = selected,
+                           width = 60, height = 20, bg = 0x30344aff,
+                           on_click = { kind = kind },
+                text(name, { size = 12 }) }
+            end
+            local function pick(name, kind)
+              -- `focusable` on the row is what makes the list a composite:
+              -- a navigation list holds links, a picker holds rows.
+              return row { key = name, role = "listItem", focusable = true,
+                           width = 80, height = 18, bg = 0x202030ff,
+                           on_click = { kind = kind },
+                text(name, { size = 12 }) }
+            end
+            return column { width = { grow = 1 }, gap = 6,
+              row { key = "tabs", role = "tabList", gap = 4,
+                tab("One", "one", false),
+                tab("Two", "two", true),
+                tab("Three", "three", false) },
+              row { key = "add", width = 40, height = 20, bg = 0x3b5bd4ff,
+                    on_click = { kind = "add" }, label = "Add" },
+              column { key = "rows", role = "list", gap = 2,
+                pick("Alpha", "alpha"),
+                pick("Bravo", "bravo") },
+            }
+        "#
+        .to_string(),
         "media" => format!(
             r#"
             return column {{ pad = 6, gap = 4,

@@ -82,11 +82,11 @@ use kui_core::{
 /// function: a host that does not call one is unaffected, and one that does
 /// fails to *link*, which is loud.
 ///
-/// ABI 3 is the first release that appended to an [out] struct
+/// ABI 4 is the first release that appended to an [out] struct
 /// (`KuiEvent.window`). Hosts that set `size` need no source change for it;
 /// the bump is for the ones that skipped `kui_abi_version()` and would
 /// otherwise take the short write unaware.
-pub const KUI_ABI_VERSION: u32 = 3;
+pub const KUI_ABI_VERSION: u32 = 4;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its
@@ -608,6 +608,10 @@ pub struct KuiAccessNode {
     /// count on that container.
     pub pos_in_set: u32,
     pub set_size: u32,
+    /// KUI_ORIENTATION_* (0 = unset: this node is not a composite
+    /// container). How the container arranges its items, from its own
+    /// `dir` (`docs/adr/0007-composite-keyboard-patterns.md`).
+    pub orientation: u32,
 }
 
 pub const KUI_ACCESS_HAS_VALUE: u32 = 1 << 0;
@@ -635,6 +639,16 @@ pub const KUI_ACCESS_EXPANDED: u32 = 1 << 15;
 /// `pos_in_set` holds (on an item), `set_size` holds (on its container).
 pub const KUI_ACCESS_HAS_POS_IN_SET: u32 = 1 << 16;
 pub const KUI_ACCESS_HAS_SET_SIZE: u32 = 1 << 17;
+
+/// KUI_ORIENTATION_* is the position in `Orientation::ALL` plus one
+/// (0 = unset: the node is not a composite container).
+pub const KUI_ORIENTATION_HORIZONTAL: u32 = 1;
+pub const KUI_ORIENTATION_VERTICAL: u32 = 2;
+
+fn orientation_code(o: Option<kui_core::Orientation>) -> u32 {
+    o.and_then(|o| kui_core::Orientation::ALL.iter().position(|x| *x == o))
+        .map_or(0, |i| i as u32 + 1)
+}
 
 /// KUI_EXPANDED_* is the position in `schema::EXPANDED` plus one (0 = unset:
 /// the node does not expand).
@@ -776,7 +790,7 @@ pub struct KuiSpan {
     pub flags: u32,
 }
 
-/// One polled event ([out]). `size` leads it so that `window` — ABI 3's
+/// One polled event ([out]). `size` leads it so that `window` — ABI 4's
 /// append, and anything after it — reaches a host that has not recompiled
 /// as a shorter write rather than as a longer one.
 #[repr(C)]
@@ -791,7 +805,7 @@ pub struct KuiEvent {
     /// Which window the event came from; 0 (`KUI_WINDOW_MAIN`) until ADR
     /// 0004's step 3 opens a second one.
     ///
-    /// **Appended in ABI 3**, and the first field ever appended to an [out]
+    /// **Appended in ABI 4**, and the first field ever appended to an [out]
     /// struct. It sits after every ABI-1 field on purpose: `ABI_V1_SIZE`
     /// is measured through `payload`, so a host that reserved the old
     /// layout still passes [`out_accepts`] and still gets every byte it
@@ -2633,6 +2647,7 @@ pub extern "C" fn kui_access_tree(ptr: *mut KuiCtx, out: *mut KuiAccessNode, cap
                     run_count: n.runs.len() as u32,
                     pos_in_set: n.pos_in_set.unwrap_or(0) as u32,
                     set_size: n.set_size.unwrap_or(0) as u32,
+                    orientation: orientation_code(n.orientation),
                 })
             };
         }
@@ -4214,7 +4229,7 @@ mod abi_handshake {
     /// This was written before any real [out] struct had grown, so that
     /// the truncating path would not be first exercised by the change that
     /// depends on it. `KuiEvent` has since grown `window`, and
-    /// [`an_abi_2_host_polls_events_without_seeing_the_appended_window`]
+    /// [`an_abi_3_host_polls_events_without_seeing_the_appended_window`]
     /// runs the same path through the public API — this one stays as the
     /// unit-level statement of the rule, on a struct with nothing else
     /// going on.
@@ -4289,7 +4304,7 @@ mod abi_handshake {
     }
 
     /// The same rule on the real struct, through the real entry point:
-    /// `KuiEvent.window` is ABI 3's append, and a host that predates it —
+    /// `KuiEvent.window` is ABI 4's append, and a host that predates it —
     /// one whose `KuiEvent` ends after `payload`, which is the ABI-1 floor
     /// `out_accepts` measures against — keeps polling events and simply
     /// never sees the new field.
@@ -4298,26 +4313,26 @@ mod abi_handshake {
     /// struct because that is all the library ever sees of it: four bytes
     /// of `size`, and a promise about what lies behind them.
     #[test]
-    fn an_abi_2_host_polls_events_without_seeing_the_appended_window() {
+    fn an_abi_3_host_polls_events_without_seeing_the_appended_window() {
         let ctx = ctx_with_a_scroller_and_a_pending_event();
-        let abi2 = KuiEvent::ABI_V1_SIZE;
+        let abi3 = KuiEvent::ABI_V1_SIZE;
         assert!(
-            (abi2 as usize) < std::mem::size_of::<KuiEvent>(),
+            (abi3 as usize) < std::mem::size_of::<KuiEvent>(),
             "`window` must sit past the ABI-1 layout, or this proves nothing"
         );
 
         let mut ev = KuiEvent {
-            size: abi2,
+            size: abi3,
             window: 0xdead,
             ..Default::default()
         };
         assert!(kui_poll_event(ctx, &raw mut ev), "the event still arrives");
         assert_ne!(ev.key, 0, "and the fields it knows are filled");
         assert!(!ev.payload.is_null());
-        assert_eq!(ev.size, abi2, "`size` reports the prefix that was filled");
+        assert_eq!(ev.size, abi3, "`size` reports the prefix that was filled");
         assert_eq!(
             ev.window, 0xdead,
-            "the library wrote past what an ABI 2 host reserved"
+            "the library wrote past what an ABI 3 host reserved"
         );
 
         kui_ctx_free(ctx);
@@ -4563,6 +4578,10 @@ mod abi_parity {
             "KUI_ROLE_WINDOW", "KUI_ROLE_TITLE_BAR", "KUI_ROLE_STATIC_TEXT",
             "KUI_ROLE_TEXT_INPUT", "KUI_ROLE_MULTILINE_TEXT_INPUT",
             "KUI_ROLE_SCROLL_VIEW", "KUI_ROLE_LINE",
+            "KUI_ROLE_RADIO_GROUP", "KUI_ROLE_MENU", "KUI_ROLE_MENU_ITEM",
+        ]);
+        abi_enum!(o, kui_core::schema::ORIENTATIONS, 1 => [
+            "KUI_ORIENTATION_HORIZONTAL", "KUI_ORIENTATION_VERTICAL",
         ]);
         abi_enum!(o, kui_core::schema::CURSORS, 1 => [
             "KUI_CURSOR_DEFAULT", "KUI_CURSOR_TEXT", "KUI_CURSOR_POINTER",
@@ -4752,6 +4771,7 @@ mod abi_parity {
             run_count: u32 => "uint32_t",
             pos_in_set: u32 => "uint32_t",
             set_size: u32 => "uint32_t",
+            orientation: u32 => "uint32_t",
         });
 
         abi_struct!(o, KuiAccessRun {

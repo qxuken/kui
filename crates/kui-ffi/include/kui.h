@@ -49,13 +49,13 @@ extern "C" {
  * a host that does not call one is unaffected, and one that does fails to
  * link, which is loud.
  *
- * ABI 3 is the first release to append to an [out] struct: KuiEvent gained
+ * ABI 4 is the first release to append to an [out] struct: KuiEvent gained
  * `window`. If you set `size` (KUI_EVENT_INIT does) you need no source
  * change for it - the library writes the prefix your build reserved and
  * stops. The version still bumps, because a host that skipped this check
  * would otherwise get that short write without ever having asked for it.
  */
-#define KUI_ABI_VERSION 3u
+#define KUI_ABI_VERSION 4u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -475,11 +475,23 @@ enum {
     KUI_CURSOR_NESW_RESIZE,
 };
 
-/* Roles (KuiSpec.role, KuiAccessNode.role). The first fifteen can be
- * declared on any node; the rest the core derives from what a node is —
- * except KUI_ROLE_TEXT_INPUT, KUI_ROLE_MULTILINE_TEXT_INPUT and
- * KUI_ROLE_LINE, which an app that draws its own text declares to make a
- * key sink an editor and to mark that editor's lines. */
+/* Roles (KuiSpec.role, KuiAccessNode.role). Declarable on any node:
+ * KUI_ROLE_NONE through KUI_ROLE_GROUP, plus KUI_ROLE_TEXT_INPUT,
+ * KUI_ROLE_MULTILINE_TEXT_INPUT and KUI_ROLE_LINE (which an app that
+ * draws its own text declares to make a key sink an editor and to mark
+ * that editor's lines) and the three ADR 0007 appended,
+ * KUI_ROLE_RADIO_GROUP through KUI_ROLE_MENU_ITEM. A role can only be
+ * appended (KUI_ROLE_* is the position in Rust's Role::ALL plus one, and
+ * the Lua and Node wires carry the same index), so what is declarable is
+ * a list rather than a range. The rest the core derives from what a node
+ * is.
+ *
+ * KUI_ROLE_RADIO_GROUP, KUI_ROLE_TAB_LIST, KUI_ROLE_MENU and KUI_ROLE_LIST
+ * are the composite containers: one holding focusable KUI_ROLE_RADIO,
+ * KUI_ROLE_TAB, KUI_ROLE_MENU_ITEM or KUI_ROLE_LIST_ITEM children is a
+ * single Tab stop with the arrow keys moving inside it
+ * (docs/adr/0007-composite-keyboard-patterns.md). Nothing declares that:
+ * the core derives it from the roles and from which nodes are focusable. */
 enum {
     KUI_ROLE_NONE = 1, KUI_ROLE_BUTTON, KUI_ROLE_CHECKBOX, KUI_ROLE_RADIO,
     KUI_ROLE_SWITCH, KUI_ROLE_SLIDER, KUI_ROLE_TAB, KUI_ROLE_TAB_LIST,
@@ -488,6 +500,17 @@ enum {
     KUI_ROLE_WINDOW, KUI_ROLE_TITLE_BAR, KUI_ROLE_STATIC_TEXT,
     KUI_ROLE_TEXT_INPUT, KUI_ROLE_MULTILINE_TEXT_INPUT, KUI_ROLE_SCROLL_VIEW,
     KUI_ROLE_LINE,
+    KUI_ROLE_RADIO_GROUP, KUI_ROLE_MENU, KUI_ROLE_MENU_ITEM,
+};
+
+/* How a composite container arranges its items
+ * (KuiAccessNode.orientation, 0 = unset). Derived from the container's
+ * own KuiSpec.dir and never declared: the layout is what arranges the
+ * items. An announcement, not a gate — both arrow pairs move inside a
+ * composite whatever this says. */
+enum {
+    KUI_ORIENTATION_HORIZONTAL = 1,
+    KUI_ORIENTATION_VERTICAL = 2,
 };
 /* Which of KuiSpec.value_now / value_min / value_max / caret /
  * selection_anchor are set */
@@ -573,6 +596,9 @@ typedef struct KuiAccessNode {
      * AccessKit models a set (ARIA repeats aria-setsize on every item). */
     uint32_t pos_in_set;
     uint32_t set_size;
+    /* How a composite container arranges its items (KUI_ORIENTATION_*,
+     * 0 = unset: this node is not one). Derived from its own dir. */
+    uint32_t orientation;
 } KuiAccessNode;
 
 /* [out[]] One laid-out run of an editor's text (kui_access_runs): what a screen
@@ -699,8 +725,8 @@ typedef struct KuiSpan {
 
 /* [out] One polled event. `size` leads it so that a field appended later
  * reaches a host that has not recompiled as a shorter write, not a longer
- * one - `window` is the first field that actually did (ABI 3). A host built
- * against ABI 2 reserves through `payload`, which is still the ABI-1 floor,
+ * one - `window` is the first field that actually did (ABI 4). A host built
+ * against ABI 3 reserves through `payload`, which is still the ABI-1 floor,
  * so it keeps polling correctly and simply never sees `window`. */
 typedef struct KuiEvent {
     uint32_t size;           /* = sizeof(KuiEvent) in, bytes filled out */

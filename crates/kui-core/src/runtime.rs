@@ -192,6 +192,18 @@ pub struct Core {
     /// `finish_frame` scrolls the node's scrolling ancestor to show it,
     /// then clears this. Last writer wins.
     pending_reveal: Option<Key>,
+    /// Type-ahead inside a composite (`docs/adr/0007`, decision 9): the
+    /// characters typed so far, and the frame clock reading of the last
+    /// keystroke. The buffer is cleared at the start of the first frame
+    /// more than [`TYPE_AHEAD_SECS`] after it, so input routing stays
+    /// timeless — the aging happens where time already lives. With no
+    /// clock set `type_ahead_at` is None and every keystroke starts a
+    /// fresh search, which is the useful half of type-ahead.
+    type_ahead: String,
+    type_ahead_at: Option<f64>,
+    /// Reused by the composite walks (the ring, arrow motion), so a frame
+    /// with composites in it pays one allocation rather than one each.
+    items_scratch: Vec<usize>,
     /// A `focus_next` / `focus_prev` waiting for a frame to walk: `true`
     /// forward. The Tab ring is the finished tree's, and a request made
     /// while a frame is being built has no tree to walk yet (`begin_frame`
@@ -256,6 +268,22 @@ impl Tracks {
     }
 }
 
+/// How long a type-ahead search buffer survives without a keystroke
+/// (`docs/adr/0007-composite-keyboard-patterns.md`, decision 9). Aged at
+/// the start of a frame, so a core with no clock never ages one.
+const TYPE_AHEAD_SECS: f64 = 1.0;
+
+/// One step along a list of `len` items from `at`, wrapping or clamping.
+/// None = the step ran off the end of a list that clamps.
+fn step(at: usize, delta: isize, len: usize, wrap: bool) -> Option<usize> {
+    let n = len as isize;
+    let p = at as isize + delta;
+    if (0..n).contains(&p) {
+        return Some(p as usize);
+    }
+    wrap.then(|| (((p % n) + n) % n) as usize)
+}
+
 impl Core {
     /// A core with a session of its own — one window, nothing shared.
     pub fn new() -> Self {
@@ -309,6 +337,9 @@ impl Core {
             any_modal: false,
             modal: None,
             modal_focus: Vec::new(),
+            type_ahead: String::new(),
+            type_ahead_at: None,
+            items_scratch: Vec::new(),
             any_slide: false,
             any_layout: false,
             any_exit: false,
@@ -439,12 +470,16 @@ impl Core {
                     if self.edit_with_fonts(|edit, fs| edit.apply_text(key, &s, fs)) {
                         self.push_edit_event(key, "changed", &mut out);
                     }
-                } else if s == " "
-                    && let Some(i) = self.focused_control()
-                {
-                    // Space presses the focused control (a sink would have
-                    // taken the press as data; an editor took the text).
-                    self.click_node(self.tree.keys[i], &mut out);
+                } else if let Some(i) = self.focused_control() {
+                    // Inside a composite, printable characters search the
+                    // items by name; Space extends a search already under
+                    // way rather than pressing (`docs/adr/0007`, decision
+                    // 9). Otherwise Space presses the focused control (a
+                    // sink would have taken the press as data; an editor
+                    // took the text).
+                    if !self.type_ahead(i, &s, &mut out) && s == " " {
+                        self.click_node(self.tree.keys[i], &mut out);
+                    }
                 }
             }
             InputEvent::Preedit(s, cursor) => {
@@ -503,6 +538,16 @@ impl Core {
                         EditKey::Left | EditKey::Down if slider => {
                             self.nudge(i, AccessAction::Decrement, &mut out)
                         }
+                        // Inside a composite the arrows, Home and End move
+                        // focus among the items instead (see
+                        // `docs/adr/0007-composite-keyboard-patterns.md`);
+                        // on anything else they do nothing, as before.
+                        EditKey::Left
+                        | EditKey::Right
+                        | EditKey::Up
+                        | EditKey::Down
+                        | EditKey::Home
+                        | EditKey::End => self.composite_step(i, ek, &mut out),
                         _ => {}
                     }
                 }
@@ -1030,16 +1075,50 @@ impl Core {
     /// last frame in tree order, `role="none"` subtrees skipped whole —
     /// and, when a modal is in effect, of its subtree only (see
     /// `docs/adr/0003-modal-surfaces.md`).
+    ///
+    /// A composite contributes **one** stop instead of one per item
+    /// (`docs/adr/0007-composite-keyboard-patterns.md`): the walk enters
+    /// the container as usual — a focusable node inside it but outside
+    /// every item, a "+" at the end of a tab bar, keeps its own stop — and
+    /// then takes the whole of each item's subtree in one step, emitting
+    /// the stop only at the item [`Self::composite_entry`] picked. So the
+    /// stop sits where that item sits in tree order, and Tab out and back
+    /// lands on it again.
     fn focus_ring(&self) -> Vec<(usize, Key)> {
+        use crate::access::Role;
         let mut out = Vec::new();
         let (mut i, end) = match self.modal {
             Some((start, end, _)) => (start, end),
             None => (0, self.tree.len()),
         };
+        // The composites enclosing `i`, innermost last: how far each runs,
+        // which role its items carry, and the one item that is its stop.
+        let mut open: Vec<(usize, Role, Option<usize>)> = Vec::new();
+        let mut items = Vec::new();
         while i < end {
-            if self.tree.specs[i].role == Some(crate::access::Role::None) {
+            while open.last().is_some_and(|(e, _, _)| i >= *e) {
+                open.pop();
+            }
+            let role = self.tree.specs[i].role;
+            if role == Some(Role::None) {
                 i = self.tree.subtree_end(i);
                 continue;
+            }
+            if let Some(&(_, item, chosen)) = open.last()
+                && role == Some(item)
+            {
+                if chosen == Some(i) {
+                    out.push((i, self.tree.keys[i]));
+                }
+                i = self.tree.subtree_end(i);
+                continue;
+            }
+            if let Some(item) = role.and_then(crate::composite::item_role) {
+                crate::composite::items(&self.tree, i, item, &mut items);
+                if crate::composite::is_composite(&self.tree, i, &items) {
+                    let chosen = self.composite_entry(&items);
+                    open.push((self.tree.subtree_end(i), item, chosen));
+                }
             }
             if crate::access::focusable(&self.tree, i) {
                 out.push((i, self.tree.keys[i]));
@@ -1047,6 +1126,24 @@ impl Core {
             i += 1;
         }
         out
+    }
+
+    /// Which item of a composite is its Tab stop, in precedence order
+    /// (`docs/adr/0007`, decision 4): the item that currently holds focus,
+    /// else one declaring `initial_focus`, else the one declaring
+    /// `selected`, else the first. **No new retained state** — the roving
+    /// tabindex a browser keeps per composite is, in every pattern kui has,
+    /// the item the app already marks `selected`, and the same fact that
+    /// tells a reader which one is current tells the keyboard where to
+    /// enter. Only focusable items are candidates, so a disabled one is
+    /// skipped here as it is everywhere else.
+    fn composite_entry(&self, items: &[usize]) -> Option<usize> {
+        let live = |&&j: &&usize| crate::access::focusable(&self.tree, j);
+        let pick = |f: &dyn Fn(usize) -> bool| items.iter().filter(live).copied().find(|&j| f(j));
+        pick(&|j| Some(self.tree.keys[j]) == self.focus)
+            .or_else(|| pick(&|j| self.tree.specs[j].initial_focus))
+            .or_else(|| pick(&|j| self.tree.specs[j].selected))
+            .or_else(|| items.iter().filter(live).copied().next())
     }
 
     /// The frame's modal scope: the tree range of the last node declaring
@@ -1278,6 +1375,261 @@ impl Core {
             key,
             payload: Value::Map(entries),
         });
+    }
+
+    // -- Composites (docs/adr/0007-composite-keyboard-patterns.md) ------
+    // A tab list, a radio group, a menu and a picker list are one Tab stop
+    // with the arrows moving inside. The core moves that focus itself,
+    // because focus is core state and this is the motion Tab already
+    // performs with a narrower scope — every app in every binding would
+    // otherwise reimplement the same ordered walk over a tree the core
+    // computes and does not expose, and a Lua app could not do it at all.
+    // It never writes `selected`: that is app state, re-declared each
+    // frame, so a view that wants selection to follow focus writes
+    // `selected(ui.is_focused(key))`.
+
+    /// One arrow, Home or End step inside the composite holding node `i`.
+    /// Nothing happens when `i` is not a composite item, or when the step
+    /// runs off the end of one that clamps.
+    fn composite_step(&mut self, i: usize, ek: EditKey, out: &mut Vec<UiEvent>) {
+        let mut items = std::mem::take(&mut self.items_scratch);
+        let target = self.composite_target(i, ek, &mut items);
+        self.items_scratch = items;
+        if let Some((j, item)) = target {
+            self.move_within_composite(i, j, item, out);
+        }
+    }
+
+    /// Lands focus on item `j` of a composite, having come from `i`, and
+    /// activates it where the pattern says selection follows focus. The
+    /// landing is exactly `focus_next`'s: focus moves, it shows, and the
+    /// item scrolls into view.
+    fn move_within_composite(
+        &mut self,
+        i: usize,
+        j: usize,
+        item: crate::access::Role,
+        out: &mut Vec<UiEvent>,
+    ) {
+        self.focus_visible = true;
+        if j == i {
+            // A clamped End on the last item, or a search that matched
+            // where focus already is: the motion happened, so the focus
+            // shows, but nothing moved and nothing is activated again.
+            return;
+        }
+        self.set_focus(Some(self.tree.keys[j]));
+        let rect = Rect::from_pos_size(self.tree.pos[j], self.tree.size[j]);
+        self.scroll_rect_into_view(j, rect, false);
+        // `radio` and `tab` define selection as following focus, and the
+        // event is the one Enter already emits — so an app that handles
+        // clicks on its tabs handles arrows on them with no new code.
+        if crate::composite::activates_on_motion(item) {
+            self.click_node(self.tree.keys[j], out);
+        }
+    }
+
+    /// Where a step from item `i` lands, with the item role it lands on.
+    /// Fills `items` with the composite's items on the way (see
+    /// `composite::items`).
+    fn composite_target(
+        &self,
+        i: usize,
+        ek: EditKey,
+        items: &mut Vec<usize>,
+    ) -> Option<(usize, crate::access::Role)> {
+        let container = crate::composite::owner(&self.tree, i, items)?;
+        let role = self.tree.specs[container].role?;
+        let item = crate::composite::item_role(role)?;
+        // A disabled item is not an item here, as it is not in the ring —
+        // it keeps its ordinal in "3 of 7" and the arrows step over it.
+        let live: Vec<usize> = items
+            .iter()
+            .copied()
+            .filter(|&j| crate::access::focusable(&self.tree, j))
+            .collect();
+        let at = live.iter().position(|&j| j == i)?;
+        let wrap = crate::composite::wraps(role);
+        let layout = self.tree.specs[container].layout;
+        // The one place the two arrow pairs differ: in a wrapped container
+        // the cross-axis pair moves by a line rather than by one item,
+        // which is what a wrapped grid of items needs. Wrapping is
+        // rows-only, so the cross pair is always Up / Down.
+        let by_line = layout.wrap && layout.dir == crate::spec::Dir::Row;
+        let j = match ek {
+            EditKey::Home => live[0],
+            EditKey::End => live[live.len() - 1],
+            EditKey::Up | EditKey::Down if by_line => {
+                let down = ek == EditKey::Down;
+                live[self.line_step(container, &live, at, down, wrap)?]
+            }
+            // Both pairs move, whatever the derived orientation says: the
+            // perpendicular pair costs nothing, while refusing it turns a
+            // mis-derived axis into a keyboard dead end that only a screen
+            // reader user finds.
+            EditKey::Left | EditKey::Up => live[step(at, -1, live.len(), wrap)?],
+            EditKey::Right | EditKey::Down => live[step(at, 1, live.len(), wrap)?],
+            _ => return None,
+        };
+        Some((j, item))
+    }
+
+    /// A cross-axis step in a wrapped container: to the adjacent wrap line,
+    /// keeping the position within the line (clamped to that line's
+    /// length). Returns an index into `live`.
+    fn line_step(
+        &self,
+        container: usize,
+        live: &[usize],
+        at: usize,
+        down: bool,
+        wrap: bool,
+    ) -> Option<usize> {
+        let lines: Vec<u32> = live
+            .iter()
+            .map(|&j| crate::composite::line_of(&self.tree, container, j))
+            .collect();
+        let cur = lines[at];
+        let col = lines[..at].iter().filter(|&&l| l == cur).count();
+        let next = if down {
+            lines.iter().copied().filter(|&l| l > cur).min()
+        } else {
+            lines.iter().copied().filter(|&l| l < cur).max()
+        };
+        let target = match next {
+            Some(l) => l,
+            None if wrap => {
+                let l = if down {
+                    lines.iter().min()
+                } else {
+                    lines.iter().max()
+                };
+                *l?
+            }
+            None => return None,
+        };
+        let row: Vec<usize> = (0..live.len()).filter(|&k| lines[k] == target).collect();
+        row.get(col.min(row.len().checked_sub(1)?)).copied()
+    }
+
+    /// One printable keystroke inside a composite: extends the search
+    /// buffer and moves focus to the next item whose name starts with it,
+    /// wrapping. Returns whether the composite took the text — `false`
+    /// leaves Space to press the item, which is what it does with no
+    /// search under way.
+    fn type_ahead(&mut self, i: usize, text: &str, out: &mut Vec<UiEvent>) -> bool {
+        let typed: String = text.chars().filter(|c| !c.is_control()).collect();
+        if typed.is_empty() || (typed == " " && self.type_ahead.is_empty()) {
+            return false;
+        }
+        let mut items = std::mem::take(&mut self.items_scratch);
+        let found = self.type_ahead_target(i, &typed, &mut items);
+        self.items_scratch = items;
+        match found {
+            Some((j, item)) => {
+                self.move_within_composite(i, j, item, out);
+                true
+            }
+            // Not a composite item: the text is not ours, so Space still
+            // presses. A search that matched nothing *is* ours — the
+            // buffer holds it, and the next character extends it rather
+            // than starting over.
+            None => !self.type_ahead.is_empty(),
+        }
+    }
+
+    /// The item the search buffer, extended by `typed`, now names.
+    fn type_ahead_target(
+        &mut self,
+        i: usize,
+        typed: &str,
+        items: &mut Vec<usize>,
+    ) -> Option<(usize, crate::access::Role)> {
+        let container = crate::composite::owner(&self.tree, i, items)?;
+        let item = crate::composite::item_role(self.tree.specs[container].role?)?;
+        // With no clock every keystroke starts a fresh search: the buffer
+        // has no way to age, and a stale one would be worse than none.
+        let now = self.anim.time();
+        if now.is_none() {
+            self.type_ahead.clear();
+        }
+        self.type_ahead.push_str(&typed.to_lowercase());
+        self.type_ahead_at = now;
+        let live: Vec<usize> = items
+            .iter()
+            .copied()
+            .filter(|&j| crate::access::focusable(&self.tree, j))
+            .collect();
+        let at = live.iter().position(|&j| j == i)?;
+        let names = self.item_names(&live);
+        let buf = self.type_ahead.clone();
+        // From the item after the focused one, wrapping — so the focused
+        // item is the last one tried, which is what makes a second
+        // character refine the match instead of jumping off it.
+        (1..=live.len()).find_map(|d| {
+            let k = (at + d) % live.len();
+            let name = names[k].as_deref()?;
+            name.to_lowercase()
+                .starts_with(&buf)
+                .then_some((live[k], item))
+        })
+    }
+
+    /// What a reader announces for each of `items`, in order — which is
+    /// what type-ahead searches.
+    ///
+    /// Usually the access name, but not every item role has one: `tab`,
+    /// `radio` and `menuItem` are named by the text inside them, while a
+    /// `listItem` is a *container* of content and takes no name from it
+    /// (giving a row a label as well would have it read twice). So a row
+    /// falls back to the text a reader reads out for it — its own
+    /// `staticText` descendants, in order — and a picker list is
+    /// searchable without every row having to carry a `label`.
+    fn item_names(&mut self, items: &[usize]) -> Vec<Option<String>> {
+        let keys: Vec<Key> = items.iter().map(|&j| self.tree.keys[j]).collect();
+        let tree = self.access_tree();
+        keys.iter()
+            .map(|k| {
+                let at = tree.nodes.iter().position(|n| n.key == *k)?;
+                if let Some(name) = &tree.nodes[at].name {
+                    return Some(name.clone());
+                }
+                // The access tree is preorder, so a node's descendants are
+                // the run that follows it.
+                let mut inside = vec![*k];
+                let mut text = String::new();
+                for n in &tree.nodes[at + 1..] {
+                    if !n.parent.is_some_and(|p| inside.contains(&p)) {
+                        break;
+                    }
+                    inside.push(n.key);
+                    if n.role == crate::access::Role::StaticText
+                        && let Some(t) = &n.name
+                    {
+                        if !text.is_empty() {
+                            text.push(' ');
+                        }
+                        text.push_str(t);
+                    }
+                }
+                (!text.is_empty()).then_some(text)
+            })
+            .collect()
+    }
+
+    /// Clears a type-ahead buffer that has gone stale. Run at the start of
+    /// a frame, which is where the clock already is: input routing stays
+    /// timeless, and a frame with nothing typed pays one comparison.
+    fn age_type_ahead(&mut self) {
+        if self.type_ahead.is_empty() {
+            return;
+        }
+        if let (Some(now), Some(at)) = (self.anim.time(), self.type_ahead_at)
+            && now - at > TYPE_AHEAD_SECS
+        {
+            self.type_ahead.clear();
+            self.type_ahead_at = None;
+        }
     }
 
     /// A slider nudge on node `i`: the core cannot know what a step means,
@@ -1847,6 +2199,7 @@ impl Core {
     // building outside a frame) is ignored rather than UB or panic.
 
     pub fn begin_frame(&mut self, viewport: Size, scale: f32) {
+        self.age_type_ahead();
         // A window that changed size is a fact the driver reports, so the
         // core turns it into data like any other: `{kind="resize", width,
         // height, scale}` on the root, pending for the driver to route
