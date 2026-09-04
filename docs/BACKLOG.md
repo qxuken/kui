@@ -2002,7 +2002,17 @@ place, no access row), and that a returning key discards it rather than
 doubling. Those are four bindings' worth of behaviour resting on one Rust
 test suite.
 
-### `.` B4 — Backlog headings lag the work, three rounds running
+### `.` B4 — Backlog headings lag the work, three rounds running — **done (2026-09-05)**
+
+Closed by behaviour rather than by a rule: in the round after this was
+filed, every closing session marked its heading — `e238a0e` says so in its
+subject ("B1 is closed, and the heading says so this time"), and `79ae943`
+went further, correcting a P9 heading that had said done before it was
+verified. The review of that round found zero stale headings against
+twenty commits. No preamble line was added; the entries themselves now
+carry the convention.
+
+The original finding:
 
 C6 and D1 shipped unmarked in round two; A6 shipped unmarked in round three.
 Each time the body text was left as the original finding and the heading said
@@ -2017,36 +2027,32 @@ shape the closed entries already use — original finding kept, outcome on top.
 
 ## Suggested sequence
 
-By leverage-to-effort, not severity.
+Rewritten 2026-09-05. The original six-step order is history now: every
+step in it shipped, and the strikethroughs it had accumulated said less
+about what to do next than about what had been done. What is left, in the
+order the dependencies run:
 
-1. **Ship-wrong first.** X1, X2, P2 — small, and they are wrong in published
-   artifacts right now.
-2. **Two schema rows.** P1 and C6. Each is one `PROPS` row plus one
-   `access_bridge` line; the parity test forces the C side and all four bindings
-   get them free. Worth doing early to confirm the schema mechanism still does
-   its job.
-3. ~~**Export what already works.** C4 (`reveal`, `set_scroll`); C3 (derived
-   cursor).~~ Both done — exports of working internals, and C5(a)
-   (`scroll_geometry`) turned out to be a third: the number was already
-   computed, one line above where it was thrown away.
-4. **D1.** The largest single duplication, mechanical, and it stops the drift
-   that has already started in the doc comments.
-5. ~~**P7 — the conformance corpus.**~~ Done (2026-09-03), out of order: it
-   was cheaper to fix P1 and P2 *through* the corpus than beside it, and a
-   fix with no scene behind it is the state this document exists to
-   describe. ~~P4 (unknown-prop warnings) and D3 (composite parsing in the
-   core) are the two that still shrink the surface it has to cover.~~ Both
-   shipped (2026-09-04), and both leant on the corpus: the "every element
-   lowers" scenes are what pin P4's allow-list, and D3's refactor was
-   caught on the way in introducing a JSON/binary disagreement.
-6. **Then the designs.** ~~C1 + C2 unlock dialogs, menus and comboboxes
-   together~~ — both shipped (ADR 0003 for C1; C2 needed no ADR of its own,
-   since it only adds a row and a button to the model 0003 settled), and a
-   context menu is now an `onContextMenu` tag plus a `modal` float. ~~C7 is
-   the one to decide on paper now and build later, before more API assumes
-   a single window.~~ Decided (ADR 0004): a `Core` per window, a declared
-   window set, `window` on the event, popups as a window kind. The build is
-   C11, whose first two steps are done: a `Session` for the shared caches
-   and one wgpu device (2026-09-04), then `WindowId` through every
-   transport (2026-09-05). Both were invisible from outside — no test changed meaning —
-   and they are what the declared window set sits on.
+1. **C11 step 3 — the declared window set.** The first step that changes
+   behaviour and the first that breaks C (`kui_take_window_commands`
+   becomes a `KuiWindowCommand` out-param, under ADR 0006's size rule, so
+   `KUI_ABI_VERSION` moves again). Both A5 warnings land here because both
+   live in the diff. Steps 1 and 2 exist so this one can be reviewed on
+   its own.
+2. **C11 step 5 — `SetSize` / `Focus`.** Independent of step 3: `WindowId`
+   is plumbed, `MAIN` is 0, and the commands queue the way `reveal` and
+   `play` already do. Small, and it can land before or beside step 3.
+3. **C11 step 4 — popups.** After step 3, since a popup is a window kind the
+   declared set opens. Its OS-surface behaviour belongs to P8's smoke jobs,
+   not the corpus; the corpus can still pin the `dismiss` event and the
+   non-activating focus route headlessly.
+4. **C12, C13, C14, C5(b)** stay parked on their own terms — each waits for
+   a view that needs it, and each says so.
+
+The next *chip set* should not come from this list. Six rounds have added
+roughly twenty thousand lines — modal surfaces, composites, exit
+animations, a session, ABI versioning, Node `env`, C as an extension —
+and none of that surface has had the full review the original 36k lines
+got. A fresh sweep of the grown surface is the input worth having; the
+first review found its defects in the gap between what the schema
+enforced and what the composites hand-wrote, and the same question asked
+of the new surfaces is where the next set will be.
