@@ -65,6 +65,11 @@ pub struct Tree {
     pub pos: Vec<Vec2>,
     /// Max scroll offset per axis (zero for non-scroll nodes).
     pub scroll_max: Vec<Vec2>,
+    /// Which wrap line of its parent a node sits on, from the main-axis
+    /// pass. Zero everywhere but under a wrapping container, and the
+    /// in-flow children of one line are always a contiguous sibling run,
+    /// so a line is a range rather than a list.
+    pub line: Vec<u32>,
 }
 
 impl Tree {
@@ -93,6 +98,7 @@ impl Tree {
         self.size.clear();
         self.pos.clear();
         self.scroll_max.clear();
+        self.line.clear();
     }
 
     pub fn push(
@@ -115,6 +121,7 @@ impl Tree {
         self.size.push(Size::ZERO);
         self.pos.push(Vec2::ZERO);
         self.scroll_max.push(Vec2::ZERO);
+        self.line.push(0);
 
         if parent != NIL {
             let p = parent as usize;

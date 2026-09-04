@@ -65,6 +65,10 @@ pub fn image_pixels() -> Vec<u8> {
 /// and the corpus never plays it; it only has to be a registrable handle.
 pub const SOUND_BYTES: &[u8] = b"RIFF....WAVE";
 
+/// The `wrap` scene's boxes, as (width, height). Shared so every adapter
+/// writes the same four and a typo cannot pass as a wrapping difference.
+pub const WRAP_BOXES: &[(f32, f32)] = &[(30.0, 12.0), (40.0, 16.0), (50.0, 20.0), (20.0, 24.0)];
+
 /// Handles a scene's builder needs, registered before the first frame.
 #[derive(Clone, Copy)]
 pub struct Fixtures {
@@ -221,6 +225,27 @@ pub const SCENES: &[Scene] = &[
         steps: &[],
         expect: Expect {
             solid: 6,
+            shadows: 0,
+            images: 0,
+            glyphs_min: 0,
+            access: &["0 window ||"],
+            events: &[],
+            warnings: &[],
+            title: None,
+        },
+    },
+    Scene {
+        name: "wrap",
+        doc: "A wrapping row: four fixed boxes broken onto two lines by a \
+              width they don't fit, with a gap along a line and a cross gap \
+              between them. All geometry, no text, so the digest is the \
+              same wherever it runs.",
+        custom: &["dir", "pad"],
+        elements: &["box"],
+        build: build_wrap,
+        steps: &[],
+        expect: Expect {
+            solid: 5,
             shadows: 0,
             images: 0,
             glyphs_min: 0,
@@ -454,6 +479,32 @@ fn build_sizing(ui: &mut Ui<'_>, _f: &Fixtures) {
                     ui.with(cell(0xffcc00ff).width(Sizing::Grow(1.0)), |_| {});
                 },
             );
+        },
+    );
+}
+
+/// 92px of content, a 6px gap: 30 + 40 fit, 50 + 20 go to the second line.
+/// The heights differ per box so the two lines have different cross
+/// extents and a binding that dropped `crossGap` lands them elsewhere.
+fn build_wrap(ui: &mut Ui<'_>, _f: &Fixtures) {
+    ui.with(
+        NodeSpec::row()
+            .wrap()
+            .pad(4.0)
+            .gap(6.0)
+            .cross_gap(10.0)
+            .width(Sizing::Fixed(100.0))
+            .bg(Color::hex(0x101018ff)),
+        |ui| {
+            for (w, h) in WRAP_BOXES {
+                ui.with(
+                    NodeSpec::column()
+                        .width(Sizing::Fixed(*w))
+                        .height(Sizing::Fixed(*h))
+                        .bg(Color::hex(0x30344aff)),
+                    |_| {},
+                );
+            }
         },
     );
 }

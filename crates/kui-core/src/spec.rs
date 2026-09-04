@@ -185,6 +185,16 @@ pub struct LayoutSpec {
     pub dir: Dir,
     pub padding: Edges,
     pub gap: f32,
+    /// Row children that don't fit the main-axis content box start a new
+    /// line instead of overflowing (or shrinking). Rows only: breaking
+    /// needs a definite main size, and the pass order gives a row one —
+    /// its width is final before its height is measured — where a column
+    /// would need its height first. Ignored on a column and on a
+    /// `scroll_x` row, both with a warning (`diag::WRAP_IGNORED`).
+    pub wrap: bool,
+    /// Space between wrap lines, across the main axis. `gap` is still the
+    /// space between children along it.
+    pub cross_gap: f32,
     /// Alignment of children along the main axis.
     pub main_align: Align,
     /// Alignment of children across the main axis.
@@ -211,6 +221,8 @@ impl Default for LayoutSpec {
             dir: Dir::Column,
             padding: Edges::default(),
             gap: 0.0,
+            wrap: false,
+            cross_gap: 0.0,
             main_align: Align::Start,
             cross_align: Align::Start,
             clip: false,
@@ -598,6 +610,18 @@ impl NodeSpec {
 
     pub fn gap(mut self, v: f32) -> Self {
         self.layout.gap = v;
+        self
+    }
+
+    /// Wrap overflowing children onto more lines; see [`LayoutSpec::wrap`].
+    pub fn wrap(mut self) -> Self {
+        self.layout.wrap = true;
+        self
+    }
+
+    /// Space between wrap lines (across the main axis).
+    pub fn cross_gap(mut self, v: f32) -> Self {
+        self.layout.cross_gap = v;
         self
     }
 

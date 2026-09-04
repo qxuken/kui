@@ -311,6 +311,14 @@ pub struct KuiSpec {
     pub shadow_y: f32,
     /// Grows (negative: shrinks) the shape before blurring (logical px).
     pub shadow_spread: f32,
+    /// Non-zero: children that don't fit the main axis start a new line
+    /// instead of overflowing or shrinking. Rows only — a column, or a row
+    /// with KUI_OVERFLOW_SCROLL_X, lays out as if this were 0 and raises a
+    /// `wrap-ignored` warning.
+    pub wrap_children: u32,
+    /// Space between wrap lines, across the main axis (`gap` stays the
+    /// space between children along it).
+    pub cross_gap: f32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -719,6 +727,7 @@ fn spec_of(
             b: s.pad_b,
         })
         .gap(s.gap)
+        .cross_gap(s.cross_gap)
         .main_align(align_of(s.main_align))
         .cross_align(align_of(s.cross_align))
         .bg(color_of(s.bg))
@@ -731,6 +740,9 @@ fn spec_of(
     }
     if s.opacity_set != 0 {
         spec = spec.opacity(s.opacity);
+    }
+    if s.wrap_children != 0 {
+        spec = spec.wrap();
     }
     // Unconditional: the shadow draws only where its color is visible, and
     // that check belongs at emission, not here — a zeroed struct is the
@@ -2914,6 +2926,8 @@ mod schema_parity {
                 "minHeight" => s.min_h = F,
                 "maxHeight" => s.max_h = F,
                 "gap" => s.gap = F,
+                "crossGap" => s.cross_gap = F,
+                "wrapChildren" => s.wrap_children = 1,
                 "radius" => s.radius = F,
                 "radiusTL" => (s.per_corner, s.radius_tl) = (1, F),
                 "radiusTR" => (s.per_corner, s.radius_tr) = (1, F),
@@ -3121,6 +3135,8 @@ mod schema_parity {
             shadow_x: 0.0,
             shadow_y: 4.0,
             shadow_spread: -2.0,
+            wrap_children: 1,
+            cross_gap: 6.0,
         };
         let expected = NodeSpec::row()
             .width(Sizing::Grow(2.0))
@@ -3136,6 +3152,8 @@ mod schema_parity {
                 b: 4.0,
             })
             .gap(8.0)
+            .wrap()
+            .cross_gap(6.0)
             .main_align(Align::Center)
             .cross_align(Align::End)
             .bg(Color::hex(0x14161eff))
@@ -3913,6 +3931,8 @@ mod abi_parity {
             shadow_x: f32 => "float",
             shadow_y: f32 => "float",
             shadow_spread: f32 => "float",
+            wrap_children: u32 => "uint32_t",
+            cross_gap: f32 => "float",
         });
 
         abi_struct!(o, KuiAccessNode {

@@ -175,9 +175,9 @@ static-assert route keeps the header's prose comments.
 
 ### `!` P7 — Build a cross-binding conformance corpus — **done (2026-09-03)**
 
-`crates/kui-core/src/conformance.rs` holds the corpus: seven scenes
-(`layout`, `overflow`, `float`, `tooltip`, `chrome`, `controls`, `media`),
-each declaring the `CUSTOM` and `ELEMENTS` rows it exercises, the input to
+`crates/kui-core/src/conformance.rs` holds the corpus: nine scenes
+(`layout`, `sizing`, `wrap`, `overflow`, `float`, `tooltip`, `chrome`,
+`controls`, `media`), each declaring the `CUSTOM` and `ELEMENTS` rows it exercises, the input to
 replay, and its expected semantics. A test asserts the union covers both
 tables — in both directions, so a scene cannot claim a row that no longer
 exists either. Adding a hand-written prop or element without a scene now
@@ -225,25 +225,6 @@ It found both of the defects it was built from — P1's missing C description
 and P2's `self_at` — and each was verified by reintroducing it and watching
 the build go red.
 
-The original finding:
-
-**This is the root cause of P1–P4, not a fifth instance of them.**
-
-`packages/kui/test.mjs` renders every schema prop, every composite and every
-element through the binary, JSON and object paths and asserts byte-identical
-quads. That mechanism exists because those three paths live in one language with
-one harness. Lua, C and Rust each stand alone; nothing renders the same scene
-through all four and compares. Which is why a whole accessibility behaviour is
-missing from C and a documented Lua key is wrong, both with a green build.
-
-Build a scene corpus in `kui-core` — named scenes plus expected quads, access
-tree and events, covering every `CUSTOM` and `ELEMENTS` row — and four thin
-adapters: Rust natively, `kui-lua`'s existing harness, a `--conformance` mode on
-the C example beside its `--headless` one, and `assertParity` in `test.mjs`.
-Wire all four into the `check` job.
-
-Goal: the parity table becomes a build failure instead of a document.
-
 **Two scenes added (2026-09-04), from mutation-testing the Node encoder.**
 `float`'s full config was symmetric — `at` equal to `self_at`, `dx` equal to
 `dy`, and attached at a point already inside the viewport — so a binding
@@ -263,6 +244,26 @@ and Lua adapters fail on them now too, which is the point of putting the fix
 here rather than in `test.mjs`. **The lesson generalizes: a scene built from
 symmetric values pins nothing about order.** Prefer distinct numbers per
 axis and per slot when adding one.
+
+The original finding:
+
+**This is the root cause of P1–P4, not a fifth instance of them.**
+
+`packages/kui/test.mjs` renders every schema prop, every composite and every
+element through the binary, JSON and object paths and asserts byte-identical
+quads. That mechanism exists because those three paths live in one language with
+one harness. Lua, C and Rust each stand alone; nothing renders the same scene
+through all four and compares. Which is why a whole accessibility behaviour is
+missing from C and a documented Lua key is wrong, both with a green build.
+
+Build a scene corpus in `kui-core` — named scenes plus expected quads, access
+tree and events, covering every `CUSTOM` and `ELEMENTS` row — and four thin
+adapters: Rust natively, `kui-lua`'s existing harness, a `--conformance` mode on
+the C example beside its `--headless` one, and `assertParity` in `test.mjs`.
+Wire all four into the `check` job.
+
+Goal: the parity table becomes a build failure instead of a document.
+
 ### `.` P8 — Add macOS and Windows smoke jobs — **partly done (2026-09-03)**
 
 Everything platform-specific is cross-compiled on one Linux runner and never
@@ -654,19 +655,84 @@ fires twice, and filters on `phase == "down"` — one line in each of
 scancodes and left/right modifier identity, so a keymap binds a character
 and not a position on the board.
 
-### `.` C10 — Flex wrapping, and the smaller layout gaps
+### `.` C10 — Flex wrapping — **done (2026-09-04)**
 
-`crates/kui-core/src/layout.rs` has no wrapping; `Align` is Start/Center/End
-only. Missing: **wrapping** (tag lists, chip toolbars, responsive button rows —
-no userland workaround short of measuring everything by hand), **space-between /
-around / evenly** (a grow spacer covers it, so low priority), **baseline
-cross-alignment**, **aspect ratio**.
+Wrapping shipped as two plain schema rows, `wrapChildren` and `crossGap`, so
+all four bindings got it from the table. The name is not `wrap`: that one is
+already the text prop that picks where a line breaks inside a paragraph, and
+the two meet on `<edit>`, which takes container and text props at once.
 
-Wrapping first, the rest as follow-ups. It changes the passes structurally —
-children group into lines before main-axis distribution, and the cross-axis fit
-becomes a sum of line heights. Read `shrink_axis`'s comment carefully: wrapping
-and shrinking are alternative responses to the same overflow and need a defined
-interaction. Bench it; the solver is the hot path.
+**Rows only, and that is structural rather than unfinished.** Breaking needs a
+definite main size, and the five passes hand a *row* one at exactly the right
+moment — its width is final in pass 2, one pass before the cross-axis fit in
+pass 3 that has to sum the lines. A column is the mirror image and does not
+work: its main size is not resolved until pass 4, two passes *after* the fit
+that would need the lines, and its cross-axis grow (pass 2) would be sizing
+children against a container whose columns do not exist yet. `wrapChildren` on
+a column, or on a `scrollX` row (an unbounded axis has nothing to break
+against), lays out as if it were absent and raises `diag::WRAP_IGNORED` —
+silence there would read as "wrapping is broken". Column wrap wants a sixth
+pass, or a re-measure; C12 carries it.
+
+The two rules worth knowing: **wrapping answers overflow before shrinking
+does**, and greedy breaking guarantees the only line that can still overflow
+holds a single child too wide for the box — so `shrink_axis` grew an
+`only_line` filter and runs on that line alone, instead of squeezing chips that
+are comfortable on other lines. And **lines share the container's leftover
+cross space equally** (CSS's `align-content: stretch`), which is what makes a
+wrapping row that happens to fit on one line lay out *identically* to an
+unwrapped one — `a_row_that_fits_lays_out_exactly_like_an_unwrapped_one`
+asserts exactly that, node for node, so the flag is safe to leave on.
+
+Twenty-one tests in `crates/kui-core/tests/wrap_layout.rs` against a
+deterministic `TextMeasure` stub, a `wrap` scene in the corpus that all four
+bindings reproduce byte for byte, and a bench pair
+(`frame_10k_chips_wrapped` / `_unwrapped`): 1.24 ms against 1.06 ms for 10k
+chips in 100 rows that each break into several lines — the worst case, and the
+same cost as the existing `frame_10k_rects`. Nothing that does not wrap pays.
+
+### `.` C12 — Wrapping a column
+
+C10 shipped rows and says why a column cannot follow in the current pass order.
+Doing it means one of: a sixth pass (break columns after `grow_heights`, then
+re-run the cross-axis fit and grow for wrapping containers only), or making a
+wrapping column's cross size definite by fiat (only `Fixed`/`Grow`/`Percent`
+widths wrap, `Fit` warns). The second is cheap and covers the real case — a
+column with a definite height in a definite-width parent — but leaves
+`width: grow` children inside it sized against the container rather than their
+column, which is the half that actually needs the extra pass.
+
+Nobody has asked for it. Wait for a view that wants it, and let that view say
+which of the two is enough.
+
+### `.` C13 — `space-between` / `around` / `evenly`, and baseline alignment
+
+Two `Align` variants, and neither needs a new pass.
+
+`Align::SpaceBetween` / `SpaceAround` / `SpaceEvenly` on `main_align` change one
+expression in `positions`: today the free space becomes one offset before the
+first child, and these spread it between them instead. A grow spacer already
+covers `space-between` (`<box width="grow"/>` between two children), which is
+why this stayed low priority — but it does not cover `space-around`, and it
+costs a node. With wrapping in, they apply per line, which is what CSS does.
+
+`Align::Baseline` on `cross_align` is the one with a real dependency: a line's
+baseline is the max ascent of its children, and the core does not carry an
+ascent per node — `TextMeasure` returns a `Size`. It needs a third number out
+of measurement (text nodes have one; a container's is its first baseline-y
+child's, and a box with none falls back to its bottom edge, per CSS). Worth it
+for the case it fixes: two text sizes on one row sit on different lines today,
+which is visible in any label-plus-value row.
+
+### `.` C14 — Aspect ratio
+
+"Square", or "16:9", without knowing either dimension. `Sizing::Aspect(f32)` on
+one axis (the other resolves first, then this multiplies it) is the smaller
+change and reads like the rest of `Sizing`; a separate `aspect` clamp applied
+beside `min`/`max` is the more CSS-like one and composes with `Grow`. Images
+already do half of it — a `Fit` height on an `<image>` preserves the intrinsic
+aspect against a final width (`fit_heights`), so the machinery and the pass
+ordering are proven; this generalises it to a declared ratio on any node.
 
 ### `.` C11 — Build multi-window
 
@@ -883,23 +949,32 @@ found, at which point writing the section is the obvious next move.
 The change itself is not in the changelog: that file lists what an app gains
 and what it can delete, and release tooling is neither.
 
-### `.` X3 — List the missing input modes in Status / next
+### `.` X3 — List the missing input modes in Status / next — **mostly done (2026-09-04)**
 
-The section is unusually honest about z-index, exit animations, layout-query
-depth, audio and editing scope. That honesty is why the omissions it *doesn't*
-mention read as present: no touch or pen input, no flex wrapping (C10). Add
-them, grouped, in the section's existing tone. (Modal containment was on this
+Both halves landed. The section now names the layout gap and the benches
+paragraph covers every frame bench: `frame_10k_rects_with_access_tree` and
+`frame_10k_rects_with_shadows_and_opacity` as ratios against the frames they
+extend, and C10 added the `frame_10k_chips_wrapped` / `_unwrapped` pair the
+same way. All of them are ratios rather than rows because they were measured
+on a different machine from the table's.
+
+The flex-wrap line was written as "no flex wrapping" and then rewritten by
+C10, which shipped it: what the section carries now is the remainder — a
+column that cannot wrap, no `align-content`, no `space-between` / `around` /
+`evenly`, no baseline, no aspect ratio, and `Dir` with no reverse. That is
+the shape this row wanted, and a gap being closed between writing it down and
+reading it back is the system working.
+
+**Still open: no touch or pen input.** It does not reach the core at all, and
+the section says nothing about it, so it reads as present. Add it in the
+section's existing tone, grouped with the pointer paragraph.
+
+The precedent, for whoever writes that line: modal containment was on this
 list until C1 shipped it; the pointer buttons went on it with C2, which routes
 only the secondary one; cursor shapes came off it with C3, and programmatic
 scrolling with C4. C9 put key releases in the section as a *fixed* line and
 left the real remainder there: no physical scancodes, no left/right modifier
-identity, and unnamed keys dropped rather than delivered.)
-
-The performance table also lists four benches where `benches/frame.rs` has eight —
-`frame_10k_rects_with_access_tree` is omitted, and it is the one a reader worried
-about the cost of the accessibility work would look for. (The three list benches
-C5 added are described in a paragraph under the table rather than as rows,
-because they were measured on a slower machine than the table's.)
+identity, and unnamed keys dropped rather than delivered.
 
 ---
 

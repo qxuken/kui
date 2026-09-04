@@ -6,6 +6,10 @@
 //! 4. grow heights    (forward)
 //! 5. positions       (forward)
 //!
+//! A wrapping row breaks its children into lines in pass 2 and every later
+//! pass reads that grouping (`Tree::line`); the order is why wrapping is
+//! rows-only, and [`wraps`] says so at length.
+//!
 //! Text measurement goes through `TextMeasure` so the solver is testable with
 //! a deterministic stub and never depends on system fonts.
 
@@ -49,6 +53,142 @@ fn attach(
 /// How far `[pos, pos+len]` sticks out of `[0, limit]`.
 fn overflow(pos: f32, len: f32, limit: f32) -> f32 {
     (-pos).max(0.0) + (pos + len - limit).max(0.0)
+}
+
+/// Whether `i` breaks its children into wrap lines.
+///
+/// Rows only, and never on a main axis that scrolls. Breaking needs a
+/// definite main size to break against, and the pass order hands a row one
+/// — its width is final in pass 2, before its height is measured in pass 3,
+/// so a line's cross extent is known by the time anything needs it. A
+/// column is the mirror image and does not work: its main size is not final
+/// until pass 4, two passes after the cross-axis fit that would have to sum
+/// the lines. `scroll_x` says the same thing a different way — an axis that
+/// scrolls is unbounded, and an unbounded axis has nothing to break
+/// against. `diag::WRAP_IGNORED` reports both.
+fn wraps(tree: &Tree, i: u32) -> bool {
+    let s = tree.specs[i as usize].layout;
+    s.wrap && s.dir == Dir::Row && !s.scroll_x
+}
+
+/// The first in-flow child of `i` (`NIL` when it has none).
+fn first_in_flow(tree: &Tree, i: u32) -> u32 {
+    let mut c = tree.first_child[i as usize];
+    while c != NIL && is_float(tree, c) {
+        c = tree.next_sibling[c as usize];
+    }
+    c
+}
+
+/// The first in-flow child after `c`'s wrap line (`NIL` at the end). Line
+/// numbers only ever go up in child order, so one line's in-flow children
+/// are a contiguous sibling run and `[c, line_end(c))` is the whole line.
+fn line_end(tree: &Tree, c: u32) -> u32 {
+    let l = tree.line[c as usize];
+    let mut n = tree.next_sibling[c as usize];
+    while n != NIL && (is_float(tree, n) || tree.line[n as usize] == l) {
+        n = tree.next_sibling[n as usize];
+    }
+    n
+}
+
+/// Extents of the line `[c, end)`, in one walk: `(main, cross)`.
+///
+/// Main is its children plus the gaps between them. Cross is its tallest
+/// child that has a cross size of its own — Grow and Percent children are
+/// skipped by *sizing*, not by their current number, because they are
+/// sized against the extent this returns and reading them back would make
+/// a line's height depend on whether pass 4 had run yet. Skipping them
+/// measures the same thing in every pass, and matches an unwrapped row,
+/// where a grow child contributes nothing to a fit height either.
+/// Wrapping is rows-only, so main is width and cross is height.
+fn line_extents(tree: &Tree, c: u32, end: u32, gap: f32) -> (f32, f32) {
+    let mut main = 0.0f32;
+    let mut cross = 0.0f32;
+    let mut n = 0u32;
+    let mut k = c;
+    while k != end && k != NIL {
+        if !is_float(tree, k) {
+            let size = tree.size[k as usize];
+            main += size.w;
+            if !matches!(
+                child_sizing(tree, k, AxisSel::Height),
+                Sizing::Grow(_) | Sizing::Percent(_)
+            ) {
+                cross = cross.max(size.h);
+            }
+            n += 1;
+        }
+        k = tree.next_sibling[k as usize];
+    }
+    if n > 1 {
+        main += gap * (n - 1) as f32;
+    }
+    (main, cross)
+}
+
+/// A wrapping row's lines in one walk: how many, their stacked cross extent
+/// with the cross gaps between them, and the widest line's main extent.
+fn wrap_measure(tree: &Tree, i: u32) -> (u32, f32, f32) {
+    let spec = tree.specs[i as usize].layout;
+    let mut lines = 0u32;
+    let mut stacked = 0.0f32;
+    let mut widest = 0.0f32;
+    let mut c = first_in_flow(tree, i);
+    while c != NIL {
+        let end = line_end(tree, c);
+        let (main, cross) = line_extents(tree, c, end, spec.gap);
+        stacked += cross;
+        widest = widest.max(main);
+        lines += 1;
+        c = end;
+    }
+    if lines > 1 {
+        stacked += spec.cross_gap * (lines - 1) as f32;
+    }
+    (lines, stacked, widest)
+}
+
+/// Cross space every line gains beyond its content extent: the container's
+/// leftover, shared equally — CSS's `align-content: stretch`, and the
+/// reason a wrapping row that happens to fit on one line lays out exactly
+/// like an unwrapped one. Zero for a Fit height, whose lines already fill
+/// it by construction, and zero when the lines overflow.
+fn line_stretch(lines: u32, stacked: f32, cross_content: f32) -> f32 {
+    if lines == 0 {
+        0.0
+    } else {
+        (cross_content - stacked).max(0.0) / lines as f32
+    }
+}
+
+/// Greedy main-axis line breaking, in child order: a child that no longer
+/// fits the content box starts the next line, and a child too wide to fit
+/// on its own gets a line to itself (and is then the shrink pass's
+/// problem). Grow children break on whatever pass 1 left them — zero, or
+/// their `min_w` — since a grow child has no size of its own until a line
+/// is chosen for it; it then fills what is left of the line it landed on.
+fn break_lines(tree: &mut Tree, i: u32, content: f32, gap: f32) {
+    let mut line = 0u32;
+    let mut used = 0.0f32;
+    let mut n = 0u32;
+    let mut c = tree.first_child[i as usize];
+    while c != NIL {
+        if !is_float(tree, c) {
+            let base = tree.size[c as usize].w;
+            let needed = if n > 0 { gap + base } else { base };
+            if n > 0 && used + needed > content + 0.01 {
+                line += 1;
+                used = base;
+                n = 1;
+            } else {
+                used += needed;
+                n += 1;
+            }
+            tree.line[c as usize] = line;
+        }
+        c = tree.next_sibling[c as usize];
+    }
 }
 
 pub trait TextMeasure {
@@ -179,6 +319,11 @@ fn fit_heights(tree: &mut Tree, text: &mut dyn TextMeasure) {
         tree.size[i].h = spec.clamp_h(match spec.height {
             Sizing::Fixed(px) => px,
             Sizing::Grow(_) | Sizing::Percent(_) => 0.0,
+            // A wrapping row is as tall as its lines stacked: the lines
+            // were chosen in pass 2, against a width that is already final.
+            Sizing::Fit if wraps(tree, i as u32) => {
+                wrap_measure(tree, i as u32).1 + spec.padding.y()
+            }
             Sizing::Fit => {
                 let mut h = 0.0f32;
                 let mut n = 0u32;
@@ -250,52 +395,85 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
     let is_main = (spec.dir == Dir::Row) == (axis == AxisSel::Width);
 
     if is_main {
-        // Fixed/Fit keep their size, Percent takes its cut, Grow splits the rest.
-        let mut used = 0.0f32;
-        let mut grow_total = 0.0f32;
-        let mut n = 0u32;
+        // Percent takes its cut of the content box first: a wrap line
+        // breaks on sizes that are already resolved against the container,
+        // not against the line it is about to land on.
         let mut c = tree.first_child[i as usize];
         while c != NIL {
-            if is_float(tree, c) {
-                c = tree.next_sibling[c as usize];
-                continue;
+            if !is_float(tree, c)
+                && let Sizing::Percent(p) = child_sizing(tree, c, axis)
+            {
+                set_axis_clamped(tree, c, axis, content * p);
             }
-            match child_sizing(tree, c, axis) {
-                Sizing::Grow(f) => grow_total += f.max(0.0),
-                Sizing::Percent(p) => {
-                    set_axis_clamped(tree, c, axis, content * p);
-                    used += get_axis(tree, c, axis);
-                }
-                _ => used += get_axis(tree, c, axis),
-            }
-            n += 1;
             c = tree.next_sibling[c as usize];
-        }
-        if n > 1 {
-            used += spec.gap * (n - 1) as f32;
-        }
-        let mut total = used;
-        if grow_total > 0.0 {
-            let remain = (content - used).max(0.0);
-            let mut c = tree.first_child[i as usize];
-            while c != NIL {
-                if !is_float(tree, c)
-                    && let Sizing::Grow(f) = child_sizing(tree, c, axis)
-                {
-                    set_axis_clamped(tree, c, axis, remain * f.max(0.0) / grow_total);
-                    // Clamps can push a grow child past its share.
-                    total += get_axis(tree, c, axis);
-                }
-                c = tree.next_sibling[c as usize];
-            }
         }
         let scrolls = match axis {
             AxisSel::Width => spec.scroll_x,
             AxisSel::Height => spec.scroll_y,
         };
-        let deficit = total - content;
-        if deficit > 0.5 && !scrolls {
-            shrink_axis(tree, i, axis, deficit);
+        if wraps(tree, i) {
+            break_lines(tree, i, content, spec.gap);
+            let mut c = first_in_flow(tree, i);
+            while c != NIL {
+                let end = line_end(tree, c);
+                let line = tree.line[c as usize];
+                // Each line is its own main-axis box: Grow splits what is
+                // left of *its* line.
+                let total = distribute_run(tree, c, end, axis, content, spec.gap);
+                // Wrapping and shrinking answer the same overflow, and
+                // wrapping answers it first: greedy breaking never puts a
+                // second child on a line that is already full, so the only
+                // line that can still overflow is one holding a single
+                // child too wide for the box. Nothing can be broken off
+                // that, which is exactly when shrinking is the remaining
+                // answer — applied to that line alone, so a wide chip
+                // compresses without dragging its neighbours on other
+                // lines down with it.
+                let deficit = total - content;
+                if deficit > 0.5 {
+                    shrink_axis(tree, i, axis, deficit, Some(line));
+                }
+                c = end;
+            }
+        } else {
+            // Fixed/Fit keep their size, Percent has taken its cut, Grow
+            // splits the rest.
+            let total = distribute_run(
+                tree,
+                tree.first_child[i as usize],
+                NIL,
+                axis,
+                content,
+                spec.gap,
+            );
+            let deficit = total - content;
+            if deficit > 0.5 && !scrolls {
+                shrink_axis(tree, i, axis, deficit, None);
+            }
+        }
+    } else if wraps(tree, i) {
+        // Cross axis of a wrapping row: a Grow child fills *its line*, not
+        // the container. The lines share the container's leftover equally
+        // (see `line_stretch`), so with one line this is the branch below
+        // exactly, and a row that happens not to wrap keeps its old layout.
+        let (lines, stacked, _) = wrap_measure(tree, i);
+        let stretch = line_stretch(lines, stacked, content);
+        let mut c = first_in_flow(tree, i);
+        while c != NIL {
+            let end = line_end(tree, c);
+            let extent = line_extents(tree, c, end, spec.gap).1 + stretch;
+            let mut k = c;
+            while k != end && k != NIL {
+                if !is_float(tree, k) {
+                    match child_sizing(tree, k, axis) {
+                        Sizing::Grow(_) => set_axis_clamped(tree, k, axis, extent),
+                        Sizing::Percent(p) => set_axis_clamped(tree, k, axis, extent * p),
+                        _ => {}
+                    }
+                }
+                k = tree.next_sibling[k as usize];
+            }
+            c = end;
         }
     } else {
         // Cross axis: Grow/Percent resolve against the content box directly.
@@ -346,6 +524,52 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
     }
 }
 
+/// Resolves the Grow children of one main-axis run — a whole child list
+/// (`end == NIL`) or one wrap line — into `content`, and returns what the
+/// run ends up occupying, gaps included.
+fn distribute_run(
+    tree: &mut Tree,
+    start: u32,
+    end: u32,
+    axis: AxisSel,
+    content: f32,
+    gap: f32,
+) -> f32 {
+    let mut used = 0.0f32;
+    let mut grow_total = 0.0f32;
+    let mut n = 0u32;
+    let mut c = start;
+    while c != end && c != NIL {
+        if !is_float(tree, c) {
+            match child_sizing(tree, c, axis) {
+                Sizing::Grow(f) => grow_total += f.max(0.0),
+                _ => used += get_axis(tree, c, axis),
+            }
+            n += 1;
+        }
+        c = tree.next_sibling[c as usize];
+    }
+    if n > 1 {
+        used += gap * (n - 1) as f32;
+    }
+    let mut total = used;
+    if grow_total > 0.0 {
+        let remain = (content - used).max(0.0);
+        let mut c = start;
+        while c != end && c != NIL {
+            if !is_float(tree, c)
+                && let Sizing::Grow(f) = child_sizing(tree, c, axis)
+            {
+                set_axis_clamped(tree, c, axis, remain * f.max(0.0) / grow_total);
+                // Clamps can push a grow child past its share.
+                total += get_axis(tree, c, axis);
+            }
+            c = tree.next_sibling[c as usize];
+        }
+    }
+    total
+}
+
 /// The shrink pass: pays off `deficit` (how far in-flow children overflow
 /// the parent's main-axis content box) by compressing Fit-sized children
 /// toward their min (default 0), largest first — so equal children end up
@@ -353,9 +577,17 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
 /// keep their declared size; Grow never overflows. Text shrinks in width
 /// (it rewraps at the new width in fit_heights) but never in height. Scroll
 /// axes skip this entirely — overflow is the point of a scroll container.
-fn shrink_axis(tree: &mut Tree, i: u32, axis: AxisSel, mut deficit: f32) {
+///
+/// `only_line` restricts it to one wrap line. A wrapping container reaches
+/// here only for a line it could not break any further (a single child
+/// wider than the box), so the compression stays on that line instead of
+/// squeezing children that are already comfortable on other ones.
+fn shrink_axis(tree: &mut Tree, i: u32, axis: AxisSel, mut deficit: f32, only_line: Option<u32>) {
     let shrinkable = |tree: &Tree, c: u32| -> Option<f32> {
         if is_float(tree, c) || child_sizing(tree, c, axis) != Sizing::Fit {
+            return None;
+        }
+        if only_line.is_some_and(|l| tree.line[c as usize] != l) {
             return None;
         }
         // Squashing text/editors vertically would clip lines, and images
@@ -466,6 +698,73 @@ fn set_axis_clamped(tree: &mut Tree, c: u32, axis: AxisSel, v: f32) {
     set_axis(tree, c, axis, v);
 }
 
+/// Places `c`, which is out of flow, against its anchor.
+fn place_float(
+    tree: &mut Tree,
+    cfg: crate::spec::FloatConfig,
+    c: u32,
+    parent: Rect,
+    viewport: Size,
+) {
+    let anchor = match cfg.anchor {
+        FloatAnchor::Parent => parent,
+        FloatAnchor::Viewport => Rect::new(0.0, 0.0, viewport.w, viewport.h),
+    };
+    let cs = tree.size[c as usize];
+    let mut x = attach(
+        anchor.x,
+        anchor.w,
+        cs.w,
+        cfg.anchor_point.0,
+        cfg.self_point.0,
+        cfg.offset.x,
+    );
+    let mut y = attach(
+        anchor.y,
+        anchor.h,
+        cs.h,
+        cfg.anchor_point.1,
+        cfg.self_point.1,
+        cfg.offset.y,
+    );
+    // Mirroring across the viewport itself would teleport a
+    // cursor-anchored float to the opposite side of the window,
+    // so viewport floats only clamp.
+    if cfg.fit && cfg.anchor == FloatAnchor::Parent {
+        // Mirror the attachment across the anchor per axis when
+        // the mirrored side is less off-screen (ties keep the
+        // declared side), then clamp the rest. Clamp order pins
+        // the top/left edge on screen when nothing fits.
+        let fx = attach(
+            anchor.x,
+            anchor.w,
+            cs.w,
+            mirror(cfg.anchor_point.0),
+            mirror(cfg.self_point.0),
+            -cfg.offset.x,
+        );
+        if overflow(x, cs.w, viewport.w) > overflow(fx, cs.w, viewport.w) {
+            x = fx;
+        }
+        let fy = attach(
+            anchor.y,
+            anchor.h,
+            cs.h,
+            mirror(cfg.anchor_point.1),
+            mirror(cfg.self_point.1),
+            -cfg.offset.y,
+        );
+        if overflow(y, cs.h, viewport.h) > overflow(fy, cs.h, viewport.h) {
+            y = fy;
+        }
+    }
+    if cfg.fit {
+        x = x.min(viewport.w - cs.w).max(0.0);
+        y = y.min(viewport.h - cs.h).max(0.0);
+    }
+    tree.pos[c as usize] = Vec2::new(x, y);
+}
+
 pub(crate) fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Size) {
     for i in 0..tree.len() {
         if tree.parent[i] == NIL {
@@ -474,6 +773,7 @@ pub(crate) fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Siz
         let spec = tree.specs[i].layout;
         let origin = tree.pos[i];
         let size = tree.size[i];
+        let wrap = wraps(tree, i as u32);
 
         let (main_content, cross_content, main_pad_start, cross_pad_start) = match spec.dir {
             Dir::Row => (
@@ -490,24 +790,35 @@ pub(crate) fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Siz
             ),
         };
 
-        let mut total_main = 0.0f32;
-        let mut max_cross = 0.0f32;
-        let mut n = 0u32;
-        for c in tree.children(i as u32) {
-            if is_float(tree, c) {
-                continue;
+        // The content box the children occupy, in main/cross terms. For a
+        // wrapping row that is the widest line by the longest stack of
+        // lines; for everything else the one run of children.
+        let mut stretch = 0.0f32;
+        let (total_main, max_cross) = if wrap {
+            let (lines, stacked, widest) = wrap_measure(tree, i as u32);
+            stretch = line_stretch(lines, stacked, cross_content);
+            (widest, stacked + stretch * lines as f32)
+        } else {
+            let mut total_main = 0.0f32;
+            let mut max_cross = 0.0f32;
+            let mut n = 0u32;
+            for c in tree.children(i as u32) {
+                if is_float(tree, c) {
+                    continue;
+                }
+                let (c_main, c_cross) = match spec.dir {
+                    Dir::Row => (tree.size[c as usize].w, tree.size[c as usize].h),
+                    Dir::Column => (tree.size[c as usize].h, tree.size[c as usize].w),
+                };
+                total_main += c_main;
+                max_cross = max_cross.max(c_cross);
+                n += 1;
             }
-            let (c_main, c_cross) = match spec.dir {
-                Dir::Row => (tree.size[c as usize].w, tree.size[c as usize].h),
-                Dir::Column => (tree.size[c as usize].h, tree.size[c as usize].w),
-            };
-            total_main += c_main;
-            max_cross = max_cross.max(c_cross);
-            n += 1;
-        }
-        if n > 1 {
-            total_main += spec.gap * (n - 1) as f32;
-        }
+            if n > 1 {
+                total_main += spec.gap * (n - 1) as f32;
+            }
+            (total_main, max_cross)
+        };
 
         // Scroll containers: clamp the retained offset to this frame's
         // overflow and shift children by it.
@@ -540,105 +851,60 @@ pub(crate) fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Siz
                 max,
             );
         }
+        let (main_scroll, cross_scroll) = match spec.dir {
+            Dir::Row => (offset.x, offset.y),
+            Dir::Column => (offset.y, offset.x),
+        };
 
-        let free = (main_content - total_main).max(0.0);
-        let mut cursor = main_pad_start
-            + match spec.main_align {
-                Align::Start => 0.0,
-                Align::Center => free / 2.0,
-                Align::End => free,
-            }
-            - match spec.dir {
-                Dir::Row => offset.x,
-                Dir::Column => offset.y,
-            };
-
+        // Out of flow first, so the in-flow walk is one shape whether or
+        // not it goes line by line.
         let mut c = tree.first_child[i];
         while c != NIL {
             if let Some(cfg) = tree.specs[c as usize].layout.float {
-                // Anchored placement, out of flow.
-                let anchor = match cfg.anchor {
-                    FloatAnchor::Parent => Rect::from_pos_size(origin, size),
-                    FloatAnchor::Viewport => Rect::new(0.0, 0.0, viewport.w, viewport.h),
-                };
-                let cs = tree.size[c as usize];
-                let mut x = attach(
-                    anchor.x,
-                    anchor.w,
-                    cs.w,
-                    cfg.anchor_point.0,
-                    cfg.self_point.0,
-                    cfg.offset.x,
-                );
-                let mut y = attach(
-                    anchor.y,
-                    anchor.h,
-                    cs.h,
-                    cfg.anchor_point.1,
-                    cfg.self_point.1,
-                    cfg.offset.y,
-                );
-                // Mirroring across the viewport itself would teleport a
-                // cursor-anchored float to the opposite side of the window,
-                // so viewport floats only clamp.
-                if cfg.fit && cfg.anchor == FloatAnchor::Parent {
-                    // Mirror the attachment across the anchor per axis when
-                    // the mirrored side is less off-screen (ties keep the
-                    // declared side), then clamp the rest. Clamp order pins
-                    // the top/left edge on screen when nothing fits.
-                    let fx = attach(
-                        anchor.x,
-                        anchor.w,
-                        cs.w,
-                        mirror(cfg.anchor_point.0),
-                        mirror(cfg.self_point.0),
-                        -cfg.offset.x,
-                    );
-                    if overflow(x, cs.w, viewport.w) > overflow(fx, cs.w, viewport.w) {
-                        x = fx;
-                    }
-                    let fy = attach(
-                        anchor.y,
-                        anchor.h,
-                        cs.h,
-                        mirror(cfg.anchor_point.1),
-                        mirror(cfg.self_point.1),
-                        -cfg.offset.y,
-                    );
-                    if overflow(y, cs.h, viewport.h) > overflow(fy, cs.h, viewport.h) {
-                        y = fy;
-                    }
-                }
-                if cfg.fit {
-                    x = x.min(viewport.w - cs.w).max(0.0);
-                    y = y.min(viewport.h - cs.h).max(0.0);
-                }
-                tree.pos[c as usize] = Vec2::new(x, y);
-                c = tree.next_sibling[c as usize];
-                continue;
+                place_float(tree, cfg, c, Rect::from_pos_size(origin, size), viewport);
             }
-            let cs = tree.size[c as usize];
-            let (c_main, c_cross) = match spec.dir {
-                Dir::Row => (cs.w, cs.h),
-                Dir::Column => (cs.h, cs.w),
-            };
-            let cross_free = (cross_content - c_cross).max(0.0);
-            let cross_off = cross_pad_start
-                + match spec.cross_align {
-                    Align::Start => 0.0,
-                    Align::Center => cross_free / 2.0,
-                    Align::End => cross_free,
-                };
-            let cross_scroll = match spec.dir {
-                Dir::Row => offset.y,
-                Dir::Column => offset.x,
-            };
-            tree.pos[c as usize] = match spec.dir {
-                Dir::Row => Vec2::new(origin.x + cursor, origin.y + cross_off - cross_scroll),
-                Dir::Column => Vec2::new(origin.x + cross_off - cross_scroll, origin.y + cursor),
-            };
-            cursor += c_main + spec.gap;
             c = tree.next_sibling[c as usize];
+        }
+
+        // One line for an unwrapped container, N for a wrapping row. Main
+        // alignment places each line's children in the content box the way
+        // it places the single run's, and cross alignment places a child in
+        // its own line; with one line the two compose back into the
+        // unwrapped placement exactly.
+        let mut cross_cursor = cross_pad_start - cross_scroll;
+        let mut line_start = first_in_flow(tree, i as u32);
+        while line_start != NIL {
+            let (end, extent, run_main) = if wrap {
+                let end = line_end(tree, line_start);
+                let (main, cross) = line_extents(tree, line_start, end, spec.gap);
+                (end, cross + stretch, main)
+            } else {
+                (NIL, cross_content, total_main)
+            };
+            let free = (main_content - run_main).max(0.0);
+            let mut cursor = main_pad_start + align_factor(spec.main_align) * free - main_scroll;
+            let mut c = line_start;
+            while c != end && c != NIL {
+                if is_float(tree, c) {
+                    c = tree.next_sibling[c as usize];
+                    continue;
+                }
+                let cs = tree.size[c as usize];
+                let (c_main, c_cross) = match spec.dir {
+                    Dir::Row => (cs.w, cs.h),
+                    Dir::Column => (cs.h, cs.w),
+                };
+                let cross_off =
+                    cross_cursor + align_factor(spec.cross_align) * (extent - c_cross).max(0.0);
+                tree.pos[c as usize] = match spec.dir {
+                    Dir::Row => Vec2::new(origin.x + cursor, origin.y + cross_off),
+                    Dir::Column => Vec2::new(origin.x + cross_off, origin.y + cursor),
+                };
+                cursor += c_main + spec.gap;
+                c = tree.next_sibling[c as usize];
+            }
+            cross_cursor += extent + spec.cross_gap;
+            line_start = end;
         }
     }
 }

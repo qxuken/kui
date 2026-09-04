@@ -445,6 +445,23 @@ grow heights → · positions →. Sizing: `Fit`, `Grow(f)`, `Fixed(px)`,
 gives "track the window, cap at reading width" and text rewraps on resize);
 row/column direction, padding, gap, start/center/end alignment on both axes.
 
+Wrapping: `.wrap()` (`wrapChildren` in JSX, `wrap_children` in Lua) breaks a
+row's children onto more lines when they don't fit the main axis, with
+`.cross_gap()` between the lines — a tag list, a chip toolbar, a button row
+that reflows when the window narrows. A row that happens to fit lays out
+identically to one that never wraps, node for node, so the flag is safe to
+leave on: main alignment places each line the way it placed the single run,
+and the lines share the container's leftover cross space equally (CSS's
+`align-content: stretch`), which with one line composes back into the plain
+placement. Wrapping and shrinking are two answers to the same overflow, and
+wrapping goes first — a child that can move to the next line moves rather
+than being squeezed, and only a child too wide to fit a line on its own
+falls through to the shrink pass, on that line alone. Rows only: breaking
+needs a definite main size, and the pass order gives a row one (its width is
+final before its height is measured) where a column's arrives two passes too
+late; `wrapChildren` on a column, or on a `scroll_x` row, lays out as if it
+were absent and raises a `wrap-ignored` warning.
+
 Out-of-flow: `.float(FloatConfig)` takes a node out of flex flow — it doesn't
 consume space in its parent, positions by attach points against its parent's
 rect or the viewport (plus an offset), sizes Grow/Percent against that anchor,
@@ -517,6 +534,24 @@ caches — full frame: build + layout + emit):
 | 10k plain rects | ~510 µs |
 | 10k rects + 1.2k texts + 2.5k hit regions | ~740 µs |
 | 16×64-deep nesting chains | ~58 µs |
+
+Four more frame benches are not in the table because they were measured on a
+different (slower) machine; each is a ratio against the frame it extends, so
+compare it with that one rather than with the rows above.
+`frame_10k_rects_with_access_tree` is the "10k rects + 1.2k texts + 2.5k hit
+regions" frame with `core.access_tree()` derived after it — what a frame costs
+while assistive technology is attached — and runs **~1.27×** that frame
+(~2.05 ms against ~1.62 ms there). `frame_10k_rects_with_shadows_and_opacity`
+is the plain 10k grid with only the paint props switched on: every cell casts a
+shadow under a faded root, which is **twice the quads** (20k against 10k) for
+**~10%** more frame time (~1.35 ms against ~1.22 ms there), because most of a
+frame is build and layout rather than emitting quads. And
+`frame_10k_chips_wrapped` / `frame_10k_chips_unwrapped` are the same pair for
+wrapping: 10k chips in 100 rows that each break onto several lines run
+**~1.16×** the same tree laid out one line per row (~1.24 ms against ~1.06 ms
+there) — the worst case, since every row wraps. A row that does not wrap pays
+nothing, because the break, the per-line grow and the per-line alignment are
+all behind the flag.
 
 Long lists (`list_10k_rows_naive` / `list_10k_rows_virtual` /
 `list_100k_rows_virtual`): a 10k-row scrolled list, held at its middle so
@@ -632,6 +667,15 @@ paint prop's worth of work — use an image or stack solids), no inset or multip
 opacity is a per-quad alpha multiply rather than an offscreen composite, so overlapping pieces
 of one faded subtree show their seams. Clipping is rect-only, so a rounded scroll container
 does not round its children's corners.
+Wrapping is rows only, for the pass-order reason above: a **column** that outgrows its
+height is still one line, so it shrinks its `Fit` children toward their `min` (or
+overflows) rather than moving anything into a second column, and `Dir` is `Row` or
+`Column` with no reverse. Beyond that the alignment vocabulary is start/center/end and
+nothing else — no `align-content` (a wrapping row's lines always share the leftover cross
+space equally), no `space-between` / `around` / `evenly` on either axis (a `grow` spacer
+node covers the first of the three), and no baseline cross-alignment, so two text sizes on
+one row align by box and sit on different lines. There is no aspect ratio either: "square"
+or "16:9" needs one of the two dimensions known.
 Layout queries stop at the node: `measure_text` and `on_layout` give whole-string and whole-node
 rects, not the boxes of lines or glyphs inside a paragraph. Accessibility, keyboard focus and
 modality are data (ADR 0001, 0002 and 0003); arrow keys inside radio groups, tab lists and lists,

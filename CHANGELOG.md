@@ -9,6 +9,55 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **Flex wrapping: `wrapChildren` and `crossGap`** (backlog C10). A row of
+  tags, a toolbar of chips, a button row that has to survive a narrow
+  window — none of them could be written. The solver's only answer to
+  children that overflow the main axis was to squeeze them (or, on a
+  scroll axis, to let them spill), and the userland workaround was to
+  measure every item with `measure_text` and assemble the rows by hand.
+  `wrapChildren` breaks them onto more lines instead; `crossGap` is the
+  space between the lines, as `gap` is the space along one.
+  **A wrapping row that happens to fit lays out identically to a plain
+  one** — not approximately, node for node — so the flag is safe to leave
+  on a row that only sometimes overflows, which is the whole point of it.
+  That falls out of the two rules underneath: main alignment places each
+  line in the content box the way it placed the single run, and the lines
+  share the container's leftover cross space equally (CSS's
+  `align-content: stretch`), so with one line the two compose back into
+  the old placement exactly.
+  **Wrapping answers overflow before shrinking does.** They are two
+  answers to the same question and they now have an order: a child that
+  can move to the next line moves, and its neighbours keep their size —
+  where before, one wide chip cost every chip in the row its width.
+  Greedy breaking leaves exactly one case a break cannot fix (a single
+  child wider than the box, alone on its line), and that is where
+  shrinking takes over, on that line alone. A text node too long for the
+  row gets its own line and rewraps inside it.
+  **Rows only, and the reason is the pass order rather than an unfinished
+  half.** Breaking needs a definite main size, and a row's width is final
+  one pass before the height that has to sum the lines; a column's main
+  size is not resolved until two passes *after* the fit that would need
+  them. `wrapChildren` on a column, or on a `scrollX` row (an axis with
+  no bound has nothing to break against), lays out as if it were absent
+  and says so — a new `wrap-ignored` warning, rather than the silence
+  that reads as a broken feature.
+  It is `wrapChildren` and not `wrap` because `wrap` is taken, by the
+  text prop that picks where a line breaks inside one paragraph, and the
+  two meet on `<edit>`. Two plain schema rows, so Lua (`wrap_children`,
+  `cross_gap`), JSX and the generated TS types got them free, and
+  `KuiSpec` gained two appended fields. A `wrap` scene joins the corpus,
+  so all four bindings reproduce a two-line row byte for byte.
+  Benched: 10k chips in 100 rows that each break into several lines cost
+  1.24 ms against 1.06 ms for the same tree not wrapping — the same as
+  the existing 10k-rect frame. A row that does not wrap pays nothing.
+  **What you can delete:** every hand-rolled row-packer — the
+  `measure_text` loop that accumulates widths, the running total, the
+  "start a new row" branch and the outer column holding the rows — and
+  the guesses that stood in for it: the fixed item width that made the
+  arithmetic possible, the `maxWidth` chosen so N items always fit, and
+  the horizontal scroll container used because a chip list had nowhere
+  else to go.
+
 - **`KeyUp`, and one payload shape for both halves of a key**
   (backlog C9). `InputEvent::KeyDown` had no counterpart, so a held-key
   interaction could not be written at all — WASD movement, press-and-hold
