@@ -2,7 +2,7 @@
 //! `WindowCommand`s for the driver, never `UiEvent`s — through a live `Core`.
 
 use kui_core::{
-    Core, InputEvent, NodeSpec, Size, Sizing, UiEvent, Vec2, WindowButton, WindowCommand,
+    Core, InputEvent, NodeSpec, Size, Sizing, UiEvent, Vec2, WindowButton, WindowCommand, WindowId,
 };
 
 /// Builds a custom-chrome-ish frame: a 40px drag strip with min/max/close
@@ -214,4 +214,50 @@ fn titlebar_insets_past_the_native_controls() {
     // The rect is a keep-out area, not a width: an origin that is not the
     // window's still has to be cleared, which is why the widget adds `x`.
     assert_eq!(title_x(Some(Rect::new(4.0, 0.0, 78.0, 28.0))), 82.0);
+}
+
+/// ADR 0004's step 2: every event a core hands out says which window it came
+/// from, and the answer is the id the driver put on `env.window` — the same
+/// place `maximized` and the rest of the window facts arrive.
+///
+/// The producers cannot know it (a hit test has no window), so this is really
+/// a test that the stamp covers *both* ways out: `handle_input`, and
+/// `take_pending_events` for what a finished frame raised on its own.
+#[test]
+fn events_carry_the_window_the_driver_declared() {
+    let mut core = Core::new();
+    frame(&mut core);
+    let evs = drive(&mut core, &click_at(50.0, 60.0));
+    assert_eq!(evs.len(), 1);
+    assert_eq!(
+        evs[0].window,
+        WindowId::MAIN,
+        "the window an app starts in, and 0 across every transport"
+    );
+
+    core.env.window.id = WindowId(7);
+    // A changed viewport is the pending half: raised at `begin_frame`, taken
+    // after `finish_frame`, and never routed through `handle_input`.
+    frame(&mut core);
+    let mut ui = core.frame(Size::new(500.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.finish();
+    let pending = core.take_pending_events();
+    assert!(
+        pending
+            .iter()
+            .any(|ev| ev.payload.get("kind").and_then(kui_core::Value::as_str) == Some("resize")),
+        "the viewport change should have raised a resize: {pending:?}"
+    );
+    assert!(
+        pending.iter().all(|ev| ev.window == WindowId(7)),
+        "pending events are stamped too: {pending:?}"
+    );
+
+    // And the other way out. This batch carries both kinds — the click, and
+    // the resize back to the original viewport that rode along with it.
+    frame(&mut core);
+    let evs = drive(&mut core, &click_at(50.0, 60.0));
+    assert!(evs.len() > 1, "click and resize: {evs:?}");
+    assert!(evs.iter().all(|ev| ev.window == WindowId(7)), "{evs:?}");
 }

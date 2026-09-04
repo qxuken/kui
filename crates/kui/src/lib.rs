@@ -18,7 +18,9 @@ use winit::dpi::LogicalSize;
 use winit::event::{ElementState, Ime, MouseButton as WinitButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
-use winit::window::{CursorIcon, ResizeDirection, Window, WindowId};
+// `WindowId` is `kui_core`'s here (re-exported above); winit's own is the
+// OS handle the event loop routes by, and only this file names it.
+use winit::window::{CursorIcon, ResizeDirection, Window, WindowId as WinitWindowId};
 
 pub trait App {
     fn view(&mut self, ui: &mut Ui<'_>);
@@ -564,6 +566,8 @@ impl<A: App> Shell<A> {
             let origin = self.core.edit.origin_of(key).unwrap_or(OriginId::HOST);
             self.route_events(vec![UiEvent {
                 origin,
+                // Built outside the core, so this driver stamps it itself.
+                window: self.core.env.window.id,
                 key,
                 payload: Value::map([("kind", "changed".into())]),
             }]);
@@ -778,6 +782,8 @@ impl<A: App> Shell<A> {
             .and_then(|m| m.refresh_rate_millihertz())
             .map(|mhz| mhz as f32 / 1000.0);
         self.core.env.window = WindowEnv {
+            // One window until ADR 0004's step 3 opens a second.
+            id: WindowId::MAIN,
             custom_chrome: self.chrome != Chrome::Native,
             maximized: window.is_maximized(),
             fullscreen: window.fullscreen().is_some(),
@@ -951,7 +957,12 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
         self.renderer = Some(renderer);
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _id: WinitWindowId,
+        event: WindowEvent,
+    ) {
         if let (Some(bridge), Some(window)) = (&mut self.access, &self.window) {
             bridge.process_event(window, &event);
         }

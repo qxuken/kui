@@ -25,7 +25,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use kui_core::{
     Align, Color, Core, Edges, EditKey, EditOptions, Enter, FloatConfig, InputEvent, Key, Keyframe,
     Mods, MouseButton, NodeSpec, Rect, Size, Sizing, Span, TextStyle, UiEvent, Value, Vec2,
-    WindowButton, WindowCommand, WindowEnv,
+    WindowButton, WindowCommand,
 };
 
 // ---------------------------------------------------------------------------
@@ -81,7 +81,12 @@ use kui_core::{
 /// [in] struct, which old hosts survive by construction, nor for a new
 /// function: a host that does not call one is unaffected, and one that does
 /// fails to *link*, which is loud.
-pub const KUI_ABI_VERSION: u32 = 2;
+///
+/// ABI 3 is the first release that appended to an [out] struct
+/// (`KuiEvent.window`). Hosts that set `size` need no source change for it;
+/// the bump is for the ones that skipped `kui_abi_version()` and would
+/// otherwise take the short write unaware.
+pub const KUI_ABI_VERSION: u32 = 3;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its
@@ -771,9 +776,9 @@ pub struct KuiSpan {
     pub flags: u32,
 }
 
-/// One polled event ([out]). `size` leads it so that ADR 0004's appended
-/// `window` — and anything after it — reaches a host that has not
-/// recompiled as a shorter write rather than as a longer one.
+/// One polled event ([out]). `size` leads it so that `window` — ABI 3's
+/// append, and anything after it — reaches a host that has not recompiled
+/// as a shorter write rather than as a longer one.
 #[repr(C)]
 pub struct KuiEvent {
     /// Set to `sizeof(KuiEvent)` before the call (`KUI_EVENT_INIT` does);
@@ -783,6 +788,15 @@ pub struct KuiEvent {
     pub key: u64,
     /// Borrowed until the next `kui_poll_event`/`kui_ctx_free`; NULL if none.
     pub payload: *const KuiValue,
+    /// Which window the event came from; 0 (`KUI_WINDOW_MAIN`) until ADR
+    /// 0004's step 3 opens a second one.
+    ///
+    /// **Appended in ABI 3**, and the first field ever appended to an [out]
+    /// struct. It sits after every ABI-1 field on purpose: `ABI_V1_SIZE`
+    /// is measured through `payload`, so a host that reserved the old
+    /// layout still passes [`out_accepts`] and still gets every byte it
+    /// knows about — [`write_out`] simply stops before this one.
+    pub window: u32,
 }
 
 impl Default for KuiEvent {
@@ -792,12 +806,15 @@ impl Default for KuiEvent {
             origin: 0,
             key: 0,
             payload: std::ptr::null(),
+            window: 0,
         }
     }
 }
 
 // SAFETY: `repr(C)` with `size: u32` first.
 unsafe impl OutParam for KuiEvent {
+    /// Through `payload`: the last field ABI 1 shipped, and so still the
+    /// floor now that `window` follows it.
     const ABI_V1_SIZE: u32 = abi_through!(KuiEvent, payload, *const KuiValue);
     fn size_mut(&mut self) -> &mut u32 {
         &mut self.size
@@ -1475,6 +1492,7 @@ pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
                 origin: ev.origin.0,
                 key: ev.key.0,
                 payload: payload_ptr,
+                window: ev.window.0,
                 ..Default::default()
             },
         )
@@ -1543,13 +1561,16 @@ pub extern "C" fn kui_env_set_window(
 ) {
     guard((), || {
         if let Some(c) = unsafe { ctx(ptr) } {
-            c.core().env.window = WindowEnv {
-                custom_chrome,
-                maximized,
-                fullscreen,
-                native_controls: (controls_w > 0.0 && controls_h > 0.0)
-                    .then(|| Rect::new(0.0, 0.0, controls_w, controls_h)),
-            };
+            // Field by field rather than a whole `WindowEnv`, so the one
+            // fact this call does not carry — `id`, which the driver owns
+            // and a C host has no second value for until ADR 0004's step
+            // 3 — keeps whatever it was set to.
+            let win = &mut c.core().env.window;
+            win.custom_chrome = custom_chrome;
+            win.maximized = maximized;
+            win.fullscreen = fullscreen;
+            win.native_controls = (controls_w > 0.0 && controls_h > 0.0)
+                .then(|| Rect::new(0.0, 0.0, controls_w, controls_h));
         }
     });
 }
@@ -3162,6 +3183,7 @@ impl kui::App for CApp {
             origin: ev.origin.0,
             key: ev.key.0,
             payload: &payload,
+            window: ev.window.0,
             ..Default::default()
         };
         cb(self.user, &out);
@@ -4189,11 +4211,13 @@ mod abi_handshake {
     /// grown: a caller that reserved only the first two fields gets them,
     /// and the third — the appended one — is left exactly as it was.
     ///
-    /// `write_out` cannot be exercised this way through the public API
-    /// today, because nothing has been appended to a real [out] struct yet
-    /// (every `ABI_V1_SIZE` still equals its `size_of`). This stands in for
-    /// the first append, so the truncating path is not first exercised by
-    /// the change that depends on it.
+    /// This was written before any real [out] struct had grown, so that
+    /// the truncating path would not be first exercised by the change that
+    /// depends on it. `KuiEvent` has since grown `window`, and
+    /// [`an_abi_2_host_polls_events_without_seeing_the_appended_window`]
+    /// runs the same path through the public API — this one stays as the
+    /// unit-level statement of the rule, on a struct with nothing else
+    /// going on.
     #[test]
     fn a_short_reservation_is_filled_only_as_far_as_it_goes() {
         #[repr(C)]
@@ -4262,6 +4286,53 @@ mod abi_handshake {
         ));
         assert_eq!((old.size, old.was_always_here), (Grown::ABI_V1_SIZE, 11));
         assert_eq!(old.appended_later, 0xdeadbeef);
+    }
+
+    /// The same rule on the real struct, through the real entry point:
+    /// `KuiEvent.window` is ABI 3's append, and a host that predates it —
+    /// one whose `KuiEvent` ends after `payload`, which is the ABI-1 floor
+    /// `out_accepts` measures against — keeps polling events and simply
+    /// never sees the new field.
+    ///
+    /// The old host is spelled as a reservation rather than as a second
+    /// struct because that is all the library ever sees of it: four bytes
+    /// of `size`, and a promise about what lies behind them.
+    #[test]
+    fn an_abi_2_host_polls_events_without_seeing_the_appended_window() {
+        let ctx = ctx_with_a_scroller_and_a_pending_event();
+        let abi2 = KuiEvent::ABI_V1_SIZE;
+        assert!(
+            (abi2 as usize) < std::mem::size_of::<KuiEvent>(),
+            "`window` must sit past the ABI-1 layout, or this proves nothing"
+        );
+
+        let mut ev = KuiEvent {
+            size: abi2,
+            window: 0xdead,
+            ..Default::default()
+        };
+        assert!(kui_poll_event(ctx, &raw mut ev), "the event still arrives");
+        assert_ne!(ev.key, 0, "and the fields it knows are filled");
+        assert!(!ev.payload.is_null());
+        assert_eq!(ev.size, abi2, "`size` reports the prefix that was filled");
+        assert_eq!(
+            ev.window, 0xdead,
+            "the library wrote past what an ABI 2 host reserved"
+        );
+
+        kui_ctx_free(ctx);
+    }
+
+    /// And a host built against this ABI gets the field, which is 0 until
+    /// ADR 0004's step 3 opens a second window.
+    #[test]
+    fn a_current_host_sees_window_and_it_is_the_main_one() {
+        let ctx = ctx_with_a_scroller_and_a_pending_event();
+        let mut ev = KuiEvent::default();
+        assert!(kui_poll_event(ctx, &raw mut ev));
+        assert_eq!(ev.window, 0);
+        assert_eq!(ev.size, std::mem::size_of::<KuiEvent>() as u32);
+        kui_ctx_free(ctx);
     }
 
     /// A reservation smaller than ABI 1 is refused rather than guessed at —
@@ -4760,6 +4831,7 @@ mod abi_parity {
             origin: u16 => "uint16_t",
             key: u64 => "uint64_t",
             payload: *const KuiValue => "const KuiValue *",
+            window: u32 => "uint32_t",
         });
         abi_out_struct!(o, KuiEvent);
 

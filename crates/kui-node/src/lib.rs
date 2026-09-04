@@ -345,7 +345,9 @@ impl Ctx {
     /// `<windowButtons>` and `widgets::window_buttons` start building
     /// something. `refreshHz: null` means "the host cannot tell" (the
     /// default), and `nativeControls: null` means the OS draws nothing over
-    /// our content.
+    /// our content. `window.id` is the one fact here an app never chooses —
+    /// a driver assigns it — and setting it is how a headless test says
+    /// "these events came from that window"; it is 0 otherwise.
     ///
     /// Headless only, and on purpose: a `KuiWindow` has no such call because
     /// its runner reports the real window every frame, and anything set here
@@ -388,6 +390,13 @@ impl Ctx {
         let win = &mut self.core.env.window;
         for (name, v) in w {
             match name.as_str() {
+                "id" => {
+                    win.id = kui_core::WindowId(
+                        v.as_u64()
+                            .and_then(|n| u32::try_from(n).ok())
+                            .ok_or_else(|| err("setEnv(): window.id must be a u32"))?,
+                    )
+                }
                 "customChrome" => win.custom_chrome = flag(name, v)?,
                 "maximized" => win.maximized = flag(name, v)?,
                 "fullscreen" => win.fullscreen = flag(name, v)?,
@@ -624,6 +633,7 @@ fn env_json(core: &mut Core) -> Json {
 
     let win = env.window;
     let mut w = JsonMap::new();
+    w.insert("id".into(), Json::from(win.id.0));
     w.insert("customChrome".into(), Json::Bool(win.custom_chrome));
     w.insert("maximized".into(), Json::Bool(win.maximized));
     w.insert("fullscreen".into(), Json::Bool(win.fullscreen));
@@ -831,8 +841,13 @@ impl KuiWindow {
 // ---------------------------------------------------------------------------
 // The shared surface
 
-/// Pending UI events as `[{origin, key, payload}]` — payloads plain JSON, so
-/// your Elm messages come back out as data.
+/// Pending UI events as `[{origin, window, key, payload}]` — payloads plain
+/// JSON, so your Elm messages come back out as data.
+///
+/// `origin` and `window` are not two readings of the same thing: origin is
+/// which frontend drew the node (0 = your app, 1+ = an extension), window
+/// is which OS window it happened in, and an extension draws into all of
+/// them. `window` is 0 until a frame declares a second one.
 fn events_json(events: Vec<UiEvent>) -> Json {
     Json::Array(
         events
@@ -840,6 +855,7 @@ fn events_json(events: Vec<UiEvent>) -> Json {
             .map(|ev| {
                 let mut o = JsonMap::new();
                 o.insert("origin".into(), Json::from(ev.origin.0));
+                o.insert("window".into(), Json::from(ev.window.0));
                 o.insert("key".into(), Json::String(key_str(ev.key)));
                 o.insert("payload".into(), json_of(&ev.payload));
                 Json::Object(o)
@@ -1007,7 +1023,7 @@ macro_rules! core_methods {
 
             // -- Events ----------------------------------------------------
 
-            /// Events since the last poll: `[{origin, key, payload}]`,
+            /// Events since the last poll: `[{origin, window, key, payload}]`,
             /// payloads as plain data (your Elm messages come back out
             /// here). `A` types them — the app's own union, or one core
             /// message type when only that is being watched.

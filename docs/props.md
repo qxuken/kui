@@ -118,9 +118,12 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 
 ## Events
 
-Events are plain data: `{ origin, key, payload }` from `pollEvents()` in
-Node, `on_event(ev)` in Lua (payload fields plus `node_key`), and
-`kui_poll_event` in C. The payload shapes:
+Events are plain data: `{ origin, window, key, payload }` from
+`pollEvents()` in Node, `on_event(ev)` in Lua (payload fields plus
+`node_key`), and `kui_poll_event` in C. `origin` is which frontend drew
+the node (0 = the app, 1+ = an extension) and `window` is which OS window
+it happened in — an extension draws into all of them, so the two are not
+one field. The payload shapes:
 
 | kind | payload | when |
 |---|---|---|

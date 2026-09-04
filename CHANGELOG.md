@@ -9,6 +9,26 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **Every event says which window it came from** (backlog C11 step 2, ADR
+  0004). `WindowId` is an opaque integer the driver assigns — `WindowId::MAIN`
+  is 0, apps never build one — and it now reaches every transport:
+  `UiEvent::window` in Rust, `window` on a JSX `UiEvent`, `KuiEvent.window`
+  in C. It is 0 everywhere until a frame can declare a second window (step
+  3), so nothing existing changes meaning.
+  It is a **new field and not a second reading of `origin`**, which says
+  which *frontend* drew the node. The two were never the same question and
+  are further apart since `CExtension` shipped: an extension draws into
+  every window there is.
+  `WindowEnv` gained `id`, so a view reads which window it is drawing the
+  way it reads `maximized` — no new query — and that field is also where the
+  event's answer comes from. Producers cannot fill it in (a hit test, the
+  edit buffer and the audio queue are all below the level at which a window
+  exists), so a `Core` stamps its own `env.window.id` onto everything
+  leaving through `handle_input` and `take_pending_events`. One core is one
+  window, so that is the whole of it, and step 3 has only to hand each core
+  its id — no binding has to route by hand. Node reads and writes it as
+  `env().window.id` / `setEnv({window: {id}})`, Lua reads it as
+  `env.window.id`.
 - **The corpus drives a frame under custom chrome, so `windowButtons` is
   covered by a tree instead of a claim** (backlog P9). A scene now declares
   the host window facts it runs under, beside its tree and its steps:
@@ -769,6 +789,20 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Changed
 
+- **`KUI_ABI_VERSION` is 3** (was 2), and `KuiEvent` gained a trailing
+  `uint32_t window`. This is the first field ever appended to an **[out]**
+  struct, so it is the first real run of the growth story ADR 0006 shipped
+  the size handshake for — and it works: `window` sits past `payload`, which
+  is still the ABI-1 floor `out_accepts` measures a reservation against, so a
+  host built against ABI 2 keeps polling events and simply never sees the new
+  field. `size` comes back as the prefix that was filled.
+  **A rebuilt C host needs no source change** — `KUI_EVENT_INIT` already sets
+  `size`. The version still bumps, because a host that skipped its
+  `kui_abi_version()` check would otherwise take that short write without
+  ever having asked for it. `examples/c/counter.c --headless` now asserts
+  both directions: an `offsetof(KuiEvent, window)` reservation still polls
+  and keeps its own bytes past that point, and a current one is filled all
+  the way. `KUI_WINDOW_MAIN` is the name for 0.
 - **`KUI_ABI_VERSION` is 2** (was 1). `KuiQuad` gained `float
   clip_radius[4]`, and `KuiQuad` is a **[lib]** struct — the library
   allocates the array and the host strides it with its own `sizeof` — so per

@@ -6,6 +6,23 @@
 
 use crate::geom::Rect;
 
+/// Which OS window something belongs to: an opaque integer the **driver**
+/// assigns, not a handle an app builds. [`WindowId::MAIN`] is 0 — the window
+/// the launcher opens, and the only one that exists until ADR 0004's step 3
+/// lets a frame declare more.
+///
+/// It crosses every transport as a plain integer — `UiEvent::window` in
+/// Rust, `window` on a JSX `UiEvent`, `KuiEvent.window` in C — so nothing
+/// has to model window identity twice.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct WindowId(pub u32);
+
+impl WindowId {
+    /// The window the app starts in, and the answer everywhere until a
+    /// driver opens a second one.
+    pub const MAIN: WindowId = WindowId(0);
+}
+
 /// Role a node plays in window chrome (set via `NodeSpec::window_drag` /
 /// `NodeSpec::window_button`). Chrome nodes never emit `UiEvent`s — their
 /// interactions become [`WindowCommand`]s for the driver instead.
@@ -52,6 +69,11 @@ pub enum WindowCommand {
 /// nothing at all under native decorations.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct WindowEnv {
+    /// Which window this core is drawing, assigned by the driver. A view
+    /// reads it here rather than through a query, and it is what the core
+    /// stamps onto every `UiEvent` it hands out — so a driver that pushes
+    /// the rest of these facts has already said where its events came from.
+    pub id: WindowId,
     /// The host asked the app to draw its own chrome (no native titlebar).
     pub custom_chrome: bool,
     pub maximized: bool,

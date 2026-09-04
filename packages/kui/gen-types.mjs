@@ -109,9 +109,12 @@ ${tableOf(['JSX', 'Lua', 'C', 'notes'], elements.map((e) => [e.jsx, e.lua, e.c, 
 
 ## Events
 
-Events are plain data: \`{ origin, key, payload }\` from \`pollEvents()\` in
-Node, \`on_event(ev)\` in Lua (payload fields plus \`node_key\`), and
-\`kui_poll_event\` in C. The payload shapes:
+Events are plain data: \`{ origin, window, key, payload }\` from
+\`pollEvents()\` in Node, \`on_event(ev)\` in Lua (payload fields plus
+\`node_key\`), and \`kui_poll_event\` in C. \`origin\` is which frontend drew
+the node (0 = the app, 1+ = an extension) and \`window\` is which OS window
+it happened in — an extension draws into all of them, so the two are not
+one field. The payload shapes:
 
 ${tableOf(['kind', 'payload', 'when'], events.map((e) => [e.kind, e.payload, e.doc]))}
 

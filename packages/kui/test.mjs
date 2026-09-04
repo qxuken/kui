@@ -1827,6 +1827,7 @@ test('env() reports the defaults a headless Ctx starts with', () => {
   assert.equal(env.focused, true, 'the window, not a node');
   assert.deepEqual(env.viewport, { width: 320, height: 240, scale: 2 });
   assert.deepEqual(env.window, {
+    id: 0,
     customChrome: false,
     maximized: false,
     fullscreen: false,
@@ -1846,6 +1847,7 @@ test('setEnv writes the facts a window would push, and env() reads them back', (
   assert.ok(Math.abs(env.frameBudgetMs - 1000 / 60) < 1e-3, 'the budget follows the rate');
   assert.equal(env.focused, false);
   assert.deepEqual(env.window, {
+    id: 0,
     customChrome: true,
     maximized: true,
     fullscreen: true,
@@ -1865,6 +1867,38 @@ test('setEnv writes the facts a window would push, and env() reads them back', (
   assert.equal(ctx.env().window.nativeControls, null, 'and a zero-sized rect is no rect');
 });
 
+// ADR 0004's `window` on the event: the id the driver declared, carried out
+// of the core on everything it produces. `origin` is the other half and is a
+// different question — which frontend drew the node — so a plain app event
+// answers 0 there and whatever window it happened in here.
+test('every event says which window it came from', () => {
+  const ctx = new Ctx();
+  const build = () => box({}, [box({ onClick: { kind: 'hit' }, width: 100, height: 50 }, [], 'b')]);
+  ctx.frame(320, 240, 1, build());
+  ctx.cursor(50, 25);
+  ctx.mouse(true, 1);
+  ctx.mouse(false, 1);
+  const main = ctx.pollEvents().filter((e) => e.payload.kind === 'hit');
+  assert.equal(main.length, 1);
+  assert.equal(main[0].window, 0, 'the window an app starts in');
+  assert.equal(main[0].origin, 0, 'and the frontend that drew it');
+
+  // A driver standing in for a second window stamps everything it hands
+  // out, pending events included — the `resize` this frame produces.
+  ctx.setEnv({ window: { id: 7 } });
+  assert.equal(ctx.env().window.id, 7, 'a view reads it without a query');
+  ctx.frame(400, 300, 1, build());
+  ctx.mouse(true, 1);
+  ctx.mouse(false, 1);
+  const second = ctx.pollEvents();
+  assert.ok(second.length > 1, 'the click and the resize');
+  assert.deepEqual([...new Set(second.map((e) => e.window))], [7]);
+  assert.ok(
+    second.some((e) => e.payload.kind === 'resize'),
+    'including the ones raised outside handleInput',
+  );
+});
+
 test('setEnv rejects a key or a type it does not know', () => {
   const ctx = new Ctx();
   assert.throws(() => ctx.setEnv({ customChrome: true }), /unknown key "customChrome"/);
@@ -1873,6 +1907,7 @@ test('setEnv rejects a key or a type it does not know', () => {
   assert.throws(() => ctx.setEnv({ focused: 1 }), /focused must be a boolean/);
   assert.throws(() => ctx.setEnv({ window: { maximized: 'yes' } }), /window.maximized must be a boolean/);
   assert.throws(() => ctx.setEnv({ window: { nativeControls: { w: 'wide', h: 20 } } }), /nativeControls.w must be a number/);
+  assert.throws(() => ctx.setEnv({ window: { id: -1 } }), /window.id must be a u32/);
   assert.throws(() => ctx.setEnv(null), /takes an object/);
 });
 

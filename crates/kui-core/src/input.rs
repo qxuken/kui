@@ -8,7 +8,7 @@ use crate::geom::{Rect, Vec2};
 use crate::key::Key;
 use crate::tree::OriginId;
 use crate::value::Value;
-use crate::window::{WindowCommand, WindowRole};
+use crate::window::{WindowCommand, WindowId, WindowRole};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum InputEvent {
@@ -400,6 +400,17 @@ impl KeyPress {
 #[derive(Clone, Debug, PartialEq)]
 pub struct UiEvent {
     pub origin: OriginId,
+    /// Which window the event came from — a *new* field and not a second
+    /// reading of `origin`, which says which frontend drew the node and
+    /// answers `HOST` for a window an extension also draws into.
+    ///
+    /// Producers cannot fill it in: a hit test, the edit buffer and the
+    /// audio queue know nothing about windows. They leave it
+    /// [`WindowId::MAIN`] and the core stamps its own `env.window.id` over
+    /// it as the event leaves (`Core::handle_input`,
+    /// `Core::take_pending_events`) — one core is one window, so that is the
+    /// whole answer. A driver that builds an event itself stamps it itself.
+    pub window: WindowId,
     pub key: Key,
     pub payload: Value,
 }
@@ -655,6 +666,7 @@ impl Interaction {
         }
         Some(UiEvent {
             origin: region.origin,
+            window: WindowId::MAIN,
             key: region.key,
             payload,
         })
@@ -674,6 +686,7 @@ impl Interaction {
         }
         Some(UiEvent {
             origin: region.origin,
+            window: WindowId::MAIN,
             key: region.key,
             payload,
         })
@@ -720,6 +733,7 @@ impl Interaction {
         }
         UiEvent {
             origin: state.origin,
+            window: WindowId::MAIN,
             key: state.key,
             payload,
         }
@@ -789,6 +803,7 @@ impl Interaction {
                     self.modifiers = m;
                     out.push(UiEvent {
                         origin: OriginId::HOST,
+                        window: WindowId::MAIN,
                         key: Key::ROOT,
                         payload: m.to_value(),
                     });
@@ -823,6 +838,7 @@ impl Interaction {
                         (Some(WindowRole::Drag), _) | (None, None) => {}
                         (None, Some(payload)) => out.push(UiEvent {
                             origin: region.origin,
+                            window: WindowId::MAIN,
                             key: region.key,
                             payload: payload.clone(),
                         }),

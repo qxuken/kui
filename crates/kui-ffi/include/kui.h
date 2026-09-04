@@ -48,8 +48,14 @@ extern "C" {
  * `tooltip` exactly this way). It does not bump for a new function either -
  * a host that does not call one is unaffected, and one that does fails to
  * link, which is loud.
+ *
+ * ABI 3 is the first release to append to an [out] struct: KuiEvent gained
+ * `window`. If you set `size` (KUI_EVENT_INIT does) you need no source
+ * change for it - the library writes the prefix your build reserved and
+ * stops. The version still bumps, because a host that skipped this check
+ * would otherwise get that short write without ever having asked for it.
  */
-#define KUI_ABI_VERSION 2u
+#define KUI_ABI_VERSION 3u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -687,14 +693,21 @@ typedef struct KuiSpan {
     uint32_t flags; /* KUI_SPAN_* */
 } KuiSpan;
 
+/* The window an app starts in, and every KuiEvent.window until a frame
+ * declares a second one. */
+#define KUI_WINDOW_MAIN 0u
+
 /* [out] One polled event. `size` leads it so that a field appended later
  * reaches a host that has not recompiled as a shorter write, not a longer
- * one - ADR 0004's `window` is the next one. */
+ * one - `window` is the first field that actually did (ABI 3). A host built
+ * against ABI 2 reserves through `payload`, which is still the ABI-1 floor,
+ * so it keeps polling correctly and simply never sees `window`. */
 typedef struct KuiEvent {
     uint32_t size;           /* = sizeof(KuiEvent) in, bytes filled out */
-    uint16_t origin;
+    uint16_t origin;         /* which frontend drew the node: 0 = you, 1+ = extensions */
     uint64_t key;
     const KuiValue *payload; /* borrowed; may be NULL */
+    uint32_t window;         /* which window it came from; KUI_WINDOW_MAIN for now */
 } KuiEvent;
 #define KUI_EVENT_INIT ((KuiEvent){ .size = sizeof(KuiEvent) })
 

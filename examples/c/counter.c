@@ -634,11 +634,40 @@ static int surface(void) {
         check(!kui_draw_data(ui, &shortdd), "kui_draw_data refuses it too");
     }
 
+    /* And the other half of the same handshake, which is what it was built
+     * for: a host that predates an appended field keeps working. `window`
+     * is ABI 3's append, so offsetof(KuiEvent, window) is exactly the size
+     * an ABI 2 host reserved - it gets every field it knows, and the
+     * library stops before the one it does not. (An ABI 2 host had no
+     * `window` member at all; we keep ours, set to a sentinel, because
+     * proving it was left alone is the whole point.)
+     *
+     * This pops a real event, so it names which one: the tallies below
+     * count what is left, and a queue that reordered should fail here
+     * rather than as a count that no longer adds up. */
+    {
+        KuiEvent old_host = KUI_EVENT_INIT;
+        old_host.size = (uint32_t)offsetof(KuiEvent, window);
+        old_host.window = 0xdead;
+        check(kui_poll_event(ui, &old_host), "an ABI 2 reservation still polls");
+        check(old_host.size == (uint32_t)offsetof(KuiEvent, window),
+              "`size` comes back as the prefix that was filled");
+        check(old_host.window == 0xdead, "nothing was written past that prefix");
+        KuiStr kind;
+        const KuiValue *k = old_host.payload
+            ? kui_value_get(old_host.payload, KUI_STR("kind")) : NULL;
+        check(k && kui_value_as_str(k, &kind) && kind.len == 6
+                  && memcmp(kind.ptr, "layout", 6) == 0,
+              "the fields it knows are filled, and this is the first on_layout");
+    }
+
     /* Everything above lands as data. */
     KuiEvent ev = KUI_EVENT_INIT;
     int events = 0, layouts = 0, access = 0, downs = 0, ups = 0;
     while (kui_poll_event(ui, &ev)) {
         events++;
+        check(ev.size == sizeof ev, "a current host is filled all the way");
+        check(ev.window == KUI_WINDOW_MAIN, "one window, so every event is from it");
         if (!ev.payload) continue;
         const KuiValue *kind = kui_value_get(ev.payload, KUI_STR("kind"));
         KuiStr s;

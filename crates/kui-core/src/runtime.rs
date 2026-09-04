@@ -37,6 +37,7 @@ use crate::text::{Span, TextMetrics, TextSystem};
 use crate::tree::{NIL, NodeContent, OriginId, Tree};
 use crate::ui::Ui;
 use crate::value::Value;
+use crate::window::WindowId;
 
 /// Wheel line-delta to logical px.
 const SCROLL_LINE_PX: f32 = 40.0;
@@ -399,7 +400,29 @@ impl Core {
         // releases a focus move forces — belongs to this batch, not to the
         // next frame's drain.
         out.append(&mut self.pending);
+        self.stamp(&mut out);
         out
+    }
+
+    /// Says which window every event on its way out came from.
+    ///
+    /// The producers cannot: hit-testing, the edit buffer and the audio
+    /// queue are all below the level at which a window exists. A `Core` is
+    /// one window, though, and the driver already told it which one
+    /// (`env.window.id`, beside `maximized` and the rest of the window
+    /// facts) — so one assignment at each of the two exits covers every
+    /// event every binding will ever see, and ADR 0004's step 3 has only to
+    /// hand each core its id.
+    fn stamp(&self, out: &mut [UiEvent]) {
+        let id = self.env.window.id;
+        if id == WindowId::MAIN {
+            // What producers already wrote. Skipped rather than written so
+            // the single-window case stays free.
+            return;
+        }
+        for ev in out {
+            ev.window = id;
+        }
     }
 
     fn route_input(&mut self, ev: InputEvent) -> Vec<UiEvent> {
@@ -660,6 +683,7 @@ impl Core {
                     }
                     out.push(UiEvent {
                         origin: self.tree.origins[i],
+                        window: WindowId::MAIN,
                         key,
                         payload: Value::Map(entries),
                     });
@@ -735,6 +759,7 @@ impl Core {
                     }
                     out.push(UiEvent {
                         origin: self.tree.origins[i],
+                        window: WindowId::MAIN,
                         key,
                         payload: Value::Map(entries),
                     });
@@ -1153,6 +1178,7 @@ impl Core {
         }
         out.push(UiEvent {
             origin: h.origin,
+            window: WindowId::MAIN,
             key: h.key,
             payload,
         });
@@ -1216,6 +1242,7 @@ impl Core {
             }
             (None, Some(payload)) => out.push(UiEvent {
                 origin,
+                window: WindowId::MAIN,
                 key,
                 payload,
             }),
@@ -1247,6 +1274,7 @@ impl Core {
         }
         out.push(UiEvent {
             origin: self.tree.origins[i],
+            window: WindowId::MAIN,
             key,
             payload: Value::Map(entries),
         });
@@ -1268,6 +1296,7 @@ impl Core {
         }
         out.push(UiEvent {
             origin: self.tree.origins[i],
+            window: WindowId::MAIN,
             key: self.tree.keys[i],
             payload: Value::Map(entries),
         });
@@ -1286,6 +1315,7 @@ impl Core {
     fn push_edit_event(&self, key: Key, kind: &str, out: &mut Vec<UiEvent>) {
         out.push(UiEvent {
             origin: self.edit.origin_of(key).unwrap_or(OriginId::HOST),
+            window: WindowId::MAIN,
             key,
             payload: Value::map([("kind", kind.into())]),
         });
@@ -1825,6 +1855,7 @@ impl Core {
         if self.framed && (viewport != self.viewport || scale != self.scale) {
             self.pending.push(UiEvent {
                 origin: OriginId::HOST,
+                window: WindowId::MAIN,
                 key: Key::ROOT,
                 payload: Value::map([
                     ("kind", Value::str("resize")),
@@ -2065,6 +2096,7 @@ impl Core {
     pub fn take_pending_events(&mut self) -> Vec<UiEvent> {
         let mut out = std::mem::take(&mut self.pending);
         out.append(&mut self.interaction.take_pending());
+        self.stamp(&mut out);
         out
     }
 
@@ -2878,6 +2910,7 @@ impl Core {
             }
             self.pending.push(UiEvent {
                 origin: self.tree.origins[i],
+                window: WindowId::MAIN,
                 key,
                 payload: Value::Map(entries),
             });

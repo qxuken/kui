@@ -338,7 +338,12 @@ export type AudioCommand =
 /** One event out of the loop. `A` is the app's message union; it defaults to
  *  the registered `AppMsg` plus the core's own messages. */
 export interface UiEvent<A = AppMsg | CoreMsg> {
+  /** Which frontend drew the node: 0 is your app, 1+ an extension. Not the
+   *  window — an extension draws into every one of them. */
   origin: number;
+  /** Which window it happened in, matching `env().window.id`. 0 while an
+   *  app has one window, which is every app today. */
+  window: number;
   /** Node key as a hex string; pass back to editText()/isFocused()/... */
   key: string;
   payload: A;
@@ -411,6 +416,10 @@ export interface Env {
  *  the maximize or restore glyph from `maximized`, draw nothing at all
  *  unless `customChrome`. */
 export interface WindowEnv {
+  /** Which window this frame is drawing, assigned by the driver — the same
+   *  number every `UiEvent` from it carries. 0 is the window the app starts
+   *  in, and the only one there is today. */
+  id: number;
   /** The host asked the app to draw its own chrome, so there is no native
    *  titlebar to sit under. `<titlebar>` and `<windowButtons>` build
    *  nothing when this is false. */
@@ -440,6 +449,9 @@ export interface EnvInput {
   refreshHz?: number | null;
   focused?: boolean;
   window?: {
+    /** Which window a headless `Ctx` is standing in for; every `UiEvent` it
+     *  hands out carries it. Real windows get theirs from their runner. */
+    id?: number;
     customChrome?: boolean;
     maximized?: boolean;
     fullscreen?: boolean;
@@ -573,7 +585,9 @@ export declare class Ctx {
    * `<windowButtons>` and `widgets::window_buttons` start building
    * something. `refreshHz: null` means "the host cannot tell" (the
    * default), and `nativeControls: null` means the OS draws nothing over
-   * our content.
+   * our content. `window.id` is the one fact here an app never chooses —
+   * a driver assigns it — and setting it is how a headless test says
+   * "these events came from that window"; it is 0 otherwise.
    *
    * Headless only, and on purpose: a `KuiWindow` has no such call because
    * its runner reports the real window every frame, and anything set here
@@ -698,7 +712,7 @@ export declare class Ctx {
   resume(playback: number, fadeMs?: number): void
   setMasterVolume(volume: number, tweenMs?: number): void
   /**
-   * Events since the last poll: `[{origin, key, payload}]`,
+   * Events since the last poll: `[{origin, window, key, payload}]`,
    * payloads as plain data (your Elm messages come back out
    * here). `A` types them — the app's own union, or one core
    * message type when only that is being watched.
@@ -959,7 +973,7 @@ export declare class KuiWindow {
   resume(playback: number, fadeMs?: number): void
   setMasterVolume(volume: number, tweenMs?: number): void
   /**
-   * Events since the last poll: `[{origin, key, payload}]`,
+   * Events since the last poll: `[{origin, window, key, payload}]`,
    * payloads as plain data (your Elm messages come back out
    * here). `A` types them — the app's own union, or one core
    * message type when only that is being watched.

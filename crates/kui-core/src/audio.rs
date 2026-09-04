@@ -25,6 +25,7 @@ use crate::key::Key;
 use crate::resources::SoundId;
 use crate::tree::OriginId;
 use crate::value::Value;
+use crate::window::WindowId;
 
 /// One playback instance. Allocated by the core when the play command is
 /// queued, so callers get it synchronously without a driver round trip;
@@ -282,6 +283,7 @@ impl AudioStore {
         let t = self.tagged.remove(&playback)?;
         Some(UiEvent {
             origin: t.origin,
+            window: WindowId::MAIN,
             key: t.key,
             payload: Value::map([
                 ("kind", Value::str("sound")),

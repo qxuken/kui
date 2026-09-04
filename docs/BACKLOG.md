@@ -1045,9 +1045,51 @@ The work ADR 0004 (C7) decided but did not do. Each step ships alone, in order:
    and repeated rasterization, not correctness: the handles that must agree
    across windows — `FontId`, `ImageId`, `SoundId`, and the one audio queue
    — all resolve against the session.
-2. **`WindowId` plumbing.** `UiEvent.window`, `WindowEnv::id`, `KuiEvent.window`
-   (appended), the Node event object and the TS message types. Always 0 until
-   step 3, so it is pure plumbing that can land and be reviewed on its own.
+2. **`WindowId` plumbing** — **done (2026-09-05)**. `WindowId` (opaque,
+   `MAIN` is 0) reaches every transport: `UiEvent::window`, `WindowEnv::id`,
+   `KuiEvent.window`, `window` on a JSX `UiEvent`, `env.window.id` in Lua
+   and `env().window.id` / `setEnv({window:{id}})` in Node. Zero everywhere,
+   and it held: `cargo test --workspace`, the corpus **byte-identical**
+   across all four adapters, the C example and `npm test` all pass, and the
+   only edits to existing tests were the two Node `deepEqual`s over the
+   whole of `env().window`, which gained `id: 0`. The Lua unit test that
+   builds a `UiEvent` by hand gained `window: WindowId::MAIN` — an
+   exhaustive struct literal in another crate, which is the cost of the
+   field being public and not a sign the step was wider than it looked.
+   **The producers cannot fill the field in, so the core stamps it.** A hit
+   test, the edit buffer and the audio queue are all below the level at
+   which a window exists; a `Core` is not — it *is* a window, and the driver
+   already tells it which one through `env.window`. So `Core::stamp` writes
+   `env.window.id` over every event leaving by `handle_input` or
+   `take_pending_events`, and nothing else in any binding routes by window.
+   That is the one design choice here that step 3 inherits: it has to give
+   each core its id (which it must do anyway, for `WindowEnv::id`) and
+   `UiEvent.window` follows for free, in all four bindings, with no further
+   plumbing. The stamp early-returns on `MAIN`, so the single-window case
+   costs nothing.
+   **`KuiEvent.window` was the first field ever appended to an [out]
+   struct**, which made it ADR 0006's first real test rather than a
+   restatement of the raw append ADR 0004 described. It works as designed:
+   `ABI_V1_SIZE` is measured through `payload`, so the append does not move
+   the floor, an ABI-2 host's reservation is still accepted, and
+   `write_out` stops before the new field. `KUI_ABI_VERSION` went 2 → 3
+   anyway, per ADR 0006 decision 2 — the bump is for hosts that skipped the
+   version check, not for ones that set `size`. Both directions are now
+   asserted through the public API rather than only on the `Grown` stand-in:
+   in Rust (`an_abi_2_host_polls_events_without_seeing_the_appended_window`)
+   and in C, where `offsetof(KuiEvent, window)` *is* the ABI-2 reservation
+   and says so in one line.
+   **Two things deliberately left for step 3.** C has no way to *set*
+   `WindowEnv::id`: `kui_env_set_window` would have to grow a parameter,
+   which is a source break, and step 3 breaks C anyway
+   (`kui_take_window_commands`) — so the id joins that break instead of
+   spending a second one. And Lua's event has no `window`: a Lua `on_event`
+   receives the payload table plus `node_key` and carries no `origin`
+   either, so there is no field there to append to without inventing one.
+   One incidental find: `kui`'s runner imports `winit::window::WindowId`,
+   which now collides with `kui_core`'s through `pub use kui_core::*` — it
+   is aliased `WinitWindowId`, or `kui::WindowId` would not have been
+   nameable at all.
 3. **The declared set.** `declared_windows` / `declared_windows_last` beside
    the focus pair, the diff into `WindowCommand::Open`/`Close(WindowId)`, the
    `{kind:"window", phase}` event, and the runner opening real `Normal`
@@ -1855,6 +1897,7 @@ By leverage-to-effort, not severity.
    the one to decide on paper now and build later, before more API assumes
    a single window.~~ Decided (ADR 0004): a `Core` per window, a declared
    window set, `window` on the event, popups as a window kind. The build is
-   C11, and its first step (a `Session` for the shared caches, one wgpu
-   device) is worth doing early even alone — it is invisible to the
-   bindings and it is what every later step sits on.
+   C11, whose first two steps are done: a `Session` for the shared caches
+   and one wgpu device (2026-09-04), then `WindowId` through every
+   transport (2026-09-05). Both were invisible from outside — no test changed meaning —
+   and they are what the declared window set sits on.

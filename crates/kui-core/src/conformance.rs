@@ -59,7 +59,7 @@ use crate::tree::{NodeContent, Tree};
 use crate::ui::Ui;
 use crate::value::Value;
 use crate::widgets;
-use crate::window::{WindowEnv, WindowRole};
+use crate::window::{WindowEnv, WindowId, WindowRole};
 
 /// Every scene is built at this viewport and scale. A binding that drives
 /// its own frames has to use the same numbers or nothing lines up.
@@ -80,6 +80,7 @@ pub const SCALE: f32 = 1.0;
 /// express — C's `kui_env_set_window` takes two numbers, and the one real
 /// instance (the macOS traffic lights) sits at the origin.
 pub const NATIVE_CHROME: WindowEnv = WindowEnv {
+    id: WindowId::MAIN,
     custom_chrome: false,
     maximized: false,
     fullscreen: false,
@@ -89,6 +90,7 @@ pub const NATIVE_CHROME: WindowEnv = WindowEnv {
 /// The app draws its own chrome, and the OS draws nothing over it — so
 /// `widgets::window_buttons` builds its three buttons.
 pub const CUSTOM_CHROME: WindowEnv = WindowEnv {
+    id: WindowId::MAIN,
     custom_chrome: true,
     maximized: false,
     fullscreen: false,
@@ -104,6 +106,7 @@ pub const CUSTOM_CHROME: WindowEnv = WindowEnv {
 /// margin — which is the whole of what `widgets::titlebar` adapting "per
 /// platform by itself" means.
 pub const CUSTOM_CHROME_INSET: WindowEnv = WindowEnv {
+    id: WindowId::MAIN,
     custom_chrome: true,
     maximized: false,
     fullscreen: false,

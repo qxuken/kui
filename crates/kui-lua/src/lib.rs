@@ -185,6 +185,8 @@ fn env_table<'scope, 'env: 'scope>(
     t.set("viewport_h", vp.h)?;
     let win = env.window;
     let wt = lua.create_table()?;
+    // Which window this frame is drawing; 0 until a second one is declared.
+    wt.set("id", win.id.0)?;
     wt.set("custom_chrome", win.custom_chrome)?;
     wt.set("maximized", win.maximized)?;
     wt.set("fullscreen", win.fullscreen)?;
@@ -941,7 +943,7 @@ mod tests {
     use super::*;
     use kui_core::{
         Core, Edges, FontFamily, InputEvent, NodeSpec, OriginId, Size, TextStyle, Vec2,
-        WindowButton,
+        WindowButton, WindowId,
     };
 
     #[test]
@@ -1159,6 +1161,7 @@ mod tests {
             origin: OriginId(1),
             key: Key::ROOT,
             payload: Value::map([("kind", "bump".into())]),
+            window: WindowId::MAIN,
         });
         let count: i64 = ext.lua.globals().get("count").unwrap();
         assert_eq!(count, 42);
