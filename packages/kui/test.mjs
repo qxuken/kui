@@ -13,7 +13,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Ctx, createApp, createEncoder, decodeQuads, protocol, quadStride } from './index.js';
+import { Ctx, KuiWindow, createApp, createEncoder, decodeQuads, protocol, quadStride } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
@@ -1773,6 +1773,128 @@ test('setScroll is clamped by the next layout', () => {
   assert.deepEqual(ctx.scrollOffset(list), { x: 0, y: 0 });
   // A node that never scrolled reads zero rather than failing.
   assert.deepEqual(ctx.scrollOffset(nodesByName(ctx)['row 0'].key), { x: 0, y: 0 });
+});
+
+
+// -- Env --------------------------------------------------------------------
+// The host facts a frame driver pushes in. A window's runner refreshes all of
+// them every frame; headless, `setEnv` is the only writer, which is what lets
+// a test declare custom chrome and see what a view would build under it.
+
+const CHROME = () =>
+  box({}, [el('titlebar', {}, [text('app', { size: 12 })])]);
+
+test('env() reports the defaults a headless Ctx starts with', () => {
+  const ctx = new Ctx();
+  // Before any frame there is no viewport, and `env()` still answers.
+  assert.deepEqual(ctx.env().viewport, { width: 0, height: 0, scale: 1 });
+  ctx.frame(320, 240, 2, box({}, []));
+  const env = ctx.env();
+  assert.equal(env.refreshHz, null, 'a headless host cannot tell');
+  // 120 Hz is the fallback the budget is computed at when it cannot.
+  assert.ok(Math.abs(env.frameBudgetMs - 1000 / 120) < 1e-3);
+  assert.equal(env.focused, true, 'the window, not a node');
+  assert.deepEqual(env.viewport, { width: 320, height: 240, scale: 2 });
+  assert.deepEqual(env.window, {
+    customChrome: false,
+    maximized: false,
+    fullscreen: false,
+    nativeControls: null,
+  });
+});
+
+test('setEnv writes the facts a window would push, and env() reads them back', () => {
+  const ctx = new Ctx();
+  ctx.setEnv({
+    refreshHz: 60,
+    focused: false,
+    window: { customChrome: true, maximized: true, fullscreen: true, nativeControls: { x: 8, y: 4, w: 70, h: 20 } },
+  });
+  const env = ctx.env();
+  assert.equal(env.refreshHz, 60);
+  assert.ok(Math.abs(env.frameBudgetMs - 1000 / 60) < 1e-3, 'the budget follows the rate');
+  assert.equal(env.focused, false);
+  assert.deepEqual(env.window, {
+    customChrome: true,
+    maximized: true,
+    fullscreen: true,
+    nativeControls: { x: 8, y: 4, w: 70, h: 20 },
+  });
+  // Only what you pass moves — a test declares the one fact it is about.
+  ctx.setEnv({ window: { maximized: false } });
+  assert.equal(ctx.env().refreshHz, 60);
+  assert.equal(ctx.env().window.customChrome, true);
+  assert.equal(ctx.env().window.maximized, false);
+  // Both spellings of "the host cannot tell" / "nothing is drawn over us".
+  ctx.setEnv({ refreshHz: null, window: { nativeControls: null } });
+  assert.equal(ctx.env().refreshHz, null);
+  assert.equal(ctx.env().window.nativeControls, null);
+  ctx.setEnv({ refreshHz: 0, window: { nativeControls: { w: 0, h: 0 } } });
+  assert.equal(ctx.env().refreshHz, null, 'a rate of zero is no rate');
+  assert.equal(ctx.env().window.nativeControls, null, 'and a zero-sized rect is no rect');
+});
+
+test('setEnv rejects a key or a type it does not know', () => {
+  const ctx = new Ctx();
+  assert.throws(() => ctx.setEnv({ customChrome: true }), /unknown key "customChrome"/);
+  assert.throws(() => ctx.setEnv({ window: { chrome: true } }), /unknown window key "chrome"/);
+  assert.throws(() => ctx.setEnv({ refreshHz: '60' }), /refreshHz must be a number or null/);
+  assert.throws(() => ctx.setEnv({ focused: 1 }), /focused must be a boolean/);
+  assert.throws(() => ctx.setEnv({ window: { maximized: 'yes' } }), /window.maximized must be a boolean/);
+  assert.throws(() => ctx.setEnv({ window: { nativeControls: { w: 'wide', h: 20 } } }), /nativeControls.w must be a number/);
+  assert.throws(() => ctx.setEnv(null), /takes an object/);
+});
+
+// This is the read the whole thing is for: `widgets::titlebar` and
+// `widgets::window_buttons` decide what to build from `env.window` and
+// nothing else, so under native decorations they build a strip with no
+// controls, and only a declared custom chrome puts the three buttons in it.
+test('a declared custom chrome is what makes the window buttons exist', () => {
+  const native = new Ctx();
+  native.frame(320, 240, 1, CHROME());
+  assert.equal(
+    native.accessTree().nodes.filter((n) => n.role === 'button').length,
+    0,
+    'the OS draws the controls; the titlebar draws none',
+  );
+
+  const custom = new Ctx();
+  custom.setEnv({ window: { customChrome: true } });
+  custom.frame(320, 240, 1, CHROME());
+  assert.deepEqual(
+    custom.accessTree().nodes.filter((n) => n.role === 'button').map((n) => n.name),
+    ['Minimize', 'Maximize', 'Close'],
+  );
+  assert.ok(custom.stats().quadCount > native.stats().quadCount, 'and they are drawn');
+});
+
+// The other half of the same read: macOS keeps drawing its traffic lights
+// over our content under custom chrome, so the titlebar insets past them and
+// draws no buttons of its own.
+test('nativeControls inset the titlebar and take its buttons away', () => {
+  const titleX = (controls) => {
+    const ctx = new Ctx();
+    ctx.setEnv({ window: { customChrome: true, nativeControls: controls } });
+    ctx.frame(320, 240, 1, CHROME());
+    return {
+      x: ctx.accessTree().nodes.find((n) => n.name === 'app').rect.x,
+      buttons: ctx.accessTree().nodes.filter((n) => n.role === 'button').length,
+    };
+  };
+  // Without them, a plain leading margin and our own three buttons.
+  assert.deepEqual(titleX(null), { x: 12, buttons: 3 });
+  // With them, the title starts past the reported extent (which includes the
+  // trailing gap) and the OS is drawing the controls, so we draw none.
+  assert.deepEqual(titleX({ w: 78, h: 28 }), { x: 78, buttons: 0 });
+});
+
+test('env() is on both classes and setEnv is only on the headless one', () => {
+  // A window's runner reports the real window every frame, so a fact set on
+  // one would be overwritten before the next view ran; the read is shared.
+  assert.equal(typeof Ctx.prototype.env, 'function');
+  assert.equal(typeof KuiWindow.prototype.env, 'function');
+  assert.equal(typeof Ctx.prototype.setEnv, 'function');
+  assert.equal(KuiWindow.prototype.setEnv, undefined);
 });
 
 

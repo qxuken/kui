@@ -344,7 +344,9 @@ that are hard to reverse and would look arbitrary without their context.
   frame driver drains and applies — the core never touches a window. Host
   facts flow the other way through `env.window` (custom chrome? maximized?
   where do the macOS traffic lights sit?), so `widgets::titlebar` adapts per
-  platform by itself. Opt in with `kui::app("title").custom_titlebar().run(app)`:
+  platform by itself — and so does an app that would rather write its own:
+  `ui.env()` in Rust, `env.window` in Lua, `ctx.env().window` in Node
+  (`ctx.setEnv()` declares them headlessly), `kui_env_set_window` in C. Opt in with `kui::app("title").custom_titlebar().run(app)`:
   macOS keeps native traffic lights over your content; Windows/Linux go
   undecorated with drawn buttons. On Windows the runner also subclasses the
   window and answers `WM_NCHITTEST` from the frame's chrome regions

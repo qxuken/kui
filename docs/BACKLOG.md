@@ -438,12 +438,22 @@ visible but does not make it covered.
 
 The fix is one line of protocol — `drive` declares custom chrome before the
 first frame — and one call per adapter. Rust and Lua get it free (Lua calls
-`conformance::drive`); C already has `kui_env_set_window`; **Node exposes no
+`conformance::drive`); C already has `kui_env_set_window`; ~~**Node exposes no
 env at all**, so it needs a `Ctx` method first, which is the real cost and
 also a gap in its own right — a JSX app cannot see `env.window` the way a
-Lua script can. The `chrome` scene's `Expect` (solid quads, access rows) then
-moves, and the three window buttons start being compared byte-for-byte across
-all four bindings, which is what the claim has been promising.
+Lua script can.~~ Node has `ctx.env()` and `ctx.setEnv()` as of 2026-09-04
+(B2), so every adapter can now declare it. The `chrome` scene's `Expect`
+(solid quads, access rows) then moves, and the three window buttons start
+being compared byte-for-byte across all four bindings, which is what the
+claim has been promising.
+
+One thing to settle while moving that `Expect`, found by driving the scene
+from Node under a declared custom chrome: `<titlebar>` with an explicit
+`<windowButtons>` child renders **six** buttons, because `titlebar_with`
+calls `window_buttons(ui)` after the content regardless. The `chrome` scene
+declares exactly that, so the corpus will pin six the moment the `Expect`
+moves. Either the explicit element should suppress the implicit cluster or
+the scene should stop declaring both; deciding that is part of P9.
 
 Worth doing with P3 (Lua imperative focus): both are "the binding cannot
 reach a thing the core has", and the env surface is the smaller half.

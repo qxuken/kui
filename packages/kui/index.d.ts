@@ -387,6 +387,68 @@ export interface FrameTiming {
   maxWorkMs: number;
 }
 
+/** Host facts the frame driver pushed into the core, as `env()` reads them
+ *  back: what the display and the window are doing right now. A window's
+ *  runner refreshes all of it every frame; a headless `Ctx` shows the
+ *  defaults until `setEnv` says otherwise. */
+export interface Env {
+  /** Display refresh rate in Hz, or null when the host cannot tell (which
+   *  is when `frameBudgetMs` falls back to 120 Hz). */
+  refreshHz: number | null;
+  /** One vsync interval at `refreshHz` — the per-frame time budget, and
+   *  what the latency HUD draws its line at. */
+  frameBudgetMs: number;
+  /** Whether the *window* has the keyboard at all. Not to be confused with
+   *  `focused()`, which is the focused *node*'s key. */
+  focused: boolean;
+  /** The viewport the current or last frame was begun with. */
+  viewport: WindowSize;
+  window: WindowEnv;
+}
+
+/** The window chrome facts on `Env`. A view that draws its own titlebar
+ *  reads these the way `<titlebar>` does: inset past `nativeControls`, pick
+ *  the maximize or restore glyph from `maximized`, draw nothing at all
+ *  unless `customChrome`. */
+export interface WindowEnv {
+  /** The host asked the app to draw its own chrome, so there is no native
+   *  titlebar to sit under. `<titlebar>` and `<windowButtons>` build
+   *  nothing when this is false. */
+  customChrome: boolean;
+  maximized: boolean;
+  fullscreen: boolean;
+  /** Area (logical px, window coordinates) covered by controls the OS still
+   *  draws over our content — the macOS traffic lights under custom chrome.
+   *  Keep out of it. Null means the OS draws nothing over us. */
+  nativeControls: Rect | null;
+}
+
+/** A box in logical px: position and size. */
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** What `Ctx.setEnv` takes: the writable half of `Env`, every key optional.
+ *  Keys you leave out keep their current values, so a test declares just the
+ *  fact it is about. */
+export interface EnvInput {
+  /** Null for "the host cannot tell"; a rate at or below zero means the
+   *  same. */
+  refreshHz?: number | null;
+  focused?: boolean;
+  window?: {
+    customChrome?: boolean;
+    maximized?: boolean;
+    fullscreen?: boolean;
+    /** `x` and `y` default to the window origin; a zero-sized rect and null
+     *  both mean "nothing is drawn over us". */
+    nativeControls?: Partial<Rect> | null;
+  };
+}
+
 export interface KeyMods {
   shift?: boolean;
   /** Word-wise motion (alt). */
@@ -502,6 +564,22 @@ export declare class Ctx {
    * snap (the default for headless tests).
    */
   setTime(nowSecs: number): void
+  /**
+   * Declares host facts a real window would have pushed — what C spells
+   * `kui_env_set` + `kui_env_set_window`, in one call shaped like what
+   * `env()` reads back. Only the keys you pass move; the rest keep their
+   * values, so `setEnv({window: {customChrome: true}})` is the whole of
+   * "pretend this app draws its own titlebar" and `<titlebar>`,
+   * `<windowButtons>` and `widgets::window_buttons` start building
+   * something. `refreshHz: null` means "the host cannot tell" (the
+   * default), and `nativeControls: null` means the OS draws nothing over
+   * our content.
+   *
+   * Headless only, and on purpose: a `KuiWindow` has no such call because
+   * its runner reports the real window every frame, and anything set here
+   * would be overwritten before the next view ran.
+   */
+  setEnv(env: EnvInput): void
   cursor(x: number, y: number): void
   cursorLeft(): void
   /**
@@ -634,6 +712,19 @@ export declare class Ctx {
   animating(): boolean
   /** Summary of the last frame's display list. */
   stats(): FrameStats
+  /**
+   * Host facts the frame driver pushed in: what the window and the
+   * display are doing, as of now (see `Env`). This is the same
+   * surface Lua's `view(env)` reads and C's `kui_env_set*` writes —
+   * a JSX app needs it to build its own titlebar (inset past the
+   * macOS traffic lights, pick the maximize glyph), to dim its
+   * chrome when the window loses focus, or to pace itself against
+   * the real refresh rate.
+   *
+   * Note `env().focused` is the *window*'s keyboard focus, not the
+   * focused node's key — that is `focused()`, one call up.
+   */
+  env(): Env
   /**
    * Measures text the way layout would, without adding a node:
    * `{width, height, lines}` in logical px, wrapped to `maxWidth`
@@ -882,6 +973,19 @@ export declare class KuiWindow {
   animating(): boolean
   /** Summary of the last frame's display list. */
   stats(): FrameStats
+  /**
+   * Host facts the frame driver pushed in: what the window and the
+   * display are doing, as of now (see `Env`). This is the same
+   * surface Lua's `view(env)` reads and C's `kui_env_set*` writes —
+   * a JSX app needs it to build its own titlebar (inset past the
+   * macOS traffic lights, pick the maximize glyph), to dim its
+   * chrome when the window loses focus, or to pace itself against
+   * the real refresh rate.
+   *
+   * Note `env().focused` is the *window*'s keyboard focus, not the
+   * focused node's key — that is `focused()`, one call up.
+   */
+  env(): Env
   /**
    * Measures text the way layout would, without adding a node:
    * `{width, height, lines}` in logical px, wrapped to `maxWidth`

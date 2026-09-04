@@ -10,8 +10,8 @@
 
 use kui_core::{
     AudioCommand, AudioSpec, Color, Core, EditKey, FontId, FrameSample, FrameStats, ImageId,
-    InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, MouseButton, PlayOptions, PlaybackId, Size,
-    SoundId, Span, UiEvent, Value, Vec2,
+    InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, MouseButton, PlayOptions, PlaybackId, Rect,
+    Size, SoundId, Span, UiEvent, Value, Vec2,
 };
 use napi::bindgen_prelude::{Buffer, Float64Array, Uint8Array};
 use napi_derive::napi;
@@ -235,6 +235,36 @@ fn offset_json(off: Vec2) -> Json {
     Json::Object(o)
 }
 
+/// One boolean out of a `setEnv` bag, named so the error says which.
+fn flag(name: &str, v: &Json) -> Result<bool> {
+    v.as_bool()
+        .ok_or_else(|| err(format!("setEnv(): window.{name} must be a boolean")))
+}
+
+/// `setEnv`'s `window.nativeControls`: a `{x?, y?, w, h}` rect, or null for
+/// "the OS draws nothing over our content". `x` / `y` default to the window
+/// origin, which is where the one real instance (the macOS traffic lights)
+/// sits; a zero-sized rect is the same as null, matching `kui_env_set_window`.
+fn native_controls(v: &Json) -> Result<Option<Rect>> {
+    if v.is_null() {
+        return Ok(None);
+    }
+    let o = v
+        .as_object()
+        .ok_or_else(|| err("setEnv(): window.nativeControls must be an object or null"))?;
+    let num = |key: &str| -> Result<f32> {
+        match o.get(key) {
+            None => Ok(0.0),
+            Some(n) => Ok(n
+                .as_f64()
+                .ok_or_else(|| err(format!("setEnv(): nativeControls.{key} must be a number")))?
+                as f32),
+        }
+    };
+    let (x, y, w, h) = (num("x")?, num("y")?, num("w")?, num("h")?);
+    Ok((w > 0.0 && h > 0.0).then(|| Rect::new(x, y, w, h)))
+}
+
 fn edit_key_of(name: &str) -> Result<EditKey> {
     Ok(match name {
         "left" => EditKey::Left,
@@ -305,6 +335,67 @@ impl Ctx {
     #[napi]
     pub fn set_time(&mut self, now_secs: f64) {
         self.core.set_time(now_secs);
+    }
+
+    /// Declares host facts a real window would have pushed — what C spells
+    /// `kui_env_set` + `kui_env_set_window`, in one call shaped like what
+    /// `env()` reads back. Only the keys you pass move; the rest keep their
+    /// values, so `setEnv({window: {customChrome: true}})` is the whole of
+    /// "pretend this app draws its own titlebar" and `<titlebar>`,
+    /// `<windowButtons>` and `widgets::window_buttons` start building
+    /// something. `refreshHz: null` means "the host cannot tell" (the
+    /// default), and `nativeControls: null` means the OS draws nothing over
+    /// our content.
+    ///
+    /// Headless only, and on purpose: a `KuiWindow` has no such call because
+    /// its runner reports the real window every frame, and anything set here
+    /// would be overwritten before the next view ran.
+    #[napi(ts_args_type = "env: EnvInput")]
+    pub fn set_env(&mut self, env: Json) -> Result<()> {
+        let o = env
+            .as_object()
+            .ok_or_else(|| err("setEnv() takes an object"))?;
+        for name in o.keys() {
+            if !matches!(name.as_str(), "refreshHz" | "focused" | "window") {
+                return Err(err(format!("setEnv(): unknown key {name:?}")));
+            }
+        }
+        if let Some(hz) = o.get("refreshHz") {
+            // A number or an explicit null; anything else is a typo worth
+            // hearing about, since a silently ignored rate looks like the
+            // 120 Hz fallback.
+            self.core.env.refresh_hz = match hz {
+                Json::Null => None,
+                _ => Some(
+                    hz.as_f64()
+                        .ok_or_else(|| err("setEnv(): refreshHz must be a number or null"))?
+                        as f32,
+                ),
+            }
+            .filter(|hz| *hz > 0.0);
+        }
+        if let Some(f) = o.get("focused") {
+            self.core.env.focused = f
+                .as_bool()
+                .ok_or_else(|| err("setEnv(): focused must be a boolean"))?;
+        }
+        let Some(w) = o.get("window") else {
+            return Ok(());
+        };
+        let w = w
+            .as_object()
+            .ok_or_else(|| err("setEnv(): window must be an object"))?;
+        let win = &mut self.core.env.window;
+        for (name, v) in w {
+            match name.as_str() {
+                "customChrome" => win.custom_chrome = flag(name, v)?,
+                "maximized" => win.maximized = flag(name, v)?,
+                "fullscreen" => win.fullscreen = flag(name, v)?,
+                "nativeControls" => win.native_controls = native_controls(v)?,
+                _ => return Err(err(format!("setEnv(): unknown window key {name:?}"))),
+            }
+        }
+        Ok(())
     }
 
     // -- Input (logical coordinates) ------------------------------------
@@ -495,6 +586,66 @@ impl Ctx {
         };
         Buffer::from(bytes.to_vec())
     }
+}
+
+/// `{x, y, w, h}` — the shape `scrollGeometry` already returns for a box.
+fn rect_json(r: Rect) -> Json {
+    let mut o = JsonMap::new();
+    o.insert("x".into(), Json::from(r.x as f64));
+    o.insert("y".into(), Json::from(r.y as f64));
+    o.insert("w".into(), Json::from(r.w as f64));
+    o.insert("h".into(), Json::from(r.h as f64));
+    Json::Object(o)
+}
+
+/// The host facts `env()` hands back, as `{refreshHz, frameBudgetMs, focused,
+/// viewport, window}`. Two places this differs from the same table in Lua,
+/// deliberately:
+///
+/// - `refreshHz` is `null` when the host cannot tell, where Lua leaves the
+///   key out. A stable shape is worth more here than a shorter object: JS
+///   code destructures it, and TypeScript can then say `number | null`.
+/// - `window.nativeControls` is the whole `Rect`, where Lua flattens it to
+///   `controls_w` / `controls_h` (and C's `kui_env_set_window` takes the same
+///   two numbers). That flattening assumes the OS controls sit at the window
+///   origin, which is true of the macOS traffic lights and of nothing in
+///   particular; the core holds a rect, so hand back a rect.
+///
+/// `viewport` is the frame's, not `Env`'s — it is the other host fact a view
+/// wants at the same moment, and Lua carries it in the same table (as
+/// `viewport_w` / `viewport_h`). Node spells it `{width, height, scale}`,
+/// the `WindowSize` shape `runWindowed` already uses.
+fn env_json(core: &mut Core) -> Json {
+    let env = core.env;
+    let mut vp = JsonMap::new();
+    vp.insert("width".into(), Json::from(core.viewport().w as f64));
+    vp.insert("height".into(), Json::from(core.viewport().h as f64));
+    vp.insert("scale".into(), Json::from(core.scale() as f64));
+
+    let win = env.window;
+    let mut w = JsonMap::new();
+    w.insert("customChrome".into(), Json::Bool(win.custom_chrome));
+    w.insert("maximized".into(), Json::Bool(win.maximized));
+    w.insert("fullscreen".into(), Json::Bool(win.fullscreen));
+    w.insert(
+        "nativeControls".into(),
+        win.native_controls.map_or(Json::Null, rect_json),
+    );
+
+    let mut o = JsonMap::new();
+    o.insert(
+        "refreshHz".into(),
+        env.refresh_hz
+            .map_or(Json::Null, |hz| Json::from(hz as f64)),
+    );
+    o.insert(
+        "frameBudgetMs".into(),
+        Json::from(env.frame_budget_ms() as f64),
+    );
+    o.insert("focused".into(), Json::Bool(env.focused));
+    o.insert("viewport".into(), Json::Object(vp));
+    o.insert("window".into(), Json::Object(w));
+    Json::Object(o)
 }
 
 /// `{quadCount, viewportW, viewportH, scale, atlasSize}` for the last frame.
@@ -889,6 +1040,23 @@ macro_rules! core_methods {
             #[napi(ts_return_type = "FrameStats")]
             pub fn stats(&mut self) -> Json {
                 stats_json(self.$core())
+            }
+
+            // -- Environment -----------------------------------------------
+
+            /// Host facts the frame driver pushed in: what the window and the
+            /// display are doing, as of now (see `Env`). This is the same
+            /// surface Lua's `view(env)` reads and C's `kui_env_set*` writes —
+            /// a JSX app needs it to build its own titlebar (inset past the
+            /// macOS traffic lights, pick the maximize glyph), to dim its
+            /// chrome when the window loses focus, or to pace itself against
+            /// the real refresh rate.
+            ///
+            /// Note `env().focused` is the *window*'s keyboard focus, not the
+            /// focused node's key — that is `focused()`, one call up.
+            #[napi(ts_return_type = "Env")]
+            pub fn env(&mut self) -> Json {
+                env_json(self.$core())
             }
 
             // -- Queries ---------------------------------------------------

@@ -9,6 +9,46 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **Node can see `env`, and a headless one can declare it** (backlog B2,
+  and the half of P9 that was blocking it). The other three bindings all
+  read the host facts a frame driver pushes in — `ui.env()` in Rust, the
+  whole `env.window` table in Lua, `kui_env_set` / `kui_env_set_window` in
+  C — and Node exposed none of it, in either direction. So a JSX app could
+  not write its *own* titlebar: `<titlebar>` papers over the common case by
+  reading `env` in Rust on the app's behalf, but the whole design of
+  `widgets::titlebar` is "adapt to `env.window` by yourself" — inset past
+  the macOS traffic lights, pick the maximize or restore glyph, draw
+  nothing under native decorations — and an app wanting tabs or a search
+  box in its titlebar had `<titlebar>` with children and nothing else. It
+  also could not dim its chrome on `focused`, pace itself on `refreshHz`,
+  or lay out differently when `maximized`.
+  **`ctx.env()` / `win.env()`** now return
+  `{refreshHz, frameBudgetMs, focused, viewport, window}`, with `window`
+  as `{customChrome, maximized, fullscreen, nativeControls}`. It is on both
+  classes by construction — it went into the `core_methods!` list, so there
+  is no second copy to forget. Two spellings differ from Lua's table on
+  purpose: `refreshHz` is `null` where Lua omits the key (a stable shape is
+  worth more to code that destructures it, and it types as
+  `number | null`), and `nativeControls` is the whole rect where Lua
+  flattens it to `controls_w` / `controls_h` — that flattening assumes the
+  OS controls sit at the window origin, which is true of the traffic lights
+  and of nothing in particular. `viewport` is the frame's `{width, height,
+  scale}`, the `WindowSize` shape `runWindowed` already uses.
+  **`ctx.setEnv({...})`** is the write side, one call where C has two, and
+  merging rather than replacing: `setEnv({window: {customChrome: true}})`
+  is the whole of "pretend this app draws its own titlebar", and
+  `<windowButtons>` starts building the three buttons it has always
+  returned early from. It is on `Ctx` only, and the test says so — a
+  `KuiWindow`'s runner reports the real window every frame, so a fact set
+  on one would be overwritten before the next view ran. Both calls' types
+  are generated from the `#[napi]` attributes (P5), so `index.d.ts` needed
+  no hand-editing beyond the `Env` / `EnvInput` shapes.
+  **What you can delete:** any constant in a JSX app standing in for a host
+  fact — a hardcoded 28px inset for the traffic lights, a 16.7ms frame
+  budget, a "we're probably focused" assumption. And the reason the
+  conformance corpus could not drive `windowButtons` from Node: the adapter
+  can declare custom chrome now, which is what P9 was waiting on.
+
 - **`Session`: windows that share a device, a font database and a registry**
   (`docs/adr/0004-multi-window.md` decision 2, backlog C11 step 1). A `Core`
   owned everything, which is fine while there is one of them and wrong the
