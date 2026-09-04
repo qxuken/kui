@@ -637,6 +637,25 @@ impl<A: App> Shell<A> {
                         self.open_pane(event_loop, id, config);
                     }
                 }
+                // The app asking, rather than the declaration: a live
+                // window's config is never re-read, so this is the only
+                // way its size moves from inside the app (ADR 0004
+                // decision 5). winit reports the size it actually applied
+                // at once on some platforms and as a later `Resized` on
+                // others; either way it reaches the app as the ordinary
+                // `resize`, so nothing here writes the pane's viewport.
+                WindowCommand::SetSize { window, size } => {
+                    if let Some(i) = self.pane_of(window) {
+                        let _ = self.panes[i]
+                            .window
+                            .request_inner_size(LogicalSize::new(size.w as f64, size.h as f64));
+                    }
+                }
+                WindowCommand::Focus(id) => {
+                    if let Some(i) = self.pane_of(id) {
+                        self.panes[i].window.focus_window();
+                    }
+                }
             }
         }
     }

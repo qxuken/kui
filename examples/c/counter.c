@@ -620,6 +620,23 @@ static int surface(void) {
         while (kui_take_window_command(ui, &cmd)) {}
     }
 
+    /* Size and focus are the app asking, rather than chrome or the declared
+     * set: queued the same way, drained in order and once, and carrying the
+     * window they name. A headless host is free to read them and do nothing,
+     * which is what this one does. */
+    {
+        kui_set_window_size(ui, KUI_WINDOW_MAIN, 640, 480);
+        kui_focus_window(ui, KUI_WINDOW_MAIN);
+        KuiWindowCommand cmd = KUI_WINDOW_COMMAND_INIT;
+        check(kui_take_window_command(ui, &cmd) && cmd.kind == KUI_CMD_SET_SIZE
+                  && cmd.window == KUI_WINDOW_MAIN && cmd.width == 640 && cmd.height == 480,
+              "a size request drains with the size it asked for");
+        check(kui_take_window_command(ui, &cmd) && cmd.kind == KUI_CMD_FOCUS
+                  && cmd.window == KUI_WINDOW_MAIN,
+              "and the focus request behind it");
+        check(!kui_take_window_command(ui, &cmd), "both drained once");
+    }
+
     /* What the size handshake buys, standing in for a host that predates
      * it: a reservation the library cannot recognise is refused outright
      * instead of being written into, and the refusal costs nothing - the

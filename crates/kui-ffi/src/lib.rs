@@ -95,7 +95,15 @@ use kui_core::{
 /// `kui_take_window_command`, and `kui_env_set_window` gained the window
 /// id. Both are source breaks a host sees at compile time; the bump is
 /// for a binary that was not recompiled.
-pub const KUI_ABI_VERSION: u32 = 5;
+///
+/// ABI 6 appends `width`/`height` to `KuiWindowCommand`, for the
+/// `KUI_CMD_SET_SIZE` that `kui_set_window_size` queues (ADR 0004 step 5).
+/// It is the compatible kind of change — the struct leads with `size`, so
+/// a host that reserved through `config` gets the prefix it knows and
+/// stops — and no host that never calls `kui_set_window_size` can even
+/// receive the new verb. The version bumps anyway, for the host that
+/// skipped the check.
+pub const KUI_ABI_VERSION: u32 = 6;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its
@@ -909,6 +917,10 @@ pub const KUI_CMD_MINIMIZE: u32 = 3;
 pub const KUI_CMD_TOGGLE_MAXIMIZE: u32 = 4;
 /// `KUI_CMD_OPEN`: the declared set gained a window; `config` says what.
 pub const KUI_CMD_OPEN: u32 = 5;
+/// `KUI_CMD_SET_SIZE`: the app asked for a size (`kui_set_window_size`);
+/// `width`/`height` carry it. `KUI_CMD_FOCUS`: it asked for focus.
+pub const KUI_CMD_SET_SIZE: u32 = 6;
+pub const KUI_CMD_FOCUS: u32 = 7;
 
 /// One window command ([out], `kui_take_window_command`): what a chrome
 /// node asked for, or what the declared window set's diff decided. Plain
@@ -933,6 +945,15 @@ pub struct KuiWindowCommand {
     pub origin: u16,
     /// `KUI_CMD_OPEN` only: the config from the declaration that opened it.
     pub config: KuiWindowConfig,
+    /// `KUI_CMD_SET_SIZE` only: the size asked for, logical px. Appended in
+    /// ABI 6, so a host that reserved through `config` never sees these —
+    /// and never needs to, since only its own `kui_set_window_size` call
+    /// can produce the verb that fills them. A `SetSize` is a bare size and
+    /// not a `KuiWindowConfig`, the way it is in the core: a config is read
+    /// on the opening edge only, and this moves a window that already
+    /// exists.
+    pub width: f32,
+    pub height: f32,
 }
 
 impl Default for KuiWindowCommand {
@@ -943,6 +964,8 @@ impl Default for KuiWindowCommand {
             window: 0,
             origin: 0,
             config: KuiWindowConfig::default(),
+            width: 0.0,
+            height: 0.0,
         }
     }
 }
@@ -950,6 +973,8 @@ impl Default for KuiWindowCommand {
 // SAFETY: `repr(C)` with `size: u32` first.
 unsafe impl OutParam for KuiWindowCommand {
     /// Through `config`: the whole struct as it first shipped, in ABI 5.
+    /// ABI 6's `width`/`height` sit past it, so the floor does not move and
+    /// an ABI-5 host's reservation is still accepted.
     const ABI_V1_SIZE: u32 = abi_through!(KuiWindowCommand, config, KuiWindowConfig);
     fn size_mut(&mut self) -> &mut u32 {
         &mut self.size
@@ -957,6 +982,7 @@ unsafe impl OutParam for KuiWindowCommand {
 }
 
 fn window_command_to_c(cmd: WindowCommand) -> KuiWindowCommand {
+    let mut size = Size::new(0.0, 0.0);
     let (kind, origin, config) = match cmd {
         WindowCommand::StartDrag(_) => (KUI_CMD_START_DRAG, 0, KuiWindowConfig::default()),
         WindowCommand::Close(_) => (KUI_CMD_CLOSE, 0, KuiWindowConfig::default()),
@@ -967,12 +993,19 @@ fn window_command_to_c(cmd: WindowCommand) -> KuiWindowCommand {
         WindowCommand::Open { origin, config, .. } => {
             (KUI_CMD_OPEN, origin.0, window_config_to_c(config))
         }
+        WindowCommand::SetSize { size: s, .. } => {
+            size = s;
+            (KUI_CMD_SET_SIZE, 0, KuiWindowConfig::default())
+        }
+        WindowCommand::Focus(_) => (KUI_CMD_FOCUS, 0, KuiWindowConfig::default()),
     };
     KuiWindowCommand {
         kind,
         window: cmd.window().0,
         origin,
         config,
+        width: size.w,
+        height: size.h,
         ..Default::default()
     }
 }
@@ -1779,6 +1812,38 @@ pub extern "C" fn kui_window_declare(ptr: *mut KuiCtx, name: KuiStr, cfg: *const
             let cfg = window_config_of(unsafe { cfg.as_ref() });
             let name = kstr(name);
             c.core().declare_window(&name, cfg);
+        }
+    });
+}
+
+/// Asks the driver to resize `window` to `w`x`h` logical px. A request and
+/// not a declaration: `kui_window_declare`'s config is read on the opening
+/// edge only, because the user owns a window's size once it exists, so this
+/// is the only way an app moves a live window's size. It is queued the way
+/// `kui_reveal` queues a scroll and comes back out of the host's own
+/// `kui_take_window_command` as `KUI_CMD_SET_SIZE`, carrying `window` and
+/// the size in `width`/`height`, for the host to apply; a headless host
+/// that never drains ignores it. `window` is the id events carry
+/// (`KuiEvent.window`), `KUI_WINDOW_MAIN` for the launcher's. The size the
+/// window actually becomes arrives as the ordinary `resize` event.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_window_size(ptr: *mut KuiCtx, window: u32, w: f32, h: f32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_window_size(WindowId(window), Size::new(w, h));
+        }
+    });
+}
+
+/// Asks the driver to give `window` keyboard focus; queued and drained the
+/// same way, as `KUI_CMD_FOCUS`. Advisory, like every focus request an app
+/// makes of a window manager: whether it was granted shows up through
+/// `kui_env_set_focused` on the frames that follow, not as a reply here.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_focus_window(ptr: *mut KuiCtx, window: u32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().focus_window(WindowId(window));
         }
     });
 }
@@ -3960,6 +4025,67 @@ mod widgets_headless {
 }
 
 #[cfg(test)]
+mod window_commands_headless {
+    use super::*;
+
+    /// `MAIN`, which the header spells for C.
+    const MAIN: u32 = WindowId::MAIN.0;
+
+    fn drain(ctx: *mut KuiCtx) -> Vec<(u32, u32, f32, f32)> {
+        let mut out = Vec::new();
+        let mut cmd = KuiWindowCommand::default();
+        while kui_take_window_command(ctx, &raw mut cmd) {
+            out.push((cmd.kind, cmd.window, cmd.width, cmd.height));
+        }
+        out
+    }
+
+    /// A size request carries its size through the drain, and a focus
+    /// request the window it names; both leave in the order they were
+    /// queued, behind whatever the chrome produced, and once.
+    #[test]
+    fn size_and_focus_requests_drain_with_their_payload() {
+        let ctx = kui_ctx_new();
+        kui_set_window_size(ctx, MAIN, 640.0, 480.0);
+        kui_focus_window(ctx, MAIN);
+        assert_eq!(
+            drain(ctx),
+            vec![
+                (KUI_CMD_SET_SIZE, MAIN, 640.0, 480.0),
+                (KUI_CMD_FOCUS, MAIN, 0.0, 0.0),
+            ]
+        );
+        assert!(drain(ctx).is_empty(), "drained once");
+        kui_ctx_free(ctx);
+    }
+
+    /// The ABI-6 append is the compatible kind: a host that reserved only
+    /// through `config` (every ABI-5 build) still drains, still reads the
+    /// verb and the window, and simply never sees the size — which it
+    /// cannot need, since only its own `kui_set_window_size` produces the
+    /// verb that fills it.
+    #[test]
+    fn an_abi_5_host_drains_without_seeing_the_appended_size() {
+        let ctx = kui_ctx_new();
+        kui_set_window_size(ctx, MAIN, 640.0, 480.0);
+        let mut cmd = KuiWindowCommand {
+            size: abi_through!(KuiWindowCommand, config, KuiWindowConfig),
+            width: 12.5,
+            ..Default::default()
+        };
+        assert!(kui_take_window_command(ctx, &raw mut cmd));
+        assert_eq!((cmd.kind, cmd.window), (KUI_CMD_SET_SIZE, MAIN));
+        assert_eq!(
+            cmd.size,
+            KuiWindowCommand::ABI_V1_SIZE,
+            "the prefix it asked for"
+        );
+        assert_eq!(cmd.width, 12.5, "and nothing written past it");
+        kui_ctx_free(ctx);
+    }
+}
+
+#[cfg(test)]
 mod audio_headless {
     use super::*;
 
@@ -4443,6 +4569,8 @@ mod abi_handshake {
                 window: cmd.window,
                 origin: cmd.origin,
                 config: cmd.config,
+                width: cmd.width,
+                height: cmd.height,
             });
         }
         out
@@ -5266,6 +5394,8 @@ mod abi_parity {
             window: u32 => "uint32_t",
             origin: u16 => "uint16_t",
             config: KuiWindowConfig => "KuiWindowConfig",
+            width: f32 => "float",
+            height: f32 => "float",
         });
         abi_out_struct!(o, KuiWindowCommand);
 
@@ -5275,6 +5405,8 @@ mod abi_parity {
             ("KUI_CMD_START_DRAG", KUI_CMD_START_DRAG),
             ("KUI_CMD_CLOSE", KUI_CMD_CLOSE),
             ("KUI_CMD_MINIMIZE", KUI_CMD_MINIMIZE),
+            ("KUI_CMD_SET_SIZE", KUI_CMD_SET_SIZE),
+            ("KUI_CMD_FOCUS", KUI_CMD_FOCUS),
             ("KUI_CMD_TOGGLE_MAXIMIZE", KUI_CMD_TOGGLE_MAXIMIZE),
             ("KUI_CMD_OPEN", KUI_CMD_OPEN),
             ("KUI_WINDOW_KIND_NORMAL", KUI_WINDOW_KIND_NORMAL),

@@ -2158,9 +2158,34 @@ impl Core {
         self.interaction.window_commands.push(cmd);
     }
 
-    /// Drains window intents produced by chrome nodes since the last drain.
-    /// Frame drivers call this after each input dispatch and apply the
-    /// commands to the real window; headless drivers may simply never call.
+    /// Asks the driver to resize `window` to `size` (logical px). Queued
+    /// the way `reveal` and `play` queue theirs: a request the driver
+    /// applies on its next pump — after this input dispatch if called from
+    /// a handler, after this frame if called from a view — and one a
+    /// headless driver never applies, since it never drains. The window
+    /// answers through the ordinary `resize` event, with the size it
+    /// actually became. Until ADR 0004's step 3 lets a frame declare more
+    /// windows, `WindowId::MAIN` is the only one there is.
+    pub fn set_window_size(&mut self, window: crate::window::WindowId, size: crate::geom::Size) {
+        self.interaction
+            .window_commands
+            .push(crate::window::WindowCommand::SetSize { window, size });
+    }
+
+    /// Asks the driver to give `window` keyboard focus; queued like
+    /// [`Core::set_window_size`]. Whether the window manager agrees shows
+    /// up as `env.focused` on the frames that follow, not as a reply.
+    pub fn focus_window(&mut self, window: crate::window::WindowId) {
+        self.interaction
+            .window_commands
+            .push(crate::window::WindowCommand::Focus(window));
+    }
+
+    /// Drains window intents queued since the last drain — by chrome nodes,
+    /// by `push_window_command`, `set_window_size` and `focus_window` — in
+    /// the order they were queued. Frame drivers call this after each input
+    /// dispatch and each frame and apply the commands to the real window;
+    /// headless drivers may simply never call.
     pub fn take_window_commands(&mut self) -> Vec<crate::window::WindowCommand> {
         std::mem::take(&mut self.interaction.window_commands)
     }

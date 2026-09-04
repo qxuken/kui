@@ -1193,7 +1193,55 @@ The work ADR 0004 (C7) decided but did not do. Each step ships alone, in order:
    the app keeps asking.
 4. **`WindowKind::Popup`.** Anchoring in screen coordinates, ownership,
    non-activating focus routing, and `dismiss` on the window.
-5. **`SetSize` / `Focus`**, queued the way `reveal` and `play` are.
+5. **`SetSize` / `Focus`** — **done (2026-09-05)**, after step 3 and
+   through its struct. `WindowCommand::SetSize { window, size }` and
+   `Focus(WindowId)`, queued by `Core::set_window_size` /
+   `Core::focus_window` into the queue chrome and the declaration diff
+   already fill, drained in order by `take_window_commands`, and never
+   applied headlessly because a headless driver never drains — the shape
+   `reveal` and `play` have. In all four bindings the way C4 was:
+   `ui.set_window_size` / `ui.focus_window` in Rust, `setWindowSize` /
+   `focusWindow` on both Node classes via `core_methods!`,
+   `kui_set_window_size` / `kui_focus_window` in C, `env.set_window_size` /
+   `env.focus_window` in Lua. The runner resolves the command's window with
+   the `pane_of` step 3 built and applies `Window::request_inner_size` /
+   `Window::focus_window`; a command naming a window that is not open is
+   dropped rather than applied to another.
+   **This is the other half of step 3's edge rule**, not an addition beside
+   it. Config is read on the opening edge only, so after step 3 a
+   declaration *cannot* move a live window — which is the point ("the user
+   owns geometry once the window exists") but leaves an app that legitimately
+   wants to resize its own window with nothing to say. These two verbs are
+   that, and the ADR's reason for keeping size a command reads as the reason
+   it is one: there is still no `size` prop, and the tests pin that a
+   request changes neither the viewport nor the frame after it.
+   **C: `KuiWindowCommand` gained `width`/`height`**, and the size did not
+   ride in `config`. The core's `SetSize` carries a bare `Size` and not a
+   `WindowConfig` — a config is what a window *opens* with — so C says the
+   same thing rather than overloading the one field step 3 documented as
+   `KUI_CMD_OPEN` only. That makes this the second append to an [out]
+   struct, which is what `size` leading one is for: the floor stays at
+   `abi_through!(.., config, ..)`, an ABI-5 host's reservation is still
+   accepted and still drains (asserted both in Rust and by the C example),
+   and no host that never calls `kui_set_window_size` can receive the verb
+   that fills the new fields. `KUI_ABI_VERSION` went 5 → 6 anyway, per ADR
+   0006 decision 2 — the bump is for the host that skipped the check.
+   **No corpus scene, and the reason is sharper than "the report cannot say
+   it".** Step 3 gave the report a `cmd` line, so it can; what it cannot do
+   is exercise all four *bindings*. The corpus compares what a declared tree
+   lowers to, and these two are deliberately not declarations, so each
+   adapter would have to reach them another way — and the two ways available
+   each miss a binding. A step kind (the `Step::WindowClosed` pattern) is
+   applied by the shared Rust harness for the Lua adapter, whose scenes are
+   views and not step loops, so Lua's `env.set_window_size` would never run;
+   an imperative call inside the scene builder covers Lua but is impossible
+   for Node, whose corpus scenes are pure tree functions handed to
+   `ctx.frame`. Neither covers four, so the per-binding headless tests stay
+   the coverage — and each does drive its own entry point: `Core` and `Ui`
+   in `tests/window.rs`, `kui_set_window_size` through the struct drain in
+   `mod window_commands_headless` and again in the C example,
+   `env.set_window_size` from a script in kui-lua, `ctx.setWindowSize`
+   through `windowCommands()` in `test.mjs`.
 
 Testing splits the way the ADR says: the conformance corpus can pin the
 declaration diff (declare a window, stop declaring it, assert the command

@@ -1911,9 +1911,10 @@ pub fn write_env(env: WindowEnv, out: &mut String) {
     );
 }
 
-/// The `cmd` line for one window command: the verb, the window, and for an
-/// `Open` the rest of what the driver reads — origin, kind (as its index:
-/// 0 is normal), initial width and height, and whether it activates. All
+/// The `cmd` line for one window command: the verb, the window, and what
+/// else that verb carries — for an `Open` the rest of what the driver reads
+/// (origin, kind as its index with 0 for normal, initial width and height,
+/// and whether it activates), for a `SetSize` the size asked for. All
 /// integers, like every other line.
 pub fn write_command(cmd: &WindowCommand, out: &mut String) {
     let _ = match *cmd {
@@ -1931,6 +1932,12 @@ pub fn write_command(cmd: &WindowCommand, out: &mut String) {
             config.size.h as i32,
             config.activates as u8,
         ),
+        WindowCommand::SetSize { window, size } => writeln!(
+            out,
+            "cmd setsize {} {} {}",
+            window.0, size.w as i32, size.h as i32
+        ),
+        WindowCommand::Focus(w) => writeln!(out, "cmd focus {}", w.0),
     };
 }
 
