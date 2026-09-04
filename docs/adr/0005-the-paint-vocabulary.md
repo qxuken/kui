@@ -6,12 +6,17 @@ amended: 2026-09-04
 
 # The paint vocabulary: group opacity and shadows in, gradients out, exit animations designed
 
-> **Amended 2026-09-04.** Exit animations are built, as
+> **Amended 2026-09-04, twice.** Exit animations are built, as
 > `crates/kui-core/src/depart.rs` and one `exit` schema row. The design
 > below held; two things changed, both recorded in
-> [Amendment: exit animations, built](#amendment-exit-animations-built) at
-> the end of this document — where the departing subtree is copied *from*,
-> and the answer to the open question about `animating()`.
+> [Amendment: exit animations, built](#amendment-exit-animations-built) —
+> where the departing subtree is copied *from*, and the answer to the open
+> question about `animating()`. And **rounded clipping is built too**: the
+> consequence below prices it as "a bigger bill than either of these" on an
+> estimate, and
+> [Amendment: rounded clipping, built](#amendment-rounded-clipping-built)
+> replaces the estimate with the measurement, which is about 1% of a frame
+> that never clips. Both amendments are at the end of this document.
 
 `crates/kui-core/src/display.rs` was the whole renderer contract — fill,
 border, four radii, glyph, image — and three things a real UI wants were
@@ -200,10 +205,15 @@ first and none of the second.**
   props, so all four bindings reproduce them or fail.
 - `docs/props.md` gains six rows and `KuiSpec` seven fields (appended, so
   the C ABI stays additive).
-- Rounded clipping is still not addressed: `Quad::clip` is a rect, so a
+- Rounded clipping is not addressed here: `Quad::clip` is a rect, so a
   rounded scroll container does not round its children. Four more floats on
-  the hot struct plus a second SDF per fragment is a bigger bill than
-  either of these, and it is left in the backlog with that price on it.
+  the hot struct plus a second SDF per fragment looked like a bigger bill
+  than either of these, and it was left in the backlog with that price on
+  it. **Superseded by
+  [Amendment: rounded clipping, built](#amendment-rounded-clipping-built)**,
+  which measured the bill instead of estimating it: the four floats are
+  invisible, the plumbing around them is about 1% of a frame that never
+  clips, and it is built.
 
 ## Amendment: exit animations, built
 
@@ -366,3 +376,125 @@ worthwhile if a second cross-binding behaviour ever wants a clock; neither
 is worth doing for a row that is already forced twice. The behaviour is
 pinned in `crates/kui-core/tests/exit.rs` instead, including the toast-stack
 shape the policy was decided against.
+
+## Amendment: rounded clipping, built
+
+The consequence above left rounded clipping in the backlog with a price on
+it: "four more floats on the hot struct plus a second SDF per fragment is a
+bigger bill than either of these". The price was an estimate. It has now
+been measured, and it is smaller than the estimate implied — smaller, in
+particular, than the 5% every frame already pays for `NodeSpec::exit` — so
+it is built.
+
+`Quad` grows `clip_radius: [f32; 4]` (108 → 124 bytes) and `display::Clip`
+is the rect-plus-radii pair that the clip propagation, `Paint`, and the text
+and editor emitters now carry instead of a bare `Rect`. A node that clips
+(`clip`, `scroll_x`, `scroll_y`) and has a `radius` rounds the clip its
+descendants inherit — no new prop, in any of the four bindings, because the
+radius is the clipping node's own and the rule is CSS's.
+
+### What it cost
+
+Measured on `crates/kui-core/benches/frame.rs`, fastest of 100 samples over
+14 interleaved rounds on one machine, against the same benches built from
+the commit before — the *same bench file* on both sides, including the two
+benches added for this, so the ~5% a bench binary moves by gaining functions
+is not being read as a result. Two copies of the baseline binary ran in the
+same rounds; they differ by −0.6% to +0.4%, which is the method's noise floor
+and the number every row below has to beat to mean anything.
+
+| frame | before | after | |
+|---|---|---|---|
+| `frame_10k_rects` (nothing clips) | 1.269 ms | 1.281 ms | +0.9% |
+| `frame_10k_rects_with_text_and_hits` | 1.663 ms | 1.682 ms | +1.1% |
+| `frame_10k_rects_with_shadows_and_opacity` | 1.384 ms | 1.398 ms | +1.0% |
+| `frame_1k_typical` | 163 µs | 166 µs | +1.5% |
+| `list_10k_rows_naive` (a real scroll container) | 4.93 ms | 4.98 ms | +1.0% |
+| `frame_10k_rects_square_clip` (100 clipping rows) | 1.289 ms | 1.334 ms | +3.5% |
+| `frame_10k_rects_rounded_clip` (the same, rounded) | 1.284 ms | 1.346 ms | +4.8% |
+
+Read it as three numbers. **About 1% is what everybody pays**, whether or
+not anything clips: sixteen more bytes on `Quad` and one more field written
+per quad, 20,000 times a frame. **About 3.5% is what a frame that clips
+pays**, because a `Clip` is 32 bytes where a `Rect` was 16 and it travels
+through the propagation pass, `Paint`, and every emitter. And **the rounding
+itself is the last 1.3 points** — inside the new build, the rounded frame is
+0.9% slower than the square one (1.346 vs 1.334 ms), which is the per-corner
+[`Clip::intersect`] running on all 10k nodes in the shape a real view never
+declares: it rounds the card, not each of its rows.
+
+The four floats, on their own, were measured first and separately, against a
+one-float `clip_radius` that could not express a per-corner radius: at
+108 → 112 vs 108 → 124 bytes the two were indistinguishable from each other
+and from the baseline. The generality is free; it was the plumbing around it
+that cost the 1%.
+
+The shader side is one more `sd_rounded_box` per fragment, taken **instead
+of** the rect test rather than after it, and only on the branch where
+`clip_radius` is not all zero — which it is on every quad of every frame
+that has no rounded clipper. The value comes off the instance, so the branch
+is uniform across a quad's fragments. That is not measured on a GPU here;
+what is checked is that both preprocessed variants of the shader still
+validate (`shader_variants_validate`) and that the shape the shader cuts is
+the shape the core described, by mirroring `shade`'s clip block on the CPU
+and evaluating it over quads a real `Core` emitted
+(`crates/kui-wgpu/tests/rounded_clip_coverage.rs`, beside the shadow work's
+`shadow_coverage.rs` — both now share one transcription of the WGSL in
+`tests/wgsl`).
+
+### One rounded rect cannot name the intersection of two
+
+The clip a node inherits is one rect and four radii, and clippers nest, so
+the intersection of two rounded rects has to collapse into that shape.
+`Clip::intersect` decides **per corner**: a corner takes whichever of the
+two shapes rounds it more — the intersection of two rounded corners is the
+tighter one, so that is exact — and keeps a radius at all only while that
+corner of the result is still the same point as that corner of the shape it
+came from. A corner an ancestor's straight edge has already cut away is
+square, which is what the ancestor made it, so that is exact too.
+
+The one case it approximates: an ancestor edge that cuts *partway* into a
+rounded corner moves that corner, so the radius drops to zero there and a
+sliver at the very corner goes unclipped. It takes two rounded clippers
+offset from each other to build. The alternative is carrying the rounding
+shape's own rect alongside the intersection — eight more floats rather than
+four, to serve a shape nobody has drawn yet.
+
+### What is deliberately not rounded
+
+- **Hit testing.** `HitRegion::clip` stays a rect: a click in the corner of
+  a rounded scroll container still reaches the row under it. Browsers do the
+  same for descendants of a rounded `overflow: hidden`, and the alternative
+  is a per-corner test in the hot input path for a few pixels.
+- **Culling.** The "entirely clipped away" test in `finish_frame` is still
+  the rect intersection, so a node that survives only inside a corner's arc
+  is emitted and clipped rather than dropped. Cheaper, and never wrong in
+  the visible direction.
+- **A clipper's own quads.** `clips[i]` is ancestors only, as it always was,
+  so a rounded card is not clipped by itself — it draws its own rounded
+  shape through `radius`, which is the same shape.
+- **Scrollbars**, for the same reason: a container does not round away its
+  own bar.
+
+### The option not taken, and what would buy it back
+
+The cheapest version of this feature makes `Quad` *smaller*: replace
+`clip: Rect` with a `clip_id: u32` into a `DisplayList::clips` side table
+(there is one entry per clipping node, not per quad), which is 96 bytes with
+full rounded clipping instead of 124 without. It was not taken because it
+breaks what the renderer boundary promises: a quad stops being
+self-contained, every backend grows a second array to bind, and a C host
+reading `KuiDrawData.quads` has to resolve an index. If `Quad` ever has to
+grow again, that is the trade to reopen — and it would pay for the growth
+twice over.
+
+### ABI
+
+`KuiQuad` gained the field and `KUI_ABI_VERSION` went 1 → 2, which is
+exactly the rule ADR 0006 wrote down: `KuiQuad` is a **[lib]** struct, the
+host strides the array with its own `sizeof`, and there is no in-band
+handshake to catch a mismatch. `conformance::quad_digest` hashes the new
+words (0..=18 and 23..=30 of a now 31-word struct), so a binding whose
+mirror of `KuiQuad` missed the field fails every scene rather than none —
+and the corpus's `overflow` scene now rounds its scrolling list, so those
+words are not all zero.

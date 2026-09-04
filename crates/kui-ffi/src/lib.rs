@@ -81,7 +81,7 @@ use kui_core::{
 /// [in] struct, which old hosts survive by construction, nor for a new
 /// function: a host that does not call one is unaffected, and one that does
 /// fails to *link*, which is loud.
-pub const KUI_ABI_VERSION: u32 = 1;
+pub const KUI_ABI_VERSION: u32 = 2;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its
@@ -824,6 +824,11 @@ pub struct KuiQuad {
     pub uv: [u32; 4],
     /// Clip rect (physical px): x, y, w, h. Pixels outside are transparent.
     pub clip: [f32; 4],
+    /// Corner radii of the clip (physical px), clockwise from the
+    /// top-left: pixels outside the rounded clip are transparent too. All
+    /// zero — every quad of a frame with no rounded clipper — is the plain
+    /// rect clip.
+    pub clip_radius: [f32; 4],
 }
 
 #[repr(C)]
@@ -4674,6 +4679,7 @@ mod abi_parity {
             kind: u32 => "uint32_t",
             uv: [u32; 4] => "uint32_t *",
             clip: [f32; 4] => "float *",
+            clip_radius: [f32; 4] => "float *",
         });
 
         abi_struct!(o, KuiDrawData {

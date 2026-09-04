@@ -684,7 +684,9 @@ impl NodeSpec {
         self
     }
 
-    /// Clip children to this node's rect without scrolling.
+    /// Clip children to this node's rect without scrolling. A `radius` on
+    /// the same node rounds the clip, so children stay inside its corners
+    /// (see `display::Clip`).
     pub fn clip(mut self) -> Self {
         self.layout.clip = true;
         self
@@ -792,7 +794,9 @@ impl NodeSpec {
         self
     }
 
-    /// Rounds all four corners by `r`.
+    /// Rounds all four corners by `r`. On a node that also clips or
+    /// scrolls it rounds the clip too, so its children are cut to the same
+    /// corners rather than poking square out of them.
     pub fn radius(mut self, r: f32) -> Self {
         self.style.radius = [r; 4];
         self

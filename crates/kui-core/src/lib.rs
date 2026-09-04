@@ -46,7 +46,7 @@ pub use color::Color;
 pub use cursor::CursorShape;
 pub use depart::DepartStore;
 pub use diag::Warning;
-pub use display::{DisplayList, NO_CLIP, Quad, QuadKind};
+pub use display::{Clip, DisplayList, NO_CLIP, Quad, QuadKind};
 pub use edit::EditOptions;
 pub use enter::Enter;
 pub use env::Env;

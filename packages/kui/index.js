@@ -301,6 +301,9 @@ export function decodeQuads(buffer) {
       kind: u[18],
       uv: [u[19], u[20], u[21], u[22]],
       clip: [f[23], f[24], f[25], f[26]],
+      // Corner radii of the clip, same order as `radii`: a clipping node
+      // with a radius rounds what it clips. All zero = a plain rect clip.
+      clipRadii: [f[27], f[28], f[29], f[30]],
     });
   }
   return quads;

@@ -72,7 +72,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                 r#"
             return column {{ pad = 4, clip = true,
               column {{ key = "list", width = 120, height = 60, gap = 4,
-                       scroll_y = true, bg = 0x101018ff,
+                       scroll_y = true, radius = 8, bg = 0x101018ff,
                 {items}
               }},
             }}

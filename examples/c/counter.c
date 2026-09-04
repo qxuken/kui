@@ -748,16 +748,16 @@ static void repf(Rep *r, const char *fmt, ...) {
     }
 }
 
-/* FNV-1a over each quad's words 0..18 and 23..26 - KuiQuad without its uv,
+/* FNV-1a over each quad's words 0..18 and 23..30 - KuiQuad without its uv,
  * which follows glyph insertion order. Mirrors conformance::quad_digest. */
-_Static_assert(sizeof(KuiQuad) == 27 * sizeof(uint32_t), "KuiQuad is not 27 words");
+_Static_assert(sizeof(KuiQuad) == 31 * sizeof(uint32_t), "KuiQuad is not 31 words");
 
 static uint64_t quad_digest(const KuiQuad *quads, size_t count) {
     uint64_t h = 0xcbf29ce484222325ull;
     for (size_t i = 0; i < count; i++) {
-        uint32_t w[27];
+        uint32_t w[31];
         memcpy(w, &quads[i], sizeof w);
-        for (int j = 0; j < 27; j++) {
+        for (int j = 0; j < 31; j++) {
             if (j >= 19 && j <= 22) continue; /* uv */
             uint32_t v = w[j];
             for (int b = 0; b < 4; b++) {
@@ -869,7 +869,8 @@ static void conf_overflow(KuiCtx *ui, const Fixtures *f) {
                      .overflow = KUI_CLIP};
     kui_open(ui, &outer, NULL);
     KuiSpec list = {.width = {KUI_FIXED, 120}, .height = {KUI_FIXED, 60},
-                    .gap = 4, .overflow = KUI_SCROLL_Y, .bg = 0x101018ff};
+                    .gap = 4, .overflow = KUI_SCROLL_Y, .radius = 8,
+                    .bg = 0x101018ff};
     kui_open_keyed(ui, KUI_STR("list"), &list, NULL);
     KuiSpec item = {.width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 20},
                     .bg = 0x30344aff};

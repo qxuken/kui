@@ -434,7 +434,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_RADIUS,
         kind: Kind::F32,
         apply: Apply::SpecF32(|s, v| s.radius(v)),
-        doc: "Corner radius for all four corners (logical px); the per-corner props override it when listed after it.",
+        doc: "Corner radius for all four corners (logical px); the per-corner props override it when listed after it. On a node that also clips or scrolls it rounds the clip as well, so children stay inside the corners.",
     },
     PropDef {
         name: "opacity",
@@ -910,7 +910,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`clip`, `scrollX`, `scrollY`",
         lua: "`clip`, `scroll_x`, `scroll_y` (`scroll` = `scroll_y`)",
         c: "`overflow` bits `KUI_CLIP` | `KUI_SCROLL_X` | `KUI_SCROLL_Y`",
-        doc: "Clip children; scroll (implies clip) with retained offsets and live scrollbars. Every frontend ORs the same bits and hands them to `NodeSpec::overflow_bits`.",
+        doc: "Clip children; scroll (implies clip) with retained offsets and live scrollbars. A `radius` on the same node rounds the clip, so a rounded card does not show square corners poking out of it; nesting two rounded clippers keeps only the corners neither of them moved, and hit-testing stays rectangular. Every frontend ORs the same bits and hands them to `NodeSpec::overflow_bits`.",
     },
     CustomProp {
         name: "float",

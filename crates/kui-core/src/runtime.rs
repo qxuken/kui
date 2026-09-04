@@ -11,7 +11,7 @@ use crate::atlas::GlyphAtlas;
 use crate::color::Color;
 use crate::depart::{DepartStore, Ghost, GhostContent, Playback};
 use crate::diag::{Diagnostics, Warning};
-use crate::display::{DisplayList, NO_CLIP, Quad, QuadKind};
+use crate::display::{Clip, DisplayList, NO_CLIP, Quad, QuadKind};
 use crate::edit::{EditOptions, EditStore};
 use crate::env::Env;
 use crate::geom::{Rect, Size, Vec2};
@@ -105,10 +105,14 @@ pub struct Core {
     counters: Vec<u64>,
     origin: OriginId,
     /// Per-node inherited clip (logical), rebuilt each finish_frame.
-    clips: Vec<Rect>,
+    clips: Vec<Clip>,
     /// Whether any node this frame clips — lets emission skip clip math
     /// entirely for the common unclipped case.
     any_clip: bool,
+    /// Whether any node this frame clips *and* has a radius, so the clip
+    /// its descendants inherit is rounded. Separate from `any_clip`: the
+    /// per-corner bookkeeping is skipped for the ordinary square clip.
+    any_rounded_clip: bool,
     /// Per-node inherited group opacity (the product down the ancestors),
     /// rebuilt each finish_frame and only materialized when something
     /// actually fades.
@@ -259,6 +263,7 @@ impl Core {
             origin: OriginId::HOST,
             clips: Vec::new(),
             any_clip: false,
+            any_rounded_clip: false,
             opacity: Vec::new(),
             any_opacity: false,
             in_float: Vec::new(),
@@ -780,6 +785,7 @@ impl Core {
             scale,
             opacity,
         } = paint;
+        let clip_px = clip.scaled(scale);
         // Behind a modal a node still draws, and stops taking input.
         let interactive = self.interactive(i);
         let spec = &self.tree.specs[i];
@@ -800,7 +806,8 @@ impl Core {
                 blur: 0.0,
                 kind: QuadKind::Solid,
                 uv: [0; 4],
-                clip: clip.scaled(scale),
+                clip: clip_px.rect,
+                clip_radius: clip_px.radius,
             });
         }
         if spec.hover_tracked() && interactive {
@@ -818,7 +825,7 @@ impl Core {
                 key: self.tree.keys[i],
                 origin: self.tree.origins[i],
                 rect,
-                clip,
+                clip: clip.rect,
                 payload: spec.on_click.clone().filter(|_| live),
                 drag: spec.on_drag.clone().filter(|_| live),
                 parent_rect,
@@ -840,7 +847,7 @@ impl Core {
             scroll_regions.push(ScrollRegion {
                 key: self.tree.keys[i],
                 rect,
-                clip,
+                clip: clip.rect,
                 inert: !interactive,
             });
         }
@@ -850,7 +857,7 @@ impl Core {
                     tid,
                     self.tree.pos[i],
                     self.tree.size[i],
-                    clip.scaled(scale),
+                    clip_px,
                     &mut self.atlas,
                     &mut self.display.quads,
                 );
@@ -863,7 +870,7 @@ impl Core {
                         key,
                         origin: self.tree.origins[i],
                         rect,
-                        clip,
+                        clip: clip.rect,
                         payload: None,
                         drag: None,
                         parent_rect: rect,
@@ -889,7 +896,7 @@ impl Core {
                     key,
                     origin_phys,
                     focused,
-                    clip.scaled(scale),
+                    clip_px,
                     &mut self.text,
                     &mut self.atlas,
                     &mut self.display.quads,
@@ -911,7 +918,8 @@ impl Core {
                         blur: 0.0,
                         kind: QuadKind::Image,
                         uv: [slot.x, slot.y, slot.w, slot.h],
-                        clip: clip.scaled(scale),
+                        clip: clip_px.rect,
+                        clip_radius: clip_px.radius,
                     });
                 }
             }
@@ -1756,6 +1764,7 @@ impl Core {
         self.counters.push(0);
         self.origin = OriginId::HOST;
         self.any_clip = false;
+        self.any_rounded_clip = false;
         self.any_opacity = false;
         self.any_float = false;
         self.any_modal = false;
@@ -2003,6 +2012,7 @@ impl Core {
         self.ease_spec(key, &mut spec);
         if spec.layout.clips() {
             self.any_clip = true;
+            self.any_rounded_clip |= spec.style.radius != crate::display::SQUARE;
         }
         if spec.style.opacity < 1.0 {
             self.any_opacity = true;
@@ -2197,8 +2207,10 @@ impl Core {
         self.display.scale = scale;
 
         // configure_root can also introduce a clipper, or a fade.
-        let any_clip =
-            self.any_clip || (!self.tree.is_empty() && self.tree.specs[0].layout.clips());
+        let root_clips = !self.tree.is_empty() && self.tree.specs[0].layout.clips();
+        let any_clip = self.any_clip || root_clips;
+        let any_rounded_clip = self.any_rounded_clip
+            || (root_clips && self.tree.specs[0].style.radius != crate::display::SQUARE);
         let any_opacity =
             self.any_opacity || (!self.tree.is_empty() && self.tree.specs[0].style.opacity < 1.0);
         let any_float = self.any_float;
@@ -2207,7 +2219,7 @@ impl Core {
         // itself. Only materialized when something actually clips.
         self.clips.clear();
         if any_clip {
-            self.clips.resize(self.tree.len(), NO_CLIP);
+            self.clips.resize(self.tree.len(), Clip::NONE);
         }
         self.opacity.clear();
         if any_opacity {
@@ -2242,16 +2254,24 @@ impl Core {
                 o
             };
             let clip = if !any_clip {
-                NO_CLIP
+                Clip::NONE
             } else {
                 // Floating nodes escape ancestor clips.
                 let clip = if parent == NIL || floats_here {
-                    NO_CLIP
+                    Clip::NONE
                 } else {
                     let p = parent as usize;
                     if self.tree.specs[p].layout.clips() {
-                        self.clips[p]
-                            .intersect(&Rect::from_pos_size(self.tree.pos[p], self.tree.size[p]))
+                        // A clipper with a radius rounds what it clips, so
+                        // the children of a rounded card stay inside its
+                        // corners (see `display::Clip`).
+                        let box_rect = Rect::from_pos_size(self.tree.pos[p], self.tree.size[p]);
+                        let box_radius = if any_rounded_clip {
+                            self.tree.specs[p].style.radius
+                        } else {
+                            crate::display::SQUARE
+                        };
+                        self.clips[p].intersect(box_rect, box_radius)
                     } else {
                         self.clips[p]
                     }
@@ -2263,7 +2283,9 @@ impl Core {
                 continue; // deferred to the float pass
             }
             // Entirely clipped away: skip drawing and hit-testing.
-            let visible = rect.intersect(&clip);
+            // Rect, not rounded: a node that survives only in a corner's
+            // arc is drawn and clipped rather than culled.
+            let visible = rect.intersect(&clip.rect);
             if visible.w <= 0.0 || visible.h <= 0.0 {
                 continue;
             }
@@ -2283,9 +2305,9 @@ impl Core {
                     continue;
                 }
                 let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
-                let clip = if any_clip { self.clips[i] } else { NO_CLIP };
+                let clip = if any_clip { self.clips[i] } else { Clip::NONE };
                 let opacity = if any_opacity { self.opacity[i] } else { 1.0 };
-                let visible = rect.intersect(&clip);
+                let visible = rect.intersect(&clip.rect);
                 if visible.w <= 0.0 || visible.h <= 0.0 {
                     continue;
                 }
@@ -2546,7 +2568,7 @@ impl Core {
             if style.shadow.is_visible() {
                 self.display
                     .quads
-                    .push(shadow_quad(&style, rect, NO_CLIP, scale));
+                    .push(shadow_quad(&style, rect, Clip::NONE, scale));
             }
             if style.bg.is_visible() || (style.border_w > 0.0 && style.border_color.is_visible()) {
                 self.display.quads.push(Quad {
@@ -2559,6 +2581,7 @@ impl Core {
                     kind: QuadKind::Solid,
                     uv: [0; 4],
                     clip: NO_CLIP.scaled(scale),
+                    clip_radius: crate::display::SQUARE,
                 });
             }
             match node.content {
@@ -2572,7 +2595,7 @@ impl Core {
                             tid,
                             Vec2::new(rect.x, rect.y),
                             Size::new(rect.w, rect.h),
-                            NO_CLIP.scaled(scale),
+                            Clip::NONE.scaled(scale),
                             &mut self.atlas,
                             &mut self.display.quads,
                         );
@@ -2590,7 +2613,7 @@ impl Core {
                         key,
                         origin,
                         false,
-                        NO_CLIP.scaled(scale),
+                        Clip::NONE.scaled(scale),
                         &mut self.text,
                         &mut self.atlas,
                         &mut self.display.quads,
@@ -2615,6 +2638,7 @@ impl Core {
                             kind: QuadKind::Image,
                             uv: [slot.x, slot.y, slot.w, slot.h],
                             clip: NO_CLIP.scaled(scale),
+                            clip_radius: crate::display::SQUARE,
                         });
                     }
                 }
@@ -2746,8 +2770,8 @@ impl Core {
             node.w + 2.0 * FOCUS_RING_GAP,
             node.h + 2.0 * FOCUS_RING_GAP,
         );
-        let clip = self.clips.get(i).copied().unwrap_or(NO_CLIP);
-        let visible = rect.intersect(&clip);
+        let clip = self.clips.get(i).copied().unwrap_or(Clip::NONE);
+        let visible = rect.intersect(&clip.rect);
         if visible.w <= 0.0 || visible.h <= 0.0 {
             return;
         }
@@ -2762,7 +2786,8 @@ impl Core {
             blur: 0.0,
             kind: QuadKind::Solid,
             uv: [0; 4],
-            clip: clip.scaled(scale),
+            clip: clip.rect.scaled(scale),
+            clip_radius: clip.radius.map(|r| r * scale),
         });
     }
 
@@ -2910,7 +2935,7 @@ impl TextMeasure for Measure<'_> {
 /// and every ancestor's multiply out to.
 #[derive(Clone, Copy)]
 struct Paint {
-    clip: Rect,
+    clip: Clip,
     scale: f32,
     /// Multiplied into the alpha of every quad the node emits.
     opacity: f32,
@@ -2922,7 +2947,7 @@ struct Paint {
 /// the blurred edge reaches; the backend insets by `blur` again to find
 /// the shape. Radii grow with the spread so a rounded box keeps its
 /// silhouette instead of sprouting corners.
-fn shadow_quad(style: &crate::spec::VisualStyle, rect: Rect, clip: Rect, scale: f32) -> Quad {
+fn shadow_quad(style: &crate::spec::VisualStyle, rect: Rect, clip: Clip, scale: f32) -> Quad {
     let sh = style.shadow;
     let blur = sh.blur.max(0.0);
     let shape = Rect::new(
@@ -2945,7 +2970,8 @@ fn shadow_quad(style: &crate::spec::VisualStyle, rect: Rect, clip: Rect, scale: 
         blur: blur * scale,
         kind: QuadKind::Shadow,
         uv: [0; 4],
-        clip: clip.scaled(scale),
+        clip: clip.rect.scaled(scale),
+        clip_radius: clip.radius.map(|r| r * scale),
     }
 }
 
@@ -2959,7 +2985,7 @@ fn fade(quads: &mut [Quad], opacity: f32) {
     }
 }
 
-fn scrollbar_quad(bar: Rect, scale: f32, clip: Rect, active: bool) -> Quad {
+fn scrollbar_quad(bar: Rect, scale: f32, clip: Clip, active: bool) -> Quad {
     Quad {
         rect: bar.scaled(scale),
         color: Color::rgba(1.0, 1.0, 1.0, if active { 0.4 } else { 0.18 }),
@@ -2969,7 +2995,8 @@ fn scrollbar_quad(bar: Rect, scale: f32, clip: Rect, active: bool) -> Quad {
         blur: 0.0,
         kind: QuadKind::Solid,
         uv: [0; 4],
-        clip,
+        clip: clip.rect,
+        clip_radius: clip.radius,
     }
 }
 

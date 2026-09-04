@@ -26,6 +26,8 @@ struct Instance {
     clip: [f32; 4],
     /// Corner radii, clockwise from the top-left.
     radii: [f32; 4],
+    /// Radii of the clip itself; all zero = a plain rect clip.
+    clip_radii: [f32; 4],
 }
 
 #[repr(C)]
@@ -63,6 +65,7 @@ fn instance_of(q: &Quad) -> Instance {
         ],
         clip: [q.clip.x, q.clip.y, q.clip.w, q.clip.h],
         radii: q.radius,
+        clip_radii: q.clip_radius,
     }
 }
 
@@ -226,7 +229,7 @@ impl Renderer {
         let instance_attrs = wgpu::vertex_attr_array![
             0 => Float32x2, 1 => Float32x2, 2 => Float32x4,
             3 => Float32x4, 4 => Float32x4, 5 => Float32x4,
-            6 => Float32x4, 7 => Float32x4,
+            6 => Float32x4, 7 => Float32x4, 8 => Float32x4,
         ];
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("kui.quads"),

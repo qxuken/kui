@@ -737,8 +737,11 @@ Paint is fill, border, four radii, group opacity and one outer drop shadow per n
 **no gradients** in v0 (a stop list, a type, a geometry and an interpolation space are not a
 paint prop's worth of work — use an image or stack solids), no inset or multiple shadows, and
 opacity is a per-quad alpha multiply rather than an offscreen composite, so overlapping pieces
-of one faded subtree show their seams. Clipping is rect-only, so a rounded scroll container
-does not round its children's corners.
+of one faded subtree show their seams. A `radius` on a node that clips or scrolls rounds the
+clip too, so a rounded card's children stay inside its corners; what that gives up is nesting
+(the inherited clip is one rect and four radii, so two rounded clippers keep only the corners
+neither of them moved) and hit-testing, which stays rectangular — a click in the corner of a
+rounded scroll container still reaches the row under it.
 Wrapping is rows only, for the pass-order reason above: a **column** that outgrows its
 height is still one line, so it shrinks its `Fit` children toward their `min` (or
 overflows) rather than moving anything into a second column, and `Dir` is `Row` or

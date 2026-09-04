@@ -1089,6 +1089,9 @@ export interface Quad {
   kind: number;
   uv: [number, number, number, number];
   clip: [number, number, number, number];
+  /** Corner radii of the clip, same order as `radii`: a clipping node with a
+   *  radius rounds what it clips. All zero = a plain rect clip. */
+  clipRadii: [number, number, number, number];
 }
 
 export declare function decodeQuads(buffer: Buffer): Quad[];

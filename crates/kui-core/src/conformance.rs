@@ -287,8 +287,9 @@ pub const SCENES: &[Scene] = &[
     },
     Scene {
         name: "overflow",
-        doc: "A clipping wrapper around a scrolling list, scrolled once: the \
-              overflow composite, its retained offset and its scrollbar.",
+        doc: "A clipping wrapper around a rounded scrolling list, scrolled \
+              once: the overflow composite, its retained offset, its \
+              scrollbar, and the rounded clip its items inherit.",
         custom: &["overflow", "key"],
         elements: &["box"],
         build: build_overflow,
@@ -626,6 +627,11 @@ fn build_overflow(ui: &mut Ui<'_>, _f: &Fixtures) {
                 .height(Sizing::Fixed(60.0))
                 .gap(4.0)
                 .scroll_y()
+                // Rounded and clipping: the items inside inherit the
+                // rounded clip, so every adapter has to carry a quad's
+                // `clip_radius` (which the digest hashes) and not just its
+                // `clip`.
+                .radius(8.0)
                 .bg(Color::hex(0x101018ff)),
             |ui| {
                 for key in ITEM_KEYS {
@@ -1049,9 +1055,11 @@ pub struct NodeRow {
 /// FNV-1a over the little-endian bytes of a quad's fields, `uv` excluded:
 /// atlas coordinates depend on glyph insertion order, which a binding is
 /// free to reach by a different route. Field order is `KuiQuad`'s: x, y, w,
-/// h, color[4], border_color[4], radius[4], border_w, kind, clip[4] — words
-/// 0..=17 and 22..=25 of the 26-word struct. Every adapter hashes the same
-/// words, so a geometry difference is one mismatched hex string.
+/// h, color[4], border_color[4], radius[4], border_w, blur, kind, clip[4],
+/// clip_radius[4] — words 0..=18 and 23..=30 of the 31-word struct. Every
+/// adapter hashes the same words, so a geometry difference is one
+/// mismatched hex string, and a mirror of `KuiQuad` that missed a field
+/// mismatches on every scene rather than on none.
 pub const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 pub const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -1088,7 +1096,16 @@ pub fn quad_digest(quads: &[Quad]) -> u64 {
             mix(&mut h, v.to_bits());
         }
         mix(&mut h, q.kind as u32);
-        for v in [q.clip.x, q.clip.y, q.clip.w, q.clip.h] {
+        for v in [
+            q.clip.x,
+            q.clip.y,
+            q.clip.w,
+            q.clip.h,
+            q.clip_radius[0],
+            q.clip_radius[1],
+            q.clip_radius[2],
+            q.clip_radius[3],
+        ] {
             mix(&mut h, v.to_bits());
         }
     }

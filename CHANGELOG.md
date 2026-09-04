@@ -9,6 +9,42 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **A rounded card clips rounded** (`docs/adr/0005-the-paint-vocabulary.md`,
+  amended). `Quad::clip` was a rect, so a card with a `radius` that also
+  clipped or scrolled showed its children with square corners poking out of
+  its rounded ones — a defect that reads as a rendering bug to anyone who
+  has used CSS, and the last thing ADR 0005 left in the backlog. A node that
+  clips (`clip`, `scroll_x`, `scroll_y`) and has a `radius` now rounds the
+  clip its descendants inherit. **There is no new prop**, in any of the four
+  bindings: the radius is the clipping node's own and the rule is CSS's
+  (`overflow: hidden` under a `border-radius`), so nothing has to be
+  declared and nothing has to be lowered.
+  **The price was measured rather than estimated**, which is why it is built
+  at all — the ADR had priced it as "a bigger bill" than group opacity or
+  shadows. With the same bench file on both sides and two copies of the
+  baseline binary interleaved to floor the noise at ±0.6%: a 10k-node frame
+  that never clips pays about **1%** for `Quad` growing `clip_radius`
+  (108 → 124 bytes); a frame where 100 rows clip pays about **3.5%**,
+  because the inherited clip is now 32 bytes where it was 16; and the
+  per-corner intersect itself is the last **0.9%** on top of that, in the
+  shape a real view never declares (it rounds the card, not each row). The
+  four floats were priced against a single uniform `clip_radius` first and
+  were indistinguishable from it, so the per-corner generality is free — and
+  it is needed: a card rounded only at the top is a real shape.
+  Three limits, all deliberate and none silent. **Nesting approximates**: the
+  inherited clip is one rect and four radii, so where two rounded clippers
+  meet, a corner takes the tighter of the two and keeps a radius only while
+  neither clipper moved it — an ancestor edge cutting partway into a rounded
+  corner leaves a sliver there unclipped. **Hit testing stays rectangular**,
+  so a click in the corner of a rounded scroll container still reaches the
+  row under it, as it does in a browser. And **culling stays rectangular**,
+  so a node that survives only inside a corner's arc is drawn and clipped
+  rather than dropped.
+  **What you can delete:** the extra inner wrapper with a matching `radius`
+  you put inside every rounded scroll container so its first and last rows
+  would not square off its corners, and the arithmetic that kept the two
+  radii in step.
+
 - **`exit`: a node can leave, not just arrive** (`docs/adr/0005-the-paint-vocabulary.md`,
   backlog C8). `enter` said where a node's slots start the first frame it is
   seen. The mirror image was the one animation the frame model could not
@@ -569,6 +605,16 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Changed
 
+- **`KUI_ABI_VERSION` is 2** (was 1). `KuiQuad` gained `float
+  clip_radius[4]`, and `KuiQuad` is a **[lib]** struct — the library
+  allocates the array and the host strides it with its own `sizeof` — so per
+  ADR 0006 that bumps the version rather than riding on a `size` handshake.
+  A C host rebuilt against the new header needs no source change; one that
+  is *not* rebuilt is caught by its own `kui_abi_version()` check before its
+  first call. Node's `decodeQuads` gained `clipRadii`, and
+  `conformance::quad_digest` hashes the four new words, so a binding whose
+  mirror of `KuiQuad` missed the field now fails every corpus scene rather
+  than none.
 - **`docs/props.md` says `window_title`, not `title`, for Lua's window
   title.** The root table has always been read for `window_title`; the
   `title` composite's Lua column claimed `title`, which does nothing. Found
@@ -806,6 +852,11 @@ upgrades remove code from the apps on it is doing the job.
 
 ### What you can delete
 
+- **The inner wrapper that re-rounded a rounded scroll container** — the
+  extra node with a matching `radius` put inside every clipping card so its
+  first and last rows would not square off its corners, and the arithmetic
+  that kept the two radii in step when one of them changed. The clipper
+  rounds what it clips now.
 - **The Lua workarounds for focus you could see but not move** — the
   `key_focus` flag toggled through a script-side variable for one frame to
   simulate a `focus(key)` call, and the hand-rolled "which of my rows is

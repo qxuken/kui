@@ -26,6 +26,12 @@ struct Grid {
     /// Every cell also declares an `exit`, so the frame is kept whole for
     /// the next one to diff against (see `kui_core::depart`).
     exits: bool,
+    /// Every row clips, so all 10k cells inherit a clip rather than the
+    /// `NO_CLIP` the unclipped benches take a shortcut for.
+    clip: bool,
+    /// Implies `clip`: every row also has a radius, so the clip its cells
+    /// inherit is rounded and each one costs the per-corner intersect.
+    rounded_clip: bool,
 }
 
 impl Grid {
@@ -39,6 +45,8 @@ impl Grid {
             opacity: false,
             transitions: false,
             exits: false,
+            clip: false,
+            rounded_clip: false,
         }
     }
 
@@ -73,6 +81,19 @@ impl Grid {
         self.exits = true;
         self
     }
+
+    fn clip(mut self) -> Self {
+        self.clip = true;
+        self
+    }
+
+    /// Implies `clip`: a radius rounds nothing on a node that does not
+    /// clip.
+    fn rounded_clip(mut self) -> Self {
+        self.clip = true;
+        self.rounded_clip = true;
+        self
+    }
 }
 
 fn grid(ui: &mut Ui<'_>, g: Grid) {
@@ -82,7 +103,14 @@ fn grid(ui: &mut Ui<'_>, g: Grid) {
     }
     ui.configure_root(root);
     for r in 0..g.rows {
-        ui.with(NodeSpec::row().width(Sizing::Grow(1.0)).gap(4.0), |ui| {
+        let mut row = NodeSpec::row().width(Sizing::Grow(1.0)).gap(4.0);
+        if g.clip {
+            row = row.clip();
+        }
+        if g.rounded_clip {
+            row = row.radius(6.0);
+        }
+        ui.with(row, |ui| {
             for c in 0..g.cols {
                 let mut spec = NodeSpec::column()
                     .width(Sizing::Grow(1.0))
@@ -172,6 +200,33 @@ fn frame_1k_typical(bencher: divan::Bencher) {
 #[divan::bench]
 fn frame_10k_rects_with_shadows_and_opacity(bencher: divan::Bencher) {
     let g = Grid::new(100, 100).shadows().opacity();
+    let mut core = Core::new();
+    run_frame(&mut core, g);
+    bencher.bench_local(|| run_frame(&mut core, g));
+}
+
+// -- Clipping ---------------------------------------------------------------
+// A clipping node with a radius rounds what it clips, which is four more
+// floats on `Quad` and a per-corner intersect for every node under a
+// clipper. These two are the same tree twice, clipping square and clipping
+// rounded, so the difference between them is what the rounding costs; the
+// difference from `frame_10k_rects` is what clipping at all costs, which it
+// always did.
+
+/// 100 clipping rows of 100 cells: every cell inherits a clip.
+#[divan::bench]
+fn frame_10k_rects_square_clip(bencher: divan::Bencher) {
+    let g = Grid::new(100, 100).clip();
+    let mut core = Core::new();
+    run_frame(&mut core, g);
+    bencher.bench_local(|| run_frame(&mut core, g));
+}
+
+/// The same, with a radius on every clipping row — the pathological
+/// declaration, since a real view rounds the card and not each of its rows.
+#[divan::bench]
+fn frame_10k_rects_rounded_clip(bencher: divan::Bencher) {
+    let g = Grid::new(100, 100).rounded_clip();
     let mut core = Core::new();
     run_frame(&mut core, g);
     bencher.bench_local(|| run_frame(&mut core, g));

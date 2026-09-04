@@ -27,6 +27,8 @@ struct Instance {
     @location(6) clip: vec4<f32>,
     // corner radii, clockwise from the top-left: tl, tr, br, bl
     @location(7) radii: vec4<f32>,
+    // radii of the clip itself, same order; all zero = a plain rect clip
+    @location(8) clip_radii: vec4<f32>,
 };
 
 struct VsOut {
@@ -39,6 +41,7 @@ struct VsOut {
     @location(5) uv: vec2<f32>,
     @location(6) clip: vec4<f32>,
     @location(7) radii: vec4<f32>,
+    @location(8) clip_radii: vec4<f32>,
 };
 
 @vertex
@@ -64,8 +67,12 @@ fn vs_main(@builtin(vertex_index) vi: u32, inst: Instance) -> VsOut {
     out.uv = (inst.uv.xy + corner * inst.uv.zw) / globals.atlas_size;
     out.clip = inst.clip;
     out.radii = inst.radii;
+    out.clip_radii = inst.clip_radii;
     return out;
 }
+
+// Half-width of every SDF edge ramp, in physical px.
+const AA: f32 = 0.75;
 
 // Signed distance to a box with one radius per corner. `p` is centered
 // (y down), `radii` is tl, tr, br, bl; each is clamped to the half extents
@@ -94,10 +101,23 @@ fn shade(in: VsOut) -> Shaded {
     // clip. Clip via coverage (not discard) to keep texture sampling in
     // uniform control flow.
     let p = in.frag_pos.xy;
-    let inside = f32(
-        p.x >= in.clip.x && p.y >= in.clip.y
-        && p.x <= in.clip.x + in.clip.z && p.y <= in.clip.y + in.clip.w
-    );
+    var inside: f32;
+    if all(in.clip_radii <= vec4<f32>(0.0)) {
+        inside = f32(
+            p.x >= in.clip.x && p.y >= in.clip.y
+            && p.x <= in.clip.x + in.clip.z && p.y <= in.clip.y + in.clip.w
+        );
+    } else {
+        // A clipping node with a radius rounds what it clips, so the
+        // children of a rounded card stay inside its corners. One more SDF,
+        // and only where a rounded clipper actually contains something:
+        // clip_radii is zero on every quad of a frame with no rounded
+        // clipper, and it comes off the instance, so the branch is uniform
+        // across all of a quad's fragments.
+        let ch = in.clip.zw * 0.5;
+        let cd = sd_rounded_box(p - (in.clip.xy + ch), ch, in.clip_radii);
+        inside = 1.0 - smoothstep(-AA, AA, cd);
+    }
 
     let kind = u32(in.params.z + 0.5);
 
@@ -120,7 +140,6 @@ fn shade(in: VsOut) -> Shaded {
     // Solid rounded rect with optional border, SDF antialiased. Images
     // share the SDF so radius rounds their corners too.
     let half = in.size * 0.5;
-    let aa = 0.75;
 
     if kind == 5u {
         // Drop shadow: the quad is the shadow's shape inflated by `blur`
@@ -131,13 +150,13 @@ fn shade(in: VsOut) -> Shaded {
         let blur = in.params.x;
         let sh = max(in.size * 0.5 - vec2<f32>(blur, blur), vec2<f32>(0.0, 0.0));
         let sd = sd_rounded_box(in.local - half, sh, in.radii);
-        let ramp = max(blur, aa);
+        let ramp = max(blur, AA);
         let a = in.color.a * (1.0 - smoothstep(-ramp, ramp, sd));
         return Shaded(in.color.rgb, vec3<f32>(a * inside));
     }
 
     let d = sd_rounded_box(in.local - half, half, in.radii);
-    let coverage = 1.0 - smoothstep(-aa, aa, d);
+    let coverage = 1.0 - smoothstep(-AA, AA, d);
 
     if kind == 3u {
         // Registered image tinted by color (white = as-is).
@@ -148,7 +167,7 @@ fn shade(in: VsOut) -> Shaded {
     var rgba = in.color;
     let bw = in.params.y;
     if bw > 0.0 {
-        let border_mix = 1.0 - smoothstep(-bw - aa, -bw + aa, d);
+        let border_mix = 1.0 - smoothstep(-bw - AA, -bw + AA, d);
         rgba = mix(in.border_color, in.color, border_mix);
         // Border-only nodes (transparent fill) still show their outline.
         rgba.a = mix(in.border_color.a, in.color.a, border_mix);

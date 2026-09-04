@@ -49,7 +49,7 @@ extern "C" {
  * a host that does not call one is unaffected, and one that does fails to
  * link, which is loud.
  */
-#define KUI_ABI_VERSION 1u
+#define KUI_ABI_VERSION 2u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -707,6 +707,13 @@ typedef struct KuiQuad {
     uint32_t kind;           /* KUI_QUAD_* */
     uint32_t uv[4];          /* atlas texels: x, y, w, h */
     float clip[4];           /* clip rect (physical px): pixels outside are transparent */
+    /* Corner radii of the clip (physical px), clockwise from the top-left:
+     * pixels outside the ROUNDED clip are transparent too. A clipping node
+     * with a radius rounds what it clips, the way CSS rounds
+     * `overflow: hidden` under a `border-radius`. All zero - every quad of
+     * a frame with no rounded clipper - is the plain rect clip, so a
+     * renderer that ignores this field is correct until an app rounds one. */
+    float clip_radius[4];
 } KuiQuad;
 
 /* [out] Everything a renderer needs for the finished frame. */

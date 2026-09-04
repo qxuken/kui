@@ -12,7 +12,7 @@ use rustc_hash::FxHashMap;
 
 use crate::atlas::GlyphAtlas;
 use crate::color::Color;
-use crate::display::{Quad, QuadKind};
+use crate::display::{Clip, Quad, QuadKind};
 use crate::geom::{Rect, Size, Vec2};
 use crate::layout::TextMeasure;
 use crate::resources::Resources;
@@ -567,7 +567,7 @@ impl TextSystem {
         id: TextId,
         origin: Vec2,
         node: Size,
-        clip: Rect,
+        clip: Clip,
         atlas: &mut GlyphAtlas,
         out: &mut Vec<Quad>,
     ) {
@@ -588,7 +588,7 @@ impl TextSystem {
         // width is clipped there rather than painted over siblings.
         let clip = if entry.clamp_w {
             let own = Rect::new(ox, oy, (node.w * scale).ceil(), (node.h * scale).ceil());
-            clip.intersect(&own)
+            clip.intersect(own, crate::display::SQUARE)
         } else {
             clip
         };
@@ -630,11 +630,11 @@ impl TextSystem {
                 .glyphs
                 .iter()
                 .filter(|g| {
-                    oy + g.y + g.h >= clip.y
-                        && ox + g.x < clip.x + clip.w
-                        && ox + g.x + g.w > clip.x
+                    oy + g.y + g.h >= clip.rect.y
+                        && ox + g.x < clip.rect.x + clip.rect.w
+                        && ox + g.x + g.w > clip.rect.x
                 })
-                .take_while(|g| oy + g.y <= clip.y + clip.h)
+                .take_while(|g| oy + g.y <= clip.rect.y + clip.rect.h)
                 .map(|g| Quad {
                     rect: Rect::new(ox + g.x, oy + g.y, g.w, g.h),
                     color: g.color.unwrap_or(color),
@@ -644,7 +644,8 @@ impl TextSystem {
                     blur: 0.0,
                     kind: g.kind,
                     uv: g.uv,
-                    clip,
+                    clip: clip.rect,
+                    clip_radius: clip.radius,
                 }),
         );
     }

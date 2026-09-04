@@ -197,7 +197,7 @@ export interface GeneratedSpecProps {
   opacity?: number;
   /** Background while pressed (or while its hoverGroup is); implies hover tracking. */
   pressedBg?: ColorProp;
-  /** Corner radius for all four corners (logical px); the per-corner props override it when listed after it. */
+  /** Corner radius for all four corners (logical px); the per-corner props override it when listed after it. On a node that also clips or scrolls it rounds the clip as well, so children stay inside the corners. */
   radius?: number;
   /** Bottom-left corner radius (logical px). */
   radiusBL?: number;

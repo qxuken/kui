@@ -792,10 +792,34 @@ honours). Benched: `frame_10k_rects` pays about 5% for `NodeSpec` growing an
 `Option<Enter>` and nothing else; one exit in a 10k-node frame costs under 2%
 more; a full 512-node store replays in 12 µs a frame.
 
-Also still open, and priced in ADR 0005's consequences: **rounded clipping**.
-`Quad::clip` is a rect, so a rounded scroll container does not round its
-children's corners. Four more floats on the hot struct plus a second SDF per
-fragment is a bigger bill than either of the two above.
+**Rounded clipping** was left open here, priced in ADR 0005's consequences
+at "four more floats on the hot struct plus a second SDF per fragment" — a
+bigger bill than either of the two above. That was an estimate; it has been
+measured and it is **done (2026-09-04)**, amended into ADR 0005.
+
+A node that clips (`clip`, `scroll_x`, `scroll_y`) and has a `radius` now
+rounds the clip its descendants inherit, which is CSS's rule and therefore
+**no new prop in any of the four bindings** — the radius is the clipping
+node's own. `Quad` grew `clip_radius: [f32; 4]` (108 → 124 bytes) and
+`display::Clip` is the rect-plus-radii pair the propagation pass, `Paint`
+and the emitters carry; the shader takes one `sd_rounded_box` *instead of*
+the rect test on the branch where the radii are not all zero, which is every
+quad of every frame that has no rounded clipper.
+
+Benched with the same bench file on both sides, two copies of the baseline
+binary in the same rounds to floor the noise at ±0.6%: about **1%** on every
+10k-node frame whether or not it clips (the bigger `Quad`), about **3.5%**
+on a frame where 100 rows clip (a `Clip` is 32 bytes where a `Rect` was 16),
+and the per-corner intersect itself is the last **0.9%** on top of that — in
+the shape a real view never declares, since it rounds the card and not each
+of its rows. The four floats were priced against a one-float uniform
+`clip_radius` first: indistinguishable, so the generality was free.
+
+What it does not do, deliberately: hit testing and culling stay rectangular,
+and nesting two rounded clippers keeps only the corners neither of them
+moved (an ancestor edge cutting partway into a rounded corner leaves a
+sliver unclipped). `KUI_ABI_VERSION` went 1 → 2, since `KuiQuad` is a
+**[lib]** struct.
 
 ### `.` C9 — `KeyUp` and key repeat — **done (2026-09-04)**
 

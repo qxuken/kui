@@ -1278,7 +1278,7 @@ const SCENE_TREES = {
     root({}, [
       box({ pad: 4, clip: true }, [
         box(
-          { width: 120, height: 60, gap: 4, scrollY: true, bg: '#101018' },
+          { width: 120, height: 60, gap: 4, scrollY: true, radius: 8, bg: '#101018' },
           ITEM_KEYS.map((k) => box({ width: 100, height: 20, bg: '#30344a' }, [], k)),
           'list',
         ),
@@ -1380,7 +1380,7 @@ const FNV_OFFSET = 0xcbf29ce484222325n;
 const FNV_PRIME = 0x100000001b3n;
 const MASK = 0xffffffffffffffffn;
 
-/** FNV-1a over each quad's words 0..18 and 23..26 — `KuiQuad` without its
+/** FNV-1a over each quad's words 0..18 and 23..30 — `KuiQuad` without its
  *  `uv`, which depends on glyph insertion order. Mirrors
  *  `conformance::quad_digest`. */
 function quadDigest(buffer) {
@@ -1388,7 +1388,7 @@ function quadDigest(buffer) {
   const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
   let h = FNV_OFFSET;
   for (let off = 0; off + stride <= buffer.byteLength; off += stride) {
-    for (const i of [...Array(19).keys(), 23, 24, 25, 26]) {
+    for (const i of [...Array(19).keys(), 23, 24, 25, 26, 27, 28, 29, 30]) {
       let word = BigInt(view.getUint32(off + i * 4, true));
       for (let b = 0; b < 4; b++) {
         h = (h ^ (word & 0xffn)) & MASK;

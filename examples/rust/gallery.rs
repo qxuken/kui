@@ -1,10 +1,13 @@
 //! Images in the display list: host-registered RGBA pixels drawn through
 //! the same atlas and draw call as everything else. Shows intrinsic (Fit)
-//! sizing, aspect-preserving responsive width, rounded corners, and alpha.
+//! sizing, aspect-preserving responsive width, rounded corners, and alpha —
+//! and, at the bottom, a rounded scroll container, whose square rows are cut
+//! to its corners because a clipping node with a radius rounds what it
+//! clips.
 //!
 //! Run: cargo run -p kui --example gallery
 
-use kui::{App, Color, ImageId, NodeSpec, Sizing, TextStyle, Ui};
+use kui::{Align, App, Color, ImageId, NodeSpec, Sizing, TextStyle, Ui};
 
 /// A procedural "photo": vertical sky gradient with a sun disc.
 fn sky(w: u32, h: u32) -> Vec<u8> {
@@ -97,6 +100,44 @@ impl App for Gallery {
                         .radius(8.0),
                 );
                 ui.text("same image, intrinsic and stretched", muted);
+            },
+        );
+
+        ui.text(
+            "A rounded scroll container: the rows are square and are cut to its corners",
+            muted,
+        );
+        ui.with_keyed(
+            "rounded-scroller",
+            NodeSpec::column()
+                .width(Sizing::Grow(1.0))
+                .max_width(720.0)
+                .height(Sizing::Fixed(120.0))
+                // The radius rounds the clip as well as the box, so the first
+                // and last rows are cut to the corners instead of poking out
+                // of them. Nothing below declares anything about it.
+                .radius(16.0)
+                .bg(Color::rgb8(0x14, 0x16, 0x1e))
+                .scroll_y(),
+            |ui| {
+                for i in 0..12 {
+                    ui.with_indexed(
+                        i,
+                        NodeSpec::row()
+                            .width(Sizing::Grow(1.0))
+                            .height(Sizing::Fixed(28.0))
+                            .cross_align(Align::Center)
+                            .pad_xy(14.0, 0.0)
+                            .bg(if i % 2 == 0 {
+                                Color::rgb8(0x1e, 0x21, 0x2c)
+                            } else {
+                                Color::rgb8(0x24, 0x27, 0x33)
+                            }),
+                        |ui| {
+                            ui.text(&format!("row {i}"), muted);
+                        },
+                    );
+                }
             },
         );
 

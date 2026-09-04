@@ -13,7 +13,7 @@ use cosmic_text::{
 use rustc_hash::FxHashMap;
 
 use crate::color::Color;
-use crate::display::{Quad, QuadKind};
+use crate::display::{Clip, Quad, QuadKind};
 use crate::geom::{Rect, Size, Vec2};
 use crate::input::{EditKey, Mods};
 use crate::key::Key;
@@ -920,7 +920,7 @@ impl EditStore {
         key: Key,
         origin: Vec2,
         focused: bool,
-        clip: Rect,
+        clip: Clip,
         text_system: &mut TextSystem,
         atlas: &mut crate::atlas::GlyphAtlas,
         out: &mut Vec<Quad>,
@@ -956,8 +956,8 @@ impl EditStore {
             // emits only the visible screenful of quads.
             let runs = b
                 .layout_runs()
-                .filter(|run| origin.y + run.line_top + line_height >= clip.y)
-                .take_while(|run| origin.y + run.line_top <= clip.y + clip.h);
+                .filter(|run| origin.y + run.line_top + line_height >= clip.rect.y)
+                .take_while(|run| origin.y + run.line_top <= clip.rect.y + clip.rect.h);
             for run in runs {
                 // Selection highlight for this run (mixed BiDi runs can
                 // yield several disjoint spans). `highlight` is only valid
@@ -984,7 +984,8 @@ impl EditStore {
                             blur: 0.0,
                             kind: QuadKind::Solid,
                             uv: [0; 4],
-                            clip,
+                            clip: clip.rect,
+                            clip_radius: clip.radius,
                         });
                     }
                     // Empty line inside the selection: a stub for the
@@ -999,7 +1000,8 @@ impl EditStore {
                             blur: 0.0,
                             kind: QuadKind::Solid,
                             uv: [0; 4],
-                            clip,
+                            clip: clip.rect,
+                            clip_radius: clip.radius,
                         });
                     }
                 }
@@ -1019,7 +1021,8 @@ impl EditStore {
                             blur: 0.0,
                             kind: QuadKind::Solid,
                             uv: [0; 4],
-                            clip,
+                            clip: clip.rect,
+                            clip_radius: clip.radius,
                         };
                         out.push(solid(
                             Rect::new(origin.x + x, origin.y + run.line_top, w, line_height),
@@ -1059,7 +1062,8 @@ impl EditStore {
                         blur: 0.0,
                         kind: crate::text::glyph_kind(&slot),
                         uv: [slot.x, slot.y, slot.w, slot.h],
-                        clip,
+                        clip: clip.rect,
+                        clip_radius: clip.radius,
                     });
                 }
             }
@@ -1079,7 +1083,8 @@ impl EditStore {
                     blur: 0.0,
                     kind: QuadKind::Solid,
                     uv: [0; 4],
-                    clip,
+                    clip: clip.rect,
+                    clip_radius: clip.radius,
                 });
             }
         });

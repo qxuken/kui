@@ -4,28 +4,14 @@
 //! still draws, and sits in the wrong place at the wrong size.
 //!
 //! This mirrors `shade`'s `kind == 5u` branch in `src/shader.wgsl` on the CPU
-//! and evaluates it over a quad the core actually emitted, so the two halves
-//! are checked against each other rather than each against itself.
+//! (over the shared transcription in `tests/wgsl`) and evaluates it over a
+//! quad the core actually emitted, so the two halves are checked against
+//! each other rather than each against itself.
 
 use kui_core::{Color, Core, NodeSpec, Quad, QuadKind, Shadow, Size, Sizing};
 
-/// `sd_rounded_box` from the shader; `p` is centred, y down.
-fn sd_rounded_box(p: [f32; 2], half: [f32; 2], radii: [f32; 4]) -> f32 {
-    let right = p[0] > 0.0;
-    let bottom = p[1] > 0.0;
-    let top_r = if right { radii[1] } else { radii[0] };
-    let bottom_r = if right { radii[2] } else { radii[3] };
-    let r = if bottom { bottom_r } else { top_r };
-    let rr = r.min(half[0].min(half[1]));
-    let q = [p[0].abs() - half[0] + rr, p[1].abs() - half[1] + rr];
-    let outside = (q[0].max(0.0).powi(2) + q[1].max(0.0).powi(2)).sqrt();
-    outside + q[0].max(q[1]).min(0.0) - rr
-}
-
-fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
-    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
-}
+mod wgsl;
+use wgsl::{AA, sd_rounded_box, smoothstep};
 
 /// The shadow branch of `shade`, at a point in viewport (physical px) space.
 fn coverage(q: &Quad, x: f32, y: f32) -> f32 {
@@ -33,7 +19,7 @@ fn coverage(q: &Quad, x: f32, y: f32) -> f32 {
     let half = [q.rect.w * 0.5, q.rect.h * 0.5];
     let shape = [(half[0] - q.blur).max(0.0), (half[1] - q.blur).max(0.0)];
     let d = sd_rounded_box([local[0] - half[0], local[1] - half[1]], shape, q.radius);
-    let ramp = q.blur.max(0.75);
+    let ramp = q.blur.max(AA);
     q.color.a * (1.0 - smoothstep(-ramp, ramp, d))
 }
 
