@@ -108,6 +108,20 @@ fn key_sink_owns_tab_when_no_edit_is_focused() {
 /// Rows are 100x20: the background at the top left, the modal at the
 /// bottom right of a 200x300 viewport.
 fn modal_frame(core: &mut Core, dialog: bool, confirm: bool) -> Vec<Key> {
+    modal_frame_with(core, dialog, confirm, Entry::First)
+}
+
+/// What the dialog in [`modal_frame_with`] says about where focus starts:
+/// nothing (ADR 0003's first-focusable), `initialFocus` on its second
+/// control, or `initialFocus` on a control the Tab ring skips.
+#[derive(Clone, Copy, PartialEq)]
+enum Entry {
+    First,
+    Cancel,
+    Disabled,
+}
+
+fn modal_frame_with(core: &mut Core, dialog: bool, confirm: bool, entry: Entry) -> Vec<Key> {
     let mut ui = core.frame(Size::new(200.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     let row = || {
@@ -133,8 +147,25 @@ fn modal_frame(core: &mut Core, dialog: bool, confirm: bool) -> Vec<Key> {
                 .modal(Value::str("dlg"))
                 .label("Settings"),
             |ui| {
+                // The destructive one first, so declaration order alone
+                // would open the dialog on it.
                 ui.with_keyed("ok", row().on_click(Value::str("ok")), |_| {});
-                ui.with_keyed("cancel", row().on_click(Value::str("cancel")), |_| {});
+                let mut cancel = row().on_click(Value::str("cancel"));
+                if entry == Entry::Cancel {
+                    cancel = cancel.initial_focus();
+                }
+                ui.with_keyed("cancel", cancel, |_| {});
+                if entry == Entry::Disabled {
+                    // Declared, and skipped by the ring anyway.
+                    ui.with_keyed(
+                        "gone",
+                        row()
+                            .on_click(Value::str("gone"))
+                            .disabled(true)
+                            .initial_focus(),
+                        |_| {},
+                    );
+                }
                 if confirm {
                     ui.with_keyed(
                         "confirm",
@@ -290,4 +321,121 @@ fn a_dialog_opened_from_the_keyboard_shows_its_ring_at_once() {
     let k = modal_frame(&mut core, true, false);
     assert_eq!(core.focus(), Some(k[3]));
     assert!(!core.focus_visible(), "no ring until the first Tab");
+}
+
+// -- Initial focus inside a modal (`initialFocus`) --------------------------
+// ADR 0003 decision 3 enters a modal at its *first* focusable node, which
+// makes a destructive confirm open on Delete whenever Delete is declared
+// first. `initialFocus` names the entry instead; nothing declaring it is
+// still the first-focusable rule.
+
+#[test]
+fn a_dialog_opens_on_the_control_that_asks_for_it() {
+    let mut core = Core::new();
+    let k = modal_frame_with(&mut core, false, false, Entry::Cancel);
+    core.set_focus(Some(k[0]));
+
+    let k = modal_frame_with(&mut core, true, false, Entry::Cancel);
+    let (ok, cancel) = (k[3], k[4]);
+    assert_eq!(
+        core.focus(),
+        Some(cancel),
+        "the declared entry, not the first control"
+    );
+    // Everything else about the scope is unchanged: the ring is still the
+    // whole subtree, in tree order, wrapping.
+    tab(&mut core, Mods::default());
+    assert_eq!(core.focus(), Some(ok));
+    tab(&mut core, Mods::default());
+    assert_eq!(core.focus(), Some(cancel));
+}
+
+#[test]
+fn without_a_declaration_the_first_focusable_still_wins() {
+    let mut core = Core::new();
+    let k = modal_frame_with(&mut core, false, false, Entry::First);
+    core.set_focus(Some(k[0]));
+    let k = modal_frame_with(&mut core, true, false, Entry::First);
+    assert_eq!(core.focus(), Some(k[3]), "ADR 0003's rule, untouched");
+
+    // And a declaration the ring cannot honour is the same as none: a
+    // disabled node is not a Tab stop, so it is not an entry either.
+    let mut core = Core::new();
+    let k = modal_frame_with(&mut core, false, false, Entry::Disabled);
+    core.set_focus(Some(k[0]));
+    let k = modal_frame_with(&mut core, true, false, Entry::Disabled);
+    assert_eq!(core.focus(), Some(k[3]));
+}
+
+#[test]
+fn the_entry_is_read_once_and_not_re_taken_while_the_dialog_stays_up() {
+    let mut core = Core::new();
+    modal_frame_with(&mut core, false, false, Entry::Cancel);
+    let k = modal_frame_with(&mut core, true, false, Entry::Cancel);
+    let (ok, cancel) = (k[3], k[4]);
+    assert_eq!(core.focus(), Some(cancel));
+
+    // The user moves off it. The dialog is declared again — every frame,
+    // the same declaration — and focus stays where they left it.
+    tab(&mut core, Mods::default());
+    assert_eq!(core.focus(), Some(ok));
+    modal_frame_with(&mut core, true, false, Entry::Cancel);
+    assert_eq!(core.focus(), Some(ok), "a redeclaration is not an entry");
+    modal_frame_with(&mut core, true, false, Entry::Cancel);
+    assert_eq!(core.focus(), Some(ok));
+
+    // A click inside is not an entry either.
+    core.set_focus(Some(ok));
+    modal_frame_with(&mut core, true, false, Entry::Cancel);
+    assert_eq!(core.focus(), Some(ok));
+}
+
+#[test]
+fn the_entry_does_not_disturb_the_focus_the_modal_gives_back() {
+    // Why this is a row and not `keyFocus`: `keyFocus` moves focus while
+    // the frame is being built, so the modal remembers *it* as the focus
+    // it displaced (decision 4) and the opener never gets it back. The
+    // entry is resolved after the scope is known, so it does not.
+    let mut core = Core::new();
+    let k = modal_frame_with(&mut core, false, false, Entry::Cancel);
+    let (open, other) = (k[0], k[1]);
+    core.set_focus(Some(open));
+
+    let k = modal_frame_with(&mut core, true, false, Entry::Cancel);
+    assert_eq!(core.focus(), Some(k[4]));
+    modal_frame_with(&mut core, false, false, Entry::Cancel);
+    assert_eq!(
+        core.focus(),
+        Some(open),
+        "back to the button that opened it"
+    );
+    tab(&mut core, Mods::default());
+    assert_eq!(core.focus(), Some(other));
+}
+
+#[test]
+fn a_confirm_closing_does_not_re_enter_the_dialog() {
+    // The scope is re-entered from the inside: the confirm hands back the
+    // focus it displaced, which is already in the dialog, so the dialog's
+    // entry is not read a second time.
+    let mut core = Core::new();
+    modal_frame_with(&mut core, true, false, Entry::Cancel);
+    let (ok, cancel) = (
+        Key::ROOT.str("dialog").str("ok"),
+        Key::ROOT.str("dialog").str("cancel"),
+    );
+    assert_eq!(core.focus(), Some(cancel));
+    tab(&mut core, Mods::default());
+    assert_eq!(core.focus(), Some(ok));
+
+    let yes = Key::ROOT.str("dialog").str("confirm").str("yes");
+    modal_frame_with(&mut core, true, true, Entry::Cancel);
+    assert_eq!(core.focus(), Some(yes), "the confirm's own entry");
+
+    modal_frame_with(&mut core, true, false, Entry::Cancel);
+    assert_eq!(
+        core.focus(),
+        Some(ok),
+        "where the confirm found it, not the dialog's entry"
+    );
 }

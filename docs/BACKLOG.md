@@ -1162,7 +1162,7 @@ replay them (C's step buffer now fails loudly instead of truncating at 16).
 declaring `modal`: a dialog is named by its `label` alone, so text inside does
 not silence it. It caught both of our own context menus, which now carry one.
 
-The remaining two of the ADR's four are A2 and A3 below.
+The last of the ADR's four is A3 below; A2 closed it on 2026-09-04.
 
 The original finding:
 
@@ -1174,15 +1174,34 @@ chrome, both dismiss reasons), and **no `modal-without-name` warning**, which
 sits directly beside the `control-without-name` that already exists and uses
 the same test.
 
-### `~` A2 — A dialog cannot choose which control opens focused
+### `~` A2 — A dialog cannot choose which control opens focused — **done (2026-09-04)**
 
-ADR 0003 decision 3 pulls focus to the *first* focusable node in the scope.
-The ADR names the gap: "`autofocus` on a control, so a dialog can open on its
-Cancel button rather than its first". This matters most where modals matter
-most — a destructive confirm whose Delete button is declared first opens
-focused on it, and Enter out of habit confirms. Check whether the existing
-edge-triggered `keyFocus` already lines up (the modal and its controls start
-being declared on the same frame) before adding a row.
+`initialFocus` (id 77, a flag), the fourth of ADR 0003's named gaps. The
+entry rule in `resolve_modal_focus` reads it: the first node in the modal's
+Tab ring declaring it, and the ring's first when none does — so the ADR's
+behaviour is exactly what a dialog that says nothing still gets. The
+accessibility example's confirm now declares it on Cancel, which is what
+`scripts/ax-audit.swift` is pointed at.
+
+**`keyFocus` was checked first and does not serve**, for a reason worth
+writing down rather than re-deriving. The edge does line up — the modal and
+its controls start being declared on the same frame, so `keyFocus` on Cancel
+does land focus there. What it also does is move focus *while the frame is
+being built*, and `resolve_modal_focus` runs after: the modal then remembers
+Cancel as the focus it displaced (decision 4), and when the dialog closes
+that key is gone from the tree, so focus is dropped instead of returning to
+the button that opened it. A dialog that opens on the right control and
+loses the keyboard on the way out is not the fix. The new row is resolved
+after the scope is known, which is why it composes with decision 4 instead
+of fighting it —
+`the_entry_does_not_disturb_the_focus_the_modal_gives_back` is that test.
+
+Entry-triggered, not declaration-triggered: only focus *outside* the scope
+reaches the branch, so a Tab press stands, a redeclaration is not a second
+entry, and a nested confirm closing hands focus back into the dialog without
+the dialog's own entry being read again. A declaration the ring skips
+(disabled, `role="none"`, not focusable) is no candidate and falls back,
+which is the same answer as declaring nothing.
 
 ### `.` A3 — Three ADRs have deferred arrow-key composites
 

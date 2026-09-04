@@ -425,6 +425,16 @@ typedef struct KuiSpec {
      * "wrap-ignored" warning (kui_take_warnings). */
     uint32_t wrap_children;
     float cross_gap;
+    /* Non-zero: where focus lands when the modal scope containing this
+     * node is entered - the first node in the modal's Tab ring declaring
+     * it, instead of the ring's first, so a destructive confirm opens on
+     * its Cancel rather than on whichever control comes first
+     * (docs/adr/0003-modal-surfaces.md). Read on entry only: a Tab press
+     * afterwards stands, and the scope re-entered (a nested confirm
+     * closing) leaves focus where it was. A node the ring skips
+     * (disabled, KUI_ROLE_NONE, not focusable) is not a candidate, and
+     * with no candidate the entry is the ring's first node as before. */
+    uint32_t initial_focus;
 } KuiSpec;
 
 /* Disclosure state (KuiSpec.expanded): the schema index plus one, so zero
