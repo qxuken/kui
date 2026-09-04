@@ -552,12 +552,6 @@ impl Ctx {
         self.core.set_time(now_secs);
     }
 
-    /// True when the last frame left a transition mid-flight.
-    #[napi]
-    pub fn animating(&self) -> bool {
-        self.core.animating()
-    }
-
     // -- Input (logical coordinates) ------------------------------------
 
     fn input(&mut self, ev: InputEvent) {
@@ -677,121 +671,8 @@ impl Ctx {
         }));
     }
 
-    /// Registers a w×h RGBA image (pixels copied); returns its id for
-    /// `<image src={id}>`. Stable until `removeImage`.
-    #[napi]
-    pub fn add_image(&mut self, width: u32, height: u32, rgba: Buffer) -> Result<String> {
-        add_image_impl(&mut self.core, width, height, &rgba)
-    }
-
-    #[napi]
-    pub fn remove_image(&mut self, id: String) -> Result<()> {
-        self.core.remove_image(ImageId::from_ffi(parse_u64(&id)?));
-        Ok(())
-    }
-
-    /// Registers a font from file bytes (TTF/OTF/TTC); returns its id for
-    /// the `font` prop on `<text>` / `<edit>`. Throws when the data holds
-    /// no usable face.
-    #[napi]
-    pub fn add_font(&mut self, data: Buffer) -> Result<String> {
-        add_font_impl(&mut self.core, &data)
-    }
-
-    /// Registers an installed font by family name; null when none matches
-    /// (see `systemFontFamilies`). Also finds families loaded with
-    /// `loadFontsDir` / `loadFontFile`; the same family gets the same id.
-    #[napi]
-    pub fn add_system_font(&mut self, name: String) -> Option<String> {
-        self.core.add_system_font(&name).map(font_str)
-    }
-
-    /// Registers a font file by path (memory-mapped); throws when it cannot
-    /// be read or holds no usable face.
-    #[napi]
-    pub fn load_font_file(&mut self, path: String) -> Result<String> {
-        load_font_file_impl(&mut self.core, &path)
-    }
-
-    /// Loads every font file under a folder (recursively) so its families
-    /// can be picked by name with `addSystemFont`; returns the face count.
-    #[napi]
-    pub fn load_fonts_dir(&mut self, dir: String) -> u32 {
-        self.core.load_fonts_dir(&dir) as u32
-    }
-
-    #[napi]
-    pub fn remove_font(&mut self, id: String) -> Result<()> {
-        self.core.remove_font(FontId::from_ffi(parse_u64(&id)?));
-        Ok(())
-    }
-
-    /// Family names of every installed font (sorted).
-    #[napi]
-    pub fn system_font_families(&self) -> Vec<String> {
-        self.core.system_font_families()
-    }
-
-    // -- Audio ----------------------------------------------------------
-    // Headless: nothing plays; the commands queue up for `audioCommands`
-    // (tests, custom drivers). `KuiWindow` has the same calls with a device
-    // behind them.
-
-    /// Registers a sound from its encoded bytes (wav/ogg/mp3/flac); returns
-    /// its id for `<audio src>`, the `clickSound` / `hoverSound` props and
-    /// `play`. Stable until `removeSound`.
-    #[napi]
-    pub fn add_sound(&mut self, data: Buffer) -> Result<String> {
-        add_sound_impl(&mut self.core, &data)
-    }
-
-    #[napi]
-    pub fn remove_sound(&mut self, id: String) -> Result<()> {
-        self.core.remove_sound(SoundId::from_ffi(parse_u64(&id)?));
-        Ok(())
-    }
-
-    /// Starts a playback: `{volume, loop, fadeIn, tag}`; returns its id for
-    /// `stop` / `setVolume` / `pause` / `resume`. A `tag` comes back as
-    /// `{kind:"sound", phase:"ended", playback, tag}` when the playback
-    /// finishes on its own.
-    #[napi]
-    pub fn play(&mut self, sound: String, opts: Option<Json>) -> Result<f64> {
-        play_impl(&mut self.core, &sound, opts.as_ref())
-    }
-
-    #[napi]
-    pub fn stop(&mut self, playback: f64, fade_ms: Option<f64>) {
-        self.core
-            .stop(PlaybackId(playback as u64), fade_ms.unwrap_or(0.0) as f32);
-    }
-
-    #[napi]
-    pub fn set_volume(&mut self, playback: f64, volume: f64, tween_ms: Option<f64>) {
-        self.core.set_volume(
-            PlaybackId(playback as u64),
-            volume as f32,
-            tween_ms.unwrap_or(0.0) as f32,
-        );
-    }
-
-    #[napi]
-    pub fn pause(&mut self, playback: f64, fade_ms: Option<f64>) {
-        self.core
-            .pause(PlaybackId(playback as u64), fade_ms.unwrap_or(0.0) as f32);
-    }
-
-    #[napi]
-    pub fn resume(&mut self, playback: f64, fade_ms: Option<f64>) {
-        self.core
-            .resume(PlaybackId(playback as u64), fade_ms.unwrap_or(0.0) as f32);
-    }
-
-    #[napi]
-    pub fn set_master_volume(&mut self, volume: f64, tween_ms: Option<f64>) {
-        self.core
-            .set_master_volume(volume as f32, tween_ms.unwrap_or(0.0) as f32);
-    }
+    // -- Audio: the headless half. `play` and friends are shared (see
+    // `core_methods!`); nothing sounds, so the commands queue up here.
 
     /// Drains the audio commands the core queued, as plain objects
     /// (`{kind:"play", playback, sound, volume, loop, fadeIn}`, ...) — what a
@@ -809,49 +690,7 @@ impl Ctx {
         self.events.extend(self.core.take_pending_events());
     }
 
-    /// Drains pending UI events: `[{origin, key, payload}]`, payloads as
-    /// plain JSON (your Elm messages come back out here).
-    #[napi]
-    pub fn poll_events(&mut self) -> Json {
-        let events = std::mem::take(&mut self.events);
-        Json::Array(
-            events
-                .into_iter()
-                .map(|ev| {
-                    let mut o = JsonMap::new();
-                    o.insert("origin".into(), Json::from(ev.origin.0));
-                    o.insert("key".into(), Json::String(key_str(ev.key)));
-                    o.insert("payload".into(), json_of(&ev.payload));
-                    Json::Object(o)
-                })
-                .collect(),
-        )
-    }
-
     // -- Queries ---------------------------------------------------------
-
-    /// Measures text the way layout would, without adding a node:
-    /// `{width, height, lines}` in logical px, wrapped to `maxWidth` when
-    /// given. `content` is whatever `<text>` takes (a string, or children
-    /// with `<span>`s); `style` the `<text>` props (`size`, `font`, `wrap`,
-    /// `maxLines`, `ellipsis`, ...). Works before the first frame.
-    #[napi]
-    pub fn measure_text(
-        &mut self,
-        content: Json,
-        style: Option<Json>,
-        max_width: Option<f64>,
-    ) -> Result<Json> {
-        measure_text_impl(&mut self.core, &content, style.as_ref(), max_width)
-    }
-
-    /// Drains the warnings the core raised since the last call:
-    /// `[{code, key, message}]`, each distinct (code, node) pair once. See
-    /// `Warning` in index.d.ts.
-    #[napi]
-    pub fn warnings(&mut self) -> Json {
-        warnings_json(self.core.take_warnings())
-    }
 
     /// The window title the last frame declared (a root `<box title>`), or
     /// null when it declared none. `runWindowed` applies it to the real
@@ -861,153 +700,7 @@ impl Ctx {
         self.core.window_title().map(str::to_string)
     }
 
-    /// The access tree of the last frame — what assistive technology
-    /// sees; see `AccessTree` in index.d.ts.
-    #[napi]
-    pub fn access_tree(&mut self) -> Json {
-        access_tree_json(self.core.access_tree())
-    }
-
-    /// A request from assistive technology on a node (`key`, hex as in
-    /// events): an `AccessAction` name the node advertises, with `value`
-    /// the new text for `setValue`. Resolved like its pointer/keyboard
-    /// equivalent, so the resulting events come out of `pollEvents`.
-    #[napi]
-    pub fn access(&mut self, key: String, action: String, value: Option<Json>) -> Result<()> {
-        let req = access_request(&key, &action, value)?;
-        self.input(InputEvent::Access(req));
-        Ok(())
-    }
-
-    /// Turns the per-frame diagnostic checks behind `warnings` on or off.
-    #[napi]
-    pub fn set_diagnostics(&mut self, on: bool) {
-        self.core.set_diagnostics(on);
-    }
-
-    #[napi]
-    pub fn is_hovered(&self, key: String) -> Result<bool> {
-        Ok(self.core.is_hovered(parse_key(&key)?))
-    }
-
-    #[napi]
-    pub fn is_pressed(&self, key: String) -> Result<bool> {
-        Ok(self.core.is_pressed(parse_key(&key)?))
-    }
-
-    /// Whether a node holds keyboard focus — any node: an editor, an
-    /// `onKey` sink, a button Tab landed on (see `focused`).
-    #[napi]
-    pub fn is_focused(&self, key: String) -> Result<bool> {
-        Ok(self.core.is_focused(parse_key(&key)?))
-    }
-
-    /// The node holding keyboard focus (hex key), or null.
-    #[napi]
-    pub fn focused(&self) -> Option<String> {
-        self.core.focus().map(key_str)
-    }
-
-    /// Whether focus got where it is by keyboard or assistive technology
-    /// rather than a click — when it shows (the ring, or `focusBg`).
-    #[napi]
-    pub fn focus_visible(&self) -> bool {
-        self.core.focus_visible()
-    }
-
-    /// Moves keyboard focus to a node now (an editor, an `onKey` sink, a
-    /// control, a `focusable` box); `keyFocus` on a box is the declarative,
-    /// edge-triggered form.
-    #[napi]
-    pub fn focus(&mut self, key: String) -> Result<()> {
-        self.core.set_focus(Some(parse_key(&key)?));
-        Ok(())
-    }
-
-    #[napi]
-    pub fn blur(&mut self) {
-        self.core.set_focus(None);
-    }
-
-    /// What Tab does: the next focusable node in tree order, wrapping.
-    #[napi]
-    pub fn focus_next(&mut self) {
-        self.core.focus_next(true);
-    }
-
-    /// What Shift-Tab does.
-    #[napi]
-    pub fn focus_prev(&mut self) {
-        self.core.focus_next(false);
-    }
-
-    /// Scrolls whatever contains a node so it shows — "scroll to the
-    /// selected row", which needs the container geometry only the core has.
-    /// The request resolves against the *next* frame's layout (one is
-    /// requested), so a row the view is about to declare for the first
-    /// time reveals fine. If that frame does not declare the key, or
-    /// nothing above it scrolls, it is a no-op and is not kept for a later
-    /// frame; two reveals before one frame are contradictory, so the last
-    /// wins.
-    #[napi]
-    pub fn reveal(&mut self, key: String) -> Result<()> {
-        self.core.reveal(parse_key(&key)?);
-        Ok(())
-    }
-
-    /// A scroll container's retained offset `{x, y}` as the last layout
-    /// clamped it (positive = content moved up / left) — the number to keep
-    /// in a model and hand back to `setScroll`. Zero for a node that never
-    /// scrolled.
-    #[napi]
-    pub fn scroll_offset(&self, key: String) -> Result<Json> {
-        Ok(offset_json(self.core.scroll_offset(parse_key(&key)?)))
-    }
-
-    /// Everything the last layout resolved for the scroll container `key`:
-    /// its box `{x, y, w, h}`, its content size `{contentW, contentH}` and
-    /// the clamped `offset` — `null` for a key no layout has resolved as a
-    /// container.
-    ///
-    /// This is what makes a long list affordable. The core builds every
-    /// child a view declares, so ten thousand rows cost ten thousand rows;
-    /// knowing `h` and `offset.y`, a view renders the rows that fit plus two
-    /// spacers holding the space of the rest. Read while building, it
-    /// describes the previous frame, so a resize slices one frame late —
-    /// render a row or two extra at each end.
-    #[napi]
-    pub fn scroll_geometry(&self, key: String) -> Result<Option<Json>> {
-        Ok(geometry_json(self.core.scroll_geometry(parse_key(&key)?)))
-    }
-
-    /// Sets that offset the way the wheel would; the next frame's layout
-    /// clamps it, so `(0, 0)` jumps to the top and a huge `y` to the end
-    /// without knowing the content height.
-    #[napi]
-    pub fn set_scroll(&mut self, key: String, x: f64, y: f64) -> Result<()> {
-        self.core
-            .set_scroll(parse_key(&key)?, Vec2::new(x as f32, y as f32));
-        Ok(())
-    }
-
-    #[napi]
-    pub fn edit_text(&self, key: String) -> Result<Option<String>> {
-        Ok(self.core.edit_text(parse_key(&key)?))
-    }
-
-    #[napi]
-    pub fn set_edit_text(&mut self, key: String, text: String) -> Result<()> {
-        self.core.set_edit_text(parse_key(&key)?, &text);
-        Ok(())
-    }
-
     // -- Draw output ------------------------------------------------------
-
-    /// Summary of the finished frame's display list.
-    #[napi]
-    pub fn stats(&mut self) -> Json {
-        stats_json(&mut self.core)
-    }
 
     /// Raw quads for the finished frame, `quadStride()` bytes each, laid out
     /// as kui-ffi's KuiQuad (see include/kui.h). Copied into the Buffer.
@@ -1211,20 +904,6 @@ impl KuiWindow {
         size_json(size, scale)
     }
 
-    /// True when the last frame left a transition mid-flight. The window
-    /// schedules its own redraws for that; this is for tests and drivers
-    /// that want to know when motion has settled.
-    #[napi]
-    pub fn animating(&mut self) -> bool {
-        self.runner.core_mut().animating()
-    }
-
-    /// Summary of the last frame's display list (same shape as `Ctx.stats`).
-    #[napi]
-    pub fn stats(&mut self) -> Json {
-        stats_json(self.runner.core_mut())
-    }
-
     /// Frame timing measured by the runner — what the latency HUD draws,
     /// as data: `{frames, last: {inputMs, viewMs, layoutMs, renderMs,
     /// waitMs, totalMs, workMs} | null, avgTotalMs, maxTotalMs, avgWorkMs,
@@ -1235,304 +914,469 @@ impl KuiWindow {
         frame_stats_json(&self.runner.core_mut().stats)
     }
 
-    /// Drains UI events collected since the last call (same shape as
-    /// `Ctx.pollEvents`).
-    #[napi]
-    pub fn poll_events(&mut self) -> Json {
-        let events = std::mem::take(&mut self.runner.app_mut().events);
-        Json::Array(
-            events
-                .into_iter()
-                .map(|ev| {
-                    let mut o = JsonMap::new();
-                    o.insert("origin".into(), Json::from(ev.origin.0));
-                    o.insert("key".into(), Json::String(key_str(ev.key)));
-                    o.insert("payload".into(), json_of(&ev.payload));
-                    Json::Object(o)
-                })
-                .collect(),
-        )
-    }
-
     /// Asks the window to close; the next pump returns false.
     #[napi]
     pub fn close(&mut self) {
         self.runner.request_exit();
     }
+}
 
-    #[napi]
-    pub fn edit_text(&mut self, key: String) -> Result<Option<String>> {
-        Ok(self.runner.core_mut().edit_text(parse_key(&key)?))
+// ---------------------------------------------------------------------------
+// The shared surface
+
+/// Pending UI events as `[{origin, key, payload}]` — payloads plain JSON, so
+/// your Elm messages come back out as data.
+fn events_json(events: Vec<UiEvent>) -> Json {
+    Json::Array(
+        events
+            .into_iter()
+            .map(|ev| {
+                let mut o = JsonMap::new();
+                o.insert("origin".into(), Json::from(ev.origin.0));
+                o.insert("key".into(), Json::String(key_str(ev.key)));
+                o.insert("payload".into(), json_of(&ev.payload));
+                Json::Object(o)
+            })
+            .collect(),
+    )
+}
+
+/// Every call that is nothing but a hop to the core, written once and
+/// generated for both `Ctx` and `KuiWindow`. The two classes differ only in
+/// how they reach the core and what has to happen afterwards, so that is all
+/// the macro takes:
+///
+/// - `core` / `events`: private accessors for the `Core` and the pending-event
+///   buffer, passed by name rather than as `self.field` because a `self` from
+///   the call site cannot cross into a macro-defined method (E0424).
+/// - `redraw`: run after anything that changes what the next frame shows. A
+///   `Ctx` has no window to invalidate, so it is a no-op there.
+/// - `audio`: run after anything that changes playback. A headless `Ctx`
+///   queues the commands for `audioCommands`; a window flushes them to its
+///   device at once.
+///
+/// Adding a call here puts it on both classes, which is the point: this list
+/// is the whole shared API, and there is no second copy to forget.
+macro_rules! core_methods {
+    (
+        $ty:ident,
+        core = $core:ident,
+        events = $events:ident,
+        redraw = $redraw:ident,
+        audio = $audio:ident $(,)?
+    ) => {
+        #[napi]
+        impl $ty {
+            // -- Resources: images ----------------------------------------
+
+            /// Registers a w×h RGBA image (pixels copied); returns its id for
+            /// `<image src={id}>`. Stable until `removeImage`.
+            #[napi]
+            pub fn add_image(&mut self, width: u32, height: u32, rgba: Buffer) -> Result<String> {
+                add_image_impl(self.$core(), width, height, &rgba)
+            }
+
+            #[napi]
+            pub fn remove_image(&mut self, id: String) -> Result<()> {
+                self.$core()
+                    .remove_image(ImageId::from_ffi(parse_u64(&id)?));
+                Ok(())
+            }
+
+            // -- Resources: fonts -----------------------------------------
+
+            /// Registers a font from file bytes (TTF/OTF/TTC); returns its id
+            /// for the `font` prop on `<text>` / `<edit>`. Throws when the
+            /// data holds no usable face.
+            #[napi]
+            pub fn add_font(&mut self, data: Buffer) -> Result<String> {
+                add_font_impl(self.$core(), &data)
+            }
+
+            /// Registers an installed font by family name; null when none
+            /// matches (see `systemFontFamilies`). Also finds families loaded
+            /// with `loadFontsDir` / `loadFontFile`; the same family gets the
+            /// same id.
+            #[napi]
+            pub fn add_system_font(&mut self, name: String) -> Option<String> {
+                self.$core().add_system_font(&name).map(font_str)
+            }
+
+            /// Registers a font file by path (memory-mapped); throws when it
+            /// cannot be read or holds no usable face.
+            #[napi]
+            pub fn load_font_file(&mut self, path: String) -> Result<String> {
+                load_font_file_impl(self.$core(), &path)
+            }
+
+            /// Loads every font file under a folder (recursively) so its
+            /// families can be picked by name with `addSystemFont`; returns
+            /// the face count.
+            #[napi]
+            pub fn load_fonts_dir(&mut self, dir: String) -> u32 {
+                self.$core().load_fonts_dir(&dir) as u32
+            }
+
+            #[napi]
+            pub fn remove_font(&mut self, id: String) -> Result<()> {
+                self.$core().remove_font(FontId::from_ffi(parse_u64(&id)?));
+                Ok(())
+            }
+
+            /// Family names of every installed font (sorted).
+            #[napi]
+            pub fn system_font_families(&mut self) -> Vec<String> {
+                self.$core().system_font_families()
+            }
+
+            // -- Audio -----------------------------------------------------
+
+            /// Registers a sound from its encoded bytes (wav/ogg/mp3/flac);
+            /// returns its id for `<audio src>`, the `clickSound` /
+            /// `hoverSound` props and `play`. Stable until `removeSound`.
+            #[napi]
+            pub fn add_sound(&mut self, data: Buffer) -> Result<String> {
+                add_sound_impl(self.$core(), &data)
+            }
+
+            #[napi]
+            pub fn remove_sound(&mut self, id: String) -> Result<()> {
+                self.$core()
+                    .remove_sound(SoundId::from_ffi(parse_u64(&id)?));
+                self.$audio();
+                Ok(())
+            }
+
+            /// Starts a playback: `{volume, loop, fadeIn, tag}`; returns its
+            /// id for `stop` / `setVolume` / `pause` / `resume`. A `tag` comes
+            /// back as `{kind:"sound", phase:"ended", playback, tag}` when the
+            /// playback finishes on its own.
+            #[napi]
+            pub fn play(&mut self, sound: String, opts: Option<Json>) -> Result<f64> {
+                let id = play_impl(self.$core(), &sound, opts.as_ref())?;
+                self.$audio();
+                Ok(id)
+            }
+
+            #[napi]
+            pub fn stop(&mut self, playback: f64, fade_ms: Option<f64>) {
+                self.$core()
+                    .stop(PlaybackId(playback as u64), fade_ms.unwrap_or(0.0) as f32);
+                self.$audio();
+            }
+
+            #[napi]
+            pub fn set_volume(&mut self, playback: f64, volume: f64, tween_ms: Option<f64>) {
+                self.$core().set_volume(
+                    PlaybackId(playback as u64),
+                    volume as f32,
+                    tween_ms.unwrap_or(0.0) as f32,
+                );
+                self.$audio();
+            }
+
+            #[napi]
+            pub fn pause(&mut self, playback: f64, fade_ms: Option<f64>) {
+                self.$core()
+                    .pause(PlaybackId(playback as u64), fade_ms.unwrap_or(0.0) as f32);
+                self.$audio();
+            }
+
+            #[napi]
+            pub fn resume(&mut self, playback: f64, fade_ms: Option<f64>) {
+                self.$core()
+                    .resume(PlaybackId(playback as u64), fade_ms.unwrap_or(0.0) as f32);
+                self.$audio();
+            }
+
+            #[napi]
+            pub fn set_master_volume(&mut self, volume: f64, tween_ms: Option<f64>) {
+                self.$core()
+                    .set_master_volume(volume as f32, tween_ms.unwrap_or(0.0) as f32);
+                self.$audio();
+            }
+
+            // -- Events ----------------------------------------------------
+
+            /// Drains pending UI events: `[{origin, key, payload}]`, payloads
+            /// as plain JSON (your Elm messages come back out here).
+            #[napi]
+            pub fn poll_events(&mut self) -> Json {
+                events_json(std::mem::take(self.$events()))
+            }
+
+            // -- Frame -----------------------------------------------------
+
+            /// True when the last frame left a transition mid-flight. A window
+            /// schedules its own redraws for that; this is for tests and
+            /// drivers that want to know when motion has settled.
+            #[napi]
+            pub fn animating(&mut self) -> bool {
+                self.$core().animating()
+            }
+
+            /// Summary of the last frame's display list.
+            #[napi]
+            pub fn stats(&mut self) -> Json {
+                stats_json(self.$core())
+            }
+
+            // -- Queries ---------------------------------------------------
+
+            /// Measures text the way layout would, without adding a node:
+            /// `{width, height, lines}` in logical px, wrapped to `maxWidth`
+            /// when given. `content` is whatever `<text>` takes (a string, or
+            /// children with `<span>`s); `style` the `<text>` props (`size`,
+            /// `font`, `wrap`, `maxLines`, `ellipsis`, ...). Works before the
+            /// first frame; a window answers at its own scale once a frame has
+            /// run.
+            #[napi]
+            pub fn measure_text(
+                &mut self,
+                content: Json,
+                style: Option<Json>,
+                max_width: Option<f64>,
+            ) -> Result<Json> {
+                measure_text_impl(self.$core(), &content, style.as_ref(), max_width)
+            }
+
+            /// Drains the warnings the core raised since the last call:
+            /// `[{code, key, message}]`, each distinct (code, node) pair once.
+            /// See `Warning` in index.d.ts. `runWindowed` drains and prints
+            /// them itself unless told not to.
+            #[napi]
+            pub fn warnings(&mut self) -> Json {
+                warnings_json(self.$core().take_warnings())
+            }
+
+            /// Turns the per-frame diagnostic checks behind `warnings` on or
+            /// off.
+            #[napi]
+            pub fn set_diagnostics(&mut self, on: bool) {
+                self.$core().set_diagnostics(on);
+            }
+
+            // -- Accessibility ---------------------------------------------
+
+            /// The access tree of the last frame — what assistive technology
+            /// sees; see `AccessTree` in index.d.ts. A window hands it to the
+            /// platform by itself (AccessKit); this is for tests and tooling.
+            #[napi]
+            pub fn access_tree(&mut self) -> Json {
+                access_tree_json(self.$core().access_tree())
+            }
+
+            /// A request from assistive technology on a node (`key`, hex as in
+            /// events): an `AccessAction` name the node advertises, with
+            /// `value` the new text for `setValue`. Resolved like its
+            /// pointer/keyboard equivalent, so the resulting events come out of
+            /// `pollEvents`. A real screen reader's requests arrive through a
+            /// window on their own.
+            #[napi]
+            pub fn access(
+                &mut self,
+                key: String,
+                action: String,
+                value: Option<Json>,
+            ) -> Result<()> {
+                let req = access_request(&key, &action, value)?;
+                let events = self.$core().handle_input(InputEvent::Access(req));
+                self.$events().extend(events);
+                self.$redraw();
+                Ok(())
+            }
+
+            // -- Hover / press ---------------------------------------------
+
+            /// Hover state as of the last frame (keys come from events, e.g.
+            /// an `onHover` enter). For plain hover styling prefer the
+            /// `hoverBg` / `pressedBg` props — the core resolves those without
+            /// a round trip.
+            #[napi]
+            pub fn is_hovered(&mut self, key: String) -> Result<bool> {
+                Ok(self.$core().is_hovered(parse_key(&key)?))
+            }
+
+            #[napi]
+            pub fn is_pressed(&mut self, key: String) -> Result<bool> {
+                Ok(self.$core().is_pressed(parse_key(&key)?))
+            }
+
+            // -- Focus ------------------------------------------------------
+
+            /// Whether a node holds keyboard focus — any node: an editor, an
+            /// `onKey` sink, a button Tab landed on (see `focused`).
+            #[napi]
+            pub fn is_focused(&mut self, key: String) -> Result<bool> {
+                Ok(self.$core().is_focused(parse_key(&key)?))
+            }
+
+            /// The node holding keyboard focus (hex key), or null.
+            #[napi]
+            pub fn focused(&mut self) -> Option<String> {
+                self.$core().focus().map(key_str)
+            }
+
+            /// Whether focus got where it is by keyboard or assistive
+            /// technology rather than a click — when it shows (the ring, or
+            /// `focusBg`).
+            #[napi]
+            pub fn focus_visible(&mut self) -> bool {
+                self.$core().focus_visible()
+            }
+
+            /// Moves keyboard focus to a node now (an editor, an `onKey` sink,
+            /// a control, a `focusable` box); `keyFocus` on a box is the
+            /// declarative, edge-triggered form.
+            #[napi]
+            pub fn focus(&mut self, key: String) -> Result<()> {
+                self.$core().set_focus(Some(parse_key(&key)?));
+                self.$redraw();
+                Ok(())
+            }
+
+            #[napi]
+            pub fn blur(&mut self) {
+                self.$core().set_focus(None);
+                self.$redraw();
+            }
+
+            /// What Tab does: the next focusable node in tree order, wrapping.
+            #[napi]
+            pub fn focus_next(&mut self) {
+                self.$core().focus_next(true);
+                self.$redraw();
+            }
+
+            /// What Shift-Tab does.
+            #[napi]
+            pub fn focus_prev(&mut self) {
+                self.$core().focus_next(false);
+                self.$redraw();
+            }
+
+            // -- Scrolling --------------------------------------------------
+
+            /// Scrolls whatever contains a node so it shows — "scroll to the
+            /// selected row", which needs the container geometry only the core
+            /// has. The request resolves against the *next* frame's layout (one
+            /// is requested), so a row the view is about to declare for the
+            /// first time reveals fine. If that frame does not declare the key,
+            /// or nothing above it scrolls, it is a no-op and is not kept for a
+            /// later frame; two reveals before one frame are contradictory, so
+            /// the last wins.
+            #[napi]
+            pub fn reveal(&mut self, key: String) -> Result<()> {
+                self.$core().reveal(parse_key(&key)?);
+                self.$redraw();
+                Ok(())
+            }
+
+            /// A scroll container's retained offset `{x, y}` as the last layout
+            /// clamped it (positive = content moved up / left) — the number to
+            /// keep in a model and hand back to `setScroll`. Zero for a node
+            /// that never scrolled.
+            #[napi]
+            pub fn scroll_offset(&mut self, key: String) -> Result<Json> {
+                Ok(offset_json(self.$core().scroll_offset(parse_key(&key)?)))
+            }
+
+            /// Everything the last layout resolved for the scroll container
+            /// `key`: its box `{x, y, w, h}`, its content size `{contentW,
+            /// contentH}` and the clamped `offset` — `null` for a key no layout
+            /// has resolved as a container.
+            ///
+            /// This is what makes a long list affordable. The core builds every
+            /// child a view declares, so ten thousand rows cost ten thousand
+            /// rows; knowing `h` and `offset.y`, a view renders the rows that
+            /// fit plus two spacers holding the space of the rest. Read while
+            /// building, it describes the previous frame, so a resize slices one
+            /// frame late — render a row or two extra at each end.
+            #[napi]
+            pub fn scroll_geometry(&mut self, key: String) -> Result<Option<Json>> {
+                Ok(geometry_json(
+                    self.$core().scroll_geometry(parse_key(&key)?),
+                ))
+            }
+
+            /// Sets that offset the way the wheel would; the next frame's
+            /// layout clamps it, so `(0, 0)` jumps to the top and a huge `y` to
+            /// the end without knowing the content height.
+            #[napi]
+            pub fn set_scroll(&mut self, key: String, x: f64, y: f64) -> Result<()> {
+                self.$core()
+                    .set_scroll(parse_key(&key)?, Vec2::new(x as f32, y as f32));
+                self.$redraw();
+                Ok(())
+            }
+
+            // -- Editors ----------------------------------------------------
+
+            #[napi]
+            pub fn edit_text(&mut self, key: String) -> Result<Option<String>> {
+                Ok(self.$core().edit_text(parse_key(&key)?))
+            }
+
+            #[napi]
+            pub fn set_edit_text(&mut self, key: String, text: String) -> Result<()> {
+                self.$core().set_edit_text(parse_key(&key)?, &text);
+                self.$redraw();
+                Ok(())
+            }
+        }
+    };
+}
+
+impl Ctx {
+    fn core_mut(&mut self) -> &mut Core {
+        &mut self.core
     }
 
-    #[napi]
-    pub fn set_edit_text(&mut self, key: String, text: String) -> Result<()> {
-        self.runner
-            .core_mut()
-            .set_edit_text(parse_key(&key)?, &text);
+    fn events_mut(&mut self) -> &mut Vec<UiEvent> {
+        &mut self.events
+    }
+
+    /// Nothing to invalidate: a headless `Ctx` shows whatever the next
+    /// `frame` submits.
+    fn no_redraw(&mut self) {}
+
+    /// Nothing to flush: the commands wait in the core for `audioCommands`.
+    fn no_flush(&mut self) {}
+}
+
+impl KuiWindow {
+    fn core_mut(&mut self) -> &mut Core {
+        self.runner.core_mut()
+    }
+
+    fn events_mut(&mut self) -> &mut Vec<UiEvent> {
+        &mut self.runner.app_mut().events
+    }
+
+    fn request_redraw(&mut self) {
         self.runner.request_redraw();
-        Ok(())
     }
 
-    #[napi]
-    pub fn is_focused(&mut self, key: String) -> Result<bool> {
-        Ok(self.runner.core_mut().is_focused(parse_key(&key)?))
-    }
-
-    /// The node holding keyboard focus (hex key), or null.
-    #[napi]
-    pub fn focused(&mut self) -> Option<String> {
-        self.runner.core_mut().focus().map(key_str)
-    }
-
-    /// Whether focus got where it is by keyboard or assistive technology
-    /// rather than a click (when the ring / `focusBg` shows).
-    #[napi]
-    pub fn focus_visible(&mut self) -> bool {
-        self.runner.core_mut().focus_visible()
-    }
-
-    /// Moves keyboard focus to a node now; `keyFocus` on a box is the
-    /// declarative, edge-triggered form.
-    #[napi]
-    pub fn focus(&mut self, key: String) -> Result<()> {
-        self.runner.core_mut().set_focus(Some(parse_key(&key)?));
-        self.runner.request_redraw();
-        Ok(())
-    }
-
-    #[napi]
-    pub fn blur(&mut self) {
-        self.runner.core_mut().set_focus(None);
-        self.runner.request_redraw();
-    }
-
-    /// What Tab does: the next focusable node in tree order, wrapping.
-    #[napi]
-    pub fn focus_next(&mut self) {
-        self.runner.core_mut().focus_next(true);
-        self.runner.request_redraw();
-    }
-
-    /// What Shift-Tab does.
-    #[napi]
-    pub fn focus_prev(&mut self) {
-        self.runner.core_mut().focus_next(false);
-        self.runner.request_redraw();
-    }
-
-    /// Scrolling as data, as on `Ctx`: reveal a node, or read and write a
-    /// container's retained offset. `reveal` resolves against the next
-    /// frame's layout — a key that frame does not declare is a no-op.
-    #[napi]
-    pub fn reveal(&mut self, key: String) -> Result<()> {
-        self.runner.core_mut().reveal(parse_key(&key)?);
-        self.runner.request_redraw();
-        Ok(())
-    }
-
-    #[napi]
-    pub fn scroll_offset(&mut self, key: String) -> Result<Json> {
-        Ok(offset_json(
-            self.runner.core_mut().scroll_offset(parse_key(&key)?),
-        ))
-    }
-
-    /// The container's box, content size and clamped offset as of the last
-    /// layout; `null` until one has resolved it. See `Ctx.scrollGeometry`.
-    #[napi]
-    pub fn scroll_geometry(&mut self, key: String) -> Result<Option<Json>> {
-        Ok(geometry_json(
-            self.runner.core_mut().scroll_geometry(parse_key(&key)?),
-        ))
-    }
-
-    #[napi]
-    pub fn set_scroll(&mut self, key: String, x: f64, y: f64) -> Result<()> {
-        self.runner
-            .core_mut()
-            .set_scroll(parse_key(&key)?, Vec2::new(x as f32, y as f32));
-        self.runner.request_redraw();
-        Ok(())
-    }
-
-    /// Hover state as of the last frame (keys come from events, e.g. an
-    /// `onHover` enter). For plain hover styling prefer the `hoverBg` /
-    /// `pressedBg` props — the core resolves those without a round trip.
-    #[napi]
-    pub fn is_hovered(&mut self, key: String) -> Result<bool> {
-        Ok(self.runner.core_mut().is_hovered(parse_key(&key)?))
-    }
-
-    #[napi]
-    pub fn is_pressed(&mut self, key: String) -> Result<bool> {
-        Ok(self.runner.core_mut().is_pressed(parse_key(&key)?))
-    }
-
-    /// Registers a w×h RGBA image (pixels copied); returns its id for
-    /// `<image src={id}>`. Stable until `removeImage`.
-    #[napi]
-    pub fn add_image(&mut self, width: u32, height: u32, rgba: Buffer) -> Result<String> {
-        add_image_impl(self.runner.core_mut(), width, height, &rgba)
-    }
-
-    #[napi]
-    pub fn remove_image(&mut self, id: String) -> Result<()> {
-        self.runner
-            .core_mut()
-            .remove_image(ImageId::from_ffi(parse_u64(&id)?));
-        Ok(())
-    }
-
-    /// Registers a font from file bytes; see `Ctx.addFont`.
-    #[napi]
-    pub fn add_font(&mut self, data: Buffer) -> Result<String> {
-        add_font_impl(self.runner.core_mut(), &data)
-    }
-
-    /// Registers an installed font by family name; see `Ctx.addSystemFont`.
-    #[napi]
-    pub fn add_system_font(&mut self, name: String) -> Option<String> {
-        self.runner.core_mut().add_system_font(&name).map(font_str)
-    }
-
-    /// Registers a font file by path; see `Ctx.loadFontFile`.
-    #[napi]
-    pub fn load_font_file(&mut self, path: String) -> Result<String> {
-        load_font_file_impl(self.runner.core_mut(), &path)
-    }
-
-    /// Loads a folder of fonts; see `Ctx.loadFontsDir`.
-    #[napi]
-    pub fn load_fonts_dir(&mut self, dir: String) -> u32 {
-        self.runner.core_mut().load_fonts_dir(&dir) as u32
-    }
-
-    #[napi]
-    pub fn remove_font(&mut self, id: String) -> Result<()> {
-        self.runner
-            .core_mut()
-            .remove_font(FontId::from_ffi(parse_u64(&id)?));
-        Ok(())
-    }
-
-    // -- Audio: the same calls as `Ctx`, played by the window's device at
-    // once rather than at the next pump.
-
-    /// Registers a sound; see `Ctx.addSound`.
-    #[napi]
-    pub fn add_sound(&mut self, data: Buffer) -> Result<String> {
-        add_sound_impl(self.runner.core_mut(), &data)
-    }
-
-    #[napi]
-    pub fn remove_sound(&mut self, id: String) -> Result<()> {
-        self.runner
-            .core_mut()
-            .remove_sound(SoundId::from_ffi(parse_u64(&id)?));
+    fn flush_audio(&mut self) {
         self.runner.flush_audio();
-        Ok(())
-    }
-
-    /// Starts a playback; see `Ctx.play`. Tagged playbacks report
-    /// `{kind:"sound", phase:"ended", playback, tag}` through `pollEvents`.
-    #[napi]
-    pub fn play(&mut self, sound: String, opts: Option<Json>) -> Result<f64> {
-        let id = play_impl(self.runner.core_mut(), &sound, opts.as_ref())?;
-        self.runner.flush_audio();
-        Ok(id)
-    }
-
-    #[napi]
-    pub fn stop(&mut self, playback: f64, fade_ms: Option<f64>) {
-        self.runner
-            .core_mut()
-            .stop(PlaybackId(playback as u64), fade_ms.unwrap_or(0.0) as f32);
-        self.runner.flush_audio();
-    }
-
-    #[napi]
-    pub fn set_volume(&mut self, playback: f64, volume: f64, tween_ms: Option<f64>) {
-        self.runner.core_mut().set_volume(
-            PlaybackId(playback as u64),
-            volume as f32,
-            tween_ms.unwrap_or(0.0) as f32,
-        );
-        self.runner.flush_audio();
-    }
-
-    #[napi]
-    pub fn pause(&mut self, playback: f64, fade_ms: Option<f64>) {
-        self.runner
-            .core_mut()
-            .pause(PlaybackId(playback as u64), fade_ms.unwrap_or(0.0) as f32);
-        self.runner.flush_audio();
-    }
-
-    #[napi]
-    pub fn resume(&mut self, playback: f64, fade_ms: Option<f64>) {
-        self.runner
-            .core_mut()
-            .resume(PlaybackId(playback as u64), fade_ms.unwrap_or(0.0) as f32);
-        self.runner.flush_audio();
-    }
-
-    #[napi]
-    pub fn set_master_volume(&mut self, volume: f64, tween_ms: Option<f64>) {
-        self.runner
-            .core_mut()
-            .set_master_volume(volume as f32, tween_ms.unwrap_or(0.0) as f32);
-        self.runner.flush_audio();
-    }
-
-    #[napi]
-    pub fn system_font_families(&mut self) -> Vec<String> {
-        self.runner.core_mut().system_font_families()
-    }
-
-    /// Measures text the way layout would; see `Ctx.measureText`. Answers
-    /// at the window's scale once a frame has run.
-    #[napi]
-    pub fn measure_text(
-        &mut self,
-        content: Json,
-        style: Option<Json>,
-        max_width: Option<f64>,
-    ) -> Result<Json> {
-        measure_text_impl(self.runner.core_mut(), &content, style.as_ref(), max_width)
-    }
-
-    /// Drains the core's warnings; see `Ctx.warnings`. `runWindowed`
-    /// drains and prints them itself unless told not to.
-    #[napi]
-    pub fn warnings(&mut self) -> Json {
-        warnings_json(self.runner.core_mut().take_warnings())
-    }
-
-    /// The access tree of the last frame; see `Ctx.accessTree`. The window
-    /// hands it to the platform by itself (AccessKit); this is for tests
-    /// and tooling.
-    #[napi]
-    pub fn access_tree(&mut self) -> Json {
-        access_tree_json(self.runner.core_mut().access_tree())
-    }
-
-    /// A request from assistive technology; see `Ctx.access`. A real
-    /// screen reader's requests arrive through the window on their own.
-    #[napi]
-    pub fn access(&mut self, key: String, action: String, value: Option<Json>) -> Result<()> {
-        let req = access_request(&key, &action, value)?;
-        let events = self.runner.core_mut().handle_input(InputEvent::Access(req));
-        self.runner.app_mut().events.extend(events);
-        self.runner.request_redraw();
-        Ok(())
-    }
-
-    #[napi]
-    pub fn set_diagnostics(&mut self, on: bool) {
-        self.runner.core_mut().set_diagnostics(on);
     }
 }
+
+core_methods!(
+    Ctx,
+    core = core_mut,
+    events = events_mut,
+    redraw = no_redraw,
+    audio = no_flush,
+);
+
+core_methods!(
+    KuiWindow,
+    core = core_mut,
+    events = events_mut,
+    redraw = request_redraw,
+    audio = flush_audio,
+);
 
 /// `measureText(content, style, maxWidth)` → `{width, height, lines}`.
 fn measure_text_impl(
