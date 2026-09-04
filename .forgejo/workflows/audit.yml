@@ -10,8 +10,10 @@
 # weekly run on main is the part that actually earns its keep; the push and
 # pull_request triggers just catch a lockfile change at the moment it is made.
 #
-# It runs with `--deny warnings`, so an unmaintained crate fails the job the
-# same as a vulnerability does. The escape hatch is .cargo/audit.toml: an
+# It runs with `--deny warnings`, so an unmaintained or unsound crate fails
+# the job the same as a vulnerability does - and with `--no-yanked`, because
+# that half of the check cannot complete on this runner; see the step. The
+# escape hatch for the rest is .cargo/audit.toml: an
 # ignore entry there, with a comment saying what pulls the crate in and what
 # would let us delete the line. Without that file today's tree is red
 # (ttf-parser, RUSTSEC-2026-0192), which is the intended shape - the ignore
@@ -90,7 +92,31 @@ jobs:
           fi
           cargo install --locked "cargo-audit@${CARGO_AUDIT_VERSION}"
 
-      # --deny warnings: unmaintained and yanked crates fail too, and
-      # .cargo/audit.toml is the only way to accept one.
+      # --deny warnings: an unmaintained or unsound crate fails the same as a
+      # vulnerability, and .cargo/audit.toml is the only way to accept one.
+      #
+      # --no-yanked, added after run 141, where the yanked half of the check
+      # printed 175 lines of
+      #
+      #   error: couldn't check if the package is yanked: registry: request
+      #   could not be completed in the allotted timeframe
+      #
+      # and the job went green anyway. Yanked crates are checked one HTTP
+      # request per crate against the sparse index - 440 of them here - and
+      # this runner's egress is slow enough (the advisory database fetch, one
+      # request, takes over a minute) that most of them time out. A timed-out
+      # lookup is not a warning, so `--deny warnings` cannot see it: the check
+      # was not running, and the log said so 175 times while the job reported
+      # success. A check that quietly does not happen is worse than one that
+      # is switched off on purpose, so it is switched off on purpose. The
+      # advisory half - the part worth having - is unaffected and still runs
+      # against all 440 crates.
+      #
+      # Only here. A local `cargo audit --deny warnings` still does the yanked
+      # check, on a network where it completes. If it is ever wanted back in
+      # CI, the thing to try first is caching /usr/local/cargo/registry/index
+      # the way ci.yml's `check` job does: tame-index reads cargo's own sparse
+      # index cache, so a warm one would turn those 440 requests into local
+      # file reads. That is a guess, and it needs a run to confirm.
       - name: Audit
-        run: cargo audit --deny warnings
+        run: cargo audit --deny warnings --no-yanked

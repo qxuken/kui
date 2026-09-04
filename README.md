@@ -730,12 +730,19 @@ Advisories are checked separately, by
 `Cargo.lock`, on pushes that touch the lockfile and on a weekly schedule —
 weekly because an advisory is published against code that has not moved, so a
 commit-triggered check would only find it the next time someone happened to
-push. `--deny warnings` means an unmaintained crate fails the same as a
-vulnerability; the only way to accept one is an entry in
+push. `--deny warnings` means an unmaintained or unsound crate fails the same
+as a vulnerability; the only way to accept one is an entry in
 [.cargo/audit.toml](.cargo/audit.toml) with a comment saying what pulls it in
 and what would let the line be deleted. One entry stands today: `ttf-parser`
 ([RUSTSEC-2026-0192](https://rustsec.org/advisories/RUSTSEC-2026-0192)),
 unmaintained, reached through cosmic-text's `fontdb`.
+
+The job also passes `--no-yanked`. Checking for yanked crates costs one
+sparse-index request per crate — 440 of them — and this runner's egress is
+slow enough that most time out; a timed-out lookup is not a warning, so
+`--deny warnings` cannot see it, and run 141 printed 175 `error:` lines and
+reported success. That check is off on purpose rather than silently not
+happening. A local `cargo audit --deny warnings` still runs it.
 
 That job is deliberately not in `publish`'s `needs`. A release is cut from a
 tag, and an advisory landing between the last green `main` and the tag would
