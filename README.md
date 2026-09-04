@@ -517,6 +517,18 @@ caches — full frame: build + layout + emit):
 | 10k rects + 1.2k texts + 2.5k hit regions | ~740 µs |
 | 16×64-deep nesting chains | ~58 µs |
 
+Two more frame benches are not in the table because they were measured on a
+different (slower) machine; each is a ratio against the frame it extends, so
+compare it with that one rather than with the rows above.
+`frame_10k_rects_with_access_tree` is the "10k rects + 1.2k texts + 2.5k hit
+regions" frame with `core.access_tree()` derived after it — what a frame costs
+while assistive technology is attached — and runs **~1.27×** that frame
+(~2.05 ms against ~1.62 ms there). `frame_10k_rects_with_shadows_and_opacity`
+is the plain 10k grid with only the paint props switched on: every cell casts a
+shadow under a faded root, which is **twice the quads** (20k against 10k) for
+**~10%** more frame time (~1.35 ms against ~1.22 ms there), because most of a
+frame is build and layout rather than emitting quads.
+
 Long lists (`list_10k_rows_naive` / `list_10k_rows_virtual` /
 `list_100k_rows_virtual`): a 10k-row scrolled list, held at its middle so
 rows fall off both ends, costs **~4.8 ms** a frame built row by row and
@@ -631,6 +643,11 @@ paint prop's worth of work — use an image or stack solids), no inset or multip
 opacity is a per-quad alpha multiply rather than an offscreen composite, so overlapping pieces
 of one faded subtree show their seams. Clipping is rect-only, so a rounded scroll container
 does not round its children's corners.
+A row or a column is one line: there is **no flex wrapping**, so a toolbar or a tag
+list that outgrows its width shrinks its `Fit` children toward their `min` (or
+overflows) rather than moving anything onto a second line, and `Dir` is `Row` or
+`Column` with no reverse. A wrapped grid is the app's job — measure, then declare
+the rows.
 Layout queries stop at the node: `measure_text` and `on_layout` give whole-string and whole-node
 rects, not the boxes of lines or glyphs inside a paragraph. Accessibility, keyboard focus and
 modality are data (ADR 0001, 0002 and 0003); arrow keys inside radio groups, tab lists and lists,
