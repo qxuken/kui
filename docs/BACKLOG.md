@@ -519,7 +519,31 @@ data table and the chat history. The one thing (a) does not answer is rows of
 *varying* height, where the app cannot compute a spacer without measuring
 every row; a case like that is what would justify (b).
 
-### `~` C6 — `selected` and `expanded` on the access tree
+### `~` C6 — `selected` and `expanded` on the access tree — **done (2026-09-04)**
+
+Shipped in `5c842f4`; the heading went unmarked, which is why this note is
+later than the work. `selected` (`P_SELECTED`) and `expanded` (`P_EXPANDED`)
+are rows, so all four bindings got them free and the parity test forced the
+`KuiSpec` fields. `AccessNode` carries both plus `pos_in_set` / `set_size`,
+and `access_bridge.rs` maps all four onto AccessKit's `set_selected`,
+`set_expanded`, `set_position_in_set` and `set_size_of_set`.
+
+Two decisions worth keeping:
+
+`pos_in_set` / `set_size` are **derived, never declared** — the core counts
+the semantic children a `list` / `tabList` already has. That was the option
+this entry called "fits the design better", and it means an app cannot get
+the count wrong by hand. The count lands on the container and the ordinal on
+the item, following AccessKit rather than ARIA's `aria-setsize`-on-every-item.
+
+`selected` is `None` unless the view sets it, rather than defaulting to
+`false` on every selectable role — "not selected" on all seven rows of an
+ordinary list is noise a reader has to wade through.
+
+Still out of scope, as planned: live regions (a side channel, not a tree
+property) and `required` / `invalid`.
+
+The original finding:
 
 `crates/kui-core/src/access.rs:738` lands `checked` for `Checkbox | Radio |
 Switch` only. `Role::Tab`, `TabList`, `ListItem` and `Link` have no selected
@@ -773,7 +797,27 @@ macOS/Windows smoke jobs.
 Four bindings over one contract means some parallel code is the price of the
 design. These are where the price is paid without the benefit.
 
-### `.` D1 — Collapse `Ctx` and `KuiWindow` with a macro
+### `.` D1 — Collapse `Ctx` and `KuiWindow` with a macro — **done (2026-09-03)**
+
+Shipped in `935fa66`; the heading went unmarked, which is why this note is
+later than the work. `#[napi]` does work inside a macro body — the
+load-bearing assumption — so `core_methods!` now generates **39 methods** per
+class from one definition list, invoked twice at the bottom of
+`crates/kui-node/src/lib.rs`.
+
+The macro takes four knobs rather than the two this entry guessed at:
+`core`, `events`, `redraw` (`no_redraw` / `request_redraw`) and `audio`
+(`no_flush` / `flush_audio`). The extra two are the real difference between a
+headless context and a live window, and naming them made it visible that the
+audio flush had been a `KuiWindow`-only behaviour all along.
+
+`crates/kui-node/src/lib.rs` went **1791 → 1529 lines** while *gaining* the
+context-menu, cursor, scroll, `KeyUp` and modal surfaces — so the collapse
+paid for five features' worth of new API and still came out shorter.
+
+The third copy in `index.d.ts` is untouched; that is P5, still open.
+
+The original finding:
 
 Two `#[napi]` classes in `crates/kui-node/src/lib.rs` — `Ctx` (52 methods, from
 line 466) and `KuiWindow` (43, from line 1034) — share **36 method names**. Each
@@ -1000,6 +1044,100 @@ only the secondary one; cursor shapes came off it with C3, and programmatic
 scrolling with C4. C9 put key releases in the section as a *fixed* line and
 left the real remainder there: no physical scancodes, no left/right modifier
 identity, and unnamed keys dropped rather than delivered.
+
+---
+
+## From the ADR review (2026-09-04)
+
+Reading ADRs 0003, 0004 and 0005 back against the code. All three describe
+what they built accurately — every claim spot-checked held — and each ends by
+naming what it left undone. Those named gaps are the first three items here.
+The last three came out of re-running the guards rather than reading them.
+
+### `~` A1 — ADR 0003's two named modal gaps
+
+The ADR's Consequences list four things it left. Two are small and verified
+missing: **no modal scene in the conformance corpus** (nine scenes, none of
+them modal — and the ADR is right that a scene would pin the *behaviour*, not
+the mechanical lowering: the scoped ring, the inert hit list, live window
+chrome, both dismiss reasons), and **no `modal-without-name` warning**, which
+sits directly beside the `control-without-name` that already exists and uses
+the same test.
+
+### `~` A2 — A dialog cannot choose which control opens focused
+
+ADR 0003 decision 3 pulls focus to the *first* focusable node in the scope.
+The ADR names the gap: "`autofocus` on a control, so a dialog can open on its
+Cancel button rather than its first". This matters most where modals matter
+most — a destructive confirm whose Delete button is declared first opens
+focused on it, and Enter out of habit confirms. Check whether the existing
+edge-triggered `keyFocus` already lines up (the modal and its controls start
+being declared on the same frame) before adding a row.
+
+### `.` A3 — Three ADRs have deferred arrow-key composites
+
+ADR 0002 named it as its next step, ADR 0001's follow-ups touch it, ADR 0003
+lists it as not-done-here. Three deferrals is the signal it wants its own ADR.
+C6 helpfully moved it closer: the core now knows `selected`, `pos_in_set` and
+`set_size`, which is what arrow navigation needs. The real question is what a
+*roving tabindex* is in a data IR — today every tab in a tab list is its own
+Tab stop, which is neither the platform pattern nor what a reader expects.
+
+### `!` A4 — The C ABI has no version negotiation, and 0004 will need one
+
+ADR 0004 names this and explicitly does not solve it: "nothing catches an old
+binary against a new library — the ABI has no version negotiation, and this
+ADR does not add one." Verified: no `kui_abi_version`, `KUI_VERSION` or
+equivalent anywhere in the header or the crate.
+
+The reason this is `!` rather than `.`: **`KuiEvent` is caller-allocated**
+(`kui_poll_event(ctx, &ev)` writes into memory the host reserved), and ADR
+0004 appends a `window` field to it. An old host reserves the old size and a
+newer library writes past it — memory corruption, silent, at run time. P6's
+static asserts catch header-vs-Rust drift at *build* time and cannot see this.
+
+Note the asymmetry worth writing into the header: appending to a *host*-written
+struct (`KuiSpec`, which already grew `tooltip`) is safe; appending to a
+*library*-written out-param is not. A leading `uint32_t size` the caller sets
+turns that whole class of future appends from breaking into compatible.
+
+### `.` A5 — Two cases ADR 0004 leaves undefined
+
+Cheapest to settle now, while nothing is implemented.
+
+**Config under the union rule.** Decision 4 makes the window set "the union of
+what every live window's frame declared", chosen because it is
+order-independent. Existence is; *configuration* is not. Two windows declaring
+`"palette"` with different kinds or sizes leaves the resulting `Open`'s config
+decided by whichever frame ran last — the non-determinism the union was picked
+to avoid.
+
+**The reopen trap.** Decision 6's edge rule means an app that declares a window
+unconditionally can never reopen it after the user closes it: the declaration
+never stops, so it never starts. That is the correct design and the same shape
+as "the core closes no modal" — but it will read as a kui bug the first time
+someone hits it, and the library has a mechanism for exactly that. A
+`window-declared-while-closed` warning belongs next to `modal-behind-content`.
+
+### `~` A6 — The corpus can skip, and its coverage is self-declared
+
+Two soft spots in the guard that P7 built, found by running it rather than
+reading it. The corpus itself is real — mutation-tested: removing
+`.description(hint)` from `spec_of` fails the C adapter with the exact scene,
+line and diff, exit 1.
+
+**It can skip.** `packages/kui/test.mjs` skips the scene test when
+`KUI_CONFORMANCE` is unset. The reason is sound (the publish job has no cargo
+target dir and still needs the rest of the suite), but nothing asserts the
+adapter *ran* in the job where it should — a broken `$GITHUB_ENV` propagation
+would take the check away silently. The C adapter takes the path as an
+argument and fails hard, so the hole is Node-only.
+
+**Coverage is declared, not measured.** `the_corpus_covers_every_hand_written_row`
+is bidirectional and genuinely good, but a scene carrying `custom: &["float"]`
+is never checked to actually exercise float. Deriving the claims from the built
+tree (a scene claiming `float` must produce a node with `layout.float.is_some()`)
+would make a stale claim fail.
 
 ---
 
