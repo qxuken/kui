@@ -426,7 +426,7 @@ follow-ups, in order of value per unit of work:
   grant in place could fold it into `smoke-macos`. On Windows there is no
   equivalent tool and no plan for one.
 
-### `~` P9 — Let the corpus drive a frame under custom chrome — **done (2026-09-04)**
+### `~` P9 — Let the corpus drive a frame under custom chrome — **done and independently verified (2026-09-04)**
 
 A scene declares the window facts it is driven under. `Scene` gained an
 `env: WindowEnv` (`NATIVE_CHROME` for every scene but the two about chrome),
@@ -497,6 +497,27 @@ instead by `titlebar_insets_past_the_native_controls` in
 `crates/kui-core/tests/window.rs`, which asserts 12 / 78 / 82 across the
 widget's two branches; the report carries no coordinates, so a position is
 not something a checked-in `Expect` can hold.
+
+**Verified from outside the session that wrote it**, since the failure this
+item existed to fix was a claim that passed while building nothing, and a
+second such claim would look exactly like a green run. Four adapters over the
+regenerated reference: `cargo test --workspace` (Rust and Lua), the C example
+against `target/conformance.txt` (`conformance OK (12 scenes)`), the dlopen
+extension, and `npm test` under `KUI_CONFORMANCE_REQUIRED=1` — 51 tests, none
+skipped, which is the point of the flag. All three mutations named above
+reproduce, each still failing at its own layer.
+
+**The "other nine scenes" question was settled by measurement rather than by
+scoping**, which is the stronger of the two options the item offered. A
+worktree at `b2e9e6d^` dumped the pre-P9 reference, split both reports per
+scene and diffed: `layout`, `sizing`, `wrap`, `overflow`, `float`, `tooltip`,
+`controls`, `media`, `modal` and `exit` are byte-identical, `chrome` moved,
+`chrome-inset` is new. That result is structural rather than lucky — a scene
+equal to `NATIVE_CHROME` writes no `env` line at all, so an adapter that sees
+none drives under the defaults it already had, and the only way to disturb a
+non-chrome scene is to give it an env it did not ask for. Worth repeating the
+same way if `drive` ever grows a second declared fact: the reference report
+makes the check cost one dump and a diff.
 
 The original finding:
 
@@ -1365,7 +1386,7 @@ found, at which point writing the section is the obvious next move.
 The change itself is not in the changelog: that file lists what an app gains
 and what it can delete, and release tooling is neither.
 
-### `.` X3 — List the missing input modes in Status / next — **mostly done (2026-09-04)**
+### `.` X3 — List the missing input modes in Status / next — **done (2026-09-04)**
 
 Both halves landed. The section now names the layout gap and the benches
 paragraph covers every frame bench: `frame_10k_rects_with_access_tree` and
@@ -1381,11 +1402,43 @@ column that cannot wrap, no `align-content`, no `space-between` / `around` /
 the shape this row wanted, and a gap being closed between writing it down and
 reading it back is the system working.
 
-**Still open: no touch or pen input.** It does not reach the core at all, and
-the section says nothing about it, so it reads as present. Add it in the
-section's existing tone, grouped with the pointer paragraph.
+**The last half landed: touch and pen are named.** The sentence joins the
+pointer-buttons paragraph, which is where the other input-mode limits live.
+The section was not quite silent — C3 had tacked a bare "Touch and pen input
+do not reach the core at all" onto the end of the *cursor-shape* paragraph,
+which is about what the pointer looks like rather than about which input
+modes exist, and which says the gap without saying what it costs. That
+sentence is gone; what stands in its place says the consequence: a finger on
+a touchscreen arrives as whatever the platform synthesises as mouse input,
+so a tap presses and clicks and nothing past that exists — no multi-touch,
+no pinch/rotate/two-finger gestures, no pressure, no stylus tilt. It ends by
+stating the position rather than hedging it: v0 is desktop-first.
 
-The precedent, for whoever writes that line: modal containment was on this
+That matches the code exactly. `InputEvent` has cursor motion, mouse buttons
+(`Primary`, `Secondary`, `Middle`, `Other`), the wheel, text, preedit, keys,
+modifiers and access requests and nothing else; `touch`, `pen`, `stylus`, `pressure` and `tilt` do not appear
+anywhere in the crates; and the winit driver's `WindowEvent` match has no
+`Touch` arm and no gesture arms, so the only path from a touchscreen is
+whatever the OS synthesises for a mouse.
+
+**The two consistency checks that came with it both passed, and changed
+nothing.** The key line still reads true after C9: `KeyPress` carries a
+code, mods, text and repeat with no scancode field, `KeyMods` is four bools
+with no left/right identity, and the winit driver drops a key it cannot name
+(`if code != KeyCode::Unknown` guards the dispatch) rather than delivering
+`Unknown` — while the phase rides every key event through `to_value`, and
+`keys_held` is private with no query beside it, which is what "the core
+keeps no 'which keys are down' query" claims. And the stale exit-animation
+wording C8 was supposed to leave behind does not exist: every surviving "a
+removed node vanishes at once" states the *opt-in fallback* (no `exit`, or
+no `transition`, and the node still goes at once), which is current and
+correct. ADR 0005 has two of them and neither is stale either: one is in its
+Context, quoting what the README said at the time, under an amendment banner
+that already supersedes the decision it belongs to, and the other is in the
+amendment itself, describing what a subtree refused by the 512-node budget
+does — which is that same fallback.
+
+The precedent it was written against: modal containment was on this
 list until C1 shipped it; the pointer buttons went on it with C2, which routes
 only the secondary one; cursor shapes came off it with C3, and programmatic
 scrolling with C4. C9 put key releases in the section as a *fixed* line and
