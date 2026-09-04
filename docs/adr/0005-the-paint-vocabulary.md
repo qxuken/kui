@@ -208,7 +208,7 @@ first and none of the second.**
 ## Amendment: exit animations, built
 
 Built as designed, with two corrections and one answer. The view they were
-decided against is `crates/kui/examples/toasts.rs`, which now has an `exit`
+decided against is `examples/rust/toasts.rs`, which now has an `exit`
 on every toast and on the panel, and a "clear" button that drops the whole
 stack in one frame.
 

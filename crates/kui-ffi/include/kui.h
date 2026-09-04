@@ -1064,7 +1064,7 @@ bool kui_run(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user);
  * library and gives it a share of each frame: it draws into the host's tree,
  * keeps its own state, and gets back the events its own nodes emitted and
  * no others. Same deal a Lua extension gets
- * (crates/kui-lua/examples/panel.lua), and the loader on the host's side is
+ * (examples/lua/panel.lua), and the loader on the host's side is
  * kui_ffi::CExtension.
  *
  * YOU define these six; the library only calls them. All but kui_ext_view

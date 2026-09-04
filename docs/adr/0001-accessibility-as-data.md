@@ -229,7 +229,7 @@ for no reader benefit.
 The headless tests pin the data; they cannot tell whether the OS accepts
 it. `scripts/ax-audit.swift` drives a running window through the macOS
 accessibility API — the same one VoiceOver calls — against the
-`examples/accessibility` fixture: 70 checks over roles, names, values,
+`examples/rust/accessibility.rs` fixture: 70 checks over roles, names, values,
 the whole text protocol (`AXNumberOfCharacters`, `AXStringForRange`,
 `AXLineForIndex`, `AXRangeForLine`, `AXBoundsForRange`,
 `AXSelectedTextRange` read *and* written, `AXSelectedText`,

@@ -50,7 +50,7 @@ impl App for Host {
 }
 
 fn main() {
-    let script = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/panel.lua");
+    let script = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/lua/panel.lua");
     let ext = LuaExtension::from_file(script).expect("load panel.lua");
     kui::run("kui — lua panel", Host::default(), vec![Box::new(ext)]).unwrap();
 }

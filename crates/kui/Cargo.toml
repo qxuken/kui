@@ -42,3 +42,47 @@ windows-sys = { version = "0.52", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+# Every example in the repo lives under examples/ at the root, one directory
+# per binding, rather than being scattered a crate at a time. A binding's
+# directory holds the whole example whatever it is written in, so the Rust
+# host of a C or Lua panel sits in examples/c or examples/lua next to the
+# panel it hosts; examples/rust is the pure-Rust ones. Cargo needs the path
+# spelled out because they are outside the package; it also drops them from
+# the published tarball, which is what we want - the repo is where you read
+# them. See examples/README.md.
+[[example]]
+name = "accessibility"
+path = "../../examples/rust/accessibility.rs"
+
+[[example]]
+name = "counter"
+path = "../../examples/rust/counter.rs"
+
+[[example]]
+name = "editor"
+path = "../../examples/rust/editor.rs"
+
+[[example]]
+name = "gallery"
+path = "../../examples/rust/gallery.rs"
+
+[[example]]
+name = "modal_editor"
+path = "../../examples/rust/modal_editor.rs"
+
+[[example]]
+name = "rich_text"
+path = "../../examples/rust/rich_text.rs"
+
+[[example]]
+name = "splitmux"
+path = "../../examples/rust/splitmux.rs"
+
+[[example]]
+name = "syntax_view"
+path = "../../examples/rust/syntax_view.rs"
+
+[[example]]
+name = "toasts"
+path = "../../examples/rust/toasts.rs"

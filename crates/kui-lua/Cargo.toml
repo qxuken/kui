@@ -13,3 +13,17 @@ mlua.workspace = true
 
 [dev-dependencies]
 kui.workspace = true
+
+# See the note in crates/kui/Cargo.toml: examples live under examples/ at the
+# root, so cargo needs the path. A Lua extension has no window of its own, so
+# both of these are Rust hosts and both live in examples/lua beside the script
+# they run. lua_panel keeps the `lua_` prefix the file dropped: every example
+# binary in the workspace lands in one flat target/debug/examples, so a
+# `panel` here would collide with kui-ffi's.
+[[example]]
+name = "bench"
+path = "../../examples/lua/bench.rs"
+
+[[example]]
+name = "lua_panel"
+path = "../../examples/lua/panel.rs"

@@ -29,3 +29,9 @@ harness = false
 [[bench]]
 name = "highlight"
 harness = false
+
+# See the note in crates/kui/Cargo.toml: examples live under examples/ at the
+# root, so cargo needs the path.
+[[example]]
+name = "conformance-dump"
+path = "../../examples/rust/conformance-dump.rs"

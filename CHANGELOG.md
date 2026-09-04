@@ -776,6 +776,34 @@ upgrades remove code from the apps on it is doing the job.
   The prose moved too: the doc comments on those 102 members are now the
   Rust ones, with whatever the `.d.ts` copy said better folded in.
 
+- **Every example lives under `examples/` now**, one directory per binding:
+  `examples/rust/`, `examples/c/`, `examples/lua/`, `examples/node/`. Half of
+  them were already there (C and Node) and half were scattered a crate at a
+  time under `crates/*/examples/`, so "where are the examples" had two
+  answers depending on the language you came in through. A binding's
+  directory holds the **whole** example, in whatever languages it takes:
+  `examples/c/` is not the C files, it is the C story — C as the host
+  (`counter.c`), C as an extension (`panel.c`), and `panel.rs`, the Rust host
+  that `dlopen`s it, which used to sit three directories away from the plugin
+  it loads. The two halves of the panel now differ only by extension, and the
+  same in `examples/lua/` (`panel.lua` + `panel.rs`), where a Lua extension
+  has no window of its own so both examples are Rust hosts.
+  The cargo target names keep their prefixes — `--example c_panel` and
+  `--example lua_panel` are unchanged — because every example binary lands in
+  one flat `target/debug/examples/`, where two targets called `panel` would
+  collide.
+  `examples/README.md` is the map — every example, its `cargo run -p ...`
+  line, and what it shows.
+  No run command changed: cargo names a target by its `name`, not its path,
+  so `cargo run -p kui --example counter` and
+  `./target/debug/examples/accessibility` are what they were.
+  Two things to know if you vendor the crates rather than the repo. Each
+  crate's `Cargo.toml` now names its examples with an explicit `path`,
+  because they sit outside the package; and cargo drops a target it cannot
+  package, so **the published crates no longer carry their examples** and
+  `cargo publish` says so once per example. The repo is where you read them,
+  which is where the manifests' `repository` field already pointed.
+
 ### What you can delete
 
 - **The Lua workarounds for focus you could see but not move** — the

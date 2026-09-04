@@ -1,5 +1,5 @@
 // Node side of the frontend-lowering shootout (same view as
-// crates/kui-lua/examples/bench.rs): 300 rows of text + swatch, headless.
+// examples/lua/bench.rs): 300 rows of text + swatch, headless.
 // Splits the cost of a frame into JS tree building vs encoding vs the
 // boundary crossing and lowering.
 import { Ctx, createEncoder, protocol } from '@qxuken/kui';

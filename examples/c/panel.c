@@ -2,7 +2,7 @@
  *
  * counter.c in this directory is the other direction: C owns main(), calls
  * kui_run and links libkui_ffi. Here the host is a Rust app
- * (crates/kui-ffi/examples/c_panel.rs) that owns the window and the left
+ * (examples/c/panel.rs) that owns the window and the left
  * side of the frame, and this file is a shared library it dlopens. The
  * panel below draws into the host's frame, keeps its own state and gets
  * its own clicks back - the host never sees them, and this file never sees
@@ -13,7 +13,7 @@
  * resolves lua_*. See ../../crates/kui-ffi/src/ext.rs for the loader and
  * ./build.sh for the two flags each side needs.
  *
- * The same panel as crates/kui-lua/examples/panel.lua, deliberately: the
+ * The same panel as examples/lua/panel.lua, deliberately: the
  * extension contract is the contract, and the language is a detail.
  */
 #include <stdio.h>

@@ -784,7 +784,7 @@ one lerp rather than an `AnimStore` tween, since nothing can retarget a node
 the view has stopped talking about.
 
 The open question — what a ghost does to `animating()` — was decided against
-`examples/toasts.rs`, which now enters and exits: it stays honestly true
+`examples/rust/toasts.rs`, which now enters and exits: it stays honestly true
 while a ghost is in flight, and what bounds the frames that costs is `exit`
 being opt-in per node plus the node budget, not a cap on the duration (which
 would be a second, inconsistent rule for a declaration `transition` already

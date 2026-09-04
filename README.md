@@ -59,6 +59,9 @@ host).
 
 ## Examples
 
+All of them live under [examples/](examples), one directory per
+language; [examples/README.md](examples/README.md) is the full map.
+
 ```bash
 cargo run -p kui --example counter        # pure Rust, Elm-ish flow
 cargo run -p kui --example rich_text      # styled spans in one wrapped paragraph
@@ -135,7 +138,7 @@ The same two functions from C, because the extension contract is the contract
 and the language is a detail — `kui_ffi::CExtension` `dlopen`s a shared
 library and hands it the same share of the frame
 ([examples/c/panel.c](examples/c/panel.c),
-[crates/kui-ffi/examples/c_panel.rs](crates/kui-ffi/examples/c_panel.rs)):
+[examples/c/panel.rs](examples/c/panel.rs)):
 
 ```c
 void kui_ext_view(void *user, KuiCtx *ui) {
