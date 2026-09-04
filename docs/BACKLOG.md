@@ -911,13 +911,32 @@ ordering are proven; this generalises it to a declared ratio on any node.
 
 The work ADR 0004 (C7) decided but did not do. Each step ships alone, in order:
 
-1. **`Session`.** Hoist `Resources`, `TextSystem`, `GlyphAtlas` and
-   `AudioStore` out of `Core` and behind a session a `Core` is constructed
-   against; `Core::new()` becomes sugar for a private session of one, so
-   nothing headless changes. `kui-wgpu` grows a shared `wgpu::Device`/`Queue`
-   with a surface per window — `Renderer::new` builds its own instance and
-   device today (`crates/kui-wgpu/src/lib.rs:109`), so N windows would mean N
-   GPU devices. Invisible to every binding.
+1. **`Session`.** — **done (2026-09-04)**. `Resources`, `AudioStore` and
+   the font database moved out of `Core` and behind a `Session` a `Core` is
+   constructed against (`Core::new_in`); `Core::new()` is sugar for a private
+   session of one, so nothing headless changed — `cargo test --workspace`,
+   the corpus across all four adapters, the C example and `npm test` all
+   passed with no test edited. `kui-wgpu` grew `Gpu`: instance, adapter,
+   device and queue behind one cloneable handle, with `Renderer::new_in`
+   beside the unchanged `Renderer::new`.
+   **Two of the four stayed**, and ADR 0004 decision 2 is amended to say so.
+   The shaped-text cache and the glyph atlas are one unit with a window's
+   texture — `CachedText` stamps its positioned glyphs with the atlas epoch
+   they were packed against, so a cache entry is only valid for the page it
+   was built from — and the atlas cannot move at all while `Core::output`
+   returns `(&DisplayList, &mut GlyphAtlas)`: from a shared `RefCell` that
+   half can only be a guard, a guard has a destructor, and the borrow then
+   outlives its last use (`crates/kui-core/tests/subpixel.rs` binds the pair
+   and touches the core again). `Core.atlas.epoch` / `.size`, read as plain
+   fields, fail the same way. So hoisting the atlas is a source break; it
+   waits for step 3, which already breaks C. `TextSystem` was split rather
+   than moved: the font database is the session's and arrives as a `&mut
+   FontSystem` parameter, while the cache, the rasterizer and the per-frame
+   text list (`TextId` indexes it, and another window's `begin_frame` would
+   clear it) stay the window's. What is left duplicated per window is memory
+   and repeated rasterization, not correctness: the handles that must agree
+   across windows — `FontId`, `ImageId`, `SoundId`, and the one audio queue
+   — all resolve against the session.
 2. **`WindowId` plumbing.** `UiEvent.window`, `WindowEnv::id`, `KuiEvent.window`
    (appended), the Node event object and the TS message types. Always 0 until
    step 3, so it is pure plumbing that can land and be reviewed on its own.

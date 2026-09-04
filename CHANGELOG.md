@@ -9,6 +9,36 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **`Session`: windows that share a device, a font database and a registry**
+  (`docs/adr/0004-multi-window.md` decision 2, backlog C11 step 1). A `Core`
+  owned everything, which is fine while there is one of them and wrong the
+  moment there are two: a second window would mean a second copy of every
+  registered font, image and sound — so an `ImageId` from the main window
+  would draw nothing in a palette window — a second audio device for a
+  process that has one, and a second `wgpu::Device`, which is not how any of
+  the three platforms want to be driven. **`kui_core::Session`** now owns the
+  three things whose handles must mean the same in every window: the font
+  database shaping resolves against, the resource registry behind `FontId` /
+  `ImageId` / `SoundId`, and the audio store with its one command queue.
+  `Core::new_in(&session)` builds a window against one; **`Core::new()` is
+  unchanged**, and is sugar for a private session of one, so every headless
+  test, the conformance corpus, `createApp` and `Ctx` are untouched — nothing
+  in any binding had to move. `Core::resources` and `Core::audio` are now
+  handles into the session rather than owned stores, with the same methods.
+  **`kui_wgpu::Gpu`** is the same idea for the GPU: instance, adapter, device
+  and queue behind one cloneable handle, `Renderer::new_in(&gpu, target, w, h)`
+  beside the unchanged `Renderer::new` (which makes a private `Gpu` for its
+  window), and `Renderer::gpu()` to hand it to the next one.
+  Two of the four things ADR 0004 listed stayed per window, and the ADR is
+  amended to say why: the shaped-text cache stamps its positioned glyphs with
+  the atlas epoch they were packed against, so it is one unit with the
+  window's glyph atlas — and the atlas cannot move while `Core::output` lends
+  it out as `&mut GlyphAtlas`. That costs a duplicated page and repeated
+  rasterization per window, and costs nothing in correctness.
+  **What you can delete:** nothing yet — no binding can open a second window
+  until C11 step 3. This is the piece that has to exist before one is worth
+  opening.
+
 - **`exit`: a node can leave, not just arrive** (`docs/adr/0005-the-paint-vocabulary.md`,
   backlog C8). `enter` said where a node's slots start the first frame it is
   seen. The mirror image was the one animation the frame model could not

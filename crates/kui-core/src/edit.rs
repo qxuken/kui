@@ -921,6 +921,7 @@ impl EditStore {
         origin: Vec2,
         focused: bool,
         clip: Rect,
+        fs: &mut FontSystem,
         text_system: &mut TextSystem,
         atlas: &mut crate::atlas::GlyphAtlas,
         out: &mut Vec<Quad>,
@@ -929,7 +930,7 @@ impl EditStore {
         let Some(s) = self.states.get_mut(&key) else {
             return;
         };
-        let (fs, raster) = text_system.raster_parts();
+        let raster = text_system.raster_mut();
         s.editor.shape_as_needed(fs, false);
         let color = s.style.color;
         let accent = s.accent;
