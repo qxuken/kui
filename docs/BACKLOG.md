@@ -872,6 +872,31 @@ The work ADR 0004 (C7) decided but did not do. Each step ships alone, in order:
    no longer fits a `uint32_t` — and C hosts edit their drain loop. Keep the
    struct pointer-free: an `Open` carries no title (ADR 0004 decision 5), so
    `WindowCommand` stays `Copy` and no borrowed string enters the drain.
+   Two rules the ADR's 2026-09-04 amendments added (A5) land in this step,
+   because both live in the diff:
+   - **Config is read on the opening edge only**, and on that edge the
+     lowest declaring `WindowId` wins — main is 0, so it wins whenever it
+     declares — with the first declaration winning within a single frame.
+     A live window's config is never re-read, which is where decision 5's
+     "the user owns geometry once the window exists" is actually enforced:
+     not by rejecting a re-declared size, but by never looking at it. A
+     conflict on that edge — differing configs, since a config is plain
+     data and equality is derived — raises `duplicate-window-config`, and
+     the pick stays deterministic, so the warning reports the bug without
+     deciding anything.
+   - **`window-declared-while-closed`**, when a name is still in the
+     declared union on the frame after an OS close it never lapsed across.
+     This is the app that declares a window unconditionally and cannot
+     reopen it, which is the first version anyone writes; the warning is
+     what keeps the edge rule from reading as kui ignoring `windows`.
+   Both are raised from the diff, not from `diag`'s tree walk, and keyed by
+   the window name rather than a node (the way `unknown-prop` is keyed by
+   element and name) — so they go in `diag.rs` beside `modal-behind-content`,
+   in the TS warning-code union, and `diag`'s module doc stops saying *one*
+   code comes from outside the walk. `window-declared-while-closed` is
+   raised on the core whose frame declared the name, so it inherits the
+   per-`(code, key)`-per-core dedup and costs one line however many frames
+   the app keeps asking.
 4. **`WindowKind::Popup`.** Anchoring in screen coordinates, ownership,
    non-activating focus routing, and `dismiss` on the window.
 5. **`SetSize` / `Focus`**, queued the way `reveal` and `play` are.
@@ -880,7 +905,11 @@ Testing splits the way the ADR says: the conformance corpus can pin the
 declaration diff (declare a window, stop declaring it, assert the command
 sequence — all four transports reproduce it byte-identically), but a popup
 window has no headless equivalent, so its behaviour belongs in P8's
-macOS/Windows smoke jobs.
+macOS/Windows smoke jobs. Both step-3 warnings fall on the corpus side of
+that line: a config conflict is two declarations in one frame, and the reopen
+trap is a declaration, an injected close and a frame that still declares —
+neither needs an OS surface, and `take_warnings` is already what headless
+tests assert on.
 
 ---
 
@@ -1261,7 +1290,44 @@ struct (`KuiSpec`, which already grew `tooltip`) is safe; appending to a
 *library*-written out-param is not. A leading `uint32_t size` the caller sets
 turns that whole class of future appends from breaking into compatible.
 
-### `.` A5 — Two cases ADR 0004 leaves undefined
+### `.` A5 — Two cases ADR 0004 leaves undefined — **done (2026-09-04)**
+
+Both settled on paper, before anything was built, as amendments to
+`docs/adr/0004-multi-window.md`. The build work inherits them through C11.
+
+**Config under the union rule** is now three rules in decision 4, none of which
+needs a frame order — which was the whole point, since a frame order is what
+the union exists not to need. A config is read **only on the frame its
+declaration starts**, so decision 6's edge governs the config and not just the
+existence, and a live window's config is never re-read (a frame re-declaring
+`"palette"` at 400×300 cannot resize it — decision 5's "the user owns geometry"
+falling out of the diff rather than being enforced beside it). That narrows the
+conflict to the opening edge without removing it, so on that edge the **lowest
+declaring `WindowId` wins**: ids are fixed before any of the frame's views run,
+so ordering over them is order-independent in the way ordering over execution is
+not, and `WindowId::MAIN` being 0 means the main window wins whenever it
+declares — the answer an app would guess. Within one frame declaring a name
+twice, the first wins, which needs no rule at all. A genuine conflict — configs
+that differ, since a config is plain data and equality is derived — is a
+`duplicate-window-config` warning; two windows declaring the same config
+identically is the ordinary case and says nothing.
+
+**The reopen trap** stays, because the alternative is a close button that does
+nothing, and gets a name instead: `window-declared-while-closed`, added to
+decision 6. It fires when a name is still in the declared union on the frame
+after an OS close it never lapsed across — the app that declares a window
+unconditionally, which is the first version anyone writes. Next to
+`modal-behind-content` and for its reason: a silent misconfiguration that reads
+from outside as the feature being broken, so the message says the fix (handle
+`{kind:"window", phase:"closed"}`, stop declaring, declare again to reopen)
+rather than the symptom.
+
+Both warnings are raised from the declaration diff rather than `diag`'s tree
+walk and are keyed by the window name, since neither has a node — so `diag.rs`'s
+module doc, which says one code (`unknown-prop`) does not come from the walk,
+becomes three when this is built.
+
+The original finding:
 
 Cheapest to settle now, while nothing is implemented.
 
