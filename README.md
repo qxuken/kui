@@ -46,7 +46,11 @@ assert.deepEqual(app.warnings, []);                   // nothing misconfigured
 A button inside a drag strip still takes its own click, a compact tier fits
 its window with nothing overflowing, the chime plays when it should: all of
 it is assertable because all of it is data the core emits rather than a side
-effect it performs. Rust tests drive `Core` the same way
+effect it performs. An app with a clock is no exception — Node's two drivers
+are one loop over an injected surface, so `tick` runs headless too and
+`app.advance(ms)` is the window's timer by hand: it fires every tick inside
+the span and moves the frame clock with them, which is how a countdown or a
+mid-flight transition gets stepped through in a test. Rust tests drive `Core` the same way
 ([crates/kui-core/tests](crates/kui-core/tests)), and C runs the same API
 headless (`./examples/c/counter --headless`).
 
@@ -365,9 +369,9 @@ that are hard to reverse and would look arbitrary without their context.
   they run on the first frames and every 16th after — a misconfiguration
   persists, so it surfaces within that, at no steady-state cost).
   `Core::take_warnings` drains them;
-  the windowed runners print them, `createApp` collects them on
-  `app.warnings`, C drains `kui_take_warnings`, and a test asserts the list
-  is empty. They are a development aid, so the drivers decide by build: the
+  the windowed runners print them, the Node loop collects them on
+  `app.warnings` either way, C drains `kui_take_warnings`, and a test
+  asserts the list is empty. They are a development aid, so the drivers decide by build: the
   Rust runner runs them in debug builds only (`Launcher::diagnostics`
   overrides), the Node loops unless `NODE_ENV=production`, a standalone C
   context not until `kui_set_diagnostics`; a bare `Core` has them on, since

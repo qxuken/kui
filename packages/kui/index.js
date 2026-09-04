@@ -16,77 +16,235 @@ Ctx.prototype.frame = function frame(width, height, scale, tree) {
   this.frameBinary(width, height, scale, stream, strings);
 };
 
-// The core reports silent misconfigurations (a grow weight with nothing to
-// split against, a transition on a positional key, two nodes on one key) as
-// data. The loops below run the checks in development only (off under
-// NODE_ENV=production, so a shipped app pays and prints nothing) and print
-// each once unless `warnings: false`; `setDiagnostics` overrides either way.
-const formatWarning = (w) => `kui: warning [${w.code}] node ${w.key}: ${w.message}`;
-const diagnosticsByDefault = () => process.env.NODE_ENV !== 'production';
-
 KuiWindow.prototype.setView = function setView(tree) {
   const { stream, strings } = encoder.encode(tree);
   this.setViewBinary(stream, strings);
 };
 
+// ---------------------------------------------------------------------------
+// One loop, two surfaces.
+//
+// A surface is whatever the loop drives: a headless `Ctx`, or a `KuiWindow`
+// for a real window. Both answer the same handful of calls — `pollEvents`,
+// `warnings`, `setDiagnostics`, and a way to be shown a tree — so the Elm
+// loop, the diagnostics gate and every test affordance are written once,
+// here, over whichever one they were handed. The two drivers below differ
+// only where they really differ: `runWindowed` pumps the OS and resolves
+// with the final model, `createApp` is synchronous and holds its own clock.
+
+// The core reports silent misconfigurations (a grow weight with nothing to
+// split against, a transition on a positional key, two nodes on one key) as
+// data. The checks run in development only (off under NODE_ENV=production, so
+// a shipped app pays and prints nothing); `diagnostics` overrides either way.
+const formatWarning = (w) => `kui: warning [${w.code}] node ${w.key}: ${w.message}`;
+const diagnosticsByDefault = () => process.env.NODE_ENV !== 'production';
+
+/** How a tree reaches a surface — the transport the two really differ on: a
+ *  window keeps a view and redraws it at its own size, a headless `Ctx`
+ *  lowers one frame at the size it is told. */
+function transport(surface, opts) {
+  if (typeof surface.setView === 'function') return (tree) => surface.setView(tree);
+  const width = opts.width ?? 800;
+  const height = opts.height ?? 600;
+  const scale = opts.scale ?? 1;
+  return (tree) => surface.frame(width, height, scale, tree);
+}
+
 /**
- * Opens a real kui window (winit + wgpu) and runs the Elm loop against it.
+ * The Elm loop over one surface: the model, `update`, the clock, and the
+ * affordances a test drives it with. Both drivers build one of these.
+ *
+ * `clock` is where time comes from — `Date.now` under a window. Without one
+ * the loop holds the hands itself and `advance(ms)` moves them, which is what
+ * makes a ticking app drivable headless. Passing a fake one is how the
+ * windowed half of the tick bookkeeping gets tested without a display.
+ */
+function createLoop({ init, update, view, tick }, opts, surface, clock) {
+  surface.setDiagnostics(opts.diagnostics ?? diagnosticsByDefault());
+  const show = transport(surface, opts);
+  let model;
+
+  let now = clock ? clock() : (opts.startTime ?? Date.now());
+  const at = () => (clock ? clock() : now);
+  // The clock, when asked for: `tick.msg` (or `tick.msg(now)`) goes through
+  // `update` every `tick.every` ms.
+  const every = tick?.every > 0 ? tick.every : 0;
+  let nextTick = every ? at() + every : Infinity;
+
+  // Fires the ticks owed at `t`. `catchUp` fires every one inside the span —
+  // what `advance(ms)` asked for. Without it the loop takes one and resyncs
+  // to the cadence: real time jumps (a drag, a GC pause) and a burst of stale
+  // ticks helps nobody. Ticks are frequent, so unlike UI events they redraw
+  // only when `update` returns a new model — so a tick that mutates in place
+  // has to return the model to be drawn.
+  function ticksTo(t, catchUp) {
+    let redraw = false;
+    while (t >= nextTick) {
+      nextTick += every;
+      if (!catchUp && nextTick <= t) nextTick = t + every;
+      const msg = typeof tick.msg === 'function' ? tick.msg(t) : tick.msg;
+      const next = update(model, msg, { origin: 0, key: '', payload: msg }, surface);
+      if (next !== undefined) {
+        model = next;
+        redraw = true;
+      }
+      if (!catchUp) break;
+    }
+    return redraw;
+  }
+
+  // Warnings collect on `app.warnings` and print once unless `warnings: false`.
+  function drainWarnings() {
+    const ws = surface.warnings();
+    if (!ws.length) return;
+    app.warnings.push(...ws);
+    if (opts.warnings !== false) for (const w of ws) console.warn(formatWarning(w));
+  }
+
+  // Everything the surface has queued, through `update`. The loop draws once
+  // after, not once per event.
+  function drainEvents() {
+    const events = surface.pollEvents();
+    for (const ev of events) app.dispatch(ev.payload, ev);
+    return events.length > 0;
+  }
+
+  // A frame, without the `stats()` round trip `render` hands back — the
+  // windowed pump draws sixty times a second and asks for none of it.
+  function draw() {
+    show(view(model));
+    drainWarnings();
+  }
+
+  // An input call the surface does not take: a real window gets its input
+  // from the OS, so it offers only some of them.
+  function must(name) {
+    const fn = surface[name];
+    if (typeof fn !== 'function') {
+      throw new Error(`kui: this loop's surface has no ${name}() to drive it with`);
+    }
+    return fn.bind(surface);
+  }
+
+  const app = {
+    /** The surface this loop drives. */
+    surface,
+    /** The same object under the name headless tests reach for. */
+    ctx: surface,
+    /** Every warning the core raised while rendering, in order (each is
+     *  also printed unless `warnings: false`). Assert on it, or on its
+     *  emptiness. */
+    warnings: [],
+    get model() {
+      return model;
+    },
+    dispatch(msg, event) {
+      const next = update(model, msg, event, surface);
+      if (next !== undefined) model = next;
+    },
+    render() {
+      draw();
+      return surface.stats();
+    },
+    /** One turn of the loop: whatever the surface queued, then the ticks the
+     *  clock owes, then a frame if either changed the model. The windowed
+     *  driver runs one after every `win.pump()`. */
+    step() {
+      drainWarnings();
+      let redraw = drainEvents();
+      if (ticksTo(at(), false)) redraw = true;
+      if (redraw) draw();
+    },
+    /** Drain events -> update -> re-render until no events remain. */
+    settle() {
+      for (let round = 0; round < 8; round++) {
+        if (!drainEvents()) return;
+        draw();
+      }
+    },
+    /** Moves the loop's own clock `ms` forward: every tick inside the span
+     *  fires, the frame clock behind `transition` follows it, and the app
+     *  re-renders. The test-driver counterpart of the window's timer — a
+     *  window runs on the wall clock and ticks itself. */
+    advance(ms) {
+      if (clock) {
+        throw new Error('kui: advance() moves the loop\'s own clock; this one runs on the wall clock');
+      }
+      now += ms;
+      surface.setTime?.(now / 1000);
+      ticksTo(now, true);
+      draw();
+      app.settle();
+    },
+    click(x, y, clicks = 1) {
+      const mouse = must('mouse');
+      must('cursor')(x, y);
+      mouse(true, clicks);
+      mouse(false, clicks);
+      app.settle();
+    },
+    rightClick(x, y) {
+      const mouse = must('mouse');
+      must('cursor')(x, y);
+      mouse(true, 1, 'secondary');
+      mouse(false, 1, 'secondary');
+      app.settle();
+    },
+    type(text) {
+      must('text')(text);
+      app.settle();
+    },
+    key(name, mods) {
+      must('key')(name, mods);
+      app.settle();
+    },
+    /** What assistive technology sees of the last render. */
+    accessTree() {
+      return surface.accessTree();
+    },
+    /** Drive the app the way a screen reader would: `access(key, 'click')`
+     *  activates a node, `access(key, 'setValue', text)` types into an
+     *  editor; the events that follow go through `update`. */
+    access(key, action, value) {
+      surface.access(key, action, value);
+      app.settle();
+    },
+  };
+
+  // Resources before the model: `setup` registers fonts and images so `init`
+  // can name their ids.
+  opts.setup?.(surface, app);
+  model = typeof init === 'function' ? init() : init;
+  return app;
+}
+
+/**
+ * Opens a real kui window (winit + wgpu) and runs the loop against it.
  * The winit event loop is pumped from a timer so it shares the main thread
  * with libuv — Node stays fully responsive while the window is open.
  *
  * Resolves with the final model when the window closes. One window per
  * process (winit event loops are not recreatable everywhere).
  */
-export function runWindowed({ init, update, view, tick }, opts = {}) {
+export function runWindowed(config, opts = {}) {
   const { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome } = opts;
   const win = new KuiWindow(opts.title ?? 'kui', {
     width, height, minWidth, minHeight, maxWidth, maxHeight, chrome,
   });
-  win.setDiagnostics(opts.diagnostics ?? diagnosticsByDefault());
-  opts.setup?.(win);
-  let model = typeof init === 'function' ? init() : init;
-  win.setView(view(model));
-  // The clock, when asked for: `tick.msg` (or `tick.msg(now)`) goes through
-  // `update` every `tick.every` ms. Ticks are frequent, so unlike UI events
-  // they re-render only when `update` returns a new model — so a tick that
-  // mutates in place has to return the model to be drawn.
-  const every = tick?.every > 0 ? tick.every : 0;
-  let nextTick = every ? Date.now() + every : Infinity;
+  const app = createLoop(config, opts, win, opts.clock ?? Date.now);
+  app.render();
   return new Promise((resolve, reject) => {
     const pump = () => {
       let alive;
       try {
         alive = win.pump();
-        if (opts.warnings !== false) {
-          for (const w of win.warnings()) console.warn(formatWarning(w));
-        }
-        let render = false;
-        const events = win.pollEvents();
-        for (const ev of events) {
-          const next = update(model, ev.payload, ev, win);
-          if (next !== undefined) model = next;
-        }
-        if (events.length) render = true;
-        const now = Date.now();
-        if (now >= nextTick) {
-          // Keep the cadence; if the loop fell behind, resync rather than
-          // firing a burst.
-          nextTick += every;
-          if (nextTick <= now) nextTick = now + every;
-          const msg = typeof tick.msg === 'function' ? tick.msg(now) : tick.msg;
-          const next = update(model, msg, { origin: 0, key: '', payload: msg }, win);
-          if (next !== undefined) {
-            model = next;
-            render = true;
-          }
-        }
-        if (render) win.setView(view(model));
+        app.step();
       } catch (e) {
         reject(e);
         return;
       }
       if (!alive) {
-        resolve(model);
+        resolve(app.model);
         return;
       }
       setTimeout(pump, opts.pumpMs ?? 8);
@@ -96,86 +254,17 @@ export function runWindowed({ init, update, view, tick }, opts = {}) {
 }
 
 /**
- * Headless Elm-style app driver.
+ * Headless app driver: the same loop over a headless `Ctx`.
  *
  * const app = createApp({ init, update, view }, { width, height });
  * app.render(); app.click(x, y); app.model
  *
- * `update(model, msg, event)` returns the next model (returning undefined
- * keeps the current one - useful when you mutate in place).
+ * `update(model, msg, event, ctx)` returns the next model (returning
+ * undefined keeps the current one - useful when you mutate in place). A
+ * `tick` runs here too: `app.advance(ms)` is the window's timer, by hand.
  */
-export function createApp({ init, update, view }, opts = {}) {
-  const ctx = new Ctx();
-  ctx.setDiagnostics(opts.diagnostics ?? diagnosticsByDefault());
-  const width = opts.width ?? 800;
-  const height = opts.height ?? 600;
-  const scale = opts.scale ?? 1;
-  let model = typeof init === 'function' ? init() : init;
-
-  const app = {
-    ctx,
-    /** Every warning the core raised while rendering, in order (each is
-     *  also printed unless `warnings: false`). Assert on it, or on its
-     *  emptiness. */
-    warnings: [],
-    get model() {
-      return model;
-    },
-    dispatch(msg, event) {
-      const next = update(model, msg, event);
-      if (next !== undefined) model = next;
-    },
-    render() {
-      ctx.frame(width, height, scale, view(model));
-      const ws = ctx.warnings();
-      if (ws.length) {
-        app.warnings.push(...ws);
-        if (opts.warnings !== false) for (const w of ws) console.warn(formatWarning(w));
-      }
-      return ctx.stats();
-    },
-    /** Drain events -> update -> re-render until no events remain. */
-    settle() {
-      for (let round = 0; round < 8; round++) {
-        const events = ctx.pollEvents();
-        if (events.length === 0) return;
-        for (const ev of events) app.dispatch(ev.payload, ev);
-        app.render();
-      }
-    },
-    click(x, y, clicks = 1) {
-      ctx.cursor(x, y);
-      ctx.mouse(true, clicks);
-      ctx.mouse(false, clicks);
-      app.settle();
-    },
-    rightClick(x, y) {
-      ctx.cursor(x, y);
-      ctx.mouse(true, 1, 'secondary');
-      ctx.mouse(false, 1, 'secondary');
-      app.settle();
-    },
-    type(text) {
-      ctx.text(text);
-      app.settle();
-    },
-    key(name, mods) {
-      ctx.key(name, mods);
-      app.settle();
-    },
-    /** What assistive technology sees of the last render. */
-    accessTree() {
-      return ctx.accessTree();
-    },
-    /** Drive the app the way a screen reader would: `access(key, 'click')`
-     *  activates a node, `access(key, 'setValue', text)` types into an
-     *  editor; the events that follow go through `update`. */
-    access(key, action, value) {
-      ctx.access(key, action, value);
-      app.settle();
-    },
-  };
-  return app;
+export function createApp(config, opts = {}) {
+  return createLoop(config, opts, opts.surface ?? new Ctx(), opts.clock ?? null);
 }
 
 /**

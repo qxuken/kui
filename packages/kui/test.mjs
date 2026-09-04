@@ -477,6 +477,126 @@ test('createApp collects warnings on the app', () => {
   assert.equal(shipped.warnings.length, 0);
 });
 
+test('a ticking app runs headless: advance is the window timer, by hand', () => {
+  const surface = new Ctx();
+  const seen = [];
+  const app = createApp(
+    {
+      // A countdown that redraws only when the displayed second changes:
+      // the ticks in between mutate and return undefined.
+      init: { ticks: 0, second: 0 },
+      update: (m, msg, ev, ctx) => {
+        seen.push([msg.kind, ctx]);
+        const second = Math.floor(msg.now / 1000);
+        if (second === m.second) {
+          m.ticks += 1;
+          return;
+        }
+        return { ticks: m.ticks + 1, second };
+      },
+      view: (m) => box({ pad: 4 }, [text(`${m.second}`)]),
+      tick: { every: 250, msg: (now) => ({ kind: 'tick', now }) },
+    },
+    { surface, startTime: 0 },
+  );
+  // The surface is injected, and `update`'s fourth argument is it — the same
+  // slot `runWindowed` fills with the window.
+  assert.equal(app.surface, surface);
+  assert.equal(app.ctx, surface);
+  app.render();
+  // Every tick inside the span fires: 250, 500, 750, 1000.
+  app.advance(1000);
+  assert.equal(app.model.ticks, 4);
+  assert.equal(app.model.second, 1);
+  assert.deepEqual(seen.map((s) => s[0]), ['tick', 'tick', 'tick', 'tick']);
+  assert.equal(seen[0][1], surface);
+  // A span shorter than the cadence owes nothing.
+  app.advance(100);
+  assert.equal(app.model.ticks, 4);
+  app.advance(200);
+  assert.equal(app.model.ticks, 5);
+});
+
+test('advance moves the frame clock, so a transition runs headless', () => {
+  const app = createApp(
+    {
+      init: { wide: false },
+      update: (m, msg) => (msg === 'go' ? { wide: true } : undefined),
+      view: (m) =>
+        box({ pad: 0 }, [
+          box({ transition: 200, width: m.wide ? 200 : 20, height: 10, bg: '#ffffff' }, [], 'bar'),
+        ]),
+    },
+    { startTime: 0, width: 320, height: 240 },
+  );
+  const barWidth = () => decodeQuads(app.ctx.quads()).find((q) => q.h === 10).w;
+  app.advance(0);
+  app.dispatch('go');
+  app.advance(100);
+  assert.ok(app.ctx.animating(), 'the tween is mid-flight');
+  assert.equal(barWidth(), 20, 'it starts where the node was');
+  app.advance(100);
+  assert.ok(barWidth() > 20 && barWidth() < 200, 'halfway');
+  app.advance(100);
+  assert.equal(app.ctx.animating(), false);
+  assert.equal(barWidth(), 200);
+});
+
+test("a loop on a wall clock resyncs rather than firing a burst of ticks", () => {
+  // The windowed half of the same bookkeeping: `runWindowed` fills `clock`
+  // with `Date.now`, so a fake one drives it without a display.
+  let t = 0;
+  let frames = 0;
+  const app = createApp(
+    {
+      init: { ticks: 0 },
+      update: (m) => ({ ticks: m.ticks + 1 }),
+      view: (m) => {
+        frames += 1;
+        return box({ pad: 4 }, [text(`${m.ticks}`)]);
+      },
+      tick: { every: 100, msg: 'tick' },
+    },
+    { clock: () => t },
+  );
+  app.render();
+  // Ten cadences of real time went past in one turn (a drag, a GC pause):
+  // one tick, and the cadence picks up from here.
+  t = 1000;
+  app.step();
+  assert.equal(app.model.ticks, 1);
+  t = 1050;
+  app.step();
+  assert.equal(app.model.ticks, 1, 'not due yet');
+  const drawn = frames;
+  t = 1100;
+  app.step();
+  assert.equal(app.model.ticks, 2);
+  assert.equal(frames, drawn + 1, 'a tick that returned a model drew');
+  // Its hands are not the loop's to move.
+  assert.throws(() => app.advance(100), /wall clock/);
+});
+
+test('a loop over a surface that takes no synthetic input says so', () => {
+  const app = createApp(
+    { init: 0, update: () => undefined, view: () => box({ pad: 4 }) },
+    // A stand-in for a real window: it shows a view and polls, but its input
+    // comes from the OS.
+    {
+      surface: {
+        setView() {},
+        pollEvents: () => [],
+        warnings: () => [],
+        setDiagnostics() {},
+        stats: () => ({}),
+      },
+    },
+  );
+  app.render();
+  app.settle();
+  assert.throws(() => app.click(1, 1), /no mouse\(\) to drive it with/);
+});
+
 test('the access tree derives roles and names, and requests drive the app', () => {
   const app = createApp(
     {

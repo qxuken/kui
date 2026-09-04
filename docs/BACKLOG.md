@@ -876,7 +876,7 @@ This does not eliminate per-binding code — extracting from a Lua table, a
 `serde_json` Map, a binary stream and a C struct is genuinely different work —
 but it moves every *decision* into one place.
 
-### `.` D4 — Unify `createApp` and `runWindowed`
+### `.` D4 — Unify `createApp` and `runWindowed` — **done (2026-09-04)**
 
 `packages/kui/index.js` has two drivers duplicating the diagnostics gate, the
 warning formatter and the transport switch — and diverging where they should not.
@@ -894,6 +894,26 @@ is already clock-free — `setTime` is how the headless driver supplies time), a
 let the driver helpers work against either. Keep `runWindowed`'s
 promise-resolves-with-final-model contract and `createApp`'s synchronous shape;
 those differences are real.
+
+That is what shipped. `createLoop` in `packages/kui/index.js` takes the surface
+and a clock; both drivers build one, and the two contracts above are the only
+things left outside it. `update`'s fourth argument is the surface in both.
+
+The clock is the half worth arguing with. A window reads the wall clock every
+pump and, having fallen behind, resyncs to the cadence rather than firing a
+burst of stale ticks. A test calls `app.advance(ms)` and gets the opposite —
+every tick inside the span, because it asked for exactly that much time — plus
+`setTime(now)`, so the frame clock behind `transition` moves with the ticks and
+a transition can be stepped through headless. `startTime` pins the origin so
+assertions on `tick.msg(now)` are exact. One policy flag (`catchUp`) separates
+the two; everything else is shared.
+
+`settle` / `access` / `accessTree` / `dispatch` / `render` / `step` are the
+loop's, so `runWindowed`'s `setup(win, app)` hands them over for a real window.
+Synthetic input is the exception, and stays one: D1 keeps input injection on
+`Ctx` alone (a window's input comes from the OS), so `click` / `type` / `key`
+ask the surface for the call and name the missing one instead of failing as an
+undefined method.
 
 ---
 

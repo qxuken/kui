@@ -24,13 +24,16 @@ resulting library.
 ```tsx
 // tsconfig: "jsx": "react-jsx", "jsxImportSource": "@qxuken/kui"
 import { createApp, runWindowed } from '@qxuken/kui';
-import type { CoreMsg, UiEvent } from '@qxuken/kui';
+import type { CoreMsg, Ctx, KuiWindow, UiEvent } from '@qxuken/kui';
 
 type Model = { count: number };
 // This app's own messages plus the ones the core sends by itself.
 type Msg = { kind: 'add'; by: number } | { kind: 'reset' } | CoreMsg;
 
-function update(model: Model, msg: Msg, ev: UiEvent<Msg>): Model | undefined {
+// The fourth argument is the surface the loop drives — the headless `Ctx`
+// under `createApp`, the `KuiWindow` under `runWindowed` — for `editText`,
+// `focus`, `play` and the rest. Both drivers pass it.
+function update(model: Model, msg: Msg, ev: UiEvent<Msg>, ui: Ctx | KuiWindow): Model | undefined {
   switch (msg.kind) {                       // one union, no casts
     case 'add': return { count: model.count + msg.by };
     case 'reset': return { count: 0 };
@@ -47,10 +50,17 @@ const app = createApp({ init, update, view }, { width: 640, height: 480 });   //
 const final = await runWindowed({ init, update, view }, { title: 'counter' }); // a window
 ```
 
-The `runWindowed` loop also takes a clock — `tick: { every: 250, msg: (now) =>
-({ kind: 'tick', now }) }` — and re-renders on a tick only when `update`
-returns a new model, so a countdown is free between displayed seconds. That
-contract cuts both ways; see **A clock** below.
+Both drivers run one loop over one surface, so what differs between them is
+only what really differs: `runWindowed` pumps the OS and resolves with the
+final model, `createApp` is synchronous. Everything else — the clock, the
+diagnostics gate, the test affordances — is the same code either way.
+
+That loop takes a clock — `tick: { every: 250, msg: (now) => ({ kind: 'tick',
+now }) }` — and re-renders on a tick only when `update` returns a new model,
+so a countdown is free between displayed seconds. That contract cuts both
+ways; see **A clock** below. A window fires the ticks off its own timer; a
+test moves the hands itself with `app.advance(ms)`, so an app with a clock
+still runs headless.
 
 ## Testing
 
@@ -63,6 +73,20 @@ asserts on what the core produced:
   `modifiers` are the raw events (a drag is cursor, mouse down, cursor,
   mouse up). `app.ctx.setTime(s)` is the clock — never set, transitions
   snap, which is what most tests want.
+- **Time**: `app.advance(ms)` is the window's timer by hand. It fires every
+  `tick` that falls inside the span, moves the frame clock behind
+  `transition` with it, and re-renders — so a ticking app (a countdown, a
+  clock, a game loop) is driven from a test the same way a user's window
+  drives it, and a transition can be watched a step at a time
+  (`app.ctx.animating()` says when it has settled). `startTime` in the
+  options pins where that clock starts, so assertions on `tick.msg(now)`
+  are exact.
+- **Either surface**: `settle`, `access`, `accessTree`, `dispatch`, `render`
+  and `step` are the loop's, not the headless driver's, so they work against
+  a real window too — `runWindowed`'s `setup(win, app)` hands you the same
+  object. Synthetic input (`click` / `type` / `key`) needs a surface that
+  takes it: a `Ctx` does, and a window, which the OS drives, says so rather
+  than pretending.
 - **The frame**: `decodeQuads(app.ctx.quads())` is the display list
   (`x`, `y`, `w`, `h`, `color`, `radii`, `kind`), so "the compact tier fits
   its window" is `every((q) => q.x + q.w <= width)`.
@@ -161,9 +185,9 @@ package as [props.md](props.md) (`docs/props.md` in the repository).
   user can resize to with `minWidth` / `minHeight` / `maxWidth` / `maxHeight`
   next to `width` / `height` at open; either half of a pair may stand alone,
   and `width`/`height` are clamped into the bounds the OS will enforce.
-- **A clock**: `tick: { every, msg }` on `runWindowed`, or `setTimeout`
-  toward the next boundary in your own loop; do not call `update` every
-  pump. Ticks are frequent, so unlike UI events **a tick re-renders only
+- **A clock**: `tick: { every, msg }` on either driver (`app.advance(ms)`
+  fires them headless), or `setTimeout` toward the next boundary in your own
+  loop; do not call `update` every pump. Ticks are frequent, so unlike UI events **a tick re-renders only
   when `update` returns a new model** — a countdown that returns
   `undefined` until the displayed second changes costs nothing in
   between. The same rule read backwards is the trap: a tick handler that
@@ -183,7 +207,9 @@ package as [props.md](props.md) (`docs/props.md` in the repository).
   message in the app's union.
 - **Messages are yours**: annotate `update` and the loop follows —
   `createApp` / `runWindowed` infer the union, so `ev`, `dispatch` and
-  `tick.msg` speak it too. `CoreMsg` is what the core sends on its own
+  `tick.msg` speak it too (a `tick.msg` written inline needs the union named
+  — `runWindowed<Model, Msg>(...)`, or a `msg` annotated where it is
+  written — since its return is what would be inferred from). `CoreMsg` is what the core sends on its own
   (`DragMsg`, `KeyMsg`, `HoverMsg`, `ModifiersMsg`, `changed` / `submit`),
   each with the payload fields spelled out; `pollEvents<KeyMsg<Tag>>()`
   types a raw poll the same way. To have the *payload props* checked at the

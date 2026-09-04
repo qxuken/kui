@@ -692,21 +692,34 @@ export declare class KuiWindow {
   access(key: string, action: AccessAction, value?: string | AccessArg): void;
 }
 
-export interface WindowedConfig<M, A = AppMsg | CoreMsg> {
+/** What both drivers take. `S` is the surface the loop drives, and the
+ *  fourth argument `update` gets: the headless `Ctx` under `createApp`, the
+ *  `KuiWindow` under `runWindowed`. `M` is the model, `A` every message
+ *  `update` can see. */
+export interface LoopConfig<M, A, S> {
   init: M | (() => M);
-  /** Same contract as AppConfig, plus the window for editText etc. */
-  update: (model: M, msg: A, event: UiEvent<A>, win: KuiWindow) => M | undefined | void;
+  /** Returns the next model; returning undefined keeps the current one.
+   *  `surface` is the thing being driven — for `editText`, `focus`,
+   *  `play`, `scrollGeometry` and the rest. */
+  update: (model: M, msg: A, event: UiEvent<A>, surface: S) => M | undefined | void;
   view: (model: M) => KuiNode;
-  /** A clock: every `every` ms the loop feeds `msg` (or `msg(now)`, with
-   *  `Date.now()`) to `update`. Ticks are frequent, so unlike UI events they
-   *  re-render only when `update` returns a new model — a countdown that
-   *  returns undefined until the displayed second changes costs nothing in
-   *  between. Read backwards, that is the trap: a tick handler that mutates
-   *  the model in place and returns undefined never reaches the screen.
-   *  Return the model (any non-undefined return renders) on the ticks that
-   *  should draw. */
+  /** A clock: every `every` ms the loop feeds `msg` (or `msg(now)`, with the
+   *  clock's own reading — `Date.now()` under a window, the loop's own
+   *  milliseconds headless) to `update`. Ticks are frequent, so unlike UI
+   *  events they re-render only when `update` returns a new model — a
+   *  countdown that returns undefined until the displayed second changes
+   *  costs nothing in between. Read backwards, that is the trap: a tick
+   *  handler that mutates the model in place and returns undefined never
+   *  reaches the screen. Return the model (any non-undefined return renders)
+   *  on the ticks that should draw.
+   *
+   *  A window fires these off its own timer; headless, `app.advance(ms)`
+   *  fires every tick inside the span, so a ticking app is testable. */
   tick?: { every: number; msg: A | ((now: number) => A) };
 }
+
+/** `runWindowed`'s config: `update` also gets the window. */
+export type WindowedConfig<M, A = AppMsg | CoreMsg> = LoopConfig<M, A, KuiWindow>;
 
 /** Opens a window and runs the Elm loop; resolves with the final model on close. */
 export declare function runWindowed<M, A = AppMsg | CoreMsg>(
@@ -714,9 +727,11 @@ export declare function runWindowed<M, A = AppMsg | CoreMsg>(
   opts?: WindowOptions & {
     title?: string;
     pumpMs?: number;
-    /** Runs after the window opens, before the first frame — register
-     *  images and other resources here. */
-    setup?: (win: KuiWindow) => void;
+    /** Runs after the window opens, before `init` and the first frame —
+     *  register images, fonts and other resources here. `app` is the loop
+     *  itself, so a test can hold on to it and drive a real window with the
+     *  same helpers `createApp` gives (`settle`, `access`, ...). */
+    setup?: (win: KuiWindow, app: WindowLoop<M, A>) => void;
   },
 ): Promise<M>;
 
@@ -741,23 +756,31 @@ export declare function decodeQuads(buffer: Buffer): Quad[];
  *  with the app's own union (`type Msg = MyMsg | CoreMsg`) and `A` is
  *  inferred from it; leave it and `A` is the registered `AppMsg` plus the
  *  core's messages. */
-export interface AppConfig<M, A = AppMsg | CoreMsg> {
-  init: M | (() => M);
-  /** Returns the next model; returning undefined keeps the current one. */
-  update: (model: M, msg: A, event: UiEvent<A>) => M | undefined | void;
-  view: (model: M) => KuiNode;
-}
+export type AppConfig<M, A = AppMsg | CoreMsg> = LoopConfig<M, A, Ctx>;
 
-export interface App<M, A = AppMsg | CoreMsg> {
-  ctx: Ctx;
+/** The loop both drivers run, over the surface it was handed. Everything
+ *  here is written once and works against either — which is what lets the
+ *  test helpers drive a real window when you want to watch one. */
+export interface Loop<M, A, S> {
+  /** The surface this loop drives. */
+  readonly surface: S;
   readonly model: M;
   /** Every warning the core raised while rendering, in order; each is also
    *  printed unless created with `warnings: false`. A test asserts it is
    *  empty, or that a specific code showed up. */
   readonly warnings: Warning[];
   dispatch(msg: A, event?: UiEvent<A>): void;
+  /** Renders the current model and hands back the frame's display-list
+   *  summary. */
   render(): FrameStats;
+  /** One turn of the loop: whatever the surface queued, then the ticks the
+   *  clock owes, then a frame if either changed the model. `runWindowed`
+   *  runs one after every `win.pump()`; a custom driver can too. */
+  step(): void;
+  /** Drain events -> update -> re-render until no events remain. */
   settle(): void;
+  /** Synthetic input. These need a surface that takes it — a headless `Ctx`
+   *  does; a window is driven by the OS and says so rather than pretending. */
   click(x: number, y: number, clicks?: number): void;
   /** A secondary-button press and release at `(x, y)`: an `onContextMenu`
    *  node under it gets a `contextmenu` message, and nothing else moves. */
@@ -768,9 +791,24 @@ export interface App<M, A = AppMsg | CoreMsg> {
   accessTree(): AccessTree;
   /** Drives the app the way a screen reader would — `access(key, 'click')`
    *  activates a node, `access(key, 'setValue', text)` types into an
-   *  editor — and settles the events that follow through `update`. */
+   *  editor — and settles the events that follow through `update`. Works
+   *  against a real window too. */
   access(key: string, action: AccessAction, value?: string | AccessArg): void;
 }
+
+export interface App<M, A = AppMsg | CoreMsg> extends Loop<M, A, Ctx> {
+  /** The surface, under the name headless tests reach for. */
+  ctx: Ctx;
+  /** Moves the loop's own clock `ms` forward: every tick inside the span
+   *  fires, the frame clock behind `transition` follows it (`ctx.setTime`),
+   *  and the app re-renders. This is the window's timer by hand — what makes
+   *  a ticking app drivable by a test. */
+  advance(ms: number): void;
+}
+
+/** The loop `runWindowed` builds, handed to `setup`. It has no `advance`:
+ *  a window runs on the wall clock and ticks itself. */
+export type WindowLoop<M, A = AppMsg | CoreMsg> = Loop<M, A, KuiWindow>;
 
 export declare function createApp<M, A = AppMsg | CoreMsg>(
   config: AppConfig<M, A>,
@@ -784,5 +822,19 @@ export declare function createApp<M, A = AppMsg | CoreMsg>(
     /** Whether the core runs the checks at all; default on unless
      *  `NODE_ENV` is `production`. */
     diagnostics?: boolean;
+    /** What the loop's clock reads before the first `advance` — the origin
+     *  `tick.msg(now)` counts from. Default `Date.now()`; pin it to make a
+     *  ticking app's assertions exact. */
+    startTime?: number;
+    /** The surface to drive. Default: a fresh headless `Ctx`. */
+    surface?: Ctx;
+    /** The loop's time source, in milliseconds — what `runWindowed` fills
+     *  with `Date.now`. Given one, the loop reads it (and ticks resync
+     *  after falling behind, as a window's do) instead of holding its own
+     *  hands, so `advance` no longer applies. */
+    clock?: () => number;
+    /** Runs before `init` and the first frame — register images and fonts
+     *  here so `init` can name their ids. */
+    setup?: (ctx: Ctx, app: App<M, A>) => void;
   },
 ): App<M, A>;

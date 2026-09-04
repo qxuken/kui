@@ -376,7 +376,56 @@ upgrades remove code from the apps on it is doing the job.
   symmetric values pins nothing about order — worth knowing before adding
   the next one.
 
+- **One loop, two surfaces.** `createApp` and `runWindowed` were two loops
+  that wrote the diagnostics gate, the warning formatter and the transport
+  switch twice each — and then diverged where they should not have.
+  `createApp` called `update(model, msg, event)`; `runWindowed` called
+  `update(model, msg, event, win)`. `tick` existed only on the windowed
+  side, so **an app with a clock could not be driven headless at all** —
+  the README's central claim (the same app runs headless, and a test drives
+  it the way a user would) failing on exactly the apps that most want a
+  test. And the affordances that make a test read like a user — `click`,
+  `type`, `key`, `settle`, `access`, the accumulated `warnings` — were the
+  headless driver's, not the loop's, so watching the same script against a
+  real window meant writing it a second time.
+  There is one loop now, over an injected surface. `Ctx` and `KuiWindow`
+  answer the same handful of calls — `pollEvents`, `warnings`,
+  `setDiagnostics`, and a way to be shown a tree — so the loop is written
+  once and handed one of them; the shared napi macro is where that stopped
+  being a coincidence. `update`'s fourth argument is that surface,
+  unconditionally, in both drivers, so one `update` serves both.
+  `tick` moved into the shared loop with the clock injected: the wall clock
+  under a window, and headless `app.advance(ms)`, which fires every tick
+  that falls inside the span, moves the frame clock behind `transition`
+  along with it (`ctx.setTime` — the core has no clock of its own, which is
+  what makes this possible) and re-renders. A window still resyncs rather
+  than firing a burst after real time jumps; `advance` fires the whole span,
+  because a test asked for exactly that much time. `startTime` pins the
+  origin so assertions on `tick.msg(now)` are exact.
+  `settle` / `access` / `accessTree` / `dispatch` / `render` / `step` are
+  the loop's, so `runWindowed`'s `setup(win, app)` hands a test the same
+  object driving a real window. Synthetic input asks the surface for
+  `mouse` / `text` / `key` and names the one it does not have, rather than
+  failing as a missing method — a window takes its input from the OS.
+  The two contracts that are real differences stayed exactly as they were:
+  `runWindowed` resolves with the final model, `createApp` is synchronous.
+
 ### What you can delete
+
+- **The clock you dispatched by hand in a headless test** — the loop
+  calling `app.dispatch(tickMsg)` at intervals it made up, the
+  `app.render()` after each one, and the `app.ctx.setTime(t)` you kept in
+  step with a counter of your own, because `tick` was a windowed-only
+  feature and a ticking app had no test driver. `app.advance(ms)` is those
+  three, and it fires the app's own `tick` rather than a stand-in for it.
+- **The second `update` written for the headless driver** — the one that
+  took three arguments because `createApp` handed it no surface, next to
+  the four-argument one the window got. Both drivers pass the surface now,
+  so the two collapse back into one function.
+- **The test script written twice** — once with `app.click` / `app.type`
+  headless and once as hand-rolled `pollEvents` / `update` / `setView`
+  against a window, to watch the same steps run. `runWindowed`'s
+  `setup(win, app)` hands over the loop itself.
 
 - **The alpha you were threading through a subtree by hand** — the
   `bg`, text `color` and border color an app recomputed at a fraction so a
