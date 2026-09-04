@@ -42,7 +42,9 @@ use crate::input::{EditKey, InputEvent, Mods};
 use crate::key::Key;
 use crate::resources::{ImageId, SoundId};
 use crate::runtime::Core;
-use crate::spec::{Align, Dir, FloatAnchor, FloatConfig, NodeSpec, PadShorthand, Sizing, TextStyle};
+use crate::spec::{
+    Align, Dir, FloatAnchor, FloatConfig, NodeSpec, PadShorthand, Sizing, TextStyle,
+};
 use crate::text::Span;
 use crate::tree::{NodeContent, Tree};
 use crate::ui::Ui;
