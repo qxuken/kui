@@ -13,6 +13,11 @@ const box = (props, children = [], key) => ({ type: 'box', key, props, children 
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
 const el = (type, props = {}, children = [], key) => ({ type, key, props, children });
 
+/** Index of the `kind` word inside one quad of `ctx.quads()` — KuiQuad's
+ *  x,y,w,h + color + border_color + radius + border_w + blur come first. The
+ *  tests below read it raw rather than through `decodeQuads`. */
+const KIND_WORD = 18;
+
 // `build(ctx)` returns the tree so per-context resources (images) can be
 // registered first.
 function run(transport, build) {
@@ -44,9 +49,17 @@ const SAMPLE = {
   tag: { kind: 't' },
   str: 'group-a',
   resource: '0000000000000007',
-  keyframes: [{ width: { grow: 0 }, bg: '#112233' }, { at: 0.75, width: 'grow', height: '50%', radius: 9 }],
-  enter: { dx: -40, dy: 8, width: { grow: 0 }, bg: '#11223300', radius: 0 },
+  keyframes: [
+    { width: { grow: 0 }, bg: '#112233' },
+    { at: 0.75, width: 'grow', height: '50%', radius: 9, opacity: 0.25 },
+  ],
+  enter: { dx: -40, dy: 8, width: { grow: 0 }, bg: '#11223300', radius: 0, opacity: 0 },
 };
+
+/** Per-prop overrides, where the shared sample for a kind would not survive
+ *  the prop's own clamping — `opacity`'s default is the top of its range, so
+ *  a sample above 1 clamps straight back to it. */
+const SAMPLE_BY_NAME = { opacity: 0.5 };
 
 test('protocol exports a version and the schema rows', () => {
   const p = protocol();
@@ -59,7 +72,8 @@ test('every generic schema prop lowers identically on all transports', () => {
   const { prop } = protocol();
   for (const [name, def] of Object.entries(prop)) {
     if (def.kind === 'custom') continue;
-    const value = def.kind === 'enum' ? def.values[def.values.length - 1] : SAMPLE[def.kind];
+    const value =
+      SAMPLE_BY_NAME[name] ?? (def.kind === 'enum' ? def.values[def.values.length - 1] : SAMPLE[def.kind]);
     assert.notEqual(value, undefined, `${name}: no sample for kind ${def.kind}`);
     const build =
       def.target === 'style'
@@ -134,7 +148,7 @@ test('every element lowers identically', () => {
   const stride = b.quads.byteLength / b.stats.quadCount;
   let images = 0;
   for (let off = 0; off < b.quads.byteLength; off += stride) {
-    if (b.quads.readUInt32LE(off + 17 * 4) === 3) images++;
+    if (b.quads.readUInt32LE(off + KIND_WORD * 4) === 3) images++;
   }
   assert.equal(images, 1, 'one image quad');
 });
@@ -173,6 +187,73 @@ test('a null tag declares the behaviour without a tag on the event', () => {
   }
   assert.deepEqual(payloads[0], payloads[1]);
   assert.deepEqual(payloads[0], payloads[2]);
+});
+
+// Held keys: a press and its release are one payload shape apart by `phase`,
+// so a game binds one handler. The release carries no `text` and never
+// repeats, and a key held while focus moves comes up on the sink that took
+// the press — nothing stays stuck down.
+test('a key sink hears both halves of a held key', () => {
+  const build = () =>
+    box({}, [
+      box({ onKey: { pane: 0 }, keyFocus: true, width: 100, height: 50 }, [], 'a'),
+      box({ onKey: { pane: 1 }, width: 100, height: 50 }, [], 'b'),
+    ]);
+  for (const transport of ['binary', 'json', 'object']) {
+    const { ctx } = run(transport, build);
+    ctx.keyDown('w');
+    ctx.keyDown('w', {}, true); // OS auto-repeat: still the same key down
+    ctx.keyUp('w');
+    const evs = ctx.pollEvents().map((e) => e.payload);
+    assert.deepEqual(
+      evs.map((p) => [p.phase, p.code, p.text, p.repeat]),
+      [
+        ['down', 'w', 'w', false],
+        ['down', 'w', 'w', true],
+        ['up', 'w', null, false],
+      ],
+      `${transport}: down, repeat, up`,
+    );
+    for (const p of evs) {
+      assert.equal(p.kind, 'key', `${transport}: one kind for both phases`);
+      assert.deepEqual(p.tag, { pane: 0 }, `${transport}: the sink's tag rides along`);
+    }
+    // A release the sink never saw the press of resolves nothing.
+    ctx.keyUp('w');
+    assert.equal(ctx.pollEvents().length, 0, `${transport}: no phantom release`);
+  }
+});
+
+test('focus moving releases the keys the old sink held', () => {
+  const build = () => box({ onKey: { pane: 0 }, keyFocus: true, width: 100, height: 50 }, [], 'a');
+  const { ctx } = run('object', build);
+  ctx.keyDown('w');
+  ctx.keyDown('a');
+  const downs = ctx.pollEvents();
+  assert.deepEqual(
+    downs.map((e) => e.payload.phase),
+    ['down', 'down'],
+  );
+  const sink = downs[0].key;
+  // Focus dropped with both keys still down: two synthetic releases reach
+  // the sink that took the presses, in press order, so a WASD binding
+  // cannot be left walking forever.
+  ctx.blur();
+  const ups = ctx.pollEvents();
+  assert.deepEqual(
+    ups.map((e) => [e.payload.phase, e.payload.code, e.payload.text]),
+    [
+      ['up', 'w', null],
+      ['up', 'a', null],
+    ],
+  );
+  for (const e of ups) {
+    assert.equal(e.key, sink, 'the sink that took the press hears the release');
+    assert.deepEqual(e.payload.tag, { pane: 0 });
+  }
+  // And the physical release, arriving after the move, is not a second one.
+  ctx.keyUp('w');
+  assert.equal(ctx.pollEvents().length, 0);
 });
 
 // Keyboard focus as data: Tab reaches a button on every transport, a
@@ -588,7 +669,7 @@ test('unnamed controls and unlabelled images warn once', () => {
 // enter/leave as events — no isHovered query in the view.
 const solidColor = (quads, stride, x) => {
   for (let off = 0; off < quads.byteLength; off += stride) {
-    if (quads.readUInt32LE(off + 17 * 4) !== 0) continue; // solid only
+    if (quads.readUInt32LE(off + KIND_WORD * 4) !== 0) continue; // solid only
     if (quads.readFloatLE(off) === x && quads.readFloatLE(off + 2 * 4) === 50) {
       return [quads.readFloatLE(off + 4 * 4), quads.readFloatLE(off + 5 * 4), quads.readFloatLE(off + 6 * 4)];
     }
@@ -758,7 +839,7 @@ test('fonts register by installed name or bytes and shape text', () => {
     const stride = quads.byteLength / ctx.stats().quadCount;
     let n = 0;
     for (let off = 0; off < quads.byteLength; off += stride) {
-      if (quads.readUInt32LE(off + 17 * 4) !== 0) n++;
+      if (quads.readUInt32LE(off + KIND_WORD * 4) !== 0) n++;
     }
     return n;
   };
@@ -793,7 +874,7 @@ test('wrap, maxLines and ellipsis cut text instead of wrapping it', () => {
     let n = 0;
     let right = 0;
     for (let off = 0; off < quads.byteLength; off += stride) {
-      if (quads.readUInt32LE(off + 17 * 4) === 0) continue;
+      if (quads.readUInt32LE(off + KIND_WORD * 4) === 0) continue;
       n++;
       right = Math.max(right, quads.readFloatLE(off) + quads.readFloatLE(off + 2 * 4));
     }
@@ -896,6 +977,8 @@ const SCENE_TREES = {
             bg: '#202030',
             borderW: 2, borderColor: '#2a2d3a',
             radius: 5,
+            opacity: 0.75,
+            shadowColor: '#00000066', shadowBlur: 8, shadowY: 3, shadowSpread: 1,
             width: 180, height: 40,
           },
           [text('ab', { size: 12 }), text('cd', { size: 12 })],
@@ -976,7 +1059,7 @@ const FNV_OFFSET = 0xcbf29ce484222325n;
 const FNV_PRIME = 0x100000001b3n;
 const MASK = 0xffffffffffffffffn;
 
-/** FNV-1a over each quad's words 0..17 and 22..25 — `KuiQuad` without its
+/** FNV-1a over each quad's words 0..18 and 23..26 — `KuiQuad` without its
  *  `uv`, which depends on glyph insertion order. Mirrors
  *  `conformance::quad_digest`. */
 function quadDigest(buffer) {
@@ -984,7 +1067,7 @@ function quadDigest(buffer) {
   const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
   let h = FNV_OFFSET;
   for (let off = 0; off + stride <= buffer.byteLength; off += stride) {
-    for (const i of [...Array(18).keys(), 22, 23, 24, 25]) {
+    for (const i of [...Array(19).keys(), 23, 24, 25, 26]) {
       let word = BigInt(view.getUint32(off + i * 4, true));
       for (let b = 0; b < 4; b++) {
         h = (h ^ (word & 0xffn)) & MASK;
@@ -1036,8 +1119,8 @@ function sceneReport(name, steps, { ctx, events }) {
   const stride = quadStride();
   const count = quads.byteLength / stride;
   lines.push(`quads ${count} ${quadDigest(quads)}`);
-  const kinds = [0, 0, 0, 0, 0];
-  for (let off = 0; off < quads.byteLength; off += stride) kinds[quads.readUInt32LE(off + 17 * 4)]++;
+  const kinds = [0, 0, 0, 0, 0, 0];
+  for (let off = 0; off < quads.byteLength; off += stride) kinds[quads.readUInt32LE(off + KIND_WORD * 4)]++;
   lines.push(`kinds ${kinds.join(' ')}`);
   const depth = new Map();
   for (const n of ctx.accessTree().nodes) {

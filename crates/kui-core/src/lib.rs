@@ -50,14 +50,17 @@ pub use enter::Enter;
 pub use env::Env;
 pub use geom::{Edges, Rect, Size, Vec2};
 pub use input::ScrollAxis;
-pub use input::{EditKey, InputEvent, KeyCode, KeyMods, KeyPress, Mods, MouseButton, UiEvent};
+pub use input::{
+    EditKey, InputEvent, KeyCode, KeyMods, KeyPhase, KeyPress, Mods, MouseButton, UiEvent,
+};
 pub use key::Key;
 pub use keyframes::Keyframe;
 pub use resources::{FontId, ImageId, Resources, SoundId};
 pub use runtime::{Core, Extension};
 pub use scroll::ScrollGeometry;
 pub use spec::{
-    Align, Dir, FloatAnchor, FloatConfig, FontFamily, NodeSpec, Sizing, TextStyle, TextWrap, corner,
+    Align, Dir, FloatAnchor, FloatConfig, FontFamily, NodeSpec, Shadow, Sizing, TextStyle,
+    TextWrap, corner,
 };
 pub use stats::{FrameSample, FrameStats};
 pub use text::{Span, TextMetrics};

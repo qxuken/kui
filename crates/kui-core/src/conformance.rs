@@ -137,6 +137,8 @@ pub struct Expect {
     /// Exact solid-quad count (backgrounds, borders, scrollbars, rings):
     /// geometry-driven, so it does not move with the font.
     pub solid: usize,
+    /// Exact drop-shadow-quad count.
+    pub shadows: usize,
     /// Exact image-quad count.
     pub images: usize,
     /// Glyph quads are one per rendered glyph — a lower bound keeps a font
@@ -179,13 +181,16 @@ pub const SCENES: &[Scene] = &[
     Scene {
         name: "layout",
         doc: "Containers: both directions, the pad shorthand's four edges, a \
-              border, a stable key, and plain and rich text at a declared size.",
+              border, a stable key, and plain and rich text at a declared \
+              size. The card also carries the paint props that fade and \
+              lift it: group opacity and a drop shadow.",
         custom: &["dir", "pad", "border", "key", "size"],
         elements: &["box", "text"],
         build: build_layout,
         steps: &[],
         expect: Expect {
             solid: 2,
+            shadows: 1,
             images: 0,
             glyphs_min: 7,
             access: &[
@@ -209,6 +214,7 @@ pub const SCENES: &[Scene] = &[
         steps: &[Step::Cursor(40, 40), Step::Scroll(0, -30)],
         expect: Expect {
             solid: 5,
+            shadows: 0,
             images: 0,
             glyphs_min: 0,
             access: &["0 window ||", "1 scrollView ||"],
@@ -227,6 +233,7 @@ pub const SCENES: &[Scene] = &[
         steps: &[],
         expect: Expect {
             solid: 3,
+            shadows: 0,
             images: 0,
             glyphs_min: 0,
             access: &["0 window ||"],
@@ -245,6 +252,7 @@ pub const SCENES: &[Scene] = &[
         steps: &[Step::Cursor(50, 30)],
         expect: Expect {
             solid: 2,
+            shadows: 0,
             images: 0,
             glyphs_min: 10,
             access: &[
@@ -269,6 +277,7 @@ pub const SCENES: &[Scene] = &[
         steps: &[],
         expect: Expect {
             solid: 1,
+            shadows: 0,
             images: 0,
             glyphs_min: 3,
             access: &[
@@ -300,6 +309,7 @@ pub const SCENES: &[Scene] = &[
         ],
         expect: Expect {
             solid: 1,
+            shadows: 0,
             images: 0,
             glyphs_min: 7,
             access: &["0 window ||", "1 button go||", "1 textInput Note||hello"],
@@ -319,6 +329,7 @@ pub const SCENES: &[Scene] = &[
         steps: &[],
         expect: Expect {
             solid: 2,
+            shadows: 0,
             images: 1,
             glyphs_min: 20,
             access: &["0 window ||", "1 image ||"],
@@ -349,6 +360,11 @@ fn build_layout(ui: &mut Ui<'_>, _f: &Fixtures) {
                     .bg(Color::hex(0x202030ff))
                     .border(2.0, Color::hex(0x2a2d3aff))
                     .radius(5.0)
+                    .opacity(0.75)
+                    .shadow_color(Color::hex(0x00000066))
+                    .shadow_blur(8.0)
+                    .shadow_y(3.0)
+                    .shadow_spread(1.0)
                     .width(Sizing::Fixed(180.0))
                     .height(Sizing::Fixed(40.0)),
                 |ui| {
@@ -519,7 +535,7 @@ pub struct Output {
     pub quad_count: usize,
     pub quad_digest: u64,
     /// Per [`QuadKind`], in its discriminant order.
-    pub kinds: [usize; 5],
+    pub kinds: [usize; 6],
     pub nodes: Vec<NodeRow>,
     pub events: Vec<(String, String)>,
     pub warnings: Vec<&'static str>,
@@ -580,6 +596,7 @@ pub fn quad_digest(quads: &[Quad]) -> u64 {
             q.radius[2],
             q.radius[3],
             q.border_w,
+            q.blur,
         ] {
             mix(&mut h, v.to_bits());
         }
@@ -672,7 +689,7 @@ pub fn drive(core: &mut Core, steps: &[Step], mut build: impl FnMut(&mut Ui<'_>)
     let warnings = core.take_warnings().into_iter().map(|w| w.code).collect();
     let nodes = rows(core.access_tree());
     let quads = &core.output().0.quads;
-    let mut kinds = [0usize; 5];
+    let mut kinds = [0usize; 6];
     for q in quads.iter() {
         kinds[match q.kind {
             QuadKind::Solid => 0,
@@ -680,6 +697,7 @@ pub fn drive(core: &mut Core, steps: &[Step], mut build: impl FnMut(&mut Ui<'_>)
             QuadKind::GlyphColor => 2,
             QuadKind::Image => 3,
             QuadKind::GlyphSubpixel => 4,
+            QuadKind::Shadow => 5,
         }] += 1;
     }
     Output {
@@ -712,7 +730,7 @@ pub fn run(scene: &Scene) -> Output {
 /// step <...>                 the replayed input, so an adapter need not restate it
 /// title <text|->
 /// quads <count> <digest:016x>
-/// kinds <solid> <glyphMask> <glyphColor> <image> <glyphSubpixel>
+/// kinds <solid> <glyphMask> <glyphColor> <image> <glyphSubpixel> <shadow>
 /// node <depth> <key:016x> <role> <focused> <disabled> <checked> <scroll> <actions> <name> | <description> | <value>
 /// event <kind> <tag>
 /// warn <code>
@@ -728,8 +746,8 @@ pub fn report(name: &str, steps: &[Step], out: &Output) -> String {
     let _ = writeln!(s, "quads {} {:016x}", out.quad_count, out.quad_digest);
     let _ = writeln!(
         s,
-        "kinds {} {} {} {} {}",
-        out.kinds[0], out.kinds[1], out.kinds[2], out.kinds[3], out.kinds[4]
+        "kinds {} {} {} {} {} {}",
+        out.kinds[0], out.kinds[1], out.kinds[2], out.kinds[3], out.kinds[4], out.kinds[5]
     );
     for n in &out.nodes {
         let _ = writeln!(

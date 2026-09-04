@@ -22,6 +22,12 @@ pub enum QuadKind {
     /// source) blending; a backend without it treats the atlas alpha as a
     /// plain mask.
     GlyphSubpixel,
+    /// Drop shadow: `color` filling a rounded rect inset from `rect` by
+    /// `blur` on every side, its edge ramped over `blur` px. The core
+    /// emits it just before the node's own quads, already offset and
+    /// spread, so a backend only has to soften the SDF it already
+    /// computes. Ignores `uv`, `border_color` and `border_w`.
+    Shadow,
 }
 
 #[repr(C)]
@@ -35,6 +41,10 @@ pub struct Quad {
     /// `[tl, tr, br, bl]`.
     pub radius: [f32; 4],
     pub border_w: f32,
+    /// `QuadKind::Shadow` only: the blur radius in physical pixels, which
+    /// is also how far `rect` is inflated past the shape being blurred.
+    /// Zero elsewhere.
+    pub blur: f32,
     pub kind: QuadKind,
     /// Atlas texels: x, y, w, h.
     pub uv: [u32; 4],

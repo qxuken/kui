@@ -43,6 +43,15 @@ pub enum InputEvent {
     /// `Core::set_key_focus`). Apps that own their own text model take
     /// keys through this instead of the editor path.
     KeyDown(KeyPress),
+    /// The release of a key, routed the way [`InputEvent::KeyDown`] is —
+    /// so a held-key interaction (WASD, press-and-hold to preview, a key
+    /// that arms a mode) is a pair of events, not a guess about timing.
+    /// Only a key whose press was delivered produces one: a release the
+    /// focused sink never saw the press of is dropped, and focus moving
+    /// away while a key is held synthesizes the release first (see
+    /// `Core::release_held_keys`). The core clears `text` and `repeat` on
+    /// the way out — a release inserts nothing and never repeats.
+    KeyUp(KeyPress),
     /// A request from assistive technology (see [`crate::access`]):
     /// activate, focus, set an editor's text, scroll. Resolved in the core
     /// the way the pointer or keyboard equivalent would be, so the app
@@ -225,6 +234,64 @@ impl KeyCode {
             KeyCode::Unknown => "unknown".into(),
         }
     }
+
+    /// The inverse of [`KeyCode::name`]: the name a binding spells a key
+    /// with. A single character is that character (already
+    /// layout-resolved, so `"W"` and `"$"` arrive as themselves), `"f1"`
+    /// .. `"f24"` a function key, and the rest are the names above.
+    /// `None` for a name this vocabulary does not know — every binding
+    /// that takes keys as strings parses them here, so they cannot drift
+    /// apart.
+    pub fn from_name(s: &str) -> Option<KeyCode> {
+        let mut chars = s.chars();
+        if let (Some(c), None) = (chars.next(), chars.next()) {
+            return Some(KeyCode::Char(c));
+        }
+        if let Some(n) = s.strip_prefix('f').and_then(|n| n.parse::<u8>().ok())
+            && (1..=24).contains(&n)
+        {
+            return Some(KeyCode::F(n));
+        }
+        Some(match s {
+            "left" => KeyCode::Left,
+            "right" => KeyCode::Right,
+            "up" => KeyCode::Up,
+            "down" => KeyCode::Down,
+            "home" => KeyCode::Home,
+            "end" => KeyCode::End,
+            "pageup" => KeyCode::PageUp,
+            "pagedown" => KeyCode::PageDown,
+            "backspace" => KeyCode::Backspace,
+            "delete" => KeyCode::Delete,
+            "enter" => KeyCode::Enter,
+            "tab" => KeyCode::Tab,
+            "escape" => KeyCode::Escape,
+            "space" => KeyCode::Space,
+            "insert" => KeyCode::Insert,
+            "unknown" => KeyCode::Unknown,
+            _ => return None,
+        })
+    }
+}
+
+/// Which half of a key's life an event reports. Both halves arrive as one
+/// `{kind="key"}` payload — the way a drag's three phases and a hover's
+/// two do — so an app binds one handler and matches `phase`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum KeyPhase {
+    #[default]
+    Down,
+    Up,
+}
+
+impl KeyPhase {
+    /// The payload spelling: `"down"` / `"up"`.
+    pub fn name(self) -> &'static str {
+        match self {
+            KeyPhase::Down => "down",
+            KeyPhase::Up => "up",
+        }
+    }
 }
 
 /// Physical modifier state. Unlike [`Mods`] — which abstracts platform
@@ -297,11 +364,21 @@ impl KeyPress {
         self
     }
 
+    /// Strips a press down to what a release reports: nothing is inserted
+    /// on the way up, and a release never comes from key repeat.
+    pub fn released(mut self) -> Self {
+        self.text = None;
+        self.repeat = false;
+        self
+    }
+
     /// The payload form crossing into events, C, and Lua:
-    /// `{kind="key", code="w", shift=, ctrl=, alt=, super=, text=, repeat=}`.
-    pub fn to_value(&self) -> Value {
+    /// `{kind="key", phase="down"|"up", code="w", shift=, ctrl=, alt=,
+    /// super=, text=, repeat=}`.
+    pub fn to_value(&self, phase: KeyPhase) -> Value {
         Value::map([
             ("kind", Value::str("key")),
+            ("phase", Value::str(phase.name())),
             ("code", Value::Str(self.code.name())),
             ("shift", Value::Bool(self.mods.shift)),
             ("ctrl", Value::Bool(self.mods.ctrl)),
@@ -723,6 +800,7 @@ impl Interaction {
             | InputEvent::Preedit(..)
             | InputEvent::Key(..)
             | InputEvent::KeyDown(_)
+            | InputEvent::KeyUp(_)
             | InputEvent::Access(_) => {}
             InputEvent::MouseUp { button } if button != MouseButton::Primary => {}
             InputEvent::MouseUp { .. } => {

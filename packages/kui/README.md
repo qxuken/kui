@@ -171,11 +171,16 @@ package as [props.md](props.md) (`docs/props.md` in the repository).
   the rest of `update` allows) never reaches the screen. Any
   non-`undefined` return renders, so `return model` after a mutation is
   the whole fix.
-- **Keys**: `onKey` on the root plus `keyFocus`; presses arrive as
-  `{ kind: 'key', code, ... }` with `code` a character or a name
-  (`'space'`, `'enter'`, `'f5'`). `onKey={null}` is a sink whose events
-  carry no `tag` (the same goes for `onDrag`, `onHover` and `onLayout`),
-  so a root sink needs no inert message in the app's union.
+- **Keys**: `onKey` on the root plus `keyFocus`; presses *and releases*
+  arrive as `{ kind: 'key', phase: 'down' | 'up', code, ... }` with `code`
+  a character or a name (`'space'`, `'enter'`, `'f5'`). One shape, two
+  phases: a keymap matches `phase === 'down'`, a held-key interaction
+  (WASD, press-and-hold) takes both. `repeat` marks an auto-repeat, and a
+  release carries a null `text`. A key only comes up where it went down —
+  focus moving delivers the release first — so nothing is left stuck.
+  `onKey={null}` is a sink whose events carry no `tag` (the same goes for
+  `onDrag`, `onHover` and `onLayout`), so a root sink needs no inert
+  message in the app's union.
 - **Messages are yours**: annotate `update` and the loop follows —
   `createApp` / `runWindowed` infer the union, so `ev`, `dispatch` and
   `tick.msg` speak it too. `CoreMsg` is what the core sends on its own

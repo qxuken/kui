@@ -33,6 +33,8 @@ pub struct Keyframe {
     pub bg: Option<Color>,
     /// All four corners.
     pub radius: Option<f32>,
+    /// Group opacity, 0..=1.
+    pub opacity: Option<f32>,
 }
 
 impl Keyframe {
@@ -60,10 +62,15 @@ impl Keyframe {
         self.radius = Some(radius);
         self
     }
+
+    pub fn opacity(mut self, opacity: f32) -> Self {
+        self.opacity = Some(opacity.clamp(0.0, 1.0));
+        self
+    }
 }
 
 /// Stops from plain data: a list of maps with any of `at`, `width`,
-/// `height`, `bg`, `radius`, in the forms the props themselves take
+/// `height`, `bg`, `radius`, `opacity`, in the forms the props themselves take
 /// (sizings as a number, `"grow"`, `"50%"`, `{grow}` / `{percent}`;
 /// colors as `0xRRGGBBAA` or `"#hex"`). Every binding funnels its
 /// keyframes through here, so the shape is the same in JSX, Lua and C.
@@ -101,6 +108,13 @@ pub fn parse(v: &Value) -> Result<Vec<Keyframe>, String> {
                 "radius" => {
                     kf.radius =
                         Some(v.as_float().ok_or_else(|| bad("radius must be a number"))? as f32)
+                }
+                "opacity" => {
+                    let o = v
+                        .as_float()
+                        .ok_or_else(|| bad("opacity must be a number"))?
+                        as f32;
+                    kf.opacity = Some(o.clamp(0.0, 1.0));
                 }
                 other => return Err(bad(&format!("unknown field {other:?}"))),
             }

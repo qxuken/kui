@@ -103,6 +103,12 @@ pub const P_ON_CONTEXT_MENU: u32 = 65;
 pub const P_CURSOR: u32 = 66;
 pub const P_SELECTED: u32 = 67;
 pub const P_EXPANDED: u32 = 68;
+pub const P_OPACITY: u32 = 69;
+pub const P_SHADOW_COLOR: u32 = 70;
+pub const P_SHADOW_BLUR: u32 = 71;
+pub const P_SHADOW_X: u32 = 72;
+pub const P_SHADOW_Y: u32 = 73;
+pub const P_SHADOW_SPREAD: u32 = 74;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -393,6 +399,48 @@ pub const PROPS: &[PropDef] = &[
         doc: "Corner radius for all four corners (logical px); the per-corner props override it when listed after it.",
     },
     PropDef {
+        name: "opacity",
+        id: P_OPACITY,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.opacity(v)),
+        doc: "Group opacity 0..1 (default 1): fades this node and its whole subtree. A per-quad alpha multiply rather than an offscreen composite, so overlapping pieces of one subtree show their seams through the fade. Layout, hit-testing and the access tree are untouched; eases with `transition`, and `enter: { opacity: 0 }` fades a panel in.",
+    },
+    PropDef {
+        name: "shadowColor",
+        id: P_SHADOW_COLOR,
+        kind: Kind::Color,
+        apply: Apply::SpecColor(|s, c| s.shadow_color(c)),
+        doc: "Drop-shadow color; nothing else about a shadow draws without it. On its own it is a hard shadow exactly behind the node — add `shadowBlur` / `shadowY` to lift it. Outer shadows only, and the shape is not knocked out of the middle, so a translucent background shows it through.",
+    },
+    PropDef {
+        name: "shadowBlur",
+        id: P_SHADOW_BLUR,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.shadow_blur(v)),
+        doc: "Drop-shadow blur radius (logical px): the edge ramps over this distance and reaches this far past the shape. 0 = a hard edge.",
+    },
+    PropDef {
+        name: "shadowX",
+        id: P_SHADOW_X,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.shadow_x(v)),
+        doc: "Drop-shadow horizontal offset (logical px).",
+    },
+    PropDef {
+        name: "shadowY",
+        id: P_SHADOW_Y,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.shadow_y(v)),
+        doc: "Drop-shadow vertical offset (logical px); positive casts downward.",
+    },
+    PropDef {
+        name: "shadowSpread",
+        id: P_SHADOW_SPREAD,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.shadow_spread(v)),
+        doc: "Grows (or, negative, shrinks) the drop shadow's shape before blurring (logical px).",
+    },
+    PropDef {
         name: "radiusTL",
         id: P_RADIUS_TL,
         kind: Kind::F32,
@@ -516,7 +564,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_ON_KEY,
         kind: Kind::Tag,
         apply: Apply::SpecMsg(|s, v| s.on_key(v)),
-        doc: "Key-sink tag: with key focus held, presses arrive as {kind:\"key\", ...} events.",
+        doc: "Key-sink tag: with key focus held, presses and releases arrive as {kind:\"key\", phase:\"down\"|\"up\", ...} events.",
     },
     PropDef {
         name: "onContextMenu",
@@ -571,14 +619,14 @@ pub const PROPS: &[PropDef] = &[
         id: P_KEYFRAMES,
         kind: Kind::Keyframes,
         apply: Apply::SpecKeyframes(|s, k| s.keyframes(k)),
-        doc: "CSS-style stops `[{ at?, width?, height?, bg?, radius? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted.",
+        doc: "CSS-style stops `[{ at?, width?, height?, bg?, radius?, opacity? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted.",
     },
     PropDef {
         name: "enter",
         id: P_ENTER,
         kind: Kind::Enter,
         apply: Apply::SpecEnter(|s, e| s.enter(e)),
-        doc: "Where the node starts the first frame it is seen `{ dx?, dy?, width?, height?, bg?, radius? }`: those slots ease in from there over `transition` ms instead of snapping (`dx`/`dy` slide it in from that far away).",
+        doc: "Where the node starts the first frame it is seen `{ dx?, dy?, width?, height?, bg?, radius?, opacity? }`: those slots ease in from there over `transition` ms instead of snapping (`dx`/`dy` slide it in from that far away, `opacity: 0` fades the whole subtree in).",
     },
     PropDef {
         name: "repeat",
@@ -851,6 +899,7 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     ("repeat", "`repeat` (`KUI_REPEAT_*`)"),
     ("delay", "`delay_ms`"),
     ("enter", "`enter` (`KuiEnter`, with `set` bits)"),
+    ("opacity", "`opacity` with `opacity_set`"),
     ("radiusTL", "`radius_tl` with `per_corner`"),
     ("radiusTR", "`radius_tr` with `per_corner`"),
     ("radiusBR", "`radius_br` with `per_corner`"),
@@ -1022,8 +1071,8 @@ pub const EVENTS: &[EventDef] = &[
     },
     EventDef {
         kind: "key",
-        payload: "`{ kind: \"key\", code, shift, ctrl, alt, super, text, repeat, tag }`",
-        doc: "A key press on the focused `onKey` sink; `code` is a character or a name (`\"left\"`, `\"f5\"`).",
+        payload: "`{ kind: \"key\", phase: \"down\" | \"up\", code, shift, ctrl, alt, super, text, repeat, tag }`",
+        doc: "A key press or release on the focused `onKey` sink; `code` is a character or a name (`\"left\"`, `\"f5\"`). `repeat` marks a press the OS auto-repeated; `text` is what the press would insert, and is null on every release. A key only comes up where it went down: a release whose press the sink never got is dropped, and focus leaving while a key is held delivers the `up` first, so a held-key binding (WASD, press-and-hold) cannot be left stuck down.",
     },
     EventDef {
         kind: "contextmenu",
@@ -1343,8 +1392,11 @@ mod tests {
     #[test]
     fn every_row_applies_a_sample_of_its_kind() {
         for def in PROPS {
+            // `opacity` is a 0..=1 slot whose default is the top of the
+            // range, so the shared sample would clamp back to it.
+            let f = if def.name == "opacity" { 0.5 } else { 7.0 };
             let sample = match def.kind {
-                Kind::F32 => Parsed::F32(7.0),
+                Kind::F32 => Parsed::F32(f),
                 Kind::Color => Parsed::Color(Color::hex(0x11223344)),
                 Kind::Flag => Parsed::Flag,
                 Kind::Enum(_) => Parsed::Enum(1),

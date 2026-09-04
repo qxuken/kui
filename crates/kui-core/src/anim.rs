@@ -1,6 +1,6 @@
 //! Transitions: retained tweens keyed by node identity. A node that declares
 //! `NodeSpec::transition` has its animatable spec values (sizing amounts,
-//! colors, radius) eased from whatever they were last frame toward what the
+//! colors, radius, opacity, shadow) eased from whatever they were last frame toward what the
 //! view declares this frame — the *inputs* to layout animate, so a subtree
 //! lays out consistently every frame instead of children snapping to a
 //! target size inside a still-moving parent.
@@ -168,9 +168,13 @@ pub(crate) enum Slot {
     Border = 3,
     Radius = 4,
     Pos = 5,
+    Opacity = 6,
+    /// The shadow's geometry as one vector: dx, dy, blur, spread.
+    Shadow = 7,
+    ShadowColor = 8,
 }
 
-const SLOTS: usize = 6;
+const SLOTS: usize = 9;
 
 #[derive(Clone, Copy, Debug)]
 struct Tween {

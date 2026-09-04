@@ -512,12 +512,22 @@ static int surface(void) {
     kui_focus_next(ui, false);
     check(kui_focused(ui) == first, "Shift-Tab comes back");
 
-    /* The key sink is focusable and takes focus like anything else. Its
-     * {kind="key"} events cannot be driven from here: kui_input_key carries
-     * the editing keys (KUI_KEY_*), and raw presses only reach a sink
-     * through kui_run's own event loop. */
+    /* The key sink is focusable and takes focus like anything else, and a
+     * host drives its raw keys directly: kui_input_key carries the editing
+     * keys (KUI_KEY_*), kui_input_key_down / _up the whole keyboard. A held
+     * key is one {kind="key"} payload twice, phase="down" then "up". */
     kui_focus(ui, k.sink);
     check(kui_is_focused(ui, k.sink), "kui_is_focused");
+    KuiStr no_text = {0};
+    kui_input_key_down(ui, KUI_STR("w"), 0, no_text, false);
+    kui_input_key_down(ui, KUI_STR("w"), 0, no_text, true); /* OS auto-repeat */
+    kui_input_key_up(ui, KUI_STR("w"), 0);
+    /* Held over a focus change: the sink hears the release anyway, so a
+     * WASD binding cannot be left walking. kui_release_held_keys is the
+     * same thing for a window that lost the keyboard. */
+    kui_input_key_down(ui, KUI_STR("a"), KUI_KMOD_CTRL, no_text, false);
+    kui_release_held_keys(ui);
+    kui_focus(ui, k.sink);
     kui_input_key(ui, KUI_KEY_RIGHT, 0);
     kui_input_key(ui, KUI_KEY_TAB, 0);
 
@@ -606,7 +616,7 @@ static int surface(void) {
 
     /* Everything above lands as data. */
     KuiEvent ev;
-    int events = 0, layouts = 0, access = 0;
+    int events = 0, layouts = 0, access = 0, downs = 0, ups = 0;
     while (kui_poll_event(ui, &ev)) {
         events++;
         if (!ev.payload) continue;
@@ -615,10 +625,21 @@ static int surface(void) {
         if (!kind || !kui_value_as_str(kind, &s)) continue;
         if (s.len == 6 && memcmp(s.ptr, "layout", 6) == 0) layouts++;
         if (s.len == 6 && memcmp(s.ptr, "access", 6) == 0) access++;
+        if (s.len == 3 && memcmp(s.ptr, "key", 3) == 0) {
+            KuiStr phase;
+            const KuiValue *p = kui_value_get(ev.payload, KUI_STR("phase"));
+            if (!p || !kui_value_as_str(p, &phase)) continue;
+            if (phase.len == 4 && memcmp(phase.ptr, "down", 4) == 0) downs++;
+            if (phase.len == 2 && memcmp(phase.ptr, "up", 2) == 0) ups++;
+        }
     }
     check(events > 0, "the inputs produced events");
     check(layouts > 0, "on_layout reported the card's rect");
     check(access > 0, "the slider nudge arrived as an access event");
+    /* Three presses (w, its repeat, ctrl-a), and a release for each of the
+     * two distinct keys — the second one synthesized by letting go. */
+    check(downs == 3, "the sink took the presses, repeat included");
+    check(ups == 2, "every held key came back up exactly once");
 
     /* Values round-trip, including the ones the counter never builds. */
     KuiValue *map = kui_value_map();
@@ -707,17 +728,17 @@ static void repf(Rep *r, const char *fmt, ...) {
     }
 }
 
-/* FNV-1a over each quad's words 0..17 and 22..25 - KuiQuad without its uv,
+/* FNV-1a over each quad's words 0..18 and 23..26 - KuiQuad without its uv,
  * which follows glyph insertion order. Mirrors conformance::quad_digest. */
-_Static_assert(sizeof(KuiQuad) == 26 * sizeof(uint32_t), "KuiQuad is not 26 words");
+_Static_assert(sizeof(KuiQuad) == 27 * sizeof(uint32_t), "KuiQuad is not 27 words");
 
 static uint64_t quad_digest(const KuiQuad *quads, size_t count) {
     uint64_t h = 0xcbf29ce484222325ull;
     for (size_t i = 0; i < count; i++) {
-        uint32_t w[26];
+        uint32_t w[27];
         memcpy(w, &quads[i], sizeof w);
-        for (int j = 0; j < 26; j++) {
-            if (j >= 18 && j <= 21) continue; /* uv */
+        for (int j = 0; j < 27; j++) {
+            if (j >= 19 && j <= 22) continue; /* uv */
             uint32_t v = w[j];
             for (int b = 0; b < 4; b++) {
                 h ^= (uint8_t)(v & 0xff);
@@ -774,7 +795,10 @@ static void conf_layout(KuiCtx *ui, const Fixtures *f) {
     KuiSpec card = {
         .dir = KUI_ROW, .pad_l = 12, .pad_r = 10, .pad_t = 6, .pad_b = 4,
         .gap = 4, .bg = 0x202030ff, .border_w = 2, .border_color = 0x2a2d3aff,
-        .radius = 5, .width = {KUI_FIXED, 180}, .height = {KUI_FIXED, 40},
+        .radius = 5, .opacity_set = 1, .opacity = 0.75f,
+        .shadow_color = 0x00000066, .shadow_blur = 8, .shadow_y = 3,
+        .shadow_spread = 1,
+        .width = {KUI_FIXED, 180}, .height = {KUI_FIXED, 40},
     };
     kui_open_keyed(ui, KUI_STR("card"), &card, NULL);
     KuiTextStyle s12 = {.size = 12};
@@ -999,11 +1023,12 @@ static void conf_run(const ConfScene *scene, const ConfStep *steps, int nsteps, 
     kui_draw_data(ctx, &dd);
     repf(out, "quads %zu %016llx\n", dd.quad_count,
          (unsigned long long)quad_digest(dd.quads, dd.quad_count));
-    size_t kinds[5] = {0};
+    size_t kinds[6] = {0};
     for (size_t i = 0; i < dd.quad_count; i++) {
-        if (dd.quads[i].kind < 5) kinds[dd.quads[i].kind]++;
+        if (dd.quads[i].kind < 6) kinds[dd.quads[i].kind]++;
     }
-    repf(out, "kinds %zu %zu %zu %zu %zu\n", kinds[0], kinds[1], kinds[2], kinds[3], kinds[4]);
+    repf(out, "kinds %zu %zu %zu %zu %zu %zu\n", kinds[0], kinds[1], kinds[2],
+         kinds[3], kinds[4], kinds[5]);
 
     KuiAccessNode nodes[128];
     size_t total = kui_access_tree(ctx, nodes, 128);

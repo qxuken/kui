@@ -77,6 +77,8 @@ export interface KeyframeProp {
   height?: SizingProp;
   bg?: ColorProp;
   radius?: number;
+  /** Group opacity, 0..1. */
+  opacity?: number;
 }
 
 /** Where a node starts the first frame it is seen, for `enter`: the slots
@@ -91,6 +93,8 @@ export interface EnterProp {
   height?: SizingProp;
   bg?: ColorProp;
   radius?: number;
+  /** Group opacity, 0..1: `{ opacity: 0 }` fades the whole subtree in. */
+  opacity?: number;
 }
 
 export interface FloatProp {
@@ -132,7 +136,7 @@ export interface GeneratedSpecProps {
   disabled?: boolean;
   /** Easing for `transition` (default easeOut); spring/bouncy integrate with momentum. */
   easing?: 'easeOut' | 'linear' | 'easeIn' | 'easeInOut' | 'spring' | 'bouncy';
-  /** Where the node starts the first frame it is seen `{ dx?, dy?, width?, height?, bg?, radius? }`: those slots ease in from there over `transition` ms instead of snapping (`dx`/`dy` slide it in from that far away). */
+  /** Where the node starts the first frame it is seen `{ dx?, dy?, width?, height?, bg?, radius?, opacity? }`: those slots ease in from there over `transition` ms instead of snapping (`dx`/`dy` slide it in from that far away, `opacity: 0` fades the whole subtree in). */
   enter?: EnterProp;
   /** A disclosure's state: what a node that shows and hides something (a twisty, an accordion header, a menu button) reads as. Unset, the node does not expand at all — which is why this names its state instead of being a flag. */
   expanded?: 'collapsed' | 'expanded';
@@ -152,7 +156,7 @@ export interface GeneratedSpecProps {
   hoverSound?: string;
   /** Hover-track without a click payload (for isHovered-driven styling). */
   hoverable?: boolean;
-  /** CSS-style stops `[{ at?, width?, height?, bg?, radius? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. */
+  /** CSS-style stops `[{ at?, width?, height?, bg?, radius?, opacity? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. */
   keyframes?: KeyframeProp[];
   /** The accessible name. Without one a button, link, tab or heading is named by the text inside it; an image or an icon-only button has none, and the core warns (`image-without-label`, `control-without-name`). */
   label?: string;
@@ -176,10 +180,12 @@ export interface GeneratedSpecProps {
   onDrag?: AppMsg | null;
   /** Hover tag: the pointer entering/leaving emits {kind:"hover", phase:"enter"|"leave", tag} events. */
   onHover?: AppMsg | null;
-  /** Key-sink tag: with key focus held, presses arrive as {kind:"key", ...} events. */
+  /** Key-sink tag: with key focus held, presses and releases arrive as {kind:"key", phase:"down"|"up", ...} events. */
   onKey?: AppMsg | null;
   /** Layout tag: the node's laid-out rect arrives as {kind:"layout", x, y, w, h, parent, tag} on its first frame and whenever it changes (needs a stable key). */
   onLayout?: AppMsg | null;
+  /** Group opacity 0..1 (default 1): fades this node and its whole subtree. A per-quad alpha multiply rather than an offscreen composite, so overlapping pieces of one subtree show their seams through the fade. Layout, hit-testing and the access tree are untouched; eases with `transition`, and `enter: { opacity: 0 }` fades a panel in. */
+  opacity?: number;
   /** Background while pressed (or while its hoverGroup is); implies hover tracking. */
   pressedBg?: ColorProp;
   /** Corner radius for all four corners (logical px); the per-corner props override it when listed after it. */
@@ -200,6 +206,16 @@ export interface GeneratedSpecProps {
   selected?: boolean;
   /** On a `line` of a custom editor: the byte offset where the selection's other end sits (the caret is `caret`, possibly on another line). */
   selectionAnchor?: number;
+  /** Drop-shadow blur radius (logical px): the edge ramps over this distance and reaches this far past the shape. 0 = a hard edge. */
+  shadowBlur?: number;
+  /** Drop-shadow color; nothing else about a shadow draws without it. On its own it is a hard shadow exactly behind the node — add `shadowBlur` / `shadowY` to lift it. Outer shadows only, and the shape is not knocked out of the middle, so a translucent background shows it through. */
+  shadowColor?: ColorProp;
+  /** Grows (or, negative, shrinks) the drop shadow's shape before blurring (logical px). */
+  shadowSpread?: number;
+  /** Drop-shadow horizontal offset (logical px). */
+  shadowX?: number;
+  /** Drop-shadow vertical offset (logical px); positive casts downward. */
+  shadowY?: number;
   /** With transition: also ease the node's position (reordered siblings slide). */
   slide?: boolean;
   /** Animate sizing/colors/radius changes over this many ms (needs a stable key). */

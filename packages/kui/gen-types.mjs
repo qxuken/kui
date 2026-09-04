@@ -65,8 +65,8 @@ const TYPE_DOC = {
   tag: 'tag (a message merged into the event under `tag`, or `null` for none)',
   str: 'string',
   resource: 'resource handle',
-  keyframes: 'keyframe list (`[{ at?, width?, height?, bg?, radius? }, …]`)',
-  enter: 'entrance (`{ dx?, dy?, width?, height?, bg?, radius? }`)',
+  keyframes: 'keyframe list (`[{ at?, width?, height?, bg?, radius?, opacity? }, …]`)',
+  enter: 'entrance (`{ dx?, dy?, width?, height?, bg?, radius?, opacity? }`)',
 };
 
 const cell = (s) => String(s).replace(/\|/g, '\\|');

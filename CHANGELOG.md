@@ -9,6 +9,39 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **`KeyUp`, and one payload shape for both halves of a key**
+  (backlog C9). `InputEvent::KeyDown` had no counterpart, so a held-key
+  interaction could not be written at all — WASD movement, press-and-hold
+  to preview, a key that arms a mode while it is down — even though
+  `KeyDown`'s own doc names "a game" as its audience. `Modifiers` covered
+  the release of Shift and Command and nothing else. `InputEvent::KeyUp`
+  closes it, routed to key focus exactly the way `KeyDown` is. Both halves
+  arrive as **one** `{kind="key"}` payload with a `phase` of `"down"` or
+  `"up"` — the shape a drag's three phases and a hover's two already use —
+  so an app binds one handler and matches `phase`, and no binding grew a
+  second event kind to plumb. `text` is null on every release (a release
+  inserts nothing) and `repeat` false; the core normalizes both, so four
+  drivers cannot disagree about it.
+  Two rules make a stuck key impossible. **A key only comes up where it
+  went down**: a release whose press the sink never got — pressed while an
+  editor held focus, or already let go of — resolves nothing, so no sink
+  hears an `up` it has no `down` for. And **focus moving lets go first**:
+  `Core::set_focus` releases everything held, to the sink that took the
+  presses, in press order, before the focus lands anywhere else. Drivers
+  do the same when the window loses the keyboard, where the OS will send
+  no release at all — the winit runner on `Focused(false)`,
+  `kui_release_held_keys` for a C host, `Core::release_held_keys` for
+  anyone else.
+  Every binding drives it: `InputEvent::KeyUp` in Rust,
+  `kui_input_key_down` / `kui_input_key_up` / `kui_release_held_keys` in
+  C (which also closes a gap the C example had noted — a C host could not
+  drive an `on_key` sink at all, `kui_input_key` carrying only the editing
+  keys), `ctx.keyUp` beside a `ctx.keyDown` that now takes `repeat` in
+  Node, and the payload as-is in Lua. `KeyCode::from_name` is the one
+  parser they share, so `"pagedown"` cannot mean different keys in
+  different languages. The winit driver stopped dropping releases on the
+  floor and reports `repeat` from the OS.
+
 - **Selection and disclosure state** (`docs/adr/0001-accessibility-as-data.md`).
   `checked` covered checkbox / radio / switch and stopped there, so a row
   of tabs read out with no way to hear which one was open — AccessKit and
@@ -186,8 +219,59 @@ upgrades remove code from the apps on it is doing the job.
   the core — (b) — stays unbuilt, and now needs a case this does not
   serve.
 
+- **Group opacity and drop shadows**
+  (`docs/adr/0005-the-paint-vocabulary.md`). The renderer contract was fill,
+  border, four radii, glyph and image, and two things a UI wants were
+  missing from it. `opacity` (0..1) fades a node *and its whole subtree*: it
+  multiplies down the tree and into the alpha of every quad the subtree
+  emits — box, border, glyph, image, scrollbar, focus ring — and changes
+  nothing else, so a faded subtree still lays out, still takes clicks and is
+  still read out, which is CSS's rule for `opacity: 0` and the one that
+  makes fading a *live* panel usable. It is a per-quad multiply rather than
+  an offscreen composite, so overlapping pieces of one subtree show their
+  seams through the fade; the prop doc says so rather than leaving it to be
+  discovered. It eases with `transition` and joins `keyframes` and `enter`,
+  so `enter={{ opacity: 0 }}` fades a whole panel in — the half of exit
+  animations that could not be written before, since `enter` could fade a
+  node's own `bg` and not a subtree.
+  `shadowColor` with `shadowBlur` / `shadowX` / `shadowY` / `shadowSpread`
+  casts one drop shadow behind a node. It is a new `QuadKind::Shadow` and
+  one `blur` on the quad, not a nine-slice: the core emits the shape already
+  offset, spread and inflated by the blur, and the shader ramps the same
+  `sd_rounded_box` it already evaluates for rounded rects — so a shadow is
+  one more instance in the same single draw call, with no atlas entry, no
+  second pass and no seams. The color is the switch (nothing draws without
+  one), the geometry and the color each ease with `transition`, and the
+  scope is deliberately small: outer shadows only, one per node, and the
+  shape is not knocked out of the middle, so a translucent background shows
+  its own shadow through itself. Six plain schema rows, so Lua, JSX and the
+  generated TS types got them for free; `KuiSpec` gained seven appended
+  fields (`opacity` needs an `opacity_set` bit, because a zeroed struct is
+  the schema default and this default is 1, so 0 cannot double as "unset").
+  The `layout` conformance scene's card now carries both, so all four
+  bindings reproduce them or fail. ADR 0005 also records the two decisions
+  that produced no code: **no gradients in v0**, and the design for **exit
+  animations** — a departing subtree retained by key, frozen where it was
+  and replayed inert until its transition ends — which is a real change to
+  the frame model and is written down rather than half-built.
+
 ### Changed
 
+- `Quad` gained `blur` and `QuadKind` gained `Shadow`, which is ABI:
+  `KuiQuad` mirrors the core quad field for field, so its `kind` moved from
+  word 17 to word 18 and `uv` / `clip` shifted with it. A host reading
+  quads by raw offset (the C example's digest, the JS `decodeQuads`) has to
+  move with it; a host using the struct definitions recompiles and is done.
+  The conformance report's `kinds` line grew a sixth column for shadows.
+- `KuiEnter` and `KuiKeyframe` gained an appended `opacity` with a
+  `KUI_ENTER_OPACITY` / `KUI_KF_OPACITY` bit.
+- **`{kind="key"}` payloads carry a `phase`, and a sink now hears
+  releases.** An app that took every `kind="key"` event as a press acts
+  twice unless it filters: match `phase == "down"` (the `modal_editor`,
+  `splitmux` and `syntax_view` examples each gained exactly that one
+  line). `KeyPress::to_value` takes the phase as an argument — the only
+  source-breaking signature in this — and `KeyPress::released` is the
+  normalizing helper drivers reach for.
 - `KuiSpec` gained `tooltip` (appended; a zeroed struct means what it
   meant): the C spelling of the `tooltip` prop the other bindings have —
   it makes the node hover-tracked, becomes its accessible description,
@@ -204,6 +288,26 @@ upgrades remove code from the apps on it is doing the job.
 
 ### What you can delete
 
+- **The alpha you were threading through a subtree by hand** — the
+  `bg`, text `color` and border color an app recomputed at a fraction so a
+  panel could look dimmed, and the "fade factor" it kept in its model to do
+  it with. One `opacity` on the top of the subtree, and it eases.
+- **The staging frame for a fade-in.** A panel that had to be drawn at a
+  transparent `bg` for one frame and re-drawn opaque the next (and the
+  `request_frame` that made the second frame come) is `enter={{ opacity: 0
+  }}` — and it fades the panel's text and images too, which the `bg` trick
+  never did.
+- **The stack of translucent boxes standing in for a shadow** — the three
+  or four nested rects at decreasing alpha and increasing radius under a
+  card or a dialog, and the padding arithmetic that kept them centred.
+- **The timer that stood in for a key release** — the `Instant` an app
+  kept per held key, the "assume it was let go after 250 ms" heuristic,
+  the tick handler that decayed a movement vector because nothing would
+  ever tell it the key came up. There is a release now, and it arrives
+  even when focus moves out from under the key.
+- **The modifier-only workaround**: bindings shaped around `Modifiers`
+  because it was the one release the core reported, so "hold to preview"
+  had to be spelled as "hold Option".
 - **The label that spelled out the state of a tab** — `label="General
   (current)"`, or the "selected" suffix an app appended so a reader would
   say *something*: `selected` is the state, and the name stays the name.

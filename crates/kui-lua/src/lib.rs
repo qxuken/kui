@@ -1219,6 +1219,58 @@ mod tests {
         assert_eq!(seen.as_deref(), Some("!hi"));
     }
 
+    /// A script that owns its keyboard sees both halves of a key on one
+    /// `{kind="key"}` payload: a held key is `phase="down"` then `"up"`,
+    /// and focus leaving while it is held delivers the `up` anyway.
+    #[test]
+    fn a_lua_key_sink_hears_press_and_release() {
+        use kui_core::{KeyCode, KeyMods, KeyPress};
+        let mut ext = LuaExtension::from_source(
+            "game",
+            r#"
+                log = {}
+                function view(env)
+                  return column { key = "world", on_key = "keys", key_focus = true,
+                    width = 400, height = 300 }
+                end
+                function on_event(ev)
+                  if ev.kind == "key" then
+                    log[#log + 1] = ev.phase .. ":" .. ev.code ..
+                      ":" .. tostring(ev.text) .. ":" .. tostring(ev.tag)
+                  end
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let feed = |core: &mut Core, ext: &mut LuaExtension, ev| {
+            for e in core.handle_input(ev) {
+                ext.on_event(&e);
+            }
+        };
+        let w = || KeyPress::new(KeyCode::Char('w'), KeyMods::default()).with_text("w");
+        feed(&mut core, &mut ext, InputEvent::KeyDown(w()));
+        feed(&mut core, &mut ext, InputEvent::KeyUp(w()));
+        // Pressed again, then focus dropped while it is still down.
+        feed(&mut core, &mut ext, InputEvent::KeyDown(w()));
+        core.set_focus(None);
+        for e in core.take_pending_events() {
+            ext.on_event(&e);
+        }
+        let log: Vec<String> = ext.lua.globals().get("log").unwrap();
+        assert_eq!(
+            log,
+            [
+                "down:w:w:keys",
+                // A release inserts nothing, so `text` is nil in Lua.
+                "up:w:nil:keys",
+                "down:w:w:keys",
+                "up:w:nil:keys",
+            ]
+        );
+    }
+
     /// `audio { }` nodes are retained playbacks: declared → play, declared
     /// again → nothing, gone → stop. The host hands the sound id to the
     /// script as an integer, like images.

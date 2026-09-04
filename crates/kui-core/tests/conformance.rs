@@ -38,6 +38,7 @@ fn check(scene: &Scene) {
     let e = &scene.expect;
     let name = scene.name;
     assert_eq!(out.kinds[0], e.solid, "{name}: solid quads");
+    assert_eq!(out.kinds[5], e.shadows, "{name}: shadow quads");
     assert_eq!(out.kinds[3], e.images, "{name}: image quads");
     let glyphs = out.kinds[1] + out.kinds[2] + out.kinds[4];
     assert!(

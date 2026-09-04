@@ -41,8 +41,11 @@ enum { KUI_START = 0, KUI_CENTER = 1, KUI_END = 2 };
 /* KUI_QUAD_GLYPH_SUBPIXEL: atlas rgb are per-channel coverages (needs
  * per-channel / dual-source blending; else use the atlas alpha as a mask).
  * Only produced after kui_set_subpixel_text(ctx, true). */
+/* KUI_QUAD_SHADOW: `color` fills a rounded rect inset from the quad by
+   `blur` on every side, its edge ramped over `blur` px; ignores uv,
+   border_color and border_w. */
 enum { KUI_QUAD_SOLID = 0, KUI_QUAD_GLYPH_MASK = 1, KUI_QUAD_GLYPH_COLOR = 2,
-       KUI_QUAD_IMAGE = 3, KUI_QUAD_GLYPH_SUBPIXEL = 4 };
+       KUI_QUAD_IMAGE = 3, KUI_QUAD_GLYPH_SUBPIXEL = 4, KUI_QUAD_SHADOW = 5 };
 /* Font families (KuiTextStyle.family) */
 enum { KUI_FONT_SANS = 0, KUI_FONT_SERIF = 1, KUI_FONT_MONO = 2 };
 /* Line breaking (KuiTextStyle.wrap) */
@@ -116,6 +119,7 @@ enum {
     KUI_KF_HEIGHT = 1u << 2,
     KUI_KF_BG = 1u << 3,
     KUI_KF_RADIUS = 1u << 4,
+    KUI_KF_OPACITY = 1u << 5,
 };
 
 /* One CSS-style keyframe stop. A zeroed stop sets nothing: `set` says which
@@ -129,6 +133,7 @@ typedef struct KuiKeyframe {
     KuiSizing width, height;
     uint32_t bg; /* 0xRRGGBBAA */
     float radius;
+    float opacity; /* group opacity 0..1 */
 } KuiKeyframe;
 
 /* Which KuiEnter fields are set (KuiEnter.set bits); 0 = no entrance. */
@@ -138,18 +143,21 @@ enum {
     KUI_ENTER_HEIGHT = 1u << 2,
     KUI_ENTER_BG = 1u << 3,
     KUI_ENTER_RADIUS = 1u << 4,
+    KUI_ENTER_OPACITY = 1u << 5,
 };
 
 /* Where a node starts the first frame it is seen (KuiSpec.enter): the slots
  * `set` names ease in from these values over transition_ms instead of
- * snapping — dx/dy slide it in from that far away (logical px), bg fades it
- * in. A node drawn again after a frame away enters again. Zeroed = none. */
+ * snapping — dx/dy slide it in from that far away (logical px), bg fades
+ * the node and opacity the whole subtree in. A node drawn again after a
+ * frame away enters again. Zeroed = none. */
 typedef struct KuiEnter {
     uint32_t set;
     float dx, dy;
     KuiSizing width, height;
     uint32_t bg; /* 0xRRGGBBAA */
     float radius;
+    float opacity; /* group opacity 0..1; 0 fades the subtree in */
 } KuiEnter;
 
 /* Zero-initialized KuiSpec is a fit-sized transparent column. Colors are
@@ -301,6 +309,28 @@ typedef struct KuiSpec {
      * reports them in KuiAccessNode.pos_in_set / set_size. */
     uint32_t selected;
     uint32_t expanded;
+    /* Group opacity: with opacity_set non-zero, `opacity` (0..1) fades this
+     * node and its whole subtree. The bit exists so 0 stays expressible —
+     * without it, a zeroed struct could not tell "opaque" from "invisible".
+     * It is a per-quad alpha multiply, not an offscreen composite, so
+     * overlapping pieces of one subtree show their seams through the fade.
+     * Layout, hit-testing and the access tree are untouched: an invisible
+     * subtree still takes clicks, exactly like CSS opacity: 0. Eases with
+     * transition_ms, and enter.opacity fades a panel in. */
+    uint32_t opacity_set;
+    float opacity;
+    /* Drop shadow: the node's rounded rect, moved by shadow_x/shadow_y,
+     * grown by shadow_spread and blurred over shadow_blur, painted in
+     * shadow_color behind the node (CSS box-shadow without the inset and
+     * multi-shadow forms). 0xRRGGBBAA with 0 = no shadow: nothing else here
+     * draws without a color, and a color on its own is a hard shadow
+     * exactly behind the node. Outer shadows only, and the shape is not
+     * knocked out of the middle, so a translucent bg shows it through.
+     * All four numbers are logical px and ease with transition_ms. */
+    uint32_t shadow_color;
+    float shadow_blur;
+    float shadow_x, shadow_y;
+    float shadow_spread;
 } KuiSpec;
 
 /* Disclosure state (KuiSpec.expanded): the schema index plus one, so zero
@@ -538,6 +568,7 @@ typedef struct KuiQuad {
     float border_color[4];
     float radius[4];         /* corner radii, clockwise from the top-left */
     float border_w;
+    float blur;              /* KUI_QUAD_SHADOW: blur radius, also how far the rect is inflated */
     uint32_t kind;           /* KUI_QUAD_* */
     uint32_t uv[4];          /* atlas texels: x, y, w, h */
     float clip[4];           /* clip rect (physical px): pixels outside are transparent */
@@ -587,6 +618,24 @@ void kui_input_text(KuiCtx *ctx, KuiStr text);   /* typing/paste -> focused edit
 void kui_input_preedit(KuiCtx *ctx, KuiStr text, uint32_t cursor_start,
                        uint32_t cursor_end);
 void kui_input_key(KuiCtx *ctx, uint32_t key, uint32_t mods); /* KUI_KEY_* + KUI_MOD_* */
+/* Raw keys for on_key sinks (the editing keys go through kui_input_key
+ * above). `code` is a single character as the layout produced it ("W", "$")
+ * or a name ("left", "enter", "escape", "f5", ...); `kmods` is KUI_KMOD_*
+ * bits; `text` is what the press inserts, or {NULL, 0} to derive it from
+ * `code`; `repeat` marks an auto-repeat. The focused sink polls
+ * {kind="key", phase="down"|"up", code, ctrl, alt, shift, super, text,
+ * repeat, tag}; a release carries a null `text`. A release whose press the
+ * sink never got resolves nothing, and moving focus while a key is held
+ * delivers the "up" first, so a held-key binding (WASD, press-and-hold)
+ * cannot be left stuck down. An unknown `code` is ignored. */
+void kui_input_key_down(KuiCtx *ctx, KuiStr code, uint32_t kmods, KuiStr text,
+                        bool repeat);
+void kui_input_key_up(KuiCtx *ctx, KuiStr code, uint32_t kmods);
+/* Lets go of every key the focused sink is holding, as if the user had
+ * released them. Call it when the window loses the keyboard: the OS stops
+ * delivering key events to it, so the release of anything held over an app
+ * switch would never arrive. Focus moves do this by themselves. */
+void kui_release_held_keys(KuiCtx *ctx);
 /* Physical modifier state changed (KUI_KMOD_* bits); the host polls a
  * {kind="modifiers", shift, ctrl, alt, super} event when it differs. */
 void kui_input_modifiers(KuiCtx *ctx, uint32_t mods);

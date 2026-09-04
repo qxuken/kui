@@ -566,35 +566,74 @@ click-outside-to-dismiss (and how that meets C1); what the four entry points loo
 like. `FloatConfig::fit` is the in-window approximation and should be documented
 as such.
 
-### `.` C8 — Extend the paint vocabulary
+### `.` C8 — Extend the paint vocabulary — **mostly done (2026-09-04)**
 
-`crates/kui-core/src/display.rs` is the whole renderer contract: fill, border,
-four radii, glyph, image. No shadow, no gradient, no group opacity. `Enter` fades
-a node's own `bg` but not a subtree, which is the underlying reason there is no
-exit animation. Clipping is rect-only, so a rounded scroll container does not
-round its children.
+Decided and recorded in `docs/adr/0005-the-paint-vocabulary.md`. Two of the
+four shipped, one was declined, one was designed and left unbuilt.
 
-Highest value per unit of work is probably **group opacity** — an `opacity` slot
-multiplied into every quad from a subtree during `finish_frame`. **Exit
-animations** need the core to keep a departing node alive for one transition,
-which is a real change to the frame model (sketch how it is tracked and dropped;
-`AnimStore` already retains by `Key`). **Shadows** need a new `QuadKind` with a
-blur radius plus shader work, or a nine-slice. **Gradients** are probably out of
-scope for v0 — say so rather than leaving it unstated. Anything added needs a
-schema row and a `kui-wgpu` shader path; the quad struct is hot, so benchmark.
+**Shipped.** `opacity` is a `VisualStyle` slot inherited multiplicatively in
+`finish_frame`'s existing clip pass and multiplied into the alpha of every
+quad a subtree emits (scrollbars and the focus ring included); it eases, and
+joins `keyframes` and `enter`, so `enter: { opacity: 0 }` fades a whole panel
+in. Shadows are a new `QuadKind::Shadow` plus one `blur` on the quad — not a
+nine-slice: the core emits the shape already offset, spread and inflated, and
+the shader ramps the `sd_rounded_box` it already has, so a shadow is one more
+instance in the same draw call. Six plain `PROPS` rows (so three of four
+bindings got them free), seven appended `KuiSpec` fields, and both props are
+in the `layout` conformance scene. Benched: the extra `f32` on `Quad`
+(104 → 108 bytes) is invisible above run-to-run noise, and a new
+`frame_10k_rects_with_shadows_and_opacity` (20k quads, every node casting)
+costs about what the plain 10k-quad frame costs.
 
-### `.` C9 — `KeyUp` and key repeat
+**Declined.** No gradients in v0 — a stop list, a type, a geometry and an
+interpolation space are not a paint prop's worth of work, and the README now
+says so instead of leaving a reader to infer it.
 
-`InputEvent::KeyDown(KeyPress)` has no `KeyUp` and `KeyPress` has no repeat flag.
-`Modifiers` covers modifier release only. So a held-key interaction — WASD, press-
-and-hold to preview, a key that arms a mode — cannot be written, though
-`KeyDown`'s own doc names "a game" as its audience.
+**Still open.** Exit animations are designed in ADR 0005 and not built: a
+departing subtree copied out of the tree into a `DepartStore` keyed by `Key`,
+frozen at the rects it left with, replayed inert (no hit region, no Tab ring,
+no access row) like a float until its transition ends, dropped on end or when
+the key returns. The build needs `Tree` to be sliceable, `finish_frame` to
+diff this frame's keys against the last, and every emission pass to tolerate
+a node whose parent is gone. The open question is what a ghost does to
+`animating()` — correct for a dialog, wrong for a list dropping a thousand
+rows — which wants a real view in front of it.
 
-Add `KeyUp` and `repeat: bool`, route to key focus the way `KeyDown` is routed,
-and decide the payload shape (`{kind:"key", phase:"up"|"down"}` keeps one shape;
-whichever you pick has to round-trip through the `EVENTS` table and all four
-bindings). Decide what happens on focus change while a key is held — a synthetic
-release is usually right.
+Also still open, and priced in ADR 0005's consequences: **rounded clipping**.
+`Quad::clip` is a rect, so a rounded scroll container does not round its
+children's corners. Four more floats on the hot struct plus a second SDF per
+fragment is a bigger bill than either of the two above.
+
+### `.` C9 — `KeyUp` and key repeat — **done (2026-09-04)**
+
+Took the one-shape route: both halves are `{kind="key"}` with a
+`phase` of `"down"` / `"up"`, matching the `phase` a drag and a hover
+already carry, so no binding grew a second event kind. `repeat: bool` was
+already on `KeyPress`; `InputEvent::KeyUp` is the new half, routed through
+the same `Core::route_key` the press goes through.
+
+Two rules keep a key from sticking. **A key only comes up where it went
+down**: the core holds the presses it actually delivered (`keys_held`), and
+a release with no matching press — one pressed while an editor held focus,
+one already let go of — resolves nothing. **Focus moving lets go first**:
+`set_focus` releases everything held to the sink that took the presses, in
+press order, before focus lands. `Core::release_held_keys` is the same
+thing for a driver whose window lost the keyboard, where the OS sends no
+release at all (the winit runner calls it on `Focused(false)`; C hosts get
+`kui_release_held_keys`).
+
+The core normalizes a release — no `text`, never `repeat` — so four drivers
+cannot disagree. C gained `kui_input_key_down` / `kui_input_key_up`, which
+also closes the gap P6 found (a C host could not drive an `on_key` sink at
+all); Node gained `ctx.keyUp` and a `repeat` argument on `ctx.keyDown`;
+Lua takes the payload as-is. `KeyCode::from_name` is the shared parser
+behind all of them.
+
+Cost to apps: a handler that treated every `kind="key"` as a press now
+fires twice, and filters on `phase == "down"` — one line in each of
+`modal_editor`, `splitmux` and `syntax_view`. Still not covered: physical
+scancodes and left/right modifier identity, so a keymap binds a character
+and not a position on the board.
 
 ### `.` C10 — Flex wrapping, and the smaller layout gaps
 
@@ -746,18 +785,38 @@ on `width`/`height` in `jsx-runtime.d.ts`, where every JS user reads it on hover
 "Horizontal size" and "Vertical size", then `npm run gen`. Scan the other `doc`
 strings for the same mistake while there.
 
-### `.` X2 — Automate the CHANGELOG heading
+### `.` X2 — Automate the CHANGELOG heading — **done (2026-09-04)**
 
-`CHANGELOG.md`'s top heading still reads `## 0.1.0-alpha.5 (unreleased)` after
-alpha.5 shipped. `scripts/set-version.sh` does not touch the changelog and
-`scripts/check-version.sh` does not check it, so the one guard that refuses a
-mismatched tag has a hole exactly where the human step is.
+The shipped heading had already been corrected by hand before this ran:
+`## 0.1.0-alpha.5 (2026-09-03)`, the tag's own date, with
+`## 0.1.0-alpha.6 (unreleased)` opened above it. What was missing was the
+machinery that stops the next one shipping stale, and that is what landed.
 
-Correct the shipped heading; add the rewrite to `set-version.sh` (version +
-today's date, in the sed pass it already uses); add one assertion to
-`check-version.sh` (top heading names the version, does not say "unreleased").
-Keep the automation to the heading line — the "what you can delete" convention in
-the body is worth keeping human.
+`set-version.sh` gained a second sed pass, over `CHANGELOG.md`, in the style of
+the one it already runs over `Cargo.toml`:
+`1,/^## /s/^## .+ \(unreleased\)$/## <ver> (<today>)/`. The range ends at the
+first `## `, so no released section below can be rewritten, and the
+substitution is the heading line only — what a release adds and what you can
+delete stay a person's to write.
+
+`check-version.sh` gained one assertion beside the manifest ones: the first
+`## ` line must name the version as a whole token and must not say
+"unreleased", in any case. Run against the alpha.5 tag's tree it reports
+`CHANGELOG.md top heading is "## 0.1.0-alpha.5 (unreleased)"` and exits 1 — the
+hole that produced this item is now what the guard catches, in the release
+job (`Tag matches the manifests`) that already refuses a mismatched tag.
+
+**Opening the next `(unreleased)` section stays manual**, deliberately. The
+script cannot know what the next version will be called (alpha.7? beta.1?
+0.2.0?), and a stub opened automatically would fight the new assertion — the
+top heading would then be the *next* section rather than the tagged one. The
+failure mode of leaving it out is loud and lands on the person who can fix it:
+cutting a release with no open section makes the sed match nothing, and
+`set-version.sh`'s own `check-version.sh` call then fails naming the heading it
+found, at which point writing the section is the obvious next move.
+
+The change itself is not in the changelog: that file lists what an app gains
+and what it can delete, and release tooling is neither.
 
 ### `.` X3 — List the missing input modes in Status / next
 
@@ -767,7 +826,9 @@ mention read as present: no touch or pen input, no flex wrapping (C10). Add
 them, grouped, in the section's existing tone. (Modal containment was on this
 list until C1 shipped it; the pointer buttons went on it with C2, which routes
 only the secondary one; cursor shapes came off it with C3, and programmatic
-scrolling with C4.)
+scrolling with C4. C9 put key releases in the section as a *fixed* line and
+left the real remainder there: no physical scancodes, no left/right modifier
+identity, and unnamed keys dropped rather than delivered.)
 
 The performance table also lists four benches where `benches/frame.rs` has eight —
 `frame_10k_rects_with_access_tree` is omitted, and it is the one a reader worried

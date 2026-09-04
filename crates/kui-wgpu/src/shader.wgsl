@@ -18,8 +18,8 @@ struct Instance {
     @location(1) size: vec2<f32>,
     @location(2) color: vec4<f32>,
     @location(3) border_color: vec4<f32>,
-    // unused, border_w, kind (0 solid / 1 mask glyph / 2 color glyph /
-    // 3 image / 4 subpixel glyph), unused
+    // blur (shadows), border_w, kind (0 solid / 1 mask glyph / 2 color
+    // glyph / 3 image / 4 subpixel glyph / 5 shadow), unused
     @location(4) params: vec4<f32>,
     // atlas texels: x, y, w, h
     @location(5) uv: vec4<f32>,
@@ -120,8 +120,23 @@ fn shade(in: VsOut) -> Shaded {
     // Solid rounded rect with optional border, SDF antialiased. Images
     // share the SDF so radius rounds their corners too.
     let half = in.size * 0.5;
-    let d = sd_rounded_box(in.local - half, half, in.radii);
     let aa = 0.75;
+
+    if kind == 5u {
+        // Drop shadow: the quad is the shadow's shape inflated by `blur`
+        // on every side, so inset by the same amount to get the shape back
+        // and ramp the edge over the blur. A linear-ish ramp, not a true
+        // Gaussian — one instanced quad, no second pass, and at UI blur
+        // radii the difference does not read.
+        let blur = in.params.x;
+        let sh = max(in.size * 0.5 - vec2<f32>(blur, blur), vec2<f32>(0.0, 0.0));
+        let sd = sd_rounded_box(in.local - half, sh, in.radii);
+        let ramp = max(blur, aa);
+        let a = in.color.a * (1.0 - smoothstep(-ramp, ramp, sd));
+        return Shaded(in.color.rgb, vec3<f32>(a * inside));
+    }
+
+    let d = sd_rounded_box(in.local - half, half, in.radii);
     let coverage = 1.0 - smoothstep(-aa, aa, d);
 
     if kind == 3u {

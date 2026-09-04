@@ -212,9 +212,12 @@ export function decodeQuads(buffer) {
       radii: [f[12], f[13], f[14], f[15]],
       radius: f[12],
       borderW: f[16],
-      kind: u[17],
-      uv: [u[18], u[19], u[20], u[21]],
-      clip: [f[22], f[23], f[24], f[25]],
+      // Shadow quads only: the blur radius, which is also how far the rect
+      // is inflated past the shape being blurred.
+      blur: f[17],
+      kind: u[18],
+      uv: [u[19], u[20], u[21], u[22]],
+      clip: [f[23], f[24], f[25], f[26]],
     });
   }
   return quads;

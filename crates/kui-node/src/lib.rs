@@ -401,33 +401,7 @@ fn parse_key(key: &str) -> Result<Key> {
 }
 
 fn keycode_of(s: &str) -> Result<KeyCode> {
-    let mut chars = s.chars();
-    if let (Some(c), None) = (chars.next(), chars.next()) {
-        return Ok(KeyCode::Char(c));
-    }
-    if let Some(n) = s.strip_prefix('f').and_then(|n| n.parse::<u8>().ok())
-        && (1..=24).contains(&n)
-    {
-        return Ok(KeyCode::F(n));
-    }
-    Ok(match s {
-        "space" => KeyCode::Space,
-        "left" => KeyCode::Left,
-        "right" => KeyCode::Right,
-        "up" => KeyCode::Up,
-        "down" => KeyCode::Down,
-        "home" => KeyCode::Home,
-        "end" => KeyCode::End,
-        "pageup" => KeyCode::PageUp,
-        "pagedown" => KeyCode::PageDown,
-        "backspace" => KeyCode::Backspace,
-        "delete" => KeyCode::Delete,
-        "enter" => KeyCode::Enter,
-        "tab" => KeyCode::Tab,
-        "escape" => KeyCode::Escape,
-        "insert" => KeyCode::Insert,
-        other => return Err(err(format!("unknown key code {other:?}"))),
-    })
+    KeyCode::from_name(s).ok_or_else(|| err(format!("unknown key code {s:?}")))
 }
 
 fn key_str(key: Key) -> String {
@@ -622,20 +596,45 @@ impl Ctx {
     /// Raw key press for `onKey` sinks (modal keymaps): a single character
     /// (layout-resolved, e.g. "W" or "$"), a name ("left", "enter", "escape",
     /// "f5", ...), with mods `{shift, ctrl, alt, super}`. Editing keys for
-    /// focused editors still go through `key()`.
+    /// focused editors still go through `key()`. `repeat` marks a press the
+    /// OS auto-repeated. The sink hears `{kind:"key", phase:"down", ...}`.
     #[napi]
-    pub fn key_down(&mut self, code: String, mods: Option<Json>) -> Result<()> {
-        let m = mods
-            .as_ref()
-            .and_then(Json::as_object)
-            .unwrap_or(empty_props());
+    pub fn key_down(
+        &mut self,
+        code: String,
+        mods: Option<Json>,
+        repeat: Option<bool>,
+    ) -> Result<()> {
+        let kp = self.key_press(&code, mods.as_ref())?;
+        self.input(InputEvent::KeyDown(KeyPress {
+            repeat: repeat.unwrap_or(false),
+            ..kp
+        }));
+        Ok(())
+    }
+
+    /// The release of a key, spelled the way `keyDown` spells it: the sink
+    /// hears `{kind:"key", phase:"up", ...}` with `text` null. A release
+    /// whose press the sink never got resolves nothing, and moving focus
+    /// while a key is held delivers the `up` first.
+    #[napi]
+    pub fn key_up(&mut self, code: String, mods: Option<Json>) -> Result<()> {
+        let kp = self.key_press(&code, mods.as_ref())?;
+        self.input(InputEvent::KeyUp(kp.released()));
+        Ok(())
+    }
+
+    /// One press from the `{shift, ctrl, alt, super}` shape both key calls
+    /// take, with the text a plain key would insert already resolved.
+    fn key_press(&self, code: &str, mods: Option<&Json>) -> Result<KeyPress> {
+        let m = mods.and_then(Json::as_object).unwrap_or(empty_props());
         let kmods = KeyMods {
             shift: bool_prop(m, "shift"),
             ctrl: bool_prop(m, "ctrl"),
             alt: bool_prop(m, "alt"),
             super_key: bool_prop(m, "super"),
         };
-        let code = keycode_of(&code)?;
+        let code = keycode_of(code)?;
         let text = if !kmods.ctrl && !kmods.alt && !kmods.super_key {
             match code {
                 KeyCode::Char(c) => Some(c.to_string()),
@@ -645,13 +644,12 @@ impl Ctx {
         } else {
             None
         };
-        self.input(InputEvent::KeyDown(KeyPress {
+        Ok(KeyPress {
             code,
             mods: kmods,
             text,
             repeat: false,
-        }));
-        Ok(())
+        })
     }
 
     /// Physical modifier state changed: `{shift, ctrl, alt, super}`. The
@@ -1102,6 +1100,13 @@ macro_rules! core_methods {
             /// as plain JSON (your Elm messages come back out here).
             #[napi]
             pub fn poll_events(&mut self) -> Json {
+                // Also whatever a call between frames left pending — the
+                // synthetic key releases `focus` / `blur` force, a `resize`.
+                // A window's runner drains these at its next redraw anyway;
+                // draining here means both classes hand them over at the
+                // same moment rather than a pump apart.
+                let pending = self.$core().take_pending_events();
+                self.$events().extend(pending);
                 events_json(std::mem::take(self.$events()))
             }
 

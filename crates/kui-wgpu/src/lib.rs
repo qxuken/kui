@@ -42,6 +42,7 @@ fn instance_of(q: &Quad) -> Instance {
         QuadKind::GlyphColor => 2.0,
         QuadKind::Image => 3.0,
         QuadKind::GlyphSubpixel => 4.0,
+        QuadKind::Shadow => 5.0,
     };
     Instance {
         pos: [q.rect.x, q.rect.y],
@@ -53,7 +54,7 @@ fn instance_of(q: &Quad) -> Instance {
             q.border_color.b,
             q.border_color.a,
         ],
-        params: [0.0, q.border_w, kind, 0.0],
+        params: [q.blur, q.border_w, kind, 0.0],
         uv: [
             q.uv[0] as f32,
             q.uv[1] as f32,
