@@ -1,10 +1,14 @@
-// Regenerates everything derived from the prop schema (`kui_core::schema::PROPS`,
-// exported by the addon's protocol()):
-//   - jsx-runtime.d.ts   the TS prop types (between the generated markers)
+// Regenerates everything derived from the Rust side, between generated markers:
+//   - jsx-runtime.d.ts   the TS prop types, from the prop schema
+//                        (`kui_core::schema::PROPS`, via the addon's protocol())
 //   - ../../docs/props.md the cross-binding reference (JSX / Lua / C names)
-// Run after changing the schema: npm run gen. CI fails on stale output.
+//   - index.d.ts         the addon's own surface, from the `#[napi]` attributes
+//                        in crates/kui-node/src/lib.rs
+// Run after changing either: npm run gen. CI fails on stale output.
+import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 const native = createRequire(import.meta.url)('./native.cjs');
 const { prop, elements, events, resources } = native.protocol();
@@ -124,3 +128,85 @@ writeFileSync(new URL('../../docs/props.md', import.meta.url), md);
 console.log(
   `docs/props.md: ${spec.length + style.length} schema rows, ${custom.length} composites, ${elements.length} elements, ${events.length} events`,
 );
+
+// ------------------------------------------------------- the addon surface --
+// napi-rs derives a TypeScript signature for every `#[napi]` item from the
+// Rust one and writes them out; crates/kui-node's build.rs points it at
+// target/napi-type-defs, so any build of the addon leaves them there. That
+// file is the authority for the generated region of index.d.ts: `Ctx` and
+// `KuiWindow` are 39 shared methods each, generated in Rust by one
+// `core_methods!` list, and this keeps the copy a JS user actually reads from
+// being a third hand-written one. Where the derived type is too loose — every
+// `Json` parameter and return — the Rust side names the real one with
+// `#[napi(ts_args_type = ...)]` / `ts_return_type`, so the rich types below
+// (`AccessTree`, `UiEvent<A>[]`, `PlayOptions`, ...) survive.
+//
+// This file only lays the defs out. It refuses a kind it has never seen
+// rather than dropping it silently, which is the whole point of the exercise.
+
+const defsPath = new URL('../../target/napi-type-defs/kui-node', import.meta.url);
+let defsSrc;
+try {
+  defsSrc = readFileSync(defsPath, 'utf8');
+} catch {
+  // The file is written while the addon compiles, so a target dir that is
+  // up to date has it already. If it went missing on its own, a plain
+  // `cargo build` says "Fresh" and writes nothing; NAPI_FORCE_BUILD_KUI_NODE
+  // is the env var napi-build declares `rerun-if-env-changed` on, so a value
+  // that has never been seen before re-runs the build script and the macro.
+  console.log('no napi type defs yet - rebuilding the addon to emit them');
+  execFileSync('cargo', ['build', '-p', 'kui-node', '--release'], {
+    cwd: fileURLToPath(new URL('../../', import.meta.url)),
+    env: { ...process.env, NAPI_FORCE_BUILD_KUI_NODE: String(Date.now()) },
+    stdio: 'inherit',
+  });
+  defsSrc = readFileSync(defsPath, 'utf8');
+}
+
+// Method lines arrive with one leading space and JSDoc lines with none, so
+// that `/**`, ` * …` and ` */` land aligned under a two-space indent. A blank
+// JSDoc line comes through as ` * `, which would check in trailing space.
+const indent = (def) =>
+  def
+    .split('\n')
+    .map((line) => ('  ' + (line.startsWith(' *') ? line : line.replace(/^ /, ''))).replace(/\s+$/, ''))
+    .join('\n');
+
+const classes = new Map();
+const parts = [];
+let members = 0;
+for (const line of defsSrc.trim().split('\n')) {
+  const item = JSON.parse(line);
+  if (item.kind === 'fn') {
+    parts.push({ text: `${item.js_doc}export declare ${item.def}` });
+    members += 1;
+  } else if (item.kind === 'struct') {
+    const cls = { name: item.name, doc: item.js_doc, body: item.def ? [item.def] : [] };
+    classes.set(item.name, cls);
+    parts.push({ cls });
+  } else if (item.kind === 'impl') {
+    const cls = classes.get(item.name);
+    if (!cls) throw new Error(`impl for an unknown class: ${item.name}`);
+    cls.body.push(item.def);
+  } else {
+    throw new Error(`unhandled napi type-def kind ${item.kind} (${item.name}) - teach gen-types.mjs about it`);
+  }
+}
+
+const nativeBlock = [
+  "// -- generated from the addon's `#[napi]` surface; edit crates/kui-node/src/lib.rs, then `npm run gen` --",
+  ...parts.map((p) => {
+    if (!p.cls) return p.text;
+    const body = p.cls.body.join('\n');
+    members += (body.match(/^ [A-Za-z]/gm) ?? []).length;
+    return `${p.cls.doc}export declare class ${p.cls.name} {\n${indent(body)}\n}`;
+  }),
+  '// -- end generated --',
+].join('\n\n');
+
+const indexPath = new URL('./index.d.ts', import.meta.url);
+const indexSrc = readFileSync(indexPath, 'utf8');
+const nativeRe = /\/\/ -- generated from the addon's `#\[napi\]` surface[\s\S]*?\/\/ -- end generated --/;
+if (!nativeRe.test(indexSrc)) throw new Error('generated-region markers not found in index.d.ts');
+writeFileSync(indexPath, indexSrc.replace(nativeRe, nativeBlock));
+console.log(`index.d.ts: ${classes.size} classes, ${members} members generated from the #[napi] surface`);

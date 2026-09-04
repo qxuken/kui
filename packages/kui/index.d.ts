@@ -397,7 +397,6 @@ export type EditKeyName =
   | 'backspace' | 'delete' | 'enter' | 'tab'
   | 'selectall' | 'escape' | 'undo' | 'redo';
 
-/** A headless kui core: build frames from JSX trees, feed input, poll events. */
 /** A scroll container's retained offset, in logical px: positive means the
  *  content has moved up / left inside it. */
 export interface ScrollOffset {
@@ -424,155 +423,6 @@ export interface ScrollGeometry {
   maxOffset: ScrollOffset;
 }
 
-export declare class Ctx {
-  constructor();
-  /** Lowers a JSX tree into one frame: encodes it to the flat binary IR
-   *  stream, then one zero-copy boundary crossing lowers it. */
-  frame(width: number, height: number, scale: number, tree: KuiNode): void;
-  /** `frame` from an already-encoded binary stream, for callers that own
-   *  their encoder (`createEncoder(protocol())`). */
-  frameBinary(width: number, height: number, scale: number, stream: Float64Array, strings: Uint8Array): void;
-  /** Frame clock for `transition` props (monotonic seconds, any origin).
-   *  Set before each frame; never setting it makes transitions snap. */
-  setTime(nowSecs: number): void;
-  /** True when the last frame left a transition mid-flight. */
-  animating(): boolean;
-  cursor(x: number, y: number): void;
-  cursorLeft(): void;
-  /** A button press or release. `button` defaults to 'primary'; only that
-   *  one presses, drags, places the caret and clicks. 'secondary' asks the
-   *  node under the pointer for a context menu and moves nothing else;
-   *  nothing routes 'middle' yet. */
-  mouse(down: boolean, clicks?: number, button?: MouseButtonName): void;
-  scroll(dx: number, dy: number): void;
-  text(text: string): void;
-  key(name: EditKeyName, mods?: KeyMods): void;
-  /** Raw key press for onKey sinks: a single character or a name
-   *  ("left", "enter", "f5", ...). `repeat` marks an auto-repeat. */
-  keyDown(code: string, mods?: KeySinkMods, repeat?: boolean): void;
-  /** The release of a key pressed with `keyDown`, spelled the same way; the
-   *  sink hears `{kind:'key', phase:'up', ...}` with a null `text`. */
-  keyUp(code: string, mods?: KeySinkMods): void;
-  /** Physical modifier state changed; the host gets a
-   *  `{kind:"modifiers", shift, ctrl, alt, super}` message when it differs. */
-  modifiers(mods?: KeySinkMods): void;
-  /** Registers a w×h RGBA image; returns its id for `<image src={id}>`. */
-  addImage(width: number, height: number, rgba: Buffer): string;
-  removeImage(id: string): void;
-  /** Registers a font from file bytes (TTF/OTF/TTC); returns its id for the
-   *  `font` prop on `<text>` / `<edit>`. Throws when no usable face is found. */
-  addFont(data: Buffer): string;
-  /** The id for a font family by name — installed, or loaded with
-   *  `loadFontsDir` / `loadFontFile`; null when none matches. The same
-   *  family always gets the same id. */
-  addSystemFont(name: string): string | null;
-  /** Registers a font file by path (memory-mapped); throws when it cannot be
-   *  read or holds no usable face. */
-  loadFontFile(path: string): string;
-  /** Loads every font file under a folder (recursively) so its families can
-   *  be picked by name with `addSystemFont`; returns the face count. */
-  loadFontsDir(dir: string): number;
-  removeFont(id: string): void;
-  /** Family names of every font the core can see (sorted). */
-  systemFontFamilies(): string[];
-  /** Registers a sound from its encoded bytes (wav/ogg/mp3/flac); returns
-   *  its id for `<audio src>`, `clickSound` / `hoverSound`, and `play`. */
-  addSound(data: Buffer): string;
-  removeSound(id: string): void;
-  /** Starts a playback; returns its id for stop/setVolume/pause/resume.
-   *  Headless, nothing plays: the command queues for `audioCommands()`. */
-  play(sound: string, opts?: PlayOptions): number;
-  stop(playback: number, fadeMs?: number): void;
-  setVolume(playback: number, volume: number, tweenMs?: number): void;
-  pause(playback: number, fadeMs?: number): void;
-  resume(playback: number, fadeMs?: number): void;
-  setMasterVolume(volume: number, tweenMs?: number): void;
-  /** Drains the audio commands the core queued (tests, custom drivers). */
-  audioCommands(): AudioCommand[];
-  /** A custom driver reports a playback finished on its own; a tagged one
-   *  becomes a `SoundMsg` in `pollEvents`. */
-  audioEnded(playback: number): void;
-  /** Events since the last poll. `A` types their payloads — the app's own
-   *  union, or one core message type when only that is being watched. */
-  pollEvents<A = AppMsg | CoreMsg>(): UiEvent<A>[];
-  /** Measures text the way layout would, without adding a node: `content`
-   *  is whatever `<text>` takes (a string, or children with `<span>`s),
-   *  `style` its props (`size`, `font`, `wrap`, `maxLines`, `ellipsis`, …),
-   *  `maxWidth` the width to wrap at. Works before the first frame. Size a
-   *  column to its widest label, or pick the tier that fits, from these
-   *  numbers instead of constants found by screenshot. */
-  measureText(content: KuiNode, style?: TextProps, maxWidth?: number): TextMetrics;
-  /** Drains the warnings the core raised since the last call; `createApp`
-   *  collects them on `app.warnings` for you. */
-  warnings(): Warning[];
-  /** Whether the core runs the checks behind `warnings`. A bare `Ctx` has
-   *  them on; `createApp` / `runWindowed` turn them off under
-   *  `NODE_ENV=production`. */
-  setDiagnostics(on: boolean): void;
-  /** The window title the last frame declared (a root `<box title>`), or
-   *  null when it declared none. */
-  windowTitle(): string | null;
-  /** What assistive technology sees of the last frame (see `AccessTree`). */
-  accessTree(): AccessTree;
-  /** A request from assistive technology on a node: an action it
-   *  advertises, with `value` the new text for `setValue`. Resolved like
-   *  its pointer/keyboard equivalent, so the events land in `pollEvents`. */
-  access(key: string, action: AccessAction, value?: string | AccessArg): void;
-  isHovered(key: string): boolean;
-  isPressed(key: string): boolean;
-  /** Whether a node holds keyboard focus — any node: an editor, an `onKey`
-   *  sink, a button Tab landed on. */
-  isFocused(key: string): boolean;
-  /** The node holding keyboard focus, or null. Tab / Shift-Tab (`key('tab')`)
-   *  walk every control in tree order; Enter and Space press the focused
-   *  one; the arrows nudge a focused slider. */
-  focused(): string | null;
-  /** Whether focus got where it is by keyboard or assistive technology
-   *  rather than a click — when the focus ring (or `focusBg`) shows. */
-  focusVisible(): boolean;
-  /** Moves keyboard focus to a node now; `<box keyFocus>` is the
-   *  declarative form (it takes focus when it starts being declared). */
-  focus(key: string): void;
-  blur(): void;
-  /** What Tab / Shift-Tab do, as calls — for an `onKey` sink that binds
-   *  Tab itself and wants to hand the keyboard on. */
-  focusNext(): void;
-  focusPrev(): void;
-  /** Scrolls whatever contains a node so it shows — "scroll to the selected
-   *  row", which needs container geometry only the core has. Resolved
-   *  against the *next* frame's layout (one is requested), so a row the
-   *  view is about to declare for the first time reveals fine; a key that
-   *  frame does not declare, or one with nothing scrollable above it, is a
-   *  no-op and is not kept for a later frame. Last reveal before a frame
-   *  wins. */
-  reveal(key: string): void;
-  /** A scroll container's retained offset as the last layout clamped it
-   *  (positive = content moved up / left) — stash it in a model and hand it
-   *  back to `setScroll`. `{x: 0, y: 0}` for a node that never scrolled. */
-  scrollOffset(key: string): ScrollOffset;
-  /** Sets that offset the way the wheel would; the next layout clamps it,
-   *  so `(0, 0)` jumps to the top and a huge `y` to the end without knowing
-   *  the content height. */
-  setScroll(key: string, x: number, y: number): void;
-  /** Everything the last layout resolved for a scroll container — its box,
-   *  its content size and the clamped offset — or `null` for a key no
-   *  layout has resolved as one.
-   *
-   *  This is what makes a long list affordable: the core builds every child
-   *  a view declares, so ten thousand rows cost ten thousand rows, but a
-   *  view that knows `h` and `offset.y` can render the rows that fit plus
-   *  two spacers holding the space of the rest. Read while building it
-   *  describes the previous frame, so a resize slices one frame late —
-   *  render a row or two extra at each end. */
-  scrollGeometry(key: string): ScrollGeometry | null;
-  editText(key: string): string | null;
-  setEditText(key: string, text: string): void;
-  stats(): FrameStats;
-  quads(): Buffer;
-}
-
-export declare function quadStride(): number;
-
 export interface WindowOptions {
   width?: number;
   height?: number;
@@ -594,102 +444,561 @@ export interface WindowOptions {
   diagnostics?: boolean;
 }
 
-/** The binary-frame protocol tables ({version, op, prop}) from the addon. */
-export declare function protocol(): { version: number; op: Record<string, number>; prop: Record<string, number> };
+/** The binary-frame protocol tables the addon exports: the stream's version,
+ *  its opcodes and its prop ids, which is everything `createEncoder` needs.
+ *  (`protocol()` also carries the schema tables `npm run gen` reads; those
+ *  are generator input, not app surface, so they are not typed here.) */
+export interface Protocol {
+  version: number;
+  op: Record<string, number>;
+  prop: Record<string, number>;
+}
 
 /** A reusable frame encoder for the binary IR path (drivers make their own). */
-export declare function createEncoder(p: ReturnType<typeof protocol>): {
+export declare function createEncoder(p: Protocol): {
   encode(tree: KuiNode): { stream: Float64Array; strings: Uint8Array };
 };
 
+// -- generated from the addon's `#[napi]` surface; edit crates/kui-node/src/lib.rs, then `npm run gen` --
+
 /**
- * A real kui window (winit + wgpu) with a pumped event loop. Prefer
- * `runWindowed` unless you're building your own loop. One per process.
+ * The binary-frame protocol tables (`{version, op, prop}`). The JS encoder
+ * reads its opcodes and prop ids from here at module init, so the two sides
+ * cannot drift.
+ */
+export declare function protocol(): Protocol
+
+/**
+ * A headless kui core: build frames from JSX trees, feed input, poll events.
+ * Everything a window does except open one, so an app's behaviour is
+ * testable without a display.
+ */
+export declare class Ctx {
+  constructor()
+  /**
+   * `frame` from an already-encoded binary instruction stream, for
+   * callers that own their encoder (`createEncoder(protocol())`) — the
+   * fastest path, and what the JS drivers use. Buffers are read
+   * zero-copy.
+   */
+  frameBinary(width: number, height: number, scale: number, stream: Float64Array, strings: Uint8Array): void
+  /**
+   * The frame clock for `transition` props: monotonic seconds, any
+   * origin. Set before each frame; never setting it makes transitions
+   * snap (the default for headless tests).
+   */
+  setTime(nowSecs: number): void
+  cursor(x: number, y: number): void
+  cursorLeft(): void
+  /**
+   * A button press or release. `clicks`: 1 single, 2 double (word
+   * select), 3 triple (line select). `button` defaults to "primary", and
+   * only that one presses, drags, places the caret and clicks;
+   * "secondary" asks the node under the pointer for a context menu and
+   * moves nothing else, and nothing routes "middle" yet.
+   */
+  mouse(down: boolean, clicks?: number, button?: MouseButtonName): void
+  scroll(dx: number, dy: number): void
+  /** Committed text input (typing, paste); routed to the focused editor. */
+  text(text: string): void
+  /**
+   * Editing key by name ("left", "backspace", "enter", ...) with optional
+   * modifiers `{shift, word, doc}`.
+   */
+  key(name: EditKeyName, mods?: KeyMods): void
+  /**
+   * Raw key press for `onKey` sinks (modal keymaps): a single character
+   * (layout-resolved, e.g. "W" or "$"), a name ("left", "enter", "escape",
+   * "f5", ...), with mods `{shift, ctrl, alt, super}`. Editing keys for
+   * focused editors still go through `key()`. `repeat` marks a press the
+   * OS auto-repeated. The sink hears `{kind:"key", phase:"down", ...}`.
+   */
+  keyDown(code: string, mods?: KeySinkMods, repeat?: boolean): void
+  /**
+   * The release of a key, spelled the way `keyDown` spells it: the sink
+   * hears `{kind:"key", phase:"up", ...}` with `text` null. A release
+   * whose press the sink never got resolves nothing, and moving focus
+   * while a key is held delivers the `up` first.
+   */
+  keyUp(code: string, mods?: KeySinkMods): void
+  /**
+   * Physical modifier state changed: `{shift, ctrl, alt, super}`. The
+   * host receives `{kind:"modifiers", ...}` when it differs from the
+   * last report.
+   */
+  modifiers(mods?: KeySinkMods): void
+  /**
+   * Drains the audio commands the core queued, as plain objects
+   * (`{kind:"play", playback, sound, volume, loop, fadeIn}`, ...) — what a
+   * windowed driver would play. For tests and custom drivers.
+   */
+  audioCommands(): AudioCommand[]
+  /**
+   * A custom driver reports a playback finished on its own; a tagged
+   * one becomes a `sound` event in `pollEvents`.
+   */
+  audioEnded(playback: number): void
+  /**
+   * The window title the last frame declared (a root `<box title>`), or
+   * null when it declared none. `runWindowed` applies it to the real
+   * window; a bare `Ctx` hands it back so a test can assert on it.
+   */
+  windowTitle(): string | null
+  /**
+   * Raw quads for the finished frame, `quadStride()` bytes each, laid out
+   * as kui-ffi's KuiQuad (see include/kui.h). Copied into the Buffer.
+   */
+  quads(): Buffer
+  /**
+   * Registers a w×h RGBA image (pixels copied); returns its id for
+   * `<image src={id}>`. Stable until `removeImage`.
+   */
+  addImage(width: number, height: number, rgba: Buffer): string
+  removeImage(id: string): void
+  /**
+   * Registers a font from file bytes (TTF/OTF/TTC); returns its id
+   * for the `font` prop on `<text>` / `<edit>`. Throws when the
+   * data holds no usable face.
+   */
+  addFont(data: Buffer): string
+  /**
+   * Registers an installed font by family name; null when none
+   * matches (see `systemFontFamilies`). Also finds families loaded
+   * with `loadFontsDir` / `loadFontFile`; the same family gets the
+   * same id.
+   */
+  addSystemFont(name: string): string | null
+  /**
+   * Registers a font file by path (memory-mapped); throws when it
+   * cannot be read or holds no usable face.
+   */
+  loadFontFile(path: string): string
+  /**
+   * Loads every font file under a folder (recursively) so its
+   * families can be picked by name with `addSystemFont`; returns
+   * the face count.
+   */
+  loadFontsDir(dir: string): number
+  removeFont(id: string): void
+  /**
+   * Family names of every font the core can see, installed or
+   * loaded (sorted).
+   */
+  systemFontFamilies(): Array<string>
+  /**
+   * Registers a sound from its encoded bytes (wav/ogg/mp3/flac);
+   * returns its id for `<audio src>`, the `clickSound` /
+   * `hoverSound` props and `play`. Stable until `removeSound`.
+   */
+  addSound(data: Buffer): string
+  removeSound(id: string): void
+  /**
+   * Starts a playback: `{volume, loop, fadeIn, tag}`; returns its
+   * id for `stop` / `setVolume` / `pause` / `resume`. A `tag` comes
+   * back as a `SoundMsg` when the playback finishes on its own.
+   * A window plays it on its own device at once; headless nothing
+   * sounds and the command queues for `audioCommands()`.
+   */
+  play(sound: string, opts?: PlayOptions): number
+  stop(playback: number, fadeMs?: number): void
+  setVolume(playback: number, volume: number, tweenMs?: number): void
+  pause(playback: number, fadeMs?: number): void
+  resume(playback: number, fadeMs?: number): void
+  setMasterVolume(volume: number, tweenMs?: number): void
+  /**
+   * Events since the last poll: `[{origin, key, payload}]`,
+   * payloads as plain data (your Elm messages come back out
+   * here). `A` types them — the app's own union, or one core
+   * message type when only that is being watched.
+   */
+  pollEvents<A = AppMsg | CoreMsg>(): UiEvent<A>[]
+  /**
+   * True when the last frame left a transition mid-flight. A window
+   * schedules its own redraws for that; this is for tests and
+   * drivers that want to know when motion has settled.
+   */
+  animating(): boolean
+  /** Summary of the last frame's display list. */
+  stats(): FrameStats
+  /**
+   * Measures text the way layout would, without adding a node:
+   * `{width, height, lines}` in logical px, wrapped to `maxWidth`
+   * when given. `content` is whatever `<text>` takes (a string, or
+   * children with `<span>`s); `style` the `<text>` props (`size`,
+   * `font`, `wrap`, `maxLines`, `ellipsis`, ...). Works before the
+   * first frame; a window answers at its own scale once a frame has
+   * run. Size a column to its widest label, or pick the tier that
+   * fits, from these numbers instead of constants found by
+   * screenshot.
+   */
+  measureText(content: KuiNode, style?: TextProps, maxWidth?: number): TextMetrics
+  /**
+   * Drains the warnings the core raised since the last call
+   * (see `Warning`), each distinct (code, node) pair once.
+   * `createApp` collects them on `app.warnings` for you, and
+   * `runWindowed` prints them, unless either was told not to.
+   */
+  warnings(): Warning[]
+  /**
+   * Turns the per-frame diagnostic checks behind `warnings` on or
+   * off. A bare `Ctx` has them on; `createApp` / `runWindowed`
+   * turn them off under `NODE_ENV=production`.
+   */
+  setDiagnostics(on: boolean): void
+  /**
+   * What assistive technology sees of the last frame (see
+   * `AccessTree`). A window hands it to the platform by itself
+   * (AccessKit); this is for tests and tooling.
+   */
+  accessTree(): AccessTree
+  /**
+   * A request from assistive technology on a node (`key`, hex as in
+   * events): an `AccessAction` name the node advertises, with
+   * `value` the new text for `setValue`. Resolved like its
+   * pointer/keyboard equivalent, so the resulting events come out of
+   * `pollEvents`. A real screen reader's requests arrive through a
+   * window on their own.
+   */
+  access(key: string, action: AccessAction, value?: string | AccessArg): void
+  /**
+   * Hover state as of the last frame (keys come from events, e.g.
+   * an `onHover` enter). For plain hover styling prefer the
+   * `hoverBg` / `pressedBg` props — the core resolves those without
+   * a round trip.
+   */
+  isHovered(key: string): boolean
+  isPressed(key: string): boolean
+  /**
+   * Whether a node holds keyboard focus — any node: an editor, an
+   * `onKey` sink, a button Tab landed on (see `focused`).
+   */
+  isFocused(key: string): boolean
+  /**
+   * The node holding keyboard focus (hex key), or null. Tab /
+   * Shift-Tab (`key("tab")`) walk every control in tree order,
+   * Enter and Space press the focused one, and the arrows nudge a
+   * focused slider.
+   */
+  focused(): string | null
+  /**
+   * Whether focus got where it is by keyboard or assistive
+   * technology rather than a click — when it shows (the ring, or
+   * `focusBg`).
+   */
+  focusVisible(): boolean
+  /**
+   * Moves keyboard focus to a node now (an editor, an `onKey` sink,
+   * a control, a `focusable` box); `keyFocus` on a box is the
+   * declarative, edge-triggered form.
+   */
+  focus(key: string): void
+  blur(): void
+  /**
+   * What Tab does, as a call — for an `onKey` sink that binds Tab
+   * itself and wants to hand the keyboard on: the next focusable
+   * node in tree order, wrapping.
+   */
+  focusNext(): void
+  /** What Shift-Tab does. */
+  focusPrev(): void
+  /**
+   * Scrolls whatever contains a node so it shows — "scroll to the
+   * selected row", which needs the container geometry only the core
+   * has. The request resolves against the *next* frame's layout (one
+   * is requested), so a row the view is about to declare for the
+   * first time reveals fine. If that frame does not declare the key,
+   * or nothing above it scrolls, it is a no-op and is not kept for a
+   * later frame; two reveals before one frame are contradictory, so
+   * the last wins.
+   */
+  reveal(key: string): void
+  /**
+   * A scroll container's retained offset `{x, y}` as the last layout
+   * clamped it (positive = content moved up / left) — the number to
+   * keep in a model and hand back to `setScroll`. Zero for a node
+   * that never scrolled.
+   */
+  scrollOffset(key: string): ScrollOffset
+  /**
+   * Everything the last layout resolved for the scroll container
+   * `key`: its box `{x, y, w, h}`, its content size `{contentW,
+   * contentH}` and the clamped `offset` — `null` for a key no layout
+   * has resolved as a container.
+   *
+   * This is what makes a long list affordable. The core builds every
+   * child a view declares, so ten thousand rows cost ten thousand
+   * rows; knowing `h` and `offset.y`, a view renders the rows that
+   * fit plus two spacers holding the space of the rest. Read while
+   * building, it describes the previous frame, so a resize slices one
+   * frame late — render a row or two extra at each end.
+   */
+  scrollGeometry(key: string): ScrollGeometry | null
+  /**
+   * Sets that offset the way the wheel would; the next frame's
+   * layout clamps it, so `(0, 0)` jumps to the top and a huge `y` to
+   * the end without knowing the content height.
+   */
+  setScroll(key: string, x: number, y: number): void
+  editText(key: string): string | null
+  setEditText(key: string, text: string): void
+}
+
+/** Byte stride of one quad in the `quads()` buffer. */
+export declare function quadStride(): number
+
+/**
+ * A real kui window (winit + wgpu) driven from Node. The event loop is
+ * pumped, not run: call `pump()` from a timer loop so winit and libuv share
+ * the main thread — or prefer `runWindowed`, which does that for you, unless
+ * you are building your own loop. One window per process; winit event loops
+ * are not recreatable on every platform.
  */
 export declare class KuiWindow {
-  constructor(title: string, options?: WindowOptions);
+  /**
+   * Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
+   * chrome: "native" | "custom" | "borderless"}`. The min/max pairs bound
+   * what the user can resize the window to; either half may stand alone.
+   */
+  constructor(title: string, options?: WindowOptions)
+  /**
+   * `setView` with a flat binary instruction stream (see `Ctx::frame_binary`).
+   * Copied once so redraws (resize, hover) can re-lower it between pumps.
+   */
+  setViewBinary(stream: Float64Array, strings: Uint8Array): void
+  /**
+   * Processes pending OS events without blocking. Returns false once the
+   * window has closed.
+   */
+  pump(): boolean
+  /**
+   * The window's inner size in logical px plus its scale factor:
+   * `{width, height, scale}`. Readable before the first frame (in
+   * `setup`), and re-reported as a `{kind:"resize", width, height,
+   * scale}` event through `pollEvents` — a `ResizeMsg` — whenever the
+   * window changes size or moves to a display with another DPI.
+   */
+  size(): WindowSize
+  /**
+   * Frame timing measured by the runner — what the latency HUD draws,
+   * as data: `{frames, last: {inputMs, viewMs, layoutMs, renderMs,
+   * waitMs, totalMs, workMs} | null, avgTotalMs, maxTotalMs, avgWorkMs,
+   * maxWorkMs}` over the last 120 frames. `waitMs` is vsync
+   * backpressure; `workMs` is everything else.
+   */
+  frameStats(): FrameTiming
+  /** Asks the window to close; the next pump returns false. */
+  close(): void
+  /**
+   * Registers a w×h RGBA image (pixels copied); returns its id for
+   * `<image src={id}>`. Stable until `removeImage`.
+   */
+  addImage(width: number, height: number, rgba: Buffer): string
+  removeImage(id: string): void
+  /**
+   * Registers a font from file bytes (TTF/OTF/TTC); returns its id
+   * for the `font` prop on `<text>` / `<edit>`. Throws when the
+   * data holds no usable face.
+   */
+  addFont(data: Buffer): string
+  /**
+   * Registers an installed font by family name; null when none
+   * matches (see `systemFontFamilies`). Also finds families loaded
+   * with `loadFontsDir` / `loadFontFile`; the same family gets the
+   * same id.
+   */
+  addSystemFont(name: string): string | null
+  /**
+   * Registers a font file by path (memory-mapped); throws when it
+   * cannot be read or holds no usable face.
+   */
+  loadFontFile(path: string): string
+  /**
+   * Loads every font file under a folder (recursively) so its
+   * families can be picked by name with `addSystemFont`; returns
+   * the face count.
+   */
+  loadFontsDir(dir: string): number
+  removeFont(id: string): void
+  /**
+   * Family names of every font the core can see, installed or
+   * loaded (sorted).
+   */
+  systemFontFamilies(): Array<string>
+  /**
+   * Registers a sound from its encoded bytes (wav/ogg/mp3/flac);
+   * returns its id for `<audio src>`, the `clickSound` /
+   * `hoverSound` props and `play`. Stable until `removeSound`.
+   */
+  addSound(data: Buffer): string
+  removeSound(id: string): void
+  /**
+   * Starts a playback: `{volume, loop, fadeIn, tag}`; returns its
+   * id for `stop` / `setVolume` / `pause` / `resume`. A `tag` comes
+   * back as a `SoundMsg` when the playback finishes on its own.
+   * A window plays it on its own device at once; headless nothing
+   * sounds and the command queues for `audioCommands()`.
+   */
+  play(sound: string, opts?: PlayOptions): number
+  stop(playback: number, fadeMs?: number): void
+  setVolume(playback: number, volume: number, tweenMs?: number): void
+  pause(playback: number, fadeMs?: number): void
+  resume(playback: number, fadeMs?: number): void
+  setMasterVolume(volume: number, tweenMs?: number): void
+  /**
+   * Events since the last poll: `[{origin, key, payload}]`,
+   * payloads as plain data (your Elm messages come back out
+   * here). `A` types them — the app's own union, or one core
+   * message type when only that is being watched.
+   */
+  pollEvents<A = AppMsg | CoreMsg>(): UiEvent<A>[]
+  /**
+   * True when the last frame left a transition mid-flight. A window
+   * schedules its own redraws for that; this is for tests and
+   * drivers that want to know when motion has settled.
+   */
+  animating(): boolean
+  /** Summary of the last frame's display list. */
+  stats(): FrameStats
+  /**
+   * Measures text the way layout would, without adding a node:
+   * `{width, height, lines}` in logical px, wrapped to `maxWidth`
+   * when given. `content` is whatever `<text>` takes (a string, or
+   * children with `<span>`s); `style` the `<text>` props (`size`,
+   * `font`, `wrap`, `maxLines`, `ellipsis`, ...). Works before the
+   * first frame; a window answers at its own scale once a frame has
+   * run. Size a column to its widest label, or pick the tier that
+   * fits, from these numbers instead of constants found by
+   * screenshot.
+   */
+  measureText(content: KuiNode, style?: TextProps, maxWidth?: number): TextMetrics
+  /**
+   * Drains the warnings the core raised since the last call
+   * (see `Warning`), each distinct (code, node) pair once.
+   * `createApp` collects them on `app.warnings` for you, and
+   * `runWindowed` prints them, unless either was told not to.
+   */
+  warnings(): Warning[]
+  /**
+   * Turns the per-frame diagnostic checks behind `warnings` on or
+   * off. A bare `Ctx` has them on; `createApp` / `runWindowed`
+   * turn them off under `NODE_ENV=production`.
+   */
+  setDiagnostics(on: boolean): void
+  /**
+   * What assistive technology sees of the last frame (see
+   * `AccessTree`). A window hands it to the platform by itself
+   * (AccessKit); this is for tests and tooling.
+   */
+  accessTree(): AccessTree
+  /**
+   * A request from assistive technology on a node (`key`, hex as in
+   * events): an `AccessAction` name the node advertises, with
+   * `value` the new text for `setValue`. Resolved like its
+   * pointer/keyboard equivalent, so the resulting events come out of
+   * `pollEvents`. A real screen reader's requests arrive through a
+   * window on their own.
+   */
+  access(key: string, action: AccessAction, value?: string | AccessArg): void
+  /**
+   * Hover state as of the last frame (keys come from events, e.g.
+   * an `onHover` enter). For plain hover styling prefer the
+   * `hoverBg` / `pressedBg` props — the core resolves those without
+   * a round trip.
+   */
+  isHovered(key: string): boolean
+  isPressed(key: string): boolean
+  /**
+   * Whether a node holds keyboard focus — any node: an editor, an
+   * `onKey` sink, a button Tab landed on (see `focused`).
+   */
+  isFocused(key: string): boolean
+  /**
+   * The node holding keyboard focus (hex key), or null. Tab /
+   * Shift-Tab (`key("tab")`) walk every control in tree order,
+   * Enter and Space press the focused one, and the arrows nudge a
+   * focused slider.
+   */
+  focused(): string | null
+  /**
+   * Whether focus got where it is by keyboard or assistive
+   * technology rather than a click — when it shows (the ring, or
+   * `focusBg`).
+   */
+  focusVisible(): boolean
+  /**
+   * Moves keyboard focus to a node now (an editor, an `onKey` sink,
+   * a control, a `focusable` box); `keyFocus` on a box is the
+   * declarative, edge-triggered form.
+   */
+  focus(key: string): void
+  blur(): void
+  /**
+   * What Tab does, as a call — for an `onKey` sink that binds Tab
+   * itself and wants to hand the keyboard on: the next focusable
+   * node in tree order, wrapping.
+   */
+  focusNext(): void
+  /** What Shift-Tab does. */
+  focusPrev(): void
+  /**
+   * Scrolls whatever contains a node so it shows — "scroll to the
+   * selected row", which needs the container geometry only the core
+   * has. The request resolves against the *next* frame's layout (one
+   * is requested), so a row the view is about to declare for the
+   * first time reveals fine. If that frame does not declare the key,
+   * or nothing above it scrolls, it is a no-op and is not kept for a
+   * later frame; two reveals before one frame are contradictory, so
+   * the last wins.
+   */
+  reveal(key: string): void
+  /**
+   * A scroll container's retained offset `{x, y}` as the last layout
+   * clamped it (positive = content moved up / left) — the number to
+   * keep in a model and hand back to `setScroll`. Zero for a node
+   * that never scrolled.
+   */
+  scrollOffset(key: string): ScrollOffset
+  /**
+   * Everything the last layout resolved for the scroll container
+   * `key`: its box `{x, y, w, h}`, its content size `{contentW,
+   * contentH}` and the clamped `offset` — `null` for a key no layout
+   * has resolved as a container.
+   *
+   * This is what makes a long list affordable. The core builds every
+   * child a view declares, so ten thousand rows cost ten thousand
+   * rows; knowing `h` and `offset.y`, a view renders the rows that
+   * fit plus two spacers holding the space of the rest. Read while
+   * building, it describes the previous frame, so a resize slices one
+   * frame late — render a row or two extra at each end.
+   */
+  scrollGeometry(key: string): ScrollGeometry | null
+  /**
+   * Sets that offset the way the wheel would; the next frame's
+   * layout clamps it, so `(0, 0)` jumps to the top and a huge `y` to
+   * the end without knowing the content height.
+   */
+  setScroll(key: string, x: number, y: number): void
+  editText(key: string): string | null
+  setEditText(key: string, text: string): void
+}
+
+// -- end generated --
+
+// The two calls the JS package adds to those classes: a frame crosses the
+// boundary already encoded, and `encoder.js` is the only thing that encodes
+// one, so `frame` / `setView` live on the prototypes (see index.js) rather
+// than in the addon. Declaration merging puts them on the classes above.
+
+export interface Ctx {
+  /** Lowers a JSX tree into one frame: encodes it to the flat binary IR
+   *  stream, then one zero-copy boundary crossing lowers it. */
+  frame(width: number, height: number, scale: number, tree: KuiNode): void;
+}
+
+export interface KuiWindow {
   /** Stores the tree future redraws lower, and schedules one. Encodes it to
    *  the binary IR stream first. */
   setView(tree: KuiNode): void;
-  /** `setView` from an already-encoded binary stream. */
-  setViewBinary(stream: Float64Array, strings: Uint8Array): void;
-  /** Processes pending OS events; false once the window has closed. */
-  pump(): boolean;
-  /** The window's inner size (logical px) and scale factor. Readable before
-   *  the first frame (in `setup`); changes to it also arrive through
-   *  `pollEvents` as a `ResizeMsg`. */
-  size(): WindowSize;
-  /** True when the last frame left a transition mid-flight. The window
-   *  schedules its own redraws for that; this is for tests and drivers that
-   *  want to know when motion has settled. */
-  animating(): boolean;
-  /** Summary of the last frame's display list (same shape as `Ctx.stats`). */
-  stats(): FrameStats;
-  /** Frame timing measured by the window's runner — the latency HUD as
-   *  data. `Ctx` has no clock of its own, so this lives on the window. */
-  frameStats(): FrameTiming;
-  pollEvents<A = AppMsg | CoreMsg>(): UiEvent<A>[];
-  close(): void;
-  editText(key: string): string | null;
-  setEditText(key: string, text: string): void;
-  isFocused(key: string): boolean;
-  /** Keyboard focus as data, as on `Ctx`: the focused node, whether the
-   *  focus shows, and moving it (a move requests a redraw). */
-  focused(): string | null;
-  focusVisible(): boolean;
-  focus(key: string): void;
-  blur(): void;
-  focusNext(): void;
-  focusPrev(): void;
-  /** Scrolling as data, as on `Ctx`: reveal a node, or read and write a
-   *  container's retained offset (a write requests a redraw). `reveal`
-   *  resolves against the next frame's layout — a key that frame does not
-   *  declare is a no-op. */
-  reveal(key: string): void;
-  scrollOffset(key: string): ScrollOffset;
-  setScroll(key: string, x: number, y: number): void;
-  /** The container's box, content size and clamped offset as of the last
-   *  layout; `null` until one has resolved it. See `Ctx.scrollGeometry`. */
-  scrollGeometry(key: string): ScrollGeometry | null;
-  /** Hover state as of the last frame; keys come from events (an `onHover`
-   *  enter, a click). For plain hover styling prefer the `hoverBg` /
-   *  `pressedBg` props — the core resolves those without a JS round trip. */
-  isHovered(key: string): boolean;
-  isPressed(key: string): boolean;
-  /** Registers a w×h RGBA image; returns its id for `<image src={id}>`. */
-  addImage(width: number, height: number, rgba: Buffer): string;
-  removeImage(id: string): void;
-  /** Registers a font from file bytes; see `Ctx.addFont`. */
-  addFont(data: Buffer): string;
-  /** The id for a font family by name; see `Ctx.addSystemFont`. */
-  addSystemFont(name: string): string | null;
-  loadFontFile(path: string): string;
-  loadFontsDir(dir: string): number;
-  removeFont(id: string): void;
-  systemFontFamilies(): string[];
-  /** Registers a sound; see `Ctx.addSound`. */
-  addSound(data: Buffer): string;
-  removeSound(id: string): void;
-  /** Starts a playback on the window's audio device at once; see `Ctx.play`.
-   *  A `tag` comes back through `pollEvents` as a `SoundMsg`. */
-  play(sound: string, opts?: PlayOptions): number;
-  stop(playback: number, fadeMs?: number): void;
-  setVolume(playback: number, volume: number, tweenMs?: number): void;
-  pause(playback: number, fadeMs?: number): void;
-  resume(playback: number, fadeMs?: number): void;
-  setMasterVolume(volume: number, tweenMs?: number): void;
-  /** Measures text the way layout would; see `Ctx.measureText`. At the
-   *  window's scale once a frame has run. */
-  measureText(content: KuiNode, style?: TextProps, maxWidth?: number): TextMetrics;
-  /** Drains the core's warnings; `runWindowed` prints them itself unless
-   *  opened with `warnings: false`. */
-  warnings(): Warning[];
-  setDiagnostics(on: boolean): void;
-  /** The last frame's access tree; the window hands it to the platform
-   *  (AccessKit) by itself — this is for tests and tooling. */
-  accessTree(): AccessTree;
-  /** See `Ctx.access`; a real screen reader's requests arrive on their own. */
-  access(key: string, action: AccessAction, value?: string | AccessArg): void;
 }
 
 /** What both drivers take. `S` is the surface the loop drives, and the

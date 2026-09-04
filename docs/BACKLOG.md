@@ -126,7 +126,59 @@ on anything outside schema ∪ allow-list. The warning has to be raised from the
 binding, so a small `Core` entry point may be needed; keep it behind
 `set_diagnostics`.
 
-### `.` P5 — Generate `index.d.ts` instead of hand-writing it
+### `.` P5 — Generate `index.d.ts` instead of hand-writing it — **done (2026-09-04)**
+
+The addon's surface — `protocol`, `quadStride`, `Ctx` and `KuiWindow`, 102
+members — is now generated into a marked region of `index.d.ts`, the same
+shape `jsx-runtime.d.ts` and `docs/props.md` already had, and CI's
+`git diff --exit-code` covers it. `crates/kui-node/build.rs` sets
+`NAPI_TYPE_DEF_TMP_FOLDER` through `cargo::rustc-env` (napi-rs writes its
+derived signatures only when that names a directory, and does not create
+one), so any build of the addon leaves them in `target/napi-type-defs` and
+`npm run gen` renders them. A method added to one class only — what D1
+could not close — now fails the build; adding one to `core_methods!` and
+regenerating puts `driftProbe(): number` on both classes, which is how that
+was checked.
+
+The output was checked before it was trusted. The risk this codebase was
+warned about is not one: `#[napi]` is a proc macro and expands *after*
+`core_methods!`, so both classes come out complete with their doc comments,
+and `Buffer` params arrive as `Buffer` (napi carries a marker for a CLI that
+wants to `import` the type, and a plain name in the `def` for one that does
+not).
+
+`Json` is where it was **not** good enough — every payload parameter and
+return derives as `any`, which would have turned `accessTree()`,
+`pollEvents()`, `measureText()`, `scrollGeometry()` and a dozen more into
+untyped calls. That is the case this entry called for the weaker fallback (a
+script asserting every `#[napi]` method appears in a hand-written file), and
+it was **not** taken: `#[napi(ts_return_type = ...)]`, `ts_args_type` and
+`ts_generic_types` let the Rust side name the exact TypeScript type at the
+definition, so the generated file is as precisely typed as the hand-written
+one was — `pollEvents<A = AppMsg | CoreMsg>(): UiEvent<A>[]` and all. Keeping
+a second copy and only checking it is strictly worse than not having one.
+
+Two departures from the plan, both worth arguing with. The generated half is
+a **region inside `index.d.ts`** rather than a separate file the hand-written
+one re-exports: the repo already generates regions this way, and a separate
+file would have needed either a phantom `./native.js` specifier or a subclass
+to hang `frame` / `setView` on. Those two are the only JS-side additions to
+the classes (they live on the prototypes in `index.js`, since `encoder.js` is
+the only thing that encodes a frame) and they reach the generated classes by
+class/interface declaration merging, in the same file. And the doc comments
+are now the Rust ones — the `.d.ts` copy had prose the Rust copy did not
+(what `measureText`'s numbers are for, that `createApp` collects warnings for
+you, what the `A` on `pollEvents` is), which was folded into `lib.rs` rather
+than dropped.
+
+`npm run gen` reads `target/napi-type-defs/kui-node` and does not build. The
+one hole is a target dir whose defs file was deleted but whose addon is still
+up to date: a plain `cargo build` says "Fresh" and writes nothing, so gen
+re-runs it with `NAPI_FORCE_BUILD_KUI_NODE` — the env var napi-build declares
+`rerun-if-env-changed` on — rather than telling the user to run a command
+that would not work.
+
+The original finding:
 
 `packages/kui/index.d.ts` is 686 hand-written lines describing the napi surface,
 and CI's `git diff --exit-code` covers only `jsx-runtime.d.ts` and

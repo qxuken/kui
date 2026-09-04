@@ -31,7 +31,7 @@ fn err(msg: impl AsRef<str>) -> napi::Error {
 /// The binary-frame protocol tables (`{version, op, prop}`). The JS encoder
 /// reads its opcodes and prop ids from here at module init, so the two sides
 /// cannot drift.
-#[napi]
+#[napi(ts_return_type = "Protocol")]
 pub fn protocol() -> Json {
     binary::protocol_json()
 }
@@ -257,6 +257,9 @@ fn edit_key_of(name: &str) -> Result<EditKey> {
     })
 }
 
+/// A headless kui core: build frames from JSX trees, feed input, poll events.
+/// Everything a window does except open one, so an app's behaviour is
+/// testable without a display.
 #[napi]
 pub struct Ctx {
     core: Core,
@@ -274,9 +277,10 @@ impl Ctx {
         }
     }
 
-    /// `frame` with the tree as a flat binary instruction stream (see
-    /// `binary.rs` and the JS encoder) — the fastest path, and what the JS
-    /// drivers use. Buffers are read zero-copy.
+    /// `frame` from an already-encoded binary instruction stream, for
+    /// callers that own their encoder (`createEncoder(protocol())`) — the
+    /// fastest path, and what the JS drivers use. Buffers are read
+    /// zero-copy.
     #[napi]
     pub fn frame_binary(
         &mut self,
@@ -319,11 +323,12 @@ impl Ctx {
         self.input(InputEvent::CursorLeft);
     }
 
-    /// `clicks`: 1 single, 2 double (word select), 3 triple (line select).
-    /// `button`: "primary" (the default), "secondary" — which asks the node
-    /// under the pointer for a context menu and moves nothing else — or
-    /// "middle", which nothing routes yet.
-    #[napi]
+    /// A button press or release. `clicks`: 1 single, 2 double (word
+    /// select), 3 triple (line select). `button` defaults to "primary", and
+    /// only that one presses, drags, places the caret and clicks;
+    /// "secondary" asks the node under the pointer for a context menu and
+    /// moves nothing else, and nothing routes "middle" yet.
+    #[napi(ts_args_type = "down: boolean, clicks?: number, button?: MouseButtonName")]
     pub fn mouse(&mut self, down: bool, clicks: Option<u32>, button: Option<String>) -> Result<()> {
         let button = match &button {
             Some(name) => MouseButton::from_name(name)
@@ -354,7 +359,7 @@ impl Ctx {
 
     /// Editing key by name ("left", "backspace", "enter", ...) with optional
     /// modifiers `{shift, word, doc}`.
-    #[napi]
+    #[napi(ts_args_type = "name: EditKeyName, mods?: KeyMods")]
     pub fn key(&mut self, name: String, mods: Option<Json>) -> Result<()> {
         let key = edit_key_of(&name)?;
         let m = mods
@@ -375,7 +380,7 @@ impl Ctx {
     /// "f5", ...), with mods `{shift, ctrl, alt, super}`. Editing keys for
     /// focused editors still go through `key()`. `repeat` marks a press the
     /// OS auto-repeated. The sink hears `{kind:"key", phase:"down", ...}`.
-    #[napi]
+    #[napi(ts_args_type = "code: string, mods?: KeySinkMods, repeat?: boolean")]
     pub fn key_down(
         &mut self,
         code: String,
@@ -394,7 +399,7 @@ impl Ctx {
     /// hears `{kind:"key", phase:"up", ...}` with `text` null. A release
     /// whose press the sink never got resolves nothing, and moving focus
     /// while a key is held delivers the `up` first.
-    #[napi]
+    #[napi(ts_args_type = "code: string, mods?: KeySinkMods")]
     pub fn key_up(&mut self, code: String, mods: Option<Json>) -> Result<()> {
         let kp = self.key_press(&code, mods.as_ref())?;
         self.input(InputEvent::KeyUp(kp.released()));
@@ -432,7 +437,7 @@ impl Ctx {
     /// Physical modifier state changed: `{shift, ctrl, alt, super}`. The
     /// host receives `{kind:"modifiers", ...}` when it differs from the
     /// last report.
-    #[napi]
+    #[napi(ts_args_type = "mods?: KeySinkMods")]
     pub fn modifiers(&mut self, mods: Option<Json>) {
         let m = mods
             .as_ref()
@@ -452,7 +457,7 @@ impl Ctx {
     /// Drains the audio commands the core queued, as plain objects
     /// (`{kind:"play", playback, sound, volume, loop, fadeIn}`, ...) — what a
     /// windowed driver would play. For tests and custom drivers.
-    #[napi]
+    #[napi(ts_return_type = "AudioCommand[]")]
     pub fn audio_commands(&mut self) -> Json {
         audio_commands_json(self.core.take_audio_commands())
     }
@@ -573,10 +578,11 @@ impl kui::App for TreeApp {
 // the platforms still convert it to physical px without overflowing.
 const UNBOUNDED_SIZE: f64 = 65_535.0;
 
-/// A real kui window driven from Node. The event loop is pumped, not run:
-/// call `pump()` from a timer loop (see `runWindowed` in the JS package) so
-/// winit and libuv share the main thread. One window per process — winit
-/// event loops are not recreatable on every platform.
+/// A real kui window (winit + wgpu) driven from Node. The event loop is
+/// pumped, not run: call `pump()` from a timer loop so winit and libuv share
+/// the main thread — or prefer `runWindowed`, which does that for you, unless
+/// you are building your own loop. One window per process; winit event loops
+/// are not recreatable on every platform.
 #[napi]
 pub struct KuiWindow {
     runner: kui::PumpRunner<TreeApp>,
@@ -587,7 +593,7 @@ impl KuiWindow {
     /// Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
     /// chrome: "native" | "custom" | "borderless"}`. The min/max pairs bound
     /// what the user can resize the window to; either half may stand alone.
-    #[napi(constructor)]
+    #[napi(constructor, ts_args_type = "title: string, options?: WindowOptions")]
     pub fn new(title: String, options: Option<Json>) -> Result<Self> {
         let o = options
             .as_ref()
@@ -646,9 +652,9 @@ impl KuiWindow {
     /// The window's inner size in logical px plus its scale factor:
     /// `{width, height, scale}`. Readable before the first frame (in
     /// `setup`), and re-reported as a `{kind:"resize", width, height,
-    /// scale}` event through `pollEvents` whenever the window changes size
-    /// or moves to a display with another DPI.
-    #[napi]
+    /// scale}` event through `pollEvents` — a `ResizeMsg` — whenever the
+    /// window changes size or moves to a display with another DPI.
+    #[napi(ts_return_type = "WindowSize")]
     pub fn size(&self) -> Json {
         let (size, scale) = self.runner.window_size();
         size_json(size, scale)
@@ -659,7 +665,7 @@ impl KuiWindow {
     /// waitMs, totalMs, workMs} | null, avgTotalMs, maxTotalMs, avgWorkMs,
     /// maxWorkMs}` over the last 120 frames. `waitMs` is vsync
     /// backpressure; `workMs` is everything else.
-    #[napi]
+    #[napi(ts_return_type = "FrameTiming")]
     pub fn frame_stats(&mut self) -> Json {
         frame_stats_json(&self.runner.core_mut().stats)
     }
@@ -773,7 +779,8 @@ macro_rules! core_methods {
                 Ok(())
             }
 
-            /// Family names of every installed font (sorted).
+            /// Family names of every font the core can see, installed or
+            /// loaded (sorted).
             #[napi]
             pub fn system_font_families(&mut self) -> Vec<String> {
                 self.$core().system_font_families()
@@ -799,23 +806,24 @@ macro_rules! core_methods {
 
             /// Starts a playback: `{volume, loop, fadeIn, tag}`; returns its
             /// id for `stop` / `setVolume` / `pause` / `resume`. A `tag` comes
-            /// back as `{kind:"sound", phase:"ended", playback, tag}` when the
-            /// playback finishes on its own.
-            #[napi]
+            /// back as a `SoundMsg` when the playback finishes on its own.
+            /// A window plays it on its own device at once; headless nothing
+            /// sounds and the command queues for `audioCommands()`.
+            #[napi(ts_args_type = "sound: string, opts?: PlayOptions")]
             pub fn play(&mut self, sound: String, opts: Option<Json>) -> Result<f64> {
                 let id = play_impl(self.$core(), &sound, opts.as_ref())?;
                 self.$audio();
                 Ok(id)
             }
 
-            #[napi]
+            #[napi(ts_args_type = "playback: number, fadeMs?: number")]
             pub fn stop(&mut self, playback: f64, fade_ms: Option<f64>) {
                 self.$core()
                     .stop(PlaybackId(playback as u64), fade_ms.unwrap_or(0.0) as f32);
                 self.$audio();
             }
 
-            #[napi]
+            #[napi(ts_args_type = "playback: number, volume: number, tweenMs?: number")]
             pub fn set_volume(&mut self, playback: f64, volume: f64, tween_ms: Option<f64>) {
                 self.$core().set_volume(
                     PlaybackId(playback as u64),
@@ -825,21 +833,21 @@ macro_rules! core_methods {
                 self.$audio();
             }
 
-            #[napi]
+            #[napi(ts_args_type = "playback: number, fadeMs?: number")]
             pub fn pause(&mut self, playback: f64, fade_ms: Option<f64>) {
                 self.$core()
                     .pause(PlaybackId(playback as u64), fade_ms.unwrap_or(0.0) as f32);
                 self.$audio();
             }
 
-            #[napi]
+            #[napi(ts_args_type = "playback: number, fadeMs?: number")]
             pub fn resume(&mut self, playback: f64, fade_ms: Option<f64>) {
                 self.$core()
                     .resume(PlaybackId(playback as u64), fade_ms.unwrap_or(0.0) as f32);
                 self.$audio();
             }
 
-            #[napi]
+            #[napi(ts_args_type = "volume: number, tweenMs?: number")]
             pub fn set_master_volume(&mut self, volume: f64, tween_ms: Option<f64>) {
                 self.$core()
                     .set_master_volume(volume as f32, tween_ms.unwrap_or(0.0) as f32);
@@ -848,9 +856,14 @@ macro_rules! core_methods {
 
             // -- Events ----------------------------------------------------
 
-            /// Drains pending UI events: `[{origin, key, payload}]`, payloads
-            /// as plain JSON (your Elm messages come back out here).
-            #[napi]
+            /// Events since the last poll: `[{origin, key, payload}]`,
+            /// payloads as plain data (your Elm messages come back out
+            /// here). `A` types them — the app's own union, or one core
+            /// message type when only that is being watched.
+            #[napi(
+                ts_generic_types = "A = AppMsg | CoreMsg",
+                ts_return_type = "UiEvent<A>[]"
+            )]
             pub fn poll_events(&mut self) -> Json {
                 // Also whatever a call between frames left pending — the
                 // synthetic key releases `focus` / `blur` force, a `resize`.
@@ -873,7 +886,7 @@ macro_rules! core_methods {
             }
 
             /// Summary of the last frame's display list.
-            #[napi]
+            #[napi(ts_return_type = "FrameStats")]
             pub fn stats(&mut self) -> Json {
                 stats_json(self.$core())
             }
@@ -886,8 +899,13 @@ macro_rules! core_methods {
             /// children with `<span>`s); `style` the `<text>` props (`size`,
             /// `font`, `wrap`, `maxLines`, `ellipsis`, ...). Works before the
             /// first frame; a window answers at its own scale once a frame has
-            /// run.
-            #[napi]
+            /// run. Size a column to its widest label, or pick the tier that
+            /// fits, from these numbers instead of constants found by
+            /// screenshot.
+            #[napi(
+                ts_args_type = "content: KuiNode, style?: TextProps, maxWidth?: number",
+                ts_return_type = "TextMetrics"
+            )]
             pub fn measure_text(
                 &mut self,
                 content: Json,
@@ -897,17 +915,18 @@ macro_rules! core_methods {
                 measure_text_impl(self.$core(), &content, style.as_ref(), max_width)
             }
 
-            /// Drains the warnings the core raised since the last call:
-            /// `[{code, key, message}]`, each distinct (code, node) pair once.
-            /// See `Warning` in index.d.ts. `runWindowed` drains and prints
-            /// them itself unless told not to.
-            #[napi]
+            /// Drains the warnings the core raised since the last call
+            /// (see `Warning`), each distinct (code, node) pair once.
+            /// `createApp` collects them on `app.warnings` for you, and
+            /// `runWindowed` prints them, unless either was told not to.
+            #[napi(ts_return_type = "Warning[]")]
             pub fn warnings(&mut self) -> Json {
                 warnings_json(self.$core().take_warnings())
             }
 
             /// Turns the per-frame diagnostic checks behind `warnings` on or
-            /// off.
+            /// off. A bare `Ctx` has them on; `createApp` / `runWindowed`
+            /// turn them off under `NODE_ENV=production`.
             #[napi]
             pub fn set_diagnostics(&mut self, on: bool) {
                 self.$core().set_diagnostics(on);
@@ -915,10 +934,10 @@ macro_rules! core_methods {
 
             // -- Accessibility ---------------------------------------------
 
-            /// The access tree of the last frame — what assistive technology
-            /// sees; see `AccessTree` in index.d.ts. A window hands it to the
-            /// platform by itself (AccessKit); this is for tests and tooling.
-            #[napi]
+            /// What assistive technology sees of the last frame (see
+            /// `AccessTree`). A window hands it to the platform by itself
+            /// (AccessKit); this is for tests and tooling.
+            #[napi(ts_return_type = "AccessTree")]
             pub fn access_tree(&mut self) -> Json {
                 access_tree_json(self.$core().access_tree())
             }
@@ -929,7 +948,7 @@ macro_rules! core_methods {
             /// pointer/keyboard equivalent, so the resulting events come out of
             /// `pollEvents`. A real screen reader's requests arrive through a
             /// window on their own.
-            #[napi]
+            #[napi(ts_args_type = "key: string, action: AccessAction, value?: string | AccessArg")]
             pub fn access(
                 &mut self,
                 key: String,
@@ -968,7 +987,10 @@ macro_rules! core_methods {
                 Ok(self.$core().is_focused(parse_key(&key)?))
             }
 
-            /// The node holding keyboard focus (hex key), or null.
+            /// The node holding keyboard focus (hex key), or null. Tab /
+            /// Shift-Tab (`key("tab")`) walk every control in tree order,
+            /// Enter and Space press the focused one, and the arrows nudge a
+            /// focused slider.
             #[napi]
             pub fn focused(&mut self) -> Option<String> {
                 self.$core().focus().map(key_str)
@@ -998,7 +1020,9 @@ macro_rules! core_methods {
                 self.$redraw();
             }
 
-            /// What Tab does: the next focusable node in tree order, wrapping.
+            /// What Tab does, as a call — for an `onKey` sink that binds Tab
+            /// itself and wants to hand the keyboard on: the next focusable
+            /// node in tree order, wrapping.
             #[napi]
             pub fn focus_next(&mut self) {
                 self.$core().focus_next(true);
@@ -1033,7 +1057,7 @@ macro_rules! core_methods {
             /// clamped it (positive = content moved up / left) — the number to
             /// keep in a model and hand back to `setScroll`. Zero for a node
             /// that never scrolled.
-            #[napi]
+            #[napi(ts_return_type = "ScrollOffset")]
             pub fn scroll_offset(&mut self, key: String) -> Result<Json> {
                 Ok(offset_json(self.$core().scroll_offset(parse_key(&key)?)))
             }
@@ -1049,7 +1073,7 @@ macro_rules! core_methods {
             /// fit plus two spacers holding the space of the rest. Read while
             /// building, it describes the previous frame, so a resize slices one
             /// frame late — render a row or two extra at each end.
-            #[napi]
+            #[napi(ts_return_type = "ScrollGeometry | null")]
             pub fn scroll_geometry(&mut self, key: String) -> Result<Option<Json>> {
                 Ok(geometry_json(
                     self.$core().scroll_geometry(parse_key(&key)?),

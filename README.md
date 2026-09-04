@@ -134,6 +134,12 @@ with its JSX, Lua and C name, the composites, the elements, the event
 payload shapes and the resource APIs. It is generated from the schema
 (`npm run gen` in `packages/kui`), so it cannot drift.
 
+The same command generates the addon's half of `packages/kui/index.d.ts` —
+`Ctx`, `KuiWindow` and their 39 shared methods each, between the generated
+markers — out of napi-rs's own reading of the `#[napi]` attributes in
+`crates/kui-node`. A method reaches TypeScript by being written in Rust and
+regenerating, not by being typed out a second time; CI diffs the file.
+
 [docs/adr](docs/adr) holds the architecture decision records: the choices
 that are hard to reverse and would look arbitrary without their context.
 

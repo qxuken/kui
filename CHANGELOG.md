@@ -410,6 +410,39 @@ upgrades remove code from the apps on it is doing the job.
   The two contracts that are real differences stayed exactly as they were:
   `runWindowed` resolves with the final model, `createApp` is synchronous.
 
+- **The `.d.ts` for the addon is generated, not written** (backlog P5).
+  `Ctx` and `KuiWindow` are 39 shared methods each, written once in Rust
+  by `core_methods!` since D1 — and then a third time, by hand, in
+  `packages/kui/index.d.ts`, the copy a JS user actually reads, with
+  nothing checking that the two agreed. napi-rs derives a TypeScript
+  signature for every `#[napi]` item; `crates/kui-node`'s build script now
+  points it at `target/napi-type-defs`, and `npm run gen` renders that into
+  a marked region of `index.d.ts`, beside the ones `jsx-runtime.d.ts` and
+  `docs/props.md` already have. CI diffs the file. A method added to one
+  class only — the failure D1 named and could not close — now fails the
+  build.
+  The derived output was checked before it was trusted, and the risk unique
+  to this codebase is not one: `#[napi]` expands *after* `core_methods!`
+  does, so both classes come out complete, doc comments and all. `Json` is
+  the part that does not survive — every payload parameter and return would
+  have been `any`. Rather than take the weaker fallback (a script asserting
+  that each `#[napi]` method appears in a hand-written file), the Rust side
+  now names the real TypeScript type at the definition:
+  `#[napi(ts_return_type = "AccessTree")]`,
+  `ts_args_type = "content: KuiNode, style?: TextProps, maxWidth?: number"`,
+  `ts_generic_types = "A = AppMsg | CoreMsg"`. So `pollEvents<A>()`,
+  `measureText`, `play`, `scrollGeometry` and the rest are typed exactly as
+  precisely as they were — out of one copy instead of two.
+  No signature changed. What stays hand-written is what has no `#[napi]`
+  item behind it: the message and payload types (`CoreMsg`, `AccessTree`,
+  `Warning`, `WindowOptions`, `LoopConfig`, ...), `createApp`,
+  `runWindowed`, `decodeQuads` and `createEncoder` — plus `frame` and
+  `setView`, which live on the prototypes in `index.js` rather than in the
+  addon and reach the generated classes by declaration merging. `Protocol`
+  is a new exported name for what `protocol()` already returned.
+  The prose moved too: the doc comments on those 102 members are now the
+  Rust ones, with whatever the `.d.ts` copy said better folded in.
+
 ### What you can delete
 
 - **The clock you dispatched by hand in a headless test** — the loop

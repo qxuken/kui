@@ -172,11 +172,13 @@ jobs:
           cargo build -p kui-node --release
           cd packages/kui
           npm test
-          # The TS prop types and docs/props.md are generated from the
-          # schema; a stale file means someone changed PROPS without
-          # running `npm run gen`.
+          # Three generated files: the TS prop types and docs/props.md come
+          # from the schema, and index.d.ts's addon surface from the `#[napi]`
+          # attributes (napi-rs derives it; the cargo build above left it in
+          # target/napi-type-defs). A stale file means someone changed PROPS
+          # or the addon's API without running `npm run gen`.
           npm run gen
-          git diff --exit-code -- jsx-runtime.d.ts ../../docs/props.md
+          git diff --exit-code -- jsx-runtime.d.ts index.d.ts ../../docs/props.md
 
       # The .d.ts is only exercised by a type checker; the example app is
       # the one that uses every app-facing type (messages, events, props).
