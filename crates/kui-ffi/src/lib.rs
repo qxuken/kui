@@ -23,6 +23,152 @@ use kui_core::{
 };
 
 // ---------------------------------------------------------------------------
+// ABI version, and who is allowed to write which struct
+//
+// `include/kui.h` is hand-mirrored from the `repr(C)` structs below, and
+// `mod abi_parity` settles the two at build time — but only for a host
+// compiled against the header it links against. Nothing settles an old
+// *binary* against a new library, and the two directions are not equally
+// forgiving:
+//
+// - **[in]** — the host allocates and fills it, the library reads it:
+//   `KuiSpec`, `KuiSizing`, `KuiKeyframe`, `KuiEnter`, `KuiTextStyle`,
+//   `KuiSpan`, `KuiPlay`, `KuiAudio`. Appending a field is compatible: a
+//   host that predates it passes the shorter struct, the library reads no
+//   further than the host wrote, and the zeroed tail is the documented
+//   default. `KuiSpec` grew `tooltip` exactly this way.
+// - **[out]** — the host allocates it, the library writes it: `KuiEvent`,
+//   `KuiDrawData`, `KuiTextMetrics`, `KuiScrollGeometry`. Appending a field
+//   here is memory corruption at a host that has not recompiled — it
+//   reserved the shorter struct and the library writes the longer one — so
+//   each of these leads with `size`, which the host sets to its own
+//   `sizeof`. [`write_out`] writes no further than that, which turns the
+//   append back into a compatible change.
+// - **[out-array]** — the host allocates an array, the library fills up to
+//   `cap` of its elements: `KuiAccessNode`, `KuiAccessRun`, `KuiWarning`,
+//   `KuiAudioCommand`. A `size` field cannot save these. The library
+//   strides by its own `size_of`, so element 1 lands past the host's
+//   element 1 whatever element 0 says, and the damage is done before any
+//   in-band handshake could be read. Growing one of these means adding an
+//   explicit stride parameter — a source break every host sees — and
+//   bumping `KUI_ABI_VERSION`.
+// - **[lib]** — the library allocates it and the host reads it: `KuiQuad`,
+//   through `KuiDrawData.quads`. The same stride problem, mirrored: the
+//   host walks the array with its own `sizeof`. Read-only, so it misreads
+//   rather than corrupting, but it misreads every quad after the first.
+//   Growing it bumps the version.
+//
+// `KuiStr` is the exception: it crosses in both directions (`kui_edit_text`
+// and `kui_value_as_str` write one) and its layout is frozen at (ptr, len).
+// `KuiEvent` is also handed to `kui_run`'s `on_event` as a library-owned
+// `*const KuiEvent`; a single struct behind a pointer is safe to append to,
+// since the host reads only the prefix it knows, so it is the [out] use
+// above that constrains the type.
+
+/// The ABI this build implements, returned by `kui_abi_version`.
+/// `KUI_ABI_VERSION` in `include/kui.h` is the one a host compiled against,
+/// and `mod abi_parity` asserts the two agree.
+///
+/// **Bump it when the layout of anything the library writes or allocates
+/// changes** — an [out], [out-array] or [lib] struct in the note above, in
+/// any way, appends included. **Do not bump it** for a field appended to an
+/// [in] struct, which old hosts survive by construction, nor for a new
+/// function: a host that does not call one is unaffected, and one that does
+/// fails to *link*, which is loud.
+pub const KUI_ABI_VERSION: u32 = 1;
+
+/// The ABI version this library implements, for a host to compare against
+/// the `KUI_ABI_VERSION` of the header it compiled against, before its
+/// first other call.
+///
+/// This is the one mismatch a C host cannot otherwise detect: the header
+/// and the library are settled at build time by `mod abi_parity`, but a
+/// host loads whatever `libkui_ffi` the system hands it, and the failure
+/// that follows (a newer library writing a longer `KuiEvent` into an older
+/// host's shorter one) is silent memory corruption, not a crash.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_abi_version() -> u32 {
+    KUI_ABI_VERSION
+}
+
+/// Bytes through the end of field `$f` (of type `$t`) in `$ty`: what a
+/// caller must have reserved to hold the fields up to and including it.
+///
+/// Used to state each [out] struct's ABI-1 layout without writing a number
+/// down — `usize` and pointer widths differ per target — and without
+/// tracking future growth, which is the point: appending a field never
+/// moves the last ABI-1 field, so the floor stays put.
+macro_rules! abi_through {
+    ($ty:ty, $f:ident, $t:ty) => {
+        (std::mem::offset_of!($ty, $f) + std::mem::size_of::<$t>()) as u32
+    };
+}
+
+/// A struct the library writes into memory the **caller** reserved.
+///
+/// Each leads with `size`, set by the caller to the `sizeof` of its own
+/// copy, so the library can write no further than the caller's reservation
+/// and a later appended field costs an un-recompiled host nothing. This is
+/// deliberately not the rule for [in] structs: the library only reads
+/// those, so a short one is already safe, and a `size` field would be a tax
+/// on every `KuiSpec` literal in every builder call.
+///
+/// # Safety
+///
+/// The implementor must be `repr(C)` with `size: u32` as its first field,
+/// so that reading the first four bytes behind a `*mut Self` reads the
+/// caller's reservation and nothing else.
+unsafe trait OutParam: Sized {
+    /// This struct's layout in ABI 1, where the handshake starts, measured
+    /// through its last ABI-1 field. A caller reserving less than this
+    /// predates the handshake entirely, so the call refuses rather than
+    /// guessing what the bytes mean.
+    const ABI_V1_SIZE: u32;
+
+    /// Where the library records how many bytes it filled.
+    fn size_mut(&mut self) -> &mut u32;
+}
+
+/// Whether `out` is a reservation this library can write into: non-NULL,
+/// and at least the ABI-1 layout.
+///
+/// Separate from [`write_out`] so a call can refuse *before* it moves any
+/// state — `kui_poll_event` must not pop an event it then cannot deliver.
+fn out_accepts<T: OutParam>(out: *mut T) -> bool {
+    if out.is_null() {
+        return false;
+    }
+    // `size` leads the struct (the trait's safety contract), so this reads
+    // the caller's reservation without assuming the rest of it is there.
+    // The caller must have set it; an uninitialized `size` is the one thing
+    // this cannot catch, which is why the header leads with the
+    // KUI_*_INIT initializers rather than describing the field.
+    let reserved = unsafe { out.cast::<u32>().read() };
+    reserved >= T::ABI_V1_SIZE
+}
+
+/// Writes `value` into `out`, clipped to what the caller reserved, and
+/// reports how many bytes that was in `out`'s own `size`.
+///
+/// Returns false — writing nothing — when [`out_accepts`] refuses. Growth
+/// is append-only by the note above, so "the fields that fit" is exactly
+/// "the first `n` bytes", and the `size` written back is stable under
+/// repetition: a poll loop reusing one struct clamps to the same `n` every
+/// time round.
+fn write_out<T: OutParam>(out: *mut T, mut value: T) -> bool {
+    if !out_accepts(out) {
+        return false;
+    }
+    let reserved = unsafe { out.cast::<u32>().read() } as usize;
+    let n = reserved.min(std::mem::size_of::<T>());
+    *value.size_mut() = n as u32;
+    unsafe {
+        std::ptr::copy_nonoverlapping((&raw const value).cast::<u8>(), out.cast::<u8>(), n);
+    }
+    true
+}
+
+// ---------------------------------------------------------------------------
 // Opaque + repr(C) types
 
 /// Opaque: a `Core` plus the pending event queue. The core is either owned
@@ -461,12 +607,35 @@ fn role_of_code(code: u32) -> Option<kui_core::Role> {
 /// What a piece of text measures (`kui_measure_text`), logical px at the
 /// scale of the current or last frame.
 #[repr(C)]
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
 pub struct KuiTextMetrics {
+    /// [out] reservation; see `KUI_TEXT_METRICS_INIT`.
+    pub size: u32,
     pub width: f32,
     pub height: f32,
     /// Lines after wrapping (capped by `max_lines`).
     pub lines: u32,
+}
+
+// Hand-written rather than derived: a derived `Default` would zero `size`,
+// and a zero `size` is the one value the handshake refuses.
+impl Default for KuiTextMetrics {
+    fn default() -> Self {
+        Self {
+            size: std::mem::size_of::<Self>() as u32,
+            width: 0.0,
+            height: 0.0,
+            lines: 0,
+        }
+    }
+}
+
+// SAFETY: `repr(C)` with `size: u32` first.
+unsafe impl OutParam for KuiTextMetrics {
+    const ABI_V1_SIZE: u32 = abi_through!(KuiTextMetrics, lines, u32);
+    fn size_mut(&mut self) -> &mut u32 {
+        &mut self.size
+    }
 }
 
 /// One diagnostic (`kui_take_warnings`): a silent misconfiguration the
@@ -552,12 +721,37 @@ pub struct KuiSpan {
     pub flags: u32,
 }
 
+/// One polled event ([out]). `size` leads it so that ADR 0004's appended
+/// `window` — and anything after it — reaches a host that has not
+/// recompiled as a shorter write rather than as a longer one.
 #[repr(C)]
 pub struct KuiEvent {
+    /// Set to `sizeof(KuiEvent)` before the call (`KUI_EVENT_INIT` does);
+    /// comes back as the number of bytes the library filled.
+    pub size: u32,
     pub origin: u16,
     pub key: u64,
     /// Borrowed until the next `kui_poll_event`/`kui_ctx_free`; NULL if none.
     pub payload: *const KuiValue,
+}
+
+impl Default for KuiEvent {
+    fn default() -> Self {
+        Self {
+            size: std::mem::size_of::<Self>() as u32,
+            origin: 0,
+            key: 0,
+            payload: std::ptr::null(),
+        }
+    }
+}
+
+// SAFETY: `repr(C)` with `size: u32` first.
+unsafe impl OutParam for KuiEvent {
+    const ABI_V1_SIZE: u32 = abi_through!(KuiEvent, payload, *const KuiValue);
+    fn size_mut(&mut self) -> &mut u32 {
+        &mut self.size
+    }
 }
 
 #[repr(C)]
@@ -584,6 +778,8 @@ pub struct KuiQuad {
 
 #[repr(C)]
 pub struct KuiDrawData {
+    /// [out] reservation; see `KUI_DRAW_DATA_INIT`.
+    pub size: u32,
     pub quads: *const KuiQuad,
     pub quad_count: usize,
     pub viewport_w: f32,
@@ -595,6 +791,31 @@ pub struct KuiDrawData {
     /// Re-upload the atlas texture when either of these changes/sets.
     pub atlas_dirty: bool,
     pub atlas_epoch: u64,
+}
+
+impl Default for KuiDrawData {
+    fn default() -> Self {
+        Self {
+            size: std::mem::size_of::<Self>() as u32,
+            quads: std::ptr::null(),
+            quad_count: 0,
+            viewport_w: 0.0,
+            viewport_h: 0.0,
+            scale: 1.0,
+            atlas_pixels: std::ptr::null(),
+            atlas_size: 0,
+            atlas_dirty: false,
+            atlas_epoch: 0,
+        }
+    }
+}
+
+// SAFETY: `repr(C)` with `size: u32` first.
+unsafe impl OutParam for KuiDrawData {
+    const ABI_V1_SIZE: u32 = abi_through!(KuiDrawData, atlas_epoch, u64);
+    fn size_mut(&mut self) -> &mut u32 {
+        &mut self.size
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1179,21 +1400,24 @@ pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
         // key releases `kui_focus` / `kui_release_held_keys` force.
         let pending = c.core().take_pending_events();
         c.events.extend(pending);
-        if c.events.is_empty() || out.is_null() {
+        // Refuse before popping: a reservation this library cannot write
+        // into must leave the queue where it was, not swallow an event.
+        if c.events.is_empty() || !out_accepts(out) {
             return false;
         }
         let ev = c.events.remove(0);
         let payload = Box::new(KuiValue(ev.payload));
         let payload_ptr: *const KuiValue = &*payload;
         c.last_payload = Some(payload);
-        unsafe {
-            *out = KuiEvent {
+        write_out(
+            out,
+            KuiEvent {
                 origin: ev.origin.0,
                 key: ev.key.0,
                 payload: payload_ptr,
-            };
-        }
-        true
+                ..Default::default()
+            },
+        )
     })
 }
 
@@ -1916,6 +2140,8 @@ pub extern "C" fn kui_scroll_offset(ptr: *mut KuiCtx, key: u64, x: *mut f32, y: 
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiScrollGeometry {
+    /// [out] reservation; see `KUI_SCROLL_GEOMETRY_INIT`.
+    pub size: u32,
     /// The container's box, as the last layout placed and sized it.
     pub x: f32,
     pub y: f32,
@@ -1931,6 +2157,32 @@ pub struct KuiScrollGeometry {
     /// How far the offset can travel; zero on an axis that does not scroll.
     pub max_offset_x: f32,
     pub max_offset_y: f32,
+}
+
+impl Default for KuiScrollGeometry {
+    fn default() -> Self {
+        Self {
+            size: std::mem::size_of::<Self>() as u32,
+            x: 0.0,
+            y: 0.0,
+            w: 0.0,
+            h: 0.0,
+            content_w: 0.0,
+            content_h: 0.0,
+            offset_x: 0.0,
+            offset_y: 0.0,
+            max_offset_x: 0.0,
+            max_offset_y: 0.0,
+        }
+    }
+}
+
+// SAFETY: `repr(C)` with `size: u32` first.
+unsafe impl OutParam for KuiScrollGeometry {
+    const ABI_V1_SIZE: u32 = abi_through!(KuiScrollGeometry, max_offset_y, f32);
+    fn size_mut(&mut self) -> &mut u32 {
+        &mut self.size
+    }
 }
 
 /// Everything the last layout resolved for the container `key`. Returns
@@ -1950,25 +2202,28 @@ pub extern "C" fn kui_scroll_geometry(
     out: *mut KuiScrollGeometry,
 ) -> bool {
     guard(false, || {
-        let (Some(c), Some(out)) = (unsafe { ctx(ptr) }, unsafe { out.as_mut() }) else {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
             return false;
         };
         let Some(g) = c.core().scroll_geometry(Key(key)) else {
             return false;
         };
-        *out = KuiScrollGeometry {
-            x: g.rect.x,
-            y: g.rect.y,
-            w: g.rect.w,
-            h: g.rect.h,
-            content_w: g.content.w,
-            content_h: g.content.h,
-            offset_x: g.offset.x,
-            offset_y: g.offset.y,
-            max_offset_x: g.max_offset.x,
-            max_offset_y: g.max_offset.y,
-        };
-        true
+        write_out(
+            out,
+            KuiScrollGeometry {
+                x: g.rect.x,
+                y: g.rect.y,
+                w: g.rect.w,
+                h: g.rect.h,
+                content_w: g.content.w,
+                content_h: g.content.h,
+                offset_x: g.offset.x,
+                offset_y: g.offset.y,
+                max_offset_x: g.max_offset.x,
+                max_offset_y: g.max_offset.y,
+                ..Default::default()
+            },
+        )
     })
 }
 
@@ -2057,6 +2312,7 @@ fn metrics_of(m: kui_core::TextMetrics) -> KuiTextMetrics {
         width: m.width,
         height: m.height,
         lines: m.lines,
+        ..Default::default()
     }
 }
 
@@ -2074,15 +2330,17 @@ pub extern "C" fn kui_measure_text(
     out: *mut KuiTextMetrics,
 ) -> bool {
     guard(false, || {
-        let (Some(c), Some(out)) = (unsafe { ctx(ptr) }, unsafe { out.as_mut() }) else {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
             return false;
         };
         let style = unsafe { style.as_ref() }
             .map(text_style_of)
             .unwrap_or_default();
         let max_w = (max_w > 0.0).then_some(max_w);
-        *out = metrics_of(c.core().measure_text(&kstr(text), &style, max_w));
-        true
+        write_out(
+            out,
+            metrics_of(c.core().measure_text(&kstr(text), &style, max_w)),
+        )
     })
 }
 
@@ -2097,25 +2355,17 @@ pub extern "C" fn kui_measure_rich_text(
     out: *mut KuiTextMetrics,
 ) -> bool {
     guard(false, || {
-        let (Some(c), Some(out)) = (unsafe { ctx(ptr) }, unsafe { out.as_mut() }) else {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
             return false;
         };
         let base = unsafe { base.as_ref() }
             .map(text_style_of)
             .unwrap_or_default();
         let max_w = (max_w > 0.0).then_some(max_w);
-        match with_spans(spans, span_count, |spans| {
+        let m = with_spans(spans, span_count, |spans| {
             c.core().measure_rich_text(spans, &base, max_w)
-        }) {
-            Some(m) => {
-                *out = metrics_of(m);
-                true
-            }
-            None => {
-                *out = KuiTextMetrics::default();
-                true
-            }
-        }
+        });
+        write_out(out, m.map(metrics_of).unwrap_or_default())
     })
 }
 
@@ -2639,14 +2889,22 @@ pub extern "C" fn kui_frame_finish(ptr: *mut KuiCtx) {
 /// Draw data for the finished frame. Pointers are valid until the next
 /// `kui_frame_begin` on this context. `KuiQuad` is layout-compatible with the
 /// core quad (asserted below), so this is a cast, not a copy.
+///
+/// Returns false — writing nothing, and leaving `atlas_dirty` set so the
+/// next call still reports it — for a bad context or an `out` whose `size`
+/// this library cannot honour. It returned `void` before the size
+/// handshake; a host that ignores the result still compiles.
 #[unsafe(no_mangle)]
-pub extern "C" fn kui_draw_data(ptr: *mut KuiCtx, out: *mut KuiDrawData) {
-    guard((), || {
-        let (Some(c), Some(out)) = (unsafe { ctx(ptr) }, unsafe { out.as_mut() }) else {
-            return;
+pub extern "C" fn kui_draw_data(ptr: *mut KuiCtx, out: *mut KuiDrawData) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
         };
+        if !out_accepts(out) {
+            return false;
+        }
         let (dl, atlas) = c.core().output();
-        *out = KuiDrawData {
+        let data = KuiDrawData {
             quads: dl.quads.as_ptr().cast(),
             quad_count: dl.quads.len(),
             viewport_w: dl.viewport.w,
@@ -2656,9 +2914,11 @@ pub extern "C" fn kui_draw_data(ptr: *mut KuiCtx, out: *mut KuiDrawData) {
             atlas_size: atlas.size,
             atlas_dirty: atlas.dirty,
             atlas_epoch: atlas.epoch,
+            ..Default::default()
         };
         atlas.dirty = false;
-    });
+        write_out(out, data)
+    })
 }
 
 const _: () = {
@@ -2813,10 +3073,13 @@ impl kui::App for CApp {
     fn on_event(&mut self, ev: kui::UiEvent) {
         let Some(cb) = self.on_event else { return };
         let payload = KuiValue(ev.payload);
+        // Library-allocated, so the full struct: `size` says how much of it
+        // is meaningful, which is all of it.
         let out = KuiEvent {
             origin: ev.origin.0,
             key: ev.key.0,
             payload: &payload,
+            ..Default::default()
         };
         cb(self.user, &out);
     }
@@ -3275,7 +3538,7 @@ mod widgets_headless {
         assert!(kui_edit_text(ctx, key, &mut text));
         assert_eq!(&*kstr(text), "init");
 
-        let mut draw: KuiDrawData = unsafe { std::mem::zeroed() };
+        let mut draw = KuiDrawData::default();
         kui_draw_data(ctx, &mut draw);
         assert!(draw.quad_count > 20, "got {} quads", draw.quad_count);
         kui_ctx_free(ctx);
@@ -3339,11 +3602,7 @@ mod audio_headless {
         frame(ctx);
         assert_eq!(kui_take_audio_commands(ctx, out.as_mut_ptr(), out.len()), 0);
         kui_audio_ended(ctx, music);
-        let mut ev = KuiEvent {
-            origin: 0,
-            key: 0,
-            payload: std::ptr::null(),
-        };
+        let mut ev = KuiEvent::default();
         assert!(kui_poll_event(ctx, &mut ev));
         let payload = unsafe { &*ev.payload };
         assert_eq!(payload.0.get("kind").and_then(Value::as_str), Some("sound"));
@@ -3420,11 +3679,7 @@ mod queries_headless {
         // An unknown name is ignored rather than delivered as "unknown".
         kui_input_key_down(ctx, ks("nonsense"), 0, null, false);
 
-        let mut ev = KuiEvent {
-            origin: 0,
-            key: 0,
-            payload: std::ptr::null(),
-        };
+        let mut ev = KuiEvent::default();
         let mut seen = Vec::new();
         while kui_poll_event(ctx, &mut ev) {
             let get = |k: &str| {
@@ -3534,11 +3789,7 @@ mod queries_headless {
         };
         assert!(kui_edit_text(ctx, key, &mut text));
         assert_eq!(kstr(text).as_ref(), "hello there");
-        let mut ev = KuiEvent {
-            origin: 0,
-            key: 0,
-            payload: std::ptr::null(),
-        };
+        let mut ev = KuiEvent::default();
         assert!(kui_poll_event(ctx, &mut ev));
         assert_eq!(
             unsafe { &*ev.payload }
@@ -3619,11 +3870,7 @@ mod queries_headless {
         assert_eq!(kui_access_tree(ctx, out.as_mut_ptr(), 1), 3);
 
         kui_input_access(ctx, out[1].key, kui_core::AccessAction::Click.bit(), ks(""));
-        let mut ev = KuiEvent {
-            origin: 0,
-            key: 0,
-            payload: std::ptr::null(),
-        };
+        let mut ev = KuiEvent::default();
         assert!(kui_poll_event(ctx, &mut ev));
         assert_eq!(ev.key, out[1].key);
         assert_eq!(unsafe { &*ev.payload }.0.as_str(), Some("save"));
@@ -3694,11 +3941,7 @@ mod queries_headless {
         kui_close(ctx);
         kui_frame_finish(ctx);
 
-        let mut ev = KuiEvent {
-            origin: 0,
-            key: 0,
-            payload: std::ptr::null(),
-        };
+        let mut ev = KuiEvent::default();
         assert!(kui_poll_event(ctx, &mut ev));
         assert_eq!(ev.key, key);
         let payload = unsafe { &*ev.payload };
@@ -3736,6 +3979,199 @@ mod queries_headless {
 // `target/kui-abi-assert.c`, a translation unit of `_Static_assert`s pinning
 // each field's offset, size and C type to what Rust actually lays out;
 // examples/c/build.sh compiles it against the header, in CI too.
+
+/// The two halves of ADR 0004's named gap: a version a host can compare,
+/// and a size on every struct the library writes into the host's memory.
+#[cfg(test)]
+mod abi_handshake {
+    use super::*;
+
+    fn ks(s: &str) -> KuiStr {
+        KuiStr {
+            ptr: s.as_ptr(),
+            len: s.len(),
+        }
+    }
+
+    /// A finished frame holding one clickable scroll container, and the
+    /// click: enough for every out-param below to have something real to
+    /// refuse to write.
+    fn ctx_with_a_scroller_and_a_pending_event() -> *mut KuiCtx {
+        let ctx = kui_ctx_new();
+        let mut spec = unsafe { std::mem::zeroed::<KuiSpec>() };
+        spec.width = KuiSizing {
+            tag: 2,
+            value: 100.0,
+        };
+        spec.height = KuiSizing {
+            tag: 2,
+            value: 50.0,
+        };
+        spec.overflow = 1 | 4; // KUI_CLIP | KUI_SCROLL_Y
+        kui_frame_begin(ctx, 200.0, 100.0, 1.0);
+        kui_open_keyed(ctx, ks("scroller"), &spec, kui_value_str(ks("hit")));
+        kui_close(ctx);
+        kui_frame_finish(ctx);
+        kui_input_cursor(ctx, 10.0, 10.0);
+        kui_input_mouse(ctx, true, 1);
+        kui_input_mouse(ctx, false, 1);
+        ctx
+    }
+
+    #[test]
+    fn the_exported_version_is_the_one_the_header_states() {
+        // The C side of this is a _Static_assert in mod abi_parity; this is
+        // the half that survives the header being absent.
+        assert_eq!(kui_abi_version(), KUI_ABI_VERSION);
+    }
+
+    /// The whole point of the size field, on a struct that has already
+    /// grown: a caller that reserved only the first two fields gets them,
+    /// and the third — the appended one — is left exactly as it was.
+    ///
+    /// `write_out` cannot be exercised this way through the public API
+    /// today, because nothing has been appended to a real [out] struct yet
+    /// (every `ABI_V1_SIZE` still equals its `size_of`). This stands in for
+    /// the first append, so the truncating path is not first exercised by
+    /// the change that depends on it.
+    #[test]
+    fn a_short_reservation_is_filled_only_as_far_as_it_goes() {
+        #[repr(C)]
+        #[derive(Clone, Copy)]
+        struct Grown {
+            size: u32,
+            was_always_here: u32,
+            appended_later: u32,
+        }
+        // SAFETY: repr(C) with `size: u32` first.
+        unsafe impl OutParam for Grown {
+            const ABI_V1_SIZE: u32 = abi_through!(Grown, was_always_here, u32);
+            fn size_mut(&mut self) -> &mut u32 {
+                &mut self.size
+            }
+        }
+
+        // A host built before `appended_later` existed: it reserved the
+        // whole struct it knew, which is the ABI-1 layout.
+        let mut old = Grown {
+            size: Grown::ABI_V1_SIZE,
+            was_always_here: 0,
+            appended_later: 0xdeadbeef,
+        };
+        assert!(write_out(
+            &raw mut old,
+            Grown {
+                size: 0,
+                was_always_here: 7,
+                appended_later: 9,
+            },
+        ));
+        assert_eq!(old.was_always_here, 7);
+        assert_eq!(
+            old.appended_later, 0xdeadbeef,
+            "the library wrote past what the caller reserved"
+        );
+        assert_eq!(old.size, Grown::ABI_V1_SIZE, "size reports what was filled");
+
+        // A host built after: it gets everything, and `size` says so.
+        let mut new = Grown {
+            size: std::mem::size_of::<Grown>() as u32,
+            was_always_here: 0,
+            appended_later: 0,
+        };
+        assert!(write_out(
+            &raw mut new,
+            Grown {
+                size: 0,
+                was_always_here: 7,
+                appended_later: 9,
+            },
+        ));
+        assert_eq!((new.was_always_here, new.appended_later), (7, 9));
+        assert_eq!(new.size, std::mem::size_of::<Grown>() as u32);
+
+        // And `size` coming back as the filled count is idempotent, so a
+        // loop reusing one struct clamps to the same prefix every time.
+        assert!(write_out(
+            &raw mut old,
+            Grown {
+                size: 0,
+                was_always_here: 11,
+                appended_later: 0,
+            },
+        ));
+        assert_eq!((old.size, old.was_always_here), (Grown::ABI_V1_SIZE, 11));
+        assert_eq!(old.appended_later, 0xdeadbeef);
+    }
+
+    /// A reservation smaller than ABI 1 is refused rather than guessed at —
+    /// and refused *before* the queue moves, so the event is still there
+    /// for a caller that asks properly.
+    #[test]
+    fn an_unreadable_reservation_refuses_without_dropping_the_event() {
+        let ctx = ctx_with_a_scroller_and_a_pending_event();
+        // 4 bytes: what an un-set `size`, or one from a host predating the
+        // field, looks like to this library.
+        let mut stale = KuiEvent {
+            size: 4,
+            ..Default::default()
+        };
+        assert!(!kui_poll_event(ctx, &raw mut stale));
+        assert_eq!(stale.key, 0, "nothing was written");
+
+        let mut ev = KuiEvent::default();
+        assert!(
+            kui_poll_event(ctx, &raw mut ev),
+            "the event was not dropped"
+        );
+        assert!(!ev.payload.is_null());
+        kui_ctx_free(ctx);
+    }
+
+    /// The same refusal on the other three, so the rule is the family's and
+    /// not `kui_poll_event`'s.
+    #[test]
+    fn every_out_param_refuses_a_reservation_it_cannot_honour() {
+        let ctx = ctx_with_a_scroller_and_a_pending_event();
+
+        // A key with real geometry behind it, so the refusal below is the
+        // reservation being rejected and not the lookup missing.
+        let scroller = kui_child_key(ctx, ks("scroller"));
+        let mut geom = KuiScrollGeometry::default();
+        assert!(kui_scroll_geometry(ctx, scroller, &raw mut geom));
+        assert!(geom.h > 0.0);
+        let mut short = KuiScrollGeometry {
+            size: 2,
+            ..Default::default()
+        };
+        assert!(!kui_scroll_geometry(ctx, scroller, &raw mut short));
+        assert_eq!(short.h, 0.0, "nothing was written");
+
+        let mut m = KuiTextMetrics {
+            size: 0,
+            ..Default::default()
+        };
+        let style: KuiTextStyle = unsafe { std::mem::zeroed() };
+        assert!(!kui_measure_text(ctx, ks("hello"), &style, 0.0, &raw mut m));
+        assert_eq!(m.width, 0.0);
+
+        let mut draw = KuiDrawData {
+            size: 1,
+            ..Default::default()
+        };
+        assert!(!kui_draw_data(ctx, &raw mut draw));
+        assert!(draw.quads.is_null());
+        // Refused, so the atlas is still owed to whoever asks next.
+        let mut good = KuiDrawData::default();
+        assert!(kui_draw_data(ctx, &raw mut good));
+        assert_eq!(good.size, std::mem::size_of::<KuiDrawData>() as u32);
+
+        // NULL is the older half of the same rule and still holds.
+        assert!(!kui_poll_event(ctx, std::ptr::null_mut()));
+        assert!(!kui_draw_data(ctx, std::ptr::null_mut()));
+        kui_ctx_free(ctx);
+    }
+}
 
 #[cfg(test)]
 mod abi_parity {
@@ -3783,6 +4219,29 @@ mod abi_parity {
         }};
     }
 
+    /// One [out] struct's size handshake, restated as C.
+    ///
+    /// The `abi_struct!` row above it already pins `size`'s offset, size and
+    /// type; this adds the two facts that make the handshake work and that
+    /// no field-by-field check would notice: that `size` is the *first*
+    /// field (so a library can read a caller's reservation before trusting
+    /// anything else in the struct), and that the layout has never shrunk
+    /// below what ABI 1 shipped (so `ABI_V1_SIZE` is still a floor and not
+    /// a ceiling). The floor comes from Rust's own `OutParam` impl, so the
+    /// two cannot drift.
+    macro_rules! abi_out_struct {
+        ($out:expr, $ty:ident) => {{
+            writeln!(
+                $out,
+                "KUI_OUT_STRUCT({}, {});",
+                stringify!($ty),
+                <$ty as OutParam>::ABI_V1_SIZE,
+            )
+            .unwrap();
+            writeln!($out).unwrap();
+        }};
+    }
+
     const PRELUDE: &str = r#"/* Generated by `cargo test -p kui-ffi abi_parity` (see
  * crates/kui-ffi/src/lib.rs, mod abi_parity) - do not edit, do not commit.
  * examples/c/build.sh regenerates and compiles it.
@@ -3807,13 +4266,34 @@ mod abi_parity {
     _Static_assert(offsetof(T, f) == (off), #T "." #f ": offset differs from Rust");    \
     _Static_assert(sizeof(((T *)0)->f) == (size), #T "." #f ": size differs from Rust"); \
     _Static_assert(_Generic(((T *)0)->f, CT: 1, default: 0), #T "." #f ": type differs from Rust")
+
+/* An [out] struct: one the library writes into memory the host reserved.
+ * `size` has to lead it, because the library reads the host's reservation
+ * out of those four bytes before it trusts any other byte of the struct;
+ * and v1 is the layout ABI 1 shipped, which is a floor the struct may grow
+ * past but must never fall below - a removed or narrowed field would have
+ * an old host's reservation accepted and then under-filled. */
+#define KUI_OUT_STRUCT(T, v1)                                                 \
+    _Static_assert(offsetof(T, size) == 0, #T ".size must be the first field"); \
+    _Static_assert(sizeof(T) >= (v1), #T " shrank below its ABI 1 layout")
 "#;
 
     fn asserts() -> String {
         let mut o = String::from(PRELUDE);
         o.push('\n');
 
+        // The header's KUI_ABI_VERSION is what a host compares against
+        // kui_abi_version() at startup, so a bump made in one place and not
+        // the other would make that check pass on a mismatched pair.
+        writeln!(
+            o,
+            "_Static_assert(KUI_ABI_VERSION == {}u, \"KUI_ABI_VERSION differs from Rust\");\n",
+            KUI_ABI_VERSION,
+        )
+        .unwrap();
+
         abi_struct!(o, KuiScrollGeometry {
+            size: u32 => "uint32_t",
             x: f32 => "float",
             y: f32 => "float",
             w: f32 => "float",
@@ -3825,6 +4305,7 @@ mod abi_parity {
             max_offset_x: f32 => "float",
             max_offset_y: f32 => "float",
         });
+        abi_out_struct!(o, KuiScrollGeometry);
 
         abi_struct!(o, KuiStr {
             ptr: *const u8 => "const uint8_t *",
@@ -3988,10 +4469,12 @@ mod abi_parity {
         });
 
         abi_struct!(o, KuiTextMetrics {
+            size: u32 => "uint32_t",
             width: f32 => "float",
             height: f32 => "float",
             lines: u32 => "uint32_t",
         });
+        abi_out_struct!(o, KuiTextMetrics);
 
         abi_struct!(o, KuiWarning {
             code: KuiStr => "KuiStr",
@@ -4039,10 +4522,12 @@ mod abi_parity {
         });
 
         abi_struct!(o, KuiEvent {
+            size: u32 => "uint32_t",
             origin: u16 => "uint16_t",
             key: u64 => "uint64_t",
             payload: *const KuiValue => "const KuiValue *",
         });
+        abi_out_struct!(o, KuiEvent);
 
         abi_struct!(o, KuiQuad {
             x: f32 => "float",
@@ -4060,6 +4545,7 @@ mod abi_parity {
         });
 
         abi_struct!(o, KuiDrawData {
+            size: u32 => "uint32_t",
             quads: *const KuiQuad => "const KuiQuad *",
             quad_count: usize => "size_t",
             viewport_w: f32 => "float",
@@ -4070,6 +4556,7 @@ mod abi_parity {
             atlas_dirty: bool => "bool",
             atlas_epoch: u64 => "uint64_t",
         });
+        abi_out_struct!(o, KuiDrawData);
 
         o
     }
@@ -4085,6 +4572,7 @@ mod abi_parity {
         let path = dir.join("kui-abi-assert.c");
         let text = asserts();
         assert!(text.contains("KUI_FIELD(KuiSpec, focus_bg,"));
+        assert!(text.contains("KUI_OUT_STRUCT(KuiEvent,"));
         std::fs::write(&path, text).expect("write kui-abi-assert.c");
     }
 }

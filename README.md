@@ -442,6 +442,13 @@ that are hard to reverse and would look arbitrary without their context.
   the `repr(C)` quad list + atlas directly. `kui_run` drives the windowed
   runner through two C callbacks. The builder state living in `Core` (not in
   a borrowing wrapper) is what makes this a thin layer.
+  The ABI is versioned: check `kui_abi_version()` against the header's
+  `KUI_ABI_VERSION` before your first other call, and start every struct
+  the library writes into from its `KUI_*_INIT` — those lead with a `size`
+  you set, so a later kui that appends a field writes no further than what
+  your build reserved. `kui.h`'s "Who writes what" block tags every struct
+  `[in]`, `[out]`, `[out[]]` or `[lib]`, which is what says whether adding
+  a field to it is free or fatal ([ADR 0006](docs/adr/0006-c-abi-versioning.md)).
 - **The renderer boundary is a flat quad list.** A backend implements "mirror
   this RGBA atlas" and "draw these quads" — the wgpu backend does the whole UI
   in one instanced draw call with an SDF shader for rounded rects/borders.

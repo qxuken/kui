@@ -8,6 +8,8 @@
  *    poll on the same context. Payloads inside callbacks are borrowed for the
  *    duration of the callback.
  *  - Coordinates are logical pixels; draw data comes back in physical pixels.
+ *  - Every struct below is marked [in], [out], [out[]] or [lib], which says
+ *    who allocates it and who writes it. Read "Who writes what" first.
  */
 #ifndef KUI_H
 #define KUI_H
@@ -20,6 +22,84 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* -- ABI version ----------------------------------------------------------
+ *
+ * KUI_ABI_VERSION is the ABI this header describes; kui_abi_version() is the
+ * one the library you actually loaded implements. They are settled against
+ * each other at build time only if you built both, which a host that links
+ * a shared libkui_ffi did not. Check them once, before anything else:
+ *
+ *     if (kui_abi_version() != KUI_ABI_VERSION) {
+ *         fprintf(stderr, "libkui is ABI %u, this build wants %u\n",
+ *                 kui_abi_version(), KUI_ABI_VERSION);
+ *         return 1;
+ *     }
+ *
+ * Equality, not >=: the mismatch this exists to catch is a *newer* library
+ * against an older host, which is the direction that corrupts memory rather
+ * than merely missing a feature.
+ *
+ * The number bumps when the layout of anything the library writes or
+ * allocates changes - an [out], [out[]] or [lib] struct below, in any way,
+ * appended fields included. It does not bump when an [in] struct gains a
+ * field: the library only reads those, so a host that predates the field
+ * passes a shorter struct and gets the zeroed default (KuiSpec grew
+ * `tooltip` exactly this way). It does not bump for a new function either -
+ * a host that does not call one is unaffected, and one that does fails to
+ * link, which is loud.
+ */
+#define KUI_ABI_VERSION 1u
+uint32_t kui_abi_version(void);
+
+/* -- Who writes what ------------------------------------------------------
+ *
+ * [in]     You allocate and fill it; the library reads it. Zero-initialize
+ *          and set what you need - a zeroed field is the documented default.
+ *          A later kui may append fields; your shorter struct is fine.
+ *          KuiSpec, KuiSizing, KuiKeyframe, KuiEnter, KuiTextStyle, KuiSpan,
+ *          KuiPlay, KuiAudio.
+ *
+ * [out]    You allocate it; the library WRITES it. These lead with a
+ *          `uint32_t size` you set to sizeof the struct, and the library
+ *          writes no further than that - which is what lets a later kui
+ *          append a field without writing past the end of what your build
+ *          reserved. Start from the KUI_*_INIT initializer:
+ *
+ *              KuiEvent ev = KUI_EVENT_INIT;
+ *              while (kui_poll_event(ctx, &ev)) { ... }
+ *
+ *          A call whose `size` is below the ABI-1 layout (which is what a
+ *          zeroed or never-set one looks like) writes nothing and returns
+ *          false, rather than guessing; it also consumes nothing, so a
+ *          refused kui_poll_event leaves the event queued (the payload from
+ *          the previous poll is released either way). On return
+ *          `size` holds how many bytes were filled, which is stable across
+ *          a loop that reuses one struct.
+ *          KuiEvent, KuiDrawData, KuiTextMetrics, KuiScrollGeometry.
+ *
+ * [out[]]  You allocate an ARRAY; the library fills up to `cap` elements.
+ *          A `size` field cannot help here: the library strides by its own
+ *          sizeof, so element 1 lands past your element 1 no matter what
+ *          element 0 says, and the write happens before any in-band
+ *          handshake could be read. If one of these ever has to grow, it
+ *          grows by gaining an explicit stride argument - a source break
+ *          every host sees - and by bumping KUI_ABI_VERSION. Until then the
+ *          version check is the whole guard.
+ *          KuiAccessNode, KuiAccessRun, KuiWarning, KuiAudioCommand.
+ *
+ * [lib]    The library allocates it; you read it. KuiQuad, through
+ *          KuiDrawData.quads. The same stride problem mirrored - you walk
+ *          the array with your sizeof - except read-only, so a mismatch
+ *          misreads every quad after the first rather than corrupting
+ *          anything. Guarded by KUI_ABI_VERSION.
+ *
+ * KuiStr is the exception and is frozen: it crosses both ways (kui_edit_text
+ * and kui_value_as_str write one) and will never be more than (ptr, len).
+ * KuiEvent also reaches kui_run's callback as a library-owned
+ * `const KuiEvent *`; one struct behind a pointer is safe to append to, so
+ * it is the [out] use above that pins the type.
+ */
 
 typedef struct KuiCtx KuiCtx;
 typedef struct KuiValue KuiValue;
@@ -100,6 +180,7 @@ enum {
     KUI_CMD_TOGGLE_MAXIMIZE = 4,
 };
 
+/* [in] */
 typedef struct KuiSizing {
     uint32_t tag;
     float value;
@@ -127,6 +208,7 @@ enum {
  * spread evenly (a lone stop sits at 1 and animates from the node's own
  * value); declared `at`s must not decrease. Sizings animate their amount
  * only, in the form the spec's own width/height declares. */
+/* [in] */
 typedef struct KuiKeyframe {
     uint32_t set;
     float at; /* 0..1 */
@@ -151,6 +233,7 @@ enum {
  * snapping — dx/dy slide it in from that far away (logical px), bg fades
  * the node and opacity the whole subtree in. A node drawn again after a
  * frame away enters again. Zeroed = none. */
+/* [in] */
 typedef struct KuiEnter {
     uint32_t set;
     float dx, dy;
@@ -160,9 +243,11 @@ typedef struct KuiEnter {
     float opacity; /* group opacity 0..1; 0 fades the subtree in */
 } KuiEnter;
 
-/* Zero-initialized KuiSpec is a fit-sized transparent column. Colors are
- * 0xRRGGBBAA with 0 meaning "none". Fields mirror the shared prop schema
- * (crates/kui-core/src/schema.rs) and are append-only: the layout is ABI. */
+/* [in] Zero-initialized KuiSpec is a fit-sized transparent column. Colors
+ * are 0xRRGGBBAA with 0 meaning "none". Fields mirror the shared prop schema
+ * (crates/kui-core/src/schema.rs) and are append-only, which is safe here
+ * precisely because the library only reads this one: see "Who writes what".
+ * `tooltip` was appended that way, and did not bump KUI_ABI_VERSION. */
 typedef struct KuiSpec {
     KuiSizing width, height;
     float min_w, max_w, min_h, max_h; /* clamps; max 0 = unconstrained */
@@ -418,7 +503,7 @@ enum {
     KUI_ACCESS_HAS_SET_SIZE = 1u << 17,
 };
 
-/* One node of the access tree (kui_access_tree): what assistive technology
+/* [out[]] One node of the access tree (kui_access_tree): what assistive technology
  * sees. Plain boxes are elided, so `parent` is the nearest semantic
  * ancestor (0 for the root). Rects are logical px in viewport coordinates.
  * Strings are borrowed until the next kui_access_tree on the context. */
@@ -453,7 +538,7 @@ typedef struct KuiAccessNode {
     uint32_t set_size;
 } KuiAccessNode;
 
-/* One laid-out run of an editor's text (kui_access_runs): what a screen
+/* [out[]] One laid-out run of an editor's text (kui_access_runs): what a screen
  * reader reads by character and word. `text` ends with "\n" (a character
  * of zero width) when the line continues into another; `line` is a
  * buffer line (a KUI_ROLE_LINE ordinal for a custom editor) and
@@ -474,17 +559,20 @@ typedef struct KuiAccessRun {
     uint32_t rtl;
 } KuiAccessRun;
 
-/* What text measures (kui_measure_text): logical px at the scale of the
- * current or last frame; `lines` after wrapping. */
+/* [out] What text measures (kui_measure_text): logical px at the scale of
+ * the current or last frame; `lines` after wrapping. */
 typedef struct KuiTextMetrics {
+    uint32_t size; /* = sizeof(KuiTextMetrics) in, bytes filled out */
     float width, height;
     uint32_t lines;
 } KuiTextMetrics;
+#define KUI_TEXT_METRICS_INIT ((KuiTextMetrics){ .size = sizeof(KuiTextMetrics) })
 
-/* What the last layout resolved for a scroll container
+/* [out] What the last layout resolved for a scroll container
  * (kui_scroll_geometry): its box, its content size and the clamped offset,
  * logical px in viewport coordinates. */
 typedef struct KuiScrollGeometry {
+    uint32_t size; /* = sizeof(KuiScrollGeometry) in, bytes filled out */
     float x, y, w, h;
     float content_w, content_h;
     /* Where it is scrolled to, always a position within the content: the
@@ -493,8 +581,9 @@ typedef struct KuiScrollGeometry {
     /* How far it can travel; zero on an axis that does not scroll. */
     float max_offset_x, max_offset_y;
 } KuiScrollGeometry;
+#define KUI_SCROLL_GEOMETRY_INIT ((KuiScrollGeometry){ .size = sizeof(KuiScrollGeometry) })
 
-/* A silent misconfiguration the core noticed (kui_take_warnings). `code`
+/* [out[]] A silent misconfiguration the core noticed (kui_take_warnings). `code`
  * is stable — "grow-weight-ignored", "transition-auto-key",
  * "duplicate-key" — `key` the node it is about, `message` for people.
  * Strings are borrowed until the next kui_take_warnings on the context. */
@@ -510,7 +599,7 @@ typedef struct KuiWarning {
  * kui_take_audio_commands and reports finished playbacks with
  * kui_audio_ended. Volumes are linear amplitude (0..1), durations ms. */
 
-/* Options for kui_play. NULL = defaults; a struct is read literally, so start
+/* [in] Options for kui_play. NULL = defaults; a struct is read literally, so start
  * from KUI_PLAY_INIT (volume 1) rather than zero. */
 typedef struct KuiPlay {
     float volume;
@@ -519,7 +608,7 @@ typedef struct KuiPlay {
 } KuiPlay;
 #define KUI_PLAY_INIT ((KuiPlay){ .volume = 1.0f })
 
-/* What a kui_audio node declares; read literally (start from KUI_AUDIO_INIT). */
+/* [in] What a kui_audio node declares; read literally (start from KUI_AUDIO_INIT). */
 typedef struct KuiAudio {
     uint64_t src;    /* a registered sound */
     float volume;
@@ -538,6 +627,7 @@ enum {
     KUI_AUDIO_MASTER_VOLUME = 6, /* volume, ms = tween */
     KUI_AUDIO_UNLOAD = 7,        /* sound: drop any decoded copy */
 };
+/* [out[]] One queued command (kui_take_audio_commands). */
 typedef struct KuiAudioCommand {
     uint32_t kind;
     uint64_t playback;
@@ -547,7 +637,7 @@ typedef struct KuiAudioCommand {
     uint32_t looped;
 } KuiAudioCommand;
 
-/* Zero-initialized KuiTextStyle picks defaults (16px, default foreground). */
+/* [in] Zero-initialized KuiTextStyle picks defaults (16px, default foreground). */
 typedef struct KuiTextStyle {
     float size;
     float line_height; /* <= 0: default (size * 1.35) */
@@ -559,18 +649,27 @@ typedef struct KuiTextStyle {
     uint32_t ellipsis; /* non-zero: end the last line with "..." when cut off (one line unless max_lines) */
 } KuiTextStyle;
 
+/* [in] One run of a rich-text paragraph. */
 typedef struct KuiSpan {
     KuiStr text;
     uint32_t color; /* 0: inherit paragraph color */
     uint32_t flags; /* KUI_SPAN_* */
 } KuiSpan;
 
+/* [out] One polled event. `size` leads it so that a field appended later
+ * reaches a host that has not recompiled as a shorter write, not a longer
+ * one - ADR 0004's `window` is the next one. */
 typedef struct KuiEvent {
+    uint32_t size;           /* = sizeof(KuiEvent) in, bytes filled out */
     uint16_t origin;
     uint64_t key;
     const KuiValue *payload; /* borrowed; may be NULL */
 } KuiEvent;
+#define KUI_EVENT_INIT ((KuiEvent){ .size = sizeof(KuiEvent) })
 
+/* [lib] One quad of the display list, read through KuiDrawData.quads. You
+ * stride the array with your own sizeof, so its layout is pinned by
+ * KUI_ABI_VERSION rather than by anything in-band. */
 typedef struct KuiQuad {
     float x, y, w, h;        /* physical pixels */
     float color[4];
@@ -583,7 +682,9 @@ typedef struct KuiQuad {
     float clip[4];           /* clip rect (physical px): pixels outside are transparent */
 } KuiQuad;
 
+/* [out] Everything a renderer needs for the finished frame. */
 typedef struct KuiDrawData {
+    uint32_t size;                /* = sizeof(KuiDrawData) in, bytes filled out */
     const KuiQuad *quads;
     size_t quad_count;
     float viewport_w, viewport_h; /* physical pixels */
@@ -593,6 +694,7 @@ typedef struct KuiDrawData {
     bool atlas_dirty;             /* re-upload when set or epoch changed */
     uint64_t atlas_epoch;
 } KuiDrawData;
+#define KUI_DRAW_DATA_INIT ((KuiDrawData){ .size = sizeof(KuiDrawData) })
 
 /* -- Context ------------------------------------------------------------- */
 KuiCtx *kui_ctx_new(void);
@@ -892,8 +994,11 @@ bool kui_edit_text(KuiCtx *ctx, uint64_t key, KuiStr *out);
 void kui_edit_set_text(KuiCtx *ctx, uint64_t key, KuiStr text);
 bool kui_is_focused(KuiCtx *ctx, uint64_t key);
 void kui_frame_finish(KuiCtx *ctx);
-/* Pointers valid until the next kui_frame_begin on this context. */
-void kui_draw_data(KuiCtx *ctx, KuiDrawData *out);
+/* Pointers valid until the next kui_frame_begin on this context. False -
+ * writing nothing - for a NULL out or one whose `size` says it predates
+ * this library; it returned void before that check existed, so a host that
+ * ignores the result still compiles. */
+bool kui_draw_data(KuiCtx *ctx, KuiDrawData *out);
 
 /* -- Values -------------------------------------------------------------- */
 KuiValue *kui_value_null(void);

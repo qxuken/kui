@@ -246,6 +246,12 @@ window.
       `abi_parity` static asserts catch header-vs-Rust drift at build
       time, but nothing catches an old binary against a new library —
       the ABI has no version negotiation, and this ADR does not add one.
+      **Closed by [ADR 0006](0006-c-abi-versioning.md)** (2026-09-04),
+      before any of this was built: `kui_abi_version()` versions the ABI,
+      and `KuiEvent` now leads with a `size` the host sets, so the library
+      writes no further than the host reserved. The appended `window`
+      still bumps the version, but it no longer writes past an
+      un-recompiled host's struct.
     - **Node**: `runWindowed` keeps returning **one** promise, resolving
       with the final model when the **main** window closes; its doc line
       changes from "one window per process" to "one event **loop** per

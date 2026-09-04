@@ -58,6 +58,48 @@ upgrades remove code from the apps on it is doing the job.
   the horizontal scroll container used because a chip list had nowhere
   else to go.
 
+- **The C ABI has a version, and the structs the library writes carry
+  their size** (`docs/adr/0006-c-abi-versioning.md`). `mod abi_parity`
+  settles `include/kui.h` against the Rust layout at build time, but a C
+  host does not build the library it links — it loads whatever
+  `libkui_ffi` the system hands it, and nothing caught an old binary
+  against a new one. That is not theoretical: `KuiEvent` is
+  caller-allocated (`kui_poll_event(ctx, &ev)` writes into memory the host
+  reserved), ADR 0004 appends a `window` to it, and a newer library
+  writing the longer struct into an older host's shorter one is silent
+  memory corruption in the hottest loop a C host has.
+  Two guards, because they catch different things. **`kui_abi_version()`**
+  returns the ABI the loaded library implements; **`KUI_ABI_VERSION`** is
+  the one the host compiled against; a host compares them for equality
+  before its first other call, and `examples/c/counter.c` now does exactly
+  that in `main`. The number bumps when the layout of anything the library
+  *writes or allocates* changes — never for a field appended to a struct
+  the library only *reads*, which is why `KuiSpec` can keep growing a prop
+  a release.
+  And **the four structs the library writes into your memory now lead with
+  a `uint32_t size`** you set to `sizeof` — `KuiEvent`, `KuiDrawData`,
+  `KuiTextMetrics`, `KuiScrollGeometry`, each with a `KUI_*_INIT`
+  initializer that sets it. The library writes no further than what you
+  reserved, so the *next* append to one of them costs an un-recompiled
+  host nothing. A `size` below the ABI-1 layout — what a zeroed or
+  never-set one looks like — is refused rather than guessed at, and
+  `kui_poll_event` refuses before it pops, so a rejected poll leaves the
+  event queued instead of swallowing it.
+  **Which structs those are is now written in the header**, as a "Who
+  writes what" block and an `[in]` / `[out]` / `[out[]]` / `[lib]` tag on
+  every struct. That distinction decides whether appending a field is free
+  or fatal and it was previously implicit — `KuiSpec` was documented as
+  "append-only: the layout is ABI" with nothing saying why the same did
+  not hold for `KuiEvent`. The audit also names what a `size` field
+  *cannot* fix: the four array out-params (`KuiAccessNode`,
+  `KuiAccessRun`, `KuiWarning`, `KuiAudioCommand`) and the `KuiQuad` array
+  you stride through `KuiDrawData`, where the stride is the problem and
+  the version check is the whole guard. Growing one of those means an
+  explicit stride argument, not a quiet append.
+  **Nothing to delete**, and that is the honest entry: this is a guard,
+  not a feature. It removes no line from any app — it removes a class of
+  bug from the ones that upgrade a shared library without rebuilding.
+
 - **`KeyUp`, and one payload shape for both halves of a key**
   (backlog C9). `InputEvent::KeyDown` had no counterpart, so a held-key
   interaction could not be written at all — WASD movement, press-and-hold
@@ -306,6 +348,15 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Changed
 
+- **`KuiEvent`, `KuiDrawData`, `KuiTextMetrics` and `KuiScrollGeometry`
+  gained a leading `size`**, which is a source break every C host fixes at
+  the declaration: `KuiEvent ev;` becomes `KuiEvent ev = KUI_EVENT_INIT;`.
+  It is the last time an appended field to one of those four costs a host
+  anything, and it is strictly cheaper than the break ADR 0004 had already
+  committed to — it just lands before it rather than after.
+- **`kui_draw_data` returns `bool`** instead of `void`, so it can report a
+  refused reservation like the other three. A host that ignores the result
+  still compiles.
 - `Quad` gained `blur` and `QuadKind` gained `Shadow`, which is ABI:
   `KuiQuad` mirrors the core quad field for field, so its `kind` moved from
   word 17 to word 18 and `uv` / `clip` shifted with it. A host reading
@@ -409,6 +460,17 @@ upgrades remove code from the apps on it is doing the job.
   failing as a missing method — a window takes its input from the OS.
   The two contracts that are real differences stayed exactly as they were:
   `runWindowed` resolves with the final model, `createApp` is synchronous.
+- **The Node corpus adapter can no longer skip where it is meant to run**
+  (P7). Its comparison is conditional on a reference report that is
+  generated, never checked in, so a missing one is a `t.skip` — which is
+  green. That skip is there for the `publish` job, which has no cargo
+  target dir and still runs the rest of the suite against the prebuilds;
+  nothing asserted the adapter ran in `check`, the job whose whole point
+  is that all four adapters meet over one report. A reordered step or a
+  `$GITHUB_ENV` export that stopped propagating would have taken the
+  check with it, silently. `check` now sets `KUI_CONFORMANCE_REQUIRED`
+  and the skip is a failure under it. The C adapter never had the hole:
+  it takes the path as an argument and exits 1 when it cannot read it.
 
 - **The `.d.ts` for the addon is generated, not written** (backlog P5).
   `Ctx` and `KuiWindow` are 39 shared methods each, written once in Rust
