@@ -30,6 +30,18 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        "sizing" => r#"
+            return column { pad = { l = 14, r = 14, t = 6, b = 6 },
+              row { key = "bar", width = 200, height = 40, bg = 0x101018ff,
+                column { width = 30, height = 20, bg = 0x30344aff },
+                column { width = "25%", height = 20, bg = 0x3b5bd4ff },
+                column { width = "fit", height = 20, bg = 0x73d98cff,
+                  column { width = 20, height = 10, bg = 0xff0000ff } },
+                column { width = { grow = 1 }, height = 20, bg = 0xffcc00ff },
+              },
+            }
+        "#
+        .to_string(),
         "overflow" => {
             let items = conformance::ITEM_KEYS
                 .iter()
@@ -55,8 +67,8 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             return column { pad = 20, gap = 4,
               column { key = "anchor", width = 80, height = 24, bg = 0x333333ff,
                 column { float = "below", width = 40, height = 12, bg = 0xff0000ff } },
-              column { float = { anchor = "viewport", at = { "end", "end" },
-                                 self_at = { "end", "end" }, dx = -4, dy = -4, fit = true },
+              column { float = { anchor = "viewport", at = { "start", "end" },
+                                 self_at = { "end", "start" }, dx = -6, dy = 14, fit = true },
                        width = 10, height = 10, bg = 0x00ff00ff },
             }
         "#

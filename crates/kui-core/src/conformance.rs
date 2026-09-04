@@ -205,6 +205,32 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "sizing",
+        doc: "One row of a known width holding a child in each sizing mode, \
+              so the four resolve to four different widths: fixed 30, 25% \
+              of 200 = 50, fit around a 20-wide child, and grow taking the \
+              100 that is left. Inside a fit-sized parent — where the \
+              generic prop tests live — a percent and a grow both collapse \
+              to the same geometry, so nothing there can tell the modes \
+              apart. The outer pad is the `padX`/`padY` shorthand pair, \
+              spelled unequally so a binding cannot fall back from one to \
+              the other unnoticed.",
+        custom: &["pad", "key"],
+        elements: &["box"],
+        build: build_sizing,
+        steps: &[],
+        expect: Expect {
+            solid: 6,
+            shadows: 0,
+            images: 0,
+            glyphs_min: 0,
+            access: &["0 window ||"],
+            events: &[],
+            warnings: &[],
+            title: None,
+        },
+    },
+    Scene {
         name: "overflow",
         doc: "A clipping wrapper around a scrolling list, scrolled once: the \
               overflow composite, its retained offset and its scrollbar.",
@@ -226,7 +252,10 @@ pub const SCENES: &[Scene] = &[
     Scene {
         name: "float",
         doc: "Both float spellings: the \"below\" shorthand and the full \
-              config (anchor, at, self, dx/dy, fit).",
+              config (anchor, at, self, dx/dy, fit). The full one is \
+              asymmetric per axis and would land off-screen unclamped, so \
+              swapping at with self, dx with dy, or dropping fit all move \
+              it.",
         custom: &["float", "key"],
         elements: &["box"],
         build: build_float,
@@ -384,6 +413,51 @@ fn build_layout(ui: &mut Ui<'_>, _f: &Fixtures) {
     );
 }
 
+/// The four sizing modes side by side in a parent whose width is known, so
+/// each resolves to a width no other mode produces.
+fn build_sizing(ui: &mut Ui<'_>, _f: &Fixtures) {
+    ui.with(
+        NodeSpec::column().padding(Edges {
+            l: 14.0,
+            r: 14.0,
+            t: 6.0,
+            b: 6.0,
+        }),
+        |ui| {
+            ui.with_keyed(
+                "bar",
+                NodeSpec::row()
+                    .width(Sizing::Fixed(200.0))
+                    .height(Sizing::Fixed(40.0))
+                    .bg(Color::hex(0x101018ff)),
+                |ui| {
+                    let cell = |bg: u32| {
+                        NodeSpec::column()
+                            .height(Sizing::Fixed(20.0))
+                            .bg(Color::hex(bg))
+                    };
+                    ui.with(cell(0x30344aff).width(Sizing::Fixed(30.0)), |_| {});
+                    ui.with(cell(0x3b5bd4ff).width(Sizing::Percent(0.25)), |ui| {
+                        // Nothing inside: a percent is the parent's, not
+                        // the content's.
+                        let _ = ui;
+                    });
+                    ui.with(cell(0x73d98cff).width(Sizing::Fit), |ui| {
+                        ui.with(
+                            NodeSpec::column()
+                                .width(Sizing::Fixed(20.0))
+                                .height(Sizing::Fixed(10.0))
+                                .bg(Color::hex(0xff0000ff)),
+                            |_| {},
+                        );
+                    });
+                    ui.with(cell(0xffcc00ff).width(Sizing::Grow(1.0)), |_| {});
+                },
+            );
+        },
+    );
+}
+
 fn build_overflow(ui: &mut Ui<'_>, _f: &Fixtures) {
     ui.with(NodeSpec::column().pad(4.0).clip(), |ui| {
         ui.with_keyed(
@@ -435,11 +509,18 @@ fn build_float(ui: &mut Ui<'_>, _f: &Fixtures) {
         );
         ui.with(
             NodeSpec::column()
+                // Deliberately asymmetric in every axis, and placed so
+                // that `fit` has to do something: `at` differs from
+                // `self_at` per axis, `dx` from `dy`, and the attachment
+                // lands at (-16, 254) — off the viewport on both sides —
+                // so a dropped `fit` moves it. Symmetric values here (the
+                // `at == self_at`, `dx == dy` this used to have) let a
+                // binding swap either pair with no visible effect.
                 .float(
                     FloatConfig::viewport()
-                        .at(Align::End, Align::End)
-                        .self_at(Align::End, Align::End)
-                        .offset(-4.0, -4.0)
+                        .at(Align::Start, Align::End)
+                        .self_at(Align::End, Align::Start)
+                        .offset(-6.0, 14.0)
                         .fit(),
                 )
                 .width(Sizing::Fixed(10.0))

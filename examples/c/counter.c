@@ -835,6 +835,40 @@ static void conf_overflow(KuiCtx *ui, const Fixtures *f) {
     kui_close(ui);
 }
 
+/* The four sizing modes in a parent of known width, so each resolves to a
+ * width no other mode gives: 30 fixed, 25% of 200 = 50, fit around a
+ * 20-wide child, and grow taking the remaining 100. */
+static void conf_sizing(KuiCtx *ui, const Fixtures *f) {
+    (void)f;
+    KuiSpec outer = {.pad_l = 14, .pad_r = 14, .pad_t = 6, .pad_b = 6};
+    kui_open(ui, &outer, NULL);
+    KuiSpec bar = {.dir = KUI_ROW, .width = {KUI_FIXED, 200},
+                   .height = {KUI_FIXED, 40}, .bg = 0x101018ff};
+    kui_open_keyed(ui, KUI_STR("bar"), &bar, NULL);
+    KuiSpec fixed = {.width = {KUI_FIXED, 30}, .height = {KUI_FIXED, 20},
+                     .bg = 0x30344aff};
+    kui_open(ui, &fixed, NULL);
+    kui_close(ui);
+    KuiSpec percent = {.width = {KUI_PERCENT, 0.25f}, .height = {KUI_FIXED, 20},
+                       .bg = 0x3b5bd4ff};
+    kui_open(ui, &percent, NULL);
+    kui_close(ui);
+    KuiSpec fit = {.width = {KUI_FIT, 0}, .height = {KUI_FIXED, 20},
+                   .bg = 0x73d98cff};
+    kui_open(ui, &fit, NULL);
+    KuiSpec inner = {.width = {KUI_FIXED, 20}, .height = {KUI_FIXED, 10},
+                     .bg = 0xff0000ff};
+    kui_open(ui, &inner, NULL);
+    kui_close(ui);
+    kui_close(ui);
+    KuiSpec grow = {.width = {KUI_GROW, 1}, .height = {KUI_FIXED, 20},
+                    .bg = 0xffcc00ff};
+    kui_open(ui, &grow, NULL);
+    kui_close(ui);
+    kui_close(ui);
+    kui_close(ui);
+}
+
 static void conf_float(KuiCtx *ui, const Fixtures *f) {
     (void)f;
     KuiSpec outer = {.pad_l = 20, .pad_r = 20, .pad_t = 20, .pad_b = 20, .gap = 4};
@@ -853,11 +887,14 @@ static void conf_float(KuiCtx *ui, const Fixtures *f) {
     kui_open(ui, &below, NULL);
     kui_close(ui);
     kui_close(ui);
+    /* Asymmetric in every axis, and attached at (-16, 254) so that
+     * .float_fit has to clamp it back on screen. Symmetric values would
+     * let a swapped at/self or dx/dy pair go unnoticed here. */
     KuiSpec corner = {
         .float_mode = KUI_FLOAT_VIEWPORT,
-        .float_anchor_x = KUI_END, .float_anchor_y = KUI_END,
-        .float_self_x = KUI_END, .float_self_y = KUI_END,
-        .float_dx = -4, .float_dy = -4, .float_fit = 1,
+        .float_anchor_x = KUI_START, .float_anchor_y = KUI_END,
+        .float_self_x = KUI_END, .float_self_y = KUI_START,
+        .float_dx = -6, .float_dy = 14, .float_fit = 1,
         .width = {KUI_FIXED, 10}, .height = {KUI_FIXED, 10}, .bg = 0x00ff00ff,
     };
     kui_open(ui, &corner, NULL);
@@ -939,6 +976,7 @@ typedef struct ConfScene {
  * no entry here fails the run rather than being skipped. */
 static const ConfScene CONF_SCENES[] = {
     {"layout", conf_layout},
+    {"sizing", conf_sizing},
     {"overflow", conf_overflow},
     {"float", conf_float},
     {"tooltip", conf_tooltip},

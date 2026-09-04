@@ -307,10 +307,25 @@ upgrades remove code from the apps on it is doing the job.
   The suite that replaced `assertParity` was measured against it rather
   than argued for: 22 single-edit mutations of `encoder.js` — swapped
   slots in every hand-written composite, wrong mode numbers, dropped
-  flags, swapped element operands — are caught 15/22 by each, on the same
-  15. The seven neither catches (`float`'s `dx`/`dy`, `at`/`self` and
-  `fit`; the three `sizing` modes; `padX`) predate this and are a gap in
-  the corpus, noted against P7.
+  flags, swapped element operands — are caught 22/22 by the new one and
+  were caught 15/22 by the old.
+
+- **Two corpus scenes, from mutation-testing that comparison** (P7). Seven
+  of those 22 mutations passed *both* suites, and the reason was the
+  corpus, not the transport: the `float` scene attached with `at` equal to
+  `self_at`, `dx` equal to `dy`, and landed inside the viewport anyway, so
+  swapping either pair or dropping `fit` changed nothing anyone looked at.
+  It now attaches off-screen on both axes with every value distinct, so
+  all three are load-bearing. A new **`sizing`** scene puts one child of
+  each mode in a row of known width — fixed 30, 25% of 200 = 50, fit
+  around a 20-wide child, grow taking the remaining 100 — because the four
+  modes were otherwise only ever exercised inside fit-sized parents, where
+  a percent and a grow resolve alike. Its outer pad spells `padX`/`padY`
+  unequally, which nothing covered: `layout` sets all four edges, so the
+  shorthand pair never resolved. All four adapters gained the scene, so C
+  and Lua are pinned on these too, not only Node. A scene built from
+  symmetric values pins nothing about order — worth knowing before adding
+  the next one.
 
 ### What you can delete
 

@@ -1010,6 +1010,19 @@ const SCENE_TREES = {
         ),
       ]),
     ]),
+  sizing: () =>
+    root({}, [
+      box({ padX: 14, padY: 6 }, [
+        box({ dir: 'row', width: 200, height: 40, bg: '#101018' }, [
+          box({ width: 30, height: 20, bg: '#30344a' }),
+          box({ width: '25%', height: 20, bg: '#3b5bd4' }),
+          box({ width: 'fit', height: 20, bg: '#73d98c' }, [
+            box({ width: 20, height: 10, bg: '#ff0000' }),
+          ]),
+          box({ width: 'grow', height: 20, bg: '#ffcc00' }),
+        ], 'bar'),
+      ]),
+    ]),
   overflow: () =>
     root({}, [
       box({ pad: 4, clip: true }, [
@@ -1027,7 +1040,7 @@ const SCENE_TREES = {
           box({ float: 'below', width: 40, height: 12, bg: '#ff0000' }),
         ], 'anchor'),
         box({
-          float: { anchor: 'viewport', at: ['end', 'end'], self: ['end', 'end'], dx: -4, dy: -4, fit: true },
+          float: { anchor: 'viewport', at: ['start', 'end'], self: ['end', 'start'], dx: -6, dy: 14, fit: true },
           width: 10, height: 10, bg: '#00ff00',
         }),
       ]),

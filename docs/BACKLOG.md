@@ -244,6 +244,25 @@ Wire all four into the `check` job.
 
 Goal: the parity table becomes a build failure instead of a document.
 
+**Two scenes added (2026-09-04), from mutation-testing the Node encoder.**
+`float`'s full config was symmetric — `at` equal to `self_at`, `dx` equal to
+`dy`, and attached at a point already inside the viewport — so a binding
+could swap either pair or drop `fit` entirely and every adapter still
+passed. It now attaches at (-16, 254), off the viewport on both axes, with
+`at(Start, End)` against `self_at(End, Start)` and `dx: -6, dy: 14`, so all
+three are load-bearing. A new **`sizing`** scene puts one child of each mode
+in a row of *known* width — fixed 30, 25% of 200 = 50, fit around a 20-wide
+child, grow taking the remaining 100 — because the four modes are otherwise
+only exercised inside fit-sized parents, where a percent and a grow collapse
+to the same geometry. Its outer pad is the `padX`/`padY` pair spelled
+unequally (14 / 6), which nothing else covered: the `layout` scene sets all
+four edges explicitly, so the shorthands never resolve.
+
+Together they close seven mutations that every binding used to pass; the C
+and Lua adapters fail on them now too, which is the point of putting the fix
+here rather than in `test.mjs`. **The lesson generalizes: a scene built from
+symmetric values pins nothing about order.** Prefer distinct numbers per
+axis and per slot when adding one.
 ### `.` P8 — Add macOS and Windows smoke jobs — **partly done (2026-09-03)**
 
 Everything platform-specific is cross-compiled on one Linux runner and never
@@ -766,17 +785,13 @@ elements test now asks that directly (`at[0]` places it horizontally,
 obvious differential — encode `['start','end']` and `['end','start']` and
 require them to differ — does *not* catch a swap, being symmetric itself.
 
-**Seven mutations neither suite catches, and they predate this change.**
-`float` is the worst of them: swapping `dx`/`dy`, swapping the `at` and
-`self` alignments, and dropping `fit` entirely all pass. So does every
-`sizing` mode confusion (`percent` written as `grow`, `grow` as `percent`,
-`fit` as a fixed 0), and `padX` falling back to `padY`. The reason is the
-same in each case: the composites parity test uses symmetric samples
-(`dx: -4, dy: -4`), and the generic prop loop's `50%` on a fit-sized parent
-resolves to the same geometry as a grow. **Fixing this belongs with P7, not
-here** — an asymmetric `float` scene and a sizing scene inside a
-known-size parent would close all seven at once, in all four bindings
-rather than only in Node.
+Seven mutations neither suite caught, all predating this change: `float`'s
+`dx`/`dy`, its `at`/`self` alignments and its `fit` flag; all three `sizing`
+mode confusions; and `padX` falling back to `padY`. The cause was symmetric
+test data — the float scene attached at `at == self_at` with `dx == dy`, and
+the generic prop loop samples `50%` inside a *fit-sized* parent, where a
+percent and a grow resolve to the same geometry. **Closed in the corpus
+rather than in Node** (see P7 below): the sweep is now 22/22.
 
 ### `.` D3 — Lift composite parsing into `kui-core`
 
