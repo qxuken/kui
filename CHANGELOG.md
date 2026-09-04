@@ -917,6 +917,35 @@ upgrades remove code from the apps on it is doing the job.
   success while not running. Off on purpose beats silently absent; a local
   `cargo audit` still does it.
 
+- **C can name `role="line"`, and the header's enums are pinned to the
+  lists they mirror.** `KUI_ROLE_LINE` was missing from `kui.h`: three of
+  the header's own comments referred to it, `docs/props.md` listed `line`
+  among the roles with `KUI_ROLE_*` as its C spelling, and `role_of_code`
+  had accepted 22 all along — but no C app could write the constant, so an
+  editor that draws its own text could mark the editor and not its lines,
+  which is the half of ADR 0001's text outcome an app that owns its text
+  needs. The constant is there now, and the enum's leading comment no
+  longer says only the first fifteen roles can be declared (`textInput`,
+  `multilineTextInput` and `line` are declarable too — that is what a
+  custom editor is made of).
+  Nothing caught the omission because nothing was looking: the header is
+  hand-written, and `every_schema_prop_has_a_c_counterpart` pins prop
+  *rows*, sampling every enum-valued row at index 1, so a list that grows
+  is invisible to it. `mod abi_parity` — which already generates
+  `_Static_assert`s pinning every struct field's offset, size and C type,
+  compiled against the header by `examples/c/build.sh` in CI — now also
+  emits one per member of the nine enums whose values are indices into a
+  list the core owns (`KUI_ROLE_*`, `KUI_CURSOR_*`, `KUI_EXPANDED_*`,
+  `KUI_WINDOW_*`, `KUI_START`/`CENTER`/`END`, `KUI_FONT_*`, `KUI_WRAP_*`,
+  `KUI_EASE_*`, `KUI_REPEAT_*`). Both ends are pinned: the names are
+  declared as a fixed-length array of the list's length, so a role appended
+  to `Role::ALL` stops the crate compiling until the header's name for it
+  is listed, and the generated C fails on the undeclared identifier if the
+  header has not defined it. A new `every_role_round_trips_through_the_c_code`
+  covers the third link — that the code C sends arrives as that role in a
+  `Spec` — since the header agreeing on a number and the mapping agreeing
+  on what it means are different facts.
+
 ### What you can delete
 
 - **The inner wrapper that re-rounded a rounded scroll container** — the

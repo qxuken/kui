@@ -470,7 +470,10 @@ enum {
 };
 
 /* Roles (KuiSpec.role, KuiAccessNode.role). The first fifteen can be
- * declared; the rest the core derives. */
+ * declared on any node; the rest the core derives from what a node is —
+ * except KUI_ROLE_TEXT_INPUT, KUI_ROLE_MULTILINE_TEXT_INPUT and
+ * KUI_ROLE_LINE, which an app that draws its own text declares to make a
+ * key sink an editor and to mark that editor's lines. */
 enum {
     KUI_ROLE_NONE = 1, KUI_ROLE_BUTTON, KUI_ROLE_CHECKBOX, KUI_ROLE_RADIO,
     KUI_ROLE_SWITCH, KUI_ROLE_SLIDER, KUI_ROLE_TAB, KUI_ROLE_TAB_LIST,
@@ -478,6 +481,7 @@ enum {
     KUI_ROLE_IMAGE, KUI_ROLE_DIALOG, KUI_ROLE_GROUP,
     KUI_ROLE_WINDOW, KUI_ROLE_TITLE_BAR, KUI_ROLE_STATIC_TEXT,
     KUI_ROLE_TEXT_INPUT, KUI_ROLE_MULTILINE_TEXT_INPUT, KUI_ROLE_SCROLL_VIEW,
+    KUI_ROLE_LINE,
 };
 /* Which of KuiSpec.value_now / value_min / value_max / caret /
  * selection_anchor are set */

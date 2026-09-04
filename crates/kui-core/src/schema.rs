@@ -161,9 +161,10 @@ pub const WRAPS: &[&str] = &["word", "glyph", "none"];
 /// to keep meaning "this node does not expand" (AccessKit's `expanded`,
 /// ARIA's `aria-expanded`, are three-state for the same reason).
 pub const EXPANDED: &[&str] = &["collapsed", "expanded"];
-/// The roles a view can declare (`crate::access::Role::name` spellings);
-/// the derived-only roles (window, static text, text input, scroll view)
-/// are not on the list.
+/// The roles a view can declare (`crate::access::Role::name` spellings).
+/// The purely derived roles (window, title bar, static text, scroll view)
+/// are not on the list; `textInput`, `multilineTextInput` and `line` are,
+/// because an app that draws its own text declares them.
 pub const ROLES: &[&str] = &[
     "none",
     "button",

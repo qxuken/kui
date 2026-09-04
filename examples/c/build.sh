@@ -9,15 +9,19 @@ cargo build -p kui-ffi
 # The header is hand-written, so nothing in Rust makes it match the repr(C)
 # structs in crates/kui-ffi/src/lib.rs: a field added there but missing from -
 # or misordered in - kui.h shifts every field after it, silently, at runtime.
-# The test below regenerates a translation unit of _Static_asserts from the
-# Rust layout (see mod abi_parity); compiling it against the header settles
+# The same goes for the enums the API reads as indices into a list the core
+# owns (KUI_ROLE_* and the rest): a list that grew leaves the header without a
+# name for the new member, and C alone unable to say it. The test below
+# regenerates a translation unit of _Static_asserts from the Rust layout and
+# those lists (see mod abi_parity); compiling it against the header settles
 # the two. Nothing links - the asserts are checked in the front end.
 abi=target/kui-abi-assert.c
 rm -f "$abi"
 cargo test -p kui-ffi --lib abi_parity
 test -f "$abi" # the test filter matched nothing if this is missing
 cc "$abi" -I crates/kui-ffi/include -std=c11 -Wall -Wextra -fsyntax-only
-echo "kui.h matches the Rust struct layout ($(grep -c KUI_FIELD "$abi") fields)"
+# Anchored, so the #define in the prelude is not counted as a row.
+echo "kui.h matches Rust ($(grep -c '^KUI_FIELD' "$abi") fields, $(grep -c '^KUI_ENUM' "$abi") enum members)"
 
 cc examples/c/counter.c \
     -I crates/kui-ffi/include \
