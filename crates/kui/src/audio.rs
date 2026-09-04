@@ -10,7 +10,7 @@
 //! logs once and every later command is dropped — the UI keeps running.
 //! Decoded sounds are cached per `SoundId` and dropped on `Unload`.
 
-use kui_core::{AudioCommand, PlaybackId, Resources};
+use kui_core::{AudioCommand, PlaybackId, SharedResources};
 
 pub use backend::Audio;
 
@@ -105,11 +105,15 @@ mod backend {
         }
 
         /// The decoded sound, decoding (and caching) on first use.
-        fn decoded(&mut self, sound: SoundId, resources: &Resources) -> Option<StaticSoundData> {
+        fn decoded(
+            &mut self,
+            sound: SoundId,
+            resources: &SharedResources,
+        ) -> Option<StaticSoundData> {
             if let Some(d) = self.decoded.get(&sound) {
                 return Some(d.clone());
             }
-            let bytes: Arc<[u8]> = resources.sound(sound)?.clone();
+            let bytes: Arc<[u8]> = resources.sound(sound)?;
             match StaticSoundData::from_cursor(Cursor::new(bytes)) {
                 Ok(d) => {
                     self.decoded.insert(sound, d.clone());
@@ -123,7 +127,7 @@ mod backend {
         }
 
         /// Applies queued commands to the device.
-        pub fn apply(&mut self, cmds: Vec<AudioCommand>, resources: &Resources) {
+        pub fn apply(&mut self, cmds: Vec<AudioCommand>, resources: &SharedResources) {
             for cmd in cmds {
                 match cmd {
                     AudioCommand::Play {
@@ -285,7 +289,7 @@ mod backend {
             Audio
         }
 
-        pub fn apply(&mut self, _cmds: Vec<AudioCommand>, _resources: &Resources) {}
+        pub fn apply(&mut self, _cmds: Vec<AudioCommand>, _resources: &SharedResources) {}
 
         pub fn poll_ended(&mut self) -> Vec<PlaybackId> {
             Vec::new()

@@ -30,6 +30,13 @@ declaring `WindowId` wins, `duplicate-window-config` on a real conflict),
 and decision 6 names the trap its edge rule creates with a
 `window-declared-while-closed` warning.
 
+**Amended again 2026-09-04**, by building step 1: decision 2's list of four
+shared things is a list of three. `Resources`, `AudioStore` and the font
+database move into the `Session`; the shaped-text cache and the glyph atlas
+stay per window, because they are one unit with the window's texture and
+because `Core::output` lends the atlas out as `&mut`. Hoisting them is a
+source break and belongs with the breaks step 3 already carries.
+
 ## Context
 
 - The assumption is written down in four places and true in all of them:
@@ -123,6 +130,41 @@ and decision 6 names the trap its edge rule creates with a
    renderer keeps its own `atlas_epoch` against the shared atlas — the
    comparison in `sync_atlas` already works that way — and `kui-wgpu`
    grows a shared `Device`/`Queue` with a surface per window.
+   **Amended (2026-09-04), by building it: three move, two stay.**
+   `Resources`, `AudioStore` and the **font database** are the session's;
+   the **shaped-text cache** and the **glyph atlas** stay per window. The
+   list of four was written from what *looks* shareable rather than from
+   what the code says, and the code says two things:
+   - **The shaped-text cache and the atlas are one unit, and the unit is a
+     window's texture.** A `CachedText` holds positioned glyph quads
+     stamped with the atlas epoch they were packed against
+     (`glyphs_built_for`), so an entry is only valid for the page it was
+     built from. Sharing the cache without the page hands one window UVs
+     into another window's atlas.
+   - **The atlas cannot move, because `Core::output` lends it.**
+     `output` returns `(&DisplayList, &mut GlyphAtlas)`; from a shared
+     `RefCell` the second half can only be a guard, and a guard has a
+     destructor, so the borrow it holds no longer ends at its last use the
+     way an `&mut` does. Every caller that binds the pair and then touches
+     the core again breaks — `crates/kui-core/tests/subpixel.rs` does
+     exactly that. `Core.atlas.epoch` and `.size`, read as plain fields by
+     tests and by renderers, have the same problem from the other side.
+     Hoisting the atlas is therefore a **source break**, and belongs with
+     the other breaks this ADR schedules (decision 5, step 3), not in a
+     step whose whole claim is that it is invisible.
+
+   What is lost by leaving them is memory and repeated rasterization: two
+   windows each keep a page and re-raster the glyphs they both draw.
+   What is kept is everything the ADR's own sentence promises — "a font or
+   image registered anywhere in a session draws everywhere in it" — because
+   the things whose *handles must agree across windows* are exactly the
+   three that moved: a `FontId` resolves against one font database, an
+   `ImageId` / `SoundId` against one registry, and one audio device drains
+   one queue. `TextSystem` is split rather than moved: the font database is
+   the session's and is passed into shaping as a parameter; the cache, the
+   rasterizer and the per-frame text list (which `TextId` indexes, and which
+   a second window's `begin_frame` would otherwise clear under the first)
+   stay the window's, beside its tree and its display list.
 3. **`WindowId` is an opaque integer, assigned by the driver;
    `WindowId::MAIN` is 0.** It crosses every transport as a plain
    integer, and `WindowEnv` gains `id`, so a view can read which window
@@ -455,10 +497,14 @@ and decision 6 names the trap its edge rule creates with a
   that still declares.
 - `kui-wgpu` needs a shared device before a second window is worth
   opening; that is the first piece of implementation work, and it is
-  invisible to every binding.
+  invisible to every binding. Built 2026-09-04 as `kui_wgpu::Gpu`: the
+  instance, adapter, device and queue behind one cloneable handle, with
+  `Renderer::new_in(&Gpu, target, w, h)` beside the unchanged
+  `Renderer::new`, which now makes a private `Gpu` for its own window.
 - A suggested build order, each step shippable alone: (1) `Session` —
-  hoist `Resources`, `TextSystem`, `GlyphAtlas`, `AudioStore`, and share
-  the wgpu device; (2) `WindowId` on `UiEvent`, `WindowEnv::id`, always 0
+  hoist `Resources`, `AudioStore` and the font database, and share the wgpu
+  device (built 2026-09-04; the glyph atlas and the shaped-text cache stay
+  per window — see decision 2's amendment); (2) `WindowId` on `UiEvent`, `WindowEnv::id`, always 0
   — pure plumbing through four transports; (3) the declared set, the
   diff, `Open`/`Close`, and the `window` event, with the runner opening
   real `Normal` windows; (4) `WindowKind::Popup`, anchoring, the

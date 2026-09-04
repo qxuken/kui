@@ -2,7 +2,7 @@
 //!
 //! - Flat per-frame tree ([`tree::Tree`]) built through [`ui::Ui`]
 //! - Clay-style flex solver ([`layout`])
-//! - Core-owned text stack: shaping, wrapping, caching, atlas ([`text`], [`atlas`])
+//! - Session-owned text stack: shaping, wrapping, caching, atlas ([`text`], [`atlas`], [`session`])
 //! - Events as data ([`input`], [`value::Value`]) routed by origin
 //! - Renderer boundary: a flat quad list ([`display::DisplayList`])
 
@@ -28,6 +28,7 @@ pub mod resources;
 pub mod runtime;
 pub mod schema;
 pub mod scroll;
+pub mod session;
 pub mod spec;
 pub mod stats;
 pub mod text;
@@ -60,6 +61,7 @@ pub use keyframes::Keyframe;
 pub use resources::{FontId, ImageId, Resources, SoundId};
 pub use runtime::{Core, Extension};
 pub use scroll::ScrollGeometry;
+pub use session::{Session, SharedAudio, SharedResources};
 pub use spec::{
     Align, Dir, FLOAT_PRESETS, FloatAnchor, FloatConfig, FontFamily, NodeSpec, OVERFLOW_CLIP,
     OVERFLOW_SCROLL_X, OVERFLOW_SCROLL_Y, PadShorthand, Shadow, Sizing, TextStyle, TextWrap,

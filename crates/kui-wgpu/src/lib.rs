@@ -69,10 +69,109 @@ fn instance_of(q: &Quad) -> Instance {
     }
 }
 
-pub struct Renderer {
-    surface: wgpu::Surface<'static>,
+/// The GPU objects a session's windows share: one instance, one adapter,
+/// one device, one queue. Windows must share a device before a second one
+/// is worth opening — two devices cannot see each other's buffers or
+/// textures, and each costs a driver context — so a `Renderer` holds a
+/// handle to one rather than making its own. Cloning a `Gpu` clones the
+/// handle; `Renderer::new` makes a private one for its window, which is
+/// what a single-window app gets and never has to name.
+#[derive(Clone)]
+pub struct Gpu(std::sync::Arc<GpuInner>);
+
+struct GpuInner {
+    instance: wgpu::Instance,
+    adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
+    dual_source: bool,
+}
+
+impl Gpu {
+    /// Opens the shared device, choosing an adapter that can present to
+    /// `target`'s surface — the first window's, whose surface comes back
+    /// with it because it has to exist before the adapter can be picked.
+    /// Every later window's surface comes from [`Gpu::create_surface`].
+    pub async fn new(
+        target: impl Into<wgpu::SurfaceTarget<'static>>,
+    ) -> Result<(Self, wgpu::Surface<'static>), Box<dyn std::error::Error>> {
+        let instance =
+            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+        let surface = instance.create_surface(target)?;
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                compatible_surface: Some(&surface),
+                ..Default::default()
+            })
+            .await?;
+        // Per-channel blending for LCD subpixel text, when the device has it.
+        let dual_source = adapter
+            .features()
+            .contains(wgpu::Features::DUAL_SOURCE_BLENDING);
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                required_features: if dual_source {
+                    wgpu::Features::DUAL_SOURCE_BLENDING
+                } else {
+                    wgpu::Features::empty()
+                },
+                ..Default::default()
+            })
+            .await?;
+        let gpu = Self(std::sync::Arc::new(GpuInner {
+            instance,
+            adapter,
+            device,
+            queue,
+            dual_source,
+        }));
+        Ok((gpu, surface))
+    }
+
+    /// A surface for another window on the same instance — what
+    /// [`Renderer::new_in`] draws into.
+    pub fn create_surface(
+        &self,
+        target: impl Into<wgpu::SurfaceTarget<'static>>,
+    ) -> Result<wgpu::Surface<'static>, wgpu::CreateSurfaceError> {
+        self.0.instance.create_surface(target)
+    }
+
+    pub fn instance(&self) -> &wgpu::Instance {
+        &self.0.instance
+    }
+
+    pub fn adapter(&self) -> &wgpu::Adapter {
+        &self.0.adapter
+    }
+
+    pub fn device(&self) -> &wgpu::Device {
+        &self.0.device
+    }
+
+    pub fn queue(&self) -> &wgpu::Queue {
+        &self.0.queue
+    }
+
+    /// Whether this device blends per channel, i.e. LCD subpixel glyphs
+    /// draw with per-channel coverage rather than their union.
+    pub fn dual_source(&self) -> bool {
+        self.0.dual_source
+    }
+}
+
+impl std::fmt::Debug for Gpu {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Gpu")
+            .field("adapter", &self.0.adapter.get_info().name)
+            .field("dual_source", &self.0.dual_source)
+            .finish()
+    }
+}
+
+pub struct Renderer {
+    gpu: Gpu,
+    surface: wgpu::Surface<'static>,
     config: wgpu::SurfaceConfiguration,
     pipeline: wgpu::RenderPipeline,
     globals_buf: wgpu::Buffer,
@@ -84,7 +183,6 @@ pub struct Renderer {
     instance_buf: wgpu::Buffer,
     instance_cap: usize,
     instances: Vec<Instance>,
-    dual_source: bool,
     pub clear_color: wgpu::Color,
 }
 
@@ -110,36 +208,43 @@ fn preprocess_shader(src: &str, dual: bool) -> String {
 }
 
 impl Renderer {
+    /// A renderer for one window, on a device of its own.
     pub async fn new(
         target: impl Into<wgpu::SurfaceTarget<'static>>,
         width: u32,
         height: u32,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let instance =
-            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
-        let surface = instance.create_surface(target)?;
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                compatible_surface: Some(&surface),
-                ..Default::default()
-            })
-            .await?;
-        // Per-channel blending for LCD subpixel text, when the device has it.
-        let dual_source = adapter
-            .features()
-            .contains(wgpu::Features::DUAL_SOURCE_BLENDING);
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                required_features: if dual_source {
-                    wgpu::Features::DUAL_SOURCE_BLENDING
-                } else {
-                    wgpu::Features::empty()
-                },
-                ..Default::default()
-            })
-            .await?;
+        let (gpu, surface) = Gpu::new(target).await?;
+        Self::with_surface(gpu, surface, width, height)
+    }
 
-        let caps = surface.get_capabilities(&adapter);
+    /// A renderer for another window on an existing device — the one every
+    /// window of a session shares. Get it from [`Renderer::gpu`].
+    pub fn new_in(
+        gpu: &Gpu,
+        target: impl Into<wgpu::SurfaceTarget<'static>>,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let surface = gpu.create_surface(target)?;
+        Self::with_surface(gpu.clone(), surface, width, height)
+    }
+
+    /// The device this renderer draws with, to open another window on.
+    pub fn gpu(&self) -> &Gpu {
+        &self.gpu
+    }
+
+    fn with_surface(
+        gpu: Gpu,
+        surface: wgpu::Surface<'static>,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let device = gpu.device();
+        let dual_source = gpu.dual_source();
+
+        let caps = surface.get_capabilities(gpu.adapter());
         let format = caps
             .formats
             .iter()
@@ -159,7 +264,7 @@ impl Renderer {
             // the cost of less slack for slow frames.
             desired_maximum_frame_latency: 1,
         };
-        surface.configure(&device, &config);
+        surface.configure(device, &config);
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("kui"),
@@ -269,16 +374,15 @@ impl Renderer {
         });
 
         let atlas_size = kui_core::atlas::ATLAS_SIZE;
-        let atlas_tex = create_atlas_texture(&device, atlas_size);
-        let bind_group = create_bind_group(&device, &bind_layout, &globals_buf, &atlas_tex);
+        let atlas_tex = create_atlas_texture(device, atlas_size);
+        let bind_group = create_bind_group(device, &bind_layout, &globals_buf, &atlas_tex);
 
         let instance_cap = 4096;
-        let instance_buf = create_instance_buffer(&device, instance_cap);
+        let instance_buf = create_instance_buffer(device, instance_cap);
 
         Ok(Self {
+            gpu,
             surface,
-            device,
-            queue,
             config,
             pipeline,
             globals_buf,
@@ -290,7 +394,6 @@ impl Renderer {
             instance_buf,
             instance_cap,
             instances: Vec::new(),
-            dual_source,
             clear_color: wgpu::Color {
                 r: 0.06,
                 g: 0.065,
@@ -305,21 +408,21 @@ impl Renderer {
     /// `Core::set_subpixel_text`; without it the core should keep
     /// rasterizing alpha masks.
     pub fn subpixel_text(&self) -> bool {
-        self.dual_source
+        self.gpu.dual_source()
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
         self.config.width = width.max(1);
         self.config.height = height.max(1);
-        self.surface.configure(&self.device, &self.config);
+        self.surface.configure(self.gpu.device(), &self.config);
     }
 
     fn sync_atlas(&mut self, atlas: &mut GlyphAtlas) {
         if atlas.size != self.atlas_size {
             self.atlas_size = atlas.size;
-            self.atlas_tex = create_atlas_texture(&self.device, atlas.size);
+            self.atlas_tex = create_atlas_texture(self.gpu.device(), atlas.size);
             self.bind_group = create_bind_group(
-                &self.device,
+                self.gpu.device(),
                 &self.bind_layout,
                 &self.globals_buf,
                 &self.atlas_tex,
@@ -327,7 +430,7 @@ impl Renderer {
             self.atlas_epoch = u64::MAX;
         }
         if atlas.dirty || self.atlas_epoch != atlas.epoch {
-            self.queue.write_texture(
+            self.gpu.queue().write_texture(
                 wgpu::TexelCopyTextureInfo {
                     texture: &self.atlas_tex,
                     mip_level: 0,
@@ -362,17 +465,21 @@ impl Renderer {
         self.instances.extend(dl.quads.iter().map(instance_of));
         if self.instances.len() > self.instance_cap {
             self.instance_cap = self.instances.len().next_power_of_two();
-            self.instance_buf = create_instance_buffer(&self.device, self.instance_cap);
+            self.instance_buf = create_instance_buffer(self.gpu.device(), self.instance_cap);
         }
         if !self.instances.is_empty() {
-            self.queue
-                .write_buffer(&self.instance_buf, 0, bytemuck::cast_slice(&self.instances));
+            self.gpu.queue().write_buffer(
+                &self.instance_buf,
+                0,
+                bytemuck::cast_slice(&self.instances),
+            );
         }
         let globals = Globals {
             viewport: [dl.viewport.w.max(1.0), dl.viewport.h.max(1.0)],
             atlas_size: [self.atlas_size as f32, self.atlas_size as f32],
         };
-        self.queue
+        self.gpu
+            .queue()
             .write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(&globals));
 
         // Acquiring the swapchain image is where vsync backpressure blocks;
@@ -394,7 +501,8 @@ impl Renderer {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self
-            .device
+            .gpu
+            .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("kui") });
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -420,8 +528,8 @@ impl Renderer {
                 pass.draw(0..6, 0..self.instances.len() as u32);
             }
         }
-        self.queue.submit([encoder.finish()]);
-        self.queue.present(frame);
+        self.gpu.queue().submit([encoder.finish()]);
+        self.gpu.queue().present(frame);
         Ok(RenderReport { vsync_wait_ms })
     }
 }

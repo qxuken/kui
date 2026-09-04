@@ -14,7 +14,6 @@ use crate::atlas::GlyphAtlas;
 use crate::color::Color;
 use crate::display::{Clip, Quad, QuadKind};
 use crate::geom::{Rect, Size, Vec2};
-use crate::layout::TextMeasure;
 use crate::resources::Resources;
 use crate::spec::{FontFamily, TextStyle, TextWrap};
 use crate::tree::TextId;
@@ -259,8 +258,14 @@ pub struct TextMetrics {
     pub lines: u32,
 }
 
+/// The shaping and rasterization state of one window. The font database
+/// it shapes against is not in here — that is the session's
+/// ([`crate::session::Session`]), passed in as `fs` — because a font
+/// registered in one window has to shape in every window of the session.
+/// What is here is coupled to this window's glyph atlas: the shaped-buffer
+/// cache stamps its positioned glyphs with the atlas epoch they were
+/// packed against, and the frame lists are what `TextId` indexes.
 pub struct TextSystem {
-    font_system: FontSystem,
     raster: Raster,
     cache: FxHashMap<u64, CachedText>,
     frame: Vec<FrameText>,
@@ -273,24 +278,28 @@ pub struct TextSystem {
     frame_no: u64,
 }
 
+/// The session's font database, set up the way kui shapes against it.
+pub(crate) fn new_font_system() -> FontSystem {
+    let mut font_system = FontSystem::new();
+    // Map the generic sans-serif family to a face with real bold/italic
+    // variants; otherwise weight/style matching can wander into whatever
+    // font happens to advertise the variant (monospace included).
+    let sans = if cfg!(target_os = "macos") {
+        Some("Helvetica Neue")
+    } else if cfg!(target_os = "windows") {
+        Some("Segoe UI")
+    } else {
+        None // fontconfig platforms usually map sans-serif sensibly
+    };
+    if let Some(name) = sans {
+        font_system.db_mut().set_sans_serif_family(name);
+    }
+    font_system
+}
+
 impl TextSystem {
     pub fn new() -> Self {
-        let mut font_system = FontSystem::new();
-        // Map the generic sans-serif family to a face with real bold/italic
-        // variants; otherwise weight/style matching can wander into whatever
-        // font happens to advertise the variant (monospace included).
-        let sans = if cfg!(target_os = "macos") {
-            Some("Helvetica Neue")
-        } else if cfg!(target_os = "windows") {
-            Some("Segoe UI")
-        } else {
-            None // fontconfig platforms usually map sans-serif sensibly
-        };
-        if let Some(name) = sans {
-            font_system.db_mut().set_sans_serif_family(name);
-        }
         Self {
-            font_system,
             raster: Raster::new(),
             cache: FxHashMap::default(),
             frame: Vec::new(),
@@ -300,9 +309,9 @@ impl TextSystem {
         }
     }
 
-    /// Font system + rasterizer, split-borrowed for glyph raster.
-    pub(crate) fn raster_parts(&mut self) -> (&mut FontSystem, &mut Raster) {
-        (&mut self.font_system, &mut self.raster)
+    /// This window's rasterizer, for glyph raster against its atlas.
+    pub(crate) fn raster_mut(&mut self) -> &mut Raster {
+        &mut self.raster
     }
 
     pub(crate) fn subpixel(&self) -> bool {
@@ -317,18 +326,10 @@ impl TextSystem {
         changed
     }
 
-    pub(crate) fn font_system(&self) -> &FontSystem {
-        &self.font_system
-    }
-
-    pub(crate) fn font_system_mut(&mut self) -> &mut FontSystem {
-        &mut self.font_system
-    }
-
     /// Starts a frame. `keep_prev` retains the list just finished so the
     /// next frame can still read its texts — `Core` sets it exactly when it
     /// keeps the previous tree, and the two are read together.
-    pub(crate) fn begin_frame(&mut self, scale: f32, keep_prev: bool) {
+    pub(crate) fn begin_frame(&mut self, fs: &mut FontSystem, scale: f32, keep_prev: bool) {
         // Scale change invalidates every physical-px measurement.
         if (scale - self.scale).abs() > f32::EPSILON {
             self.cache.clear();
@@ -346,7 +347,7 @@ impl TextSystem {
             self.cache.retain(|_, e| e.last_used >= cutoff);
             // The shape-run cache makes single-line reshapes ~free while
             // editing; trim it so long sessions don't grow unboundedly.
-            self.font_system.shape_run_cache.trim(2);
+            fs.shape_run_cache.trim(2);
         }
     }
 
@@ -379,11 +380,16 @@ impl TextSystem {
     /// Shapes (or reuses) the buffer for `content` in `style`; returns its
     /// cache key. Shared by text nodes and measurement, so measuring a
     /// string and then drawing it shapes once.
-    fn intern(&mut self, content: &str, style: &TextStyle, res: &Resources) -> u64 {
+    fn intern(
+        &mut self,
+        content: &str,
+        style: &TextStyle,
+        res: &Resources,
+        fs: &mut FontSystem,
+    ) -> u64 {
         let key = Self::style_key(content, style, self.scale);
         let frame_no = self.frame_no;
         let scale = self.scale;
-        let fs = &mut self.font_system;
         let entry = self.cache.entry(key).or_insert_with(|| {
             let mut buffer = new_buffer(fs, style, scale);
             buffer.set_text(
@@ -437,8 +443,14 @@ impl TextSystem {
     }
 
     /// Registers a text for this frame, shaping (or reusing) its buffer.
-    pub fn add(&mut self, content: &str, style: &TextStyle, res: &Resources) -> TextId {
-        let key = self.intern(content, style, res);
+    pub fn add(
+        &mut self,
+        content: &str,
+        style: &TextStyle,
+        res: &Resources,
+        fs: &mut FontSystem,
+    ) -> TextId {
+        let key = self.intern(content, style, res, fs);
         self.frame.push(FrameText {
             cache_key: key,
             color: style.color,
@@ -456,10 +468,11 @@ impl TextSystem {
         content: &str,
         style: &TextStyle,
         res: &Resources,
+        fs: &mut FontSystem,
         max_w: Option<f32>,
     ) -> TextMetrics {
-        let key = self.intern(content, style, res);
-        self.measure_key(key, max_w)
+        let key = self.intern(content, style, res, fs);
+        self.measure_key(key, fs, max_w)
     }
 
     /// `measure` for a rich-text paragraph.
@@ -468,15 +481,15 @@ impl TextSystem {
         spans: &[Span<'_>],
         base: &TextStyle,
         res: &Resources,
+        fs: &mut FontSystem,
         max_w: Option<f32>,
     ) -> TextMetrics {
-        let key = self.intern_rich(spans, base, res);
-        self.measure_key(key, max_w)
+        let key = self.intern_rich(spans, base, res, fs);
+        self.measure_key(key, fs, max_w)
     }
 
-    fn measure_key(&mut self, key: u64, max_w: Option<f32>) -> TextMetrics {
+    fn measure_key(&mut self, key: u64, fs: &mut FontSystem, max_w: Option<f32>) -> TextMetrics {
         let scale = self.scale;
-        let fs = &mut self.font_system;
         let entry = self.cache.get_mut(&key).expect("just interned");
         let target = wrap_target(entry, max_w, scale);
         wrap_entry(entry, fs, target);
@@ -495,8 +508,14 @@ impl TextSystem {
 
     /// Registers a rich-text paragraph for this frame. Spans shape as one
     /// flow, so wrapping crosses style boundaries correctly.
-    pub fn add_rich(&mut self, spans: &[Span<'_>], base: &TextStyle, res: &Resources) -> TextId {
-        let key = self.intern_rich(spans, base, res);
+    pub fn add_rich(
+        &mut self,
+        spans: &[Span<'_>],
+        base: &TextStyle,
+        res: &Resources,
+        fs: &mut FontSystem,
+    ) -> TextId {
+        let key = self.intern_rich(spans, base, res, fs);
         self.frame.push(FrameText {
             cache_key: key,
             color: base.color,
@@ -504,7 +523,13 @@ impl TextSystem {
         TextId((self.frame.len() - 1) as u32)
     }
 
-    fn intern_rich(&mut self, spans: &[Span<'_>], base: &TextStyle, res: &Resources) -> u64 {
+    fn intern_rich(
+        &mut self,
+        spans: &[Span<'_>],
+        base: &TextStyle,
+        res: &Resources,
+        fs: &mut FontSystem,
+    ) -> u64 {
         let mut key = Self::style_key("", base, self.scale) ^ 0x9e37_79b9_7f4a_7c15;
         for s in spans {
             let mut mix = |bytes: &[u8]| {
@@ -524,7 +549,6 @@ impl TextSystem {
         }
         let frame_no = self.frame_no;
         let scale = self.scale;
-        let fs = &mut self.font_system;
         let entry = self.cache.entry(key).or_insert_with(|| {
             let mut buffer = new_buffer(fs, base, scale);
             let family = res.family_of(base.family);
@@ -548,10 +572,9 @@ impl TextSystem {
             .expect("frame text missing from cache")
     }
 
-    fn ensure_wrap(&mut self, id: TextId, max_w_logical: f32) {
+    fn ensure_wrap(&mut self, id: TextId, max_w_logical: f32, fs: &mut FontSystem) {
         let scale = self.scale;
         let key = self.frame[id.0 as usize].cache_key;
-        let fs = &mut self.font_system;
         let entry = self
             .cache
             .get_mut(&key)
@@ -562,22 +585,23 @@ impl TextSystem {
 
     /// Emits positioned glyph quads for a laid-out text node.
     /// `origin` and `node` are logical; output quads are physical px.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn emit(
         &mut self,
         id: TextId,
         origin: Vec2,
         node: Size,
         clip: Clip,
+        fs: &mut FontSystem,
         atlas: &mut GlyphAtlas,
         out: &mut Vec<Quad>,
     ) {
-        self.ensure_wrap(id, node.w);
+        self.ensure_wrap(id, node.w, fs);
         let color = self.frame[id.0 as usize].color;
         let key = self.frame[id.0 as usize].cache_key;
         let scale = self.scale;
         let ox = (origin.x * scale).round();
         let oy = (origin.y * scale).round();
-        let fs = &mut self.font_system;
         let raster = &mut self.raster;
         let entry = self
             .cache
@@ -758,15 +782,15 @@ fn measure_buffer(buffer: &Buffer, max_lines: usize) -> (Size, u32) {
     )
 }
 
-impl TextMeasure for TextSystem {
-    fn intrinsic(&mut self, id: TextId) -> Size {
+impl TextSystem {
+    pub(crate) fn intrinsic(&mut self, id: TextId) -> Size {
         let scale = self.scale;
         let e = self.entry_mut(id);
         Size::new(e.intrinsic.w / scale, e.intrinsic.h / scale)
     }
 
-    fn wrapped(&mut self, id: TextId, max_w: f32) -> Size {
-        self.ensure_wrap(id, max_w);
+    pub(crate) fn wrapped(&mut self, id: TextId, max_w: f32, fs: &mut FontSystem) -> Size {
+        self.ensure_wrap(id, max_w, fs);
         let scale = self.scale;
         let e = self.entry_mut(id);
         let (mut m, _) = measure_buffer(&e.buffer, e.max_lines);

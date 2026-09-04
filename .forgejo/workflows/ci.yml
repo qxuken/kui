@@ -9,6 +9,13 @@
 # real hardware. They are opt-in, non-blocking and part of no release path;
 # see the comment above them for what they do and do not buy.
 #
+# RustSec advisories are not checked here. They live in their own workflow,
+# .forgejo/workflows/audit.yml, because `cargo audit` reads Cargo.lock and
+# needs none of what makes this job expensive - and because its result can go
+# red without a commit, so it runs on a weekly schedule as well as on pushes
+# that touch the lockfile. It is not in `publish`'s `needs` either; see the
+# note at the top of that file.
+#
 # check is one job so the cargo target dir is built once and shared by fmt,
 # clippy, the workspace tests, the two C examples (C as the host, and C as an
 # extension inside a Rust host), the Node addon parity tests and the Node

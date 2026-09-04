@@ -1,8 +1,14 @@
-//! The `Core`: owns everything that survives across frames (text caches,
-//! glyph atlas, interaction state, registered resources) plus the reusable
-//! per-frame tree — and the frame-builder state itself. Builder state living
-//! here (not in a borrowing wrapper) is what lets flat C bindings drive a
-//! frame through one opaque pointer; the Rust `Ui` is a thin safe façade.
+//! The `Core`: one window. It owns everything that survives across frames
+//! and belongs to this window alone (interaction state, scroll and edit
+//! stores, focus) plus the reusable per-frame tree — and the frame-builder
+//! state itself. Builder state living here (not in a borrowing wrapper) is
+//! what lets flat C bindings drive a frame through one opaque pointer; the
+//! Rust `Ui` is a thin safe façade.
+//!
+//! What must not be duplicated per window — the resource registry, the
+//! shaping caches, the glyph atlas and the audio store — lives in the
+//! [`crate::session::Session`] a core is constructed against.
+//! [`Core::new`] makes a private one, so a single-window app never sees it.
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -22,8 +28,9 @@ use crate::input::{
 use crate::key::Key;
 use crate::keyframes::{self, Keyframe};
 use crate::layout::{self, TextMeasure};
-use crate::resources::Resources;
+use crate::resources::{FontId, Resources};
 use crate::scroll::ScrollStore;
+use crate::session::{Session, SharedAudio, SharedResources};
 use crate::spec::{NodeSpec, Sizing, TextStyle};
 use crate::stats::FrameStats;
 use crate::text::{Span, TextMetrics, TextSystem};
@@ -53,10 +60,29 @@ const FOCUS_RING: Color = Color {
 };
 
 pub struct Core {
+    /// The caches and registries this window shares with the rest of its
+    /// session. Everything a frame needs from it is borrowed inside a
+    /// method and dropped before it returns; see `session`'s module doc.
+    session: Session,
+    /// This window's shaped-text cache and rasterizer. Not the session's:
+    /// its cache entries are stamped with `atlas`'s epoch, and `TextId`
+    /// indexes its per-frame list.
     pub text: TextSystem,
+    /// This window's glyph atlas — the CPU side of its renderer's texture,
+    /// handed out by `output`.
     pub atlas: GlyphAtlas,
+    /// The session's resource registry. A font, image or sound registered
+    /// through it is registered for every window in the session.
+    pub resources: SharedResources,
+    /// The session's audio store: one device for the process, so playback
+    /// bookkeeping and the command queue are shared, not per window.
+    pub audio: SharedAudio,
+    /// The family names of the session's fonts as of this window's last
+    /// frame, so `font_family` can lend one out. Refreshed from
+    /// `SessionState::fonts_rev`.
+    font_names: FxHashMap<FontId, std::rc::Rc<str>>,
+    fonts_rev: u64,
     pub interaction: Interaction,
-    pub resources: Resources,
     pub scroll: ScrollStore,
     pub edit: EditStore,
     /// Transition tweens, keyed by node; see `anim`. Fed by `set_time`.
@@ -64,8 +90,6 @@ pub struct Core {
     /// Subtrees the view stopped declaring, played out and then dropped;
     /// see `depart`. Empty unless something declares `exit`.
     pub depart: DepartStore,
-    /// Playback bookkeeping and the audio command queue; see `audio`.
-    pub audio: crate::audio::AudioStore,
     /// Frame timing pushed by the frame driver; see `widgets::latency_graph`.
     pub stats: FrameStats,
     /// Host facts pushed by the frame driver (refresh rate, focus).
@@ -232,17 +256,30 @@ impl Tracks {
 }
 
 impl Core {
+    /// A core with a session of its own — one window, nothing shared.
     pub fn new() -> Self {
-        Self {
+        Self::new_in(&Session::new())
+    }
+
+    /// A core joining an existing session: it draws with the same fonts,
+    /// images, sounds, shaping caches and glyph atlas as every other core
+    /// constructed against `session`, and plays through the same audio
+    /// device. Everything else — tree, focus, scroll, viewport — is this
+    /// window's alone.
+    pub fn new_in(session: &Session) -> Self {
+        let mut core = Self {
+            session: session.clone(),
             text: TextSystem::new(),
             atlas: GlyphAtlas::new(),
+            resources: SharedResources::new(session),
+            audio: SharedAudio::new(session),
+            font_names: FxHashMap::default(),
+            fonts_rev: u64::MAX,
             interaction: Interaction::default(),
-            resources: Resources::default(),
             scroll: ScrollStore::default(),
             edit: EditStore::default(),
             anim: AnimStore::default(),
             depart: DepartStore::default(),
-            audio: crate::audio::AudioStore::default(),
             stats: FrameStats::default(),
             env: Env::default(),
             window_title: None,
@@ -284,7 +321,9 @@ impl Core {
             frame_no: 0,
             layouts: FxHashMap::default(),
             diag: Diagnostics::default(),
-        }
+        };
+        core.sync_font_names();
+        core
     }
 
     // -- Measurement ----------------------------------------------------
@@ -304,7 +343,9 @@ impl Core {
         style: &TextStyle,
         max_w: Option<f32>,
     ) -> TextMetrics {
-        self.text.measure(content, style, &self.resources, max_w)
+        let sess = &mut *self.session.state();
+        self.text
+            .measure(content, style, &sess.resources, &mut sess.fonts, max_w)
     }
 
     /// `measure_text` for a rich-text paragraph.
@@ -314,7 +355,9 @@ impl Core {
         base: &TextStyle,
         max_w: Option<f32>,
     ) -> TextMetrics {
-        self.text.measure_rich(spans, base, &self.resources, max_w)
+        let sess = &mut *self.session.state();
+        self.text
+            .measure_rich(spans, base, &sess.resources, &mut sess.fonts, max_w)
     }
 
     // -- Diagnostics ----------------------------------------------------
@@ -370,7 +413,7 @@ impl Core {
             }
             InputEvent::Text(s) => {
                 if let Some(key) = self.edit.focused() {
-                    if self.edit.apply_text(key, &s, self.text.font_system_mut()) {
+                    if self.edit_with_fonts(|edit, fs| edit.apply_text(key, &s, fs)) {
                         self.push_edit_event(key, "changed", &mut out);
                     }
                 } else if s == " "
@@ -383,8 +426,7 @@ impl Core {
             }
             InputEvent::Preedit(s, cursor) => {
                 if let Some(key) = self.edit.focused() {
-                    self.edit
-                        .set_preedit(key, &s, cursor, self.text.font_system_mut());
+                    self.edit_with_fonts(|edit, fs| edit.set_preedit(key, &s, cursor, fs));
                 }
             }
             InputEvent::Key(ek, mods) => {
@@ -412,8 +454,7 @@ impl Core {
                     self.focus_next(!mods.shift);
                 } else if let Some(key) = self.edit.focused() {
                     let (changed, submit) =
-                        self.edit
-                            .apply_key(key, ek, mods, self.text.font_system_mut());
+                        self.edit_with_fonts(|edit, fs| edit.apply_key(key, ek, mods, fs));
                     if changed {
                         self.push_edit_event(key, "changed", &mut out);
                     }
@@ -520,8 +561,7 @@ impl Core {
                             Some((key, Some(origin), true)) => {
                                 self.set_focus(Some(key));
                                 let local = Vec2::new(p.x - origin.x, p.y - origin.y);
-                                self.edit
-                                    .click(key, local, clicks, self.text.font_system_mut());
+                                self.edit_with_fonts(|edit, fs| edit.click(key, local, clicks, fs));
                                 self.edit.dragging = Some((key, origin));
                             }
                             Some((key, None, true)) => self.set_focus(Some(key)),
@@ -550,7 +590,7 @@ impl Core {
                 }
                 if let Some((key, origin)) = self.edit.dragging {
                     let local = Vec2::new(p.x - origin.x, p.y - origin.y);
-                    self.edit.drag(key, local, self.text.font_system_mut());
+                    self.edit_with_fonts(|edit, fs| edit.drag(key, local, fs));
                 }
                 self.interaction
                     .handle(InputEvent::CursorMoved(p), &mut out);
@@ -652,8 +692,7 @@ impl Core {
                         _ => {
                             let text = req.value.unwrap_or_default();
                             if self
-                                .edit
-                                .replace_selection(key, &text, self.text.font_system_mut())
+                                .edit_with_fonts(|edit, fs| edit.replace_selection(key, &text, fs))
                             {
                                 self.push_edit_event(key, "changed", out);
                             }
@@ -761,8 +800,9 @@ impl Core {
     /// into play commands. Declarative sounds carry no tag, so they never
     /// report `ended`.
     fn flush_sound_requests(&mut self) {
+        let mut sess = self.session.state();
         for sound in self.interaction.take_sound_requests() {
-            self.audio.play(
+            sess.audio.play(
                 OriginId::HOST,
                 Key::ROOT,
                 sound,
@@ -853,11 +893,13 @@ impl Core {
         }
         match self.tree.content[i] {
             NodeContent::Text(tid) => {
+                let sess = &mut *self.session.state();
                 self.text.emit(
                     tid,
                     self.tree.pos[i],
                     self.tree.size[i],
                     clip_px,
+                    &mut sess.fonts,
                     &mut self.atlas,
                     &mut self.display.quads,
                 );
@@ -892,18 +934,21 @@ impl Core {
                     (content_origin.x * scale).round(),
                     (content_origin.y * scale).round(),
                 );
+                let sess = &mut *self.session.state();
                 self.edit.emit(
                     key,
                     origin_phys,
                     focused,
                     clip_px,
+                    &mut sess.fonts,
                     &mut self.text,
                     &mut self.atlas,
                     &mut self.display.quads,
                 );
             }
             NodeContent::Image(id) => {
-                if let Some(entry) = self.resources.images.get(id)
+                let sess = self.session.state();
+                if let Some(entry) = sess.resources.images.get(id)
                     && let Some(slot) =
                         self.atlas
                             .get_or_insert_image(id, entry.width, entry.height, &entry.rgba)
@@ -1255,7 +1300,7 @@ impl Core {
     pub fn cut_selection(&mut self) -> Option<String> {
         let key = self.edit.focused()?;
         let text = self.edit.copy_selection(key)?;
-        self.edit.delete_selection(key, self.text.font_system_mut());
+        self.edit_with_fonts(|edit, fs| edit.delete_selection(key, fs));
         Some(text)
     }
 
@@ -1301,8 +1346,9 @@ impl Core {
     }
 
     pub fn set_edit_text(&mut self, key: Key, text: &str) {
-        let fs = self.text.font_system_mut();
-        self.edit.set_text(key, text, fs, &self.resources);
+        let sess = &mut *self.session.state();
+        self.edit
+            .set_text(key, text, &mut sess.fonts, &sess.resources);
     }
 
     // -- Scrolling ------------------------------------------------------
@@ -1386,10 +1432,16 @@ impl Core {
     /// data holds no usable face. Shape with it via `TextStyle::font`.
     pub fn add_font_data(&mut self, data: Vec<u8>) -> Option<crate::resources::FontId> {
         use cosmic_text::fontdb::Source;
-        let db = self.text.font_system_mut().db_mut();
-        let ids = db.load_font_source(Source::Binary(std::sync::Arc::new(data)));
-        let family = db.face(*ids.first()?)?.families.first()?.0.clone();
-        Some(self.resources.add_font(family, ids.to_vec()))
+        let id = {
+            let sess = &mut *self.session.state();
+            let db = sess.fonts.db_mut();
+            let ids = db.load_font_source(Source::Binary(std::sync::Arc::new(data)));
+            let family = db.face(*ids.first()?)?.families.first()?.0.clone();
+            sess.fonts_rev += 1;
+            sess.resources.add_font(family, ids.to_vec())
+        };
+        self.sync_font_names();
+        Some(id)
     }
 
     /// Registers a font file (TTF/OTF/TTC) by path, memory-mapped by the
@@ -1400,10 +1452,16 @@ impl Core {
         path: impl Into<std::path::PathBuf>,
     ) -> Option<crate::resources::FontId> {
         use cosmic_text::fontdb::Source;
-        let db = self.text.font_system_mut().db_mut();
-        let ids = db.load_font_source(Source::File(path.into()));
-        let family = db.face(*ids.first()?)?.families.first()?.0.clone();
-        Some(self.resources.add_font(family, ids.to_vec()))
+        let id = {
+            let sess = &mut *self.session.state();
+            let db = sess.fonts.db_mut();
+            let ids = db.load_font_source(Source::File(path.into()));
+            let family = db.face(*ids.first()?)?.families.first()?.0.clone();
+            sess.fonts_rev += 1;
+            sess.resources.add_font(family, ids.to_vec())
+        };
+        self.sync_font_names();
+        Some(id)
     }
 
     /// Loads every font file under `dir` (recursively) into the font
@@ -1411,7 +1469,8 @@ impl Core {
     /// by name; returns how many faces were added. A bundled `fonts/`
     /// folder next to the app is the usual case.
     pub fn load_fonts_dir(&mut self, dir: impl AsRef<std::path::Path>) -> usize {
-        let db = self.text.font_system_mut().db_mut();
+        let sess = &mut *self.session.state();
+        let db = sess.fonts.db_mut();
         let before = db.len();
         db.load_fonts_dir(dir);
         db.len().saturating_sub(before)
@@ -1424,47 +1483,63 @@ impl Core {
     /// handle, so views can call it every frame.
     pub fn add_system_font(&mut self, name: &str) -> Option<crate::resources::FontId> {
         use cosmic_text::fontdb::{Family, Query};
-        let db = self.text.font_system().db();
-        let query = Query {
-            families: &[Family::Name(name)],
-            ..Default::default()
+        let id = {
+            let sess = &mut *self.session.state();
+            let db = sess.fonts.db();
+            let query = Query {
+                families: &[Family::Name(name)],
+                ..Default::default()
+            };
+            let id = db.query(&query)?;
+            // The canonical spelling, so the style matches the way fontdb does.
+            let family = db.face(id)?.families.first()?.0.clone();
+            if let Some((id, _)) = sess
+                .resources
+                .fonts
+                .iter()
+                .find(|(_, f)| f.faces.is_empty() && f.family == family)
+            {
+                return Some(id);
+            }
+            sess.fonts_rev += 1;
+            sess.resources.add_font(family, Vec::new())
         };
-        let id = db.query(&query)?;
-        // The canonical spelling, so the style matches the way fontdb does.
-        let family = db.face(id)?.families.first()?.0.clone();
-        if let Some((id, _)) = self
-            .resources
-            .fonts
-            .iter()
-            .find(|(_, f)| f.faces.is_empty() && f.family == family)
-        {
-            return Some(id);
-        }
-        Some(self.resources.add_font(family, Vec::new()))
+        self.sync_font_names();
+        Some(id)
     }
 
     /// Forgets a registered font; faces loaded from bytes leave the font
     /// database. Styles still naming it shape as sans-serif.
     pub fn remove_font(&mut self, id: crate::resources::FontId) {
-        if let Some(entry) = self.resources.remove_font(id) {
-            let db = self.text.font_system_mut().db_mut();
+        {
+            let sess = &mut *self.session.state();
+            let Some(entry) = sess.resources.remove_font(id) else {
+                return;
+            };
+            sess.fonts_rev += 1;
+            let db = sess.fonts.db_mut();
             for face in entry.faces {
                 db.remove_face(face);
             }
         }
+        self.sync_font_names();
     }
 
     /// The registered family name behind a font handle, if it is live.
+    /// Read from this window's mirror of the session's fonts (see
+    /// `session`'s module doc), which every registration refreshes and so
+    /// does every frame — a font another window registered mid-frame shows
+    /// up here on the next one.
     pub fn font_family(&self, id: crate::resources::FontId) -> Option<&str> {
-        self.resources.font_family(id)
+        self.font_names.get(&id).map(|s| &**s)
     }
 
     /// Family names of every installed font the core can see (sorted,
     /// deduplicated) — what `add_system_font` accepts.
     pub fn system_font_families(&self) -> Vec<String> {
-        let mut names: Vec<String> = self
-            .text
-            .font_system()
+        let sess = self.session.state();
+        let mut names: Vec<String> = sess
+            .fonts
             .db()
             .faces()
             .filter_map(|f| f.families.first().map(|(n, _)| n.clone()))
@@ -1540,14 +1615,15 @@ impl Core {
     /// Registers a sound from its encoded file bytes (wav/ogg/mp3/flac —
     /// the driver's backend decodes; the core only keeps the bytes).
     pub fn add_sound(&mut self, bytes: Vec<u8>) -> crate::resources::SoundId {
-        self.resources.add_sound(bytes)
+        self.session.state().resources.add_sound(bytes)
     }
 
     /// Forgets a sound; the driver drops its decoded copy. Playbacks
     /// already running keep going.
     pub fn remove_sound(&mut self, id: crate::resources::SoundId) {
-        if self.resources.remove_sound(id).is_some() {
-            self.audio.unload(id);
+        let sess = &mut *self.session.state();
+        if sess.resources.remove_sound(id).is_some() {
+            sess.audio.unload(id);
         }
     }
 
@@ -1561,31 +1637,38 @@ impl Core {
         sound: crate::resources::SoundId,
         opts: crate::audio::PlayOptions,
     ) -> crate::audio::PlaybackId {
-        self.audio.play(self.origin, Key::ROOT, sound, opts)
+        let origin = self.origin;
+        self.session
+            .state()
+            .audio
+            .play(origin, Key::ROOT, sound, opts)
     }
 
     /// Stops a playback, fading over `fade_ms` (0 = at once). A stopped
     /// playback never reports `ended`.
     pub fn stop(&mut self, playback: crate::audio::PlaybackId, fade_ms: f32) {
-        self.audio.stop(playback, fade_ms);
+        self.session.state().audio.stop(playback, fade_ms);
     }
 
     /// Sets a playback's volume (linear amplitude), tweening over `tween_ms`.
     pub fn set_volume(&mut self, playback: crate::audio::PlaybackId, volume: f32, tween_ms: f32) {
-        self.audio.set_volume(playback, volume, tween_ms);
+        self.session
+            .state()
+            .audio
+            .set_volume(playback, volume, tween_ms);
     }
 
     pub fn pause(&mut self, playback: crate::audio::PlaybackId, fade_ms: f32) {
-        self.audio.pause(playback, fade_ms);
+        self.session.state().audio.pause(playback, fade_ms);
     }
 
     pub fn resume(&mut self, playback: crate::audio::PlaybackId, fade_ms: f32) {
-        self.audio.resume(playback, fade_ms);
+        self.session.state().audio.resume(playback, fade_ms);
     }
 
     /// Sets the master volume (linear amplitude), tweening over `tween_ms`.
     pub fn set_master_volume(&mut self, volume: f32, tween_ms: f32) {
-        self.audio.master_volume(volume, tween_ms);
+        self.session.state().audio.master_volume(volume, tween_ms);
     }
 
     /// An `audio` node: a playback retained by key for as long as the view
@@ -1599,7 +1682,8 @@ impl Core {
             return Key::ROOT;
         }
         let key = self.auto_key();
-        self.audio.declare(key, self.origin, spec);
+        let origin = self.origin;
+        self.session.state().audio.declare(key, origin, spec);
         key
     }
 
@@ -1609,7 +1693,8 @@ impl Core {
             return Key::ROOT;
         }
         let key = self.child_key(label);
-        self.audio.declare(key, self.origin, spec);
+        let origin = self.origin;
+        self.session.state().audio.declare(key, origin, spec);
         key
     }
 
@@ -1624,7 +1709,8 @@ impl Core {
     /// A tagged playback becomes an `ended` event, pending like a `resize`
     /// (see `take_pending_events`).
     pub fn audio_ended(&mut self, playback: crate::audio::PlaybackId) {
-        if let Some(ev) = self.audio.ended(playback) {
+        let ended = self.session.state().audio.ended(playback);
+        if let Some(ev) = ended {
             self.pending.push(ev);
         }
     }
@@ -1676,6 +1762,37 @@ impl Core {
     pub fn frame(&mut self, viewport: Size, scale: f32) -> Ui<'_> {
         self.begin_frame(viewport, scale);
         Ui::new(self)
+    }
+
+    /// The session this core draws from. Hand it to `Core::new_in` to open
+    /// another window sharing its fonts, images, sounds and glyph atlas.
+    pub fn session(&self) -> &Session {
+        &self.session
+    }
+
+    /// Runs an edit-store operation against the session's font system —
+    /// the one the text cache shapes with, so an editor and a text node
+    /// measure the same. The session borrow lasts exactly the call.
+    fn edit_with_fonts<T>(
+        &mut self,
+        f: impl FnOnce(&mut EditStore, &mut cosmic_text::FontSystem) -> T,
+    ) -> T {
+        let sess = &mut *self.session.state();
+        f(&mut self.edit, &mut sess.fonts)
+    }
+
+    /// Re-reads the session's font family names into the mirror
+    /// `font_family` lends from, when a registration has moved since.
+    fn sync_font_names(&mut self) {
+        let sess = self.session.state();
+        if sess.fonts_rev == self.fonts_rev {
+            return;
+        }
+        self.fonts_rev = sess.fonts_rev;
+        self.font_names.clear();
+        for (id, entry) in sess.resources.fonts.iter() {
+            self.font_names.insert(id, entry.family.as_str().into());
+        }
     }
 
     /// The viewport (logical px) the current frame was begun with. Changes
@@ -1746,7 +1863,9 @@ impl Core {
         self.display.clear();
         // The text list goes with the tree: a kept frame's text nodes carry
         // that frame's `TextId`s, and nothing else can resolve them.
-        self.text.begin_frame(scale, keep_prev);
+        self.text
+            .begin_frame(&mut self.session.state().fonts, scale, keep_prev);
+        self.sync_font_names();
         self.anim.begin_frame();
         self.depart.begin_frame();
         self.tree.push(
@@ -2051,7 +2170,11 @@ impl Core {
         if self.tree.is_empty() {
             return;
         }
-        let tid = self.text.add(content, &style, &self.resources);
+        let tid = {
+            let sess = &mut *self.session.state();
+            self.text
+                .add(content, &style, &sess.resources, &mut sess.fonts)
+        };
         let key = self.auto_key();
         let parent = self.current();
         self.tree.push(
@@ -2084,15 +2207,20 @@ impl Core {
         if spec.exit.is_some() && spec.transition.is_some() {
             self.any_exit = true;
         }
-        self.edit.declare(
-            key,
-            initial,
-            opts,
-            self.origin,
-            self.scale,
-            self.text.font_system_mut(),
-            &self.resources,
-        );
+        {
+            let origin = self.origin;
+            let scale = self.scale;
+            let sess = &mut *self.session.state();
+            self.edit.declare(
+                key,
+                initial,
+                opts,
+                origin,
+                scale,
+                &mut sess.fonts,
+                &sess.resources,
+            );
+        }
         // Autofocus takes the keyboard only while nothing holds it — never
         // from a control Tab landed on.
         if opts.autofocus && self.focus.is_none() && !spec.disabled {
@@ -2128,7 +2256,7 @@ impl Core {
 
     /// Unregisters an image and forgets its atlas slot.
     pub fn remove_image(&mut self, id: crate::resources::ImageId) {
-        self.resources.remove_image(id);
+        self.session.state().resources.remove_image(id);
         self.atlas.evict_image(id);
     }
 
@@ -2137,7 +2265,11 @@ impl Core {
         if self.tree.is_empty() {
             return;
         }
-        let tid = self.text.add_rich(spans, &base, &self.resources);
+        let tid = {
+            let sess = &mut *self.session.state();
+            self.text
+                .add_rich(spans, &base, &sess.resources, &mut sess.fonts)
+        };
         let key = self.auto_key();
         let parent = self.current();
         self.tree.push(
@@ -2157,10 +2289,12 @@ impl Core {
         self.counters.truncate(1);
 
         {
+            let sess = &mut *self.session.state();
             let mut measure = Measure {
                 text: &mut self.text,
+                fonts: &mut sess.fonts,
                 edit: &mut self.edit,
-                resources: &self.resources,
+                resources: &sess.resources,
             };
             layout::compute(
                 &mut self.tree,
@@ -2424,7 +2558,7 @@ impl Core {
         self.interaction.set_hits(hits);
         // A new frame can move a hover-sound node under a still cursor.
         self.flush_sound_requests();
-        self.audio.reconcile();
+        self.session.state().audio.reconcile();
         self.interaction.scroll_regions = scroll_regions;
         self.interaction.scrollbars = scrollbars;
         self.ime_rect = self.focused_caret_rect();
@@ -2590,12 +2724,14 @@ impl Core {
                     // None once the shaped buffer has been evicted: a ghost
                     // older than the text cache draws no text rather than
                     // somebody else's.
+                    let sess = &mut *self.session.state();
                     if let Some(tid) = self.text.readd(cache_key, color) {
                         self.text.emit(
                             tid,
                             Vec2::new(rect.x, rect.y),
                             Size::new(rect.w, rect.h),
                             Clip::NONE.scaled(scale),
+                            &mut sess.fonts,
                             &mut self.atlas,
                             &mut self.display.quads,
                         );
@@ -2609,18 +2745,21 @@ impl Core {
                     );
                     // Never focused: the departing subtree gave the
                     // keyboard up the frame it stopped being declared.
+                    let sess = &mut *self.session.state();
                     self.edit.emit(
                         key,
                         origin,
                         false,
                         Clip::NONE.scaled(scale),
+                        &mut sess.fonts,
                         &mut self.text,
                         &mut self.atlas,
                         &mut self.display.quads,
                     );
                 }
                 GhostContent::Image(id) => {
-                    if let Some(entry) = self.resources.images.get(id)
+                    let sess = self.session.state();
+                    if let Some(entry) = sess.resources.images.get(id)
                         && let Some(slot) = self.atlas.get_or_insert_image(
                             id,
                             entry.width,
@@ -2799,7 +2938,7 @@ impl Core {
     fn focused_caret_rect(&mut self) -> Option<Rect> {
         let key = self.edit.focused()?;
         let i = (0..self.tree.len()).find(|&i| self.tree.content[i] == NodeContent::Edit(key))?;
-        let caret = self.edit.caret_rect(key, self.text.font_system_mut())?;
+        let caret = self.edit_with_fonts(|edit, fs| edit.caret_rect(key, fs))?;
         let pad = self.tree.specs[i].layout.padding;
         Some(Rect::new(
             self.tree.pos[i].x + pad.l + caret.x / self.scale,
@@ -2825,7 +2964,7 @@ impl Core {
         else {
             return;
         };
-        let Some(caret_phys) = self.edit.caret_rect(key, self.text.font_system_mut()) else {
+        let Some(caret_phys) = self.edit_with_fonts(|edit, fs| edit.caret_rect(key, fs)) else {
             return;
         };
         let pad = self.tree.specs[i].layout.padding;
@@ -2901,6 +3040,7 @@ impl Core {
 /// images through the resource registry.
 struct Measure<'a> {
     text: &'a mut TextSystem,
+    fonts: &'a mut cosmic_text::FontSystem,
     edit: &'a mut EditStore,
     resources: &'a Resources,
 }
@@ -2911,15 +3051,15 @@ impl TextMeasure for Measure<'_> {
     }
 
     fn wrapped(&mut self, id: crate::tree::TextId, max_w: f32) -> Size {
-        self.text.wrapped(id, max_w)
+        self.text.wrapped(id, max_w, self.fonts)
     }
 
     fn edit_intrinsic(&mut self, key: Key) -> Size {
-        self.edit.intrinsic(key, self.text.font_system_mut())
+        self.edit.intrinsic(key, self.fonts)
     }
 
     fn edit_wrapped(&mut self, key: Key, max_w: f32) -> Size {
-        self.edit.wrapped(key, max_w, self.text.font_system_mut())
+        self.edit.wrapped(key, max_w, self.fonts)
     }
 
     fn image_size(&mut self, id: crate::resources::ImageId) -> Size {
