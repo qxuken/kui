@@ -409,6 +409,17 @@ upgrades remove code from the apps on it is doing the job.
   failing as a missing method — a window takes its input from the OS.
   The two contracts that are real differences stayed exactly as they were:
   `runWindowed` resolves with the final model, `createApp` is synchronous.
+- **The Node corpus adapter can no longer skip where it is meant to run**
+  (P7). Its comparison is conditional on a reference report that is
+  generated, never checked in, so a missing one is a `t.skip` — which is
+  green. That skip is there for the `publish` job, which has no cargo
+  target dir and still runs the rest of the suite against the prebuilds;
+  nothing asserted the adapter ran in `check`, the job whose whole point
+  is that all four adapters meet over one report. A reordered step or a
+  `$GITHUB_ENV` export that stopped propagating would have taken the
+  check with it, silently. `check` now sets `KUI_CONFORMANCE_REQUIRED`
+  and the skip is a failure under it. The C adapter never had the hole:
+  it takes the path as an argument and exits 1 when it cannot read it.
 
 ### What you can delete
 

@@ -1331,10 +1331,17 @@ function referenceBlocks(text) {
 
 test('every corpus scene lowers the way kui-core does', (t) => {
   if (!existsSync(CONFORMANCE)) {
-    t.skip(
+    const missing =
       `no reference report at ${CONFORMANCE} — generate it with ` +
-        '`cargo run -p kui-core --example conformance-dump -- target/conformance.txt`',
-    );
+      '`cargo run -p kui-core --example conformance-dump -- target/conformance.txt`';
+    // A skipped test is green, so the skip alone cannot say whether this
+    // ever ran where it was supposed to. CI's `check` job — which generates
+    // the report and is the one place all four adapters meet — sets
+    // KUI_CONFORMANCE_REQUIRED, and there the missing report is a failure.
+    // The skip exists for `publish`, which has no cargo target dir and runs
+    // the rest of the suite against the prebuilds.
+    assert.ok(!process.env.KUI_CONFORMANCE_REQUIRED, `KUI_CONFORMANCE_REQUIRED is set, but ${missing}`);
+    t.skip(missing);
     return;
   }
   const blocks = referenceBlocks(readFileSync(CONFORMANCE, 'utf8'));

@@ -166,8 +166,16 @@ jobs:
       # npm test covers both the encoder tests and the Node adapter over
       # the corpus, which needs KUI_CONFORMANCE to run (it skips without
       # it, so that the publish job - which has no cargo target dir - can
-      # still run the rest against the prebuilds).
+      # still run the rest against the prebuilds). A skip is green, so
+      # here - the one job where the adapter is meant to run - the skip is
+      # turned into a failure: without KUI_CONFORMANCE_REQUIRED the check
+      # could quietly vanish (the reference step reordered, or its
+      # $GITHUB_ENV export lost) and nothing would go red. The C adapter
+      # needs no equivalent: it takes the path as an argument and exits 1
+      # when it cannot read it.
       - name: Node addon tests
+        env:
+          KUI_CONFORMANCE_REQUIRED: "1"
         run: |
           cargo build -p kui-node --release
           cd packages/kui
