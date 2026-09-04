@@ -429,8 +429,8 @@ follow-ups, in order of value per unit of work:
 ### `~` P9 — Let the corpus drive a frame under custom chrome — **done (2026-09-04)**
 
 A scene declares the window facts it is driven under. `Scene` gained an
-`env: WindowEnv` (`NATIVE_CHROME` for nine scenes, `CUSTOM_CHROME` for
-`chrome`), `conformance::drive` takes it and assigns `core.env.window`
+`env: WindowEnv` (`NATIVE_CHROME` for every scene but the two about chrome),
+`conformance::drive` takes it and assigns `core.env.window`
 **before the first frame** — which is the whole of why it is a parameter and
 not something a driver pushes afterwards: `titlebar_with`'s inset and
 `window_buttons`'s early return are read while that frame builds. It travels
@@ -438,9 +438,9 @@ to the other three adapters as a new report line,
 
     env <customChrome> <maximized> <fullscreen> <controlsW> <controlsH>
 
-written only when a scene departs from `NATIVE_CHROME`, so the nine that are
-not about chrome carry no line and an adapter that sees none drives under the
-defaults it already had. The five numbers are `kui_env_set_window`'s
+written only when a scene departs from `NATIVE_CHROME`, so every scene that
+is not about chrome carries no line and an adapter that sees none drives
+under the defaults it already had. The five numbers are `kui_env_set_window`'s
 arguments in its order, which also settles the shape question: the controls
 rect travels as a `w`/`h` extent at the window origin rather than a free
 rect, because that is what all four bindings can express. Each adapter reads
@@ -1802,7 +1802,7 @@ C8's second half shipped: `exit` (P_EXIT = 78), a `DepartStore`, ghosts that
 self-ease, opt-in with a 512-node budget. It is the first feature that makes a
 node **outlive the frame that declared it** — the previous frame's tree and
 text list are kept by buffer swap — and it is the only behaviour to land this
-round without a conformance scene. Eleven scenes; none of them exits.
+round without a conformance scene. Ten scenes; none of them exits.
 
 That matters more here than for a paint prop. The corpus drives steps and
 compares quads, access rows and events, which is exactly the shape a ghost

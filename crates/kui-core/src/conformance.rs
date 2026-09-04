@@ -1584,6 +1584,22 @@ pub fn run(scene: &Scene) -> Output {
 // ---------------------------------------------------------------------------
 // The report
 
+/// The `env` line: the five numbers `kui_env_set_window` takes, in its
+/// order. Written only when a scene departs from [`NATIVE_CHROME`], so the
+/// scenes that are not about chrome carry no line at all and an adapter
+/// that sees none drives under the defaults it already had.
+pub fn write_env(env: WindowEnv, out: &mut String) {
+    if env == NATIVE_CHROME {
+        return;
+    }
+    let r = env.native_controls.unwrap_or(Rect::new(0.0, 0.0, 0.0, 0.0));
+    let _ = writeln!(
+        out,
+        "env {} {} {} {} {}",
+        env.custom_chrome as u8, env.maximized as u8, env.fullscreen as u8, r.w as i32, r.h as i32,
+    );
+}
+
 /// Renders a scene's block of the conformance report. The format is
 /// line-oriented and carries no formatted floats — only integers, hex and
 /// strings — so Rust, C and JavaScript produce the same bytes:
@@ -1601,22 +1617,6 @@ pub fn run(scene: &Scene) -> Output {
 /// warn <code>
 /// end
 /// ```
-/// The `env` line: the five numbers `kui_env_set_window` takes, in its
-/// order. Written only when a scene departs from [`NATIVE_CHROME`], so the
-/// nine scenes that are not about chrome carry no line at all and an
-/// adapter that sees none drives under the defaults it already had.
-pub fn write_env(env: WindowEnv, out: &mut String) {
-    if env == NATIVE_CHROME {
-        return;
-    }
-    let r = env.native_controls.unwrap_or(Rect::new(0.0, 0.0, 0.0, 0.0));
-    let _ = writeln!(
-        out,
-        "env {} {} {} {} {}",
-        env.custom_chrome as u8, env.maximized as u8, env.fullscreen as u8, r.w as i32, r.h as i32,
-    );
-}
-
 pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> String {
     let mut s = String::new();
     let _ = writeln!(s, "scene {name}");

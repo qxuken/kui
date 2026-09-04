@@ -20,9 +20,9 @@ upgrades remove code from the apps on it is doing the job.
   compare a different tree.
   It reaches the other three adapters as one new report line —
   `env <customChrome> <maximized> <fullscreen> <controlsW> <controlsH>`,
-  written only when a scene departs from `NATIVE_CHROME`, so the nine scenes
-  that are not about chrome carry no line and an adapter that sees none
-  drives under the defaults it already had. The five numbers are
+  written only when a scene departs from `NATIVE_CHROME`, so every scene that
+  is not about chrome carries no line and an adapter that sees none drives
+  under the defaults it already had. The five numbers are
   `kui_env_set_window`'s arguments in its order, which also decides the
   shape: the controls rect travels as a `w`/`h` extent at the window origin
   rather than a free rect, because that is what all four bindings can
