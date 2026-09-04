@@ -1556,7 +1556,46 @@ grew, so C alone could not mark an editor's lines. It was found by hand, and
 `abi_enum!` now pins eight enum families so it cannot recur **in C**. B1 is
 the same bug one binding over.
 
-### `!` B1 — `schema::ROLES` is the last unpinned enum restatement
+### `!` B1 — `schema::ROLES` is the last unpinned enum restatement — **done (2026-09-04)**
+
+Both asserts shipped, in `schema`'s own tests.
+`every_declarable_role_name_is_a_real_role` pins the names and the mapping
+together — each `ROLES` entry parses, and index `i` still means `ROLES[i]`, so
+a `role_idx` that stops reading the list fails as loudly as a misspelling in
+it. `every_role_is_declarable_or_derived` pins the other direction: every
+`Role::ALL` variant is declarable or on the new `schema::DERIVED_ONLY`, never
+neither and never both.
+
+`DERIVED_ONLY` carries the reason per role, and the test keeps it honest by
+*deriving* rather than trusting: it builds one frame — root, a `window_drag`
+row, a scrolling box, text inside it — and asserts the core really produces
+every role the list exempts. So a variant merely forgotten from `ROLES` cannot
+be parked there to quiet the failure, which was the risk in giving the guard
+an escape hatch at all. Mutation-tested, each failing with the role named: a
+typo'd name, a role dropped from `ROLES`, a forgotten role moved into
+`DERIVED_ONLY`, an exemption with no reason, an exemption the core no longer
+derives, and a `role_idx` rewritten to index `Role::ALL`.
+
+**The fallback is now `Role::Group`, and the entry's `role_idx(99)` no longer
+returns `None`.** Both ways of reaching it turned out to be closed: a drifted
+spelling now fails the test rather than a frame, and no transport passes an
+index it has not bounds-checked (Node's binary reader rejects
+`i >= names.len()` before building a `Parsed::Enum`, Node's JSON and Lua
+resolve a *name* through `enum_index`, C carries a bounded `Role::ALL`
+position). So nothing that runs today changes — the change is in what a future
+transport that forgets its check gets. Hiding a subtree is a destructive answer
+to "an index I do not have"; a group is what the core already derives for a box
+that is merely somewhere focus can land, the node keeps its children, and a
+wrong role is recoverable where a missing subtree is not. No warning: this is a
+pure schema function with no sink, and the transports' own errors already name
+the prop and the index.
+
+Two doc comments carried the drift the guard is against and now point at the
+lists instead of restating them — `Role`'s said the declarable roles are "the
+first group" (the derived four are interleaved), and `ROLES`' named those four
+in prose, three lines above the list itself.
+
+The original finding:
 
 `Role::ALL` has 22 variants; `schema::ROLES` has 18 — the declarable subset,
 correct today (the four omissions are exactly the derived roles: `window`,
