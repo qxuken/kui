@@ -9,6 +9,48 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **The corpus drives a frame under custom chrome, so `windowButtons` is
+  covered by a tree instead of a claim** (backlog P9). A scene now declares
+  the host window facts it runs under, beside its tree and its steps:
+  `Scene::env` is a `WindowEnv`, `conformance::drive` takes it and assigns
+  `core.env.window` **before the first frame** — which is why it is a
+  parameter rather than something a driver pushes when it gets round to it.
+  `titlebar_with`'s native-control inset and `window_buttons`'s early return
+  are both read *while that frame builds*, so a fact pushed afterwards would
+  compare a different tree.
+  It reaches the other three adapters as one new report line —
+  `env <customChrome> <maximized> <fullscreen> <controlsW> <controlsH>`,
+  written only when a scene departs from `NATIVE_CHROME`, so the nine scenes
+  that are not about chrome carry no line and an adapter that sees none
+  drives under the defaults it already had. The five numbers are
+  `kui_env_set_window`'s arguments in its order, which also decides the
+  shape: the controls rect travels as a `w`/`h` extent at the window origin
+  rather than a free rect, because that is what all four bindings can
+  express. Each adapter reads it back the way it already reads `step` lines.
+  **`conformance::UNDERIVED` is now empty.** Its one entry was
+  `windowButtons`, exempted because nothing could make
+  `widgets::window_buttons` draw. The constant stays and so does the test
+  over it: an empty list is a state to hold, not a constant to delete.
+  **The `chrome` scene builds both ways an app gets the buttons**, which
+  settles a question the old scene had been quietly answering wrong.
+  `schema::ELEMENTS` says `windowButtons` is "just the min/max/close
+  buttons, **for fully custom titlebars**", and `titlebar_with` appends its
+  own cluster by contract — so the scene's `<titlebar>` with a
+  `<windowButtons>` child inside it was asking for two clusters in one strip,
+  invisibly, because the element drew nothing. The scene now has a
+  `titlebar_with` (adaptive path) *and* a hand-laid plain row holding a
+  second cluster through each binding's own element (the fully-custom path):
+  six buttons in two clusters, compared byte-for-byte across Rust, Lua, C and
+  Node. The strip is a plain row rather than a second `window_drag`, since a
+  drag handle would derive a second `titleBar` role — a thing to tell a
+  screen reader, not a side effect of where the corpus put a box.
+  **What you can delete:** the `windowButtons` line from `UNDERIVED`, and the
+  habit of reading the `chrome` scene as if its buttons were checked. Not yet
+  deletable: the traffic-lights *inset* still has no cross-binding scene,
+  because a controls rect suppresses the cluster and one scene cannot show
+  both. Node unit-tests both halves; the protocol already carries what a
+  second scene would need.
+
 - **Node can see `env`, and a headless one can declare it** (backlog B2,
   and the half of P9 that was blocking it). The other three bindings all
   read the host facts a frame driver pushes in — `ui.env()` in Rust, the
@@ -684,7 +726,8 @@ upgrades remove code from the apps on it is doing the job.
   `chrome` scene calls it and builds nothing. It sits in
   `conformance::UNDERIVED` with that reason, and a test fails the moment a
   scene does exercise it, so the exemption cannot outlive the hole it
-  documents.
+  documents. **It did not**: P9, later in this same release, gave every
+  adapter a way to declare custom chrome, and `UNDERIVED` is empty.
 - **Lua reaches the whole focus runtime** (backlog P3). `env.is_pressed(key)`
   joins `is_hovered` / `is_focused`, and the verbs Node and C always had
   arrived: `env.set_focus(key)`, `env.blur()`, `env.focus_next()`,

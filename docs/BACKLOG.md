@@ -325,10 +325,12 @@ Two traps worth knowing before adding a scene. **The root node**: Lua's root
 table is a *child* (`build_node` opens it) while a JSX top-level `<box>`
 calls `configure_root`, so scenes never reconfigure the root and the JS
 adapter wraps each one in `box({width:'grow',height:'grow'})` — the core's
-implicit root spec exactly, so only `title` actually lands. **Window env**:
+implicit root spec exactly, so only `title` actually lands. ~~**Window env**:
 nothing exposes `env.window` to a bare `Ctx`, so `windowButtons` draws
 nothing headlessly and its scene pins the lowering rather than the pixels;
-closing that needs a window-env setter on the Node `Ctx` first.
+closing that needs a window-env setter on the Node `Ctx` first.~~ Closed by
+B2 (`ctx.setEnv`) and P9 (the scene's `env` line), 2026-09-04: the `chrome`
+scene drives under custom chrome and the buttons are compared as pixels.
 
 It found both of the defects it was built from — P1's missing C description
 and P2's `self_at` — and each was verified by reintroducing it and watching
@@ -424,7 +426,67 @@ follow-ups, in order of value per unit of work:
   grant in place could fold it into `smoke-macos`. On Windows there is no
   equivalent tool and no plan for one.
 
-### `~` P9 — Let the corpus drive a frame under custom chrome
+### `~` P9 — Let the corpus drive a frame under custom chrome — **done (2026-09-04)**
+
+A scene declares the window facts it is driven under. `Scene` gained an
+`env: WindowEnv` (`NATIVE_CHROME` for nine scenes, `CUSTOM_CHROME` for
+`chrome`), `conformance::drive` takes it and assigns `core.env.window`
+**before the first frame** — which is the whole of why it is a parameter and
+not something a driver pushes afterwards: `titlebar_with`'s inset and
+`window_buttons`'s early return are read while that frame builds. It travels
+to the other three adapters as a new report line,
+
+    env <customChrome> <maximized> <fullscreen> <controlsW> <controlsH>
+
+written only when a scene departs from `NATIVE_CHROME`, so the nine that are
+not about chrome carry no line and an adapter that sees none drives under the
+defaults it already had. The five numbers are `kui_env_set_window`'s
+arguments in its order, which also settles the shape question: the controls
+rect travels as a `w`/`h` extent at the window origin rather than a free
+rect, because that is what all four bindings can express. Each adapter reads
+it back the way it already reads the `step` lines — C `sscanf`s it and calls
+`kui_env_set_window`, Node parses it and calls `ctx.setEnv({window})`, Lua
+gets it free through `conformance::drive`.
+
+**`conformance::UNDERIVED` is now empty**, which was the point. The constant
+stays, with its doc rewritten to say so and `the_underived_rows_are_real_and_still_underived`
+still standing over the next exemption — an empty list is a state to hold,
+not a constant to delete.
+
+**The six-buttons question below is settled the second way**, and the reason
+is in `schema::ELEMENTS` where it always was: `windowButtons` is "just the
+min/max/close buttons, **for fully custom titlebars**". It is not meant to go
+inside `<titlebar>`, which appends its own cluster by contract
+(`titlebar_with`'s doc: content goes "between the platform inset and the
+window buttons"). The scene was written when the element drew nothing, so
+calling it inside the titlebar was the only way to claim the row and cost
+nothing visible. The `chrome` scene now builds **both** forms — a
+`titlebar_with` whose appended cluster is the adaptive path, and a hand-laid
+plain row holding a second cluster through each binding's own
+`windowButtons` element — so six buttons is the expectation, in two clusters,
+and the element is exercised as an element rather than only transitively.
+The strip is a plain row, not a second `window_drag`: a drag handle would
+derive a second `titleBar` role, which is a thing to tell a screen reader
+rather than a side effect of where the corpus put a box.
+
+Mutation-tested, each failing at the right layer: the `chrome` scene reverted
+to `NATIVE_CHROME` fails `every_scene_delivers_the_coverage_it_claims` with
+`claims schema::ELEMENTS rows its builder does not exercise:
+["windowButtons"]` — the claim is no longer vacuous; Node's `driveScene` not
+calling `setEnv` fails the corpus test on the `chrome` block; and C's
+`conf_run` skipping `kui_env_set_window` fails with `quads 4` against the
+reference's `quads 10`.
+
+**One thing this does not cover.** The chrome scene must leave
+`native_controls` unset, because a controls rect makes `window_buttons`
+return early — so the macOS traffic-lights *inset* (`titlebar_with` insetting
+by `r.x + r.w`, and the cluster suppressed) has no corpus scene. The protocol
+carries it already; it needs a second chrome scene, which costs a builder in
+each of four adapters. Node has a unit test for both halves
+(`nativeControls inset the titlebar and take its buttons away`), so it is not
+unpinned, only unpinned *across bindings*.
+
+The original finding:
 
 Found by making the corpus's coverage derived rather than declared
 (`conformance::observe`, 2026-09-04): the `chrome` scene claims the
@@ -1531,9 +1593,10 @@ quietly. `blocks.length > 0` also catches a truncated reference.
 hand-written claim has to appear in the derived set. Rows that genuinely
 cannot be derived are enumerated in `conformance::UNDERIVED` with a reason
 each, and `the_underived_rows_are_real_and_still_underived` stops that list
-becoming a dumping ground. It has exactly one entry, and it produced P9 —
+becoming a dumping ground. It had exactly one entry, and it produced P9 —
 the `chrome` scene's `windowButtons` claim had no tree behind it and had not
 since P7 landed, which is the derived check paying for itself immediately.
+P9 then closed it (2026-09-04) and the list is empty.
 
 The original finding:
 
@@ -1628,7 +1691,41 @@ Two asserts in `kui-core` close it: every `ROLES` name parses, and every
 roles that the test also checks is still accurate — the shape
 `the_underived_rows_are_real_and_still_underived` already uses for the corpus.
 
-### `~` B2 — Node is the only binding with no `Env`
+### `~` B2 — Node is the only binding with no `Env` — **done (2026-09-04)**
+
+Both directions shipped. **`ctx.env()` / `win.env()`** return
+`{refreshHz, frameBudgetMs, focused, viewport, window}`, with `window` as
+`{customChrome, maximized, fullscreen, nativeControls}`. It went into the
+`core_methods!` list rather than onto either class, so it lands on both by
+construction and there is no second copy to forget (D1's whole point).
+
+Two spellings depart from Lua's table deliberately, and the doc comment on
+`env_json` says which and why. `refreshHz` is `null` where Lua omits the key
+— a stable shape is worth more to JS that destructures it, and it types as
+`number | null`. `nativeControls` is the whole rect where Lua flattens it to
+`controls_w` / `controls_h`; that flattening assumes the OS controls sit at
+the window origin, which is true of the macOS traffic lights and of nothing
+in particular, and the core holds a rect. `viewport` rides along as the
+frame's `{width, height, scale}` — Lua carries it in the same table too, and
+`WindowSize` is the shape `runWindowed` already uses.
+
+**`ctx.setEnv({...})`** is the write side: one call where C has two
+(`kui_env_set` + `kui_env_set_window`), shaped like what `env()` reads back,
+and merging rather than replacing, so `setEnv({window: {customChrome: true}})`
+is the whole of "pretend this app draws its own titlebar". It is on `Ctx`
+only, and a test says so — a `KuiWindow`'s runner reports the real window
+every frame, so a fact set on one would be overwritten before the next view
+ran. Unknown keys and wrong types throw: a silently ignored `refreshHz` looks
+exactly like the 120 Hz fallback.
+
+`index.d.ts`'s generated half came out of the `#[napi]` attributes (P5) with
+no hand-editing; only the `Env` / `WindowEnv` / `Rect` / `EnvInput` shapes are
+hand-written. Six Node tests, mutation-tested: dropping `customChrome` in
+`setEnv` and forcing `nativeControls` to null in `env()` each fail them.
+
+P9 shipped on top of this and is done too.
+
+The original finding:
 
 Found while reading P9. Rust has `ui.env()`, Lua builds the whole `env.window`
 table (`custom_chrome`, `maximized`, `fullscreen`, `controls_w/h`), C has

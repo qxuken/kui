@@ -1315,7 +1315,10 @@ const SCENE_TREES = {
   chrome: () =>
     root({ title: 'kui conformance' }, [
       box({ gap: 6 }, [
-        el('titlebar', {}, [text('app', { size: 12 }), el('windowButtons')]),
+        // `<titlebar>` appends its own cluster; the second one goes through
+        // the `<windowButtons>` element, in a strip laid out by hand.
+        el('titlebar', {}, [text('app', { size: 12 })]),
+        box({ dir: 'row', width: 'grow' }, [el('windowButtons')]),
         box({ width: 40, height: 16, bg: '#22242c', focusable: true, keyFocus: true, label: 'Sink' }, [], 'sink'),
       ]),
     ]),
@@ -1455,9 +1458,14 @@ function quadDigest(buffer) {
 /** The protocol every binding drives: a frame, then each replayed step
  *  followed by another frame, then the last frame's output. Mirrors
  *  `conformance::drive`. */
-function driveScene(steps, build) {
+function driveScene(env, steps, build) {
   const ctx = new Ctx();
   ctx.setDiagnostics(true);
+  // Step 0 of the protocol: the window facts, before the first frame —
+  // `<titlebar>` and `<windowButtons>` read them while that frame builds.
+  // `null` is a scene at the corpus defaults, which is what a bare `Ctx`
+  // already has, so nothing is declared for one.
+  if (env) ctx.setEnv({ window: env });
   // The scene is rebuilt every frame, because `exit` only happens to a node
   // the view stops declaring — `phase` is what it stops declaring for. The
   // fixtures behind it are registered once, on the first build that asks,
@@ -1496,8 +1504,13 @@ function driveScene(steps, build) {
 
 /** Renders a scene block in the report format `conformance::report`
  *  documents: integers, hex and strings only, so the bytes match Rust's. */
-function sceneReport(name, steps, { ctx, events }) {
+function sceneReport(name, env, steps, { ctx, events }) {
   const lines = [`scene ${name}`];
+  if (env) {
+    const { customChrome, maximized, fullscreen, nativeControls } = ctx.env().window;
+    const r = nativeControls ?? { w: 0, h: 0 };
+    lines.push(`env ${+customChrome} ${+maximized} ${+fullscreen} ${r.w} ${r.h}`);
+  }
   for (const step of steps) lines.push(`step ${step.join(' ')}`);
   lines.push(`title ${ctx.windowTitle() ?? '-'}`);
   const quads = Buffer.from(ctx.quads());
@@ -1538,8 +1551,19 @@ function referenceBlocks(text) {
   const out = [];
   let cur = null;
   for (const line of text.split('\n')) {
-    if (line.startsWith('scene ')) cur = { name: line.slice(6), steps: [], lines: [] };
+    if (line.startsWith('scene ')) cur = { name: line.slice(6), env: null, steps: [], lines: [] };
     if (!cur) continue;
+    if (line.startsWith('env ')) {
+      // `conformance::write_env`: the five numbers `kui_env_set_window`
+      // takes, in its order. A scene at the defaults writes no line.
+      const [chrome, max, full, w, h] = line.slice(4).split(' ').map(Number);
+      cur.env = {
+        customChrome: !!chrome,
+        maximized: !!max,
+        fullscreen: !!full,
+        nativeControls: w > 0 && h > 0 ? { w, h } : null,
+      };
+    }
     if (line.startsWith('step ')) {
       const [kind, ...args] = line.slice(5).split(' ');
       cur.steps.push([kind, ...args.map(Number)]);
@@ -1575,10 +1599,10 @@ test('every corpus scene lowers the way kui-core does', (t) => {
     blocks.map((b) => b.name).sort(),
     'the JSX scenes and the corpus have drifted apart',
   );
-  for (const { name, steps, block } of blocks) {
+  for (const { name, env, steps, block } of blocks) {
     const build = SCENE_TREES[name];
     assert.ok(build, `no JSX scene for ${name} — every corpus scene needs one`);
-    const actual = sceneReport(name, steps, driveScene(steps, build));
+    const actual = sceneReport(name, env, steps, driveScene(env, steps, build));
     assert.equal(actual, block, `scene ${name} lowers differently than kui-core does`);
   }
 });

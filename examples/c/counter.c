@@ -988,7 +988,6 @@ static void conf_titlebar_body(void *user, KuiCtx *ui) {
     (void)user;
     KuiTextStyle s12 = {.size = 12};
     kui_text(ui, KUI_STR("app"), &s12);
-    kui_window_buttons(ui);
 }
 
 static void conf_chrome(KuiCtx *ui, const Fixtures *f, int phase) {
@@ -997,7 +996,14 @@ static void conf_chrome(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_window_title(ui, KUI_STR("kui conformance"));
     KuiSpec outer = {.gap = 6};
     kui_open(ui, &outer, NULL);
+    /* kui_titlebar_with appends its own cluster after the body; the second
+     * one is kui_window_buttons called directly, in a strip laid out here -
+     * the "fully custom titlebar" the element exists for. */
     kui_titlebar_with(ui, conf_titlebar_body, NULL);
+    KuiSpec strip = {.dir = KUI_ROW, .width = {KUI_GROW, 1}};
+    kui_open(ui, &strip, NULL);
+    kui_window_buttons(ui);
+    kui_close(ui);
     KuiSpec sink = {.width = {KUI_FIXED, 40}, .height = {KUI_FIXED, 16},
                     .bg = 0x22242cff, .focusable = 1, .label = KUI_STR("Sink")};
     uint64_t key = kui_open_keyed(ui, KUI_STR("sink"), &sink, NULL);
@@ -1226,6 +1232,15 @@ typedef struct ConfStep {
     int args;
 } ConfStep;
 
+/* The window facts a scene is driven under, parsed back out of its `env`
+ * line the same way - the five arguments kui_env_set_window takes, in its
+ * order (conformance::write_env). `set` is 0 for a scene that wrote no
+ * line, which is one at the corpus defaults a fresh KuiCtx already has. */
+typedef struct ConfEnv {
+    int set;
+    int custom_chrome, maximized, fullscreen, controls_w, controls_h;
+} ConfEnv;
+
 static void conf_apply(KuiCtx *ctx, const ConfStep *s) {
     if (strcmp(s->kind, "cursor") == 0) kui_input_cursor(ctx, (float)s->a, (float)s->b);
     else if (strcmp(s->kind, "cursorleft") == 0) kui_input_cursor_left(ctx);
@@ -1260,11 +1275,19 @@ static void conf_drain(KuiCtx *ctx, Rep *events) {
     }
 }
 
-/* The protocol conformance::drive documents: a frame, then each step
- * followed by another frame, then the last frame's output. */
-static void conf_run(const ConfScene *scene, const ConfStep *steps, int nsteps, Rep *out) {
+/* The protocol conformance::drive documents: the window facts, then a
+ * frame, then each step followed by another frame, then the last frame's
+ * output. The env goes in before the first frame because kui_titlebar_with
+ * and kui_window_buttons read it while that frame builds. */
+static void conf_run(const ConfScene *scene, const ConfEnv *env,
+                     const ConfStep *steps, int nsteps, Rep *out) {
     KuiCtx *ctx = kui_ctx_new();
     kui_set_diagnostics(ctx, true);
+    if (env->set) {
+        kui_env_set_window(ctx, env->custom_chrome != 0, env->maximized != 0,
+                           env->fullscreen != 0, (float)env->controls_w,
+                           (float)env->controls_h);
+    }
     Fixtures f = conf_fixtures(ctx);
 
     Rep events;
@@ -1291,6 +1314,10 @@ static void conf_run(const ConfScene *scene, const ConfStep *steps, int nsteps, 
     }
 
     repf(out, "scene %s\n", scene->name);
+    if (env->set) {
+        repf(out, "env %d %d %d %d %d\n", env->custom_chrome, env->maximized,
+             env->fullscreen, env->controls_w, env->controls_h);
+    }
     for (int i = 0; i < nsteps; i++) {
         if (steps[i].args >= 2) repf(out, "step %s %d %d\n", steps[i].kind, steps[i].a, steps[i].b);
         else if (steps[i].args == 1) repf(out, "step %s %d\n", steps[i].kind, steps[i].a);
@@ -1441,8 +1468,15 @@ static int conformance(const char *path) {
         sscanf(block, "scene %63s", name);
         ConfStep steps[CONF_MAX_STEPS];
         int nsteps = 0;
+        ConfEnv env = {0};
         for (char *line = block; line; ) {
             char *next = strchr(line, '\n');
+            if (strncmp(line, "env ", 4) == 0) {
+                env.set = 1;
+                sscanf(line, "env %d %d %d %d %d", &env.custom_chrome,
+                       &env.maximized, &env.fullscreen, &env.controls_w,
+                       &env.controls_h);
+            }
             if (strncmp(line, "step ", 5) == 0) {
                 /* Dropping a step silently would replay a different scene
                  * and blame the difference on the lowering. */
@@ -1465,7 +1499,7 @@ static int conformance(const char *path) {
         } else {
             Rep got;
             rep_init(&got);
-            conf_run(scene, steps, nsteps, &got);
+            conf_run(scene, &env, steps, nsteps, &got);
             if (strcmp(got.buf, block) != 0) {
                 fprintf(stderr, "FAIL: scene '%s' lowers differently from C than from kui-core\n", name);
                 conf_diff(block, got.buf);

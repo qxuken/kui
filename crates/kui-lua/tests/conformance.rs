@@ -102,7 +102,8 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         .to_string(),
         "chrome" => r#"
             return column { window_title = "kui conformance", gap = 6,
-              titlebar { text("app", { size = 12 }), window_buttons() },
+              titlebar { text("app", { size = 12 }) },
+              row { width = { grow = 1 }, window_buttons() },
               column { key = "sink", width = 40, height = 16, bg = 0x22242cff,
                        focusable = true, key_focus = true, label = "Sink" },
             }
@@ -186,14 +187,15 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
 #[test]
 fn every_scene_lowers_identically_from_lua() {
     for scene in conformance::SCENES {
-        let expected = conformance::report(scene.name, scene.steps, &conformance::run(scene));
+        let expected =
+            conformance::report(scene.name, scene.env, scene.steps, &conformance::run(scene));
 
         let mut core = Core::new();
         let f = conformance::fixtures(&mut core);
         let source = lua_source(scene, &f);
         let mut ext = LuaExtension::from_source(scene.name, &source)
             .unwrap_or_else(|e| panic!("{}: {e}", scene.name));
-        let out = conformance::drive(&mut core, scene.steps, |ui, phase| {
+        let out = conformance::drive(&mut core, scene.env, scene.steps, |ui, phase| {
             // A script has no `env` reading for "which phase of a scene is
             // this"; the host seeds one, which is what a real host does
             // with any fact the core does not carry.
@@ -204,7 +206,7 @@ fn every_scene_lowers_identically_from_lua() {
             ext.view(ui)
                 .unwrap_or_else(|e| panic!("{}: {e}", scene.name))
         });
-        let actual = conformance::report(scene.name, scene.steps, &out);
+        let actual = conformance::report(scene.name, scene.env, scene.steps, &out);
 
         assert_eq!(
             actual, expected,

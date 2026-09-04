@@ -68,7 +68,7 @@ fn every_scene_draws_and_reports() {
         let out = conformance::run(scene);
         assert!(out.quad_count > 0, "{}: no quads", scene.name);
         assert!(!out.nodes.is_empty(), "{}: no access tree", scene.name);
-        let block = conformance::report(scene.name, scene.steps, &out);
+        let block = conformance::report(scene.name, scene.env, scene.steps, &out);
         assert!(block.starts_with(&format!("scene {}\n", scene.name)));
         assert!(block.ends_with("end\n"));
     }

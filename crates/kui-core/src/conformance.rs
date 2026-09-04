@@ -46,7 +46,7 @@ use crate::color::Color;
 use crate::display::{Quad, QuadKind};
 use crate::edit::EditOptions;
 use crate::enter::Enter;
-use crate::geom::{Edges, Size, Vec2};
+use crate::geom::{Edges, Rect, Size, Vec2};
 use crate::input::{EditKey, InputEvent, Mods};
 use crate::key::Key;
 use crate::resources::{ImageId, SoundId};
@@ -59,12 +59,41 @@ use crate::tree::{NodeContent, Tree};
 use crate::ui::Ui;
 use crate::value::Value;
 use crate::widgets;
-use crate::window::WindowRole;
+use crate::window::{WindowEnv, WindowRole};
 
 /// Every scene is built at this viewport and scale. A binding that drives
 /// its own frames has to use the same numbers or nothing lines up.
 pub const VIEWPORT: Size = Size { w: 320.0, h: 240.0 };
 pub const SCALE: f32 = 1.0;
+
+/// The host window facts a scene is driven under — the third thing a scene
+/// declares to its adapters, beside the tree and the steps.
+///
+/// A frame driver pushes these in; a headless `Core` has them at their
+/// defaults, which is why `widgets::window_buttons` drew nothing in any
+/// scene until the corpus could say otherwise (backlog P9). Only the
+/// *window* half travels: `refresh_hz` and `focused` change no scene's
+/// output, and leaving them out keeps the report line short.
+///
+/// The controls rect is carried as a `w`/`h` extent at the window origin,
+/// not as a free rect, because that is the shape all four bindings can
+/// express — C's `kui_env_set_window` takes two numbers, and the one real
+/// instance (the macOS traffic lights) sits at the origin.
+pub const NATIVE_CHROME: WindowEnv = WindowEnv {
+    custom_chrome: false,
+    maximized: false,
+    fullscreen: false,
+    native_controls: None,
+};
+
+/// The app draws its own chrome, and the OS draws nothing over it — so
+/// `widgets::window_buttons` builds its three buttons.
+pub const CUSTOM_CHROME: WindowEnv = WindowEnv {
+    custom_chrome: true,
+    maximized: false,
+    fullscreen: false,
+    native_controls: None,
+};
 
 /// The fixture image: 4x4 opaque white RGBA. Every binding registers the
 /// same bytes in the same order, so the handles match and the image quad
@@ -229,6 +258,11 @@ pub struct Scene {
     /// the phase [`Step::Phase`] leaves behind — 0 until a step says
     /// otherwise, and ignored by every scene that never changes its mind.
     pub build: fn(&mut Ui<'_>, &Fixtures, u32),
+    /// The host window facts to drive under, declared before the first
+    /// frame. [`NATIVE_CHROME`] for all but the two scenes that are about
+    /// chrome; it travels to the other adapters as the report's `env` line,
+    /// so a third one costs them nothing.
+    pub env: WindowEnv,
     pub steps: &'static [Step],
     pub expect: Expect,
 }
@@ -252,6 +286,7 @@ pub const SCENES: &[Scene] = &[
         custom: &["dir", "pad", "border", "key", "size"],
         elements: &["box", "text"],
         build: build_layout,
+        env: NATIVE_CHROME,
         steps: &[],
         expect: Expect {
             solid: 3,
@@ -283,6 +318,7 @@ pub const SCENES: &[Scene] = &[
         custom: &["pad", "key"],
         elements: &["box"],
         build: build_sizing,
+        env: NATIVE_CHROME,
         steps: &[],
         expect: Expect {
             solid: 6,
@@ -304,6 +340,7 @@ pub const SCENES: &[Scene] = &[
         custom: &["dir", "pad"],
         elements: &["box"],
         build: build_wrap,
+        env: NATIVE_CHROME,
         steps: &[],
         expect: Expect {
             solid: 5,
@@ -324,6 +361,7 @@ pub const SCENES: &[Scene] = &[
         custom: &["overflow", "key"],
         elements: &["box"],
         build: build_overflow,
+        env: NATIVE_CHROME,
         steps: &[Step::Cursor(40, 40), Step::Scroll(0, -30)],
         expect: Expect {
             solid: 5,
@@ -347,6 +385,7 @@ pub const SCENES: &[Scene] = &[
         custom: &["float", "key"],
         elements: &["box"],
         build: build_float,
+        env: NATIVE_CHROME,
         steps: &[],
         expect: Expect {
             solid: 5,
@@ -366,6 +405,7 @@ pub const SCENES: &[Scene] = &[
         custom: &["tooltip", "key"],
         elements: &["tooltip", "box", "text"],
         build: build_tooltip,
+        env: NATIVE_CHROME,
         steps: &[Step::Cursor(50, 30)],
         expect: Expect {
             solid: 2,
@@ -385,15 +425,23 @@ pub const SCENES: &[Scene] = &[
     },
     Scene {
         name: "chrome",
-        doc: "Window chrome: the frame's declared title, an adaptive \
-              titlebar hosting custom content, the window buttons, and a \
-              focusable box that claims key focus while it is declared.",
+        doc: "Window chrome, driven under a declared custom chrome — the \
+              only scene that departs from NATIVE_CHROME, and the reason \
+              the env line exists. The frame's declared title, an adaptive \
+              titlebar hosting custom content and appending its own \
+              buttons, a hand-laid strip holding a second cluster through \
+              the windowButtons element itself, and a focusable box that \
+              claims key focus while it is declared.",
         custom: &["title", "keyFocus", "size"],
         elements: &["titlebar", "windowButtons", "box", "text"],
         build: build_chrome,
+        env: CUSTOM_CHROME,
         steps: &[],
         expect: Expect {
-            solid: 1,
+            // The sink, plus each cluster's two drawn glyphs: the minimize
+            // bar and the maximize outline are boxes, and only the close
+            // cross is text.
+            solid: 5,
             shadows: 0,
             images: 0,
             glyphs_min: 3,
@@ -401,6 +449,14 @@ pub const SCENES: &[Scene] = &[
                 "0 window kui conformance||",
                 "1 titleBar ||",
                 "2 staticText app||",
+                "2 button Minimize||",
+                "2 button Maximize||",
+                "2 button Close||",
+                // The hand-laid strip is a plain row, so its buttons sit
+                // directly under the window rather than under a role.
+                "1 button Minimize||",
+                "1 button Maximize||",
+                "1 button Close||",
                 "1 group Sink||",
             ],
             events: &[],
@@ -416,6 +472,7 @@ pub const SCENES: &[Scene] = &[
         custom: &["key", "size"],
         elements: &["button", "edit", "box", "text"],
         build: build_controls,
+        env: NATIVE_CHROME,
         steps: &[
             Step::Cursor(30, 24),
             Step::MouseDown,
@@ -443,6 +500,7 @@ pub const SCENES: &[Scene] = &[
         custom: &["size"],
         elements: &["image", "audio", "latencyGraph"],
         build: build_media,
+        env: NATIVE_CHROME,
         steps: &[],
         expect: Expect {
             solid: 2,
@@ -476,6 +534,7 @@ pub const SCENES: &[Scene] = &[
         custom: &["float", "key"],
         elements: &["box", "text", "titlebar"],
         build: build_modal,
+        env: NATIVE_CHROME,
         steps: &[
             // The app behind: inert, and the press asks the modal to go.
             Step::Cursor(50, 50),
@@ -535,6 +594,7 @@ pub const SCENES: &[Scene] = &[
         custom: &["key", "size"],
         elements: &["box", "text"],
         build: build_exit,
+        env: NATIVE_CHROME,
         steps: &[
             // Start the clock. Without one every transition snaps and the
             // store is cleared, so there would be no ghost to look at.
@@ -842,10 +902,22 @@ fn build_tooltip(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 fn build_chrome(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.window_title("kui conformance");
     ui.with(NodeSpec::column().gap(6.0), |ui| {
-        widgets::titlebar_with(ui, |ui| {
-            ui.text("app", TextStyle::new(12.0));
-            widgets::window_buttons(ui);
-        });
+        // The adaptive form: content between the platform inset and the
+        // cluster `titlebar_with` appends by itself.
+        widgets::titlebar_with(ui, |ui| ui.text("app", TextStyle::new(12.0)));
+        // And the fully-custom form the `windowButtons` element is *for*
+        // (`schema::ELEMENTS`: "just the min/max/close buttons, for fully
+        // custom titlebars") — a strip an app laid out itself. Two clusters
+        // is the point: they are the two ways an app gets the buttons, and
+        // only the second one goes through each binding's own element.
+        // The strip is a plain row rather than a second `window_drag`: the
+        // element under test is the cluster, and a drag handle would derive
+        // a second `titleBar` role, which is a thing to tell a screen reader
+        // rather than a side effect of where the corpus put a box.
+        ui.with(
+            NodeSpec::row().width(Sizing::Grow(1.0)),
+            widgets::window_buttons,
+        );
         let sink = ui.open_keyed(
             "sink",
             NodeSpec::column()
@@ -1081,17 +1153,19 @@ pub struct Coverage {
 }
 
 /// Rows [`observe`] cannot derive, with the reason. These are the ones
-/// whose coverage the corpus still only *declares*; the list is short on
-/// purpose, and it is the written record of what is left unchecked rather
-/// than a silence.
-pub const UNDERIVED: &[(&str, &str)] = &[(
-    "windowButtons",
-    "widgets::window_buttons draws nothing unless env.window.custom_chrome \
-     is set, and no binding can declare custom chrome to a headless core \
-     (the C API has kui_env_set_window; Lua reads env, Node exposes none), \
-     so no scene can currently build one. The claim is vacuous until the \
-     corpus can drive a frame under custom chrome.",
-)];
+/// whose coverage the corpus only *declares*; it is the written record of
+/// what is left unchecked rather than a silence.
+///
+/// **It is empty, and that is the interesting state.** Its one entry was
+/// `windowButtons`, exempted because `widgets::window_buttons` draws
+/// nothing unless `env.window.custom_chrome` is set and no adapter could
+/// declare that to a headless core. Every adapter can now (backlog P9;
+/// Node was the last, and needed an `Env` surface of its own first — B2),
+/// the `chrome` scene drives under [`CUSTOM_CHROME`], and the three
+/// buttons are compared byte-for-byte across all four bindings instead of
+/// being claimed by a scene that built none. Keep the constant: the test
+/// below is what stops the next exemption from being permanent.
+pub const UNDERIVED: &[(&str, &str)] = &[];
 
 /// Whether node `i`'s key is one the view spelled (`key`, `with_keyed`)
 /// rather than one auto-keying derived from its position — the observable
@@ -1368,15 +1442,25 @@ fn event_row(payload: &Value) -> (String, String) {
 /// carry [`fixtures`]. Every binding reimplements exactly this:
 ///
 /// 1. turn diagnostics on;
-/// 2. build a frame, collect the events it left pending;
-/// 3. for each step, apply the input, collect its events, build again;
-/// 4. read the quads, access tree, warnings and title of the last frame.
+/// 2. declare the window facts (step 0, and the reason `env` is a
+///    parameter: `widgets::window_buttons` and the titlebar's inset read
+///    them while the *first* frame builds, so a driver that pushed them
+///    afterwards would compare a different tree);
+/// 3. build a frame, collect the events it left pending;
+/// 4. for each step, apply the input, collect its events, build again;
+/// 5. read the quads, access tree, warnings and title of the last frame.
 ///
 /// The [`Coverage`] it also returns is Rust-only bookkeeping over the tree
 /// each frame built, not part of the protocol: the other bindings have
 /// nothing to reproduce there.
-pub fn drive(core: &mut Core, steps: &[Step], mut build: impl FnMut(&mut Ui<'_>, u32)) -> Output {
+pub fn drive(
+    core: &mut Core,
+    env: WindowEnv,
+    steps: &[Step],
+    mut build: impl FnMut(&mut Ui<'_>, u32),
+) -> Output {
     core.set_diagnostics(true);
+    core.env.window = env;
     let mut events = Vec::new();
     let mut coverage = Coverage::default();
     let mut phase = 0u32;
@@ -1438,7 +1522,7 @@ pub fn drive(core: &mut Core, steps: &[Step], mut build: impl FnMut(&mut Ui<'_>,
 pub fn run(scene: &Scene) -> Output {
     let mut core = Core::new();
     let f = fixtures(&mut core);
-    drive(&mut core, scene.steps, |ui, phase| {
+    drive(&mut core, scene.env, scene.steps, |ui, phase| {
         (scene.build)(ui, &f, phase)
     })
 }
@@ -1452,6 +1536,8 @@ pub fn run(scene: &Scene) -> Output {
 ///
 /// ```text
 /// scene <name>
+/// env <customChrome> <maximized> <fullscreen> <controlsW> <controlsH>
+///                            the window facts to drive under, omitted at their defaults
 /// step <...>                 the replayed input, so an adapter need not restate it
 /// title <text|->
 /// quads <count> <digest:016x>
@@ -1461,9 +1547,26 @@ pub fn run(scene: &Scene) -> Output {
 /// warn <code>
 /// end
 /// ```
-pub fn report(name: &str, steps: &[Step], out: &Output) -> String {
+/// The `env` line: the five numbers `kui_env_set_window` takes, in its
+/// order. Written only when a scene departs from [`NATIVE_CHROME`], so the
+/// nine scenes that are not about chrome carry no line at all and an
+/// adapter that sees none drives under the defaults it already had.
+pub fn write_env(env: WindowEnv, out: &mut String) {
+    if env == NATIVE_CHROME {
+        return;
+    }
+    let r = env.native_controls.unwrap_or(Rect::new(0.0, 0.0, 0.0, 0.0));
+    let _ = writeln!(
+        out,
+        "env {} {} {} {} {}",
+        env.custom_chrome as u8, env.maximized as u8, env.fullscreen as u8, r.w as i32, r.h as i32,
+    );
+}
+
+pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> String {
     let mut s = String::new();
     let _ = writeln!(s, "scene {name}");
+    write_env(env, &mut s);
     for step in steps {
         step.write(&mut s);
     }
@@ -1510,7 +1613,7 @@ pub fn report(name: &str, steps: &[Step], out: &Output) -> String {
 pub fn reference_report() -> String {
     SCENES
         .iter()
-        .map(|s| report(s.name, s.steps, &run(s)))
+        .map(|s| report(s.name, s.env, s.steps, &run(s)))
         .collect()
 }
 
