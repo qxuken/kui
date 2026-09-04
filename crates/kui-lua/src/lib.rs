@@ -1,13 +1,40 @@
 //! Lua extensions for kui. A script defines `view(env)` returning a plain
 //! table tree (built with the injected `row`/`column`/`text`/`button`
 //! prelude) and optionally `on_event(ev)`. `env` carries host facts
-//! (refresh rate, focus, viewport) and a few queries (`env.edit_text(key)`,
-//! `env.is_focused(key)`, `env.is_hovered(key)`,
-//! `env.measure_text(s, opts, max_w)`) and scroll calls (`env.reveal(key)`,
-//! `env.scroll_offset(key)`, `env.set_scroll(key, x, y)`,
+//! (refresh rate, focus, viewport), queries (`env.edit_text(key)`,
+//! `env.is_focused(key)`, `env.is_hovered(key)`, `env.is_pressed(key)`,
+//! `env.measure_text(s, opts, max_w)`), focus verbs (`env.set_focus(key)`,
+//! `env.blur()`, `env.focus_next()`, `env.focus_prev()`) and scroll calls
+//! (`env.reveal(key)`, `env.scroll_offset(key)`, `env.set_scroll(key, x, y)`,
 //! `env.scroll_geometry(key)`); the root table may set
 //! `window_title`. Because the IR is data all the way down, the binding is
 //! just table-to-node conversion — no closures cross the boundary.
+//!
+//! ## The two `focus` names
+//!
+//! `env.focused` and `env.focus` are one letter apart and are *not* the
+//! same fact, so neither is going away:
+//!
+//! - `env.focused` (bool) is the **window**'s keyboard focus — whether this
+//!   window has the keyboard at all. It is `Env::focused`, and every
+//!   binding carries it; Node reads it off its own `env` object.
+//! - `env.focus` (integer, nil for none) is the focused **node**'s key.
+//!   Node spells this `ctx.focused()` and C `kui_focused`.
+//!
+//! Lua puts host facts and runtime queries on one table where Node has two
+//! objects (`env` and `ctx`), so the name `focused` was already spent on
+//! the window fact and the node reading could not have it. That also
+//! settles the verbs: `env.focus` is a value, so moving focus is
+//! `env.set_focus(key)` rather than the `focus(key)` of the other
+//! bindings. `env.blur()`, `env.focus_next()` and `env.focus_prev()` need
+//! no such dodge and keep the Node and C spellings.
+//!
+//! `set_focus` and `blur` take effect at once; `focus_next` / `focus_prev`
+//! resolve when the frame finishes, because the Tab ring is made of a
+//! finished tree and `view` is still declaring one (`Ui::focus_next`).
+//! Either way `env.focus` is a value the host wrote before `view` ran, so
+//! it still reads the focus the frame opened with — `env.is_focused(key)`
+//! is the query that answers about now.
 //!
 //! Props come from the shared schema (`kui_core::schema`): every row is
 //! reachable from Lua under its snake_case name (`min_width`, `on_click`,
@@ -107,10 +134,13 @@ impl Extension for LuaExtension {
 }
 
 /// Host facts handed to `view(env)`: `refresh_hz` (nil if unknown),
-/// `frame_budget_ms`, `focused`, `viewport_w`/`viewport_h` (logical px),
-/// `window` chrome facts, and the queries `edit_text(key)`,
-/// `is_focused(key)`, `is_hovered(key)` (keys are the integers events
-/// carry), `measure_text(s, opts, max_w)` (see `measure_from_lua`) and the
+/// `frame_budget_ms`, `focused` (the *window*'s keyboard focus, a bool),
+/// `focus` (the focused *node*'s key), `focus_visible`,
+/// `viewport_w`/`viewport_h` (logical px), `window` chrome facts, the
+/// queries `edit_text(key)`, `is_focused(key)`, `is_hovered(key)`,
+/// `is_pressed(key)` (keys are the integers events carry),
+/// `measure_text(s, opts, max_w)` (see `measure_from_lua`), the focus verbs
+/// `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()` and the
 /// scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
 /// `scroll_geometry(key)`.
 fn env_table<'scope, 'env: 'scope>(
@@ -127,13 +157,18 @@ fn env_table<'scope, 'env: 'scope>(
         t.set("refresh_hz", hz)?;
     }
     t.set("frame_budget_ms", env.frame_budget_ms())?;
+    // Two different facts, one letter apart. `focused` is the *window*'s:
+    // does this window have the keyboard at all. `focus` is the focused
+    // *node*'s key (an integer, as events carry them; nil for none) — what
+    // Node spells `ctx.focused()` and C `kui_focused`. Lua cannot converge
+    // on that name because `focused` is the window fact here, and has been
+    // since env existed; see the module doc.
     t.set("focused", env.focused)?;
-    // Keyboard focus as data: the focused node's key (an integer, as
-    // events carry them; nil for none) and whether it shows — it got there
-    // by Tab or assistive technology rather than a click.
     if let Some(k) = focus {
         t.set("focus", k.0 as i64)?;
     }
+    // Whether focus shows — it got there by Tab or assistive technology
+    // rather than a click.
     t.set("focus_visible", focus_visible)?;
     t.set("viewport_w", vp.w)?;
     t.set("viewport_h", vp.h)?;
@@ -159,6 +194,52 @@ fn env_table<'scope, 'env: 'scope>(
     t.set(
         "is_hovered",
         scope.create_function(move |_, key: i64| Ok(ui.borrow().is_hovered(Key(key as u64))))?,
+    )?;
+    // Held down: the press started on this node and the pointer is still
+    // over it (or it captured a drag). Goes with `is_hovered` — a script
+    // that draws its own button styles the pressed state from this.
+    t.set(
+        "is_pressed",
+        scope.create_function(move |_, key: i64| Ok(ui.borrow().is_pressed(Key(key as u64))))?,
+    )?;
+    // Moving focus from the script, the imperative half of `key_focus`.
+    // `set_focus`, not `focus`: `env.focus` is already the reading above
+    // and alpha.5 shipped it, so the verb takes the longer name rather
+    // than change what a name means under a script that already runs.
+    // `blur` / `focus_next` / `focus_prev` match Node and C exactly.
+    t.set(
+        "set_focus",
+        scope.create_function(move |_, key: i64| {
+            ui.borrow_mut().focus(Key(key as u64));
+            Ok(())
+        })?,
+    )?;
+    t.set(
+        "blur",
+        scope.create_function(move |_, ()| {
+            ui.borrow_mut().blur();
+            Ok(())
+        })?,
+    )?;
+    // What Tab and Shift-Tab do: the next / previous focusable node in
+    // tree order, wrapping. A script that binds Tab in an `on_key` sink
+    // calls these to hand the keyboard on. Like `reveal`, the step
+    // resolves when *this* frame finishes — the ring is made of a
+    // finished tree, and the script is still declaring one — so a view
+    // can step onto a row it is declaring right now.
+    t.set(
+        "focus_next",
+        scope.create_function(move |_, ()| {
+            ui.borrow_mut().focus_next();
+            Ok(())
+        })?,
+    )?;
+    t.set(
+        "focus_prev",
+        scope.create_function(move |_, ()| {
+            ui.borrow_mut().focus_prev();
+            Ok(())
+        })?,
     )?;
     // Scrolling from the script: `env.reveal(key)` scrolls whatever
     // contains a node so it shows, and `env.scroll_offset` /
@@ -1576,6 +1657,137 @@ mod tests {
         assert_eq!(core.scroll_offset(list).y, 120.0);
         frame(&mut core, &mut ext);
         assert_eq!(core.scroll_offset(list).y, 120.0);
+    }
+
+    /// `env.is_pressed(key)` completes the interaction trio next to
+    /// `is_hovered` / `is_focused`: held down means the press landed on
+    /// this node and the pointer is still on it.
+    #[test]
+    fn scripts_read_the_pressed_state() {
+        let mut ext = LuaExtension::from_source(
+            "press",
+            r#"
+                function view(env)
+                  pressed = env.is_pressed(btn_key)
+                  hovered = env.is_hovered(btn_key)
+                  return column { key = "root", pad = 10,
+                    row { key = "btn", width = 100, height = 40,
+                          bg = 0x333333ff, on_click = "hit" },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let btn = Key::ROOT.str("root").str("btn");
+        ext.lua.globals().set("btn_key", btn.0 as i64).unwrap();
+        let mut core = Core::new();
+        let pressed = |ext: &LuaExtension| ext.lua.globals().get::<bool>("pressed").unwrap();
+        let hovered = |ext: &LuaExtension| ext.lua.globals().get::<bool>("hovered").unwrap();
+
+        frame(&mut core, &mut ext);
+        assert!(!pressed(&ext), "idle");
+
+        // Hover alone is not a press.
+        core.handle_input(InputEvent::CursorMoved(Vec2::new(50.0, 30.0)));
+        frame(&mut core, &mut ext);
+        assert!(hovered(&ext) && !pressed(&ext), "hover is not press");
+
+        core.handle_input(InputEvent::MouseDown {
+            button: kui_core::MouseButton::Primary,
+            clicks: 1,
+        });
+        frame(&mut core, &mut ext);
+        assert!(pressed(&ext), "held down");
+
+        // The press is stuck to the node it started on, so wandering off a
+        // node with no drag releases the pressed look while the button is
+        // still down; the release clears it either way.
+        core.handle_input(InputEvent::MouseUp {
+            button: kui_core::MouseButton::Primary,
+        });
+        frame(&mut core, &mut ext);
+        assert!(!pressed(&ext), "released");
+    }
+
+    /// The focus verbs: `env.set_focus(key)` moves focus now,
+    /// `env.focus_next` / `env.focus_prev` walk the Tab ring, `env.blur`
+    /// drops it — and `env.focus` reads back the node's key, which is a
+    /// different fact from `env.focused`, the window's.
+    #[test]
+    fn scripts_move_focus_with_the_verbs() {
+        let mut ext = LuaExtension::from_source(
+            "focus",
+            r#"
+                function view(env)
+                  if cmd == "set" then env.set_focus(target)
+                  elseif cmd == "blur" then env.blur()
+                  elseif cmd == "next" then env.focus_next()
+                  elseif cmd == "prev" then env.focus_prev() end
+                  cmd = nil
+                  -- `env.focus` is a value the host filled in before view()
+                  -- ran, so it lags a verb called above by a frame;
+                  -- `env.is_focused` is a call and answers about now.
+                  seen_focus = env.focus
+                  seen_live = env.is_focused(target or 0)
+                  seen_window = env.focused
+                  return column { key = "root", pad = 10,
+                    row { key = "a", focusable = true, width = 50, height = 20 },
+                    row { key = "b", focusable = true, width = 50, height = 20 },
+                    row { key = "c", focusable = true, width = 50, height = 20 },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let root = Key::ROOT.str("root");
+        let (a, b, c) = (root.str("a"), root.str("b"), root.str("c"));
+        let mut core = Core::new();
+        let cmd = |ext: &LuaExtension, c: &str| ext.lua.globals().set("cmd", c).unwrap();
+        let seen = |ext: &LuaExtension| ext.lua.globals().get::<Option<i64>>("seen_focus").unwrap();
+        let live = |ext: &LuaExtension| ext.lua.globals().get::<bool>("seen_live").unwrap();
+
+        // The ring is the last finished frame's, so build one first.
+        frame(&mut core, &mut ext);
+        assert_eq!(core.focus(), None);
+        assert_eq!(seen(&ext), None, "nil for no focus, not 0");
+
+        // Straight to a node by key, the imperative form of `key_focus`.
+        ext.lua.globals().set("target", b.0 as i64).unwrap();
+        cmd(&ext, "set");
+        frame(&mut core, &mut ext);
+        assert_eq!(core.focus(), Some(b));
+        // `env.focus` is a snapshot the host wrote before view() ran, so it
+        // still holds what focus was when the frame opened; `env.is_focused`
+        // is a query into the live frame and sees the move at once.
+        assert_eq!(seen(&ext), None, "the value lags a same-frame verb");
+        assert!(live(&ext), "the query does not");
+        frame(&mut core, &mut ext);
+        assert_eq!(
+            seen(&ext),
+            Some(b.0 as i64),
+            "and the next frame carries it"
+        );
+
+        // Tab and Shift-Tab, wrapping.
+        cmd(&ext, "next");
+        frame(&mut core, &mut ext);
+        assert_eq!(core.focus(), Some(c));
+        cmd(&ext, "next");
+        frame(&mut core, &mut ext);
+        assert_eq!(core.focus(), Some(a), "wraps");
+        cmd(&ext, "prev");
+        frame(&mut core, &mut ext);
+        assert_eq!(core.focus(), Some(c), "wraps back");
+
+        cmd(&ext, "blur");
+        frame(&mut core, &mut ext);
+        assert_eq!(core.focus(), None);
+        frame(&mut core, &mut ext);
+        assert_eq!(seen(&ext), None);
+
+        // `env.focused` is the window's focus, not the node's: it stays a
+        // bool through all of the above, and follows the host env instead.
+        assert!(ext.lua.globals().get::<bool>("seen_window").unwrap());
     }
 
     /// A script virtualizes a 10k-row list with nothing but

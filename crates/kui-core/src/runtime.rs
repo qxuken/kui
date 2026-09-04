@@ -163,6 +163,13 @@ pub struct Core {
     /// `finish_frame` scrolls the node's scrolling ancestor to show it,
     /// then clears this. Last writer wins.
     pending_reveal: Option<Key>,
+    /// A `focus_next` / `focus_prev` waiting for a frame to walk: `true`
+    /// forward. The Tab ring is the finished tree's, and a request made
+    /// while a frame is being built has no tree to walk yet (`begin_frame`
+    /// cleared it), so the step is held until `finish_frame` — after the
+    /// modal scope is resolved, which is what scopes the ring. Last writer
+    /// wins, and an applied step beats a `set_focus` from the same frame.
+    pending_focus_step: Option<bool>,
     /// Silent-misconfiguration detection; see `diag`.
     diag: Diagnostics,
     /// The access tree of the last finished frame, built on demand (see
@@ -265,6 +272,7 @@ impl Core {
             ghost_opacity: Vec::new(),
             frame_requested: false,
             pending_reveal: None,
+            pending_focus_step: None,
             ime_rect: None,
             pending: Vec::new(),
             framed: false,
@@ -1313,6 +1321,17 @@ impl Core {
         self.request_frame();
     }
 
+    /// Asks for a Tab step (`forward`) / Shift-Tab step at the end of the
+    /// frame being built. `focus_next` moves focus now, against the last
+    /// finished tree — which is what a driver handling a key press between
+    /// frames wants, and exactly what a *view* cannot use, since its own
+    /// tree does not exist yet. A view asks with this instead and the step
+    /// lands on the frame it is declaring.
+    pub fn request_focus_step(&mut self, forward: bool) {
+        self.pending_focus_step = Some(forward);
+        self.request_frame();
+    }
+
     /// The retained scroll offset of the container `key`, as the last
     /// layout clamped it (positive = content moved up / left). Zero for a
     /// node that never scrolled, and for one that is not a container at
@@ -2162,6 +2181,14 @@ impl Core {
             None
         };
         self.resolve_modal_focus();
+        // The ring exists now: laid out, and scoped to the modal if there
+        // is one. A step asked for during the build lands here, so it wins
+        // over both the modal's own focus move and a same-frame
+        // `set_focus`. Like a real Tab press, the scroll it triggers shows
+        // on the next frame.
+        if let Some(forward) = self.pending_focus_step.take() {
+            self.focus_next(forward);
+        }
 
         let scale = self.scale;
         let mut hits: Vec<HitRegion> = self.interaction.take_hit_buffer();

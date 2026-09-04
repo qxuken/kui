@@ -238,13 +238,22 @@ impl<'a> Ui<'a> {
     /// Moves focus to the next focusable node in tree order, wrapping —
     /// what Tab does. A key sink that binds Tab itself calls this to hand
     /// the keyboard on.
+    ///
+    /// Deferred, unlike the rest of this handle: a `Ui` only exists while a
+    /// frame is being built, and `begin_frame` cleared the tree the Tab
+    /// ring is made of, so stepping now would walk an empty ring. The step
+    /// is applied at `finish`, against the frame this call is part of — so
+    /// a view that declares three rows and asks to step lands on one of
+    /// them, without waiting a frame for them to exist. Outside a frame
+    /// (a driver handling a key press) `Core::focus_next` steps at once.
     pub fn focus_next(&mut self) {
-        self.core.focus_next(true);
+        self.core.request_focus_step(true);
     }
 
-    /// Shift-Tab: the previous focusable node.
+    /// Shift-Tab: the previous focusable node. Deferred to `finish` for the
+    /// reason [`Ui::focus_next`] gives.
     pub fn focus_prev(&mut self) {
-        self.core.focus_next(false);
+        self.core.request_focus_step(false);
     }
 
     pub fn edit_text(&self, key: Key) -> Option<String> {

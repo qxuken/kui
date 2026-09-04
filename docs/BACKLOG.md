@@ -97,7 +97,43 @@ row is the copy that is wrong, and it is the one that generates the docs.
 
 Accept both keys, correct the row, regenerate.
 
-### `~` P3 — Give Lua imperative focus and `is_pressed`
+### `~` P3 — Give Lua imperative focus and `is_pressed` — **done (2026-09-04)**
+
+Shipped as proposed, minus one premise. `env.is_pressed(key)`,
+`env.set_focus(key)`, `env.blur()`, `env.focus_next()` and `env.focus_prev()`
+are in `env_table`, and the `keyFocus` row now names each binding's verb
+rather than promising `focus(key)` to everyone.
+
+**No deprecation, because there was no duplicate reading.** The item was
+filed believing `env.focused` had appeared as a second spelling of the node
+key. It has not: `env.focused` is `Env::focused`, the *window*'s keyboard
+focus, a bool, and it has been in `env` since env existed (`f189ab4`). Node
+carries the same fact on its own `env` object and keeps the node reading on
+`ctx` — `ctx.focused()`. Lua has one table where Node has two, so the name
+`focused` was spent on the window fact before the node reading needed it,
+and `env.focus` is the only spelling Lua can have. Deprecating it would have
+left the node key unreadable from Lua. Both names are now documented against
+each other at the top of `crates/kui-lua/src/lib.rs`; `set_focus` keeps its
+longer name for the reason the item gives (alpha.5 shipped `env.focus` as a
+value) and the other three verbs match Node and C exactly.
+
+**One core change was needed.** `focus_next` / `focus_prev` could not be
+plain wrappers. The Tab ring is built from the finished tree, `begin_frame`
+clears it, and `view(env)` is the only place a script ever holds an `env` —
+so an immediate step from Lua always walked an empty ring and did nothing.
+`Ui::focus_next` / `focus_prev` now defer to `finish` via
+`Core::request_focus_step`, mirroring `pending_reveal`, applied after the
+modal scope resolves (which is what scopes the ring). This changes only the
+frame-scoped `Ui` handle, where an immediate step was never correct; Node
+and C call `core().focus_next` directly and are untouched, and `Ui`'s pair
+had no callers. Pinned by `a_view_steps_focus_onto_the_frame_it_is_declaring`
+in `crates/kui-core/tests/focus.rs`.
+
+A related sharp edge the tests now pin: `env.focus` is a value the host
+writes before `view` runs, so it does not see a verb called in the same
+frame. `env.is_focused(key)` is the query that does.
+
+The original finding:
 
 `env.focus` in Lua is the focused node's key as a value
 (`crates/kui-lua/src/lib.rs:131`); `ctx.focus(key)` in Node

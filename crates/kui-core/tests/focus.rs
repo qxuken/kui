@@ -233,6 +233,84 @@ fn tab_walks_every_control_in_tree_order_and_wraps() {
     assert_eq!(core.edit.focused(), None);
 }
 
+/// `Ui::focus_next` / `focus_prev` defer to `finish`, because a view is
+/// still declaring the tree the Tab ring is made of. So a view that has
+/// never rendered can still step onto a control it is declaring — where
+/// `Core::focus_next`, which walks the last finished tree, has nothing.
+#[test]
+fn a_view_steps_focus_onto_the_frame_it_is_declaring() {
+    let build = |core: &mut Core, step: Option<bool>| {
+        let mut ui = core.frame(Size::new(200.0, 200.0), 1.0);
+        match step {
+            Some(true) => ui.focus_next(),
+            Some(false) => ui.focus_prev(),
+            None => {}
+        }
+        for name in ["a", "b", "c"] {
+            ui.with_keyed(
+                name,
+                NodeSpec::row()
+                    .focusable()
+                    .width(Sizing::Fixed(100.0))
+                    .height(Sizing::Fixed(H)),
+                |_| {},
+            );
+        }
+        ui.finish();
+    };
+    let root = Key::ROOT;
+    let (a, c) = (root.str("a"), root.str("c"));
+
+    // The very first frame: nothing has been laid out, so an immediate
+    // step has no ring at all and the deferred one still lands.
+    let mut immediate = Core::new();
+    {
+        let mut ui = immediate.frame(Size::new(200.0, 200.0), 1.0);
+        ui.core().focus_next(true);
+        for name in ["a", "b", "c"] {
+            ui.with_keyed(
+                name,
+                NodeSpec::row()
+                    .focusable()
+                    .width(Sizing::Fixed(100.0))
+                    .height(Sizing::Fixed(H)),
+                |_| {},
+            );
+        }
+        ui.finish();
+    }
+    assert_eq!(immediate.focus(), None, "no ring to walk mid-build");
+
+    let mut core = Core::new();
+    build(&mut core, Some(true));
+    assert_eq!(core.focus(), Some(a), "the deferred step found the ring");
+
+    // And it beats a `set_focus` made in the same frame — the step is the
+    // later word, applied once the frame it belongs to is whole.
+    {
+        let mut ui = core.frame(Size::new(200.0, 200.0), 1.0);
+        ui.focus(a);
+        ui.focus_prev();
+        for name in ["a", "b", "c"] {
+            ui.with_keyed(
+                name,
+                NodeSpec::row()
+                    .focusable()
+                    .width(Sizing::Fixed(100.0))
+                    .height(Sizing::Fixed(H)),
+                |_| {},
+            );
+        }
+        ui.finish();
+    }
+    assert_eq!(core.focus(), Some(c), "stepped back from a, wrapping");
+
+    // Only the last request of a frame is kept, and it is not held for a
+    // later frame once applied.
+    build(&mut core, None);
+    assert_eq!(core.focus(), Some(c), "no step, no move");
+}
+
 #[test]
 fn enter_and_space_press_the_focused_control() {
     let mut core = Core::new();

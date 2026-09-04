@@ -545,6 +545,27 @@ upgrades remove code from the apps on it is doing the job.
   `conformance::UNDERIVED` with that reason, and a test fails the moment a
   scene does exercise it, so the exemption cannot outlive the hole it
   documents.
+- **Lua reaches the whole focus runtime** (backlog P3). `env.is_pressed(key)`
+  joins `is_hovered` / `is_focused`, and the verbs Node and C always had
+  arrived: `env.set_focus(key)`, `env.blur()`, `env.focus_next()`,
+  `env.focus_prev()`. Lua was the last binding where focus was
+  read-only — a script could style the focused node but not move focus,
+  so a list that focuses the row you clicked, a dialog that focuses its
+  first field, or a key sink that binds Tab and hands the keyboard on
+  could not be written in Lua at all. `set_focus`, not `focus`, because
+  alpha.5 shipped `env.focus` as the focused node's *key*, and a name that
+  already means a value does not quietly become a verb.
+  **`env.focused` and `env.focus` are different facts and both stay.**
+  `env.focused` is the *window*'s keyboard focus (a bool, `Env::focused`);
+  `env.focus` is the focused *node*'s key, which Node spells
+  `ctx.focused()` and C `kui_focused`. Lua puts host facts and runtime
+  queries on one table where Node has `env` and `ctx`, so `focused` was
+  spent on the window fact before the node reading needed it. The module
+  doc now says so at the top instead of leaving two names one letter
+  apart to be guessed at.
+  `env.focus` is a value the host writes before `view` runs, so it does
+  not see a verb called in the same frame — `env.is_focused(key)` is the
+  query that does.
 
 ### Changed
 
@@ -562,6 +583,17 @@ upgrades remove code from the apps on it is doing the job.
 - **`kui_draw_data` returns `bool`** instead of `void`, so it can report a
   refused reservation like the other three. A host that ignores the result
   still compiles.
+- **`Ui::focus_next` / `Ui::focus_prev` defer to the end of the frame.**
+  The Tab ring is built from the finished tree and `begin_frame` clears
+  it, so stepping from inside a build walked an empty ring and did
+  nothing — which is every step a *view* can make, since a view is where
+  the tree is still being declared. They now record the step
+  (`Core::request_focus_step`, mirroring `pending_reveal`) and it applies
+  at `finish`, after the modal scope resolves, so a view can step onto a
+  control it is declaring right now rather than waiting a frame for it to
+  exist. `Core::focus_next` is unchanged and still steps at once, which is
+  what a driver handling a key press between frames wants; Node and C call
+  it directly and are unaffected.
 - `Quad` gained `blur` and `QuadKind` gained `Shadow`, which is ABI:
   `KuiQuad` mirrors the core quad field for field, so its `kind` moved from
   word 17 to word 18 and `uv` / `clip` shifted with it. A host reading
@@ -712,6 +744,13 @@ upgrades remove code from the apps on it is doing the job.
 
 ### What you can delete
 
+- **The Lua workarounds for focus you could see but not move** — the
+  `key_focus` flag toggled through a script-side variable for one frame to
+  simulate a `focus(key)` call, and the hand-rolled "which of my rows is
+  next" arithmetic written next to it because `focus_next` did not exist.
+  `env.set_focus(key)` and `env.focus_next()` are those, and the second
+  one walks the core's ring — chrome, headings and `disabled` controls
+  skipped — rather than a list the script maintained.
 - **The clock you dispatched by hand in a headless test** — the loop
   calling `app.dispatch(tickMsg)` at intervals it made up, the
   `app.render()` after each one, and the `app.ctx.setTime(t)` you kept in
