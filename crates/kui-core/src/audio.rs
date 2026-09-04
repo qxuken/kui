@@ -264,6 +264,13 @@ impl AudioStore {
         self.mounted.get(&key).map(|m| m.playback)
     }
 
+    /// Whether any `audio` node is mounted. The scene corpus's coverage
+    /// derivation reads it: an `audio` element builds no tree node, so a
+    /// mounted playback is the only trace one leaves.
+    pub(crate) fn any_mounted(&self) -> bool {
+        !self.mounted.is_empty()
+    }
+
     /// An `audio` node declared this frame; reconciled at `finish_frame`.
     pub(crate) fn declare(&mut self, key: Key, origin: OriginId, spec: AudioSpec) {
         self.declared.push((key, origin, spec));

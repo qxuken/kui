@@ -5,11 +5,13 @@
 //! still hold on someone else's machine. And it checks that the corpus
 //! covers every `schema::CUSTOM` and `schema::ELEMENTS` row, so a new
 //! hand-written prop or element cannot be added without a scene that the
-//! Lua, C and Node adapters then have to reproduce.
+//! Lua, C and Node adapters then have to reproduce — and that the coverage
+//! a scene claims is coverage it actually delivers, by deriving the same
+//! two sets from the tree its builder produced.
 
 use std::collections::BTreeSet;
 
-use kui_core::conformance::{self, Output, Scene};
+use kui_core::conformance::{self, Coverage, Output, Scene};
 use kui_core::schema::{CUSTOM, ELEMENTS};
 
 /// The checked-in spelling of an access row: everything about it that does
@@ -123,6 +125,77 @@ fn the_corpus_covers_every_hand_written_row() {
         assert!(
             ELEMENTS.iter().any(|e| &e.name == name),
             "scene claims schema::ELEMENTS row {name:?}, which does not exist"
+        );
+    }
+}
+
+/// The other half of the row check: coverage that is *measured*, not
+/// declared. `Scene::custom` / `Scene::elements` are hand-written lists,
+/// so a scene could claim `border`, stop drawing one, and the assertion
+/// above would still be satisfied — while the quad digests, which do catch
+/// behavioural divergence, would have nothing to compare on that row.
+/// `conformance::observe` derives both sets from what each frame actually
+/// built, so every claim has to show up in the derived set.
+///
+/// The reverse does not hold and is not asserted: a scene exercises plenty
+/// it does not claim (`widgets::button` keys its node, so `controls` gets
+/// `key` for free), and the claims are what the other adapters read.
+#[test]
+fn every_scene_delivers_the_coverage_it_claims() {
+    let underived: BTreeSet<&str> = conformance::UNDERIVED.iter().map(|(n, _)| *n).collect();
+    for scene in conformance::SCENES {
+        let cov = conformance::run(scene).coverage;
+        let stale: Vec<&str> = scene
+            .custom
+            .iter()
+            .copied()
+            .filter(|n| !underived.contains(n) && !cov.custom.contains(n))
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "scene {:?} claims schema::CUSTOM rows its builder does not exercise: {stale:?}",
+            scene.name
+        );
+        let stale: Vec<&str> = scene
+            .elements
+            .iter()
+            .copied()
+            .filter(|n| !underived.contains(n) && !cov.elements.contains(n))
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "scene {:?} claims schema::ELEMENTS rows its builder does not exercise: {stale:?}",
+            scene.name
+        );
+    }
+}
+
+/// `UNDERIVED` is the written record of what the derivation cannot see, so
+/// it has to name real rows — and stop naming a row as soon as some scene
+/// does exercise it, or the exemption quietly re-opens the hole it
+/// documents.
+#[test]
+fn the_underived_rows_are_real_and_still_underived() {
+    let mut derived = Coverage::default();
+    for scene in conformance::SCENES {
+        let cov = conformance::run(scene).coverage;
+        derived.custom.extend(cov.custom);
+        derived.elements.extend(cov.elements);
+    }
+    for (name, why) in conformance::UNDERIVED {
+        assert!(!why.is_empty(), "{name:?} is exempted without a reason");
+        let is_custom = CUSTOM.iter().any(|c| c.name == *name);
+        let is_element = ELEMENTS.iter().any(|e| e.name == *name);
+        assert!(
+            is_custom || is_element,
+            "UNDERIVED names {name:?}, which is neither a schema::CUSTOM nor a \
+             schema::ELEMENTS row"
+        );
+        assert!(
+            !(is_custom && derived.custom.contains(name))
+                && !(is_element && derived.elements.contains(name)),
+            "UNDERIVED still exempts {name:?}, but a scene now exercises it — \
+             drop the exemption"
         );
     }
 }

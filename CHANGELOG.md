@@ -404,6 +404,37 @@ upgrades remove code from the apps on it is doing the job.
   and replayed inert until its transition ends — which is a real change to
   the frame model and is written down rather than half-built.
 
+- **The corpus's coverage is measured now, not declared.** A `Scene`
+  carried `custom: &["float"]` as a hand-written list, and the assertion
+  over it was bidirectional in the wrong dimension: it caught a `CUSTOM`
+  row no scene named and a name no row answered, but nothing checked that
+  the scene's *builder* still touched float. A scene could claim a row and
+  never exercise it — the claim would pass, and the quad digests, which do
+  catch real behavioural divergence, would have nothing to compare on that
+  row. `conformance::observe` derives the two sets from the tree each frame
+  actually built (a `float` claim needs a node with `layout.float`, a
+  `border` claim a visible border width, an `edit` claim an `Edit` node),
+  and the Rust adapter asserts derived ⊇ declared, so a stale claim fails
+  the build. Three rows leave no mark on the tree and are read off the core
+  instead: `title` from the declared window title, `keyFocus` from the
+  frame's focus declarations (the focus it takes is indistinguishable from
+  a click's), and the `audio` element from a mounted playback (it builds no
+  node at all). Derived stays a superset on purpose — `widgets` helpers key
+  their nodes, so most scenes exercise `key` without claiming it, and only
+  the claims have to be true.
+  Two rows the derivation cannot reach are now written down instead of
+  silently uncovered. `size` is as far as the tree goes: the frame's text
+  list keeps a cache key and a color, not the `TextStyle` it shaped, so the
+  predicate is "the scene declared text" rather than "at that size". And
+  **`windowButtons` turned out to be a genuinely vacuous claim** —
+  `widgets::window_buttons` draws nothing unless `env.window.custom_chrome`
+  is set, no binding can declare custom chrome to a headless core (C has
+  `kui_env_set_window`, Lua only reads `env`, Node exposes neither), so the
+  `chrome` scene calls it and builds nothing. It sits in
+  `conformance::UNDERIVED` with that reason, and a test fails the moment a
+  scene does exercise it, so the exemption cannot outlive the hole it
+  documents.
+
 ### Changed
 
 - **`docs/props.md` says `window_title`, not `title`, for Lua's window

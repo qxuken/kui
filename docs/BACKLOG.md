@@ -383,6 +383,30 @@ follow-ups, in order of value per unit of work:
   grant in place could fold it into `smoke-macos`. On Windows there is no
   equivalent tool and no plan for one.
 
+### `~` P9 — Let the corpus drive a frame under custom chrome
+
+Found by making the corpus's coverage derived rather than declared
+(`conformance::observe`, 2026-09-04): the `chrome` scene claims the
+`windowButtons` element and builds nothing. `widgets::window_buttons` returns
+early unless `env.window.custom_chrome` is set, and nothing in the corpus can
+set it — `Env` is pushed by a frame driver, and the corpus drives a bare
+headless `Core`. So the one element whose whole purpose is custom chrome is
+covered by a claim with no tree behind it, and has been since P7 landed. It
+is listed in `conformance::UNDERIVED` with that reason, which makes it
+visible but does not make it covered.
+
+The fix is one line of protocol — `drive` declares custom chrome before the
+first frame — and one call per adapter. Rust and Lua get it free (Lua calls
+`conformance::drive`); C already has `kui_env_set_window`; **Node exposes no
+env at all**, so it needs a `Ctx` method first, which is the real cost and
+also a gap in its own right — a JSX app cannot see `env.window` the way a
+Lua script can. The `chrome` scene's `Expect` (solid quads, access rows) then
+moves, and the three window buttons start being compared byte-for-byte across
+all four bindings, which is what the claim has been promising.
+
+Worth doing with P3 (Lua imperative focus): both are "the binding cannot
+reach a thing the core has", and the env surface is the smaller half.
+
 ---
 
 ## Core capability

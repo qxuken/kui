@@ -7,7 +7,9 @@
 //! docs named a Lua float key the parser never read — with a green build.
 //!
 //! This module is the fix: a list of small named [`Scene`]s, each declaring
-//! which `CUSTOM` and `ELEMENTS` rows it exercises, plus the input to
+//! which `CUSTOM` and `ELEMENTS` rows it exercises — a declaration
+//! [`observe`] then derives back off the built tree, so a scene cannot
+//! claim a row it stopped touching — plus the input to
 //! replay and the [`Expect`]ed semantics. [`drive`] runs one against a
 //! `Core` and renders a [`report`] — a line-oriented text block with no
 //! floating-point formatting in it, so four languages can produce it
@@ -27,7 +29,7 @@
 //! Adding a binding-visible prop or element means adding it to a scene
 //! here; a binding that lowers it differently then fails to build.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write as _;
 
 use crate::access::{AccessTree, Role};
@@ -40,11 +42,13 @@ use crate::input::{EditKey, InputEvent, Mods};
 use crate::key::Key;
 use crate::resources::{ImageId, SoundId};
 use crate::runtime::Core;
-use crate::spec::{Align, FloatConfig, NodeSpec, Sizing, TextStyle};
+use crate::spec::{Align, Dir, FloatAnchor, FloatConfig, NodeSpec, Sizing, TextStyle};
 use crate::text::Span;
+use crate::tree::{NodeContent, Tree};
 use crate::ui::Ui;
 use crate::value::Value;
 use crate::widgets;
+use crate::window::WindowRole;
 
 /// Every scene is built at this viewport and scale. A binding that drives
 /// its own frames has to use the same numbers or nothing lines up.
@@ -182,9 +186,12 @@ pub struct Expect {
 pub struct Scene {
     pub name: &'static str,
     pub doc: &'static str,
-    /// `schema::CUSTOM` names this scene exercises.
+    /// `schema::CUSTOM` names this scene exercises. Hand-written, but not
+    /// taken on trust: [`observe`] derives the same set from the tree the
+    /// builder produces, and the Rust adapter fails a claim that is not in
+    /// it (see [`Coverage`]).
     pub custom: &'static [&'static str],
-    /// `schema::ELEMENTS` names this scene exercises.
+    /// `schema::ELEMENTS` names this scene exercises, checked the same way.
     pub elements: &'static [&'static str],
     /// The reference lowering. Every other binding expresses the same tree
     /// in its own surface; the report says whether it did.
@@ -794,6 +801,163 @@ fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures) {
 }
 
 // ---------------------------------------------------------------------------
+// Derived coverage
+
+/// What a built frame actually exercised, read back off the tree.
+///
+/// [`Scene::custom`] and [`Scene::elements`] are hand-written *claims*, and
+/// a claim nothing checks is a claim that rots: a scene could name `float`,
+/// stop floating anything, and the corpus would still report full coverage
+/// with nothing for the quad digests to compare on that row. [`observe`]
+/// derives the same two sets from what the builder produced, so the Rust
+/// adapter can assert derived ⊇ declared and a stale claim fails the build.
+///
+/// Derived is a superset on purpose. Several `widgets` helpers key their
+/// nodes, so scenes touch rows they never claim; only the claims have to
+/// be true.
+#[derive(Default)]
+pub struct Coverage {
+    pub custom: BTreeSet<&'static str>,
+    pub elements: BTreeSet<&'static str>,
+}
+
+/// Rows [`observe`] cannot derive, with the reason. These are the ones
+/// whose coverage the corpus still only *declares*; the list is short on
+/// purpose, and it is the written record of what is left unchecked rather
+/// than a silence.
+pub const UNDERIVED: &[(&str, &str)] = &[(
+    "windowButtons",
+    "widgets::window_buttons draws nothing unless env.window.custom_chrome \
+     is set, and no binding can declare custom chrome to a headless core \
+     (the C API has kui_env_set_window; Lua reads env, Node exposes none), \
+     so no scene can currently build one. The claim is vacuous until the \
+     corpus can drive a frame under custom chrome.",
+)];
+
+/// Whether node `i`'s key is one the view spelled (`key`, `with_keyed`)
+/// rather than one auto-keying derived from its position — the observable
+/// half of the `key` row.
+///
+/// Auto-keys live in `Key`'s sibling-index namespace and label keys in its
+/// string one, and a tag byte separates the two, so the test is whether
+/// *any* index under this parent hashes to the node's key. The counter
+/// auto-keying draws from advances once per auto-keyed child of that
+/// parent — including an `audio` node, which consumes one without leaving
+/// a tree node behind — so the search runs past the sibling count. Its
+/// exact length does not matter: only a hash collision could put a label
+/// key inside the range.
+fn is_label_keyed(t: &Tree, i: usize) -> bool {
+    let parent = t.parent[i];
+    let parent_key = t.keys[parent as usize];
+    let siblings = t.children(parent).count() as u64;
+    !(0..siblings + 16).any(|j| parent_key.index(j) == t.keys[i])
+}
+
+/// Derives the `CUSTOM` / `ELEMENTS` rows the frame `core` just built
+/// exercises, unioning into `cov` (a scene is driven over several frames,
+/// and a hover-gated tooltip only exists on some of them).
+fn observe(core: &Core, cov: &mut Coverage) {
+    if core.window_title().is_some() {
+        cov.custom.insert("title");
+    }
+    // `keyFocus` leaves no mark on the tree: the focus it takes looks
+    // exactly like the focus a click takes, so the frame's declaration
+    // list is the only trace of one.
+    if !core.declared_focus().is_empty() {
+        cov.custom.insert("keyFocus");
+    }
+    // An `audio` element builds no node either — it declares a playback
+    // the audio store reconciles — so it is read off the store.
+    if core.audio.any_mounted() {
+        cov.elements.insert("audio");
+    }
+
+    let t = &core.tree;
+    for i in 0..t.len() {
+        let spec = &t.specs[i];
+        let l = &spec.layout;
+
+        // Column is the default, so a row is the only observable `dir`.
+        if l.dir == Dir::Row {
+            cov.custom.insert("dir");
+        }
+        if l.padding != Edges::default() {
+            cov.custom.insert("pad");
+        }
+        if l.clips() {
+            cov.custom.insert("overflow");
+        }
+        if let Some(f) = l.float {
+            cov.custom.insert("float");
+            // The `tooltip` *element* is by definition a float hanging
+            // below its parent, centered (`FloatConfig::below`), which is
+            // the chrome `widgets::tooltip_with` draws.
+            if f.anchor == FloatAnchor::Parent
+                && f.anchor_point == (Align::Center, Align::End)
+                && f.self_point == (Align::Center, Align::Start)
+            {
+                cov.elements.insert("tooltip");
+            }
+        }
+        if spec.style.border_w > 0.0 && spec.style.border_color.is_visible() {
+            cov.custom.insert("border");
+        }
+        // What every binding's `tooltip` *prop* lowers to.
+        if spec.hoverable && spec.description.is_some() {
+            cov.custom.insert("tooltip");
+        }
+        // `widgets::button_spec` plus a payload: the stock button is the
+        // node that declares a click and both interaction backgrounds.
+        if spec.on_click.is_some() && spec.hover_bg.is_some() && spec.pressed_bg.is_some() {
+            cov.elements.insert("button");
+        }
+        match spec.window {
+            Some(WindowRole::Drag) => {
+                cov.elements.insert("titlebar");
+            }
+            Some(WindowRole::Button(_)) => {
+                cov.elements.insert("windowButtons");
+            }
+            None => {}
+        }
+        // `widgets::latency_graph` hides its subtree from assistive
+        // technology, which is the one thing the graph declares about
+        // itself; nothing else in the corpus asks for `Role::None`.
+        if spec.role == Some(Role::None) {
+            cov.elements.insert("latencyGraph");
+        }
+
+        match t.content[i] {
+            // The root is the core's own, not a `box` the view declared.
+            NodeContent::Container => {
+                if i > 0 {
+                    cov.elements.insert("box");
+                }
+            }
+            // `size` is as far as the tree goes: the frame's text list
+            // keeps a cache key and a color, not the `TextStyle` it was
+            // shaped from, so the font size cannot be read back — only
+            // that the scene declared text at a style at all.
+            NodeContent::Text(_) => {
+                cov.elements.insert("text");
+                cov.custom.insert("size");
+            }
+            NodeContent::Edit(_) => {
+                cov.elements.insert("edit");
+                cov.custom.insert("size");
+            }
+            NodeContent::Image(_) => {
+                cov.elements.insert("image");
+            }
+        }
+
+        if i > 0 && is_label_keyed(t, i) {
+            cov.custom.insert("key");
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Running a scene
 
 /// What one scene produced: quads as counts and a digest, the access tree,
@@ -807,6 +971,11 @@ pub struct Output {
     pub events: Vec<(String, String)>,
     pub warnings: Vec<&'static str>,
     pub title: Option<String>,
+    /// The `CUSTOM` / `ELEMENTS` rows the frames actually exercised (see
+    /// [`Coverage`]). Not part of the [`report`]: it is derived from the
+    /// tree a builder produced, which is a question about the builder, not
+    /// about the protocol the other bindings reproduce.
+    pub coverage: Coverage,
 }
 
 /// One access-tree node, flattened to what four languages can all report.
@@ -932,24 +1101,31 @@ fn event_row(payload: &Value) -> (String, String) {
 /// 2. build a frame, collect the events it left pending;
 /// 3. for each step, apply the input, collect its events, build again;
 /// 4. read the quads, access tree, warnings and title of the last frame.
+///
+/// The [`Coverage`] it also returns is Rust-only bookkeeping over the tree
+/// each frame built, not part of the protocol: the other bindings have
+/// nothing to reproduce there.
 pub fn drive(core: &mut Core, steps: &[Step], mut build: impl FnMut(&mut Ui<'_>)) -> Output {
     core.set_diagnostics(true);
     let mut events = Vec::new();
-    let mut frame = |core: &mut Core, events: &mut Vec<(String, String)>| {
-        let mut ui = core.frame(VIEWPORT, SCALE);
-        build(&mut ui);
-        ui.finish();
-        events.extend(
-            core.take_pending_events()
-                .iter()
-                .map(|e| event_row(&e.payload)),
-        );
-    };
-    frame(core, &mut events);
+    let mut coverage = Coverage::default();
+    let mut frame =
+        |core: &mut Core, events: &mut Vec<(String, String)>, coverage: &mut Coverage| {
+            let mut ui = core.frame(VIEWPORT, SCALE);
+            build(&mut ui);
+            ui.finish();
+            observe(core, coverage);
+            events.extend(
+                core.take_pending_events()
+                    .iter()
+                    .map(|e| event_row(&e.payload)),
+            );
+        };
+    frame(core, &mut events, &mut coverage);
     for step in steps {
         let evs = core.handle_input(step.event());
         events.extend(evs.iter().map(|e| event_row(&e.payload)));
-        frame(core, &mut events);
+        frame(core, &mut events, &mut coverage);
     }
 
     let title = core.window_title().map(str::to_string);
@@ -975,6 +1151,7 @@ pub fn drive(core: &mut Core, steps: &[Step], mut build: impl FnMut(&mut Ui<'_>)
         events,
         warnings,
         title,
+        coverage,
     }
 }
 

@@ -1445,6 +1445,14 @@ impl Core {
         self.focus
     }
 
+    /// The keys that declared key focus while the current frame was built
+    /// (`set_key_focus`). The scene corpus's coverage derivation reads it:
+    /// `keyFocus` leaves no mark on the tree, and the focus it takes is
+    /// indistinguishable from the focus a click takes.
+    pub(crate) fn declared_focus(&self) -> &[Key] {
+        &self.declared_focus
+    }
+
     /// Queues a window command as if chrome had produced it, so apps can
     /// close/minimize/maximize from a keymap or command line. Drained by
     /// the frame driver with the rest.
