@@ -15,8 +15,8 @@ use crate::edit::{EditOptions, EditStore};
 use crate::env::Env;
 use crate::geom::{Rect, Size, Vec2};
 use crate::input::{
-    EditKey, HitRegion, InputEvent, Interaction, MouseButton, ScrollAxis, ScrollRegion,
-    ScrollbarRegion, UiEvent,
+    EditKey, HitRegion, InputEvent, Interaction, KeyPhase, KeyPress, MouseButton, ScrollAxis,
+    ScrollRegion, ScrollbarRegion, UiEvent,
 };
 use crate::key::Key;
 use crate::keyframes::{self, Keyframe};
@@ -82,6 +82,11 @@ pub struct Core {
     /// does not clobber a Tab press.
     declared_focus: Vec<Key>,
     declared_focus_last: Vec<Key>,
+    /// The presses delivered to the current focus and not yet released,
+    /// in press order. A `KeyUp` is routed only when its press is in here
+    /// (so a sink never sees a release it did not see the press of), and
+    /// focus leaving synthesizes the missing releases from it.
+    keys_held: Vec<KeyPress>,
     pub(crate) tree: Tree,
     pub(crate) display: DisplayList,
     pub(crate) viewport: Size,
@@ -218,6 +223,7 @@ impl Core {
             focus_visible: false,
             declared_focus: Vec::new(),
             declared_focus_last: Vec::new(),
+            keys_held: Vec::new(),
             access: Default::default(),
             access_built: 0,
             tree: Tree::new(),
@@ -304,6 +310,15 @@ impl Core {
     /// Feeds one input event; returns any UI events it resolved to,
     /// hit-tested against the previous frame's layout.
     pub fn handle_input(&mut self, ev: InputEvent) -> Vec<UiEvent> {
+        let mut out = self.route_input(ev);
+        // Whatever the event itself made pending — the synthetic key
+        // releases a focus move forces — belongs to this batch, not to the
+        // next frame's drain.
+        out.append(&mut self.pending);
+        out
+    }
+
+    fn route_input(&mut self, ev: InputEvent) -> Vec<UiEvent> {
         let mut out = std::mem::take(&mut self.pending);
         match ev {
             InputEvent::Scroll(delta) => {
@@ -388,30 +403,22 @@ impl Core {
                 }
             }
             InputEvent::KeyDown(kp) => {
-                // The focused edit widget owns the keyboard (it takes the
-                // Text/EditKey path); otherwise the focused sink, if it
-                // still exists in the last frame, gets the press as data.
-                if self.edit.focused().is_none()
-                    && let Some(focus) = self.focus
-                    && let Some(h) = self
-                        .interaction
-                        .hits
-                        .iter()
-                        .rev()
-                        .find(|h| h.key == focus && h.key_sink.is_some())
-                {
-                    let mut payload = kp.to_value();
-                    if let Some(tag) = &h.key_sink
-                        && *tag != Value::Null
-                        && let Value::Map(entries) = &mut payload
-                    {
-                        entries.push(("tag".to_string(), tag.clone()));
+                if self.route_key(&kp, KeyPhase::Down, &mut out) {
+                    // Held from here until its release, focus moving, or
+                    // the window losing the keyboard. A repeat of a key
+                    // already down is the same key, not a second one.
+                    if !self.keys_held.iter().any(|h| h.code == kp.code) {
+                        self.keys_held.push(kp.released());
                     }
-                    out.push(UiEvent {
-                        origin: h.origin,
-                        key: h.key,
-                        payload,
-                    });
+                }
+            }
+            InputEvent::KeyUp(kp) => {
+                // Only a key whose press was delivered has a release to
+                // deliver: one pressed while an editor held focus, or
+                // already let go of synthetically, resolves nothing.
+                if let Some(i) = self.keys_held.iter().position(|h| h.code == kp.code) {
+                    self.keys_held.remove(i);
+                    self.route_key(&kp.released(), KeyPhase::Up, &mut out);
                 }
             }
             InputEvent::MouseDown { button, clicks } => {
@@ -1017,6 +1024,64 @@ impl Core {
         self.tree.keys.iter().position(|k| *k == key)
     }
 
+    /// Delivers one key event to the focused sink, tagged with the sink's
+    /// `on_key` payload; returns whether anything took it. The focused edit
+    /// widget owns the keyboard (it takes the Text/EditKey path), so a sink
+    /// only hears while no editor is focused and it is still in the last
+    /// frame's hit list.
+    fn route_key(&mut self, kp: &KeyPress, phase: KeyPhase, out: &mut Vec<UiEvent>) -> bool {
+        if self.edit.focused().is_some() {
+            return false;
+        }
+        let Some(focus) = self.focus else {
+            return false;
+        };
+        let Some(h) = self
+            .interaction
+            .hits
+            .iter()
+            .rev()
+            .find(|h| h.key == focus && h.key_sink.is_some())
+        else {
+            return false;
+        };
+        let mut payload = kp.to_value(phase);
+        if let Some(tag) = &h.key_sink
+            && *tag != Value::Null
+            && let Value::Map(entries) = &mut payload
+        {
+            entries.push(("tag".to_string(), tag.clone()));
+        }
+        out.push(UiEvent {
+            origin: h.origin,
+            key: h.key,
+            payload,
+        });
+        true
+    }
+
+    /// Lets go of every key the focused sink is holding, as if the user
+    /// had released them: each becomes a `{kind="key", phase="up"}` on the
+    /// sink that took the press. Called when focus moves — a keymap that
+    /// armed a mode on the way down has to hear the way up, and the node
+    /// it moved to never saw the press — and by drivers when the window
+    /// loses the keyboard (Cmd-Tab while a key is down otherwise leaves it
+    /// stuck down forever).
+    pub fn release_held_keys(&mut self) {
+        if self.keys_held.is_empty() {
+            return;
+        }
+        let mut out = Vec::new();
+        for kp in std::mem::take(&mut self.keys_held) {
+            self.route_key(&kp, KeyPhase::Up, &mut out);
+        }
+        // Pending rather than returned: the writers are `set_focus` and the
+        // driver's window-focus report, neither of which is answering an
+        // input event. `handle_input` appends it before returning, so a
+        // click that moved focus and the release it forced arrive together.
+        self.pending.append(&mut out);
+    }
+
     /// Whether the focused node is a key sink (it owns its keys).
     fn focused_sink(&self) -> bool {
         self.focus_index()
@@ -1164,10 +1229,13 @@ impl Core {
     /// (see `access::focusable`) are reached by Tab.
     pub fn set_focus(&mut self, key: Option<Key>) {
         let edit_key = key.filter(|k| self.edit.contains(*k));
-        if self.focus != key
-            && let Some(k) = edit_key
-        {
-            self.edit.caret_moved = Some(k);
+        if self.focus != key {
+            // The keys the leaving sink is holding come up first, while it
+            // is still the focus that routing resolves against.
+            self.release_held_keys();
+            if let Some(k) = edit_key {
+                self.edit.caret_moved = Some(k);
+            }
         }
         self.focus = key;
         self.edit.set_focus(edit_key);

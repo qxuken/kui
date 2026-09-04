@@ -604,18 +604,36 @@ Also still open, and priced in ADR 0005's consequences: **rounded clipping**.
 children's corners. Four more floats on the hot struct plus a second SDF per
 fragment is a bigger bill than either of the two above.
 
-### `.` C9 — `KeyUp` and key repeat
+### `.` C9 — `KeyUp` and key repeat — **done (2026-09-04)**
 
-`InputEvent::KeyDown(KeyPress)` has no `KeyUp` and `KeyPress` has no repeat flag.
-`Modifiers` covers modifier release only. So a held-key interaction — WASD, press-
-and-hold to preview, a key that arms a mode — cannot be written, though
-`KeyDown`'s own doc names "a game" as its audience.
+Took the one-shape route: both halves are `{kind="key"}` with a
+`phase` of `"down"` / `"up"`, matching the `phase` a drag and a hover
+already carry, so no binding grew a second event kind. `repeat: bool` was
+already on `KeyPress`; `InputEvent::KeyUp` is the new half, routed through
+the same `Core::route_key` the press goes through.
 
-Add `KeyUp` and `repeat: bool`, route to key focus the way `KeyDown` is routed,
-and decide the payload shape (`{kind:"key", phase:"up"|"down"}` keeps one shape;
-whichever you pick has to round-trip through the `EVENTS` table and all four
-bindings). Decide what happens on focus change while a key is held — a synthetic
-release is usually right.
+Two rules keep a key from sticking. **A key only comes up where it went
+down**: the core holds the presses it actually delivered (`keys_held`), and
+a release with no matching press — one pressed while an editor held focus,
+one already let go of — resolves nothing. **Focus moving lets go first**:
+`set_focus` releases everything held to the sink that took the presses, in
+press order, before focus lands. `Core::release_held_keys` is the same
+thing for a driver whose window lost the keyboard, where the OS sends no
+release at all (the winit runner calls it on `Focused(false)`; C hosts get
+`kui_release_held_keys`).
+
+The core normalizes a release — no `text`, never `repeat` — so four drivers
+cannot disagree. C gained `kui_input_key_down` / `kui_input_key_up`, which
+also closes the gap P6 found (a C host could not drive an `on_key` sink at
+all); Node gained `ctx.keyUp` and a `repeat` argument on `ctx.keyDown`;
+Lua takes the payload as-is. `KeyCode::from_name` is the shared parser
+behind all of them.
+
+Cost to apps: a handler that treated every `kind="key"` as a press now
+fires twice, and filters on `phase == "down"` — one line in each of
+`modal_editor`, `splitmux` and `syntax_view`. Still not covered: physical
+scancodes and left/right modifier identity, so a keymap binds a character
+and not a position on the board.
 
 ### `.` C10 — Flex wrapping, and the smaller layout gaps
 
@@ -808,7 +826,9 @@ mention read as present: no touch or pen input, no flex wrapping (C10). Add
 them, grouped, in the section's existing tone. (Modal containment was on this
 list until C1 shipped it; the pointer buttons went on it with C2, which routes
 only the secondary one; cursor shapes came off it with C3, and programmatic
-scrolling with C4.)
+scrolling with C4. C9 put key releases in the section as a *fixed* line and
+left the real remainder there: no physical scancodes, no left/right modifier
+identity, and unnamed keys dropped rather than delivered.)
 
 The performance table also lists four benches where `benches/frame.rs` has eight —
 `frame_10k_rects_with_access_tree` is omitted, and it is the one a reader worried

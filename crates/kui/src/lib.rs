@@ -595,12 +595,11 @@ impl<A: App> Shell<A> {
     }
 
     fn on_key(&mut self, event: winit::event::KeyEvent) {
-        if event.state != ElementState::Pressed {
-            return;
-        }
-        // Full-keyboard path: every press also travels as data to the
-        // key-focused sink (`NodeSpec::on_key`); the core drops it when
-        // an edit widget holds focus instead.
+        let pressed = event.state == ElementState::Pressed;
+        // Full-keyboard path: every press *and release* travels as data to
+        // the key-focused sink (`NodeSpec::on_key`); the core drops it when
+        // an edit widget holds focus instead. Everything below this block
+        // is the editor path, which is press-only.
         let kmods = KeyMods {
             shift: self.modifiers.shift_key(),
             ctrl: self.modifiers.control_key(),
@@ -658,12 +657,20 @@ impl<A: App> Shell<A> {
             _ => (KeyCode::Unknown, None),
         };
         if code != KeyCode::Unknown {
-            self.dispatch(InputEvent::KeyDown(KeyPress {
+            let kp = KeyPress {
                 code,
                 mods: kmods,
                 text: ktext,
                 repeat: event.repeat,
-            }));
+            };
+            self.dispatch(if pressed {
+                InputEvent::KeyDown(kp)
+            } else {
+                InputEvent::KeyUp(kp.released())
+            });
+        }
+        if !pressed {
+            return;
         }
 
         // Clipboard + select-all shortcuts (edit widgets only — a key
@@ -975,6 +982,13 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
             WindowEvent::CursorLeft { .. } => self.dispatch(InputEvent::CursorLeft),
             WindowEvent::Focused(focused) => {
                 self.core.env.focused = focused;
+                if !focused {
+                    // The OS stops sending key events to a window that
+                    // lost the keyboard, so the release of anything held
+                    // over a Cmd-Tab would never arrive. Let go now; the
+                    // synthetic `up`s route out with the pending events.
+                    self.core.release_held_keys();
+                }
                 if let Some(w) = &self.window {
                     w.request_redraw();
                 }

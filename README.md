@@ -156,9 +156,17 @@ that are hard to reverse and would look arbitrary without their context.
   extension events back into the script that owns them.
   Full keyboard input is data too: a node declaring `on_key` becomes a
   key sink, and while it holds key focus (`ui.take_key_focus`, or a
-  click) every press arrives as `{kind="key", code, mods, text}` —
-  modal keymaps live in the app, in any language, with no runner hook
-  (the `modal_editor` and `splitmux` examples are built on this). Modifier
+  click) every press *and release* arrives as `{kind="key",
+  phase="down"|"up", code, mods, text, repeat}` — one payload shape with
+  a phase, the way a drag has three and a hover two. So a keymap reads
+  `phase="down"` and ignores the rest, and a held-key interaction (WASD,
+  press-and-hold to preview, a key that arms a mode) is a pair of events
+  rather than a guess about timing. A key only comes up where it went
+  down: a release whose press the sink never saw is dropped, and focus
+  moving — or the window losing the keyboard — delivers the release
+  first, so nothing is ever left stuck down. Modal keymaps live in the
+  app, in any language, with no runner hook (the `modal_editor` and
+  `splitmux` examples are built on this). Modifier
   state is data too: the host gets `{kind="modifiers", shift, ctrl, alt,
   super}` whenever it changes, keeps it in its model, and lets the view
   react — splitmux floats drop-zone overlays over every pane while ⌘ is
@@ -630,6 +638,12 @@ a configurable focus ring colour, and initial focus inside a dialog, are the nex
 Pointer buttons: the secondary one is routed to `on_context_menu` and nothing else; the middle
 button and anything past it (back, forward) reach the core as data and route nowhere, so there is
 no middle-click-to-close, no right-drag and no per-button `on_click`.
+Keys are layout-resolved characters and a closed list of names, with no physical
+scancode and no left/right distinction on the modifiers, so a keymap cannot bind a
+position on the board (WASD on AZERTY is ZQSD); a key the list does not name is
+dropped rather than delivered as `unknown`. Presses and releases route to the key
+sink and no further: the core keeps no "which keys are down" query, since the app
+that asked for the pair already has one.
 The pointer shape is derived, not declared: the core resolves one per frame from
 whatever is under the pointer, and the `cursor` prop overrides it — but only from
 this list (`text`, `pointer`, `grab`, `grabbing`, `notAllowed`, the four resize

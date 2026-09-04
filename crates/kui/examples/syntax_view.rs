@@ -219,7 +219,10 @@ impl App for SyntaxView {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
+        // Presses only: this pane scrolls on a chord, and a release is not
+        // a second one.
         if ev.payload.get("kind").and_then(Value::as_str) == Some("key")
+            && ev.payload.get("phase").and_then(Value::as_str) == Some("down")
             && let Some(code) = ev.payload.get("code").and_then(Value::as_str)
         {
             let code = code.to_string();

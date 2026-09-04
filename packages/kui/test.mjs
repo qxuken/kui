@@ -189,6 +189,73 @@ test('a null tag declares the behaviour without a tag on the event', () => {
   assert.deepEqual(payloads[0], payloads[2]);
 });
 
+// Held keys: a press and its release are one payload shape apart by `phase`,
+// so a game binds one handler. The release carries no `text` and never
+// repeats, and a key held while focus moves comes up on the sink that took
+// the press — nothing stays stuck down.
+test('a key sink hears both halves of a held key', () => {
+  const build = () =>
+    box({}, [
+      box({ onKey: { pane: 0 }, keyFocus: true, width: 100, height: 50 }, [], 'a'),
+      box({ onKey: { pane: 1 }, width: 100, height: 50 }, [], 'b'),
+    ]);
+  for (const transport of ['binary', 'json', 'object']) {
+    const { ctx } = run(transport, build);
+    ctx.keyDown('w');
+    ctx.keyDown('w', {}, true); // OS auto-repeat: still the same key down
+    ctx.keyUp('w');
+    const evs = ctx.pollEvents().map((e) => e.payload);
+    assert.deepEqual(
+      evs.map((p) => [p.phase, p.code, p.text, p.repeat]),
+      [
+        ['down', 'w', 'w', false],
+        ['down', 'w', 'w', true],
+        ['up', 'w', null, false],
+      ],
+      `${transport}: down, repeat, up`,
+    );
+    for (const p of evs) {
+      assert.equal(p.kind, 'key', `${transport}: one kind for both phases`);
+      assert.deepEqual(p.tag, { pane: 0 }, `${transport}: the sink's tag rides along`);
+    }
+    // A release the sink never saw the press of resolves nothing.
+    ctx.keyUp('w');
+    assert.equal(ctx.pollEvents().length, 0, `${transport}: no phantom release`);
+  }
+});
+
+test('focus moving releases the keys the old sink held', () => {
+  const build = () => box({ onKey: { pane: 0 }, keyFocus: true, width: 100, height: 50 }, [], 'a');
+  const { ctx } = run('object', build);
+  ctx.keyDown('w');
+  ctx.keyDown('a');
+  const downs = ctx.pollEvents();
+  assert.deepEqual(
+    downs.map((e) => e.payload.phase),
+    ['down', 'down'],
+  );
+  const sink = downs[0].key;
+  // Focus dropped with both keys still down: two synthetic releases reach
+  // the sink that took the presses, in press order, so a WASD binding
+  // cannot be left walking forever.
+  ctx.blur();
+  const ups = ctx.pollEvents();
+  assert.deepEqual(
+    ups.map((e) => [e.payload.phase, e.payload.code, e.payload.text]),
+    [
+      ['up', 'w', null],
+      ['up', 'a', null],
+    ],
+  );
+  for (const e of ups) {
+    assert.equal(e.key, sink, 'the sink that took the press hears the release');
+    assert.deepEqual(e.payload.tag, { pane: 0 });
+  }
+  // And the physical release, arriving after the move, is not a second one.
+  ctx.keyUp('w');
+  assert.equal(ctx.pollEvents().length, 0);
+});
+
 // Keyboard focus as data: Tab reaches a button on every transport, a
 // disabled box is not a stop, Enter presses the focused button, and the
 // access tree reports the same focus.

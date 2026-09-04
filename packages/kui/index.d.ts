@@ -21,10 +21,15 @@ export type DragMsg<T = AppMsg> = {
   tag?: T;
 };
 
-/** A key press on the focused `onKey` sink; `code` is a character or a name
- *  ("left", "f5"), `text` what the press would insert (null for chords). */
+/** A key press or release on the focused `onKey` sink; `code` is a character
+ *  or a name ("left", "f5"), `text` what the press would insert (null for a
+ *  chord, and on every release), `repeat` set when the OS auto-repeated the
+ *  press. A key only comes up where it went down: a release whose press the
+ *  sink never got is dropped, and focus leaving while a key is held delivers
+ *  the `up` first — so a held-key binding cannot be left stuck down. */
 export type KeyMsg<T = AppMsg> = {
   kind: 'key';
+  phase: 'down' | 'up';
   code: string;
   shift: boolean;
   ctrl: boolean;
@@ -449,8 +454,11 @@ export declare class Ctx {
   text(text: string): void;
   key(name: EditKeyName, mods?: KeyMods): void;
   /** Raw key press for onKey sinks: a single character or a name
-   *  ("left", "enter", "f5", ...). */
-  keyDown(code: string, mods?: KeySinkMods): void;
+   *  ("left", "enter", "f5", ...). `repeat` marks an auto-repeat. */
+  keyDown(code: string, mods?: KeySinkMods, repeat?: boolean): void;
+  /** The release of a key pressed with `keyDown`, spelled the same way; the
+   *  sink hears `{kind:'key', phase:'up', ...}` with a null `text`. */
+  keyUp(code: string, mods?: KeySinkMods): void;
   /** Physical modifier state changed; the host gets a
    *  `{kind:"modifiers", shift, ctrl, alt, super}` message when it differs. */
   modifiers(mods?: KeySinkMods): void;

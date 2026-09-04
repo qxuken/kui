@@ -33,6 +33,27 @@ fn press(code: KeyCode) -> InputEvent {
     InputEvent::KeyDown(KeyPress::new(code, KeyMods::default()))
 }
 
+fn release(code: KeyCode) -> InputEvent {
+    InputEvent::KeyUp(KeyPress::new(code, KeyMods::default()))
+}
+
+/// The `(phase, code)` of every key event in a batch, in order.
+fn keys(evs: &[UiEvent]) -> Vec<(String, String)> {
+    evs.iter()
+        .filter(|e| e.payload.get("kind").and_then(Value::as_str) == Some("key"))
+        .map(|e| {
+            let at = |k: &str| {
+                e.payload
+                    .get(k)
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string()
+            };
+            (at("phase"), at("code"))
+        })
+        .collect()
+}
+
 fn drive(core: &mut Core, events: &[InputEvent]) -> Vec<UiEvent> {
     let mut out = Vec::new();
     for ev in events {
@@ -168,4 +189,203 @@ fn modifier_changes_reach_the_host_as_data_and_are_queryable() {
         evs[0].payload.get("super").and_then(Value::as_bool),
         Some(false)
     );
+}
+
+// -- Press and release ---------------------------------------------------
+
+#[test]
+fn a_press_and_its_release_are_one_kind_with_a_phase() {
+    let mut core = Core::new();
+    let (left, _) = frame(&mut core, true);
+    let evs = drive(
+        &mut core,
+        &[press(KeyCode::Char('w')), release(KeyCode::Char('w'))],
+    );
+    assert_eq!(evs.len(), 2);
+    assert!(evs.iter().all(|e| e.key == left));
+    assert_eq!(
+        keys(&evs),
+        [("down".into(), "w".into()), ("up".into(), "w".into())]
+    );
+    // Both halves carry the sink's tag; a release inserts nothing.
+    for e in &evs {
+        assert_eq!(
+            e.payload
+                .get("tag")
+                .and_then(|t| t.get("pane"))
+                .and_then(Value::as_int),
+            Some(0)
+        );
+    }
+    assert_eq!(evs[1].payload.get("text"), Some(&Value::Null));
+    assert_eq!(evs[1].payload.get("repeat"), Some(&Value::Bool(false)));
+}
+
+#[test]
+fn a_release_never_carries_text_or_repeat() {
+    let mut core = Core::new();
+    frame(&mut core, true);
+    let held = KeyPress::new(KeyCode::Char('w'), KeyMods::default()).with_text("w");
+    let evs = drive(
+        &mut core,
+        &[
+            InputEvent::KeyDown(KeyPress {
+                repeat: true,
+                ..held.clone()
+            }),
+            // Even a driver that reports one, on the way up.
+            InputEvent::KeyUp(KeyPress {
+                repeat: true,
+                ..held
+            }),
+        ],
+    );
+    assert_eq!(
+        evs[0].payload.get("text").and_then(Value::as_str),
+        Some("w")
+    );
+    assert_eq!(evs[0].payload.get("repeat"), Some(&Value::Bool(true)));
+    assert_eq!(evs[1].payload.get("text"), Some(&Value::Null));
+    assert_eq!(evs[1].payload.get("repeat"), Some(&Value::Bool(false)));
+}
+
+#[test]
+fn os_repeat_is_the_same_key_still_held() {
+    let mut core = Core::new();
+    frame(&mut core, true);
+    let down = |repeat| {
+        InputEvent::KeyDown(KeyPress {
+            repeat,
+            ..KeyPress::new(KeyCode::Char('w'), KeyMods::default())
+        })
+    };
+    // Press, two auto-repeats, release: four events, one release.
+    let evs = drive(
+        &mut core,
+        &[
+            down(false),
+            down(true),
+            down(true),
+            release(KeyCode::Char('w')),
+        ],
+    );
+    assert_eq!(
+        keys(&evs),
+        [
+            ("down".into(), "w".into()),
+            ("down".into(), "w".into()),
+            ("down".into(), "w".into()),
+            ("up".into(), "w".into()),
+        ]
+    );
+    // And the one release is the only one: the key is no longer held.
+    assert!(drive(&mut core, &[release(KeyCode::Char('w'))]).is_empty());
+}
+
+#[test]
+fn a_release_without_a_delivered_press_resolves_nothing() {
+    let mut core = Core::new();
+    frame(&mut core, true);
+    // Nobody pressed it — a stray release (an app that started with the key
+    // already down) is not a phantom event on the sink.
+    assert!(drive(&mut core, &[release(KeyCode::Char('w'))]).is_empty());
+}
+
+#[test]
+fn focus_moving_releases_what_the_old_sink_held() {
+    let mut core = Core::new();
+    let (left, right) = frame(&mut core, true);
+    let evs = drive(
+        &mut core,
+        &[press(KeyCode::Char('w')), press(KeyCode::Char('a'))],
+    );
+    assert_eq!(keys(&evs).len(), 2);
+    // A click in the right pane takes focus; both held keys come up on the
+    // left sink first, so a WASD binding cannot be left walking forever.
+    let evs = drive(
+        &mut core,
+        &[
+            InputEvent::CursorMoved(Vec2::new(300.0, 150.0)),
+            InputEvent::mouse_down(1),
+            InputEvent::mouse_up(),
+        ],
+    );
+    let ups: Vec<_> = evs
+        .iter()
+        .filter(|e| e.payload.get("kind").and_then(Value::as_str) == Some("key"))
+        .collect();
+    assert_eq!(ups.len(), 2);
+    assert!(ups.iter().all(|e| e.key == left));
+    assert_eq!(
+        ups.iter()
+            .map(|e| e.payload.get("code").and_then(Value::as_str).unwrap())
+            .collect::<Vec<_>>(),
+        ["w", "a"]
+    );
+    assert!(
+        ups.iter()
+            .all(|e| e.payload.get("phase").and_then(Value::as_str) == Some("up"))
+    );
+    // The physical release lands after the move: the new sink never saw the
+    // press, so it hears nothing.
+    let evs = drive(&mut core, &[release(KeyCode::Char('w'))]);
+    assert!(keys(&evs).is_empty());
+    // The new sink still takes its own presses.
+    let evs = drive(&mut core, &[press(KeyCode::Char('j'))]);
+    assert_eq!(evs.len(), 1);
+    assert_eq!(evs[0].key, right);
+}
+
+#[test]
+fn losing_the_keyboard_releases_held_keys() {
+    let mut core = Core::new();
+    let (left, _) = frame(&mut core, true);
+    drive(&mut core, &[press(KeyCode::Char('w'))]);
+    // What a driver calls on window blur: the OS will send no release.
+    core.release_held_keys();
+    let evs = core.take_pending_events();
+    assert_eq!(keys(&evs), [("up".into(), "w".into())]);
+    assert_eq!(evs[0].key, left);
+    // Idempotent: nothing is held any more.
+    core.release_held_keys();
+    assert!(core.take_pending_events().is_empty());
+}
+
+#[test]
+fn a_key_held_over_an_editor_taking_focus_is_not_delivered_twice() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let sink = ui.with(NodeSpec::column().fill().on_key(Value::Null), |_| {});
+    ui.take_key_focus(sink);
+    ui.finish();
+    drive(&mut core, &[press(KeyCode::Char('w'))]);
+    // Focus goes somewhere that is not a sink at all: the release still has
+    // to reach the sink that took the press.
+    core.set_focus(None);
+    let evs = core.take_pending_events();
+    assert_eq!(keys(&evs), [("up".into(), "w".into())]);
+    assert!(drive(&mut core, &[release(KeyCode::Char('w'))]).is_empty());
+}
+
+#[test]
+fn key_names_round_trip_through_from_name() {
+    for code in [
+        KeyCode::Char('w'),
+        KeyCode::Char('$'),
+        KeyCode::F(5),
+        KeyCode::F(24),
+        KeyCode::Left,
+        KeyCode::PageDown,
+        KeyCode::Backspace,
+        KeyCode::Escape,
+        KeyCode::Space,
+        KeyCode::Insert,
+        KeyCode::Unknown,
+    ] {
+        assert_eq!(KeyCode::from_name(&code.name()), Some(code));
+    }
+    assert_eq!(KeyCode::from_name("f0"), None);
+    assert_eq!(KeyCode::from_name("f25"), None);
+    assert_eq!(KeyCode::from_name("nonsense"), None);
 }

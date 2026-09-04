@@ -1067,6 +1067,92 @@ pub extern "C" fn kui_input_key(ptr: *mut KuiCtx, key: u32, mods: u32) {
     }
 }
 
+fn key_press_of(code: KuiStr, kmods: u32, text: KuiStr) -> Option<kui_core::KeyPress> {
+    let code = kui_core::KeyCode::from_name(&kstr(code))?;
+    let mods = kui_core::KeyMods {
+        shift: kmods & 1 != 0,
+        ctrl: kmods & 2 != 0,
+        alt: kmods & 4 != 0,
+        super_key: kmods & 8 != 0,
+    };
+    // A NULL `text` means "whatever this key inserts": the plain
+    // character keys insert themselves, a chord inserts nothing.
+    let text = match text.ptr.is_null() {
+        false => Some(kstr(text).into_owned()),
+        true if mods.ctrl || mods.alt || mods.super_key => None,
+        true => match code {
+            kui_core::KeyCode::Char(c) => Some(c.to_string()),
+            kui_core::KeyCode::Space => Some(" ".to_string()),
+            _ => None,
+        },
+    };
+    Some(kui_core::KeyPress {
+        code,
+        mods,
+        text,
+        repeat: false,
+    })
+}
+
+/// A raw key press for `on_key` sinks (the editing keys go through
+/// `kui_input_key`). `code` is a single character as the layout produced it
+/// ("W", "$") or a name ("left", "enter", "escape", "f5", ...); `kmods` is
+/// KUI_KMOD_* bits; `text` is what the press inserts, or NULL to derive it
+/// from `code`; `repeat` marks an auto-repeat. The focused sink polls
+/// `{kind="key", phase="down", code, ctrl, alt, shift, super, text, repeat,
+/// tag}`. An unknown `code` is ignored.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_input_key_down(
+    ptr: *mut KuiCtx,
+    code: KuiStr,
+    kmods: u32,
+    text: KuiStr,
+    repeat: bool,
+) {
+    guard((), || {
+        if let Some(kp) = key_press_of(code, kmods, text) {
+            push_input(
+                ptr,
+                InputEvent::KeyDown(kui_core::KeyPress { repeat, ..kp }),
+            );
+        }
+    });
+}
+
+/// The release of a key pressed with `kui_input_key_down`, spelled the same
+/// way; the sink polls `{kind="key", phase="up", ...}` with a null `text`.
+/// A release whose press the sink never got resolves nothing, and moving
+/// focus while a key is held delivers the "up" first, so a held-key binding
+/// (WASD, press-and-hold) cannot be left stuck down.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_input_key_up(ptr: *mut KuiCtx, code: KuiStr, kmods: u32) {
+    guard((), || {
+        if let Some(kp) = key_press_of(
+            code,
+            kmods,
+            KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
+        ) {
+            push_input(ptr, InputEvent::KeyUp(kp.released()));
+        }
+    });
+}
+
+/// Lets go of every key the focused sink is holding, as if the user had
+/// released them. Hosts call it when the window loses the keyboard: the OS
+/// stops delivering key events to it, so the release of anything held over
+/// an app switch would never arrive. Focus moves do this by themselves.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_release_held_keys(ptr: *mut KuiCtx) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().release_held_keys();
+        }
+    });
+}
+
 /// Pops the next pending UI event. The payload pointer stays valid until the
 /// next poll call on the same context (or context free).
 #[unsafe(no_mangle)]
@@ -1077,6 +1163,10 @@ pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
         };
         // Drop the previously handed-out payload.
         c.last_payload = None;
+        // Also whatever a call between frames left pending — the synthetic
+        // key releases `kui_focus` / `kui_release_held_keys` force.
+        let pending = c.core().take_pending_events();
+        c.events.extend(pending);
         if c.events.is_empty() || out.is_null() {
             return false;
         }
@@ -3267,6 +3357,89 @@ mod queries_headless {
             len: s.len(),
         }
     }
+
+    /// Raw keys cross as strings: a C host drives an `on_key` sink with
+    /// `kui_input_key_down` / `_up`, gets both halves back as one
+    /// `{kind="key"}` payload apart by `phase`, and lets go of what is
+    /// held when its window loses the keyboard.
+    #[test]
+    fn raw_keys_and_their_releases_cross_the_boundary() {
+        let ctx = kui_ctx_new();
+        let mut spec = unsafe { std::mem::zeroed::<KuiSpec>() };
+        spec.width = KuiSizing {
+            tag: 2,
+            value: 100.0,
+        };
+        spec.height = KuiSizing {
+            tag: 2,
+            value: 50.0,
+        };
+        kui_frame_begin(ctx, 200.0, 100.0, 1.0);
+        let sink = kui_open_with(
+            ctx,
+            ks("sink"),
+            &spec,
+            NONE,
+            NONE,
+            kui_value_str(ks("keys")),
+            NONE,
+        );
+        kui_close(ctx);
+        kui_set_key_focus(ctx, sink);
+        kui_frame_finish(ctx);
+
+        let null = KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+        // A NULL text means "whatever this key inserts".
+        kui_input_key_down(ctx, ks("w"), 0, null, false);
+        kui_input_key_down(ctx, ks("w"), 0, null, true);
+        kui_input_key_up(ctx, ks("w"), 0);
+        // Held when the window loses the keyboard: the release is made up.
+        kui_input_key_down(ctx, ks("f5"), KMOD_CTRL, null, false);
+        kui_release_held_keys(ctx);
+        // An unknown name is ignored rather than delivered as "unknown".
+        kui_input_key_down(ctx, ks("nonsense"), 0, null, false);
+
+        let mut ev = KuiEvent {
+            origin: 0,
+            key: 0,
+            payload: std::ptr::null(),
+        };
+        let mut seen = Vec::new();
+        while kui_poll_event(ctx, &mut ev) {
+            let get = |k: &str| {
+                let v = kui_value_get(ev.payload, ks(k));
+                let mut out = KuiStr {
+                    ptr: std::ptr::null(),
+                    len: 0,
+                };
+                kui_value_as_str(v, &mut out).then(|| kstr(out).into_owned())
+            };
+            assert_eq!(ev.key, sink);
+            assert_eq!(get("kind").as_deref(), Some("key"));
+            assert_eq!(get("tag").as_deref(), Some("keys"));
+            seen.push((
+                get("phase").unwrap_or_default(),
+                get("code").unwrap_or_default(),
+                get("text"),
+            ));
+        }
+        assert_eq!(
+            seen,
+            [
+                ("down".into(), "w".into(), Some("w".into())),
+                ("down".into(), "w".into(), Some("w".into())),
+                ("up".into(), "w".into(), None),
+                ("down".into(), "f5".into(), None),
+                ("up".into(), "f5".into(), None),
+            ]
+        );
+        kui_ctx_free(ctx);
+    }
+
+    const KMOD_CTRL: u32 = 1 << 1;
 
     /// An editor's runs cross as rows with borrowed arrays, and a text
     /// request addresses them: select "world" by run positions, type

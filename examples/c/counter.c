@@ -512,12 +512,22 @@ static int surface(void) {
     kui_focus_next(ui, false);
     check(kui_focused(ui) == first, "Shift-Tab comes back");
 
-    /* The key sink is focusable and takes focus like anything else. Its
-     * {kind="key"} events cannot be driven from here: kui_input_key carries
-     * the editing keys (KUI_KEY_*), and raw presses only reach a sink
-     * through kui_run's own event loop. */
+    /* The key sink is focusable and takes focus like anything else, and a
+     * host drives its raw keys directly: kui_input_key carries the editing
+     * keys (KUI_KEY_*), kui_input_key_down / _up the whole keyboard. A held
+     * key is one {kind="key"} payload twice, phase="down" then "up". */
     kui_focus(ui, k.sink);
     check(kui_is_focused(ui, k.sink), "kui_is_focused");
+    KuiStr no_text = {0};
+    kui_input_key_down(ui, KUI_STR("w"), 0, no_text, false);
+    kui_input_key_down(ui, KUI_STR("w"), 0, no_text, true); /* OS auto-repeat */
+    kui_input_key_up(ui, KUI_STR("w"), 0);
+    /* Held over a focus change: the sink hears the release anyway, so a
+     * WASD binding cannot be left walking. kui_release_held_keys is the
+     * same thing for a window that lost the keyboard. */
+    kui_input_key_down(ui, KUI_STR("a"), KUI_KMOD_CTRL, no_text, false);
+    kui_release_held_keys(ui);
+    kui_focus(ui, k.sink);
     kui_input_key(ui, KUI_KEY_RIGHT, 0);
     kui_input_key(ui, KUI_KEY_TAB, 0);
 
@@ -606,7 +616,7 @@ static int surface(void) {
 
     /* Everything above lands as data. */
     KuiEvent ev;
-    int events = 0, layouts = 0, access = 0;
+    int events = 0, layouts = 0, access = 0, downs = 0, ups = 0;
     while (kui_poll_event(ui, &ev)) {
         events++;
         if (!ev.payload) continue;
@@ -615,10 +625,21 @@ static int surface(void) {
         if (!kind || !kui_value_as_str(kind, &s)) continue;
         if (s.len == 6 && memcmp(s.ptr, "layout", 6) == 0) layouts++;
         if (s.len == 6 && memcmp(s.ptr, "access", 6) == 0) access++;
+        if (s.len == 3 && memcmp(s.ptr, "key", 3) == 0) {
+            KuiStr phase;
+            const KuiValue *p = kui_value_get(ev.payload, KUI_STR("phase"));
+            if (!p || !kui_value_as_str(p, &phase)) continue;
+            if (phase.len == 4 && memcmp(phase.ptr, "down", 4) == 0) downs++;
+            if (phase.len == 2 && memcmp(phase.ptr, "up", 2) == 0) ups++;
+        }
     }
     check(events > 0, "the inputs produced events");
     check(layouts > 0, "on_layout reported the card's rect");
     check(access > 0, "the slider nudge arrived as an access event");
+    /* Three presses (w, its repeat, ctrl-a), and a release for each of the
+     * two distinct keys — the second one synthesized by letting go. */
+    check(downs == 3, "the sink took the presses, repeat included");
+    check(ups == 2, "every held key came back up exactly once");
 
     /* Values round-trip, including the ones the counter never builds. */
     KuiValue *map = kui_value_map();

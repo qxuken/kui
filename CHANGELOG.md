@@ -9,6 +9,39 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **`KeyUp`, and one payload shape for both halves of a key**
+  (backlog C9). `InputEvent::KeyDown` had no counterpart, so a held-key
+  interaction could not be written at all — WASD movement, press-and-hold
+  to preview, a key that arms a mode while it is down — even though
+  `KeyDown`'s own doc names "a game" as its audience. `Modifiers` covered
+  the release of Shift and Command and nothing else. `InputEvent::KeyUp`
+  closes it, routed to key focus exactly the way `KeyDown` is. Both halves
+  arrive as **one** `{kind="key"}` payload with a `phase` of `"down"` or
+  `"up"` — the shape a drag's three phases and a hover's two already use —
+  so an app binds one handler and matches `phase`, and no binding grew a
+  second event kind to plumb. `text` is null on every release (a release
+  inserts nothing) and `repeat` false; the core normalizes both, so four
+  drivers cannot disagree about it.
+  Two rules make a stuck key impossible. **A key only comes up where it
+  went down**: a release whose press the sink never got — pressed while an
+  editor held focus, or already let go of — resolves nothing, so no sink
+  hears an `up` it has no `down` for. And **focus moving lets go first**:
+  `Core::set_focus` releases everything held, to the sink that took the
+  presses, in press order, before the focus lands anywhere else. Drivers
+  do the same when the window loses the keyboard, where the OS will send
+  no release at all — the winit runner on `Focused(false)`,
+  `kui_release_held_keys` for a C host, `Core::release_held_keys` for
+  anyone else.
+  Every binding drives it: `InputEvent::KeyUp` in Rust,
+  `kui_input_key_down` / `kui_input_key_up` / `kui_release_held_keys` in
+  C (which also closes a gap the C example had noted — a C host could not
+  drive an `on_key` sink at all, `kui_input_key` carrying only the editing
+  keys), `ctx.keyUp` beside a `ctx.keyDown` that now takes `repeat` in
+  Node, and the payload as-is in Lua. `KeyCode::from_name` is the one
+  parser they share, so `"pagedown"` cannot mean different keys in
+  different languages. The winit driver stopped dropping releases on the
+  floor and reports `repeat` from the OS.
+
 - **Selection and disclosure state** (`docs/adr/0001-accessibility-as-data.md`).
   `checked` covered checkbox / radio / switch and stopped there, so a row
   of tabs read out with no way to hear which one was open — AccessKit and
@@ -232,6 +265,13 @@ upgrades remove code from the apps on it is doing the job.
   The conformance report's `kinds` line grew a sixth column for shadows.
 - `KuiEnter` and `KuiKeyframe` gained an appended `opacity` with a
   `KUI_ENTER_OPACITY` / `KUI_KF_OPACITY` bit.
+- **`{kind="key"}` payloads carry a `phase`, and a sink now hears
+  releases.** An app that took every `kind="key"` event as a press acts
+  twice unless it filters: match `phase == "down"` (the `modal_editor`,
+  `splitmux` and `syntax_view` examples each gained exactly that one
+  line). `KeyPress::to_value` takes the phase as an argument — the only
+  source-breaking signature in this — and `KeyPress::released` is the
+  normalizing helper drivers reach for.
 - `KuiSpec` gained `tooltip` (appended; a zeroed struct means what it
   meant): the C spelling of the `tooltip` prop the other bindings have —
   it makes the node hover-tracked, becomes its accessible description,
@@ -260,6 +300,14 @@ upgrades remove code from the apps on it is doing the job.
 - **The stack of translucent boxes standing in for a shadow** — the three
   or four nested rects at decreasing alpha and increasing radius under a
   card or a dialog, and the padding arithmetic that kept them centred.
+- **The timer that stood in for a key release** — the `Instant` an app
+  kept per held key, the "assume it was let go after 250 ms" heuristic,
+  the tick handler that decayed a movement vector because nothing would
+  ever tell it the key came up. There is a release now, and it arrives
+  even when focus moves out from under the key.
+- **The modifier-only workaround**: bindings shaped around `Modifiers`
+  because it was the one release the core reported, so "hold to preview"
+  had to be spelled as "hold Option".
 - **The label that spelled out the state of a tab** — `label="General
   (current)"`, or the "selected" suffix an app appended so a reader would
   say *something*: `selected` is the state, and the name stays the name.

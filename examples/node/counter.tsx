@@ -149,10 +149,14 @@ const imageQuads = decodeQuads(modal.quads()).filter((q) => q.kind === 3).length
 console.log(`image quads: ${imageQuads}`);
 
 modal.keyDown('x', { ctrl: true });
-// Poll for one known payload shape: a key press carrying this sink's tag.
-const kev = modal.pollEvents<KeyMsg<{ tool: string }>>().find((e) => e.payload.kind === 'key');
-const p = kev?.payload;
+modal.keyUp('x', { ctrl: true });
+// Poll for one known payload shape: a key, both halves, carrying this sink's
+// tag. `phase` is what tells a press from a release — one shape, two events.
+const kevs = modal.pollEvents<KeyMsg<{ tool: string }>>().filter((e) => e.payload.kind === 'key');
+const p = kevs[0]?.payload;
+const up = kevs[1]?.payload;
 console.log(`key sink got: code=${p?.code} ctrl=${p?.ctrl} tag=${JSON.stringify(p?.tag)}`);
+console.log(`phases: ${kevs.map((e) => e.payload.phase).join(', ')}`);
 
 const ok =
   app.model.count === 10 &&
@@ -161,6 +165,9 @@ const ok =
   imageQuads === 1 &&
   p?.code === 'x' &&
   p?.ctrl === true &&
-  p?.tag?.tool === 'brush';
+  p?.tag?.tool === 'brush' &&
+  p?.phase === 'down' &&
+  up?.phase === 'up' &&
+  up?.text === null;
 console.log(ok ? 'OK' : 'MISMATCH');
 process.exit(ok ? 0 : 1);

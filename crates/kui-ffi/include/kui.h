@@ -618,6 +618,24 @@ void kui_input_text(KuiCtx *ctx, KuiStr text);   /* typing/paste -> focused edit
 void kui_input_preedit(KuiCtx *ctx, KuiStr text, uint32_t cursor_start,
                        uint32_t cursor_end);
 void kui_input_key(KuiCtx *ctx, uint32_t key, uint32_t mods); /* KUI_KEY_* + KUI_MOD_* */
+/* Raw keys for on_key sinks (the editing keys go through kui_input_key
+ * above). `code` is a single character as the layout produced it ("W", "$")
+ * or a name ("left", "enter", "escape", "f5", ...); `kmods` is KUI_KMOD_*
+ * bits; `text` is what the press inserts, or {NULL, 0} to derive it from
+ * `code`; `repeat` marks an auto-repeat. The focused sink polls
+ * {kind="key", phase="down"|"up", code, ctrl, alt, shift, super, text,
+ * repeat, tag}; a release carries a null `text`. A release whose press the
+ * sink never got resolves nothing, and moving focus while a key is held
+ * delivers the "up" first, so a held-key binding (WASD, press-and-hold)
+ * cannot be left stuck down. An unknown `code` is ignored. */
+void kui_input_key_down(KuiCtx *ctx, KuiStr code, uint32_t kmods, KuiStr text,
+                        bool repeat);
+void kui_input_key_up(KuiCtx *ctx, KuiStr code, uint32_t kmods);
+/* Lets go of every key the focused sink is holding, as if the user had
+ * released them. Call it when the window loses the keyboard: the OS stops
+ * delivering key events to it, so the release of anything held over an app
+ * switch would never arrive. Focus moves do this by themselves. */
+void kui_release_held_keys(KuiCtx *ctx);
 /* Physical modifier state changed (KUI_KMOD_* bits); the host polls a
  * {kind="modifiers", shift, ctrl, alt, super} event when it differs. */
 void kui_input_modifiers(KuiCtx *ctx, uint32_t mods);

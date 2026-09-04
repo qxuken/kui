@@ -564,7 +564,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_ON_KEY,
         kind: Kind::Tag,
         apply: Apply::SpecMsg(|s, v| s.on_key(v)),
-        doc: "Key-sink tag: with key focus held, presses arrive as {kind:\"key\", ...} events.",
+        doc: "Key-sink tag: with key focus held, presses and releases arrive as {kind:\"key\", phase:\"down\"|\"up\", ...} events.",
     },
     PropDef {
         name: "onContextMenu",
@@ -1071,8 +1071,8 @@ pub const EVENTS: &[EventDef] = &[
     },
     EventDef {
         kind: "key",
-        payload: "`{ kind: \"key\", code, shift, ctrl, alt, super, text, repeat, tag }`",
-        doc: "A key press on the focused `onKey` sink; `code` is a character or a name (`\"left\"`, `\"f5\"`).",
+        payload: "`{ kind: \"key\", phase: \"down\" | \"up\", code, shift, ctrl, alt, super, text, repeat, tag }`",
+        doc: "A key press or release on the focused `onKey` sink; `code` is a character or a name (`\"left\"`, `\"f5\"`). `repeat` marks a press the OS auto-repeated; `text` is what the press would insert, and is null on every release. A key only comes up where it went down: a release whose press the sink never got is dropped, and focus leaving while a key is held delivers the `up` first, so a held-key binding (WASD, press-and-hold) cannot be left stuck down.",
     },
     EventDef {
         kind: "contextmenu",

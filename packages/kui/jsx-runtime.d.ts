@@ -180,7 +180,7 @@ export interface GeneratedSpecProps {
   onDrag?: AppMsg | null;
   /** Hover tag: the pointer entering/leaving emits {kind:"hover", phase:"enter"|"leave", tag} events. */
   onHover?: AppMsg | null;
-  /** Key-sink tag: with key focus held, presses arrive as {kind:"key", ...} events. */
+  /** Key-sink tag: with key focus held, presses and releases arrive as {kind:"key", phase:"down"|"up", ...} events. */
   onKey?: AppMsg | null;
   /** Layout tag: the node's laid-out rect arrives as {kind:"layout", x, y, w, h, parent, tag} on its first frame and whenever it changes (needs a stable key). */
   onLayout?: AppMsg | null;
