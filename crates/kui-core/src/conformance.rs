@@ -36,7 +36,7 @@ use crate::color::Color;
 use crate::display::{Quad, QuadKind};
 use crate::edit::EditOptions;
 use crate::geom::{Edges, Size, Vec2};
-use crate::input::InputEvent;
+use crate::input::{EditKey, InputEvent, Mods};
 use crate::key::Key;
 use crate::resources::{ImageId, SoundId};
 use crate::runtime::Core;
@@ -97,6 +97,13 @@ pub enum Step {
     SecondaryUp,
     /// Wheel delta in logical px; positive y scrolls up.
     Scroll(i32, i32),
+    /// Tab and Shift-Tab: one step along the focus ring, forwards and
+    /// backwards. Spelled as their own step kinds rather than a `key`
+    /// step with an argument, so the report's step lines stay one word.
+    Tab,
+    ShiftTab,
+    /// Escape: lets go of a focused control, or asks a modal to go away.
+    Escape,
 }
 
 impl Step {
@@ -114,6 +121,9 @@ impl Step {
             Step::Scroll(x, y) => {
                 let _ = writeln!(out, "step scroll {x} {y}");
             }
+            Step::Tab => out.push_str("step tab\n"),
+            Step::ShiftTab => out.push_str("step shifttab\n"),
+            Step::Escape => out.push_str("step escape\n"),
         }
     }
 
@@ -131,6 +141,15 @@ impl Step {
                 button: crate::input::MouseButton::Secondary,
             },
             Step::Scroll(x, y) => InputEvent::Scroll(Vec2::new(x as f32, y as f32)),
+            Step::Tab => InputEvent::Key(EditKey::Tab, Mods::default()),
+            Step::ShiftTab => InputEvent::Key(
+                EditKey::Tab,
+                Mods {
+                    shift: true,
+                    ..Default::default()
+                },
+            ),
+            Step::Escape => InputEvent::Key(EditKey::Escape, Mods::default()),
         }
     }
 }
@@ -389,6 +408,65 @@ pub const SCENES: &[Scene] = &[
             access: &["0 window ||", "1 image ||"],
             events: &[],
             warnings: &["image-without-label"],
+            title: None,
+        },
+    },
+    Scene {
+        name: "modal",
+        doc: "A floated modal over an app with window chrome \
+              (`docs/adr/0003-modal-surfaces.md`). `modal` is a schema row, \
+              so every transport lowers it mechanically; what a scene pins \
+              is the behaviour around it, and the four things here are the \
+              parts no binding gets for free. A press on the button behind \
+              emits no click, only the modal's `dismiss` — the app is inert. \
+              A press on the titlebar emits nothing at all: window chrome \
+              stays live, so it is not \"outside\" and asks for no dismissal. \
+              A press on the dialog's own OK button does click, and Escape \
+              asks it to go away a second time, so both dismiss reasons are \
+              in the event list with a live event between them. Then the \
+              ring: focus enters the dialog by itself, and Shift-Tab, \
+              Shift-Tab, Tab walk it. Those three are chosen so the ring's \
+              scope shows up in the one frame the report keeps — over the \
+              dialog's two stops they land back on Cancel, over the whole \
+              tree's three they would land on Open.",
+        custom: &["float", "key"],
+        elements: &["box", "text", "titlebar"],
+        build: build_modal,
+        steps: &[
+            // The app behind: inert, and the press asks the modal to go.
+            Step::Cursor(50, 50),
+            Step::MouseDown,
+            Step::MouseUp,
+            // The titlebar: the platform's, so it stays live.
+            Step::Cursor(160, 16),
+            Step::MouseDown,
+            Step::MouseUp,
+            // The dialog's own button: live, and it clicks.
+            Step::Cursor(250, 160),
+            Step::MouseDown,
+            Step::MouseUp,
+            // The ring, inside the dialog and nowhere else.
+            Step::ShiftTab,
+            Step::ShiftTab,
+            Step::Tab,
+            Step::Escape,
+        ],
+        expect: Expect {
+            solid: 5,
+            shadows: 0,
+            images: 0,
+            glyphs_min: 3,
+            access: &[
+                "0 window ||",
+                "1 titleBar ||",
+                "2 staticText app||",
+                "1 button Open||",
+                "1 dialog Settings||",
+                "2 button OK||",
+                "2 button Cancel||",
+            ],
+            events: &["dismiss dlg", "ok -", "dismiss dlg"],
+            warnings: &[],
             title: None,
         },
     },
@@ -655,6 +733,63 @@ fn build_media(ui: &mut Ui<'_>, f: &Fixtures) {
         );
         ui.audio_keyed("music", AudioSpec::new(f.sound).volume(0.5).looped());
         widgets::latency_graph(ui);
+    });
+}
+
+/// The modal scene's dialog and the app under it. The dialog is a
+/// viewport float pinned to the bottom right corner (x 200..320,
+/// y 140..240), so the steps' coordinates land on known nodes: (50, 50) is
+/// the `Open` button behind, (160, 16) the titlebar strip, and (250, 160)
+/// the dialog's OK button. The two buttons inside it are the whole ring
+/// while the modal is up. The titlebar is the one platform-dependent
+/// height in the tree (34 logical px, 32 on Windows), so the two points
+/// above it and below it are chosen to land the same way on either.
+fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures) {
+    let button = |kind: &str, label: &str| {
+        NodeSpec::row()
+            .width(Sizing::Fixed(100.0))
+            .height(Sizing::Fixed(24.0))
+            .bg(Color::hex(0x3b5bd4ff))
+            .on_click(Value::map([("kind", Value::str(kind))]))
+            .label(label)
+    };
+    // Grow, not fit: the titlebar is a full-width drag strip, and a fit
+    // column would shrink it to its content and leave (160, 16) on
+    // nothing at all — which reads as inert chrome.
+    ui.with(NodeSpec::column().gap(6.0).width(Sizing::Grow(1.0)), |ui| {
+        widgets::titlebar_with(ui, |ui| {
+            ui.text("app", TextStyle::new(12.0));
+        });
+        ui.with_keyed(
+            "open",
+            NodeSpec::row()
+                .width(Sizing::Fixed(100.0))
+                .height(Sizing::Fixed(20.0))
+                .bg(Color::hex(0x30344aff))
+                .on_click(Value::map([("kind", Value::str("open"))]))
+                .label("Open"),
+            |_| {},
+        );
+        ui.with_keyed(
+            "dialog",
+            NodeSpec::column()
+                .width(Sizing::Fixed(120.0))
+                .height(Sizing::Fixed(100.0))
+                .pad(8.0)
+                .gap(6.0)
+                .bg(Color::hex(0x202030ff))
+                .float(
+                    FloatConfig::viewport()
+                        .at(Align::End, Align::End)
+                        .self_at(Align::End, Align::End),
+                )
+                .modal(Value::map([("kind", Value::str("dlg"))]))
+                .label("Settings"),
+            |ui| {
+                ui.with_keyed("ok", button("ok", "OK"), |_| {});
+                ui.with_keyed("cancel", button("cancel", "Cancel"), |_| {});
+            },
+        );
     });
 }
 

@@ -293,6 +293,9 @@ export interface Warning {
     /** A button, link, tab, checkbox, slider or editor with no `label` and
      *  no text inside it: a screen reader announces an unnamed control. */
     | 'control-without-name'
+    /** A `modal` with no `label`: a dialog is not named by the text inside
+     *  it, so a reader announces an unnamed dialog. */
+    | 'modal-without-name'
     | (string & {});
   /** The node it is about (hex, like event keys). */
   key: string;

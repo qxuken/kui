@@ -1106,7 +1106,25 @@ what they built accurately — every claim spot-checked held — and each ends b
 naming what it left undone. Those named gaps are the first three items here.
 The last three came out of re-running the guards rather than reading them.
 
-### `~` A1 — ADR 0003's two named modal gaps
+### `~` A1 — ADR 0003's two named modal gaps — **done (2026-09-04)**
+
+Both shipped. The corpus has a tenth scene, `modal`: a floated dialog over an
+app with a titlebar, replayed through a press behind it (no click, one
+`dismiss`), a press on the titlebar (nothing — chrome stays live), a press on
+the dialog's own button (a click), three ring steps and Escape. Only the last
+frame reaches the report, so the ring steps are picked to end where only a
+scoped ring can — Shift-Tab, Shift-Tab, Tab over the dialog's two stops end on
+Cancel, over the whole tree's three they would end on the button behind.
+`Step` grew `tab`, `shifttab` and `escape`, and the Lua, C and Node adapters
+replay them (C's step buffer now fails loudly instead of truncating at 16).
+`modal-without-name` lives beside `control-without-name` in the same
+`check_access` walk, triggered by the derived `Role::Dialog` on a node
+declaring `modal`: a dialog is named by its `label` alone, so text inside does
+not silence it. It caught both of our own context menus, which now carry one.
+
+The remaining two of the ADR's four are A2 and A3 below.
+
+The original finding:
 
 The ADR's Consequences list four things it left. Two are small and verified
 missing: **no modal scene in the conformance corpus** (nine scenes, none of

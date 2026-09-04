@@ -49,6 +49,7 @@ function Menu({ at }: { at: { x: number; y: number } }) {
       float={{ anchor: 'viewport', at: ['start', 'start'], self: ['start', 'start'],
                dx: at.x, dy: at.y, fit: true }}
       modal={{ kind: 'menu' }}
+      label="Actions"
       pad={4} gap={4} width={120} bg="#22242c" radius={6}
     >
       <button onClick={{ kind: 'add', by: 10 }}>+10</button>

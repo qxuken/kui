@@ -1199,6 +1199,40 @@ const SCENE_TREES = {
         el('edit', { initial: 'hello', size: 13, width: 160, label: 'Note' }, [], 'note'),
       ]),
     ]),
+  // docs/adr/0003-modal-surfaces.md: the app behind the dialog is inert,
+  // the titlebar is not, and both dismiss gestures reach the dialog.
+  modal: () =>
+    root({}, [
+      box({ width: 'grow', gap: 6 }, [
+        el('titlebar', {}, [text('app', { size: 12 })]),
+        box(
+          { dir: 'row', width: 100, height: 20, bg: '#30344a', onClick: { kind: 'open' }, label: 'Open' },
+          [],
+          'open',
+        ),
+        box(
+          {
+            width: 120, height: 100, pad: 8, gap: 6, bg: '#202030',
+            float: { anchor: 'viewport', at: ['end', 'end'], self: ['end', 'end'] },
+            modal: { kind: 'dlg' },
+            label: 'Settings',
+          },
+          [
+            box(
+              { dir: 'row', width: 100, height: 24, bg: '#3b5bd4', onClick: { kind: 'ok' }, label: 'OK' },
+              [],
+              'ok',
+            ),
+            box(
+              { dir: 'row', width: 100, height: 24, bg: '#3b5bd4', onClick: { kind: 'cancel' }, label: 'Cancel' },
+              [],
+              'cancel',
+            ),
+          ],
+          'dialog',
+        ),
+      ]),
+    ]),
   media: (ctx) =>
     root({}, [
       box({ pad: 6, gap: 4 }, [
@@ -1263,6 +1297,9 @@ function driveScene(steps, build) {
     else if (step[0] === 'secondarydown') ctx.mouse(true, 1, 'secondary');
     else if (step[0] === 'secondaryup') ctx.mouse(false, 1, 'secondary');
     else if (step[0] === 'scroll') ctx.scroll(step[1], step[2]);
+    else if (step[0] === 'tab') ctx.key('tab');
+    else if (step[0] === 'shifttab') ctx.key('tab', { shift: true });
+    else if (step[0] === 'escape') ctx.key('escape');
     else throw new Error(`unknown conformance step ${step[0]}`);
     events.push(...ctx.pollEvents());
     frame();

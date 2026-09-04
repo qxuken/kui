@@ -45,6 +45,9 @@ static void context_menu(KuiCtx *ui, const AppState *state) {
         .float_dx = state->menu_x, .float_dy = state->menu_y,
         .float_fit = 1, /* keep it on screen near the right or bottom edge */
         .modal = tag,
+        /* A modal is announced as a dialog, and a dialog is named by its
+         * label alone: without one the core says so (modal-without-name). */
+        .label = KUI_STR("Actions"),
     };
     kui_open(ui, &menu, NULL);
     {
@@ -1006,6 +1009,63 @@ static void conf_media(KuiCtx *ui, const Fixtures *f) {
     kui_close(ui);
 }
 
+static void conf_modal_titlebar(void *user, KuiCtx *ui) {
+    (void)user;
+    KuiTextStyle s12 = {.size = 12};
+    kui_text(ui, KUI_STR("app"), &s12);
+}
+
+/* One button in the dialog: `kind` is the click payload, `label` the
+ * accessible name, and the pair of them is the whole Tab ring while the
+ * modal is up. */
+static void conf_modal_button(KuiCtx *ui, const char *key, const char *kind,
+                              const char *label) {
+    KuiValue *tag = kui_value_map();
+    kui_value_map_set(tag, KUI_STR("kind"), kui_value_str(KUI_STR(kind)));
+    KuiSpec spec = {.dir = KUI_ROW, .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 24},
+                    .bg = 0x3b5bd4ff, .label = KUI_STR(label)};
+    kui_open_keyed(ui, KUI_STR(key), &spec, tag);
+    kui_close(ui);
+}
+
+/* A floated modal over an app with window chrome (see
+ * docs/adr/0003-modal-surfaces.md). The column grows so the titlebar is a
+ * full-width strip: the scene presses it to show that chrome stays live
+ * under a modal. */
+static void conf_modal(KuiCtx *ui, const Fixtures *f) {
+    (void)f;
+    KuiSpec outer = {.gap = 6, .width = {KUI_GROW, 1}};
+    kui_open(ui, &outer, NULL);
+    kui_titlebar_with(ui, conf_modal_titlebar, NULL);
+
+    KuiValue *open_tag = kui_value_map();
+    kui_value_map_set(open_tag, KUI_STR("kind"), kui_value_str(KUI_STR("open")));
+    KuiSpec open = {.dir = KUI_ROW, .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 20},
+                    .bg = 0x30344aff, .label = KUI_STR("Open")};
+    kui_open_keyed(ui, KUI_STR("open"), &open, open_tag);
+    kui_close(ui);
+
+    /* KuiSpec.modal is the `modal` prop, borrowed for the open call. */
+    KuiValue *modal = kui_value_map();
+    kui_value_map_set(modal, KUI_STR("kind"), kui_value_str(KUI_STR("dlg")));
+    KuiSpec dialog = {
+        .width = {KUI_FIXED, 120}, .height = {KUI_FIXED, 100},
+        .pad_l = 8, .pad_r = 8, .pad_t = 8, .pad_b = 8, .gap = 6,
+        .bg = 0x202030ff,
+        .float_mode = KUI_FLOAT_VIEWPORT,
+        .float_anchor_x = KUI_END, .float_anchor_y = KUI_END,
+        .float_self_x = KUI_END, .float_self_y = KUI_END,
+        .modal = modal, .label = KUI_STR("Settings"),
+    };
+    kui_open_keyed(ui, KUI_STR("dialog"), &dialog, NULL);
+    conf_modal_button(ui, "ok", "ok", "OK");
+    conf_modal_button(ui, "cancel", "cancel", "Cancel");
+    kui_close(ui);
+
+    kui_close(ui);
+    kui_value_free(modal);
+}
+
 typedef struct ConfScene {
     const char *name;
     void (*build)(KuiCtx *ui, const Fixtures *f);
@@ -1023,12 +1083,15 @@ static const ConfScene CONF_SCENES[] = {
     {"chrome", conf_chrome},
     {"controls", conf_controls},
     {"media", conf_media},
+    {"modal", conf_modal},
 };
 
 /* -- driving one scene --------------------------------------------------- */
 
 /* A replayed input, parsed back out of the reference report's step lines so
- * the scenes need not restate it. */
+ * the scenes need not restate it. The cap is a limit on one scene's replay,
+ * not on the corpus. */
+#define CONF_MAX_STEPS 32
 typedef struct ConfStep {
     char kind[16];
     int a, b;
@@ -1044,6 +1107,9 @@ static void conf_apply(KuiCtx *ctx, const ConfStep *s) {
     else if (strcmp(s->kind, "secondaryup") == 0)
         kui_input_mouse_button(ctx, false, KUI_MOUSE_SECONDARY, 1);
     else if (strcmp(s->kind, "scroll") == 0) kui_input_scroll(ctx, (float)s->a, (float)s->b);
+    else if (strcmp(s->kind, "tab") == 0) kui_input_key(ctx, KUI_KEY_TAB, 0);
+    else if (strcmp(s->kind, "shifttab") == 0) kui_input_key(ctx, KUI_KEY_TAB, KUI_MOD_SHIFT);
+    else if (strcmp(s->kind, "escape") == 0) kui_input_key(ctx, KUI_KEY_ESCAPE, 0);
     else {
         fprintf(stderr, "conformance: unknown step '%s'\n", s->kind);
         exit(1);
@@ -1235,11 +1301,18 @@ static int conformance(const char *path) {
 
         char name[64] = {0};
         sscanf(block, "scene %63s", name);
-        ConfStep steps[16];
+        ConfStep steps[CONF_MAX_STEPS];
         int nsteps = 0;
         for (char *line = block; line; ) {
             char *next = strchr(line, '\n');
-            if (strncmp(line, "step ", 5) == 0 && nsteps < 16) {
+            if (strncmp(line, "step ", 5) == 0) {
+                /* Dropping a step silently would replay a different scene
+                 * and blame the difference on the lowering. */
+                if (nsteps == CONF_MAX_STEPS) {
+                    fprintf(stderr, "conformance: scene '%s' replays more than %d steps\n",
+                            name, CONF_MAX_STEPS);
+                    exit(1);
+                }
                 ConfStep *s = &steps[nsteps++];
                 s->a = s->b = 0;
                 sscanf(line, "step %15s %d %d", s->kind, &s->a, &s->b);

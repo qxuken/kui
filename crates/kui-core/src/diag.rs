@@ -65,6 +65,14 @@ pub const MODAL_BEHIND_CONTENT: &str = "modal-behind-content";
 /// computable name: no `label`, and no text inside it. Icon buttons and
 /// editors need a `label`.
 pub const CONTROL_WITHOUT_NAME: &str = "control-without-name";
+/// A `modal` surface with no `label`. A dialog is not named by the text
+/// inside it (it is not one of ARIA's name-from-content roles), so a
+/// screen reader announces it as an unnamed dialog — the same silent
+/// defect [`CONTROL_WITHOUT_NAME`] catches, on the node that just took
+/// the user's focus. Only the derived `Role::Dialog` is checked: a modal
+/// that says what it is with an explicit `role` says it with a `label`
+/// too, or means something naming works differently for.
+pub const MODAL_WITHOUT_NAME: &str = "modal-without-name";
 /// `wrapChildren` on a container that cannot break lines: a column, or a
 /// row whose main axis scrolls. Both lay out exactly as if the flag were
 /// absent, which reads as "wrapping is broken"; see `LayoutSpec::wrap` for
@@ -178,8 +186,9 @@ impl Diagnostics {
         });
     }
 
-    /// Images without a label and controls without a computable name, by
-    /// the same derivation the access tree uses (see `access::semantic`).
+    /// Images without a label, controls without a computable name and
+    /// modals without one, by the same derivation the access tree uses
+    /// (see `access::semantic`).
     fn check_access(&mut self, tree: &Tree, text: &TextSystem, edit: &EditStore) {
         let mut skip_until = 0usize;
         for i in 0..tree.len() {
@@ -200,6 +209,13 @@ impl Diagnostics {
                 self.warn(IMAGE_WITHOUT_LABEL, key, || {
                     "this image has no label: assistive technology has nothing to say for it \
                      (give it a `label`, or `role=\"none\"` if it is decoration)"
+                        .to_string()
+                });
+            } else if sem.role == Role::Dialog && tree.specs[i].modal.is_some() {
+                self.warn(MODAL_WITHOUT_NAME, key, || {
+                    "this modal has no accessible name: a dialog is named by its `label`, never \
+                     by the text inside it — a screen reader announces an unnamed dialog to the \
+                     user it has just moved focus to (give it a `label`)"
                         .to_string()
                 });
             } else if sem.role.is_control() {

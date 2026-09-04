@@ -160,7 +160,7 @@ export interface GeneratedSpecProps {
   hoverable?: boolean;
   /** CSS-style stops `[{ at?, width?, height?, bg?, radius?, opacity? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. */
   keyframes?: KeyframeProp[];
-  /** The accessible name. Without one a button, link, tab or heading is named by the text inside it; an image or an icon-only button has none, and the core warns (`image-without-label`, `control-without-name`). */
+  /** The accessible name. Without one a button, link, tab or heading is named by the text inside it; an image, an icon-only button and a `modal` dialog have none, and the core warns (`image-without-label`, `control-without-name`, `modal-without-name`). */
   label?: string;
   /** Child alignment along the main axis. */
   mainAlign?: 'start' | 'center' | 'end';
