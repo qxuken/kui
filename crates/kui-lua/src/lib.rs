@@ -40,18 +40,21 @@
 //! reachable from Lua under its snake_case name (`min_width`, `on_click`,
 //! `line_height`, ...), so Lua and the Node binding accept the same surface
 //! by construction. Only the composites keep Lua-flavored shapes:
-//! `pad = 8 | {l,r,t,b}`, `border = {w, color}`, `scroll`/`scroll_x`/
-//! `scroll_y`/`clip` booleans, `float = "below" | {anchor, at, self_at, dx,
-//! dy, fit}`, sizing `{pct = 50} | {grow = 2}`, and `tooltip = "hint"` on a
-//! container (hover-gated).
+//! `pad = 8 | {all,x,y,l,r,t,b}`, `border = {w, color}`, `scroll`/
+//! `scroll_x`/`scroll_y`/`clip` booleans, `float = "below" | {anchor, at,
+//! self, dx, dy, fit}` (`self_at` still answers to `self`), sizing
+//! `{pct = 50} | {grow = 2}`, and `tooltip = "hint"` on a container
+//! (hover-gated). Those are *shapes*, not rules: what a name falls back
+//! to, what a preset attaches to and what a hint implies are decided in
+//! `kui_core::spec`, which this module hands its extracted scalars to.
 //!
 //! Events arrive as their payload table plus `node_key` (the emitting
 //! node's key as an integer), which is what `env.edit_text` takes.
 
 use kui_core::schema::{self, Kind, Parsed, PropsOut};
 use kui_core::{
-    Align, Color, Edges, EditOptions, Extension, FloatConfig, Key, Sizing, Span, Ui, UiEvent,
-    Value, widgets,
+    Align, Color, EditOptions, Extension, FloatConfig, Key, PadShorthand, Sizing, Span, Ui,
+    UiEvent, Value, widgets,
 };
 use mlua::{Lua, Table};
 
@@ -640,6 +643,10 @@ pub fn parse_props(t: &Table, is_row: bool) -> mlua::Result<PropsOut> {
     if let Some(r) = t.get::<Option<f32>>("radius")? {
         out.with_spec(|s| s.radius(r));
     }
+    // Overflow bits accumulate across the walk (`clip` and `scroll` are
+    // separate keys) and are applied once, so nothing here has to know that
+    // scrolling clips too.
+    let mut overflow = 0;
     for pair in t.pairs::<mlua::Value, mlua::Value>() {
         let (k, v) = pair?;
         let mlua::Value::String(k) = k else { continue };
@@ -647,8 +654,8 @@ pub fn parse_props(t: &Table, is_row: bool) -> mlua::Result<PropsOut> {
         match k.as_ref() {
             "size" | "radius" => {}
             "pad" => {
-                let e = parse_edges(&v)?;
-                out.with_spec(|s| s.padding(e));
+                let pad = parse_pad(&v)?;
+                out.apply_pad(pad);
             }
             "border" => {
                 let b = match v {
@@ -659,21 +666,9 @@ pub fn parse_props(t: &Table, is_row: bool) -> mlua::Result<PropsOut> {
                 let c = parse_color(&b.get::<mlua::Value>("color")?)?;
                 out.with_spec(|s| s.border(w, c));
             }
-            "clip" => {
-                if truthy(&v) {
-                    out.with_spec(kui_core::NodeSpec::clip);
-                }
-            }
-            "scroll_x" => {
-                if truthy(&v) {
-                    out.with_spec(kui_core::NodeSpec::scroll_x);
-                }
-            }
-            "scroll" | "scroll_y" => {
-                if truthy(&v) {
-                    out.with_spec(kui_core::NodeSpec::scroll_y);
-                }
-            }
+            "clip" => overflow |= bit(&v, kui_core::OVERFLOW_CLIP),
+            "scroll_x" => overflow |= bit(&v, kui_core::OVERFLOW_SCROLL_X),
+            "scroll" | "scroll_y" => overflow |= bit(&v, kui_core::OVERFLOW_SCROLL_Y),
             "float" => {
                 let cfg = parse_float(&v)?;
                 out.with_spec(|s| s.float(cfg));
@@ -689,10 +684,7 @@ pub fn parse_props(t: &Table, is_row: bool) -> mlua::Result<PropsOut> {
                 let mlua::Value::String(s) = &v else {
                     return Err(bad("tooltip must be a string"));
                 };
-                let hint = s.to_str()?.to_string();
-                // The hint is the accessible description too.
-                out.with_spec(|s| s.hoverable().description(hint.as_str()));
-                out.tooltip = Some(hint);
+                out.apply_tooltip(s.to_str()?.as_ref());
             }
             name => {
                 // `repeat` is a Lua keyword, so that row also answers to
@@ -710,11 +702,17 @@ pub fn parse_props(t: &Table, is_row: bool) -> mlua::Result<PropsOut> {
             }
         }
     }
+    out.with_spec(|s| s.overflow_bits(overflow));
     Ok(out)
 }
 
 fn truthy(v: &mlua::Value) -> bool {
     matches!(v, mlua::Value::Boolean(true))
+}
+
+/// `bit` when the flag is on, for ORing an overflow mask together.
+fn bit(v: &mlua::Value, bit: u32) -> u32 {
+    if truthy(v) { bit } else { 0 }
 }
 
 fn number(v: &mlua::Value) -> Option<f32> {
@@ -791,15 +789,27 @@ fn parse_sizing(v: &mlua::Value) -> mlua::Result<Sizing> {
     }
 }
 
-fn parse_edges(v: &mlua::Value) -> mlua::Result<Edges> {
+/// The `pad` prop as declared: a number is the all-round shorthand, a table
+/// names any of the family (`x`, `y`, `l`, `r`, `t`, `b`). What a missing
+/// edge falls back to is [`PadShorthand::resolve`]'s call.
+fn parse_pad(v: &mlua::Value) -> mlua::Result<PadShorthand> {
     match v {
-        mlua::Value::Number(n) => Ok(Edges::all(*n as f32)),
-        mlua::Value::Integer(n) => Ok(Edges::all(*n as f32)),
-        mlua::Value::Table(t) => Ok(Edges {
-            l: t.get::<Option<f32>>("l")?.unwrap_or(0.0),
-            r: t.get::<Option<f32>>("r")?.unwrap_or(0.0),
-            t: t.get::<Option<f32>>("t")?.unwrap_or(0.0),
-            b: t.get::<Option<f32>>("b")?.unwrap_or(0.0),
+        mlua::Value::Number(n) => Ok(PadShorthand {
+            all: Some(*n as f32),
+            ..PadShorthand::default()
+        }),
+        mlua::Value::Integer(n) => Ok(PadShorthand {
+            all: Some(*n as f32),
+            ..PadShorthand::default()
+        }),
+        mlua::Value::Table(t) => Ok(PadShorthand {
+            all: t.get("all")?,
+            x: t.get("x")?,
+            y: t.get("y")?,
+            l: t.get("l")?,
+            r: t.get("r")?,
+            t: t.get("t")?,
+            b: t.get("b")?,
         }),
         _ => Err(bad("invalid padding value")),
     }
@@ -811,44 +821,51 @@ fn parse_align(s: &str) -> mlua::Result<Align> {
         .map_err(bad)
 }
 
+/// A preset name, wherever Lua spells one: `float = "below"` and a float
+/// table's `anchor`. The names and what each attaches to are core's.
+fn float_preset(name: &str) -> mlua::Result<FloatConfig> {
+    FloatConfig::preset(name).ok_or_else(|| {
+        bad(format!(
+            "bad float preset '{name}' (one of {})",
+            kui_core::FLOAT_PRESETS.join(" | ")
+        ))
+    })
+}
+
+/// An `{ x, y }` attach point under `key`, or `None` when it is absent.
+fn parse_attach(f: &Table, key: &str) -> mlua::Result<Option<(Align, Align)>> {
+    let Some(at) = f.get::<Option<Table>>(key)? else {
+        return Ok(None);
+    };
+    Ok(Some((
+        parse_align(&at.get::<String>(1)?)?,
+        parse_align(&at.get::<String>(2)?)?,
+    )))
+}
+
 fn parse_float(v: &mlua::Value) -> mlua::Result<FloatConfig> {
     let f = match v {
-        mlua::Value::String(s) => {
-            return match s.to_str()?.as_ref() {
-                "below" => Ok(FloatConfig::below()),
-                "above" => Ok(FloatConfig::above()),
-                "parent" => Ok(FloatConfig::parent()),
-                "viewport" => Ok(FloatConfig::viewport()),
-                other => Err(bad(format!("bad float '{other}'"))),
-            };
-        }
+        mlua::Value::String(s) => return float_preset(&s.to_str()?),
         mlua::Value::Table(f) => f,
         _ => return Err(bad("float must be a preset string or a table")),
     };
-    let mut cfg = match f.get::<Option<String>>("anchor")?.as_deref() {
-        Some("viewport") => FloatConfig::viewport(),
-        _ => FloatConfig::parent(),
+    // `self` is the name the other bindings use; `self_at` stays accepted
+    // because Lua shipped with it.
+    let self_at = match parse_attach(f, "self")? {
+        Some(at) => Some(at),
+        None => parse_attach(f, "self_at")?,
     };
-    if let Some(at) = f.get::<Option<Table>>("at")? {
-        cfg = cfg.at(
-            parse_align(&at.get::<String>(1)?)?,
-            parse_align(&at.get::<String>(2)?)?,
-        );
-    }
-    if let Some(at) = f.get::<Option<Table>>("self_at")? {
-        cfg = cfg.self_at(
-            parse_align(&at.get::<String>(1)?)?,
-            parse_align(&at.get::<String>(2)?)?,
-        );
-    }
-    cfg = cfg.offset(
-        f.get::<Option<f32>>("dx")?.unwrap_or(0.0),
-        f.get::<Option<f32>>("dy")?.unwrap_or(0.0),
-    );
-    if f.get::<Option<bool>>("fit")?.unwrap_or(false) {
-        cfg = cfg.fit();
-    }
-    Ok(cfg)
+    Ok(FloatConfig::build(
+        match f.get::<Option<String>>("anchor")? {
+            Some(name) => float_preset(&name)?,
+            None => FloatConfig::parent(),
+        },
+        parse_attach(f, "at")?,
+        self_at,
+        f.get::<Option<f32>>("dx")?,
+        f.get::<Option<f32>>("dy")?,
+        f.get::<Option<bool>>("fit")?.unwrap_or(false),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -915,7 +932,8 @@ pub fn value_to_lua(lua: &Lua, v: &Value) -> mlua::Result<mlua::Value> {
 mod tests {
     use super::*;
     use kui_core::{
-        Core, FontFamily, InputEvent, NodeSpec, OriginId, Size, TextStyle, Vec2, WindowButton,
+        Core, Edges, FontFamily, InputEvent, NodeSpec, OriginId, Size, TextStyle, Vec2,
+        WindowButton,
     };
 
     #[test]
@@ -1008,6 +1026,54 @@ mod tests {
         assert_eq!(p.spec, expected);
         assert_eq!(p.key.as_deref(), Some("panel"));
         assert!(p.key_focus);
+    }
+
+    /// The shapes the core decides on, spelled the Lua way: the pad family
+    /// beyond `l/r/t/b`, `self` as the other bindings name it, and a preset
+    /// as a base with one override — the untouched `dy` keeps below's gap.
+    #[test]
+    fn the_lua_composites_resolve_the_way_the_core_says() {
+        let lua = Lua::new();
+        let t = eval_table(
+            &lua,
+            r#"{ pad = { all = 4, x = 10, b = 1 },
+                 float = { anchor = "below", dx = 6 } }"#,
+        );
+        let p = parse_props(&t, false).unwrap();
+        assert_eq!(
+            p.spec.layout.padding,
+            Edges {
+                l: 10.0,
+                r: 10.0,
+                t: 4.0,
+                b: 1.0,
+            }
+        );
+        assert_eq!(
+            p.spec.layout.float,
+            Some(FloatConfig::build(
+                FloatConfig::below(),
+                None,
+                None,
+                Some(6.0),
+                None,
+                false
+            ))
+        );
+
+        // `self` and the `self_at` Lua shipped with name the same point.
+        let by_self = eval_table(&lua, r#"{ float = { self = {"end", "start"} } }"#);
+        let by_self_at = eval_table(&lua, r#"{ float = { self_at = {"end", "start"} } }"#);
+        assert_eq!(
+            parse_props(&by_self, false).unwrap().spec.layout.float,
+            parse_props(&by_self_at, false).unwrap().spec.layout.float
+        );
+
+        // An unknown preset names the ones that exist instead of silently
+        // floating against the parent.
+        let bad_preset = eval_table(&lua, r#"{ float = "beneath" }"#);
+        let e = parse_props(&bad_preset, false).unwrap_err().to_string();
+        assert!(e.contains("beneath") && e.contains("below"), "{e}");
     }
 
     #[test]

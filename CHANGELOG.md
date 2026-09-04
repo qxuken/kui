@@ -615,6 +615,40 @@ upgrades remove code from the apps on it is doing the job.
   and `kui_close` floats the hint below it while hovered. `kui_tooltip` /
   `kui_tooltip_with` stay what they were, a hint that always draws.
   `Ctx.windowTitle()` in Node reports the title a frame declared.
+- **The ten composite props decide once, in kui-core.** `float`, the
+  `pad` shorthand family, the overflow bits and `tooltip` were
+  reimplemented per binding, line for line: `float_of` in Node's JSON prop
+  parser, `parse_float` in Lua, a third at `P_FLOAT` in the binary
+  decoder, a fourth spelled as `float_mode` / `float_anchor_x` / ... in
+  `KuiSpec` — and that is how `kui_tooltip` in C came to set neither the
+  description nor hover tracking, and how the docs named a Lua float key
+  (`self`) the parser never read. The decisions moved down:
+  `FloatConfig::build` takes the pieces a frontend can extract without
+  interpreting them and applies only the ones it saw,
+  `FloatConfig::preset` / `preset_at` resolve the four names ("parent",
+  "viewport", "below", "above") for every binding including C's new
+  `kui_spec_float_preset`, `PadShorthand::resolve` decides what `padX`
+  falls back to, `NodeSpec::overflow_bits` decides that scrolling clips,
+  and `PropsOut::apply_tooltip` owns all three of a hint's effects at
+  once. The bindings keep the part that is genuinely different — reading
+  a Lua table, a serde_json map, a binary stream, a C struct — and call
+  one constructor with typed scalars.
+  Three surfaces widened as a result, because a rule stated once applies
+  everywhere: `anchor` takes any preset, not just `parent` / `viewport`
+  (`{ anchor: "below", dx: 4 }` hangs below and keeps its 6px gap, since
+  an override a frontend did not see leaves the preset's value alone);
+  Lua's float table accepts `self` alongside the `self_at` it shipped
+  with, so the docs and the parser name the same key; and Lua's `pad`
+  table gained the `all` / `x` / `y` the other frontends had.
+  The corpus grew with them — the `float` scene now carries a preset with
+  one override declared, and `layout` a box whose whole size is what the
+  pad fallback resolved to — and immediately earned it, catching a
+  disagreement between two lowering paths that this change had introduced.
+  The binary protocol is v4: the pad shorthand and each float offset now
+  ride the wire as declared, with a set mask, so the JS encoder no longer
+  decides what `padX` means, or whether a lone `dx` flattens a preset's
+  `dy`, either. `kui.h` gained `kui_spec_float_preset`; `KuiSpec` is
+  unchanged.
 - The Node counter example clicks into its editor before typing, and CI
   runs it instead of only typechecking it. It had been failing since
   0.1.0-alpha.5 made a click take the keyboard (ADR 0002): `autofocus`
@@ -775,6 +809,17 @@ upgrades remove code from the apps on it is doing the job.
   `request_frame` that made the second frame come) is `enter={{ opacity: 0
   }}` — and it fades the panel's text and images too, which the `bg` trick
   never did.
+- **The float preset a C host was spelling out.** `float_anchor_x =
+  KUI_CENTER, float_anchor_y = KUI_END, float_self_x = KUI_CENTER,
+  float_self_y = KUI_START, float_dy = 6` — the five lines that were
+  "below" written by hand, and the copy of them that drifted when the
+  preset was tuned — are `kui_spec_float_preset(&spec, KUI_STR("below"))`.
+  Set `float_dx` or `float_dy` after it to adjust one number without
+  restating the other four.
+- **The float config a view was completing to override one field of it.**
+  `{ anchor: "parent", at: ["center", "end"], self: ["center", "start"],
+  dx: 4, dy: 6 }`, written out because naming only `dx` used to flatten
+  the gap to zero, is `{ anchor: "below", dx: 4 }`.
 - **The stack of translucent boxes standing in for a shadow** — the three
   or four nested rects at decreasing alpha and increasing radius under a
   card or a dialog, and the padding arithmetic that kept them centred.

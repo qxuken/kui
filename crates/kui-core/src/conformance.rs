@@ -42,7 +42,7 @@ use crate::input::{EditKey, InputEvent, Mods};
 use crate::key::Key;
 use crate::resources::{ImageId, SoundId};
 use crate::runtime::Core;
-use crate::spec::{Align, Dir, FloatAnchor, FloatConfig, NodeSpec, Sizing, TextStyle};
+use crate::spec::{Align, Dir, FloatAnchor, FloatConfig, NodeSpec, PadShorthand, Sizing, TextStyle};
 use crate::text::Span;
 use crate::tree::{NodeContent, Tree};
 use crate::ui::Ui;
@@ -210,16 +210,18 @@ pub fn scene(name: &str) -> Option<&'static Scene> {
 pub const SCENES: &[Scene] = &[
     Scene {
         name: "layout",
-        doc: "Containers: both directions, the pad shorthand's four edges, a \
-              border, a stable key, and plain and rich text at a declared \
-              size. The card also carries the paint props that fade and \
-              lift it: group opacity and a drop shadow.",
+        doc: "Containers: both directions, the pad shorthand — four explicit \
+              edges on the card, and an axis-and-override box whose whole \
+              size is what the fallback resolved to — a border, a stable \
+              key, and plain and rich text at a declared size. The card also \
+              carries the paint props that fade and lift it: group opacity \
+              and a drop shadow.",
         custom: &["dir", "pad", "border", "key", "size"],
         elements: &["box", "text"],
         build: build_layout,
         steps: &[],
         expect: Expect {
-            solid: 2,
+            solid: 3,
             shadows: 1,
             images: 0,
             glyphs_min: 7,
@@ -302,17 +304,18 @@ pub const SCENES: &[Scene] = &[
     },
     Scene {
         name: "float",
-        doc: "Both float spellings: the \"below\" shorthand and the full \
-              config (anchor, at, self, dx/dy, fit). The full one is \
-              asymmetric per axis and would land off-screen unclamped, so \
-              swapping at with self, dx with dy, or dropping fit all move \
-              it.",
+        doc: "Every float spelling: the \"below\" shorthand, a preset base \
+              with one override declared (the untouched offset keeps the \
+              preset's gap), and the full config (anchor, at, self, dx/dy, \
+              fit). The full one is asymmetric per axis and would land \
+              off-screen unclamped, so swapping at with self, dx with dy, \
+              or dropping fit all move it.",
         custom: &["float", "key"],
         elements: &["box"],
         build: build_float,
         steps: &[],
         expect: Expect {
-            solid: 3,
+            solid: 5,
             shadows: 0,
             images: 0,
             glyphs_min: 0,
@@ -511,6 +514,24 @@ fn build_layout(ui: &mut Ui<'_>, _f: &Fixtures) {
                     ui.text("cd", TextStyle::new(12.0));
                 },
             );
+            // Padding only, no children: the box's own size *is* the
+            // resolved shorthand, so a binding that fell back differently
+            // draws a differently sized quad. `padY` gives the top, `padB`
+            // overrides the bottom, `padX` both sides.
+            ui.with(
+                NodeSpec::column()
+                    .padding(
+                        PadShorthand {
+                            x: Some(9.0),
+                            y: Some(3.0),
+                            b: Some(1.0),
+                            ..PadShorthand::default()
+                        }
+                        .resolve(),
+                    )
+                    .bg(Color::hex(0x2a2d3aff)),
+                |_| {},
+            );
             ui.rich_text(
                 &[
                     Span::new("a "),
@@ -639,6 +660,34 @@ fn build_float(ui: &mut Ui<'_>, _f: &Fixtures) {
                         .width(Sizing::Fixed(40.0))
                         .height(Sizing::Fixed(12.0))
                         .bg(Color::hex(0xff0000ff)),
+                    |_| {},
+                );
+            },
+        );
+        // A preset as a base, with one override declared: `dx` moves it
+        // sideways and the untouched `dy` keeps "below"'s own 6px gap. A
+        // binding that wrote a whole offset instead of the piece it saw
+        // lands this quad 6px too high.
+        ui.with_keyed(
+            "nudged",
+            NodeSpec::column()
+                .width(Sizing::Fixed(60.0))
+                .height(Sizing::Fixed(20.0))
+                .bg(Color::hex(0x444444ff)),
+            |ui| {
+                ui.with(
+                    NodeSpec::column()
+                        .float(FloatConfig::build(
+                            FloatConfig::below(),
+                            None,
+                            None,
+                            Some(6.0),
+                            None,
+                            false,
+                        ))
+                        .width(Sizing::Fixed(30.0))
+                        .height(Sizing::Fixed(10.0))
+                        .bg(Color::hex(0x0000ffff)),
                     |_| {},
                 );
             },

@@ -25,6 +25,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                     width = 180, height = 40,
                     text("ab", { size = 12 }),
                     text("cd", { size = 12 }) },
+              column { pad = { x = 9, y = 3, b = 1 }, bg = 0x2a2d3aff },
               text({ "a ", { "b", bold = true, color = 0x73d98cff },
                      { " c", italic = true } }, { size = 13 }),
             }
@@ -82,8 +83,11 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             return column { pad = 20, gap = 4,
               column { key = "anchor", width = 80, height = 24, bg = 0x333333ff,
                 column { float = "below", width = 40, height = 12, bg = 0xff0000ff } },
+              column { key = "nudged", width = 60, height = 20, bg = 0x444444ff,
+                column { float = { anchor = "below", dx = 6 },
+                         width = 30, height = 10, bg = 0x0000ffff } },
               column { float = { anchor = "viewport", at = { "start", "end" },
-                                 self_at = { "end", "start" }, dx = -6, dy = 14, fit = true },
+                                 self = { "end", "start" }, dx = -6, dy = 14, fit = true },
                        width = 10, height = 10, bg = 0x00ff00ff },
             }
         "#

@@ -24,7 +24,8 @@
 //!   in the table.
 
 use kui_core::{
-    Color, Core, Edges, EditOptions, FloatConfig, ImageId, NodeSpec, Span, TextStyle, widgets,
+    Align, Color, Core, EditOptions, FloatConfig, ImageId, NodeSpec, PadShorthand, Span, TextStyle,
+    widgets,
 };
 use serde_json::{Map as JsonMap, Value as Json};
 
@@ -35,8 +36,11 @@ use crate::schema::{
 use crate::{Result, err, value_of};
 
 /// Bumped when the wire format changes (v2: enum props became list indices;
-/// v3: float configs carry a has-offset flag so bare presets keep their gap).
-pub const VERSION: u32 = 3;
+/// v3: float configs carry a has-offset flag so bare presets keep their gap;
+/// v4: the pad shorthand rides the wire unresolved and each float offset
+/// carries its own flag, so the encoder decides neither what `padX` falls
+/// back to nor whether a lone `dx` flattens the preset's `dy`).
+pub const VERSION: u32 = 4;
 
 pub const OP_END: u32 = 0;
 pub const OP_ROOT: u32 = 1;
@@ -81,6 +85,26 @@ pub fn protocol_json() -> Json {
         ),
     );
     o.insert("prop".into(), schema::protocol_props());
+    // Value tables the encoder would otherwise restate: align indices and
+    // the float preset names, both in the order the decoder reads them.
+    o.insert(
+        "align".into(),
+        Json::Array(
+            schema::ALIGNS
+                .iter()
+                .map(|a| Json::String((*a).into()))
+                .collect(),
+        ),
+    );
+    o.insert(
+        "floatPreset".into(),
+        Json::Array(
+            kui_core::FLOAT_PRESETS
+                .iter()
+                .map(|p| Json::String((*p).into()))
+                .collect(),
+        ),
+    );
     for (name, table) in schema::protocol_tables() {
         o.insert(name.into(), table);
     }
@@ -130,6 +154,22 @@ impl<'a> Reader<'a> {
     }
 }
 
+/// A float attach point on the wire: a "declared" flag then its two align
+/// indices, always all three so the stream stays fixed-width.
+fn opt_attach(r: &mut Reader<'_>) -> Result<Option<(Align, Align)>> {
+    let declared = r.u()? == 1;
+    let (x, y) = (r.u()? as usize, r.u()? as usize);
+    Ok(declared.then(|| (align_idx(x), align_idx(y))))
+}
+
+/// An optional float offset component: a "declared" flag then its value,
+/// always both so the stream stays fixed-width.
+fn opt_f32(r: &mut Reader<'_>) -> Result<Option<f32>> {
+    let declared = r.u()? == 1;
+    let v = r.f()? as f32;
+    Ok(declared.then_some(v))
+}
+
 fn payload(s: &str) -> Result<kui_core::Value> {
     let json: Json = serde_json::from_str(s).map_err(|e| err(format!("bad payload JSON: {e}")))?;
     Ok(value_of(&json))
@@ -151,13 +191,29 @@ fn read_props(r: &mut Reader<'_>) -> Result<PropsOut> {
             }
             P_SIZE => out.style = TextStyle::new(r.f()? as f32),
             P_PAD => {
-                let (l, rr, t, b) = (r.f()?, r.f()?, r.f()?, r.f()?);
-                out.spec = std::mem::take(&mut out.spec).padding(Edges {
-                    l: l as f32,
-                    r: rr as f32,
-                    t: t as f32,
-                    b: b as f32,
-                });
+                // The shorthand rides the wire as declared (a set mask plus
+                // the seven values), so the encoder never has to know what
+                // `padX` falls back to either.
+                let set = r.u()?;
+                let mut pad = PadShorthand::default();
+                for (bit, slot) in [
+                    &mut pad.all,
+                    &mut pad.x,
+                    &mut pad.y,
+                    &mut pad.l,
+                    &mut pad.r,
+                    &mut pad.t,
+                    &mut pad.b,
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let v = r.f()? as f32;
+                    if set & (1 << bit) != 0 {
+                        *slot = Some(v);
+                    }
+                }
+                out.apply_pad(pad);
             }
             P_BORDER => {
                 let (w, c) = (r.f()?, r.f()?);
@@ -165,58 +221,28 @@ fn read_props(r: &mut Reader<'_>) -> Result<PropsOut> {
             }
             P_OVERFLOW => {
                 let bits = r.u()?;
-                let mut spec = std::mem::take(&mut out.spec);
-                if bits & 1 != 0 {
-                    spec = spec.clip();
-                }
-                if bits & 2 != 0 {
-                    spec = spec.scroll_x();
-                }
-                if bits & 4 != 0 {
-                    spec = spec.scroll_y();
-                }
-                out.spec = spec;
+                out.with_spec(|s| s.overflow_bits(bits));
             }
             P_FLOAT => {
-                let preset = r.u()?;
-                let mut cfg = match preset {
-                    1 => FloatConfig::viewport(),
-                    2 => FloatConfig::below(),
-                    3 => FloatConfig::above(),
-                    _ => FloatConfig::parent(),
-                };
-                let has_at = r.u()? == 1;
-                let (ax, ay) = (r.u()?, r.u()?);
-                if has_at {
-                    cfg = cfg.at(align_idx(ax as usize), align_idx(ay as usize));
-                }
-                let has_self = r.u()? == 1;
-                let (sx, sy) = (r.u()?, r.u()?);
-                if has_self {
-                    cfg = cfg.self_at(align_idx(sx as usize), align_idx(sy as usize));
-                }
-                // Bare presets (below/above) keep their built-in gap; a config
-                // object always writes an explicit offset, since its dx/dy
-                // default to 0 rather than to the preset's gap.
-                let has_offset = r.u()? == 1;
-                let (dx, dy) = (r.f()?, r.f()?);
-                if has_offset {
-                    cfg = cfg.offset(dx as f32, dy as f32);
-                }
-                if r.u()? == 1 {
-                    cfg = cfg.fit();
-                }
+                let preset = r.u()? as usize;
+                let base = FloatConfig::preset_at(preset)
+                    .ok_or_else(|| err(format!("unknown float preset {preset}")))?;
+                // Each override rides with a "was it declared" flag, so a
+                // bare `below` keeps its built-in gap while a config object
+                // that names only `dx` moves it sideways.
+                let at = opt_attach(r)?;
+                let self_at = opt_attach(r)?;
+                // dx and dy carry their own flags: `{ anchor: "below", dx }`
+                // moves it sideways and leaves the preset's gap.
+                let (dx, dy) = (opt_f32(r)?, opt_f32(r)?);
+                let fit = r.u()? == 1;
+                let cfg = FloatConfig::build(base, at, self_at, dx, dy, fit);
                 out.spec = std::mem::take(&mut out.spec).float(cfg);
             }
             P_KEY_FOCUS => out.key_focus = true,
             P_KEY => out.key = Some(r.req_str()?.to_string()),
             P_TITLE => out.title = Some(r.req_str()?.to_string()),
-            P_TOOLTIP => {
-                let hint = r.req_str()?.to_string();
-                // The hint is the accessible description too.
-                out.with_spec(|s| s.hoverable().description(hint.as_str()));
-                out.tooltip = Some(hint);
-            }
+            P_TOOLTIP => out.apply_tooltip(r.req_str()?),
             id => {
                 let def = schema::by_id(id).ok_or_else(|| err(format!("unknown prop id {id}")))?;
                 let parsed = match &def.kind {
@@ -542,14 +568,15 @@ mod tests {
                     expected.style = TextStyle::new(21.0);
                 }
                 "pad" => {
-                    s.extend([1.0, 2.0, 3.0, 4.0]);
-                    expected.with_spec(|x| {
-                        x.padding(Edges {
-                            l: 1.0,
-                            r: 2.0,
-                            t: 3.0,
-                            b: 4.0,
-                        })
+                    // padL/R/T/B only: set mask 0b1111000, then the seven
+                    // values in declaration order (pad, X, Y, L, R, T, B).
+                    s.extend([0b111_1000 as f64, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 4.0]);
+                    expected.apply_pad(PadShorthand {
+                        l: Some(1.0),
+                        r: Some(2.0),
+                        t: Some(3.0),
+                        b: Some(4.0),
+                        ..PadShorthand::default()
                     });
                 }
                 "border" => {
@@ -561,8 +588,8 @@ mod tests {
                     expected.with_spec(|x| x.clip().scroll_x().scroll_y());
                 }
                 "float" => {
-                    // viewport, at=(end,end), self=(end,end), offset(-8,-8), fit
-                    s.extend([1.0, 1.0, 2.0, 2.0, 1.0, 2.0, 2.0, 1.0, -8.0, -8.0, 1.0]);
+                    // viewport, at=(end,end), self=(end,end), dx=-8, dy=-8, fit
+                    s.extend([1.0, 1.0, 2.0, 2.0, 1.0, 2.0, 2.0, 1.0, -8.0, 1.0, -8.0, 1.0]);
                     expected.with_spec(|x| {
                         x.float(
                             FloatConfig::viewport()
@@ -587,8 +614,7 @@ mod tests {
                 "tooltip" => {
                     s.extend([0.0, 3.0]);
                     strings = b"abc";
-                    expected.tooltip = Some("abc".into());
-                    expected.with_spec(|x| x.hoverable().description("abc"));
+                    expected.apply_tooltip("abc");
                 }
                 other => panic!(
                     "custom prop {other:?} has no binary decoder arm: add one in read_props, \
@@ -618,12 +644,48 @@ mod tests {
             0.0,
             0.0, // no self
             0.0,
+            0.0, // no dx
             0.0,
-            0.0, // no offset
+            0.0, // no dy
             0.0, // fit
         ];
         let mut expected = PropsOut::new();
         expected.with_spec(|x| x.float(FloatConfig::below()));
+        assert_eq!(decode(&s, b""), expected);
+    }
+
+    /// A preset base with only `dx` declared keeps the preset's own `dy` —
+    /// the disagreement the scene corpus caught between this path and the
+    /// JSON one when the two offsets shared a flag.
+    #[test]
+    fn a_declared_dx_leaves_the_presets_dy_alone() {
+        let s = [
+            1.0,
+            P_FLOAT as f64,
+            2.0, // below
+            0.0,
+            0.0,
+            0.0, // no at
+            0.0,
+            0.0,
+            0.0, // no self
+            1.0,
+            6.0, // dx = 6
+            0.0,
+            0.0, // no dy
+            0.0, // fit
+        ];
+        let mut expected = PropsOut::new();
+        expected.with_spec(|x| {
+            x.float(FloatConfig::build(
+                FloatConfig::below(),
+                None,
+                None,
+                Some(6.0),
+                None,
+                false,
+            ))
+        });
         assert_eq!(decode(&s, b""), expected);
     }
 

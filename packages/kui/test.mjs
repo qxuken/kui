@@ -251,6 +251,10 @@ test('a malformed view is rejected, with the offending name in the message', () 
     [() => box({ mainAlign: 'middle' }), /bad value "middle" for mainAlign \(one of start \| center \| end\)/],
     [() => box({ bg: 'blue' }), /bad color "blue"/],
     [() => box({ width: 'huge' }), /bad sizing "huge"/],
+    // Both places a float names a preset answer to the one table, so the
+    // shorthand and the config object's `anchor` fail the same way.
+    [() => box({ float: 'beneath' }), /bad float preset "beneath" \(parent \| viewport \| below \| above\)/],
+    [() => box({ float: { anchor: 'beneath' } }), /bad float preset "beneath" \(parent \| viewport \| below \| above\)/],
     [
       () => text([el('span', {}, ['x']), el('button', {}, ['y'])]),
       /only strings and <span> may nest inside rich <text>/,
@@ -1243,6 +1247,7 @@ const SCENE_TREES = {
           [text('ab', { size: 12 }), text('cd', { size: 12 })],
           'card',
         ),
+        box({ padX: 9, padY: 3, padB: 1, bg: '#2a2d3a' }),
         text(
           ['a ', el('span', { bold: true, color: '#73d98c' }, ['b']), el('span', { italic: true }, [' c'])],
           { size: 13 },
@@ -1285,6 +1290,9 @@ const SCENE_TREES = {
         box({ width: 80, height: 24, bg: '#333333' }, [
           box({ float: 'below', width: 40, height: 12, bg: '#ff0000' }),
         ], 'anchor'),
+        box({ width: 60, height: 20, bg: '#444444' }, [
+          box({ float: { anchor: 'below', dx: 6 }, width: 30, height: 10, bg: '#0000ff' }),
+        ], 'nudged'),
         box({
           float: { anchor: 'viewport', at: ['start', 'end'], self: ['end', 'start'], dx: -6, dy: 14, fit: true },
           width: 10, height: 10, bg: '#00ff00',

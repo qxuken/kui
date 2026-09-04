@@ -152,7 +152,8 @@ enum {
 };
 /* Text edit flags (kui_text_edit) */
 enum { KUI_EDIT_MULTILINE = 1u << 0, KUI_EDIT_AUTOFOCUS = 1u << 1 };
-/* Float modes (KuiSpec.float_mode) */
+/* Float modes (KuiSpec.float_mode). For the named presets the other
+ * bindings take ("below", "above", ...), see kui_spec_float_preset. */
 enum { KUI_FLOAT_NONE = 0, KUI_FLOAT_PARENT = 1, KUI_FLOAT_VIEWPORT = 2 };
 /* Window-chrome roles (KuiSpec.window_role). Chrome nodes turn input into
  * window commands (kui_take_window_commands), never events. */
@@ -261,7 +262,8 @@ typedef struct KuiSpec {
     float radius;
     uint32_t overflow; /* KUI_CLIP | KUI_SCROLL_X | KUI_SCROLL_Y */
     /* Out-of-flow positioning: 0 = in flow, KUI_FLOAT_PARENT/VIEWPORT anchors.
-     * Attach points use KUI_START/CENTER/END; dx/dy is a logical-px offset. */
+     * Attach points use KUI_START/CENTER/END; dx/dy is a logical-px offset.
+     * kui_spec_float_preset fills all of these from a preset name. */
     uint32_t float_mode;
     uint32_t float_anchor_x, float_anchor_y;
     uint32_t float_self_x, float_self_y;
@@ -809,6 +811,19 @@ void kui_window_title(KuiCtx *ctx, KuiStr title);
 /* The title declared this frame, if any — diff and apply after
  * kui_frame_finish. The view is valid until the next kui_frame_begin. */
 bool kui_window_title_get(KuiCtx *ctx, KuiStr *out);
+
+/* -- Spec helpers -------------------------------------------------------- */
+/* Fills spec->float_* from a preset name — the same four the JSX and Lua
+ * `float` props take ("parent", "viewport", "below", "above"), resolved by
+ * the same function in kui-core, so "below" cannot mean one thing here and
+ * another there. Returns false and leaves the spec alone for an unknown
+ * name. The fields stay writable, so a preset is a starting point:
+ *
+ *     KuiSpec s = {0};
+ *     kui_spec_float_preset(&s, KUI_STR("below"));
+ *     s.float_dy = 12.0f;  // same attachment, a wider gap
+ */
+bool kui_spec_float_preset(KuiSpec *spec, KuiStr name);
 
 /* -- Frame building ------------------------------------------------------ */
 /* w/h are logical pixels. A frame begun at a different size or scale than

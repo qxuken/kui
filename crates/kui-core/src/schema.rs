@@ -16,10 +16,17 @@
 //! `KuiSpec` when the parity test says so). Composite props with real logic
 //! (the pad shorthand family, border, overflow bits, float configs) and the
 //! constructor-ordering specials (`dir`, `size`, `key`, `title`, `keyFocus`)
-//! stay hand-written per binding; `CUSTOM` lists them by name and wire id so
-//! transports agree on identity, and `crate::conformance` makes them agree
-//! on behaviour — every `CUSTOM` and `ELEMENTS` row has to appear in a
-//! scene that all four bindings reproduce byte for byte, or the build
+//! need per-binding *extraction* — a Lua table, a serde_json map, a binary
+//! stream and a C struct are genuinely different to read — but not
+//! per-binding *decisions*: what "below" attaches to, what `padX` falls
+//! back to, what a scroll bit implies and what a tooltip means all live in
+//! one place ([`crate::spec::FloatConfig::build`],
+//! [`crate::spec::PadShorthand`], [`crate::spec::NodeSpec::overflow_bits`],
+//! [`PropsOut::apply_tooltip`]), and a binding pulls typed scalars out of
+//! its own value type and calls them. `CUSTOM` lists them by name and wire
+//! id so transports agree on identity, and `crate::conformance` makes them
+//! agree on behaviour — every `CUSTOM` and `ELEMENTS` row has to appear in
+//! a scene that all four bindings reproduce byte for byte, or the build
 //! fails.
 //!
 //! Those rows are also the allow-list: a dynamic binding drops a name it
@@ -40,7 +47,7 @@ use crate::color::Color;
 use crate::cursor::CursorShape;
 use crate::enter::Enter;
 use crate::keyframes::Keyframe;
-use crate::spec::{Align, FontFamily, NodeSpec, Sizing, TextStyle, TextWrap};
+use crate::spec::{Align, FontFamily, NodeSpec, PadShorthand, Sizing, TextStyle, TextWrap};
 use crate::value::Value;
 use crate::window::WindowButton;
 
@@ -881,9 +888,9 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx_names: &["pad", "padX", "padY", "padL", "padR", "padT", "padB"],
         lua_names: &["pad"],
         jsx: "`pad`, `padX`, `padY`, `padL`, `padR`, `padT`, `padB`",
-        lua: "`pad = n` or `pad = { l=, r=, t=, b= }`",
+        lua: "`pad = n` or `pad = { all=, x=, y=, l=, r=, t=, b= }`",
         c: "`pad_l`, `pad_r`, `pad_t`, `pad_b`",
-        doc: "Padding; the shorthands resolve to four edges, the specific ones win.",
+        doc: "Padding; a frontend reports the names it saw and `PadShorthand::resolve` turns them into four edges — an edge falls back to its axis, an axis to the all-round `pad`, and the specific one always wins.",
     },
     CustomProp {
         name: "border",
@@ -903,7 +910,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`clip`, `scrollX`, `scrollY`",
         lua: "`clip`, `scroll_x`, `scroll_y` (`scroll` = `scroll_y`)",
         c: "`overflow` bits `KUI_CLIP` | `KUI_SCROLL_X` | `KUI_SCROLL_Y`",
-        doc: "Clip children; scroll (implies clip) with retained offsets and live scrollbars.",
+        doc: "Clip children; scroll (implies clip) with retained offsets and live scrollbars. Every frontend ORs the same bits and hands them to `NodeSpec::overflow_bits`.",
     },
     CustomProp {
         name: "float",
@@ -911,9 +918,9 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx_names: &["float"],
         lua_names: &["float"],
         jsx: "`float=\"below\" | \"above\" | \"parent\" | \"viewport\"` or `{ anchor, at, self, dx, dy, fit }`",
-        lua: "`float = \"below\"` or `float = { anchor=, at=, self_at=, dx=, dy=, fit= }`",
-        c: "`float_mode`, `float_anchor_x/y`, `float_self_x/y`, `float_dx/dy`, `float_fit`",
-        doc: "Out-of-flow positioning against the parent or the viewport; `fit` flips/clamps to stay on screen.",
+        lua: "`float = \"below\"` or `float = { anchor=, at=, self=, dx=, dy=, fit= }`",
+        c: "`float_mode`, `float_anchor_x/y`, `float_self_x/y`, `float_dx/dy`, `float_fit`; `kui_spec_float_preset` fills them from a preset name",
+        doc: "Out-of-flow positioning against the parent or the viewport; `fit` flips/clamps to stay on screen. The four preset names resolve in `FloatConfig::preset`, and `anchor` takes any of them — an override left out keeps the preset's own value, so `{ anchor: \"below\", dx: 4 }` still hangs below with its 6px gap.",
     },
     CustomProp {
         name: "keyFocus",
@@ -953,7 +960,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`tooltip=\"hint\"`",
         lua: "`tooltip = \"hint\"`",
         c: "`KuiSpec.tooltip` (`kui_tooltip` / `kui_tooltip_with` draw a hint that is not hover-gated)",
-        doc: "Floats a hint below the node while hovered (implies hover tracking).",
+        doc: "Floats a hint below the node while hovered. All three effects — hover tracking, the accessible description, and the float itself — come from `PropsOut::apply_tooltip` / `NodeSpec::apply_tooltip`, so no frontend can implement two of them.",
     },
 ];
 
@@ -1430,6 +1437,26 @@ impl PropsOut {
     /// Applies a builder step to the spec in place.
     pub fn with_spec(&mut self, f: impl FnOnce(NodeSpec) -> NodeSpec) {
         self.spec = f(std::mem::take(&mut self.spec));
+    }
+
+    /// All three effects of the `tooltip` prop at once: hover tracking and
+    /// the accessible description (both [`NodeSpec::apply_tooltip`]), plus
+    /// the hint the element lowering floats. A parser that only extracted
+    /// the string cannot end up implementing two of the three.
+    pub fn apply_tooltip(&mut self, hint: impl Into<String>) {
+        let hint = hint.into();
+        self.with_spec(|s| s.apply_tooltip(&hint));
+        self.tooltip = Some(hint);
+    }
+
+    /// Resolves the `pad` shorthand family and applies it — a no-op when the
+    /// frontend saw none of the seven names, so a spec built from another
+    /// source keeps its padding.
+    pub fn apply_pad(&mut self, pad: PadShorthand) {
+        if pad.declared() {
+            let edges = pad.resolve();
+            self.with_spec(|s| s.padding(edges));
+        }
     }
 }
 

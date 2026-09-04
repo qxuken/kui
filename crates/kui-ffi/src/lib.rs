@@ -281,6 +281,13 @@ pub struct KuiKeyframe {
 }
 
 /// Which of a `KuiEnter`'s fields are set (its `set` bits); 0 = no entrance.
+/// `KuiSpec.float_mode`: in flow, or which rect the float attaches to. The
+/// non-zero values are `kui_core::FLOAT_PRESETS` indices plus one, so zero
+/// can still mean "no float".
+pub const KUI_FLOAT_NONE: u32 = 0;
+pub const KUI_FLOAT_PARENT: u32 = 1;
+pub const KUI_FLOAT_VIEWPORT: u32 = 2;
+
 pub const KUI_ENTER_OFFSET: u32 = 1 << 0;
 pub const KUI_ENTER_WIDTH: u32 = 1 << 1;
 pub const KUI_ENTER_HEIGHT: u32 = 1 << 2;
@@ -332,9 +339,12 @@ pub struct KuiSpec {
     pub border_color: u32,
     pub border_w: f32,
     pub radius: f32,
-    /// bit 0 = clip, bit 1 = scroll_x, bit 2 = scroll_y
+    /// `KUI_CLIP` | `KUI_SCROLL_X` | `KUI_SCROLL_Y`; the same bits the
+    /// binary protocol carries, applied by `NodeSpec::overflow_bits`.
     pub overflow: u32,
-    /// 0 = in flow, 1 = float anchored to parent, 2 = float anchored to viewport
+    /// `KUI_FLOAT_NONE` (in flow), `KUI_FLOAT_PARENT` or `KUI_FLOAT_VIEWPORT`.
+    /// `kui_spec_float_preset` fills this and the fields below from one of
+    /// the named presets.
     pub float_mode: u32,
     /// Attach points as align values (0 start, 1 center, 2 end).
     pub float_anchor_x: u32,
@@ -940,6 +950,14 @@ fn align_of(a: u32) -> Align {
     }
 }
 
+fn align_code(a: Align) -> u32 {
+    match a {
+        Align::Start => 0,
+        Align::Center => 1,
+        Align::End => 2,
+    }
+}
+
 /// Null-able, consumed message payloads (`KuiValue*` owned by the caller
 /// until passed here).
 const NONE: *mut KuiValue = std::ptr::null_mut();
@@ -1015,28 +1033,19 @@ fn spec_of(
         blur: s.shadow_blur,
         spread: s.shadow_spread,
     });
-    if s.overflow & 1 != 0 {
-        spec = spec.clip();
-    }
-    if s.overflow & 2 != 0 {
-        spec = spec.scroll_x();
-    }
-    if s.overflow & 4 != 0 {
-        spec = spec.scroll_y();
-    }
+    spec = spec.overflow_bits(s.overflow);
     if s.float_mode != 0 {
-        let mut cfg = if s.float_mode == 2 {
-            FloatConfig::viewport()
-        } else {
-            FloatConfig::parent()
-        }
-        .at(align_of(s.float_anchor_x), align_of(s.float_anchor_y))
-        .self_at(align_of(s.float_self_x), align_of(s.float_self_y))
-        .offset(s.float_dx, s.float_dy);
-        if s.float_fit != 0 {
-            cfg = cfg.fit();
-        }
-        spec = spec.float(cfg);
+        // The struct spells every piece out, so every piece is "declared";
+        // `kui_spec_float_preset` is how a caller gets a preset's numbers
+        // into these fields without knowing what "below" means.
+        spec = spec.float(FloatConfig::build(
+            FloatConfig::preset_at(s.float_mode as usize - 1).unwrap_or_default(),
+            Some((align_of(s.float_anchor_x), align_of(s.float_anchor_y))),
+            Some((align_of(s.float_self_x), align_of(s.float_self_y))),
+            Some(s.float_dx),
+            Some(s.float_dy),
+            s.float_fit != 0,
+        ));
     }
     if s.hoverable != 0 {
         spec = spec.hoverable();
@@ -1146,9 +1155,9 @@ fn spec_of(
         spec = spec.focus_bg(color_of(s.focus_bg));
     }
     if let Some(hint) = opt_str(s.tooltip) {
-        // The same two things the Lua and Node parsers do with the prop;
-        // `kui_close` adds the third (the float, while hovered).
-        spec = spec.hoverable().description(hint);
+        // Two of the prop's three effects; `kui_close` adds the third (the
+        // float, while hovered) once it knows the node closed.
+        spec = spec.apply_tooltip(&hint);
     }
     if let Some(v) = take_msg(on_click) {
         spec = spec.on_click(v);
@@ -1615,6 +1624,38 @@ pub extern "C" fn kui_window_title_get(ptr: *mut KuiCtx, out: *mut KuiStr) -> bo
             ptr: t.as_ptr(),
             len: t.len(),
         };
+        true
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Spec helpers
+
+/// Fills a spec's `float_*` fields from a preset name — the same four names
+/// (`"parent"`, `"viewport"`, `"below"`, `"above"`) the JSX and Lua `float`
+/// props take, resolved by the same core function. Returns false and leaves
+/// the spec alone for an unknown name.
+///
+/// The fields stay writable afterwards, so a preset is a starting point:
+/// take `"below"` and set `float_dy` to change only the gap.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_spec_float_preset(spec: *mut KuiSpec, name: KuiStr) -> bool {
+    guard(false, || {
+        let (Some(s), Some(cfg)) = (unsafe { spec.as_mut() }, FloatConfig::preset(&kstr(name)))
+        else {
+            return false;
+        };
+        s.float_mode = match cfg.anchor {
+            kui_core::FloatAnchor::Parent => KUI_FLOAT_PARENT,
+            kui_core::FloatAnchor::Viewport => KUI_FLOAT_VIEWPORT,
+        };
+        s.float_anchor_x = align_code(cfg.anchor_point.0);
+        s.float_anchor_y = align_code(cfg.anchor_point.1);
+        s.float_self_x = align_code(cfg.self_point.0);
+        s.float_self_y = align_code(cfg.self_point.1);
+        s.float_dx = cfg.offset.x;
+        s.float_dy = cfg.offset.y;
+        s.float_fit = cfg.fit as u32;
         true
     })
 }
@@ -3164,6 +3205,42 @@ mod schema_parity {
 
     fn msg(v: Value) -> *mut KuiValue {
         Box::into_raw(Box::new(KuiValue(v)))
+    }
+
+    /// C reaches the same four presets by name as JSX and Lua, and the
+    /// fields it fills round-trip back through `spec_of` to the config the
+    /// core would have built. A preset is a starting point, not a mode: the
+    /// fields stay writable afterwards.
+    #[test]
+    fn a_named_float_preset_round_trips_through_the_struct() {
+        for name in kui_core::FLOAT_PRESETS {
+            let mut spec = zeroed_spec();
+            assert!(kui_spec_float_preset(
+                &mut spec,
+                KuiStr {
+                    ptr: name.as_ptr(),
+                    len: name.len(),
+                }
+            ));
+            assert_eq!(
+                spec_of(&spec, NONE, NONE, NONE, NONE).layout.float,
+                FloatConfig::preset(name),
+                "{name}: the C fields do not rebuild the preset"
+            );
+        }
+
+        // An unknown name changes nothing, so a typo leaves a node in flow
+        // rather than floating it somewhere arbitrary.
+        let mut spec = zeroed_spec();
+        assert!(!kui_spec_float_preset(
+            &mut spec,
+            KuiStr {
+                ptr: "beneath".as_ptr(),
+                len: 7,
+            }
+        ));
+        assert_eq!(spec.float_mode, KUI_FLOAT_NONE);
+        assert_eq!(spec_of(&spec, NONE, NONE, NONE, NONE).layout.float, None);
     }
 
     #[test]

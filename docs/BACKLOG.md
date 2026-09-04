@@ -79,6 +79,11 @@ and gives the corpus two shapes to cover for a key with no users yet
 that reasoning is wrong — someone is following the published table — the
 alias is a two-line change in `parse_float`.
 
+**Reversed by D3 (2026-09-04)**: the alias is in, and `docs/props.md` names
+`self`. What changed is that both spellings are now pinned and the fallback
+rules live in one core function, so "two shapes for the corpus to cover" no
+longer describes it.
+
 While the row was open, three neighbours turned out to be wrong the same
 way and were corrected: the Lua `pad` and `border` tables take **named**
 keys (`{ l=, r=, t=, b= }`, `{ w=, color= }`, per `parse_edges` and the
@@ -1076,7 +1081,49 @@ the generic prop loop samples `50%` inside a *fit-sized* parent, where a
 percent and a grow resolve to the same geometry. **Closed in the corpus
 rather than in Node** (see P7 below): the sweep is now 22/22.
 
-### `.` D3 — Lift composite parsing into `kui-core`
+### `.` D3 — Lift composite parsing into `kui-core` — **done (2026-09-04)**
+
+The decisions moved down; the extraction stayed up. `kui_core::spec` gained
+`FloatConfig::build(base, at, self_at, dx, dy, fit)` — every override an
+`Option`, so a piece a frontend did not see leaves the base's own value —
+`FloatConfig::preset` / `preset_at` over a shared `FLOAT_PRESETS` table,
+`PadShorthand` with its `resolve`, `NodeSpec::overflow_bits` over shared
+`OVERFLOW_*` constants, and `NodeSpec::apply_tooltip` /
+`PropsOut::apply_tooltip`, which owns all three of a hint's effects so no
+binding can implement two. All four bindings call them; what is left in
+each is reading its own value type.
+
+Three things fell out of stating a rule once. **`anchor` takes any preset**,
+not just `parent` / `viewport`, in JSX, Lua and the binary stream, and
+because an undeclared override keeps the base's value,
+`{ anchor: "below", dx: 4 }` hangs below with its 6px gap — the shape that
+previously needed the whole config restated. **C reaches the presets by
+name** through `kui_spec_float_preset(&spec, KUI_STR("below"))`, which fills
+the `float_*` fields and leaves them writable, replacing the five hand-
+spelled lines the conformance adapter itself had. And the **binary protocol
+is v4**: the pad shorthand and each float offset ride the wire as declared,
+behind a set mask, so the JS encoder stopped deciding what `padX` falls back
+to as well.
+
+P7's corpus was the check that mattered, and it paid immediately: the
+`float` scene grew a preset-with-one-override and `layout` a box whose whole
+size is what the pad fallback resolved to, and the JSON and binary paths
+promptly disagreed — the first cut gave `dx` and `dy` a shared "declared"
+flag, so a lone `dx` flattened the gap. Nothing else in the suite noticed.
+Seven unit tests in `crates/kui-core/tests/composites.rs` pin the rules
+themselves, and `kui-ffi` round-trips every preset name through `KuiSpec`
+and back.
+
+This **reverses P2's "one spelling" call**: Lua's float table now accepts
+`self` alongside `self_at`, and its `pad` table gained `all` / `x` / `y`.
+P2's reasoning was that two spellings nothing pins are worse than one — but
+that was about a docs/parser drift with nowhere to catch it. Both spellings
+are pinned now (the corpus adapter uses `self`, the Lua unit test still uses
+`self_at`), and with the fallback rules in one core function the argument
+for keeping the surfaces deliberately different is gone. `docs/props.md`
+names `self`, which is what alpha.5 published.
+
+The original finding:
 
 `float_of` (`crates/kui-node/src/schema.rs:57`) and `parse_float`
 (`crates/kui-lua/src/lib.rs:623`) are the same twenty lines in two languages,
@@ -1457,10 +1504,11 @@ By leverage-to-effort, not severity.
 5. ~~**P7 — the conformance corpus.**~~ Done (2026-09-03), out of order: it
    was cheaper to fix P1 and P2 *through* the corpus than beside it, and a
    fix with no scene behind it is the state this document exists to
-   describe. ~~P4 (unknown-prop warnings)~~ — done (2026-09-04), and it
-   leant on the corpus the same way: the "every element lowers" scenes are
-   what pin the allow-list. D3 (composite parsing in the core) is the one
-   left that still shrinks the surface it has to cover.
+   describe. ~~P4 (unknown-prop warnings) and D3 (composite parsing in the
+   core) are the two that still shrink the surface it has to cover.~~ Both
+   shipped (2026-09-04), and both leant on the corpus: the "every element
+   lowers" scenes are what pin P4's allow-list, and D3's refactor was
+   caught on the way in introducing a JSON/binary disagreement.
 6. **Then the designs.** ~~C1 + C2 unlock dialogs, menus and comboboxes
    together~~ — both shipped (ADR 0003 for C1; C2 needed no ADR of its own,
    since it only adds a row and a button to the model 0003 settled), and a

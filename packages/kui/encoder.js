@@ -9,13 +9,18 @@
 // rejected here, in JS, before anything crosses the boundary — so the
 // messages name the element or the prop and what it would have accepted.
 
-const ALIGN = { start: 0, center: 1, end: 2 };
-const FLOAT_PRESET = { parent: 0, viewport: 1, below: 2, above: 3 };
+// Turns a protocol name list into its name -> wire index map.
+const indexOf = (names) => Object.fromEntries(names.map((n, i) => [n, i]));
 
 export function createEncoder(P) {
   const OP = P.op;
   const PR = P.prop;
   const VERSION = P.version;
+  // Value tables come from the addon too, so "below" cannot mean one thing
+  // here and another in kui-core.
+  const ALIGN = indexOf(P.align);
+  const FLOAT_PRESET = indexOf(P.floatPreset);
+  const PRESET_NAMES = P.floatPreset.join(' | ');
 
   // The allow-list a view is checked against, straight off the protocol: the
   // schema rows, every JSX spelling of every composite, and — per element —
@@ -127,8 +132,30 @@ export function createEncoder(P) {
 
   function alignOf(v) {
     const a = ALIGN[v];
-    if (a === undefined) throw new Error('align must be start | center | end');
+    if (a === undefined) throw new Error(`align must be ${P.align.join(' | ')}`);
     return a;
+  }
+
+  function presetOf(v) {
+    const p = FLOAT_PRESET[v];
+    if (p === undefined) throw new Error(`bad float preset ${JSON.stringify(v)} (${PRESET_NAMES})`);
+    return p;
+  }
+
+  // Writes the "declared" flag and the two align indices of a float attach
+  // point; a missing one still writes three slots so the stream is fixed-width.
+  function attach(v) {
+    const ok = Array.isArray(v) && v.length === 2;
+    f[fi++] = ok ? 1 : 0;
+    f[fi++] = ok ? alignOf(v[0]) : 0;
+    f[fi++] = ok ? alignOf(v[1]) : 0;
+  }
+
+  // One float offset component, with its own flag: dx and dy are declared
+  // separately, so `{ anchor: 'below', dx }` keeps the preset's dy.
+  function offset(v) {
+    f[fi++] = v === undefined ? 0 : 1;
+    f[fi++] = v ?? 0;
   }
 
   // Encodes a prop list, schema-driven: generic props are written by their
@@ -160,6 +187,8 @@ export function createEncoder(P) {
     let borderW, borderColor;
     let overflow = 0;
     for (const k in p) {
+      // Enough for the widest single stanza (float writes 12 slots).
+      reserve(16);
       const v = p[k];
       if (v === undefined) continue;
       if (v === null) {
@@ -186,30 +215,23 @@ export function createEncoder(P) {
         case 'scrollX': if (v) overflow |= 2; break;
         case 'scrollY': if (v) overflow |= 4; break;
         case 'float': {
+          // The preset and each override as declared; what a preset attaches
+          // to, and what an absent override falls back to, is the decoder's
+          // call (FloatConfig::build).
           f[fi++] = PR.float.id;
           if (typeof v === 'string') {
-            const preset = FLOAT_PRESET[v];
-            if (preset === undefined) throw new Error(`bad float ${JSON.stringify(v)}`);
-            // A bare preset keeps its own attach points and offset (below/
-            // above carry a 6px gap), so every "has" flag is off.
-            f[fi++] = preset;
-            f[fi++] = 0; f[fi++] = 0; f[fi++] = 0; // no at
-            f[fi++] = 0; f[fi++] = 0; f[fi++] = 0; // no self
-            f[fi++] = 0; f[fi++] = 0; f[fi++] = 0; // no offset (dx dy)
+            f[fi++] = presetOf(v);
+            attach(null);
+            attach(null);
+            offset(undefined);
+            offset(undefined);
             f[fi++] = 0; // fit
           } else {
-            f[fi++] = v.anchor === 'viewport' ? 1 : 0;
-            const at = Array.isArray(v.at) && v.at.length === 2 ? v.at : null;
-            f[fi++] = at ? 1 : 0;
-            f[fi++] = at ? alignOf(at[0]) : 0;
-            f[fi++] = at ? alignOf(at[1]) : 0;
-            const self = Array.isArray(v.self) && v.self.length === 2 ? v.self : null;
-            f[fi++] = self ? 1 : 0;
-            f[fi++] = self ? alignOf(self[0]) : 0;
-            f[fi++] = self ? alignOf(self[1]) : 0;
-            f[fi++] = 1; // an explicit config always carries dx/dy (0 by default)
-            f[fi++] = v.dx ?? 0;
-            f[fi++] = v.dy ?? 0;
+            f[fi++] = v.anchor === undefined ? 0 : presetOf(v.anchor);
+            attach(v.at);
+            attach(v.self);
+            offset(v.dx);
+            offset(v.dy);
             f[fi++] = v.fit ? 1 : 0;
           }
           n++;
@@ -281,16 +303,17 @@ export function createEncoder(P) {
         }
       }
     }
-    if (pad !== undefined || padX !== undefined || padY !== undefined ||
-        padL !== undefined || padR !== undefined || padT !== undefined || padB !== undefined) {
-      const base = pad ?? 0;
-      const px = padX ?? base;
-      const py = padY ?? base;
+    // The shorthand family as declared: a set mask then the seven values in
+    // the same order. What an absent edge falls back to is PadShorthand's
+    // call in kui-core, not this encoder's.
+    reserve(16);
+    const padded = [pad, padX, padY, padL, padR, padT, padB];
+    let padSet = 0;
+    for (let i = 0; i < padded.length; i++) if (padded[i] !== undefined) padSet |= 1 << i;
+    if (padSet) {
       f[fi++] = PR.pad.id;
-      f[fi++] = padL ?? px;
-      f[fi++] = padR ?? px;
-      f[fi++] = padT ?? py;
-      f[fi++] = padB ?? py;
+      f[fi++] = padSet;
+      for (const v of padded) f[fi++] = v ?? 0;
       n++;
     }
     if (borderW !== undefined) {

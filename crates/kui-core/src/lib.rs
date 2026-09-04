@@ -61,8 +61,9 @@ pub use resources::{FontId, ImageId, Resources, SoundId};
 pub use runtime::{Core, Extension};
 pub use scroll::ScrollGeometry;
 pub use spec::{
-    Align, Dir, FloatAnchor, FloatConfig, FontFamily, NodeSpec, Shadow, Sizing, TextStyle,
-    TextWrap, corner,
+    Align, Dir, FLOAT_PRESETS, FloatAnchor, FloatConfig, FontFamily, NodeSpec, OVERFLOW_CLIP,
+    OVERFLOW_SCROLL_X, OVERFLOW_SCROLL_Y, PadShorthand, Shadow, Sizing, TextStyle, TextWrap,
+    Vec2Offset, corner,
 };
 pub use stats::{FrameSample, FrameStats};
 pub use text::{Span, TextMetrics};

@@ -98,7 +98,10 @@ export interface EnterProp {
 }
 
 export interface FloatProp {
-  anchor?: 'parent' | 'viewport';
+  /** The preset to start from; every key below overrides one of its
+   *  values and leaving one out keeps the preset's own, so
+   *  `{ anchor: 'below', dx: 4 }` still hangs below with its 6px gap. */
+  anchor?: 'parent' | 'viewport' | 'below' | 'above';
   /** Attach point on the anchor, [x, y]. */
   at?: [AlignProp, AlignProp];
   /** Attach point on the floating node itself, [x, y]. */

@@ -825,6 +825,12 @@ static void conf_layout(KuiCtx *ui, const Fixtures *f) {
     kui_text(ui, KUI_STR("ab"), &s12);
     kui_text(ui, KUI_STR("cd"), &s12);
     kui_close(ui);
+    /* C has no shorthand to resolve — the struct is the four edges — so it
+     * writes what PadShorthand{x:9, y:3, b:1} resolves to. */
+    KuiSpec shorthand = {.pad_l = 9, .pad_r = 9, .pad_t = 3, .pad_b = 1,
+                         .bg = 0x2a2d3aff};
+    kui_open(ui, &shorthand, NULL);
+    kui_close(ui);
     KuiSpan spans[] = {
         {KUI_STR("a "), 0, 0},
         {KUI_STR("b"), 0x73d98cff, KUI_SPAN_BOLD},
@@ -918,15 +924,26 @@ static void conf_float(KuiCtx *ui, const Fixtures *f) {
     KuiSpec anchor = {.width = {KUI_FIXED, 80}, .height = {KUI_FIXED, 24},
                       .bg = 0x333333ff};
     kui_open_keyed(ui, KUI_STR("anchor"), &anchor, NULL);
-    /* The "below" preset spelled out: centered under the parent, 6px down. */
+    /* The same "below" the JSX and Lua props name, resolved by the same
+     * function in kui-core rather than spelled out here. */
     KuiSpec below = {
-        .float_mode = KUI_FLOAT_PARENT,
-        .float_anchor_x = KUI_CENTER, .float_anchor_y = KUI_END,
-        .float_self_x = KUI_CENTER, .float_self_y = KUI_START,
-        .float_dy = 6,
         .width = {KUI_FIXED, 40}, .height = {KUI_FIXED, 12}, .bg = 0xff0000ff,
     };
+    kui_spec_float_preset(&below, KUI_STR("below"));
     kui_open(ui, &below, NULL);
+    kui_close(ui);
+    kui_close(ui);
+    KuiSpec nudged_anchor = {.width = {KUI_FIXED, 60}, .height = {KUI_FIXED, 20},
+                             .bg = 0x444444ff};
+    kui_open_keyed(ui, KUI_STR("nudged"), &nudged_anchor, NULL);
+    /* A preset as a starting point: dx moves it sideways, and the dy the
+     * preset filled in stays, so the 6px gap survives. */
+    KuiSpec nudged = {
+        .width = {KUI_FIXED, 30}, .height = {KUI_FIXED, 10}, .bg = 0x0000ffff,
+    };
+    kui_spec_float_preset(&nudged, KUI_STR("below"));
+    nudged.float_dx = 6;
+    kui_open(ui, &nudged, NULL);
     kui_close(ui);
     kui_close(ui);
     /* Asymmetric in every axis, and attached at (-16, 254) so that

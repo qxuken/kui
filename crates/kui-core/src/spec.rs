@@ -170,6 +170,108 @@ impl FloatConfig {
         self.fit = true;
         self
     }
+
+    /// A preset by its wire index — its position in [`FLOAT_PRESETS`], which
+    /// is what the binary protocol carries and what `KUI_FLOAT_*` counts
+    /// from. `None` for an index no preset claims.
+    pub fn preset_at(i: usize) -> Option<Self> {
+        Some(match i {
+            0 => Self::parent(),
+            1 => Self::viewport(),
+            2 => Self::below(),
+            3 => Self::above(),
+            _ => return None,
+        })
+    }
+
+    /// A preset by name. Every binding that spells a float as a word —
+    /// `float="below"`, `float = "above"`, `kui_spec_float_preset` — resolves
+    /// it here, so "below" cannot mean one thing in JS and another in Lua.
+    pub fn preset(name: &str) -> Option<Self> {
+        Self::preset_at(FLOAT_PRESETS.iter().position(|p| *p == name)?)
+    }
+
+    /// One config from the pieces a binding can extract without deciding
+    /// anything: a `base` preset (from [`FloatConfig::preset`] or
+    /// [`FloatConfig::preset_at`]) and the overrides that were actually
+    /// declared. `None` leaves the base's own value — that is what lets
+    /// `float="below"` keep its 6px gap while `{ anchor: "below", dx: 2 }`
+    /// moves it sideways without flattening the gap to zero.
+    pub fn build(
+        base: FloatConfig,
+        anchor_at: Option<(Align, Align)>,
+        self_at: Option<(Align, Align)>,
+        dx: Option<f32>,
+        dy: Option<f32>,
+        fit: bool,
+    ) -> Self {
+        let mut cfg = base;
+        if let Some((x, y)) = anchor_at {
+            cfg.anchor_point = (x, y);
+        }
+        if let Some((x, y)) = self_at {
+            cfg.self_point = (x, y);
+        }
+        if let Some(x) = dx {
+            cfg.offset.x = x;
+        }
+        if let Some(y) = dy {
+            cfg.offset.y = y;
+        }
+        cfg.fit |= fit;
+        cfg
+    }
+}
+
+/// The float preset names, in wire order: the index of a name here is what
+/// the binary protocol writes for it and what `KUI_FLOAT_*` counts from.
+pub const FLOAT_PRESETS: &[&str] = &["parent", "viewport", "below", "above"];
+
+/// `overflow` as bits: the C struct's field, the binary wire's payload and
+/// what the `clip` / `scrollX` / `scrollY` booleans OR together. One set of
+/// values so a binding cannot invent its own numbering.
+pub const OVERFLOW_CLIP: u32 = 1 << 0;
+pub const OVERFLOW_SCROLL_X: u32 = 1 << 1;
+pub const OVERFLOW_SCROLL_Y: u32 = 1 << 2;
+
+/// The `pad` shorthand family as declared — any subset of the seven names,
+/// each `None` when the frontend did not see it. [`PadShorthand::resolve`]
+/// decides what a missing edge falls back to; a binding only reports what
+/// it found.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PadShorthand {
+    /// `pad`: all four edges.
+    pub all: Option<f32>,
+    /// `padX`: left and right.
+    pub x: Option<f32>,
+    /// `padY`: top and bottom.
+    pub y: Option<f32>,
+    pub l: Option<f32>,
+    pub r: Option<f32>,
+    pub t: Option<f32>,
+    pub b: Option<f32>,
+}
+
+impl PadShorthand {
+    /// True when the frontend saw any of the seven names.
+    pub fn declared(self) -> bool {
+        [self.all, self.x, self.y, self.l, self.r, self.t, self.b]
+            .iter()
+            .any(Option::is_some)
+    }
+
+    /// Four edges: an edge falls back to its axis, an axis to the all-round
+    /// `pad`, and `pad` to zero. The specific value always wins.
+    pub fn resolve(self) -> Edges {
+        let all = self.all.unwrap_or(0.0);
+        let (x, y) = (self.x.unwrap_or(all), self.y.unwrap_or(all));
+        Edges {
+            l: self.l.unwrap_or(x),
+            r: self.r.unwrap_or(x),
+            t: self.t.unwrap_or(y),
+            b: self.b.unwrap_or(y),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -604,6 +706,33 @@ impl NodeSpec {
     pub fn float(mut self, cfg: FloatConfig) -> Self {
         self.layout.float = Some(cfg);
         self
+    }
+
+    /// Apply the overflow bits ([`OVERFLOW_CLIP`] and friends). What a bit
+    /// means is decided here: a binding ORs together whatever its own
+    /// surface spells (`clip`, `scrollX`, `overflow`) and hands the number
+    /// over, rather than each one re-deciding that scrolling clips too.
+    pub fn overflow_bits(mut self, bits: u32) -> Self {
+        if bits & OVERFLOW_CLIP != 0 {
+            self = self.clip();
+        }
+        if bits & OVERFLOW_SCROLL_X != 0 {
+            self = self.scroll_x();
+        }
+        if bits & OVERFLOW_SCROLL_Y != 0 {
+            self = self.scroll_y();
+        }
+        self
+    }
+
+    /// The spec half of the `tooltip` prop: the hint is hover-gated, so the
+    /// node tracks hover, and it is what assistive technology should say, so
+    /// it is the accessible description too. The third effect — floating the
+    /// hint itself — is [`crate::schema::PropsOut::apply_tooltip`] for the
+    /// parsers and `kui_close` for C, because only they know when the node
+    /// is open.
+    pub fn apply_tooltip(self, hint: &str) -> Self {
+        self.hoverable().description(hint)
     }
 
     pub fn max_height(mut self, v: f32) -> Self {

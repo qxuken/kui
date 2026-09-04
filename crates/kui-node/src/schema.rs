@@ -1,12 +1,19 @@
 //! The JSON face of the prop schema. The rows themselves live in
 //! `kui_core::schema` (shared with Lua and pinned by the C parity test);
-//! this module parses JSON values by kind, drives the JSON lowering path
-//! (`parse_props_json`), and exports the rows for the JS encoder and the TS
-//! type generator (`protocol_props`). The binary decoder in `binary.rs`
-//! reads by the same kinds.
+//! this module parses JSON values by kind and exports the rows for the JS
+//! encoder and the TS type generator (`protocol_props`). The binary
+//! decoder in `binary.rs` reads by the same kinds.
+//!
+//! `parse_props_json` used to lower a whole frame; since the JSON transport
+//! went away its only caller is `measureText`, which reads the `style` half
+//! and drops the rest. The spec half it still builds has no caller — see
+//! D1/D2 in `docs/BACKLOG.md`.
 
 pub use kui_core::schema::*;
-use kui_core::{Align, Color, Edges, FloatConfig, NodeSpec, Sizing, TextStyle};
+use kui_core::{
+    Align, Color, FloatConfig, NodeSpec, OVERFLOW_CLIP, OVERFLOW_SCROLL_X, OVERFLOW_SCROLL_Y,
+    PadShorthand, Sizing, TextStyle,
+};
 use serde_json::{Map as JsonMap, Value as Json};
 
 use crate::{Result, err, value_of};
@@ -54,38 +61,41 @@ pub fn align_of(v: &Json) -> Result<Align> {
     }
 }
 
+/// A preset name, in either place JSON spells one: `float="below"` and the
+/// object form's `anchor`. Which names exist and what each one attaches to
+/// is [`FloatConfig::preset`]'s call, not ours.
+fn float_preset(name: &str) -> Result<FloatConfig> {
+    FloatConfig::preset(name).ok_or_else(|| {
+        err(format!(
+            "bad float preset {name:?} (one of {})",
+            kui_core::FLOAT_PRESETS.join(" | ")
+        ))
+    })
+}
+
+/// An `[x, y]` attach point, or `None` when the key is absent.
+fn attach_of(m: &JsonMap<String, Json>, key: &str) -> Result<Option<(Align, Align)>> {
+    match m.get(key).and_then(Json::as_array) {
+        Some(a) if a.len() == 2 => Ok(Some((align_of(&a[0])?, align_of(&a[1])?))),
+        Some(_) => Err(err(format!("float {key} must be [x, y]"))),
+        None => Ok(None),
+    }
+}
+
 pub fn float_of(v: &Json) -> Result<FloatConfig> {
     match v {
-        Json::String(s) => match s.as_str() {
-            "below" => Ok(FloatConfig::below()),
-            "above" => Ok(FloatConfig::above()),
-            "parent" => Ok(FloatConfig::parent()),
-            "viewport" => Ok(FloatConfig::viewport()),
-            _ => Err(err(format!("bad float {s:?}"))),
-        },
-        Json::Object(m) => {
-            let mut cfg = match m.get("anchor").and_then(Json::as_str) {
-                Some("viewport") => FloatConfig::viewport(),
-                _ => FloatConfig::parent(),
-            };
-            if let Some(at) = m.get("at").and_then(Json::as_array)
-                && at.len() == 2
-            {
-                cfg = cfg.at(align_of(&at[0])?, align_of(&at[1])?);
-            }
-            if let Some(at) = m.get("self").and_then(Json::as_array)
-                && at.len() == 2
-            {
-                cfg = cfg.self_at(align_of(&at[0])?, align_of(&at[1])?);
-            }
-            let dx = m.get("dx").and_then(Json::as_f64).unwrap_or(0.0) as f32;
-            let dy = m.get("dy").and_then(Json::as_f64).unwrap_or(0.0) as f32;
-            cfg = cfg.offset(dx, dy);
-            if m.get("fit").and_then(Json::as_bool).unwrap_or(false) {
-                cfg = cfg.fit();
-            }
-            Ok(cfg)
-        }
+        Json::String(s) => float_preset(s),
+        Json::Object(m) => Ok(FloatConfig::build(
+            match m.get("anchor").and_then(Json::as_str) {
+                Some(name) => float_preset(name)?,
+                None => FloatConfig::parent(),
+            },
+            attach_of(m, "at")?,
+            attach_of(m, "self")?,
+            f32_prop(m, "dx"),
+            f32_prop(m, "dy"),
+            bool_prop(m, "fit"),
+        )),
         _ => Err(err("float must be a string preset or config object")),
     }
 }
@@ -128,6 +138,12 @@ fn bool_prop(props: &JsonMap<String, Json>, key: &str) -> bool {
     props.get(key).and_then(Json::as_bool).unwrap_or(false)
 }
 
+/// `bit` when the boolean prop is on; the caller ORs the family together
+/// and hands the number to [`NodeSpec::overflow_bits`].
+fn bits(props: &JsonMap<String, Json>, key: &str, bit: u32) -> u32 {
+    if bool_prop(props, key) { bit } else { 0 }
+}
+
 /// The JSON-path prop parser: composites and constructor-order specials
 /// hand-written, everything else driven by the `PROPS` table. The binary
 /// decoder mirrors this structure in `binary.rs`.
@@ -143,17 +159,16 @@ pub fn parse_props_json(props: &JsonMap<String, Json>) -> Result<PropsOut> {
     if let Some(sz) = f32_prop(props, "size") {
         out.style = TextStyle::new(sz);
     }
-    // Composites.
-    let pad = f32_prop(props, "pad").unwrap_or(0.0);
-    let px = f32_prop(props, "padX").unwrap_or(pad);
-    let py = f32_prop(props, "padY").unwrap_or(pad);
-    out.with_spec(|s| {
-        s.padding(Edges {
-            l: f32_prop(props, "padL").unwrap_or(px),
-            r: f32_prop(props, "padR").unwrap_or(px),
-            t: f32_prop(props, "padT").unwrap_or(py),
-            b: f32_prop(props, "padB").unwrap_or(py),
-        })
+    // Composites: JSON says which names it saw, the core decides what they
+    // add up to.
+    out.apply_pad(PadShorthand {
+        all: f32_prop(props, "pad"),
+        x: f32_prop(props, "padX"),
+        y: f32_prop(props, "padY"),
+        l: f32_prop(props, "padL"),
+        r: f32_prop(props, "padR"),
+        t: f32_prop(props, "padT"),
+        b: f32_prop(props, "padB"),
     });
     if let Some(w) = f32_prop(props, "borderW") {
         let color = match props.get("borderColor") {
@@ -162,27 +177,17 @@ pub fn parse_props_json(props: &JsonMap<String, Json>) -> Result<PropsOut> {
         };
         out.with_spec(|s| s.border(w, color));
     }
-    if bool_prop(props, "clip") {
-        out.with_spec(NodeSpec::clip);
-    }
-    if bool_prop(props, "scrollX") {
-        out.with_spec(NodeSpec::scroll_x);
-    }
-    if bool_prop(props, "scrollY") {
-        out.with_spec(NodeSpec::scroll_y);
-    }
+    let overflow = bits(props, "clip", OVERFLOW_CLIP)
+        | bits(props, "scrollX", OVERFLOW_SCROLL_X)
+        | bits(props, "scrollY", OVERFLOW_SCROLL_Y);
+    out.with_spec(|s| s.overflow_bits(overflow));
     if let Some(v) = props.get("float") {
         let cfg = float_of(v)?;
         out.with_spec(|s| s.float(cfg));
     }
     out.key_focus = bool_prop(props, "keyFocus");
-    out.tooltip = props
-        .get("tooltip")
-        .and_then(Json::as_str)
-        .map(str::to_string);
-    if let Some(hint) = out.tooltip.clone() {
-        // The hint is the accessible description too.
-        out.with_spec(|s| s.hoverable().description(hint.as_str()));
+    if let Some(hint) = props.get("tooltip").and_then(Json::as_str) {
+        out.apply_tooltip(hint);
     }
     out.title = props
         .get("title")
