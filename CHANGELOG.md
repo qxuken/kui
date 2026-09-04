@@ -833,6 +833,28 @@ upgrades remove code from the apps on it is doing the job.
   package, so **the published crates no longer carry their examples** and
   `cargo publish` says so once per example. The repo is where you read them,
   which is where the manifests' `repository` field already pointed.
+- **CI audits `Cargo.lock` against RustSec.** A new workflow,
+  `.forgejo/workflows/audit.yml`, runs `cargo audit --deny warnings` on
+  pushes that touch the lockfile and once a week — weekly because an
+  advisory is published against code that has not moved, so a
+  commit-triggered check finds it only the next time someone happens to
+  push. It is its own workflow rather than a step in `check`: it reads the
+  lockfile and needs none of the target dir, fonts or Node that make that
+  job expensive. `--deny warnings` means an unmaintained or unsound crate
+  fails the same as a vulnerability, and the only way to accept one is an
+  entry in
+  the new `.cargo/audit.toml` naming what pulls the crate in and what would
+  let the line be deleted. The tree is clean today apart from one such
+  entry: `ttf-parser` (RUSTSEC-2026-0192) is unmaintained and arrives
+  through cosmic-text's `fontdb`, which is not optional, so it is in every
+  binding's shipped runtime and there is no version to move to. The job is
+  deliberately not in `publish`'s `needs` — a release is cut from a tag, and
+  an advisory landing after the last green `main` would otherwise block a
+  release whose code nobody had touched. It also passes `--no-yanked`: that
+  check costs one sparse-index request per crate and mostly times out on this
+  runner, and a timed-out lookup is not a warning, so it was reporting
+  success while not running. Off on purpose beats silently absent; a local
+  `cargo audit` still does it.
 
 ### What you can delete
 
