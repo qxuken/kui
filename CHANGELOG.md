@@ -304,6 +304,13 @@ upgrades remove code from the apps on it is doing the job.
   "element without a type — did it come from kui/jsx-runtime?" — moved to
   the encoder. `measureText` and `play` still take plain JS objects; those
   are queries, not a transport, and the JSON prop parser stays for them.
+  The suite that replaced `assertParity` was measured against it rather
+  than argued for: 22 single-edit mutations of `encoder.js` — swapped
+  slots in every hand-written composite, wrong mode numbers, dropped
+  flags, swapped element operands — are caught 15/22 by each, on the same
+  15. The seven neither catches (`float`'s `dx`/`dy`, `at`/`self` and
+  `fit`; the three `sizing` modes; `padX`) predate this and are a gap in
+  the corpus, noted against P7.
 
 ### What you can delete
 

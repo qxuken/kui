@@ -745,11 +745,38 @@ encoded bytes, since every prop writes at least its own id — and then that
 the stream lowers without desyncing the decoder. That is the failure the
 JSON path used to catch (a `switch` arm nobody wrote, a name the encoder
 falls through on) and it catches it for `msg`/`tag` props too, which the old
-quad comparison could not see. It does **not** check that a prop means the
-same thing on both sides; only the corpus scenes do that, and only for the
-props a scene exercises. A prop the encoder writes with the wrong arity is
-caught (the decoder desyncs); a prop it writes into the wrong slot of a
-composite is not, unless a scene covers it.
+quad comparison could not see.
+
+That argument was checked rather than assumed. 22 single-edit mutations of
+`encoder.js` — swapped slots in every hand-written composite, wrong mode
+numbers, dropped flags, swapped element operands — were run against both
+suites, the old one rebuilt from the previous commit:
+
+| | caught |
+| --- | --- |
+| old, three transports + `assertParity` | 15/22 |
+| new, one transport | 15/22 |
+
+The sets are now identical. They were not at first: the old suite caught
+`latencyHud`'s `at` operands being swapped and the new one did not, because
+`assertParity` compared an asymmetric `at: ['start', 'end']` across two
+implementations while nothing else looked at where the HUD landed. The
+elements test now asks that directly (`at[0]` places it horizontally,
+`at[1]` vertically), which is what closed the gap. Worth noting that the
+obvious differential — encode `['start','end']` and `['end','start']` and
+require them to differ — does *not* catch a swap, being symmetric itself.
+
+**Seven mutations neither suite catches, and they predate this change.**
+`float` is the worst of them: swapping `dx`/`dy`, swapping the `at` and
+`self` alignments, and dropping `fit` entirely all pass. So does every
+`sizing` mode confusion (`percent` written as `grow`, `grow` as `percent`,
+`fit` as a fixed 0), and `padX` falling back to `padY`. The reason is the
+same in each case: the composites parity test uses symmetric samples
+(`dx: -4, dy: -4`), and the generic prop loop's `50%` on a fit-sized parent
+resolves to the same geometry as a grow. **Fixing this belongs with P7, not
+here** — an asymmetric `float` scene and a sizing scene inside a
+known-size parent would close all seven at once, in all four bindings
+rather than only in Node.
 
 ### `.` D3 — Lift composite parsing into `kui-core`
 

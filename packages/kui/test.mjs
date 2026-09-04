@@ -167,6 +167,21 @@ test('every element lowers', () => {
     if (b.quads.readUInt32LE(off + KIND_WORD * 4) === 3) images++;
   }
   assert.equal(images, 1, 'one image quad');
+
+  // An element writing its own operands by hand (rather than through a
+  // schema row) needs its argument *order* pinned, not just its presence:
+  // reading `at` as [y, x] still encodes and still lowers, it just puts the
+  // HUD in the wrong corner. So this asks where it actually landed — a
+  // swap-for-a-swap comparison would not notice, being symmetric.
+  const corner = (at) => {
+    const { ctx } = run(() => box({ width: 'grow', height: 'grow' }, [el('latencyHud', { at })]));
+    const qs = decodeQuads(ctx.quads());
+    return [Math.min(...qs.map((q) => q.x)), Math.min(...qs.map((q) => q.y))];
+  };
+  const [leftX, bottomY] = corner(['start', 'end']);
+  const [rightX, topY] = corner(['end', 'start']);
+  assert.ok(leftX < rightX, 'latencyHud: at[0] places it horizontally');
+  assert.ok(topY < bottomY, 'latencyHud: at[1] places it vertically');
 });
 
 // A malformed view is rejected in JS, before anything crosses the boundary,
