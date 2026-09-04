@@ -425,6 +425,21 @@ typedef struct KuiSpec {
      * "wrap-ignored" warning (kui_take_warnings). */
     uint32_t wrap_children;
     float cross_gap;
+    /* Exit transition (see KuiEnter, which an exit reuses — an exit is an
+     * entrance read the other way). With `set` non-zero and a transition_ms,
+     * the frame after the view stops declaring this node its subtree is
+     * copied out of the last frame that had it and replayed: frozen where
+     * layout left it, painted on top of everything and outside every clip,
+     * and inert — no clicks, no Tab stop, no access row — while the slots
+     * `set` names ease from where they were to these values. Then it is
+     * dropped; so is a ghost whose key the view declares again, so a toast
+     * dismissed and re-shown never doubles. `set` = 0, or no transition_ms,
+     * leaves a removed node vanishing at once as before. Needs a stable key.
+     * width/height resize the departing node's own box only: what is inside
+     * it is a picture and is not laid out again. More than 512 nodes
+     * departing at once is refused past the budget (the rest vanish) with an
+     * "exit-budget" warning. */
+    KuiEnter exit;
 } KuiSpec;
 
 /* Disclosure state (KuiSpec.expanded): the schema index plus one, so zero

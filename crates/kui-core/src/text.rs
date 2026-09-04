@@ -264,6 +264,11 @@ pub struct TextSystem {
     raster: Raster,
     cache: FxHashMap<u64, CachedText>,
     frame: Vec<FrameText>,
+    /// The previous frame's list, kept the same way and on the same
+    /// condition as `Core`'s previous tree: a departing subtree's text
+    /// nodes carry that frame's `TextId`s, and this is what they index
+    /// (see [`Self::prev_frame_text`]).
+    prev_frame: Vec<FrameText>,
     scale: f32,
     frame_no: u64,
 }
@@ -289,6 +294,7 @@ impl TextSystem {
             raster: Raster::new(),
             cache: FxHashMap::default(),
             frame: Vec::new(),
+            prev_frame: Vec::new(),
             scale: 1.0,
             frame_no: 0,
         }
@@ -319,12 +325,20 @@ impl TextSystem {
         &mut self.font_system
     }
 
-    pub(crate) fn begin_frame(&mut self, scale: f32) {
+    /// Starts a frame. `keep_prev` retains the list just finished so the
+    /// next frame can still read its texts — `Core` sets it exactly when it
+    /// keeps the previous tree, and the two are read together.
+    pub(crate) fn begin_frame(&mut self, scale: f32, keep_prev: bool) {
         // Scale change invalidates every physical-px measurement.
         if (scale - self.scale).abs() > f32::EPSILON {
             self.cache.clear();
         }
         self.scale = scale;
+        if keep_prev {
+            std::mem::swap(&mut self.frame, &mut self.prev_frame);
+        } else {
+            self.prev_frame.clear();
+        }
         self.frame.clear();
         self.frame_no += 1;
         if self.frame_no.is_multiple_of(240) {
@@ -395,6 +409,31 @@ impl TextSystem {
     pub(crate) fn with_buffer<T>(&self, id: TextId, f: impl FnOnce(&Buffer) -> T) -> Option<T> {
         let key = self.frame.get(id.0 as usize)?.cache_key;
         self.cache.get(&key).map(|e| f(&e.buffer))
+    }
+
+    /// The cache key and colour behind one of the *previous* frame's texts
+    /// — what a departing subtree keeps instead of its `TextId`, which
+    /// indexes a list rebuilt every frame. The subtree is copied out of the
+    /// previous frame's tree, so this is the list its ids belong to (see
+    /// [`crate::depart`]).
+    pub(crate) fn prev_frame_text(&self, id: TextId) -> (u64, Color) {
+        match self.prev_frame.get(id.0 as usize) {
+            Some(t) => (t.cache_key, t.color),
+            None => (0, Color::TRANSPARENT),
+        }
+    }
+
+    /// Registers an already-shaped buffer as one of this frame's texts, by
+    /// the cache key [`Self::frame_text`] handed out. None once the entry
+    /// has been evicted — a ghost older than the cache draws no text
+    /// rather than a wrong one. Touching it here keeps it alive for as
+    /// long as something still draws it.
+    pub(crate) fn readd(&mut self, cache_key: u64, color: Color) -> Option<TextId> {
+        let frame_no = self.frame_no;
+        let entry = self.cache.get_mut(&cache_key)?;
+        entry.last_used = frame_no;
+        self.frame.push(FrameText { cache_key, color });
+        Some(TextId((self.frame.len() - 1) as u32))
     }
 
     /// Registers a text for this frame, shaping (or reusing) its buffer.

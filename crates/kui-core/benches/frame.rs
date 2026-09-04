@@ -21,6 +21,11 @@ struct Grid {
     shadows: bool,
     /// The root is faded, so emission alpha-multiplies every quad.
     opacity: bool,
+    /// Every cell declares a `transition` (nine retained tween slots each).
+    transitions: bool,
+    /// Every cell also declares an `exit`, so the frame is kept whole for
+    /// the next one to diff against (see `kui_core::depart`).
+    exits: bool,
 }
 
 impl Grid {
@@ -32,6 +37,8 @@ impl Grid {
             clicks: false,
             shadows: false,
             opacity: false,
+            transitions: false,
+            exits: false,
         }
     }
 
@@ -52,6 +59,18 @@ impl Grid {
 
     fn opacity(mut self) -> Self {
         self.opacity = true;
+        self
+    }
+
+    fn transitions(mut self) -> Self {
+        self.transitions = true;
+        self
+    }
+
+    /// Implies `transitions`: an `exit` without one is not an exit.
+    fn exits(mut self) -> Self {
+        self.transitions = true;
+        self.exits = true;
         self
     }
 }
@@ -75,6 +94,12 @@ fn grid(ui: &mut Ui<'_>, g: Grid) {
                         .shadow_color(Color::rgba8(0, 0, 0, 96))
                         .shadow_blur(6.0)
                         .shadow_y(2.0);
+                }
+                if g.transitions {
+                    spec = spec.transition(200.0);
+                }
+                if g.exits {
+                    spec = spec.exit(kui_core::Enter::default().opacity(0.0));
                 }
                 if g.clicks && c % 4 == 0 {
                     spec = spec.on_click(Value::Int((r * g.cols + c) as i64));
@@ -150,6 +175,152 @@ fn frame_10k_rects_with_shadows_and_opacity(bencher: divan::Bencher) {
     let mut core = Core::new();
     run_frame(&mut core, g);
     bencher.bench_local(|| run_frame(&mut core, g));
+}
+
+// -- Exits ------------------------------------------------------------------
+// What a departing subtree costs, in the three places it can: a frame that
+// declares no `exit` at all (the baseline every other bench here is), a
+// frame where every node declares one, and the frame that drops them.
+
+/// An `exit` needs a `transition`, and a transition on 10k nodes is nine
+/// retained tween slots each — so this is the baseline the exit bench below
+/// is read against, not `frame_10k_rects`.
+#[divan::bench]
+fn frame_10k_rects_all_transitioning(bencher: divan::Bencher) {
+    let g = Grid::new(100, 100).transitions();
+    let mut core = Core::new();
+    core.set_time(0.0);
+    run_frame(&mut core, g);
+    run_frame(&mut core, g);
+    bencher.bench_local(|| run_frame(&mut core, g));
+}
+
+/// The same frame with an `exit` on every one of the 10k cells — the
+/// pathological declaration, since `exit` is per node and a grid this size
+/// would put it on the grid, not on the cells. The difference from
+/// `frame_10k_rects_all_transitioning` is what declaring an exit costs a
+/// frame where nothing departs: the previous frame kept instead of cleared,
+/// and a diff that is two flat key arrays compared.
+#[divan::bench]
+fn frame_10k_rects_all_declaring_exit(bencher: divan::Bencher) {
+    let g = Grid::new(100, 100).exits();
+    let mut core = Core::new();
+    core.set_time(0.0);
+    run_frame(&mut core, g);
+    run_frame(&mut core, g);
+    bencher.bench_local(|| run_frame(&mut core, g));
+}
+
+/// The realistic shape: one `exit`, on one node, in a 10k-node frame — a
+/// dialog inside a big app. Keeping the previous frame to diff against is
+/// per *frame*, not per exit, so this is where that price shows.
+#[divan::bench]
+fn frame_10k_rects_one_exit(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    core.set_time(0.0);
+    let g = Grid::new(100, 100);
+    let frame = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
+        grid(&mut ui, g);
+        ui.with_keyed(
+            "dialog",
+            NodeSpec::column()
+                .width(Sizing::Fixed(200.0))
+                .height(Sizing::Fixed(100.0))
+                .bg(Color::rgb8(20, 20, 30))
+                .transition(200.0)
+                .exit(kui_core::Enter::default().opacity(0.0)),
+            |_| {},
+        );
+        ui.finish();
+        let (dl, _) = core.output();
+        dl.quads.len()
+    };
+    frame(&mut core);
+    frame(&mut core);
+    bencher.bench_local(|| frame(&mut core));
+}
+
+/// The mass removal the budget is for: 1000 rows, every one declaring an
+/// `exit`, dropped in a single frame. What is measured is that frame — the
+/// key diff that notices them all gone, the subtree copies the budget lets
+/// through, and the refusal of the rest.
+#[divan::bench]
+fn drop_1k_rows_declaring_exit(bencher: divan::Bencher) {
+    bench_drop_1k(bencher, true)
+}
+
+/// The same pair of frames with no `exit` on the rows: what dropping a
+/// thousand rows costs today, so the bench above reads as a difference.
+#[divan::bench]
+fn drop_1k_rows_plain(bencher: divan::Bencher) {
+    bench_drop_1k(bencher, false)
+}
+
+fn bench_drop_1k(bencher: divan::Bencher, exits: bool) {
+    const ROWS: usize = 1000;
+    fn rows(core: &mut Core, n: usize, exits: bool) {
+        let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
+        ui.configure_root(NodeSpec::column().fill());
+        for i in 0..n {
+            let mut spec = NodeSpec::column()
+                .width(Sizing::Grow(1.0))
+                .height(Sizing::Fixed(14.0))
+                .bg(Color::rgb8((i % 255) as u8, 90, 140));
+            if exits {
+                spec = spec
+                    .transition(200.0)
+                    .exit(kui_core::Enter::default().opacity(0.0));
+            }
+            ui.with_indexed(i as u64, spec, |_| {});
+        }
+        ui.finish();
+    }
+    let mut core = Core::new();
+    core.set_time(0.0);
+    rows(&mut core, ROWS, exits);
+    bencher.bench_local(|| {
+        // Back to a full list (the ghosts of the last drop are discarded
+        // the moment their keys return), then drop the lot.
+        rows(&mut core, ROWS, exits);
+        rows(&mut core, 0, exits);
+        core.depart.node_count()
+    });
+}
+
+/// The frame *after* a mass removal: nothing left to diff, and the budget's
+/// worth of frozen subtrees replayed on top of an empty view.
+#[divan::bench]
+fn replay_a_full_depart_store(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    core.set_time(0.0);
+    let fill = |core: &mut Core, n: usize| {
+        let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
+        ui.configure_root(NodeSpec::column().fill());
+        for i in 0..n {
+            ui.with_indexed(
+                i as u64,
+                NodeSpec::column()
+                    .width(Sizing::Grow(1.0))
+                    .height(Sizing::Fixed(14.0))
+                    .bg(Color::rgb8((i % 255) as u8, 90, 140))
+                    .transition(100_000.0)
+                    .exit(kui_core::Enter::default().opacity(0.0)),
+                |_| {},
+            );
+        }
+        ui.finish();
+    };
+    fill(&mut core, 1000);
+    fill(&mut core, 0);
+    assert_eq!(core.depart.node_count(), kui_core::depart::MAX_NODES);
+    bencher.bench_local(|| {
+        let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.finish();
+        let (dl, _) = core.output();
+        dl.quads.len()
+    });
 }
 
 /// The wrapping row at scale: 10k chips of varying width in 100 rows that

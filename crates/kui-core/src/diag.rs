@@ -85,6 +85,14 @@ pub const MODAL_WITHOUT_NAME: &str = "modal-without-name";
 /// why a column cannot have it.
 pub const WRAP_IGNORED: &str = "wrap-ignored";
 
+/// More nodes are departing at once than the exit store will hold (see
+/// [`crate::depart::MAX_NODES`]), so the subtrees past the budget vanished
+/// instead of animating out. Correct — that is what a node with no `exit`
+/// does — and invisible from the outside, which is the whole reason it is a
+/// line here: a list that drops a thousand rows wants `exit` on the list,
+/// not on every row.
+pub const EXIT_BUDGET: &str = "exit-budget";
+
 /// A prop name nothing claims: not a schema row, not a composite, not one of
 /// the element's own props (see `schema::known_prop`). The binding threw the
 /// declaration away — `hoverBg` in a Lua table, `onclick` in JSX — so unlike

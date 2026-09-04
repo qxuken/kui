@@ -9,6 +9,48 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **`exit`: a node can leave, not just arrive** (`docs/adr/0005-the-paint-vocabulary.md`,
+  backlog C8). `enter` said where a node's slots start the first frame it is
+  seen. The mirror image was the one animation the frame model could not
+  express: a node the view stops declaring is gone before `finish_frame`
+  runs, so a panel could fade in and never out, and views worked around it
+  by keeping dead rows in the model with a `dying: bool` and a timer, so the
+  app owned a clock and a lifetime that had nothing to do with the app.
+  **`exit` is an `Enter` read the other way** — `{ dx, dy, width, height,
+  bg, radius, opacity }`, the same shape and the same parser, so it is one
+  plain schema row and Lua, JSX and the TS types got it for nothing.
+  With a `transition`, the frame after the view stops declaring a node its
+  subtree is copied out of the last frame that had it and replayed: **frozen**
+  where layout left it (a dying node must not fight the live layout for
+  space, which is also how CSS's exit transitions work), **on top and outside
+  every clip** (its ancestors may be gone), and **inert** — no hit region, no
+  Tab stop, no access row, because it is a picture of a node rather than a
+  node. It is dropped when its transition ends, and immediately if the key
+  comes back, so a toast dismissed and re-shown never doubles.
+  **Bounded, and it says when the bound bites.** `exit` is opt-in per node
+  and needs a `transition`; without both, a removed node vanishes at once as
+  it always did. No more than 512 nodes may be departing at once — past
+  that they vanish, which is exactly what a node with no `exit` does, and
+  the first refusal raises an `exit-budget` warning with the sentence that
+  fixes it (a list dropping a thousand rows wants `exit` on the list, not on
+  every row). `animating()` stays honestly true while a ghost is in flight,
+  so the window keeps drawing until the last exit finishes and then idles.
+  A driver that never sets a clock gets no ghosts at all: every transition
+  snaps without one, and an exit that snaps is a plain disappearance.
+  Two limits are notes rather than surprises: `exit`'s `width`/`height`
+  resize the departing node's own box only, since re-laying out a frozen
+  subtree is the one thing the design rules out; and a spring easing plays
+  out as an ease-out, because nothing can retarget a node the view has
+  stopped talking about. Benched (`benches/frame.rs`): a 10k-node frame that
+  declares no `exit` pays about 5% for `NodeSpec` growing an `Option<Enter>`,
+  one exit inside such a frame costs under 2% more, dropping a thousand rows
+  that all declare one costs about 180 µs once, and a full 512-node store
+  replays in 12 µs a frame.
+  **What you can delete:** the `dying` / `removing_at` flag on your model
+  rows, the `Instant` beside it, the `retain` that could not run until the
+  animation finished, and the frame requests that kept the window awake for
+  it. Drop the item when it is gone; the core plays out the picture.
+
 - **`unknown-prop`: a misspelled prop says so** (backlog P4). Both dynamic
   bindings ended their prop loop by ignoring names they could not place —
   deliberately, since an element's own props (`initial`, `src`, `multiline`)

@@ -4,11 +4,12 @@
 //! here (not in a borrowing wrapper) is what lets flat C bindings drive a
 //! frame through one opaque pointer; the Rust `Ui` is a thin safe façade.
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::anim::{AnimStore, Slot, Track};
 use crate::atlas::GlyphAtlas;
 use crate::color::Color;
+use crate::depart::{DepartStore, Ghost, GhostContent, Playback};
 use crate::diag::{Diagnostics, Warning};
 use crate::display::{DisplayList, NO_CLIP, Quad, QuadKind};
 use crate::edit::{EditOptions, EditStore};
@@ -60,6 +61,9 @@ pub struct Core {
     pub edit: EditStore,
     /// Transition tweens, keyed by node; see `anim`. Fed by `set_time`.
     pub anim: AnimStore,
+    /// Subtrees the view stopped declaring, played out and then dropped;
+    /// see `depart`. Empty unless something declares `exit`.
+    pub depart: DepartStore,
     /// Playback bookkeeping and the audio command queue; see `audio`.
     pub audio: crate::audio::AudioStore,
     /// Frame timing pushed by the frame driver; see `widgets::latency_graph`.
@@ -88,6 +92,11 @@ pub struct Core {
     /// focus leaving synthesizes the missing releases from it.
     keys_held: Vec<KeyPress>,
     pub(crate) tree: Tree,
+    /// The previous frame's tree, kept only while a frame declares `exit`
+    /// — `begin_frame` swaps the two buffers instead of clearing one, so
+    /// the frame that notices a node gone still has the node. Empty (and
+    /// untouched) for every frame that declares no exit.
+    prev_tree: Tree,
     pub(crate) display: DisplayList,
     pub(crate) viewport: Size,
     pub(crate) scale: f32,
@@ -125,6 +134,12 @@ pub struct Core {
     /// Whether any node this frame declared `on_layout` — lets the rect
     /// report skip the tree walk for the common case.
     any_layout: bool,
+    /// Whether any node this frame declared a workable `exit`. Gates the
+    /// tree swap and the key diff, so a frame with no exits pays one bool.
+    any_exit: bool,
+    /// Per-node inherited opacity while a departing subtree is replayed
+    /// (`depart`), reused across ghosts and frames.
+    ghost_opacity: Vec<f32>,
     /// A view asked for one more frame (`request_frame`); cleared by
     /// `begin_frame`, reported through `animating`.
     frame_requested: bool,
@@ -215,6 +230,7 @@ impl Core {
             scroll: ScrollStore::default(),
             edit: EditStore::default(),
             anim: AnimStore::default(),
+            depart: DepartStore::default(),
             audio: crate::audio::AudioStore::default(),
             stats: FrameStats::default(),
             env: Env::default(),
@@ -227,6 +243,7 @@ impl Core {
             access: Default::default(),
             access_built: 0,
             tree: Tree::new(),
+            prev_tree: Tree::new(),
             display: DisplayList::default(),
             viewport: Size::ZERO,
             scale: 1.0,
@@ -244,6 +261,8 @@ impl Core {
             modal_focus: Vec::new(),
             any_slide: false,
             any_layout: false,
+            any_exit: false,
+            ghost_opacity: Vec::new(),
             frame_requested: false,
             pending_reveal: None,
             ime_rect: None,
@@ -1603,7 +1622,7 @@ impl Core {
     /// asked for another frame — drivers schedule one without waiting for
     /// input.
     pub fn animating(&self) -> bool {
-        self.anim.animating() || self.frame_requested
+        self.anim.animating() || self.depart.animating() || self.frame_requested
     }
 
     /// Asks the driver for one more frame right after this one. A view
@@ -1674,10 +1693,25 @@ impl Core {
         // compared against (see `set_key_focus`).
         std::mem::swap(&mut self.declared_focus, &mut self.declared_focus_last);
         self.declared_focus.clear();
+        // A frame that declared an `exit` may be the last one some node is
+        // ever seen in, so it is kept whole: the two tree buffers swap
+        // roles instead of one being cleared, which costs an allocation
+        // that already existed and no copying. Nothing else keeps it — a
+        // frame with no exits empties the spare, so a stale tree can never
+        // be diffed against.
+        let keep_prev = self.any_exit;
+        if keep_prev {
+            std::mem::swap(&mut self.tree, &mut self.prev_tree);
+        } else {
+            self.prev_tree.clear();
+        }
         self.tree.clear();
         self.display.clear();
-        self.text.begin_frame(scale);
+        // The text list goes with the tree: a kept frame's text nodes carry
+        // that frame's `TextId`s, and nothing else can resolve them.
+        self.text.begin_frame(scale, keep_prev);
         self.anim.begin_frame();
+        self.depart.begin_frame();
         self.tree.push(
             NIL,
             Key::ROOT,
@@ -1698,6 +1732,7 @@ impl Core {
         self.any_modal = false;
         self.any_slide = false;
         self.any_layout = false;
+        self.any_exit = false;
         self.frame_requested = false;
     }
 
@@ -1726,6 +1761,9 @@ impl Core {
             self.ease_spec(Key::ROOT, &mut spec);
             if spec.on_layout.is_some() {
                 self.any_layout = true;
+            }
+            if spec.exit.is_some() && spec.transition.is_some() {
+                self.any_exit = true;
             }
             self.tree.specs[0] = spec;
         }
@@ -1952,6 +1990,9 @@ impl Core {
         if spec.on_layout.is_some() {
             self.any_layout = true;
         }
+        if spec.exit.is_some() && spec.transition.is_some() {
+            self.any_exit = true;
+        }
         let parent = self.current();
         let idx = self
             .tree
@@ -2001,6 +2042,9 @@ impl Core {
         if spec.on_layout.is_some() {
             self.any_layout = true;
         }
+        if spec.exit.is_some() && spec.transition.is_some() {
+            self.any_exit = true;
+        }
         self.edit.declare(
             key,
             initial,
@@ -2034,6 +2078,9 @@ impl Core {
         self.ease_spec(key, &mut spec);
         if spec.on_layout.is_some() {
             self.any_layout = true;
+        }
+        if spec.exit.is_some() && spec.transition.is_some() {
+            self.any_exit = true;
         }
         let parent = self.current();
         self.tree
@@ -2303,6 +2350,16 @@ impl Core {
             }
         }
 
+        // Exits, last: what the previous frame declared and this one does
+        // not is copied out of the tree the previous frame left behind and
+        // replayed on top, inert (see `depart`).
+        if !self.prev_tree.is_empty() || !self.depart.is_empty() {
+            self.collect_departures();
+        }
+        if !self.depart.is_empty() {
+            self.replay_departures(scale);
+        }
+
         self.emit_focus_ring(scale);
 
         self.interaction.set_hits(hits);
@@ -2312,6 +2369,223 @@ impl Core {
         self.interaction.scroll_regions = scroll_regions;
         self.interaction.scrollbars = scrollbars;
         self.ime_rect = self.focused_caret_rect();
+    }
+
+    /// The exit diff: every key the previous frame declared an `exit` on
+    /// and this frame does not becomes a departing subtree, copied out of
+    /// `prev_tree` — the frame that still had it — and handed to the store.
+    /// A ghost whose key came back is retired here too: the live node wins.
+    ///
+    /// Only two kinds of key are interesting (the previous frame's
+    /// exit-declaring roots, and the roots already departing), and both are
+    /// few, so the walk over *this* frame's keys — the part that scales
+    /// with the frame — is one AND against a 64-bit membership mask per
+    /// node, and a hash lookup only for the handful that collide with it.
+    fn collect_departures(&mut self) {
+        let Some(now) = self.anim.time() else {
+            // No clock: every transition snaps, and an exit that snaps is
+            // the plain disappearance it has always been.
+            self.depart.clear();
+            return;
+        };
+        // The steady state: the view declared the same nodes in the same
+        // order, so nothing left and nothing came back. Two flat arrays of
+        // u64 compared is cheaper than anything that looks at the keys one
+        // at a time, and it is the case almost every frame is.
+        if self.prev_tree.keys == self.tree.keys {
+            return;
+        }
+        let mut watch: FxHashSet<Key> = FxHashSet::default();
+        let mut mask = 0u64;
+        for k in self.depart.keys() {
+            watch.insert(k);
+            mask |= 1u64 << (k.0 & 63);
+        }
+        let mut candidates: Vec<usize> = Vec::new();
+        for i in 0..self.prev_tree.len() {
+            let spec = &self.prev_tree.specs[i];
+            if spec.exit.is_some() && spec.transition.is_some() {
+                candidates.push(i);
+                let k = self.prev_tree.keys[i];
+                watch.insert(k);
+                mask |= 1u64 << (k.0 & 63);
+            }
+        }
+        if watch.is_empty() {
+            return;
+        }
+        let mut live: FxHashSet<Key> = FxHashSet::default();
+        for &k in &self.tree.keys {
+            if mask & (1u64 << (k.0 & 63)) != 0 && watch.contains(&k) {
+                live.insert(k);
+            }
+        }
+        self.depart.retire_returned(&live);
+        // In tree order, so a departing subtree swallows the exits nested
+        // inside it rather than drawing them a second time on top.
+        let mut swallowed_until = 0usize;
+        for i in candidates {
+            if i < swallowed_until || live.contains(&self.prev_tree.keys[i]) {
+                continue;
+            }
+            swallowed_until = self.prev_tree.subtree_end(i);
+            // The group opacity the root inherited from ancestors that are
+            // now gone: a subtree already half-faded departs from there.
+            let mut base = 1.0;
+            let mut a = self.prev_tree.parent[i];
+            while a != NIL {
+                base *= self.prev_tree.specs[a as usize].style.opacity;
+                a = self.prev_tree.parent[a as usize];
+            }
+            self.depart
+                .depart(&self.prev_tree, i, now, base, &self.text);
+        }
+        if let Some(key) = self.depart.refused.take() {
+            self.diag.raise(Warning {
+                code: crate::diag::EXIT_BUDGET,
+                key,
+                message: format!(
+                    "more than {} nodes are departing at once, so this subtree was dropped \
+                     instead of animating out; `exit` is per node, and a list that drops \
+                     many rows at once wants it on the list, not on every row",
+                    crate::depart::MAX_NODES
+                ),
+            });
+        }
+    }
+
+    /// Replays every departing subtree: frozen rects moved by however far
+    /// its `exit` has got, painted on top of the live frame and outside
+    /// every clip (its ancestors may be gone), and nothing else — no hit
+    /// region, no scroll region, no access row.
+    fn replay_departures(&mut self, scale: f32) {
+        let Some(now) = self.anim.time() else {
+            return;
+        };
+        let mut depart = std::mem::take(&mut self.depart);
+        depart.replay(now, |g, play| self.emit_ghost(g, play, scale));
+        self.depart = depart;
+    }
+
+    /// One departing subtree's quads. A smaller `emit_node`: the parts a
+    /// picture has (shadow, background, border, its content) and none of
+    /// the parts a node has.
+    fn emit_ghost(&mut self, g: &Ghost, play: &Playback, scale: f32) {
+        self.ghost_opacity.clear();
+        self.ghost_opacity.resize(g.nodes.len(), 1.0);
+        for (i, node) in g.nodes.iter().enumerate() {
+            let mut rect = Rect::new(
+                node.rect.x + play.offset.x,
+                node.rect.y + play.offset.y,
+                node.rect.w,
+                node.rect.h,
+            );
+            let mut style = node.spec.style;
+            let inherited = if node.parent == NIL {
+                // The root carries the eased slots; an `exit` says nothing
+                // about the subtree under it, which fades and moves with
+                // its root and no more.
+                if let Some(bg) = play.bg {
+                    style.bg = bg;
+                }
+                if let Some(radius) = play.radius {
+                    style.radius = radius;
+                }
+                if let Some((w, h)) = play.size {
+                    // The root's own box only: the subtree inside it is a
+                    // picture, and re-laying it out is the one thing a
+                    // frozen ghost must not do.
+                    rect.w = w.unwrap_or(rect.w);
+                    rect.h = h.unwrap_or(rect.h);
+                }
+                style.opacity = play.opacity;
+                play.base_opacity
+            } else {
+                self.ghost_opacity[node.parent as usize]
+            };
+            let opacity = (inherited * style.opacity).clamp(0.0, 1.0);
+            self.ghost_opacity[i] = opacity;
+            let first_quad = self.display.quads.len();
+            if style.shadow.is_visible() {
+                self.display
+                    .quads
+                    .push(shadow_quad(&style, rect, NO_CLIP, scale));
+            }
+            if style.bg.is_visible() || (style.border_w > 0.0 && style.border_color.is_visible()) {
+                self.display.quads.push(Quad {
+                    rect: rect.scaled(scale),
+                    color: style.bg,
+                    border_color: style.border_color,
+                    radius: style.radius.map(|r| r * scale),
+                    border_w: style.border_w * scale,
+                    blur: 0.0,
+                    kind: QuadKind::Solid,
+                    uv: [0; 4],
+                    clip: NO_CLIP.scaled(scale),
+                });
+            }
+            match node.content {
+                GhostContent::Container => {}
+                GhostContent::Text { cache_key, color } => {
+                    // None once the shaped buffer has been evicted: a ghost
+                    // older than the text cache draws no text rather than
+                    // somebody else's.
+                    if let Some(tid) = self.text.readd(cache_key, color) {
+                        self.text.emit(
+                            tid,
+                            Vec2::new(rect.x, rect.y),
+                            Size::new(rect.w, rect.h),
+                            NO_CLIP.scaled(scale),
+                            &mut self.atlas,
+                            &mut self.display.quads,
+                        );
+                    }
+                }
+                GhostContent::Edit(key) => {
+                    let pad = node.spec.layout.padding;
+                    let origin = Vec2::new(
+                        ((rect.x + pad.l) * scale).round(),
+                        ((rect.y + pad.t) * scale).round(),
+                    );
+                    // Never focused: the departing subtree gave the
+                    // keyboard up the frame it stopped being declared.
+                    self.edit.emit(
+                        key,
+                        origin,
+                        false,
+                        NO_CLIP.scaled(scale),
+                        &mut self.text,
+                        &mut self.atlas,
+                        &mut self.display.quads,
+                    );
+                }
+                GhostContent::Image(id) => {
+                    if let Some(entry) = self.resources.images.get(id)
+                        && let Some(slot) = self.atlas.get_or_insert_image(
+                            id,
+                            entry.width,
+                            entry.height,
+                            &entry.rgba,
+                        )
+                    {
+                        self.display.quads.push(Quad {
+                            rect: rect.scaled(scale),
+                            color: Color::WHITE,
+                            border_color: Color::TRANSPARENT,
+                            radius: style.radius.map(|r| r * scale),
+                            border_w: 0.0,
+                            blur: 0.0,
+                            kind: QuadKind::Image,
+                            uv: [slot.x, slot.y, slot.w, slot.h],
+                            clip: NO_CLIP.scaled(scale),
+                        });
+                    }
+                }
+            }
+            if opacity < 1.0 {
+                fade(&mut self.display.quads[first_quad..], opacity);
+            }
+        }
     }
 
     /// After layout: nodes that `slide` ease from last frame's position

@@ -465,6 +465,13 @@ pub struct KuiSpec {
     /// Space between wrap lines, across the main axis (`gap` stays the
     /// space between children along it).
     pub cross_gap: f32,
+    /// Exit: with `set` non-zero and a `transition_ms`, the frame after the
+    /// view stops declaring this node its subtree is copied out of the last
+    /// frame that had it and replayed — frozen where layout left it, on top
+    /// of everything and inert — while the named slots ease from where they
+    /// were to these values (see `KuiEnter`, which an exit reuses: an exit
+    /// is an entrance read the other way).
+    pub exit: KuiEnter,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -1038,6 +1045,9 @@ fn spec_of(
     }
     if s.enter.set != 0 {
         spec = spec.enter(enter_of(&s.enter));
+    }
+    if s.exit.set != 0 {
+        spec = spec.exit(enter_of(&s.exit));
     }
     if s.click_sound != 0 {
         spec = spec.click_sound(kui_core::SoundId::from_ffi(s.click_sound));
@@ -3226,6 +3236,18 @@ mod schema_parity {
                         opacity: 0.0,
                     }
                 }
+                "exit" => {
+                    s.exit = KuiEnter {
+                        set: KUI_ENTER_OFFSET | KUI_ENTER_RADIUS,
+                        dx: -F,
+                        dy: 0.0,
+                        width: KuiSizing { tag: 0, value: 0.0 },
+                        height: KuiSizing { tag: 0, value: 0.0 },
+                        bg: 0,
+                        radius: F,
+                        opacity: 0.0,
+                    }
+                }
                 "repeat" => s.repeat = 1,
                 "delay" => s.delay_ms = F,
                 "onClick" => click = msg(Value::Int(7)),
@@ -3400,6 +3422,7 @@ mod schema_parity {
             shadow_spread: -2.0,
             wrap_children: 1,
             cross_gap: 6.0,
+            exit: unsafe { std::mem::zeroed() },
         };
         let expected = NodeSpec::row()
             .width(Sizing::Grow(2.0))
@@ -4414,6 +4437,7 @@ mod abi_parity {
             shadow_spread: f32 => "float",
             wrap_children: u32 => "uint32_t",
             cross_gap: f32 => "float",
+            exit: KuiEnter => "KuiEnter",
         });
 
         abi_struct!(o, KuiAccessNode {

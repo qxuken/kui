@@ -67,7 +67,7 @@ cargo run -p kui --example modal_editor   # helix-flavored modal editing; the ap
 cargo run -p kui --example splitmux       # tmux-style splits, tabs, focus, ⌘-drag pane moves; the pane tree is data
 cargo run -p kui --example syntax_view    # syntax highlighting as coalesced style runs
 cargo run -p kui --example gallery        # registered images: Fit sizing, kept aspect, rounded corners
-cargo run -p kui --example toasts         # enter: toasts that slide in, a panel that springs open
+cargo run -p kui --example toasts         # enter/exit: toasts that slide in and back out, a panel that springs open
 ```
 
 The same app from Node with JSX — build the addon with
@@ -366,6 +366,24 @@ that are hard to reverse and would look arbitrary without their context.
   a popover under a word is the measured prefix as a float offset, a
   minimap is the layout events of the panes. Line and glyph boxes inside a
   paragraph are the next payload on this road, not a different road.
+- **A node can leave, not just arrive.** `enter` says where a node's slots
+  start the first frame it is seen; `exit` — the same declaration read the
+  other way, `{ dx, dy, width, height, bg, radius, opacity }` — says where
+  they end the frame after the view stops declaring it. The view does not
+  keep a dead node around to animate it away: the core copies the departing
+  subtree out of the last frame that had it and replays *that*, frozen where
+  layout left it, painted on top of everything and outside every clip
+  (its ancestors may be gone), and **inert** — no clicks, no Tab stop, no
+  access row, because it is a picture of a node rather than a node. The
+  ghost is dropped when its transition ends, and immediately if the key
+  comes back, so a toast dismissed and re-shown never doubles. It is opt-in
+  per node and needs a `transition`; without both, a removed node vanishes
+  at once as it always did, and no more than
+  [512 nodes](docs/adr/0005-the-paint-vocabulary.md) may be departing at
+  once — past that they vanish, and an `exit-budget` warning says so, since
+  a list dropping a thousand rows wants `exit` on the list and not on every
+  row. `animating()` stays true while a ghost is in flight, so the driver
+  keeps drawing until it is done and then idles.
 - **Diagnostics are data.** The failures that used to be silent — a
   `Grow(2)` that is the only grow child (or grows across the parent's main
   axis) and so has no weight to split, a `transition` on an auto-keyed child
@@ -403,8 +421,8 @@ that are hard to reverse and would look arbitrary without their context.
   through the fade; and it changes nothing but paint, so a faded subtree
   still lays out, still takes clicks and is still read out (CSS's rule for
   `opacity: 0`, and the one that makes fading a live panel usable). It eases
-  with `transition`, so `enter={{ opacity: 0 }}` fades a whole panel in —
-  the half of exit animations that was missing.
+  with `transition`, so `enter={{ opacity: 0 }}` fades a whole panel in, and
+  `exit={{ opacity: 0 }}` fades it back out.
   `shadowColor` + `shadowBlur` / `shadowX` / `shadowY` / `shadowSpread` cast
   one drop shadow behind a node: the core emits the shape already offset,
   spread and inflated, and the shader softens the same SDF it uses for
@@ -678,11 +696,11 @@ nothing else can.
 ## Status / next
 
 v0 scope: no z-index (floats stack in tree order). Transitions cover sizing, colors, radius,
-opacity, shadows and position (`slide`, `enter`); a removed node still vanishes at once — the
-core keeps nothing it did not draw last frame, so there is no exit animation. `opacity` supplies
-the missing half (a subtree can now fade), and
-[ADR 0005](docs/adr/0005-the-paint-vocabulary.md) designs the other: a departing subtree
-retained by key, frozen where it was and replayed inert until its transition ends.
+opacity, shadows, position (`slide`, `enter`) and departure (`exit`): a node the view stops
+declaring is copied out of the last frame that had it and replayed frozen, on top and inert
+until its transition ends ([ADR 0005](docs/adr/0005-the-paint-vocabulary.md)). It is opt-in per
+node, capped at 512 departing nodes at once, and a ghost cannot be re-laid-out — `exit`'s
+`width`/`height` resize the departing node's own box and nothing inside it moves.
 Paint is fill, border, four radii, group opacity and one outer drop shadow per node: there are
 **no gradients** in v0 (a stop list, a type, a geometry and an interpolation space are not a
 paint prop's worth of work — use an image or stack solids), no inset or multiple shadows, and

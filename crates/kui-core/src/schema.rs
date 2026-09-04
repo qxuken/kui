@@ -121,6 +121,7 @@ pub const P_SHADOW_Y: u32 = 73;
 pub const P_SHADOW_SPREAD: u32 = 74;
 pub const P_WRAP_CHILDREN: u32 = 75;
 pub const P_CROSS_GAP: u32 = 76;
+pub const P_EXIT: u32 = 77;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -658,6 +659,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "Where the node starts the first frame it is seen `{ dx?, dy?, width?, height?, bg?, radius?, opacity? }`: those slots ease in from there over `transition` ms instead of snapping (`dx`/`dy` slide it in from that far away, `opacity: 0` fades the whole subtree in).",
     },
     PropDef {
+        name: "exit",
+        id: P_EXIT,
+        kind: Kind::Enter,
+        apply: Apply::SpecEnter(|s, e| s.exit(e)),
+        doc: "Where the node ends the frame after the view stops declaring it `{ dx?, dy?, width?, height?, bg?, radius?, opacity? }` — an `enter` read the other way. With a `transition`, the departing subtree is copied out of the last frame that had it and replayed frozen, on top and inert (no clicks, no Tab stop, no access row) while those slots ease from where they were, then dropped; without one it vanishes at once as it always did. `width`/`height` resize the departing node's own box only — the subtree inside it is a picture and is not laid out again. Needs a stable key across frames.",
+    },
+    PropDef {
         name: "repeat",
         id: P_REPEAT,
         kind: Kind::Enum(REPEATS),
@@ -957,6 +965,7 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     ("repeat", "`repeat` (`KUI_REPEAT_*`)"),
     ("delay", "`delay_ms`"),
     ("enter", "`enter` (`KuiEnter`, with `set` bits)"),
+    ("exit", "`exit` (`KuiEnter`, with `set` bits)"),
     ("opacity", "`opacity` with `opacity_set`"),
     ("radiusTL", "`radius_tl` with `per_corner`"),
     ("radiusTR", "`radius_tr` with `per_corner`"),

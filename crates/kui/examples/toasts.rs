@@ -1,20 +1,30 @@
-//! Entrance transitions: `enter` says where a node starts the first frame
-//! it is seen, so a toast slides in from off screen and a panel opens from
-//! behind the window edge without the view staging a frame to animate from.
+//! Entrance and exit transitions: `enter` says where a node starts the
+//! first frame it is seen and `exit` where it ends the frame after the view
+//! stops declaring it, so a toast slides in from off screen and back out
+//! again without the view staging a frame to animate from — or keeping a
+//! dead toast in its model to animate it away.
 //!
-//! Three things worth watching:
+//! Four things worth watching:
 //!   - a toast arrives from the right and fades up (`enter` with an offset
 //!     and a bg), and it does that on the very frame it appears;
+//!   - it leaves the same way (`exit`, which is an `enter` read the other
+//!     way): the app drops it from `self.toasts` the moment it expires, and
+//!     what slides back out is a *copy* the core kept — frozen where layout
+//!     left it, on top, and inert. Nothing in this file waits for it;
 //!   - older toasts `slide` down as the newest one pushes into the stack,
-//!     and back up as they expire — position eases whenever layout moves
-//!     them, which is what `slide` buys on top of the entrance;
-//!   - the panel enters again every time it is toggled back on, because a
-//!     node the last frame didn't draw is new again. Toggling it off is a
-//!     plain disappearance: there is no exit animation yet.
+//!     and back up as one goes — position eases whenever layout moves them,
+//!     which is what `slide` buys on top of the entrance, and it happens
+//!     while the departing toast is still on screen beside them;
+//!   - "clear" drops the whole stack in one frame. Every toast departs at
+//!     once, and they all animate out, because `exit` is opt-in per node
+//!     and a handful of cards is nowhere near the store's budget. A list
+//!     that dropped a thousand rows would be, and would say so.
 //!
 //! Expiry needs a clock the core doesn't have, so the app keeps its own
 //! `Instant`s and asks for the next frame while any toast is still due to
-//! go. With none left it stops asking and the window idles.
+//! go. With none left it stops asking — and the window keeps drawing anyway
+//! until the last exit finishes, because a departing subtree is mid-flight
+//! and `animating()` says so.
 //!
 //! Run: cargo run -p kui --example toasts
 
@@ -90,6 +100,10 @@ impl Toasts {
                             // transparent part happens off screen, so what
                             // you see is a card that is already there.
                             .enter(Enter::from(340.0, 0.0).bg(clear(card())))
+                            // And out the same way. The app has already
+                            // forgotten this toast by the time this runs:
+                            // what leaves is the core's copy of it.
+                            .exit(Enter::from(340.0, 0.0).bg(clear(card())))
                             // And afterwards it keeps following layout, so
                             // the stack closes up when one of them goes.
                             .slide(),
@@ -128,13 +142,18 @@ impl Toasts {
                 .border(1.0, edge())
                 .transition(420.0)
                 .easing(Easing::Spring)
-                .enter(Enter::from(-240.0, 0.0)),
+                .enter(Enter::from(-240.0, 0.0))
+                // A spring on the way in; on the way out the ghost samples
+                // the spring as an ease-out, since nothing can retarget a
+                // node the view has stopped talking about.
+                .exit(Enter::from(-240.0, 0.0)),
             |ui| {
                 ui.text("Panel", TextStyle::new(15.0));
                 ui.text(
-                    "Entered from one width to the left. Close and open it \
-                     again and it enters again — the core keeps nothing for \
-                     a node it didn't draw last frame.",
+                    "Entered from one width to the left, and it leaves the \
+                     same way. Close and open it again and it enters again: \
+                     the ghost is discarded the moment the key comes back, \
+                     so the two never overlap.",
                     TextStyle::new(12.0).color(ink()),
                 );
             },
@@ -155,12 +174,15 @@ impl App for Toasts {
         ui.window_title("kui — toasts");
         ui.configure_root(NodeSpec::column().fill().center().gap(20.0));
 
-        ui.text("enter: where a node starts on its first frame", {
+        ui.text("enter and exit: where a node starts, and where it ends", {
             TextStyle::new(20.0)
         });
         ui.text(
             "A transition never animates in from nowhere, so a node's first \
-             sight snaps. `enter` gives it somewhere to come from.",
+             sight snaps: `enter` gives it somewhere to come from. Nor out \
+             into nowhere — a node the view stops declaring is gone before \
+             the frame ends — so `exit` has the core keep a picture of it \
+             and play that out instead.",
             TextStyle::new(13.0).color(ink()),
         );
         ui.with(NodeSpec::row().gap(12.0).cross_align(Align::Center), |ui| {

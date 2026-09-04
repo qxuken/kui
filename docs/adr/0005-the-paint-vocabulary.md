@@ -1,9 +1,17 @@
 ---
 status: accepted
 date: 2026-09-04
+amended: 2026-09-04
 ---
 
 # The paint vocabulary: group opacity and shadows in, gradients out, exit animations designed
+
+> **Amended 2026-09-04.** Exit animations are built, as
+> `crates/kui-core/src/depart.rs` and one `exit` schema row. The design
+> below held; two things changed, both recorded in
+> [Amendment: exit animations, built](#amendment-exit-animations-built) at
+> the end of this document — where the departing subtree is copied *from*,
+> and the answer to the open question about `animating()`.
 
 `crates/kui-core/src/display.rs` was the whole renderer contract — fill,
 border, four radii, glyph, image — and three things a real UI wants were
@@ -153,7 +161,8 @@ its whole duration, which is correct but means removing a node now costs
 frames. That is fine for a dialog and wrong for a list that drops a
 thousand rows, and the policy — cap the ghosts, cap the duration, or make
 `exit` opt-in per node as designed here — should be decided with a real
-view in front of us.
+view in front of us. **Answered in the amendment below: all three of the
+first and none of the second.**
 
 ## Considered options
 
@@ -195,3 +204,165 @@ view in front of us.
   rounded scroll container does not round its children. Four more floats on
   the hot struct plus a second SDF per fragment is a bigger bill than
   either of these, and it is left in the backlog with that price on it.
+
+## Amendment: exit animations, built
+
+Built as designed, with two corrections and one answer. The view they were
+decided against is `crates/kui/examples/toasts.rs`, which now has an `exit`
+on every toast and on the panel, and a "clear" button that drops the whole
+stack in one frame.
+
+### The answer: `exit` is opt-in, the store is bounded, and the duration is the view's
+
+The open question was what a ghost does to `animating()`, with three
+candidate policies. The answer is that two of them are needed and the third
+is not:
+
+- **`exit` is opt-in per node, and needs a `transition` as well.** This is
+  the primary control and it costs nothing: a node that declares neither is
+  never a candidate, is never copied, and never keeps a frame owed. It also
+  puts the decision where the knowledge is — a toast wants to leave
+  visibly, a table row does not, and only the view knows which it is
+  looking at.
+- **The store is bounded, over nodes.** `depart::MAX_NODES` is 512;
+  a departure that would take the store past it is refused, and what is
+  refused vanishes at once — which is *exactly* what a node with no `exit`
+  does, so the failure mode is the old behaviour rather than a wrong one.
+  The budget is over nodes rather than subtrees because a node is what a
+  replayed frame pays for: one dialog of forty nodes and forty toasts of
+  one are the same bill.
+  Silently, though, "only some of my rows animated" reads as a bug, so the
+  first refusal of a frame raises an `exit-budget` warning through the
+  ordinary diagnostics path, with the sentence that fixes it (put `exit` on
+  the list, not on every row).
+- **The duration is not capped.** A ghost runs for its own node's
+  `transition`, and a view that declares a ten-second transition gets ten
+  seconds of frames — which is already true of every live transition, so a
+  cap here would be a second, inconsistent rule for the same declaration.
+  What *is* bounded is the store's patience with a driver that stops
+  advancing its clock: an unreplayed ghost is swept after
+  `EVICT_AFTER_FRAMES`, the same backstop `AnimStore` keeps. And a driver
+  with no clock at all gets no ghosts: every transition snaps without one,
+  and an exit that snaps is the plain disappearance it always was.
+
+So `animating()` stays honestly true while a ghost is in flight, and the
+frames that costs are bounded by 512 nodes times whatever the view asked
+for. The 1000-row list of the original worry animates its first 512 nodes'
+worth of rows out and drops the rest at once, having said so.
+
+### Correction: the previous frame is kept, not re-copied
+
+Step 1 above says `finish_frame` copies the departing subtree "out of the
+old `Tree`". There is no old `Tree` at that point: `begin_frame` clears it
+before the view builds, so by the time a frame can notice a node missing,
+the node is gone. The "Considered options" list rejected *keeping the whole
+previous `Tree`* as the starting point, on the grounds that it doubles the
+retained frame state to serve the rare case.
+
+It does not have to be doubled unconditionally. `Core` holds two tree
+buffers and `begin_frame` **swaps** them instead of clearing one — but only
+when the frame that just ended declared an `exit` somewhere (`any_exit`,
+alongside `any_clip`, `any_float` and the rest). A frame with no exits
+clears the spare, so a stale tree can never be diffed against, and the cost
+of the feature to an app that does not use it is one bool. To an app that
+does, it is an allocation that already existed, reused a frame later
+instead of immediately.
+
+The text list goes with it. A text node holds a `TextId` into the frame's
+text list, which is rebuilt every frame, so a subtree copied out of the
+previous tree carries ids that only the previous list can resolve —
+resolving them against the current one draws whatever text happens to sit at
+that index. `TextSystem` keeps its previous list on the same condition and
+in the same way, and the ghost stores the shaped buffer's cache key rather
+than the id, so what it replays is its own text for as long as the text
+cache still has it (and nothing, rather than someone else's, once it does
+not).
+
+The diff itself is then two flat `Vec<Key>` compared. Almost every frame
+declares the same nodes in the same order, so that comparison is the whole
+diff; only a frame that actually changed shape pays for the set of watched
+keys (the previous frame's exit-declaring roots, plus the roots already
+departing) and the per-node walk, which is one AND against a 64-bit
+membership mask and a hash lookup only for the few keys that collide with
+it.
+
+### Correction: a ghost eases itself
+
+Step 2 says the exit slots are "eased from where they were", which reads
+like an `AnimStore` tween. It is one lerp instead. Nothing can retarget a
+ghost — the view has stopped talking about it, so its target cannot change
+— and a retained tween exists to survive retargets. The ghost keeps the
+clock reading it left at and the duration and easing its last spec
+declared, and interpolates. Spring easings sample as ease-out, the
+substitution `AnimStore::sample` already makes for a keyframed slot, for
+the same reason: there is no leg to carry momentum across.
+
+One limit falls out of freezing: `exit`'s `width` / `height` resize the
+departing *root's* own box, and nothing inside it moves, because re-laying
+out a frozen subtree is the one thing the design rules out. It is a note in
+the doc comment and in `docs/props.md` rather than a surprise.
+
+### What it cost
+
+Measured on `crates/kui-core/benches/frame.rs`, fastest of 100 samples on one
+machine (the medians drift 15% with thermal state; the fastest does not),
+against the same benches at the commit before.
+
+**What everybody pays**, whether or not they use it:
+
+| frame | before | after |
+|---|---|---|
+| `frame_10k_rects` (no `exit` anywhere) | 1.20 ms | 1.26 ms |
+| `frame_1k_typical` | 157 µs | 164 µs |
+
+That ~5% is not the diff, which never runs there — it is `NodeSpec` growing
+an `Option<Enter>`, 60 bytes on a struct the tree holds one of per node
+(668 → 728 bytes, so 600 KB more tree at 10k nodes). It is the one cost here
+that lands on frames that declare nothing, and it is worth naming what would
+buy it back if `NodeSpec` grows another of these: boxing `enter` and `exit`
+together behind one pointer, which recovers about half of it and puts an
+allocation per declaring node per frame on the views that use them. Measured,
+not guessed — it was tried. Not worth it for one slot; the next slot is where
+it becomes worth it.
+
+**What the feature itself costs**, from the new benches:
+
+| frame | fastest |
+|---|---|
+| `frame_10k_rects_one_exit` — one dialog with an `exit` in a 10k-node frame | 1.28 ms (vs 1.26 ms with none) |
+| `frame_10k_rects_all_transitioning` — 10k nodes with a `transition` | 2.65 ms |
+| `frame_10k_rects_all_declaring_exit` — the same 10k, each also with an `exit` | 3.2 ms |
+| `drop_1k_rows_plain` — 1000 rows built, then dropped | 96 µs |
+| `drop_1k_rows_declaring_exit` — the same, every row with an `exit` | 274 µs |
+| `replay_a_full_depart_store` — a full 512-node store replayed over an empty frame | 12 µs |
+
+The realistic shape — a dialog with an `exit` inside a big app — costs under
+2% of the frame it is in, even though keeping the previous frame is per frame
+rather than per exit. The pathological one — `exit` on all 10k cells of a grid
+— costs about 21% over the same grid's transitions, and is the declaration
+the `exit-budget` warning exists to argue with. A mass removal costs about
+180 µs over the plain one for the budget's worth of subtree copies, once, on
+the frame it happens; replaying them afterwards is 12 µs a frame, which is
+what makes "keep drawing until the exit finishes" affordable at all.
+
+### No corpus scene, and why
+
+`exit` is a plain `PROPS` row of the kind three of the four bindings lower
+by table lookup: Lua reads it by snake\_name, Node's encoder takes its id
+straight off the protocol, and C — the one that maps by hand — is forced by
+`every_schema_prop_has_a_c_counterpart`, which fails the build for a row
+with no `KuiSpec` field. Node's own sweep ("every generic schema prop
+reaches the stream and lowers") covers the wire. What is left is the ghost,
+and that is entirely `kui-core`: there is no per-binding behaviour for a
+scene to catch four of.
+
+Pinning it in the corpus anyway would need two changes to the corpus
+protocol that serve nothing else. A **clock step**, because without one
+every transition snaps and there is no ghost to see, in all four adapters.
+And a **per-frame builder** in the Node adapter, which builds its scene tree
+once and reuses it for every frame — a departure is a tree that changed, so
+a scene that never changes its tree cannot express one. Both are
+worthwhile if a second cross-binding behaviour ever wants a clock; neither
+is worth doing for a row that is already forced twice. The behaviour is
+pinned in `crates/kui-core/tests/exit.rs` instead, including the toast-stack
+shape the policy was decided against.

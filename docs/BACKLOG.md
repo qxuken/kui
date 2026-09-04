@@ -702,10 +702,10 @@ click-outside-to-dismiss (and how that meets C1); what the four entry points loo
 like. `FloatConfig::fit` is the in-window approximation and should be documented
 as such.
 
-### `.` C8 — Extend the paint vocabulary — **mostly done (2026-09-04)**
+### `.` C8 — Extend the paint vocabulary — **done (2026-09-04)**
 
-Decided and recorded in `docs/adr/0005-the-paint-vocabulary.md`. Two of the
-four shipped, one was declined, one was designed and left unbuilt.
+Decided and recorded in `docs/adr/0005-the-paint-vocabulary.md`, and amended
+there when the fourth was built. Three of the four shipped, one was declined.
 
 **Shipped.** `opacity` is a `VisualStyle` slot inherited multiplicatively in
 `finish_frame`'s existing clip pass and multiplied into the alpha of every
@@ -725,15 +725,31 @@ costs about what the plain 10k-quad frame costs.
 interpolation space are not a paint prop's worth of work, and the README now
 says so instead of leaving a reader to infer it.
 
-**Still open.** Exit animations are designed in ADR 0005 and not built: a
-departing subtree copied out of the tree into a `DepartStore` keyed by `Key`,
-frozen at the rects it left with, replayed inert (no hit region, no Tab ring,
-no access row) like a float until its transition ends, dropped on end or when
-the key returns. The build needs `Tree` to be sliceable, `finish_frame` to
-diff this frame's keys against the last, and every emission pass to tolerate
-a node whose parent is gone. The open question is what a ghost does to
-`animating()` — correct for a dialog, wrong for a list dropping a thousand
-rows — which wants a real view in front of it.
+**Shipped after the design.** Exit animations are `crates/kui-core/src/depart.rs`
+and one `exit` schema row (`Kind::Enter`, so an exit needs no parse code — it
+is an `Enter` read the other way). A departing subtree is copied into a
+`DepartStore` keyed by `Key`, frozen at the rects it left with, replayed inert
+(no hit region, no Tab ring, no access row) on top of everything and outside
+every clip, and dropped when its transition ends, when the key returns, or
+when the store's 512-node budget refuses it — which vanishes it, exactly what
+a node without an `exit` does, and says so with an `exit-budget` warning.
+
+Two things changed from the design, both amended into ADR 0005. The subtree
+is copied out of the **previous frame's tree**, kept by swapping the two tree
+buffers instead of clearing one, and only when the frame that ended declared
+an `exit` — the option the ADR had rejected as "doubling the retained frame
+state", which conditionally it does not. And a ghost **eases itself** with
+one lerp rather than an `AnimStore` tween, since nothing can retarget a node
+the view has stopped talking about.
+
+The open question — what a ghost does to `animating()` — was decided against
+`examples/toasts.rs`, which now enters and exits: it stays honestly true
+while a ghost is in flight, and what bounds the frames that costs is `exit`
+being opt-in per node plus the node budget, not a cap on the duration (which
+would be a second, inconsistent rule for a declaration `transition` already
+honours). Benched: `frame_10k_rects` pays about 5% for `NodeSpec` growing an
+`Option<Enter>` and nothing else; one exit in a 10k-node frame costs under 2%
+more; a full 512-node store replays in 12 µs a frame.
 
 Also still open, and priced in ADR 0005's consequences: **rounded clipping**.
 `Quad::clip` is a rect, so a rounded scroll container does not round its

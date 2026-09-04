@@ -416,6 +416,15 @@ pub struct NodeSpec {
     /// that far away, `bg` fades it in. A node that vanishes and returns
     /// enters again. None = first sight snaps.
     pub enter: Option<Enter>,
+    /// Where this node's slots *end* the frame after the view stops
+    /// declaring it (see [`crate::depart`]). An exit is an [`Enter`] read
+    /// the other way: with a `transition`, the departing subtree is copied
+    /// out of the last frame that had it and replayed — frozen where
+    /// layout left it, on top, inert — while the slots this names ease
+    /// from where they were toward what it declares. Needs a stable key
+    /// across frames, and a `transition` with a duration; without both, a
+    /// removed node vanishes at once as it always did.
+    pub exit: Option<Enter>,
     /// What this node is to assistive technology (see [`crate::access`]).
     /// Unset, the core derives one: a node with `on_click` is a button,
     /// an editor a text input, a scrolling container a scroll view, and
@@ -977,6 +986,15 @@ impl NodeSpec {
     pub fn enter(mut self, enter: Enter) -> Self {
         self.transition.get_or_insert(Transition::ms(200.0));
         self.enter = Some(enter);
+        self
+    }
+
+    /// Eases this node out to `exit` after the view stops declaring it
+    /// (see the `exit` field); sets a default 200ms transition if none was
+    /// declared yet.
+    pub fn exit(mut self, exit: Enter) -> Self {
+        self.transition.get_or_insert(Transition::ms(200.0));
+        self.exit = Some(exit);
         self
     }
 
