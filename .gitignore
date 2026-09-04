@@ -1,5 +1,6 @@
 /target
 /examples/c/counter
+/examples/c/panel.so
 .DS_Store
 /examples/node/node_modules
 /examples/node/dist

@@ -1042,6 +1042,52 @@ void kui_value_free(KuiValue *v);
 typedef void (*KuiEventFn)(void *user, const KuiEvent *ev);
 bool kui_run(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user);
 
+/* -- Extension ABI: C as the guest rather than the host ------------------
+ *
+ * The other direction from everything above. A host that already owns the
+ * window - a Rust app, or anything else driving a Core - loads a shared
+ * library and gives it a share of each frame: it draws into the host's tree,
+ * keeps its own state, and gets back the events its own nodes emitted and
+ * no others. Same deal a Lua extension gets
+ * (crates/kui-lua/examples/panel.lua), and the loader on the host's side is
+ * kui_ffi::CExtension.
+ *
+ * YOU define these six; the library only calls them. All but kui_ext_view
+ * are optional, and a missing one is not an error:
+ *
+ *   kui_ext_abi      Your KUI_ABI_VERSION. The host refuses a mismatch,
+ *                    which is the check a C host makes for itself against
+ *                    kui_abi_version(). Absent = unchecked.
+ *   kui_ext_name     A name for logs; a NUL-terminated static string. Absent
+ *                    = the library's file stem.
+ *   kui_ext_init     Your state, handed back to every call below. Absent =
+ *                    NULL, which is fine for a stateless panel.
+ *   kui_ext_view     Called once per frame with a context borrowing the
+ *                    host's frame. Call the kui_open / kui_text / kui_close
+ *                    builders on it; the nodes are tagged with the origin
+ *                    the host assigned you. It is alive for that one call
+ *                    only - store nothing - and the input, frame and draw
+ *                    entry points do not apply to it, since the host drives
+ *                    those.
+ *   kui_ext_on_event One event of yours, payload borrowed for the call.
+ *   kui_ext_free     Your state, at unload.
+ *
+ * You link against nothing: leave every kui_* symbol undefined and let it
+ * resolve from the host executable at load, the way a Lua C module resolves
+ * lua_*. That asks one thing of the *host*, which crates/kui-ffi/build.rs
+ * does for this crate's examples: link with -rdynamic / --export-dynamic, so
+ * that the kui_* symbols in its binary are also in the dynamic symbol table
+ * the loader reads. examples/c/build.sh builds your side.
+ */
+typedef void (*KuiExtViewFn)(void *user, KuiCtx *ctx);
+typedef void (*KuiExtEventFn)(void *user, const KuiEvent *ev);
+uint32_t kui_ext_abi(void);
+const char *kui_ext_name(void);
+void *kui_ext_init(void);
+void kui_ext_view(void *user, KuiCtx *ctx);
+void kui_ext_on_event(void *user, const KuiEvent *ev);
+void kui_ext_free(void *user);
+
 #ifdef __cplusplus
 }
 #endif

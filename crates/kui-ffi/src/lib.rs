@@ -13,6 +13,12 @@
 // entry point null-checks and catches panics instead of being `unsafe`.
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
+// The other direction: a C shared library as a guest inside a host that
+// already owns the frame. See the module docs for where its `kui_*` symbols
+// come from, which is the only interesting part.
+mod ext;
+pub use ext::CExtension;
+
 use std::ffi::c_void;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -201,6 +207,27 @@ pub struct KuiCtx {
 impl KuiCtx {
     fn core(&mut self) -> &mut Core {
         unsafe { &mut *self.core }
+    }
+
+    /// A context that borrows someone else's frame instead of owning a
+    /// `Core`: what `kui_run`'s view callback and a C extension's both get.
+    /// Only the builder entry points are meaningful on one - the queues
+    /// below stay empty, because the runner owns event delivery.
+    ///
+    /// The borrow is not in the type (`KuiCtx` is what C holds, and it has
+    /// no lifetime), so the caller keeps it: use the context inside the
+    /// scope this `&mut Core` came from and let it go at the end of it.
+    fn borrowing(core: &mut Core) -> Self {
+        Self {
+            core,
+            _owned: None,
+            events: Vec::new(),
+            last_payload: None,
+            last_edit_text: None,
+            last_warnings: Vec::new(),
+            last_access: Default::default(),
+            open_tooltips: Vec::new(),
+        }
     }
 
     /// Records a just-opened node's hover hint for `kui_close`.
@@ -3076,16 +3103,7 @@ impl kui::App for CApp {
     fn view(&mut self, ui: &mut kui::Ui<'_>) {
         // Hand the callback a context that borrows the runner's Core for the
         // duration of view(); builder entry points only touch `core`.
-        let mut shim = KuiCtx {
-            core: ui.core() as *mut Core,
-            _owned: None,
-            events: Vec::new(),
-            last_payload: None,
-            last_edit_text: None,
-            last_warnings: Vec::new(),
-            last_access: Default::default(),
-            open_tooltips: Vec::new(),
-        };
+        let mut shim = KuiCtx::borrowing(ui.core());
         (self.view)(self.user, &mut shim);
     }
 

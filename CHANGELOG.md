@@ -51,6 +51,47 @@ upgrades remove code from the apps on it is doing the job.
   animation finished, and the frame requests that kept the window awake for
   it. Drop the item when it is gone; the core plays out the picture.
 
+- **A C extension, not just a C host: `kui_ffi::CExtension`.** `kui-ffi`
+  showed one direction only — C owns `main`, calls `kui_run`, links
+  `libkui_ffi`, and the whole app is C. That is an all-or-nothing choice,
+  and the interesting case is the other one: an app that already owns its
+  window wanting *a panel* from somewhere else. Lua could do that
+  (`kui-lua`), C could not, and nothing about `Extension` said why —
+  the trait is `name`/`view`/`on_event` over a borrowed frame, and it had
+  exactly one implementation, which made it look like a Lua feature rather
+  than the binding contract.
+  **A plugin is six C functions, five of them optional.** `kui_ext_view`
+  gets a `KuiCtx *` borrowing the host's frame and calls the ordinary
+  `kui_open` / `kui_text` / `kui_close` builders on it; `kui_ext_init` /
+  `kui_ext_free` own its state, `kui_ext_name` names it in logs, and
+  `kui_ext_abi` is the version check a C host makes for itself. The runner
+  tags everything the plugin opens with the origin it assigned, which is
+  the whole of the isolation: the plugin's clicks reach `kui_ext_on_event`
+  and never `App::on_event`, and the host's reach the host.
+  **The plugin links against nothing.** Every `kui_*` call is left
+  undefined and resolved from the host executable at `dlopen`, the way a
+  Lua C module resolves `lua_*`. That asks one linker flag of the host —
+  `--export-dynamic`, since GNU ld gives an executable a dynamic symbol
+  table holding only what it *imports*, and without it the plugin's load
+  fails with `undefined symbol: kui_open`. `crates/kui-ffi/build.rs` passes
+  it for this crate's examples; a host elsewhere passes its own, and
+  `kui-ffi` gained an `rlib` so it can be one. Nothing else is needed:
+  rustc links every object of the rlib, so all 100 entry points are in the
+  binary whether the host calls them or not (measured both ways, on glibc
+  and on dyld — the flag is the whole difference, and on dyld not even
+  that, since Apple's linker exports an executable's globals already).
+  **It is checked without a display.**
+  `cargo run -p kui-ffi --example c_panel -- --headless` builds a frame the
+  way the runner does, finds the plugin's rows through the access tree the
+  frame produced, clicks one, and asserts the event carried the plugin's
+  origin, that the toggle reached the plugin, and that the host's counter
+  did not move — then the same in reverse. `examples/c/panel.c` is
+  deliberately the same panel as `crates/kui-lua/examples/panel.lua`.
+  **What you can delete:** the fork. Adding a C panel to a Rust app meant
+  rewriting the app around `kui_run` — inverting who owns `main` for the
+  sake of one subtree — or rebuilding and relinking the whole binary every
+  time the panel changed. The panel is now a `.so` the host loads by path.
+
 - **`unknown-prop`: a misspelled prop says so** (backlog P4). Both dynamic
   bindings ended their prop loop by ignoring names they could not place —
   deliberately, since an element's own props (`initial`, `src`, `multiline`)

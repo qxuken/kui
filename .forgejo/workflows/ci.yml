@@ -10,8 +10,9 @@
 # see the comment above them for what they do and do not buy.
 #
 # check is one job so the cargo target dir is built once and shared by fmt,
-# clippy, the workspace tests, the C example, the Node addon parity tests and
-# the Node example typecheck (which is what exercises the shipped .d.ts).
+# clippy, the workspace tests, the two C examples (C as the host, and C as an
+# extension inside a Rust host), the Node addon parity tests and the Node
+# example typecheck (which is what exercises the shipped .d.ts).
 # It is also what makes the scene corpus work: all four adapters over
 # crates/kui-core/src/conformance.rs run here, on one machine with one set
 # of fonts, against one generated reference report - which is why the
@@ -162,6 +163,18 @@ jobs:
           ./examples/c/build.sh
           ./examples/c/counter --headless
           ./examples/c/counter --conformance target/conformance.txt
+
+      # The other direction, and the one with a linker requirement rather
+      # than only an API: a Rust host dlopens examples/c/panel.so (built by
+      # build.sh above) and the plugin resolves every kui_* symbol back out
+      # of the host executable. That works only while build.rs keeps passing
+      # --export-dynamic, which has no compile error to announce it going
+      # missing - the host builds either way and the plugin just stops
+      # loading - so this step is the check. --headless is a real drive: it
+      # clicks the plugin's list through the access tree and exits 1 unless
+      # the click reached the plugin and the host's reached the host.
+      - name: C extension (dlopen + origin routing)
+        run: cargo run -p kui-ffi --example c_panel -- --headless
 
       # npm test covers both the encoder tests and the Node adapter over
       # the corpus, which needs KUI_CONFORMANCE to run (it skips without

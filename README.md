@@ -14,7 +14,7 @@ bundled Lua extension support is table-to-node conversion, not FFI gymnastics.
 | `kui-wgpu` | wgpu backend: one instanced über-pipeline (rounded rects, borders, glyphs), single draw call per frame |
 | `kui` | Batteries-included runner: winit + wgpu around a `Core`, `App` trait, widget sugar |
 | `kui-lua` | Lua extensions via mlua: scripts return table trees, receive events as tables |
-| `kui-ffi` | C API (cdylib/staticlib + [include/kui.h](crates/kui-ffi/include/kui.h)): flat builder calls, opaque `KuiValue` payloads, `repr(C)` draw data, windowed runner via callbacks |
+| `kui-ffi` | C API (cdylib/staticlib + [include/kui.h](crates/kui-ffi/include/kui.h)): flat builder calls, opaque `KuiValue` payloads, `repr(C)` draw data, windowed runner via callbacks — and `CExtension`, the same contract inverted: a C shared library as a guest in someone else's frame |
 | `kui-node` | Node.js addon (napi-rs) + the [`packages/kui`](packages/kui) npm package: JSX views (custom jsx-runtime, no React) lowered into the IR in one call per frame, Elm-style messages as data |
 
 ## Testing without a window
@@ -52,7 +52,10 @@ are one loop over an injected surface, so `tick` runs headless too and
 the span and moves the frame clock with them, which is how a countdown or a
 mid-flight transition gets stepped through in a test. Rust tests drive `Core` the same way
 ([crates/kui-core/tests](crates/kui-core/tests)), and C runs the same API
-headless (`./examples/c/counter --headless`).
+headless (`./examples/c/counter --headless`) — as does a C *extension* inside
+a Rust host (`cargo run -p kui-ffi --example c_panel -- --headless`, which
+clicks the plugin's list and checks the click reached the plugin and not the
+host).
 
 ## Examples
 
@@ -63,6 +66,7 @@ cargo run -p kui --example editor         # multiline text editing: caret, selec
 cargo run -p kui-lua --example lua_panel  # Rust host + Lua panel sharing one frame
 ./examples/c/build.sh && ./examples/c/counter             # the same app from C
 ./examples/c/counter --headless           # C FFI self-test, no window needed
+cargo run -p kui-ffi --example c_panel    # C the other way round: a Rust host + a dlopened C panel
 cargo run -p kui --example modal_editor   # helix-flavored modal editing; the app owns the keymap
 cargo run -p kui --example splitmux       # tmux-style splits, tabs, focus, ⌘-drag pane moves; the pane tree is data
 cargo run -p kui --example syntax_view    # syntax highlighting as coalesced style runs
@@ -127,6 +131,27 @@ function on_event(ev)                     -- ev = payload + node_key
 end
 ```
 
+The same two functions from C, because the extension contract is the contract
+and the language is a detail — `kui_ffi::CExtension` `dlopen`s a shared
+library and hands it the same share of the frame
+([examples/c/panel.c](examples/c/panel.c),
+[crates/kui-ffi/examples/c_panel.rs](crates/kui-ffi/examples/c_panel.rs)):
+
+```c
+void kui_ext_view(void *user, KuiCtx *ui) {
+    KuiSpec panel = {.dir = KUI_COLUMN, .gap = 8, .bg = 0x14161eff};
+    kui_open(ui, &panel, NULL);              /* ordinary builder calls, into  */
+    kui_button(ui, KUI_STR("bump"), msg());  /* the host's own frame          */
+    kui_close(ui);
+}
+void kui_ext_on_event(void *user, const KuiEvent *ev) { /* yours, never the host's */ }
+```
+
+The plugin links against nothing: every `kui_*` call is left undefined and
+resolved from the host executable at load, the way a Lua C module resolves
+`lua_*`. That is the whole trick, and it costs the host one linker flag —
+`--export-dynamic`, which is what `crates/kui-ffi/build.rs` exists for.
+
 ## Reference
 
 [docs/props.md](docs/props.md) is the cross-binding reference: every prop
@@ -164,7 +189,10 @@ that are hard to reverse and would look arbitrary without their context.
   (`Value`: null/bool/int/float/str/list/map). Input resolves against the
   previous frame's layout and produces `UiEvent`s tagged with the origin that
   declared them; the runner routes host events to `App::on_event` and
-  extension events back into the script that owns them.
+  extension events back into the script — or the shared library — that owns
+  them. An extension is one trait (`name`/`view`/`on_event`) over a borrowed
+  frame, so Lua and C are two implementations of it rather than two
+  mechanisms.
   Full keyboard input is data too: a node declaring `on_key` becomes a
   key sink, and while it holds key focus (`ui.take_key_focus`, or a
   click) every press *and release* arrives as `{kind="key",

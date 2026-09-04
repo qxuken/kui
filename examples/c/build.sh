@@ -26,3 +26,21 @@ cc examples/c/counter.c \
     -Wall -Wextra -o examples/c/counter
 
 echo "built examples/c/counter"
+
+# The other direction: C as an extension inside a host that already owns the
+# window (crates/kui-ffi/examples/c_panel.rs). No -lkui_ffi and no rpath - the
+# plugin leaves every kui_* symbol undefined and resolves it from the host
+# executable at dlopen time, the way a Lua C module resolves lua_*. Apple's
+# linker needs to be told to allow that; ELF leaves undefined symbols in a
+# shared object alone.
+undef=()
+case "$(uname -s)" in
+    Darwin) undef=(-Wl,-undefined,dynamic_lookup) ;;
+esac
+
+cc examples/c/panel.c \
+    -I crates/kui-ffi/include \
+    -shared -fPIC "${undef[@]+"${undef[@]}"}" \
+    -Wall -Wextra -o examples/c/panel.so
+
+echo "built examples/c/panel.so"

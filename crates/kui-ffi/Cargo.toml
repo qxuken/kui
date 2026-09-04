@@ -9,7 +9,7 @@ publish = ["forgejo"]
 
 [lib]
 name = "kui_ffi"
-crate-type = ["cdylib", "staticlib"]
+crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
 kui-core.workspace = true
