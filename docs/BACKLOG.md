@@ -767,18 +767,38 @@ on `width`/`height` in `jsx-runtime.d.ts`, where every JS user reads it on hover
 "Horizontal size" and "Vertical size", then `npm run gen`. Scan the other `doc`
 strings for the same mistake while there.
 
-### `.` X2 — Automate the CHANGELOG heading
+### `.` X2 — Automate the CHANGELOG heading — **done (2026-09-04)**
 
-`CHANGELOG.md`'s top heading still reads `## 0.1.0-alpha.5 (unreleased)` after
-alpha.5 shipped. `scripts/set-version.sh` does not touch the changelog and
-`scripts/check-version.sh` does not check it, so the one guard that refuses a
-mismatched tag has a hole exactly where the human step is.
+The shipped heading had already been corrected by hand before this ran:
+`## 0.1.0-alpha.5 (2026-09-03)`, the tag's own date, with
+`## 0.1.0-alpha.6 (unreleased)` opened above it. What was missing was the
+machinery that stops the next one shipping stale, and that is what landed.
 
-Correct the shipped heading; add the rewrite to `set-version.sh` (version +
-today's date, in the sed pass it already uses); add one assertion to
-`check-version.sh` (top heading names the version, does not say "unreleased").
-Keep the automation to the heading line — the "what you can delete" convention in
-the body is worth keeping human.
+`set-version.sh` gained a second sed pass, over `CHANGELOG.md`, in the style of
+the one it already runs over `Cargo.toml`:
+`1,/^## /s/^## .+ \(unreleased\)$/## <ver> (<today>)/`. The range ends at the
+first `## `, so no released section below can be rewritten, and the
+substitution is the heading line only — what a release adds and what you can
+delete stay a person's to write.
+
+`check-version.sh` gained one assertion beside the manifest ones: the first
+`## ` line must name the version as a whole token and must not say
+"unreleased", in any case. Run against the alpha.5 tag's tree it reports
+`CHANGELOG.md top heading is "## 0.1.0-alpha.5 (unreleased)"` and exits 1 — the
+hole that produced this item is now what the guard catches, in the release
+job (`Tag matches the manifests`) that already refuses a mismatched tag.
+
+**Opening the next `(unreleased)` section stays manual**, deliberately. The
+script cannot know what the next version will be called (alpha.7? beta.1?
+0.2.0?), and a stub opened automatically would fight the new assertion — the
+top heading would then be the *next* section rather than the tagged one. The
+failure mode of leaving it out is loud and lands on the person who can fix it:
+cutting a release with no open section makes the sed match nothing, and
+`set-version.sh`'s own `check-version.sh` call then fails naming the heading it
+found, at which point writing the section is the obvious next move.
+
+The change itself is not in the changelog: that file lists what an app gains
+and what it can delete, and release tooling is neither.
 
 ### `.` X3 — List the missing input modes in Status / next
 
