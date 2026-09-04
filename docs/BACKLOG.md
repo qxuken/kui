@@ -1506,7 +1506,26 @@ as "the core closes no modal" — but it will read as a kui bug the first time
 someone hits it, and the library has a mechanism for exactly that. A
 `window-declared-while-closed` warning belongs next to `modal-behind-content`.
 
-### `~` A6 — The corpus can skip, and its coverage is self-declared
+### `~` A6 — The corpus can skip, and its coverage is self-declared — **done (2026-09-04)**
+
+Both halves shipped (`2e0aba3`, `59fe451`); the heading went unmarked, which
+is the third time this round pattern has happened — see B4.
+
+**The skip** is now assertable: `KUI_CONFORMANCE_REQUIRED` turns a missing
+report into a failure, and the `check` job sets it, so the publish job keeps
+the skip it needs and the job that must run the adapter cannot lose it
+quietly. `blocks.length > 0` also catches a truncated reference.
+
+**Coverage is derived**, not declared: `conformance::observe` builds the
+`custom` / `elements` sets from what each frame actually built, and every
+hand-written claim has to appear in the derived set. Rows that genuinely
+cannot be derived are enumerated in `conformance::UNDERIVED` with a reason
+each, and `the_underived_rows_are_real_and_still_underived` stops that list
+becoming a dumping ground. It has exactly one entry, and it produced P9 —
+the `chrome` scene's `windowButtons` claim had no tree behind it and had not
+since P7 landed, which is the derived check paying for itself immediately.
+
+The original finding:
 
 Two soft spots in the guard that P7 built, found by running it rather than
 reading it. The corpus itself is real — mutation-tested: removing
@@ -1528,26 +1547,108 @@ would make a stale claim fail.
 
 ---
 
-## From the C8 review (2026-09-04)
+## From the third review (2026-09-04)
 
-Exit animations shipped with the corpus untouched, on an argument written
-into `docs/adr/0005-the-paint-vocabulary.md` ("No corpus scene, and why").
-This is that argument re-read against what the corpus actually compares.
+479 Rust tests, 45 Node, ten corpus scenes across four adapters, fmt and
+clippy clean. `3cbf96a` is the round's most instructive commit — the header's
+role enum had silently stopped at `KUI_ROLE_SCROLL_VIEW` while `Role::ALL`
+grew, so C alone could not mark an editor's lines. It was found by hand, and
+`abi_enum!` now pins eight enum families so it cannot recur **in C**. B1 is
+the same bug one binding over.
 
-### `~` B3 — Ten corpus scenes, and none of them exits — **done (2026-09-04)**
+### `!` B1 — `schema::ROLES` is the last unpinned enum restatement — **done (2026-09-04)**
 
-Shipped as an eleventh scene, `exit`, and two additions to the corpus
-protocol. The ADR's argument was that `exit` is a plain `PROPS` row three
-bindings lower by table lookup and the fourth is forced to by
-`every_schema_prop_has_a_c_counterpart`, so there is no per-binding
-*lowering* left for a scene to catch. True, and beside the point: the corpus
-compares quads, access rows and events across driven steps, and a ghost is
-the first node that draws while being absent from the hit regions, the Tab
-ring and the access tree at the same time. Nothing but a scene checks that
-four languages keep those three out of step in the same way.
+Both asserts shipped, in `schema`'s own tests.
+`every_declarable_role_name_is_a_real_role` pins the names and the mapping
+together — each `ROLES` entry parses, and index `i` still means `ROLES[i]`, so
+a `role_idx` that stops reading the list fails as loudly as a misspelling in
+it. `every_role_is_declarable_or_derived` pins the other direction: every
+`Role::ALL` variant is declarable or on the new `schema::DERIVED_ONLY`, never
+neither and never both.
+
+`DERIVED_ONLY` carries the reason per role, and the test keeps it honest by
+*deriving* rather than trusting: it builds one frame — root, a `window_drag`
+row, a scrolling box, text inside it — and asserts the core really produces
+every role the list exempts. So a variant merely forgotten from `ROLES` cannot
+be parked there to quiet the failure, which was the risk in giving the guard
+an escape hatch at all. Mutation-tested, each failing with the role named: a
+typo'd name, a role dropped from `ROLES`, a forgotten role moved into
+`DERIVED_ONLY`, an exemption with no reason, an exemption the core no longer
+derives, and a `role_idx` rewritten to index `Role::ALL`.
+
+**The fallback is now `Role::Group`, and the entry's `role_idx(99)` no longer
+returns `None`.** Both ways of reaching it turned out to be closed: a drifted
+spelling now fails the test rather than a frame, and no transport passes an
+index it has not bounds-checked (Node's binary reader rejects
+`i >= names.len()` before building a `Parsed::Enum`, Node's JSON and Lua
+resolve a *name* through `enum_index`, C carries a bounded `Role::ALL`
+position). So nothing that runs today changes — the change is in what a future
+transport that forgets its check gets. Hiding a subtree is a destructive answer
+to "an index I do not have"; a group is what the core already derives for a box
+that is merely somewhere focus can land, the node keeps its children, and a
+wrong role is recoverable where a missing subtree is not. No warning: this is a
+pure schema function with no sink, and the transports' own errors already name
+the prop and the index.
+
+Two doc comments carried the drift the guard is against and now point at the
+lists instead of restating them — `Role`'s said the declarable roles are "the
+first group" (the derived four are interleaved), and `ROLES`' named those four
+in prose, three lines above the list itself.
+
+The original finding:
+
+`Role::ALL` has 22 variants; `schema::ROLES` has 18 — the declarable subset,
+correct today (the four omissions are exactly the derived roles: `window`,
+`titleBar`, `staticText`, `scrollView`). **Nothing pins the relationship.**
+`abi_enum!` now catches this for C by construction; Lua, Node and JSX read
+`ROLES` at runtime and have no equivalent.
+
+The failure mode is worse than C's was. `role_idx` is
+
+    ROLES.get(i).and_then(|n| Role::parse(n)).unwrap_or(Role::None)
+
+and `Role::None` **hides the node and its whole subtree from the access
+tree**. So a name in `ROLES` that does not parse — a typo, or a role renamed
+in `access.rs` — does not fail, does not warn, and silently removes a subtree
+from every screen reader. Verified: `role_idx(99)` returns `None` rather than
+erroring.
+
+Two asserts in `kui-core` close it: every `ROLES` name parses, and every
+`Role::ALL` variant is either in `ROLES` or in a short list of derived-only
+roles that the test also checks is still accurate — the shape
+`the_underived_rows_are_real_and_still_underived` already uses for the corpus.
+
+### `~` B2 — Node is the only binding with no `Env`
+
+Found while reading P9. Rust has `ui.env()`, Lua builds the whole `env.window`
+table (`custom_chrome`, `maximized`, `fullscreen`, `controls_w/h`), C has
+`kui_env_set` / `kui_env_set_window`. **Node has nothing** — no read, no
+write, verified by grep across `crates/kui-node/src/lib.rs`.
+
+So a JSX app cannot know whether it is under custom chrome, whether the window
+is maximized, where the macOS traffic lights are, the refresh rate, or whether
+the window is focused. The `<titlebar>` element papers over the common case by
+being a built-in that reads `env` in Rust — but a JSX app cannot write its
+*own* titlebar, which is the case custom chrome exists for, and `widgets::
+titlebar`'s whole design is "reads `env.window` and adapts by itself".
+
+It also blocks P9: the corpus cannot cover `windowButtons` until an adapter
+can declare custom chrome, and Node is the adapter that cannot.
+
+### `~` B3 — Exit animations changed the frame model and have no scene — **done (2026-09-04)**
+
+Shipped as an eleventh scene, `exit`, plus two additions to the corpus
+protocol. ADR 0005 had argued against a scene under "No corpus scene, and
+why", and that section is now superseded rather than deleted: its reasoning
+about *lowering* holds — `exit` is a plain `PROPS` row three bindings read by
+table lookup and the fourth is forced to carry by
+`every_schema_prop_has_a_c_counterpart` — and its conclusion does not, for
+the reason this item gives. The corpus compares quads, access rows and events
+across driven steps, and a ghost is the first node that draws while being
+absent from the hit regions, the Tab ring and the access tree at once.
 
 A report keeps one frame, so — the lesson A1's `modal` scene wrote down — the
-steps end where the claims differ. They end 80 ms into a 400 ms exit:
+steps end where the claims differ, 80 ms into a 400 ms exit:
 
 - `fade` is mid-flight and **draws**, text and all, which is the previous
   frame's *text list* as well as its tree.
@@ -1557,23 +1658,50 @@ steps end where the claims differ. They end 80 ms into a 400 ms exit:
   walk from `A` to `B`; and the access tree lists neither.
 - `flash` left and came back mid-exit, so the frame holds **one** picture of
   it — the toast-dismissed-and-reshown case — and `blink` ran 50 ms and is
-  **over**, so a store that kept either would count one solid quad more.
+  **over**. Both rest on the checked-in `solid: 9`: a store that kept either
+  would count ten, both eleven.
 - `bulk` is one node past `depart::MAX_NODES`, so the **budget** refused it
   whole: no ghost, and an `exit-budget` warning.
 
 `Step::Phase(n)` and `Step::Time(ms)` are the two protocol additions, and
-neither is specific to exits or to input: the phase is the view changing its
+neither is specific to exits nor an input: the phase is the view changing its
 mind (a builder is a function of it; the other ten scenes ignore it), the
-time is the frame clock (without one every transition snaps). Each adapter
-grew one arm that does not call `handle_input`. Node builds its tree per
-frame now rather than once — a departure *is* a changed tree — with the
-fixtures registered on the first build that asks, so its handles are
-unchanged; Lua seeds the phase as a script global through a new
+time is the frame clock (without one every transition snaps and there is no
+ghost). Each adapter grew one arm that does not call `handle_input`. Node
+builds its tree per frame now rather than once — a departure *is* a changed
+tree — with the fixtures registered on the first build that asks, so its
+handles are unchanged; Lua seeds the phase as a script global through a new
 `LuaExtension::lua()`.
 
 It caught nothing: all four agreed on the first run that compiled, which is
-what a mechanically lowered row should do. The scene is worth its keep for
-the next change to `depart.rs`, which now has four readers instead of one.
+what a row three bindings lower by table lookup should do. The scene earns
+its keep on the next change to `depart.rs`, which now has four readers.
+
+The original finding:
+
+C8's second half shipped: `exit` (P_EXIT = 78), a `DepartStore`, ghosts that
+self-ease, opt-in with a 512-node budget. It is the first feature that makes a
+node **outlive the frame that declared it** — the previous frame's tree and
+text list are kept by buffer swap — and it is the only behaviour to land this
+round without a conformance scene. Ten scenes; none of them exits.
+
+That matters more here than for a paint prop. The corpus drives steps and
+compares quads, access rows and events, which is exactly the shape a ghost
+needs pinned: that it draws, that it is **inert** (no hit region, no Tab ring
+place, no access row), and that a returning key discards it rather than
+doubling. Those are four bindings' worth of behaviour resting on one Rust
+test suite.
+
+### `.` B4 — Backlog headings lag the work, three rounds running
+
+C6 and D1 shipped unmarked in round two; A6 shipped unmarked in round three.
+Each time the body text was left as the original finding and the heading said
+open, so the backlog under-reported and the next reviewer had to diff commits
+against headings to find out.
+
+Not worth a process gate. Worth one line in this file's preamble: a session
+that closes an item marks the heading and appends what it learned, in the
+shape the closed entries already use — original finding kept, outcome on top.
 
 ---
 

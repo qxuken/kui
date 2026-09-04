@@ -980,6 +980,45 @@ upgrades remove code from the apps on it is doing the job.
   `Spec` — since the header agreeing on a number and the mapping agreeing
   on what it means are different facts.
 
+- **The same pin for Lua, Node and JSX, whose version of that bug was
+  worse.** The entry above pins C's role enum by construction; the dynamic
+  bindings read `schema::ROLES` at run time and had no equivalent. `ROLES`
+  is the declarable subset of `Role::ALL` — 18 of 22, the four omissions
+  exactly the roles the core derives — and nothing asserted any of that.
+  `role_idx` resolves a wire index through `ROLES` by *name*, so a name
+  that no longer parses (a typo, or a role renamed in `access.rs`) did not
+  fail and did not warn: every view declaring that role fell back to
+  `Role::None`, which takes the node **and its whole subtree** out of the
+  access tree. A screen reader would simply stop seeing part of the app,
+  with nothing anywhere saying why.
+  Two tests close it. `every_declarable_role_name_is_a_real_role` checks
+  every name parses and that index `i` still means `ROLES[i]`, so the
+  mapping is pinned and not just the spellings.
+  `every_role_is_declarable_or_derived` checks the other direction: every
+  `Role::ALL` variant is declarable or on the new **`schema::DERIVED_ONLY`**
+  list, never neither and never both. That list is the written record of
+  which roles a view cannot declare and what derives each, and the test
+  keeps it honest the way `the_underived_rows_are_real_and_still_underived`
+  keeps the corpus's exemptions honest — it builds a frame and asserts the
+  core really does derive every role the list exempts, so a variant merely
+  forgotten from `ROLES` cannot be parked there to quiet the failure.
+  Mutation-tested, each failing with the role named: a typo'd `ROLES` name,
+  a role dropped from `ROLES`, a forgotten role moved into `DERIVED_ONLY`,
+  an exemption the core stopped deriving, and a `role_idx` rewritten to
+  stop reading `ROLES`.
+  **`role_idx`'s fallback is now `Role::Group`.** With the names pinned by
+  construction, neither way of reaching it can happen: a drifted spelling
+  fails the test rather than a frame, and no transport passes an index it
+  has not bounds-checked (Node's binary reader rejects one past the list
+  before it builds a value, Node's JSON and Lua resolve a *name*, C carries
+  a bounded `Role::ALL` position). So this changes nothing that runs today.
+  It changes what a future transport that forgets its check would get:
+  hiding a subtree is a destructive answer to "an index I do not have",
+  where a group is what the core already derives for a box that is merely
+  somewhere focus can land — the node keeps its children, and a wrong role
+  is recoverable where a missing subtree is not. The reasoning is in the
+  function's doc comment, not only in this entry.
+
 ### What you can delete
 
 - **The inner wrapper that re-rounded a rounded scroll container** — the
