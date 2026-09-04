@@ -1506,7 +1506,26 @@ as "the core closes no modal" — but it will read as a kui bug the first time
 someone hits it, and the library has a mechanism for exactly that. A
 `window-declared-while-closed` warning belongs next to `modal-behind-content`.
 
-### `~` A6 — The corpus can skip, and its coverage is self-declared
+### `~` A6 — The corpus can skip, and its coverage is self-declared — **done (2026-09-04)**
+
+Both halves shipped (`2e0aba3`, `59fe451`); the heading went unmarked, which
+is the third time this round pattern has happened — see B4.
+
+**The skip** is now assertable: `KUI_CONFORMANCE_REQUIRED` turns a missing
+report into a failure, and the `check` job sets it, so the publish job keeps
+the skip it needs and the job that must run the adapter cannot lose it
+quietly. `blocks.length > 0` also catches a truncated reference.
+
+**Coverage is derived**, not declared: `conformance::observe` builds the
+`custom` / `elements` sets from what each frame actually built, and every
+hand-written claim has to appear in the derived set. Rows that genuinely
+cannot be derived are enumerated in `conformance::UNDERIVED` with a reason
+each, and `the_underived_rows_are_real_and_still_underived` stops that list
+becoming a dumping ground. It has exactly one entry, and it produced P9 —
+the `chrome` scene's `windowButtons` claim had no tree behind it and had not
+since P7 landed, which is the derived check paying for itself immediately.
+
+The original finding:
 
 Two soft spots in the guard that P7 built, found by running it rather than
 reading it. The corpus itself is real — mutation-tested: removing
@@ -1525,6 +1544,83 @@ is bidirectional and genuinely good, but a scene carrying `custom: &["float"]`
 is never checked to actually exercise float. Deriving the claims from the built
 tree (a scene claiming `float` must produce a node with `layout.float.is_some()`)
 would make a stale claim fail.
+
+---
+
+## From the third review (2026-09-04)
+
+479 Rust tests, 45 Node, ten corpus scenes across four adapters, fmt and
+clippy clean. `3cbf96a` is the round's most instructive commit — the header's
+role enum had silently stopped at `KUI_ROLE_SCROLL_VIEW` while `Role::ALL`
+grew, so C alone could not mark an editor's lines. It was found by hand, and
+`abi_enum!` now pins eight enum families so it cannot recur **in C**. B1 is
+the same bug one binding over.
+
+### `!` B1 — `schema::ROLES` is the last unpinned enum restatement
+
+`Role::ALL` has 22 variants; `schema::ROLES` has 18 — the declarable subset,
+correct today (the four omissions are exactly the derived roles: `window`,
+`titleBar`, `staticText`, `scrollView`). **Nothing pins the relationship.**
+`abi_enum!` now catches this for C by construction; Lua, Node and JSX read
+`ROLES` at runtime and have no equivalent.
+
+The failure mode is worse than C's was. `role_idx` is
+
+    ROLES.get(i).and_then(|n| Role::parse(n)).unwrap_or(Role::None)
+
+and `Role::None` **hides the node and its whole subtree from the access
+tree**. So a name in `ROLES` that does not parse — a typo, or a role renamed
+in `access.rs` — does not fail, does not warn, and silently removes a subtree
+from every screen reader. Verified: `role_idx(99)` returns `None` rather than
+erroring.
+
+Two asserts in `kui-core` close it: every `ROLES` name parses, and every
+`Role::ALL` variant is either in `ROLES` or in a short list of derived-only
+roles that the test also checks is still accurate — the shape
+`the_underived_rows_are_real_and_still_underived` already uses for the corpus.
+
+### `~` B2 — Node is the only binding with no `Env`
+
+Found while reading P9. Rust has `ui.env()`, Lua builds the whole `env.window`
+table (`custom_chrome`, `maximized`, `fullscreen`, `controls_w/h`), C has
+`kui_env_set` / `kui_env_set_window`. **Node has nothing** — no read, no
+write, verified by grep across `crates/kui-node/src/lib.rs`.
+
+So a JSX app cannot know whether it is under custom chrome, whether the window
+is maximized, where the macOS traffic lights are, the refresh rate, or whether
+the window is focused. The `<titlebar>` element papers over the common case by
+being a built-in that reads `env` in Rust — but a JSX app cannot write its
+*own* titlebar, which is the case custom chrome exists for, and `widgets::
+titlebar`'s whole design is "reads `env.window` and adapts by itself".
+
+It also blocks P9: the corpus cannot cover `windowButtons` until an adapter
+can declare custom chrome, and Node is the adapter that cannot.
+
+### `~` B3 — Exit animations changed the frame model and have no scene
+
+C8's second half shipped: `exit` (P_EXIT = 78), a `DepartStore`, ghosts that
+self-ease, opt-in with a 512-node budget. It is the first feature that makes a
+node **outlive the frame that declared it** — the previous frame's tree and
+text list are kept by buffer swap — and it is the only behaviour to land this
+round without a conformance scene. Ten scenes; none of them exits.
+
+That matters more here than for a paint prop. The corpus drives steps and
+compares quads, access rows and events, which is exactly the shape a ghost
+needs pinned: that it draws, that it is **inert** (no hit region, no Tab ring
+place, no access row), and that a returning key discards it rather than
+doubling. Those are four bindings' worth of behaviour resting on one Rust
+test suite.
+
+### `.` B4 — Backlog headings lag the work, three rounds running
+
+C6 and D1 shipped unmarked in round two; A6 shipped unmarked in round three.
+Each time the body text was left as the original finding and the heading said
+open, so the backlog under-reported and the next reviewer had to diff commits
+against headings to find out.
+
+Not worth a process gate. Worth one line in this file's preamble: a session
+that closes an item marks the heading and appends what it learned, in the
+shape the closed entries already use — original finding kept, outcome on top.
 
 ---
 
