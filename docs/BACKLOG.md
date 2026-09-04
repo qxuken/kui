@@ -1417,7 +1417,8 @@ replay them (C's step buffer now fails loudly instead of truncating at 16).
 declaring `modal`: a dialog is named by its `label` alone, so text inside does
 not silence it. It caught both of our own context menus, which now carry one.
 
-The last of the ADR's four is A3 below; A2 closed it on 2026-09-04.
+All four are closed: A2 on 2026-09-04, and the last of them — the
+arrow-key composites — as A3 below on 2026-09-05.
 
 The original finding:
 
@@ -1458,7 +1459,55 @@ the dialog's own entry being read again. A declaration the ring skips
 (disabled, `role="none"`, not focusable) is no candidate and falls back,
 which is the same answer as declaring nothing.
 
-### `.` A3 — Three ADRs have deferred arrow-key composites
+### `.` A3 — Three ADRs have deferred arrow-key composites — **done (2026-09-05)**
+
+`docs/adr/0007-composite-keyboard-patterns.md`, accepted and now built. The
+answer to this entry's "real question — what a *roving tabindex* is in a data
+IR" turned out to be **nothing new**: the item a browser keeps a roving
+tabindex on is, in every pattern kui has, the item the app already marks
+`selected`, and the same fact that tells a reader which one is current tells
+the keyboard where to enter. So the entry precedence is focused → declaring
+`initialFocus` → declaring `selected` → first, and the core retains not one
+byte for it.
+
+The composite itself is derived, not declared, for the reason that already
+made `pos_in_set` derived: a flag can be forgotten on something that is a tab
+list and set on something that is not, and then the keyboard and the platform
+disagree about the same node. A container role whose items are focusable *is*
+a composite, which also settles the `list` question with no prop — a
+navigation list is rows containing links (the link is focusable, so every link
+keeps its stop), a picker is rows that are themselves `focusable`.
+
+**C6 helped more than this entry guessed.** `set_positions`' walk was not just
+"closer": it *is* the walk arrow navigation needs, and the two are now one
+function — "3 of 7" and the order the arrows take have to be the same seven in
+the same order or the announcement is a lie.
+
+Three roles at the tail (`radioGroup`, `menu`, `menuItem`), `orientation` on
+the access node from the container's own `dir`, one warning
+(`focusable-inside-item`), a `composite` corpus scene with four new steps, and
+no `PROPS` row at all. `KUI_ABI_VERSION` is 3, since `KuiAccessNode` grew a
+field.
+
+**What the guards caught that the tests did not.** The three roles first went
+in after `group` rather than at the tail of `Role::ALL`, renumbering every
+`KUI_ROLE_*` from `window` on — kui-core's own suite was green, and all
+thirteen scenes failed from C on the first run. And two facts only the
+platform could give: `AXOrientation` reaches an AX client as a *string* where
+the app hands AppKit an `NSInteger`, and a `radio` is an `AXRadioButton`
+exactly like a `tab`, so the audit's existing tab checks had to be narrowed to
+the `AXTabButton` subrole they were already asserting. `scripts/ax-audit.swift`
+runs 88/88 on macOS 26.
+
+**Still open, and named in the ADR's own follow-ups**: grid navigation (Left /
+Right *into* a row, Up / Down between rows, which wants a `grid` / `row` /
+`cell` vocabulary — decision 6's line motion is its geometric half already),
+submenus, a `radio-without-group` warning now that the fixture declares
+radios, and multi-select. `KUI_ROLE_LINE`, which the ADR listed as referenced
+in three comments and defined in none, is in fact defined in the header's role
+enum; nothing to do there.
+
+The original finding:
 
 ADR 0002 named it as its next step, ADR 0001's follow-ups touch it, ADR 0003
 lists it as not-done-here. Three deferrals is the signal it wants its own ADR.

@@ -9,6 +9,74 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **A tab list, a radio group, a menu and a picker list are one Tab stop,
+  with the arrows moving inside**
+  (`docs/adr/0007-composite-keyboard-patterns.md`, backlog A3). Every tab
+  used to be its own Tab stop, which is neither the platform pattern nor
+  what a screen reader user expects — the accessibility example alone made
+  a keyboard user walk six stops where the platform describes two.
+  **Nothing declares a composite.** A container role whose items are
+  focusable *is* one: `radioGroup`/`radio`, `tabList`/`tab`,
+  `menu`/`menuItem`, `list`/`listItem`, and no other pairing. Derived for
+  the reason `pos_in_set` already is — a declared flag can be forgotten on
+  something that is one, and set on something that is not, and then the
+  keyboard and the platform disagree about the same node. So a tab list
+  written before this release becomes one stop with no edit at all, and a
+  `group` of buttons stays the ordinary ring it was.
+  **The two things kui spells `list` are told apart by how they are already
+  built**, with no prop between them: a navigation list is rows *containing*
+  links, so the focusable node is the link and every link keeps its stop; a
+  picker is rows that are themselves `focusable`, which is a composite.
+  Inside one, Left / Up and Right / Down both move — the perpendicular pair
+  costs nothing, while refusing it turns a mis-derived axis into a keyboard
+  dead end that only a screen reader user finds — Home and End reach the
+  ends, and printable characters search the items by name (a buffer aged by
+  the frame clock, so input routing stays timeless; with no clock every
+  keystroke starts a fresh search). A `radioGroup`, `tabList` and `menu`
+  wrap past their ends; a `list` clamps, because a windowed list does not
+  have its last row in the tree to wrap to. In a `wrapChildren` container
+  the cross-axis pair moves by a wrap line.
+  **The core moves the focus and never writes `selected`.** Focus is core
+  state — `Core::set_focus` has been its one writer since ADR 0002 — and
+  this is the motion Tab already performs with a narrower scope; `selected`
+  is app state the view re-declares every frame, so a view that wants
+  selection to follow focus writes `selected(ui.is_focused(key))` and it is
+  true by construction. For `radio` and `tab`, whose patterns *define*
+  selection as following focus, moving also emits the item's own
+  `on_click` payload — the event Enter already emits — so an app that
+  handles clicks on its tabs answers arrow keys with no new code and no new
+  event kind.
+  **Three roles and one field, and that is the whole surface.**
+  `radioGroup`, `menu` and `menuItem` land at the tail of the role list
+  (the only free position under ADR 0006; `menuItem` is a control, so it is
+  focusable by its role and an unnamed one is reported by
+  `control-without-name`), and `orientation` lands on the access node,
+  derived from the container's own `dir` and reported to the platform
+  through AccessKit — an announcement, never a gate. **No `PROPS` row, no
+  parser in any binding, no new event kind.** C hosts need a rebuild:
+  `KuiAccessNode` grew a field, so `KUI_ABI_VERSION` is 3.
+  A new `focusable-inside-item` warning names the one configuration this
+  leaves impossible — a button inside a list row, which the roving stop
+  puts out of reach. A focusable node inside the *container* but outside
+  every item, a "+" at the end of a tab bar, keeps its own stop and is not
+  reported: the line is drawn at the item, not at the container.
+  The corpus gains a `composite` scene and four steps (`arrow`, `home`,
+  `end`, `type`), and its node line gains `selected` and `orientation` —
+  because "the core never wrote `selected`" is invisible without the first,
+  and the C adapter is the only reader of the second. That adapter earned
+  its keep on the first run: the three roles had gone in after `group`
+  rather than at the tail, which renumbered every `KUI_ROLE_*` from
+  `window` on. Rust's own tests were green.
+  The accessibility example gains the radio group and a menu opened from a
+  button, and `scripts/ax-audit.swift` a composite section — 88 checks on
+  macOS 26, including a posted Right arrow moving the *checked* radio (both
+  halves) and a posted Tab leaving the whole tab bar in one step.
+  **What you can delete:** every `onKeyDown` handler that reimplemented
+  arrow navigation over a tab bar or a picker list, and the index
+  arithmetic behind it — the core walks a tree it computes and the app
+  never had. Nothing else: a tab list already written needs no edit to
+  become one Tab stop.
+
 - **The corpus drives a frame under custom chrome, so `windowButtons` is
   covered by a tree instead of a claim** (backlog P9). A scene now declares
   the host window facts it runs under, beside its tree and its steps:
