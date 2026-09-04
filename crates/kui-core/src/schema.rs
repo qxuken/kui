@@ -161,10 +161,11 @@ pub const WRAPS: &[&str] = &["word", "glyph", "none"];
 /// to keep meaning "this node does not expand" (AccessKit's `expanded`,
 /// ARIA's `aria-expanded`, are three-state for the same reason).
 pub const EXPANDED: &[&str] = &["collapsed", "expanded"];
-/// The roles a view can declare (`crate::access::Role::name` spellings).
-/// The purely derived roles (window, title bar, static text, scroll view)
-/// are not on the list; `textInput`, `multilineTextInput` and `line` are,
-/// because an app that draws its own text declares them.
+/// The roles a view can declare (`crate::access::Role::name` spellings),
+/// in wire order — a binding sends the index. The purely derived roles are
+/// the ones [`DERIVED_ONLY`] names, and every other `Role::ALL` variant is
+/// here; `textInput`, `multilineTextInput` and `line` are, because an app
+/// that draws its own text declares them.
 pub const ROLES: &[&str] = &[
     "none",
     "button",
@@ -186,11 +187,49 @@ pub const ROLES: &[&str] = &[
     "line",
 ];
 
+/// The roles no view can declare, because the core derives them itself
+/// ([`crate::access::derived_role`]), with what derives each one. Every
+/// [`Role::ALL`] variant is on this list or in [`ROLES`], and
+/// `every_role_is_declarable_or_derived` keeps both halves honest: a role
+/// exempted here has to be one a frame really does derive, so the list
+/// cannot absorb a variant that was simply forgotten from `ROLES`.
+pub const DERIVED_ONLY: &[(&str, &str)] = &[
+    (
+        "window",
+        "the root node of a frame, named by the window title",
+    ),
+    ("titleBar", "a `windowDrag` node"),
+    ("staticText", "a text node"),
+    ("scrollView", "a `scrollX` / `scrollY` node"),
+];
+
+/// The role at wire index `i` — `ROLES`' order is the protocol, so this
+/// and [`ROLES`] are pinned to each other by
+/// `every_declarable_role_name_is_a_real_role`.
+///
+/// Neither way of missing can happen today. A name in `ROLES` that no
+/// longer parses is what that test catches, by construction rather than
+/// at run time. Out of range cannot arrive through a transport: Node's
+/// binary reader rejects `i >= names.len()` before it builds a
+/// `Parsed::Enum`, Node's JSON and Lua resolve a *name* through
+/// [`enum_index`], and C carries `Role::ALL` positions that
+/// [`crate::access::Role`] itself bounds.
+///
+/// So the fallback is reachable only from a future transport that forgets
+/// its check, and it is `Role::Group` rather than `Role::None` for that
+/// reader: `None` takes the node *and its whole subtree* out of the access
+/// tree, which is a destructive answer to "an index I do not have", while
+/// a group is what the core already derives for a box that is merely
+/// somewhere focus can land — the node keeps its children, and a wrong
+/// role is recoverable where a missing subtree is not. It stays silent
+/// because this is a pure schema function with no warning sink, and the
+/// transports' own errors name the prop and the index, which is a better
+/// report than a warning here.
 pub fn role_idx(i: usize) -> Role {
     ROLES
         .get(i)
         .and_then(|n| Role::parse(n))
-        .unwrap_or(Role::None)
+        .unwrap_or(Role::Group)
 }
 pub const EASINGS: &[&str] = &[
     "easeOut",
@@ -1701,6 +1740,87 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out.spec.on_layout, Some(Value::Null));
+    }
+
+    /// `ROLES` is the wire order for the `role` enum — a binding sends the
+    /// index — so a typo, or a spelling that drifted from `access.rs`, does
+    /// not fail anywhere: the name simply stops parsing, and every view
+    /// declaring that role silently gets [`role_idx`]'s fallback instead.
+    /// Until this test that fallback was `Role::None`, which takes the node
+    /// *and its whole subtree* out of the access tree — a drifted spelling
+    /// would have removed part of the app from every screen reader, with
+    /// nothing failing and nothing warning. Both halves are pinned here:
+    /// each name is a real role, and index `i` still means `ROLES[i]`.
+    #[test]
+    fn every_declarable_role_name_is_a_real_role() {
+        for (i, name) in ROLES.iter().enumerate() {
+            let role = Role::parse(name)
+                .unwrap_or_else(|| panic!("ROLES[{i}] = {name:?} is not a Role::ALL name"));
+            assert_eq!(role_idx(i), role, "role index {i} lowers to the wrong role");
+            assert_eq!(role_idx(i).name(), *name);
+        }
+    }
+
+    /// The C header pins its role enum to `Role::ALL` by construction
+    /// (`kui-ffi`'s `abi_enum!`), so a new role fails the C build until the
+    /// header names it. Lua, Node and JSX have no such pin — they read
+    /// `ROLES` — and a role added to `Role::ALL` and forgotten there is
+    /// simply undeclarable from all three, silently. This is that pin: a
+    /// role is declarable or derived, never neither and never both, and an
+    /// exemption has to be one a frame really does derive, so `DERIVED_ONLY`
+    /// cannot become somewhere to put a forgotten row.
+    #[test]
+    fn every_role_is_declarable_or_derived() {
+        for role in Role::ALL {
+            let declarable = ROLES.contains(&role.name());
+            let derived = DERIVED_ONLY.iter().any(|(n, _)| *n == role.name());
+            assert!(
+                declarable || derived,
+                "Role::{role:?} is in Role::ALL but no view can declare it and \
+                 DERIVED_ONLY does not say the core derives it — add {:?} to \
+                 ROLES, or to DERIVED_ONLY with the reason",
+                role.name()
+            );
+            assert!(
+                !(declarable && derived),
+                "Role::{role:?} is in ROLES, so it is declarable — drop it from \
+                 DERIVED_ONLY"
+            );
+        }
+        for (name, why) in DERIVED_ONLY {
+            assert!(!why.is_empty(), "{name:?} is exempted without a reason");
+            assert!(
+                Role::parse(name).is_some(),
+                "DERIVED_ONLY names {name:?}, which is not a Role::ALL name"
+            );
+        }
+        let derived = roles_one_frame_derives();
+        for (name, _) in DERIVED_ONLY {
+            assert!(
+                derived.contains(&Role::parse(name).unwrap()),
+                "DERIVED_ONLY keeps {name:?} out of ROLES because the core \
+                 derives it, but no frame does any more — either it belongs in \
+                 ROLES now, or the exemption is stale"
+            );
+        }
+    }
+
+    /// One frame that derives each of `DERIVED_ONLY`'s roles: the root is
+    /// the window, a `window_drag` row the title bar, a scrolling box the
+    /// scroll view, and the text inside it static text.
+    fn roles_one_frame_derives() -> Vec<Role> {
+        let mut core = crate::Core::new();
+        let mut ui = core.frame(crate::Size::new(200.0, 200.0), 1.0);
+        ui.window_title("Demo");
+        ui.configure_root(NodeSpec::column().fill());
+        ui.with_keyed("titlebar", NodeSpec::row().window_drag(), |_| {});
+        ui.with_keyed(
+            "scroll",
+            NodeSpec::column().height(Sizing::Fixed(40.0)).scroll_y(),
+            |ui| ui.text("hello", TextStyle::new(12.0)),
+        );
+        ui.finish();
+        core.access_tree().nodes.iter().map(|n| n.role).collect()
     }
 
     #[test]

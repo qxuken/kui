@@ -40,9 +40,13 @@ use crate::text::TextSystem;
 use crate::tree::{NIL, NodeContent, OriginId, Tree};
 use crate::window::{WindowButton, WindowRole};
 
-/// What a node is to assistive technology. The first group is what a view
-/// can declare (`role` prop; see `schema::ROLES`); the rest the core
-/// derives from a node's content and behaviour.
+/// What a node is to assistive technology. Most of these a view declares
+/// (`role` prop; `schema::ROLES` is that list, and the wire order); the
+/// ones the core derives from a node's content and behaviour instead are
+/// `schema::DERIVED_ONLY`, which says what derives each. Every variant is
+/// on one list or the other — `schema`'s
+/// `every_role_is_declarable_or_derived` fails when a new one is on
+/// neither.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Role {
     /// Decorative: the node and its whole subtree leave the access tree.
