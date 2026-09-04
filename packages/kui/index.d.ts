@@ -946,6 +946,25 @@ export declare class Ctx {
    * name the declaration that opened `env().window.id` used.
    */
   windowName(): string
+  /**
+   * Asks the driver to resize a window to `width`×`height` logical
+   * px. A request and not a declaration: a window's `size` config
+   * is read on the frame it opens and never again, because the user
+   * owns a window's size once it exists, so this is the only way an
+   * app moves a live one. Queued the way `reveal` is — a `KuiWindow`
+   * applies it on its next pump, and the window answers with the
+   * ordinary `resize` event carrying the size it actually became,
+   * while a headless `Ctx` has no window and simply keeps the
+   * request. `window` is the id events carry (`env().window.id`),
+   * 0 for the main window.
+   */
+  setWindowSize(window: number, width: number, height: number): void
+  /**
+   * Asks the driver to give a window keyboard focus; queued the same
+   * way. Advisory: whether the window manager agreed shows up as
+   * `env().focused` on the frames that follow, not as a reply.
+   */
+  focusWindow(window: number): void
   editText(key: string): string | null
   setEditText(key: string, text: string): void
 }
@@ -1223,6 +1242,25 @@ export declare class KuiWindow {
    * name the declaration that opened `env().window.id` used.
    */
   windowName(): string
+  /**
+   * Asks the driver to resize a window to `width`×`height` logical
+   * px. A request and not a declaration: a window's `size` config
+   * is read on the frame it opens and never again, because the user
+   * owns a window's size once it exists, so this is the only way an
+   * app moves a live one. Queued the way `reveal` is — a `KuiWindow`
+   * applies it on its next pump, and the window answers with the
+   * ordinary `resize` event carrying the size it actually became,
+   * while a headless `Ctx` has no window and simply keeps the
+   * request. `window` is the id events carry (`env().window.id`),
+   * 0 for the main window.
+   */
+  setWindowSize(window: number, width: number, height: number): void
+  /**
+   * Asks the driver to give a window keyboard focus; queued the same
+   * way. Advisory: whether the window manager agreed shows up as
+   * `env().focused` on the frames that follow, not as a reply.
+   */
+  focusWindow(window: number): void
   editText(key: string): string | null
   setEditText(key: string, text: string): void
 }

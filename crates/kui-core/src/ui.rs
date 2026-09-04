@@ -10,7 +10,7 @@ use crate::runtime::Core;
 use crate::spec::{NodeSpec, TextStyle};
 use crate::text::Span;
 use crate::tree::OriginId;
-use crate::window::{WindowCommand, WindowConfig};
+use crate::window::{WindowCommand, WindowConfig, WindowId};
 
 pub struct Ui<'a> {
     core: &'a mut Core,
@@ -328,6 +328,20 @@ impl<'a> Ui<'a> {
     /// keymap, minimize from a command line).
     pub fn window_command(&mut self, cmd: WindowCommand) {
         self.core.push_window_command(cmd);
+    }
+
+    /// Asks the driver to resize a window (logical px) — a request applied
+    /// on the driver's next pump and ignored headlessly, not a declaration:
+    /// the user owns a window's size once it exists. `ui.env().window.id`
+    /// is the window this view is drawing. See `Core::set_window_size`.
+    pub fn set_window_size(&mut self, window: WindowId, size: Size) {
+        self.core.set_window_size(window, size);
+    }
+
+    /// Asks the driver to give a window keyboard focus; queued the same
+    /// way. See `Core::focus_window`.
+    pub fn focus_window(&mut self, window: WindowId) {
+        self.core.focus_window(window);
     }
 
     /// Runs layout and emission; results land in `Core::output()`.

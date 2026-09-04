@@ -61,8 +61,15 @@ extern "C" {
  * kui_take_window_command pops (a command now names its window, and an
  * open carries a config), and kui_env_set_window leads with the window id.
  * Edit the drain loop and the env call; nothing else changes meaning.
+ *
+ * ABI 6 appends width/height to KuiWindowCommand, for the KUI_CMD_SET_SIZE
+ * kui_set_window_size queues (ADR 0004 step 5). Set `size` (as
+ * KUI_WINDOW_COMMAND_INIT does) and you need no source change: the library
+ * writes the prefix your build reserved and stops. Nor can the new verb
+ * reach a host that never calls kui_set_window_size - only that call
+ * produces it. The version bumps for the host that skipped this check.
  */
-#define KUI_ABI_VERSION 5u
+#define KUI_ABI_VERSION 6u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -190,13 +197,16 @@ enum {
 /* Window commands (KuiWindowCommand.kind, kui_take_window_command). The
  * first four are what chrome nodes ask for, about the window they were
  * drawn in; KUI_CMD_OPEN and KUI_CMD_CLOSE are also what the declared
- * window set's diff decides (kui_window_declare). */
+ * window set's diff decides (kui_window_declare). The last two are what
+ * the app itself asked for (kui_set_window_size / kui_focus_window). */
 enum {
     KUI_CMD_START_DRAG = 1,
     KUI_CMD_CLOSE = 2,
     KUI_CMD_MINIMIZE = 3,
     KUI_CMD_TOGGLE_MAXIMIZE = 4,
     KUI_CMD_OPEN = 5,
+    KUI_CMD_SET_SIZE = 6,
+    KUI_CMD_FOCUS = 7,
 };
 
 /* [in] */
@@ -762,6 +772,7 @@ typedef struct KuiWindowCommand {
     uint32_t window; /* which window; for KUI_CMD_OPEN the new window's id */
     uint16_t origin; /* KUI_CMD_OPEN: whose declaration won (0 = you, 1+ = an extension) */
     KuiWindowConfig config; /* KUI_CMD_OPEN only */
+    float width, height;    /* KUI_CMD_SET_SIZE only: the size asked for, logical px */
 } KuiWindowCommand;
 #define KUI_WINDOW_COMMAND_INIT ((KuiWindowCommand){ .size = sizeof(KuiWindowCommand) })
 
@@ -905,6 +916,7 @@ void kui_env_set_window(KuiCtx *ctx, uint32_t window, bool custom_chrome,
  *         switch (cmd.kind) {
  *         case KUI_CMD_OPEN:  open a window for cmd.window with cmd.config; break;
  *         case KUI_CMD_CLOSE: close window cmd.window (exit if KUI_WINDOW_MAIN); break;
+ *         case KUI_CMD_SET_SIZE: resize cmd.window to cmd.width x cmd.height; break;
  *         ...
  *         }
  *     }
@@ -924,6 +936,19 @@ bool kui_take_window_command(KuiCtx *ctx, KuiWindowCommand *out);
  * "duplicate-window-config"; the lowest declaring window's first one
  * wins. Call between kui_frame_begin and kui_frame_finish. */
 void kui_window_declare(KuiCtx *ctx, KuiStr name, const KuiWindowConfig *cfg);
+/* Asks the driver to resize a window to w x h logical px, or to give it
+ * keyboard focus. Requests, not declarations: kui_window_declare's config is
+ * read on the opening edge only, because the user owns a window's size once
+ * it exists, so these are the only way an app moves a live window. They are
+ * queued the way kui_reveal queues a scroll and come back out of your own
+ * kui_take_window_command - KUI_CMD_SET_SIZE, carrying the size in
+ * cmd.width/cmd.height, and KUI_CMD_FOCUS - for you to apply; a headless
+ * host that never drains ignores them. window is the id events carry
+ * (KuiEvent.window), KUI_WINDOW_MAIN for the launcher's. The size the window
+ * actually becomes arrives as the ordinary resize event, and whether focus
+ * was granted through kui_env_set_focused - neither is a reply here. */
+void kui_set_window_size(KuiCtx *ctx, uint32_t window, float w, float h);
+void kui_focus_window(KuiCtx *ctx, uint32_t window);
 /* Which window this context draws (what kui_env_set_window set;
  * KUI_WINDOW_MAIN until then). In a kui_run view callback: the window
  * being drawn. */

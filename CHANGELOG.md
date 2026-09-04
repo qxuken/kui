@@ -9,6 +9,30 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **An app can ask for a window's size and focus** (backlog C11 step 5, ADR
+  0004 decision 5). `WindowCommand` gained `SetSize { window, size }` and
+  `Focus(WindowId)`, queued by `Core::set_window_size` / `Core::focus_window`
+  the way `reveal` and `play` queue theirs: the driver applies them on its
+  next pump (winit's `request_inner_size` / `focus_window`), a headless one
+  never drains, and the size the window actually becomes arrives as the
+  ordinary `resize` event. Size is a **request, not a prop** — the user owns
+  a window's size once it exists, and a declared size would fight every
+  drag of its edge — so a frame that follows changes nothing. In every
+  binding: `ui.set_window_size` / `ui.focus_window`, `setWindowSize` /
+  `focusWindow` in Node, `kui_set_window_size` / `kui_focus_window` in C,
+  `env.set_window_size` / `env.focus_window` in Lua.
+  This is the other half of step 3's rule that a window's config is read on
+  the opening edge only: a declaration cannot move a live window, so an app
+  that wants to needs a verb, and now has one.
+  **C's `KuiWindowCommand` gained `width`/`height`** for `KUI_CMD_SET_SIZE`
+  (`KUI_CMD_FOCUS` needs only the `window` every command already carries),
+  which is the second exercise of the [out] append `size` was put there for
+  — the floor stays through `config`, so a host built against ABI 5 keeps
+  its reservation, and no host that never calls `kui_set_window_size` can
+  receive the verb at all. `KUI_ABI_VERSION` is 6 for the host that skipped
+  the check. A `SetSize` carries a bare size rather than a `KuiWindowConfig`
+  for the same reason the core's does: a config is what a window opens with,
+  and this moves one that already exists.
 - **A frame declares which windows exist, and the runner opens them**
   (backlog C11 step 3, `docs/adr/0004-multi-window.md` decisions 4-6).
   `ui.window("palette", WindowConfig::sized(400.0, 300.0))` in Rust,
@@ -54,7 +78,7 @@ upgrades remove code from the apps on it is doing the job.
   header's `KuiWindowCommand` carries it); `Core::windows()` /
   `ctx.windows()` list what is open, `Core::window_name()` /
   `kui_ctx_window_name` / `ctx.windowName()` say which one a core draws.
-  Popups (step 4) and `SetSize` / `Focus` (step 5) are not here.
+  Popups (step 4) are not here.
 - **Every event says which window it came from** (backlog C11 step 2, ADR
   0004). `WindowId` is an opaque integer the driver assigns — `WindowId::MAIN`
   is 0, apps never build one — and it now reaches every transport:

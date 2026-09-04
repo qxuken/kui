@@ -6,8 +6,9 @@
 //! `env.measure_text(s, opts, max_w)`), focus verbs (`env.set_focus(key)`,
 //! `env.blur()`, `env.focus_next()`, `env.focus_prev()`) and scroll calls
 //! (`env.reveal(key)`, `env.scroll_offset(key)`, `env.set_scroll(key, x, y)`,
-//! `env.scroll_geometry(key)`); the root table may set
-//! `window_title`. Because the IR is data all the way down, the binding is
+//! `env.scroll_geometry(key)`) and window requests
+//! (`env.set_window_size(window, w, h)`, `env.focus_window(window)`); the
+//! root table may set `window_title`. Because the IR is data all the way down, the binding is
 //! just table-to-node conversion — no closures cross the boundary.
 //!
 //! ## The two `focus` names
@@ -154,7 +155,8 @@ impl Extension for LuaExtension {
 /// `measure_text(s, opts, max_w)` (see `measure_from_lua`), the focus verbs
 /// `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()` and the
 /// scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
-/// `scroll_geometry(key)`.
+/// `scroll_geometry(key)` and the window requests `set_window_size(window,
+/// w, h)` / `focus_window(window)`.
 fn env_table<'scope, 'env: 'scope>(
     lua: &Lua,
     scope: &'scope mlua::Scope<'scope, 'env>,
@@ -322,6 +324,29 @@ fn env_table<'scope, 'env: 'scope>(
         scope.create_function(move |_, (key, x, y): (i64, f32, f32)| {
             ui.borrow_mut()
                 .set_scroll(Key(key as u64), kui_core::Vec2::new(x, y));
+            Ok(())
+        })?,
+    )?;
+    // Window requests from the script: `env.set_window_size(window, w, h)`
+    // and `env.focus_window(window)` queue commands the driver applies on
+    // its next pump — after this frame, since `view` runs inside one — and
+    // a headless driver never drains. Requests, not declarations: the user
+    // owns a window's size once it exists (ADR 0004 decision 5).
+    // `env.window.id` is the window the script is drawing, and the only
+    // one there is until step 3.
+    t.set(
+        "set_window_size",
+        scope.create_function(move |_, (window, w, h): (i64, f32, f32)| {
+            ui.borrow_mut()
+                .set_window_size(kui_core::WindowId(window as u32), kui_core::Size::new(w, h));
+            Ok(())
+        })?,
+    )?;
+    t.set(
+        "focus_window",
+        scope.create_function(move |_, window: i64| {
+            ui.borrow_mut()
+                .focus_window(kui_core::WindowId(window as u32));
             Ok(())
         })?,
     )?;
@@ -1738,6 +1763,41 @@ mod tests {
         // Unchanged next frame: silence.
         frame(&mut core, &mut ext);
         assert!(core.take_pending_events().is_empty());
+    }
+
+    /// Window requests from a script queue like a reveal — against the
+    /// frame being built, drained by the driver after it — in call order,
+    /// and once; a headless core keeps them and nothing else changes.
+    #[test]
+    fn scripts_queue_window_size_and_focus_requests() {
+        let mut ext = LuaExtension::from_source(
+            "win",
+            r#"
+                function view(env)
+                  env.set_window_size(env.window.id, 640, 480)
+                  env.focus_window(env.window.id)
+                  return column { width = "grow", height = "grow" }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+        ui.set_origin(OriginId(1));
+        ext.view(&mut ui).unwrap();
+        ui.finish();
+        assert_eq!(
+            core.take_window_commands(),
+            vec![
+                kui_core::WindowCommand::SetSize {
+                    window: WindowId::MAIN,
+                    size: Size::new(640.0, 480.0),
+                },
+                kui_core::WindowCommand::Focus(WindowId::MAIN),
+            ]
+        );
+        assert!(core.take_window_commands().is_empty());
+        assert_eq!(core.viewport(), Size::new(400.0, 200.0));
     }
 
     /// Scrolling from a script: `env.reveal` scrolls a row into view against

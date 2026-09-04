@@ -361,7 +361,14 @@ that are hard to reverse and would look arbitrary without their context.
   frame that declares it, closes on the first that does not, and `view`
   runs once per open window with `ui.window_name()` saying which; the same
   drain carries the `Open` / `Close`, and the app hears
-  `{kind="window", phase, name, id}`. The window's *size* travels the same
+  `{kind="window", phase, name, id}`. What a declaration does *not* carry is
+  a live window's geometry: a config is read on the frame it opens and never
+  again, because the user owns a window's size once it exists, so moving one
+  is an explicit request — `ui.set_window_size(window, size)` and
+  `ui.focus_window(window)` (`setWindowSize` / `focusWindow` in Node,
+  `kui_set_window_size` / `kui_focus_window` in C, `env.set_window_size` /
+  `env.focus_window` in Lua), queued into that same drain for the driver to
+  apply on its next pump. The window's *size* travels the same
   way: a frame begun at a different viewport or DPI than the last one posts
   `{kind="resize", width, height, scale}` on the root, routed with the frame's
   other pending events — `App::on_event` in Rust, `pollEvents` in Node, `kui_poll_event`

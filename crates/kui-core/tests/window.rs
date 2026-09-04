@@ -138,6 +138,53 @@ fn commands_drain_once() {
     assert!(core.take_window_commands().is_empty());
 }
 
+/// `set_window_size` / `focus_window` are requests, queued behind whatever
+/// the chrome produced and drained in that order — the driver applies them
+/// on its next pump, and a headless core just keeps them (ADR 0004 decision
+/// 5: size is a command and not a declared row, so the frame that follows
+/// neither repeats the request nor changes the viewport it was given).
+#[test]
+fn size_and_focus_requests_queue_in_order_with_chrome_commands() {
+    let mut core = Core::new();
+    frame(&mut core);
+    core.set_window_size(WindowId::MAIN, Size::new(640.0, 480.0));
+    drive(&mut core, &click_at(300.0, 20.0)); // minimize
+    core.focus_window(WindowId::MAIN);
+    assert_eq!(
+        core.take_window_commands(),
+        vec![
+            WindowCommand::SetSize {
+                window: WindowId::MAIN,
+                size: Size::new(640.0, 480.0),
+            },
+            WindowCommand::Minimize(WindowId::MAIN),
+            WindowCommand::Focus(WindowId::MAIN),
+        ]
+    );
+    assert!(core.take_window_commands().is_empty());
+
+    // From a view, through `Ui`, the same queue — and spent by the drain,
+    // not re-raised by the frame after.
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.focus_window(WindowId::MAIN);
+    ui.set_window_size(WindowId::MAIN, Size::new(800.0, 600.0));
+    ui.finish();
+    assert_eq!(
+        core.take_window_commands(),
+        vec![
+            WindowCommand::Focus(WindowId::MAIN),
+            WindowCommand::SetSize {
+                window: WindowId::MAIN,
+                size: Size::new(800.0, 600.0),
+            },
+        ]
+    );
+    frame(&mut core);
+    assert!(core.take_window_commands().is_empty());
+    assert_eq!(core.viewport(), Size::new(400.0, 300.0));
+}
+
 #[test]
 fn plain_on_click_nodes_are_unaffected() {
     let mut core = Core::new();

@@ -115,10 +115,16 @@ impl Default for WindowConfig {
 
 /// A window-level intent for the frame driver, drained via
 /// `Core::take_window_commands` after each input dispatch and each frame.
+/// Three things produce one: input on a chrome node, the declared set's
+/// diff, and an app asking directly (`Core::set_window_size`,
+/// `Core::focus_window`, `Core::push_window_command`). A headless driver
+/// never drains, which is the whole of "the core never touches a window".
+///
 /// Every variant says which window it is about, and every variant is
 /// `Copy` and pointer-free — an `Open` carries no title (the new window's
-/// own first frame declares one through `window_title`), so nothing
-/// borrowed ever enters a driver's drain loop.
+/// own first frame declares one through `window_title`) and a `SetSize`
+/// carries two floats — so nothing borrowed ever enters a driver's drain
+/// loop.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum WindowCommand {
     /// Begin an interactive OS move (the press landed on a `Drag` node).
@@ -136,6 +142,21 @@ pub enum WindowCommand {
         origin: OriginId,
         config: WindowConfig,
     },
+    /// Resize `window` to `size` (logical px), asked for by the app
+    /// (`Core::set_window_size`). A command and not part of a declaration,
+    /// because the user owns a window's size once it exists — a declared
+    /// size would fight every drag of the window's edge, which is why
+    /// `WindowConfig::size` is read on the opening edge only. The OS may
+    /// answer with a different size (a minimum, a tiling manager); the
+    /// frame that follows posts a `resize` event with whatever it actually
+    /// became, the way every resize already does.
+    SetSize {
+        window: WindowId,
+        size: Size,
+    },
+    /// Give `window` keyboard focus (`Core::focus_window`). Advisory, like
+    /// every focus request an app makes of a window manager.
+    Focus(WindowId),
 }
 
 impl WindowCommand {
@@ -145,8 +166,10 @@ impl WindowCommand {
             WindowCommand::StartDrag(w)
             | WindowCommand::Close(w)
             | WindowCommand::Minimize(w)
-            | WindowCommand::ToggleMaximize(w) => w,
+            | WindowCommand::ToggleMaximize(w)
+            | WindowCommand::Focus(w) => w,
             WindowCommand::Open { id, .. } => id,
+            WindowCommand::SetSize { window, .. } => window,
         }
     }
 }

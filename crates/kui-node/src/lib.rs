@@ -635,9 +635,15 @@ fn window_commands_json(cmds: Vec<kui_core::WindowCommand>) -> Json {
                     WindowCommand::Minimize(_) => "minimize",
                     WindowCommand::ToggleMaximize(_) => "toggleMaximize",
                     WindowCommand::Open { .. } => "open",
+                    WindowCommand::SetSize { .. } => "setSize",
+                    WindowCommand::Focus(_) => "focus",
                 };
                 o.insert("kind".into(), Json::String(kind.into()));
                 o.insert("window".into(), Json::from(cmd.window().0));
+                if let WindowCommand::SetSize { size, .. } = cmd {
+                    o.insert("width".into(), Json::from(size.w as f64));
+                    o.insert("height".into(), Json::from(size.h as f64));
+                }
                 if let WindowCommand::Open { origin, config, .. } = cmd {
                     o.insert("origin".into(), Json::from(origin.0));
                     let mut c = JsonMap::new();
@@ -1394,6 +1400,36 @@ macro_rules! core_methods {
             #[napi]
             pub fn window_name(&mut self) -> String {
                 self.$core().window_name().to_string()
+            }
+
+            /// Asks the driver to resize a window to `width`×`height` logical
+            /// px. A request and not a declaration: a window's `size` config
+            /// is read on the frame it opens and never again, because the user
+            /// owns a window's size once it exists, so this is the only way an
+            /// app moves a live one. Queued the way `reveal` is — a `KuiWindow`
+            /// applies it on its next pump, and the window answers with the
+            /// ordinary `resize` event carrying the size it actually became,
+            /// while a headless `Ctx` has no window and simply keeps the
+            /// request. `window` is the id events carry (`env().window.id`),
+            /// 0 for the main window.
+            #[napi]
+            pub fn set_window_size(&mut self, window: u32, width: f64, height: f64) -> Result<()> {
+                self.$core().set_window_size(
+                    kui_core::WindowId(window),
+                    Size::new(width as f32, height as f32),
+                );
+                self.$redraw();
+                Ok(())
+            }
+
+            /// Asks the driver to give a window keyboard focus; queued the same
+            /// way. Advisory: whether the window manager agreed shows up as
+            /// `env().focused` on the frames that follow, not as a reply.
+            #[napi]
+            pub fn focus_window(&mut self, window: u32) -> Result<()> {
+                self.$core().focus_window(kui_core::WindowId(window));
+                self.$redraw();
+                Ok(())
             }
 
             // -- Editors ----------------------------------------------------

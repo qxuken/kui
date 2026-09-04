@@ -1810,6 +1810,35 @@ test('reveal scrolls a row into view against the frame that follows it', () => {
   assert.deepEqual(ctx.scrollOffset(list), after);
 });
 
+// -- Window requests -------------------------------------------------------
+// `setWindowSize` / `focusWindow` queue commands for the driver (ADR 0004
+// step 5) — the two things a declaration cannot say, since a window's config
+// is read on the frame it opens and never again.
+
+test('setWindowSize and focusWindow queue commands carrying what they ask for', () => {
+  const ctx = new Ctx();
+  const fill = () => box({ width: 'grow', height: 'grow', role: 'button', label: 'fill' });
+  ctx.frame(400, 300, 1, fill());
+  ctx.windowCommands();
+  ctx.pollEvents();
+
+  ctx.setWindowSize(0, 640, 480);
+  ctx.focusWindow(0);
+  assert.deepEqual(ctx.windowCommands(), [
+    { kind: 'setSize', window: 0, width: 640, height: 480 },
+    { kind: 'focus', window: 0 },
+  ]);
+  assert.deepEqual(ctx.windowCommands(), [], 'drained once');
+
+  // A request, not a declaration: nothing the core owns moved, and no
+  // `resize` was invented. The size a real window becomes comes back from
+  // the driver, not from the asking.
+  ctx.frame(400, 300, 1, fill());
+  const { rect } = nodesByName(ctx).fill;
+  assert.deepEqual([rect.w, rect.h], [400, 300]);
+  assert.deepEqual(ctx.pollEvents(), []);
+});
+
 test('reveal of a key the next frame does not declare is a no-op', () => {
   const { ctx, render, list } = listCtx();
   ctx.reveal('0123456789abcdef');

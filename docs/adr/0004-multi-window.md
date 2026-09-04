@@ -520,7 +520,11 @@ source break and belongs with the breaks step 3 already carries.
   — pure plumbing through four transports; (3) the declared set, the
   diff, `Open`/`Close`, and the `window` event, with the runner opening
   real `Normal` windows; (4) `WindowKind::Popup`, anchoring, the
-  non-activating key route and `dismiss`; (5) `SetSize` / `Focus`.
+  non-activating key route and `dismiss`; (5) `SetSize` / `Focus` (built
+  2026-09-05, before step 4: it depends on nothing step 4 adds, and step 3
+  is what makes it necessary rather than merely available — once a config
+  is read on the opening edge only, these two verbs are the only way an app
+  moves a window that already exists).
 - Not decided here, and each wanting its own answer when something needs
   it: window position as a declared or reported fact (the app cannot
   currently restore a window where the user left it), multi-monitor and
