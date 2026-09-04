@@ -8,7 +8,10 @@
 // Needs the addon built: npm run build:native. Run: npm test
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Ctx, createApp, createEncoder, decodeQuads, protocol, quadStride } from './index.js';
 
@@ -1710,4 +1713,48 @@ test('setScroll is clamped by the next layout', () => {
   assert.deepEqual(ctx.scrollOffset(list), { x: 0, y: 0 });
   // A node that never scrolled reads zero rather than failing.
   assert.deepEqual(ctx.scrollOffset(nodesByName(ctx)['row 0'].key), { x: 0, y: 0 });
+});
+
+
+// -- The addon resolver -----------------------------------------------------
+// `native.cjs` picks the newest of the prebuild and the two cargo profiles,
+// and a candidate can exist without being loadable — most easily by building
+// the workspace with `--all-targets`, which unifies kui-node's `napi/noop`
+// dev-dependency feature into the cdylib and leaves one at target/debug/ that
+// Node refuses with "Module did not self-register". Before this was handled,
+// the raw dlopen failure escaped and `npm test` died before its first test,
+// pointing at native.cjs rather than at the build that caused it.
+//
+// Driven in a child process because this one has the addon loaded already.
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+function resolveWith(lib) {
+  return spawnSync(process.execPath, ['-e', "require('./native.cjs')"], {
+    cwd: HERE,
+    env: { ...process.env, KUI_NODE_LIB: lib },
+    encoding: 'utf8',
+  });
+}
+
+test('an unloadable native library is reported, not thrown raw from the resolver', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kui-resolver-'));
+  const bogus = join(dir, 'kui_node.node');
+  writeFileSync(bogus, 'this is not a shared library');
+  try {
+    const r = resolveWith(bogus);
+    assert.notEqual(r.status, 0, 'a library that cannot load is still a failure');
+    assert.match(r.stderr, /found but not loadable/, 'says what went wrong');
+    assert.ok(r.stderr.includes(bogus), `names the file it tried: ${r.stderr}`);
+    assert.match(r.stderr, /cargo build -p kui-node/, 'says how to get a good one');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a native library that is not there is reported as missing, not as broken', () => {
+  const r = resolveWith(join(tmpdir(), 'kui-nothing-is-here.node'));
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /not found for/);
+  assert.doesNotMatch(r.stderr, /not loadable/);
 });

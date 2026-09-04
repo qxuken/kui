@@ -20,8 +20,22 @@ serde_json = "1"
 [build-dependencies]
 napi-build = "2"
 
-# Unit tests link as a plain executable, where the N-API symbols the addon
-# expects from the Node host do not exist; `noop` stubs them for cargo test
-# only (dev-dependency features stay out of the shipped cdylib).
+# Unit tests link as a plain executable, and the ~50 N-API symbols this crate
+# expects from the Node host are not there to resolve: a shared object may
+# leave them to the loader, an executable may not, and napi-build's
+# `-undefined dynamic_lookup` is a `rustc-cdylib-link-arg`, so it reaches the
+# addon and not the test binary. `noop` stubs them.
+#
+# It is not free, and the cost lands outside cargo. Cargo builds one `napi`
+# per invocation and unifies its features over the targets that invocation
+# builds, so any build that also builds this crate's tests — `--all-targets`,
+# `--tests`, `cargo clippy --all-targets` — compiles the cdylib with `noop`
+# as well, and `noop` is exactly what gates `napi_register_module_v1` out of
+# it. The library left at target/debug/libkui_node.* by such a build is real,
+# is the newest one there, and does not load: Node says "Module did not
+# self-register". Nothing in cargo can hold a feature to one target, so this
+# is handled where it is noticed instead — packages/kui/native.cjs skips a
+# candidate it cannot load and names this as the reason. `cargo build
+# -p kui-node` on its own writes a good one back.
 [dev-dependencies]
 napi = { version = "3", default-features = false, features = ["napi8", "serde-json", "noop"] }

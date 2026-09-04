@@ -186,6 +186,15 @@ jobs:
       # $GITHUB_ENV export lost) and nothing would go red. The C adapter
       # needs no equivalent: it takes the path as an argument and exits 1
       # when it cannot read it.
+      #
+      # The `cargo build` below is what the tests load. It has to be its own
+      # invocation rather than riding on the clippy/test steps above: a build
+      # that also builds kui-node's tests unifies its `napi/noop`
+      # dev-dependency feature into the cdylib, and what lands in
+      # target/debug/ then is an addon Node refuses ("Module did not
+      # self-register"). native.cjs skips such a candidate and says why, so
+      # the order of these steps is no longer load-bearing - but the release
+      # build still has to happen, or there is nothing good to fall back to.
       - name: Node addon tests
         env:
           KUI_CONFORMANCE_REQUIRED: "1"

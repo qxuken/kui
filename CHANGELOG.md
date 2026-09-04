@@ -615,6 +615,21 @@ upgrades remove code from the apps on it is doing the job.
   `conformance::quad_digest` hashes the four new words, so a binding whose
   mirror of `KuiQuad` missed the field now fails every corpus scene rather
   than none.
+- **The Node addon resolver skips a library it cannot load**, instead of
+  letting the raw `dlopen` failure escape. `native.cjs` picks the newest of
+  the bundled prebuild and the two cargo profiles, and a candidate can exist
+  without being loadable — most easily in this repo, where any build that
+  also builds kui-node's tests (`--all-targets`, `--tests`, `cargo clippy
+  --all-targets`) unifies its `napi/noop` dev-dependency feature into the
+  cdylib and leaves an addon at `target/debug/` that Node refuses with
+  "Module did not self-register". That file is the newest one, so it won,
+  and `npm test` died before its first test with an error pointing at
+  `native.cjs` rather than at the build that caused it. Now such a candidate
+  is skipped with a warning naming it and the rebuild that fixes it, the
+  next one down is used, and when nothing loads the error says which files
+  were tried and why each failed rather than "not found". Newest-wins is
+  unchanged: the only thing that overrides a newer artifact is that artifact
+  being unusable.
 - **`docs/props.md` says `window_title`, not `title`, for Lua's window
   title.** The root table has always been read for `window_title`; the
   `title` composite's Lua column claimed `title`, which does nothing. Found
