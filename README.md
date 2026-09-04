@@ -235,8 +235,8 @@ that are hard to reverse and would look arbitrary without their context.
   core warns when it is not).
 - **Transitions animate layout inputs, not rects.** A node with
   `transition(ms)` (`transition={150}` in JSX, `transition = 150` in Lua,
-  `KuiSpec.transition_ms` in C) has its sizing amounts, colors and radius
-  eased toward whatever the view declares, keyed by node identity and
+  `KuiSpec.transition_ms` in C) has its sizing amounts, colors, radius,
+  opacity and shadow eased toward whatever the view declares, keyed by node identity and
   retained in the core like scroll offsets. Because the *inputs* to layout
   move, a whole subtree lays out consistently every frame — a split's two
   halves glide while their contents wrap to the real widths. The core stays
@@ -248,7 +248,7 @@ that are hard to reverse and would look arbitrary without their context.
   *should* arrive from somewhere — a toast, a side panel — it says so with
   `enter` (`enter={{ dx: -320 }}` in JSX, `.enter(Enter::from(-320.0,
   0.0))` in Rust, `KuiSpec.enter` in C): on first sight the slots it names
-  (an offset for the position, plus width, height, bg, radius) start there
+  (an offset for the position, plus width, height, bg, radius, opacity) start there
   and ease to what the view declares, no staging frame needed, and a node
   that leaves and comes back enters again. A view that stages a starting
   state by hand instead (a new split drawn collapsed so it slides open)
@@ -371,6 +371,25 @@ that are hard to reverse and would look arbitrary without their context.
   four and the SDF picks the corner's radius per fragment, so a tab, a
   header or an LCARS elbow is one box, and transitions ease each corner on
   its own.
+- **Fading and lifting are paint props, and honest about their limits.**
+  `opacity` (0..1) fades a node *and its whole subtree*: it multiplies down
+  the tree and into the alpha of every quad the subtree emits — box, border,
+  glyph, image, scrollbar, focus ring. It is a per-quad multiply, not an
+  offscreen composite, so a subtree whose own pieces overlap shows its seams
+  through the fade; and it changes nothing but paint, so a faded subtree
+  still lays out, still takes clicks and is still read out (CSS's rule for
+  `opacity: 0`, and the one that makes fading a live panel usable). It eases
+  with `transition`, so `enter={{ opacity: 0 }}` fades a whole panel in —
+  the half of exit animations that was missing.
+  `shadowColor` + `shadowBlur` / `shadowX` / `shadowY` / `shadowSpread` cast
+  one drop shadow behind a node: the core emits the shape already offset,
+  spread and inflated, and the shader softens the same SDF it uses for
+  rounded rects, so a shadow is one more quad in the same draw call rather
+  than a blur pass. The color is the switch — nothing draws without one.
+  Outer shadows only, one per node, and the shape is not knocked out of the
+  middle, so a translucent background shows its own shadow through itself.
+  Both are decided in [ADR 0005](docs/adr/0005-the-paint-vocabulary.md),
+  which also says why there are no gradients.
 - **Fonts are registered resources.** Beyond the generic sans / serif /
   mono families, `Core::load_fonts_dir("fonts")` / `load_font_file(path)` /
   `add_font_data(bytes)` load TTF/OTF/TTC files into the font database and
@@ -588,8 +607,18 @@ nothing else can.
 
 ## Status / next
 
-v0 scope: no z-index (floats stack in tree order). Transitions cover sizing, colors, radius and
-position (`slide`, `enter`); a removed node vanishes at once (there is no exit animation yet).
+v0 scope: no z-index (floats stack in tree order). Transitions cover sizing, colors, radius,
+opacity, shadows and position (`slide`, `enter`); a removed node still vanishes at once — the
+core keeps nothing it did not draw last frame, so there is no exit animation. `opacity` supplies
+the missing half (a subtree can now fade), and
+[ADR 0005](docs/adr/0005-the-paint-vocabulary.md) designs the other: a departing subtree
+retained by key, frozen where it was and replayed inert until its transition ends.
+Paint is fill, border, four radii, group opacity and one outer drop shadow per node: there are
+**no gradients** in v0 (a stop list, a type, a geometry and an interpolation space are not a
+paint prop's worth of work — use an image or stack solids), no inset or multiple shadows, and
+opacity is a per-quad alpha multiply rather than an offscreen composite, so overlapping pieces
+of one faded subtree show their seams. Clipping is rect-only, so a rounded scroll container
+does not round its children's corners.
 Layout queries stop at the node: `measure_text` and `on_layout` give whole-string and whole-node
 rects, not the boxes of lines or glyphs inside a paragraph. Accessibility, keyboard focus and
 modality are data (ADR 0001, 0002 and 0003); arrow keys inside radio groups, tab lists and lists,

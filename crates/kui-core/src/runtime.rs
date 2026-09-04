@@ -95,6 +95,11 @@ pub struct Core {
     /// Whether any node this frame clips — lets emission skip clip math
     /// entirely for the common unclipped case.
     any_clip: bool,
+    /// Per-node inherited group opacity (the product down the ancestors),
+    /// rebuilt each finish_frame and only materialized when something
+    /// actually fades.
+    opacity: Vec<f32>,
+    any_opacity: bool,
     /// Per-node "inside a floating subtree" marker (only filled when needed).
     in_float: Vec<bool>,
     any_float: bool,
@@ -153,6 +158,7 @@ struct Tracks {
     height: Option<Vec<(f32, [f32; 4])>>,
     bg: Option<Vec<(f32, [f32; 4])>>,
     radius: Option<Vec<(f32, [f32; 4])>>,
+    opacity: Option<Vec<(f32, [f32; 4])>>,
 }
 
 impl Tracks {
@@ -174,6 +180,9 @@ impl Tracks {
             radius: keyframes::track(frames, &offsets, spec.style.radius, |k| {
                 k.radius.map(|r| [r; 4])
             }),
+            opacity: keyframes::track(frames, &offsets, one(spec.style.opacity), |k| {
+                k.opacity.map(one)
+            }),
         }
     }
 
@@ -183,7 +192,10 @@ impl Tracks {
             Slot::Height => self.height.as_deref(),
             Slot::Bg => self.bg.as_deref(),
             Slot::Radius => self.radius.as_deref(),
-            Slot::Border | Slot::Pos => None,
+            Slot::Opacity => self.opacity.as_deref(),
+            // Keyframing a shadow would need stops for four more numbers
+            // and a color; a shadow tweens with `transition` and no more.
+            Slot::Border | Slot::Pos | Slot::Shadow | Slot::ShadowColor => None,
         }
     }
 }
@@ -217,6 +229,8 @@ impl Core {
             origin: OriginId::HOST,
             clips: Vec::new(),
             any_clip: false,
+            opacity: Vec::new(),
+            any_opacity: false,
             in_float: Vec::new(),
             any_float: false,
             any_modal: false,
@@ -714,15 +728,25 @@ impl Core {
         &mut self,
         i: usize,
         rect: Rect,
-        clip: Rect,
-        scale: f32,
+        paint: Paint,
         hits: &mut Vec<HitRegion>,
         scroll_regions: &mut Vec<ScrollRegion>,
     ) {
+        let Paint {
+            clip,
+            scale,
+            opacity,
+        } = paint;
         // Behind a modal a node still draws, and stops taking input.
         let interactive = self.interactive(i);
         let spec = &self.tree.specs[i];
         let style = spec.style;
+        let first_quad = self.display.quads.len();
+        if style.shadow.is_visible() {
+            self.display
+                .quads
+                .push(shadow_quad(&style, rect, clip, scale));
+        }
         if style.bg.is_visible() || (style.border_w > 0.0 && style.border_color.is_visible()) {
             self.display.quads.push(Quad {
                 rect: rect.scaled(scale),
@@ -730,6 +754,7 @@ impl Core {
                 border_color: style.border_color,
                 radius: style.radius.map(|r| r * scale),
                 border_w: style.border_w * scale,
+                blur: 0.0,
                 kind: QuadKind::Solid,
                 uv: [0; 4],
                 clip: clip.scaled(scale),
@@ -840,6 +865,7 @@ impl Core {
                         border_color: Color::TRANSPARENT,
                         radius: spec.style.radius.map(|r| r * scale),
                         border_w: 0.0,
+                        blur: 0.0,
                         kind: QuadKind::Image,
                         uv: [slot.x, slot.y, slot.w, slot.h],
                         clip: clip.scaled(scale),
@@ -847,6 +873,9 @@ impl Core {
                 }
             }
             NodeContent::Container => {}
+        }
+        if opacity < 1.0 {
+            fade(&mut self.display.quads[first_quad..], opacity);
         }
     }
 
@@ -1579,6 +1608,7 @@ impl Core {
         self.counters.push(0);
         self.origin = OriginId::HOST;
         self.any_clip = false;
+        self.any_opacity = false;
         self.any_float = false;
         self.any_modal = false;
         self.any_slide = false;
@@ -1656,6 +1686,32 @@ impl Core {
         };
         spec.style.bg = color(Slot::Bg, spec.style.bg, enter.bg);
         spec.style.border_color = color(Slot::Border, spec.style.border_color, None);
+        spec.style.shadow.color = color(Slot::ShadowColor, spec.style.shadow.color, None);
+        let sh = spec.style.shadow;
+        let geom = anim.drive(
+            key,
+            Slot::Shadow,
+            None,
+            [sh.dx, sh.dy, sh.blur, sh.spread],
+            t,
+            true,
+        );
+        spec.style.shadow.dx = geom[0];
+        spec.style.shadow.dy = geom[1];
+        spec.style.shadow.blur = geom[2].max(0.0);
+        spec.style.shadow.spread = geom[3];
+        spec.style.opacity = match track(Slot::Opacity) {
+            Some(track) => anim.sample(track, t).map_or(spec.style.opacity, |v| v[0]),
+            None => anim.drive(
+                key,
+                Slot::Opacity,
+                enter.opacity.map(|o| [o, 0.0, 0.0, 0.0]),
+                [spec.style.opacity, 0.0, 0.0, 0.0],
+                t,
+                true,
+            )[0],
+        }
+        .clamp(0.0, 1.0);
         spec.style.radius = match track(Slot::Radius) {
             Some(track) => anim.sample(track, t).unwrap_or(spec.style.radius),
             None => anim.drive(
@@ -1795,6 +1851,9 @@ impl Core {
         self.ease_spec(key, &mut spec);
         if spec.layout.clips() {
             self.any_clip = true;
+        }
+        if spec.style.opacity < 1.0 {
+            self.any_opacity = true;
         }
         if spec.transition.is_some() && (spec.slide || spec.enter.is_some_and(|e| e.offsets())) {
             self.any_slide = true;
@@ -1968,9 +2027,11 @@ impl Core {
         self.display.viewport = Size::new(self.viewport.w * scale, self.viewport.h * scale);
         self.display.scale = scale;
 
-        // configure_root can also introduce a clipper.
+        // configure_root can also introduce a clipper, or a fade.
         let any_clip =
             self.any_clip || (!self.tree.is_empty() && self.tree.specs[0].layout.clips());
+        let any_opacity =
+            self.any_opacity || (!self.tree.is_empty() && self.tree.specs[0].style.opacity < 1.0);
         let any_float = self.any_float;
 
         // inherited clip per node (logical): ancestors only, not the node
@@ -1978,6 +2039,10 @@ impl Core {
         self.clips.clear();
         if any_clip {
             self.clips.resize(self.tree.len(), NO_CLIP);
+        }
+        self.opacity.clear();
+        if any_opacity {
+            self.opacity.resize(self.tree.len(), 1.0);
         }
         self.in_float.clear();
         if any_float {
@@ -1993,6 +2058,20 @@ impl Core {
                 self.in_float[i] = floats_here || (parent != NIL && self.in_float[parent as usize]);
             }
             let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
+            // Opacity multiplies down the tree, floats included: a tooltip
+            // inside a fading panel fades with it.
+            let opacity = if !any_opacity {
+                1.0
+            } else {
+                let inherited = if parent == NIL {
+                    1.0
+                } else {
+                    self.opacity[parent as usize]
+                };
+                let o = inherited * self.tree.specs[i].style.opacity;
+                self.opacity[i] = o;
+                o
+            };
             let clip = if !any_clip {
                 NO_CLIP
             } else {
@@ -2019,7 +2098,12 @@ impl Core {
             if visible.w <= 0.0 || visible.h <= 0.0 {
                 continue;
             }
-            self.emit_node(i, rect, clip, scale, &mut hits, &mut scroll_regions);
+            let paint = Paint {
+                clip,
+                scale,
+                opacity,
+            };
+            self.emit_node(i, rect, paint, &mut hits, &mut scroll_regions);
         }
 
         // Pass 2: floating subtrees, on top of all in-flow content (their
@@ -2031,11 +2115,17 @@ impl Core {
                 }
                 let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
                 let clip = if any_clip { self.clips[i] } else { NO_CLIP };
+                let opacity = if any_opacity { self.opacity[i] } else { 1.0 };
                 let visible = rect.intersect(&clip);
                 if visible.w <= 0.0 || visible.h <= 0.0 {
                     continue;
                 }
-                self.emit_node(i, rect, clip, scale, &mut hits, &mut scroll_regions);
+                let paint = Paint {
+                    clip,
+                    scale,
+                    opacity,
+                };
+                self.emit_node(i, rect, paint, &mut hits, &mut scroll_regions);
             }
         }
 
@@ -2053,6 +2143,7 @@ impl Core {
             let max = self.tree.scroll_max[i];
             let offset = self.scroll.offset(r.key);
             let clip = self.clips[i].scaled(scale);
+            let opacity = self.opacity.get(i).copied().unwrap_or(1.0);
             if max.y > 0.0 {
                 let track_h = r.rect.h - 2.0 * SCROLLBAR_INSET;
                 let bar_h = (track_h * r.rect.h / (r.rect.h + max.y)).max(SCROLLBAR_MIN);
@@ -2076,9 +2167,9 @@ impl Core {
                     w,
                     bar_h,
                 );
-                self.display
-                    .quads
-                    .push(scrollbar_quad(thumb, scale, clip, active));
+                let mut bar = scrollbar_quad(thumb, scale, clip, active);
+                bar.color.a *= opacity;
+                self.display.quads.push(bar);
                 scrollbars.push(ScrollbarRegion {
                     key: r.key,
                     axis: ScrollAxis::Y,
@@ -2112,9 +2203,9 @@ impl Core {
                     bar_w,
                     w,
                 );
-                self.display
-                    .quads
-                    .push(scrollbar_quad(thumb, scale, clip, active));
+                let mut bar = scrollbar_quad(thumb, scale, clip, active);
+                bar.color.a *= opacity;
+                self.display.quads.push(bar);
                 scrollbars.push(ScrollbarRegion {
                     key: r.key,
                     axis: ScrollAxis::X,
@@ -2264,12 +2355,15 @@ impl Core {
         if visible.w <= 0.0 || visible.h <= 0.0 {
             return;
         }
+        let mut ring = FOCUS_RING;
+        ring.a *= self.opacity.get(i).copied().unwrap_or(1.0);
         self.display.quads.push(Quad {
             rect: rect.scaled(scale),
             color: Color::TRANSPARENT,
-            border_color: FOCUS_RING,
+            border_color: ring,
             radius: spec.style.radius.map(|r| (r + FOCUS_RING_GAP) * scale),
             border_w: FOCUS_RING_W * scale,
+            blur: 0.0,
             kind: QuadKind::Solid,
             uv: [0; 4],
             clip: clip.scaled(scale),
@@ -2415,6 +2509,60 @@ impl TextMeasure for Measure<'_> {
     }
 }
 
+/// What a node inherits at emission time: the frame's scale, the clip its
+/// ancestors imposed (logical px), and the group opacity its own `opacity`
+/// and every ancestor's multiply out to.
+#[derive(Clone, Copy)]
+struct Paint {
+    clip: Rect,
+    scale: f32,
+    /// Multiplied into the alpha of every quad the node emits.
+    opacity: f32,
+}
+
+/// The drop shadow behind one node, in physical pixels. The quad is the
+/// shadow's own shape — the node's rect moved by `dx`/`dy` and grown by
+/// `spread` — inflated by `blur` on every side, because that is how far
+/// the blurred edge reaches; the backend insets by `blur` again to find
+/// the shape. Radii grow with the spread so a rounded box keeps its
+/// silhouette instead of sprouting corners.
+fn shadow_quad(style: &crate::spec::VisualStyle, rect: Rect, clip: Rect, scale: f32) -> Quad {
+    let sh = style.shadow;
+    let blur = sh.blur.max(0.0);
+    let shape = Rect::new(
+        rect.x + sh.dx - sh.spread,
+        rect.y + sh.dy - sh.spread,
+        (rect.w + 2.0 * sh.spread).max(0.0),
+        (rect.h + 2.0 * sh.spread).max(0.0),
+    );
+    Quad {
+        rect: Rect::new(
+            (shape.x - blur) * scale,
+            (shape.y - blur) * scale,
+            (shape.w + 2.0 * blur) * scale,
+            (shape.h + 2.0 * blur) * scale,
+        ),
+        color: sh.color,
+        border_color: Color::TRANSPARENT,
+        radius: style.radius.map(|r| (r + sh.spread).max(0.0) * scale),
+        border_w: 0.0,
+        blur: blur * scale,
+        kind: QuadKind::Shadow,
+        uv: [0; 4],
+        clip: clip.scaled(scale),
+    }
+}
+
+/// Multiplies a group opacity into a run of quads. Alpha only: every quad
+/// kind reads `color.a` as its coverage, so one multiply fades a
+/// background, a border, a glyph and an image alike.
+fn fade(quads: &mut [Quad], opacity: f32) {
+    for q in quads {
+        q.color.a *= opacity;
+        q.border_color.a *= opacity;
+    }
+}
+
 fn scrollbar_quad(bar: Rect, scale: f32, clip: Rect, active: bool) -> Quad {
     Quad {
         rect: bar.scaled(scale),
@@ -2422,6 +2570,7 @@ fn scrollbar_quad(bar: Rect, scale: f32, clip: Rect, active: bool) -> Quad {
         border_color: Color::TRANSPARENT,
         radius: [bar.w.min(bar.h) / 2.0 * scale; 4],
         border_w: 0.0,
+        blur: 0.0,
         kind: QuadKind::Solid,
         uv: [0; 4],
         clip,

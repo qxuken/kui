@@ -35,6 +35,8 @@ pub struct Enter {
     pub bg: Option<Color>,
     /// All four corners.
     pub radius: Option<f32>,
+    /// Group opacity: `0` is the fade-in a whole panel wants.
+    pub opacity: Option<f32>,
 }
 
 impl Enter {
@@ -73,6 +75,11 @@ impl Enter {
         self
     }
 
+    pub fn opacity(mut self, opacity: f32) -> Self {
+        self.opacity = Some(opacity.clamp(0.0, 1.0));
+        self
+    }
+
     /// Whether the entrance moves the node's position.
     pub fn offsets(&self) -> bool {
         self.dx != 0.0 || self.dy != 0.0
@@ -80,7 +87,7 @@ impl Enter {
 }
 
 /// An entrance from plain data: a map with any of `dx`, `dy`, `width`,
-/// `height`, `bg`, `radius`, in the forms the props themselves take (the
+/// `height`, `bg`, `radius`, `opacity`, in the forms the props themselves take (the
 /// same shapes a keyframe stop accepts). Every binding funnels `enter`
 /// through here, so the shape is the same in JSX, Lua and C.
 pub fn parse(v: &Value) -> Result<Enter, String> {
@@ -102,6 +109,7 @@ pub fn parse(v: &Value) -> Result<Enter, String> {
             "height" => e.height = Some(sizing_value(v).map_err(|e| bad(&e))?),
             "bg" => e.bg = Some(color_value(v).map_err(|e| bad(&e))?),
             "radius" => e.radius = Some(num("radius")?),
+            "opacity" => e.opacity = Some(num("opacity")?.clamp(0.0, 1.0)),
             other => return Err(bad(&format!("unknown field {other:?}"))),
         }
     }
@@ -121,6 +129,7 @@ mod tests {
             ("height", Value::str("50%")),
             ("bg", Value::str("#ff000000")),
             ("radius", Value::Int(3)),
+            ("opacity", Value::Float(0.0)),
         ]))
         .unwrap();
         assert_eq!(
@@ -130,6 +139,7 @@ mod tests {
                 .height(Sizing::Percent(0.5))
                 .bg(Color::hex(0xff000000))
                 .radius(3.0)
+                .opacity(0.0)
         );
         assert!(e.offsets());
         assert!(!Enter::default().bg(Color::WHITE).offsets());

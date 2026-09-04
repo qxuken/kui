@@ -602,6 +602,7 @@ impl TextSystem {
                     border_color: Color::TRANSPARENT,
                     radius: [0.0; 4],
                     border_w: 0.0,
+                    blur: 0.0,
                     kind: g.kind,
                     uv: g.uv,
                     clip,

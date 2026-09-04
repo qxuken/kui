@@ -566,22 +566,43 @@ click-outside-to-dismiss (and how that meets C1); what the four entry points loo
 like. `FloatConfig::fit` is the in-window approximation and should be documented
 as such.
 
-### `.` C8 — Extend the paint vocabulary
+### `.` C8 — Extend the paint vocabulary — **mostly done (2026-09-04)**
 
-`crates/kui-core/src/display.rs` is the whole renderer contract: fill, border,
-four radii, glyph, image. No shadow, no gradient, no group opacity. `Enter` fades
-a node's own `bg` but not a subtree, which is the underlying reason there is no
-exit animation. Clipping is rect-only, so a rounded scroll container does not
-round its children.
+Decided and recorded in `docs/adr/0005-the-paint-vocabulary.md`. Two of the
+four shipped, one was declined, one was designed and left unbuilt.
 
-Highest value per unit of work is probably **group opacity** — an `opacity` slot
-multiplied into every quad from a subtree during `finish_frame`. **Exit
-animations** need the core to keep a departing node alive for one transition,
-which is a real change to the frame model (sketch how it is tracked and dropped;
-`AnimStore` already retains by `Key`). **Shadows** need a new `QuadKind` with a
-blur radius plus shader work, or a nine-slice. **Gradients** are probably out of
-scope for v0 — say so rather than leaving it unstated. Anything added needs a
-schema row and a `kui-wgpu` shader path; the quad struct is hot, so benchmark.
+**Shipped.** `opacity` is a `VisualStyle` slot inherited multiplicatively in
+`finish_frame`'s existing clip pass and multiplied into the alpha of every
+quad a subtree emits (scrollbars and the focus ring included); it eases, and
+joins `keyframes` and `enter`, so `enter: { opacity: 0 }` fades a whole panel
+in. Shadows are a new `QuadKind::Shadow` plus one `blur` on the quad — not a
+nine-slice: the core emits the shape already offset, spread and inflated, and
+the shader ramps the `sd_rounded_box` it already has, so a shadow is one more
+instance in the same draw call. Six plain `PROPS` rows (so three of four
+bindings got them free), seven appended `KuiSpec` fields, and both props are
+in the `layout` conformance scene. Benched: the extra `f32` on `Quad`
+(104 → 108 bytes) is invisible above run-to-run noise, and a new
+`frame_10k_rects_with_shadows_and_opacity` (20k quads, every node casting)
+costs about what the plain 10k-quad frame costs.
+
+**Declined.** No gradients in v0 — a stop list, a type, a geometry and an
+interpolation space are not a paint prop's worth of work, and the README now
+says so instead of leaving a reader to infer it.
+
+**Still open.** Exit animations are designed in ADR 0005 and not built: a
+departing subtree copied out of the tree into a `DepartStore` keyed by `Key`,
+frozen at the rects it left with, replayed inert (no hit region, no Tab ring,
+no access row) like a float until its transition ends, dropped on end or when
+the key returns. The build needs `Tree` to be sliceable, `finish_frame` to
+diff this frame's keys against the last, and every emission pass to tolerate
+a node whose parent is gone. The open question is what a ghost does to
+`animating()` — correct for a dialog, wrong for a list dropping a thousand
+rows — which wants a real view in front of it.
+
+Also still open, and priced in ADR 0005's consequences: **rounded clipping**.
+`Quad::clip` is a rect, so a rounded scroll container does not round its
+children's corners. Four more floats on the hot struct plus a second SDF per
+fragment is a bigger bill than either of the two above.
 
 ### `.` C9 — `KeyUp` and key repeat
 

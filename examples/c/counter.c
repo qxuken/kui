@@ -707,17 +707,17 @@ static void repf(Rep *r, const char *fmt, ...) {
     }
 }
 
-/* FNV-1a over each quad's words 0..17 and 22..25 - KuiQuad without its uv,
+/* FNV-1a over each quad's words 0..18 and 23..26 - KuiQuad without its uv,
  * which follows glyph insertion order. Mirrors conformance::quad_digest. */
-_Static_assert(sizeof(KuiQuad) == 26 * sizeof(uint32_t), "KuiQuad is not 26 words");
+_Static_assert(sizeof(KuiQuad) == 27 * sizeof(uint32_t), "KuiQuad is not 27 words");
 
 static uint64_t quad_digest(const KuiQuad *quads, size_t count) {
     uint64_t h = 0xcbf29ce484222325ull;
     for (size_t i = 0; i < count; i++) {
-        uint32_t w[26];
+        uint32_t w[27];
         memcpy(w, &quads[i], sizeof w);
-        for (int j = 0; j < 26; j++) {
-            if (j >= 18 && j <= 21) continue; /* uv */
+        for (int j = 0; j < 27; j++) {
+            if (j >= 19 && j <= 22) continue; /* uv */
             uint32_t v = w[j];
             for (int b = 0; b < 4; b++) {
                 h ^= (uint8_t)(v & 0xff);
@@ -774,7 +774,10 @@ static void conf_layout(KuiCtx *ui, const Fixtures *f) {
     KuiSpec card = {
         .dir = KUI_ROW, .pad_l = 12, .pad_r = 10, .pad_t = 6, .pad_b = 4,
         .gap = 4, .bg = 0x202030ff, .border_w = 2, .border_color = 0x2a2d3aff,
-        .radius = 5, .width = {KUI_FIXED, 180}, .height = {KUI_FIXED, 40},
+        .radius = 5, .opacity_set = 1, .opacity = 0.75f,
+        .shadow_color = 0x00000066, .shadow_blur = 8, .shadow_y = 3,
+        .shadow_spread = 1,
+        .width = {KUI_FIXED, 180}, .height = {KUI_FIXED, 40},
     };
     kui_open_keyed(ui, KUI_STR("card"), &card, NULL);
     KuiTextStyle s12 = {.size = 12};
@@ -999,11 +1002,12 @@ static void conf_run(const ConfScene *scene, const ConfStep *steps, int nsteps, 
     kui_draw_data(ctx, &dd);
     repf(out, "quads %zu %016llx\n", dd.quad_count,
          (unsigned long long)quad_digest(dd.quads, dd.quad_count));
-    size_t kinds[5] = {0};
+    size_t kinds[6] = {0};
     for (size_t i = 0; i < dd.quad_count; i++) {
-        if (dd.quads[i].kind < 5) kinds[dd.quads[i].kind]++;
+        if (dd.quads[i].kind < 6) kinds[dd.quads[i].kind]++;
     }
-    repf(out, "kinds %zu %zu %zu %zu %zu\n", kinds[0], kinds[1], kinds[2], kinds[3], kinds[4]);
+    repf(out, "kinds %zu %zu %zu %zu %zu %zu\n", kinds[0], kinds[1], kinds[2],
+         kinds[3], kinds[4], kinds[5]);
 
     KuiAccessNode nodes[128];
     size_t total = kui_access_tree(ctx, nodes, 128);

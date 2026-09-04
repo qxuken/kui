@@ -238,7 +238,7 @@ impl LayoutSpec {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct VisualStyle {
     pub bg: Color,
     pub border_color: Color,
@@ -248,6 +248,59 @@ pub struct VisualStyle {
     /// builders (`radius_tl`, ...) override one — later calls win, like CSS
     /// `border-radius` followed by `border-top-left-radius`.
     pub radius: [f32; 4],
+    /// Group opacity, 0..=1 and 1 by default: multiplied into the alpha of
+    /// every quad this node and its subtree emit, and into every
+    /// descendant's own opacity. This is the *cheap* group opacity — a
+    /// per-quad alpha multiply, not an offscreen composite — so a subtree
+    /// whose own pieces overlap shows its seams through the fade where a
+    /// compositing implementation would not. Nothing else changes: an
+    /// invisible subtree still lays out, still takes clicks and is still
+    /// read by assistive technology, exactly like CSS `opacity: 0`.
+    pub opacity: f32,
+    /// The drop shadow cast behind this node (see [`Shadow`]).
+    pub shadow: Shadow,
+}
+
+impl Default for VisualStyle {
+    fn default() -> Self {
+        Self {
+            bg: Color::TRANSPARENT,
+            border_color: Color::TRANSPARENT,
+            border_w: 0.0,
+            radius: [0.0; 4],
+            opacity: 1.0,
+            shadow: Shadow::default(),
+        }
+    }
+}
+
+/// One outer drop shadow: the node's rounded rect, moved by `dx`/`dy`,
+/// grown by `spread` and its edge blurred over `blur`, painted in `color`
+/// behind the node. CSS's `box-shadow` without the inset and multi-shadow
+/// forms.
+///
+/// It draws whenever `color` is visible, so `shadowColor` alone is a hard
+/// shadow sitting exactly behind the node. The shape is not knocked out of
+/// the middle the way CSS knocks it out, so a translucent background shows
+/// the shadow through itself.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Shadow {
+    pub color: Color,
+    /// Offset (logical px); positive `dy` casts downward.
+    pub dx: f32,
+    pub dy: f32,
+    /// Blur radius (logical px): the edge ramps over this distance and the
+    /// shadow reaches this far past its shape. 0 = a hard edge.
+    pub blur: f32,
+    /// Grows (or, negative, shrinks) the shape before blurring.
+    pub spread: f32,
+}
+
+impl Shadow {
+    /// Whether anything would be painted.
+    pub fn is_visible(&self) -> bool {
+        self.color.is_visible()
+    }
 }
 
 /// Corner indices into `VisualStyle::radius` / `Quad::radius`.
@@ -613,6 +666,52 @@ impl NodeSpec {
     pub fn border(mut self, w: f32, c: Color) -> Self {
         self.style.border_w = w;
         self.style.border_color = c;
+        self
+    }
+
+    /// Fades this node and everything under it (see `VisualStyle::opacity`);
+    /// clamped to 0..=1.
+    pub fn opacity(mut self, o: f32) -> Self {
+        self.style.opacity = o.clamp(0.0, 1.0);
+        self
+    }
+
+    /// The whole drop shadow at once: color, offset, blur, spread.
+    pub fn shadow(mut self, shadow: Shadow) -> Self {
+        self.style.shadow = shadow;
+        self
+    }
+
+    /// The shadow's color — on its own, a hard shadow exactly behind the
+    /// node. Nothing else about a shadow draws without it.
+    pub fn shadow_color(mut self, c: Color) -> Self {
+        self.style.shadow.color = c;
+        self
+    }
+
+    pub fn shadow_blur(mut self, blur: f32) -> Self {
+        self.style.shadow.blur = blur;
+        self
+    }
+
+    pub fn shadow_offset(mut self, dx: f32, dy: f32) -> Self {
+        self.style.shadow.dx = dx;
+        self.style.shadow.dy = dy;
+        self
+    }
+
+    pub fn shadow_x(mut self, dx: f32) -> Self {
+        self.style.shadow.dx = dx;
+        self
+    }
+
+    pub fn shadow_y(mut self, dy: f32) -> Self {
+        self.style.shadow.dy = dy;
+        self
+    }
+
+    pub fn shadow_spread(mut self, spread: f32) -> Self {
+        self.style.shadow.spread = spread;
         self
     }
 

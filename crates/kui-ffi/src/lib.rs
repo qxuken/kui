@@ -88,6 +88,7 @@ pub const KUI_KF_WIDTH: u32 = 1 << 1;
 pub const KUI_KF_HEIGHT: u32 = 1 << 2;
 pub const KUI_KF_BG: u32 = 1 << 3;
 pub const KUI_KF_RADIUS: u32 = 1 << 4;
+pub const KUI_KF_OPACITY: u32 = 1 << 5;
 
 /// One keyframe stop (`KuiSpec.keyframes`): a zeroed stop sets nothing.
 /// `set` says which fields count, so 0 stays a legal value for each.
@@ -102,6 +103,8 @@ pub struct KuiKeyframe {
     /// 0xRRGGBBAA
     pub bg: u32,
     pub radius: f32,
+    /// Group opacity 0..1 (KUI_KF_OPACITY).
+    pub opacity: f32,
 }
 
 /// Which of a `KuiEnter`'s fields are set (its `set` bits); 0 = no entrance.
@@ -110,6 +113,7 @@ pub const KUI_ENTER_WIDTH: u32 = 1 << 1;
 pub const KUI_ENTER_HEIGHT: u32 = 1 << 2;
 pub const KUI_ENTER_BG: u32 = 1 << 3;
 pub const KUI_ENTER_RADIUS: u32 = 1 << 4;
+pub const KUI_ENTER_OPACITY: u32 = 1 << 5;
 
 /// Where a node starts the first frame it is seen (`KuiSpec.enter`): the
 /// slots `set` names ease in from these values over `transition_ms`
@@ -126,6 +130,8 @@ pub struct KuiEnter {
     /// 0xRRGGBBAA
     pub bg: u32,
     pub radius: f32,
+    /// Group opacity 0..1 (KUI_ENTER_OPACITY); 0 fades the subtree in.
+    pub opacity: f32,
 }
 
 #[repr(C)]
@@ -282,6 +288,29 @@ pub struct KuiSpec {
     /// nothing about it). What a twisty, an accordion header or a menu
     /// button reads as.
     pub expanded: u32,
+    /// Non-zero: `opacity` is the node's group opacity (0 without this bit
+    /// means "not set", so a fully transparent subtree stays expressible).
+    pub opacity_set: u32,
+    /// Group opacity 0..1 with `opacity_set`: fades this node and its whole
+    /// subtree. A per-quad alpha multiply, not an offscreen composite, so
+    /// overlapping pieces of one subtree show their seams through the fade;
+    /// layout, hit-testing and the access tree are untouched. Eases with
+    /// `transition_ms`.
+    pub opacity: f32,
+    /// 0xRRGGBBAA drop-shadow color; 0 = no shadow, and nothing else here
+    /// draws without it. The shadow is the node's rounded rect moved by
+    /// `shadow_x`/`shadow_y`, grown by `shadow_spread` and blurred over
+    /// `shadow_blur`, painted behind the node. Outer shadows only, and the
+    /// shape is not knocked out of the middle.
+    pub shadow_color: u32,
+    /// Blur radius (logical px): the edge ramps over this distance and
+    /// reaches this far past the shape. 0 = a hard edge.
+    pub shadow_blur: f32,
+    /// Offset (logical px); positive `shadow_y` casts downward.
+    pub shadow_x: f32,
+    pub shadow_y: f32,
+    /// Grows (negative: shrinks) the shape before blurring (logical px).
+    pub shadow_spread: f32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -535,7 +564,10 @@ pub struct KuiQuad {
     /// Corner radii (physical px), clockwise from the top-left.
     pub radius: [f32; 4],
     pub border_w: f32,
-    /// 0 = solid, 1 = mask glyph, 2 = color glyph
+    /// KUI_QUAD_SHADOW only: blur radius (physical px), which is also how
+    /// far `x`/`y`/`w`/`h` is inflated past the shape being blurred.
+    pub blur: f32,
+    /// KUI_QUAD_*
     pub kind: u32,
     pub uv: [u32; 4],
     /// Clip rect (physical px): x, y, w, h. Pixels outside are transparent.
@@ -602,6 +634,9 @@ fn enter_of(e: &KuiEnter) -> Enter {
     if e.set & KUI_ENTER_RADIUS != 0 {
         en = en.radius(e.radius);
     }
+    if e.set & KUI_ENTER_OPACITY != 0 {
+        en = en.opacity(e.opacity);
+    }
     en
 }
 
@@ -621,6 +656,9 @@ fn keyframe_of(k: &KuiKeyframe) -> Keyframe {
     }
     if k.set & KUI_KF_RADIUS != 0 {
         kf = kf.radius(k.radius);
+    }
+    if k.set & KUI_KF_OPACITY != 0 {
+        kf = kf.opacity(k.opacity);
     }
     kf
 }
@@ -691,6 +729,19 @@ fn spec_of(
     if s.border_w > 0.0 {
         spec = spec.border(s.border_w, color_of(s.border_color));
     }
+    if s.opacity_set != 0 {
+        spec = spec.opacity(s.opacity);
+    }
+    // Unconditional: the shadow draws only where its color is visible, and
+    // that check belongs at emission, not here — a zeroed struct is the
+    // default shadow either way.
+    spec = spec.shadow(kui_core::Shadow {
+        color: color_of(s.shadow_color),
+        dx: s.shadow_x,
+        dy: s.shadow_y,
+        blur: s.shadow_blur,
+        spread: s.shadow_spread,
+    });
     if s.overflow & 1 != 0 {
         spec = spec.clip();
     }
@@ -2729,8 +2780,11 @@ mod schema_parity {
         const F: f32 = 37.0;
         const C: u32 = 0x11223344;
         for def in PROPS {
+            // `opacity` is a 0..=1 slot whose default is the top of the
+            // range, so the shared sample would clamp back to it.
+            let f = if def.name == "opacity" { 0.5 } else { F };
             let sample = match def.kind {
-                Kind::F32 => Parsed::F32(F),
+                Kind::F32 => Parsed::F32(f),
                 Kind::Color => Parsed::Color(Color::hex(C)),
                 Kind::Flag => Parsed::Flag,
                 Kind::Enum(_) => Parsed::Enum(1),
@@ -2752,6 +2806,7 @@ mod schema_parity {
                 height: KuiSizing { tag: 0, value: 0.0 },
                 bg: 0,
                 radius: F,
+                opacity: 0.0,
             }];
             let mut s = zeroed_spec();
             let mut t = zeroed_style();
@@ -2774,6 +2829,14 @@ mod schema_parity {
                 "radiusTR" => (s.per_corner, s.radius_tr) = (1, F),
                 "radiusBR" => (s.per_corner, s.radius_br) = (1, F),
                 "radiusBL" => (s.per_corner, s.radius_bl) = (1, F),
+                // A 0..=1 slot whose default is the top of the range, so
+                // the shared sample would clamp back to it.
+                "opacity" => (s.opacity_set, s.opacity) = (1, 0.5),
+                "shadowColor" => s.shadow_color = C,
+                "shadowBlur" => s.shadow_blur = F,
+                "shadowX" => s.shadow_x = F,
+                "shadowY" => s.shadow_y = F,
+                "shadowSpread" => s.shadow_spread = F,
                 "mainAlign" => s.main_align = 1,
                 "crossAlign" => s.cross_align = 1,
                 "center" => (s.main_align, s.cross_align) = (1, 1),
@@ -2793,6 +2856,7 @@ mod schema_parity {
                         height: KuiSizing { tag: 0, value: 0.0 },
                         bg: 0,
                         radius: F,
+                        opacity: 0.0,
                     }
                 }
                 "repeat" => s.repeat = 1,
@@ -2867,6 +2931,7 @@ mod schema_parity {
                 height: KuiSizing { tag: 0, value: 0.0 },
                 bg: 0x11_22_33_ff,
                 radius: 0.0,
+                opacity: 0.0,
             },
             KuiKeyframe {
                 set: KUI_KF_AT | KUI_KF_WIDTH | KUI_KF_HEIGHT | KUI_KF_RADIUS,
@@ -2875,6 +2940,7 @@ mod schema_parity {
                 height: KuiSizing { tag: 3, value: 0.5 },
                 bg: 0,
                 radius: 9.0,
+                opacity: 0.0,
             },
         ];
         let modal_tag = KuiValue(Value::str("m"));
@@ -2958,6 +3024,13 @@ mod schema_parity {
             cursor: 7, // KUI_CURSOR_EW_RESIZE
             selected: 1,
             expanded: KUI_EXPANDED_EXPANDED,
+            opacity_set: 1,
+            opacity: 0.4,
+            shadow_color: 0x00_00_00_66,
+            shadow_blur: 12.0,
+            shadow_x: 0.0,
+            shadow_y: 4.0,
+            shadow_spread: -2.0,
         };
         let expected = NodeSpec::row()
             .width(Sizing::Grow(2.0))
@@ -3008,6 +3081,14 @@ mod schema_parity {
             .value_now(3.0)
             .value_min(0.0)
             .value_max(10.0)
+            .opacity(0.4)
+            .shadow(kui_core::Shadow {
+                color: Color::hex(0x00_00_00_66),
+                dx: 0.0,
+                dy: 4.0,
+                blur: 12.0,
+                spread: -2.0,
+            })
             .repeat(kui_core::Repeat::Alternate)
             .delay(50.0)
             .keyframes(vec![
@@ -3571,6 +3652,7 @@ mod abi_parity {
             height: KuiSizing => "KuiSizing",
             bg: u32 => "uint32_t",
             radius: f32 => "float",
+            opacity: f32 => "float",
         });
 
         abi_struct!(o, KuiEnter {
@@ -3581,6 +3663,7 @@ mod abi_parity {
             height: KuiSizing => "KuiSizing",
             bg: u32 => "uint32_t",
             radius: f32 => "float",
+            opacity: f32 => "float",
         });
 
         abi_struct!(o, KuiSpec {
@@ -3650,6 +3733,13 @@ mod abi_parity {
             cursor: u32 => "uint32_t",
             selected: u32 => "uint32_t",
             expanded: u32 => "uint32_t",
+            opacity_set: u32 => "uint32_t",
+            opacity: f32 => "float",
+            shadow_color: u32 => "uint32_t",
+            shadow_blur: f32 => "float",
+            shadow_x: f32 => "float",
+            shadow_y: f32 => "float",
+            shadow_spread: f32 => "float",
         });
 
         abi_struct!(o, KuiAccessNode {
@@ -3770,6 +3860,7 @@ mod abi_parity {
             border_color: [f32; 4] => "float *",
             radius: [f32; 4] => "float *",
             border_w: f32 => "float",
+            blur: f32 => "float",
             kind: u32 => "uint32_t",
             uv: [u32; 4] => "uint32_t *",
             clip: [f32; 4] => "float *",
