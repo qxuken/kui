@@ -379,7 +379,7 @@ impl ModalEditor {
 impl App for ModalEditor {
     fn view(&mut self, ui: &mut Ui<'_>) {
         if self.quit {
-            ui.window_command(WindowCommand::Close);
+            ui.window_command(WindowCommand::Close(ui.env().window.id));
         }
         let pal = self.pal;
         ui.configure_root(NodeSpec::column().fill().bg(pal.bg));

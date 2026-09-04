@@ -423,7 +423,10 @@ fn a_click_request_emits_what_a_pointer_click_would() {
         focus: None,
     }));
     assert!(evs.is_empty());
-    assert_eq!(core.take_window_commands(), vec![WindowCommand::Close]);
+    assert_eq!(
+        core.take_window_commands(),
+        vec![WindowCommand::Close(kui_core::WindowId::MAIN)]
+    );
 
     // A node that isn't there does nothing.
     let evs = core.handle_input(InputEvent::Access(AccessRequest {

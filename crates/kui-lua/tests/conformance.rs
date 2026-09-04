@@ -209,6 +209,21 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         "#,
             rows = conformance::EXIT_BULK_ROWS,
         ),
+        // The declaration comes and goes with the phase, on the root table
+        // beside `window_title`; twice in phase 0, disagreeing on the size.
+        "windows" => r#"
+            local declared = nil
+            if phase == 0 then
+              declared = { { name = "palette", width = 400, height = 300 },
+                           { name = "palette", width = 500, height = 500 } }
+            elseif phase == 2 then
+              declared = { { name = "palette", width = 400, height = 300 } }
+            end
+            return column { windows = declared, pad = 8, bg = 0x14161eff,
+              text((phase == 0 or phase == 2) and "open" or "closed", { size = 12 }),
+            }
+        "#
+        .to_string(),
         other => panic!("no Lua scene for {other:?} — every corpus scene needs one"),
     };
     format!("function view(env)\n{body}\nend\n")

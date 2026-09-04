@@ -1,15 +1,22 @@
-//! Window chrome as data. A node can declare a chrome role (drag handle,
+//! Windows as data. A node can declare a chrome role (drag handle,
 //! close/minimize/maximize button); interacting with it produces
 //! [`WindowCommand`]s that the frame driver drains and applies to the real
-//! window. Host window facts flow back in through [`WindowEnv`] on `Env`.
-//! The core never touches a window — headless drivers just never drain.
+//! window. A frame can declare that a *window exists* (`Core::declare_window`,
+//! `docs/adr/0004-multi-window.md`): the core diffs the declared set and the
+//! same queue carries the [`WindowCommand::Open`] / [`WindowCommand::Close`]
+//! the diff produces. Host window facts flow back in through [`WindowEnv`]
+//! on `Env`. The core never touches a window — headless drivers just never
+//! drain.
 
-use crate::geom::Rect;
+use crate::geom::{Rect, Size};
+use crate::tree::OriginId;
 
-/// Which OS window something belongs to: an opaque integer the **driver**
-/// assigns, not a handle an app builds. [`WindowId::MAIN`] is 0 — the window
-/// the launcher opens, and the only one that exists until ADR 0004's step 3
-/// lets a frame declare more.
+/// Which OS window something belongs to: an opaque integer the core's
+/// declaration diff assigns when it opens a window, not a handle an app
+/// builds. [`WindowId::MAIN`] is 0 — the window the launcher opens, which is
+/// always live. Apps name windows with a stable string
+/// (`Core::declare_window`); the id is how the driver and the events refer
+/// to the surface that string opened.
 ///
 /// It crosses every transport as a plain integer — `UiEvent::window` in
 /// Rust, `window` on a JSX `UiEvent`, `KuiEvent.window` in C — so nothing
@@ -43,24 +50,105 @@ pub enum WindowButton {
 }
 
 impl WindowButton {
-    pub fn command(self) -> WindowCommand {
+    /// The command a click on this button issues, for the window the
+    /// button was drawn in.
+    pub fn command(self, window: WindowId) -> WindowCommand {
         match self {
-            WindowButton::Close => WindowCommand::Close,
-            WindowButton::Minimize => WindowCommand::Minimize,
-            WindowButton::Maximize => WindowCommand::ToggleMaximize,
+            WindowButton::Close => WindowCommand::Close(window),
+            WindowButton::Minimize => WindowCommand::Minimize(window),
+            WindowButton::Maximize => WindowCommand::ToggleMaximize(window),
         }
     }
 }
 
-/// A window-level intent produced by input on chrome nodes. Drained by the
-/// frame driver via `Core::take_window_commands` after each input dispatch.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// What kind of OS surface a declared window is. Only `Normal` exists yet;
+/// ADR 0004's step 4 adds the borderless, non-activating popup.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WindowKind {
+    /// A regular top-level window with the launcher's chrome.
+    #[default]
+    Normal,
+}
+
+/// What a frame says about a window it declares (`Core::declare_window`).
+/// Plain data by ADR 0004 decision 5 — no title, no callbacks — so a
+/// `WindowCommand` stays `Copy` and equality is derived, which is how the
+/// diff tells two declarations of one name apart.
+///
+/// **Read on the opening edge only.** The config that reaches
+/// [`WindowCommand::Open`] is the one the declaration carried on the frame
+/// it started; a live window's config is never looked at again, so
+/// re-declaring `"palette"` at a new size does not resize it. The user owns
+/// a window's geometry once it exists.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WindowConfig {
+    pub kind: WindowKind,
+    /// Initial inner size, logical px.
+    pub size: Size,
+    /// Whether opening it takes OS focus. True for a normal window; a popup
+    /// (step 4) defaults it off so the field that opened it keeps the ring.
+    pub activates: bool,
+}
+
+impl WindowConfig {
+    /// The size a declaration that names none gets.
+    pub const DEFAULT_SIZE: Size = Size { w: 640.0, h: 480.0 };
+
+    /// A normal, activating window of `w` x `h` logical px.
+    pub fn sized(w: f32, h: f32) -> Self {
+        Self {
+            size: Size::new(w, h),
+            ..Self::default()
+        }
+    }
+}
+
+impl Default for WindowConfig {
+    fn default() -> Self {
+        Self {
+            kind: WindowKind::Normal,
+            size: Self::DEFAULT_SIZE,
+            activates: true,
+        }
+    }
+}
+
+/// A window-level intent for the frame driver, drained via
+/// `Core::take_window_commands` after each input dispatch and each frame.
+/// Every variant says which window it is about, and every variant is
+/// `Copy` and pointer-free — an `Open` carries no title (the new window's
+/// own first frame declares one through `window_title`), so nothing
+/// borrowed ever enters a driver's drain loop.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum WindowCommand {
     /// Begin an interactive OS move (the press landed on a `Drag` node).
-    StartDrag,
-    Close,
-    Minimize,
-    ToggleMaximize,
+    StartDrag(WindowId),
+    /// Close this window: from its chrome close button, or because no
+    /// frame declares it any more. For the main window a driver exits.
+    Close(WindowId),
+    Minimize(WindowId),
+    ToggleMaximize(WindowId),
+    /// Open a window the declared set gained. `id` is the one the core
+    /// assigned and will stamp on the window's events; `origin` is the
+    /// frontend whose declaration won (a host may refuse an extension's).
+    Open {
+        id: WindowId,
+        origin: OriginId,
+        config: WindowConfig,
+    },
+}
+
+impl WindowCommand {
+    /// The window the command is about.
+    pub fn window(&self) -> WindowId {
+        match *self {
+            WindowCommand::StartDrag(w)
+            | WindowCommand::Close(w)
+            | WindowCommand::Minimize(w)
+            | WindowCommand::ToggleMaximize(w) => w,
+            WindowCommand::Open { id, .. } => id,
+        }
+    }
 }
 
 /// What the host knows about its window, pushed into `Env` by the frame
@@ -69,10 +157,12 @@ pub enum WindowCommand {
 /// nothing at all under native decorations.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct WindowEnv {
-    /// Which window this core is drawing, assigned by the driver. A view
-    /// reads it here rather than through a query, and it is what the core
-    /// stamps onto every `UiEvent` it hands out — so a driver that pushes
-    /// the rest of these facts has already said where its events came from.
+    /// Which window this core is drawing: the id the `Open` that created
+    /// it carried, written here by the driver (`MAIN` for the launcher's).
+    /// A view reads it here rather than through a query, and it is what the
+    /// core stamps onto every `UiEvent` it hands out — so a driver that
+    /// pushes the rest of these facts has already said where its events
+    /// came from. The window's *name* is `Core::window_name`.
     pub id: WindowId,
     /// The host asked the app to draw its own chrome (no native titlebar).
     pub custom_chrome: bool,

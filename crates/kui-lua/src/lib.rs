@@ -54,7 +54,7 @@
 use kui_core::schema::{self, Kind, Parsed, PropsOut};
 use kui_core::{
     Align, Color, EditOptions, Extension, FloatConfig, Key, PadShorthand, Sizing, Span, Ui,
-    UiEvent, Value, widgets,
+    UiEvent, Value, WindowConfig, widgets,
 };
 use mlua::{Lua, Table};
 
@@ -120,6 +120,7 @@ impl Extension for LuaExtension {
         if let Ok(Some(title)) = root.get::<Option<String>>("window_title") {
             ui.window_title(&title);
         }
+        declare_windows(ui, &root).map_err(|e| format!("windows: {e}"))?;
         build_node(ui, &root).map_err(|e| format!("view table: {e}"))
     }
 
@@ -422,6 +423,45 @@ fn element_of(ty: &str) -> &str {
         "latency_graph" | "latency_hud" => "latencyGraph",
         other => other,
     }
+}
+
+/// The root table's `windows` list (`docs/adr/0004-multi-window.md`): each
+/// entry a name, or a table `{ name=, width=, height=, activates= }`, and
+/// every one a `Ui::window` declaration. The embedding host drains the
+/// `Open` / `Close` the declared set produces and opens the surfaces;
+/// this binding has no runner of its own.
+fn declare_windows(ui: &mut Ui<'_>, root: &Table) -> mlua::Result<()> {
+    let Some(list) = root.get::<Option<Table>>("windows")? else {
+        return Ok(());
+    };
+    for entry in list.sequence_values::<mlua::Value>() {
+        match entry? {
+            mlua::Value::String(name) => {
+                ui.window(&name.to_str()?, WindowConfig::default());
+            }
+            mlua::Value::Table(t) => {
+                let name: String = t.get("name")?;
+                let mut cfg = WindowConfig::default();
+                if let (Some(w), Some(h)) = (
+                    t.get::<Option<f32>>("width")?,
+                    t.get::<Option<f32>>("height")?,
+                ) {
+                    cfg.size = kui_core::Size::new(w, h);
+                }
+                if let Some(a) = t.get::<Option<bool>>("activates")? {
+                    cfg.activates = a;
+                }
+                ui.window(&name, cfg);
+            }
+            other => {
+                return Err(mlua::Error::runtime(format!(
+                    "a windows entry is a name or a table, not {}",
+                    other.type_name()
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Warns about every key in the node table that no table claims — the
@@ -1165,6 +1205,56 @@ mod tests {
         });
         let count: i64 = ext.lua.globals().get("count").unwrap();
         assert_eq!(count, 42);
+    }
+
+    /// The root table's `windows` list is `Ui::window` per entry: a name
+    /// alone takes the defaults, a table its own size, and the commands
+    /// the declared set produces come out of the core for the host to
+    /// drain — this binding opens nothing itself.
+    #[test]
+    fn the_root_table_declares_windows() {
+        use kui_core::{WindowCommand, WindowConfig};
+        let mut ext = LuaExtension::from_source(
+            "windows",
+            r#"
+                function view(env)
+                  return column {
+                    windows = { { name = "palette", width = 400, height = 300,
+                                  activates = false }, "tools" },
+                    text("main"),
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let cmds = core.take_window_commands();
+        assert_eq!(cmds.len(), 2, "{cmds:?}");
+        assert_eq!(
+            cmds[0],
+            WindowCommand::Open {
+                id: WindowId(1),
+                origin: OriginId(1),
+                config: WindowConfig {
+                    size: Size::new(400.0, 300.0),
+                    activates: false,
+                    ..WindowConfig::default()
+                },
+            }
+        );
+        assert_eq!(
+            cmds[1],
+            WindowCommand::Open {
+                id: WindowId(2),
+                origin: OriginId(1),
+                config: WindowConfig::default(),
+            }
+        );
+        // Declared again: nothing new, and no unknown-prop line for the key.
+        frame(&mut core, &mut ext);
+        assert!(core.take_window_commands().is_empty());
+        assert!(core.take_warnings().is_empty());
     }
 
     /// Every node type the prelude offers lowers without error and draws.

@@ -24,14 +24,14 @@
 //!   in the table.
 
 use kui_core::{
-    Align, Color, Core, EditOptions, FloatConfig, ImageId, NodeSpec, PadShorthand, Span, TextStyle,
-    widgets,
+    Align, Color, Core, EditOptions, FloatConfig, ImageId, NodeSpec, PadShorthand, Size, Span,
+    TextStyle, WindowConfig, widgets,
 };
 use serde_json::{Map as JsonMap, Value as Json};
 
 use crate::schema::{
     self, Kind, P_BORDER, P_DIR, P_FLOAT, P_KEY, P_KEY_FOCUS, P_OVERFLOW, P_PAD, P_SIZE, P_TITLE,
-    P_TOOLTIP, Parsed, PropsOut, align_idx, color_num, sizing_num,
+    P_TOOLTIP, P_WINDOWS, Parsed, PropsOut, align_idx, color_num, sizing_num,
 };
 use crate::{Result, err, value_of};
 
@@ -242,6 +242,25 @@ fn read_props(r: &mut Reader<'_>) -> Result<PropsOut> {
             P_KEY_FOCUS => out.key_focus = true,
             P_KEY => out.key = Some(r.req_str()?.to_string()),
             P_TITLE => out.title = Some(r.req_str()?.to_string()),
+            // A count, then per window: name, kind, width, height (zero =
+            // the default size), activates.
+            P_WINDOWS => {
+                let n = r.u()?;
+                for _ in 0..n {
+                    let name = r.req_str()?.to_string();
+                    let _kind = r.u()?;
+                    let (w, h) = (r.f()? as f32, r.f()? as f32);
+                    let activates = r.u()? == 1;
+                    let mut cfg = WindowConfig {
+                        activates,
+                        ..WindowConfig::default()
+                    };
+                    if w > 0.0 && h > 0.0 {
+                        cfg.size = Size::new(w, h);
+                    }
+                    out.windows.push((name, cfg));
+                }
+            }
             P_TOOLTIP => out.apply_tooltip(r.req_str()?),
             id => {
                 let def = schema::by_id(id).ok_or_else(|| err(format!("unknown prop id {id}")))?;
@@ -458,6 +477,9 @@ pub fn lower_binary(core: &mut Core, stream: &[f64], strings: &[u8]) -> Result<(
     if let Some(t) = &p.title {
         core.set_window_title(t);
     }
+    for (name, cfg) in &p.windows {
+        core.declare_window(name, *cfg);
+    }
     core.configure_root(p.spec);
     if p.key_focus {
         core.set_key_focus(Some(core.root_key()));
@@ -615,6 +637,19 @@ mod tests {
                     s.extend([0.0, 3.0]);
                     strings = b"abc";
                     expected.apply_tooltip("abc");
+                }
+                "windows" => {
+                    // One window: "abc", normal, 400x300, non-activating.
+                    s.extend([1.0, 0.0, 3.0, 0.0, 400.0, 300.0, 0.0]);
+                    strings = b"abc";
+                    expected.windows.push((
+                        "abc".into(),
+                        WindowConfig {
+                            size: Size::new(400.0, 300.0),
+                            activates: false,
+                            ..WindowConfig::default()
+                        },
+                    ));
                 }
                 other => panic!(
                     "custom prop {other:?} has no binary decoder arm: add one in read_props, \

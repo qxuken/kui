@@ -1461,6 +1461,22 @@ const SCENE_TREES = {
 // insets past them — the env is the only difference, which is the point.
 SCENE_TREES['chrome-inset'] = SCENE_TREES.chrome;
 
+// `conformance::build_windows`: the declaration rides on the root box, the
+// way `title` does, and comes and goes with the phase — twice in phase 0,
+// disagreeing on the size.
+SCENE_TREES.windows = (_fx, phase) =>
+  root(
+    {
+      windows:
+        phase === 0
+          ? [{ name: 'palette', width: 400, height: 300 }, { name: 'palette', width: 500, height: 500 }]
+          : phase === 2
+            ? [{ name: 'palette', width: 400, height: 300 }]
+            : undefined,
+    },
+    [box({ pad: 8, bg: '#14161e' }, [text(phase === 0 || phase === 2 ? 'open' : 'closed', { size: 12 })])],
+  );
+
 /** `conformance::EXIT_BULK_ROWS`: with its own root, one node past
  *  `kui_core::depart::MAX_NODES`, so the whole subtree is refused. */
 const EXIT_BULK_ROWS = 512;
@@ -1525,16 +1541,19 @@ function driveScene(env, steps, build) {
     (registered ??= { image: addFixtureImage(ctx), sound: addFixtureSound(ctx) });
   let phase = 0;
   const events = [];
+  const commands = [];
   const frame = () => {
     ctx.frame(320, 240, 1, build(fx, phase));
     events.push(...ctx.pollEvents());
+    commands.push(...ctx.windowCommands());
   };
   frame();
   for (const step of steps) {
-    // Neither of the first two is input: one is the frame clock the
-    // transitions read, the other is the view changing its mind.
+    // None of the first three is input: the frame clock the transitions
+    // read, the view changing its mind, and the OS closing a window.
     if (step[0] === 'phase') phase = step[1];
     else if (step[0] === 'time') ctx.setTime(step[1] / 1000);
+    else if (step[0] === 'windowclosed') ctx.windowClosed(step[1]);
     else if (step[0] === 'cursor') ctx.cursor(step[1], step[2]);
     else if (step[0] === 'cursorleft') ctx.cursorLeft();
     else if (step[0] === 'mousedown') ctx.mouse(true, 1);
@@ -1553,14 +1572,23 @@ function driveScene(env, steps, build) {
     else if (step[0] === 'type') ctx.text(String.fromCodePoint(step[1]));
     else throw new Error(`unknown conformance step ${step[0]}`);
     events.push(...ctx.pollEvents());
+    commands.push(...ctx.windowCommands());
     frame();
   }
-  return { ctx, events };
+  return { ctx, events, commands };
+}
+
+/** A window command as its `cmd` line (`conformance::write_command`). */
+function commandLine(c) {
+  const verb = { startDrag: 'drag', close: 'close', minimize: 'minimize', toggleMaximize: 'maximize' }[c.kind];
+  if (verb) return `cmd ${verb} ${c.window}`;
+  const k = c.config.kind === 'normal' ? 0 : -1;
+  return `cmd open ${c.window} ${c.origin} ${k} ${Math.trunc(c.config.width)} ${Math.trunc(c.config.height)} ${c.config.activates ? 1 : 0}`;
 }
 
 /** Renders a scene block in the report format `conformance::report`
  *  documents: integers, hex and strings only, so the bytes match Rust's. */
-function sceneReport(name, env, steps, { ctx, events }) {
+function sceneReport(name, env, steps, { ctx, events, commands }) {
   const lines = [`scene ${name}`];
   if (env) {
     const { customChrome, maximized, fullscreen, nativeControls } = ctx.env().window;
@@ -1597,6 +1625,7 @@ function sceneReport(name, env, steps, { ctx, events }) {
   for (const ev of events) {
     lines.push(`event ${ev.payload?.kind ?? '-'} ${ev.payload?.tag?.kind ?? '-'}`);
   }
+  for (const c of commands) lines.push(commandLine(c));
   for (const w of ctx.warnings()) lines.push(`warn ${w.code}`);
   lines.push('end', '');
   return lines.join('\n');
@@ -1634,6 +1663,64 @@ function referenceBlocks(text) {
   }
   return out;
 }
+
+// -- Declared windows ------------------------------------------------------
+// `windows(model)` is the root's `windows` prop, written by the loop; the
+// core diffs the set and the app hears about it as data.
+
+test('the loop declares windows(model) and views each open window by name', () => {
+  const seen = [];
+  const app = createApp(
+    {
+      init: { palette: true },
+      update: (model, msg) => {
+        if (msg.kind === 'window') seen.push(`${msg.phase} ${msg.name} ${msg.id}`);
+        if (msg.kind === 'toggle') return { ...model, palette: !model.palette };
+      },
+      windows: (model) => (model.palette ? [{ name: 'palette', width: 400, height: 300 }] : []),
+      view: (model, window) => box({ width: 'grow', height: 'grow' }, [text(`${window}:${model.palette}`)]),
+    },
+    { warnings: false },
+  );
+  app.render();
+  app.settle();
+  // The command the driver would apply, and the message the app got.
+  assert.deepEqual(app.ctx.windows(), ['main', 'palette']);
+  assert.deepEqual(seen, ['opened palette 1']);
+  assert.equal(app.ctx.windowName(), 'main');
+  // Declared again: nothing new.
+  app.render();
+  app.settle();
+  assert.deepEqual(seen, ['opened palette 1']);
+  // Stop declaring it: closed, with the message.
+  app.dispatch({ kind: 'toggle' });
+  app.render();
+  app.settle();
+  assert.deepEqual(seen, ['opened palette 1', 'closed palette 1']);
+  assert.deepEqual(app.ctx.windows(), ['main']);
+  assert.deepEqual(app.warnings, []);
+});
+
+test('a window the user closed stays closed while declared, and says so', () => {
+  const ctx = new Ctx();
+  const declare = () => ctx.frame(320, 240, 1, box({ windows: ['palette'] }, []));
+  declare();
+  assert.deepEqual(ctx.windowCommands(), [
+    { kind: 'open', window: 1, origin: 0, config: { kind: 'normal', width: 640, height: 480, activates: true } },
+  ]);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [{ kind: 'window', phase: 'opened', name: 'palette', id: 1 }]);
+  ctx.windowClosed(1);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [{ kind: 'window', phase: 'closed', name: 'palette', id: 1 }]);
+  declare();
+  assert.deepEqual(ctx.windowCommands(), [], 'still declared: nothing reopens');
+  assert.deepEqual(ctx.warnings().map((w) => w.code), ['window-declared-while-closed']);
+  // Lapse, then declare again: a new window, a new id.
+  ctx.frame(320, 240, 1, box({}, []));
+  declare();
+  assert.deepEqual(ctx.windowCommands().map((c) => [c.kind, c.window]), [['open', 2]]);
+  // And the chrome commands say which window too.
+  assert.deepEqual(ctx.windows(), ['main', 'palette']);
+});
 
 test('every corpus scene lowers the way kui-core does', (t) => {
   if (!existsSync(CONFORMANCE)) {

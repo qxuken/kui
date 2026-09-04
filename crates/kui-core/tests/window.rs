@@ -73,7 +73,10 @@ fn press_on_drag_strip_emits_start_drag_and_no_ui_event() {
         evs.is_empty(),
         "chrome nodes must not emit UiEvents, got {evs:?}"
     );
-    assert_eq!(core.take_window_commands(), vec![WindowCommand::StartDrag]);
+    assert_eq!(
+        core.take_window_commands(),
+        vec![WindowCommand::StartDrag(WindowId::MAIN)]
+    );
 }
 
 #[test]
@@ -91,9 +94,9 @@ fn window_buttons_emit_their_commands_on_click() {
     assert_eq!(
         core.take_window_commands(),
         vec![
-            WindowCommand::Minimize,
-            WindowCommand::ToggleMaximize,
-            WindowCommand::Close
+            WindowCommand::Minimize(WindowId::MAIN),
+            WindowCommand::ToggleMaximize(WindowId::MAIN),
+            WindowCommand::Close(WindowId::MAIN)
         ]
     );
 }
@@ -104,7 +107,10 @@ fn buttons_win_over_the_drag_strip_below_them() {
     frame(&mut core);
     // A full click on the close button: the press must not also start a drag.
     drive(&mut core, &click_at(380.0, 20.0));
-    assert_eq!(core.take_window_commands(), vec![WindowCommand::Close]);
+    assert_eq!(
+        core.take_window_commands(),
+        vec![WindowCommand::Close(WindowId::MAIN)]
+    );
 }
 
 #[test]
@@ -157,7 +163,10 @@ fn titlebar_widget_declares_chrome_from_env() {
     ui.finish();
     // Close button sits rightmost in the 46px-wide cluster.
     drive(&mut core, &click_at(400.0 - 23.0, 20.0));
-    assert_eq!(core.take_window_commands(), vec![WindowCommand::Close]);
+    assert_eq!(
+        core.take_window_commands(),
+        vec![WindowCommand::Close(WindowId::MAIN)]
+    );
 
     // macOS-style: native controls present — no drawn buttons, all drag.
     core.env.window = WindowEnv {
@@ -176,7 +185,10 @@ fn titlebar_widget_declares_chrome_from_env() {
             InputEvent::mouse_down(1),
         ],
     );
-    assert_eq!(core.take_window_commands(), vec![WindowCommand::StartDrag]);
+    assert_eq!(
+        core.take_window_commands(),
+        vec![WindowCommand::StartDrag(WindowId::MAIN)]
+    );
 }
 /// The other half of the same env read, and the half the corpus cannot pin:
 /// the conformance report carries no coordinates, so `chrome-inset`'s

@@ -1113,14 +1113,59 @@ The work ADR 0004 (C7) decided but did not do. Each step ships alone, in order:
    which now collides with `kui_core`'s through `pub use kui_core::*` — it
    is aliased `WinitWindowId`, or `kui::WindowId` would not have been
    nameable at all.
-3. **The declared set.** `declared_windows` / `declared_windows_last` beside
-   the focus pair, the diff into `WindowCommand::Open`/`Close(WindowId)`, the
-   `{kind:"window", phase}` event, and the runner opening real `Normal`
-   windows. `kui_take_window_commands` becomes a `KuiWindowCommand`
-   out-param here — a command now carries a `window` beside its verb, which
-   no longer fits a `uint32_t` — and C hosts edit their drain loop. Keep the
-   struct pointer-free: an `Open` carries no title (ADR 0004 decision 5), so
+3. **The declared set** — **done (2026-09-05)**. `declared_windows` /
+   `declared_windows_last` beside the focus pair, the diff into
+   `WindowCommand::Open`/`Close(WindowId)`, the `{kind:"window", phase}`
+   event, and the runner opening real `Normal` windows.
+   `kui_take_window_commands` becomes a `KuiWindowCommand` out-param here
+   — a command now carries a `window` beside its verb, which no longer
+   fits a `uint32_t` — and C hosts edit their drain loop. Keep the struct
+   pointer-free: an `Open` carries no title (ADR 0004 decision 5), so
    `WindowCommand` stays `Copy` and no borrowed string enters the drain.
+   **What the build settled.** The diff cannot live on a `Core`: the
+   union is over every core's frame, and a core sees only its own. So the
+   pair on the core is each frame's declarations and the fast path (a
+   frame that declared what the last one did, with nothing sitting
+   closed-but-declared, never touches the session), and
+   `session::WindowRegistry` holds the rest — one slot of declarations per
+   core keyed by its `WindowId` and kept in id order, so "lowest declaring
+   window wins" is the first slot that names a window and needs no frame
+   order; the windows opened so far with their ids; and the closed-by-OS
+   entries whose names have not lapsed. `finish_frame` hands its slot in
+   and takes the diff's `Open`/`Close` back into its own queue, so the
+   driver drains what it always drained. Three things followed from that
+   shape rather than from the text. **The core assigns ids**, not the
+   driver (decision 3 said the driver): the `Open` has to carry one and
+   nothing above the core exists yet. **The `window` event is raised at
+   both edges** and carries `name` and `id` in its payload, because
+   `UiEvent::window` is the core that ran the diff, not the window the
+   event is about. And **a closed window's slot leaves the union with
+   it**, so a window that declared a child closes the child in the same
+   diff, parent first — the "popup declares its own submenu" case
+   costing nothing extra.
+   **The C break is a rename**, `kui_take_window_command`, popping one
+   `KuiWindowCommand` per call the way `kui_poll_event` does: an array
+   of [out] structs cannot carry ADR 0006's size handshake (0006,
+   decision 5), and a renamed function fails an un-edited host at link
+   time where a changed pointer type would only warn. `KUI_ABI_VERSION`
+   is 5, `kui_env_set_window` leads with the id (C's way to set
+   `WindowEnv::id`, deferred here from step 2), and `abi_parity` pins
+   both structs plus the `KUI_CMD_*` / `KUI_WINDOW_*` constants.
+   **The runner became a `Pane` per window** — surface, renderer, core,
+   cursor, click counter, caret blink, resize band, access adapter — on
+   one event loop, one `Session`, one `Gpu`; every handler is indexed by
+   the pane winit's event named, and `PumpRunner::core_mut` is the main
+   pane's. Node's `KuiWindow` keeps a tree per window name and
+   `setView(tree, window)` fills one; the loop calls `view(model, name)`
+   for each name `windows()` lists. **One bug the tests caught**: a
+   headless `Ctx` also answers `windows()`, and a loop that drew a frame
+   per listed name drew a second frame on the same core without the
+   declaration, closing and reopening the window every render — a
+   headless surface is one window, and only a real window surface fans
+   out. Real windows opening is P8's smoke job; every check here is
+   headless, and the four adapters reproduce the `windows` scene
+   byte-identically, including the `cmd` lines the report gained (which
+   also pinned the modal scene's titlebar `drag` for the first time).
    Two rules the ADR's 2026-09-04 amendments added (A5) land in this step,
    because both live in the diff:
    - **Config is read on the opening edge only**, and on that edge the

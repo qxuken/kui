@@ -354,7 +354,14 @@ that are hard to reverse and would look arbitrary without their context.
   snap layouts, native caption drag, and double-click maximize all work over
   the drawn controls; Linux falls back to synthesized edge resizing and
   double-click maximize. Lua declares `window = "drag"` etc.; C sets `KuiSpec.window_role`
-  and drains `kui_take_window_commands`. The window's *size* travels the same
+  and drains `kui_take_window_command`. Windows themselves are declared the
+  same way (`docs/adr/0004-multi-window.md`): `ui.window("palette", cfg)` in
+  Rust, `windows: (model) => [...]` in a Node loop, `windows = { ... }` on a
+  Lua root table, `kui_window_declare` in C — a window opens on the first
+  frame that declares it, closes on the first that does not, and `view`
+  runs once per open window with `ui.window_name()` saying which; the same
+  drain carries the `Open` / `Close`, and the app hears
+  `{kind="window", phase, name, id}`. The window's *size* travels the same
   way: a frame begun at a different viewport or DPI than the last one posts
   `{kind="resize", width, height, scale}` on the root, routed with the frame's
   other pending events — `App::on_event` in Rust, `pollEvents` in Node, `kui_poll_event`

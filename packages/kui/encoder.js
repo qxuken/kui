@@ -250,6 +250,28 @@ export function createEncoder(P) {
             n++;
           }
           break;
+        case 'windows':
+          // Root only, like `title`: a count, then per window its name,
+          // kind (0 = normal), width, height (0 = the default size) and
+          // whether it activates. An entry may be just a name.
+          if (isRoot && Array.isArray(v)) {
+            f[fi++] = PR.windows.id;
+            f[fi++] = v.length;
+            for (const w of v) {
+              reserve(8);
+              const d = typeof w === 'string' ? { name: w } : w;
+              if (d == null || typeof d.name !== 'string') {
+                throw new Error(`bad windows entry ${JSON.stringify(w)} (a name, or { name, width?, height?, activates? })`);
+              }
+              strRef(d.name);
+              f[fi++] = 0;
+              f[fi++] = d.width ?? 0;
+              f[fi++] = d.height ?? 0;
+              f[fi++] = d.activates === false ? 0 : 1;
+            }
+            n++;
+          }
+          break;
         case 'tooltip':
           f[fi++] = PR.tooltip.id;
           strRef(String(v));

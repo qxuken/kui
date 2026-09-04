@@ -1,7 +1,15 @@
-//! Batteries-included runner: winit window + wgpu renderer around a
-//! `kui_core::Core`, driving the Elm-ish loop — input becomes `UiEvent`s
-//! routed to `App::on_event` (host) or extensions by origin, then `App::view`
-//! rebuilds the frame.
+//! Batteries-included runner: winit windows + wgpu renderers around one
+//! `kui_core::Core` per window, driving the Elm-ish loop — input becomes
+//! `UiEvent`s routed to `App::on_event` (host) or extensions by origin, then
+//! `App::view` rebuilds each window's frame.
+//!
+//! One event loop, any number of windows (`docs/adr/0004-multi-window.md`).
+//! The launcher opens the main window; a frame that declares another
+//! (`Ui::window`) has the core queue a `WindowCommand::Open`, and the runner
+//! opens it as a [`Pane`] — a window, its surface, its `Core` and the
+//! per-window input state — on the same `Session` and the same GPU device.
+//! `App::view` runs once per pane per frame, with `Ui::window_name` saying
+//! which; events carry the pane's `WindowId`.
 
 use std::sync::Arc;
 
@@ -23,6 +31,8 @@ use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
 use winit::window::{CursorIcon, ResizeDirection, Window, WindowId as WinitWindowId};
 
 pub trait App {
+    /// Builds one window's frame. Called once per open window per frame;
+    /// `ui.window_name()` says which (`"main"` for the launcher's).
     fn view(&mut self, ui: &mut Ui<'_>);
     fn on_event(&mut self, _ev: UiEvent) {}
 }
@@ -149,38 +159,30 @@ impl Launcher {
     fn shell<A: App>(self, app: A) -> Shell<A> {
         // Diagnostics are a development aid: on in debug builds unless the
         // launcher says otherwise, so a shipped app pays and prints nothing.
-        let mut core = Core::new();
-        core.set_diagnostics(self.diagnostics.unwrap_or(cfg!(debug_assertions)));
+        let diagnostics = self.diagnostics.unwrap_or(cfg!(debug_assertions));
+        let session = Session::new();
+        let mut core = Core::new_in(&session);
+        core.set_diagnostics(diagnostics);
         Shell {
-            title: self.title.clone(),
-            applied_title: self.title,
+            title: self.title,
             chrome: self.chrome,
             size: clamp_size(self.size, self.min_size, self.max_size),
             min_size: self.min_size,
             max_size: self.max_size,
             text_aa: self.text_aa,
+            diagnostics,
+            subpixel: false,
             app,
             extensions: self.extensions,
-            core,
+            session,
+            main_core: Some(core),
+            panes: Vec::new(),
+            gpu: None,
             epoch: std::time::Instant::now(),
-            window: None,
-            renderer: None,
-            modifiers: ModifiersState::empty(),
             clipboard: arboard::Clipboard::new().ok(),
-            last_titlebar_press: None,
-            cursor: Vec2::ZERO,
-            last_click: None,
-            blink_visible: true,
-            blink_deadline: None,
-            caret_stamp_seen: 0,
             audio: audio::Audio::new(),
-            resize_edge: None,
-            cursor_icon: CursorIcon::Default,
             exit_requested: false,
             proxy: None,
-            access: None,
-            #[cfg(target_os = "windows")]
-            nc: None,
         }
     }
 
@@ -196,8 +198,9 @@ impl Launcher {
     /// Opens the window but keeps the event loop in the caller's hands: the
     /// returned [`PumpRunner`] processes OS events only when [`PumpRunner::pump`]
     /// is called, so a foreign loop (Node/libuv, a game loop, a test harness)
-    /// can interleave with winit on the main thread. One per process — winit
-    /// event loops are not recreatable on every platform.
+    /// can interleave with winit on the main thread. One event loop per
+    /// process — winit event loops are not recreatable on every platform —
+    /// but any number of windows on it.
     pub fn open<A: App>(self, app: A) -> Result<PumpRunner<A>, Box<dyn std::error::Error>> {
         let mut event_loop = EventLoop::<access_bridge::UserEvent>::with_user_event().build()?;
         event_loop.set_control_flow(ControlFlow::Wait);
@@ -235,7 +238,7 @@ pub struct PumpRunner<A: App> {
 
 impl<A: App> PumpRunner<A> {
     /// Processes all pending OS events without blocking. Returns false once
-    /// the window has closed (further pumps are no-ops).
+    /// the main window has closed (further pumps are no-ops).
     pub fn pump(&mut self) -> bool {
         if !self.alive {
             return false;
@@ -248,25 +251,30 @@ impl<A: App> PumpRunner<A> {
         &mut self.shell.app
     }
 
+    /// The main window's core. Every window of the app shares its session,
+    /// so resources registered through it draw in all of them, and
+    /// `Core::windows` on it lists them.
     pub fn core_mut(&mut self) -> &mut Core {
-        &mut self.shell.core
+        self.shell.core_mut()
     }
 
-    /// The window's inner size (logical px) and its scale factor — what the
-    /// next frame lays out against. Unlike `core_mut().viewport()` this is
-    /// known before the first frame, so a host can size its model at setup.
+    /// The main window's inner size (logical px) and its scale factor —
+    /// what the next frame lays out against. Unlike `core_mut().viewport()`
+    /// this is known before the first frame, so a host can size its model
+    /// at setup.
     pub fn window_size(&self) -> (Size, f32) {
         self.shell.window_size()
     }
 
-    /// Schedules a redraw (call after changing what `view` will produce).
+    /// Schedules a redraw of every window (call after changing what `view`
+    /// will produce).
     pub fn request_redraw(&self) {
-        if let Some(w) = &self.shell.window {
-            w.request_redraw();
+        for p in &self.shell.panes {
+            p.window.request_redraw();
         }
     }
 
-    /// Asks the window to close; the next `pump` observes it and returns false.
+    /// Asks the app to close; the next `pump` observes it and returns false.
     pub fn request_exit(&mut self) {
         self.shell.exit_requested = true;
     }
@@ -345,26 +353,20 @@ fn cursor_icon(shape: CursorShape) -> CursorIcon {
     }
 }
 
-struct Shell<A: App> {
-    title: String,
+/// One window: the OS surface, its renderer, its `Core`, and every piece
+/// of input state that belongs to a window rather than to the app — the
+/// cursor, the click counter, the caret blink, the resize band, the cursor
+/// icon last set, the accessibility adapter. The main window is the pane
+/// with `WindowId::MAIN`; the rest are what frames declared.
+struct Pane {
+    id: WindowId,
+    core: Core,
+    window: Arc<Window>,
+    renderer: kui_wgpu::Renderer,
     /// Last title actually set on the window; views declare per frame and
     /// we only touch the window on change.
     applied_title: String,
-    chrome: Chrome,
-    /// Initial inner size (logical px), already clamped into the bounds.
-    size: (f64, f64),
-    min_size: Option<(f64, f64)>,
-    max_size: Option<(f64, f64)>,
-    text_aa: TextAa,
-    app: A,
-    extensions: Vec<Box<dyn Extension>>,
-    core: Core,
-    /// Origin of the frame clock handed to the core for transitions.
-    epoch: std::time::Instant,
-    window: Option<Arc<Window>>,
-    renderer: Option<kui_wgpu::Renderer>,
     modifiers: ModifiersState,
-    clipboard: Option<arboard::Clipboard>,
     /// Time of the last titlebar press, for double-click maximize.
     last_titlebar_press: Option<std::time::Instant>,
     /// Last cursor position (logical px), for multi-click distance checks.
@@ -376,19 +378,12 @@ struct Shell<A: App> {
     blink_visible: bool,
     blink_deadline: Option<std::time::Instant>,
     caret_stamp_seen: u64,
-    /// The audio device the core's audio commands drive; see `audio`.
-    audio: audio::Audio,
     /// Resize edge currently under the cursor (undecorated windows only).
     resize_edge: Option<ResizeDirection>,
     /// Cursor icon last set on the window, so a shape that did not change
     /// costs nothing.
     cursor_icon: CursorIcon,
-    /// Set by `WindowCommand::Close`; honored at the end of the event.
-    exit_requested: bool,
-    /// Hands AccessKit a way back into the loop; set before the window
-    /// exists.
-    proxy: Option<EventLoopProxy<access_bridge::UserEvent>>,
-    /// The platform accessibility bridge, once the window exists.
+    /// The platform accessibility bridge.
     access: Option<access_bridge::Bridge>,
     /// Windows: answers WM_NCHITTEST from the frame's chrome regions, which
     /// enables snap layouts + native caption behavior over drawn controls.
@@ -396,122 +391,36 @@ struct Shell<A: App> {
     nc: Option<windows_nc::NcHitTest>,
 }
 
-impl<A: App> Shell<A> {
-    /// Inner size in logical px plus the scale factor; the launcher's
-    /// requested size until the window exists.
-    fn window_size(&self) -> (Size, f32) {
-        let Some(w) = &self.window else {
-            return (Size::new(self.size.0 as f32, self.size.1 as f32), 1.0);
-        };
-        let scale = w.scale_factor() as f32;
-        let size = w.inner_size();
+impl Pane {
+    /// Inner size in logical px plus the scale factor.
+    fn size(&self) -> (Size, f32) {
+        let scale = self.window.scale_factor() as f32;
+        let size = self.window.inner_size();
         (
             Size::new(size.width as f32 / scale, size.height as f32 / scale),
             scale,
         )
     }
 
-    fn dispatch(&mut self, ev: InputEvent) {
-        let t0 = std::time::Instant::now();
-        let events = self.core.handle_input(ev);
-        self.route_events(events);
-        self.apply_window_commands();
-        self.apply_audio();
-        self.apply_cursor();
-        // Hover styling depends on input too, so any input redraws. A damage
-        // pass can tighten this later.
-        self.core.stats.pending_input_ms += t0.elapsed().as_secs_f32() * 1e3;
-        if let Some(w) = &self.window {
-            w.request_redraw();
-        }
-    }
-
-    /// Hands the frame's access tree to the platform when assistive
-    /// technology is attached and the tree changed; nothing otherwise.
-    fn publish_access(&mut self) {
-        let Some(bridge) = self.access.as_mut() else {
-            return;
-        };
-        if !bridge.active() {
-            return;
-        }
-        let scale = self.window.as_ref().map_or(1.0, |w| w.scale_factor()) as f32;
-        bridge.publish(self.core.access_tree(), scale);
-    }
-
-    /// Applies window intents produced by chrome nodes (`window_drag`,
-    /// `window_button`) to the real window.
-    fn apply_window_commands(&mut self) {
-        for cmd in self.core.take_window_commands() {
-            let Some(w) = &self.window else { break };
-            match cmd {
-                WindowCommand::StartDrag => {
-                    let now = std::time::Instant::now();
-                    let double = self
-                        .last_titlebar_press
-                        .take()
-                        .is_some_and(|t| now.duration_since(t).as_millis() < DOUBLE_CLICK_MS);
-                    if double {
-                        w.set_maximized(!w.is_maximized());
-                    } else {
-                        self.last_titlebar_press = Some(now);
-                        let _ = w.drag_window();
-                    }
-                }
-                WindowCommand::Close => self.exit_requested = true,
-                WindowCommand::Minimize => w.set_minimized(true),
-                WindowCommand::ToggleMaximize => w.set_maximized(!w.is_maximized()),
-            }
-        }
-    }
-
-    /// Hands the core's queued audio commands to the device.
-    fn apply_audio(&mut self) {
-        let cmds = self.core.take_audio_commands();
-        if !cmds.is_empty() {
-            self.audio.apply(cmds, &self.core.resources);
-        }
-    }
-
-    /// Folds playbacks that finished on their own back into the core, and
-    /// routes the `sound` events tagged ones become.
-    fn poll_audio(&mut self) {
-        let ended = self.audio.poll_ended();
-        if ended.is_empty() {
-            return;
-        }
-        for playback in ended {
-            self.core.audio_ended(playback);
-        }
-        let pending = self.core.take_pending_events();
-        if !pending.is_empty() {
-            self.route_events(pending);
-            if let Some(w) = &self.window {
-                w.request_redraw();
-            }
-        }
-    }
-
     /// Undecorated windows get no OS resize borders; the runner synthesizes
     /// them from a band inside the window edges (macOS custom chrome keeps
     /// native edge resizing, and on Windows the non-client subclass answers
     /// WM_NCHITTEST with real border codes instead, so neither synthesizes).
-    fn synthesizes_resize(&self) -> bool {
+    fn synthesizes_resize(&self, chrome: Chrome) -> bool {
         #[cfg(target_os = "windows")]
         if self.nc.is_some() {
             return false;
         }
-        self.chrome != Chrome::Native && !cfg!(target_os = "macos")
+        chrome != Chrome::Native && !cfg!(target_os = "macos")
     }
 
     fn resize_edge_at(&self, p: Vec2) -> Option<ResizeDirection> {
-        let w = self.window.as_ref()?;
+        let w = &self.window;
         if w.is_maximized() || w.fullscreen().is_some() {
             return None;
         }
-        let scale = w.scale_factor() as f32;
-        let size = w.inner_size();
-        let (sw, sh) = (size.width as f32 / scale, size.height as f32 / scale);
+        let (size, _) = self.size();
+        let (sw, sh) = (size.w, size.h);
         let (l, r) = (p.x < RESIZE_BAND, p.x > sw - RESIZE_BAND);
         let (t, b) = (p.y < RESIZE_BAND, p.y > sh - RESIZE_BAND);
         Some(match (l, r, t, b) {
@@ -544,37 +453,20 @@ impl<A: App> Shell<A> {
             return;
         }
         self.cursor_icon = icon;
-        if let Some(w) = &self.window {
-            w.set_cursor(icon);
-        }
+        self.window.set_cursor(icon);
     }
 
-    fn route_events(&mut self, events: Vec<UiEvent>) {
-        for ev in events {
-            if ev.origin == OriginId::HOST {
-                self.app.on_event(ev);
-            } else if let Some(ext) = self.extensions.get_mut(ev.origin.0 as usize - 1) {
-                ext.on_event(&ev);
-            }
+    /// Hands the frame's access tree to the platform when assistive
+    /// technology is attached and the tree changed; nothing otherwise.
+    fn publish_access(&mut self) {
+        let Some(bridge) = self.access.as_mut() else {
+            return;
+        };
+        if !bridge.active() {
+            return;
         }
-    }
-
-    /// Direct edits (cut) mutate the document outside handle_input, so they
-    /// must notify + redraw explicitly.
-    fn after_direct_edit(&mut self) {
-        if let Some(key) = self.core.edit.focused() {
-            let origin = self.core.edit.origin_of(key).unwrap_or(OriginId::HOST);
-            self.route_events(vec![UiEvent {
-                origin,
-                // Built outside the core, so this driver stamps it itself.
-                window: self.core.env.window.id,
-                key,
-                payload: Value::map([("kind", "changed".into())]),
-            }]);
-        }
-        if let Some(w) = &self.window {
-            w.request_redraw();
-        }
+        let scale = self.window.scale_factor() as f32;
+        bridge.publish(self.core.access_tree(), scale);
     }
 
     fn mods(&self) -> Mods {
@@ -598,18 +490,354 @@ impl<A: App> Shell<A> {
         }
     }
 
-    fn on_key(&mut self, event: winit::event::KeyEvent) {
+    fn kmods(&self) -> KeyMods {
+        KeyMods {
+            shift: self.modifiers.shift_key(),
+            ctrl: self.modifiers.control_key(),
+            alt: self.modifiers.alt_key(),
+            super_key: self.modifiers.super_key(),
+        }
+    }
+}
+
+struct Shell<A: App> {
+    title: String,
+    chrome: Chrome,
+    /// Initial inner size (logical px), already clamped into the bounds.
+    size: (f64, f64),
+    min_size: Option<(f64, f64)>,
+    max_size: Option<(f64, f64)>,
+    text_aa: TextAa,
+    /// What every core is created with; see `Launcher::diagnostics`.
+    diagnostics: bool,
+    /// Whether the GPU blends per channel, decided by the first renderer
+    /// and applied to every core after it.
+    subpixel: bool,
+    app: A,
+    extensions: Vec<Box<dyn Extension>>,
+    /// What every window shares: fonts, images, sounds, the audio queue and
+    /// the declared window set.
+    session: Session,
+    /// The main window's core until `resumed` moves it into its pane, so
+    /// `PumpRunner::core_mut` has an answer before the first pump.
+    main_core: Option<Core>,
+    /// The open windows, main first.
+    panes: Vec<Pane>,
+    /// The device every window renders with, from the first renderer.
+    gpu: Option<kui_wgpu::Gpu>,
+    /// Origin of the frame clock handed to the cores for transitions.
+    epoch: std::time::Instant,
+    clipboard: Option<arboard::Clipboard>,
+    /// The audio device the core's audio commands drive; see `audio`.
+    audio: audio::Audio,
+    /// Set by `WindowCommand::Close` on the main window; honored at the end
+    /// of the event.
+    exit_requested: bool,
+    /// Hands AccessKit a way back into the loop; set before the window
+    /// exists.
+    proxy: Option<EventLoopProxy<access_bridge::UserEvent>>,
+}
+
+impl<A: App> Shell<A> {
+    /// The main window's core: its pane's once it exists, the one the
+    /// launcher built before that.
+    fn core_mut(&mut self) -> &mut Core {
+        match self.panes.first_mut() {
+            Some(p) => &mut p.core,
+            None => self
+                .main_core
+                .as_mut()
+                .expect("the main core exists until its pane takes it"),
+        }
+    }
+
+    /// Main inner size in logical px plus the scale factor; the launcher's
+    /// requested size until the window exists.
+    fn window_size(&self) -> (Size, f32) {
+        match self.panes.first() {
+            Some(p) => p.size(),
+            None => (Size::new(self.size.0 as f32, self.size.1 as f32), 1.0),
+        }
+    }
+
+    fn pane_index(&self, id: WinitWindowId) -> Option<usize> {
+        self.panes.iter().position(|p| p.window.id() == id)
+    }
+
+    fn pane_of(&self, id: WindowId) -> Option<usize> {
+        self.panes.iter().position(|p| p.id == id)
+    }
+
+    fn dispatch(&mut self, event_loop: &ActiveEventLoop, i: usize, ev: InputEvent) {
+        let t0 = std::time::Instant::now();
+        let events = self.panes[i].core.handle_input(ev);
+        self.route_events(events);
+        self.apply_window_commands(event_loop);
+        self.apply_audio();
+        if let Some(pane) = self.panes.get_mut(i) {
+            pane.apply_cursor();
+            // Hover styling depends on input too, so any input redraws. A
+            // damage pass can tighten this later.
+            pane.core.stats.pending_input_ms += t0.elapsed().as_secs_f32() * 1e3;
+            pane.window.request_redraw();
+        }
+    }
+
+    /// Applies every window command every core queued: chrome intents on
+    /// the window they name, and the `Open` / `Close` the declared set's
+    /// diff produced.
+    fn apply_window_commands(&mut self, event_loop: &ActiveEventLoop) {
+        let mut cmds = Vec::new();
+        for p in &mut self.panes {
+            cmds.append(&mut p.core.take_window_commands());
+        }
+        self.apply_commands(event_loop, cmds);
+    }
+
+    fn apply_commands(&mut self, event_loop: &ActiveEventLoop, cmds: Vec<WindowCommand>) {
+        for cmd in cmds {
+            match cmd {
+                WindowCommand::StartDrag(id) => {
+                    let Some(i) = self.pane_of(id) else { continue };
+                    let pane = &mut self.panes[i];
+                    let now = std::time::Instant::now();
+                    let double = pane
+                        .last_titlebar_press
+                        .take()
+                        .is_some_and(|t| now.duration_since(t).as_millis() < DOUBLE_CLICK_MS);
+                    if double {
+                        pane.window.set_maximized(!pane.window.is_maximized());
+                    } else {
+                        pane.last_titlebar_press = Some(now);
+                        let _ = pane.window.drag_window();
+                    }
+                }
+                WindowCommand::Close(id) if id == WindowId::MAIN => self.exit_requested = true,
+                // The chrome close button: the user closed it, as far as
+                // the declared set is concerned, so it stays closed while
+                // still declared. A `Close` the diff produced has already
+                // been taken out of the set, and reporting it again is a
+                // no-op there.
+                WindowCommand::Close(id) => self.close_pane(event_loop, id),
+                WindowCommand::Minimize(id) => {
+                    if let Some(i) = self.pane_of(id) {
+                        self.panes[i].window.set_minimized(true);
+                    }
+                }
+                WindowCommand::ToggleMaximize(id) => {
+                    if let Some(i) = self.pane_of(id) {
+                        let w = &self.panes[i].window;
+                        w.set_maximized(!w.is_maximized());
+                    }
+                }
+                // Every origin may open a window here; a host that wants
+                // to refuse an extension's checks `origin` before this.
+                WindowCommand::Open { id, config, .. } => {
+                    if self.pane_of(id).is_none() {
+                        self.open_pane(event_loop, id, config);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Opens the window a frame declared, on the shared session and device.
+    fn open_pane(&mut self, event_loop: &ActiveEventLoop, id: WindowId, config: WindowConfig) {
+        let size = if config.size.w > 0.0 && config.size.h > 0.0 {
+            config.size
+        } else {
+            WindowConfig::DEFAULT_SIZE
+        };
+        // Untitled until its first frame's `window_title` lands (ADR 0004
+        // decision 5): the declaration carries no string.
+        let attrs = self
+            .window_attrs("", (size.w as f64, size.h as f64))
+            .with_active(config.activates);
+        let window = match event_loop.create_window(attrs) {
+            Ok(w) => Arc::new(w),
+            Err(err) => {
+                eprintln!("kui: cannot open window {}: {err}", id.0);
+                return;
+            }
+        };
+        let Some(gpu) = self.gpu.clone() else {
+            eprintln!("kui: cannot open window {}: no device yet", id.0);
+            return;
+        };
+        let px = window.inner_size();
+        let renderer = match kui_wgpu::Renderer::new_in(&gpu, window.clone(), px.width, px.height) {
+            Ok(r) => r,
+            Err(err) => {
+                eprintln!("kui: cannot open window {}: {err}", id.0);
+                return;
+            }
+        };
+        let mut core = Core::new_in(&self.session);
+        core.set_diagnostics(self.diagnostics);
+        core.set_subpixel_text(self.subpixel);
+        core.env.window.id = id;
+        self.push_pane(event_loop, id, core, window, renderer);
+    }
+
+    /// Finishes a window whose surface and renderer exist: the platform
+    /// hooks, the pane, and showing it.
+    fn push_pane(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        id: WindowId,
+        core: Core,
+        window: Arc<Window>,
+        renderer: kui_wgpu::Renderer,
+    ) {
+        let access = self
+            .proxy
+            .clone()
+            .and_then(|proxy| access_bridge::Bridge::new(event_loop, &window, proxy));
+        #[cfg(target_os = "windows")]
+        let nc = (self.chrome != Chrome::Native)
+            .then(|| windows_nc::NcHitTest::install(&window, true))
+            .flatten();
+        window.set_visible(true);
+        window.set_ime_allowed(true);
+        window.request_redraw();
+        self.panes.push(Pane {
+            id,
+            core,
+            window,
+            renderer,
+            applied_title: String::new(),
+            modifiers: ModifiersState::empty(),
+            last_titlebar_press: None,
+            cursor: Vec2::ZERO,
+            last_click: None,
+            blink_visible: true,
+            blink_deadline: None,
+            caret_stamp_seen: 0,
+            resize_edge: None,
+            cursor_icon: CursorIcon::Default,
+            access,
+            #[cfg(target_os = "windows")]
+            nc,
+        });
+    }
+
+    /// The attributes every window of this app is created with: the
+    /// launcher's chrome, hidden until the accessibility adapter has
+    /// hooked it (the platform adapters must see the window before it is
+    /// shown).
+    fn window_attrs(&self, title: &str, (w, h): (f64, f64)) -> winit::window::WindowAttributes {
+        #[allow(unused_mut)]
+        let mut attrs = Window::default_attributes()
+            .with_title(title)
+            .with_inner_size(LogicalSize::new(w, h))
+            .with_visible(false);
+        match self.chrome {
+            Chrome::Native => {}
+            Chrome::Custom => {
+                // macOS: keep the native traffic lights, drawn over our
+                // content; everywhere else drop decorations entirely.
+                #[cfg(target_os = "macos")]
+                {
+                    use winit::platform::macos::WindowAttributesExtMacOS;
+                    attrs = attrs
+                        .with_titlebar_transparent(true)
+                        .with_fullsize_content_view(true)
+                        .with_title_hidden(true);
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    attrs = attrs.with_decorations(false);
+                }
+            }
+            Chrome::Borderless => attrs = attrs.with_decorations(false),
+        }
+        attrs
+    }
+
+    /// Closes a window other than the main one: the user did (its chrome
+    /// or OS close button), or the diff stopped declaring it. The core is
+    /// told either way — a window the diff already closed is a no-op there
+    /// — and whatever it queues in answer (the `closed` event, and the
+    /// `Close` of anything only this window declared) is routed before the
+    /// pane goes.
+    fn close_pane(&mut self, event_loop: &ActiveEventLoop, id: WindowId) {
+        let Some(i) = self.pane_of(id) else { return };
+        self.panes[i].core.window_closed(id);
+        let events = self.panes[i].core.take_pending_events();
+        let cmds = self.panes[i].core.take_window_commands();
+        self.panes.remove(i);
+        self.route_events(events);
+        self.apply_commands(event_loop, cmds);
+        for p in &self.panes {
+            p.window.request_redraw();
+        }
+    }
+
+    /// Hands the session's queued audio commands to the device.
+    fn apply_audio(&mut self) {
+        let core = self.core_mut();
+        let cmds = core.take_audio_commands();
+        if !cmds.is_empty() {
+            let resources = core.resources.clone();
+            self.audio.apply(cmds, &resources);
+        }
+    }
+
+    /// Folds playbacks that finished on their own back into the core, and
+    /// routes the `sound` events tagged ones become.
+    fn poll_audio(&mut self) {
+        let ended = self.audio.poll_ended();
+        if ended.is_empty() {
+            return;
+        }
+        let core = self.core_mut();
+        for playback in ended {
+            core.audio_ended(playback);
+        }
+        let pending = core.take_pending_events();
+        if !pending.is_empty() {
+            self.route_events(pending);
+            for p in &self.panes {
+                p.window.request_redraw();
+            }
+        }
+    }
+
+    fn route_events(&mut self, events: Vec<UiEvent>) {
+        for ev in events {
+            if ev.origin == OriginId::HOST {
+                self.app.on_event(ev);
+            } else if let Some(ext) = self.extensions.get_mut(ev.origin.0 as usize - 1) {
+                ext.on_event(&ev);
+            }
+        }
+    }
+
+    /// Direct edits (cut) mutate the document outside handle_input, so they
+    /// must notify + redraw explicitly.
+    fn after_direct_edit(&mut self, i: usize) {
+        let pane = &mut self.panes[i];
+        if let Some(key) = pane.core.edit.focused() {
+            let origin = pane.core.edit.origin_of(key).unwrap_or(OriginId::HOST);
+            let ev = UiEvent {
+                origin,
+                // Built outside the core, so this driver stamps it itself.
+                window: pane.core.env.window.id,
+                key,
+                payload: Value::map([("kind", "changed".into())]),
+            };
+            self.route_events(vec![ev]);
+        }
+        self.panes[i].window.request_redraw();
+    }
+
+    fn on_key(&mut self, event_loop: &ActiveEventLoop, i: usize, event: winit::event::KeyEvent) {
         let pressed = event.state == ElementState::Pressed;
         // Full-keyboard path: every press *and release* travels as data to
         // the key-focused sink (`NodeSpec::on_key`); the core drops it when
         // an edit widget holds focus instead. Everything below this block
         // is the editor path, which is press-only.
-        let kmods = KeyMods {
-            shift: self.modifiers.shift_key(),
-            ctrl: self.modifiers.control_key(),
-            alt: self.modifiers.alt_key(),
-            super_key: self.modifiers.super_key(),
-        };
+        let kmods = self.panes[i].kmods();
         let plain = !kmods.ctrl && !kmods.alt && !kmods.super_key;
         // With Alt held the logical key is the composed character on some
         // layouts (macOS ⌥o → "ø"); chords want the layout key, so report
@@ -667,11 +895,15 @@ impl<A: App> Shell<A> {
                 text: ktext,
                 repeat: event.repeat,
             };
-            self.dispatch(if pressed {
-                InputEvent::KeyDown(kp)
-            } else {
-                InputEvent::KeyUp(kp.released())
-            });
+            self.dispatch(
+                event_loop,
+                i,
+                if pressed {
+                    InputEvent::KeyDown(kp)
+                } else {
+                    InputEvent::KeyUp(kp.released())
+                },
+            );
         }
         if !pressed {
             return;
@@ -679,49 +911,58 @@ impl<A: App> Shell<A> {
 
         // Clipboard + select-all shortcuts (edit widgets only — a key
         // sink gets the raw chord and brings its own bindings).
-        if self.core.edit.focused().is_some()
-            && self.primary()
+        let pane = &mut self.panes[i];
+        if pane.core.edit.focused().is_some()
+            && pane.primary()
             && let WinitKey::Character(c) = &event.logical_key
         {
             match c.to_lowercase().as_str() {
                 "c" => {
                     if let (Some(text), Some(cb)) =
-                        (self.core.copy_selection(), self.clipboard.as_mut())
+                        (pane.core.copy_selection(), self.clipboard.as_mut())
                     {
                         let _ = cb.set_text(text);
                     }
                     return;
                 }
                 "x" => {
-                    if let Some(text) = self.core.cut_selection() {
+                    if let Some(text) = pane.core.cut_selection() {
                         if let Some(cb) = self.clipboard.as_mut() {
                             let _ = cb.set_text(text);
                         }
-                        self.after_direct_edit();
+                        self.after_direct_edit(i);
                     }
                     return;
                 }
                 "v" => {
                     if let Some(text) = self.clipboard.as_mut().and_then(|cb| cb.get_text().ok()) {
-                        self.dispatch(InputEvent::Text(text));
+                        self.dispatch(event_loop, i, InputEvent::Text(text));
                     }
                     return;
                 }
                 "a" => {
-                    self.dispatch(InputEvent::Key(EditKey::SelectAll, Mods::default()));
+                    self.dispatch(
+                        event_loop,
+                        i,
+                        InputEvent::Key(EditKey::SelectAll, Mods::default()),
+                    );
                     return;
                 }
                 "z" => {
-                    let key = if self.modifiers.shift_key() {
+                    let key = if pane.modifiers.shift_key() {
                         EditKey::Redo
                     } else {
                         EditKey::Undo
                     };
-                    self.dispatch(InputEvent::Key(key, Mods::default()));
+                    self.dispatch(event_loop, i, InputEvent::Key(key, Mods::default()));
                     return;
                 }
                 "y" => {
-                    self.dispatch(InputEvent::Key(EditKey::Redo, Mods::default()));
+                    self.dispatch(
+                        event_loop,
+                        i,
+                        InputEvent::Key(EditKey::Redo, Mods::default()),
+                    );
                     return;
                 }
                 _ => {}
@@ -744,7 +985,7 @@ impl<A: App> Shell<A> {
                 NamedKey::Tab => EditKey::Tab,
                 NamedKey::Escape => EditKey::Escape,
                 NamedKey::Space => {
-                    self.dispatch(InputEvent::Text(" ".to_string()));
+                    self.dispatch(event_loop, i, InputEvent::Text(" ".to_string()));
                     return;
                 }
                 _ => return,
@@ -752,50 +993,57 @@ impl<A: App> Shell<A> {
             _ => None,
         };
         if let Some(key) = named {
-            let mods = self.mods();
-            self.dispatch(InputEvent::Key(key, mods));
+            let mods = self.panes[i].mods();
+            self.dispatch(event_loop, i, InputEvent::Key(key, mods));
             return;
         }
         // Plain typed text (IME commits arrive via WindowEvent::Ime).
-        if !self.primary()
-            && !self.modifiers.control_key()
+        let pane = &self.panes[i];
+        if !pane.primary()
+            && !pane.modifiers.control_key()
             && let Some(text) = &event.text
             && text.chars().any(|c| !c.is_control())
         {
-            self.dispatch(InputEvent::Text(text.to_string()));
+            self.dispatch(event_loop, i, InputEvent::Text(text.to_string()));
         }
     }
 
-    fn redraw(&mut self) {
-        let (Some(window), Some(renderer)) = (&self.window, &mut self.renderer) else {
-            return;
-        };
-        let scale = window.scale_factor() as f32;
+    /// Builds and draws one window's frame.
+    fn redraw(&mut self, i: usize) {
+        let Shell {
+            app,
+            extensions,
+            panes,
+            chrome,
+            epoch,
+            ..
+        } = self;
+        let pane = &mut panes[i];
+        let window = &pane.window;
+        let (viewport, scale) = pane.size();
         let size = window.inner_size();
-        let viewport = Size::new(size.width as f32 / scale, size.height as f32 / scale);
         // The core turns a changed viewport into a `resize` event, routed
         // with the rest of the pending events after this frame.
         // Per-frame so it self-corrects when the window moves to another
         // monitor.
-        self.core.env.refresh_hz = window
+        pane.core.env.refresh_hz = window
             .current_monitor()
             .and_then(|m| m.refresh_rate_millihertz())
             .map(|mhz| mhz as f32 / 1000.0);
-        self.core.env.window = WindowEnv {
-            // One window until ADR 0004's step 3 opens a second.
-            id: WindowId::MAIN,
-            custom_chrome: self.chrome != Chrome::Native,
+        pane.core.env.window = WindowEnv {
+            id: pane.id,
+            custom_chrome: *chrome != Chrome::Native,
             maximized: window.is_maximized(),
             fullscreen: window.fullscreen().is_some(),
-            native_controls: (cfg!(target_os = "macos") && self.chrome == Chrome::Custom)
+            native_controls: (cfg!(target_os = "macos") && *chrome == Chrome::Custom)
                 .then_some(MACOS_TRAFFIC_LIGHTS),
         };
 
         let t_view = std::time::Instant::now();
-        self.core.set_time(self.epoch.elapsed().as_secs_f64());
-        let mut ui = self.core.frame(viewport, scale);
-        self.app.view(&mut ui);
-        for (i, ext) in self.extensions.iter_mut().enumerate() {
+        pane.core.set_time(epoch.elapsed().as_secs_f64());
+        let mut ui = pane.core.frame(viewport, scale);
+        app.view(&mut ui);
+        for (i, ext) in extensions.iter_mut().enumerate() {
             ui.set_origin(OriginId(i as u16 + 1));
             if let Err(err) = ext.view(&mut ui) {
                 eprintln!("kui: extension '{}' view error: {err}", ext.name());
@@ -816,7 +1064,7 @@ impl<A: App> Shell<A> {
         // nothing to split against, a transition on a positional key, two
         // nodes on one key): each once, to stderr, so they stop looking
         // like "the feature is broken".
-        for w in self.core.take_warnings() {
+        for w in pane.core.take_warnings() {
             eprintln!(
                 "kui: warning [{}] node {:016x}: {}",
                 w.code, w.key.0, w.message
@@ -825,11 +1073,11 @@ impl<A: App> Shell<A> {
 
         // Mirror this frame's hit regions into the WM_NCHITTEST answerer.
         #[cfg(target_os = "windows")]
-        if let Some(nc) = &self.nc {
+        if let Some(nc) = &pane.nc {
             nc.update(
                 scale,
                 window.is_maximized(),
-                self.core
+                pane.core
                     .interaction
                     .hits()
                     .iter()
@@ -837,15 +1085,15 @@ impl<A: App> Shell<A> {
             );
         }
 
-        if let Some(t) = self.core.window_title()
-            && t != self.applied_title
+        if let Some(t) = pane.core.window_title()
+            && t != pane.applied_title
         {
-            self.applied_title = t.to_string();
-            window.set_title(&self.applied_title);
+            pane.applied_title = t.to_string();
+            window.set_title(&pane.applied_title);
         }
 
         // Anchor the OS IME candidate window at the focused caret.
-        if let Some(r) = self.core.ime_rect() {
+        if let Some(r) = pane.core.ime_rect() {
             window.set_ime_cursor_area(
                 winit::dpi::LogicalPosition::new(r.x, r.y),
                 winit::dpi::LogicalSize::new(r.w.max(1.0), r.h),
@@ -853,12 +1101,12 @@ impl<A: App> Shell<A> {
         }
 
         let t_render = std::time::Instant::now();
-        let (dl, atlas) = self.core.output();
+        let (dl, atlas) = pane.core.output();
         let mut wait_ms = 0.0;
-        match renderer.render(dl, atlas) {
+        match pane.renderer.render(dl, atlas) {
             Ok(report) => wait_ms = report.vsync_wait_ms,
             Err(kui_wgpu::RenderError::Reconfigure) => {
-                renderer.resize(size.width, size.height);
+                pane.renderer.resize(size.width, size.height);
                 window.request_redraw();
             }
             // Occluded or timed out: nothing to present, try next frame.
@@ -867,7 +1115,7 @@ impl<A: App> Shell<A> {
         }
         let render_ms = (t_render.elapsed().as_secs_f32() * 1e3 - wait_ms).max(0.0);
 
-        self.core.stats.push(FrameSample {
+        pane.core.stats.push(FrameSample {
             input_ms: 0.0,
             view_ms,
             layout_ms,
@@ -879,11 +1127,11 @@ impl<A: App> Shell<A> {
 
 impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.is_some() {
+        if !self.panes.is_empty() {
             return;
         }
         // KUI_WINDOW=WxH overrides the initial size (useful for testing).
-        let (w, h) = std::env::var("KUI_WINDOW")
+        let size = std::env::var("KUI_WINDOW")
             .ok()
             .and_then(|s| {
                 let (w, h) = s.split_once('x')?;
@@ -891,56 +1139,18 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
             })
             .map(|s| clamp_size(s, self.min_size, self.max_size))
             .unwrap_or(self.size);
-        #[allow(unused_mut)]
-        // Hidden until the accessibility adapter has hooked it: the
-        // platform adapters must see the window before it is shown.
-        let mut attrs = Window::default_attributes()
-            .with_title(&self.title)
-            .with_inner_size(LogicalSize::new(w, h))
-            .with_visible(false);
+        let mut attrs = self.window_attrs(&self.title.clone(), size);
         if let Some((mw, mh)) = self.min_size {
             attrs = attrs.with_min_inner_size(LogicalSize::new(mw, mh));
         }
         if let Some((mw, mh)) = self.max_size {
             attrs = attrs.with_max_inner_size(LogicalSize::new(mw, mh));
         }
-        match self.chrome {
-            Chrome::Native => {}
-            Chrome::Custom => {
-                // macOS: keep the native traffic lights, drawn over our
-                // content; everywhere else drop decorations entirely.
-                #[cfg(target_os = "macos")]
-                {
-                    use winit::platform::macos::WindowAttributesExtMacOS;
-                    attrs = attrs
-                        .with_titlebar_transparent(true)
-                        .with_fullsize_content_view(true)
-                        .with_title_hidden(true);
-                }
-                #[cfg(not(target_os = "macos"))]
-                {
-                    attrs = attrs.with_decorations(false);
-                }
-            }
-            Chrome::Borderless => attrs = attrs.with_decorations(false),
-        }
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
-        if let Some(proxy) = self.proxy.clone() {
-            self.access = access_bridge::Bridge::new(event_loop, &window, proxy);
-        }
-        #[cfg(target_os = "windows")]
-        if self.chrome != Chrome::Native {
-            self.nc = windows_nc::NcHitTest::install(&window, true);
-        }
-        window.set_visible(true);
-        window.set_ime_allowed(true);
-        let size = window.inner_size();
-        let renderer = pollster::block_on(kui_wgpu::Renderer::new(
-            window.clone(),
-            size.width,
-            size.height,
-        ))
-        .expect("init renderer");
+        let px = window.inner_size();
+        let renderer =
+            pollster::block_on(kui_wgpu::Renderer::new(window.clone(), px.width, px.height))
+                .expect("init renderer");
         // Subpixel text only where the renderer blends per channel; the
         // env var wins over the builder for quick A/B comparisons.
         let wanted = match std::env::var("KUI_TEXT_AA").ok().as_deref() {
@@ -948,78 +1158,88 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
             Some("subpixel") | Some("lcd") => TextAa::Subpixel,
             _ => self.text_aa,
         };
-        let subpixel = match wanted {
+        self.subpixel = match wanted {
             TextAa::Grayscale => false,
             TextAa::Subpixel | TextAa::Auto => renderer.subpixel_text(),
         };
-        self.core.set_subpixel_text(subpixel);
-        self.window = Some(window);
-        self.renderer = Some(renderer);
+        self.gpu = Some(renderer.gpu().clone());
+        let mut core = self
+            .main_core
+            .take()
+            .expect("the main core is built once, by the launcher");
+        core.set_subpixel_text(self.subpixel);
+        core.env.window.id = WindowId::MAIN;
+        self.push_pane(event_loop, WindowId::MAIN, core, window, renderer);
+        self.panes[0].applied_title = self.title.clone();
     }
 
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        _id: WinitWindowId,
+        id: WinitWindowId,
         event: WindowEvent,
     ) {
-        if let (Some(bridge), Some(window)) = (&mut self.access, &self.window) {
-            bridge.process_event(window, &event);
+        let Some(i) = self.pane_index(id) else { return };
+        {
+            let pane = &mut self.panes[i];
+            if let Some(bridge) = &mut pane.access {
+                bridge.process_event(&pane.window, &event);
+            }
         }
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                if self.panes[i].id == WindowId::MAIN {
+                    event_loop.exit();
+                } else {
+                    let id = self.panes[i].id;
+                    self.close_pane(event_loop, id);
+                }
+            }
             WindowEvent::Resized(size) => {
-                if let Some(r) = &mut self.renderer {
-                    r.resize(size.width, size.height);
-                }
-                if let Some(w) = &self.window {
-                    w.request_redraw();
-                }
+                let pane = &mut self.panes[i];
+                pane.renderer.resize(size.width, size.height);
+                pane.window.request_redraw();
             }
             WindowEvent::ScaleFactorChanged { .. } => {
-                if let Some(w) = &self.window {
-                    w.request_redraw();
-                }
+                self.panes[i].window.request_redraw();
             }
             WindowEvent::CursorMoved { position, .. } => {
-                let scale = self.window.as_ref().map_or(1.0, |w| w.scale_factor()) as f32;
+                let pane = &mut self.panes[i];
+                let scale = pane.window.scale_factor() as f32;
                 let p = Vec2::new(position.x as f32 / scale, position.y as f32 / scale);
-                if self.synthesizes_resize() {
-                    self.resize_edge = self.resize_edge_at(p);
+                if pane.synthesizes_resize(self.chrome) {
+                    pane.resize_edge = pane.resize_edge_at(p);
                 }
-                self.cursor = p;
-                self.dispatch(InputEvent::CursorMoved(p));
+                pane.cursor = p;
+                self.dispatch(event_loop, i, InputEvent::CursorMoved(p));
             }
-            WindowEvent::CursorLeft { .. } => self.dispatch(InputEvent::CursorLeft),
+            WindowEvent::CursorLeft { .. } => self.dispatch(event_loop, i, InputEvent::CursorLeft),
             WindowEvent::Focused(focused) => {
-                self.core.env.focused = focused;
+                let pane = &mut self.panes[i];
+                pane.core.env.focused = focused;
                 if !focused {
                     // The OS stops sending key events to a window that
                     // lost the keyboard, so the release of anything held
                     // over a Cmd-Tab would never arrive. Let go now; the
                     // synthetic `up`s route out with the pending events.
-                    self.core.release_held_keys();
+                    pane.core.release_held_keys();
                 }
-                if let Some(w) = &self.window {
-                    w.request_redraw();
-                }
+                pane.window.request_redraw();
             }
             WindowEvent::ModifiersChanged(m) => {
-                self.modifiers = m.state();
-                self.dispatch(InputEvent::Modifiers(KeyMods {
-                    shift: self.modifiers.shift_key(),
-                    ctrl: self.modifiers.control_key(),
-                    alt: self.modifiers.alt_key(),
-                    super_key: self.modifiers.super_key(),
-                }));
+                self.panes[i].modifiers = m.state();
+                let kmods = self.panes[i].kmods();
+                self.dispatch(event_loop, i, InputEvent::Modifiers(kmods));
             }
-            WindowEvent::KeyboardInput { event, .. } => self.on_key(event),
-            WindowEvent::Ime(Ime::Commit(text)) => self.dispatch(InputEvent::Text(text)),
+            WindowEvent::KeyboardInput { event, .. } => self.on_key(event_loop, i, event),
+            WindowEvent::Ime(Ime::Commit(text)) => {
+                self.dispatch(event_loop, i, InputEvent::Text(text))
+            }
             WindowEvent::Ime(Ime::Preedit(text, cursor)) => {
-                self.dispatch(InputEvent::Preedit(text, cursor));
+                self.dispatch(event_loop, i, InputEvent::Preedit(text, cursor));
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                let scale = self.window.as_ref().map_or(1.0, |w| w.scale_factor()) as f32;
+                let scale = self.panes[i].window.scale_factor() as f32;
                 let d = match delta {
                     winit::event::MouseScrollDelta::LineDelta(x, y) => {
                         Vec2::new(Core::lines_to_px(x), Core::lines_to_px(y))
@@ -1028,7 +1248,7 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                         Vec2::new(p.x as f32 / scale, p.y as f32 / scale)
                     }
                 };
-                self.dispatch(InputEvent::Scroll(d));
+                self.dispatch(event_loop, i, InputEvent::Scroll(d));
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 let button = match button {
@@ -1045,14 +1265,14 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                     }
                 };
                 let primary = button == MouseButton::Primary;
+                let pane = &mut self.panes[i];
                 // A press on the synthesized resize band starts an OS resize
                 // instead of reaching the UI.
                 if primary
                     && state == ElementState::Pressed
-                    && let Some(dir) = self.resize_edge
-                    && let Some(w) = &self.window
+                    && let Some(dir) = pane.resize_edge
                 {
-                    let _ = w.drag_resize_window(dir);
+                    let _ = pane.window.drag_resize_window(dir);
                     return;
                 }
                 let ev = match state {
@@ -1062,18 +1282,18 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                         // run, and never counts up one of its own.
                         let clicks = if primary {
                             let now = std::time::Instant::now();
-                            let clicks = match self.last_click {
+                            let clicks = match pane.last_click {
                                 Some((t, p, n))
                                     if now.duration_since(t).as_millis() < MULTI_CLICK_MS
-                                        && (p.x - self.cursor.x).abs() < MULTI_CLICK_SLOP
-                                        && (p.y - self.cursor.y).abs() < MULTI_CLICK_SLOP =>
+                                        && (p.x - pane.cursor.x).abs() < MULTI_CLICK_SLOP
+                                        && (p.y - pane.cursor.y).abs() < MULTI_CLICK_SLOP =>
                                 {
                                     // Cycle 1 → 2 → 3 → 1 like most editors.
                                     n % 3 + 1
                                 }
                                 _ => 1,
                             };
-                            self.last_click = Some((now, self.cursor, clicks));
+                            pane.last_click = Some((now, pane.cursor, clicks));
                             clicks
                         } else {
                             1
@@ -1082,27 +1302,30 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                     }
                     ElementState::Released => InputEvent::MouseUp { button },
                 };
-                self.dispatch(ev);
+                self.dispatch(event_loop, i, ev);
             }
             WindowEvent::RedrawRequested => {
-                self.redraw();
-                self.publish_access();
-                // Views can declare window commands too (ui.window_command);
-                // apply them the same frame they were declared. Likewise
-                // the sounds a frame started (audio nodes, ui.play).
-                self.apply_window_commands();
+                self.redraw(i);
+                self.panes[i].publish_access();
+                // Views can declare windows and window commands too
+                // (ui.window, ui.window_command); apply them the same frame
+                // they were declared. Likewise the sounds a frame started
+                // (audio nodes, ui.play).
+                self.apply_window_commands(event_loop);
                 self.apply_audio();
+                // The frame may have closed this very pane.
+                let Some(i) = self.pane_index(id) else { return };
                 // A new frame can put something else under a still cursor.
-                self.apply_cursor();
+                self.panes[i].apply_cursor();
                 // A frame can resize the viewport, and can change what sits
                 // under a still cursor; route the resulting resize / hover
                 // events now rather than with the next input, and redraw for
                 // what they change.
-                let pending = self.core.take_pending_events();
+                let pending = self.panes[i].core.take_pending_events();
                 if !pending.is_empty() {
                     self.route_events(pending);
-                    if let Some(w) = &self.window {
-                        w.request_redraw();
+                    if let Some(p) = self.panes.get(i) {
+                        p.window.request_redraw();
                     }
                 }
             }
@@ -1115,14 +1338,19 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
 
     /// AccessKit's side of the conversation: assistive technology attaching
     /// (send it the tree), detaching, or asking for an action (input).
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: access_bridge::UserEvent) {
-        let Some(bridge) = &mut self.access else {
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: access_bridge::UserEvent) {
+        let Some(i) = access_bridge::window_of(&event).and_then(|w| self.pane_index(w)) else {
+            return;
+        };
+        let Some(bridge) = &mut self.panes[i].access else {
             return;
         };
         if let Some(req) = bridge.on_event(event) {
-            self.dispatch(InputEvent::Access(req));
+            self.dispatch(event_loop, i, InputEvent::Access(req));
         }
-        self.publish_access();
+        if let Some(pane) = self.panes.get_mut(i) {
+            pane.publish_access();
+        }
     }
 
     /// Runs after every event batch (including timer wake-ups): the caret
@@ -1134,40 +1362,38 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         self.poll_audio();
         self.apply_audio();
-        if self.core.animating()
-            && let Some(w) = &self.window
-        {
-            w.request_redraw();
-        }
         let now = std::time::Instant::now();
         let mut deadline: Option<std::time::Instant> = None;
-        if self.core.edit.focused().is_none() {
-            if !self.blink_visible {
-                self.blink_visible = true;
-                self.core.edit.set_blink_visible(true);
+        for pane in &mut self.panes {
+            if pane.core.animating() {
+                pane.window.request_redraw();
             }
-            self.blink_deadline = None;
-        } else {
-            let stamp = self.core.edit.caret_stamp();
-            if stamp != self.caret_stamp_seen || self.blink_deadline.is_none() {
-                self.caret_stamp_seen = stamp;
-                self.blink_deadline = Some(now + BLINK_INTERVAL);
-                if !self.blink_visible {
-                    self.blink_visible = true;
-                    self.core.edit.set_blink_visible(true);
-                    if let Some(w) = &self.window {
-                        w.request_redraw();
-                    }
+            if pane.core.edit.focused().is_none() {
+                if !pane.blink_visible {
+                    pane.blink_visible = true;
+                    pane.core.edit.set_blink_visible(true);
                 }
-            } else if now >= self.blink_deadline.unwrap() {
-                self.blink_visible = !self.blink_visible;
-                self.core.edit.set_blink_visible(self.blink_visible);
-                self.blink_deadline = Some(now + BLINK_INTERVAL);
-                if let Some(w) = &self.window {
-                    w.request_redraw();
-                }
+                pane.blink_deadline = None;
+                continue;
             }
-            deadline = self.blink_deadline;
+            let stamp = pane.core.edit.caret_stamp();
+            if stamp != pane.caret_stamp_seen || pane.blink_deadline.is_none() {
+                pane.caret_stamp_seen = stamp;
+                pane.blink_deadline = Some(now + BLINK_INTERVAL);
+                if !pane.blink_visible {
+                    pane.blink_visible = true;
+                    pane.core.edit.set_blink_visible(true);
+                    pane.window.request_redraw();
+                }
+            } else if now >= pane.blink_deadline.unwrap() {
+                pane.blink_visible = !pane.blink_visible;
+                pane.core.edit.set_blink_visible(pane.blink_visible);
+                pane.blink_deadline = Some(now + BLINK_INTERVAL);
+                pane.window.request_redraw();
+            }
+            if let Some(d) = pane.blink_deadline {
+                deadline = Some(deadline.map_or(d, |e| e.min(d)));
+            }
         }
         if self.audio.active() {
             let poll = now + AUDIO_POLL;
@@ -1223,11 +1449,23 @@ mod tests {
     #[test]
     fn diagnostics_follow_the_build_unless_told_otherwise() {
         assert_eq!(
-            app("t").shell(Empty).core.diagnostics(),
+            app("t").shell(Empty).core_mut().diagnostics(),
             cfg!(debug_assertions)
         );
-        assert!(app("t").diagnostics(true).shell(Empty).core.diagnostics());
-        assert!(!app("t").diagnostics(false).shell(Empty).core.diagnostics());
+        assert!(
+            app("t")
+                .diagnostics(true)
+                .shell(Empty)
+                .core_mut()
+                .diagnostics()
+        );
+        assert!(
+            !app("t")
+                .diagnostics(false)
+                .shell(Empty)
+                .core_mut()
+                .diagnostics()
+        );
     }
 
     #[test]

@@ -17,10 +17,14 @@
 //! development builds only, a standalone C context starts with them off —
 //! through [`crate::Core::set_diagnostics`].
 //!
-//! One code does not come from the tree walk: a prop name no table claims
+//! Three codes do not come from the tree walk. A prop name no table claims
 //! ([`UNKNOWN_PROP`]) is gone by the time the frame is a tree, so the
 //! binding that dropped it raises it through [`crate::Core::warn`], behind
-//! the same gate and the same dedup.
+//! the same gate and the same dedup. And the two about declared windows
+//! ([`DUPLICATE_WINDOW_CONFIG`], [`WINDOW_DECLARED_WHILE_CLOSED`]) come
+//! from the core's diff of the declared set, which has no node to hang
+//! them on: they are keyed by the window's name, the way `unknown-prop` is
+//! keyed by element and prop.
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -108,6 +112,53 @@ pub const EXIT_BUDGET: &str = "exit-budget";
 /// through [`crate::Core::warn`]: by the time a frame is a tree the name is
 /// gone.
 pub const UNKNOWN_PROP: &str = "unknown-prop";
+
+/// One name declared with two different window configs on the frame it
+/// opened. The config is read on the opening edge only, and on that edge
+/// the lowest declaring window wins (the first declaration within one
+/// frame), so the pick is deterministic — but two places in the app
+/// disagree about what `"palette"` is, and only one of them is right. See
+/// `docs/adr/0004-multi-window.md`, decision 4.
+pub const DUPLICATE_WINDOW_CONFIG: &str = "duplicate-window-config";
+/// A window the user closed is still declared, so it stays closed: a
+/// declaration reopens a window only when it *starts*, and this one never
+/// stopped. The first version of every multi-window app does this — it
+/// declares the window unconditionally — and from outside it looks like
+/// `windows` being ignored. Handle the `{kind:"window", phase:"closed"}`
+/// event, stop declaring the name, and declare it again to reopen. See
+/// `docs/adr/0004-multi-window.md`, decision 6.
+pub const WINDOW_DECLARED_WHILE_CLOSED: &str = "window-declared-while-closed";
+
+/// The [`DUPLICATE_WINDOW_CONFIG`] warning for one window name. Keyed by
+/// the name: there is no node, and the conflict is between declarations,
+/// however many frames repeat it.
+pub fn duplicate_window_config(name: &str) -> Warning {
+    Warning {
+        code: DUPLICATE_WINDOW_CONFIG,
+        key: Key::ROOT.str(DUPLICATE_WINDOW_CONFIG).str(name),
+        message: format!(
+            "window `{name}` was declared with two different configs on the frame it opened; \
+             the lowest declaring window's first declaration won, and a live window's config is \
+             never re-read, so the other one never applies — make them agree"
+        ),
+    }
+}
+
+/// The [`WINDOW_DECLARED_WHILE_CLOSED`] warning for one window name. Keyed
+/// by the name, and raised on the core whose frame declared it, so an app
+/// that keeps asking every frame reads one line.
+pub fn window_declared_while_closed(name: &str) -> Warning {
+    Warning {
+        code: WINDOW_DECLARED_WHILE_CLOSED,
+        key: Key::ROOT.str(WINDOW_DECLARED_WHILE_CLOSED).str(name),
+        message: format!(
+            "window `{name}` is still declared after the user closed it, so it stays closed: a \
+             declaration reopens a window only when it starts — handle the \
+             `{{kind:\"window\", phase:\"closed\"}}` event, stop declaring `{name}`, and declare \
+             it again to reopen"
+        ),
+    }
+}
 
 /// The [`UNKNOWN_PROP`] warning for one dropped name, with the nearest
 /// legitimate spelling when there is an obvious one. The key is derived from

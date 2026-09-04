@@ -30,6 +30,18 @@ declaring `WindowId` wins, `duplicate-window-config` on a real conflict),
 and decision 6 names the trap its edge rule creates with a
 `window-declared-while-closed` warning.
 
+**Amended 2026-09-05**, by building step 3, in three places the build
+settled differently from the text. Decision 3 said the *driver* assigns a
+`WindowId`; the core's diff does, because it is the diff that emits the
+`Open` and nothing above it exists yet — the driver reads the id off the
+command. Decision 6's `{kind:"window"}` event is raised at both edges of
+the diff (an app-initiated close reports too), carries `name` and `id` in
+its payload, and its `window` field is the core that noticed, since the
+diff runs on whichever core finished its frame. And decision 12's
+`kui_take_window_commands` became `kui_take_window_command`, one
+`KuiWindowCommand` [out] struct per call under ADR 0006's size handshake,
+because an array of [out] structs cannot have one (0006, decision 5).
+
 **Amended again 2026-09-04**, by building step 1: decision 2's list of four
 shared things is a list of three. `Resources`, `AudioStore` and the font
 database move into the `Session`; the shaped-text cache and the glyph atlas

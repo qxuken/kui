@@ -543,6 +543,10 @@ pub struct Interaction {
     /// Window intents produced by chrome nodes; drained by the driver via
     /// `Core::take_window_commands`.
     pub(crate) window_commands: Vec<WindowCommand>,
+    /// The window this core draws, for the commands chrome nodes issue —
+    /// a hit region has no window, so the core writes it here from
+    /// `env.window.id` before routing each input.
+    pub(crate) window: WindowId,
     /// Sounds nodes asked for (`click_sound` on click, `hover_sound` on
     /// enter); the core turns them into play commands (`take_sound_requests`).
     pub(crate) sound_requests: Vec<crate::resources::SoundId>,
@@ -782,7 +786,8 @@ impl Interaction {
                         // The OS drag steals subsequent mouse events, so don't
                         // leave a press pending.
                         self.pressed = None;
-                        self.window_commands.push(WindowCommand::StartDrag);
+                        self.window_commands
+                            .push(WindowCommand::StartDrag(self.window));
                     } else if let Some(tag) = &h.drag {
                         let p = self.cursor.unwrap();
                         let state = DragState {
@@ -834,7 +839,9 @@ impl Interaction {
                         self.sound_requests.push(sound);
                     }
                     match (region.window, &region.payload) {
-                        (Some(WindowRole::Button(b)), _) => self.window_commands.push(b.command()),
+                        (Some(WindowRole::Button(b)), _) => {
+                            self.window_commands.push(b.command(self.window))
+                        }
                         (Some(WindowRole::Drag), _) | (None, None) => {}
                         (None, Some(payload)) => out.push(UiEvent {
                             origin: region.origin,

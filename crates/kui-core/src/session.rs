@@ -14,6 +14,15 @@
 //! nothing above the core — no test, no binding, no conformance scene —
 //! has to know a session exists.
 //!
+//! **The window set is the session's too.** Which windows exist is the
+//! union of what every live window's frame declared
+//! (`docs/adr/0004-multi-window.md`, decision 4), and a union over cores
+//! can only be kept where every core can reach it: [`WindowRegistry`]
+//! holds each core's latest declarations, the windows the diff has opened,
+//! and the ids it assigned. A core hands its declarations in at
+//! `finish_frame` and takes the resulting `Open` / `Close` commands back
+//! into its own queue, so the driver drains what it always drained.
+//!
 //! **What stays per window, and why.** The shaped-text cache and the glyph
 //! atlas do not move here even though they look like caches. They are one
 //! unit with a window's texture: `CachedText` stamps its positioned glyphs
@@ -39,6 +48,8 @@ use cosmic_text::FontSystem;
 
 use crate::audio::AudioStore;
 use crate::resources::{FontId, ImageId, Resources, SoundId};
+use crate::tree::OriginId;
+use crate::window::{WindowConfig, WindowId};
 
 /// The session's contents. Reached through [`Session::state`], one borrow
 /// at a time; the fields are borrowed disjointly the way `Core`'s own
@@ -52,6 +63,8 @@ pub(crate) struct SessionState {
     /// Bumped by every font registration and removal, so a `Core` can tell
     /// whether its name mirror is behind without walking the slotmap.
     pub(crate) fonts_rev: u64,
+    /// The declared window set and the windows it has opened.
+    pub(crate) windows: WindowRegistry,
 }
 
 impl SessionState {
@@ -61,7 +74,226 @@ impl SessionState {
             resources: Resources::default(),
             audio: AudioStore::default(),
             fonts_rev: 0,
+            windows: WindowRegistry::new(),
         }
+    }
+}
+
+/// One frame's declaration of a window, as `Core::declare_window` recorded
+/// it: the name, the config the declaration carried, and who declared it.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct WindowDecl {
+    pub(crate) name: Rc<str>,
+    pub(crate) config: WindowConfig,
+    pub(crate) origin: OriginId,
+    /// The same frame declared this name again with a different config.
+    /// The first declaration is the one kept; this remembers that there
+    /// was a disagreement, for the warning the opening edge raises.
+    pub(crate) conflict: bool,
+}
+
+/// A window the registry has opened: its name, its id, and whether it is
+/// still on screen. `live` goes false when the driver reports an OS close
+/// while the name is still declared — the window stays closed until the
+/// declaration lapses and starts again (ADR 0004 decision 6).
+struct WindowEntry {
+    name: Rc<str>,
+    id: WindowId,
+    live: bool,
+}
+
+/// What one diff of the declared set decided; the core turns each into a
+/// `WindowCommand`, a `{kind:"window"}` event and, sometimes, a warning.
+pub(crate) enum WindowChange {
+    Opened {
+        id: WindowId,
+        name: Rc<str>,
+        origin: OriginId,
+        config: WindowConfig,
+        /// Two declarations of this name disagreed about the config on the
+        /// frame it opened: `duplicate-window-config`.
+        conflict: bool,
+    },
+    Closed {
+        id: WindowId,
+        name: Rc<str>,
+    },
+}
+
+/// The declared window set, across every core of the session.
+///
+/// `slots` holds each core's latest declarations, keyed by the core's
+/// window id and kept in id order — so "the lowest declaring `WindowId`
+/// wins" is the first slot that names a window, with no rule about which
+/// frame ran first. `windows` is what the diff has opened and not yet
+/// closed, seeded with the main window, which the launcher opens and
+/// nothing here ever closes.
+pub(crate) struct WindowRegistry {
+    slots: Vec<(WindowId, Vec<WindowDecl>)>,
+    windows: Vec<WindowEntry>,
+    next_id: u32,
+}
+
+/// The main window's name: what `view(model, window)` is called with in
+/// Node, and what `Core::window_name` answers for `WindowId::MAIN`.
+pub const MAIN_WINDOW_NAME: &str = "main";
+
+impl WindowRegistry {
+    fn new() -> Self {
+        Self {
+            slots: Vec::new(),
+            windows: vec![WindowEntry {
+                name: Rc::from(MAIN_WINDOW_NAME),
+                id: WindowId::MAIN,
+                live: true,
+            }],
+            next_id: 1,
+        }
+    }
+
+    /// Replaces what the core drawing `id` declared, from its latest frame.
+    pub(crate) fn set_slot(&mut self, id: WindowId, decls: &[WindowDecl]) {
+        match self.slots.binary_search_by_key(&id, |(i, _)| *i) {
+            Ok(i) if decls.is_empty() => {
+                self.slots.remove(i);
+            }
+            Ok(i) => {
+                self.slots[i].1.clear();
+                self.slots[i].1.extend_from_slice(decls);
+            }
+            Err(_) if decls.is_empty() => {}
+            Err(i) => self.slots.insert(i, (id, decls.to_vec())),
+        }
+    }
+
+    fn remove_slot(&mut self, id: WindowId) {
+        if let Ok(i) = self.slots.binary_search_by_key(&id, |(i, _)| *i) {
+            self.slots.remove(i);
+        }
+    }
+
+    /// The name the window `id` was declared under, while it is open.
+    pub(crate) fn name_of(&self, id: WindowId) -> Option<Rc<str>> {
+        self.windows
+            .iter()
+            .find(|w| w.id == id)
+            .map(|w| w.name.clone())
+    }
+
+    /// Every window on screen, main first, in the order they opened.
+    pub(crate) fn live(&self) -> Vec<(WindowId, Rc<str>)> {
+        self.windows
+            .iter()
+            .filter(|w| w.live)
+            .map(|w| (w.id, w.name.clone()))
+            .collect()
+    }
+
+    /// Whether any window was closed by the OS and is still declared —
+    /// the state `window-declared-while-closed` reports.
+    pub(crate) fn any_closed(&self) -> bool {
+        self.windows.iter().any(|w| !w.live)
+    }
+
+    /// The names among `decls` whose window the OS closed and nothing has
+    /// stopped declaring since.
+    pub(crate) fn closed_among<'a>(
+        &'a self,
+        decls: &'a [WindowDecl],
+    ) -> impl Iterator<Item = Rc<str>> + 'a {
+        decls.iter().filter_map(|d| {
+            self.windows
+                .iter()
+                .find(|w| !w.live && w.name == d.name)
+                .map(|w| w.name.clone())
+        })
+    }
+
+    /// The driver reports that the OS closed window `id`. Its declarations
+    /// leave the union with it; its name stays known, closed, until the
+    /// declaration lapses. Returns the name if the window was open; `None`
+    /// for the main window (which closing ends the app) and for an id the
+    /// diff already closed.
+    pub(crate) fn os_closed(&mut self, id: WindowId) -> Option<Rc<str>> {
+        if id == WindowId::MAIN {
+            return None;
+        }
+        let w = self.windows.iter_mut().find(|w| w.id == id && w.live)?;
+        w.live = false;
+        let name = w.name.clone();
+        self.remove_slot(id);
+        Some(name)
+    }
+
+    /// Diffs the union of every slot against the open windows.
+    ///
+    /// A live window nobody declares any more closes, and its own
+    /// declarations leave the union with it — so a window that declared a
+    /// child closes the child in the same diff, however deep. A name in
+    /// the union with no window opens, with the config from the lowest
+    /// declaring slot (main is 0, so main wins whenever it declares) and
+    /// the first declaration within that slot's frame; any other
+    /// declaration that disagrees marks the open as a conflict. A closed
+    /// name still in the union stays closed (decision 6's edge); one that
+    /// left it is forgotten, so declaring it again opens it anew.
+    pub(crate) fn diff(&mut self, out: &mut Vec<WindowChange>) {
+        loop {
+            let union = self.union();
+            let gone: Vec<usize> = (0..self.windows.len())
+                .rev()
+                .filter(|&i| {
+                    let w = &self.windows[i];
+                    w.id != WindowId::MAIN && !union.iter().any(|u| u.0 == w.name)
+                })
+                .collect();
+            if gone.is_empty() {
+                for (name, config, origin, conflict) in union {
+                    if self.windows.iter().any(|w| w.name == name) {
+                        continue;
+                    }
+                    let id = WindowId(self.next_id);
+                    self.next_id += 1;
+                    self.windows.push(WindowEntry {
+                        name: name.clone(),
+                        id,
+                        live: true,
+                    });
+                    out.push(WindowChange::Opened {
+                        id,
+                        name,
+                        origin,
+                        config,
+                        conflict,
+                    });
+                }
+                return;
+            }
+            for i in gone {
+                let w = self.windows.remove(i);
+                self.remove_slot(w.id);
+                if w.live {
+                    out.push(WindowChange::Closed {
+                        id: w.id,
+                        name: w.name,
+                    });
+                }
+            }
+        }
+    }
+
+    /// The declared set: one entry per name, from the lowest declaring
+    /// slot, with whether any declaration of it disagreed.
+    fn union(&self) -> Vec<(Rc<str>, WindowConfig, OriginId, bool)> {
+        let mut union: Vec<(Rc<str>, WindowConfig, OriginId, bool)> = Vec::new();
+        for (_, decls) in &self.slots {
+            for d in decls {
+                match union.iter_mut().find(|u| u.0 == d.name) {
+                    Some(u) => u.3 |= u.1 != d.config,
+                    None => union.push((d.name.clone(), d.config, d.origin, d.conflict)),
+                }
+            }
+        }
+        union
     }
 }
 

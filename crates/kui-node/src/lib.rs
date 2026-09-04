@@ -570,6 +570,31 @@ impl Ctx {
         self.events.extend(self.core.take_pending_events());
     }
 
+    // -- Windows (headless) -----------------------------------------------
+    // A `KuiWindow`'s runner applies these itself; a bare `Ctx` hands them
+    // back so a driver or a test can see what a frame asked for.
+
+    /// Drains the window commands the core queued, as plain objects: what
+    /// chrome nodes asked for (`{kind:"startDrag"|"close"|"minimize"|
+    /// "toggleMaximize", window}`) and what the declared window set decided
+    /// (`{kind:"open", window, origin, config:{kind, width, height,
+    /// activates}}` / `{kind:"close", window}`).
+    #[napi(ts_return_type = "WindowCommand[]")]
+    pub fn window_commands(&mut self) -> Json {
+        window_commands_json(self.core.take_window_commands())
+    }
+
+    /// A custom driver reports that the OS closed window `id`: it stays
+    /// closed while still declared, whatever only it declared closes with
+    /// it, and `{kind:"window", phase:"closed", name, id}` lands in
+    /// `pollEvents`. Nothing happens for the main window (0) or for a
+    /// window the diff already closed.
+    #[napi]
+    pub fn window_closed(&mut self, id: u32) {
+        self.core.window_closed(kui_core::WindowId(id));
+        self.events.extend(self.core.take_pending_events());
+    }
+
     // -- Queries ---------------------------------------------------------
 
     /// The window title the last frame declared (a root `<box title>`), or
@@ -595,6 +620,45 @@ impl Ctx {
         };
         Buffer::from(bytes.to_vec())
     }
+}
+
+/// Window commands as the objects `windowCommands()` hands out.
+fn window_commands_json(cmds: Vec<kui_core::WindowCommand>) -> Json {
+    use kui_core::WindowCommand;
+    Json::Array(
+        cmds.into_iter()
+            .map(|cmd| {
+                let mut o = JsonMap::new();
+                let kind = match cmd {
+                    WindowCommand::StartDrag(_) => "startDrag",
+                    WindowCommand::Close(_) => "close",
+                    WindowCommand::Minimize(_) => "minimize",
+                    WindowCommand::ToggleMaximize(_) => "toggleMaximize",
+                    WindowCommand::Open { .. } => "open",
+                };
+                o.insert("kind".into(), Json::String(kind.into()));
+                o.insert("window".into(), Json::from(cmd.window().0));
+                if let WindowCommand::Open { origin, config, .. } = cmd {
+                    o.insert("origin".into(), Json::from(origin.0));
+                    let mut c = JsonMap::new();
+                    c.insert(
+                        "kind".into(),
+                        Json::String(
+                            match config.kind {
+                                kui_core::WindowKind::Normal => "normal",
+                            }
+                            .into(),
+                        ),
+                    );
+                    c.insert("width".into(), Json::from(config.size.w as f64));
+                    c.insert("height".into(), Json::from(config.size.h as f64));
+                    c.insert("activates".into(), Json::Bool(config.activates));
+                    o.insert("config".into(), Json::Object(c));
+                }
+                Json::Object(o)
+            })
+            .collect(),
+    )
 }
 
 /// `{x, y, w, h}` — the shape `scrollGeometry` already returns for a box.
@@ -706,22 +770,25 @@ pub fn quad_stride() -> u32 {
 // Windowed runner (winit + wgpu via kui's PumpRunner)
 
 /// The `kui::App` behind a Node window. JS never gets called from inside
-/// winit: it stores the next view tree between pumps (`set_view`), and this
-/// lowers the stored tree whenever the runner redraws. Events collect here
-/// and JS drains them after each pump — the same data-only boundary as the
-/// headless `Ctx`, now with a real window around it.
+/// winit: it stores the next view tree per window between pumps
+/// (`set_view`), and this lowers the stored tree whenever the runner
+/// redraws that window. Events collect here and JS drains them after each
+/// pump — the same data-only boundary as the headless `Ctx`, now with real
+/// windows around it.
 #[derive(Default)]
 struct TreeApp {
-    /// The last frame JS submitted: the binary IR stream and its string
-    /// table, kept so a redraw between pumps can re-lower it.
-    tree: Option<(Vec<f64>, Vec<u8>)>,
+    /// The last frame JS submitted for each window, by name: the binary IR
+    /// stream and its string table, kept so a redraw between pumps can
+    /// re-lower it. A window with no tree yet draws nothing.
+    trees: std::collections::HashMap<String, (Vec<f64>, Vec<u8>)>,
     events: Vec<UiEvent>,
     error: Option<String>,
 }
 
 impl kui::App for TreeApp {
     fn view(&mut self, ui: &mut kui::Ui<'_>) {
-        let Some((stream, strings)) = &self.tree else {
+        let name = ui.window_name();
+        let Some((stream, strings)) = self.trees.get(&*name) else {
             return;
         };
         if let Err(e) = binary::lower_binary(ui.core(), stream, strings) {
@@ -742,8 +809,10 @@ const UNBOUNDED_SIZE: f64 = 65_535.0;
 /// A real kui window (winit + wgpu) driven from Node. The event loop is
 /// pumped, not run: call `pump()` from a timer loop so winit and libuv share
 /// the main thread — or prefer `runWindowed`, which does that for you, unless
-/// you are building your own loop. One window per process; winit event loops
-/// are not recreatable on every platform.
+/// you are building your own loop. One event loop per process (winit event
+/// loops are not recreatable on every platform), any number of windows on
+/// it: a view whose root declares `windows` opens more, `windows()` lists
+/// them, and `setView` takes the name of the one a tree is for.
 #[napi]
 pub struct KuiWindow {
     runner: kui::PumpRunner<TreeApp>,
@@ -793,9 +862,20 @@ impl KuiWindow {
 
     /// `setView` with a flat binary instruction stream (see `Ctx::frame_binary`).
     /// Copied once so redraws (resize, hover) can re-lower it between pumps.
+    /// `window` names which window the tree is for — `"main"` when left
+    /// out; the names `windows()` lists otherwise.
     #[napi]
-    pub fn set_view_binary(&mut self, stream: Float64Array, strings: Uint8Array) {
-        self.runner.app_mut().tree = Some((stream.to_vec(), strings.to_vec()));
+    pub fn set_view_binary(
+        &mut self,
+        stream: Float64Array,
+        strings: Uint8Array,
+        window: Option<String>,
+    ) {
+        let name = window.unwrap_or_else(|| kui_core::session::MAIN_WINDOW_NAME.to_string());
+        self.runner
+            .app_mut()
+            .trees
+            .insert(name, (stream.to_vec(), strings.to_vec()));
         self.runner.request_redraw();
     }
 
@@ -1292,6 +1372,28 @@ macro_rules! core_methods {
                     .set_scroll(parse_key(&key)?, Vec2::new(x as f32, y as f32));
                 self.$redraw();
                 Ok(())
+            }
+
+            // -- Windows ----------------------------------------------------
+
+            /// The names of every window open right now, `"main"` first,
+            /// then in the order they opened — what a view's root
+            /// `windows` declared and the diff has opened. `view(model,
+            /// window)` is called once per name.
+            #[napi]
+            pub fn windows(&mut self) -> Vec<String> {
+                self.$core()
+                    .windows()
+                    .into_iter()
+                    .map(|(_, name)| name.to_string())
+                    .collect()
+            }
+
+            /// The name of the window this core draws: `"main"`, or the
+            /// name the declaration that opened `env().window.id` used.
+            #[napi]
+            pub fn window_name(&mut self) -> String {
+                self.$core().window_name().to_string()
             }
 
             // -- Editors ----------------------------------------------------

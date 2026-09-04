@@ -54,8 +54,15 @@ extern "C" {
  * change for it - the library writes the prefix your build reserved and
  * stops. The version still bumps, because a host that skipped this check
  * would otherwise get that short write without ever having asked for it.
+ *
+ * ABI 5 is multi-window (docs/adr/0004-multi-window.md, step 3), and its
+ * two breaks are source breaks you see at compile time: the uint32_t array
+ * kui_take_window_commands filled became the KuiWindowCommand [out] struct
+ * kui_take_window_command pops (a command now names its window, and an
+ * open carries a config), and kui_env_set_window leads with the window id.
+ * Edit the drain loop and the env call; nothing else changes meaning.
  */
-#define KUI_ABI_VERSION 4u
+#define KUI_ABI_VERSION 5u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -64,7 +71,7 @@ uint32_t kui_abi_version(void);
  *          and set what you need - a zeroed field is the documented default.
  *          A later kui may append fields; your shorter struct is fine.
  *          KuiSpec, KuiSizing, KuiKeyframe, KuiEnter, KuiTextStyle, KuiSpan,
- *          KuiPlay, KuiAudio.
+ *          KuiPlay, KuiAudio, KuiWindowConfig.
  *
  * [out]    You allocate it; the library WRITES it. These lead with a
  *          `uint32_t size` you set to sizeof the struct, and the library
@@ -82,7 +89,8 @@ uint32_t kui_abi_version(void);
  *          the previous poll is released either way). On return
  *          `size` holds how many bytes were filled, which is stable across
  *          a loop that reuses one struct.
- *          KuiEvent, KuiDrawData, KuiTextMetrics, KuiScrollGeometry.
+ *          KuiEvent, KuiDrawData, KuiTextMetrics, KuiScrollGeometry,
+ *          KuiWindowCommand.
  *
  * [out[]]  You allocate an ARRAY; the library fills up to `cap` elements.
  *          A `size` field cannot help here: the library strides by its own
@@ -162,7 +170,7 @@ enum { KUI_EDIT_MULTILINE = 1u << 0, KUI_EDIT_AUTOFOCUS = 1u << 1 };
  * bindings take ("below", "above", ...), see kui_spec_float_preset. */
 enum { KUI_FLOAT_NONE = 0, KUI_FLOAT_PARENT = 1, KUI_FLOAT_VIEWPORT = 2 };
 /* Window-chrome roles (KuiSpec.window_role). Chrome nodes turn input into
- * window commands (kui_take_window_commands), never events. */
+ * window commands (kui_take_window_command), never events. */
 enum {
     KUI_WINDOW_NONE = 0,
     KUI_WINDOW_DRAG = 1,
@@ -179,12 +187,16 @@ enum {
     KUI_EASE_SPRING = 4, /* damped spring; transition_ms is the response time */
     KUI_EASE_BOUNCY = 5,
 };
-/* Window commands drained by kui_take_window_commands. */
+/* Window commands (KuiWindowCommand.kind, kui_take_window_command). The
+ * first four are what chrome nodes ask for, about the window they were
+ * drawn in; KUI_CMD_OPEN and KUI_CMD_CLOSE are also what the declared
+ * window set's diff decides (kui_window_declare). */
 enum {
     KUI_CMD_START_DRAG = 1,
     KUI_CMD_CLOSE = 2,
     KUI_CMD_MINIMIZE = 3,
     KUI_CMD_TOGGLE_MAXIMIZE = 4,
+    KUI_CMD_OPEN = 5,
 };
 
 /* [in] */
@@ -719,9 +731,39 @@ typedef struct KuiSpan {
     uint32_t flags; /* KUI_SPAN_* */
 } KuiSpan;
 
-/* The window an app starts in, and every KuiEvent.window until a frame
- * declares a second one. */
+/* The window an app starts in - the one kui_run opens - which is always
+ * live and is named "main". Other windows get the id their KUI_CMD_OPEN
+ * carried. */
 #define KUI_WINDOW_MAIN 0u
+
+/* What kind of surface a declared window is (KuiWindowConfig.kind). Only
+ * the normal window exists until ADR 0004's step 4 adds the popup. */
+#define KUI_WINDOW_KIND_NORMAL 0u
+
+/* [in] What a declared window is (kui_window_declare), and what a
+ * KUI_CMD_OPEN carries back out. Read literally, so start from
+ * KUI_WINDOW_CONFIG_INIT - a normal, activating 640x480 window - or pass
+ * NULL for exactly that. A zero width or height means the default. */
+typedef struct KuiWindowConfig {
+    uint32_t kind;      /* KUI_WINDOW_KIND_* */
+    float width, height; /* initial inner size, logical px */
+    uint32_t activates; /* whether opening it takes OS focus */
+} KuiWindowConfig;
+#define KUI_WINDOW_CONFIG_INIT \
+    ((KuiWindowConfig){ .kind = KUI_WINDOW_KIND_NORMAL, .width = 640, .height = 480, .activates = 1 })
+
+/* [out] One window command (kui_take_window_command): what a chrome node
+ * asked for, or what the declared window set decided. Plain data - an open
+ * carries no title; the window's first frame declares one through
+ * kui_window_title - so nothing borrowed enters your drain loop. */
+typedef struct KuiWindowCommand {
+    uint32_t size;   /* = sizeof(KuiWindowCommand) in, bytes filled out */
+    uint32_t kind;   /* KUI_CMD_* */
+    uint32_t window; /* which window; for KUI_CMD_OPEN the new window's id */
+    uint16_t origin; /* KUI_CMD_OPEN: whose declaration won (0 = you, 1+ = an extension) */
+    KuiWindowConfig config; /* KUI_CMD_OPEN only */
+} KuiWindowCommand;
+#define KUI_WINDOW_COMMAND_INIT ((KuiWindowCommand){ .size = sizeof(KuiWindowCommand) })
 
 /* [out] One polled event. `size` leads it so that a field appended later
  * reaches a host that has not recompiled as a shorter write, not a longer
@@ -733,7 +775,7 @@ typedef struct KuiEvent {
     uint16_t origin;         /* which frontend drew the node: 0 = you, 1+ = extensions */
     uint64_t key;
     const KuiValue *payload; /* borrowed; may be NULL */
-    uint32_t window;         /* which window it came from; KUI_WINDOW_MAIN for now */
+    uint32_t window;         /* which window it came from: the KuiCtx's kui_env_set_window id */
 } KuiEvent;
 #define KUI_EVENT_INIT ((KuiEvent){ .size = sizeof(KuiEvent) })
 
@@ -843,14 +885,57 @@ bool kui_animating(KuiCtx *ctx);
  * instead of alpha masks. Only turn it on if your renderer blends per
  * channel. Flipping it re-rasterizes every glyph. */
 void kui_set_subpixel_text(KuiCtx *ctx, bool on);
-/* Window chrome facts for views (widgets adapt to them). controls_w/h > 0
- * describe the top-left keep-out rect of OS-drawn controls (macOS traffic
- * lights under custom chrome). */
-void kui_env_set_window(KuiCtx *ctx, bool custom_chrome, bool maximized,
-                        bool fullscreen, float controls_w, float controls_h);
-/* Drains pending window commands (KUI_CMD_*) into out, returns the count
- * written. Call after each input dispatch and apply to the real window. */
-size_t kui_take_window_commands(KuiCtx *ctx, uint32_t *out, size_t cap);
+/* Window facts for views (widgets adapt to them). `window` is which window
+ * this context draws - KUI_WINDOW_MAIN, or the id a KUI_CMD_OPEN carried -
+ * and every KuiEvent it hands out says so. controls_w/h > 0 describe the
+ * top-left keep-out rect of OS-drawn controls (macOS traffic lights under
+ * custom chrome). */
+void kui_env_set_window(KuiCtx *ctx, uint32_t window, bool custom_chrome,
+                        bool maximized, bool fullscreen, float controls_w,
+                        float controls_h);
+/* Pops the next window command into out: what chrome nodes asked for since
+ * the last drain, and the KUI_CMD_OPEN / KUI_CMD_CLOSE the declared window
+ * set decided at the last kui_frame_finish. Returns false, writing nothing,
+ * when there is none - or when out->size is below the layout this library
+ * knows (start from KUI_WINDOW_COMMAND_INIT), leaving the command queued.
+ * Call after each input dispatch and each frame until it returns false:
+ *
+ *     KuiWindowCommand cmd = KUI_WINDOW_COMMAND_INIT;
+ *     while (kui_take_window_command(ctx, &cmd)) {
+ *         switch (cmd.kind) {
+ *         case KUI_CMD_OPEN:  open a window for cmd.window with cmd.config; break;
+ *         case KUI_CMD_CLOSE: close window cmd.window (exit if KUI_WINDOW_MAIN); break;
+ *         ...
+ *         }
+ *     }
+ */
+bool kui_take_window_command(KuiCtx *ctx, KuiWindowCommand *out);
+/* Declares that a window named `name` exists this frame
+ * (docs/adr/0004-multi-window.md). It opens on the first frame any window's
+ * frame declares it - cfg is read then and never again (NULL means
+ * KUI_WINDOW_CONFIG_INIT), because the user owns a window's geometry once
+ * it exists - and closes on the first frame none does. The KUI_CMD_OPEN /
+ * KUI_CMD_CLOSE arrive through kui_take_window_command, and the app sees
+ * {kind:"window", phase:"opened"|"closed", name, id} through
+ * kui_poll_event. A window the user closed (kui_window_closed) stays closed
+ * while it is still declared - stop declaring it, then declare it again -
+ * and says so with the "window-declared-while-closed" warning. Two
+ * declarations of one name that disagree on the frame it opens warn
+ * "duplicate-window-config"; the lowest declaring window's first one
+ * wins. Call between kui_frame_begin and kui_frame_finish. */
+void kui_window_declare(KuiCtx *ctx, KuiStr name, const KuiWindowConfig *cfg);
+/* Which window this context draws (what kui_env_set_window set;
+ * KUI_WINDOW_MAIN until then). In a kui_run view callback: the window
+ * being drawn. */
+uint32_t kui_ctx_window(KuiCtx *ctx);
+/* Its name: "main" for the launcher's, else the name it was declared
+ * under. Borrowed until the next call on the same context. */
+bool kui_ctx_window_name(KuiCtx *ctx, KuiStr *out);
+/* You report that the OS closed window `id` (its close button, the window
+ * manager). It stays closed while still declared, whatever only it declared
+ * closes with it, and the app gets {kind:"window", phase:"closed"}. Nothing
+ * happens for KUI_WINDOW_MAIN or for a window already closed by the diff. */
+void kui_window_closed(KuiCtx *ctx, uint32_t id);
 /* The pointer shape for where the pointer is now (KUI_CURSOR_*, 0 only on a
  * bad context): derived from the topmost node under it, or its `cursor`
  * override. A state, not a queue — read after each input dispatch and each

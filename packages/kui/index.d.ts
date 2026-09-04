@@ -93,6 +93,42 @@ export type ResizeMsg = {
   scale: number;
 };
 
+/** A declared window opened, or closed — because nothing declares it any
+ *  more, or because the user closed it. A window the user closed stays
+ *  closed while it is still declared (a declaration reopens a window only
+ *  when it *starts*): stop declaring `name`, then declare it again. `id` is
+ *  what that window's events carry in `window`; the message itself arrives
+ *  on the root of whichever window's frame noticed. */
+export type WindowMsg = {
+  kind: 'window';
+  phase: 'opened' | 'closed';
+  name: string;
+  id: number;
+};
+
+/** One entry of `windows(model)` (or of the root box's `windows` prop): a
+ *  window that should exist, by stable name. `width`/`height` are the
+ *  initial inner size in logical px (640x480 when left out) and are read on
+ *  the frame the window opens and never again — the user owns its geometry
+ *  once it exists. `activates` (default true) is whether opening it takes
+ *  OS focus. A bare string is a name at the defaults. */
+export type WindowDecl = string | { name: string; width?: number; height?: number; activates?: boolean };
+
+/** What `Ctx.windowCommands()` drains: what chrome nodes asked for
+ *  (`startDrag` / `close` / `minimize` / `toggleMaximize`, about `window`)
+ *  and what the declared window set decided (`open` with the new window's
+ *  id and the config from its declaration, `close`). A `KuiWindow` applies
+ *  these itself. */
+export type WindowCommand =
+  | { kind: 'startDrag' | 'close' | 'minimize' | 'toggleMaximize'; window: number }
+  | {
+      kind: 'open';
+      window: number;
+      /** Whose declaration won: 0 is your app, 1+ an extension. */
+      origin: number;
+      config: { kind: 'normal'; width: number; height: number; activates: boolean };
+    };
+
 /** The physical modifier state changed (delivered on the root). */
 export type ModifiersMsg = {
   kind: 'modifiers';
@@ -127,6 +163,7 @@ export type CoreMsg =
   | LayoutMsg
   | DismissMsg
   | ResizeMsg
+  | WindowMsg
   | ModifiersMsg
   | EditMsg
   | SoundMsg
@@ -306,6 +343,16 @@ export interface Warning {
     /** A `modal` that is not in a float, with content declared after it
      *  painting over it — everything drawn over a modal is inert. */
     | 'modal-behind-content'
+    /** One window name declared with two different configs on the frame it
+     *  opened. The pick is deterministic (the lowest declaring window's
+     *  first declaration) and a live window's config is never re-read, so
+     *  the other one never applies. */
+    | 'duplicate-window-config'
+    /** A window the user closed is still declared, so it stays closed: a
+     *  declaration reopens a window only when it starts. Handle the
+     *  `{kind:"window", phase:"closed"}` message, stop declaring the name,
+     *  and declare it again to reopen. */
+    | 'window-declared-while-closed'
     /** A prop name nothing reads — not a schema row, not a composite, not
      *  one of the element's own — so the encoder dropped the declaration
      *  before it crossed. Usually the other binding's spelling
@@ -649,6 +696,22 @@ export declare class Ctx {
    */
   audioEnded(playback: number): void
   /**
+   * Drains the window commands the core queued, as plain objects: what
+   * chrome nodes asked for (`{kind:"startDrag"|"close"|"minimize"|
+   * "toggleMaximize", window}`) and what the declared window set decided
+   * (`{kind:"open", window, origin, config:{kind, width, height,
+   * activates}}` / `{kind:"close", window}`).
+   */
+  windowCommands(): WindowCommand[]
+  /**
+   * A custom driver reports that the OS closed window `id`: it stays
+   * closed while still declared, whatever only it declared closes with
+   * it, and `{kind:"window", phase:"closed", name, id}` lands in
+   * `pollEvents`. Nothing happens for the main window (0) or for a
+   * window the diff already closed.
+   */
+  windowClosed(id: number): void
+  /**
    * The window title the last frame declared (a root `<box title>`), or
    * null when it declared none. `runWindowed` applies it to the real
    * window; a bare `Ctx` hands it back so a test can assert on it.
@@ -871,6 +934,18 @@ export declare class Ctx {
    * the end without knowing the content height.
    */
   setScroll(key: string, x: number, y: number): void
+  /**
+   * The names of every window open right now, `"main"` first,
+   * then in the order they opened — what a view's root
+   * `windows` declared and the diff has opened. `view(model,
+   * window)` is called once per name.
+   */
+  windows(): Array<string>
+  /**
+   * The name of the window this core draws: `"main"`, or the
+   * name the declaration that opened `env().window.id` used.
+   */
+  windowName(): string
   editText(key: string): string | null
   setEditText(key: string, text: string): void
 }
@@ -882,8 +957,10 @@ export declare function quadStride(): number
  * A real kui window (winit + wgpu) driven from Node. The event loop is
  * pumped, not run: call `pump()` from a timer loop so winit and libuv share
  * the main thread — or prefer `runWindowed`, which does that for you, unless
- * you are building your own loop. One window per process; winit event loops
- * are not recreatable on every platform.
+ * you are building your own loop. One event loop per process (winit event
+ * loops are not recreatable on every platform), any number of windows on
+ * it: a view whose root declares `windows` opens more, `windows()` lists
+ * them, and `setView` takes the name of the one a tree is for.
  */
 export declare class KuiWindow {
   /**
@@ -895,8 +972,10 @@ export declare class KuiWindow {
   /**
    * `setView` with a flat binary instruction stream (see `Ctx::frame_binary`).
    * Copied once so redraws (resize, hover) can re-lower it between pumps.
+   * `window` names which window the tree is for — `"main"` when left
+   * out; the names `windows()` lists otherwise.
    */
-  setViewBinary(stream: Float64Array, strings: Uint8Array): void
+  setViewBinary(stream: Float64Array, strings: Uint8Array, window?: string | undefined | null): void
   /**
    * Processes pending OS events without blocking. Returns false once the
    * window has closed.
@@ -1132,6 +1211,18 @@ export declare class KuiWindow {
    * the end without knowing the content height.
    */
   setScroll(key: string, x: number, y: number): void
+  /**
+   * The names of every window open right now, `"main"` first,
+   * then in the order they opened — what a view's root
+   * `windows` declared and the diff has opened. `view(model,
+   * window)` is called once per name.
+   */
+  windows(): Array<string>
+  /**
+   * The name of the window this core draws: `"main"`, or the
+   * name the declaration that opened `env().window.id` used.
+   */
+  windowName(): string
   editText(key: string): string | null
   setEditText(key: string, text: string): void
 }
@@ -1152,7 +1243,9 @@ export interface Ctx {
 export interface KuiWindow {
   /** Stores the tree future redraws lower, and schedules one. Encodes it to
    *  the binary IR stream first. */
-  setView(tree: KuiNode): void;
+  /** Shows `tree` in one window: `'main'` when `window` is left out, else
+   *  a name `windows()` lists. */
+  setView(tree: KuiNode, window?: string): void;
 }
 
 /** What both drivers take. `S` is the surface the loop drives, and the
@@ -1165,7 +1258,14 @@ export interface LoopConfig<M, A, S> {
    *  `surface` is the thing being driven — for `editText`, `focus`,
    *  `play`, `scrollGeometry` and the rest. */
   update: (model: M, msg: A, event: UiEvent<A>, surface: S) => M | undefined | void;
-  view: (model: M) => KuiNode;
+  /** The tree for one window. Called once per open window per frame with
+   *  its name — `'main'` for the one the app starts in, else a name
+   *  `windows` declared — so a single-window app ignores the argument. */
+  view: (model: M, window: string) => KuiNode;
+  /** Which windows exist besides `main`, by name (see `WindowDecl`). A
+   *  window opens on the first frame that lists it and closes on the first
+   *  that does not; the `WindowMsg` says when. Leave it out for one window. */
+  windows?: (model: M) => WindowDecl[];
   /** A clock: every `every` ms the loop feeds `msg` (or `msg(now)`, with the
    *  clock's own reading — `Date.now()` under a window, the loop's own
    *  milliseconds headless) to `update`. Ticks are frequent, so unlike UI
@@ -1184,7 +1284,8 @@ export interface LoopConfig<M, A, S> {
 /** `runWindowed`'s config: `update` also gets the window. */
 export type WindowedConfig<M, A = AppMsg | CoreMsg> = LoopConfig<M, A, KuiWindow>;
 
-/** Opens a window and runs the Elm loop; resolves with the final model on close. */
+/** Opens the main window and runs the Elm loop; resolves with the final
+ *  model when that window closes. `config.windows` opens more. */
 export declare function runWindowed<M, A = AppMsg | CoreMsg>(
   config: WindowedConfig<M, A>,
   opts?: WindowOptions & {

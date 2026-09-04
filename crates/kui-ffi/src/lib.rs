@@ -19,13 +19,15 @@
 mod ext;
 pub use ext::CExtension;
 
+use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::rc::Rc;
 
 use kui_core::{
     Align, Color, Core, Edges, EditKey, EditOptions, Enter, FloatConfig, InputEvent, Key, Keyframe,
     Mods, MouseButton, NodeSpec, Rect, Size, Sizing, Span, TextStyle, UiEvent, Value, Vec2,
-    WindowButton, WindowCommand,
+    WindowButton, WindowCommand, WindowConfig, WindowId, WindowKind,
 };
 
 // ---------------------------------------------------------------------------
@@ -39,12 +41,13 @@ use kui_core::{
 //
 // - **[in]** — the host allocates and fills it, the library reads it:
 //   `KuiSpec`, `KuiSizing`, `KuiKeyframe`, `KuiEnter`, `KuiTextStyle`,
-//   `KuiSpan`, `KuiPlay`, `KuiAudio`. Appending a field is compatible: a
+//   `KuiSpan`, `KuiPlay`, `KuiAudio`, `KuiWindowConfig`. Appending a field is compatible: a
 //   host that predates it passes the shorter struct, the library reads no
 //   further than the host wrote, and the zeroed tail is the documented
 //   default. `KuiSpec` grew `tooltip` exactly this way.
 // - **[out]** — the host allocates it, the library writes it: `KuiEvent`,
-//   `KuiDrawData`, `KuiTextMetrics`, `KuiScrollGeometry`. Appending a field
+//   `KuiDrawData`, `KuiTextMetrics`, `KuiScrollGeometry`,
+//   `KuiWindowCommand`. Appending a field
 //   here is memory corruption at a host that has not recompiled — it
 //   reserved the shorter struct and the library writes the longer one — so
 //   each of these leads with `size`, which the host sets to its own
@@ -86,7 +89,13 @@ use kui_core::{
 /// (`KuiEvent.window`). Hosts that set `size` need no source change for it;
 /// the bump is for the ones that skipped `kui_abi_version()` and would
 /// otherwise take the short write unaware.
-pub const KUI_ABI_VERSION: u32 = 4;
+///
+/// ABI 5 is multi-window (ADR 0004, step 3): `kui_take_window_commands`'s
+/// `uint32_t` array became the `KuiWindowCommand` [out] struct behind
+/// `kui_take_window_command`, and `kui_env_set_window` gained the window
+/// id. Both are source breaks a host sees at compile time; the bump is
+/// for a binary that was not recompiled.
+pub const KUI_ABI_VERSION: u32 = 5;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its
@@ -207,6 +216,12 @@ pub struct KuiCtx {
     /// as the node's last child while it is hovered — which is what the
     /// other bindings' `tooltip` prop does at the same point.
     open_tooltips: Vec<Option<(kui_core::Key, String)>>,
+    /// Window commands taken from the core and not yet handed out one at a
+    /// time by `kui_take_window_command`.
+    window_commands: VecDeque<WindowCommand>,
+    /// The name most recently handed out by kui_ctx_window_name; valid
+    /// until the next call.
+    last_window_name: Option<Rc<str>>,
 }
 
 impl KuiCtx {
@@ -232,6 +247,8 @@ impl KuiCtx {
             last_warnings: Vec::new(),
             last_access: Default::default(),
             open_tooltips: Vec::new(),
+            window_commands: VecDeque::new(),
+            last_window_name: None,
         }
     }
 
@@ -364,7 +381,7 @@ pub struct KuiSpec {
     pub hoverable: u32,
     /// Window-chrome role: 0 = none, 1 = drag, 2 = close button,
     /// 3 = minimize button, 4 = maximize button. Chrome nodes emit window
-    /// commands (kui_take_window_commands), never events.
+    /// commands (kui_take_window_command), never events.
     pub window_role: u32,
     /// Positive: ease sizing/colors/radius changes over this many ms (the
     /// node needs a stable key, i.e. kui_open_keyed). Needs kui_set_time.
@@ -835,6 +852,131 @@ unsafe impl OutParam for KuiEvent {
     }
 }
 
+/// What a declared window is ([in], `kui_window_declare`), and what an
+/// `Open` command carries back out inside [`KuiWindowCommand`]. Read
+/// literally, so start from `KUI_WINDOW_CONFIG_INIT` (a normal, activating
+/// 640x480 window) or pass NULL for exactly that.
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct KuiWindowConfig {
+    /// `KUI_WINDOW_KIND_*`; 0 is a normal window.
+    pub kind: u32,
+    /// Initial inner size, logical px. Zero means the default.
+    pub width: f32,
+    pub height: f32,
+    /// Whether opening it takes OS focus.
+    pub activates: u32,
+}
+
+/// `KUI_WINDOW_KIND_NORMAL`: the only kind until ADR 0004's step 4.
+pub const KUI_WINDOW_KIND_NORMAL: u32 = 0;
+
+fn window_config_of(c: Option<&KuiWindowConfig>) -> WindowConfig {
+    let Some(c) = c else {
+        return WindowConfig::default();
+    };
+    let size = if c.width > 0.0 && c.height > 0.0 {
+        Size::new(c.width, c.height)
+    } else {
+        WindowConfig::DEFAULT_SIZE
+    };
+    WindowConfig {
+        // Every kind but the one that exists reads as it, so a host built
+        // against a later header degrades to a window rather than to
+        // nothing.
+        kind: WindowKind::Normal,
+        size,
+        activates: c.activates != 0,
+    }
+}
+
+fn window_config_to_c(c: WindowConfig) -> KuiWindowConfig {
+    KuiWindowConfig {
+        kind: match c.kind {
+            WindowKind::Normal => KUI_WINDOW_KIND_NORMAL,
+        },
+        width: c.size.w,
+        height: c.size.h,
+        activates: c.activates as u32,
+    }
+}
+
+/// `KUI_CMD_START_DRAG`, `KUI_CMD_CLOSE`, `KUI_CMD_MINIMIZE`,
+/// `KUI_CMD_TOGGLE_MAXIMIZE`: the verbs chrome nodes issue.
+pub const KUI_CMD_START_DRAG: u32 = 1;
+pub const KUI_CMD_CLOSE: u32 = 2;
+pub const KUI_CMD_MINIMIZE: u32 = 3;
+pub const KUI_CMD_TOGGLE_MAXIMIZE: u32 = 4;
+/// `KUI_CMD_OPEN`: the declared set gained a window; `config` says what.
+pub const KUI_CMD_OPEN: u32 = 5;
+
+/// One window command ([out], `kui_take_window_command`): what a chrome
+/// node asked for, or what the declared window set's diff decided. Plain
+/// data by ADR 0004 decision 5 — an `Open` carries no title (the window's
+/// first frame declares one through `kui_window_title`) — so nothing
+/// borrowed enters a host's drain loop. `size` leads it like every [out]
+/// struct, so a field appended later reaches an older host as a shorter
+/// write.
+#[repr(C)]
+pub struct KuiWindowCommand {
+    /// Set to `sizeof(KuiWindowCommand)` before the call
+    /// (`KUI_WINDOW_COMMAND_INIT` does); comes back as the bytes filled.
+    pub size: u32,
+    /// `KUI_CMD_*`.
+    pub kind: u32,
+    /// Which window: the one the chrome node was drawn in, or for
+    /// `KUI_CMD_OPEN` the id the core assigned the new window — what its
+    /// events will carry in `KuiEvent.window`.
+    pub window: u32,
+    /// `KUI_CMD_OPEN` only: which frontend's declaration won (0 = the host,
+    /// 1+ = an extension), so a host can refuse an extension's window.
+    pub origin: u16,
+    /// `KUI_CMD_OPEN` only: the config from the declaration that opened it.
+    pub config: KuiWindowConfig,
+}
+
+impl Default for KuiWindowCommand {
+    fn default() -> Self {
+        Self {
+            size: std::mem::size_of::<Self>() as u32,
+            kind: 0,
+            window: 0,
+            origin: 0,
+            config: KuiWindowConfig::default(),
+        }
+    }
+}
+
+// SAFETY: `repr(C)` with `size: u32` first.
+unsafe impl OutParam for KuiWindowCommand {
+    /// Through `config`: the whole struct as it first shipped, in ABI 5.
+    const ABI_V1_SIZE: u32 = abi_through!(KuiWindowCommand, config, KuiWindowConfig);
+    fn size_mut(&mut self) -> &mut u32 {
+        &mut self.size
+    }
+}
+
+fn window_command_to_c(cmd: WindowCommand) -> KuiWindowCommand {
+    let (kind, origin, config) = match cmd {
+        WindowCommand::StartDrag(_) => (KUI_CMD_START_DRAG, 0, KuiWindowConfig::default()),
+        WindowCommand::Close(_) => (KUI_CMD_CLOSE, 0, KuiWindowConfig::default()),
+        WindowCommand::Minimize(_) => (KUI_CMD_MINIMIZE, 0, KuiWindowConfig::default()),
+        WindowCommand::ToggleMaximize(_) => {
+            (KUI_CMD_TOGGLE_MAXIMIZE, 0, KuiWindowConfig::default())
+        }
+        WindowCommand::Open { origin, config, .. } => {
+            (KUI_CMD_OPEN, origin.0, window_config_to_c(config))
+        }
+    };
+    KuiWindowCommand {
+        kind,
+        window: cmd.window().0,
+        origin,
+        config,
+        ..Default::default()
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiQuad {
@@ -1269,6 +1411,8 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             last_warnings: Vec::new(),
             last_access: Default::default(),
             open_tooltips: Vec::new(),
+            window_commands: VecDeque::new(),
+            last_window_name: None,
         }))
     })
 }
@@ -1561,12 +1705,16 @@ pub extern "C" fn kui_set_subpixel_text(ptr: *mut KuiCtx, on: bool) {
     });
 }
 
-/// Window chrome facts for views to read (widgets::titlebar adapts to
-/// them). `controls_w/h > 0` describe the keep-out rect of controls the OS
-/// draws over the content (macOS traffic lights), anchored top-left.
+/// Window facts for views to read (widgets::titlebar adapts to them).
+/// `window` is which window this context draws — `KUI_WINDOW_MAIN`, or the
+/// id an `Open` command carried — and is what every event it hands out
+/// will say in `KuiEvent.window`. `controls_w/h > 0` describe the keep-out
+/// rect of controls the OS draws over the content (macOS traffic lights),
+/// anchored top-left.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_env_set_window(
     ptr: *mut KuiCtx,
+    window: u32,
     custom_chrome: bool,
     maximized: bool,
     fullscreen: bool,
@@ -1575,11 +1723,8 @@ pub extern "C" fn kui_env_set_window(
 ) {
     guard((), || {
         if let Some(c) = unsafe { ctx(ptr) } {
-            // Field by field rather than a whole `WindowEnv`, so the one
-            // fact this call does not carry — `id`, which the driver owns
-            // and a C host has no second value for until ADR 0004's step
-            // 3 — keeps whatever it was set to.
             let win = &mut c.core().env.window;
+            win.id = WindowId(window);
             win.custom_chrome = custom_chrome;
             win.maximized = maximized;
             win.fullscreen = fullscreen;
@@ -1589,32 +1734,105 @@ pub extern "C" fn kui_env_set_window(
     });
 }
 
-/// Drains window intents produced by chrome nodes into `out` (each entry:
-/// 1 = start drag, 2 = close, 3 = minimize, 4 = toggle maximize); returns
-/// how many were written. Call after each input until it returns 0, and
-/// apply them to the real window.
+/// Pops the next window command into `out`: what chrome nodes asked for
+/// since the last drain, and the `KUI_CMD_OPEN` / `KUI_CMD_CLOSE` the
+/// declared window set's diff decided at the last `kui_frame_finish`.
+/// Returns false, writing nothing, when there is none — or when `out`'s
+/// `size` is below the layout this library knows (start from
+/// `KUI_WINDOW_COMMAND_INIT`), in which case the command stays queued.
+/// Call after each input dispatch and each frame until it returns false,
+/// and apply each to the real window it names.
 #[unsafe(no_mangle)]
-pub extern "C" fn kui_take_window_commands(ptr: *mut KuiCtx, out: *mut u32, cap: usize) -> usize {
-    guard(0, || {
+pub extern "C" fn kui_take_window_command(ptr: *mut KuiCtx, out: *mut KuiWindowCommand) -> bool {
+    guard(false, || {
         let Some(c) = (unsafe { ctx(ptr) }) else {
-            return 0;
+            return false;
         };
-        if out.is_null() || cap == 0 {
-            return 0;
+        if c.window_commands.is_empty() {
+            let fresh = c.core().take_window_commands();
+            c.window_commands.extend(fresh);
         }
-        let cmds = c.core().take_window_commands();
-        let n = cmds.len().min(cap);
-        for (i, cmd) in cmds.into_iter().take(n).enumerate() {
-            let code = match cmd {
-                WindowCommand::StartDrag => 1,
-                WindowCommand::Close => 2,
-                WindowCommand::Minimize => 3,
-                WindowCommand::ToggleMaximize => 4,
-            };
-            unsafe { out.add(i).write(code) };
+        let Some(&cmd) = c.window_commands.front() else {
+            return false;
+        };
+        if !write_out(out, window_command_to_c(cmd)) {
+            return false;
         }
-        n
+        c.window_commands.pop_front();
+        true
     })
+}
+
+/// Declares that a window named `name` exists this frame (ADR 0004): it
+/// opens on the first frame any window's frame declares it — `cfg` is
+/// read then and never again, NULL meaning `KUI_WINDOW_CONFIG_INIT` — and
+/// closes on the first frame none does. The `Open` / `Close` arrive
+/// through `kui_take_window_command`; the app sees `{kind:"window",
+/// phase:"opened"|"closed", name, id}` events. A window the user closed
+/// (`kui_window_closed`) stays closed while still declared: stop declaring
+/// it, then declare it again. Call between `kui_frame_begin` and
+/// `kui_frame_finish`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_window_declare(ptr: *mut KuiCtx, name: KuiStr, cfg: *const KuiWindowConfig) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            let cfg = window_config_of(unsafe { cfg.as_ref() });
+            let name = kstr(name);
+            c.core().declare_window(&name, cfg);
+        }
+    });
+}
+
+/// Which window this context draws: `env.window.id`, as
+/// `kui_env_set_window` set it — `KUI_WINDOW_MAIN` for the launcher's, and
+/// in a `kui_run` view callback the id of the window being drawn.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_ctx_window(ptr: *mut KuiCtx) -> u32 {
+    guard(0, || match unsafe { ctx(ptr) } {
+        Some(c) => c.core().env.window.id.0,
+        None => 0,
+    })
+}
+
+/// The name of the window this context draws: "main" for the launcher's,
+/// else the name the declaration that opened it used. Borrowed until the
+/// next call on the same context. False only on a bad context.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_ctx_window_name(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        if out.is_null() {
+            return false;
+        }
+        let name = c.core().window_name();
+        unsafe {
+            *out = KuiStr {
+                ptr: name.as_ptr(),
+                len: name.len(),
+            };
+        }
+        c.last_window_name = Some(name);
+        true
+    })
+}
+
+/// A host reports that the OS closed window `id` — its close button, the
+/// window manager. The window stays closed while its name is still
+/// declared (see `kui_window_declare`), whatever only it declared closes
+/// with it, and the app gets `{kind:"window", phase:"closed", name, id}`
+/// from `kui_poll_event`. Nothing happens for `KUI_WINDOW_MAIN` or for a
+/// window already closed by the diff.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_window_closed(ptr: *mut KuiCtx, id: u32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().window_closed(WindowId(id));
+            let evs = c.core().take_pending_events();
+            c.events.extend(evs);
+        }
+    });
 }
 
 /// The pointer shape for where the pointer is now (KUI_CURSOR_*, never 0):
@@ -4215,6 +4433,186 @@ mod abi_handshake {
         ctx
     }
 
+    fn window_cmds(ctx: *mut KuiCtx) -> Vec<KuiWindowCommand> {
+        let mut out = Vec::new();
+        let mut cmd = KuiWindowCommand::default();
+        while kui_take_window_command(ctx, &raw mut cmd) {
+            out.push(KuiWindowCommand {
+                size: cmd.size,
+                kind: cmd.kind,
+                window: cmd.window,
+                origin: cmd.origin,
+                config: cmd.config,
+            });
+        }
+        out
+    }
+
+    /// `(kind, phase)` of every `window` event queued.
+    fn window_events(ctx: *mut KuiCtx) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        let mut ev = KuiEvent::default();
+        while kui_poll_event(ctx, &raw mut ev) {
+            let payload = unsafe { &(*ev.payload).0 };
+            let kind = payload.get("kind").and_then(Value::as_str).unwrap_or("-");
+            if kind != "window" {
+                continue;
+            }
+            let phase = payload.get("phase").and_then(Value::as_str).unwrap_or("-");
+            let name = payload.get("name").and_then(Value::as_str).unwrap_or("-");
+            out.push((phase.to_string(), name.to_string()));
+        }
+        out
+    }
+
+    fn frame_declaring(ctx: *mut KuiCtx, declare: &[(f32, f32)]) {
+        kui_frame_begin(ctx, 320.0, 240.0, 1.0);
+        for (w, h) in declare {
+            let cfg = KuiWindowConfig {
+                kind: KUI_WINDOW_KIND_NORMAL,
+                width: *w,
+                height: *h,
+                activates: 1,
+            };
+            kui_window_declare(ctx, ks("palette"), &cfg);
+        }
+        kui_frame_finish(ctx);
+    }
+
+    /// ADR 0004's step 3 through the C surface: a declaration opens a
+    /// window (once, with the first config, warning about the second),
+    /// an OS close reported back keeps it closed while declared, and the
+    /// declaration lapsing and starting again opens it anew.
+    #[test]
+    fn a_declared_window_opens_closes_and_warns_through_the_c_api() {
+        let ctx = kui_ctx_new();
+        kui_set_diagnostics(ctx, true);
+        assert_eq!(kui_ctx_window(ctx), 0);
+        let mut name = KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+        assert!(kui_ctx_window_name(ctx, &raw mut name));
+        assert_eq!(&*kstr(name), "main");
+
+        frame_declaring(ctx, &[(400.0, 300.0), (500.0, 500.0)]);
+        let cmds = window_cmds(ctx);
+        assert_eq!(cmds.len(), 1);
+        assert_eq!(
+            (cmds[0].kind, cmds[0].window, cmds[0].origin),
+            (KUI_CMD_OPEN, 1, 0)
+        );
+        assert_eq!(
+            (
+                cmds[0].config.width,
+                cmds[0].config.height,
+                cmds[0].config.activates
+            ),
+            (400.0, 300.0, 1),
+            "the first declaration's config, not the second's"
+        );
+        assert_eq!(cmds[0].size, std::mem::size_of::<KuiWindowCommand>() as u32);
+        assert_eq!(
+            window_events(ctx),
+            vec![("opened".into(), "palette".into())]
+        );
+
+        // The user closes it.
+        kui_window_closed(ctx, 1);
+        assert_eq!(
+            window_events(ctx),
+            vec![("closed".into(), "palette".into())]
+        );
+        // Still declared: nothing reopens, and the diagnostics say why.
+        frame_declaring(ctx, &[(400.0, 300.0)]);
+        assert!(window_cmds(ctx).is_empty());
+        let mut warnings = [KuiWarning {
+            code: ks(""),
+            key: 0,
+            message: ks(""),
+        }; 8];
+        let n = kui_take_warnings(ctx, warnings.as_mut_ptr(), 8);
+        let codes: Vec<String> = warnings[..n]
+            .iter()
+            .map(|w| kstr(w.code).into_owned())
+            .collect();
+        assert_eq!(
+            codes,
+            vec![
+                "duplicate-window-config".to_string(),
+                "window-declared-while-closed".to_string()
+            ]
+        );
+
+        // The declaration lapses, then starts again: a new window, new id.
+        frame_declaring(ctx, &[]);
+        assert!(window_cmds(ctx).is_empty());
+        frame_declaring(ctx, &[(400.0, 300.0)]);
+        let cmds = window_cmds(ctx);
+        assert_eq!(cmds.len(), 1);
+        assert_eq!((cmds[0].kind, cmds[0].window), (KUI_CMD_OPEN, 2));
+        // And stops: the diff closes it.
+        frame_declaring(ctx, &[]);
+        let cmds = window_cmds(ctx);
+        assert_eq!(cmds.len(), 1);
+        assert_eq!((cmds[0].kind, cmds[0].window), (KUI_CMD_CLOSE, 2));
+        assert_eq!(
+            window_events(ctx),
+            vec![
+                ("opened".into(), "palette".into()),
+                ("closed".into(), "palette".into())
+            ]
+        );
+        kui_ctx_free(ctx);
+    }
+
+    /// The size handshake on the new [out] struct, the way `kui_poll_event`
+    /// has it: a reservation below the layout is refused before anything
+    /// is popped, so the command is still there for a proper call.
+    #[test]
+    fn a_short_window_command_reservation_is_refused_and_keeps_the_command() {
+        let ctx = kui_ctx_new();
+        frame_declaring(ctx, &[(400.0, 300.0)]);
+        let mut short = KuiWindowCommand {
+            size: 4,
+            kind: 0xdead,
+            ..Default::default()
+        };
+        assert!(!kui_take_window_command(ctx, &raw mut short));
+        assert_eq!(short.kind, 0xdead, "nothing was written");
+        let cmds = window_cmds(ctx);
+        assert_eq!(cmds.len(), 1, "the refused command is still queued");
+        assert_eq!(cmds[0].kind, KUI_CMD_OPEN);
+        kui_ctx_free(ctx);
+    }
+
+    /// A context standing in for a declared window: the id
+    /// `kui_env_set_window` gives it is what its events carry and what
+    /// its name resolves through.
+    #[test]
+    fn env_set_window_names_the_context_and_stamps_its_events() {
+        let ctx = kui_ctx_new();
+        frame_declaring(ctx, &[(400.0, 300.0)]);
+        window_cmds(ctx);
+        window_events(ctx);
+        kui_env_set_window(ctx, 1, false, false, false, 0.0, 0.0);
+        assert_eq!(kui_ctx_window(ctx), 1);
+        let mut name = KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+        assert!(kui_ctx_window_name(ctx, &raw mut name));
+        assert_eq!(&*kstr(name), "palette");
+        // A frame at another viewport raises a resize, stamped with the id.
+        kui_frame_begin(ctx, 200.0, 100.0, 1.0);
+        kui_window_declare(ctx, ks("palette"), std::ptr::null());
+        kui_frame_finish(ctx);
+        let mut ev = KuiEvent::default();
+        assert!(kui_poll_event(ctx, &raw mut ev));
+        assert_eq!(ev.window, 1);
+        kui_ctx_free(ctx);
+    }
+
     #[test]
     fn the_exported_version_is_the_one_the_header_states() {
         // The C side of this is a _Static_assert in mod abi_parity; this is
@@ -4855,6 +5253,37 @@ mod abi_parity {
         });
         abi_out_struct!(o, KuiEvent);
 
+        abi_struct!(o, KuiWindowConfig {
+            kind: u32 => "uint32_t",
+            width: f32 => "float",
+            height: f32 => "float",
+            activates: u32 => "uint32_t",
+        });
+
+        abi_struct!(o, KuiWindowCommand {
+            size: u32 => "uint32_t",
+            kind: u32 => "uint32_t",
+            window: u32 => "uint32_t",
+            origin: u16 => "uint16_t",
+            config: KuiWindowConfig => "KuiWindowConfig",
+        });
+        abi_out_struct!(o, KuiWindowCommand);
+
+        // The command verbs and the window kind are plain constants on
+        // both sides; pinned here so the header cannot renumber one.
+        for (name, value) in [
+            ("KUI_CMD_START_DRAG", KUI_CMD_START_DRAG),
+            ("KUI_CMD_CLOSE", KUI_CMD_CLOSE),
+            ("KUI_CMD_MINIMIZE", KUI_CMD_MINIMIZE),
+            ("KUI_CMD_TOGGLE_MAXIMIZE", KUI_CMD_TOGGLE_MAXIMIZE),
+            ("KUI_CMD_OPEN", KUI_CMD_OPEN),
+            ("KUI_WINDOW_KIND_NORMAL", KUI_WINDOW_KIND_NORMAL),
+            ("KUI_WINDOW_MAIN", WindowId::MAIN.0),
+        ] {
+            writeln!(o, "KUI_ENUM({name}, {value});").unwrap();
+        }
+        writeln!(o).unwrap();
+
         abi_struct!(o, KuiQuad {
             x: f32 => "float",
             y: f32 => "float",
@@ -4900,6 +5329,7 @@ mod abi_parity {
         let text = asserts();
         assert!(text.contains("KUI_FIELD(KuiSpec, focus_bg,"));
         assert!(text.contains("KUI_OUT_STRUCT(KuiEvent,"));
+        assert!(text.contains("KUI_OUT_STRUCT(KuiWindowCommand,"));
         assert!(text.contains("KUI_ENUM(KUI_ROLE_LINE, 22);"));
         std::fs::write(&path, text).expect("write kui-abi-assert.c");
     }

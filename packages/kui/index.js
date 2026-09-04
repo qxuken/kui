@@ -24,9 +24,11 @@ Ctx.prototype.frame = function frame(width, height, scale, tree) {
   reportUnknown(this, unknown);
 };
 
-KuiWindow.prototype.setView = function setView(tree) {
+// `window` names which window the tree is for: 'main' when left out, else
+// one of the names `windows()` lists.
+KuiWindow.prototype.setView = function setView(tree, window) {
   const { stream, strings, unknown } = encoder.encode(tree);
-  this.setViewBinary(stream, strings);
+  this.setViewBinary(stream, strings, window);
   reportUnknown(this, unknown);
 };
 
@@ -48,15 +50,36 @@ KuiWindow.prototype.setView = function setView(tree) {
 const formatWarning = (w) => `kui: warning [${w.code}] node ${w.key}: ${w.message}`;
 const diagnosticsByDefault = () => process.env.NODE_ENV !== 'production';
 
-/** How a tree reaches a surface — the transport the two really differ on: a
- *  window keeps a view and redraws it at its own size, a headless `Ctx`
- *  lowers one frame at the size it is told. */
+/** How a tree reaches a surface — the transport the two really differ on.
+ *  A window surface keeps a view per open window and redraws each at its
+ *  own size, so `open()` lists the names to draw. A headless `Ctx` *is* one
+ *  window, the main: it lowers one frame at the size it is told, and a
+ *  second frame for another name would be a second frame of the same core
+ *  — so it opens for `main` alone, whatever its `windows()` says the
+ *  declared set has grown to. */
 function transport(surface, opts) {
-  if (typeof surface.setView === 'function') return (tree) => surface.setView(tree);
+  if (typeof surface.setView === 'function') {
+    return {
+      show: (tree, name) => surface.setView(tree, name),
+      // A surface that cannot say which windows it has, has one.
+      open: () => (typeof surface.windows === 'function' ? surface.windows() : ['main']),
+    };
+  }
   const width = opts.width ?? 800;
   const height = opts.height ?? 600;
   const scale = opts.scale ?? 1;
-  return (tree) => surface.frame(width, height, scale, tree);
+  return {
+    show: (tree) => surface.frame(width, height, scale, tree),
+    open: () => ['main'],
+  };
+}
+
+/** The declared window set on the root box, where the encoder reads it:
+ *  `windows(model)` is the config-level spelling of the root's `windows`
+ *  prop, so an app never writes the prop by hand. */
+function withWindows(tree, windows) {
+  if (!windows || tree == null || typeof tree !== 'object' || tree.type !== 'box') return tree;
+  return { ...tree, props: { ...(tree.props ?? {}), windows } };
 }
 
 /**
@@ -68,9 +91,9 @@ function transport(surface, opts) {
  * makes a ticking app drivable headless. Passing a fake one is how the
  * windowed half of the tick bookkeeping gets tested without a display.
  */
-function createLoop({ init, update, view, tick }, opts, surface, clock) {
+function createLoop({ init, update, view, tick, windows }, opts, surface, clock) {
   surface.setDiagnostics(opts.diagnostics ?? diagnosticsByDefault());
-  const show = transport(surface, opts);
+  const { show, open } = transport(surface, opts);
   let model;
 
   let now = clock ? clock() : (opts.startTime ?? Date.now());
@@ -120,8 +143,15 @@ function createLoop({ init, update, view, tick }, opts, surface, clock) {
 
   // A frame, without the `stats()` round trip `render` hands back — the
   // windowed pump draws sixty times a second and asks for none of it.
+  // `view(model, name)` runs once per open window; the main window's tree
+  // also carries what `windows(model)` declares, so the set the loop draws
+  // is the set the core diffs. A headless `Ctx` is one window, the main.
   function draw() {
-    show(view(model));
+    const declared = windows ? windows(model) : undefined;
+    for (const name of open()) {
+      const tree = view(model, name);
+      show(name === 'main' ? withWindows(tree, declared) : tree, name);
+    }
     drainWarnings();
   }
 
@@ -232,8 +262,10 @@ function createLoop({ init, update, view, tick }, opts, surface, clock) {
  * The winit event loop is pumped from a timer so it shares the main thread
  * with libuv — Node stays fully responsive while the window is open.
  *
- * Resolves with the final model when the window closes. One window per
- * process (winit event loops are not recreatable everywhere).
+ * Resolves with the final model when the main window closes. One event
+ * loop per process (winit event loops are not recreatable everywhere); any
+ * number of windows on it — `windows: (model) => [...]` declares them, and
+ * `view(model, window)` is called once per open window.
  */
 export function runWindowed(config, opts = {}) {
   const { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome } = opts;

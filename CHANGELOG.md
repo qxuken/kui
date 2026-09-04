@@ -9,6 +9,52 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **A frame declares which windows exist, and the runner opens them**
+  (backlog C11 step 3, `docs/adr/0004-multi-window.md` decisions 4-6).
+  `ui.window("palette", WindowConfig::sized(400.0, 300.0))` in Rust,
+  `kui_window_declare(ctx, name, &cfg)` in C, `windows: (model) => [...]`
+  in a Node loop config (the root box's `windows` prop underneath, the way
+  `title` is), a `windows` list beside `window_title` on a Lua root table.
+  A window opens on the first frame any window's frame declares it and
+  closes on the first frame none does; **the set in effect is the union of
+  what every open window's frame declared, plus main** — so a window can
+  declare its own child, and closing the parent takes the child with it.
+  The core's diff queues `WindowCommand::Open { id, origin, config }` /
+  `Close(id)` into the queue every driver already drains, and raises
+  `{kind:"window", phase:"opened"|"closed", name, id}` for the app. The
+  Rust runner opens a real window per `Open` — a `Pane`: its own surface
+  on the shared device, its own `Core` on the shared `Session`, its own
+  cursor, caret blink and accessibility adapter — and calls `App::view`
+  once per open window per frame, with `ui.window_name()` saying which
+  (`"main"` for the launcher's). Node's `runWindowed` does the same:
+  `view(model, window)` runs once per name `win.windows()` lists, and a
+  single-window app ignores the argument.
+  **Config is read on the opening edge and never again.** Re-declaring a
+  live window at another size resizes nothing, which is where "the user
+  owns a window's geometry once it exists" is enforced: not by refusing
+  the new size but by never looking at it. Where two declarations of one
+  name disagree on that edge, the lowest declaring window's first one wins
+  and **`duplicate-window-config`** says so. **An OS close is reported,
+  not undone**: the driver calls `Core::window_closed` (`kui_window_closed`,
+  `ctx.windowClosed(id)`), the app gets the `closed` event, and the window
+  stays closed while it is still declared — a declaration reopens a window
+  only when it *starts*, the same edge `keyFocus` uses. The first version
+  of every multi-window app declares its window unconditionally and cannot
+  reopen it, so that state has a name, **`window-declared-while-closed`**,
+  whose message says the fix: handle the event, stop declaring the name,
+  declare it again. Both warnings come from the diff, keyed by the window
+  name (there is no node), on the core whose frame declared it.
+  The conformance corpus gained a `windows` scene that pins all of it —
+  the `Open`/`Close` sequence, the four events, both warnings, the id that
+  changes across a lapse — reproduced byte-identically from Rust, Lua, C
+  and Node; the report grew a `cmd` line per window command, which also
+  pins, for the first time, the `drag` the modal scene's titlebar press
+  always asked for. Chrome commands say which window they are about
+  (`WindowCommand::Close(id)` and the rest gained a `WindowId`; the C
+  header's `KuiWindowCommand` carries it); `Core::windows()` /
+  `ctx.windows()` list what is open, `Core::window_name()` /
+  `kui_ctx_window_name` / `ctx.windowName()` say which one a core draws.
+  Popups (step 4) and `SetSize` / `Focus` (step 5) are not here.
 - **Every event says which window it came from** (backlog C11 step 2, ADR
   0004). `WindowId` is an opaque integer the driver assigns — `WindowId::MAIN`
   is 0, apps never build one — and it now reaches every transport:
@@ -858,6 +904,23 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Changed
 
+- **`KUI_ABI_VERSION` is 5**, and the C drain loop is a source break (ADR
+  0004 decision 12, built by C11 step 3). `kui_take_window_commands` filled
+  a `uint32_t` array; a command now names its window and an open carries a
+  config, so it is `bool kui_take_window_command(ctx, KuiWindowCommand *)`,
+  popping one at a time the way `kui_poll_event` does — an [out] struct
+  with the `size` handshake ADR 0006 gave the other four, so it can grow
+  later without another break. The rename is deliberate: an un-edited
+  host fails to link rather than passing the wrong pointer type through a
+  warning. `kui_env_set_window` leads with the window id, which C had no
+  way to set before. Both are compile-time breaks; a rebuilt host edits
+  two lines, and `examples/c/counter.c` is the worked example.
+  `KuiEvent.window` now means it: a context given an id by
+  `kui_env_set_window` stamps it on every event.
+- **`WindowCommand` carries its window.** `StartDrag`, `Close`, `Minimize`
+  and `ToggleMaximize` gained a `WindowId`, and `WindowButton::command`
+  takes the window the button was drawn in. A Rust keymap that wrote
+  `WindowCommand::Close` writes `WindowCommand::Close(ui.env().window.id)`.
 - **`KUI_ABI_VERSION` is 4** — 2 at the last release, moved twice in this
   one: to 3 by the access-node field the composite-keyboard work added, and
   to 4 by `KuiEvent` gaining a trailing `uint32_t window`. A C host

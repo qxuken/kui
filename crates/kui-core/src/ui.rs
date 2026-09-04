@@ -10,7 +10,7 @@ use crate::runtime::Core;
 use crate::spec::{NodeSpec, TextStyle};
 use crate::text::Span;
 use crate::tree::OriginId;
-use crate::window::WindowCommand;
+use crate::window::{WindowCommand, WindowConfig};
 
 pub struct Ui<'a> {
     core: &'a mut Core,
@@ -45,6 +45,23 @@ impl<'a> Ui<'a> {
     /// the driver diffs and applies changes).
     pub fn window_title(&mut self, title: &str) {
         self.core.set_window_title(title);
+    }
+
+    /// Declares that a window named `name` exists this frame; see
+    /// `Core::declare_window`. It opens on the first frame that declares
+    /// it (`config` is read then and never again), stays open while any
+    /// window's frame keeps declaring it, and closes when none does.
+    /// `view` is then called for it too, with [`Ui::window_name`] saying
+    /// which window is being drawn.
+    pub fn window(&mut self, name: &str, config: WindowConfig) {
+        self.core.declare_window(name, config);
+    }
+
+    /// The name of the window this frame is drawing: `"main"` for the one
+    /// the launcher opened, else the name the declaration that opened it
+    /// used. `env().window.id` is the same window as a number.
+    pub fn window_name(&self) -> std::rc::Rc<str> {
+        self.core.window_name()
     }
 
     pub fn set_origin(&mut self, origin: OriginId) {

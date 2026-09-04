@@ -291,6 +291,11 @@ export interface CustomSpecProps {
 export interface BoxProps extends Keyed, GeneratedSpecProps, CustomSpecProps {
   /** Root box only: declares this frame's window title. */
   title?: string;
+  /** Root box only: which windows exist besides the main one (see
+   *  `WindowDecl` in `@qxuken/kui`). `runWindowed` / `createApp` write it
+   *  from the loop config's `windows(model)`; a view driving a `Ctx` by
+   *  hand declares it here. */
+  windows?: (string | { name: string; width?: number; height?: number; activates?: boolean })[];
   children?: KuiNode;
 }
 

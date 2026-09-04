@@ -35,6 +35,19 @@ fn events(out: &Output) -> Vec<String> {
         .collect()
 }
 
+/// The checked-in spelling of a window command: the report's `cmd` line
+/// without its prefix.
+fn commands(out: &Output) -> Vec<String> {
+    out.commands
+        .iter()
+        .map(|c| {
+            let mut line = String::new();
+            conformance::write_command(c, &mut line);
+            line.trim_end().trim_start_matches("cmd ").to_string()
+        })
+        .collect()
+}
+
 fn check(scene: &Scene) {
     let out = conformance::run(scene);
     let e = &scene.expect;
@@ -51,6 +64,7 @@ fn check(scene: &Scene) {
     assert_eq!(access_rows(&out), e.access, "{name}: access tree");
     assert_eq!(events(&out), e.events, "{name}: events");
     assert_eq!(out.warnings, e.warnings, "{name}: warnings");
+    assert_eq!(commands(&out), e.commands, "{name}: window commands");
     assert_eq!(out.title.as_deref(), e.title, "{name}: window title");
 }
 

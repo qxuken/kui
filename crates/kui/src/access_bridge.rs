@@ -32,6 +32,13 @@ mod imp {
         }
     }
 
+    /// Which window the platform is talking about: every adapter is one
+    /// window's, and the shell routes to that window's bridge.
+    pub fn window_of(ev: &UserEvent) -> Option<winit::window::WindowId> {
+        let UserEvent::Access(ev) = ev;
+        Some(ev.window_id)
+    }
+
     pub struct Bridge {
         adapter: Adapter,
         /// Assistive technology asked for the tree and has not gone away.
@@ -325,6 +332,10 @@ mod imp {
     #[derive(Debug)]
     pub enum UserEvent {}
 
+    pub fn window_of(ev: &UserEvent) -> Option<winit::window::WindowId> {
+        match *ev {}
+    }
+
     pub struct Bridge {}
 
     impl Bridge {
@@ -350,4 +361,4 @@ mod imp {
     }
 }
 
-pub use imp::{Bridge, UserEvent};
+pub use imp::{Bridge, UserEvent, window_of};

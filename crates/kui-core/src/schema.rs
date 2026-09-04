@@ -49,7 +49,7 @@ use crate::enter::Enter;
 use crate::keyframes::Keyframe;
 use crate::spec::{Align, FontFamily, NodeSpec, PadShorthand, Sizing, TextStyle, TextWrap};
 use crate::value::Value;
-use crate::window::WindowButton;
+use crate::window::{WindowButton, WindowConfig};
 
 // Wire ids, stable within a binary protocol version (see kui-node).
 pub const P_DIR: u32 = 1;
@@ -130,6 +130,7 @@ pub const P_WRAP_CHILDREN: u32 = 75;
 pub const P_CROSS_GAP: u32 = 76;
 pub const P_INITIAL_FOCUS: u32 = 77;
 pub const P_EXIT: u32 = 78;
+pub const P_WINDOWS: u32 = 79;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -1006,6 +1007,16 @@ pub const CUSTOM: &[CustomProp] = &[
         doc: "Declares the window title for this frame; the driver diffs and applies.",
     },
     CustomProp {
+        name: "windows",
+        id: P_WINDOWS,
+        jsx_names: &["windows"],
+        lua_names: &["windows"],
+        jsx: "`windows={[{ name, width?, height?, activates? }]}` (root box only; `windows: (model) => [...]` in the loop config)",
+        lua: "`windows = { { name=, width=, height=, activates= } }` (root table)",
+        c: "`kui_window_declare`",
+        doc: "Declares which windows exist this frame, by stable name (`docs/adr/0004-multi-window.md`). A window opens on the first frame any window's frame declares it — its config is read then and never again, since the user owns its geometry once it exists — and closes on the first frame none does. The driver drains the `Open` / `Close` that result, and the app sees `{kind:\"window\", phase, name, id}`. A window the user closed does not reopen while it is still declared: stop declaring it, then declare it again.",
+    },
+    CustomProp {
         name: "tooltip",
         id: P_TOOLTIP,
         jsx_names: &["tooltip"],
@@ -1260,6 +1271,11 @@ pub const EVENTS: &[EventDef] = &[
         doc: "The viewport changed size or DPI (logical px, delivered to the host on the root); `KuiWindow.size()` queries the same numbers.",
     },
     EventDef {
+        kind: "window",
+        payload: "`{ kind: \"window\", phase: \"opened\" | \"closed\", name, id }`",
+        doc: "A declared window opened (the diff queued its `Open`) or closed — because nothing declares it any more, or because the user closed it, in which case it stays closed while still declared: stop declaring `name`, then declare it again to reopen. `id` is what its events carry; the event itself is on the root of whichever window's frame noticed.",
+    },
+    EventDef {
         kind: "modifiers",
         payload: "`{ kind: \"modifiers\", shift, ctrl, alt, super }`",
         doc: "The physical modifier state changed (delivered to the host on the root).",
@@ -1473,6 +1489,8 @@ pub struct PropsOut {
     /// Hover hint: the element lowering floats `widgets::tooltip` below the
     /// node while it is hovered (the parser also marks the spec hoverable).
     pub tooltip: Option<String>,
+    /// The windows the root declared (`Core::declare_window`, in order).
+    pub windows: Vec<(String, WindowConfig)>,
 }
 
 impl PropsOut {
@@ -1484,6 +1502,7 @@ impl PropsOut {
             title: None,
             key_focus: false,
             tooltip: None,
+            windows: Vec::new(),
         }
     }
 

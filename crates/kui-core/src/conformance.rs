@@ -59,7 +59,7 @@ use crate::tree::{NodeContent, Tree};
 use crate::ui::Ui;
 use crate::value::Value;
 use crate::widgets;
-use crate::window::{WindowEnv, WindowId, WindowRole};
+use crate::window::{WindowCommand, WindowConfig, WindowEnv, WindowId, WindowRole};
 
 /// Every scene is built at this viewport and scale. A binding that drives
 /// its own frames has to use the same numbers or nothing lines up.
@@ -206,6 +206,11 @@ pub enum Step {
     /// (and an exit that snaps is the plain disappearance it always was),
     /// so a scene that never sets one is a scene where time does not pass.
     Time(u32),
+    /// Not an input: the driver reporting that the OS closed the window
+    /// with this id (`Core::window_closed`) — the user pressed its close
+    /// button. What a declared window does after that is the half of ADR
+    /// 0004's edge rule a headless core can pin.
+    WindowClosed(u32),
 }
 
 impl Step {
@@ -240,6 +245,9 @@ impl Step {
             Step::Time(ms) => {
                 let _ = writeln!(out, "step time {ms}");
             }
+            Step::WindowClosed(id) => {
+                let _ = writeln!(out, "step windowclosed {id}");
+            }
         }
     }
 
@@ -248,7 +256,7 @@ impl Step {
     /// and [`Step::Time`].
     pub fn event(&self) -> Option<InputEvent> {
         Some(match *self {
-            Step::Phase(_) | Step::Time(_) => return None,
+            Step::Phase(_) | Step::Time(_) | Step::WindowClosed(_) => return None,
             Step::Cursor(x, y) => InputEvent::CursorMoved(Vec2::new(x as f32, y as f32)),
             Step::CursorLeft => InputEvent::CursorLeft,
             Step::MouseDown => InputEvent::mouse_down(1),
@@ -302,6 +310,9 @@ pub struct Expect {
     pub events: &'static [&'static str],
     /// Diagnostic codes, in order.
     pub warnings: &'static [&'static str],
+    /// Window commands in order, as [`write_command`] spells them without
+    /// the `cmd ` prefix: `drag 0`, `open 1 0 0 400 300 1`, `close 1`.
+    pub commands: &'static [&'static str],
     pub title: Option<&'static str>,
 }
 
@@ -365,6 +376,7 @@ pub const SCENES: &[Scene] = &[
             ],
             events: &[],
             warnings: &[],
+            commands: &[],
             title: None,
         },
     },
@@ -392,6 +404,7 @@ pub const SCENES: &[Scene] = &[
             access: &["0 window ||"],
             events: &[],
             warnings: &[],
+            commands: &[],
             title: None,
         },
     },
@@ -414,6 +427,7 @@ pub const SCENES: &[Scene] = &[
             access: &["0 window ||"],
             events: &[],
             warnings: &[],
+            commands: &[],
             title: None,
         },
     },
@@ -435,6 +449,7 @@ pub const SCENES: &[Scene] = &[
             access: &["0 window ||", "1 scrollView ||"],
             events: &[],
             warnings: &[],
+            commands: &[],
             title: None,
         },
     },
@@ -459,6 +474,7 @@ pub const SCENES: &[Scene] = &[
             access: &["0 window ||"],
             events: &[],
             warnings: &[],
+            commands: &[],
             title: None,
         },
     },
@@ -484,6 +500,7 @@ pub const SCENES: &[Scene] = &[
             ],
             events: &[],
             warnings: &[],
+            commands: &[],
             title: None,
         },
     },
@@ -525,6 +542,7 @@ pub const SCENES: &[Scene] = &[
             ],
             events: &[],
             warnings: &[],
+            commands: &[],
             title: Some("kui conformance"),
         },
     },
@@ -559,6 +577,7 @@ pub const SCENES: &[Scene] = &[
             ],
             events: &[],
             warnings: &[],
+            commands: &[],
             title: Some("kui conformance"),
         },
     },
@@ -587,6 +606,7 @@ pub const SCENES: &[Scene] = &[
             access: &["0 window ||", "1 button go||", "1 textInput Note||hello"],
             events: &["go -", "contextmenu menu"],
             warnings: &[],
+            commands: &[],
             title: None,
         },
     },
@@ -608,6 +628,7 @@ pub const SCENES: &[Scene] = &[
             access: &["0 window ||", "1 image ||"],
             events: &[],
             warnings: &["image-without-label"],
+            commands: &[],
             title: None,
         },
     },
@@ -619,8 +640,9 @@ pub const SCENES: &[Scene] = &[
               is the behaviour around it, and the four things here are the \
               parts no binding gets for free. A press on the button behind \
               emits no click, only the modal's `dismiss` — the app is inert. \
-              A press on the titlebar emits nothing at all: window chrome \
-              stays live, so it is not \"outside\" and asks for no dismissal. \
+              A press on the titlebar emits nothing at all — it asks the \
+              driver for a window drag instead: window chrome stays live, so \
+              it is not \"outside\" and asks for no dismissal. \
               A press on the dialog's own OK button does click, and Escape \
               asks it to go away a second time, so both dismiss reasons are \
               in the event list with a live event between them. Then the \
@@ -668,6 +690,9 @@ pub const SCENES: &[Scene] = &[
             ],
             events: &["dismiss dlg", "ok -", "dismiss dlg"],
             warnings: &[],
+            // The titlebar press: chrome stays live under a modal, and a
+            // live drag strip asks the driver to move the window.
+            commands: &["drag 0"],
             title: None,
         },
     },
@@ -748,6 +773,7 @@ pub const SCENES: &[Scene] = &[
             ],
             events: &["one -", "two -", "three -", "alpha -"],
             warnings: &[],
+            commands: &[],
             title: None,
         },
     },
@@ -808,6 +834,51 @@ pub const SCENES: &[Scene] = &[
             access: &["0 window ||", "1 group A||", "1 group B||"],
             events: &["hit -"],
             warnings: &["exit-budget"],
+            commands: &[],
+            title: None,
+        },
+    },
+    Scene {
+        name: "windows",
+        doc: "The declared window set (`docs/adr/0004-multi-window.md`, \
+              decisions 4-6), which is the half of multi-window a headless \
+              core can pin: the diff, its commands, its events and its two \
+              warnings. `windows` lowers mechanically in every binding; what \
+              the scene pins is the edge rule. The first frame declares \
+              `palette` twice with different sizes, so it opens once, with \
+              the first config, and `duplicate-window-config` is raised on \
+              that edge. The user then closes it: a `closed` event, and the \
+              next frame — still declaring it — reopens nothing and raises \
+              `window-declared-while-closed`. Phase 1 stops declaring, \
+              which is what lets phase 2's declaration *start*: a second \
+              `Open`, with a new id, because a closed window's identity did \
+              not survive its lapse. Phase 3 stops again and the diff \
+              closes it. Four `window` events, three commands, two \
+              warnings, and the report keeps the frame with nothing open.",
+        custom: &["windows", "size"],
+        elements: &["box", "text"],
+        build: build_windows,
+        env: NATIVE_CHROME,
+        steps: &[
+            // The user closes the window the first frame opened.
+            Step::WindowClosed(1),
+            // Still declared after the close: closed it stays, with a line
+            // saying why. Then the declaration lapses ...
+            Step::Phase(1),
+            // ... and starts again, which is the only thing that reopens.
+            Step::Phase(2),
+            // And stops, so the diff closes what it opened.
+            Step::Phase(3),
+        ],
+        expect: Expect {
+            solid: 1,
+            shadows: 0,
+            images: 0,
+            glyphs_min: 6,
+            access: &["0 window ||", "1 staticText closed||"],
+            events: &["window -", "window -", "window -", "window -"],
+            warnings: &["duplicate-window-config", "window-declared-while-closed"],
+            commands: &["open 1 0 0 400 300 1", "open 2 0 0 400 300 1", "close 2"],
             title: None,
         },
     },
@@ -1366,6 +1437,32 @@ fn build_exit(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
 // ---------------------------------------------------------------------------
 // Derived coverage
 
+/// The `windows` scene: the same tree every phase (a box saying which
+/// phase it is in), and a declaration that comes and goes. Phase 0 declares
+/// `palette` twice, disagreeing about the size; phases 1 and 3 declare
+/// nothing; phase 2 declares it once.
+fn build_windows(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
+    if phase == 0 || phase == 2 {
+        ui.window("palette", WindowConfig::sized(400.0, 300.0));
+    }
+    if phase == 0 {
+        // The same name again with another config: the first declaration
+        // wins, and the disagreement is reported on the frame it opens.
+        ui.window("palette", WindowConfig::sized(500.0, 500.0));
+    }
+    ui.with(
+        NodeSpec::column().pad(8.0).bg(Color::hex(0x14161eff)),
+        |ui| {
+            let label = if phase == 0 || phase == 2 {
+                "open"
+            } else {
+                "closed"
+            };
+            ui.text(label, TextStyle::new(12.0));
+        },
+    );
+}
+
 /// What a built frame actually exercised, read back off the tree.
 ///
 /// [`Scene::custom`] and [`Scene::elements`] are hand-written *claims*, and
@@ -1430,6 +1527,11 @@ fn observe(core: &Core, cov: &mut Coverage) {
     // list is the only trace of one.
     if !core.declared_focus().is_empty() {
         cov.custom.insert("keyFocus");
+    }
+    // A window declaration is not a node either; the frame's list is the
+    // only trace of one.
+    if !core.declared_windows().is_empty() {
+        cov.custom.insert("windows");
     }
     // An `audio` element builds no node either — it declares a playback
     // the audio store reconciles — so it is read off the store.
@@ -1535,6 +1637,9 @@ pub struct Output {
     pub nodes: Vec<NodeRow>,
     pub events: Vec<(String, String)>,
     pub warnings: Vec<&'static str>,
+    /// Every window command the replay drained, in order — what a frame
+    /// driver would have applied to real windows.
+    pub commands: Vec<WindowCommand>,
     pub title: Option<String>,
     /// The `CUSTOM` / `ELEMENTS` rows the frames actually exercised (see
     /// [`Coverage`]). Not part of the [`report`]: it is derived from the
@@ -1690,8 +1795,10 @@ fn event_row(payload: &Value) -> (String, String) {
 ///    parameter: `widgets::window_buttons` and the titlebar's inset read
 ///    them while the *first* frame builds, so a driver that pushed them
 ///    afterwards would compare a different tree);
-/// 3. build a frame, collect the events it left pending;
-/// 4. for each step, apply the input, collect its events, build again;
+/// 3. build a frame, collect the events it left pending and the window
+///    commands it queued;
+/// 4. for each step, apply the input (or the clock, the phase, or the OS
+///    close), collect its events and commands, build again;
 /// 5. read the quads, access tree, warnings and title of the last frame.
 ///
 /// The [`Coverage`] it also returns is Rust-only bookkeeping over the tree
@@ -1706,11 +1813,13 @@ pub fn drive(
     core.set_diagnostics(true);
     core.env.window = env;
     let mut events = Vec::new();
+    let mut commands = Vec::new();
     let mut coverage = Coverage::default();
     let mut phase = 0u32;
     let mut frame = |core: &mut Core,
                      phase: u32,
                      events: &mut Vec<(String, String)>,
+                     commands: &mut Vec<WindowCommand>,
                      coverage: &mut Coverage| {
         let mut ui = core.frame(VIEWPORT, SCALE);
         build(&mut ui, phase);
@@ -1721,18 +1830,29 @@ pub fn drive(
                 .iter()
                 .map(|e| event_row(&e.payload)),
         );
+        commands.extend(core.take_window_commands());
     };
-    frame(core, phase, &mut events, &mut coverage);
+    frame(core, phase, &mut events, &mut commands, &mut coverage);
     for step in steps {
         match *step {
             Step::Phase(n) => phase = n,
             Step::Time(ms) => core.set_time(ms as f64 / 1000.0),
+            Step::WindowClosed(id) => {
+                core.window_closed(WindowId(id));
+                events.extend(
+                    core.take_pending_events()
+                        .iter()
+                        .map(|e| event_row(&e.payload)),
+                );
+                commands.extend(core.take_window_commands());
+            }
             _ => {
                 let evs = core.handle_input(step.event().expect("an input step"));
                 events.extend(evs.iter().map(|e| event_row(&e.payload)));
+                commands.extend(core.take_window_commands());
             }
         }
-        frame(core, phase, &mut events, &mut coverage);
+        frame(core, phase, &mut events, &mut commands, &mut coverage);
     }
 
     let title = core.window_title().map(str::to_string);
@@ -1757,6 +1877,7 @@ pub fn drive(
         nodes,
         events,
         warnings,
+        commands,
         title,
         coverage,
     }
@@ -1790,6 +1911,29 @@ pub fn write_env(env: WindowEnv, out: &mut String) {
     );
 }
 
+/// The `cmd` line for one window command: the verb, the window, and for an
+/// `Open` the rest of what the driver reads — origin, kind (as its index:
+/// 0 is normal), initial width and height, and whether it activates. All
+/// integers, like every other line.
+pub fn write_command(cmd: &WindowCommand, out: &mut String) {
+    let _ = match *cmd {
+        WindowCommand::StartDrag(w) => writeln!(out, "cmd drag {}", w.0),
+        WindowCommand::Close(w) => writeln!(out, "cmd close {}", w.0),
+        WindowCommand::Minimize(w) => writeln!(out, "cmd minimize {}", w.0),
+        WindowCommand::ToggleMaximize(w) => writeln!(out, "cmd maximize {}", w.0),
+        WindowCommand::Open { id, origin, config } => writeln!(
+            out,
+            "cmd open {} {} {} {} {} {}",
+            id.0,
+            origin.0,
+            config.kind as u32,
+            config.size.w as i32,
+            config.size.h as i32,
+            config.activates as u8,
+        ),
+    };
+}
+
 /// Renders a scene's block of the conformance report. The format is
 /// line-oriented and carries no formatted floats — only integers, hex and
 /// strings — so Rust, C and JavaScript produce the same bytes:
@@ -1804,6 +1948,7 @@ pub fn write_env(env: WindowEnv, out: &mut String) {
 /// kinds <solid> <glyphMask> <glyphColor> <image> <glyphSubpixel> <shadow>
 /// node <depth> <key:016x> <role> <focused> <disabled> <checked> <scroll> <actions> <name> | <description> | <value>
 /// event <kind> <tag>
+/// cmd <verb> <window> [...]  a window command the driver would have applied
 /// warn <code>
 /// end
 /// ```
@@ -1847,6 +1992,9 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
     }
     for (kind, tag) in &out.events {
         let _ = writeln!(s, "event {kind} {tag}");
+    }
+    for c in &out.commands {
+        write_command(c, &mut s);
     }
     for w in &out.warnings {
         let _ = writeln!(s, "warn {w}");

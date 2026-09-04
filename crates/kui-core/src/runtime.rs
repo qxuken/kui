@@ -10,6 +10,8 @@
 //! [`crate::session::Session`] a core is constructed against.
 //! [`Core::new`] makes a private one, so a single-window app never sees it.
 
+use std::rc::Rc;
+
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::anim::{AnimStore, Slot, Track};
@@ -30,14 +32,16 @@ use crate::keyframes::{self, Keyframe};
 use crate::layout::{self, TextMeasure};
 use crate::resources::{FontId, Resources};
 use crate::scroll::ScrollStore;
-use crate::session::{Session, SharedAudio, SharedResources};
+use crate::session::{
+    MAIN_WINDOW_NAME, Session, SharedAudio, SharedResources, WindowChange, WindowDecl,
+};
 use crate::spec::{NodeSpec, Sizing, TextStyle};
 use crate::stats::FrameStats;
 use crate::text::{Span, TextMetrics, TextSystem};
 use crate::tree::{NIL, NodeContent, OriginId, Tree};
 use crate::ui::Ui;
 use crate::value::Value;
-use crate::window::WindowId;
+use crate::window::{WindowConfig, WindowId};
 
 /// Wheel line-delta to logical px.
 const SCROLL_LINE_PX: f32 = 40.0;
@@ -111,6 +115,12 @@ pub struct Core {
     /// does not clobber a Tab press.
     declared_focus: Vec<Key>,
     declared_focus_last: Vec<Key>,
+    /// Windows this frame and last declared (`declare_window`): the same
+    /// edge-triggered shape as the focus pair, one level up. The session's
+    /// registry diffs the union across every core at `finish_frame`; the
+    /// pair here is what makes a frame that changed nothing cost nothing.
+    declared_windows: Vec<WindowDecl>,
+    declared_windows_last: Vec<WindowDecl>,
     /// The presses delivered to the current focus and not yet released,
     /// in press order. A `KeyUp` is routed only when its press is in here
     /// (so a sink never sees a release it did not see the press of), and
@@ -316,6 +326,8 @@ impl Core {
             focus_visible: false,
             declared_focus: Vec::new(),
             declared_focus_last: Vec::new(),
+            declared_windows: Vec::new(),
+            declared_windows_last: Vec::new(),
             keys_held: Vec::new(),
             access: Default::default(),
             access_built: 0,
@@ -458,6 +470,9 @@ impl Core {
 
     fn route_input(&mut self, ev: InputEvent) -> Vec<UiEvent> {
         let mut out = std::mem::take(&mut self.pending);
+        // Chrome commands say which window they are about, and a hit
+        // region does not know: the interaction store reads it from here.
+        self.interaction.window = self.env.window.id;
         match ev {
             InputEvent::Scroll(delta) => {
                 // Wheel up (positive y) reveals earlier content: offset decreases.
@@ -1334,9 +1349,10 @@ impl Core {
             self.interaction.sound_requests.push(sound);
         }
         match (window, payload) {
-            (Some(crate::window::WindowRole::Button(b)), _) => {
-                self.interaction.window_commands.push(b.command())
-            }
+            (Some(crate::window::WindowRole::Button(b)), _) => self
+                .interaction
+                .window_commands
+                .push(b.command(self.env.window.id)),
             (None, Some(payload)) => out.push(UiEvent {
                 origin,
                 window: WindowId::MAIN,
@@ -1966,6 +1982,175 @@ impl Core {
         &self.declared_focus
     }
 
+    // -- Declared windows ---------------------------------------------------
+    // `docs/adr/0004-multi-window.md`, decisions 4-6: a window's existence
+    // is declared the way a title is, the session diffs the union of what
+    // every live window's frame declared, and the diff's `Open` / `Close`
+    // go out through the same queue chrome commands do.
+
+    /// Declares that a window named `name` exists this frame.
+    ///
+    /// The window opens on the first frame any core declares it — that
+    /// frame's `finish_frame` queues a [`crate::WindowCommand::Open`] with
+    /// the id the core assigned and raises `{kind:"window",
+    /// phase:"opened", name, id}` — and closes, with a `Close` and a
+    /// `phase:"closed"`, on the first frame none does. Declared every
+    /// frame it costs nothing after the first.
+    ///
+    /// `config` is read on that opening edge and never again: re-declaring
+    /// a live window at another size changes nothing, because the user
+    /// owns its geometry once it exists. Where two declarations of one
+    /// name disagree on that edge, the lowest declaring window's first
+    /// declaration wins and [`crate::diag::DUPLICATE_WINDOW_CONFIG`]
+    /// says so. A window the user closed (see [`Self::window_closed`])
+    /// does not reopen while it is still declared — the declaration has
+    /// to stop and start again — and keeps raising
+    /// [`crate::diag::WINDOW_DECLARED_WHILE_CLOSED`] until it does.
+    /// `"main"` names the window the launcher opened and is always live.
+    pub fn declare_window(&mut self, name: &str, config: WindowConfig) {
+        if let Some(d) = self.declared_windows.iter_mut().find(|d| &*d.name == name) {
+            // First declaration wins within a frame; a disagreement is
+            // remembered for the opening edge to report.
+            d.conflict |= d.config != config;
+            return;
+        }
+        self.declared_windows.push(WindowDecl {
+            name: Rc::from(name),
+            config,
+            origin: self.origin,
+            conflict: false,
+        });
+    }
+
+    /// The windows declared while the current frame was built, for the
+    /// scene corpus's coverage derivation: a declaration leaves no node.
+    pub(crate) fn declared_windows(&self) -> &[WindowDecl] {
+        &self.declared_windows
+    }
+
+    /// The name of the window this core draws: `"main"` for
+    /// `WindowId::MAIN`, else the name the declaration that opened
+    /// `env.window.id` used. A driver that gave a core an id the session
+    /// never opened gets the id spelled out, so the answer is never empty.
+    pub fn window_name(&self) -> Rc<str> {
+        let id = self.env.window.id;
+        if id == WindowId::MAIN {
+            return Rc::from(MAIN_WINDOW_NAME);
+        }
+        self.session
+            .state()
+            .windows
+            .name_of(id)
+            .unwrap_or_else(|| Rc::from(format!("window-{}", id.0).as_str()))
+    }
+
+    /// Every window of the session that is open right now — main first,
+    /// then in the order they opened — as `(id, name)`. What the
+    /// declaration diff has asked for, not what the driver has shown:
+    /// the two agree once the driver drains its commands.
+    pub fn windows(&self) -> Vec<(WindowId, Rc<str>)> {
+        self.session.state().windows.live()
+    }
+
+    /// The driver reports that the OS closed window `id` — its close
+    /// button, a keyboard shortcut, the window manager. The window is gone
+    /// and stays gone while its name is still declared (the app has to stop
+    /// declaring it and start again to reopen it; see
+    /// [`Self::declare_window`]); its own declarations leave the union, so
+    /// whatever only it declared closes too. Raises `{kind:"window",
+    /// phase:"closed", name, id}` for the app, pending like a resize.
+    /// Nothing happens for the main window (closing it ends the app) or
+    /// for a window the diff already closed.
+    pub fn window_closed(&mut self, id: WindowId) {
+        let mut changes = Vec::new();
+        let name = {
+            let sess = &mut *self.session.state();
+            let Some(name) = sess.windows.os_closed(id) else {
+                return;
+            };
+            sess.windows.diff(&mut changes);
+            name
+        };
+        self.push_window_event("closed", &name, id);
+        self.apply_window_changes(changes);
+    }
+
+    /// Hands this frame's declarations to the session and takes back what
+    /// the union's diff decided. Runs at `finish_frame`; skipped whole when
+    /// this frame declared what the last one did and no window is sitting
+    /// closed-but-declared, which is every frame of a single-window app.
+    fn sync_windows(&mut self) {
+        let changed = self.declared_windows != self.declared_windows_last;
+        let mut changes = Vec::new();
+        let mut still_closed: Vec<Rc<str>> = Vec::new();
+        {
+            let sess = &mut *self.session.state();
+            let reg = &mut sess.windows;
+            if !changed && !reg.any_closed() {
+                return;
+            }
+            if changed {
+                reg.set_slot(self.env.window.id, &self.declared_windows);
+                reg.diff(&mut changes);
+            }
+            still_closed.extend(reg.closed_among(&self.declared_windows));
+        }
+        for name in still_closed {
+            self.diag
+                .raise(crate::diag::window_declared_while_closed(&name));
+        }
+        self.apply_window_changes(changes);
+    }
+
+    /// Turns the diff's decisions into what a driver and an app see: a
+    /// command in the queue, a `{kind:"window"}` event, and the conflict
+    /// warning where the opening edge found one.
+    fn apply_window_changes(&mut self, changes: Vec<WindowChange>) {
+        for change in changes {
+            match change {
+                WindowChange::Opened {
+                    id,
+                    name,
+                    origin,
+                    config,
+                    conflict,
+                } => {
+                    self.interaction
+                        .window_commands
+                        .push(crate::window::WindowCommand::Open { id, origin, config });
+                    self.push_window_event("opened", &name, id);
+                    if conflict {
+                        self.diag.raise(crate::diag::duplicate_window_config(&name));
+                    }
+                }
+                WindowChange::Closed { id, name } => {
+                    self.interaction
+                        .window_commands
+                        .push(crate::window::WindowCommand::Close(id));
+                    self.push_window_event("closed", &name, id);
+                }
+            }
+        }
+    }
+
+    /// `{kind:"window", phase, name, id}` on the root, pending for the
+    /// driver to route after the frame (or with the next input). `id` is
+    /// in the payload because `UiEvent::window` says which core reported
+    /// it, and the diff runs on whichever core finished its frame.
+    fn push_window_event(&mut self, phase: &str, name: &str, id: WindowId) {
+        self.pending.push(UiEvent {
+            origin: OriginId::HOST,
+            window: WindowId::MAIN,
+            key: Key::ROOT,
+            payload: Value::map([
+                ("kind", Value::str("window")),
+                ("phase", Value::str(phase)),
+                ("name", Value::str(name)),
+                ("id", Value::Int(id.0 as i64)),
+            ]),
+        });
+    }
+
     /// Queues a window command as if chrome had produced it, so apps can
     /// close/minimize/maximize from a keymap or command line. Drained by
     /// the frame driver with the rest.
@@ -2231,6 +2416,10 @@ impl Core {
         // compared against (see `set_key_focus`).
         std::mem::swap(&mut self.declared_focus, &mut self.declared_focus_last);
         self.declared_focus.clear();
+        // And the window declarations, which `finish_frame` diffs the same
+        // way (see `declare_window`).
+        std::mem::swap(&mut self.declared_windows, &mut self.declared_windows_last);
+        self.declared_windows.clear();
         // A frame that declared an `exit` may be the last one some node is
         // ever seen in, so it is kept whole: the two tree buffers swap
         // roles instead of one being cleared, which costs an allocation
@@ -2702,6 +2891,9 @@ impl Core {
         }
         self.diag
             .check(&self.tree, &self.text, &self.edit, self.frame_no);
+        // The declared window set, diffed against the session's: a frame
+        // that declared a new name queues its `Open` here.
+        self.sync_windows();
         // The frame's modal scope, and the focus it moves: emission reads
         // it (everything outside is inert) and so does the Tab ring.
         self.modal = if self.any_modal {

@@ -100,6 +100,7 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `size` (text) | `size` | `KuiTextStyle.size` | Font size in logical px; the text style is constructed from it, so declare it for the other style props to apply at that size. |
 | `title` (root box only) | `window_title` (root table) | `kui_window_title` | Declares the window title for this frame; the driver diffs and applies. |
 | `tooltip="hint"` | `tooltip = "hint"` | `KuiSpec.tooltip` (`kui_tooltip` / `kui_tooltip_with` draw a hint that is not hover-gated) | Floats a hint below the node while hovered. All three effects — hover tracking, the accessible description, and the float itself — come from `PropsOut::apply_tooltip` / `NodeSpec::apply_tooltip`, so no frontend can implement two of them. |
+| `windows={[{ name, width?, height?, activates? }]}` (root box only; `windows: (model) => [...]` in the loop config) | `windows = { { name=, width=, height=, activates= } }` (root table) | `kui_window_declare` | Declares which windows exist this frame, by stable name (`docs/adr/0004-multi-window.md`). A window opens on the first frame any window's frame declares it — its config is read then and never again, since the user owns its geometry once it exists — and closes on the first frame none does. The driver drains the `Open` / `Close` that result, and the app sees `{kind:"window", phase, name, id}`. A window the user closed does not reopen while it is still declared: stop declaring it, then declare it again. |
 
 ## Elements
 
@@ -134,6 +135,7 @@ one field. The payload shapes:
 | hover | `{ kind: "hover", phase: "enter" \| "leave", tag }` | The pointer entered or left an `onHover` node — also when a new frame moved it under a still cursor. |
 | layout | `{ kind: "layout", x, y, w, h, parent: { x, y, w, h }, tag }` | The rect layout gave an `onLayout` node (logical px, viewport coords, after scrolling and easing): on its first frame and whenever it changes, never on a frame that left it alone. |
 | resize | `{ kind: "resize", width, height, scale }` | The viewport changed size or DPI (logical px, delivered to the host on the root); `KuiWindow.size()` queries the same numbers. |
+| window | `{ kind: "window", phase: "opened" \| "closed", name, id }` | A declared window opened (the diff queued its `Open`) or closed — because nothing declares it any more, or because the user closed it, in which case it stays closed while still declared: stop declaring `name`, then declare it again to reopen. `id` is what its events carry; the event itself is on the root of whichever window's frame noticed. |
 | modifiers | `{ kind: "modifiers", shift, ctrl, alt, super }` | The physical modifier state changed (delivered to the host on the root). |
 | changed / submit | `{ kind: "changed" }` / `{ kind: "submit" }`, with the editor's key on the event | An editor's text changed / Enter in a single-line editor. |
 | sound | `{ kind: "sound", phase: "ended", playback, tag }` | A tagged playback (`play(id, { tag })` or `<audio tag>`) finished on its own — never when something stopped it. |

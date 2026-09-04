@@ -814,7 +814,7 @@ impl App for Splitmux {
         // Closing the last pane empties `tabs`, so don't build a frame from
         // them — just ask the runner to close and emit nothing.
         if self.quit {
-            ui.window_command(WindowCommand::Close);
+            ui.window_command(WindowCommand::Close(ui.env().window.id));
             return;
         }
         let pal = self.pal;

@@ -437,7 +437,7 @@ static int surface(void) {
     }
     kui_set_diagnostics(ui, true);
     kui_env_set(ui, 120.0f, true);
-    kui_env_set_window(ui, true, false, false, 78, 28);
+    kui_env_set_window(ui, KUI_WINDOW_MAIN, true, false, false, 78, 28);
     kui_set_subpixel_text(ui, false);
 
     /* Measurement works before the first frame. */
@@ -615,8 +615,10 @@ static int surface(void) {
     kui_sound_remove(ui, k.sound);
 
     /* Window chrome turns clicks into commands rather than events. */
-    uint32_t wcmds[8];
-    kui_take_window_commands(ui, wcmds, sizeof wcmds / sizeof wcmds[0]);
+    {
+        KuiWindowCommand cmd = KUI_WINDOW_COMMAND_INIT;
+        while (kui_take_window_command(ui, &cmd)) {}
+    }
 
     /* What the size handshake buys, standing in for a host that predates
      * it: a reservation the library cannot recognise is refused outright
@@ -710,6 +712,83 @@ static int surface(void) {
                 (int)warnings[i].message.len, (const char *)warnings[i].message.ptr);
     }
     check(warned == 0, "the surface view raises no diagnostics");
+
+    /* Declared windows (docs/adr/0004-multi-window.md): a frame that names
+     * one gets a KUI_CMD_OPEN back from the same drain the chrome commands
+     * use, carrying the id its events will say and the config it was
+     * declared with; the app hears about it as data. Reporting the OS
+     * close keeps it closed while it is still declared - a declaration
+     * reopens a window only when it starts - and the drain's size
+     * handshake refuses a reservation it cannot fill, leaving the command
+     * queued, exactly as kui_poll_event does. */
+    {
+        check(kui_ctx_window(ui) == KUI_WINDOW_MAIN, "this context draws the main window");
+        KuiStr name;
+        check(kui_ctx_window_name(ui, &name) && name.len == 4 && memcmp(name.ptr, "main", 4) == 0,
+              "and is named for it");
+        KuiWindowConfig cfg = KUI_WINDOW_CONFIG_INIT;
+        cfg.width = 400;
+        cfg.height = 300;
+        kui_frame_begin(ui, 320, 240, 1);
+        kui_window_declare(ui, KUI_STR("palette"), &cfg);
+        kui_frame_finish(ui);
+        KuiWindowCommand shortcmd = KUI_WINDOW_COMMAND_INIT;
+        shortcmd.size = 4;
+        shortcmd.kind = 0xdead;
+        check(!kui_take_window_command(ui, &shortcmd) && shortcmd.kind == 0xdead,
+              "a short command reservation is refused and left untouched");
+        KuiWindowCommand cmd = KUI_WINDOW_COMMAND_INIT;
+        check(kui_take_window_command(ui, &cmd) && cmd.kind == KUI_CMD_OPEN && cmd.window == 1
+                  && cmd.origin == 0 && cmd.config.width == 400 && cmd.config.height == 300
+                  && cmd.config.activates == 1,
+              "the declared window opens with its config, and the refusal kept it queued");
+        check(!kui_take_window_command(ui, &cmd), "one command for one window");
+        int opened = 0, closed = 0;
+        KuiEvent wev = KUI_EVENT_INIT;
+        while (kui_poll_event(ui, &wev)) {
+            const KuiValue *kind = wev.payload ? kui_value_get(wev.payload, KUI_STR("kind")) : NULL;
+            const KuiValue *phase = wev.payload ? kui_value_get(wev.payload, KUI_STR("phase")) : NULL;
+            KuiStr ks, ps;
+            if (!kind || !kui_value_as_str(kind, &ks) || ks.len != 6 || memcmp(ks.ptr, "window", 6)) continue;
+            if (!phase || !kui_value_as_str(phase, &ps)) continue;
+            if (ps.len == 6 && memcmp(ps.ptr, "opened", 6) == 0) opened++;
+            if (ps.len == 6 && memcmp(ps.ptr, "closed", 6) == 0) closed++;
+        }
+        check(opened == 1 && closed == 0, "the app hears the window open");
+        kui_window_closed(ui, 1);
+        kui_frame_begin(ui, 320, 240, 1);
+        kui_window_declare(ui, KUI_STR("palette"), &cfg);
+        kui_frame_finish(ui);
+        check(!kui_take_window_command(ui, &cmd), "a closed window still declared does not reopen");
+        while (kui_poll_event(ui, &wev)) {
+            const KuiValue *phase = wev.payload ? kui_value_get(wev.payload, KUI_STR("phase")) : NULL;
+            KuiStr ps;
+            if (phase && kui_value_as_str(phase, &ps) && ps.len == 6 && memcmp(ps.ptr, "closed", 6) == 0) closed++;
+        }
+        check(closed == 1, "and hears it close");
+        size_t nw = kui_take_warnings(ui, warnings, sizeof warnings / sizeof warnings[0]);
+        int trapped = 0;
+        for (size_t i = 0; i < nw; i++) {
+            if (warnings[i].code.len == 28
+                && memcmp(warnings[i].code.ptr, "window-declared-while-closed", 28) == 0) trapped++;
+        }
+        check(trapped == 1, "the still-declared window is a named diagnostic");
+        /* Lapse, then declare again: a new window, with a new id. */
+        kui_frame_begin(ui, 320, 240, 1);
+        kui_frame_finish(ui);
+        kui_frame_begin(ui, 320, 240, 1);
+        kui_window_declare(ui, KUI_STR("palette"), NULL);
+        kui_frame_finish(ui);
+        check(kui_take_window_command(ui, &cmd) && cmd.kind == KUI_CMD_OPEN && cmd.window == 2
+                  && cmd.config.width == 640,
+              "a declaration that starts again opens anew, at the defaults");
+        while (kui_poll_event(ui, &wev)) {}
+        kui_frame_begin(ui, 320, 240, 1);
+        kui_frame_finish(ui);
+        check(kui_take_window_command(ui, &cmd) && cmd.kind == KUI_CMD_CLOSE && cmd.window == 2,
+              "and closes when it stops");
+        while (kui_poll_event(ui, &wev)) {}
+    }
 
     kui_image_remove(ui, k.image);
     kui_ctx_free(ui);
@@ -1283,6 +1362,30 @@ typedef struct ConfScene {
     void (*build)(KuiCtx *ui, const Fixtures *f, int phase);
 } ConfScene;
 
+/* conformance::build_windows: the declaration comes and goes with the
+ * phase; the tree only says which. Phase 0 declares `palette` twice,
+ * disagreeing about the size, so the first wins and the second warns. */
+static void conf_windows(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    KuiWindowConfig cfg = KUI_WINDOW_CONFIG_INIT;
+    cfg.width = 400;
+    cfg.height = 300;
+    if (phase == 0 || phase == 2) kui_window_declare(ui, KUI_STR("palette"), &cfg);
+    if (phase == 0) {
+        cfg.width = 500;
+        cfg.height = 500;
+        kui_window_declare(ui, KUI_STR("palette"), &cfg);
+    }
+    KuiSpec box = {0};
+    box.pad_l = box.pad_r = box.pad_t = box.pad_b = 8;
+    box.bg = 0x14161eff;
+    kui_open(ui, &box, NULL);
+    KuiTextStyle st = {0};
+    st.size = 12;
+    kui_text(ui, KUI_STR(phase == 0 || phase == 2 ? "open" : "closed"), &st);
+    kui_close(ui);
+}
+
 /* One entry per scene of conformance::SCENES; a scene in the reference with
  * no entry here fails the run rather than being skipped. */
 static const ConfScene CONF_SCENES[] = {
@@ -1301,6 +1404,7 @@ static const ConfScene CONF_SCENES[] = {
     {"modal", conf_modal},
     {"composite", conf_composite},
     {"exit", conf_exit},
+    {"windows", conf_windows},
 };
 
 /* -- driving one scene --------------------------------------------------- */
@@ -1325,6 +1429,26 @@ typedef struct ConfEnv {
     int set;
     int custom_chrome, maximized, fullscreen, controls_w, controls_h;
 } ConfEnv;
+
+/* Drains the window commands into `cmds`, one line each, the way
+ * conformance::write_command spells them. */
+static void conf_drain_cmds(KuiCtx *ctx, Rep *cmds) {
+    KuiWindowCommand c = KUI_WINDOW_COMMAND_INIT;
+    while (kui_take_window_command(ctx, &c)) {
+        switch (c.kind) {
+        case KUI_CMD_START_DRAG: repf(cmds, "cmd drag %u\n", c.window); break;
+        case KUI_CMD_CLOSE: repf(cmds, "cmd close %u\n", c.window); break;
+        case KUI_CMD_MINIMIZE: repf(cmds, "cmd minimize %u\n", c.window); break;
+        case KUI_CMD_TOGGLE_MAXIMIZE: repf(cmds, "cmd maximize %u\n", c.window); break;
+        case KUI_CMD_OPEN:
+            repf(cmds, "cmd open %u %u %u %d %d %u\n", c.window, (unsigned)c.origin,
+                 c.config.kind, (int)c.config.width, (int)c.config.height,
+                 c.config.activates ? 1u : 0u);
+            break;
+        default: repf(cmds, "cmd ? %u\n", c.window); break;
+        }
+    }
+}
 
 static void conf_apply(KuiCtx *ctx, const ConfStep *s) {
     if (strcmp(s->kind, "cursor") == 0) kui_input_cursor(ctx, (float)s->a, (float)s->b);
@@ -1380,33 +1504,41 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
     KuiCtx *ctx = kui_ctx_new();
     kui_set_diagnostics(ctx, true);
     if (env->set) {
-        kui_env_set_window(ctx, env->custom_chrome != 0, env->maximized != 0,
-                           env->fullscreen != 0, (float)env->controls_w,
-                           (float)env->controls_h);
+        kui_env_set_window(ctx, KUI_WINDOW_MAIN, env->custom_chrome != 0,
+                           env->maximized != 0, env->fullscreen != 0,
+                           (float)env->controls_w, (float)env->controls_h);
     }
     Fixtures f = conf_fixtures(ctx);
 
-    Rep events;
+    Rep events, cmds;
     rep_init(&events);
+    rep_init(&cmds);
     int phase = 0;
     for (int i = 0; i <= nsteps; i++) {
         if (i > 0) {
-            /* Two steps are not input: one moves the clock the transitions
-             * read, the other is the view changing its mind. */
+            /* Three steps are not input: one moves the clock the
+             * transitions read, one is the view changing its mind, one is
+             * the OS closing a window. */
             const ConfStep *s = &steps[i - 1];
             if (strcmp(s->kind, "phase") == 0) {
                 phase = s->a;
             } else if (strcmp(s->kind, "time") == 0) {
                 kui_set_time(ctx, s->a / 1000.0);
+            } else if (strcmp(s->kind, "windowclosed") == 0) {
+                kui_window_closed(ctx, (uint32_t)s->a);
+                conf_drain(ctx, &events);
+                conf_drain_cmds(ctx, &cmds);
             } else {
                 conf_apply(ctx, s);
                 conf_drain(ctx, &events);
+                conf_drain_cmds(ctx, &cmds);
             }
         }
         kui_frame_begin(ctx, 320, 240, 1);
         scene->build(ctx, &f, phase);
         kui_frame_finish(ctx);
         conf_drain(ctx, &events);
+        conf_drain_cmds(ctx, &cmds);
     }
 
     repf(out, "scene %s\n", scene->name);
@@ -1485,6 +1617,8 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
 
     repf(out, "%s", events.buf);
     rep_free(&events);
+    repf(out, "%s", cmds.buf);
+    rep_free(&cmds);
 
     KuiWarning warnings[32];
     size_t nw = kui_take_warnings(ctx, warnings, 32);
