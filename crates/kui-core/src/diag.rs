@@ -65,6 +65,11 @@ pub const MODAL_BEHIND_CONTENT: &str = "modal-behind-content";
 /// computable name: no `label`, and no text inside it. Icon buttons and
 /// editors need a `label`.
 pub const CONTROL_WITHOUT_NAME: &str = "control-without-name";
+/// `wrapChildren` on a container that cannot break lines: a column, or a
+/// row whose main axis scrolls. Both lay out exactly as if the flag were
+/// absent, which reads as "wrapping is broken"; see `LayoutSpec::wrap` for
+/// why a column cannot have it.
+pub const WRAP_IGNORED: &str = "wrap-ignored";
 
 /// Pending warnings are capped so a host that never drains them cannot
 /// grow the queue without bound.
@@ -126,6 +131,7 @@ impl Diagnostics {
             return;
         }
         self.check_grow_weights(tree);
+        self.check_wrap(tree);
         self.check_auto_keyed_transitions(tree);
         self.check_duplicate_keys(tree);
         self.check_modal(tree);
@@ -258,6 +264,29 @@ impl Diagnostics {
                     )
                 });
             }
+        }
+    }
+
+    /// `wrapChildren` where nothing can break: see [`WRAP_IGNORED`].
+    fn check_wrap(&mut self, tree: &Tree) {
+        for i in 0..tree.len() {
+            let layout = tree.specs[i].layout;
+            if !layout.wrap {
+                continue;
+            }
+            let reason = if layout.dir != Dir::Row {
+                "a column's main size is not resolved until after the pass that would have to \
+                 sum the lines, so only a row wraps (turn the container into a row, or give the \
+                 items a fixed size and lay them out yourself)"
+            } else if layout.scroll_x {
+                "a scrollX row's main axis is unbounded, and an axis with no bound has nothing \
+                 to break against (drop scrollX, or drop wrapChildren and let it scroll)"
+            } else {
+                continue;
+            };
+            self.warn(WRAP_IGNORED, tree.keys[i], || {
+                format!("wrapChildren has no effect here: {reason}")
+            });
         }
     }
 

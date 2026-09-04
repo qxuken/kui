@@ -18,6 +18,7 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `checked` | `checked` | `checked` | boolean | The on state of a `checkbox` / `radio` / `switch` role. |
 | `clickSound` | `click_sound` | `click_sound` | resource handle | A registered sound (addSound) played when the node is clicked; implies hover tracking. |
 | `crossAlign` | `cross_align` | `cross_align` | `start` \\| `center` \\| `end` | Child alignment across the main axis. |
+| `crossGap` | `cross_gap` | `cross_gap` | number | Space between wrap lines, across the main axis (`gap` stays the space along it). |
 | `cursor` | `cursor` | `cursor` (`KUI_CURSOR_*`) | `default` \\| `text` \\| `pointer` \\| `grab` \\| `grabbing` \\| `notAllowed` \\| `ewResize` \\| `nsResize` \\| `nwseResize` \\| `neswResize` | Overrides the pointer shape over this node. Unset, the core derives one from what the node does — an editor is `text`, an `onClick` or `focusable` node `pointer`, an `onDrag` node `grab` (`grabbing` while dragging), window chrome and a plain box `default` — so this is for what that cannot know: a splitter (`ewResize` / `nsResize`), a `disabled` control that says `notAllowed`. |
 | `delay` | `delay` | `delay_ms` | number | Holds the `keyframes` cycle back by this many ms (CSS `animation-delay`); siblings with different delays run out of phase. |
 | `disabled` | `disabled` | `disabled` | boolean | Inert: no click, drag or key sink, no hover / pressed / focus background, skipped by Tab, reported disabled to assistive technology; hover tracking stays so a `tooltip` can say why. |
@@ -69,6 +70,7 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `valueNow` | `value_now` | `value_now` with `KUI_VALUE_NOW` in `value_set` | number | A `slider` role's current value (the drawing stays yours; this is what assistive technology reads). |
 | `width` | `width` | `width` (KuiSizing) | sizing (`number` \\| `"fit"` \\| `"grow"` \\| `"N%"`) | Main-axis size: px \| "fit" \| "grow" \| "N%". |
 | `window` | `window` | `window_role` (`KUI_WINDOW_*`) | `drag` \\| `close` \\| `minimize` \\| `maximize` | Window-chrome role: interactions become window commands, not events. |
+| `wrapChildren` | `wrap_children` | `wrap_children` | boolean | Children that don't fit the main axis start a new line instead of overflowing or shrinking. Rows only (a column is ignored, with a warning), and never on a scrollX row. |
 
 ## Text props
 

@@ -815,6 +815,28 @@ static void conf_layout(KuiCtx *ui, const Fixtures *f) {
     kui_close(ui);
 }
 
+/* conformance::WRAP_BOXES: 92px of content and a 6px gap put 30 + 40 on the
+ * first line and 50 + 20 on the second. */
+static void conf_wrap(KuiCtx *ui, const Fixtures *f) {
+    (void)f;
+    static const float boxes[4][2] = {{30, 12}, {40, 16}, {50, 20}, {20, 24}};
+    KuiSpec row = {
+        .dir = KUI_ROW, .wrap_children = 1,
+        .pad_l = 4, .pad_r = 4, .pad_t = 4, .pad_b = 4,
+        .gap = 6, .cross_gap = 10,
+        .width = {KUI_FIXED, 100}, .bg = 0x101018ff,
+    };
+    kui_open(ui, &row, NULL);
+    for (int i = 0; i < 4; i++) {
+        KuiSpec item = {.width = {KUI_FIXED, boxes[i][0]},
+                        .height = {KUI_FIXED, boxes[i][1]},
+                        .bg = 0x30344aff};
+        kui_open(ui, &item, NULL);
+        kui_close(ui);
+    }
+    kui_close(ui);
+}
+
 static void conf_overflow(KuiCtx *ui, const Fixtures *f) {
     (void)f;
     KuiSpec outer = {.pad_l = 4, .pad_r = 4, .pad_t = 4, .pad_b = 4,
@@ -939,6 +961,7 @@ typedef struct ConfScene {
  * no entry here fails the run rather than being skipped. */
 static const ConfScene CONF_SCENES[] = {
     {"layout", conf_layout},
+    {"wrap", conf_wrap},
     {"overflow", conf_overflow},
     {"float", conf_float},
     {"tooltip", conf_tooltip},

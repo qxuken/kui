@@ -115,6 +115,57 @@ fn frame_10k_rects_with_shadows_and_opacity(bencher: divan::Bencher) {
     bencher.bench_local(|| frame(&mut core));
 }
 
+/// The wrapping row at scale: 10k chips of varying width in 100 rows that
+/// each break onto several lines. The solver is the hot path, and wrapping
+/// adds a break pass plus per-line grow/align walks on top of the flat
+/// ones, so this is the shape that would show it — paired with the same
+/// tree not wrapping (`frame_10k_chips_unwrapped`) so the difference is
+/// the wrapping and not the chips.
+fn chips(ui: &mut Ui<'_>, wrap: bool) {
+    ui.configure_root(NodeSpec::column().fill().pad(8.0).gap(4.0));
+    for r in 0..100 {
+        let mut row = NodeSpec::row().width(Sizing::Grow(1.0)).gap(4.0);
+        if wrap {
+            row = row.wrap().cross_gap(4.0);
+        }
+        ui.with(row, |ui| {
+            for c in 0..100 {
+                ui.with(
+                    NodeSpec::column()
+                        // 40..=110px: several lines per row at 1920 wide.
+                        .width(Sizing::Fixed(40.0 + ((r * 100 + c) % 8) as f32 * 10.0))
+                        .height(Sizing::Fixed(14.0))
+                        .bg(Color::rgb8((r % 255) as u8, (c % 255) as u8, 128))
+                        .radius(2.0),
+                    |_| {},
+                );
+            }
+        });
+    }
+}
+
+fn chip_frame(core: &mut Core, wrap: bool) -> usize {
+    let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
+    chips(&mut ui, wrap);
+    ui.finish();
+    let (dl, _) = core.output();
+    dl.quads.len()
+}
+
+#[divan::bench]
+fn frame_10k_chips_wrapped(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    chip_frame(&mut core, true);
+    bencher.bench_local(|| chip_frame(&mut core, true));
+}
+
+#[divan::bench]
+fn frame_10k_chips_unwrapped(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    chip_frame(&mut core, false);
+    bencher.bench_local(|| chip_frame(&mut core, false));
+}
+
 #[divan::bench]
 fn deep_nesting_64_levels(bencher: divan::Bencher) {
     fn nest(ui: &mut Ui<'_>, depth: usize) {

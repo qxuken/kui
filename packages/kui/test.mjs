@@ -965,6 +965,9 @@ const CONFORMANCE =
  *  Every scene's top level is a root `<box>` sized exactly like the core's
  *  implicit root, so it configures the root without changing it — which is
  *  what leaves the tree below it identical to the reference's. */
+/** `conformance::WRAP_BOXES`, as (width, height). */
+const WRAP_BOXES = [[30, 12], [40, 16], [50, 20], [20, 24]];
+
 const SCENE_TREES = {
   layout: () =>
     root({}, [
@@ -989,6 +992,13 @@ const SCENE_TREES = {
           { size: 13 },
         ),
       ]),
+    ]),
+  wrap: () =>
+    root({}, [
+      box(
+        { dir: 'row', wrapChildren: true, pad: 4, gap: 6, crossGap: 10, width: 100, bg: '#101018' },
+        WRAP_BOXES.map(([w, h]) => box({ width: w, height: h, bg: '#30344a' })),
+      ),
     ]),
   overflow: () =>
     root({}, [

@@ -444,6 +444,23 @@ grow heights → · positions →. Sizing: `Fit`, `Grow(f)`, `Fixed(px)`,
 gives "track the window, cap at reading width" and text rewraps on resize);
 row/column direction, padding, gap, start/center/end alignment on both axes.
 
+Wrapping: `.wrap()` (`wrapChildren` in JSX, `wrap_children` in Lua) breaks a
+row's children onto more lines when they don't fit the main axis, with
+`.cross_gap()` between the lines — a tag list, a chip toolbar, a button row
+that reflows when the window narrows. A row that happens to fit lays out
+identically to one that never wraps, node for node, so the flag is safe to
+leave on: main alignment places each line the way it placed the single run,
+and the lines share the container's leftover cross space equally (CSS's
+`align-content: stretch`), which with one line composes back into the plain
+placement. Wrapping and shrinking are two answers to the same overflow, and
+wrapping goes first — a child that can move to the next line moves rather
+than being squeezed, and only a child too wide to fit a line on its own
+falls through to the shrink pass, on that line alone. Rows only: breaking
+needs a definite main size, and the pass order gives a row one (its width is
+final before its height is measured) where a column's arrives two passes too
+late; `wrapChildren` on a column, or on a `scroll_x` row, lays out as if it
+were absent and raises a `wrap-ignored` warning.
+
 Out-of-flow: `.float(FloatConfig)` takes a node out of flex flow — it doesn't
 consume space in its parent, positions by attach points against its parent's
 rect or the viewport (plus an offset), sizes Grow/Percent against that anchor,
@@ -516,6 +533,13 @@ caches — full frame: build + layout + emit):
 | 10k plain rects | ~510 µs |
 | 10k rects + 1.2k texts + 2.5k hit regions | ~740 µs |
 | 16×64-deep nesting chains | ~58 µs |
+
+Wrapping costs what it does (`frame_10k_chips_wrapped` /
+`frame_10k_chips_unwrapped`): 10k chips in 100 rows that each break into
+several lines run about **1.16×** the same tree laid out in one line
+per row — the worst case, since every row wraps. A row that does not wrap
+pays nothing: the break, the per-line grow and the per-line alignment are
+all behind the flag.
 
 Long lists (`list_10k_rows_naive` / `list_10k_rows_virtual` /
 `list_100k_rows_virtual`): a 10k-row scrolled list, held at its middle so
@@ -631,6 +655,12 @@ paint prop's worth of work — use an image or stack solids), no inset or multip
 opacity is a per-quad alpha multiply rather than an offscreen composite, so overlapping pieces
 of one faded subtree show their seams. Clipping is rect-only, so a rounded scroll container
 does not round its children's corners.
+Layout wraps rows and not columns, for the pass-order reason above, and stops there:
+there is no `align-content` (lines always share the leftover cross space equally), no
+`space-between` / `around` / `evenly` on either axis (a `grow` spacer node covers the first
+of the three), no baseline cross-alignment — two text sizes on one row align by box, so
+they sit on different lines — and no aspect ratio, so "square" or "16:9" needs one of the
+two dimensions known.
 Layout queries stop at the node: `measure_text` and `on_layout` give whole-string and whole-node
 rects, not the boxes of lines or glyphs inside a paragraph. Accessibility, keyboard focus and
 modality are data (ADR 0001, 0002 and 0003); arrow keys inside radio groups, tab lists and lists,

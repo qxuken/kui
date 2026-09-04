@@ -128,6 +128,8 @@ export interface GeneratedSpecProps {
   clickSound?: string;
   /** Child alignment across the main axis. */
   crossAlign?: 'start' | 'center' | 'end';
+  /** Space between wrap lines, across the main axis (`gap` stays the space along it). */
+  crossGap?: number;
   /** Overrides the pointer shape over this node. Unset, the core derives one from what the node does — an editor is `text`, an `onClick` or `focusable` node `pointer`, an `onDrag` node `grab` (`grabbing` while dragging), window chrome and a plain box `default` — so this is for what that cannot know: a splitter (`ewResize` / `nsResize`), a `disabled` control that says `notAllowed`. */
   cursor?: 'default' | 'text' | 'pointer' | 'grab' | 'grabbing' | 'notAllowed' | 'ewResize' | 'nsResize' | 'nwseResize' | 'neswResize';
   /** Holds the `keyframes` cycle back by this many ms (CSS `animation-delay`); siblings with different delays run out of phase. */
@@ -230,6 +232,8 @@ export interface GeneratedSpecProps {
   width?: SizingProp;
   /** Window-chrome role: interactions become window commands, not events. */
   window?: 'drag' | 'close' | 'minimize' | 'maximize';
+  /** Children that don't fit the main axis start a new line instead of overflowing or shrinking. Rows only (a column is ignored, with a warning), and never on a scrollX row. */
+  wrapChildren?: boolean;
 }
 
 export interface GeneratedStyleProps {

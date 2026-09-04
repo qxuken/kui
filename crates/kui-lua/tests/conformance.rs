@@ -30,6 +30,21 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        "wrap" => {
+            let boxes = conformance::WRAP_BOXES
+                .iter()
+                .map(|(w, h)| format!("column {{ width = {w}, height = {h}, bg = 0x30344aff }},"))
+                .collect::<Vec<_>>()
+                .join("\n              ");
+            format!(
+                r#"
+            return row {{ wrap_children = true, pad = 4, gap = 6, cross_gap = 10,
+                         width = 100, bg = 0x101018ff,
+              {boxes}
+            }}
+        "#
+            )
+        }
         "overflow" => {
             let items = conformance::ITEM_KEYS
                 .iter()

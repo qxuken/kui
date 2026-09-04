@@ -331,6 +331,15 @@ typedef struct KuiSpec {
     float shadow_blur;
     float shadow_x, shadow_y;
     float shadow_spread;
+    /* Non-zero: children that do not fit the main-axis content box start a
+     * new line instead of overflowing it (or shrinking to fit) — a tag
+     * list, a chip toolbar, a button row that reflows when the window
+     * narrows. cross_gap is the space between the lines; gap stays the
+     * space between children along one. Rows only: a column, or a row with
+     * KUI_OVERFLOW_SCROLL_X, lays out as if this were 0 and raises a
+     * "wrap-ignored" warning (kui_take_warnings). */
+    uint32_t wrap_children;
+    float cross_gap;
 } KuiSpec;
 
 /* Disclosure state (KuiSpec.expanded): the schema index plus one, so zero

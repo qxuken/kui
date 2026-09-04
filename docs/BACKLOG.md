@@ -635,19 +635,84 @@ fires twice, and filters on `phase == "down"` — one line in each of
 scancodes and left/right modifier identity, so a keymap binds a character
 and not a position on the board.
 
-### `.` C10 — Flex wrapping, and the smaller layout gaps
+### `.` C10 — Flex wrapping — **done (2026-09-04)**
 
-`crates/kui-core/src/layout.rs` has no wrapping; `Align` is Start/Center/End
-only. Missing: **wrapping** (tag lists, chip toolbars, responsive button rows —
-no userland workaround short of measuring everything by hand), **space-between /
-around / evenly** (a grow spacer covers it, so low priority), **baseline
-cross-alignment**, **aspect ratio**.
+Wrapping shipped as two plain schema rows, `wrapChildren` and `crossGap`, so
+all four bindings got it from the table. The name is not `wrap`: that one is
+already the text prop that picks where a line breaks inside a paragraph, and
+the two meet on `<edit>`, which takes container and text props at once.
 
-Wrapping first, the rest as follow-ups. It changes the passes structurally —
-children group into lines before main-axis distribution, and the cross-axis fit
-becomes a sum of line heights. Read `shrink_axis`'s comment carefully: wrapping
-and shrinking are alternative responses to the same overflow and need a defined
-interaction. Bench it; the solver is the hot path.
+**Rows only, and that is structural rather than unfinished.** Breaking needs a
+definite main size, and the five passes hand a *row* one at exactly the right
+moment — its width is final in pass 2, one pass before the cross-axis fit in
+pass 3 that has to sum the lines. A column is the mirror image and does not
+work: its main size is not resolved until pass 4, two passes *after* the fit
+that would need the lines, and its cross-axis grow (pass 2) would be sizing
+children against a container whose columns do not exist yet. `wrapChildren` on
+a column, or on a `scrollX` row (an unbounded axis has nothing to break
+against), lays out as if it were absent and raises `diag::WRAP_IGNORED` —
+silence there would read as "wrapping is broken". Column wrap wants a sixth
+pass, or a re-measure; C12 carries it.
+
+The two rules worth knowing: **wrapping answers overflow before shrinking
+does**, and greedy breaking guarantees the only line that can still overflow
+holds a single child too wide for the box — so `shrink_axis` grew an
+`only_line` filter and runs on that line alone, instead of squeezing chips that
+are comfortable on other lines. And **lines share the container's leftover
+cross space equally** (CSS's `align-content: stretch`), which is what makes a
+wrapping row that happens to fit on one line lay out *identically* to an
+unwrapped one — `a_row_that_fits_lays_out_exactly_like_an_unwrapped_one`
+asserts exactly that, node for node, so the flag is safe to leave on.
+
+Twenty-one tests in `crates/kui-core/tests/wrap_layout.rs` against a
+deterministic `TextMeasure` stub, a `wrap` scene in the corpus that all four
+bindings reproduce byte for byte, and a bench pair
+(`frame_10k_chips_wrapped` / `_unwrapped`): 1.24 ms against 1.06 ms for 10k
+chips in 100 rows that each break into several lines — the worst case, and the
+same cost as the existing `frame_10k_rects`. Nothing that does not wrap pays.
+
+### `.` C12 — Wrapping a column
+
+C10 shipped rows and says why a column cannot follow in the current pass order.
+Doing it means one of: a sixth pass (break columns after `grow_heights`, then
+re-run the cross-axis fit and grow for wrapping containers only), or making a
+wrapping column's cross size definite by fiat (only `Fixed`/`Grow`/`Percent`
+widths wrap, `Fit` warns). The second is cheap and covers the real case — a
+column with a definite height in a definite-width parent — but leaves
+`width: grow` children inside it sized against the container rather than their
+column, which is the half that actually needs the extra pass.
+
+Nobody has asked for it. Wait for a view that wants it, and let that view say
+which of the two is enough.
+
+### `.` C13 — `space-between` / `around` / `evenly`, and baseline alignment
+
+Two `Align` variants, and neither needs a new pass.
+
+`Align::SpaceBetween` / `SpaceAround` / `SpaceEvenly` on `main_align` change one
+expression in `positions`: today the free space becomes one offset before the
+first child, and these spread it between them instead. A grow spacer already
+covers `space-between` (`<box width="grow"/>` between two children), which is
+why this stayed low priority — but it does not cover `space-around`, and it
+costs a node. With wrapping in, they apply per line, which is what CSS does.
+
+`Align::Baseline` on `cross_align` is the one with a real dependency: a line's
+baseline is the max ascent of its children, and the core does not carry an
+ascent per node — `TextMeasure` returns a `Size`. It needs a third number out
+of measurement (text nodes have one; a container's is its first baseline-y
+child's, and a box with none falls back to its bottom edge, per CSS). Worth it
+for the case it fixes: two text sizes on one row sit on different lines today,
+which is visible in any label-plus-value row.
+
+### `.` C14 — Aspect ratio
+
+"Square", or "16:9", without knowing either dimension. `Sizing::Aspect(f32)` on
+one axis (the other resolves first, then this multiplies it) is the smaller
+change and reads like the rest of `Sizing`; a separate `aspect` clamp applied
+beside `min`/`max` is the more CSS-like one and composes with `Grow`. Images
+already do half of it — a `Fit` height on an `<image>` preserves the intrinsic
+aspect against a final width (`fit_heights`), so the machinery and the pass
+ordering are proven; this generalises it to a declared ratio on any node.
 
 ### `.` C11 — Build multi-window
 
@@ -822,8 +887,11 @@ and what it can delete, and release tooling is neither.
 
 The section is unusually honest about z-index, exit animations, layout-query
 depth, audio and editing scope. That honesty is why the omissions it *doesn't*
-mention read as present: no touch or pen input, no flex wrapping (C10). Add
-them, grouped, in the section's existing tone. (Modal containment was on this
+mention read as present: no touch or pen input. (Flex wrapping was on this
+list until C10 shipped it; what is left of that gap — a column that cannot
+wrap, no `align-content`, no `space-between`, no baseline, no aspect ratio —
+belongs in the section in its place.) Add them, grouped, in the section's
+existing tone. (Modal containment was on this
 list until C1 shipped it; the pointer buttons went on it with C2, which routes
 only the secondary one; cursor shapes came off it with C3, and programmatic
 scrolling with C4. C9 put key releases in the section as a *fixed* line and

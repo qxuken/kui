@@ -109,6 +109,8 @@ pub const P_SHADOW_BLUR: u32 = 71;
 pub const P_SHADOW_X: u32 = 72;
 pub const P_SHADOW_Y: u32 = 73;
 pub const P_SHADOW_SPREAD: u32 = 74;
+pub const P_WRAP_CHILDREN: u32 = 75;
+pub const P_CROSS_GAP: u32 = 76;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -369,6 +371,23 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::F32,
         apply: Apply::SpecF32(|s, v| s.gap(v)),
         doc: "Space between children along the main axis.",
+    },
+    // Not `wrap`: that name is taken, by the text prop that picks where a
+    // line breaks inside one paragraph. One name cannot mean both, and the
+    // two meet on `<edit>`, which takes container and text props at once.
+    PropDef {
+        name: "wrapChildren",
+        id: P_WRAP_CHILDREN,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(NodeSpec::wrap),
+        doc: "Children that don't fit the main axis start a new line instead of overflowing or shrinking. Rows only (a column is ignored, with a warning), and never on a scrollX row.",
+    },
+    PropDef {
+        name: "crossGap",
+        id: P_CROSS_GAP,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.cross_gap(v)),
+        doc: "Space between wrap lines, across the main axis (`gap` stays the space along it).",
     },
     PropDef {
         name: "mainAlign",
