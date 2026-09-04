@@ -28,7 +28,7 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `focusBg` | `focus_bg` | `focus_bg` | color (`#hex` or `0xRRGGBBAA`) | Background while the node holds keyboard-visible focus (moved there by Tab or assistive technology, not a click); replaces the default focus ring. Pressed wins over focus wins over hover; eases with `transition`. |
 | `focusable` | `focusable` | `focusable` | boolean | Reachable by Tab (and focused by a click) without a click payload or a control role — a row that opens on Enter. Editors, key sinks, `onClick` boxes and the control roles are focusable already. |
 | `gap` | `gap` | `gap` | number | Space between children along the main axis. |
-| `height` | `height` | `height` (KuiSizing) | sizing (`number` \\| `"fit"` \\| `"grow"` \\| `"N%"`) | Cross-axis size: px \| "fit" \| "grow" \| "N%". |
+| `height` | `height` | `height` (KuiSizing) | sizing (`number` \\| `"fit"` \\| `"grow"` \\| `"N%"`) | Vertical size: px \| "fit" \| "grow" \| "N%". |
 | `hoverBg` | `hover_bg` | `hover_bg` | color (`#hex` or `0xRRGGBBAA`) | Background while hovered (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`. |
 | `hoverGroup` | `hover_group` | `hover_group` (KuiStr) | string | Nodes sharing a group name show hoverBg/pressedBg together (a split button, a multi-piece shape). |
 | `hoverSound` | `hover_sound` | `hover_sound` | resource handle | A registered sound (addSound) played when the pointer enters the node; implies hover tracking. |
@@ -68,7 +68,7 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `valueMax` | `value_max` | `value_max` with `KUI_VALUE_MAX` in `value_set` | number | A `slider` role's maximum. |
 | `valueMin` | `value_min` | `value_min` with `KUI_VALUE_MIN` in `value_set` | number | A `slider` role's minimum. |
 | `valueNow` | `value_now` | `value_now` with `KUI_VALUE_NOW` in `value_set` | number | A `slider` role's current value (the drawing stays yours; this is what assistive technology reads). |
-| `width` | `width` | `width` (KuiSizing) | sizing (`number` \\| `"fit"` \\| `"grow"` \\| `"N%"`) | Main-axis size: px \| "fit" \| "grow" \| "N%". |
+| `width` | `width` | `width` (KuiSizing) | sizing (`number` \\| `"fit"` \\| `"grow"` \\| `"N%"`) | Horizontal size: px \| "fit" \| "grow" \| "N%". |
 | `window` | `window` | `window_role` (`KUI_WINDOW_*`) | `drag` \\| `close` \\| `minimize` \\| `maximize` | Window-chrome role: interactions become window commands, not events. |
 | `wrapChildren` | `wrap_children` | `wrap_children` | boolean | Children that don't fit the main axis start a new line instead of overflowing or shrinking. Rows only (a column is ignored, with a warning), and never on a scrollX row. |
 

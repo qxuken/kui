@@ -148,7 +148,7 @@ export interface GeneratedSpecProps {
   focusable?: boolean;
   /** Space between children along the main axis. */
   gap?: number;
-  /** Cross-axis size: px | "fit" | "grow" | "N%". */
+  /** Vertical size: px | "fit" | "grow" | "N%". */
   height?: SizingProp;
   /** Background while hovered (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`. */
   hoverBg?: ColorProp;
@@ -228,7 +228,7 @@ export interface GeneratedSpecProps {
   valueMin?: number;
   /** A `slider` role's current value (the drawing stays yours; this is what assistive technology reads). */
   valueNow?: number;
-  /** Main-axis size: px | "fit" | "grow" | "N%". */
+  /** Horizontal size: px | "fit" | "grow" | "N%". */
   width?: SizingProp;
   /** Window-chrome role: interactions become window commands, not events. */
   window?: 'drag' | 'close' | 'minimize' | 'maximize';

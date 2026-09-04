@@ -328,14 +328,14 @@ pub const PROPS: &[PropDef] = &[
         id: P_WIDTH,
         kind: Kind::Sizing,
         apply: Apply::SpecSizing(|s, v| s.width(v)),
-        doc: "Main-axis size: px | \"fit\" | \"grow\" | \"N%\".",
+        doc: "Horizontal size: px | \"fit\" | \"grow\" | \"N%\".",
     },
     PropDef {
         name: "height",
         id: P_HEIGHT,
         kind: Kind::Sizing,
         apply: Apply::SpecSizing(|s, v| s.height(v)),
-        doc: "Cross-axis size: px | \"fit\" | \"grow\" | \"N%\".",
+        doc: "Vertical size: px | \"fit\" | \"grow\" | \"N%\".",
     },
     PropDef {
         name: "minWidth",

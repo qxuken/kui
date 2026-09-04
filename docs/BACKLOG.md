@@ -919,22 +919,27 @@ undefined method.
 
 ## Documentation
 
-### `!` X1 — Fix the `width`/`height` main-axis docs
+### `!` X1 — Fix the `width`/`height` main-axis docs — **done (2026-09-04)**
 
-```
-crates/kui-core/src/schema.rs:288   doc: "Main-axis size: px | \"fit\" | \"grow\" | \"N%\"."
-crates/kui-core/src/schema.rs:295   doc: "Cross-axis size: …"
-```
+`Dir::Column` is the default, so for the majority of nodes the old
+"Main-axis size" / "Cross-axis size" named exactly the wrong axis. Layout
+treats them as literal axes regardless of `dir` — `fit_widths` is horizontal
+always — and `LayoutSpec`'s own field docs correctly say nothing about main and
+cross. The two rows now read "Horizontal size" and "Vertical size", value list
+unchanged, and `npm run gen` carried that into `docs/props.md` and the JSDoc on
+`width` / `height` in `jsx-runtime.d.ts`, which is where every JS user reads it
+on hover. The schema row being the only place the claim was made is why the fix
+is three lines in one file plus generated output.
 
-`Dir::Column` is the default, so for the majority of nodes these name exactly the
-wrong axis. Layout treats them as literal axes regardless of `dir` — `fit_widths`
-is horizontal always — and `LayoutSpec`'s own field docs correctly say nothing
-about main and cross. The schema row is the only place the claim is made, and the
-one place that propagates: into `docs/props.md` (lines 28, 59) and into the JSDoc
-on `width`/`height` in `jsx-runtime.d.ts`, where every JS user reads it on hover.
-
-"Horizontal size" and "Vertical size", then `npm run gen`. Scan the other `doc`
-strings for the same mistake while there.
+**The scan found nothing else, and the reason is worth keeping.** Every other
+`doc` string that says "main axis" or "cross axis" names a prop layout really
+does resolve against `dir`: `gap`, `crossGap`, `mainAlign`, `crossAlign` and
+`wrapChildren` all branch on `Dir::Row` / `Dir::Column`, and `dir`'s own row
+("Main axis; column is the default") is the definition. The horizontal/vertical
+claims that remain — `shadowX` / `shadowY`, the four per-corner radii — are
+literal and correct. `width` and `height` were the only two rows describing a
+literal axis in relative terms, which is the mistake to watch for: main/cross
+wording is right exactly where the code switches on `dir`.
 
 ### `.` X2 — Automate the CHANGELOG heading — **done (2026-09-04)**
 
