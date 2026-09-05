@@ -2589,6 +2589,39 @@ binding-parity corpus that pins all of it.
   windows, `SetSize` and `Focus`, and no `Popup` kind. Say so in Status /
   next and in ADR 0004's Consequences, and name the in-window approximation
   (`FloatConfig::fit` plus a `modal` float) as what a dropdown uses today.
+  **Done (2026-09-05, `0154d87`).** ADR 0004's Consequences carry a dated
+  amendment in the form the earlier ones use: steps 1, 2, 3 and 5 are built
+  and step 4 is not, so `WindowKind` has exactly one variant and the release
+  has no spelling of a popup anywhere. The three cases the ADR's Context
+  names — a dropdown taller than the window, a menu opened near the edge
+  with nowhere in-window to go, a panel the user wants beside the app — stay
+  unbuildable until step 4, and decision 9 is unchanged *as a decision*: a
+  popup is still a window kind that reuses `dismiss`, it is simply not
+  built. `FloatConfig::fit`'s own doc comment now says the popup it points
+  at is a later release, so a reader who follows the pointer is not left to
+  work that out. **Status / next needed no edit** — R1 had already written
+  the Windows group per this entry, and every claim in it was re-read
+  against the code rather than trusted.
+  **The half that was a real hole, not a missing sentence, is that the kind
+  was absent silently.** `WindowKind` has only `Normal` and JSX/Lua
+  `windows` entries have no `kind` key, but `KuiWindowConfig.kind` is a
+  `uint32_t` and `window_config_of` mapped *every* value to `Normal`, with a
+  comment saying it did so deliberately — so a C host that asked for a popup
+  got a window and no word about it. It still gets the window (a host built
+  against a later header should degrade to a window rather than to nothing)
+  and now also gets **`unknown-window-kind`**, the fifth code that does not
+  come from the tree walk; `diag`'s module doc, which C11 step 3 took from
+  three to four, says five. JSX and Lua go the other way and *refuse* a
+  `kind` key: a `windows` entry is plain data with a fixed shape by ADR 0004
+  decision 5, not a node's loose prop bag, so a key that does nothing is an
+  error rather than a dropped declaration — and neither is in C's position
+  of not being able to throw. Tests in kui-ffi (the unknown kind opens and
+  warns; the one kind the header has does not), kui-lua and `test.mjs`;
+  `npm run gen` carried the code into `index.d.ts`'s `WarningCode` union and
+  `docs/props.md`, and the `windows` row's doc now says there is no `kind`
+  key and what to reach for instead. C11 step 4 stays open and says it is
+  the first build item after the release, which is where **After alpha.6**
+  already puts it.
 - `!` **R4 — Nothing has run natively on macOS or Windows since alpha.5.**
   P8's smoke jobs are gated on repository variables and this instance has
   only the `docker` runner, so the release's five prebuilds have been
