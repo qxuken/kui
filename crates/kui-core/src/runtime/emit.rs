@@ -259,9 +259,10 @@ impl Core {
     }
 
     /// The frame's second half: the laid-out tree into the display list,
-    /// in paint order — in-flow content, then floating subtrees, then the
-    /// scrollbars, the departed subtrees and the focus ring on top — and
-    /// the hit and scroll regions the next input is tested against.
+    /// in paint order — in-flow content, then floating subtrees, each with
+    /// the departed subtrees that were painted among them, then the
+    /// scrollbars and the focus ring on top — and the hit and scroll
+    /// regions the next input is tested against.
     fn emit_frame(&mut self) {
         let scale = self.scale;
         let mut hits: Vec<HitRegion> = self.interaction.take_hit_buffer();
@@ -292,6 +293,23 @@ impl Core {
         if any_float {
             self.in_float.resize(self.tree.len(), false);
         }
+
+        // Exits: what the previous frame declared and this one does not is
+        // copied out of the tree the previous frame left behind, and every
+        // departing subtree still in flight is taken out for the passes,
+        // which paint each one where its node was (see `depart`).
+        if !self.prev_tree.is_empty() || !self.depart.is_empty() {
+            self.collect_departures();
+        }
+        let mut replay = Replay::default();
+        let mut took_ghosts = false;
+        if !self.depart.is_empty()
+            && let Some(now) = self.anim.time()
+        {
+            replay = self.depart.begin_replay(now);
+            took_ghosts = true;
+        }
+        let any_ghost = !replay.is_empty();
 
         // Pass 1: clip/float propagation + in-flow emission (preorder =
         // paint order; parents precede children).
@@ -345,6 +363,14 @@ impl Core {
             if any_float && self.in_float[i] {
                 continue; // deferred to the float pass
             }
+            // A departing subtree painted just under this node last time
+            // goes first, so it stays under it.
+            if any_ghost && replay.may_precede(self.tree.keys[i]) {
+                let key = self.tree.keys[i];
+                replay.paint(Pass::InFlow, Some(key), |g, play| {
+                    self.emit_ghost(g, play, scale)
+                });
+            }
             // Entirely clipped away: skip drawing and hit-testing.
             // Rect, not rounded: a node that survives only in a corner's
             // arc is drawn and clipped rather than culled.
@@ -360,12 +386,26 @@ impl Core {
             self.emit_node(i, rect, paint, &mut hits, &mut scroll_regions);
         }
 
+        if any_ghost {
+            // The in-flow ghosts whose place is gone: the end of their
+            // pass, still under every float.
+            replay.paint(Pass::InFlow, None, |g, play| {
+                self.emit_ghost(g, play, scale)
+            });
+        }
+
         // Pass 2: floating subtrees, on top of all in-flow content (their
         // hit regions land last too, so they're topmost for input).
         if any_float {
             for i in 0..self.tree.len() {
                 if !self.in_float[i] {
                     continue;
+                }
+                if any_ghost && replay.may_precede(self.tree.keys[i]) {
+                    let key = self.tree.keys[i];
+                    replay.paint(Pass::Float, Some(key), |g, play| {
+                        self.emit_ghost(g, play, scale)
+                    });
                 }
                 let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
                 let clip = if any_clip { self.clips[i] } else { Clip::NONE };
@@ -381,6 +421,15 @@ impl Core {
                 };
                 self.emit_node(i, rect, paint, &mut hits, &mut scroll_regions);
             }
+        }
+
+        if any_ghost {
+            // The float ghosts whose place is gone, and every ghost of a
+            // float in a frame with no floats to paint among.
+            replay.paint(Pass::Float, None, |g, play| self.emit_ghost(g, play, scale));
+        }
+        if took_ghosts {
+            self.depart.end_replay(replay);
         }
 
         // Scrollbars, on top of content: indicator quads plus the hit
@@ -472,16 +521,6 @@ impl Core {
             }
         }
 
-        // Exits, last: what the previous frame declared and this one does
-        // not is copied out of the tree the previous frame left behind and
-        // replayed on top, inert (see `depart`).
-        if !self.prev_tree.is_empty() || !self.depart.is_empty() {
-            self.collect_departures();
-        }
-        if !self.depart.is_empty() {
-            self.replay_departures(scale);
-        }
-
         self.emit_focus_ring(scale);
 
         self.interaction.set_hits(hits);
@@ -495,7 +534,8 @@ impl Core {
 
     /// The exit diff: every key the previous frame declared an `exit` on
     /// and this frame does not becomes a departing subtree, copied out of
-    /// `prev_tree` — the frame that still had it — and handed to the store.
+    /// `prev_tree` — the frame that still had it — and handed to the store
+    /// with the place it painted in, so its ghost keeps it.
     /// A ghost whose key came back is retired here too: the live node wins.
     ///
     /// Only two kinds of key are interesting (the previous frame's
@@ -543,6 +583,10 @@ impl Core {
             }
         }
         self.depart.retire_returned(&live);
+        // The previous frame's paint order, built on the first departure:
+        // a frame with one is a frame that changed shape and paid for a
+        // layout, and the frames that did not never get here.
+        let mut order: Option<PaintOrder> = None;
         // In tree order, so a departing subtree swallows the exits nested
         // inside it rather than drawing them a second time on top.
         let mut swallowed_until = 0usize;
@@ -551,6 +595,9 @@ impl Core {
                 continue;
             }
             swallowed_until = self.prev_tree.subtree_end(i);
+            let place = order
+                .get_or_insert_with(|| PaintOrder::of(&self.prev_tree, &self.tree))
+                .place(&self.prev_tree, i);
             // The group opacity the root inherited from ancestors that are
             // now gone: a subtree already half-faded departs from there.
             let mut base = 1.0;
@@ -560,7 +607,7 @@ impl Core {
                 a = self.prev_tree.parent[a as usize];
             }
             self.depart
-                .depart(&self.prev_tree, i, now, base, &self.text);
+                .depart(&self.prev_tree, i, now, base, place, &self.text);
         }
         if let Some(key) = self.depart.refused.take() {
             self.diag.raise(Warning {
@@ -576,22 +623,11 @@ impl Core {
         }
     }
 
-    /// Replays every departing subtree: frozen rects moved by however far
-    /// its `exit` has got, painted on top of the live frame and outside
-    /// every clip (its ancestors may be gone), and nothing else — no hit
+    /// One departing subtree's quads: frozen rects moved by however far
+    /// its `exit` has got, outside every clip (its ancestors may be gone).
+    /// A smaller `emit_node`: the parts a picture has (shadow, background,
+    /// border, its content) and none of the parts a node has — no hit
     /// region, no scroll region, no access row.
-    fn replay_departures(&mut self, scale: f32) {
-        let Some(now) = self.anim.time() else {
-            return;
-        };
-        let mut depart = std::mem::take(&mut self.depart);
-        depart.replay(now, |g, play| self.emit_ghost(g, play, scale));
-        self.depart = depart;
-    }
-
-    /// One departing subtree's quads. A smaller `emit_node`: the parts a
-    /// picture has (shadow, background, border, its content) and none of
-    /// the parts a node has.
     fn emit_ghost(&mut self, g: &Ghost, play: &Playback, scale: f32) {
         self.ghost_opacity.clear();
         self.ghost_opacity.resize(g.nodes.len(), 1.0);
@@ -929,6 +965,55 @@ struct Paint {
     scale: f32,
     /// Multiplied into the alpha of every quad the node emits.
     opacity: f32,
+}
+
+/// As much of the previous frame's paint order as a departure needs to
+/// keep its place (see `depart::Place`): the pass each node painted in,
+/// and for each index the next node at or after it in each pass that this
+/// frame still declares. Two linear passes over the previous tree, once
+/// per frame that has a departure.
+struct PaintOrder {
+    in_float: Vec<bool>,
+    /// Indexed by pass (in flow, float), then by previous-tree index; one
+    /// past the end reads `NIL`.
+    next_live: [Vec<u32>; 2],
+}
+
+impl PaintOrder {
+    fn of(prev: &Tree, tree: &Tree) -> Self {
+        let n = prev.len();
+        let live: FxHashSet<Key> = tree.keys.iter().copied().collect();
+        let mut in_float = vec![false; n];
+        for i in 0..n {
+            let parent = prev.parent[i];
+            in_float[i] = prev.specs[i].layout.float.is_some()
+                || (parent != NIL && in_float[parent as usize]);
+        }
+        let mut next_live = [vec![NIL; n + 1], vec![NIL; n + 1]];
+        for j in (0..n).rev() {
+            next_live[0][j] = next_live[0][j + 1];
+            next_live[1][j] = next_live[1][j + 1];
+            if live.contains(&prev.keys[j]) {
+                next_live[in_float[j] as usize][j] = j as u32;
+            }
+        }
+        Self {
+            in_float,
+            next_live,
+        }
+    }
+
+    /// The place the subtree rooted at `root` of the previous frame painted
+    /// in: its pass, and the node painted right after it in that pass that
+    /// is still here.
+    fn place(&self, prev: &Tree, root: usize) -> Place {
+        let float = self.in_float[root];
+        let after = self.next_live[float as usize][prev.subtree_end(root)];
+        Place {
+            pass: if float { Pass::Float } else { Pass::InFlow },
+            before: (after != NIL).then(|| prev.keys[after as usize]),
+        }
+    }
 }
 
 /// The drop shadow behind one node, in physical pixels. The quad is the

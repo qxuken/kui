@@ -18,9 +18,14 @@
 //!   last time it existed. A dying node must not fight the live layout for
 //!   space, which is also how CSS's exit transitions work — the element is
 //!   out of flow the moment it is removed.
-//! - **on top, and unclipped.** It is emitted like a float, after every
-//!   live quad: its ancestors may be gone, so there is no clip to inherit
-//!   and nothing to sit inside.
+//! - **in its place, and unclipped.** It is painted where the node was in
+//!   the paint order — the same pass (in flow, or among the floats) and
+//!   just under the node that painted after it — so a panel that sat
+//!   under a HUD leaves under it, rather than jumping to the top of the
+//!   window for its last few frames. There is no z-index; floats stack in
+//!   tree order, and a picture of a float keeps the place it stacked in.
+//!   Its ancestors may be gone, so there is no clip to inherit and nothing
+//!   to sit inside: it draws outside every clip.
 //! - **inert.** No hit region, no place in the Tab ring, no access row. It
 //!   is a picture of a node, not a node.
 //! - **self-easing.** Nothing can retarget a ghost — the view has already
@@ -80,10 +85,31 @@ pub(crate) struct GhostNode {
     pub rect: Rect,
 }
 
+/// Which emission pass painted a node: in-flow content first, then every
+/// floating subtree on top of it (see `Core::emit_frame`). A ghost is
+/// painted in the pass its root was, at the place it had.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Pass {
+    InFlow,
+    Float,
+}
+
+/// Where a departing subtree sat in the paint order: the pass, and the key
+/// of the first node painted after it in that pass that the frame which
+/// noticed it gone still declares. Its ghost is painted just under that
+/// node — and at the end of its pass once the node is gone too.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Place {
+    pub pass: Pass,
+    pub before: Option<Key>,
+}
+
 /// One departing subtree, with what it needs to play itself out.
 pub(crate) struct Ghost {
     pub key: Key,
     pub nodes: Vec<GhostNode>,
+    /// Where it is painted, relative to the live frame.
+    pub place: Place,
     /// Clock reading (driver seconds) of the frame that noticed it gone.
     left_at: f64,
     /// How long the exit runs, in seconds (the root's `transition`).
@@ -163,6 +189,11 @@ pub struct DepartStore {
     /// A departure the budget refused since the last drain — the view is
     /// asking for more exits at once than the store will hold.
     pub(crate) refused: Option<Key>,
+    /// A membership mask over the ghosts' `before` keys, so a departure
+    /// whose key no ghost sits under — every row of a mass removal — skips
+    /// the walk that would hand its place on. Never cleared: a stale bit
+    /// costs one walk, and there are at most a few hundred ghosts to walk.
+    before_mask: u64,
 }
 
 impl DepartStore {
@@ -235,6 +266,7 @@ impl DepartStore {
         root: usize,
         now: f64,
         base_opacity: f32,
+        place: Place,
         text: &crate::text::TextSystem,
     ) {
         let spec = &tree.specs[root];
@@ -279,9 +311,23 @@ impl DepartStore {
             })
             .collect::<Vec<_>>();
         self.nodes += nodes.len();
+        // A ghost that was painted just under this node loses its place
+        // with it, and takes the place this one is taking: the two stay in
+        // the order they had, since the store keeps departures in order.
+        if self.before_mask & (1u64 << (key.0 & 63)) != 0 {
+            for g in &mut self.ghosts {
+                if g.place.before == Some(key) {
+                    g.place.before = place.before;
+                }
+            }
+        }
+        if let Some(before) = place.before {
+            self.before_mask |= 1u64 << (before.0 & 63);
+        }
         self.ghosts.push(Ghost {
             key,
             nodes,
+            place,
             left_at: now,
             duration,
             easing: t.easing,
@@ -291,29 +337,57 @@ impl DepartStore {
         });
     }
 
-    /// Hands each still-running ghost to `emit` with where its exit has got
-    /// to at `now`, and drops the ones that have finished. Ghosts are taken
-    /// out of the store for the call so the emitter can borrow the rest of
-    /// the core.
-    pub(crate) fn replay(&mut self, now: f64, mut emit: impl FnMut(&Ghost, &Playback)) {
+    /// Starts this frame's replay: drops the ghosts whose exit is over,
+    /// and hands the rest out with where each has got to at `now`, taken
+    /// out of the store so the emitter can borrow the rest of the core
+    /// while it paints them between the live nodes. [`Self::end_replay`]
+    /// puts them back.
+    pub(crate) fn begin_replay(&mut self, now: f64) -> Replay {
         let frame_no = self.frame_no;
-        let mut ghosts = std::mem::take(&mut self.ghosts);
-        let mut active = false;
         let nodes = &mut self.nodes;
-        ghosts.retain_mut(|g| {
-            let Some(play) = g.playback(now) else {
+        let mut plays = Vec::with_capacity(self.ghosts.len());
+        let mut mask = 0u64;
+        self.ghosts.retain_mut(|g| match g.playback(now) {
+            Some(play) => {
+                g.last_used = frame_no;
+                if let Some(k) = g.place.before {
+                    mask |= 1u64 << (k.0 & 63);
+                }
+                plays.push(play);
+                true
+            }
+            None => {
                 *nodes -= g.nodes.len();
-                return false;
-            };
-            g.last_used = frame_no;
-            active = true;
-            emit(g, &play);
-            true
+                false
+            }
         });
-        self.active = active;
-        // `replay` is the only place that adds nothing, so nothing can have
-        // been pushed while it ran.
-        self.ghosts = ghosts;
+        self.active = !self.ghosts.is_empty();
+        Replay {
+            painted: vec![false; self.ghosts.len()],
+            ghosts: std::mem::take(&mut self.ghosts),
+            plays,
+            mask,
+        }
+    }
+
+    /// The other half of [`Self::begin_replay`]. Nothing departs between
+    /// the two — the diff runs before the passes — so nothing can have
+    /// been pushed while the ghosts were out.
+    pub(crate) fn end_replay(&mut self, replay: Replay) {
+        debug_assert!(self.ghosts.is_empty());
+        self.ghosts = replay.ghosts;
+    }
+
+    /// Every still-running ghost handed to `emit` in store order, and the
+    /// finished ones dropped — the replay without the passes, for a test
+    /// that has no frame to paint.
+    #[cfg(test)]
+    pub(crate) fn replay(&mut self, now: f64, mut emit: impl FnMut(&Ghost, &Playback)) {
+        let mut replay = self.begin_replay(now);
+        for pass in [Pass::InFlow, Pass::Float] {
+            replay.paint(pass, None, &mut emit);
+        }
+        self.end_replay(replay);
     }
 
     /// Drops every ghost. The frame driver has no reason to; a test that
@@ -325,10 +399,68 @@ impl DepartStore {
     }
 }
 
+/// One frame's ghosts, out of the store for the length of the emission
+/// passes (see [`DepartStore::begin_replay`]). The passes ask for the
+/// ghosts under each node as they reach it, and for the rest of a pass
+/// once they are through it.
+#[derive(Default)]
+pub(crate) struct Replay {
+    ghosts: Vec<Ghost>,
+    plays: Vec<Playback>,
+    /// Painted this frame already: a ghost is painted once, whichever of
+    /// the two asks finds it first.
+    painted: Vec<bool>,
+    /// A membership mask over the `before` keys, so a pass answers
+    /// "nothing under this node" with one AND for almost every node
+    /// rather than a walk over the ghosts.
+    mask: u64,
+}
+
+impl Replay {
+    pub fn is_empty(&self) -> bool {
+        self.ghosts.is_empty()
+    }
+
+    /// Whether any ghost *may* be painted just under `key`: false is
+    /// certain, true is worth the walk [`Self::paint`] makes.
+    #[inline]
+    pub fn may_precede(&self, key: Key) -> bool {
+        self.mask & (1u64 << (key.0 & 63)) != 0
+    }
+
+    /// Hands `emit` the ghosts of `pass` painted under `before` — or, for
+    /// `None`, every ghost of that pass not painted yet, which is where a
+    /// ghost whose place is gone ends up: at the end of its pass, still
+    /// under everything the later pass paints.
+    pub fn paint(
+        &mut self,
+        pass: Pass,
+        before: Option<Key>,
+        mut emit: impl FnMut(&Ghost, &Playback),
+    ) {
+        for i in 0..self.ghosts.len() {
+            let g = &self.ghosts[i];
+            if self.painted[i] || g.place.pass != pass {
+                continue;
+            }
+            if before.is_some() && g.place.before != before {
+                continue;
+            }
+            self.painted[i] = true;
+            emit(g, &self.plays[i]);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::tree::OriginId;
+
+    const IN_FLOW: Place = Place {
+        pass: Pass::InFlow,
+        before: None,
+    };
 
     fn tree_with(spec: NodeSpec, children: usize) -> Tree {
         let mut t = Tree::new();
@@ -369,7 +501,7 @@ mod tests {
         let text = crate::text::TextSystem::new();
         let tree = tree_with(departing(NodeSpec::column()), 2);
         d.begin_frame();
-        d.depart(&tree, 1, 0.0, 1.0, &text);
+        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text);
         assert_eq!(d.node_count(), 3, "the subtree, not just its root");
 
         let mut seen = Vec::new();
@@ -392,7 +524,7 @@ mod tests {
         let text = crate::text::TextSystem::new();
         let tree = tree_with(departing(NodeSpec::column()), 0);
         d.begin_frame();
-        d.depart(&tree, 1, 0.0, 1.0, &text);
+        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text);
         assert_eq!(d.keys().collect::<Vec<_>>(), vec![Key::ROOT.str("x")]);
         d.retire(Key::ROOT.str("x"));
         assert!(d.is_empty());
@@ -413,7 +545,7 @@ mod tests {
             let mut d = DepartStore::default();
             let tree = tree_with(spec, 0);
             d.begin_frame();
-            d.depart(&tree, 1, 0.0, 1.0, &text);
+            d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text);
             assert!(d.is_empty());
         }
     }
@@ -450,7 +582,7 @@ mod tests {
                     NodeContent::Container,
                 );
             }
-            d.depart(&t, 1, 0.0, 1.0, &text);
+            d.depart(&t, 1, 0.0, 1.0, IN_FLOW, &text);
         }
         assert_eq!(d.node_count(), MAX_NODES);
         assert_eq!(d.keys().count(), MAX_NODES / 16);
@@ -467,7 +599,7 @@ mod tests {
         let text = crate::text::TextSystem::new();
         let tree = tree_with(departing(NodeSpec::column()), 0);
         d.begin_frame();
-        d.depart(&tree, 1, 0.0, 1.0, &text);
+        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text);
         // Frames without a replay: the sweep runs on the 240th.
         for _ in 0..480 {
             d.begin_frame();
@@ -486,7 +618,7 @@ mod tests {
             .exit(Enter::from(100.0, 0.0));
         let tree = tree_with(spec, 0);
         d.begin_frame();
-        d.depart(&tree, 1, 0.0, 1.0, &text);
+        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text);
         let mut x = 0.0;
         d.replay(0.05, |_, p| x = p.offset.x);
         let expect = Easing::EaseOut.apply(0.5) * 100.0;
@@ -511,7 +643,7 @@ mod tests {
         let mut tree = tree_with(spec, 0);
         tree.size[1] = crate::geom::Size::new(40.0, 20.0);
         d.begin_frame();
-        d.depart(&tree, 1, 0.0, 1.0, &text);
+        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text);
         d.replay(0.05, |_, p| {
             assert!((p.opacity - 0.5).abs() < 1e-4, "halfway faded");
             assert!((p.bg.unwrap().a - 0.5).abs() < 1e-4, "halfway transparent");

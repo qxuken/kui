@@ -827,8 +827,8 @@ alpha multiply rather than an offscreen composite, so overlapping pieces of one
 faded subtree show their seams. There is no z-index: floats stack in tree order.
 Transitions cover sizing, colors, radius, opacity, shadows, position (`slide`,
 `enter`) and departure (`exit`) — a node the view stops declaring is copied out
-of the last frame that had it and replayed frozen, on top and inert until its
-transition ends. `exit` is opt-in per node, capped at 512 departing nodes at
+of the last frame that had it and replayed frozen, in its place and inert
+until its transition ends. `exit` is opt-in per node, capped at 512 departing nodes at
 once, and a ghost cannot be re-laid-out: `exit`'s `width`/`height` resize the
 departing node's own box and nothing inside it moves.
 

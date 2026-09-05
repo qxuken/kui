@@ -481,10 +481,13 @@ anything — the job is written and waits on a runner, not on an edit.
   With a `transition`, the frame after the view stops declaring a node its
   subtree is copied out of the last frame that had it and replayed: **frozen**
   where layout left it (a dying node must not fight the live layout for
-  space, which is also how CSS's exit transitions work), **on top and outside
-  every clip** (its ancestors may be gone), and **inert** — no hit region, no
-  Tab stop, no access row, because it is a picture of a node rather than a
-  node. It is dropped when its transition ends, and immediately if the key
+  space, which is also how CSS's exit transitions work), **in its place and
+  outside every clip** — the pass it painted in, just under the node that
+  painted after it, so a side panel that sat under the HUD leaves under it
+  rather than jumping to the top of the window for its last few frames;
+  and outside every clip because its ancestors may be gone — and **inert**
+  — no hit region, no Tab stop, no access row, because it is a picture of
+  a node rather than a node. It is dropped when its transition ends, and immediately if the key
   comes back, so a toast dismissed and re-shown never doubles.
   **Bounded, and it says when the bound bites.** `exit` is opt-in per node
   and needs a `transition`; without both, a removed node vanishes at once as
@@ -503,7 +506,7 @@ anything — the job is written and waits on a runner, not on an edit.
   stopped talking about. Benched (`benches/frame.rs`): a 10k-node frame that
   declares no `exit` pays about 5% for `NodeSpec` growing an `Option<Enter>`,
   one exit inside such a frame costs under 2% more, dropping a thousand rows
-  that all declare one costs about 180 µs once, and a full 512-node store
+  that all declare one costs about 190 µs once, and a full 512-node store
   replays in 12 µs a frame.
   **What you can delete:** the `dying` / `removing_at` flag on your model
   rows, the `Instant` beside it, the `retain` that could not run until the

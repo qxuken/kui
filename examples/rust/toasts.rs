@@ -10,7 +10,7 @@
 //!   - it leaves the same way (`exit`, which is an `enter` read the other
 //!     way): the app drops it from `self.toasts` the moment it expires, and
 //!     what slides back out is a *copy* the core kept — frozen where layout
-//!     left it, on top, and inert. Nothing in this file waits for it;
+//!     left it, in its place, and inert. Nothing in this file waits for it;
 //!   - older toasts `slide` down as the newest one pushes into the stack,
 //!     and back up as one goes — position eases whenever layout moves them,
 //!     which is what `slide` buys on top of the entrance, and it happens
@@ -121,7 +121,9 @@ impl Toasts {
     }
 
     /// The panel: same idea on the other axis, and with a spring, so it
-    /// overshoots its edge slightly on the way in.
+    /// overshoots its edge slightly on the way in. It is declared before
+    /// the latency HUD, so the HUD is painted over it — and its ghost
+    /// leaves under the HUD too, where the panel was.
     fn side_panel(&self, ui: &mut Ui<'_>) {
         if !self.panel {
             return;

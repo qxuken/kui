@@ -1,6 +1,6 @@
 //! Exit transitions: a subtree the view stopped declaring is copied out of
-//! the frame that still had it and replayed — frozen, on top, inert — until
-//! its transition ends. `docs/adr/0005-the-paint-vocabulary.md`.
+//! the frame that still had it and replayed — frozen, in its place, inert —
+//! until its transition ends. `docs/adr/0005-the-paint-vocabulary.md`.
 
 use kui_core::{
     Color, Core, Easing, Enter, InputEvent, Key, NodeSpec, Size, Sizing, TextStyle, Value, Vec2,
@@ -230,9 +230,10 @@ fn a_driver_without_a_clock_gets_the_disappearance_it_always_had() {
 }
 
 /// A departing subtree escapes the clip its ancestors imposed — they may
-/// not exist any more — and draws after every live quad.
+/// not exist any more — while keeping its place after the clipper, which
+/// painted before it.
 #[test]
-fn a_ghost_escapes_its_ancestors_clip_and_draws_last() {
+fn a_ghost_escapes_its_ancestors_clip_and_keeps_its_place() {
     let mut core = Core::new();
     let build = |core: &mut Core, now: f64, show: bool| {
         core.set_time(now);
@@ -399,4 +400,240 @@ fn a_whole_toast_stack_departs_at_once_and_plays_out() {
     assert!(solids(&mut core).is_empty());
     assert!(!core.animating());
     assert!(core.depart.is_empty());
+}
+
+/// Solid quads of the last frame named by the colour each node was given,
+/// in paint order — the order the layering claims are about.
+fn painted(core: &mut Core, names: &[(Color, &'static str)]) -> Vec<&'static str> {
+    let (dl, _) = core.output();
+    dl.quads
+        .iter()
+        .filter(|q| q.kind == kui_core::QuadKind::Solid)
+        .map(|q| {
+            names
+                .iter()
+                .find(|(c, _)| {
+                    (c.r - q.color.r).abs() < 1e-3
+                        && (c.g - q.color.g).abs() < 1e-3
+                        && (c.b - q.color.b).abs() < 1e-3
+                })
+                .map(|(_, n)| *n)
+                .unwrap_or("?")
+        })
+        .collect()
+}
+
+const PANEL: Color = Color {
+    r: 10.0 / 255.0,
+    g: 0.0 / 255.0,
+    b: 0.0 / 255.0,
+    a: 1.0,
+};
+const HUD: Color = Color {
+    r: 0.0 / 255.0,
+    g: 10.0 / 255.0,
+    b: 0.0 / 255.0,
+    a: 1.0,
+};
+const A: Color = Color {
+    r: 0.0 / 255.0,
+    g: 0.0 / 255.0,
+    b: 10.0 / 255.0,
+    a: 1.0,
+};
+const B: Color = Color {
+    r: 20.0 / 255.0,
+    g: 0.0 / 255.0,
+    b: 0.0 / 255.0,
+    a: 1.0,
+};
+const C: Color = Color {
+    r: 0.0 / 255.0,
+    g: 20.0 / 255.0,
+    b: 0.0 / 255.0,
+    a: 1.0,
+};
+const NAMES: &[(Color, &str)] = &[(PANEL, "panel"), (HUD, "hud"), (A, "a"), (B, "b"), (C, "c")];
+
+fn leaving(spec: NodeSpec) -> NodeSpec {
+    spec.transition(100.0)
+        .easing(Easing::Linear)
+        .exit(Enter::from(40.0, 0.0))
+}
+
+/// The toasts example's panel: a side panel float declared *before* the
+/// HUD float, so the HUD is painted over it — there is no z-index, floats
+/// stack in tree order. Its ghost stays under the HUD for the exit, rather
+/// than jumping to the top of the window for its last few frames.
+#[test]
+fn a_float_leaves_under_the_floats_that_were_above_it() {
+    use kui_core::{Align, FloatConfig};
+
+    let mut core = Core::new();
+    let build = |core: &mut Core, now: f64, panel: bool| {
+        core.set_time(now);
+        let mut ui = core.frame(VIEW, 1.0);
+        if panel {
+            ui.with_keyed(
+                "panel",
+                leaving(
+                    NodeSpec::column()
+                        .float(FloatConfig::viewport())
+                        .width(Sizing::Fixed(60.0))
+                        .height(Sizing::Fixed(120.0))
+                        .bg(PANEL),
+                ),
+                |_| {},
+            );
+        }
+        // Unkeyed on purpose: a keyed sibling does not consume a sibling
+        // index, so the HUD keeps its key with the panel gone.
+        ui.with(
+            NodeSpec::column()
+                .float(FloatConfig::viewport().at(Align::Start, Align::End))
+                .width(Sizing::Fixed(80.0))
+                .height(Sizing::Fixed(20.0))
+                .bg(HUD),
+            |_| {},
+        );
+        ui.finish();
+    };
+    build(&mut core, 0.0, true);
+    assert_eq!(painted(&mut core, NAMES), ["panel", "hud"]);
+    build(&mut core, 0.0, false);
+    assert_eq!(
+        painted(&mut core, NAMES),
+        ["panel", "hud"],
+        "the ghost keeps the panel's place under the HUD"
+    );
+    build(&mut core, 0.05, false);
+    assert_eq!(
+        painted(&mut core, NAMES),
+        ["panel", "hud"],
+        "and stays there"
+    );
+    let (dl, _) = core.output();
+    let ghost = dl.quads.iter().find(|q| q.color == PANEL).unwrap();
+    assert!(
+        (ghost.rect.x - 20.0).abs() < 1e-3,
+        "and is mid-exit: {:?}",
+        ghost.rect
+    );
+}
+
+/// An in-flow node's ghost stays between the siblings it had, and under
+/// every float — the same pass it painted in, at the same place.
+#[test]
+fn an_in_flow_ghost_keeps_its_place_between_its_siblings() {
+    use kui_core::FloatConfig;
+
+    let mut core = Core::new();
+    let build = |core: &mut Core, now: f64, b: bool| {
+        core.set_time(now);
+        let mut ui = core.frame(VIEW, 1.0);
+        let cell = |bg| {
+            NodeSpec::column()
+                .width(Sizing::Fixed(30.0))
+                .height(Sizing::Fixed(10.0))
+                .bg(bg)
+        };
+        ui.with_keyed("a", cell(A), |_| {});
+        if b {
+            ui.with_keyed("b", leaving(cell(B)), |_| {});
+        }
+        ui.with_keyed("c", cell(C), |_| {});
+        ui.with_keyed("hud", cell(HUD).float(FloatConfig::viewport()), |_| {});
+        ui.finish();
+    };
+    build(&mut core, 0.0, true);
+    assert_eq!(painted(&mut core, NAMES), ["a", "b", "c", "hud"]);
+    build(&mut core, 0.05, false);
+    assert_eq!(
+        painted(&mut core, NAMES),
+        ["a", "b", "c", "hud"],
+        "b's ghost is painted under c, and under the float"
+    );
+}
+
+/// The node a ghost was painted under can leave too. The ghost takes the
+/// place that node's ghost takes, behind it, so two neighbours that go one
+/// after the other keep the order they had.
+#[test]
+fn a_ghost_whose_neighbour_leaves_too_keeps_the_order_they_had() {
+    let mut core = Core::new();
+    let build = |core: &mut Core, now: f64, a: bool, b: bool| {
+        core.set_time(now);
+        let mut ui = core.frame(VIEW, 1.0);
+        let cell = |bg| {
+            leaving(
+                NodeSpec::column()
+                    .width(Sizing::Fixed(30.0))
+                    .height(Sizing::Fixed(10.0))
+                    .bg(bg),
+            )
+        };
+        if a {
+            ui.with_keyed("a", cell(A), |_| {});
+        }
+        if b {
+            ui.with_keyed("b", cell(B), |_| {});
+        }
+        ui.with_keyed("c", cell(C), |_| {});
+        ui.finish();
+    };
+    build(&mut core, 0.0, true, true);
+    build(&mut core, 0.02, false, true);
+    assert_eq!(
+        painted(&mut core, NAMES),
+        ["a", "b", "c"],
+        "a's ghost under b"
+    );
+    build(&mut core, 0.04, false, false);
+    assert_eq!(
+        painted(&mut core, NAMES),
+        ["a", "b", "c"],
+        "b left too: a's ghost is under b's, and both under c"
+    );
+    build(&mut core, 0.06, false, false);
+    assert_eq!(painted(&mut core, NAMES), ["a", "b", "c"]);
+}
+
+/// A ghost whose place is gone — the node it was painted under is not
+/// declared any more and has no ghost of its own — ends its pass: after
+/// the in-flow content it was among, and still under the floats.
+#[test]
+fn a_ghost_that_lost_its_place_ends_its_pass_under_the_floats() {
+    use kui_core::FloatConfig;
+
+    let mut core = Core::new();
+    let build = |core: &mut Core, now: f64, phase: u32| {
+        core.set_time(now);
+        let mut ui = core.frame(VIEW, 1.0);
+        let cell = |bg| {
+            NodeSpec::column()
+                .width(Sizing::Fixed(30.0))
+                .height(Sizing::Fixed(10.0))
+                .bg(bg)
+        };
+        ui.with_keyed("a", cell(A), |_| {});
+        if phase < 1 {
+            ui.with_keyed("b", leaving(cell(B)), |_| {});
+        }
+        // `c` has no exit: when it goes, it goes at once, and b's ghost
+        // has nothing to be under.
+        if phase < 2 {
+            ui.with_keyed("c", cell(C), |_| {});
+        }
+        ui.with_keyed("hud", cell(HUD).float(FloatConfig::viewport()), |_| {});
+        ui.finish();
+    };
+    build(&mut core, 0.0, 0);
+    build(&mut core, 0.02, 1);
+    assert_eq!(painted(&mut core, NAMES), ["a", "b", "c", "hud"]);
+    build(&mut core, 0.04, 2);
+    assert_eq!(
+        painted(&mut core, NAMES),
+        ["a", "b", "hud"],
+        "after the in-flow content, under the float"
+    );
 }

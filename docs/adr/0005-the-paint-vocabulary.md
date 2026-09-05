@@ -317,6 +317,44 @@ departing *root's* own box, and nothing inside it moves, because re-laying
 out a frozen subtree is the one thing the design rules out. It is a note in
 the doc comment and in `docs/props.md` rather than a surprise.
 
+### Correction: a ghost keeps its place (2026-09-05)
+
+Step 2 says a ghost is "emitted like a float: on top", and the build did
+that — every ghost after every live quad. It looked wrong the first time a
+float left from under another float: the toasts example's side panel is
+declared before its latency HUD, so the HUD is painted over the panel, and
+for the 420ms of its exit the panel's ghost jumped *over* the HUD. There is
+no z-index in kui — floats stack in tree order — and a picture of a node
+that changes layer for its last few frames is not a picture of that node.
+
+A ghost now keeps the place its node painted in. The departure records a
+`Place`: which pass the root was painted in (in flow, or among the floats)
+and the key of the first node painted after it in that pass that the frame
+noticing it gone still declares. The passes paint each ghost just under
+that node when they reach it, and a ghost whose node is gone ends its pass
+— after the in-flow content it was among, still under every float. When
+the node a ghost sits under departs too, the ghost takes the place that
+node's ghost takes, behind it, so neighbours leaving one after the other
+keep their order. Unclipped stays: the ancestors may still be gone.
+
+What it needs is a fragment of the previous frame's paint order, built
+once on a frame that has a departure: the in-float bit per node and, per
+pass, the next still-declared node at or after each index. That is two
+linear walks over the previous tree and one hash set of this frame's keys,
+on frames that already changed shape and paid for a layout. The diff moved
+from after the passes to before them for it, which nothing else noticed.
+What it does not do is pin the *other* direction: a node declared later
+than the ghost's neighbour in the new frame paints over the ghost, as it
+would have painted over the node.
+
+Benched the same way as the table below, on the same day's machine:
+`drop_1k_rows_declaring_exit` 260 → 253 µs fastest and
+`replay_a_full_depart_store` 12.9 → 12.8 µs, both within noise — but only
+once the hand-on walk (a departure passing its place to the ghosts under
+it) was gated by a membership mask over the ghosts' `before` keys. Ungated,
+a mass removal walked the whole store per row and the same bench read
+305 µs: the one quadratic corner the design has, and it is 64 bits of mask.
+
 ### What it cost
 
 Measured on `crates/kui-core/benches/frame.rs`, fastest of 100 samples on one

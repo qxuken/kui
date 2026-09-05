@@ -17,7 +17,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::anim::{AnimStore, Slot, Track};
 use crate::atlas::GlyphAtlas;
 use crate::color::Color;
-use crate::depart::{DepartStore, Ghost, GhostContent, Playback};
+use crate::depart::{DepartStore, Ghost, GhostContent, Pass, Place, Playback, Replay};
 use crate::diag::{Diagnostics, Warning};
 use crate::display::{Clip, DisplayList, NO_CLIP, Quad, QuadKind};
 use crate::edit::{EditOptions, EditStore};
