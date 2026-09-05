@@ -183,3 +183,35 @@ people. In Node the codes are the `WarningCode` union.
 | `unknown-prop` | A prop name nothing claims: not a schema row, not a composite, not one of the element's own props (see `schema::known_prop`). The binding threw the declaration away — `hoverBg` in a Lua table, `onclick` in JSX — so unlike every other code here this one is raised by the frontend that saw it, through `Core::warn`: by the time a frame is a tree the name is gone. The message names the likely spelling. |
 | `duplicate-window-config` | One name declared with two different window configs on the frame it opened. The config is read on the opening edge only, and on that edge the lowest declaring window wins (the first declaration within one frame), so the pick is deterministic — but two places in the app disagree about what `"palette"` is, and only one of them is right. See `docs/adr/0004-multi-window.md`, decision 4. |
 | `window-declared-while-closed` | A window the user closed is still declared, so it stays closed: a declaration reopens a window only when it *starts*, and this one never stopped. The first version of every multi-window app does this — it declares the window unconditionally — and from outside it looks like `windows` being ignored. Handle the `{kind:"window", phase:"closed"}` event, stop declaring the name, and declare it again to reopen. See `docs/adr/0004-multi-window.md`, decision 6. |
+| `foreign-resource` | A `FontId` / `ImageId` / `SoundId` registered in one `Session` and used through a core of another. Handles are unique to the process, so it cannot resolve to somebody else's resource; it behaves as a removed handle does (draws nothing, shapes as sans-serif, plays nothing), which from outside looks like the resource never registered. Two `Core::new()`s are two sessions; windows that share resources are built with `Core::new_in` against one `Session`. |
+## Env
+
+The host facts a view reads: `ui.env()` in Rust, `view(env)` in Lua,
+`ctx.env()` / `win.env()` in Node. C is the host, so it *writes* them
+(`kui_env_set`, `kui_env_set_window`) and has no reading; its column
+names the argument. A real window's runner refreshes every fact each frame;
+headless, `ctx.setEnv` in Node and the two C setters are the writers, and
+the conformance corpus drives its two chrome scenes through them. The
+`from` column says which Rust struct holds the fact, or that it is derived
+or the frame's rather than `Env`'s. Two divergences are deliberate:
+`native_controls` is the `Rect` the core holds in Node and a width and
+height at the window origin in Lua and C (the shape C's two numbers can
+express, and where the macOS traffic lights sit), and `frame_budget_ms` is
+derived from `refresh_hz` but part of the reading everywhere, so no view
+restates the 120 Hz fallback.
+
+| field | from | Node | Lua | C | description |
+|---|---|---|---|---|---|
+| `refresh_hz` | `Env::refresh_hz` | `refreshHz` | `refresh_hz` | `kui_env_set(refresh_hz)` | Display refresh rate in Hz. "The host cannot tell" is `null` in Node (a stable shape to destructure, typed `number \| null`), an absent key in Lua, and a rate at or below zero in C. |
+| `frame_budget_ms` | `Env::frame_budget_ms()`, derived | `frameBudgetMs` | `frame_budget_ms` | — | One vsync interval at `refresh_hz`, or at 120 Hz when the host cannot tell: the per-frame time budget, and what the latency HUD draws its line at. Derived, and in the reading anyway, so no view restates the fallback. A C host is the one that knows the rate and computes its own. |
+| `focused` | `Env::focused` | `focused` | `focused` | `kui_env_set(focused)` | Whether the *window* has the keyboard at all. Not the focused node — that is the `focus` row. |
+| `window.id` | `WindowEnv::id` | `window.id` | `window.id` | `kui_env_set_window(window)`, read back by `kui_ctx_window` | Which window this frame draws, assigned by the driver: 0 for the window the app starts in. Every event from it carries the same number. |
+| `window.custom_chrome` | `WindowEnv::custom_chrome` | `window.customChrome` | `window.custom_chrome` | `kui_env_set_window(custom_chrome)` | The host asked the app to draw its own chrome, so there is no native titlebar to sit under. `<titlebar>` and `<windowButtons>` build nothing when this is false. |
+| `window.maximized` | `WindowEnv::maximized` | `window.maximized` | `window.maximized` | `kui_env_set_window(maximized)` | The window is maximized — what picks the restore glyph over the maximize one. |
+| `window.fullscreen` | `WindowEnv::fullscreen` | `window.fullscreen` | `window.fullscreen` | `kui_env_set_window(fullscreen)` | The window is fullscreen. |
+| `window.native_controls` | `WindowEnv::native_controls` | `window.nativeControls` | `window.controls_w` / `window.controls_h` | `kui_env_set_window(controls_w, controls_h)` | Area (logical px, window coordinates) covered by controls the OS still draws over our content — the macOS traffic lights under custom chrome. Keep out of it. Node hands back the `Rect` the core holds (`{x, y, w, h}`, or `null` for none); Lua and C flatten it to a width and height anchored at the window origin (absent in Lua, `0` in C, for none), which is the shape C's two numbers can express and where the one real instance sits. |
+| `viewport.w` | `Core::viewport()`, the frame's | `viewport.width` | `viewport_w` | `kui_frame_begin(w)` | The logical width the current (or last) frame was begun with — the other host fact a view wants at the same moment, so it rides in the same reading. Node's `viewport` is the `WindowSize` shape `runWindowed` already uses. |
+| `viewport.h` | `Core::viewport()`, the frame's | `viewport.height` | `viewport_h` | `kui_frame_begin(h)` | Its logical height. |
+| `scale` | `Core::scale()`, the frame's | `viewport.scale` | — | `kui_frame_begin(scale)` | Device pixels per logical px. Lua has no reading: a script sees logical px only. |
+| `focus` | `Core::focus()`, the frame's | — | `focus` | `kui_focused()` | The focused *node*'s key, as events carry it (absent for none). A value the host wrote before the view ran, so it lags a same-frame verb by one frame; `env.is_focused(key)` is the live query. Node spells it as the call `focused()` on the context, and C as `kui_focused`, rather than a key on `env`. |
+| `focus_visible` | `Core::focus_visible()`, the frame's | — | `focus_visible` | `kui_focus_visible()` | Whether focus shows — it got there by Tab or assistive technology rather than a click. Node: `focusVisible()` on the context. |
