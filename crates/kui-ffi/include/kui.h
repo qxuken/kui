@@ -51,7 +51,18 @@ extern "C" {
  * a host that does not call one is unaffected, and one that does fails to
  * link, which is loud.
  *
- * ABI 4 is the first release to append to an [out] struct: KuiEvent gained
+ * It bumps per change, not per release, so what follows is a log of breaks
+ * and not a list of published versions. 1 through 5 all came and went
+ * between two releases and no release carried any of them: this scheme
+ * landed after 0.1.0-alpha.5, and 0.1.0-alpha.6 is the first version to
+ * have a number at all - 6. A gap is normal, and a number you never saw
+ * published is one nothing was published against. It costs you nothing,
+ * because the check above is equality: you compare your header's number
+ * with the library you loaded, and never reason about the distance between
+ * two. The entries below are kept so a host crossing several bumps at once
+ * can read what each of them changed.
+ *
+ * ABI 4 was the first bump to append to an [out] struct: KuiEvent gained
  * `window`. If you set `size` (KUI_EVENT_INIT does) you need no source
  * change for it - the library writes the prefix your build reserved and
  * stops. The version still bumps, because a host that skipped this check

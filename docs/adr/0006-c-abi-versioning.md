@@ -1,6 +1,7 @@
 ---
 status: accepted
 date: 2026-09-04
+amended: 2026-09-06
 ---
 
 # The C ABI has a version, and the structs the library writes carry their size
@@ -111,6 +112,21 @@ previously implicit.
    `[in]` / `[out]` / `[out[]]` / `[lib]` tag on every struct — not in this
    ADR alone. The person who needs it is the one adding a field, and they
    are reading `kui.h`.
+8. **Bumps are per change, not per release, and the version history is a
+   log.** *Added 2026-09-06 (backlog S8), after the number went 1 → 6
+   between two releases and the header's history started reading as a
+   per-merge changelog.* The number moves when a change under rule 2 lands,
+   which means published numbers can skip: nothing shipped ABI 1 through 5,
+   and 0.1.0-alpha.6 is the first release to carry a number at all. That is
+   the intended reading rather than an accident to tidy up, because under
+   rule 3 the number is only ever compared for equality — an unpublished
+   number is compared against nothing, so a gap costs a host nothing, while
+   coalescing would leave two mutually incompatible builds *from git,
+   between releases* reporting the same number, which is the silent short
+   write this ADR exists to catch. The header says all of this where a C
+   host reads it, so a reader knows an unpublished number is normal, and
+   keeps a per-bump entry saying what each one changed — which is what a
+   host crossing several at once actually needs.
 
 ## Considered options
 
@@ -134,6 +150,18 @@ previously implicit.
   prop schema grows most releases — would become a hard break for hosts
   that are provably unaffected, and a version that bumps for harmless
   reasons is one hosts learn to ignore.
+- **Coalesce bumps within a release window**, so the number moves at most
+  once per release and every published number is one a host could have
+  linked against (considered 2026-09-06, backlog S8). Rejected: it buys
+  tidiness in a number nobody reads as a range, and pays for it in the one
+  place the version does real work. Two builds from inside the same release
+  window would share a number while writing different [out] layouts, so a
+  developer running a host against a locally built `libkui_ffi` — the case
+  where header and library routinely disagree, and the case a released
+  number cannot help with anyway — would get no check at all. It also
+  charges the release process with remembering whether the current number
+  is already unreleased, a step that fails silently the first time it is
+  skipped.
 - **`cbindgen`, so the header is generated and drift is impossible.**
   Out of scope, and already weighed in P6: the header's prose is most of
   its value, and the static asserts already settle drift. Neither of those

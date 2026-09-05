@@ -2269,7 +2269,9 @@ same question of them that found the original defects — what is hand-written
 without enforcement, and what state does the core keep that a binding cannot
 reach — plus a new one for the new mechanisms: does each guard refuse what it
 exists to refuse? State at the sweep: 512 Rust tests, 55 Node, 14 scenes in
-four adapters, `KUI_ABI_VERSION` 6, fmt and clippy clean.
+four adapters, `KUI_ABI_VERSION` 6, fmt and clippy clean. **All eight are
+closed** — S1–S7 on 2026-09-05, S8 on 2026-09-06 — so the next input is the
+fresh sweep the sequence below asks for, not this list.
 
 ### `!` S1 — A C plugin that omits `kui_ext_abi` loads unchecked — **done (2026-09-05)**
 
@@ -2652,13 +2654,30 @@ elements, events and resources — does not document `env` at all. Not a
 verified defect; a verified unguarded surface, which is exactly the state
 the first review found P1 and P2 in before they were defects.
 
-### `.` S8 — ABI bumps per merge, and the header knows it
+### `.` S8 — ABI bumps per merge, and the header knows it — **done (2026-09-06)**
 
 `KUI_ABI_VERSION` went 3 → 6 in one day, each bump documented in the header
 with its reason. Correct under ADR 0006's rule, and since nothing has shipped
 since alpha.5 a host sees one jump. But the header's history now reads as a
 per-merge log, and ADR 0006 says nothing about cadence. One sentence there —
 bumps coalesce within a release window, or they do not — settles it. No chip.
+
+**They do not coalesce: ADR 0006 decision 8 says bumps are per change and
+the history is a log**, and the header's version block now says so where a C
+host reads it (`abi.rs`'s doc on the constant, which carries the same
+history, says it too). The deciding argument is the one rule 3 already made:
+the number is compared for *equality* only, so an unpublished number is
+compared against nothing and a gap costs a host nothing — while coalescing
+would let two mutually incompatible builds from inside one release window
+report the same number, which is the silent short write the version exists
+to catch, and is the case a developer running against a locally built
+`libkui_ffi` actually hits. The tidiness it buys is in a number nobody reads
+as a range. So no pre-tag check and no `check-version.sh` change: there is
+nothing for the release process to remember. One correction the entry could
+not have known: the sweep's "a host sees one jump from 2" is not right
+either — the scheme landed *after* alpha.5, so 1 through 5 all went
+unpublished and alpha.6 is the first release to carry a number at all. The
+header says that rather than leaving a reader to date the tags.
 
 ## Suggested sequence
 
@@ -2972,7 +2991,7 @@ which the size test does not replace.
 open follow-up — an event on a timeline, not a tree property). The exit
 animations' `animating()` policy, revisited against a real view that removes
 many nodes (ADR 0005 left it opt-in + a 512-node budget with no duration
-cap). S8: one sentence in ADR 0006 on bump cadence.
+cap).
 
 **Rows, when a view asks.** A configurable focus-ring colour (README names
 it). `required` / `invalid` and heading `level` (ADR 0001 follow-ups).
