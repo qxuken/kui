@@ -195,6 +195,15 @@ impl Core {
     /// Runs layout and emission into `output()`, and installs this frame's
     /// hit and scroll regions for input handling.
     pub fn finish_frame(&mut self) {
+        self.layout_frame();
+        self.emit_frame();
+    }
+
+    /// The frame's first half: layout, then everything that resolves
+    /// against it before a quad is emitted — the caret and reveal nudges,
+    /// the `layout` events and the diagnostics, the declared window set,
+    /// the modal scope and the Tab step a view asked for.
+    fn layout_frame(&mut self) {
         // Tolerate unclosed containers (an FFI caller may have bailed early).
         self.stack.truncate(1);
         self.counters.truncate(1);
@@ -247,7 +256,13 @@ impl Core {
         if let Some(forward) = self.pending_focus_step.take() {
             self.focus_next(forward);
         }
+    }
 
+    /// The frame's second half: the laid-out tree into the display list,
+    /// in paint order — in-flow content, then floating subtrees, then the
+    /// scrollbars, the departed subtrees and the focus ring on top — and
+    /// the hit and scroll regions the next input is tested against.
+    fn emit_frame(&mut self) {
         let scale = self.scale;
         let mut hits: Vec<HitRegion> = self.interaction.take_hit_buffer();
         let mut scroll_regions: Vec<ScrollRegion> = Vec::new();
