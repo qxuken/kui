@@ -2797,9 +2797,11 @@ binding-parity corpus that pins all of it.
   worth recording.** It named `modal_editor.rs` and `splitmux.rs` as where
   to see a modal, a context menu and a cursor change — but `modal_editor`'s
   "modal" is vim-style modal *editing*, and neither example declares a
-  `modal` row, an `on_context_menu` or an editor. **No Rust example has a
-  context menu at all**; the only ones that do are `examples/node/counter.tsx`
-  (headless-driven) and `examples/c/counter.c`. So each behaviour was driven
+  `modal` row, an `on_context_menu` or an editor. **No Rust example had a
+  context menu at all** — the only ones that did were
+  `examples/node/counter.tsx` (headless-driven) and `examples/c/counter.c`;
+  that gap has since been closed by giving `examples/rust/counter.rs` one,
+  in the same shape its Node and C siblings use (see the changelog entry). So each behaviour was driven
   where it actually lives, through the OS: the modal in `accessibility.rs`
   (focus enters on the `initial_focus` node, eight Tabs never leave its two
   controls, Escape returns focus to the opener — checked through the AX API,

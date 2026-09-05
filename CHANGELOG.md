@@ -1465,6 +1465,21 @@ anything — the job is written and waits on a runner, not on an edit.
   `--example lua_panel` are unchanged — because every example binary lands in
   one flat `target/debug/examples/`, where two targets called `panel` would
   collide.
+
+- **The Rust counter has a context menu** (backlog R4). `on_context_menu`
+  shipped with a core test and a corpus scene, and Node's and C's counters
+  both demo it — but no Rust example did, so the one binding most people
+  read first had no worked example of the feature. `examples/rust/counter.rs`
+  now declares it on the root and floats a `modal` menu at the press, the
+  same shape `counter.tsx` and `counter.c` use: the core reports
+  `{kind="contextmenu", x, y}` and opens nothing, the view puts the menu
+  there next frame, and `modal` does the rest — the buttons behind it stop
+  taking clicks, Tab is scoped to the menu, and Escape or a press outside
+  comes back as `{kind="dismiss"}`. `FloatConfig::fit` keeps it in the window
+  when the press lands near an edge. Driven natively through the OS rather
+  than asserted headlessly, which is also how the float-ordering bug in the
+  first draft was found: the menu was declared before `latency_hud`, and the
+  HUD — a float too — drew over it.
   `examples/README.md` is the map — every example, its `cargo run -p ...`
   line, and what it shows.
   No run command changed: cargo names a target by its `name`, not its path,

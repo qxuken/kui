@@ -3,16 +3,31 @@
 //! declare a `click_sound`, the badge a `hover_sound`, and the hum is an
 //! `audio` node the view keeps declaring while it is on.
 //!
+//! Right-click anywhere for a context menu — the same shape the Node and C
+//! counters use. The core opens nothing: a secondary press on a node that
+//! declared `on_context_menu` emits `{kind="contextmenu", x, y}` and stops
+//! there, and the view declares a `modal` float at those coordinates on the
+//! next frame. `modal` is what makes it behave like a menu — Tab is scoped
+//! to it, the pointer cannot reach the buttons behind it, and Escape or a
+//! press outside comes back as `{kind="dismiss"}` for the app to act on.
+//!
 //! Run: cargo run --example counter
 
 use kui::audio::{blip, wav_pcm16};
 use kui::widgets;
-use kui::{Align, App, AudioSpec, Color, NodeSpec, Sizing, SoundId, TextStyle, Ui, UiEvent, Value};
+use kui::{
+    Align, App, AudioSpec, Color, FloatConfig, NodeSpec, Sizing, SoundId, TextStyle, Ui, UiEvent,
+    Value,
+};
 
 #[derive(Default)]
 struct Counter {
     count: i64,
     hum: bool,
+    /// Where the last right-click landed, while its menu is open. The
+    /// position is app state like any other: the core reported it once and
+    /// kept nothing.
+    menu: Option<(f32, f32)>,
     /// Registered on the first frame (synthesized, so no asset files).
     sounds: Option<Sounds>,
 }
@@ -54,7 +69,16 @@ impl App for Counter {
         });
         // The title is frame state like everything else; the runner diffs.
         ui.window_title(&format!("kui — counter ({})", self.count));
-        ui.configure_root(NodeSpec::column().fill().center().gap(24.0));
+        // The whole window answers a secondary press. Any node can: the
+        // topmost one that declared `on_context_menu` is the one asked, so a
+        // row inside could offer its own menu and win over this one.
+        ui.configure_root(
+            NodeSpec::column()
+                .fill()
+                .center()
+                .gap(24.0)
+                .on_context_menu(Value::map([("kind", "menu".into())])),
+        );
         if self.hum {
             ui.audio_keyed("hum", AudioSpec::new(sounds.hum).looped().volume(0.3));
         }
@@ -116,6 +140,49 @@ impl App for Counter {
             },
         );
         kui::widgets::latency_hud(ui);
+
+        // Declared after the HUD, not before it: floats stack in
+        // declaration order, and the HUD is a float too — declared second it
+        // would draw over the menu. One `modal` row is the whole difference
+        // between this and a plain float.
+        if let Some((x, y)) = self.menu {
+            ui.with_keyed(
+                "menu",
+                NodeSpec::column()
+                    .float(
+                        FloatConfig::viewport()
+                            .at(Align::Start, Align::Start)
+                            .self_at(Align::Start, Align::Start)
+                            .offset(x, y)
+                            // Opened near the right or bottom edge, the menu
+                            // would hang off the window; `fit` mirrors it
+                            // back across the press instead.
+                            .fit(),
+                    )
+                    .modal(Value::str("menu"))
+                    .label("Actions")
+                    .width(Sizing::Fixed(120.0))
+                    .pad(4.0)
+                    .gap(4.0)
+                    .bg(Color::rgb8(0x22, 0x24, 0x2c))
+                    .border(1.0, Color::rgb8(0x3b, 0x5b, 0xd4))
+                    .radius(6.0),
+                |ui| {
+                    sound_button(
+                        ui,
+                        "+10",
+                        Value::map([("kind", "add10".into())]),
+                        sounds.click,
+                    );
+                    sound_button(
+                        ui,
+                        "reset",
+                        Value::map([("kind", "reset".into())]),
+                        sounds.click,
+                    );
+                },
+            );
+        }
     }
 
     fn on_event(&mut self, ev: UiEvent) {
@@ -123,6 +190,24 @@ impl App for Counter {
             Some("inc") => self.count += 1,
             Some("dec") => self.count -= 1,
             Some("hum") => self.hum = !self.hum,
+            // A right-click: the core reports where it landed and opens
+            // nothing. The next frame's view is what puts a menu there.
+            Some("contextmenu") => {
+                let at = |k| ev.payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as f32;
+                self.menu = Some((at("x"), at("y")));
+            }
+            // Escape, or a press outside the menu. The core asks; the app
+            // decides — this one just closes.
+            Some("dismiss") => self.menu = None,
+            // Choosing an item closes the menu, the way it does everywhere.
+            Some("add10") => {
+                self.count += 10;
+                self.menu = None;
+            }
+            Some("reset") => {
+                self.count = 0;
+                self.menu = None;
+            }
             _ => {}
         }
     }
