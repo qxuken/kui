@@ -770,59 +770,109 @@ job before tagging rather than having it read for you.
 
 ## Status / next
 
-v0 scope: no z-index (floats stack in tree order). Transitions cover sizing, colors, radius,
-opacity, shadows, position (`slide`, `enter`) and departure (`exit`): a node the view stops
-declaring is copied out of the last frame that had it and replayed frozen, on top and inert
-until its transition ends ([ADR 0005](docs/adr/0005-the-paint-vocabulary.md)). It is opt-in per
-node, capped at 512 departing nodes at once, and a ghost cannot be re-laid-out — `exit`'s
-`width`/`height` resize the departing node's own box and nothing inside it moves.
-Paint is fill, border, four radii, group opacity and one outer drop shadow per node: there are
-**no gradients** in v0 (a stop list, a type, a geometry and an interpolation space are not a
-paint prop's worth of work — use an image or stack solids), no inset or multiple shadows, and
-opacity is a per-quad alpha multiply rather than an offscreen composite, so overlapping pieces
-of one faded subtree show their seams. A `radius` on a node that clips or scrolls rounds the
-clip too, so a rounded card's children stay inside its corners; what that gives up is nesting
-(the inherited clip is one rect and four radii, so two rounded clippers keep only the corners
-neither of them moved) and hit-testing, which stays rectangular — a click in the corner of a
-rounded scroll container still reaches the row under it.
-Wrapping is rows only, for the pass-order reason above: a **column** that outgrows its
-height is still one line, so it shrinks its `Fit` children toward their `min` (or
-overflows) rather than moving anything into a second column, and `Dir` is `Row` or
-`Column` with no reverse. Beyond that the alignment vocabulary is start/center/end and
-nothing else — no `align-content` (a wrapping row's lines always share the leftover cross
-space equally), no `space-between` / `around` / `evenly` on either axis (a `grow` spacer
-node covers the first of the three), and no baseline cross-alignment, so two text sizes on
-one row align by box and sit on different lines. There is no aspect ratio either: "square"
-or "16:9" needs one of the two dimensions known.
-Layout queries stop at the node: `measure_text` and `on_layout` give whole-string and whole-node
-rects, not the boxes of lines or glyphs inside a paragraph. Accessibility, keyboard focus and
-modality are data (ADR 0001, 0002 and 0003); arrow keys inside radio groups, tab lists and lists,
-a configurable focus ring colour, and initial focus inside a dialog, are the next steps there.
-Pointer buttons: the secondary one is routed to `on_context_menu` and nothing else; the middle
-button and anything past it (back, forward) reach the core as data and route nowhere, so there is
-no middle-click-to-close, no right-drag and no per-button `on_click`. Touch and pen are not
-input modes of their own: a finger on a touchscreen arrives as whatever the platform synthesises
-as mouse input, so a tap presses and clicks and nothing past that exists — no multi-touch, no
-pinch, rotate or two-finger gestures, no pressure and no stylus tilt. v0 is desktop-first.
-Keys are layout-resolved characters and a closed list of names, with no physical
-scancode and no left/right distinction on the modifiers, so a keymap cannot bind a
-position on the board (WASD on AZERTY is ZQSD); a key the list does not name is
-dropped rather than delivered as `unknown`. Presses and releases route to the key
-sink and no further: the core keeps no "which keys are down" query, since the app
-that asked for the pair already has one.
-The pointer shape is derived, not declared: the core resolves one per frame from
-whatever is under the pointer, and the `cursor` prop overrides it — but only from
-this list (`text`, `pointer`, `grab`, `grabbing`, `notAllowed`, the four resize
-arrows and the default), so there are no custom bitmap cursors and no hiding the
-pointer.
-Audio covers one-shots, loops, volume, pause and a finished-playback event; sounds decode fully
-into memory, and synthesis, effects, positional audio and disk streaming are out of scope.
-Editing: caret blink, double/triple-click
-word/line select, scroll-caret-into-view, inline IME composition, Tab
-focus traversal, and undo/redo (operational deltas with typing/delete
-coalescing — the widget owns its buffer, so it owns its history; hosts
-with their own text model take raw chords through `on_key` and bring
-their own).
+What v0 does not do, by area, with the ADR or backlog entry each limit
+belongs to.
+
+**Paint.** Fill, border, four radii, group opacity and one outer drop shadow
+per node ([ADR 0005](docs/adr/0005-the-paint-vocabulary.md)). There are **no
+gradients** (a stop list, a type, a geometry and an interpolation space are
+not a paint prop's worth of work — use an image or stack solids), no inset or
+multiple shadows, and the single shadow is not knocked out of the middle of
+the shape, so a translucent background shows it through. Opacity is a per-quad
+alpha multiply rather than an offscreen composite, so overlapping pieces of one
+faded subtree show their seams. There is no z-index: floats stack in tree order.
+Transitions cover sizing, colors, radius, opacity, shadows, position (`slide`,
+`enter`) and departure (`exit`) — a node the view stops declaring is copied out
+of the last frame that had it and replayed frozen, on top and inert until its
+transition ends. `exit` is opt-in per node, capped at 512 departing nodes at
+once, and a ghost cannot be re-laid-out: `exit`'s `width`/`height` resize the
+departing node's own box and nothing inside it moves.
+
+A `radius` on a node that clips or scrolls rounds the clip too, so a rounded
+card's children stay inside its corners. What that gives up is nesting (the
+inherited clip is one rect and four radii, so a corner both clippers round
+takes the tighter of the two, and a corner an ancestor's straight edge crosses
+goes square) and hit-testing, which stays rectangular — a click in the corner
+of a rounded scroll container still reaches the row under it.
+
+**Layout.** Wrapping is rows only, for the pass-order reason above: a
+**column** that outgrows its height is still one line, so it shrinks its `Fit`
+children toward their `min` (or overflows) rather than moving anything into a
+second column (C12). `Dir` is `Row` or `Column` with no reverse. Beyond that
+the alignment vocabulary is start/center/end and nothing else — no
+`align-content` (a wrapping row's lines always share the leftover cross space
+equally), no `space-between` / `around` / `evenly` on either axis (a `grow`
+spacer node covers the first of the three), and no baseline cross-alignment, so
+two text sizes on one row align by box and sit on different lines (C13). There
+is no aspect ratio either: "square" or "16:9" needs one of the two dimensions
+known (C14).
+
+**Input.** Pointer buttons: the secondary one is routed to `on_context_menu`
+and nothing else (C2); the middle button and anything past it (back, forward)
+reach the core as data and route nowhere, so there is no middle-click-to-close,
+no right-drag and no per-button `on_click`. Touch and pen are not input modes
+of their own: a finger on a touchscreen arrives as whatever the platform
+synthesises as mouse input, so a tap presses and clicks and nothing past that
+exists — no multi-touch, no pinch, rotate or two-finger gestures, no pressure
+and no stylus tilt (X3). v0 is desktop-first.
+
+Keys are layout-resolved characters and a closed list of names, with the
+US-QWERTY position beside them as `physical`, so a keymap can bind the finger
+rather than the label ([ADR 0002](docs/adr/0002-keyboard-focus-as-data.md),
+decision 11). The modifiers carry no left/right distinction, so a keymap
+cannot tell the two Shifts apart, and a key that neither the layout nor the
+position names is dropped rather than delivered as `unknown`. Presses and
+releases route to the key sink and no further (C9): the core keeps no "which
+keys are down" query, since the app that asked for the pair already has one.
+
+The pointer shape is derived, not declared: the core resolves one per frame
+from whatever is under the pointer, and the `cursor` prop overrides it — but
+only from this list (`text`, `pointer`, `grab`, `grabbing`, `notAllowed`, the
+four resize arrows and the default), so there are no custom bitmap cursors and
+no hiding the pointer (C3).
+
+**Focus and accessibility.** Accessibility, keyboard focus and modality are
+data ([ADR 0001](docs/adr/0001-accessibility-as-data.md),
+[0002](docs/adr/0002-keyboard-focus-as-data.md) and
+[0003](docs/adr/0003-modal-surfaces.md)), and composites are derived from the
+roles rather than declared
+([ADR 0007](docs/adr/0007-composite-keyboard-patterns.md)): a tab list, radio
+group, menu or picker list is one Tab stop with arrows, Home/End and type-ahead
+inside it, and `initialFocus` says which control a modal opens on. The focus
+ring's colour is still a constant in the core, not a prop and not a theme
+value (ADR 0002). ADR 0007's own follow-ups are the rest: grid navigation
+(Left/Right into a row, Up/Down between rows, which wants a `grid` / `row` /
+`cell` vocabulary), submenus, a `radio-without-group` warning, and
+multi-select.
+
+**Text and editing.** Editing covers caret blink, double/triple-click
+word/line select, scroll-caret-into-view, inline IME composition, Tab focus
+traversal, and undo/redo (operational deltas with typing/delete coalescing —
+the widget owns its buffer, so it owns its history; hosts with their own text
+model take raw chords through `on_key` and bring their own). Layout queries
+stop at the node: `measure_text` and `on_layout` give whole-string and
+whole-node rects, not the boxes of lines or glyphs inside a paragraph.
+
+**Audio.** One-shots, loops, volume, pause and a finished-playback event.
+Sounds decode fully into memory, and synthesis, effects, positional audio and
+disk streaming are out of scope.
+
+**Windows.** alpha.6 ships `WindowKind::Normal` and nothing else, with
+`SetSize` and `Focus` as commands an app can queue (C11 steps 3 and 5). There
+is no `Popup` kind — that is [ADR 0004](docs/adr/0004-multi-window.md) step 4
+(C11 step 4), which owes screen-coordinate anchoring, ownership,
+non-activating focus routing and `dismiss` on the window. So a dropdown or a
+context menu today is an in-window float: `FloatConfig::fit` flips it across
+its anchor and clamps what still overflows, and a `modal` float takes the
+dismiss. What a float cannot do is
+leave the window — a menu taller than the viewport is clamped rather than
+placed.
+
+The glyph atlas and the shaped-text cache stay per window (ADR 0004 step 1,
+which amended decision 2 to say so): a `CachedText` entry stamps the atlas
+epoch it was packed against, so it is only valid for that window's page, and a
+second window re-rasterizes the same glyphs. Fonts, images, sounds and the one
+audio queue are the session's and are shared.
 
 ## License
 
