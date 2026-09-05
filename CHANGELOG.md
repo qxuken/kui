@@ -954,6 +954,23 @@ upgrades remove code from the apps on it is doing the job.
   `env.focus` is a value the host writes before `view` runs, so it does
   not see a verb called in the same frame — `env.is_focused(key)` is the
   query that does.
+- **Node reads the derived pointer shape** (backlog S6). `ctx.cursorShape()`
+  / `win.cursorShape()` return what the core resolved for the node under
+  the pointer, in the `cursor` prop's own words — `'text'` over an editor,
+  `'pointer'` over a button or a `focusable` node, `'grab'` over an `onDrag`
+  node (`'grabbing'` through the drag), `'default'` over a plain box or
+  with no pointer at all — or whatever that node's `cursor` overrode it
+  with. C3 shipped the derivation as `Core::cursor_shape` and
+  `kui_cursor_shape`, and a `KuiWindow` was already applying it to the real
+  cursor through its runner, but Node had no read, so a JavaScript test
+  could not assert C3's deliverable. It went into the `core_methods!` list,
+  so both classes have it by construction; `index.d.ts` types it as
+  `CursorShape`, derived from the generated `cursor` prop union so the
+  query and the prop cannot drift. Lua's `env` does not get it, on purpose:
+  what `env` derives per frame — `focus`, `focus_visible`, `is_hovered`,
+  `is_pressed`, the scroll offsets — is state a view draws *from*, and the
+  cursor is the frame's output, derived from the view rather than fed to it.
+  The Rust host applies it, and Lua's tests are Rust and read the core.
 
 ### Changed
 

@@ -1,4 +1,4 @@
-import type { AppMsg, KuiNode, TextProps } from './jsx-runtime.js';
+import type { AppMsg, GeneratedSpecProps, KuiNode, TextProps } from './jsx-runtime.js';
 
 export type { KuiNode, KuiElement, Msg, KuiMsg, AppMsg } from './jsx-runtime.js';
 
@@ -305,6 +305,10 @@ export interface AccessTree {
   /** Changes when anything above does. */
   hash: string;
 }
+
+/** What `cursorShape()` reports: the `cursor` prop's own vocabulary, so a
+ *  test compares against `'text'` and the two cannot drift. */
+export type CursorShape = NonNullable<GeneratedSpecProps['cursor']>;
 
 /** What text measures (`measureText`): logical px at the scale of the
  *  current or last frame; `lines` after wrapping. The same numbers layout
@@ -1034,6 +1038,17 @@ export declare class Ctx {
   isHovered(key: string): boolean
   isPressed(key: string): boolean
   /**
+   * The pointer shape for where the pointer is now, in the `cursor`
+   * prop's own vocabulary: derived from the topmost node under it
+   * — an editor is `'text'`, an `onClick` or `focusable` node
+   * `'pointer'`, an `onDrag` node `'grab'` (`'grabbing'` while it
+   * drags), a plain box or no pointer at all `'default'` — or
+   * whatever that node's `cursor` overrode it with. A window
+   * applies it to the real cursor by itself and only touches it
+   * when the answer changes; this is for tests and drivers.
+   */
+  cursorShape(): CursorShape
+  /**
    * Whether a node holds keyboard focus — any node: an editor, an
    * `onKey` sink, a button Tab landed on (see `focused`).
    */
@@ -1870,6 +1885,17 @@ export declare class KuiWindow {
    */
   isHovered(key: string): boolean
   isPressed(key: string): boolean
+  /**
+   * The pointer shape for where the pointer is now, in the `cursor`
+   * prop's own vocabulary: derived from the topmost node under it
+   * — an editor is `'text'`, an `onClick` or `focusable` node
+   * `'pointer'`, an `onDrag` node `'grab'` (`'grabbing'` while it
+   * drags), a plain box or no pointer at all `'default'` — or
+   * whatever that node's `cursor` overrode it with. A window
+   * applies it to the real cursor by itself and only touches it
+   * when the answer changes; this is for tests and drivers.
+   */
+  cursorShape(): CursorShape
   /**
    * Whether a node holds keyboard focus — any node: an editor, an
    * `onKey` sink, a button Tab landed on (see `focused`).

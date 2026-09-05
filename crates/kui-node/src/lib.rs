@@ -1267,6 +1267,21 @@ macro_rules! core_methods {
                 Ok(self.$core().is_pressed(parse_key(&key)?))
             }
 
+            // -- Pointer ----------------------------------------------------
+
+            /// The pointer shape for where the pointer is now, in the `cursor`
+            /// prop's own vocabulary: derived from the topmost node under it
+            /// — an editor is `'text'`, an `onClick` or `focusable` node
+            /// `'pointer'`, an `onDrag` node `'grab'` (`'grabbing'` while it
+            /// drags), a plain box or no pointer at all `'default'` — or
+            /// whatever that node's `cursor` overrode it with. A window
+            /// applies it to the real cursor by itself and only touches it
+            /// when the answer changes; this is for tests and drivers.
+            #[napi(ts_return_type = "CursorShape")]
+            pub fn cursor_shape(&mut self) -> String {
+                self.$core().cursor_shape().name().to_string()
+            }
+
             // -- Focus ------------------------------------------------------
 
             /// Whether a node holds keyboard focus — any node: an editor, an
