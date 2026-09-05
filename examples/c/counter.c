@@ -830,7 +830,7 @@ static int surface(void) {
  * report, and rebuilt here through the C API alone. The two reports have
  * to be the same bytes.
  *
- *     cargo run -p kui-core --example conformance-dump -- target/conformance.txt
+ *     cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt
  *     ./examples/c/counter --conformance target/conformance.txt
  *
  * The report format is documented on `conformance::report`; it carries no
@@ -1700,7 +1700,7 @@ static int conformance(const char *path) {
     if (!text) {
         fprintf(stderr,
                 "conformance: cannot read %s\n"
-                "  generate it with: cargo run -p kui-core --example conformance-dump -- %s\n",
+                "  generate it with: cargo run -p kui-core --features conformance --example conformance-dump -- %s\n",
                 path, path);
         return 1;
     }

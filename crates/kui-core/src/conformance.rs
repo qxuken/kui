@@ -22,7 +22,7 @@
 //!   asserts it, which pins the reference behaviour.
 //! - The report carries a digest over full quad geometry, which depends on
 //!   the installed fonts. It is never checked in: the reference is dumped
-//!   at test time (`cargo run -p kui-core --example conformance-dump`) and
+//!   at test time (`cargo run -p kui-core --features conformance --example conformance-dump`) and
 //!   the other three bindings — Lua, C, Node — reproduce their scenes and
 //!   compare against that dump, on the same machine, in the same CI job.
 //!
@@ -36,6 +36,12 @@
 //!
 //! Adding a binding-visible prop or element means adding it to a scene
 //! here; a binding that lowers it differently then fails to build.
+//!
+//! The module is behind the `conformance` feature, off by default: it is
+//! test infrastructure, and nothing a shipped binary should carry. The
+//! crate's own dev-dependency turns it on for its tests and examples, so
+//! does `kui-lua`'s; C and Node need nothing, since both rebuild the scenes
+//! through their public APIs and read the reference back as a file.
 
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write as _;

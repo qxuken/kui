@@ -37,7 +37,7 @@ in the workspace lands in one flat `target/debug/examples/`, where two called
 | [`gallery.rs`](rust/gallery.rs) | `cargo run -p kui --example gallery` | Registered images: Fit sizing, kept aspect, rounded corners |
 | [`toasts.rs`](rust/toasts.rs) | `cargo run -p kui --example toasts` | `enter`/`exit`: toasts that slide in and back out |
 | [`accessibility.rs`](rust/accessibility.rs) | `cargo run -p kui --example accessibility` | Every accessibility prop in one window; the fixture `scripts/ax-audit.swift` drives |
-| [`conformance-dump.rs`](rust/conformance-dump.rs) | `cargo run -p kui-core --example conformance-dump -- target/conformance.txt` | Writes the scene corpus's reference report the other bindings diff against |
+| [`conformance-dump.rs`](rust/conformance-dump.rs) | `cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt` | Writes the scene corpus's reference report the other bindings diff against |
 
 ## C — [`c/`](c)
 

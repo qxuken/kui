@@ -284,6 +284,7 @@ impl Core {
     /// (`set_key_focus`). The scene corpus's coverage derivation reads it:
     /// `keyFocus` leaves no mark on the tree, and the focus it takes is
     /// indistinguishable from the focus a click takes.
+    #[cfg(feature = "conformance")]
     pub(crate) fn declared_focus(&self) -> &[Key] {
         &self.declared_focus
     }

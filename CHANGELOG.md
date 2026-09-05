@@ -940,6 +940,19 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Changed
 
+- **The scene corpus is behind `kui-core`'s `conformance` feature**, off
+  by default (backlog S3). `kui_core::conformance` — the scene builders,
+  the coverage derivation, the report and the fixture bytes — is test
+  infrastructure, and it was compiled into every release build of every
+  binding. Now it is on for `kui-core`'s and `kui-lua`'s own tests through
+  a dev-dependency, so `cargo test` cannot skip the corpus, and off
+  everywhere else; C and Node needed nothing, since their adapters go
+  through the public APIs and read the reference as a file. The dump
+  command is `cargo run -p kui-core --features conformance --example
+  conformance-dump`. A crate that drives the corpus itself adds
+  `features = ["conformance"]` to its `kui-core` dependency. Executables
+  do not change (the linker already dropped the unreferenced module);
+  the rlib is 10 % smaller and `kui-core` compiles in about half the time.
 - **`KUI_ABI_VERSION` is 5**, and the C drain loop is a source break (ADR
   0004 decision 12, built by C11 step 3). `kui_take_window_commands` filled
   a `uint32_t` array; a command now names its window and an open carries a

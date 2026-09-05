@@ -1,6 +1,6 @@
 //! Dumps the scene corpus's reference report (see `kui_core::conformance`).
 //!
-//!     cargo run -p kui-core --example conformance-dump -- target/conformance.txt
+//!     cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt
 //!
 //! The other bindings rebuild the same scenes and diff their own report
 //! against this file. It is generated, never checked in: the quad digests

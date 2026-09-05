@@ -47,6 +47,7 @@ impl Core {
 
     /// The windows declared while the current frame was built, for the
     /// scene corpus's coverage derivation: a declaration leaves no node.
+    #[cfg(feature = "conformance")]
     pub(crate) fn declared_windows(&self) -> &[WindowDecl] {
         &self.declared_windows
     }
