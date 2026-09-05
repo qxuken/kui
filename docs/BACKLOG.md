@@ -2502,3 +2502,160 @@ got. A fresh sweep of the grown surface is the input worth having; the
 first review found its defects in the gap between what the schema
 enforced and what the composites hand-wrote, and the same question asked
 of the new surfaces is where the next set will be.
+
+
+---
+
+## Release 0.1.0-alpha.6 (2026-09-05)
+
+Goal set 2026-09-05: tag alpha.6, finish what is half-baked before it, and
+plan what follows. State at the decision: 542 Rust tests, 59 Node, 14 corpus
+scenes in four adapters, the plugin host green, all examples building,
+`KUI_ABI_VERSION` 6, 48 findings filed across seven rounds and 43 closed.
+
+### What ships
+
+Since alpha.5 (`93169ed`, 127 commits, +41k / −7.8k lines): modal surfaces
+(ADR 0003), composite keyboard patterns (ADR 0007), exit animations, group
+opacity, drop shadows and rounded clipping (ADR 0005), flex wrapping, a
+`Session` and the declared window set with `SetSize` / `Focus` (ADR 0004
+steps 1–3, 5), a versioned C ABI with caller-bounded out-params (ADR 0006),
+C as an extension, secondary mouse button and `onContextMenu`, `KeyUp`,
+derived cursor shapes, `reveal` / `set_scroll` / `scroll_geometry`,
+`selected` / `expanded` / set positions, `initialFocus`, Lua focus verbs,
+Node `env`, unknown-prop warnings, a generated warning-code union, and the
+binding-parity corpus that pins all of it.
+
+### Half-baked — finish before the tag
+
+- `!` **R1 — README "Status / next" is stale and unreadable.** It still says
+  "arrow keys inside radio groups, tab lists and lists … and initial focus
+  inside a dialog, are the next steps" (README.md:800) — ADR 0007 and A2
+  shipped both. And it has grown into wall paragraphs with no structure; a
+  reader evaluating alpha.6 cannot find what is and is not there. Rewrite as
+  short grouped paragraphs (paint · layout · input · focus/a11y · text ·
+  audio · windows), each naming the limit and the ADR or backlog id behind it.
+  **Done (2026-09-05, `570e8fb`).** Seven groups under bold labels, each limit
+  carrying its ADR or backlog id, with the tone and the short reasonings kept
+  where they were still true. **The re-read found a second stale claim, and it
+  was not this entry's.** "No physical scancode … so a keymap cannot bind a
+  position on the board (WASD on AZERTY is ZQSD)" was contradicted by
+  `KeyPress::physical`, which ADR 0002's decision 11 added and `docs/props.md`
+  has documented since; the section now says the position is there and the
+  modifiers are what still carry no left/right distinction. Every other limit
+  was checked against the code rather than assumed — `MouseButton`,
+  `CursorShape::ALL`, `Dir`, `Align`, `Clip::intersect`, `HitRegion.clip` (a
+  `Rect`, so hit-testing really is square), `depart::MAX_NODES`, `QuadKind`,
+  `StaticSoundData`, and the absence of any gradient or z-index — and one
+  clause was tightened rather than deleted: nested rounded clips take the
+  tighter cut per corner, and only a corner an ancestor's straight edge crosses
+  goes square, where "the corners neither of them moved" implied both are
+  dropped. R3's half of the work is in the same commit: a **windows** group
+  naming `Normal` / `SetSize` / `Focus`, the missing `Popup`, and
+  `FloatConfig::fit` plus a `modal` float as the in-window approximation. R3's
+  other half — ADR 0004's Consequences — is not done here.
+- `!` **R2 — The alpha.6 changelog section is 1,571 lines and 87 bullets.**
+  alpha.5's was 162. The detail is right and should stay, but nobody reads a
+  1,500-line release note; put a **twenty-line headline summary** at the top
+  of the section (what changed, what breaks — the C ABI and the Lua
+  `focus` / `focused` pair — and where the detail is), and make sure "What
+  you can delete" is complete for the big three: the scrim `onClick` box a
+  modal replaces, the hand-rolled tab-stop juggling a composite replaces,
+  and per-window resource registration a `Session` replaces.
+  **Done (2026-09-05, `2dbdb81`).** A ~30-line headline block sits under the
+  heading, before `### Added`: one paragraph of what alpha.6 is, an explicit
+  **What breaks** (the ABI 2 → 6 with the `kui_take_window_command` rename,
+  `kui_env_set_window`'s leading window id and the three grown [out] structs;
+  Node's five removed transport entry points, D2; the `focus` / `focused`
+  pair), and a line pointing at the detail and at this file. Of the big
+  three, the scrim bullet was already there; the composite one and the
+  `Session` one were not, and were added in the list's voice — C11 step 1's
+  entry had said "nothing yet" because step 3 had not landed when it was
+  written. No existing bullet was shortened or removed (85 insertions, 0
+  deletions), and the heading is untouched for X2.
+- `~` **R3 — Multi-window ships without popups (C11 step 4).** Decide it
+  rather than let it be implicit: alpha.6 is multi-window with `Normal`
+  windows, `SetSize` and `Focus`, and no `Popup` kind. Say so in Status /
+  next and in ADR 0004's Consequences, and name the in-window approximation
+  (`FloatConfig::fit` plus a `modal` float) as what a dropdown uses today.
+- `!` **R4 — Nothing has run natively on macOS or Windows since alpha.5.**
+  P8's smoke jobs are gated on repository variables and this instance has
+  only the `docker` runner, so the release's five prebuilds have been
+  cross-compiled and never executed on-platform. alpha.6's headline features
+  — modal `aria-modal`, composites, `orientation`, `set_selected` — are all
+  AccessKit-bridge behaviour that only a native run exercises. Before the
+  tag: `cargo test --workspace` natively on the Mac (P8 recorded it known
+  good), `scripts/ax-audit.swift` against `examples/rust/accessibility.rs`
+  (it gained radio-group and menu fixtures in `0ae02f2`), and whatever a
+  Windows machine can give; **record what ran and what did not in the
+  release notes** so the gap is stated rather than assumed.
+- `.` **R5 — Version and generated files.** `scripts/set-version.sh
+  0.1.0-alpha.6` moves Cargo, npm and the changelog heading (X2). Then `npm
+  run gen` and `git diff --exit-code` on the three generated files — parallel
+  worktree merges left them stale once this round (`80baacc`), and the CI
+  guard catches it, but catch it before the tag commit, not after.
+- `.` **R6 — The README benchmark table predates most of what ships.** The
+  numbers were measured before exit animations, opacity, shadows, rounded
+  clipping, wrapping and composites touched the hot path, and half the
+  benches are given as ratios "from a different (slower) machine". Re-run
+  `cargo bench -p kui-core` on the M-series machine and refresh the table so
+  the numbers describe the release.
+- `.` **R7 — Deprecation notice for Lua's `env.focus`.** P3 kept it beside
+  `env.focused` because alpha.5 had shipped it. alpha.6 is where the
+  changelog says: `env.focus` (the value) is deprecated, `env.focused` is
+  the reading, and 0.2 removes it.
+  **Done (2026-09-05, `2dbdb81`), with one correction.** A `### Deprecated`
+  section between `### Changed` and `### What you can delete` announces it.
+  But "`env.focused` is the reading" is not true *today* and the entry could
+  not say it was: `env.focused` is `Env::focused`, the **window**'s keyboard
+  focus as a bool, and P3's whole finding was that Lua cannot converge on
+  that name inside 0.1 without leaving the node key unreadable. So the entry
+  promises no change at all for 0.1 — no warning, no edit needed — and puts
+  the convergence at 0.2, where `focused` becomes the node reading in every
+  binding and the window fact takes an unambiguous name of its own. That is
+  the removal this item and the hygiene list both ask for, with the second
+  half of the rename named rather than assumed.
+
+### Pre-tag run list
+
+`cargo fmt --all --check` · `cargo clippy --workspace --all-targets -- -D
+warnings` · `cargo test --workspace` · `cargo build --workspace --examples` ·
+conformance reference + C adapter + `c_panel --headless` +
+`KUI_CONFORMANCE_REQUIRED=1 npm test` · `npm run typecheck` in
+`examples/node` · `scripts/check-version.sh 0.1.0-alpha.6` · R4's native
+runs · then commit, `git tag v0.1.0-alpha.6`, push the tag.
+
+## After alpha.6
+
+Grouped by kind, not urgency. Nothing here blocks the tag.
+
+**Build.** C11 step 4, `WindowKind::Popup` — the one multi-window step
+left, and the case (`fit` cannot place a dropdown taller than the window)
+that forces it. ADR 0004 step 1's leftover: the glyph atlas and shape cache
+are still per window because `Core::output` hands out `&mut GlyphAtlas`
+(see `kui-session-atlas-constraint`); it waits for a case where two windows
+share enough text to matter.
+
+**Design, each wanting an ADR.** Live regions and announcements (ADR 0001's
+open follow-up — an event on a timeline, not a tree property). The exit
+animations' `animating()` policy, revisited against a real view that removes
+many nodes (ADR 0005 left it opt-in + a 512-node budget with no duration
+cap). S8: one sentence in ADR 0006 on bump cadence.
+
+**Rows, when a view asks.** A configurable focus-ring colour (README names
+it). `required` / `invalid` and heading `level` (ADR 0001 follow-ups).
+Per-button `on_click` and middle-button routing (C2 left them "reach the
+core and route nowhere"). Physical key positions beyond what `60ca137`
+carried.
+
+**Parked on their own terms.** C12 (column wrapping), C13 (`space-between`
+and baseline), C14 (aspect ratio), C5(b) (core-side virtualisation), rounded
+clip nesting and rounded hit-testing (Status / next names both). Each says
+"wait for a view that wants it", and each should keep saying it until one
+does.
+
+**Hygiene.** Archive the closed entries of this file into
+`docs/backlog/closed-2026-09.md` and keep `BACKLOG.md` to open items and
+the sequence — 2,500 lines is the record but not a working list. Enable
+`SMOKE_MACOS` / `SMOKE_WINDOWS` the day a runner exists. Remove Lua
+`env.focus` at 0.2.
