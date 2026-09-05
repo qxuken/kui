@@ -2781,6 +2781,52 @@ binding-parity corpus that pins all of it.
   (it gained radio-group and menu fixtures in `0ae02f2`), and whatever a
   Windows machine can give; **record what ran and what did not in the
   release notes** so the gap is stated rather than assumed.
+  **Done (2026-09-05) — the macOS half ran, the Windows half is a stated
+  gap.** A `### Native verification` subsection sits under the alpha.6
+  heading, before `### Added`, saying what executed on what and what did
+  not. On macOS 26.6.2 (arm64), rustc 1.98.0: `cargo test --workspace` is
+  545 tests over 55 suites, 0 failed, 0 ignored, still with no display, no
+  fonts and no GPU — P8's note held after the 131 commits since it was
+  written. `scripts/ax-audit.swift` against `examples/rust/accessibility.rs`
+  passes **88/88 over all nine sections**, so the alpha.6 access work is
+  confirmed against the OS rather than against kui's types: `modal` is an
+  `AXWindow`/`AXDialog`, the radio group an `AXRadioGroup`, the menu an
+  `AXMenu`, each with the orientation its `dir` derived, and `set_selected`
+  / `set_expanded` move state from the reader's side.
+  **The item's own list of things to watch needed re-aiming, and that is
+  worth recording.** It named `modal_editor.rs` and `splitmux.rs` as where
+  to see a modal, a context menu and a cursor change — but `modal_editor`'s
+  "modal" is vim-style modal *editing*, and neither example declares a
+  `modal` row, an `on_context_menu` or an editor. **No Rust example has a
+  context menu at all**; the only ones that do are `examples/node/counter.tsx`
+  (headless-driven) and `examples/c/counter.c`. So each behaviour was driven
+  where it actually lives, through the OS: the modal in `accessibility.rs`
+  (focus enters on the `initial_focus` node, eight Tabs never leave its two
+  controls, Escape returns focus to the opener — checked through the AX API,
+  not a screenshot), the context menu in `examples/c/counter` (opens at the
+  press, Escape closes it, the press is never a click), and the cursor by
+  posting real mouse moves and capturing the pointer pixels: I-beam over an
+  editor, hand over a button, arrow over a plain box. `modal_editor` and
+  `splitmux` were still opened and driven (NOR → INS and typing; ⌥v/⌥s/⌥t
+  splits and a tab), as were `lua_panel`, `c_panel` and Node's
+  `counter-window.mjs`, so all five hosts are known to open a window and draw.
+  **A method note for whoever repeats this:** `CGWarpMouseCursorPosition`
+  moves the pointer without posting an event, so the core never re-derives a
+  shape and every cursor reads as the arrow — post `.mouseMoved` events
+  through the HID tap instead. `NSCursor.currentSystem` cannot identify the
+  shape either: `iBeam` and `arrow` have no loadable image on macOS 26 and
+  the three hand cursors share one, so comparing images silently reports
+  "pointer" for everything. `screencapture -C` is what actually answers.
+  **Windows is untouched and is written down as such**: no machine or VM was
+  reachable, so `windows_nc.rs` has still never run. Two further gaps the
+  item did not name are in the notes as well — the **published prebuilds are
+  untested as artifacts everywhere** (what ran was built from source here,
+  not the cross-compiled binary), and **`SMOKE_MACOS` was deliberately left
+  unset**: no Forgejo runner is installed on this Mac and registering one
+  needs a daemon plus a registration token, and setting the variable without
+  a `macos`-labelled runner would leave the job queued on every push instead
+  of reporting anything. The job is written and waits on a runner, not an
+  edit.
 - `.` **R5 — Version and generated files.** `scripts/set-version.sh
   0.1.0-alpha.6` moves Cargo, npm and the changelog heading (X2). Then `npm
   run gen` and `git diff --exit-code` on the three generated files — parallel
