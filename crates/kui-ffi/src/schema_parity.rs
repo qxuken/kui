@@ -1,4 +1,3 @@
-
 use super::*;
 use kui_core::schema::{Kind, PROPS, Parsed, PropsOut, Target, apply};
 
