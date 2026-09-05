@@ -1576,12 +1576,15 @@ fn observe(core: &Core, cov: &mut Coverage) {
             cov.custom.insert("border");
         }
         // What every binding's `tooltip` *prop* lowers to.
-        if spec.hoverable && spec.description.is_some() {
+        if spec.hoverable && spec.access().description.is_some() {
             cov.custom.insert("tooltip");
         }
         // `widgets::button_spec` plus a payload: the stock button is the
         // node that declares a click and both interaction backgrounds.
-        if spec.on_click.is_some() && spec.hover_bg.is_some() && spec.pressed_bg.is_some() {
+        if spec.events().on_click.is_some()
+            && spec.interact().hover_bg.is_some()
+            && spec.interact().pressed_bg.is_some()
+        {
             cov.elements.insert("button");
         }
         match spec.window {
@@ -1596,7 +1599,7 @@ fn observe(core: &Core, cov: &mut Coverage) {
         // `widgets::latency_graph` hides its subtree from assistive
         // technology, which is the one thing the graph declares about
         // itself; nothing else in the corpus asks for `Role::None`.
-        if spec.role == Some(Role::None) {
+        if spec.access().role == Some(Role::None) {
             cov.elements.insert("latencyGraph");
         }
 

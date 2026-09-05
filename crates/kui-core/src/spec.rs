@@ -430,17 +430,76 @@ pub mod corner {
 
 /// Full per-node configuration. This — not any Rust trait — is the contract
 /// every frontend (Rust builders, Lua, serialized UI) lowers into.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub struct NodeSpec {
     pub layout: LayoutSpec,
     pub style: VisualStyle,
-    /// Payload emitted as a `UiEvent` when this node is clicked.
-    pub on_click: Option<Value>,
     /// Track pointer hover for this node (`Ui::is_hovered`) without making
     /// it clickable — tooltips on passive badges. Nodes with `on_click` /
     /// `on_key` / `window` are always hover-tracked; clicks on a merely
     /// hoverable node emit nothing.
     pub hoverable: bool,
+    /// Window-chrome role (drag handle / window button). A chrome node's
+    /// interactions become `WindowCommand`s for the frame driver instead of
+    /// `UiEvent`s; `on_click` is ignored on such nodes.
+    pub window: Option<WindowRole>,
+    /// Eases this node's sizing amounts, colors and radius toward what the
+    /// view declares instead of snapping (see [`crate::anim`]). Keyed by
+    /// node identity, so the node needs a stable key across frames.
+    pub transition: Option<Transition>,
+    /// With `transition`: also ease this node's laid-out *position*, moving
+    /// its whole subtree — reordered siblings slide into their new slots.
+    /// Opt-in because a node whose position follows an already-easing
+    /// sibling (a split's second half) would lag twice.
+    pub slide: bool,
+    /// Reachable by Tab, and focused by a click or an assistive-technology
+    /// request, without a click payload or a control role — a list row
+    /// that opens on Enter, a card. Controls (editors, key sinks,
+    /// `on_click` boxes, the control roles) are focusable already; see
+    /// `docs/adr/0002-keyboard-focus-as-data.md`.
+    pub focusable: bool,
+    /// Where focus lands when the `modal` scope containing this node is
+    /// entered: the first node in the modal's Tab ring declaring it,
+    /// instead of simply the ring's first — a destructive confirm opening
+    /// on its Cancel rather than on whichever control is declared first.
+    /// Read on entry only, so a Tab press afterwards stands; a node the
+    /// ring skips (disabled, decoration, not focusable) is not a
+    /// candidate, and with no candidate the entry is the ring's first
+    /// node as before. See `docs/adr/0003-modal-surfaces.md`.
+    pub initial_focus: bool,
+    /// Inert: keeps its hit region (so a tooltip can say why) and loses
+    /// everything else — no click, drag or key sink, no hover / pressed /
+    /// focus background, no place in the Tab ring; the access tree
+    /// reports it disabled.
+    pub disabled: bool,
+    /// Overrides the pointer shape over this node (see
+    /// [`crate::cursor`]). Unset, the core derives one from what the node
+    /// does — an editor is a caret, a clickable or focusable node a hand,
+    /// an `on_drag` node a grab — so this is only for what the derivation
+    /// cannot know: a splitter that resizes rather than moves, a disabled
+    /// control that wants to say `notAllowed`.
+    pub cursor: Option<CursorShape>,
+
+    /// See [`EventSpec`]. `None` when the node declares none of it.
+    pub events: Option<Box<EventSpec>>,
+
+    /// See [`AnimSpec`]. `None` when the node declares none of it.
+    pub anim: Option<Box<AnimSpec>>,
+
+    /// See [`AccessSpec`]. `None` when the node declares none of it.
+    pub access: Option<Box<AccessSpec>>,
+
+    /// See [`InteractSpec`]. `None` when the node declares none of it.
+    pub interact: Option<Box<InteractSpec>>,
+}
+
+/// Event payloads a node declares. Boxed on `NodeSpec` because most
+/// nodes declare none, and seven `Option<Value>` inline cost 224 bytes
+/// on every node built (see C15 in `docs/BACKLOG.md`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct EventSpec {
+    /// Payload emitted as a `UiEvent` when this node is clicked.
+    pub on_click: Option<Value>,
     /// Makes this node draggable: pressing it starts a pointer-captured
     /// drag, and cursor motion until release emits `UiEvent`s of the form
     /// `{kind="drag", phase="start"|"move"|"end", x, y, dx, dy, tag}` with
@@ -461,34 +520,6 @@ pub struct NodeSpec {
     /// interactive child takes the press unless it declares its own.
     /// Null = the behaviour without a tag.
     pub on_context_menu: Option<Value>,
-    /// Window-chrome role (drag handle / window button). A chrome node's
-    /// interactions become `WindowCommand`s for the frame driver instead of
-    /// `UiEvent`s; `on_click` is ignored on such nodes.
-    pub window: Option<WindowRole>,
-    /// Eases this node's sizing amounts, colors and radius toward what the
-    /// view declares instead of snapping (see [`crate::anim`]). Keyed by
-    /// node identity, so the node needs a stable key across frames.
-    pub transition: Option<Transition>,
-    /// With `transition`: also ease this node's laid-out *position*, moving
-    /// its whole subtree — reordered siblings slide into their new slots.
-    /// Opt-in because a node whose position follows an already-easing
-    /// sibling (a split's second half) would lag twice.
-    pub slide: bool,
-    /// Background while the pointer hovers this node (or any node sharing
-    /// its `hover_group`). Resolved by the core when the node opens, so a
-    /// data-only view gets hover styling without querying `is_hovered` —
-    /// and with `transition` the swap eases. Implies hover tracking.
-    pub hover_bg: Option<Color>,
-    /// Background while this node (or its group) is pressed. Implies hover
-    /// tracking. Without a `hover_bg`, hover keeps the plain `bg`. An
-    /// `on_drag` node holds this state for the whole captured drag, even
-    /// while the cursor is off it.
-    pub pressed_bg: Option<Color>,
-    /// Hover group: nodes sharing an id count as one for `hover_bg` /
-    /// `pressed_bg` — a two-piece elbow, a split button, a row whose cells
-    /// highlight together. The id is a hash of a name (`hover_group`).
-    /// Implies hover tracking.
-    pub hover_group: Option<u64>,
     /// Hover events: the pointer entering or leaving this node emits
     /// `{kind="hover", phase="enter"|"leave", tag}` with this payload under
     /// `tag` — for hover-dependent *layout* (a close button that appears)
@@ -502,13 +533,34 @@ pub struct NodeSpec {
     /// produced instead of re-deriving them; a transition that moves the
     /// node reports every frame it moves. Needs a stable key across frames.
     pub on_layout: Option<Value>,
-    /// A registered sound played when this node is clicked (see
-    /// [`crate::audio`]); the click itself still emits `on_click` if one is
-    /// declared. Implies hover tracking.
-    pub click_sound: Option<crate::resources::SoundId>,
-    /// A registered sound played when the pointer enters this node.
-    /// Implies hover tracking.
-    pub hover_sound: Option<crate::resources::SoundId>,
+    /// Modal: while this node is declared, the Tab ring is its subtree,
+    /// everything outside it is inert to the pointer, the wheel and
+    /// assistive technology, and Escape or a press outside emits
+    /// `{kind="dismiss", reason, tag}` on it with this payload under
+    /// `tag`. The last node declaring it in tree order is the one in
+    /// effect (a confirm inside a dialog); see
+    /// `docs/adr/0003-modal-surfaces.md`. Null = modal without a tag.
+    pub modal: Option<Value>,
+}
+
+impl EventSpec {
+    /// The group as a node that declares none of it — what
+    /// `NodeSpec`'s accessor hands back when the box is `None`.
+    pub const EMPTY: Self = Self {
+        on_click: None,
+        on_drag: None,
+        on_key: None,
+        on_context_menu: None,
+        on_hover: None,
+        on_layout: None,
+        modal: None,
+    };
+}
+
+/// Per-node animation declarations. Boxed on `NodeSpec`: `enter` and
+/// `exit` are 60 bytes each and almost every node has neither.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AnimSpec {
     /// CSS-style stops for the animatable slots (see [`crate::keyframes`]):
     /// with a `transition`, the slots a stop names cycle through the stops
     /// over the transition's duration, in its `repeat` direction, offset by
@@ -530,6 +582,24 @@ pub struct NodeSpec {
     /// across frames, and a `transition` with a duration; without both, a
     /// removed node vanishes at once as it always did.
     pub exit: Option<Enter>,
+}
+
+impl AnimSpec {
+    /// The group as a node that declares none of it — what
+    /// `NodeSpec`'s accessor hands back when the box is `None`.
+    pub const EMPTY: Self = Self {
+        keyframes: Vec::new(),
+        enter: None,
+        exit: None,
+    };
+}
+
+/// Accessibility properties a view states outright, as opposed to the
+/// ones the core derives (see [`crate::access`]). Boxed on `NodeSpec`:
+/// read only while an access tree is being built, and unset on nearly
+/// every node.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AccessSpec {
     /// What this node is to assistive technology (see [`crate::access`]).
     /// Unset, the core derives one: a node with `on_click` is a button,
     /// an editor a text input, a scrolling container a scroll view, and
@@ -564,49 +634,135 @@ pub struct NodeSpec {
     /// (see [`crate::access`]).
     pub caret: Option<u32>,
     pub selection_anchor: Option<u32>,
-    /// Reachable by Tab, and focused by a click or an assistive-technology
-    /// request, without a click payload or a control role — a list row
-    /// that opens on Enter, a card. Controls (editors, key sinks,
-    /// `on_click` boxes, the control roles) are focusable already; see
-    /// `docs/adr/0002-keyboard-focus-as-data.md`.
-    pub focusable: bool,
-    /// Where focus lands when the `modal` scope containing this node is
-    /// entered: the first node in the modal's Tab ring declaring it,
-    /// instead of simply the ring's first — a destructive confirm opening
-    /// on its Cancel rather than on whichever control is declared first.
-    /// Read on entry only, so a Tab press afterwards stands; a node the
-    /// ring skips (disabled, decoration, not focusable) is not a
-    /// candidate, and with no candidate the entry is the ring's first
-    /// node as before. See `docs/adr/0003-modal-surfaces.md`.
-    pub initial_focus: bool,
-    /// Inert: keeps its hit region (so a tooltip can say why) and loses
-    /// everything else — no click, drag or key sink, no hover / pressed /
-    /// focus background, no place in the Tab ring; the access tree
-    /// reports it disabled.
-    pub disabled: bool,
+}
+
+impl AccessSpec {
+    /// The group as a node that declares none of it — what
+    /// `NodeSpec`'s accessor hands back when the box is `None`.
+    pub const EMPTY: Self = Self {
+        role: None,
+        label: None,
+        description: None,
+        checked: false,
+        selected: false,
+        expanded: None,
+        value_now: None,
+        value_min: None,
+        value_max: None,
+        caret: None,
+        selection_anchor: None,
+    };
+}
+
+/// Hover / pressed / focus styling and the sounds that go with them.
+/// Boxed on `NodeSpec` so the common node — which declares none of it —
+/// costs one null check in `resolve_hover_style` instead of reading
+/// several `Option`s spread across the struct.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct InteractSpec {
+    /// Background while the pointer hovers this node (or any node sharing
+    /// its `hover_group`). Resolved by the core when the node opens, so a
+    /// data-only view gets hover styling without querying `is_hovered` —
+    /// and with `transition` the swap eases. Implies hover tracking.
+    pub hover_bg: Option<Color>,
+    /// Background while this node (or its group) is pressed. Implies hover
+    /// tracking. Without a `hover_bg`, hover keeps the plain `bg`. An
+    /// `on_drag` node holds this state for the whole captured drag, even
+    /// while the cursor is off it.
+    pub pressed_bg: Option<Color>,
+    /// Hover group: nodes sharing an id count as one for `hover_bg` /
+    /// `pressed_bg` — a two-piece elbow, a split button, a row whose cells
+    /// highlight together. The id is a hash of a name (`hover_group`).
+    /// Implies hover tracking.
+    pub hover_group: Option<u64>,
+    /// A registered sound played when this node is clicked (see
+    /// [`crate::audio`]); the click itself still emits `on_click` if one is
+    /// declared. Implies hover tracking.
+    pub click_sound: Option<crate::resources::SoundId>,
+    /// A registered sound played when the pointer enters this node.
+    /// Implies hover tracking.
+    pub hover_sound: Option<crate::resources::SoundId>,
     /// Background while this node holds keyboard-visible focus (focus
     /// moved by Tab or by assistive technology, not by a click).
     /// Declaring one replaces the ring the core draws by default. Pressed
     /// wins over focus wins over hover; eases with `transition`.
     pub focus_bg: Option<Color>,
-    /// Overrides the pointer shape over this node (see
-    /// [`crate::cursor`]). Unset, the core derives one from what the node
-    /// does — an editor is a caret, a clickable or focusable node a hand,
-    /// an `on_drag` node a grab — so this is only for what the derivation
-    /// cannot know: a splitter that resizes rather than moves, a disabled
-    /// control that wants to say `notAllowed`.
-    pub cursor: Option<CursorShape>,
-    /// Modal: while this node is declared, the Tab ring is its subtree,
-    /// everything outside it is inert to the pointer, the wheel and
-    /// assistive technology, and Escape or a press outside emits
-    /// `{kind="dismiss", reason, tag}` on it with this payload under
-    /// `tag`. The last node declaring it in tree order is the one in
-    /// effect (a confirm inside a dialog); see
-    /// `docs/adr/0003-modal-surfaces.md`. Null = modal without a tag.
-    pub modal: Option<Value>,
+}
+
+impl InteractSpec {
+    /// The group as a node that declares none of it — what
+    /// `NodeSpec`'s accessor hands back when the box is `None`.
+    pub const EMPTY: Self = Self {
+        hover_bg: None,
+        pressed_bg: None,
+        hover_group: None,
+        click_sound: None,
+        hover_sound: None,
+        focus_bg: None,
+    };
 }
 
 impl NodeSpec {
+    // -- Boxed groups ------------------------------------------------------
+    // The four cold groups are behind a pointer each (see C15): a node that
+    // declares none of a group pays 8 bytes for it rather than its full
+    // width. Reads go through the `&` accessor, which hands back a shared
+    // empty group instead of allocating, so a caller reads
+    // `spec.events().on_click` exactly as it used to read `spec.on_click`.
+    // Writes go through the `_mut` accessor, which allocates on first use.
+
+    /// Event payloads this node declares, empty if it declares none.
+    #[inline]
+    pub fn events(&self) -> &EventSpec {
+        static EMPTY: EventSpec = EventSpec::EMPTY;
+        self.events.as_deref().unwrap_or(&EMPTY)
+    }
+
+    /// Allocates the group on first write.
+    #[inline]
+    pub fn events_mut(&mut self) -> &mut EventSpec {
+        self.events.get_or_insert_with(Box::default)
+    }
+
+    /// Animation declarations, empty if this node has none.
+    #[inline]
+    pub fn anim(&self) -> &AnimSpec {
+        static EMPTY: AnimSpec = AnimSpec::EMPTY;
+        self.anim.as_deref().unwrap_or(&EMPTY)
+    }
+
+    /// Allocates the group on first write.
+    #[inline]
+    pub fn anim_mut(&mut self) -> &mut AnimSpec {
+        self.anim.get_or_insert_with(Box::default)
+    }
+
+    /// Declared accessibility properties, empty if this node declares none.
+    #[inline]
+    pub fn access(&self) -> &AccessSpec {
+        static EMPTY: AccessSpec = AccessSpec::EMPTY;
+        self.access.as_deref().unwrap_or(&EMPTY)
+    }
+
+    /// Allocates the group on first write.
+    #[inline]
+    pub fn access_mut(&mut self) -> &mut AccessSpec {
+        self.access.get_or_insert_with(Box::default)
+    }
+
+    /// Hover / pressed / focus styling, empty if this node declares none.
+    #[inline]
+    pub fn interact(&self) -> &InteractSpec {
+        static EMPTY: InteractSpec = InteractSpec::EMPTY;
+        self.interact.as_deref().unwrap_or(&EMPTY)
+    }
+
+    /// Allocates the group on first write.
+    #[inline]
+    pub fn interact_mut(&mut self) -> &mut InteractSpec {
+        self.interact.get_or_insert_with(Box::default)
+    }
+
     /// Whether the core registers a hit region for this node (any of the
     /// interaction props, or an explicit `hoverable`).
     pub fn hover_tracked(&self) -> bool {
@@ -614,18 +770,18 @@ impl NodeSpec {
             || self.focusable
             // A modal's own background is not "outside" it: a press there
             // must find a region (see `docs/adr/0003-modal-surfaces.md`).
-            || self.modal.is_some()
-            || self.on_click.is_some()
-            || self.on_drag.is_some()
-            || self.on_key.is_some()
-            || self.on_context_menu.is_some()
+            || self.events().modal.is_some()
+            || self.events().on_click.is_some()
+            || self.events().on_drag.is_some()
+            || self.events().on_key.is_some()
+            || self.events().on_context_menu.is_some()
             || self.window.is_some()
-            || self.hover_bg.is_some()
-            || self.pressed_bg.is_some()
-            || self.hover_group.is_some()
-            || self.on_hover.is_some()
-            || self.click_sound.is_some()
-            || self.hover_sound.is_some()
+            || self.interact().hover_bg.is_some()
+            || self.interact().pressed_bg.is_some()
+            || self.interact().hover_group.is_some()
+            || self.events().on_hover.is_some()
+            || self.interact().click_sound.is_some()
+            || self.interact().hover_sound.is_some()
             // A `cursor` override has to be found under the pointer to be
             // read, even on an otherwise inert box.
             || self.cursor.is_some()
@@ -901,26 +1057,26 @@ impl NodeSpec {
     }
 
     pub fn on_click(mut self, payload: impl Into<Value>) -> Self {
-        self.on_click = Some(payload.into());
+        self.events_mut().on_click = Some(payload.into());
         self
     }
 
     /// Background while hovered (see the `hover_bg` field).
     pub fn hover_bg(mut self, c: Color) -> Self {
-        self.hover_bg = Some(c);
+        self.interact_mut().hover_bg = Some(c);
         self
     }
 
     /// Background while pressed (see the `pressed_bg` field).
     pub fn pressed_bg(mut self, c: Color) -> Self {
-        self.pressed_bg = Some(c);
+        self.interact_mut().pressed_bg = Some(c);
         self
     }
 
     /// Background while keyboard-visibly focused (see the `focus_bg`
     /// field); replaces the default focus ring.
     pub fn focus_bg(mut self, c: Color) -> Self {
-        self.focus_bg = Some(c);
+        self.interact_mut().focus_bg = Some(c);
         self
     }
 
@@ -945,13 +1101,13 @@ impl NodeSpec {
 
     /// Makes this node the frame's modal surface (see the `modal` field).
     pub fn modal(mut self, tag: Value) -> Self {
-        self.modal = Some(tag);
+        self.events_mut().modal = Some(tag);
         self
     }
 
     /// Joins the hover group `name` (see the `hover_group` field).
     pub fn hover_group(mut self, name: &str) -> Self {
-        self.hover_group = Some(Self::hover_group_id(name));
+        self.interact_mut().hover_group = Some(Self::hover_group_id(name));
         self
     }
 
@@ -959,28 +1115,28 @@ impl NodeSpec {
     /// Pass a tag the handler can match on; `Value::Null` if the node key
     /// is identification enough.
     pub fn on_hover(mut self, tag: impl Into<Value>) -> Self {
-        self.on_hover = Some(tag.into());
+        self.events_mut().on_hover = Some(tag.into());
         self
     }
 
     /// Plays a registered sound when this node is clicked (see the
     /// `click_sound` field).
     pub fn click_sound(mut self, sound: crate::resources::SoundId) -> Self {
-        self.click_sound = Some(sound);
+        self.interact_mut().click_sound = Some(sound);
         self
     }
 
     /// Plays a registered sound when the pointer enters this node (see the
     /// `hover_sound` field).
     pub fn hover_sound(mut self, sound: crate::resources::SoundId) -> Self {
-        self.hover_sound = Some(sound);
+        self.interact_mut().hover_sound = Some(sound);
         self
     }
 
     /// Makes this node draggable (see the `on_drag` field). Pass a tag the
     /// handler can match on; `Value::Null` if the node key is enough.
     pub fn on_drag(mut self, tag: impl Into<Value>) -> Self {
-        self.on_drag = Some(tag.into());
+        self.events_mut().on_drag = Some(tag.into());
         self
     }
 
@@ -988,13 +1144,13 @@ impl NodeSpec {
     /// (see the `on_layout` field). Pass a tag the handler can match on;
     /// `Value::Null` if the node key is identification enough.
     pub fn on_layout(mut self, tag: impl Into<Value>) -> Self {
-        self.on_layout = Some(tag.into());
+        self.events_mut().on_layout = Some(tag.into());
         self
     }
 
     /// What this node is to assistive technology (see the `role` field).
     pub fn role(mut self, role: Role) -> Self {
-        self.role = Some(role);
+        self.access_mut().role = Some(role);
         self
     }
 
@@ -1002,61 +1158,61 @@ impl NodeSpec {
     /// as well as a `&str`, so a view can keep one and hand it out every
     /// frame without allocating.
     pub fn label(mut self, label: impl Into<Label>) -> Self {
-        self.label = Some(label.into());
+        self.access_mut().label = Some(label.into());
         self
     }
 
     /// The accessible description (see the `description` field).
     pub fn description(mut self, description: impl Into<Label>) -> Self {
-        self.description = Some(description.into());
+        self.access_mut().description = Some(description.into());
         self
     }
 
     /// The on state for a checkbox / radio / switch role.
     pub fn checked(mut self, checked: bool) -> Self {
-        self.checked = checked;
+        self.access_mut().checked = checked;
         self
     }
 
     /// The current one of a set (see the `selected` field).
     pub fn selected(mut self, selected: bool) -> Self {
-        self.selected = selected;
+        self.access_mut().selected = selected;
         self
     }
 
     /// A disclosure's state (see the `expanded` field).
     pub fn expanded(mut self, expanded: bool) -> Self {
-        self.expanded = Some(expanded);
+        self.access_mut().expanded = Some(expanded);
         self
     }
 
     /// A slider role's current value.
     pub fn value_now(mut self, v: f32) -> Self {
-        self.value_now = Some(v);
+        self.access_mut().value_now = Some(v);
         self
     }
 
     pub fn value_min(mut self, v: f32) -> Self {
-        self.value_min = Some(v);
+        self.access_mut().value_min = Some(v);
         self
     }
 
     pub fn value_max(mut self, v: f32) -> Self {
-        self.value_max = Some(v);
+        self.access_mut().value_max = Some(v);
         self
     }
 
     /// On a `Role::Line` of a custom editor: the caret's byte offset into
     /// this line's text (see the `caret` field).
     pub fn caret(mut self, offset: u32) -> Self {
-        self.caret = Some(offset);
+        self.access_mut().caret = Some(offset);
         self
     }
 
     /// On a `Role::Line` of a custom editor: the byte offset where the
     /// selection's other end sits (see the `selection_anchor` field).
     pub fn selection_anchor(mut self, offset: u32) -> Self {
-        self.selection_anchor = Some(offset);
+        self.access_mut().selection_anchor = Some(offset);
         self
     }
 
@@ -1064,7 +1220,7 @@ impl NodeSpec {
     /// tag the handler can match on; `Value::Null` if the node key is
     /// identification enough.
     pub fn on_key(mut self, tag: impl Into<Value>) -> Self {
-        self.on_key = Some(tag.into());
+        self.events_mut().on_key = Some(tag.into());
         self
     }
 
@@ -1072,7 +1228,7 @@ impl NodeSpec {
     /// field). Pass a tag the handler can match on; `Value::Null` if the
     /// node key is identification enough.
     pub fn on_context_menu(mut self, tag: impl Into<Value>) -> Self {
-        self.on_context_menu = Some(tag.into());
+        self.events_mut().on_context_menu = Some(tag.into());
         self
     }
 
@@ -1129,7 +1285,7 @@ impl NodeSpec {
     /// a default 200ms transition if none was declared yet.
     pub fn keyframes(mut self, stops: Vec<Keyframe>) -> Self {
         self.transition.get_or_insert(Transition::ms(200.0));
-        self.keyframes = stops;
+        self.anim_mut().keyframes = stops;
         self
     }
 
@@ -1137,7 +1293,7 @@ impl NodeSpec {
     /// field); sets a default 200ms transition if none was declared yet.
     pub fn enter(mut self, enter: Enter) -> Self {
         self.transition.get_or_insert(Transition::ms(200.0));
-        self.enter = Some(enter);
+        self.anim_mut().enter = Some(enter);
         self
     }
 
@@ -1146,7 +1302,7 @@ impl NodeSpec {
     /// declared yet.
     pub fn exit(mut self, exit: Enter) -> Self {
         self.transition.get_or_insert(Transition::ms(200.0));
-        self.exit = Some(exit);
+        self.anim_mut().exit = Some(exit);
         self
     }
 
@@ -1273,5 +1429,75 @@ impl TextStyle {
     pub fn color(mut self, c: Color) -> Self {
         self.color = c;
         self
+    }
+}
+
+/// Hand-written so that a group whose box was allocated but left at its
+/// defaults — `.checked(false)` on a fresh spec — equals one whose box was
+/// never allocated at all. The derived version compared `None` against
+/// `Some(EMPTY)` and called them different, which is a difference the boxing
+/// introduced rather than one a caller declared.
+impl PartialEq for NodeSpec {
+    fn eq(&self, other: &Self) -> bool {
+        self.layout == other.layout
+            && self.style == other.style
+            && self.hoverable == other.hoverable
+            && self.window == other.window
+            && self.transition == other.transition
+            && self.slide == other.slide
+            && self.focusable == other.focusable
+            && self.initial_focus == other.initial_focus
+            && self.disabled == other.disabled
+            && self.cursor == other.cursor
+            && self.events() == other.events()
+            && self.anim() == other.anim()
+            && self.access() == other.access()
+            && self.interact() == other.interact()
+    }
+}
+
+#[cfg(test)]
+mod size_tests {
+    use super::*;
+
+    /// `NodeSpec` is moved by value for every node a frame builds — through
+    /// the builder chain, `Core::open`, `open_with_key` and into
+    /// `Vec<NodeSpec>` in `Tree::push` — so its size is a per-node cost that
+    /// every app pays whether or not it declares the fields. It reached 728
+    /// bytes one feature at a time and cost ~2.5x on the frame benches before
+    /// anyone measured it (C15 in `docs/BACKLOG.md`).
+    ///
+    /// This is the number a review can fail. Adding a prop is fine; adding it
+    /// *inline* past this bound is the thing to notice. Put cold fields in one
+    /// of the boxed groups instead, and only raise this if the field is read
+    /// on every node of every frame.
+    #[test]
+    fn node_spec_stays_small() {
+        const BOUND: usize = 256;
+        let size = std::mem::size_of::<NodeSpec>();
+        assert!(
+            size <= BOUND,
+            "NodeSpec is {size} bytes, over the {BOUND}-byte bound. It is copied \
+             per node per frame; put cold fields in EventSpec / AnimSpec / \
+             AccessSpec / InteractSpec rather than inline. See C15."
+        );
+    }
+
+    /// The groups exist to be absent: a node declaring none of them carries
+    /// four null pointers, not four structs.
+    #[test]
+    fn an_undeclared_group_costs_a_pointer() {
+        let spec = NodeSpec::default();
+        assert!(spec.events.is_none() && spec.anim.is_none());
+        assert!(spec.access.is_none() && spec.interact.is_none());
+        // and reads still work, without allocating
+        assert!(spec.events().on_click.is_none());
+        assert_eq!(spec.access().role, None);
+    }
+
+    /// An allocated-but-default group is still equal to no group at all.
+    #[test]
+    fn an_empty_group_equals_no_group() {
+        assert_eq!(NodeSpec::default().checked(false), NodeSpec::default());
     }
 }

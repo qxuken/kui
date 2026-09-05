@@ -238,7 +238,7 @@ impl DepartStore {
         text: &crate::text::TextSystem,
     ) {
         let spec = &tree.specs[root];
-        let (Some(t), Some(exit)) = (spec.transition, spec.exit) else {
+        let (Some(t), Some(exit)) = (spec.transition, spec.anim().exit) else {
             return;
         };
         let duration = t.duration_ms.max(0.0) as f64 / 1000.0;

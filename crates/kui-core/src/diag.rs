@@ -350,7 +350,7 @@ impl Diagnostics {
     fn check_modal(&mut self, tree: &Tree) {
         let Some(i) = (0..tree.len())
             .rev()
-            .find(|&i| tree.specs[i].modal.is_some())
+            .find(|&i| tree.specs[i].events().modal.is_some())
         else {
             return;
         };
@@ -389,7 +389,11 @@ impl Diagnostics {
     fn check_composites(&mut self, tree: &Tree) {
         let mut items: Vec<usize> = Vec::new();
         for c in 0..tree.len() {
-            let Some(item) = tree.specs[c].role.and_then(crate::composite::item_role) else {
+            let Some(item) = tree.specs[c]
+                .access()
+                .role
+                .and_then(crate::composite::item_role)
+            else {
                 continue;
             };
             crate::composite::items(tree, c, item, &mut items);
@@ -441,7 +445,7 @@ impl Diagnostics {
                      (give it a `label`, or `role=\"none\"` if it is decoration)"
                         .to_string()
                 });
-            } else if sem.role == Role::Dialog && tree.specs[i].modal.is_some() {
+            } else if sem.role == Role::Dialog && tree.specs[i].events().modal.is_some() {
                 self.warn(MODAL_WITHOUT_NAME, key, || {
                     "this modal has no accessible name: a dialog is named by its `label`, never \
                      by the text inside it — a screen reader announces an unnamed dialog to the \

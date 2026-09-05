@@ -60,7 +60,7 @@ impl Core {
             while open.last().is_some_and(|(e, _, _)| i >= *e) {
                 open.pop();
             }
-            let role = self.tree.specs[i].role;
+            let role = self.tree.specs[i].access().role;
             if role == Some(Role::None) {
                 i = self.tree.subtree_end(i);
                 continue;
@@ -103,7 +103,7 @@ impl Core {
         let pick = |f: &dyn Fn(usize) -> bool| items.iter().filter(live).copied().find(|&j| f(j));
         pick(&|j| Some(self.tree.keys[j]) == self.focus)
             .or_else(|| pick(&|j| self.tree.specs[j].initial_focus))
-            .or_else(|| pick(&|j| self.tree.specs[j].selected))
+            .or_else(|| pick(&|j| self.tree.specs[j].access().selected))
             .or_else(|| items.iter().filter(live).copied().next())
     }
 
@@ -114,7 +114,7 @@ impl Core {
     pub(crate) fn modal_scope(&self) -> Option<(usize, usize, Key)> {
         let i = (0..self.tree.len())
             .rev()
-            .find(|&i| self.tree.specs[i].modal.is_some())?;
+            .find(|&i| self.tree.specs[i].events().modal.is_some())?;
         Some((i, self.tree.subtree_end(i), self.tree.keys[i]))
     }
 
@@ -154,7 +154,7 @@ impl Core {
         let mut now: Vec<(Key, Option<Key>)> = Vec::new();
         if self.any_modal {
             for i in 0..self.tree.len() {
-                if self.tree.specs[i].modal.is_none() {
+                if self.tree.specs[i].events().modal.is_none() {
                     continue;
                 }
                 let key = self.tree.keys[i];
@@ -225,7 +225,7 @@ impl Core {
         if self.tree.specs[i].window.is_some() {
             return self.focus;
         }
-        if self.tree.specs[i].on_key.is_some() {
+        if self.tree.specs[i].events().on_key.is_some() {
             return Some(key);
         }
         let mut n = self.tree.parent[i];
@@ -233,7 +233,7 @@ impl Core {
             let j = n as usize;
             // A disabled node is not a sink at all (decision 6), so it
             // neither answers here nor hides a live sink further up.
-            if self.tree.specs[j].on_key.is_some() && !self.tree.specs[j].disabled {
+            if self.tree.specs[j].events().on_key.is_some() && !self.tree.specs[j].disabled {
                 return Some(self.tree.keys[j]);
             }
             n = self.tree.parent[j];

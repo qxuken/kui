@@ -2004,7 +2004,7 @@ mod tests {
             &mut out,
         )
         .unwrap();
-        assert_eq!(out.spec.on_key, Some(Value::Null));
+        assert_eq!(out.spec.events().on_key, Some(Value::Null));
         assert!(out.spec.hover_tracked());
         let mut out = PropsOut::new();
         apply(
@@ -2013,7 +2013,7 @@ mod tests {
             &mut out,
         )
         .unwrap();
-        assert_eq!(out.spec.on_layout, Some(Value::Null));
+        assert_eq!(out.spec.events().on_layout, Some(Value::Null));
     }
 
     /// `ROLES` is the wire order for the `role` enum — a binding sends the
