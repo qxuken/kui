@@ -22,9 +22,11 @@ pub use ext::CExtension;
 #[macro_use]
 mod abi;
 mod convert;
+mod input;
 mod types;
 
 pub use abi::*;
+pub use input::*;
 pub use types::*;
 
 use convert::*;
@@ -72,239 +74,6 @@ pub extern "C" fn kui_ctx_free(ptr: *mut KuiCtx) {
     if !ptr.is_null() {
         drop(unsafe { Box::from_raw(ptr) });
     }
-}
-
-fn push_input(ptr: *mut KuiCtx, ev: InputEvent) {
-    guard((), || {
-        if let Some(c) = unsafe { ctx(ptr) } {
-            let evs = c.core().handle_input(ev);
-            c.events.extend(evs);
-        }
-    })
-}
-
-/// Cursor position in logical coordinates.
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_input_cursor(ptr: *mut KuiCtx, x: f32, y: f32) {
-    push_input(ptr, InputEvent::CursorMoved(Vec2::new(x, y)));
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_input_cursor_left(ptr: *mut KuiCtx) {
-    push_input(ptr, InputEvent::CursorLeft);
-}
-
-/// A primary-button press or release; `kui_input_mouse_button` carries the
-/// others. Kept as it was: it is exported ABI.
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_input_mouse(ptr: *mut KuiCtx, down: bool, clicks: u32) {
-    kui_input_mouse_button(ptr, down, MouseButton::Primary.code(), clicks);
-}
-
-/// `kui_input_mouse` for a named button (`KUI_MOUSE_*`, or `3 + n` for a
-/// further button `n`).
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_input_mouse_button(ptr: *mut KuiCtx, down: bool, button: u32, clicks: u32) {
-    let button = MouseButton::from_code(button);
-    push_input(
-        ptr,
-        if down {
-            InputEvent::MouseDown {
-                button,
-                clicks: clicks.clamp(1, u8::MAX as u32) as u8,
-            }
-        } else {
-            InputEvent::MouseUp { button }
-        },
-    );
-}
-
-/// Wheel/trackpad delta in logical px (positive y = scroll up).
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_input_scroll(ptr: *mut KuiCtx, dx: f32, dy: f32) {
-    push_input(ptr, InputEvent::Scroll(Vec2::new(dx, dy)));
-}
-
-/// Committed text input (typing, paste); routed to the focused editor.
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_input_text(ptr: *mut KuiCtx, text: KuiStr) {
-    guard((), || {
-        let text = kstr(text).into_owned();
-        push_input(ptr, InputEvent::Text(text));
-    });
-}
-
-fn edit_key_of(key: u32) -> Option<EditKey> {
-    Some(match key {
-        0 => EditKey::Left,
-        1 => EditKey::Right,
-        2 => EditKey::Up,
-        3 => EditKey::Down,
-        4 => EditKey::Home,
-        5 => EditKey::End,
-        6 => EditKey::PageUp,
-        7 => EditKey::PageDown,
-        8 => EditKey::Backspace,
-        9 => EditKey::Delete,
-        10 => EditKey::Enter,
-        11 => EditKey::Tab,
-        12 => EditKey::SelectAll,
-        13 => EditKey::Escape,
-        14 => EditKey::Undo,
-        15 => EditKey::Redo,
-        _ => return None,
-    })
-}
-
-/// Physical modifier state changed (KUI_KMOD_* bits). The host polls a
-/// `{kind="modifiers", shift, ctrl, alt, super}` event when it differs from
-/// the last report.
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_input_modifiers(ptr: *mut KuiCtx, mods: u32) {
-    push_input(
-        ptr,
-        InputEvent::Modifiers(kui_core::KeyMods {
-            shift: mods & 1 != 0,
-            ctrl: mods & 2 != 0,
-            alt: mods & 4 != 0,
-            super_key: mods & 8 != 0,
-        }),
-    );
-}
-
-/// Editing key with modifier bits (1 = shift, 2 = word/alt, 4 = doc/primary).
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_input_key(ptr: *mut KuiCtx, key: u32, mods: u32) {
-    if let Some(k) = edit_key_of(key) {
-        let mods = Mods {
-            shift: mods & 1 != 0,
-            word: mods & 2 != 0,
-            doc: mods & 4 != 0,
-        };
-        push_input(ptr, InputEvent::Key(k, mods));
-    }
-}
-
-fn key_press_of(code: KuiStr, kmods: u32, text: KuiStr) -> Option<kui_core::KeyPress> {
-    let code = kui_core::KeyCode::from_name(&kstr(code))?;
-    let mods = kui_core::KeyMods {
-        shift: kmods & 1 != 0,
-        ctrl: kmods & 2 != 0,
-        alt: kmods & 4 != 0,
-        super_key: kmods & 8 != 0,
-    };
-    // A NULL `text` means "whatever this key inserts": the plain
-    // character keys insert themselves, a chord inserts nothing.
-    let text = match text.ptr.is_null() {
-        false => Some(kstr(text).into_owned()),
-        true if mods.ctrl || mods.alt || mods.super_key => None,
-        true => match code {
-            kui_core::KeyCode::Char(c) => Some(c.to_string()),
-            kui_core::KeyCode::Space => Some(" ".to_string()),
-            _ => None,
-        },
-    };
-    Some(kui_core::KeyPress {
-        code,
-        mods,
-        text,
-        repeat: false,
-    })
-}
-
-/// A raw key press for `on_key` sinks (the editing keys go through
-/// `kui_input_key`). `code` is a single character as the layout produced it
-/// ("W", "$") or a name ("left", "enter", "escape", "f5", ...); `kmods` is
-/// KUI_KMOD_* bits; `text` is what the press inserts, or NULL to derive it
-/// from `code`; `repeat` marks an auto-repeat. The focused sink polls
-/// `{kind="key", phase="down", code, ctrl, alt, shift, super, text, repeat,
-/// tag}`. An unknown `code` is ignored.
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_input_key_down(
-    ptr: *mut KuiCtx,
-    code: KuiStr,
-    kmods: u32,
-    text: KuiStr,
-    repeat: bool,
-) {
-    guard((), || {
-        if let Some(kp) = key_press_of(code, kmods, text) {
-            push_input(
-                ptr,
-                InputEvent::KeyDown(kui_core::KeyPress { repeat, ..kp }),
-            );
-        }
-    });
-}
-
-/// The release of a key pressed with `kui_input_key_down`, spelled the same
-/// way; the sink polls `{kind="key", phase="up", ...}` with a null `text`.
-/// A release whose press the sink never got resolves nothing, and moving
-/// focus while a key is held delivers the "up" first, so a held-key binding
-/// (WASD, press-and-hold) cannot be left stuck down.
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_input_key_up(ptr: *mut KuiCtx, code: KuiStr, kmods: u32) {
-    guard((), || {
-        if let Some(kp) = key_press_of(
-            code,
-            kmods,
-            KuiStr {
-                ptr: std::ptr::null(),
-                len: 0,
-            },
-        ) {
-            push_input(ptr, InputEvent::KeyUp(kp.released()));
-        }
-    });
-}
-
-/// Lets go of every key the focused sink is holding, as if the user had
-/// released them. Hosts call it when the window loses the keyboard: the OS
-/// stops delivering key events to it, so the release of anything held over
-/// an app switch would never arrive. Focus moves do this by themselves.
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_release_held_keys(ptr: *mut KuiCtx) {
-    guard((), || {
-        if let Some(c) = unsafe { ctx(ptr) } {
-            c.core().release_held_keys();
-        }
-    });
-}
-
-/// Pops the next pending UI event. The payload pointer stays valid until the
-/// next poll call on the same context (or context free).
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
-    guard(false, || {
-        let Some(c) = (unsafe { ctx(ptr) }) else {
-            return false;
-        };
-        // Drop the previously handed-out payload.
-        c.last_payload = None;
-        // Also whatever a call between frames left pending — the synthetic
-        // key releases `kui_focus` / `kui_release_held_keys` force.
-        let pending = c.core().take_pending_events();
-        c.events.extend(pending);
-        // Refuse before popping: a reservation this library cannot write
-        // into must leave the queue where it was, not swallow an event.
-        if c.events.is_empty() || !out_accepts(out) {
-            return false;
-        }
-        let ev = c.events.remove(0);
-        let payload = Box::new(KuiValue(ev.payload));
-        let payload_ptr: *const KuiValue = &*payload;
-        c.last_payload = Some(payload);
-        write_out(
-            out,
-            KuiEvent {
-                origin: ev.origin.0,
-                key: ev.key.0,
-                payload: payload_ptr,
-                window: ev.window.0,
-                ..Default::default()
-            },
-        )
-    })
 }
 
 // ---------------------------------------------------------------------------
@@ -517,26 +286,6 @@ pub extern "C" fn kui_window_closed(ptr: *mut KuiCtx, id: u32) {
     });
 }
 
-/// The pointer shape for where the pointer is now (KUI_CURSOR_*, never 0):
-/// derived from the topmost node under it, or whatever that node's `cursor`
-/// overrode it with. A query, not a queue — read it after each input and
-/// each frame and apply it to the real window when it changes. Hosts
-/// without a pointer simply never call.
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_cursor_shape(ptr: *mut KuiCtx) -> u32 {
-    guard(0, || {
-        let Some(c) = (unsafe { ctx(ptr) }) else {
-            return 0;
-        };
-        let shape = c.core().cursor_shape();
-        // KUI_CURSOR_* = schema index + 1, matching KuiSpec.cursor.
-        kui_core::schema::CURSORS
-            .iter()
-            .position(|n| *n == shape.name())
-            .map_or(0, |i| i as u32 + 1)
-    })
-}
-
 /// Declares this frame's window title (cleared each kui_frame_begin).
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_window_title(ptr: *mut KuiCtx, title: KuiStr) {
@@ -655,25 +404,6 @@ pub extern "C" fn kui_open_keyed(
         c.push_tooltip(key, s.tooltip);
         key.0
     })
-}
-
-/// In-progress IME composition, shown at the focused editor's caret.
-/// Empty text clears it; the commit arrives via `kui_input_text`.
-/// `cursor_start`/`cursor_end` are byte offsets into `text`, or
-/// `UINT32_MAX` for none.
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_input_preedit(
-    ptr: *mut KuiCtx,
-    text: KuiStr,
-    cursor_start: u32,
-    cursor_end: u32,
-) {
-    guard((), || {
-        let text = kstr(text).into_owned();
-        let cursor =
-            (cursor_start != u32::MAX).then_some((cursor_start as usize, cursor_end as usize));
-        push_input(ptr, InputEvent::Preedit(text, cursor));
-    });
 }
 
 /// Registers a w×h RGBA image (pixels copied); returns its handle, 0 on
@@ -1808,37 +1538,6 @@ pub extern "C" fn kui_text_edit(
             .text_edit(&kstr(label), &kstr(initial), &opts, spec)
             .0
     })
-}
-
-/// Current text of an editor. The returned view is valid until the next
-/// kui_edit_text call (or context free).
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_edit_text(ptr: *mut KuiCtx, key: u64, out: *mut KuiStr) -> bool {
-    guard(false, || {
-        let (Some(c), Some(out)) = (unsafe { ctx(ptr) }, unsafe { out.as_mut() }) else {
-            return false;
-        };
-        let Some(text) = c.core().edit_text(Key(key)) else {
-            return false;
-        };
-        c.last_edit_text = Some(text);
-        let s = c.last_edit_text.as_ref().unwrap();
-        *out = KuiStr {
-            ptr: s.as_ptr(),
-            len: s.len(),
-        };
-        true
-    })
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn kui_edit_set_text(ptr: *mut KuiCtx, key: u64, text: KuiStr) {
-    guard((), || {
-        if let Some(c) = unsafe { ctx(ptr) } {
-            let text = kstr(text).into_owned();
-            c.core().set_edit_text(Key(key), &text);
-        }
-    });
 }
 
 #[unsafe(no_mangle)]
