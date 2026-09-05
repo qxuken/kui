@@ -242,15 +242,16 @@ mod queries_headless {
             ptr: std::ptr::null(),
             len: 0,
         };
-        // A NULL text means "whatever this key inserts".
-        kui_input_key_down(ctx, ks("w"), 0, null, false);
-        kui_input_key_down(ctx, ks("w"), 0, null, true);
-        kui_input_key_up(ctx, ks("w"), 0);
+        // A NULL text means "whatever this key inserts", and a NULL
+        // physical means "the key I just named".
+        kui_input_key_down(ctx, ks("w"), null, 0, null, false);
+        kui_input_key_down(ctx, ks("w"), null, 0, null, true);
+        kui_input_key_up(ctx, ks("w"), null, 0);
         // Held when the window loses the keyboard: the release is made up.
-        kui_input_key_down(ctx, ks("f5"), KMOD_CTRL, null, false);
+        kui_input_key_down(ctx, ks("f5"), null, KMOD_CTRL, null, false);
         kui_release_held_keys(ctx);
         // An unknown name is ignored rather than delivered as "unknown".
-        kui_input_key_down(ctx, ks("nonsense"), 0, null, false);
+        kui_input_key_down(ctx, ks("nonsense"), null, 0, null, false);
 
         let mut ev = KuiEvent::default();
         let mut seen = Vec::new();

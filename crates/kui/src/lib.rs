@@ -391,6 +391,126 @@ struct Pane {
     nc: Option<windows_nc::NcHitTest>,
 }
 
+/// The US-QWERTY key at a physical position, in kui's own vocabulary (see
+/// [`kui_core::KeyPress::physical`]). Letters and digits are their US
+/// characters, punctuation the character US-QWERTY prints there, and the
+/// named keys their names — no layout is consulted, which is the point.
+///
+/// The numeric keypad reports the digit and operator it always bears; kui
+/// has no separate numpad vocabulary, and `code` already conflates the two
+/// (winit's logical key for `Numpad1` is `"1"`).
+fn physical_code(key: winit::keyboard::PhysicalKey) -> KeyCode {
+    use winit::keyboard::{KeyCode as Phys, PhysicalKey};
+    let PhysicalKey::Code(c) = key else {
+        return KeyCode::Unknown;
+    };
+    // Letters and digits, in winit's own declaration order.
+    const LETTERS: [(Phys, char); 26] = [
+        (Phys::KeyA, 'a'),
+        (Phys::KeyB, 'b'),
+        (Phys::KeyC, 'c'),
+        (Phys::KeyD, 'd'),
+        (Phys::KeyE, 'e'),
+        (Phys::KeyF, 'f'),
+        (Phys::KeyG, 'g'),
+        (Phys::KeyH, 'h'),
+        (Phys::KeyI, 'i'),
+        (Phys::KeyJ, 'j'),
+        (Phys::KeyK, 'k'),
+        (Phys::KeyL, 'l'),
+        (Phys::KeyM, 'm'),
+        (Phys::KeyN, 'n'),
+        (Phys::KeyO, 'o'),
+        (Phys::KeyP, 'p'),
+        (Phys::KeyQ, 'q'),
+        (Phys::KeyR, 'r'),
+        (Phys::KeyS, 's'),
+        (Phys::KeyT, 't'),
+        (Phys::KeyU, 'u'),
+        (Phys::KeyV, 'v'),
+        (Phys::KeyW, 'w'),
+        (Phys::KeyX, 'x'),
+        (Phys::KeyY, 'y'),
+        (Phys::KeyZ, 'z'),
+    ];
+    const DIGITS: [(Phys, char); 20] = [
+        (Phys::Digit0, '0'),
+        (Phys::Digit1, '1'),
+        (Phys::Digit2, '2'),
+        (Phys::Digit3, '3'),
+        (Phys::Digit4, '4'),
+        (Phys::Digit5, '5'),
+        (Phys::Digit6, '6'),
+        (Phys::Digit7, '7'),
+        (Phys::Digit8, '8'),
+        (Phys::Digit9, '9'),
+        (Phys::Numpad0, '0'),
+        (Phys::Numpad1, '1'),
+        (Phys::Numpad2, '2'),
+        (Phys::Numpad3, '3'),
+        (Phys::Numpad4, '4'),
+        (Phys::Numpad5, '5'),
+        (Phys::Numpad6, '6'),
+        (Phys::Numpad7, '7'),
+        (Phys::Numpad8, '8'),
+        (Phys::Numpad9, '9'),
+    ];
+    const PUNCT: [(Phys, char); 17] = [
+        (Phys::Backquote, '`'),
+        (Phys::Minus, '-'),
+        (Phys::Equal, '='),
+        (Phys::BracketLeft, '['),
+        (Phys::BracketRight, ']'),
+        (Phys::Backslash, '\\'),
+        (Phys::Semicolon, ';'),
+        (Phys::Quote, '\''),
+        (Phys::Comma, ','),
+        (Phys::Period, '.'),
+        (Phys::Slash, '/'),
+        (Phys::NumpadDivide, '/'),
+        (Phys::NumpadMultiply, '*'),
+        (Phys::NumpadSubtract, '-'),
+        (Phys::NumpadAdd, '+'),
+        (Phys::NumpadDecimal, '.'),
+        (Phys::NumpadEqual, '='),
+    ];
+    for (p, ch) in LETTERS.iter().chain(&DIGITS).chain(&PUNCT) {
+        if *p == c {
+            return KeyCode::Char(*ch);
+        }
+    }
+    match c {
+        Phys::Space => KeyCode::Space,
+        Phys::Enter | Phys::NumpadEnter => KeyCode::Enter,
+        Phys::Tab => KeyCode::Tab,
+        Phys::Backspace | Phys::NumpadBackspace => KeyCode::Backspace,
+        Phys::Delete => KeyCode::Delete,
+        Phys::Escape => KeyCode::Escape,
+        Phys::Insert => KeyCode::Insert,
+        Phys::Home => KeyCode::Home,
+        Phys::End => KeyCode::End,
+        Phys::PageUp => KeyCode::PageUp,
+        Phys::PageDown => KeyCode::PageDown,
+        Phys::ArrowLeft => KeyCode::Left,
+        Phys::ArrowRight => KeyCode::Right,
+        Phys::ArrowUp => KeyCode::Up,
+        Phys::ArrowDown => KeyCode::Down,
+        Phys::F1 => KeyCode::F(1),
+        Phys::F2 => KeyCode::F(2),
+        Phys::F3 => KeyCode::F(3),
+        Phys::F4 => KeyCode::F(4),
+        Phys::F5 => KeyCode::F(5),
+        Phys::F6 => KeyCode::F(6),
+        Phys::F7 => KeyCode::F(7),
+        Phys::F8 => KeyCode::F(8),
+        Phys::F9 => KeyCode::F(9),
+        Phys::F10 => KeyCode::F(10),
+        Phys::F11 => KeyCode::F(11),
+        Phys::F12 => KeyCode::F(12),
+        _ => KeyCode::Unknown,
+    }
+}
+
 impl Pane {
     /// Inner size in logical px plus the scale factor.
     fn size(&self) -> (Size, f32) {
@@ -867,7 +987,9 @@ impl<A: App> Shell<A> {
         } else {
             event.logical_key.clone()
         };
-        let (code, ktext) = match &logical {
+        // Where the key *is*, which no layout moves.
+        let physical = physical_code(event.physical_key);
+        let (logical_code, ktext) = match &logical {
             WinitKey::Character(s) => (
                 KeyCode::Char(s.chars().next().unwrap_or('\u{fffd}')),
                 plain.then(|| s.to_string()),
@@ -907,12 +1029,17 @@ impl<A: App> Shell<A> {
             ),
             _ => (KeyCode::Unknown, None),
         };
-        if code != KeyCode::Unknown {
+        // `KeyPress::from_layout` resolves the two into the code a keymap
+        // binds against — the layout's key while it speaks ASCII, the
+        // US-QWERTY letter at that position when it does not. Every driver
+        // goes through it, so a C host with its own windowing gets the same
+        // rule as this one.
+        let kp = KeyPress::from_layout(logical_code, physical, kmods);
+        if kp.code != KeyCode::Unknown {
             let kp = KeyPress {
-                code,
-                mods: kmods,
                 text: ktext,
                 repeat: event.repeat,
+                ..kp
             };
             self.dispatch(
                 event_loop,

@@ -314,6 +314,35 @@ test('a key sink hears both halves of a held key', () => {
   assert.equal(ctx.pollEvents().length, 0, 'no phantom release');
 });
 
+test('a keymap written in Latin survives the layout under it', () => {
+  const build = () => box({ onKey: null, keyFocus: true, width: 100, height: 50 }, [], 'a');
+  const { ctx } = run(build);
+  // What a driver reports: the layout's key, then the key's position. Omit
+  // the position and it is the key you named.
+  ctx.keyDown('w');
+  // Russian: the key US-QWERTY prints W on produces "ц".
+  ctx.keyDown('ц', {}, false, 'w');
+  // Dvorak: the key printed V sits where QWERTY prints ".".
+  ctx.keyDown('v', {}, false, '.');
+  const evs = ctx.pollEvents().map((e) => e.payload);
+  assert.deepEqual(
+    evs.map((p) => [p.code, p.physical]),
+    [
+      ['w', 'w'],
+      // Non-Latin: the position stands in, so `match code` keeps working.
+      ['w', 'w'],
+      // Latin: the layout wins, so the chord is on the key printed V —
+      // and `physical` still says where that key actually is.
+      ['v', '.'],
+    ],
+    'code follows the label while it is ASCII, the position otherwise',
+  );
+  // The release is spelled the same way and resolves its press.
+  ctx.keyUp('ц', {}, 'w');
+  const [up] = ctx.pollEvents().map((e) => e.payload);
+  assert.deepEqual([up.phase, up.code, up.physical], ['up', 'w', 'w']);
+});
+
 test('focus moving releases the keys the old sink held', () => {
   const build = () => box({ onKey: { pane: 0 }, keyFocus: true, width: 100, height: 50 }, [], 'a');
   const { ctx } = run(build);

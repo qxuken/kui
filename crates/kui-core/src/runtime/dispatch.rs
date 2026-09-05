@@ -210,8 +210,9 @@ impl Core {
                             .handle(InputEvent::MouseDown { button, clicks }, &mut out);
                         return out;
                     }
-                    // A press moves focus (to a focusable node) or drops
-                    // it; either way it is pointer focus, not shown.
+                    // A press moves focus (to a focusable node, or to the
+                    // key sink the press landed inside) or drops it; either
+                    // way it is pointer focus, not shown.
                     if primary {
                         match hit {
                             Some((key, Some(origin), true)) => {
@@ -220,8 +221,13 @@ impl Core {
                                 self.edit_with_fonts(|edit, fs| edit.click(key, local, clicks, fs));
                                 self.edit.dragging = Some((key, origin));
                             }
-                            Some((key, None, true)) => self.set_focus(Some(key)),
-                            _ => self.set_focus(None),
+                            // Everything else: a plain node, and a
+                            // disabled editor (no caret to place).
+                            Some((key, _, focusable)) => {
+                                let target = self.press_focus(key, focusable);
+                                self.set_focus(target);
+                            }
+                            None => self.set_focus(None),
                         }
                         self.focus_visible = false;
                     }

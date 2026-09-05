@@ -78,6 +78,11 @@ path = "../../examples/rust/rich_text.rs"
 [[example]]
 name = "splitmux"
 path = "../../examples/rust/splitmux.rs"
+# Splitmux is the one example that owns its whole keyboard *and* draws
+# clickable surfaces inside the sink that owns it, so its chords are where a
+# press stealing the keyboard shows up. `test = true` lets its `mod tests`
+# drive it headlessly through the `App` trait under `cargo test`.
+test = true
 
 [[example]]
 name = "syntax_view"

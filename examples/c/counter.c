@@ -523,13 +523,24 @@ static int surface(void) {
     kui_focus(ui, k.sink);
     check(kui_is_focused(ui, k.sink), "kui_is_focused");
     KuiStr no_text = {0};
-    kui_input_key_down(ui, KUI_STR("w"), 0, no_text, false);
-    kui_input_key_down(ui, KUI_STR("w"), 0, no_text, true); /* OS auto-repeat */
-    kui_input_key_up(ui, KUI_STR("w"), 0);
+    /* {0} for `physical` means "the key I just named" - what a host that
+     * does not track physical positions passes. One that does hands both
+     * over, and a non-Latin layout then still reports a Latin `code`. */
+    KuiStr same_key = {0};
+    kui_input_key_down(ui, KUI_STR("w"), same_key, 0, no_text, false);
+    kui_input_key_down(ui, KUI_STR("w"), same_key, 0, no_text,
+                       true); /* OS auto-repeat */
+    kui_input_key_up(ui, KUI_STR("w"), same_key, 0);
+    /* A Russian layout puts "ц" on the key US-QWERTY prints W on. The host
+     * passes both, and the sink still hears code="w" - with physical="w"
+     * beside it, so a keymap can bind either. */
+    kui_input_key_down(ui, KUI_STR("ц"), KUI_STR("w"), 0, no_text, false);
+    kui_input_key_up(ui, KUI_STR("ц"), KUI_STR("w"), 0);
     /* Held over a focus change: the sink hears the release anyway, so a
      * WASD binding cannot be left walking. kui_release_held_keys is the
      * same thing for a window that lost the keyboard. */
-    kui_input_key_down(ui, KUI_STR("a"), KUI_KMOD_CTRL, no_text, false);
+    kui_input_key_down(ui, KUI_STR("a"), same_key, KUI_KMOD_CTRL, no_text,
+                       false);
     kui_release_held_keys(ui);
     kui_focus(ui, k.sink);
     kui_input_key(ui, KUI_KEY_RIGHT, 0);
@@ -683,6 +694,7 @@ static int surface(void) {
     /* Everything above lands as data. */
     KuiEvent ev = KUI_EVENT_INIT;
     int events = 0, layouts = 0, access = 0, downs = 0, ups = 0;
+    int latin = 0, physical = 0;
     while (kui_poll_event(ui, &ev)) {
         events++;
         check(ev.size == sizeof ev, "a current host is filled all the way");
@@ -699,15 +711,27 @@ static int surface(void) {
             if (!p || !kui_value_as_str(p, &phase)) continue;
             if (phase.len == 4 && memcmp(phase.ptr, "down", 4) == 0) downs++;
             if (phase.len == 2 && memcmp(phase.ptr, "up", 2) == 0) ups++;
+            /* The Cyrillic press folded to its position's Latin letter, so
+             * a keymap written in ASCII matches every key event here - and
+             * `physical` rode along beside it. */
+            KuiStr c;
+            const KuiValue *code = kui_value_get(ev.payload, KUI_STR("code"));
+            if (code && kui_value_as_str(code, &c) && c.len == 1
+                && c.ptr[0] < 0x80)
+                latin++;
+            if (kui_value_get(ev.payload, KUI_STR("physical"))) physical++;
         }
     }
     check(events > 0, "the inputs produced events");
     check(layouts > 0, "on_layout reported the card's rect");
     check(access > 0, "the slider nudge arrived as an access event");
-    /* Three presses (w, its repeat, ctrl-a), and a release for each of the
-     * two distinct keys — the second one synthesized by letting go. */
-    check(downs == 3, "the sink took the presses, repeat included");
-    check(ups == 2, "every held key came back up exactly once");
+    /* Four presses (w, its repeat, the Cyrillic w, ctrl-a) and a release for
+     * each of the three distinct holds — the last synthesized by letting go. */
+    check(downs == 4, "the sink took the presses, repeat included");
+    check(ups == 3, "every held key came back up exactly once");
+    check(latin == downs + ups,
+          "every code is a Latin key, the Cyrillic press included");
+    check(physical == downs + ups, "and every one carries its position");
 
     /* Values round-trip, including the ones the counter never builds. */
     KuiValue *map = kui_value_map();

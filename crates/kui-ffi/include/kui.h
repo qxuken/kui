@@ -863,17 +863,27 @@ void kui_input_preedit(KuiCtx *ctx, KuiStr text, uint32_t cursor_start,
 void kui_input_key(KuiCtx *ctx, uint32_t key, uint32_t mods); /* KUI_KEY_* + KUI_MOD_* */
 /* Raw keys for on_key sinks (the editing keys go through kui_input_key
  * above). `code` is a single character as the layout produced it ("W", "$")
- * or a name ("left", "enter", "escape", "f5", ...); `kmods` is KUI_KMOD_*
- * bits; `text` is what the press inserts, or {NULL, 0} to derive it from
- * `code`; `repeat` marks an auto-repeat. The focused sink polls
- * {kind="key", phase="down"|"up", code, ctrl, alt, shift, super, text,
- * repeat, tag}; a release carries a null `text`. A release whose press the
- * sink never got resolves nothing, and moving focus while a key is held
+ * or a name ("left", "enter", "escape", "f5", ...); `physical` is the
+ * US-QWERTY key at that *position*, spelled the same way, or {NULL, 0} when
+ * the host does not track positions (then it equals `code`); `kmods` is
+ * KUI_KMOD_* bits; `text` is what the press inserts, or {NULL, 0} to derive
+ * it from `code`; `repeat` marks an auto-repeat. The focused sink polls
+ * {kind="key", phase="down"|"up", code, physical, ctrl, alt, shift, super,
+ * text, repeat, tag}; a release carries a null `text`. A release whose press
+ * the sink never got resolves nothing, and moving focus while a key is held
  * delivers the "up" first, so a held-key binding (WASD, press-and-hold)
- * cannot be left stuck down. An unknown `code` is ignored. */
-void kui_input_key_down(KuiCtx *ctx, KuiStr code, uint32_t kmods, KuiStr text,
-                        bool repeat);
-void kui_input_key_up(KuiCtx *ctx, KuiStr code, uint32_t kmods);
+ * cannot be left stuck down. An unknown `code` or `physical` is ignored.
+ *
+ * Passing both is what makes a keymap portable. A layout that produces
+ * something outside ASCII (Cyrillic, Greek, Hebrew, Arabic) would leave a
+ * Latin keymap matching nothing at all, so kui reports the position's US
+ * letter as `code` instead; `physical` is there either way for a keymap that
+ * would rather bind the finger than the label (WASD). A host passing
+ * {NULL, 0} keeps the old behaviour exactly. */
+void kui_input_key_down(KuiCtx *ctx, KuiStr code, KuiStr physical,
+                        uint32_t kmods, KuiStr text, bool repeat);
+void kui_input_key_up(KuiCtx *ctx, KuiStr code, KuiStr physical,
+                      uint32_t kmods);
 /* Lets go of every key the focused sink is holding, as if the user had
  * released them. Call it when the window loses the keyboard: the OS stops
  * delivering key events to it, so the release of anything held over an app

@@ -186,6 +186,13 @@ pub enum KeyCode {
     /// A character-producing key, as the active layout produced it — `W`
     /// and `$` arrive as themselves (shift already applied), which is what
     /// keymaps bind against.
+    ///
+    /// A layout that produces something outside ASCII does not reach here:
+    /// the driver substitutes the US-QWERTY letter at that position, so a
+    /// keymap written in Latin keeps working on a Cyrillic, Greek, Hebrew
+    /// or Arabic layout instead of matching nothing at all. See
+    /// [`KeyPress::physical`], and `docs/adr/0002` decision 11 for why the
+    /// layout still wins whenever it speaks ASCII.
     Char(char),
     /// Function key: `F(1)` .. `F(24)`.
     F(u8),
@@ -341,6 +348,16 @@ impl KeyMods {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KeyPress {
     pub code: KeyCode,
+    /// Where the key *is*, independent of the layout: the US-QWERTY key at
+    /// that position, in the same vocabulary as `code`. The key left of B
+    /// is `Char('v')` on every layout on earth, so a chord map written
+    /// against this one binds a shape rather than a character — what a
+    /// game's WASD wants, and what a keymap wants when it would rather be
+    /// wrong about the label than wrong about the finger.
+    ///
+    /// `code` is usually the better default; see its note. `Unknown` when
+    /// the platform reports a position this vocabulary cannot name.
+    pub physical: KeyCode,
     pub mods: KeyMods,
     /// What this press would insert, if anything — already resolved through
     /// the keyboard layout. `None` for pure navigation and chords.
@@ -350,9 +367,50 @@ pub struct KeyPress {
 }
 
 impl KeyPress {
+    /// A press whose position is its own code — what a layout that agrees
+    /// with US-QWERTY produces, and the sane reading of an injected press:
+    /// naming a key is saying which key was pressed.
     pub fn new(code: KeyCode, mods: KeyMods) -> Self {
         Self {
             code,
+            physical: code,
+            mods,
+            text: None,
+            repeat: false,
+        }
+    }
+
+    /// Says which physical key produced this press, when the layout put a
+    /// different code on it (`⌥v` on Dvorak: code `v`, physical `.`).
+    pub fn with_physical(mut self, physical: KeyCode) -> Self {
+        self.physical = physical;
+        self
+    }
+
+    /// The press a driver builds from the two things the OS tells it: what
+    /// the active layout put on the key, and which key it was. Every driver
+    /// resolves `code` the same way because they all come through here.
+    ///
+    /// The layout wins while it speaks ASCII, so a chord lands on the key
+    /// the user can *see* — Dvorak's `⌥v` on the key printed V, AZERTY's
+    /// `⌘a` on the one printed A, QWERTZ's `⌘z` on the one printed Z. A
+    /// layout that produces anything else (Cyrillic, Greek, Hebrew, Arabic)
+    /// would make every Latin keymap in every app match nothing at all, so
+    /// the US-QWERTY letter at that position stands in; this is the rule
+    /// browsers use to keep `⌘C` copying on a Russian layout. A layout key
+    /// this vocabulary cannot name falls back the same way.
+    ///
+    /// `physical` is reported either way, for a keymap that would rather
+    /// bind the finger than the label. See `docs/adr/0002` decision 11.
+    pub fn from_layout(layout: KeyCode, physical: KeyCode, mods: KeyMods) -> Self {
+        let code = match layout {
+            KeyCode::Char(c) if !c.is_ascii() => physical,
+            KeyCode::Unknown => physical,
+            named_or_ascii => named_or_ascii,
+        };
+        Self {
+            code,
+            physical,
             mods,
             text: None,
             repeat: false,
@@ -373,13 +431,14 @@ impl KeyPress {
     }
 
     /// The payload form crossing into events, C, and Lua:
-    /// `{kind="key", phase="down"|"up", code="w", shift=, ctrl=, alt=,
-    /// super=, text=, repeat=}`.
+    /// `{kind="key", phase="down"|"up", code="w", physical="w", shift=,
+    /// ctrl=, alt=, super=, text=, repeat=}`.
     pub fn to_value(&self, phase: KeyPhase) -> Value {
         Value::map([
             ("kind", Value::str("key")),
             ("phase", Value::str(phase.name())),
             ("code", Value::Str(self.code.name())),
+            ("physical", Value::Str(self.physical.name())),
             ("shift", Value::Bool(self.mods.shift)),
             ("ctrl", Value::Bool(self.mods.ctrl)),
             ("alt", Value::Bool(self.mods.alt)),

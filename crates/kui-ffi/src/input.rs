@@ -115,14 +115,32 @@ pub extern "C" fn kui_input_key(ptr: *mut KuiCtx, key: u32, mods: u32) {
     }
 }
 
-fn key_press_of(code: KuiStr, kmods: u32, text: KuiStr) -> Option<kui_core::KeyPress> {
-    let code = kui_core::KeyCode::from_name(&kstr(code))?;
+fn key_press_of(
+    code: KuiStr,
+    physical: KuiStr,
+    kmods: u32,
+    text: KuiStr,
+) -> Option<kui_core::KeyPress> {
+    let layout = kui_core::KeyCode::from_name(&kstr(code))?;
     let mods = kui_core::KeyMods {
         shift: kmods & 1 != 0,
         ctrl: kmods & 2 != 0,
         alt: kmods & 4 != 0,
         super_key: kmods & 8 != 0,
     };
+    // A NULL `physical` means "the key I just named": a host that does not
+    // track positions says so by omission, and gets `code` through unchanged
+    // because the two agree. A host that does track them hands both over and
+    // `from_layout` applies the same non-Latin fallback the winit driver
+    // does — the rule lives in the core so no host reimplements it.
+    let press = match physical.ptr.is_null() {
+        true => kui_core::KeyPress::new(layout, mods),
+        false => {
+            let phys = kui_core::KeyCode::from_name(&kstr(physical))?;
+            kui_core::KeyPress::from_layout(layout, phys, mods)
+        }
+    };
+    let code = press.code;
     // A NULL `text` means "whatever this key inserts": the plain
     // character keys insert themselves, a chord inserts nothing.
     let text = match text.ptr.is_null() {
@@ -134,31 +152,35 @@ fn key_press_of(code: KuiStr, kmods: u32, text: KuiStr) -> Option<kui_core::KeyP
             _ => None,
         },
     };
-    Some(kui_core::KeyPress {
-        code,
-        mods,
-        text,
-        repeat: false,
-    })
+    Some(kui_core::KeyPress { text, ..press })
 }
 
 /// A raw key press for `on_key` sinks (the editing keys go through
 /// `kui_input_key`). `code` is a single character as the layout produced it
-/// ("W", "$") or a name ("left", "enter", "escape", "f5", ...); `kmods` is
-/// KUI_KMOD_* bits; `text` is what the press inserts, or NULL to derive it
-/// from `code`; `repeat` marks an auto-repeat. The focused sink polls
-/// `{kind="key", phase="down", code, ctrl, alt, shift, super, text, repeat,
-/// tag}`. An unknown `code` is ignored.
+/// ("W", "$") or a name ("left", "enter", "escape", "f5", ...); `physical`
+/// is the US-QWERTY key at that *position*, spelled the same way, or NULL
+/// when the host does not track positions (then it equals `code`); `kmods`
+/// is KUI_KMOD_* bits; `text` is what the press inserts, or NULL to derive
+/// it from `code`; `repeat` marks an auto-repeat. The focused sink polls
+/// `{kind="key", phase="down", code, physical, ctrl, alt, shift, super,
+/// text, repeat, tag}`. An unknown `code` or `physical` is ignored.
+///
+/// Passing both is what makes a keymap portable: a layout that produces
+/// something outside ASCII (Cyrillic, Greek, Hebrew, Arabic) would leave a
+/// Latin keymap matching nothing, so kui reports the position's US letter
+/// as `code` instead, exactly as the winit runner does. A host that passes
+/// NULL keeps the old behaviour.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_key_down(
     ptr: *mut KuiCtx,
     code: KuiStr,
+    physical: KuiStr,
     kmods: u32,
     text: KuiStr,
     repeat: bool,
 ) {
     guard((), || {
-        if let Some(kp) = key_press_of(code, kmods, text) {
+        if let Some(kp) = key_press_of(code, physical, kmods, text) {
             push_input(
                 ptr,
                 InputEvent::KeyDown(kui_core::KeyPress { repeat, ..kp }),
@@ -168,15 +190,17 @@ pub extern "C" fn kui_input_key_down(
 }
 
 /// The release of a key pressed with `kui_input_key_down`, spelled the same
-/// way; the sink polls `{kind="key", phase="up", ...}` with a null `text`.
+/// way (`physical` included, NULL for "same as `code`"); the sink polls
+/// `{kind="key", phase="up", ...}` with a null `text`.
 /// A release whose press the sink never got resolves nothing, and moving
 /// focus while a key is held delivers the "up" first, so a held-key binding
 /// (WASD, press-and-hold) cannot be left stuck down.
 #[unsafe(no_mangle)]
-pub extern "C" fn kui_input_key_up(ptr: *mut KuiCtx, code: KuiStr, kmods: u32) {
+pub extern "C" fn kui_input_key_up(ptr: *mut KuiCtx, code: KuiStr, physical: KuiStr, kmods: u32) {
     guard((), || {
         if let Some(kp) = key_press_of(
             code,
+            physical,
             kmods,
             KuiStr {
                 ptr: std::ptr::null(),

@@ -200,6 +200,47 @@ impl Core {
         }
     }
 
+    /// Where a primary press on node `key` puts the keyboard: the node
+    /// itself when it is focusable, and nothing when it is not — except
+    /// on window chrome, which leaves focus alone, and inside a key sink,
+    /// which keeps the keyboard through any press landing in its subtree.
+    ///
+    /// A sink is an app that owns its keyboard (`docs/adr/0002`, decision
+    /// 3, the same reason Tab stays with it). The panes, buttons and dead
+    /// space it draws are that app's surface, and a derived button among
+    /// them is focusable enough to be a Tab stop without being entitled to
+    /// take the keys away from the app drawing it — otherwise the first
+    /// click anywhere in a multiplexer kills every chord, permanently,
+    /// because `take_key_focus` is edge-triggered and will not ask twice.
+    /// An editor or a nested sink is its own keyboard owner and still
+    /// takes focus (the editor through the caret arm above).
+    pub(crate) fn press_focus(&self, key: Key, focusable: bool) -> Option<Key> {
+        let Some(i) = self.tree.keys.iter().position(|k| *k == key) else {
+            return focusable.then_some(key);
+        };
+        // Window chrome belongs to the platform, not to the app (decision
+        // 2, the same reason it is never a Tab stop): dragging a window by
+        // its titlebar, or pressing minimize, is not the app being asked
+        // to give up its keyboard.
+        if self.tree.specs[i].window.is_some() {
+            return self.focus;
+        }
+        if self.tree.specs[i].on_key.is_some() {
+            return Some(key);
+        }
+        let mut n = self.tree.parent[i];
+        while n != crate::tree::NIL {
+            let j = n as usize;
+            // A disabled node is not a sink at all (decision 6), so it
+            // neither answers here nor hides a live sink further up.
+            if self.tree.specs[j].on_key.is_some() && !self.tree.specs[j].disabled {
+                return Some(self.tree.keys[j]);
+            }
+            n = self.tree.parent[j];
+        }
+        focusable.then_some(key)
+    }
+
     /// The focused node's index in the last frame, if it is there.
     pub(crate) fn focus_index(&self) -> Option<usize> {
         let key = self.focus?;
