@@ -47,9 +47,11 @@ The five prebuilds are cross-compiled on one Linux runner, and P8's
 `smoke-macos` / `smoke-windows` jobs are gated on repository variables no
 runner satisfies — so nothing had executed on a platform since alpha.5.
 This is what was run by hand before the tag (backlog R4), and what was not.
+Re-run in full on 2026-09-05 after the exit-layering fix below landed; the
+numbers are that run's.
 
 **macOS 26.6.2 (arm64), rustc 1.98.0, 2026-09-05.** `cargo test --workspace`
-passes: **545 tests over 55 suites, 0 failed, 0 ignored**. The workspace
+passes: **552 tests over 55 suites, 0 failed, 0 ignored**. The workspace
 still needs no display, no installed fonts and no GPU — P8's note recorded
 that on 2026-09-03 and 131 commits had not re-checked it. `scripts/ax-audit.swift`
 against `examples/rust/accessibility.rs` passes **88/88 checks across all
@@ -71,7 +73,13 @@ hand over a button and an arrow over a plain box. `modal_editor` switches
 NOR → INS on `i` and types into the buffer; `splitmux` splits and opens a
 tab from its ⌥ chords. Every host opened a window and drew: the Rust
 examples, `examples/c/counter`, `counter-window.mjs` on Node, `lua_panel`,
-and `c_panel` — the C plugin dlopened into a Rust host.
+and `c_panel` — the C plugin dlopened into a Rust host. On the re-run every one
+of those eleven windows was captured with `screencapture -l` and looked at,
+and the toasts example was driven through the AX API (press *toggle panel*,
+two *notify*, *toggle panel*) with the window captured twice inside the
+420ms exit: the panel's ghost slides out **under** the latency HUD, where
+the live panel sat, instead of jumping over it — the layering bug the fix
+below is for, confirmed on screen and not only in `tests/exit.rs`.
 
 **Not run, and so not claimed.** Nothing has executed on **Windows**: no
 machine or VM was reachable, `crates/kui/src/windows_nc.rs` — 292 lines of
