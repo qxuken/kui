@@ -1635,6 +1635,7 @@ mod tests {
                 function on_event(ev)
                   if ev.kind == "key" then
                     log[#log + 1] = ev.phase .. ":" .. ev.code ..
+                      "@" .. ev.physical ..
                       ":" .. tostring(ev.text) .. ":" .. tostring(ev.tag)
                   end
                 end
@@ -1651,6 +1652,16 @@ mod tests {
         let w = || KeyPress::new(KeyCode::Char('w'), KeyMods::default()).with_text("w");
         feed(&mut core, &mut ext, InputEvent::KeyDown(w()));
         feed(&mut core, &mut ext, InputEvent::KeyUp(w()));
+        // The same key on a Russian layout, as a driver reports it: the
+        // layout says "ц", the position says W. A script matching on
+        // `ev.code` keeps working, and `ev.physical` is there for one that
+        // would rather bind the position.
+        let ru = || {
+            KeyPress::from_layout(KeyCode::Char('ц'), KeyCode::Char('w'), KeyMods::default())
+                .with_text("ц")
+        };
+        feed(&mut core, &mut ext, InputEvent::KeyDown(ru()));
+        feed(&mut core, &mut ext, InputEvent::KeyUp(ru()));
         // Pressed again, then focus dropped while it is still down.
         feed(&mut core, &mut ext, InputEvent::KeyDown(w()));
         core.set_focus(None);
@@ -1661,11 +1672,15 @@ mod tests {
         assert_eq!(
             log,
             [
-                "down:w:w:keys",
+                "down:w@w:w:keys",
                 // A release inserts nothing, so `text` is nil in Lua.
-                "up:w:nil:keys",
-                "down:w:w:keys",
-                "up:w:nil:keys",
+                "up:w@w:nil:keys",
+                // The layout key never reaches `code`; the text it inserts
+                // is still the layout's own.
+                "down:w@w:ц:keys",
+                "up:w@w:nil:keys",
+                "down:w@w:w:keys",
+                "up:w@w:nil:keys",
             ]
         );
     }

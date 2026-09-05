@@ -928,6 +928,60 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Changed
 
+- **A key event carries two codes, and `code` no longer depends on the
+  layout speaking Latin** (ADR 0002 decisions 11-12). `code` was whatever
+  character the active layout produced, and every keymap in this repo — and
+  every one an app would write — is spelled in Latin: `match code { "v" =>
+  split }`. On a Cyrillic, Greek, Hebrew or Arabic layout the key US-QWERTY
+  prints V on produces `м` / `ω` / `ה` / `ر`, so no arm matched and the app
+  was silently keyboard-dead, with the events arriving normally and nothing
+  to detect. `code` now follows the layout only while the layout speaks
+  ASCII — a chord stays on the key the user can *see*, so Dvorak's `⌥v` is
+  on the key printed V, AZERTY's `⌘a` on the one printed A — and falls back
+  to the US-QWERTY letter at that position when it does not, which is how
+  browsers keep `⌘C` copying on a Russian layout. `text` is untouched: the
+  typing view is always the layout's own character.
+  **`physical` is new on every key payload**: the US-QWERTY key at that
+  position, in the same vocabulary as `code` (`"v"`, `"1"`, `"left"`,
+  `"f5"`), so a keymap that wants the finger rather than the label — WASD,
+  which `code` turns into ZQSD on AZERTY — switches its match arms by
+  changing one word. `KeyPress` gained a `physical` field and
+  `KeyPress::from_layout(layout, physical, mods)`, which is where the rule
+  lives so no driver reimplements it; `KeyPress::new` sets `physical` to the
+  code you named, so every existing construction keeps its meaning.
+  **C and Node take the position where they take the code.**
+  `kui_input_key_down(ctx, code, physical, kmods, text, repeat)` and
+  `kui_input_key_up(ctx, code, physical, kmods)` gained the argument —
+  `{NULL, 0}` means "the key I just named", the same NULL-means-derive
+  convention `text` already uses, so a host that does not track positions
+  edits one line per call and behaves exactly as before. A source break,
+  caught by the compiler, and `KUI_ABI_VERSION` stays 6 because 6 has not
+  shipped. In Node it is a trailing optional argument on `keyDown` /
+  `keyUp`, so no existing call changes at all. Lua needed no change: it
+  reads the payload, and `ev.physical` was there the moment the core sent
+  it.
+- **A press inside a key sink leaves the keyboard on the sink**, and a press
+  on window chrome leaves focus alone (ADR 0002 decisions 2-3, refined).
+  Making every box with `on_click` focusable put a whole class of app one
+  click away from having no keyboard: an app that owns its keys through one
+  `on_key` sink and draws clickable surfaces inside it — a multiplexer, a
+  canvas with handles, a game with a HUD — lost every chord the first time
+  the user clicked one of its own panes, and never got them back, because
+  `take_key_focus` is edge-triggered and does not ask twice. A sink is by
+  definition the app that owns its keyboard; its panes and buttons are that
+  app's surface, focusable enough to be Tab stops without being entitled to
+  take the keys away from the thing drawing them. So a primary press now
+  resolves to the nearest enclosing sink unless it lands on a keyboard owner
+  in its own right — an editor, or a nested sink — which still takes focus,
+  caret and all. Separately, a press on window chrome (a `window_drag` strip,
+  a window button) returns focus unchanged: moving a window is the
+  platform's business, and chrome was already excluded from the Tab ring for
+  the same reason. Nothing outside a sink changes: a click on a button in
+  ordinary content focuses that button exactly as before.
+  `examples/rust/splitmux.rs` was the app this broke, and it now carries the
+  test — `cargo test -p kui --example splitmux` drives the real thing
+  headlessly through the `App` trait and presses ⌥v after a pane click, a
+  tab click and a titlebar grab.
 - **`KUI_ABI_VERSION` is 5**, and the C drain loop is a source break (ADR
   0004 decision 12, built by C11 step 3). `kui_take_window_commands` filled
   a `uint32_t` array; a command now names its window and an open carries a
@@ -1314,6 +1368,20 @@ upgrades remove code from the apps on it is doing the job.
 
 ### What you can delete
 
+- **Every keyboard-layout table an app carried to make its chords work** —
+  the `match` arm listing `"v"` next to `"м"` and `"ω"`, the "detect the
+  layout and pick a keymap" branch, and the per-locale keymap files behind
+  it. `code` folds a non-Latin layout onto the position's US letter before
+  the app sees it, so one Latin keymap is the whole story; an app that
+  wanted the *shape* rather than the label reads `physical` and deletes its
+  QWERTY position table too.
+- **The `focus(sink)` call an app that owns its keyboard made on every
+  pointer event it could see** — and the flag next to it tracking whether
+  something inside the app had stolen the keyboard, which no app could
+  actually maintain, because focus moving is not an event. A press inside a
+  key sink leaves the keyboard on the sink now, and a press on window
+  chrome leaves it alone; what remains is the one honest case, an app
+  reclaiming focus from a real control outside its own sink.
 - **The inner wrapper that re-rounded a rounded scroll container** — the
   extra node with a matching `radius` put inside every clipping card so its
   first and last rows would not square off its corners, and the arithmetic

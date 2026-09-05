@@ -669,15 +669,21 @@ export declare class Ctx {
    * "f5", ...), with mods `{shift, ctrl, alt, super}`. Editing keys for
    * focused editors still go through `key()`. `repeat` marks a press the
    * OS auto-repeated. The sink hears `{kind:"key", phase:"down", ...}`.
+   *
+   * `physical` is the US-QWERTY key at that *position*, spelled the same
+   * way; omit it and it equals `code`. Passing both is how a driver
+   * reports a non-US layout, and it is what makes the reported `code`
+   * portable: a layout producing something outside ASCII would leave a
+   * Latin keymap matching nothing, so the position's US letter stands in.
    */
-  keyDown(code: string, mods?: KeySinkMods, repeat?: boolean): void
+  keyDown(code: string, mods?: KeySinkMods, repeat?: boolean, physical?: string): void
   /**
-   * The release of a key, spelled the way `keyDown` spells it: the sink
-   * hears `{kind:"key", phase:"up", ...}` with `text` null. A release
-   * whose press the sink never got resolves nothing, and moving focus
-   * while a key is held delivers the `up` first.
+   * The release of a key, spelled the way `keyDown` spells it (`physical`
+   * included): the sink hears `{kind:"key", phase:"up", ...}` with `text`
+   * null. A release whose press the sink never got resolves nothing, and
+   * moving focus while a key is held delivers the `up` first.
    */
-  keyUp(code: string, mods?: KeySinkMods): void
+  keyUp(code: string, mods?: KeySinkMods, physical?: string): void
   /**
    * Physical modifier state changed: `{shift, ctrl, alt, super}`. The
    * host receives `{kind:"modifiers", ...}` when it differs from the

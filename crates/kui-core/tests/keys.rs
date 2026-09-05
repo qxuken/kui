@@ -3,7 +3,8 @@
 //! its own text model (a modal editor, a terminal) binds against.
 
 use kui_core::{
-    Core, InputEvent, Key, KeyCode, KeyMods, KeyPress, NodeSpec, Size, Sizing, UiEvent, Value, Vec2,
+    Core, EditOptions, InputEvent, Key, KeyCode, KeyMods, KeyPress, NodeSpec, Size, Sizing,
+    UiEvent, Value, Vec2,
 };
 
 /// Two side-by-side key sinks (think: two editor panes), left one focused.
@@ -388,4 +389,208 @@ fn key_names_round_trip_through_from_name() {
     assert_eq!(KeyCode::from_name("f0"), None);
     assert_eq!(KeyCode::from_name("f25"), None);
     assert_eq!(KeyCode::from_name("nonsense"), None);
+}
+
+/// splitmux's shape: one sink wrapping the panes, each pane clickable so a
+/// click can focus it. A pane is a derived button and so a Tab stop, but it
+/// is drawn *by* the app that owns the keyboard — clicking it must not take
+/// the keyboard away, or every Alt chord dies on the first click and never
+/// comes back (`take_key_focus` is edge-triggered).
+fn multiplexer(core: &mut Core) -> (Key, Key) {
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let mut pane = None;
+    let sink = ui.with_keyed("main", NodeSpec::row().fill().on_key(Value::Null), |ui| {
+        pane = Some(
+            ui.with_keyed(
+                "pane1",
+                NodeSpec::column()
+                    .width(Sizing::Grow(1.0))
+                    .height(Sizing::Grow(1.0))
+                    .on_click(Value::map([("kind", Value::str("focus"))])),
+                |_| {},
+            ),
+        );
+    });
+    ui.take_key_focus(sink);
+    ui.finish();
+    (sink, pane.unwrap())
+}
+
+fn click_at(x: f32, y: f32) -> [InputEvent; 3] {
+    [
+        InputEvent::CursorMoved(Vec2::new(x, y)),
+        InputEvent::mouse_down(1),
+        InputEvent::mouse_up(),
+    ]
+}
+
+#[test]
+fn a_click_inside_a_sink_leaves_the_keyboard_on_the_sink() {
+    let mut core = Core::new();
+    let (sink, pane) = multiplexer(&mut core);
+    // The click still reaches the pane as a click...
+    let evs = drive(&mut core, &click_at(200.0, 150.0));
+    assert!(
+        evs.iter().any(
+            |e| e.key == pane && e.payload.get("kind").and_then(Value::as_str) == Some("focus")
+        ),
+        "the pane still hears its own click"
+    );
+    // ...but the keyboard stayed put, without the view asking again.
+    assert_eq!(core.key_focus(), Some(sink));
+    multiplexer(&mut core);
+    let evs = drive(&mut core, &[press(KeyCode::Char('v'))]);
+    assert_eq!(keys(&evs), [("down".into(), "v".into())]);
+    assert_eq!(evs[0].key, sink);
+}
+
+#[test]
+fn an_editor_inside_a_sink_still_takes_the_keyboard() {
+    let mut core = Core::new();
+    let mut edit = None;
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let sink = ui.with_keyed("main", NodeSpec::row().fill().on_key(Value::Null), |ui| {
+        edit = Some(ui.text_edit(
+            "field",
+            "hi",
+            &EditOptions::default(),
+            NodeSpec::row().fill(),
+        ));
+    });
+    ui.take_key_focus(sink);
+    ui.finish();
+    let edit = edit.unwrap();
+    // A sink owns its keyboard, but not against a real editor it drew: the
+    // caret has to land where the user clicked.
+    drive(&mut core, &click_at(200.0, 150.0));
+    assert_eq!(core.key_focus(), Some(edit));
+}
+
+#[test]
+fn pressing_window_chrome_leaves_the_keyboard_where_it_was() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    // A custom titlebar above the app's own key sink, as every custom-chrome
+    // app draws it.
+    ui.with_keyed(
+        "bar",
+        NodeSpec::row()
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Fixed(40.0))
+            .window_drag(),
+        |_| {},
+    );
+    let sink = ui.with_keyed("main", NodeSpec::row().fill().on_key(Value::Null), |_| {});
+    ui.take_key_focus(sink);
+    ui.finish();
+    // Grabbing the window to move it is the platform's business; the app
+    // does not lose its chords over it.
+    drive(&mut core, &click_at(200.0, 20.0));
+    assert_eq!(core.key_focus(), Some(sink));
+}
+
+// -- Layout portability ----------------------------------------------------
+// `code` is what a keymap binds; `physical` is where the key is. See ADR
+// 0002 decision 11 and `KeyPress::from_layout`.
+
+/// A press as a driver builds it: what the layout put on the key, and which
+/// key it was.
+fn layout_press(layout: KeyCode, physical: KeyCode) -> KeyPress {
+    KeyPress::from_layout(layout, physical, KeyMods::default())
+}
+
+/// The whole point: a keymap written `match code { "v" => split }` has to
+/// keep working when the layout does not speak Latin at all.
+#[test]
+fn a_non_latin_layout_reports_the_position_as_code() {
+    // Russian ЙЦУКЕН: the key US-QWERTY prints V on produces "м".
+    let kp = layout_press(KeyCode::Char('м'), KeyCode::Char('v'));
+    assert_eq!(kp.code, KeyCode::Char('v'));
+    assert_eq!(kp.physical, KeyCode::Char('v'));
+    // Greek, Hebrew and Arabic fold the same way.
+    for (layout, physical) in [('ς', 'w'), ('ט', 'y'), ('ب', 'b')] {
+        let kp = layout_press(KeyCode::Char(layout), KeyCode::Char(physical));
+        assert_eq!(kp.code, KeyCode::Char(physical));
+    }
+}
+
+/// The other half: a Latin layout keeps its own key, so a chord lands on the
+/// key the user can *see* rather than wherever QWERTY would have put it.
+#[test]
+fn a_latin_layout_keeps_the_key_it_prints() {
+    // Dvorak: the key printed V sits where QWERTY prints ".".
+    let kp = layout_press(KeyCode::Char('v'), KeyCode::Char('.'));
+    assert_eq!(kp.code, KeyCode::Char('v'), "⌥v is on the key printed V");
+    assert_eq!(kp.physical, KeyCode::Char('.'), "and reports where that is");
+    // AZERTY's A (QWERTY Q), QWERTZ's Z (QWERTY Y).
+    for (layout, physical) in [('a', 'q'), ('z', 'y'), ('q', 'a')] {
+        let kp = layout_press(KeyCode::Char(layout), KeyCode::Char(physical));
+        assert_eq!(kp.code, KeyCode::Char(layout));
+        assert_eq!(kp.physical, KeyCode::Char(physical));
+    }
+}
+
+/// Named keys are layout-independent already, and a layout key this
+/// vocabulary cannot name falls back to the position like a non-Latin one.
+#[test]
+fn named_keys_pass_through_and_unnameable_ones_fall_back() {
+    let kp = layout_press(KeyCode::Enter, KeyCode::Enter);
+    assert_eq!(kp.code, KeyCode::Enter);
+    let kp = layout_press(KeyCode::Unknown, KeyCode::Char('/'));
+    assert_eq!(
+        kp.code,
+        KeyCode::Char('/'),
+        "a dead key still names its slot"
+    );
+    // Nothing to fall back to: the press stays unknown rather than inventing.
+    let kp = layout_press(KeyCode::Unknown, KeyCode::Unknown);
+    assert_eq!(kp.code, KeyCode::Unknown);
+}
+
+/// A press names one key unless it is told otherwise, so every injected
+/// press and every test above this line keeps meaning what it said.
+#[test]
+fn an_injected_press_is_its_own_position() {
+    let kp = KeyPress::new(KeyCode::Char('w'), KeyMods::default());
+    assert_eq!(kp.physical, KeyCode::Char('w'));
+    assert_eq!(
+        kp.with_physical(KeyCode::Char(',')).physical,
+        KeyCode::Char(',')
+    );
+}
+
+/// Both reach the app on the same payload, and a release carries them too.
+#[test]
+fn both_codes_cross_as_data() {
+    let mut core = Core::new();
+    let (left, _) = frame(&mut core, true);
+    let ru = layout_press(KeyCode::Char('м'), KeyCode::Char('v')).with_text("м");
+    let evs = drive(&mut core, &[InputEvent::KeyDown(ru.clone())]);
+    assert_eq!(evs.len(), 1);
+    assert_eq!(evs[0].key, left);
+    let p = &evs[0].payload;
+    assert_eq!(p.get("code").and_then(Value::as_str), Some("v"));
+    assert_eq!(p.get("physical").and_then(Value::as_str), Some("v"));
+    // `text` is the typing view and stays the layout's own character.
+    assert_eq!(p.get("text").and_then(Value::as_str), Some("м"));
+    let evs = drive(&mut core, &[InputEvent::KeyUp(ru.released())]);
+    let p = &evs[0].payload;
+    assert_eq!(p.get("code").and_then(Value::as_str), Some("v"));
+    assert_eq!(p.get("physical").and_then(Value::as_str), Some("v"));
+}
+
+/// A Dvorak user holding a key and letting go resolves it: the release is
+/// matched on `code`, which is stable across the press for a given key.
+#[test]
+fn a_held_key_on_a_remapped_layout_resolves_its_release() {
+    let mut core = Core::new();
+    frame(&mut core, true);
+    let v = layout_press(KeyCode::Char('v'), KeyCode::Char('.'));
+    let evs = drive(&mut core, &[InputEvent::KeyDown(v.clone())]);
+    assert_eq!(keys(&evs), [("down".into(), "v".into())]);
+    let evs = drive(&mut core, &[InputEvent::KeyUp(v.released())]);
+    assert_eq!(keys(&evs), [("up".into(), "v".into())]);
 }

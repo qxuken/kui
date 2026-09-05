@@ -1247,8 +1247,8 @@ pub const EVENTS: &[EventDef] = &[
     },
     EventDef {
         kind: "key",
-        payload: "`{ kind: \"key\", phase: \"down\" | \"up\", code, shift, ctrl, alt, super, text, repeat, tag }`",
-        doc: "A key press or release on the focused `onKey` sink; `code` is a character or a name (`\"left\"`, `\"f5\"`). `repeat` marks a press the OS auto-repeated; `text` is what the press would insert, and is null on every release. A key only comes up where it went down: a release whose press the sink never got is dropped, and focus leaving while a key is held delivers the `up` first, so a held-key binding (WASD, press-and-hold) cannot be left stuck down.",
+        payload: "`{ kind: \"key\", phase: \"down\" | \"up\", code, physical, shift, ctrl, alt, super, text, repeat, tag }`",
+        doc: "A key press or release on the focused `onKey` sink; `code` is a character or a name (`\"left\"`, `\"f5\"`) and is what a keymap binds against. `physical` is the US-QWERTY key at that *position*, spelled the same way — bind it instead when you want the finger rather than the label (WASD stays a square on every layout). `code` follows the layout while the layout speaks ASCII, so a chord lands on the key the user can see (Dvorak's `⌥v` on the key printed V); on a layout that does not (Cyrillic, Greek, Hebrew, Arabic) the position's US letter stands in, so a Latin keymap keeps matching instead of matching nothing. `repeat` marks a press the OS auto-repeated; `text` is what the press would insert — always the layout's own character — and is null on every release. A key only comes up where it went down: a release whose press the sink never got is dropped, and focus leaving while a key is held delivers the `up` first, so a held-key binding (WASD, press-and-hold) cannot be left stuck down.",
     },
     EventDef {
         kind: "contextmenu",

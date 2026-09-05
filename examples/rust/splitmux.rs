@@ -10,7 +10,12 @@
 //!
 //! Keys — Alt is ⌥ Option on macOS: Alt-v/s split · Alt-o hop panes ·
 //! Alt-w close · Alt-t new tab · Alt-1..9 jump to tab. Click a pane to
-//! focus it. Drag the strip between panes to resize a split; drag a tab
+//! focus it. The chords read `code`, which follows the layout while the
+//! layout speaks ASCII and falls back to the key's US-QWERTY position when
+//! it does not — so ⌥v is on the key printed V for a Dvorak or AZERTY user,
+//! and still works at all on a Cyrillic or Greek one. A keymap that wanted
+//! the *shape* rather than the label (WASD) would read `physical` instead;
+//! the payload carries both. Drag the strip between panes to resize a split; drag a tab
 //! along the bar to reorder it (both are plain `on_drag` data — the drag
 //! payload's parent rect gives the divider its ratio, and hover during the
 //! drag gives tabs their live reorder). Splits ease into place: the two
@@ -322,6 +327,13 @@ struct Splitmux {
     /// Where the pane drag would land, recomputed by the view from which
     /// zone overlay is hovered (hover is last frame's layout, as always).
     drop_target: Option<(u64, Zone)>,
+    /// Set when a click on the tab bar took the keyboard: the tab bar's
+    /// buttons sit outside the key sink, so pressing one moves focus to a
+    /// real control the way pressing any button does. This app owns the
+    /// whole keyboard, so it asks for it back on the next frame —
+    /// `take_key_focus` only fires on the frame the declaration starts,
+    /// which is what keeps a Tab press from being clobbered.
+    reclaim_keys: bool,
     quit: bool,
 }
 
@@ -353,6 +365,7 @@ impl Splitmux {
             mods: KeyMods::default(),
             pane_drag: None,
             drop_target: None,
+            reclaim_keys: false,
             quit: false,
         }
     }
@@ -449,8 +462,12 @@ impl Splitmux {
 
     // ------------------------------------------------------------ keymap
 
-    /// Alt chords, straight off the `code` string. Anything else would go to
-    /// the focused pane's content — here panes have none, so it's dropped.
+    /// Alt chords, straight off the `code` string — the layout's own key
+    /// where the layout is Latin, the key's US-QWERTY position where it is
+    /// not, so these arms match on every layout without the app knowing one
+    /// exists. A keymap binding a shape rather than a label (a game's WASD)
+    /// would read `physical` here instead. Anything else would go to the
+    /// focused pane's content — here panes have none, so it's dropped.
     fn chord(&mut self, code: &str) {
         match code {
             "o" => self.cycle_pane(),
@@ -838,6 +855,9 @@ impl App for Splitmux {
             |ui| self.render_node(ui, &root, ""),
         );
         ui.take_key_focus(sink);
+        if std::mem::take(&mut self.reclaim_keys) {
+            ui.focus(sink);
+        }
         self.tabs[self.tab].root.settle();
         self.render_ghost(ui);
 
@@ -888,9 +908,13 @@ impl App for Splitmux {
                 if let Some(i) = ev.payload.get("tab").and_then(Value::as_int) {
                     self.tab = i as usize;
                     self.refocus();
+                    self.reclaim_keys = true;
                 }
             }
-            Some("tabnew") => self.new_tab(),
+            Some("tabnew") => {
+                self.new_tab();
+                self.reclaim_keys = true;
+            }
             Some("drag") => {
                 let tag = ev.payload.get("tag");
                 match tag.and_then(|t| t.get("kind")).and_then(Value::as_str) {
@@ -998,4 +1022,160 @@ fn main() {
         .size(1100.0, 720.0)
         .run(Splitmux::new())
         .unwrap();
+}
+
+#[cfg(test)]
+mod tests {
+    //! The app driven headlessly through the `App` trait the runner calls:
+    //! build a frame, feed pointer and key input to a `Core`, hand what comes
+    //! back to `on_event`. Splitmux owns its whole keyboard through one sink
+    //! *and* draws clickable surfaces inside it, which is the shape where a
+    //! press quietly taking the keyboard shows up — a click on a pane once
+    //! killed every chord for the life of the process, because
+    //! `take_key_focus` is edge-triggered and does not ask twice.
+
+    use super::*;
+    use kui_core::widgets::TITLEBAR_H;
+    use kui_core::{Core, InputEvent, KeyCode, KeyPress, Size, Vec2};
+
+    fn viewport() -> Size {
+        Size::new(900.0, 640.0)
+    }
+
+    /// One frame, the way the runner pumps it.
+    fn frame(core: &mut Core, app: &mut Splitmux) {
+        let mut ui = core.frame(viewport(), 1.0);
+        app.view(&mut ui);
+        ui.finish();
+    }
+
+    fn feed(core: &mut Core, app: &mut Splitmux, ev: InputEvent) {
+        for e in core.handle_input(ev) {
+            app.on_event(e);
+        }
+    }
+
+    fn click(core: &mut Core, app: &mut Splitmux, x: f32, y: f32) {
+        feed(core, app, InputEvent::CursorMoved(Vec2::new(x, y)));
+        feed(core, app, InputEvent::mouse_down(1));
+        feed(core, app, InputEvent::mouse_up());
+    }
+
+    /// ⌥ plus a key on a US layout: what the layout produced and which key
+    /// it was are the same thing.
+    fn chord(core: &mut Core, app: &mut Splitmux, c: char) {
+        chord_on(core, app, c, c);
+    }
+
+    /// ⌥ plus a key on any layout: `layout` is what the active layout put on
+    /// the key, `physical` which key it was, exactly as a driver reports the
+    /// pair. `KeyPress::from_layout` resolves the `code` the keymap sees.
+    fn chord_on(core: &mut Core, app: &mut Splitmux, layout: char, physical: char) {
+        let mods = KeyMods {
+            alt: true,
+            ..KeyMods::default()
+        };
+        let kp = KeyPress::from_layout(KeyCode::Char(layout), KeyCode::Char(physical), mods);
+        feed(core, app, InputEvent::KeyDown(kp));
+    }
+
+    fn panes(app: &Splitmux) -> usize {
+        fn count(n: &Node) -> usize {
+            match n {
+                Node::Pane(_) => 1,
+                Node::Split { a, b, .. } => count(a) + count(b),
+            }
+        }
+        count(&app.tabs[app.tab].root)
+    }
+
+    /// Asserts that ⌥v still reaches the keymap.
+    fn splits(core: &mut Core, app: &mut Splitmux) -> bool {
+        let before = panes(app);
+        chord(core, app, 'v');
+        frame(core, app);
+        panes(app) == before + 1
+    }
+
+    fn started() -> (Core, Splitmux) {
+        let (mut core, mut app) = (Core::new(), Splitmux::new());
+        frame(&mut core, &mut app);
+        (core, app)
+    }
+
+    #[test]
+    fn chords_work_before_anything_is_clicked() {
+        let (mut core, mut app) = started();
+        assert!(splits(&mut core, &mut app));
+    }
+
+    /// The pane says "click to focus" on its own face, so this is the first
+    /// thing anyone does.
+    #[test]
+    fn chords_survive_clicking_a_pane() {
+        let (mut core, mut app) = started();
+        click(&mut core, &mut app, 450.0, 540.0);
+        frame(&mut core, &mut app);
+        assert_eq!(app.focused, 1, "the click still focused the pane");
+        assert!(splits(&mut core, &mut app));
+    }
+
+    /// A tab is a real control outside the sink, so pressing one does take
+    /// the keyboard — and the app asks for it back.
+    #[test]
+    fn chords_survive_clicking_a_tab() {
+        let (mut core, mut app) = started();
+        chord(&mut core, &mut app, 't');
+        frame(&mut core, &mut app);
+        assert_eq!(app.tabs.len(), 2, "⌥t opened a tab");
+        click(&mut core, &mut app, 40.0, TITLEBAR_H + TABBAR_H / 2.0);
+        frame(&mut core, &mut app);
+        assert_eq!(app.tab, 0, "the click selected the first tab");
+        assert!(splits(&mut core, &mut app));
+    }
+
+    /// The keymap is written in Latin and the app never asks what layout is
+    /// active, so these are the layouts it has to survive.
+    #[test]
+    fn chords_work_on_a_layout_that_is_not_latin() {
+        let (mut core, mut app) = started();
+        // Russian ЙЦУКЕН: the key US-QWERTY prints V on produces "м". Without
+        // the fallback every arm of `chord` would miss and the app would be
+        // silently keyboard-dead.
+        let before = panes(&app);
+        chord_on(&mut core, &mut app, 'м', 'v');
+        frame(&mut core, &mut app);
+        assert_eq!(panes(&app), before + 1, "⌥v splits on a Russian layout");
+        // Greek: ⌥t opens a tab from the key printed Τ.
+        chord_on(&mut core, &mut app, 'τ', 't');
+        frame(&mut core, &mut app);
+        assert_eq!(app.tabs.len(), 2, "⌥t opens a tab on a Greek layout");
+    }
+
+    /// A Latin layout keeps its own labels, so the chord is where the user
+    /// reads it rather than where QWERTY would have put it.
+    #[test]
+    fn chords_follow_the_label_on_a_latin_layout() {
+        let (mut core, mut app) = started();
+        // Dvorak: the key printed V sits where QWERTY prints ".".
+        let before = panes(&app);
+        chord_on(&mut core, &mut app, 'v', '.');
+        frame(&mut core, &mut app);
+        assert_eq!(panes(&app), before + 1, "⌥v is on the key printed V");
+        // And the QWERTY V position, which Dvorak prints K on, is not it.
+        let before = panes(&app);
+        chord_on(&mut core, &mut app, 'k', 'v');
+        frame(&mut core, &mut app);
+        assert_eq!(panes(&app), before, "the position alone does not split");
+    }
+
+    /// Grabbing the window to move it is the platform's business, not a
+    /// request that the app give up its keyboard.
+    #[test]
+    fn chords_survive_grabbing_the_titlebar() {
+        let (mut core, mut app) = started();
+        click(&mut core, &mut app, 450.0, TITLEBAR_H / 2.0);
+        frame(&mut core, &mut app);
+        assert!(splits(&mut core, &mut app));
+    }
 }

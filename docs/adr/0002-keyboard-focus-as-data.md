@@ -154,3 +154,121 @@ technology landing on the same focus a Tab press moves.
   gains a Tab check.
 - Arrow-key composites (radio groups, tab lists, lists) and a
   configurable ring colour are the next steps, both small.
+
+## Amendment: a press inside a sink, built (2026-09-05)
+
+The consequence above — "`take_key_focus` changes meaning for apps that
+relied on it winning back focus every frame after a click elsewhere. None
+of the examples did" — was true when it was written and stopped being true
+the moment `examples/rust/splitmux.rs` landed. Splitmux owns its whole
+keyboard through one `on_key` sink and draws its panes *inside* that sink,
+each with an `on_click` so a click can focus one. Decision 2 makes a box
+with `on_click` a derived button, and so focusable; decision 5 makes the
+sink's per-frame declaration one-shot. Together: the first click on a pane
+moved focus to the pane, the sink's next declaration was not an edge, and
+every ⌥ chord in the app was dead for the life of the process — with no
+way for the app to notice, because focus moving is not an event it sees.
+
+That is not a splitmux problem. It is the shape of every app that owns its
+keyboard and draws surfaces to click: a multiplexer, a canvas with
+handles, a game with a HUD, a diagram editor. Decision 3 already says why:
+*a key sink is an app that owns its keyboard*, which is why it keeps Tab.
+The pointer had simply not been held to the same rule.
+
+So, refining decisions 2 and 3 rather than reversing either:
+
+9. **A primary press inside a key sink leaves the keyboard on the sink.**
+   The press resolves to the nearest enclosing sink, not to the node it
+   landed on — a pane, a derived button, a `focusable` row, or dead space,
+   which used to blur. Those nodes stay focusable and stay in the Tab
+   ring; being focusable makes a node a Tab stop, not a claim on keys the
+   app drawing it already owns. A node that owns a keyboard in its own
+   right still takes focus from inside a sink: an editor (with its caret
+   placed where the click was, as ever) and a nested sink. A `disabled`
+   node is not a sink at all (decision 6), so it neither answers nor hides
+   a live sink above it.
+10. **A press on window chrome leaves focus exactly where it is.** A
+    `window_drag` strip or a window button is the platform's control, and
+    decision 2 already keeps it out of the Tab ring for that reason;
+    dragging a window to another monitor is not the app being asked to
+    give up its keyboard. Previously it blurred, because chrome is not
+    focusable and a press on nothing focusable blurred.
+
+Nothing changes outside a sink: a click on a button in ordinary content
+focuses that button, and a click on the background still blurs.
+
+An app whose keyboard leaves for something genuinely outside its sink —
+splitmux's tab bar, which sits above the sink and whose tabs are real
+controls that should focus — still asks for it back with `focus(key)`, the
+imperative call decision 5 exists to provide. That is the case the original
+consequence describes, and it is the right one to make an app spell out:
+it is the app choosing to overrule a focus the user moved.
+
+`cargo test -p kui --example splitmux` drives the example headlessly
+through the `App` trait and presses ⌥v after a pane click, a tab click and
+a titlebar grab; `crates/kui-core/tests/keys.rs` pins the three rules on
+the shapes themselves, including the editor that must still win.
+
+## Amendment: a key has two codes, built (2026-09-05)
+
+Chasing the sink bug above turned up a worse one underneath it. `code` was
+the character the active *layout* produced, and every keymap in the repo is
+written in Latin — `match code { "v" => split, "t" => new_tab }`. On a
+Cyrillic, Greek, Hebrew or Arabic layout the key US-QWERTY prints V on
+produces `м`, `ω`, `ה`, `ر`. Not a different arm: *no* arm. Splitmux was
+silently keyboard-dead for a large fraction of the world, and nothing in
+the app could detect it — the events arrived, they just matched nothing.
+
+Pure scan codes are the obvious fix and the wrong one. Bind position and a
+Dvorak user pressing the key **printed V** gets whatever chord QWERTY keeps
+at that slot; the docs say ⌥v, the keycap says V, and the app disagrees
+with both. Neither view is right on its own: position is right about the
+Cyrillic case and wrong about the Dvorak one, and the layout is exactly the
+reverse.
+
+So both, with a stated default:
+
+11. **`code` prefers the label, and falls back to the position.** A press
+    carries what the layout produced and which key produced it, and
+    `KeyPress::from_layout` resolves the two: while the layout's key is
+    ASCII it wins, so a chord lands on the key the user can see (Dvorak's
+    ⌥v on the key printed V, AZERTY's ⌘a on the one printed A, QWERTZ's ⌘z
+    on the one printed Z). When it is not — or names nothing this
+    vocabulary knows, as a dead key does — the US-QWERTY letter at that
+    position stands in, so a Latin keymap keeps matching. This is the rule
+    browsers use to keep ⌘C copying on a Russian layout, and it is the
+    reason an app can stay ignorant that layouts exist. `text` is
+    untouched: the typing view is always the layout's own character.
+12. **`physical` is a payload field of its own.** The US-QWERTY key at that
+    position, in the *same* vocabulary as `code` — `"v"`, `"1"`, `"left"`,
+    `"f5"` — so an app switching a keymap from one to the other keeps its
+    match arms byte-identical. A keymap that wants the finger rather than
+    the label reads it: WASD stays a square on AZERTY, where `code` would
+    make it ZQSD. It rides on every key event in every binding.
+
+The derivation lives in `kui_core::KeyPress::from_layout`, not in the winit
+runner, so a host with its own windowing gets it by handing over both codes
+— C through the new `physical` argument on `kui_input_key_down` / `_up`,
+Node through the trailing `physical` argument on `keyDown` / `keyUp`. NULL
+or omitted means "the key I named", which is what a host that does not
+track positions says, and what every existing call already meant.
+
+`crates/kui-core/tests/keys.rs` pins the fold for Russian, Greek, Hebrew and
+Arabic and the pass-through for Dvorak, AZERTY and QWERTZ; splitmux presses
+⌥v on a Russian layout and on a Dvorak one and checks it splits both times,
+for opposite reasons.
+
+### Rejected
+
+- **Replace `code` with the position outright.** The clean model, and it
+  makes every Latin non-QWERTY user's chords disagree with their own
+  keycaps. Position is the fallback because it is right less often than
+  the label, not more.
+- **Leave `code` alone and add `physical` beside it.** Purely additive and
+  fixes nothing: the naive binding stays the broken one, and every app has
+  to be rewritten one at a time to get what it already assumed it had.
+- **W3C `code` names for `physical`** (`"KeyV"`, `"Digit1"`, `"ArrowLeft"`).
+  Unambiguous about being a position, at the price of a second vocabulary
+  in the docs, a second name table in C and Lua, and match arms that no
+  longer line up with `code`'s. Reusing the one vocabulary makes switching
+  a keymap between the two a one-word edit.

@@ -480,14 +480,21 @@ impl Ctx {
     /// "f5", ...), with mods `{shift, ctrl, alt, super}`. Editing keys for
     /// focused editors still go through `key()`. `repeat` marks a press the
     /// OS auto-repeated. The sink hears `{kind:"key", phase:"down", ...}`.
-    #[napi(ts_args_type = "code: string, mods?: KeySinkMods, repeat?: boolean")]
+    ///
+    /// `physical` is the US-QWERTY key at that *position*, spelled the same
+    /// way; omit it and it equals `code`. Passing both is how a driver
+    /// reports a non-US layout, and it is what makes the reported `code`
+    /// portable: a layout producing something outside ASCII would leave a
+    /// Latin keymap matching nothing, so the position's US letter stands in.
+    #[napi(ts_args_type = "code: string, mods?: KeySinkMods, repeat?: boolean, physical?: string")]
     pub fn key_down(
         &mut self,
         code: String,
         mods: Option<Json>,
         repeat: Option<bool>,
+        physical: Option<String>,
     ) -> Result<()> {
-        let kp = self.key_press(&code, mods.as_ref())?;
+        let kp = self.key_press(&code, mods.as_ref(), physical.as_deref())?;
         self.input(InputEvent::KeyDown(KeyPress {
             repeat: repeat.unwrap_or(false),
             ..kp
@@ -495,20 +502,30 @@ impl Ctx {
         Ok(())
     }
 
-    /// The release of a key, spelled the way `keyDown` spells it: the sink
-    /// hears `{kind:"key", phase:"up", ...}` with `text` null. A release
-    /// whose press the sink never got resolves nothing, and moving focus
-    /// while a key is held delivers the `up` first.
-    #[napi(ts_args_type = "code: string, mods?: KeySinkMods")]
-    pub fn key_up(&mut self, code: String, mods: Option<Json>) -> Result<()> {
-        let kp = self.key_press(&code, mods.as_ref())?;
+    /// The release of a key, spelled the way `keyDown` spells it (`physical`
+    /// included): the sink hears `{kind:"key", phase:"up", ...}` with `text`
+    /// null. A release whose press the sink never got resolves nothing, and
+    /// moving focus while a key is held delivers the `up` first.
+    #[napi(ts_args_type = "code: string, mods?: KeySinkMods, physical?: string")]
+    pub fn key_up(
+        &mut self,
+        code: String,
+        mods: Option<Json>,
+        physical: Option<String>,
+    ) -> Result<()> {
+        let kp = self.key_press(&code, mods.as_ref(), physical.as_deref())?;
         self.input(InputEvent::KeyUp(kp.released()));
         Ok(())
     }
 
     /// One press from the `{shift, ctrl, alt, super}` shape both key calls
     /// take, with the text a plain key would insert already resolved.
-    fn key_press(&self, code: &str, mods: Option<&Json>) -> Result<KeyPress> {
+    fn key_press(
+        &self,
+        code: &str,
+        mods: Option<&Json>,
+        physical: Option<&str>,
+    ) -> Result<KeyPress> {
         let m = mods.and_then(Json::as_object).unwrap_or(empty_props());
         let kmods = KeyMods {
             shift: bool_prop(m, "shift"),
@@ -516,9 +533,16 @@ impl Ctx {
             alt: bool_prop(m, "alt"),
             super_key: bool_prop(m, "super"),
         };
-        let code = keycode_of(code)?;
+        let layout = keycode_of(code)?;
+        // No `physical` means "the key I just named", so the two agree and
+        // `code` passes through; with one, the core applies the same
+        // non-Latin fallback every driver gets.
+        let press = match physical {
+            None => KeyPress::new(layout, kmods),
+            Some(p) => KeyPress::from_layout(layout, keycode_of(p)?, kmods),
+        };
         let text = if !kmods.ctrl && !kmods.alt && !kmods.super_key {
-            match code {
+            match press.code {
                 KeyCode::Char(c) => Some(c.to_string()),
                 KeyCode::Space => Some(" ".to_string()),
                 _ => None,
@@ -526,12 +550,7 @@ impl Ctx {
         } else {
             None
         };
-        Ok(KeyPress {
-            code,
-            mods: kmods,
-            text,
-            repeat: false,
-        })
+        Ok(KeyPress { text, ..press })
     }
 
     /// Physical modifier state changed: `{shift, ctrl, alt, super}`. The
