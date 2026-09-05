@@ -2073,6 +2073,50 @@ shape the closed entries already use — original finding kept, outcome on top.
 
 ---
 
+## From the sweep of the grown surface (2026-09-05)
+
+### `~` S6 — Node cannot read the derived cursor shape — **done (2026-09-05)**
+
+`cursorShape()` is on both `Ctx` and `KuiWindow`: one entry in the
+`core_methods!` list, returning the schema name (`CursorShape::name`, the
+same strings the `cursor` prop takes), so a test compares against `'text'`
+and never an index. `npm run gen` rendered it into the generated half of
+`index.d.ts` from the `#[napi]` attribute; the one hand-written line is the
+`CursorShape` type it returns, `NonNullable<GeneratedSpecProps['cursor']>`,
+so the query's vocabulary is the prop's by construction. Two Node tests
+mirror `crates/kui-core/tests/cursor.rs` band for band: an `<edit>` is
+`text`, an `onClick` box `pointer`, a plain box `default`, an `onDrag` box
+`grab` and `grabbing` through the captured drag, a splitter with
+`cursor="ewResize"` keeps its own shape through the drag, a disabled
+control is `default` unless it declares `notAllowed`, `focusable` is a hand
+and `hoverable` is not, no pointer is `default`, and a button inside a
+hover-tracked card answers over the button. The two suites now assert the
+same strings from both ends of the binding.
+
+**Lua stays as it is.** `env` does expose per-frame derived state a script
+reacts to — `focus`, `focus_visible`, `is_hovered`, `is_pressed`,
+`scroll_offset`, `scroll_geometry` — but every one of those is an *input*
+to the view: state it draws from. The cursor shape is the frame's *output*,
+derived from what the view declared, and no view draws differently because
+of it; its consumers are the host (which applies it to the real window) and
+tests. Lua's host is Rust and reads `Core::cursor_shape` itself, and Lua's
+tests are Rust and can read the core directly, so putting it on `env` would
+add a reading nothing in a script has a use for. Node is different only in
+that its tests are JavaScript, with no other way to the core.
+
+The original finding:
+
+`Core::cursor_shape()` exists (C3, `crates/kui-core/src/cursor.rs` and
+`runtime.rs`) and C exports `kui_cursor_shape`. `crates/kui-node/src/lib.rs`
+had no `cursor_shape` / `cursorShape` on `Ctx` or `KuiWindow` (verified by
+grep 2026-09-05; the only `cursor` hits were the `cursor(x, y)` input
+injector and `CursorLeft`). So a JavaScript test could not assert that
+hovering an editor yields `text`, a button `pointer`, a drag handle `grab`
+— which was C3's whole deliverable — and the windowed `KuiWindow` applied
+the shape internally through the Rust runner without exposing it.
+
+---
+
 ## Suggested sequence
 
 Rewritten 2026-09-05. The original six-step order is history now: every
