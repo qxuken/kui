@@ -1169,6 +1169,36 @@ allocated" and "group allocated and left at its defaults" (`.checked(false)`
 does the latter), and the derived impl called those unequal. The manual one
 compares through the accessors, so it does not.
 
+**Measured against the release it follows, alpha.6 is faster (2026-09-06).**
+The `~1.5×` below is against `dabe671` (2026-08-31), which predates
+**alpha.5** — so it is the honest number for "since the README table was
+written" and the misleading one for "since the last release". `v0.1.0-alpha.5`
+is exactly `93169ed`, and the four original rows benched back to back on the
+one machine, alpha.5's worktree against the tagged alpha.6:
+
+| bench | alpha.5 (`93169ed`) | alpha.6 (`dbd59a3`) | change |
+|---|---|---|---|
+| `frame_10k_rects` | 1.038 ms | **811 µs** | −22% |
+| `frame_1k_typical` | 138.1 µs | **116.4 µs** | −16% |
+| `..._with_text_and_hits` | 1.47 ms | **1.22 ms** | −17% |
+| `deep_nesting_64_levels` | 99.4 µs | **81.0 µs** | −19% |
+| `..._with_access_tree` | 1.773 ms | **1.655 ms** | −7% |
+
+The comparison is apples-to-apples: `f6eec64` unified the bench's grid
+builder mid-window, but for these five the tree, viewport (1920×1080 @2)
+and scale are identical at both ends — the switches the `Grid` struct added
+are all off for a plain grid. alpha.5's own `frame_10k_rects` measured
+1.038 ms here against the staircase's 1.03 ms, so the bisect numbers and
+these agree.
+
+So alpha.6 added modal surfaces, composites, exit animations, opacity,
+shadows, rounded clipping, wrapping and multi-window **and got 16–22%
+faster than the release before it**. The regression was real, but it was
+against a baseline two releases back, and it was caught and more than paid
+for inside the same release. The alpha.6 notes frame C15 only as a
+regression fix, which undersells it — worth a line whenever alpha.7's
+section opens.
+
 **What is left.** `frame_10k_rects` is still ~1.5× its 2026-08-31 cost, and
 that half is the per-node logic the features added, not the struct. It wants
 its own profile now that the cache behaviour has changed — the shape of the
