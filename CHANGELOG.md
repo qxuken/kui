@@ -7,6 +7,40 @@ upgrades remove code from the apps on it is doing the job.
 
 ## 0.1.0-alpha.6 (unreleased)
 
+The release that made a window something you can build a real app in.
+`modal` is one row that scopes the Tab ring, the hit list and the access
+tree, and hands focus back exactly where it found it; a tab list, a radio
+group, a menu and a picker list are each one Tab stop with the arrows
+moving inside, derived from roles a view already declares. Nodes can leave
+as well as arrive (`exit`), a subtree dims as one (`opacity`), a card
+casts a shadow and clips its children to its own corners, and a row of
+them wraps (`wrapChildren` / `crossGap`). A frame declares which windows
+exist and the runner opens them, over a `Session` that owns the device,
+font database and registry they share — all of ADR 0004 except popups.
+The C ABI has a version and a size handshake, C can be an *extension*
+inside a Rust host and not only a host itself, and one scene corpus drives
+all four bindings in CI.
+
+**What breaks.** **The C ABI went 2 → 6**: every C host recompiles and
+checks `kui_abi_version()`. `kui_take_window_commands`, which filled a
+`uint32_t` array, is now `bool kui_take_window_command(ctx,
+KuiWindowCommand *)` popping one at a time — renamed so an un-edited host
+fails to link instead of passing the wrong pointer type — and
+`kui_env_set_window` leads with a window id. `KuiEvent` gained `window`,
+`KuiAccessNode` gained `orientation`, and `KuiWindowCommand` gained its
+window, a config and `width`/`height`: appends under ADR 0006's `size`
+handshake, so a host that kept its reservation keeps working, but only if
+it asked. **Node's JSON and object frame transports are gone** (backlog
+D2): `frameObject`, `frameJson`, `setViewObject`, `setViewJson` and the
+`transport: 'json'` option are removed, and `setView` is the one door.
+**Lua's `env.focus` and `env.focused` are one letter apart and are
+different facts** — the focused node's key, and whether the window has the
+keyboard at all — which breaks nothing today, and `env.focus` is
+deprecated below.
+
+Everything after this is the detail as each piece landed;
+`docs/BACKLOG.md` carries the reasoning and the alternatives declined.
+
 ### Added
 
 - **The warning codes are one table** (backlog S2). `kui_core::diag::WARNINGS`
@@ -1444,6 +1478,29 @@ upgrades remove code from the apps on it is doing the job.
   is recoverable where a missing subtree is not. The reasoning is in the
   function's doc comment, not only in this entry.
 
+### Deprecated
+
+- **Lua's `env.focus`** — the focused *node*'s key as a value — is
+  deprecated. It stays for all of 0.1: nothing about it changes in this
+  release, no warning fires, and a script that reads it needs no edit
+  until 0.2, where Lua converges on the spelling Node and C already use
+  (`ctx.focused()`, `kui_focused`) and `focused` becomes the node reading
+  in every binding.
+  The name is the whole of it. `env.focus` is a value, `env.set_focus(key)`
+  is the verb beside it, and both sit one letter from `env.focused`, which
+  is a **different fact** — the *window*'s keyboard focus as a bool
+  (`Env::focused`), and the only thing `focused` has ever meant in `env`.
+  Node keeps the two apart by having two objects, `env` and `ctx`; Lua has
+  one table, so the collision is structural rather than a naming slip.
+  **P3 in `docs/BACKLOG.md` is why both exist today**: `env.focused` was
+  spent on the window fact before the node reading needed it, and neither
+  name can move inside 0.1 — renaming either is breaking, and simply
+  dropping `env.focus` would leave the node key unreadable from Lua
+  altogether. So this is the announcement, not the change; converging the
+  two, and giving the window fact its own unambiguous name, is 0.2's.
+  Until then the module doc at the top of `crates/kui-lua/src/lib.rs`
+  documents them against each other.
+
 ### What you can delete
 
 - **Every keyboard-layout table an app carried to make its chords work** —
@@ -1518,6 +1575,17 @@ upgrades remove code from the apps on it is doing the job.
 - **The modifier-only workaround**: bindings shaped around `Modifiers`
   because it was the one release the core reported, so "hold to preview"
   had to be spelled as "hold Option".
+- **The `onKeyDown` handler that walked a tab bar, a radio group, a menu
+  or a picker list** — the Left/Right arms, the index arithmetic that
+  wrapped them, the Home and End cases, the type-ahead buffer with its own
+  timer beside it, and the `focus(key)` call at the end of each branch —
+  together with the `tabIndex`-style juggling underneath it, the one row
+  left focusable while its siblings were held out of the ring so the whole
+  bar would cost a single Tab stop. A container role whose items are
+  focusable *is* a composite: the core walks the ring it already computes,
+  and for a `radio` or a `tab` emits the click payload the app was
+  handling anyway. Nothing declares it, so a tab list already written
+  needs no edit to lose all of that.
 - **The label that spelled out the state of a tab** — `label="General
   (current)"`, or the "selected" suffix an app appended so a reader would
   say *something*: `selected` is the state, and the name stays the name.
@@ -1575,6 +1643,23 @@ upgrades remove code from the apps on it is doing the job.
   string built for every row so that hover and focus would not slide when
   the window scrolled. `open_indexed(i)` is the key auto-keying would
   have given row `i` anyway, so a virtualized list and a full one agree.
+- **The second copy of every font, image and sound a second window
+  cost** — the `add_font_data` / `add_image` / `add_sound` calls replayed
+  into the other window's `Core`, the table mapping one asset name to the two
+  `FontId`s / `ImageId`s / `SoundId`s that came back, and the "which
+  window am I drawing in" branch that picked between them. A `Core` owned
+  its registry, so a handle minted in one meant nothing in the other, and
+  the second audio device the second store opened was a second device for
+  a process that has one. Windows opened against a `Session` share the
+  font database, the registry and the one audio queue: register once, and
+  a handle means the same thing in every one of them. The map was also the
+  bug — a handle from the wrong registry silently drew whatever sat at
+  that index — and that is a `foreign-resource` warning now rather than a
+  wrong picture.
+- **The second process an app split itself into to get a second window**,
+  and the IPC it grew to keep one model in two of them: a frame declares
+  which windows exist, `view` runs once per open window, and the set in
+  effect is the union of what they declare.
 
 ## 0.1.0-alpha.5 (2026-09-03)
 
