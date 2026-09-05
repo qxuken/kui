@@ -5,7 +5,7 @@ the workaround, the model field or the arithmetic the release made
 unnecessary. The second list is the point of the first — a library whose
 upgrades remove code from the apps on it is doing the job.
 
-## 0.1.0-alpha.6 (unreleased)
+## 0.1.0-alpha.6 (2026-09-05)
 
 The release that made a window something you can build a real app in.
 `modal` is one row that scopes the Tab ring, the hit list and the access
