@@ -1036,7 +1036,7 @@ already do half of it — a `Fit` height on an `<image>` preserves the intrinsic
 aspect against a final width (`fit_heights`), so the machinery and the pass
 ordering are proven; this generalises it to a declared ratio on any node.
 
-### `~` C15 — The frame got ~2.5× more expensive and nothing was watching
+### `~` C15 — `NodeSpec` is 728 bytes and the frame got ~2.5× more expensive
 
 Found by R6, which re-measured the README table for the release rather than
 trusting it. `frame_10k_rects` — the 100×100 grid of plain rects that
@@ -1074,28 +1074,89 @@ measured rather than a culprit:
 | `b3cb849` | today | 1.37 ms |
 
 Every feature added tens of microseconds per 10k nodes to a frame that does
-not use it, and no single step was large enough to argue with on its own.
-That is the actual finding: **the cost is unconditional per-node
-bookkeeping, and the review of each feature had no number to fail.**
+not use it, and no single step was large enough to argue with on its own —
+**the review of each feature had no number it could fail.** The staircase is
+the shape of the problem; the cause is below.
 
 Worth knowing before anyone optimises: the features that were gated *were*
 gated properly, and the benches prove it — `frame_10k_rects_one_exit` is
 within 2% of the plain grid, a non-wrapping row pays nothing for wrapping,
 and a radius on a clipping node costs ~1%. So this is not a case of a flag
-that leaks. The likelier cost is the per-node struct and the per-node walks
-growing around them — `std::mem::size_of::<Quad>()` is **124 bytes** today,
-and `NodeSpec` has gained a field per feature — but that is a hypothesis this
-entry has not measured, which is exactly why the first follow-up is a
-profile and not a patch.
+that leaks.
+
+**The cause, measured (2026-09-05).** `NodeSpec` went from **152 bytes to
+728** — 4.8× — and it is moved by value at every step of building a node.
+`sample`(1) over `frame_10k_rects` puts **31% of the frame in
+`_platform_memmove`**, which does not appear in the old commit's profile at
+all (below its 5-sample floor). Every caller of it is a `NodeSpec` move:
+
+| samples | where |
+|---|---|
+| 1071 | `Tree::push` — the copy into `Vec<NodeSpec>` |
+| 501 | `Core::open_with_key` — the by-value parameter |
+| 457 | `Core::open` — the by-value parameter |
+| 1028 | the bench's own `grid()` — the `NodeSpec::column().width().height().bg().radius()` builder chain, each method taking and returning `Self` by value |
+
+That last row matters beyond the core: **every app that builds a spec with
+the builder chain pays this too**, in its own code, before the core sees the
+node.
+
+At 152 bytes the compiler inlined those copies (the old profile's `Tree::push`
+carries 1783 self samples and calls nothing); at 728 they became out-of-line
+`memmove` calls.
+
+**A controlled experiment confirms it.** Adding an inert `[u64; 72]` padding
+field to `NodeSpec` at `dabe671` — changing its size to 728 and *nothing
+else*, no new logic, no new passes — reproduces about half the regression on
+its own:
+
+| bench | `dabe671` (152 B) | `dabe671` padded to 728 B | HEAD (728 B) | size alone |
+|---|---|---|---|---|
+| `frame_10k_rects` | 516 µs | 915 µs | 1.37 ms | 47% |
+| `frame_1k_typical` | 72 µs | 116 µs | 175 µs | 43% |
+| `..._with_text_and_hits` | 754 µs | 1.22 ms | 1.81 ms | 44% |
+| `deep_nesting_64_levels` | 60 µs | 84 µs | 122 µs | 39% |
+
+So **~45% of the regression is the struct's size alone** and the rest is the
+per-node logic added around it — consistent across all four benches, which is
+what a per-node cost looks like. The two are not independent: the added
+passes read fields scattered through a 728-byte struct, so `resolve_hover_style`
+is the top named function in the new profile (11%) on a bench that declares no
+hover styles at all and early-returns from it.
+
+Where the 728 bytes are: seven `Option<Value>` event payloads at 32 each
+(`on_click`, `on_drag`, `on_key`, `on_context_menu`, `on_hover`, `on_layout`,
+`modal`) = **224**; `enter` and `exit` at 60 each = **120**; `VisualStyle`
+**88**; `LayoutSpec` **80**; `Vec<Keyframe>` **24**; two `Label` = **32**; the
+access fields and flags the rest. Nearly all of it is cold on nearly every
+node.
 
 **What to do.** Not a tag blocker — alpha.6 ships the honest number and the
-README says so. After the tag: (1) profile one frame of `frame_10k_rects` and
-attribute the extra 850 µs, rather than guessing from this list; (2) decide which
-of the added passes can be skipped wholesale with a tree-level flag, the way
-`any_exit` already skips the depart diff; (3) put `frame_10k_rects` and
-`frame_1k_typical` in CI with a threshold, so the next staircase step fails a
-run instead of a release audit. (3) is the one that stops this recurring, and
-it is cheap — the bench already prints a median a script can read.
+README says so. After the tag, in this order:
+
+1. **Shrink `NodeSpec`.** The cold groups want boxing behind one pointer
+   each: the event payloads (224 bytes, and a node declaring none is the
+   common case), the animation trio `enter`/`exit`/`keyframes` (144), and
+   the accessibility block. `Option<Box<…>>` keeps the field API — `is_some`,
+   `as_ref` — so the bindings and the builders barely move, and it should
+   put the struct back near 200 bytes. Worth ~45% of the regression on the
+   measurement above, and it is the half that needs no design decisions.
+2. **Then re-profile.** Half the regression is the per-node logic, not the
+   size, and shrinking the struct will change its cache behaviour — so the
+   second half should be attributed after the first is done, not guessed at
+   now. `resolve_hover_style` at 11% on a bench that early-returns from it
+   is the first thing to look at.
+3. **Put a threshold on `frame_10k_rects` and `frame_1k_typical` in CI**, so
+   the next staircase step fails a run instead of a release audit. This is
+   the one that stops the problem recurring rather than fixing it once, it
+   does not depend on the other two, and it is cheap — the bench already
+   prints a median a script can read.
+
+A note for whoever does (1): `Quad` also grew, 92 → 124 bytes, and the
+display list is one per quad. That did not show up in this profile — emission
+is a small share of the frame — but it is the same mistake in the same place,
+and `frame_10k_rects_with_shadows_and_opacity` (20k quads) is the bench that
+would show it.
 
 ### `.` C11 — Build multi-window
 
@@ -2721,9 +2782,9 @@ binding-parity corpus that pins all of it.
   were sound and the machine is not the difference. Nothing was dropped and
   nothing was quietly improved: the section states the regression, and
   **C15** carries the per-commit bisect (a staircase across ~10 feature
-  commits, none individually large) and the three follow-ups, of which
-  putting these two benches in CI with a threshold is the one that stops it
-  recurring. The editing bench did *not* regress — its frame is 1860 quads,
+  commits, none individually large), the profile and the experiment that
+  found the cause — `NodeSpec` at 728 bytes against 152, moved by value per
+  node, putting 31% of a frame in `memmove` — and the three follow-ups. The editing bench did *not* regress — its frame is 1860 quads,
   not 10k nodes — which is itself evidence that the cost is per node.
 - `.` **R7 — Deprecation notice for Lua's `env.focus`.** P3 kept it beside
   `env.focused` because alpha.5 had shipped it. alpha.6 is where the
@@ -2759,10 +2820,10 @@ left, and the case (`fit` cannot place a dropdown taller than the window)
 that forces it. ADR 0004 step 1's leftover: the glyph atlas and shape cache
 are still per window because `Core::output` hands out `&mut GlyphAtlas`
 (see `kui-session-atlas-constraint`); it waits for a case where two windows
-share enough text to matter. C15, the ~2.5× frame regression R6 measured —
-starting with its third follow-up, a threshold on `frame_10k_rects` in CI,
-because that one is cheap and stops the next staircase reaching a release
-audit.
+share enough text to matter. C15, the ~2.5× frame regression R6 measured and
+diagnosed — shrinking `NodeSpec` back from 728 bytes, and a threshold on
+`frame_10k_rects` in CI so the next staircase step fails a run rather than a
+release audit.
 
 **Design, each wanting an ADR.** Live regions and announcements (ADR 0001's
 open follow-up — an event on a timeline, not a tree property). The exit

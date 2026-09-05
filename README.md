@@ -672,9 +672,12 @@ since shows it accruing a little at a time (516 → 611 → 788 → 973 → 1245
 1366 µs), tens of microseconds per feature. The thing to notice is that
 `frame_10k_rects` declares none of those features and pays for them anyway,
 so the cost is per node rather than per use — the feature flags themselves
-hold, as the pairs above show. C15 in
-[docs/BACKLOG.md](docs/BACKLOG.md) carries the bisect and what to do about
-it; alpha.6 ships the number rather than a stale better one.
+hold, as the pairs above show. The measured cause is that `NodeSpec` grew
+from 152 bytes to 728 and is moved by value for every node built, which puts
+31% of a frame in `memmove`; padding the old struct to 728 bytes and changing
+nothing else reproduces about half the regression. C15 in
+[docs/BACKLOG.md](docs/BACKLOG.md) carries the profile, the experiment and the
+fix; alpha.6 ships the number rather than a stale better one.
 
 A built-in latency graph shows per-phase frame cost live —
 `widgets::latency_hud(ui)` floats it in a viewport corner as a translucent
