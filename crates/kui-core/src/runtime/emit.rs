@@ -83,18 +83,18 @@ impl Core {
                 origin: self.tree.origins[i],
                 rect,
                 clip: clip.rect,
-                payload: spec.on_click.clone().filter(|_| live),
-                drag: spec.on_drag.clone().filter(|_| live),
+                payload: spec.events().on_click.clone().filter(|_| live),
+                drag: spec.events().on_drag.clone().filter(|_| live),
                 parent_rect,
-                key_sink: spec.on_key.clone().filter(|_| live),
-                context_menu: spec.on_context_menu.clone().filter(|_| live),
+                key_sink: spec.events().on_key.clone().filter(|_| live),
+                context_menu: spec.events().on_context_menu.clone().filter(|_| live),
                 focusable: crate::access::focusable(&self.tree, i),
                 edit_origin: None,
                 window: spec.window,
-                hover: spec.on_hover.clone(),
-                group: spec.hover_group,
-                click_sound: spec.click_sound.filter(|_| live),
-                hover_sound: spec.hover_sound,
+                hover: spec.events().on_hover.clone(),
+                group: spec.interact().hover_group,
+                click_sound: spec.interact().click_sound.filter(|_| live),
+                hover_sound: spec.interact().hover_sound,
                 cursor: spec.cursor,
             });
         }
@@ -526,7 +526,7 @@ impl Core {
         let mut candidates: Vec<usize> = Vec::new();
         for i in 0..self.prev_tree.len() {
             let spec = &self.prev_tree.specs[i];
-            if spec.exit.is_some() && spec.transition.is_some() {
+            if spec.anim().exit.is_some() && spec.transition.is_some() {
                 candidates.push(i);
                 let k = self.prev_tree.keys[i];
                 watch.insert(k);
@@ -731,7 +731,7 @@ impl Core {
             let Some(t) = spec.transition else {
                 continue;
             };
-            let enter = spec.enter.filter(|e| e.offsets());
+            let enter = spec.anim().enter.filter(|e| e.offsets());
             if !spec.slide && enter.is_none() {
                 continue;
             }
@@ -766,7 +766,7 @@ impl Core {
     fn emit_layout_events(&mut self) {
         let frame_no = self.frame_no;
         for i in 0..self.tree.len() {
-            let Some(tag) = &self.tree.specs[i].on_layout else {
+            let Some(tag) = &self.tree.specs[i].events().on_layout else {
                 continue;
             };
             let key = self.tree.keys[i];
@@ -828,8 +828,15 @@ impl Core {
         };
         let spec = &self.tree.specs[i];
         let editor = matches!(self.tree.content[i], NodeContent::Edit(_))
-            || spec.role.is_some_and(crate::access::Role::is_editor);
-        if editor || spec.on_key.is_some() || spec.focus_bg.is_some() || spec.disabled {
+            || spec
+                .access()
+                .role
+                .is_some_and(crate::access::Role::is_editor);
+        if editor
+            || spec.events().on_key.is_some()
+            || spec.interact().focus_bg.is_some()
+            || spec.disabled
+        {
             return;
         }
         let node = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);

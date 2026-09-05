@@ -17,7 +17,7 @@ struct Tracks {
 
 impl Tracks {
     fn of(spec: &NodeSpec) -> Self {
-        let frames = &spec.keyframes;
+        let frames = &spec.anim().keyframes;
         let offsets = keyframes::offsets(frames);
         let one = |v: f32| [v, 0.0, 0.0, 0.0];
         let sizing = |base: Sizing, pick: fn(&Keyframe) -> Option<Sizing>| {
@@ -70,10 +70,10 @@ impl Core {
     pub fn configure_root(&mut self, mut spec: NodeSpec) {
         if !self.tree.is_empty() {
             self.ease_spec(Key::ROOT, &mut spec);
-            if spec.on_layout.is_some() {
+            if spec.events().on_layout.is_some() {
                 self.any_layout = true;
             }
-            if spec.exit.is_some() && spec.transition.is_some() {
+            if spec.anim().exit.is_some() && spec.transition.is_some() {
                 self.any_exit = true;
             }
             self.tree.specs[0] = spec;
@@ -88,9 +88,9 @@ impl Core {
             return;
         };
         let anim = &mut self.anim;
-        let tracks = (!spec.keyframes.is_empty()).then(|| Tracks::of(spec));
+        let tracks = (!spec.anim().keyframes.is_empty()).then(|| Tracks::of(spec));
         let track = |slot: Slot| tracks.as_ref().and_then(|k| k.get(slot));
-        let enter = spec.enter.unwrap_or_default();
+        let enter = spec.anim().enter.unwrap_or_default();
         let mut sizing = |slot: Slot, s: Sizing, from: Option<Sizing>| {
             let Some(v) = s.amount() else {
                 return s;
@@ -229,23 +229,32 @@ impl Core {
     /// plain `bg`. Runs before easing so a `transition` tweens between
     /// the states.
     fn resolve_hover_style(&self, key: Key, spec: &mut NodeSpec) {
-        if spec.disabled
-            || (spec.hover_bg.is_none() && spec.pressed_bg.is_none() && spec.focus_bg.is_none())
-        {
+        // Runs for every node of every frame, and almost every node declares
+        // none of this — so the early-out is one null check on the boxed
+        // group rather than three `Option`s read out of the spec (C15).
+        let Some(interact) = spec.interact.as_deref() else {
+            return;
+        };
+        let (hover_bg, pressed_bg, focus_bg, group) = (
+            interact.hover_bg,
+            interact.pressed_bg,
+            interact.focus_bg,
+            interact.hover_group,
+        );
+        if spec.disabled || (hover_bg.is_none() && pressed_bg.is_none() && focus_bg.is_none()) {
             return;
         }
-        let group = spec.hover_group;
         let pressed = self.interaction.is_pressed(key)
             || group.is_some_and(|g| self.interaction.is_group_pressed(g));
         let hovered = pressed
             || self.interaction.is_hovered(key)
             || group.is_some_and(|g| self.interaction.is_group_hovered(g));
         let focused = self.focus_visible && self.focus == Some(key);
-        if pressed && let Some(c) = spec.pressed_bg {
+        if pressed && let Some(c) = pressed_bg {
             spec.style.bg = c;
-        } else if focused && let Some(c) = spec.focus_bg {
+        } else if focused && let Some(c) = focus_bg {
             spec.style.bg = c;
-        } else if hovered && let Some(c) = spec.hover_bg {
+        } else if hovered && let Some(c) = hover_bg {
             spec.style.bg = c;
         }
     }
@@ -291,20 +300,32 @@ impl Core {
         if spec.style.opacity < 1.0 {
             self.any_opacity = true;
         }
-        if spec.transition.is_some() && (spec.slide || spec.enter.is_some_and(|e| e.offsets())) {
-            self.any_slide = true;
-        }
         if spec.layout.float.is_some() {
             self.any_float = true;
         }
-        if spec.modal.is_some() {
-            self.any_modal = true;
+        // Each boxed group is tested once, not once per flag it can set: a
+        // node declaring no events and no animation reaches `Tree::push`
+        // after two null checks.
+        if let Some(events) = spec.events.as_deref() {
+            if events.modal.is_some() {
+                self.any_modal = true;
+            }
+            if events.on_layout.is_some() {
+                self.any_layout = true;
+            }
         }
-        if spec.on_layout.is_some() {
-            self.any_layout = true;
-        }
-        if spec.exit.is_some() && spec.transition.is_some() {
-            self.any_exit = true;
+        if spec.transition.is_some() {
+            match spec.anim.as_deref() {
+                Some(anim) => {
+                    if spec.slide || anim.enter.is_some_and(|e| e.offsets()) {
+                        self.any_slide = true;
+                    }
+                    if anim.exit.is_some() {
+                        self.any_exit = true;
+                    }
+                }
+                None => self.any_slide |= spec.slide,
+            }
         }
         let parent = self.current();
         let idx = self
@@ -356,10 +377,10 @@ impl Core {
         }
         let key = self.child_key(label);
         self.ease_spec(key, &mut spec);
-        if spec.on_layout.is_some() {
+        if spec.events().on_layout.is_some() {
             self.any_layout = true;
         }
-        if spec.exit.is_some() && spec.transition.is_some() {
+        if spec.anim().exit.is_some() && spec.transition.is_some() {
             self.any_exit = true;
         }
         {
@@ -398,10 +419,10 @@ impl Core {
         let key = self.auto_key();
         self.resolve_hover_style(key, &mut spec);
         self.ease_spec(key, &mut spec);
-        if spec.on_layout.is_some() {
+        if spec.events().on_layout.is_some() {
             self.any_layout = true;
         }
-        if spec.exit.is_some() && spec.transition.is_some() {
+        if spec.anim().exit.is_some() && spec.transition.is_some() {
             self.any_exit = true;
         }
         let parent = self.current();

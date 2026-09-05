@@ -127,7 +127,11 @@ fn a_tooltip_hint_is_hover_gated_described_and_floated() {
     out.apply_tooltip("undo");
     assert!(out.spec.hover_tracked(), "hover-gated");
     assert_eq!(
-        out.spec.description.as_ref().map(|d| d.to_string()),
+        out.spec
+            .access()
+            .description
+            .as_ref()
+            .map(|d| d.to_string()),
         Some("undo".to_string()),
         "and said aloud"
     );

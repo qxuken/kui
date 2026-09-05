@@ -68,7 +68,7 @@ fn every_role_round_trips_through_the_c_code() {
         let mut spec = zeroed_spec();
         spec.role = role_code(role);
         assert_eq!(
-            spec_of(&spec, NONE, NONE, NONE, NONE).role,
+            spec_of(&spec, NONE, NONE, NONE, NONE).access().role,
             Some(role),
             "{}: KUI_ROLE_{} does not arrive as itself",
             role.name(),

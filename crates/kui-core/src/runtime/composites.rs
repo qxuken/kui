@@ -68,7 +68,7 @@ impl Core {
         items: &mut Vec<usize>,
     ) -> Option<(usize, crate::access::Role)> {
         let container = crate::composite::owner(&self.tree, i, items)?;
-        let role = self.tree.specs[container].role?;
+        let role = self.tree.specs[container].access().role?;
         let item = crate::composite::item_role(role)?;
         // A disabled item is not an item here, as it is not in the ring —
         // it keeps its ordinal in "3 of 7" and the arrows step over it.
@@ -175,7 +175,7 @@ impl Core {
         items: &mut Vec<usize>,
     ) -> Option<(usize, crate::access::Role)> {
         let container = crate::composite::owner(&self.tree, i, items)?;
-        let item = crate::composite::item_role(self.tree.specs[container].role?)?;
+        let item = crate::composite::item_role(self.tree.specs[container].access().role?)?;
         // With no clock every keystroke starts a fresh search: the buffer
         // has no way to age, and a stale one would be worse than none.
         let now = self.anim.time();

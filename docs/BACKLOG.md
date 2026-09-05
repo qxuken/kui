@@ -1036,7 +1036,7 @@ already do half of it — a `Fit` height on an `<image>` preserves the intrinsic
 aspect against a final width (`fit_heights`), so the machinery and the pass
 ordering are proven; this generalises it to a declared ratio on any node.
 
-### `~` C15 — `NodeSpec` is 728 bytes and the frame got ~2.5× more expensive
+### `~` C15 — `NodeSpec` was 728 bytes and the frame got ~2.5× more expensive — **fixed (2026-09-05), ~two-thirds recovered**
 
 Found by R6, which re-measured the README table for the release rather than
 trusting it. `frame_10k_rects` — the 100×100 grid of plain rects that
@@ -1131,30 +1131,56 @@ Where the 728 bytes are: seven `Option<Value>` event payloads at 32 each
 access fields and flags the rest. Nearly all of it is cold on nearly every
 node.
 
-**What to do.** Not a tag blocker — alpha.6 ships the honest number and the
-README says so. After the tag, in this order:
+**Fixed for the tag (2026-09-05): `NodeSpec` is 224 bytes.** The four cold
+groups are behind a `Option<Box<…>>` each — `EventSpec` (the seven payloads),
+`AnimSpec` (`enter`/`exit`/`keyframes`), `AccessSpec` (the declared
+accessibility properties) and `InteractSpec` (hover / pressed / focus
+backgrounds, the hover group, the two sounds). Reads go through an accessor
+(`spec.events().on_click`) that hands back a shared `EMPTY` const rather than
+allocating; writes go through `events_mut()`, which allocates on first use.
+**The builder API did not change** — `.on_click(v)`, `.role(r)`, `.hover_bg(c)`
+all still read the same, which is why `kui-ffi` needed one line and the
+bindings needed none.
 
-1. **Shrink `NodeSpec`.** The cold groups want boxing behind one pointer
-   each: the event payloads (224 bytes, and a node declaring none is the
-   common case), the animation trio `enter`/`exit`/`keyframes` (144), and
-   the accessibility block. `Option<Box<…>>` keeps the field API — `is_some`,
-   `as_ref` — so the bindings and the builders barely move, and it should
-   put the struct back near 200 bytes. Worth ~45% of the regression on the
-   measurement above, and it is the half that needs no design decisions.
-2. **Then re-profile.** Half the regression is the per-node logic, not the
-   size, and shrinking the struct will change its cache behaviour — so the
-   second half should be attributed after the first is done, not guessed at
-   now. `resolve_hover_style` at 11% on a bench that early-returns from it
-   is the first thing to look at.
-3. **Put a threshold on `frame_10k_rects` and `frame_1k_typical` in CI**, so
-   the next staircase step fails a run instead of a release audit. This is
-   the one that stops the problem recurring rather than fixing it once, it
-   does not depend on the other two, and it is cheap — the bench already
-   prints a median a script can read.
+| bench | `dabe671` | before the fix | after | recovered |
+|---|---|---|---|---|
+| `frame_10k_rects` | 516 µs | 1.37 ms | **788 µs** | 68% |
+| `frame_1k_typical` | 72 µs | 175 µs | **116 µs** | 57% |
+| `..._with_text_and_hits` | 754 µs | 1.81 ms | **1.20 ms** | 58% |
+| `deep_nesting_64_levels` | 60 µs | 122 µs | **79 µs** | 69% |
 
-A note for whoever does (1): `Quad` also grew, 92 → 124 bytes, and the
-display list is one per quad. That did not show up in this profile — emission
-is a small share of the frame — but it is the same mistake in the same place,
+Every other bench moved with them — `all_declaring_exit` 3.87 → 2.21 ms,
+`list_10k_rows_naive` 5.59 → 3.67 ms, `drop_1k_rows_plain` 102 → 63 µs —
+including the ones that touch none of the boxed fields, which is the point:
+the cost was the struct, not the features. `_platform_memmove` is gone from
+the profile (below its 5-sample floor, where it was 31%), and so is
+`resolve_hover_style`, which is now one null check on the boxed group instead
+of three `Option`s read out of a 728-byte spec.
+
+That is **more than the ~45% the padding experiment predicted**, because
+shrinking the struct also fixed the cache behaviour of the per-node passes
+that read it — the two costs were compounding, as the entry guessed.
+
+**Two things guard it now.** `spec::size_tests::node_spec_stays_small` fails
+above 256 bytes and says what to do instead, so an inline field has a number
+to fail rather than a release audit to wait for. And `NodeSpec`'s `PartialEq`
+is hand-written: boxing introduced a difference between "group never
+allocated" and "group allocated and left at its defaults" (`.checked(false)`
+does the latter), and the derived impl called those unequal. The manual one
+compares through the accessors, so it does not.
+
+**What is left.** `frame_10k_rects` is still ~1.5× its 2026-08-31 cost, and
+that half is the per-node logic the features added, not the struct. It wants
+its own profile now that the cache behaviour has changed — the shape of the
+answer is which of the added passes can be skipped wholesale with a tree-level
+flag, the way `any_exit` already skips the depart diff. Also still open: a CI
+threshold on `frame_10k_rects` and `frame_1k_typical`. The size test catches
+the specific mistake that caused this one; it does not catch a slow pass, and
+a threshold would.
+
+A note for whoever picks that up: `Quad` also grew, 92 → 124 bytes, and the
+display list is one per quad. It did not show up in either profile — emission
+is a small share of a frame — but it is the same mistake in the same place,
 and `frame_10k_rects_with_shadows_and_opacity` (20k quads) is the bench that
 would show it.
 
@@ -2780,11 +2806,15 @@ binding-parity corpus that pins all of it.
   nesting 60 → 122 µs. Benching `dabe671` in a throwaway worktree on the same
   machine reproduced the published table to within 2%, so the old numbers
   were sound and the machine is not the difference. Nothing was dropped and
-  nothing was quietly improved: the section states the regression, and
+  nothing was quietly improved: the section stated the regression, and
   **C15** carries the per-commit bisect (a staircase across ~10 feature
   commits, none individually large), the profile and the experiment that
   found the cause — `NodeSpec` at 728 bytes against 152, moved by value per
-  node, putting 31% of a frame in `memmove` — and the three follow-ups. The editing bench did *not* regress — its frame is 1860 quads,
+  node, putting 31% of a frame in `memmove`. **That cause was then fixed
+  before the tag** (C15): the cold fields are boxed, `NodeSpec` is 224 bytes,
+  and the table above is the post-fix measurement — `frame_10k_rects` 788 µs
+  against the 1.37 ms this item found and the 516 µs it started from. The
+  README section records the whole arc rather than only the good number. The editing bench did *not* regress — its frame is 1860 quads,
   not 10k nodes — which is itself evidence that the cost is per node.
 - `.` **R7 — Deprecation notice for Lua's `env.focus`.** P3 kept it beside
   `env.focused` because alpha.5 had shipped it. alpha.6 is where the
@@ -2820,10 +2850,11 @@ left, and the case (`fit` cannot place a dropdown taller than the window)
 that forces it. ADR 0004 step 1's leftover: the glyph atlas and shape cache
 are still per window because `Core::output` hands out `&mut GlyphAtlas`
 (see `kui-session-atlas-constraint`); it waits for a case where two windows
-share enough text to matter. C15, the ~2.5× frame regression R6 measured and
-diagnosed — shrinking `NodeSpec` back from 728 bytes, and a threshold on
-`frame_10k_rects` in CI so the next staircase step fails a run rather than a
-release audit.
+share enough text to matter. C15's remainder: `frame_10k_rects` is still
+~1.5× its 2026-08-31 cost after the boxing fix, and that half is the per-node
+logic rather than the struct — it wants a profile now the cache behaviour has
+changed. Plus the CI threshold on `frame_10k_rects` and `frame_1k_typical`,
+which the size test does not replace.
 
 **Design, each wanting an ADR.** Live regions and announcements (ADR 0001's
 open follow-up — an event on a timeline, not a tree property). The exit

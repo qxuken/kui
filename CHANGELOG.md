@@ -903,7 +903,7 @@ Everything after this is the detail as each piece landed;
 - **Affordable long lists.** Glyphs have always been culled by viewport;
   the nodes around them never were, so a view that declared ten thousand
   rows paid for ten thousand rows of build and layout whether or not they
-  could be seen — a bench of a 10k-row log frame costs ~5.6 ms here, most
+  could be seen — a bench of a 10k-row log frame costs ~3.7 ms here, most
   of it rows nobody sees. An app could not fix this itself: slicing its
   own data needs the container's scroll offset *and* its resolved height
   during the build, and the height existed only inside a layout pass that
@@ -923,8 +923,8 @@ Everything after this is the detail as each piece landed;
   rows crossing the window, two rows of overscan and two spacers holding
   the space of the rest, so the content height, the scrollbar and
   `set_scroll` all behave as if the whole list were there. The same 10k
-  rows through it cost **~21 µs instead of ~5.6 ms**, and 100k rows cost
-  the same ~21 µs — the frame stops growing with the data. Rows are
+  rows through it cost **~16 µs instead of ~3.7 ms**, and 100k rows cost
+  the same ~16 µs — the frame stops growing with the data. Rows are
   opened at their *data* index (`Ui::open_indexed` / `with_indexed`, and
   `child_key_index` for the key before the node), so a row keeps its key,
   and with it its hover, focus, edit buffer and tweens, as the built range
@@ -1041,6 +1041,38 @@ Everything after this is the detail as each piece landed;
   The Rust host applies it, and Lua's tests are Rust and read the core.
 
 ### Changed
+
+- **A frame costs about a third less than in alpha.5, and `NodeSpec` is
+  224 bytes instead of 728** (backlog C15). Re-measuring the README's
+  benchmark table for this release found it 2.4-2.7x worse than the
+  numbers it carried, on benches that declare none of what alpha.6 added:
+  the frame had been getting more expensive a little at a time, across
+  about ten feature commits, and nothing was watching. The cause was not
+  any one feature but the struct they all grew — `NodeSpec` is moved by
+  value for every node a frame builds, through the builder chain,
+  `Core::open` and into `Tree::push`, so its width is a per-node cost paid
+  whether or not a node declares the fields. At 728 bytes those moves were
+  31% of a frame, in `memmove`.
+  The cold fields now live behind four boxed groups — `EventSpec` (the
+  seven event payloads), `AnimSpec` (`enter` / `exit` / `keyframes`),
+  `AccessSpec` (the declared accessibility properties) and
+  `InteractSpec` (hover, pressed and focus backgrounds, the hover group,
+  the two sounds). **Nothing changes for a view**: `.on_click(v)`,
+  `.role(r)`, `.hover_bg(c)` and the rest of the builders are untouched,
+  and so is every binding. Rust code that read the *fields* directly reads
+  them through a group accessor instead — `spec.on_click` becomes
+  `spec.events().on_click`, `spec.role` becomes `spec.access().role` — and
+  writes go through `events_mut()` and friends, which allocate on first
+  use. `NodeSpec`'s `PartialEq` is hand-written so that a group left at its
+  defaults still equals one that was never allocated.
+  Measured on an M3 Pro: `frame_10k_rects` 1.37 ms -> 788 us,
+  `frame_1k_typical` 175 -> 116 us, 10k rects with text and hits 1.81 ms ->
+  1.20 ms, `deep_nesting_64_levels` 122 -> 79 us, `list_10k_rows_naive`
+  5.59 -> 3.67 ms. Benches that touch none of the boxed fields moved just
+  as far, which is the point. `size_of::<NodeSpec>()` now has a test with a
+  bound on it so the next inline field fails a run rather than a release
+  audit; the README's Performance section carries the whole table and what
+  is still outstanding.
 
 - **The scene corpus is behind `kui-core`'s `conformance` feature**, off
   by default (backlog S3). `kui_core::conformance` — the scene builders,

@@ -116,7 +116,8 @@ impl Core {
                     // same events assistive technology produces), Escape
                     // lets go.
                     use crate::access::AccessAction;
-                    let slider = self.tree.specs[i].role == Some(crate::access::Role::Slider);
+                    let slider =
+                        self.tree.specs[i].access().role == Some(crate::access::Role::Slider);
                     match ek {
                         EditKey::Enter => self.click_node(self.tree.keys[i], &mut out),
                         EditKey::Escape => self.set_focus(None),
@@ -387,12 +388,12 @@ impl Core {
                         entries.push(("anchor".to_string(), pos(a)));
                         entries.push(("focus".to_string(), pos(f)));
                     }
-                    let spec = &self.tree.specs[i];
-                    let tag = spec
+                    let ev = self.tree.specs[i].events();
+                    let tag = ev
                         .on_click
                         .clone()
-                        .or_else(|| spec.on_drag.clone())
-                        .or_else(|| spec.on_key.clone());
+                        .or_else(|| ev.on_drag.clone())
+                        .or_else(|| ev.on_key.clone());
                     if let Some(tag) = tag.filter(|t| *t != Value::Null) {
                         entries.push(("tag".to_string(), tag));
                     }
@@ -429,11 +430,11 @@ impl Core {
     /// The `tag` an `access` event on node `i` carries: its click payload,
     /// else its drag or key tag; None when there is none (or it is null).
     pub(crate) fn access_tag(&self, i: usize) -> Option<Value> {
-        let spec = &self.tree.specs[i];
-        spec.on_click
+        let ev = self.tree.specs[i].events();
+        ev.on_click
             .clone()
-            .or_else(|| spec.on_drag.clone())
-            .or_else(|| spec.on_key.clone())
+            .or_else(|| ev.on_drag.clone())
+            .or_else(|| ev.on_key.clone())
             .filter(|t| *t != Value::Null)
     }
 
@@ -522,7 +523,7 @@ impl Core {
     /// Whether the focused node is a key sink (it owns its keys).
     fn focused_sink(&self) -> bool {
         self.focus_index()
-            .is_some_and(|i| self.tree.specs[i].on_key.is_some())
+            .is_some_and(|i| self.tree.specs[i].events().on_key.is_some())
     }
 
     /// The focused node when it is a control the core presses itself:
@@ -531,7 +532,8 @@ impl Core {
         let i = self.focus_index()?;
         let spec = &self.tree.specs[i];
         let editor = matches!(self.tree.content[i], NodeContent::Edit(_));
-        (!editor && spec.on_key.is_none() && crate::access::focusable(&self.tree, i)).then_some(i)
+        (!editor && spec.events().on_key.is_none() && crate::access::focusable(&self.tree, i))
+            .then_some(i)
     }
 
     /// Activates node `key` the way a pointer click would — against the
@@ -579,6 +581,7 @@ impl Core {
             ("reason".to_string(), Value::str(reason)),
         ];
         if let Some(tag) = self.tree.specs[i]
+            .events()
             .modal
             .clone()
             .filter(|t| *t != Value::Null)

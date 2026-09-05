@@ -70,11 +70,11 @@ pub(crate) fn activates_on_motion(item: Role) -> bool {
 /// one allocation per frame instead of one per composite.
 pub(crate) fn items(tree: &Tree, container: usize, item: Role, out: &mut Vec<usize>) {
     out.clear();
-    let kind = tree.specs[container].role;
+    let kind = tree.specs[container].access().role;
     let end = tree.subtree_end(container);
     let mut i = container + 1;
     while i < end {
-        let role = tree.specs[i].role;
+        let role = tree.specs[i].access().role;
         if role == Some(item) {
             out.push(i);
             i = tree.subtree_end(i);
@@ -105,14 +105,14 @@ pub(crate) fn is_composite(tree: &Tree, i: usize, items: &[usize]) -> bool {
 /// nearest ancestor whose role pairs with `i`'s own. None when `i` is not
 /// an item, or its container holds no focusable item.
 pub(crate) fn owner(tree: &Tree, i: usize, scratch: &mut Vec<usize>) -> Option<usize> {
-    let item = tree.specs[i].role?;
+    let item = tree.specs[i].access().role?;
     let mut j = i;
     loop {
         j = match tree.parent[j] {
             crate::tree::NIL => return None,
             p => p as usize,
         };
-        if tree.specs[j].role.and_then(item_role) == Some(item) {
+        if tree.specs[j].access().role.and_then(item_role) == Some(item) {
             items(tree, j, item, scratch);
             return (scratch.contains(&i) && is_composite(tree, j, scratch)).then_some(j);
         }
@@ -121,7 +121,7 @@ pub(crate) fn owner(tree: &Tree, i: usize, scratch: &mut Vec<usize>) -> Option<u
 
 /// A composite container's orientation, from its own `dir` (decision 7).
 pub(crate) fn orientation(tree: &Tree, i: usize) -> Option<Orientation> {
-    item_role(tree.specs[i].role?)?;
+    item_role(tree.specs[i].access().role?)?;
     Some(match tree.specs[i].layout.dir {
         Dir::Row => Orientation::Horizontal,
         Dir::Column => Orientation::Vertical,

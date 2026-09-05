@@ -586,7 +586,7 @@ needs to declare only the rows that can be seen. `widgets::virtual_column`
 is that for uniform rows: visible rows, two of overscan, and two spacers
 holding the space of the rest, so the content height, the scrollbar and
 `set_scroll` behave as if the whole list were there. 10k rows go from
-~5.6 ms a frame to ~21 µs, and 100k rows cost the same ~21 µs. Rows are
+~3.7 ms a frame to ~16 µs, and 100k rows cost the same ~16 µs. Rows are
 opened at their data index (`ui.with_indexed`), so a row keeps its hover,
 focus and edit buffer as the built range slides over it.
 
@@ -626,58 +626,61 @@ switched on, so the difference between two of them is what that prop costs.
 
 | bench | what it holds | median |
 |---|---|---|
-| `frame_1k_typical` | 32×32 grid, every 8th cell a label, every 4th clickable — a "typical app" frame | ~175 µs |
-| `frame_10k_rects` | 100×100 plain rects, nothing switched on | ~1.37 ms |
-| `frame_10k_rects_with_text_and_hits` | the same grid plus 1.2k texts and 2.5k hit regions | ~1.81 ms |
-| `frame_10k_rects_with_access_tree` | that frame with `core.access_tree()` derived after it — what a frame costs while assistive technology is attached | ~2.25 ms |
-| `frame_10k_rects_with_shadows_and_opacity` | the plain grid with only the paint props on: every cell casts a shadow under a faded root | ~1.50 ms |
-| `frame_10k_rects_square_clip` | the plain grid with every row clipping, so all 10k cells inherit a clip | ~1.41 ms |
-| `frame_10k_rects_rounded_clip` | the same with a radius on every clipping row, so each cell pays the per-corner intersect | ~1.43 ms |
-| `frame_10k_rects_all_transitioning` | every cell declares a `transition` — nine retained tween slots each | ~2.87 ms |
-| `frame_10k_rects_all_declaring_exit` | every cell also declares an `exit`, so the whole frame is kept for the next one to diff against | ~3.87 ms |
-| `frame_10k_rects_one_exit` | the same 10k grid with a single cell declaring an `exit` | ~1.40 ms |
-| `drop_1k_rows_plain` | 1k rows removed from the tree in one frame, no exits declared | ~102 µs |
-| `drop_1k_rows_declaring_exit` | the same removal with exits declared, so 1k ghosts start playing out | ~305 µs |
-| `replay_a_full_depart_store` | replaying a saturated depart store (the 512-node budget) for one frame | ~13.7 µs |
-| `frame_10k_chips_unwrapped` | 10k chips in 100 rows, one line per row | ~1.17 ms |
-| `frame_10k_chips_wrapped` | the same tree with every row breaking onto several lines | ~1.34 ms |
-| `deep_nesting_64_levels` | 16 chains nested 64 levels deep | ~122 µs |
-| `list_10k_rows_naive` | a 10k-row list held at its middle, built row by row | ~5.59 ms |
-| `list_10k_rows_virtual` | the same list through `widgets::virtual_column` | ~20.6 µs |
-| `list_100k_rows_virtual` | 100k rows through the same widget | ~20.7 µs |
+| `frame_1k_typical` | 32×32 grid, every 8th cell a label, every 4th clickable — a "typical app" frame | ~116 µs |
+| `frame_10k_rects` | 100×100 plain rects, nothing switched on | ~788 µs |
+| `frame_10k_rects_with_text_and_hits` | the same grid plus 1.2k texts and 2.5k hit regions | ~1.20 ms |
+| `frame_10k_rects_with_access_tree` | that frame with `core.access_tree()` derived after it — what a frame costs while assistive technology is attached | ~1.63 ms |
+| `frame_10k_rects_with_shadows_and_opacity` | the plain grid with only the paint props on: every cell casts a shadow under a faded root | ~868 µs |
+| `frame_10k_rects_square_clip` | the plain grid with every row clipping, so all 10k cells inherit a clip | ~847 µs |
+| `frame_10k_rects_rounded_clip` | the same with a radius on every clipping row, so each cell pays the per-corner intersect | ~869 µs |
+| `frame_10k_rects_all_transitioning` | every cell declares a `transition` — nine retained tween slots each | ~1.73 ms |
+| `frame_10k_rects_all_declaring_exit` | every cell also declares an `exit`, so the whole frame is kept for the next one to diff against | ~2.21 ms |
+| `frame_10k_rects_one_exit` | the same 10k grid with a single cell declaring an `exit` | ~802 µs |
+| `drop_1k_rows_plain` | 1k rows removed from the tree in one frame, no exits declared | ~63 µs |
+| `drop_1k_rows_declaring_exit` | the same removal with exits declared, so 1k ghosts start playing out | ~265 µs |
+| `replay_a_full_depart_store` | replaying a saturated depart store (the 512-node budget) for one frame | ~13.2 µs |
+| `frame_10k_chips_unwrapped` | 10k chips in 100 rows, one line per row | ~721 µs |
+| `frame_10k_chips_wrapped` | the same tree with every row breaking onto several lines | ~898 µs |
+| `deep_nesting_64_levels` | 16 chains nested 64 levels deep | ~79 µs |
+| `list_10k_rows_naive` | a 10k-row list held at its middle, built row by row | ~3.67 ms |
+| `list_10k_rows_virtual` | the same list through `widgets::virtual_column` | ~16.4 µs |
+| `list_100k_rows_virtual` | 100k rows through the same widget | ~16.6 µs |
 
-What the pairs say. Deriving the access tree costs **~1.24×** the frame it
+What the pairs say. Deriving the access tree costs **~1.36×** the frame it
 follows. Shadows under a faded root are **twice the quads** (20k against 10k)
 for **~10%** more frame time, because most of a frame is build and layout
-rather than emitting quads. Clipping costs ~3% over the unclipped grid and
-rounding that clip costs ~1% more — the radius is nearly free once a node
-clips at all. Wrapping every row runs **~1.15×** the same tree laid out one
+rather than emitting quads. Clipping costs ~7% over the unclipped grid and
+rounding that clip costs ~3% more — the radius is nearly free once a node
+clips at all. Wrapping every row runs **~1.25×** the same tree laid out one
 line per row, and that is the worst case: a row that does not wrap pays
 nothing, because the break, the per-line grow and the per-line alignment are
 all behind the flag. An exit on one node out of 10k costs ~2% over the plain
 grid, so the `any_exit` gate holds — it is declaring exits on *every* node
-that doubles the frame. And virtualisation is the one difference worth
-orders of magnitude: 10k rows cost ~5.6 ms built row by row and ~21 µs
-through the widget, with 100k rows costing the same ~21 µs, because the frame
+that triples the frame. And virtualisation is the one difference worth
+orders of magnitude: 10k rows cost ~3.7 ms built row by row and ~16 µs
+through the widget, with 100k rows costing the same ~16 µs, because the frame
 stops growing with the data.
 
-**These numbers are a regression, and the table is the honest version of
-it.** The four rows this table used to carry were measured on 2026-08-31
-(`dabe671`) at ~70 µs, ~510 µs, ~740 µs and ~58 µs. Re-running that same
-commit on the machine above reproduces them (72 µs, 516 µs, 754 µs, 60 µs),
-so the old numbers were sound and the machine is not the difference: the
-frame really has become **~2.4–2.7× more expensive** since, far past the ~5%
-noise floor. It did not happen in one commit — a bisect over the 193 commits
-since shows it accruing a little at a time (516 → 611 → 788 → 973 → 1245 →
-1366 µs), tens of microseconds per feature. The thing to notice is that
-`frame_10k_rects` declares none of those features and pays for them anyway,
-so the cost is per node rather than per use — the feature flags themselves
-hold, as the pairs above show. The measured cause is that `NodeSpec` grew
-from 152 bytes to 728 and is moved by value for every node built, which puts
-31% of a frame in `memmove`; padding the old struct to 728 bytes and changing
-nothing else reproduces about half the regression. C15 in
-[docs/BACKLOG.md](docs/BACKLOG.md) carries the profile, the experiment and the
-fix; alpha.6 ships the number rather than a stale better one.
+**These numbers went the wrong way once, and this is where that is
+recorded.** The four rows this table used to carry were measured on
+2026-08-31 (`dabe671`) at ~70 µs, ~510 µs, ~740 µs and ~58 µs. Re-measuring
+for the alpha.6 release found them 2.4–2.7× worse — a frame cost that had
+grown a little at a time across ~10 feature commits, on benches that declare
+none of the features. The cause was `NodeSpec`: it had reached **728 bytes**,
+it is moved by value for every node a frame builds, and 31% of a frame was
+going into `memmove`.
+
+The cold fields are now behind four boxed groups (events, animation,
+accessibility, hover styling), which puts `NodeSpec` at **224 bytes** and
+`memmove` back below the profiler's noise floor. That recovered about
+two-thirds of the regression — `frame_10k_rects` 1.37 ms → 788 µs — and every
+bench in the table moved with it, including ones that touch none of those
+fields. What remains against the 2026-08-31 baseline is ~1.5×, which is the
+per-node logic the features added rather than the cost of moving the struct;
+C15 in [docs/BACKLOG.md](docs/BACKLOG.md) carries the profile, the bisect and
+what is left. `size_of::<NodeSpec>()` now has a test with a bound on it, so
+the next inline field has a number to fail against rather than a release
+audit to wait for.
 
 A built-in latency graph shows per-phase frame cost live —
 `widgets::latency_hud(ui)` floats it in a viewport corner as a translucent
@@ -693,18 +696,19 @@ caches):
 
 | document | apply | frame | quads |
 |---|---|---|---|
-| 50 lines | 0.087 ms | 0.050 ms | 1860 |
-| 500 lines | 0.091 ms | 0.055 ms | 1860 |
-| 2k lines | 0.098 ms | 0.071 ms | 1860 |
-| 10k lines | 0.145 ms | 0.149 ms | 1860 |
-| 100k lines | 1.93 ms | 2.29 ms | 1860 |
+| 50 lines | 0.088 ms | 0.056 ms | 1860 |
+| 500 lines | 0.089 ms | 0.056 ms | 1860 |
+| 2k lines | 0.095 ms | 0.071 ms | 1860 |
+| 10k lines | 0.134 ms | 0.146 ms | 1860 |
+| 100k lines | 1.78 ms | 2.08 ms | 1860 |
 
 So a keystroke costs well under a frame's worth up to 10k lines, and ~4 ms
 at 100k. The quad count is flat because glyph emission is viewport-culled (a
 huge document emits only the visible screenful), and single-line reshapes go
-through cosmic-text's shape-run cache. This bench did not regress with the
+through cosmic-text's shape-run cache. This bench never regressed with the
 frame benches above — at `dabe671` it measured 0.084/0.045 ms at 50 lines and
-0.134/0.116 ms at 10k — because its frame is 1860 quads, not 10k nodes.
+0.134/0.116 ms at 10k — because its frame is 1860 quads, not 10k nodes, which
+was itself a clue that the cost was per node.
 
 Layout solver, atlas packer, key scheme, event dispatch, editing,
 measurement, layout events, diagnostics and the Lua binding are covered by

@@ -564,7 +564,7 @@ pub(crate) struct Semantic {
 /// structure (elided; its descendants still appear).
 pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
     let spec = &tree.specs[i];
-    if let Some(r) = spec.role {
+    if let Some(r) = spec.access().role {
         // A line is structure of the editor around it; on its own it is
         // nothing.
         return (r != Role::Line).then_some(r);
@@ -583,18 +583,18 @@ pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
         Some(WindowRole::Button(_)) => return Some(Role::Button),
         None => {}
     }
-    if spec.modal.is_some() {
+    if spec.events().modal.is_some() {
         // A modal surface is a dialog to assistive technology; anything
         // else it might be, the view says with an explicit role.
         return Some(Role::Dialog);
     }
-    if spec.on_click.is_some() {
+    if spec.events().on_click.is_some() {
         return Some(Role::Button);
     }
     if spec.layout.scroll_x || spec.layout.scroll_y {
         return Some(Role::ScrollView);
     }
-    if spec.on_key.is_some() || spec.focusable {
+    if spec.events().on_key.is_some() || spec.focusable {
         // A key sink or a focusable box is at least somewhere focus can
         // land, so a reader has to be able to see it there.
         return Some(Role::Group);
@@ -605,7 +605,7 @@ pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
 /// Whether node `i` is an editor the app draws itself: an editor role on
 /// something other than a built-in edit node.
 pub(crate) fn is_custom_editor(tree: &Tree, i: usize) -> bool {
-    tree.specs[i].role.is_some_and(Role::is_editor)
+    tree.specs[i].access().role.is_some_and(Role::is_editor)
         && !matches!(tree.content[i], NodeContent::Edit(_))
 }
 
@@ -617,15 +617,18 @@ pub(crate) fn is_custom_editor(tree: &Tree, i: usize) -> bool {
 /// skipped by the walk, not here.
 pub(crate) fn focusable(tree: &Tree, i: usize) -> bool {
     let spec = &tree.specs[i];
-    if spec.disabled || spec.role == Some(Role::None) || spec.window.is_some() {
+    if spec.disabled || spec.access().role == Some(Role::None) || spec.window.is_some() {
         return false;
     }
-    if spec.focusable || spec.on_key.is_some() || matches!(tree.content[i], NodeContent::Edit(_)) {
+    if spec.focusable
+        || spec.events().on_key.is_some()
+        || matches!(tree.content[i], NodeContent::Edit(_))
+    {
         return true;
     }
-    match spec.role {
+    match spec.access().role {
         Some(r) => r.is_control(),
-        None => spec.on_click.is_some(),
+        None => spec.events().on_click.is_some(),
     }
 }
 
@@ -653,7 +656,7 @@ pub(crate) fn semantic(
     let presentational = role.presentational()
         || matches!(spec.window, Some(WindowRole::Button(_)))
         || is_custom_editor(tree, i);
-    let name = match (&spec.label, spec.window) {
+    let name = match (&spec.access().label, spec.window) {
         (Some(label), _) => Some(label.to_string()),
         (None, Some(WindowRole::Button(b))) => Some(
             match b {
@@ -763,7 +766,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             origin: tree.origins[i],
             role: sem.role,
             name: sem.name,
-            description: spec.description.as_ref().map(|d| d.to_string()),
+            description: spec.access().description.as_ref().map(|d| d.to_string()),
             rect,
             value: None,
             caret: None,
@@ -791,7 +794,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             Some(WindowRole::Button(_)) => actions |= AccessAction::Click.bit(),
             Some(WindowRole::Drag) => {}
             None => {
-                if spec.on_click.is_some() && !spec.disabled {
+                if spec.events().on_click.is_some() && !spec.disabled {
                     actions |= AccessAction::Click.bit();
                 }
             }
@@ -830,20 +833,21 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
         }
         // A disclosure names its own state, so it lands wherever it is
         // declared: no role means "shows and hides something".
-        node.expanded = spec.expanded;
+        let ax = spec.access();
+        node.expanded = ax.expanded;
         match sem.role {
-            Role::Checkbox | Role::Radio | Role::Switch => node.checked = Some(spec.checked),
+            Role::Checkbox | Role::Radio | Role::Switch => node.checked = Some(ax.checked),
             // A tab is one of a set by definition, so it reports either
             // state; a row or a link reports only the one it declares,
             // since most lists and every navigation bar are not
             // selections and "not selected" on each of their nodes is the
             // noise AccessKit warns about.
-            Role::Tab => node.selected = Some(spec.selected),
-            Role::ListItem | Role::Link if spec.selected => node.selected = Some(true),
+            Role::Tab => node.selected = Some(ax.selected),
+            Role::ListItem | Role::Link if ax.selected => node.selected = Some(true),
             Role::Slider => {
-                node.number = spec.value_now;
-                node.min = spec.value_min;
-                node.max = spec.value_max;
+                node.number = ax.value_now;
+                node.min = ax.value_min;
+                node.max = ax.value_max;
                 if !spec.disabled {
                     actions |= AccessAction::Increment.bit() | AccessAction::Decrement.bit();
                 }
@@ -900,7 +904,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
 fn set_positions(tree: &Tree, out: &mut AccessTree) {
     let containers: Vec<(usize, Role)> = (0..tree.len())
         .filter_map(|i| {
-            let item = crate::composite::item_role(tree.specs[i].role?)?;
+            let item = crate::composite::item_role(tree.specs[i].access().role?)?;
             Some((i, item))
         })
         .collect();
@@ -933,11 +937,11 @@ fn custom_editor(tree: &Tree, src: &Sources<'_>, i: usize, node: &mut AccessNode
     let mut j = i + 1;
     while j < end {
         let spec = &tree.specs[j];
-        if spec.role == Some(Role::None) {
+        if spec.access().role == Some(Role::None) {
             j = tree.subtree_end(j);
             continue;
         }
-        if spec.role == Some(Role::Line) {
+        if spec.access().role == Some(Role::Line) {
             lines.push(j);
             j = tree.subtree_end(j);
             continue;
@@ -955,7 +959,7 @@ fn custom_editor(tree: &Tree, src: &Sources<'_>, i: usize, node: &mut AccessNode
         let lend = tree.subtree_end(l);
         let mut t = l;
         while t < lend {
-            if tree.specs[t].role == Some(Role::None) {
+            if tree.specs[t].access().role == Some(Role::None) {
                 t = tree.subtree_end(t);
                 continue;
             }
@@ -998,10 +1002,10 @@ fn custom_editor(tree: &Tree, src: &Sources<'_>, i: usize, node: &mut AccessNode
             ));
             run_no += 1;
         }
-        if let Some(c) = tree.specs[l].caret {
+        if let Some(c) = tree.specs[l].access().caret {
             caret = Some((ln, (c as usize).min(line_text.len())));
         }
-        if let Some(a) = tree.specs[l].selection_anchor {
+        if let Some(a) = tree.specs[l].access().selection_anchor {
             anchor = Some((ln, (a as usize).min(line_text.len())));
         }
         if ln > 0 {

@@ -227,7 +227,11 @@ fn hover_group_lights_every_member() {
 fn hover_group_id_is_stable_and_named() {
     assert_eq!(
         NodeSpec::hover_group_id("pair"),
-        NodeSpec::column().hover_group("pair").hover_group.unwrap()
+        NodeSpec::column()
+            .hover_group("pair")
+            .interact()
+            .hover_group
+            .unwrap()
     );
     assert_ne!(NodeSpec::hover_group_id("a"), NodeSpec::hover_group_id("b"));
 }
