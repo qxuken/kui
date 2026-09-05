@@ -398,6 +398,15 @@ export type WarningCode =
    *  event, stop declaring the name, and declare it again to reopen. See
    *  `docs/adr/0004-multi-window.md`, decision 6. */
   | 'window-declared-while-closed'
+  /** A window declared with a `KUI_WINDOW_KIND_*` this build does not have.
+   *  Only `KUI_WINDOW_KIND_NORMAL` exists — ADR 0004's step 4, the borderless
+   *  non-activating popup, is not in alpha.6 — and a C host is the only binding
+   *  that can name a kind at all, since `windows` in JSX and Lua has no `kind`
+   *  key. The window still opens, as a normal one, so a host built against a
+   *  later header degrades to a window rather than to nothing; this line is
+   *  what keeps that from being silent. See `docs/adr/0004-multi-window.md`,
+   *  decision 9. */
+  | 'unknown-window-kind'
   /** A `FontId` / `ImageId` / `SoundId` registered in one `Session` and used
    *  through a core of another. Handles are unique to the process, so it cannot
    *  resolve to somebody else's resource; it behaves as a removed handle does

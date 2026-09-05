@@ -252,7 +252,8 @@ export function createEncoder(P) {
           break;
         case 'windows':
           // Root only, like `title`: a count, then per window its name,
-          // kind (0 = normal), width, height (0 = the default size) and
+          // kind (always 0 = normal; no entry can name another), width,
+          // height (0 = the default size) and
           // whether it activates. An entry may be just a name.
           if (isRoot && Array.isArray(v)) {
             f[fi++] = PR.windows.id;
@@ -262,6 +263,15 @@ export function createEncoder(P) {
               const d = typeof w === 'string' ? { name: w } : w;
               if (d == null || typeof d.name !== 'string') {
                 throw new Error(`bad windows entry ${JSON.stringify(w)} (a name, or { name, width?, height?, activates? })`);
+              }
+              // An entry is plain data with a fixed shape, not a node's loose
+              // prop bag, so a key that does nothing is refused rather than
+              // dropped. `kind` is the one anybody reaches for: the popup is
+              // ADR 0004 step 4 and this release has no window kind but the
+              // normal one, and silently opening a normal window would read
+              // as the popup having shipped.
+              if ('kind' in d) {
+                throw new Error(`windows entry ${JSON.stringify(d.name)} sets \`kind\`, which no window kind exists for yet (the popup is ADR 0004 step 4); drop it, and reach for a modal float meanwhile`);
               }
               strRef(d.name);
               f[fi++] = 0;

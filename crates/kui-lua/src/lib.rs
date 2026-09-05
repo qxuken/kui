@@ -453,7 +453,8 @@ fn element_of(ty: &str) -> &str {
 }
 
 /// The root table's `windows` list (`docs/adr/0004-multi-window.md`): each
-/// entry a name, or a table `{ name=, width=, height=, activates= }`, and
+/// entry a name, or a table `{ name=, width=, height=, activates= }` (no
+/// `kind`: the popup is ADR 0004 step 4, so an entry that sets one errors), and
 /// every one a `Ui::window` declaration. The embedding host drains the
 /// `Open` / `Close` the declared set produces and opens the surfaces;
 /// this binding has no runner of its own.
@@ -477,6 +478,18 @@ fn declare_windows(ui: &mut Ui<'_>, root: &Table) -> mlua::Result<()> {
                 }
                 if let Some(a) = t.get::<Option<bool>>("activates")? {
                     cfg.activates = a;
+                }
+                // An entry is plain data with a fixed shape, not a node's
+                // loose prop bag, so a key that does nothing is refused
+                // rather than dropped. `kind` is the one anybody reaches
+                // for: the popup is ADR 0004 step 4 and this release has no
+                // window kind but the normal one.
+                if t.contains_key("kind")? {
+                    return Err(mlua::Error::runtime(format!(
+                        "windows entry `{name}` sets `kind`, which no window kind exists for \
+                         yet (the popup is ADR 0004 step 4); drop it, and reach for a modal \
+                         float meanwhile"
+                    )));
                 }
                 ui.window(&name, cfg);
             }
@@ -1282,6 +1295,31 @@ mod tests {
         frame(&mut core, &mut ext);
         assert!(core.take_window_commands().is_empty());
         assert!(core.take_warnings().is_empty());
+    }
+
+    /// A `kind` on a windows entry is refused rather than dropped: the
+    /// popup is ADR 0004 step 4, and encoding it as the normal window this
+    /// release has would read as the popup having shipped.
+    #[test]
+    fn a_windows_entry_cannot_name_a_kind() {
+        let mut ext = LuaExtension::from_source(
+            "windows-kind",
+            r#"
+                function view(env)
+                  return column {
+                    windows = { { name = "palette", kind = "popup" } },
+                    text("main"),
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let mut ui = core.frame(Size::new(800.0, 600.0), 1.0);
+        ui.set_origin(OriginId(1));
+        let err = ext.view(&mut ui).unwrap_err();
+        assert!(err.contains("kind"), "{err}");
+        assert!(err.contains("step 4"), "{err}");
     }
 
     /// Every node type the prelude offers lowers without error and draws.

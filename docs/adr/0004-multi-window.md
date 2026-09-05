@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-09-04
-amended: 2026-09-04
+amended: 2026-09-05
 ---
 
 # Multi-window: a `Core` per window, and a window set the app declares
@@ -535,6 +535,40 @@ the `u64` form is untouched.
   is what makes it necessary rather than merely available — once a config
   is read on the opening edge only, these two verbs are the only way an app
   moves a window that already exists).
+- **Amended 2026-09-05, at the alpha.6 release: this ships without
+  popups.** Steps 1, 2, 3 and 5 are built; **step 4 is not**, so
+  `WindowKind` has exactly one variant, `Normal`, and the release has no
+  spelling of a popup anywhere — no `KUI_WINDOW_KIND_POPUP`, no `kind` key
+  in a JSX or Lua `windows` entry. That is a deliberate v0 line and not an
+  oversight, so it is written here rather than found: what step 4 owes —
+  anchoring in screen coordinates, ownership, non-activating focus routing
+  and `dismiss` on the window — is exactly what the three cases the Context
+  names still need, and all three stay unbuildable. A dropdown taller than
+  the window, a menu opened near the edge with nowhere in-window to go, and
+  a panel the user wants beside the app are what decision 11 keeps
+  `FloatConfig::fit` as the approximation *of* and what it says `fit`
+  cannot reach. Everything that *does* fit in the window is covered today,
+  and the spelling for it is `fit` plus a `modal` float
+  ([ADR 0003](0003-modal-surfaces.md)) — which is where a dropdown or a
+  context menu belongs until it provably does not fit. Decision 9 is
+  unchanged as a decision — a popup is a window kind and reuses `dismiss`
+  — it is simply not built, and graduating a float to one still changes a
+  declaration and not a handler when it is.
+- **The absent kind is absent loudly** (2026-09-05, with the amendment
+  above). Nothing may declare a kind that quietly opens a normal window,
+  because that would read as the popup having shipped. JSX and Lua *refuse*
+  a `kind` on a `windows` entry — an entry is plain data with a fixed shape
+  by decision 5, not a node's loose prop bag, so a key that does nothing is
+  an error and not a dropped declaration. C cannot throw across the ABI, so
+  `kui_window_declare` warns: `KuiWindowConfig.kind` is a `uint32_t` that a
+  host built against a later header can fill with anything, and any value
+  but `KUI_WINDOW_KIND_NORMAL` still opens a normal window — degrading to a
+  window rather than to nothing — while raising **`unknown-window-kind`**,
+  the third code this ADR adds to `diag.rs`. Like the other two it is
+  keyed by the window rather than by a node, and like `unknown-prop` it is
+  raised by the binding that saw the declaration through `Core::warn` —
+  `diag`'s module doc, which step 3 took from three codes outside the tree
+  walk to four, now says five.
 - Not decided here, and each wanting its own answer when something needs
   it: window position as a declared or reported fact (the app cannot
   currently restore a window where the user left it), multi-monitor and

@@ -64,6 +64,13 @@ mod window_commands_headless {
     /// `MAIN`, which the header spells for C.
     const MAIN: u32 = WindowId::MAIN.0;
 
+    fn ks(s: &str) -> KuiStr {
+        KuiStr {
+            ptr: s.as_ptr(),
+            len: s.len(),
+        }
+    }
+
     fn drain(ctx: *mut KuiCtx) -> Vec<(u32, u32, f32, f32)> {
         let mut out = Vec::new();
         let mut cmd = KuiWindowCommand::default();
@@ -89,6 +96,76 @@ mod window_commands_headless {
             ]
         );
         assert!(drain(ctx).is_empty(), "drained once");
+        kui_ctx_free(ctx);
+    }
+
+    /// A kind this build does not have still opens a window — a host built
+    /// against a later header degrades to a window rather than to nothing —
+    /// but it says so. C is the only binding that can name a kind at all:
+    /// `windows` in JSX and Lua has no `kind` key.
+    #[test]
+    fn an_unknown_window_kind_opens_a_normal_window_and_warns() {
+        let ctx = kui_ctx_new();
+        kui_set_diagnostics(ctx, true);
+        let cfg = KuiWindowConfig {
+            kind: KUI_WINDOW_KIND_NORMAL + 1,
+            width: 320.0,
+            height: 240.0,
+            activates: 1,
+        };
+        kui_frame_begin(ctx, 300.0, 100.0, 1.0);
+        kui_window_declare(ctx, ks("palette"), &cfg);
+        kui_frame_finish(ctx);
+
+        let opened: Vec<_> = drain(ctx)
+            .into_iter()
+            .filter(|c| c.0 == KUI_CMD_OPEN)
+            .collect();
+        assert_eq!(opened.len(), 1, "it still opens");
+
+        let mut out = [KuiWarning {
+            code: KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
+            key: 0,
+            message: KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
+        }; 4];
+        let n = kui_take_warnings(ctx, out.as_mut_ptr(), out.len());
+        assert_eq!(n, 1, "and the normalisation is not silent");
+        assert_eq!(&*kstr(out[0].code), "unknown-window-kind");
+        assert!(kstr(out[0].message).contains("palette"));
+        kui_ctx_free(ctx);
+    }
+
+    /// Every kind the header does spell passes without a line.
+    #[test]
+    fn the_only_kind_the_header_has_does_not_warn() {
+        let ctx = kui_ctx_new();
+        kui_set_diagnostics(ctx, true);
+        let cfg = KuiWindowConfig {
+            kind: KUI_WINDOW_KIND_NORMAL,
+            ..Default::default()
+        };
+        kui_frame_begin(ctx, 300.0, 100.0, 1.0);
+        kui_window_declare(ctx, ks("palette"), &cfg);
+        kui_window_declare(ctx, ks("tools"), std::ptr::null());
+        kui_frame_finish(ctx);
+        let mut out = [KuiWarning {
+            code: KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
+            key: 0,
+            message: KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
+        }; 4];
+        assert_eq!(kui_take_warnings(ctx, out.as_mut_ptr(), out.len()), 0);
         kui_ctx_free(ctx);
     }
 

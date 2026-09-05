@@ -1825,6 +1825,15 @@ test('a window the user closed stays closed while declared, and says so', () => 
   assert.deepEqual(ctx.windows(), ['main', 'palette']);
 });
 
+test('a windows entry cannot name a kind while there is only one', () => {
+  const ctx = new Ctx();
+  assert.throws(
+    () => ctx.frame(320, 240, 1, box({ windows: [{ name: 'palette', kind: 'popup' }] }, [])),
+    /kind.*step 4/s,
+    'the popup is ADR 0004 step 4; encoding it as a normal window would read as it having shipped',
+  );
+});
+
 test('every corpus scene lowers the way kui-core does', (t) => {
   if (!existsSync(CONFORMANCE)) {
     const missing =

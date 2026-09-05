@@ -87,6 +87,21 @@ Everything after this is the detail as each piece landed;
   `frame_budget_ms` stays in the reading, derived, in both bindings that
   have one. No shape changed. The C header's doc that pointed at a
   `kui_env_set_focused` that never existed now names `kui_env_set`.
+- **There is exactly one window kind, and asking for another says so**
+  (backlog R3, ADR 0004 step 4). This release ships multi-window *without*
+  popups, deliberately: `WindowKind` has only `Normal`, so a dropdown taller
+  than the window, a menu with nowhere in-window to go and a panel beside
+  the app are still not buildable — `FloatConfig::fit` plus a `modal` float
+  covers everything that fits inside the window, and its doc comment now
+  says the popup it points at is a later release. The line is stated rather
+  than left to be found: ADR 0004's Consequences carry a dated amendment and
+  the README's Status / next has a Windows group. Nothing can ask for the
+  kind that does not exist and quietly get the one that does — a JSX or Lua
+  `windows` entry with a `kind` key is **refused** (an entry is plain data
+  with a fixed shape, so a key that does nothing is an error, not a dropped
+  declaration), and C's `KuiWindowConfig.kind`, which is a `uint32_t` a host
+  can fill with anything, still opens a normal window but now raises the new
+  **`unknown-window-kind`** warning while doing it. No ABI change.
 - **An app can ask for a window's size and focus** (backlog C11 step 5, ADR
   0004 decision 5). `WindowCommand` gained `SetSize { window, size }` and
   `Focus(WindowId)`, queued by `Core::set_window_size` / `Core::focus_window`
