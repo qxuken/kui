@@ -9,6 +9,7 @@
 //! and drops the rest. The spec half it still builds has no caller — see
 //! D1/D2 in `docs/BACKLOG.md`.
 
+use kui_core::diag::{WARNINGS, WarningDef};
 pub use kui_core::schema::*;
 use kui_core::{
     Align, Color, FloatConfig, NodeSpec, OVERFLOW_CLIP, OVERFLOW_SCROLL_X, OVERFLOW_SCROLL_Y,
@@ -295,7 +296,8 @@ fn table<T>(items: &[T], fields: &[Column<T>]) -> Json {
     )
 }
 
-/// The element, event and resource tables as data, for the docs generator.
+/// The element, event, resource and warning tables as data, for the docs
+/// generator (and, for warnings, the `WarningCode` union in index.d.ts).
 pub fn protocol_tables() -> Vec<(&'static str, Json)> {
     vec![
         ("elements", {
@@ -343,6 +345,13 @@ pub fn protocol_tables() -> Vec<(&'static str, Json)> {
                     ("lua", |r| r.lua),
                     ("c", |r| r.c),
                 ],
+            ),
+        ),
+        (
+            "warnings",
+            table(
+                WARNINGS,
+                &[("code", |w: &WarningDef| w.code), ("doc", |w| w.doc)],
             ),
         ),
     ]

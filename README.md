@@ -448,7 +448,10 @@ that are hard to reverse and would look arbitrary without their context.
   `Core::take_warnings` drains them;
   the windowed runners print them, the Node loop collects them on
   `app.warnings` either way, C drains `kui_take_warnings`, and a test
-  asserts the list is empty. They are a development aid, so the drivers decide by build: the
+  asserts the list is empty. Every code, with what it means, is the
+  Warnings table in [docs/props.md](docs/props.md#warnings) — generated
+  from `diag.rs`, like the prop tables, so it cannot lag the core. They
+  are a development aid, so the drivers decide by build: the
   Rust runner runs them in debug builds only (`Launcher::diagnostics`
   overrides), the Node loops unless `NODE_ENV=production`, a standalone C
   context not until `kui_set_diagnostics`; a bare `Core` has them on, since
