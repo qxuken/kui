@@ -358,6 +358,11 @@ export interface Warning {
      *  before it crossed. Usually the other binding's spelling
      *  (`hover_bg`) or a typo; the message names the likely one. */
     | 'unknown-prop'
+    /** A font, image or sound handle registered in one session and used
+     *  through a window of another. Handles are unique to the process, so
+     *  it cannot resolve to somebody else's resource: it is treated as
+     *  removed (draws nothing, shapes as sans-serif, plays nothing). */
+    | 'foreign-resource'
     | (string & {});
   /** The node it is about (hex, like event keys). */
   key: string;

@@ -39,6 +39,14 @@
 //! thing a `Core` lends out of the session — the family name behind
 //! `Core::font_family` — cannot live behind that borrow, so it is read from
 //! a per-window mirror that every registration and every frame refreshes.
+//!
+//! **A handle belongs to its session.** Every session has a [`SessionId`],
+//! and the handles its registry mints are unique to the process (see
+//! `resources`), so a `FontId` / `ImageId` / `SoundId` handed to a core of
+//! another session is a miss, never an alias: it behaves as a removed
+//! handle does, and the core that drains warnings next reports it as
+//! `foreign-resource`. Two `Core::new()`s in one test are two sessions;
+//! what shares a handle is `Core::new_in(&session)`.
 
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
@@ -47,7 +55,7 @@ use std::sync::Arc;
 use cosmic_text::FontSystem;
 
 use crate::audio::AudioStore;
-use crate::resources::{FontId, ImageId, Resources, SoundId};
+use crate::resources::{FontId, ImageId, Resources, SessionId, SoundId};
 use crate::tree::OriginId;
 use crate::window::{WindowConfig, WindowId};
 
@@ -55,6 +63,8 @@ use crate::window::{WindowConfig, WindowId};
 /// at a time; the fields are borrowed disjointly the way `Core`'s own
 /// fields used to be.
 pub(crate) struct SessionState {
+    /// Which session this is, for the handles the registry mints.
+    pub(crate) id: SessionId,
     /// The font database every window in the session shapes against — a
     /// face loaded by one window resolves for all of them.
     pub(crate) fonts: FontSystem,
@@ -69,9 +79,11 @@ pub(crate) struct SessionState {
 
 impl SessionState {
     fn new() -> Self {
+        let id = SessionId::next();
         Self {
+            id,
             fonts: crate::text::new_font_system(),
-            resources: Resources::default(),
+            resources: Resources::new(id),
             audio: AudioStore::default(),
             fonts_rev: 0,
             windows: WindowRegistry::new(),
@@ -313,6 +325,12 @@ impl Session {
         Rc::ptr_eq(&self.0, &other.0)
     }
 
+    /// This session's process-wide id — the number a `foreign-resource`
+    /// warning names.
+    pub fn id(&self) -> SessionId {
+        self.0.borrow().id
+    }
+
     pub(crate) fn state(&self) -> RefMut<'_, SessionState> {
         self.0.borrow_mut()
     }
@@ -383,7 +401,7 @@ impl SharedResources {
     /// The pixel dimensions behind an image handle, if it is live.
     pub fn image_size(&self, id: ImageId) -> Option<(u32, u32)> {
         let state = self.0.state();
-        let e = state.resources.images.get(id)?;
+        let e = state.resources.image(id)?;
         Some((e.width, e.height))
     }
 

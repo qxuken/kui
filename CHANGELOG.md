@@ -9,6 +9,23 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **A resource handle used in the wrong session is caught** (backlog S5).
+  Every `Session` now has a process-wide `SessionId` (`Session::id`), and
+  the `FontId` / `ImageId` / `SoundId` handles its registry mints are
+  unique to the process: one minting slotmap per kind hands them out and
+  records the owner, and a session's registry is secondary to it. Before,
+  two sessions each minted from zero, so an image registered in one and
+  drawn through a core of another — two `Core::new()`s in one test is the
+  ordinary way — drew whatever the other session had registered first,
+  silently. Now it is a miss that behaves exactly as a removed handle does
+  (draws nothing, shapes as sans-serif, plays nothing) and raises a
+  `foreign-resource` warning naming the handle and both sessions, once per
+  handle, on whichever core of the asked session drains `take_warnings`
+  next. Noticed wherever a handle resolves — an image node, a text style,
+  `play`, an `audio` node, a `remove_*`, the driver's audio backend —
+  because the registry keeps the hits and the core reports them. The
+  `u64` form of a handle and the C ABI are untouched; a removed handle is
+  as silent as it always was.
 - **An app can ask for a window's size and focus** (backlog C11 step 5, ADR
   0004 decision 5). `WindowCommand` gained `SetSize { window, size }` and
   `Focus(WindowId)`, queued by `Core::set_window_size` / `Core::focus_window`

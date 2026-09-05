@@ -411,6 +411,12 @@ impl Core {
     /// each distinct (code, node) pair once. Windowed runners print them;
     /// headless tests assert on them.
     pub fn take_warnings(&mut self) -> Vec<Warning> {
+        // Handles of other sessions resolve where the registry can see
+        // them and this core cannot (shaping, the audio backend), so the
+        // registry keeps them and the core draining warnings reports them.
+        for f in self.session.state().resources.take_foreign() {
+            self.diag.raise(crate::diag::foreign_resource(&f));
+        }
         self.diag.take()
     }
 
@@ -1033,7 +1039,7 @@ impl Core {
             }
             NodeContent::Image(id) => {
                 let sess = self.session.state();
-                if let Some(entry) = sess.resources.images.get(id)
+                if let Some(entry) = sess.resources.image(id)
                     && let Some(slot) =
                         self.atlas
                             .get_or_insert_image(id, entry.width, entry.height, &entry.rgba)
@@ -2230,10 +2236,11 @@ impl Core {
         opts: crate::audio::PlayOptions,
     ) -> crate::audio::PlaybackId {
         let origin = self.origin;
-        self.session
-            .state()
-            .audio
-            .play(origin, Key::ROOT, sound, opts)
+        let sess = &mut *self.session.state();
+        // The driver's backend resolves the handle when it plays; a
+        // headless app has no driver, so a foreign handle is noticed here.
+        let _ = sess.resources.sound(sound);
+        sess.audio.play(origin, Key::ROOT, sound, opts)
     }
 
     /// Stops a playback, fading over `fade_ms` (0 = at once). A stopped
@@ -2275,7 +2282,9 @@ impl Core {
         }
         let key = self.auto_key();
         let origin = self.origin;
-        self.session.state().audio.declare(key, origin, spec);
+        let sess = &mut *self.session.state();
+        let _ = sess.resources.sound(spec.src);
+        sess.audio.declare(key, origin, spec);
         key
     }
 
@@ -2286,7 +2295,9 @@ impl Core {
         }
         let key = self.child_key(label);
         let origin = self.origin;
-        self.session.state().audio.declare(key, origin, spec);
+        let sess = &mut *self.session.state();
+        let _ = sess.resources.sound(spec.src);
+        sess.audio.declare(key, origin, spec);
         key
     }
 
@@ -3361,7 +3372,7 @@ impl Core {
                 }
                 GhostContent::Image(id) => {
                     let sess = self.session.state();
-                    if let Some(entry) = sess.resources.images.get(id)
+                    if let Some(entry) = sess.resources.image(id)
                         && let Some(slot) = self.atlas.get_or_insert_image(
                             id,
                             entry.width,
@@ -3667,8 +3678,7 @@ impl TextMeasure for Measure<'_> {
 
     fn image_size(&mut self, id: crate::resources::ImageId) -> Size {
         self.resources
-            .images
-            .get(id)
+            .image(id)
             .map_or(Size::ZERO, |e| Size::new(e.width as f32, e.height as f32))
     }
 }
