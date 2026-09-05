@@ -18,9 +18,24 @@
 //! Nothing here fails loudly if it stops working: a host whose symbols are
 //! not exported still builds, and the plugin only fails to load. The CI step
 //! that runs `--example c_panel -- --headless` is the check.
+//!
+//! The example's source sits outside this crate's directory, so `cargo
+//! package` leaves it out of the tarball and strips the `[[example]]` from
+//! the packaged manifest. Cargo then rejects `rustc-link-arg-examples` from a
+//! crate with no example target, which is exactly what `cargo publish`'s
+//! verify build is. So the flag is only emitted when the source is there.
+
+/// Where `[[example]] c_panel` in Cargo.toml points, relative to this crate.
+const EXAMPLE: &str = "../../examples/c/panel.rs";
 
 fn main() {
     println!("cargo::rerun-if-changed=build.rs");
+    println!("cargo::rerun-if-changed={EXAMPLE}");
+
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
+    if !std::path::Path::new(&manifest_dir).join(EXAMPLE).is_file() {
+        return;
+    }
 
     let flag = match std::env::var("CARGO_CFG_TARGET_OS")
         .unwrap_or_default()
