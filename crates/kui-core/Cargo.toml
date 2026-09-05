@@ -15,8 +15,22 @@ swash.workspace = true
 # Word boundaries for the access tree's text runs (already in the tree via cosmic-text).
 unicode-segmentation = "1"
 
+[features]
+# The scene corpus (src/conformance.rs): fourteen scene builders, the
+# coverage derivation, the report formatter and the fixture bytes. It is test
+# infrastructure - every binding's adapter rebuilds the scenes and diffs its
+# report against the Rust one - and off by default so no shipped binary
+# carries it. The dev-dependency below turns it on for this crate's own
+# tests, benches and examples, so `cargo test` cannot leave the corpus out;
+# `required-features` on the dump example is for the message when it is run
+# from a context that has the feature off.
+conformance = []
+
 [dev-dependencies]
 divan.workspace = true
+# Self-dependency: the one way to enable a feature for the tests without
+# gating the test target itself (which `cargo test` would then silently skip).
+kui-core = { path = ".", features = ["conformance"] }
 
 [[bench]]
 name = "frame"
@@ -35,3 +49,4 @@ harness = false
 [[example]]
 name = "conformance-dump"
 path = "../../examples/rust/conformance-dump.rs"
+required-features = ["conformance"]

@@ -300,7 +300,7 @@ Two tiers, because only one of them is portable between machines:
   pins the reference behaviour.
 * The cross-binding report digests **full quad geometry**, which moves with
   the installed fonts. It is generated per run (`cargo run -p kui-core
-  --example conformance-dump -- target/conformance.txt`) and never checked
+  --features conformance --example conformance-dump -- target/conformance.txt`) and never checked
   in, which is why all four adapters have to run in CI's single `check`
   job, on one machine, against one dump.
 
@@ -2070,6 +2070,84 @@ against headings to find out.
 Not worth a process gate. Worth one line in this file's preamble: a session
 that closes an item marks the heading and appends what it learned, in the
 shape the closed entries already use — original finding kept, outcome on top.
+
+---
+
+## From the sweep of the grown surface (2026-09-05)
+
+The fresh sweep the suggested sequence asked for. Entries are numbered
+S-*; each names its evidence the way the earlier rounds do.
+
+### `.` S3 — The scene corpus ships in every release binary — **done (2026-09-05)**
+
+Built: `kui-core` has a `conformance` feature, off by default, gating
+`pub mod conformance` and the accessors that existed only for its
+`observe` — `Core::declared_focus`, `Core::declared_windows` and the
+two `any_mounted`s on the audio store and its session handle.
+`window_title` stays; the runner, Node, C and Lua all read it.
+
+Who turns it on, and why it cannot be turned off by accident:
+
+- `kui-core` depends on itself in `[dev-dependencies]` with the feature
+  — the one way to enable a feature for a crate's own tests without
+  putting `required-features` on the test target, which `cargo test`
+  would then skip silently: A6's hole one binding over. Under resolver 3 a
+  dev-dependency's features reach only the builds that need
+  dev-dependencies, so `cargo test --workspace` and `cargo clippy
+  --all-targets` see the corpus and `cargo build` does not. `cargo tree
+  -e features -i kui-core` confirms it: zero `conformance` rows for
+  `kui`, `kui-wgpu`, `kui-ffi`, `kui-node` and `kui-lua`'s normal graph.
+- `kui-lua` does the same, in its `[dev-dependencies]` only.
+- `conformance-dump` carries `required-features = ["conformance"]`; the
+  documented command spells `--features conformance` (README, the C and
+  Node adapters' hints, CI's reference step), though the dev-dependency
+  would carry it anyway.
+- **C and Node need nothing**, which was the surprise. The task expected
+  `kui_conformance_*` exports in `libkui_ffi`; there are none.
+  `counter.c --conformance` rebuilds every scene through the public C API
+  and reads the reference as a file, and Node does the same through the
+  addon. So `libkui_ffi` in CI and in the release is built exactly as it
+  ships, `cargo build -p kui-node --release` and `cargo publish` resolve
+  the feature off, and option (b) — moving an adapter out — has nothing to
+  move.
+
+The `check` job still runs all four adapters: Rust and Lua under `cargo
+test --workspace`, C against the reference file, Node under
+`KUI_CONFORMANCE_REQUIRED=1`. Verified locally with the whole sequence:
+fmt, clippy over all targets, 54 test binaries with the two corpus tests
+among them and nothing filtered, the dump, `build.sh`, `--headless`,
+`--conformance` (conformance OK (14 scenes)), the dlopen panel, and 55 Node tests with none
+skipped.
+
+**The cost, measured** (`cargo build --release`, macOS arm64, one machine):
+
+| artifact | before | after | delta |
+|---|---|---|---|
+| `libkui_core.rlib` | 3 678 144 | 3 313 088 | −365 056 (−9.9 %) |
+| `examples/counter` (Rust) | 11 676 512 | 11 676 816 | +304 |
+| `libkui_ffi.dylib` | 11 493 968 | 11 495 328 | +1 360 |
+| `libkui_node.dylib` | 12 351 472 | 12 352 256 | +784 |
+
+The executables did not shrink, and that is the honest number: `nm` finds
+zero `conformance` symbols in the *before* binaries too, because nothing
+shipped referenced the module and the linker's section GC already dropped
+it. What the feature buys is the rlib — what `cargo publish` verifies and
+every downstream compile reads — and the compile of `kui-core` itself: a
+release rebuild of the crate alone went from about 5.5 s to about 2.9 s on
+the second of two runs. A tenth of the crate's lines, a good half of its
+codegen, which is what one formatting routine per scene costs.
+
+The original finding:
+
+`crates/kui-core/src/conformance.rs` is ~2 000 lines of a ~21 000-line
+crate, `lib.rs` declared it with no `cfg`, and `kui-core` had no
+`[features]` table. So every binary that links `kui-core` — every Rust
+app, the Node addon, `libkui_ffi`, every Lua host — carried the fourteen
+scene builders, `observe`, the report formatter, the digest and the
+fixture bytes (`SOUND_BYTES`, `image_pixels`). Test infrastructure in the
+release build. It could not simply be `#[cfg(test)]`: the dump example
+writes the reference CI uses, the C example's `--conformance` mode reads
+it, and `kui-lua`'s tests call `conformance::drive`.
 
 ---
 

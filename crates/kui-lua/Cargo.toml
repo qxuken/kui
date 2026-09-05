@@ -13,6 +13,9 @@ mlua.workspace = true
 
 [dev-dependencies]
 kui.workspace = true
+# tests/conformance.rs drives the scene corpus, which kui-core keeps behind a
+# feature; on here only, so the published extension does not carry it.
+kui-core = { workspace = true, features = ["conformance"] }
 
 # See the note in crates/kui/Cargo.toml: examples live under examples/ at the
 # root, so cargo needs the path. A Lua extension has no window of its own, so

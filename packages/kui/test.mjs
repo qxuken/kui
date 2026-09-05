@@ -1726,7 +1726,7 @@ test('every corpus scene lowers the way kui-core does', (t) => {
   if (!existsSync(CONFORMANCE)) {
     const missing =
       `no reference report at ${CONFORMANCE} — generate it with ` +
-      '`cargo run -p kui-core --example conformance-dump -- target/conformance.txt`';
+      '`cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt`';
     // A skipped test is green, so the skip alone cannot say whether this
     // ever ran where it was supposed to. CI's `check` job — which generates
     // the report and is the one place all four adapters meet — sets

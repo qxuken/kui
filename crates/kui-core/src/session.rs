@@ -353,6 +353,7 @@ impl SharedAudio {
     }
 
     /// Whether any `audio` node is mounted.
+    #[cfg(feature = "conformance")]
     pub(crate) fn any_mounted(&self) -> bool {
         self.0.state().audio.any_mounted()
     }

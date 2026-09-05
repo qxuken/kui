@@ -268,6 +268,7 @@ impl AudioStore {
     /// Whether any `audio` node is mounted. The scene corpus's coverage
     /// derivation reads it: an `audio` element builds no tree node, so a
     /// mounted playback is the only trace one leaves.
+    #[cfg(feature = "conformance")]
     pub(crate) fn any_mounted(&self) -> bool {
         !self.mounted.is_empty()
     }

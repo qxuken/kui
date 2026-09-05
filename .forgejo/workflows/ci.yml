@@ -148,7 +148,12 @@ jobs:
       # (crates/kui-core/src/conformance.rs): kui-core asserts the scenes
       # against their checked-in expectations and that they still cover
       # every schema::CUSTOM and schema::ELEMENTS row; kui-lua rebuilds
-      # them from Lua tables and diffs report against report.
+      # them from Lua tables and diffs report against report. The corpus
+      # is behind kui-core's `conformance` feature (off in every shipped
+      # build); no flag is passed here on purpose, because kui-core and
+      # kui-lua both turn it on through a dev-dependency, so a plain
+      # `cargo test` cannot leave the corpus out - which is what keeps it
+      # from becoming skippable the way A6 found the Node half was.
       - name: Test
         run: cargo test --workspace
 
@@ -157,14 +162,17 @@ jobs:
       # The C and Node adapters below diff their own scenes against it.
       - name: Conformance reference report
         run: |
-          cargo run -p kui-core --example conformance-dump -- target/conformance.txt
+          cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt
           echo "KUI_CONFORMANCE=$(pwd)/target/conformance.txt" >> "$GITHUB_ENV"
 
       # build.sh first compiles the generated ABI asserts (mod abi_parity in
       # crates/kui-ffi/src/lib.rs) against include/kui.h - the header is
       # hand-written and otherwise unchecked against the repr(C) structs -
       # and then builds the example, which is the only thing that links
-      # against the real header.
+      # against the real header. The C adapter needs no `conformance`
+      # feature: it rebuilds the scenes through the public C API alone and
+      # reads the reference as a file, so libkui_ffi here is built exactly
+      # as it ships, with the corpus compiled out.
       - name: C example (header ABI check + FFI self-test + conformance)
         run: |
           ./examples/c/build.sh

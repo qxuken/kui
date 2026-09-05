@@ -12,6 +12,9 @@ pub mod atlas;
 pub mod audio;
 pub mod color;
 pub(crate) mod composite;
+/// The scene corpus every binding is checked against. Test infrastructure,
+/// behind the `conformance` feature so no shipped binary carries it.
+#[cfg(feature = "conformance")]
 pub mod conformance;
 pub mod cursor;
 pub mod depart;

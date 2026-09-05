@@ -1978,6 +1978,7 @@ impl Core {
     /// (`set_key_focus`). The scene corpus's coverage derivation reads it:
     /// `keyFocus` leaves no mark on the tree, and the focus it takes is
     /// indistinguishable from the focus a click takes.
+    #[cfg(feature = "conformance")]
     pub(crate) fn declared_focus(&self) -> &[Key] {
         &self.declared_focus
     }
@@ -2024,6 +2025,7 @@ impl Core {
 
     /// The windows declared while the current frame was built, for the
     /// scene corpus's coverage derivation: a declaration leaves no node.
+    #[cfg(feature = "conformance")]
     pub(crate) fn declared_windows(&self) -> &[WindowDecl] {
         &self.declared_windows
     }
