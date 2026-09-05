@@ -699,7 +699,8 @@ pub(crate) fn window_config_of(c: Option<&KuiWindowConfig>) -> WindowConfig {
     WindowConfig {
         // Every kind but the one that exists reads as it, so a host built
         // against a later header degrades to a window rather than to
-        // nothing.
+        // nothing. `kui_window_declare` raises `unknown-window-kind` on the
+        // way past, so the degradation is reported and not silent.
         kind: WindowKind::Normal,
         size,
         activates: c.activates != 0,

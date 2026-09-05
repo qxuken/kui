@@ -1193,6 +1193,17 @@ The work ADR 0004 (C7) decided but did not do. Each step ships alone, in order:
    the app keeps asking.
 4. **`WindowKind::Popup`.** Anchoring in screen coordinates, ownership,
    non-activating focus routing, and `dismiss` on the window.
+   **Open, and it is the first build item after alpha.6** — see "After
+   alpha.6" below. The release ships steps 1-3 and 5 and states the line
+   rather than leaving it to be found (R3): ADR 0004's Consequences carry a
+   dated amendment, the README's Status / next has a Windows group, and
+   nothing can name a kind that quietly opens a normal window — `WindowKind`
+   has only `Normal`, a JSX or Lua `windows` entry with a `kind` key is
+   refused, and C's `KuiWindowConfig.kind` warns `unknown-window-kind` and
+   opens a normal window. So the three cases the ADR opens with — a dropdown
+   taller than the window, a menu with nowhere in-window to go, a panel
+   beside the app — stay unbuildable until this step, and everything that
+   fits in the window is `FloatConfig::fit` plus a `modal` float meanwhile.
 5. **`SetSize` / `Focus`** — **done (2026-09-05)**, after step 3 and
    through its struct. `WindowCommand::SetSize { window, size }` and
    `Focus(WindowId)`, queued by `Core::set_window_size` /

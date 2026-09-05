@@ -75,8 +75,15 @@ pub extern "C" fn kui_take_window_command(ptr: *mut KuiCtx, out: *mut KuiWindowC
 pub extern "C" fn kui_window_declare(ptr: *mut KuiCtx, name: KuiStr, cfg: *const KuiWindowConfig) {
     guard((), || {
         if let Some(c) = unsafe { ctx(ptr) } {
-            let cfg = window_config_of(unsafe { cfg.as_ref() });
+            let raw = unsafe { cfg.as_ref() };
+            let cfg = window_config_of(raw);
             let name = kstr(name);
+            // A kind this build does not have degrades to `Normal` (see
+            // `window_config_of`) — but silently it would read as the popup
+            // having shipped, so the degradation says so.
+            if let Some(k) = raw.map(|c| c.kind).filter(|k| *k != KUI_WINDOW_KIND_NORMAL) {
+                c.core().warn(kui_core::diag::unknown_window_kind(&name, k));
+            }
             c.core().declare_window(&name, cfg);
         }
     });

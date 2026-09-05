@@ -17,14 +17,17 @@
 //! development builds only, a standalone C context starts with them off —
 //! through [`crate::Core::set_diagnostics`].
 //!
-//! Four codes do not come from the tree walk. A prop name no table claims
+//! Five codes do not come from the tree walk. A prop name no table claims
 //! ([`UNKNOWN_PROP`]) is gone by the time the frame is a tree, so the
 //! binding that dropped it raises it through [`crate::Core::warn`], behind
-//! the same gate and the same dedup. The two about declared windows
+//! the same gate and the same dedup — and a window kind no build has
+//! ([`UNKNOWN_WINDOW_KIND`]) reaches the same door from `kui-ffi`, since
+//! only C can name one. The two about declared windows
 //! ([`DUPLICATE_WINDOW_CONFIG`], [`WINDOW_DECLARED_WHILE_CLOSED`]) come
 //! from the core's diff of the declared set, which has no node to hang
 //! them on: they are keyed by the window's name, the way `unknown-prop` is
-//! keyed by element and prop. And a resource handle from another session
+//! keyed by element and prop, and the way the kind is keyed by the window
+//! and the number. And a resource handle from another session
 //! ([`FOREIGN_RESOURCE`]) is noticed wherever a handle resolves — under a
 //! shaping closure, in the emitter, in the driver's audio backend — so the
 //! session's registry keeps the hits and `take_warnings` raises them,
@@ -154,6 +157,15 @@ warnings! {
     /// event, stop declaring the name, and declare it again to reopen. See
     /// `docs/adr/0004-multi-window.md`, decision 6.
     pub const WINDOW_DECLARED_WHILE_CLOSED: &str = "window-declared-while-closed";
+    /// A window declared with a `KUI_WINDOW_KIND_*` this build does not
+    /// have. Only `KUI_WINDOW_KIND_NORMAL` exists — ADR 0004's step 4, the
+    /// borderless non-activating popup, is not in alpha.6 — and a C host is
+    /// the only binding that can name a kind at all, since `windows` in JSX
+    /// and Lua has no `kind` key. The window still opens, as a normal one,
+    /// so a host built against a later header degrades to a window rather
+    /// than to nothing; this line is what keeps that from being silent. See
+    /// `docs/adr/0004-multi-window.md`, decision 9.
+    pub const UNKNOWN_WINDOW_KIND: &str = "unknown-window-kind";
 
     /// A `FontId` / `ImageId` / `SoundId` registered in one `Session` and used
     /// through a core of another. Handles are unique to the process, so it
@@ -207,6 +219,25 @@ pub fn window_declared_while_closed(name: &str) -> Warning {
              declaration reopens a window only when it starts — handle the \
              `{{kind:\"window\", phase:\"closed\"}}` event, stop declaring `{name}`, and declare \
              it again to reopen"
+        ),
+    }
+}
+
+/// The [`UNKNOWN_WINDOW_KIND`] warning for one declaration. Keyed by the
+/// window name and the kind, the way the other two window codes are keyed by
+/// a name and not a node: a declaration is not a node, and one line per
+/// (window, kind) is the useful count however many frames repeat it.
+pub fn unknown_window_kind(name: &str, kind: u32) -> Warning {
+    Warning {
+        code: UNKNOWN_WINDOW_KIND,
+        key: Key::ROOT
+            .str(UNKNOWN_WINDOW_KIND)
+            .str(name)
+            .index(kind as u64),
+        message: format!(
+            "window `{name}` was declared with kind {kind}, which this build does not have; \
+             `KUI_WINDOW_KIND_NORMAL` (0) is the only one, so it opened as a normal window — \
+             the popup kind is ADR 0004 step 4 and is not in this release"
         ),
     }
 }

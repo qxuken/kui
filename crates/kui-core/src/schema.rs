@@ -1014,7 +1014,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`windows={[{ name, width?, height?, activates? }]}` (root box only; `windows: (model) => [...]` in the loop config)",
         lua: "`windows = { { name=, width=, height=, activates= } }` (root table)",
         c: "`kui_window_declare`",
-        doc: "Declares which windows exist this frame, by stable name (`docs/adr/0004-multi-window.md`). A window opens on the first frame any window's frame declares it — its config is read then and never again, since the user owns its geometry once it exists — and closes on the first frame none does. The driver drains the `Open` / `Close` that result, and the app sees `{kind:\"window\", phase, name, id}`. A window the user closed does not reopen while it is still declared: stop declaring it, then declare it again.",
+        doc: "Declares which windows exist this frame, by stable name (`docs/adr/0004-multi-window.md`). A window opens on the first frame any window's frame declares it — its config is read then and never again, since the user owns its geometry once it exists — and closes on the first frame none does. The driver drains the `Open` / `Close` that result, and the app sees `{kind:\"window\", phase, name, id}`. A window the user closed does not reopen while it is still declared: stop declaring it, then declare it again. There is no `kind` key: every window is a normal one, since the borderless non-activating popup is ADR 0004's step 4 and this release does not ship it — JSX and Lua refuse an entry that sets one, and C's `KuiWindowConfig.kind` warns `unknown-window-kind` and opens a normal window. A dropdown or a context menu meanwhile is an in-window float: `fit` plus a `modal` float.",
     },
     CustomProp {
         name: "tooltip",

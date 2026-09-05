@@ -91,8 +91,11 @@ pub struct FloatConfig {
     /// one to reach for first: a float costs one tree, one hit list and one
     /// draw call. What it cannot do is leave the window — a dropdown taller
     /// than the viewport, or a menu with nowhere in-window to go, gets
-    /// clamped rather than placed. Those want a popup window; see
-    /// `docs/adr/0004-multi-window.md`.
+    /// clamped rather than placed. Those want a popup window — which this
+    /// release does not have: it is `docs/adr/0004-multi-window.md`'s step
+    /// 4, and the ADR's Consequences say so. So `fit` plus a `modal` float
+    /// (`docs/adr/0003-modal-surfaces.md`) is not merely the first thing to
+    /// reach for today, it is the only thing.
     pub fit: bool,
 }
 

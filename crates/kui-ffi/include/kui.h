@@ -749,7 +749,11 @@ typedef struct KuiSpan {
 #define KUI_WINDOW_MAIN 0u
 
 /* What kind of surface a declared window is (KuiWindowConfig.kind). Only
- * the normal window exists until ADR 0004's step 4 adds the popup. */
+ * the normal window exists: the borderless, non-activating popup is ADR
+ * 0004's step 4, which this release does not ship, so there is no
+ * KUI_WINDOW_KIND_POPUP to name yet. Any other value opens a normal window
+ * - so a host built against a later header degrades to a window rather than
+ * to nothing - and raises the unknown-window-kind warning saying so. */
 #define KUI_WINDOW_KIND_NORMAL 0u
 
 /* [in] What a declared window is (kui_window_declare), and what a
@@ -757,7 +761,7 @@ typedef struct KuiSpan {
  * KUI_WINDOW_CONFIG_INIT - a normal, activating 640x480 window - or pass
  * NULL for exactly that. A zero width or height means the default. */
 typedef struct KuiWindowConfig {
-    uint32_t kind;      /* KUI_WINDOW_KIND_* */
+    uint32_t kind;      /* KUI_WINDOW_KIND_*; anything else warns and opens normal */
     float width, height; /* initial inner size, logical px */
     uint32_t activates; /* whether opening it takes OS focus */
 } KuiWindowConfig;
