@@ -41,6 +41,48 @@ deprecated below.
 Everything after this is the detail as each piece landed;
 `docs/BACKLOG.md` carries the reasoning and the alternatives declined.
 
+### Native verification
+
+The five prebuilds are cross-compiled on one Linux runner, and P8's
+`smoke-macos` / `smoke-windows` jobs are gated on repository variables no
+runner satisfies — so nothing had executed on a platform since alpha.5.
+This is what was run by hand before the tag (backlog R4), and what was not.
+
+**macOS 26.6.2 (arm64), rustc 1.98.0, 2026-09-05.** `cargo test --workspace`
+passes: **545 tests over 55 suites, 0 failed, 0 ignored**. The workspace
+still needs no display, no installed fonts and no GPU — P8's note recorded
+that on 2026-09-03 and 131 commits had not re-checked it. `scripts/ax-audit.swift`
+against `examples/rust/accessibility.rs` passes **88/88 checks across all
+nine sections** (roles and names, values, selection, disclosure, both
+editors' text, actions, keyboard focus, composites), so alpha.6's access
+work is confirmed against the real macOS AX API rather than against kui's
+own types: `modal` arrives as an `AXWindow`/`AXDialog`, a radio group as an
+`AXRadioGroup` and a menu as an `AXMenu` — each with the orientation its
+`dir` derived — and `set_selected` / `set_expanded` move the selection and
+the disclosure from the reader's side.
+
+Watched in a real window, not asserted headlessly: focus enters a modal on
+the node its `initial_focus` named (Cancel, not the first in tree order),
+eight Tabs never leave its two controls, and Escape dismisses it and hands
+focus back to the button that opened it; a secondary press opens a context
+menu where it landed, Escape closes it, and the press never arrives as a
+click (`examples/c/counter`); the pointer is an I-beam over an editor, a
+hand over a button and an arrow over a plain box. `modal_editor` switches
+NOR → INS on `i` and types into the buffer; `splitmux` splits and opens a
+tab from its ⌥ chords. Every host opened a window and drew: the Rust
+examples, `examples/c/counter`, `counter-window.mjs` on Node, `lua_panel`,
+and `c_panel` — the C plugin dlopened into a Rust host.
+
+**Not run, and so not claimed.** Nothing has executed on **Windows**: no
+machine or VM was reachable, `crates/kui/src/windows_nc.rs` — 292 lines of
+`WM_NCHITTEST` — has still never run since it was written, and neither has
+the win32-x64 prebuild. The **published prebuilds are untested as
+artifacts** on every platform: what ran here was built from source on the
+machine, not the cross-compiled binary the release ships. `SMOKE_MACOS`
+stays unset, because turning it on without a `macos`-labelled runner
+registered would leave the job queued on every push instead of reporting
+anything — the job is written and waits on a runner, not on an edit.
+
 ### Added
 
 - **The warning codes are one table** (backlog S2). `kui_core::diag::WARNINGS`
@@ -1423,6 +1465,21 @@ Everything after this is the detail as each piece landed;
   `--example lua_panel` are unchanged — because every example binary lands in
   one flat `target/debug/examples/`, where two targets called `panel` would
   collide.
+
+- **The Rust counter has a context menu** (backlog R4). `on_context_menu`
+  shipped with a core test and a corpus scene, and Node's and C's counters
+  both demo it — but no Rust example did, so the one binding most people
+  read first had no worked example of the feature. `examples/rust/counter.rs`
+  now declares it on the root and floats a `modal` menu at the press, the
+  same shape `counter.tsx` and `counter.c` use: the core reports
+  `{kind="contextmenu", x, y}` and opens nothing, the view puts the menu
+  there next frame, and `modal` does the rest — the buttons behind it stop
+  taking clicks, Tab is scoped to the menu, and Escape or a press outside
+  comes back as `{kind="dismiss"}`. `FloatConfig::fit` keeps it in the window
+  when the press lands near an edge. Driven natively through the OS rather
+  than asserted headlessly, which is also how the float-ordering bug in the
+  first draft was found: the menu was declared before `latency_hud`, and the
+  HUD — a float too — drew over it.
   `examples/README.md` is the map — every example, its `cargo run -p ...`
   line, and what it shows.
   No run command changed: cargo names a target by its `name`, not its path,

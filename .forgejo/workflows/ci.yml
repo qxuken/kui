@@ -259,6 +259,29 @@ jobs:
           npm run build
           node dist/counter.mjs
 
+      # examples/node depends on packages/kui by `file:` path, so its
+      # lockfile keeps a copy of that manifest version - and `npm ci` above
+      # neither validates nor rewrites it. A lockfile naming a version the
+      # package no longer has installs and typechecks silently, which is how
+      # this one sat at alpha.2 while packages/kui reached alpha.5. Compare
+      # the two files directly rather than regenerating and diffing: no npm
+      # run, so no dependence on the runner npm formatting the file the same
+      # way. scripts/set-version.sh writes both, so they diverge only when a
+      # manifest is edited by hand.
+      - name: The examples lockfile matches the linked package
+        run: |
+          node -e '
+            const want = require("./packages/kui/package.json").version;
+            const lock = "./examples/node/package-lock.json";
+            const got = require(lock).packages?.["../../packages/kui"]?.version;
+            if (got !== want) {
+              console.error(`${lock} records ${got}, packages/kui is ${want}` +
+                "\n(cd examples/node && npm install --package-lock-only)");
+              process.exit(1);
+            }
+            console.log(`examples lockfile matches packages/kui at ${want}`);
+          '
+
   # Native platform coverage: additive, opt-in and non-blocking. Neither
   # job appears in `publish`'s `needs` and neither can fail a run
   # (`continue-on-error`), so the cross-compiled release path above is
