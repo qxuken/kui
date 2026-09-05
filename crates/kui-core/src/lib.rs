@@ -63,7 +63,7 @@ pub use input::{
 };
 pub use key::Key;
 pub use keyframes::Keyframe;
-pub use resources::{FontId, ImageId, Resources, SoundId};
+pub use resources::{FontId, ImageId, Resources, SessionId, SoundId};
 pub use runtime::{Core, Extension};
 pub use scroll::ScrollGeometry;
 pub use session::{Session, SharedAudio, SharedResources};

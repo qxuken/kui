@@ -355,6 +355,12 @@ impl Core {
     /// each distinct (code, node) pair once. Windowed runners print them;
     /// headless tests assert on them.
     pub fn take_warnings(&mut self) -> Vec<Warning> {
+        // Handles of other sessions resolve where the registry can see
+        // them and this core cannot (shaping, the audio backend), so the
+        // registry keeps them and the core draining warnings reports them.
+        for f in self.session.state().resources.take_foreign() {
+            self.diag.raise(crate::diag::foreign_resource(&f));
+        }
         self.diag.take()
     }
 

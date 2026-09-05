@@ -387,10 +387,10 @@ impl AudioStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resources::Resources;
+    use crate::resources::{Resources, SessionId};
 
     fn sound() -> SoundId {
-        Resources::default().add_sound(vec![0; 4])
+        Resources::new(SessionId::next()).add_sound(vec![0; 4])
     }
 
     #[test]
@@ -492,7 +492,7 @@ mod tests {
     #[test]
     fn changing_src_restarts() {
         let mut a = AudioStore::default();
-        let mut r = Resources::default();
+        let mut r = Resources::new(SessionId::next());
         let (s1, s2) = (r.add_sound(vec![0; 4]), r.add_sound(vec![1; 4]));
         let k = Key::ROOT.str("fx");
         a.declare(k, OriginId::HOST, AudioSpec::new(s1));

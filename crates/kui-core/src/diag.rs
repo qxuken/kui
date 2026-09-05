@@ -17,20 +17,25 @@
 //! development builds only, a standalone C context starts with them off —
 //! through [`crate::Core::set_diagnostics`].
 //!
-//! Three codes do not come from the tree walk. A prop name no table claims
+//! Four codes do not come from the tree walk. A prop name no table claims
 //! ([`UNKNOWN_PROP`]) is gone by the time the frame is a tree, so the
 //! binding that dropped it raises it through [`crate::Core::warn`], behind
-//! the same gate and the same dedup. And the two about declared windows
+//! the same gate and the same dedup. The two about declared windows
 //! ([`DUPLICATE_WINDOW_CONFIG`], [`WINDOW_DECLARED_WHILE_CLOSED`]) come
 //! from the core's diff of the declared set, which has no node to hang
 //! them on: they are keyed by the window's name, the way `unknown-prop` is
-//! keyed by element and prop.
+//! keyed by element and prop. And a resource handle from another session
+//! ([`FOREIGN_RESOURCE`]) is noticed wherever a handle resolves — under a
+//! shaping closure, in the emitter, in the driver's audio backend — so the
+//! session's registry keeps the hits and `take_warnings` raises them,
+//! keyed by kind and handle.
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::access::{self, Role};
 use crate::edit::EditStore;
 use crate::key::Key;
+use crate::resources::Foreign;
 use crate::schema;
 use crate::spec::{Dir, Sizing};
 use crate::text::TextSystem;
@@ -149,6 +154,30 @@ warnings! {
     /// event, stop declaring the name, and declare it again to reopen. See
     /// `docs/adr/0004-multi-window.md`, decision 6.
     pub const WINDOW_DECLARED_WHILE_CLOSED: &str = "window-declared-while-closed";
+
+    /// A `FontId` / `ImageId` / `SoundId` registered in one `Session` and used
+    /// through a core of another. Handles are unique to the process, so it
+    /// cannot resolve to somebody else's resource; it behaves as a removed
+    /// handle does (draws nothing, shapes as sans-serif, plays nothing), which
+    /// from outside looks like the resource never registered. Two
+    /// `Core::new()`s are two sessions; windows that share resources are built
+    /// with `Core::new_in` against one `Session`.
+    pub const FOREIGN_RESOURCE: &str = "foreign-resource";
+}
+
+/// The [`FOREIGN_RESOURCE`] warning for one handle. Keyed by kind and
+/// handle: there is no node — an image node, a text style and a `play`
+/// call can all carry the same handle — and one line per handle is the
+/// useful count however many frames repeat it.
+pub fn foreign_resource(f: &Foreign) -> Warning {
+    Warning {
+        code: FOREIGN_RESOURCE,
+        key: Key::ROOT
+            .str(FOREIGN_RESOURCE)
+            .str(f.kind.name())
+            .index(f.raw),
+        message: f.message(),
+    }
 }
 
 /// The [`DUPLICATE_WINDOW_CONFIG`] warning for one window name. Keyed by

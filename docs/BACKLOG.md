@@ -2284,18 +2284,64 @@ sibling files — a split by concern (`focus.rs`, `scrolling.rs`, `windows.rs`,
 `emit.rs`) is zero behaviour change and the corpus is the regression guard
 that makes it safe to do in one sitting.
 
-### `~` S5 — Resource handles carry no session identity
+### `!` S5 — Resource handles are session-blind — **done (2026-09-05)**
 
-`ImageId` / `FontId` / `SoundId` cross every boundary as a raw slotmap
-`u64` (`resources.rs:26`). A handle minted in session A and resolved in a
-`Core` of session B looks up B's slot: a miss if the generations differ, a
-silent alias if they do not. ADR 0004 decision 2 named "handles that
-silently belong to the wrong slotmap" as the risk `Session` exists to
-remove; `Session::is` exists and is used in exactly one test. With every
-`Core::new()` being a private session, two headless cores sharing an image
-id is the ordinary way to hit it. Cheapest fix: a per-session tag checked in
-debug builds at every resource lookup, and a `foreign-resource` warning in
-release — the diagnostics channel is built for exactly this.
+Landed as a variant of option (b), because (b) as written could not fire.
+A side table *in the asked session*, keyed by handle, finds that session's
+own entry for a handle that also exists there — the alias case is exactly
+the one where both sessions hold the same bits — so it can only tell
+"minted here" from "never minted here", never "minted here" from "minted
+there with the same bits". What fires is making the bits differ: one
+process-wide minting `SlotMap` per kind (`resources::Mint`, behind a
+`Mutex`) hands out every `ImageId` / `FontId` / `SoundId` and records the
+owning `SessionId`; a session's `Resources` holds its entries in a
+`SparseSecondaryMap` over those keys, so it can only ever hold what it
+registered. A foreign handle is then a miss (the generation check is
+process-wide, so a handle removed in one session and reused in another
+misses too), and on the miss path the mint says whether the handle is live
+elsewhere (foreign — recorded on the registry, drained into a
+`foreign-resource` warning by the next `Core::take_warnings` of that
+session) or nowhere (removed — silent, as documented). Live lookups never
+lock; the mint is touched on registration, removal, the miss path and
+`Resources::drop`, which gives a dead session's slots back.
+
+Not (a): a tag folded into the `u64` needs a cap on the index or the
+version, and the version is the one that moves — an app re-registering an
+image every frame walks one slot's generation, so a 16-bit cap wraps in
+minutes and the stale-handle check becomes probabilistic. Not (c): an ABI
+bump for a guard that needs none. Not `debug_assert!`: the warning path
+has to be testable under `cargo test`, and the diagnostics channel already
+is the dev-build loudness (the runners print in debug builds). The warning
+fires in every build; a headless `Core` has diagnostics on.
+
+`Session::id` is public; `SessionId` is exported. The code is in
+`diag.rs` with the other three codes that do not come from the tree walk,
+hand-added to `index.d.ts`'s union until S2 generates it. Tests:
+`crates/kui-core/tests/session.rs` covers the alias (two sessions, two
+first images, the foreign one draws nothing and warns once, the owner
+draws and says nothing, the asked session's own handle is unaffected), a
+foreign font (shapes as sans, warns), a foreign sound (`play` warns,
+`remove_sound` through the wrong session touches nothing), the hit
+reported by whichever window of the session drains first, and the promise
+C11 step 1 made — one handle across two `Core`s in one session draws in
+both with no line. `resources.rs`'s unit tests pin process-unique minting,
+the miss/foreign/removed distinction, and slots returning on drop.
+
+The original finding:
+
+`FontId`, `ImageId` and `SoundId` are slotmap keys crossing every boundary
+as raw `u64` (`crates/kui-core/src/resources.rs`, `to_ffi` / `from_ffi`).
+Since C11 step 1, resources live in a `Session` and every `Core` is
+constructed against one; `Core::new()` makes a private session. A handle
+minted in session A and passed to a `Core` of session B was looked up in
+B's slotmap: a miss if the slot's generation differed (draws nothing,
+shapes as sans — the documented behaviour for a *removed* handle), a
+**silent alias** if it matched. Nothing detected either. `Session::is`
+existed and was used only in one test. ADR 0004 decision 2's rationale for
+`Session` includes "`ImageId` handles that silently belong to the wrong
+slotmap if it gets it wrong"; the mechanism that was meant to remove the
+risk had only moved where it lived. Two headless `Core::new()`s in one
+test sharing an image id is the ordinary way to hit it.
 
 ### `.` S6 — Node's headless `Ctx` cannot read the derived cursor
 

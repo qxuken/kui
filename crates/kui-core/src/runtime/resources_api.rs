@@ -174,10 +174,11 @@ impl Core {
         opts: crate::audio::PlayOptions,
     ) -> crate::audio::PlaybackId {
         let origin = self.origin;
-        self.session
-            .state()
-            .audio
-            .play(origin, Key::ROOT, sound, opts)
+        let sess = &mut *self.session.state();
+        // The driver's backend resolves the handle when it plays; a
+        // headless app has no driver, so a foreign handle is noticed here.
+        let _ = sess.resources.sound(sound);
+        sess.audio.play(origin, Key::ROOT, sound, opts)
     }
 
     /// Stops a playback, fading over `fade_ms` (0 = at once). A stopped
@@ -219,7 +220,9 @@ impl Core {
         }
         let key = self.auto_key();
         let origin = self.origin;
-        self.session.state().audio.declare(key, origin, spec);
+        let sess = &mut *self.session.state();
+        let _ = sess.resources.sound(spec.src);
+        sess.audio.declare(key, origin, spec);
         key
     }
 
@@ -230,7 +233,9 @@ impl Core {
         }
         let key = self.child_key(label);
         let origin = self.origin;
-        self.session.state().audio.declare(key, origin, spec);
+        let sess = &mut *self.session.state();
+        let _ = sess.resources.sound(spec.src);
+        sess.audio.declare(key, origin, spec);
         key
     }
 

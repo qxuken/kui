@@ -165,7 +165,7 @@ impl Core {
             }
             NodeContent::Image(id) => {
                 let sess = self.session.state();
-                if let Some(entry) = sess.resources.images.get(id)
+                if let Some(entry) = sess.resources.image(id)
                     && let Some(slot) =
                         self.atlas
                             .get_or_insert_image(id, entry.width, entry.height, &entry.rgba)
@@ -688,7 +688,7 @@ impl Core {
                 }
                 GhostContent::Image(id) => {
                     let sess = self.session.state();
-                    if let Some(entry) = sess.resources.images.get(id)
+                    if let Some(entry) = sess.resources.image(id)
                         && let Some(slot) = self.atlas.get_or_insert_image(
                             id,
                             entry.width,
@@ -908,8 +908,7 @@ impl TextMeasure for Measure<'_> {
 
     fn image_size(&mut self, id: crate::resources::ImageId) -> Size {
         self.resources
-            .images
-            .get(id)
+            .image(id)
             .map_or(Size::ZERO, |e| Size::new(e.width as f32, e.height as f32))
     }
 }

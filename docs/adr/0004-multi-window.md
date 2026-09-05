@@ -49,6 +49,16 @@ stay per window, because they are one unit with the window's texture and
 because `Core::output` lends the atlas out as `&mut`. Hoisting them is a
 source break and belongs with the breaks step 3 already carries.
 
+**Amended 2026-09-05** (backlog S5): the "handles that silently belong to
+the wrong slotmap" risk the rejected alternative names was not removed by
+the `Session`, only moved — two sessions in one process each minted their
+own keys from zero, so a handle from one resolved in the other to whatever
+it registered first. Handles are now unique to the process (one minting
+slotmap per kind, recording the owning `SessionId`; a session's registry is
+secondary to it), so a handle used in the wrong session is a miss that
+behaves as a removed handle and raises `foreign-resource`. No ABI change:
+the `u64` form is untouched.
+
 ## Context
 
 - The assumption is written down in four places and true in all of them:
