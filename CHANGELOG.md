@@ -418,11 +418,15 @@ upgrades remove code from the apps on it is doing the job.
   the trait is `name`/`view`/`on_event` over a borrowed frame, and it had
   exactly one implementation, which made it look like a Lua feature rather
   than the binding contract.
-  **A plugin is six C functions, five of them optional.** `kui_ext_view`
+  **A plugin is six C functions, two of them required.** `kui_ext_view`
   gets a `KuiCtx *` borrowing the host's frame and calls the ordinary
   `kui_open` / `kui_text` / `kui_close` builders on it; `kui_ext_init` /
   `kui_ext_free` own its state, `kui_ext_name` names it in logs, and
-  `kui_ext_abi` is the version check a C host makes for itself. The runner
+  `kui_ext_abi` is the version check a C host makes for itself - required,
+  not optional, because a plugin without it is most likely one built
+  against a header from before the symbol existed, which is the mismatch
+  the check is for; the host refuses its absence the way it refuses a
+  wrong number (backlog S1). The runner
   tags everything the plugin opens with the origin it assigned, which is
   the whole of the isolation: the plugin's clicks reach `kui_ext_on_event`
   and never `App::on_event`, and the host's reach the host.

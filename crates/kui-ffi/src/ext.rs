@@ -9,16 +9,24 @@
 //!
 //! # The plugin's side
 //!
-//! Six symbols, all but `kui_ext_view` optional (see `include/kui.h`):
+//! Six symbols, two of them required - `kui_ext_abi` and `kui_ext_view` -
+//! and four optional (see `include/kui.h`):
 //!
 //! ```c
-//! uint32_t    kui_ext_abi(void);                        /* KUI_ABI_VERSION */
+//! uint32_t    kui_ext_abi(void);                        /* required: KUI_ABI_VERSION */
 //! const char *kui_ext_name(void);                       /* else: file stem */
 //! void       *kui_ext_init(void);                       /* else: NULL      */
 //! void        kui_ext_view(void *user, KuiCtx *ctx);    /* required        */
 //! void        kui_ext_on_event(void *user, const KuiEvent *ev);
 //! void        kui_ext_free(void *user);
 //! ```
+//!
+//! `kui_ext_abi` is required rather than merely checked when present because
+//! the plugin most likely to lack it is one built against a header from
+//! before ADR 0006 introduced it - which is precisely the mismatched plugin
+//! the check exists to refuse, in the direction (older plugin, newer host)
+//! that corrupts memory rather than merely missing a feature. Absence is
+//! refused the way a mismatch is, before anything else is looked up.
 //!
 //! `kui_ext_view` receives a context borrowing the host's frame and calls the
 //! ordinary `kui_open`/`kui_text`/`kui_close` builders on it. Everything it
@@ -71,8 +79,8 @@ pub struct CExtension {
 impl CExtension {
     /// Loads a plugin and runs its `kui_ext_init`.
     ///
-    /// Fails if the library will not load, if it declares an ABI this build
-    /// does not implement, or if it has no `kui_ext_view`.
+    /// Fails if the library will not load, if it declares no ABI or one this
+    /// build does not implement, or if it has no `kui_ext_view`.
     ///
     /// # Safety
     /// The library's entry points are called on the host's frame and its
@@ -90,7 +98,9 @@ impl CExtension {
 
         // A plugin built against a header this build has outgrown reads the
         // structs it writes at the wrong offsets. Same check `include/kui.h`
-        // asks a C host to make, made for it.
+        // asks a C host to make, made for it - and a plugin with no
+        // `kui_ext_abi` at all is that case, not a lenient one: the header
+        // that predates the symbol is a header this build has outgrown.
         let mut ext = Self {
             name: String::new(),
             handle,
@@ -100,14 +110,18 @@ impl CExtension {
             on_event: None,
             free: None,
         };
-        if let Some(abi) = unsafe { ext.sym::<extern "C" fn() -> u32>("kui_ext_abi") } {
-            let claimed = abi();
-            if claimed != KUI_ABI_VERSION {
-                return Err(format!(
-                    "{}: plugin is ABI {claimed}, this build is {KUI_ABI_VERSION}",
-                    path.display()
-                ));
-            }
+        let Some(abi) = (unsafe { ext.sym::<extern "C" fn() -> u32>("kui_ext_abi") }) else {
+            return Err(format!(
+                "{}: plugin declares no ABI; this build is {KUI_ABI_VERSION}",
+                path.display()
+            ));
+        };
+        let claimed = abi();
+        if claimed != KUI_ABI_VERSION {
+            return Err(format!(
+                "{}: plugin is ABI {claimed}, this build is {KUI_ABI_VERSION}",
+                path.display()
+            ));
         }
 
         let Some(view) = (unsafe { ext.sym::<ViewFn>("kui_ext_view") }) else {
@@ -315,5 +329,48 @@ impl Drop for CExtension {
         }
         // After `free`, so the plugin's own code is still mapped when it runs.
         unsafe { sys::unload(self.handle) };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A shared library that loads on every target this crate builds for
+    /// and defines no `kui_ext_*` symbol at all: the platform's own C
+    /// runtime. That is the shape of a plugin built against a header from
+    /// before ADR 0006 added `kui_ext_abi` - the case the check exists to
+    /// refuse - reached without a C compiler in the test. The real mutant,
+    /// `examples/c/panel.c` with its `kui_ext_abi` line deleted, is built by
+    /// `examples/c/build.sh` and driven through `c_panel --headless` in CI.
+    fn a_library_with_no_kui_symbols() -> &'static str {
+        if cfg!(target_vendor = "apple") {
+            // Not a file on disk since the dyld shared cache, but dlopen by
+            // this path resolves it from the cache.
+            "/usr/lib/libSystem.B.dylib"
+        } else if cfg!(windows) {
+            "kernel32.dll"
+        } else if cfg!(target_env = "musl") {
+            "libc.so"
+        } else {
+            "libc.so.6"
+        }
+    }
+
+    #[test]
+    fn a_plugin_without_kui_ext_abi_is_refused_before_anything_else() {
+        let path = a_library_with_no_kui_symbols();
+        // SAFETY: the library is the process's own C runtime, already loaded.
+        let err = match unsafe { CExtension::open(path) } {
+            Ok(ext) => panic!("{path} loaded as a plugin named {:?}", ext.name()),
+            Err(err) => err,
+        };
+        // The whole message, not a substring: a library with no kui symbols
+        // also has no `kui_ext_view`, and the ABI refusal has to be the one
+        // that wins - it is the check the header's own text promises.
+        assert_eq!(
+            err,
+            format!("{path}: plugin declares no ABI; this build is {KUI_ABI_VERSION}")
+        );
     }
 }

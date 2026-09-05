@@ -2073,6 +2073,135 @@ shape the closed entries already use — original finding kept, outcome on top.
 
 ---
 
+## From the fresh sweep of the grown surface (2026-09-05)
+
+The rounds added ~20k lines the first review never saw. This pass asked the
+same question of them that found the original defects — what is hand-written
+without enforcement, and what state does the core keep that a binding cannot
+reach — plus a new one for the new mechanisms: does each guard refuse what it
+exists to refuse? State at the sweep: 512 Rust tests, 55 Node, 14 scenes in
+four adapters, `KUI_ABI_VERSION` 6, fmt and clippy clean.
+
+### `!` S1 — A C plugin that omits `kui_ext_abi` loads unchecked — **done (2026-09-05)**
+
+`kui_ext_abi` is required. `CExtension::open` now refuses a plugin without
+the symbol — `{path}: plugin declares no ABI; this build is {KUI_ABI_VERSION}`,
+the same shape as the mismatch error — and does so before `kui_ext_view` is
+looked up, so a pre-0006 plugin is turned away as the ABI mismatch it is
+rather than as anything else. The six-function list in `ext.rs`'s module
+doc and in `include/kui.h` now says which two are required (`kui_ext_abi`,
+`kui_ext_view`) and which four are optional; the header's `kui_ext_abi` row
+says why absence cannot mean unchecked. The alpha.6 CHANGELOG entry, which
+had said "five of them optional", is corrected in place.
+
+Two checks pin it. A unit test in `ext.rs` opens the platform's own C
+runtime (`libSystem.B.dylib` / `libc.so.6` / `kernel32.dll`) as a plugin —
+a library that loads everywhere and defines no `kui_ext_*` symbol at all,
+so no compiler is needed in the test — and asserts the whole refusal
+message. And the mutation recipe from the finding is automated:
+`examples/c/build.sh` builds `target/panel-noabi.so` from `panel.c` with
+the one `kui_ext_abi` line deleted by `sed` (and fails if the deletion
+missed), and a new CI step after "C extension (dlopen + origin routing)"
+runs `c_panel --headless target/panel-noabi.so` and requires exit 1 plus the
+message. Verified locally: the un-mutated plugin still prints `ok: clicks
+routed by origin, both ways`; the mutant is refused.
+
+**Lua has no analogous hole**, confirmed. `kui_lua::LuaExtension` is a
+`Core` wrapper over `mlua::Lua::new()`: it `dlopen`s nothing, and no
+`repr(C)` struct crosses to the script — the prelude hands it tables and
+functions, and layout is settled by the Rust build that contains both
+sides. There is no version to check because there is nothing that can be
+compiled against an older header.
+
+The original finding:
+
+`crates/kui-ffi/src/ext.rs:103`: the ABI check runs only `if let Some(abi) =
+sym("kui_ext_abi")`. A plugin without the symbol skips it. **Verified by
+mutation**: `examples/c/panel.c` with the `kui_ext_abi` line deleted, built
+with the same `cc` line as `build.sh`, loads via `c_panel --headless` and
+prints `ok: clicks routed by origin, both ways`. No warning.
+
+This inverts ADR 0006. The plugin most likely to lack the symbol is one built
+against a header from before 0006 — which is precisely the mismatched plugin
+the check exists to refuse, and the direction (older plugin, newer host) that
+corrupts memory rather than merely missing a feature. The header's own six
+functions list calls `kui_ext_abi` one of the five optional ones; it should
+be the one required one, or absence should refuse with the same message a
+mismatch gives.
+
+### `!` S2 — Warning codes are hand-listed in three places and have drifted
+
+`diag.rs` has 13 codes. The TS `code` union in `packages/kui/index.d.ts`
+(the hand-written half, not the generated one) has 11 — `exit-budget` and
+`focusable-inside-item` are missing, so a typed `switch (w.code)` cannot name
+two live warnings. The README names 3. `docs/props.md` has no warnings
+section at all, though it is the cross-binding reference for everything
+else. Each `pub const` in `diag.rs` already carries the doc comment a table
+needs; the fix is the mechanism props use — export the codes through
+`protocol()`, generate the union and a `## Warnings` table in `gen-types.mjs`,
+and add the union to the CI `git diff --exit-code` list.
+
+### `~` S3 — Two thousand lines of test oracle ship in the library
+
+`crates/kui-core/src/conformance.rs` is 2040 lines — the largest module after
+`runtime.rs` — and `lib.rs:15` is `pub mod conformance;`, unconditional.
+`kui-core` has no `[features]` table. Every binary linking kui-core carries
+the scene builders, the report formatter, `observe`, and the fixture bytes.
+It cannot be `#[cfg(test)]`: `examples/rust/conformance-dump.rs` and the C
+adapter in `examples/c/counter.c` (through `libkui_ffi`) use it. The shape is
+a `conformance` cargo feature, default off, enabled by the dump example and
+kui-lua's dev-dependencies; the hard case is C, whose adapter lives in the
+shipped `cdylib` — either `build.sh` builds the example against a
+feature-enabled `libkui_ffi`, or the C adapter moves into a test-only crate.
+
+### `.` S4 — `runtime.rs` and `kui-ffi/lib.rs` are the god files now
+
+`runtime.rs`: 3759 lines (was 2137), **92 public methods on `Core`**, two
+`impl` blocks in total, `finish_frame` 294 lines. It owns input, focus, the
+modal scope, scroll, the declared window set, departures, cursor, layout
+events, IME, fonts, audio and the access tree. `kui-ffi/src/lib.rs`: 5468
+lines, 107 `extern "C"` functions, 1952 of them tests; `ext.rs` was the first
+split and should not be the last. Rust allows `impl Core` blocks across
+sibling files — a split by concern (`focus.rs`, `scrolling.rs`, `windows.rs`,
+`emit.rs`) is zero behaviour change and the corpus is the regression guard
+that makes it safe to do in one sitting.
+
+### `~` S5 — Resource handles carry no session identity
+
+`ImageId` / `FontId` / `SoundId` cross every boundary as a raw slotmap
+`u64` (`resources.rs:26`). A handle minted in session A and resolved in a
+`Core` of session B looks up B's slot: a miss if the generations differ, a
+silent alias if they do not. ADR 0004 decision 2 named "handles that
+silently belong to the wrong slotmap" as the risk `Session` exists to
+remove; `Session::is` exists and is used in exactly one test. With every
+`Core::new()` being a private session, two headless cores sharing an image
+id is the ordinary way to hit it. Cheapest fix: a per-session tag checked in
+debug builds at every resource lookup, and a `foreign-resource` warning in
+release — the diagnostics channel is built for exactly this.
+
+### `.` S6 — Node's headless `Ctx` cannot read the derived cursor
+
+`Core::cursor_shape` and `kui_cursor_shape` exist; `Ctx` has no
+`cursorShape()`. A JS test cannot assert that an editor shows the I-beam,
+which was C3's whole deliverable. One line in `core_methods!`.
+
+### `.` S7 — `Env` readback is the next hand-written composite
+
+`Env` / `WindowEnv` is restated by hand in three bindings — Lua's `env_table`
+(which flattens `native_controls` to `controls_w` / `controls_h` and carries
+`id`), Node's `env()` JSON, C's struct. Nothing pins the field sets or the
+flattening against each other or against `docs/props.md`, which does not
+document `env` at all. Not verified defective; verified unguarded, which is
+the state P1 and P2 were in before they were defects.
+
+### `.` S8 — ABI bumps per merge, and the header knows it
+
+`KUI_ABI_VERSION` went 3 → 6 in one day, each bump documented in the header
+with its reason. Correct under ADR 0006's rule, and since nothing has shipped
+since alpha.5 a host sees one jump. But the header's history now reads as a
+per-merge log, and ADR 0006 says nothing about cadence. One sentence there —
+bumps coalesce within a release window, or they do not — settles it. No chip.
+
 ## Suggested sequence
 
 Rewritten 2026-09-05. The original six-step order is history now: every
