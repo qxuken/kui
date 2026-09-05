@@ -104,7 +104,7 @@ pub extern "C" fn kui_set_window_size(ptr: *mut KuiCtx, window: u32, w: f32, h: 
 /// Asks the driver to give `window` keyboard focus; queued and drained the
 /// same way, as `KUI_CMD_FOCUS`. Advisory, like every focus request an app
 /// makes of a window manager: whether it was granted shows up through
-/// `kui_env_set_focused` on the frames that follow, not as a reply here.
+/// `kui_env_set`'s `focused` on the frames that follow, not as a reply here.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_focus_window(ptr: *mut KuiCtx, window: u32) {
     guard((), || {

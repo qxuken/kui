@@ -885,6 +885,21 @@ void kui_input_modifiers(KuiCtx *ctx, uint32_t mods);
 bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
 
 /* -- Host environment ---------------------------------------------------- */
+/* These two setters are the whole of C's `env`: the fields of kui_core's
+ * Env and WindowEnv, one argument each, in the order docs/props.md's Env
+ * table lists them (schema::ENV_FIELDS, the one statement of the shape
+ * every binding's reading is pinned to). A C host is the frame driver, so
+ * it writes the facts and has no reading of them back - Rust's ui.env(),
+ * Lua's view(env) and Node's ctx.env() are the readers - except the window
+ * id, which kui_ctx_window answers. The two facts Lua and Node derive or
+ * carry beside these (the frame budget, the viewport) are the host's own
+ * numbers here. kui-ffi's tests hold these prototypes to the table:
+ *   kui_env_set         refresh_hz, focused          (Env)
+ *   kui_env_set_window  window, custom_chrome, maximized, fullscreen,
+ *                       controls_w, controls_h       (WindowEnv; the
+ *                       controls rect flattened to its extent at the
+ *                       window origin, the shape Lua also reads)
+ */
 /* Host facts for views to read (refresh_hz <= 0 = unknown). Survives across
  * frames; set on change or every frame, either works. */
 void kui_env_set(KuiCtx *ctx, float refresh_hz, bool focused);
@@ -948,7 +963,7 @@ void kui_window_declare(KuiCtx *ctx, KuiStr name, const KuiWindowConfig *cfg);
  * host that never drains ignores them. window is the id events carry
  * (KuiEvent.window), KUI_WINDOW_MAIN for the launcher's. The size the window
  * actually becomes arrives as the ordinary resize event, and whether focus
- * was granted through kui_env_set_focused - neither is a reply here. */
+ * was granted through kui_env_set's focused - neither is a reply here. */
 void kui_set_window_size(KuiCtx *ctx, uint32_t window, float w, float h);
 void kui_focus_window(KuiCtx *ctx, uint32_t window);
 /* Which window this context draws (what kui_env_set_window set;

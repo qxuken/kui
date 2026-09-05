@@ -34,6 +34,25 @@ upgrades remove code from the apps on it is doing the job.
   because the registry keeps the hits and the core reports them. The
   `u64` form of a handle and the C ABI are untouched; a removed handle is
   as silent as it always was.
+- **The `env` reading is written down once, and every binding is pinned to
+  it** (backlog S7). `schema::ENV_FIELDS` is the one statement of the host
+  facts a view reads — `Env`, `WindowEnv`, the derived frame budget and the
+  frame facts beside them — under each binding's spelling, and
+  `docs/props.md` gained an *Env* section generated from it. The
+  restatements are held to the table rather than trusted: `schema`'s tests
+  hold the rows to the two structs (an exhaustive pattern, so a new field
+  fails to compile until it has a row), kui-lua asserts `view(env)`'s keys
+  against the Lua column, test.mjs asserts `ctx.env()`'s against the Node
+  column recursively, and kui-ffi holds the header's `kui_env_set` /
+  `kui_env_set_window` prototypes to the C column parameter for parameter.
+  The corpus's Lua and Node adapters now also assert the env readback on
+  every scene, so a frame under custom chrome reports `custom_chrome = true`
+  the same way everywhere. Two divergences are recorded as deliberate rather
+  than fixed: Node's `nativeControls` stays the `Rect` the core holds where
+  Lua and C carry a width/height at the window origin, and
+  `frame_budget_ms` stays in the reading, derived, in both bindings that
+  have one. No shape changed. The C header's doc that pointed at a
+  `kui_env_set_focused` that never existed now names `kui_env_set`.
 - **An app can ask for a window's size and focus** (backlog C11 step 5, ADR
   0004 decision 5). `WindowCommand` gained `SetSize { window, size }` and
   `Focus(WindowId)`, queued by `Core::set_window_size` / `Core::focus_window`

@@ -296,8 +296,8 @@ fn table<T>(items: &[T], fields: &[Column<T>]) -> Json {
     )
 }
 
-/// The element, event, resource and warning tables as data, for the docs
-/// generator (and, for warnings, the `WarningCode` union in index.d.ts).
+/// The element, event, resource, warning and env tables as data, for the
+/// docs generator (and, for warnings, the `WarningCode` union in index.d.ts).
 pub fn protocol_tables() -> Vec<(&'static str, Json)> {
     vec![
         ("elements", {
@@ -352,6 +352,35 @@ pub fn protocol_tables() -> Vec<(&'static str, Json)> {
             table(
                 WARNINGS,
                 &[("code", |w: &WarningDef| w.code), ("doc", |w| w.doc)],
+            ),
+        ),
+        // The env reading, with the per-binding key paths as arrays: the
+        // docs generator lays them out, and test.mjs reads `node` back to
+        // check `ctx.env()` against it key for key.
+        (
+            "env",
+            Json::Array(
+                ENV_FIELDS
+                    .iter()
+                    .map(|f| {
+                        let keys = |ks: &[&str]| {
+                            Json::Array(ks.iter().map(|k| Json::String((*k).into())).collect())
+                        };
+                        Json::Object(
+                            [
+                                ("name", Json::String(f.name.into())),
+                                ("from", Json::String(f.from.into())),
+                                ("node", keys(f.node)),
+                                ("lua", keys(f.lua)),
+                                ("c", Json::String(f.c.into())),
+                                ("doc", Json::String(f.doc.into())),
+                            ]
+                            .into_iter()
+                            .map(|(k, v)| (k.to_string(), v))
+                            .collect(),
+                        )
+                    })
+                    .collect(),
             ),
         ),
     ]

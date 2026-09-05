@@ -226,7 +226,10 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         .to_string(),
         other => panic!("no Lua scene for {other:?} — every corpus scene needs one"),
     };
-    format!("function view(env)\n{body}\nend\n")
+    // Every scene also records what the script saw in `env.window`, so the
+    // test can assert the readback: the facts a scene is driven under are
+    // the facts its view read, through the surface a script has.
+    format!("function view(env)\n  seen_window = env.window\n{body}\nend\n")
 }
 
 #[test]
@@ -256,6 +259,35 @@ fn every_scene_lowers_identically_from_lua() {
         assert_eq!(
             actual, expected,
             "scene {:?} lowers differently from Lua than from Rust",
+            scene.name
+        );
+
+        // The readback. `chrome` and `chrome-inset` are the scenes this is
+        // about — a frame under custom chrome reports `custom_chrome = true`
+        // the same way in every binding — and the other scenes pin the
+        // defaults for free. The controls rect is Lua's flattened pair
+        // (`schema::ENV_FIELDS` says so), absent when there is none.
+        let seen: mlua::Table = ext.lua().globals().get("seen_window").unwrap();
+        let r = scene.env.native_controls;
+        let got = (
+            seen.get::<u32>("id").unwrap(),
+            seen.get::<bool>("custom_chrome").unwrap(),
+            seen.get::<bool>("maximized").unwrap(),
+            seen.get::<bool>("fullscreen").unwrap(),
+            seen.get::<Option<f32>>("controls_w").unwrap(),
+            seen.get::<Option<f32>>("controls_h").unwrap(),
+        );
+        let declared = (
+            scene.env.id.0,
+            scene.env.custom_chrome,
+            scene.env.maximized,
+            scene.env.fullscreen,
+            r.map(|r| r.x + r.w),
+            r.map(|r| r.y + r.h),
+        );
+        assert_eq!(
+            got, declared,
+            "scene {:?}: the script read a different env.window than the scene declared",
             scene.name
         );
     }

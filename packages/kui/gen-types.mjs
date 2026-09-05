@@ -2,7 +2,8 @@
 //   - jsx-runtime.d.ts   the TS prop types, from the prop schema
 //                        (`kui_core::schema::PROPS`, via the addon's protocol())
 //   - ../../docs/props.md the cross-binding reference (JSX / Lua / C names),
-//                        with the warning codes (`kui_core::diag::WARNINGS`)
+//                        with the env reading and the warning codes
+//                        (`kui_core::diag::WARNINGS`)
 //   - index.d.ts         the `WarningCode` union, from the same table, and
 //                        the addon's own surface, from the `#[napi]`
 //                        attributes in crates/kui-node/src/lib.rs
@@ -13,7 +14,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const native = createRequire(import.meta.url)('./native.cjs');
-const { prop, elements, events, resources, warnings } = native.protocol();
+const { prop, elements, events, resources, warnings, env } = native.protocol();
 
 const TS_BY_KIND = {
   f32: 'number',
@@ -59,8 +60,8 @@ console.log(`jsx-runtime.d.ts: ${spec.length} spec + ${style.length} style props
 
 // ----------------------------------------------------------------- docs --
 // Every table below comes from the core (`PROPS`, `CUSTOM`, `ELEMENTS`,
-// `EVENTS`, `RESOURCES`, `C_FIELDS` in schema.rs; `WARNINGS` in diag.rs)
-// through protocol(); this file only lays them out.
+// `EVENTS`, `RESOURCES`, `ENV_FIELDS`, `C_FIELDS` in schema.rs; `WARNINGS`
+// in diag.rs) through protocol(); this file only lays them out.
 
 const TYPE_DOC = {
   f32: 'number',
@@ -82,6 +83,9 @@ const typeOf = (def) => (def.kind === 'enum' ? def.values.map((v) => `\`${v}\``)
 const tableOf = (header, rows) =>
   [`| ${header.join(' | ')} |`, `|${header.map(() => '---').join('|')}|`, ...rows.map((r) => `| ${r.map(cell).join(' | ')} |`)].join('\n');
 
+// A binding's key path(s) for one env fact; none is a dash, and the row's
+// description says where that binding carries it instead.
+const keysCell = (keys) => (keys.length ? keys.map((k) => `\`${k}\``).join(' / ') : '—');
 const propRow = ([name, def]) => [`\`${name}\``, `\`${def.lua}\``, def.c, typeOf(def), def.doc];
 const custom = Object.entries(prop).filter(([, d]) => d.kind === 'custom');
 
@@ -142,11 +146,31 @@ Lua runner prints them. \`code\` is stable — match on it; the message is for
 people. In Node the codes are the \`WarningCode\` union.
 
 ${tableOf(['code', 'meaning'], warnings.map((w) => [`\`${w.code}\``, oneLine(w.doc)]))}
+## Env
+
+The host facts a view reads: \`ui.env()\` in Rust, \`view(env)\` in Lua,
+\`ctx.env()\` / \`win.env()\` in Node. C is the host, so it *writes* them
+(\`kui_env_set\`, \`kui_env_set_window\`) and has no reading; its column
+names the argument. A real window's runner refreshes every fact each frame;
+headless, \`ctx.setEnv\` in Node and the two C setters are the writers, and
+the conformance corpus drives its two chrome scenes through them. The
+\`from\` column says which Rust struct holds the fact, or that it is derived
+or the frame's rather than \`Env\`'s. Two divergences are deliberate:
+\`native_controls\` is the \`Rect\` the core holds in Node and a width and
+height at the window origin in Lua and C (the shape C's two numbers can
+express, and where the macOS traffic lights sit), and \`frame_budget_ms\` is
+derived from \`refresh_hz\` but part of the reading everywhere, so no view
+restates the 120 Hz fallback.
+
+${tableOf(
+  ['field', 'from', 'Node', 'Lua', 'C', 'description'],
+  env.map((f) => [`\`${f.name}\``, f.from, keysCell(f.node), keysCell(f.lua), f.c, f.doc]),
+)}
 `;
 
 writeFileSync(new URL('../../docs/props.md', import.meta.url), md);
 console.log(
-  `docs/props.md: ${spec.length + style.length} schema rows, ${custom.length} composites, ${elements.length} elements, ${events.length} events, ${warnings.length} warnings`,
+  `docs/props.md: ${spec.length + style.length} schema rows, ${custom.length} composites, ${elements.length} elements, ${events.length} events, ${warnings.length} warnings, ${env.length} env fields`,
 );
 
 // ------------------------------------------------------ the warning codes --

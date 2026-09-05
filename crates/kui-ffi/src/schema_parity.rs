@@ -81,6 +81,50 @@ fn every_role_round_trips_through_the_c_code() {
     assert_eq!(role_of_code(kui_core::Role::ALL.len() as u32 + 1), None);
 }
 
+/// C's `env` is two setters and no reading, so the header's prototypes
+/// are the whole of what a host sees of the shape. This holds them to
+/// `schema::ENV_FIELDS`'s C column: each setter's parameter list, in
+/// order, is exactly the arguments the rows name for it, and every
+/// stored fact (a row from `Env` or `WindowEnv`) is written by one of
+/// the two. An argument added to a prototype, or a field added to the
+/// structs and not to a setter, fails here by name.
+#[test]
+fn the_env_setters_take_exactly_the_documented_fields() {
+    use kui_core::schema::ENV_FIELDS;
+    let header = include_str!("../include/kui.h");
+    let params = |name: &str| -> Vec<String> {
+        let decl = format!("void {name}(KuiCtx *ctx,");
+        let start = header
+            .find(&decl)
+            .unwrap_or_else(|| panic!("{name}'s prototype is not in kui.h"));
+        let rest = &header[start + decl.len()..];
+        rest[..rest.find(");").unwrap()]
+            .split(',')
+            .map(|a| a.split_whitespace().last().unwrap().to_string())
+            .collect()
+    };
+    for setter in ["kui_env_set", "kui_env_set_window"] {
+        let documented: Vec<String> = ENV_FIELDS
+            .iter()
+            .filter_map(|f| f.c.strip_prefix(&format!("`{setter}(")))
+            .flat_map(|rest| rest[..rest.find(')').unwrap()].split(", "))
+            .map(str::to_string)
+            .collect();
+        assert_eq!(
+            params(setter),
+            documented,
+            "{setter}: the header's parameters and schema::ENV_FIELDS's C column disagree"
+        );
+    }
+    for f in ENV_FIELDS.iter().filter(|f| !f.from.contains('(')) {
+        assert!(
+            f.c.starts_with("`kui_env_set(") || f.c.starts_with("`kui_env_set_window("),
+            "{}: a stored env fact C cannot write",
+            f.name
+        );
+    }
+}
+
 /// Every `PROPS` row, applied with a sample value through the schema,
 /// must be reproducible by setting a `KuiSpec`/`KuiTextStyle` field (or
 /// passing a message pointer). The `match` is the C-side mapping; a new

@@ -1821,8 +1821,21 @@ test('every corpus scene lowers the way kui-core does', (t) => {
   for (const { name, env, steps, block } of blocks) {
     const build = SCENE_TREES[name];
     assert.ok(build, `no JSX scene for ${name} — every corpus scene needs one`);
-    const actual = sceneReport(name, env, steps, driveScene(env, steps, build));
+    const out = driveScene(env, steps, build);
+    const actual = sceneReport(name, env, steps, out);
     assert.equal(actual, block, `scene ${name} lowers differently than kui-core does`);
+    // The readback, beyond the `env` line the report already derives from
+    // `ctx.env()`: what the last frame reads back is what the scene was
+    // driven under, whole — `chrome` and `chrome-inset` report
+    // `customChrome: true` and the rest the defaults. Node's rect is the
+    // whole `Rect` where the line carries two extents at the origin
+    // (`schema::ENV_FIELDS` names that divergence).
+    const declared = env ?? { customChrome: false, maximized: false, fullscreen: false, nativeControls: null };
+    assert.deepEqual(
+      out.ctx.env().window,
+      { id: 0, ...declared, nativeControls: declared.nativeControls && { x: 0, y: 0, ...declared.nativeControls } },
+      `scene ${name}: env().window reads back differently than it was declared`,
+    );
   }
 });
 
@@ -2074,6 +2087,29 @@ test('env() reports the defaults a headless Ctx starts with', () => {
     fullscreen: false,
     nativeControls: null,
   });
+});
+
+// `schema::ENV_FIELDS` is the one statement of the env shape; this is
+// Node's pin to it. Every documented key path is a leaf however deep its
+// value goes (a `Rect`), so the walk stops there; anything else that is an
+// object is descended into, so a key added anywhere in `env()` — or one
+// dropped — is a difference against the table.
+test('env() is the documented env shape, key for key', () => {
+  const ctx = new Ctx();
+  // Every fact that is sometimes null, present.
+  ctx.setEnv({ refreshHz: 60, window: { nativeControls: { w: 78, h: 28 } } });
+  ctx.frame(320, 240, 1, box({}, []));
+  const documented = protocol().env.flatMap((f) => f.node);
+  const actual = [];
+  const walk = (o, prefix) => {
+    for (const [k, v] of Object.entries(o)) {
+      const path = prefix ? `${prefix}.${k}` : k;
+      if (documented.includes(path) || v === null || typeof v !== 'object') actual.push(path);
+      else walk(v, path);
+    }
+  };
+  walk(ctx.env(), '');
+  assert.deepEqual(actual.sort(), [...documented].sort(), "env()'s keys and schema::ENV_FIELDS's Node column disagree");
 });
 
 test('setEnv writes the facts a window would push, and env() reads them back', () => {
