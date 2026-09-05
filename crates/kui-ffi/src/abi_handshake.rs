@@ -1,4 +1,3 @@
-
 use super::*;
 
 fn ks(s: &str) -> KuiStr {
