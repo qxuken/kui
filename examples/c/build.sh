@@ -7,7 +7,7 @@ cd "$(dirname "$0")/../.."
 cargo build -p kui-ffi
 
 # The header is hand-written, so nothing in Rust makes it match the repr(C)
-# structs in crates/kui-ffi/src/lib.rs: a field added there but missing from -
+# structs in crates/kui-ffi/src/types.rs: a field added there but missing from -
 # or misordered in - kui.h shifts every field after it, silently, at runtime.
 # The same goes for the enums the API reads as indices into a list the core
 # owns (KUI_ROLE_* and the rest): a list that grew leaves the header without a

@@ -43,6 +43,8 @@ use crate::ui::Ui;
 use crate::value::Value;
 use crate::window::{WindowConfig, WindowId};
 
+// `impl Core` continues in these, one concern per file (each opens with
+// what it holds). Children of this module, so the fields stay private.
 mod builder;
 mod composites;
 mod dispatch;

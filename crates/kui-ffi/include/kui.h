@@ -1,4 +1,6 @@
-/* kui C API — see crates/kui-ffi/src/lib.rs for the implementation.
+/* kui C API — see crates/kui-ffi/src/ for the implementation (types.rs
+ * mirrors these structs; each kui_* function's module is named for its
+ * concern).
  *
  * Conventions:
  *  - Strings are UTF-8 (ptr, len) pairs; use KUI_STR("literal").

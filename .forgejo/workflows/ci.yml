@@ -160,8 +160,8 @@ jobs:
           cargo run -p kui-core --example conformance-dump -- target/conformance.txt
           echo "KUI_CONFORMANCE=$(pwd)/target/conformance.txt" >> "$GITHUB_ENV"
 
-      # build.sh first compiles the generated ABI asserts (mod abi_parity in
-      # crates/kui-ffi/src/lib.rs) against include/kui.h - the header is
+      # build.sh first compiles the generated ABI asserts
+      # (crates/kui-ffi/src/abi_parity.rs) against include/kui.h - the header is
       # hand-written and otherwise unchecked against the repr(C) structs -
       # and then builds the example, which is the only thing that links
       # against the real header.

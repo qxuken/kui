@@ -8,6 +8,14 @@
 //! - `KuiValue*` created by `kui_value_*` constructors is owned by the caller
 //!   until passed to a function documented as consuming it.
 //! - Every entry point catches panics and turns them into no-ops/false.
+//!
+//! Layout: `types` holds the repr(C) mirrors, `convert` the translations
+//! into the core's own types, `abi` the version and the size-led [out]
+//! handshake; the entry points sit in one module per concern they
+//! delegate to (`frame`, `input`, `windows`, `resources`, `focus`,
+//! `scrolling`, `access`, `widgets`, `value`, `run`), re-exported here
+//! so the crate's surface is flat. What stays in this file is the
+//! context itself, the host facts and the diagnostics.
 
 // Safe extern fns taking raw pointers is the point of this layer: every
 // entry point null-checks and catches panics instead of being `unsafe`.
@@ -61,7 +69,7 @@ use kui_core::{
 };
 
 // ---------------------------------------------------------------------------
-// Context lifecycle + input
+// Context lifecycle
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
@@ -202,7 +210,7 @@ mod tests;
 // ---------------------------------------------------------------------------
 // ABI parity with include/kui.h. The header is hand-written (it carries prose
 // the generator would lose), so nothing in Rust makes it match the structs
-// above: a field added to `KuiSpec` but missing from - or misordered in - the
+// in `types`: a field added to `KuiSpec` but missing from - or misordered in - the
 // header silently shifts every field after it at runtime. This module writes
 // `target/kui-abi-assert.c`, a translation unit of `_Static_assert`s pinning
 // each field's offset, size and C type to what Rust actually lays out, and
