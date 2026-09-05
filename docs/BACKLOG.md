@@ -2123,7 +2123,51 @@ kui-lua's dev-dependencies; the hard case is C, whose adapter lives in the
 shipped `cdylib` — either `build.sh` builds the example against a
 feature-enabled `libkui_ffi`, or the C adapter moves into a test-only crate.
 
-### `.` S4 — `runtime.rs` and `kui-ffi/lib.rs` are the god files now
+### `.` S4 — `runtime.rs` and `kui-ffi/lib.rs` are the god files now — **done (2026-09-05)**
+
+Split by concern as pure moves — one commit per file, so `git diff
+--color-moved=zebra` on each shows the module header, the re-export, and
+the `pub(crate)` a private method gains when its callers now live in
+another file, and nothing else — plus one seam kept to its own commit:
+`finish_frame` is `layout_frame` (layout and everything resolved against
+it) followed by `emit_frame` (the display list and the hit regions). No
+signature, name or order changed; the in-flow and floating passes inside
+`emit_frame` share the hit and scroll-region buffers and stay one body.
+
+`impl Core` continues in eight *children* of `runtime` rather than
+siblings, so no field changed visibility (a child sees its parent's
+private items) and the 92 public methods still render on one rustdoc
+page:
+
+| file | lines | holds |
+|---|---|---|
+| `runtime.rs` | 562 | the struct, `new`, measurement, diagnostics, the frame clock, `begin_frame` |
+| `runtime/emit.rs` | 985 | `finish_frame`, the per-node emitter, ghosts, layout events, the focus ring |
+| `runtime/dispatch.rs` | 632 | `handle_input`, routing, access requests, edit events |
+| `runtime/builder.rs` | 432 | open / close / text / editors / images, keyframe easing |
+| `runtime/focus.rs` | 290 | focus, the Tab ring, the modal scope |
+| `runtime/composites.rs` | 290 | arrow-key motion and type-ahead (ADR 0007) |
+| `runtime/resources_api.rs` | 273 | fonts, sounds, images |
+| `runtime/windows.rs` | 227 | the declared set, its diff, window commands, the title |
+| `runtime/scrolling.rs` | 168 | `reveal`, `set_scroll`, the caret and reveal nudges |
+
+`kui-ffi/src/lib.rs` is 226 lines (the context, the host facts, the
+diagnostics and the module list; every `pub` item is re-exported so the
+crate's surface is flat): `types.rs` 939 (the repr(C) mirrors), `frame.rs`
+383, `convert.rs` 349, `resources.rs` 318, `input.rs` 308, `access.rs`
+257, `windows.rs` 198, `abi.rs` 170, `widgets.rs` 146, `value.rs` 118,
+`scrolling.rs` 96, `focus.rs` 65, `run.rs` 59; the tests are `tests.rs`
+545, `abi_parity.rs` 518, `schema_parity.rs` 449, `abi_handshake.rs` 418.
+
+Guards run on the result: `cargo test --workspace`, clippy with
+`-D warnings`, `cargo fmt --check`, the conformance reference regenerated
+and byte-identical to the one dumped before the first move, the C adapter
+(`counter --headless`, `counter --conformance`, `c_panel --headless`) and
+the Node adapter over that reference, and `cargo doc -p kui-core` naming
+every public method. What is still large is honest: `emit.rs` is the frame
+in paint order, `types.rs` is `KuiSpec`'s two hundred documented fields.
+
+The original finding:
 
 `runtime.rs`: 3759 lines (was 2137), **92 public methods on `Core`**, two
 `impl` blocks in total, `finish_frame` 294 lines. It owns input, focus, the
