@@ -903,7 +903,7 @@ Everything after this is the detail as each piece landed;
 - **Affordable long lists.** Glyphs have always been culled by viewport;
   the nodes around them never were, so a view that declared ten thousand
   rows paid for ten thousand rows of build and layout whether or not they
-  could be seen — a bench of a 10k-row log frame costs ~4.8 ms here, most
+  could be seen — a bench of a 10k-row log frame costs ~5.6 ms here, most
   of it rows nobody sees. An app could not fix this itself: slicing its
   own data needs the container's scroll offset *and* its resolved height
   during the build, and the height existed only inside a layout pass that
@@ -923,8 +923,8 @@ Everything after this is the detail as each piece landed;
   rows crossing the window, two rows of overscan and two spacers holding
   the space of the rest, so the content height, the scrollbar and
   `set_scroll` all behave as if the whole list were there. The same 10k
-  rows through it cost **~19 µs instead of ~4.8 ms**, and 100k rows cost
-  the same ~19 µs — the frame stops growing with the data. Rows are
+  rows through it cost **~21 µs instead of ~5.6 ms**, and 100k rows cost
+  the same ~21 µs — the frame stops growing with the data. Rows are
   opened at their *data* index (`Ui::open_indexed` / `with_indexed`, and
   `child_key_index` for the key before the node), so a row keeps its key,
   and with it its hover, focus, edit buffer and tweens, as the built range

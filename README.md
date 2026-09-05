@@ -586,7 +586,7 @@ needs to declare only the rows that can be seen. `widgets::virtual_column`
 is that for uniform rows: visible rows, two of overscan, and two spacers
 holding the space of the rest, so the content height, the scrollbar and
 `set_scroll` behave as if the whole list were there. 10k rows go from
-~4.8 ms a frame to ~19 µs, and 100k rows cost the same ~19 µs. Rows are
+~5.6 ms a frame to ~21 µs, and 100k rows cost the same ~21 µs. Rows are
 opened at their data index (`ui.with_indexed`), so a row keeps its hover,
 focus and edit buffer as the built range slides over it.
 
@@ -616,41 +616,65 @@ corners, or per corner) rounds them.
 
 ## Performance
 
-`cargo bench -p kui-core` (M-series MacBook, release, steady-state warm
-caches — full frame: build + layout + emit):
+`cargo bench -p kui-core`, measured 2026-09-05 on an Apple M3 Pro MacBook Pro
+(macOS 26.6.2, rustc 1.98.0, release, steady-state warm caches — full frame:
+build + layout + emit). The suite was run twice back to back and the second
+run read; the two agreed within ~3%. Every median below comes from that one
+machine and that one run, so the rows can be compared with each other. The grid benches all go
+through the same builder at 1920×1080 and differ only in which props are
+switched on, so the difference between two of them is what that prop costs.
 
-| bench | median |
-|---|---|
-| 1k nodes, text + hit regions ("typical app") | ~70 µs |
-| 10k plain rects | ~510 µs |
-| 10k rects + 1.2k texts + 2.5k hit regions | ~740 µs |
-| 16×64-deep nesting chains | ~58 µs |
+| bench | what it holds | median |
+|---|---|---|
+| `frame_1k_typical` | 32×32 grid, every 8th cell a label, every 4th clickable — a "typical app" frame | ~175 µs |
+| `frame_10k_rects` | 100×100 plain rects, nothing switched on | ~1.37 ms |
+| `frame_10k_rects_with_text_and_hits` | the same grid plus 1.2k texts and 2.5k hit regions | ~1.81 ms |
+| `frame_10k_rects_with_access_tree` | that frame with `core.access_tree()` derived after it — what a frame costs while assistive technology is attached | ~2.25 ms |
+| `frame_10k_rects_with_shadows_and_opacity` | the plain grid with only the paint props on: every cell casts a shadow under a faded root | ~1.50 ms |
+| `frame_10k_rects_square_clip` | the plain grid with every row clipping, so all 10k cells inherit a clip | ~1.41 ms |
+| `frame_10k_rects_rounded_clip` | the same with a radius on every clipping row, so each cell pays the per-corner intersect | ~1.43 ms |
+| `frame_10k_rects_all_transitioning` | every cell declares a `transition` — nine retained tween slots each | ~2.87 ms |
+| `frame_10k_rects_all_declaring_exit` | every cell also declares an `exit`, so the whole frame is kept for the next one to diff against | ~3.87 ms |
+| `frame_10k_rects_one_exit` | the same 10k grid with a single cell declaring an `exit` | ~1.40 ms |
+| `drop_1k_rows_plain` | 1k rows removed from the tree in one frame, no exits declared | ~102 µs |
+| `drop_1k_rows_declaring_exit` | the same removal with exits declared, so 1k ghosts start playing out | ~305 µs |
+| `replay_a_full_depart_store` | replaying a saturated depart store (the 512-node budget) for one frame | ~13.7 µs |
+| `frame_10k_chips_unwrapped` | 10k chips in 100 rows, one line per row | ~1.17 ms |
+| `frame_10k_chips_wrapped` | the same tree with every row breaking onto several lines | ~1.34 ms |
+| `deep_nesting_64_levels` | 16 chains nested 64 levels deep | ~122 µs |
+| `list_10k_rows_naive` | a 10k-row list held at its middle, built row by row | ~5.59 ms |
+| `list_10k_rows_virtual` | the same list through `widgets::virtual_column` | ~20.6 µs |
+| `list_100k_rows_virtual` | 100k rows through the same widget | ~20.7 µs |
 
-Four more frame benches are not in the table because they were measured on a
-different (slower) machine; each is a ratio against the frame it extends, so
-compare it with that one rather than with the rows above.
-`frame_10k_rects_with_access_tree` is the "10k rects + 1.2k texts + 2.5k hit
-regions" frame with `core.access_tree()` derived after it — what a frame costs
-while assistive technology is attached — and runs **~1.27×** that frame
-(~2.05 ms against ~1.62 ms there). `frame_10k_rects_with_shadows_and_opacity`
-is the plain 10k grid with only the paint props switched on: every cell casts a
-shadow under a faded root, which is **twice the quads** (20k against 10k) for
-**~10%** more frame time (~1.35 ms against ~1.22 ms there), because most of a
-frame is build and layout rather than emitting quads. And
-`frame_10k_chips_wrapped` / `frame_10k_chips_unwrapped` are the same pair for
-wrapping: 10k chips in 100 rows that each break onto several lines run
-**~1.16×** the same tree laid out one line per row (~1.24 ms against ~1.06 ms
-there) — the worst case, since every row wraps. A row that does not wrap pays
+What the pairs say. Deriving the access tree costs **~1.24×** the frame it
+follows. Shadows under a faded root are **twice the quads** (20k against 10k)
+for **~10%** more frame time, because most of a frame is build and layout
+rather than emitting quads. Clipping costs ~3% over the unclipped grid and
+rounding that clip costs ~1% more — the radius is nearly free once a node
+clips at all. Wrapping every row runs **~1.15×** the same tree laid out one
+line per row, and that is the worst case: a row that does not wrap pays
 nothing, because the break, the per-line grow and the per-line alignment are
-all behind the flag.
+all behind the flag. An exit on one node out of 10k costs ~2% over the plain
+grid, so the `any_exit` gate holds — it is declaring exits on *every* node
+that doubles the frame. And virtualisation is the one difference worth
+orders of magnitude: 10k rows cost ~5.6 ms built row by row and ~21 µs
+through the widget, with 100k rows costing the same ~21 µs, because the frame
+stops growing with the data.
 
-Long lists (`list_10k_rows_naive` / `list_10k_rows_virtual` /
-`list_100k_rows_virtual`): a 10k-row scrolled list, held at its middle so
-rows fall off both ends, costs **~4.8 ms** a frame built row by row and
-**~19 µs** through `widgets::virtual_column` — and 100k rows through the
-widget cost the same ~19 µs, because the frame stops growing with the data.
-Those three were measured together on one machine, a slower one than the
-table above; compare them with each other rather than with the rows above.
+**These numbers are a regression, and the table is the honest version of
+it.** The four rows this table used to carry were measured on 2026-08-31
+(`dabe671`) at ~70 µs, ~510 µs, ~740 µs and ~58 µs. Re-running that same
+commit on the machine above reproduces them (72 µs, 516 µs, 754 µs, 60 µs),
+so the old numbers were sound and the machine is not the difference: the
+frame really has become **~2.4–2.7× more expensive** since, far past the ~5%
+noise floor. It did not happen in one commit — a bisect over the 193 commits
+since shows it accruing a little at a time (516 → 611 → 788 → 973 → 1245 →
+1366 µs), tens of microseconds per feature. The thing to notice is that
+`frame_10k_rects` declares none of those features and pays for them anyway,
+so the cost is per node rather than per use — the feature flags themselves
+hold, as the pairs above show. C15 in
+[docs/BACKLOG.md](docs/BACKLOG.md) carries the bisect and what to do about
+it; alpha.6 ships the number rather than a stale better one.
 
 A built-in latency graph shows per-phase frame cost live —
 `widgets::latency_hud(ui)` floats it in a viewport corner as a translucent
@@ -660,11 +684,24 @@ vsync wait) against the display's frame budget (`env.refresh_hz`, 120 Hz
 fallback), with a red cap on frames whose work exceeds it. The runner feeds
 `core.stats` and `core.env` automatically; all examples show it.
 
-Editing latency (`cargo bench -p kui-core --bench editing` — one keystroke:
-apply + full frame, warm caches): ~0.1ms at 50-10k lines, ~2ms at 100k lines.
-Glyph emission is viewport-culled (a huge document emits only the visible
-screenful of quads) and single-line reshapes go through cosmic-text's
-shape-run cache.
+Editing latency (`cargo bench -p kui-core --bench editing`, same machine and
+run — one keystroke: applying the edit, then the full frame it causes, warm
+caches):
+
+| document | apply | frame | quads |
+|---|---|---|---|
+| 50 lines | 0.087 ms | 0.050 ms | 1860 |
+| 500 lines | 0.091 ms | 0.055 ms | 1860 |
+| 2k lines | 0.098 ms | 0.071 ms | 1860 |
+| 10k lines | 0.145 ms | 0.149 ms | 1860 |
+| 100k lines | 1.93 ms | 2.29 ms | 1860 |
+
+So a keystroke costs well under a frame's worth up to 10k lines, and ~4 ms
+at 100k. The quad count is flat because glyph emission is viewport-culled (a
+huge document emits only the visible screenful), and single-line reshapes go
+through cosmic-text's shape-run cache. This bench did not regress with the
+frame benches above — at `dabe671` it measured 0.084/0.045 ms at 50 lines and
+0.134/0.116 ms at 10k — because its frame is 1860 quads, not 10k nodes.
 
 Layout solver, atlas packer, key scheme, event dispatch, editing,
 measurement, layout events, diagnostics and the Lua binding are covered by

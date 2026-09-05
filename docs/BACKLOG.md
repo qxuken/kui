@@ -1036,6 +1036,67 @@ already do half of it — a `Fit` height on an `<image>` preserves the intrinsic
 aspect against a final width (`fit_heights`), so the machinery and the pass
 ordering are proven; this generalises it to a declared ratio on any node.
 
+### `~` C15 — The frame got ~2.5× more expensive and nothing was watching
+
+Found by R6, which re-measured the README table for the release rather than
+trusting it. `frame_10k_rects` — the 100×100 grid of plain rects that
+declares **none** of what alpha.6 added — went from **516 µs to 1.37 ms**
+between `dabe671` (2026-08-31) and `b3cb849`, measured back to back on the
+same Apple M3 Pro under the same load. The other three original rows moved
+with it: 72 → 175 µs (`frame_1k_typical`), 754 µs → 1.81 ms (text and hits),
+60 → 122 µs (deep nesting). That is 2.4–2.7×, against a ~5% noise floor.
+
+**The old numbers were not wrong and the machine is not the difference.**
+Checking out `dabe671` into a worktree and benching it on this machine
+reproduces the published table to within 2% (72 µs, 516 µs, 754 µs, 60 µs),
+and `[profile.bench]` and the divan version are identical at both ends. The
+cost is real code.
+
+**It is not one commit.** Bisecting `frame_10k_rects` over the 193 commits
+since gives a staircase, not a cliff. Each row is the *cumulative* cost at
+that commit, not the cost of that commit alone — the sampling was every 16th
+commit, then narrowed around the two largest steps, so a row names the commit
+measured rather than a culprit:
+
+| commit measured | landing there or just before | median |
+|---|---|---|
+| `dabe671` | the measurement the README carried | 516 µs |
+| `056effc` | titlebar decoration, IME composition, +14 more | 611 µs |
+| `e4cdab5` | tab clicks under the hover column | 642 µs |
+| `8d622e2` | CSS-style keyframes on transitions | 788 µs |
+| `83ef155` | wrap / `max_lines` / ellipsis | 827 µs |
+| `f964c15` | entrance transitions | 848 µs |
+| `d11e411` | audio as data | 865 µs |
+| `028894f` | measurement, layout events, diagnostics | 973 µs |
+| `93169ed` | keyboard focus as data | 1.03 ms |
+| `462f704` | modal surfaces as data | 1.05 ms |
+| `f04e76e` | through opacity/shadows, cursor, scroll, `core_methods!` | 1.25 ms |
+| `b3cb849` | today | 1.37 ms |
+
+Every feature added tens of microseconds per 10k nodes to a frame that does
+not use it, and no single step was large enough to argue with on its own.
+That is the actual finding: **the cost is unconditional per-node
+bookkeeping, and the review of each feature had no number to fail.**
+
+Worth knowing before anyone optimises: the features that were gated *were*
+gated properly, and the benches prove it — `frame_10k_rects_one_exit` is
+within 2% of the plain grid, a non-wrapping row pays nothing for wrapping,
+and a radius on a clipping node costs ~1%. So this is not a case of a flag
+that leaks. The likelier cost is the per-node struct and the per-node walks
+growing around them — `std::mem::size_of::<Quad>()` is **124 bytes** today,
+and `NodeSpec` has gained a field per feature — but that is a hypothesis this
+entry has not measured, which is exactly why the first follow-up is a
+profile and not a patch.
+
+**What to do.** Not a tag blocker — alpha.6 ships the honest number and the
+README says so. After the tag: (1) profile one frame of `frame_10k_rects` and
+attribute the extra 850 µs, rather than guessing from this list; (2) decide which
+of the added passes can be skipped wholesale with a tree-level flag, the way
+`any_exit` already skips the depart diff; (3) put `frame_10k_rects` and
+`frame_1k_typical` in CI with a threshold, so the next staircase step fails a
+run instead of a release audit. (3) is the one that stops this recurring, and
+it is cheap — the bench already prints a median a script can read.
+
 ### `.` C11 — Build multi-window
 
 The work ADR 0004 (C7) decided but did not do. Each step ships alone, in order:
@@ -2644,6 +2705,26 @@ binding-parity corpus that pins all of it.
   benches are given as ratios "from a different (slower) machine". Re-run
   `cargo bench -p kui-core` on the M-series machine and refresh the table so
   the numbers describe the release.
+  **Done (2026-09-05), and it found a regression.** Measured on an Apple M3
+  Pro MacBook Pro, macOS 26.6.2, rustc 1.98.0, release, two consecutive runs
+  agreeing within ~3% and the second one read. All nineteen frame benches are
+  now absolute medians from that one machine, so the "ratios from a slower
+  machine" paragraph is gone and the four cross-machine ratios are restated
+  as differences between rows in the same table; the editing bench and the
+  three list benches are in the section as well.
+  **The regression is the reason this took a bisect rather than an edit.**
+  All four old rows were not merely stale, they were 2.4–2.7× better than
+  what HEAD measures: `frame_10k_rects` 516 µs → 1.37 ms,
+  `frame_1k_typical` 72 → 175 µs, text-and-hits 754 µs → 1.81 ms, deep
+  nesting 60 → 122 µs. Benching `dabe671` in a throwaway worktree on the same
+  machine reproduced the published table to within 2%, so the old numbers
+  were sound and the machine is not the difference. Nothing was dropped and
+  nothing was quietly improved: the section states the regression, and
+  **C15** carries the per-commit bisect (a staircase across ~10 feature
+  commits, none individually large) and the three follow-ups, of which
+  putting these two benches in CI with a threshold is the one that stops it
+  recurring. The editing bench did *not* regress — its frame is 1860 quads,
+  not 10k nodes — which is itself evidence that the cost is per node.
 - `.` **R7 — Deprecation notice for Lua's `env.focus`.** P3 kept it beside
   `env.focused` because alpha.5 had shipped it. alpha.6 is where the
   changelog says: `env.focus` (the value) is deprecated, `env.focused` is
@@ -2678,7 +2759,10 @@ left, and the case (`fit` cannot place a dropdown taller than the window)
 that forces it. ADR 0004 step 1's leftover: the glyph atlas and shape cache
 are still per window because `Core::output` hands out `&mut GlyphAtlas`
 (see `kui-session-atlas-constraint`); it waits for a case where two windows
-share enough text to matter.
+share enough text to matter. C15, the ~2.5× frame regression R6 measured —
+starting with its third follow-up, a threshold on `frame_10k_rects` in CI,
+because that one is cheap and stops the next staircase reaching a release
+audit.
 
 **Design, each wanting an ADR.** Live regions and announcements (ADR 0001's
 open follow-up — an event on a timeline, not a tree property). The exit
