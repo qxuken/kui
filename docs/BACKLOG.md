@@ -2073,6 +2073,94 @@ shape the closed entries already use — original finding kept, outcome on top.
 
 ---
 
+## From the sweep of the grown surface (2026-09-05)
+
+The input the rewritten sequence asked for: the same question the first
+review asked — where does a binding restate what the schema enforces, with
+nothing holding the two together — put to the surface six rounds added.
+
+### `.` S7 — `env` reaches three bindings through three restatements and nothing pins them — **done (2026-09-05)**
+
+**The shape is written down once**: `schema::ENV_FIELDS`, one row per value
+in the reading a view gets, with the canonical (Rust) name, where it comes
+from, the key path(s) it occupies in Node's `ctx.env()` and Lua's
+`view(env)`, the C setter argument that writes it, and a doc. `docs/props.md`
+gained an *Env* section generated from it the way *Resources* is, through
+`protocol().env`; the rows for the frame facts that ride in the same reading
+(the viewport, the focused node) say so in their `from` column rather than
+being left out, since a key-set test that ignored them would not be a
+key-set test.
+
+**Both decisions went the way the code already leaned, and are now recorded
+as decisions rather than accidents.** Node keeps `nativeControls` nested as
+the `Rect` the core holds, where Lua and C carry `controls_w` / `controls_h`
+at the window origin: B2's reasoning stands (the flattening assumes the
+controls sit at the origin, which is true of the macOS traffic lights and of
+nothing in particular), and the row says so. `frame_budget_ms` is in the
+shape: it is derived, but both bindings that have a reading already carry
+it, and its job is that no view restates the 120 Hz fallback — a C host has
+no reading and is the one that knows the rate, so its cell is a dash.
+
+**Each binding is pinned, in the direction that fails when the surface
+moves.** In `schema`, an exhaustive pattern over `Env` and `WindowEnv` is
+the pin on the structs — a new field stops the test compiling until it has a
+row — and the row list is then checked against the table both ways.
+`the_env_table_is_the_documented_env_shape` (kui-lua) walks the table
+`view(env)` receives under an env with every optional fact present and
+asserts its value keys equal the Lua column, key for key; the queries and
+verbs beside them are pinned as a literal list, since they are Lua's own
+surface. `env() is the documented env shape, key for key` (test.mjs) walks
+`ctx.env()` recursively, stopping at any documented path so a `Rect` is a
+leaf, and asserts against the Node column. C has no struct to `abi_struct!`
+— the setters take the fields as arguments — so
+`the_env_setters_take_exactly_the_documented_fields` (kui-ffi) reads
+`include/kui.h`, parses the two prototypes, and asserts each parameter
+list is exactly what the C column names for that setter, in order; the
+header carries a note naming the fields against the same table. Every one
+of these was mutation-tested and fails naming the cause: a key dropped
+from `env_table`, a key dropped from `env_json`, a row dropped from
+`ENV_FIELDS` (both the schema test and the kui-ffi test), a parameter
+renamed in the header.
+
+**The corpus asserts the readback** in the two adapters that read: every
+Lua scene now records `env.window` from inside `view(env)` and the test
+asserts it equals the `WindowEnv` the scene was driven under; the Node
+adapter asserts `ctx.env().window` against the parsed `env` line after the
+drive, beyond the report line it already derived from it. So `chrome` and
+`chrome-inset` report `custom_chrome = true` and the traffic-lights extent
+the same way everywhere, and the other twelve scenes pin the defaults for
+free. Mutation-tested: a Lua `env_table` that reports `custom_chrome =
+false` builds the same tree (the script only reads it) and the report still
+matches — only the readback assert catches it, which is why the readback is
+its own assert.
+
+Two doc references in the C header and `kui-ffi` pointed at a
+`kui_env_set_focused` that never existed; they name `kui_env_set`'s
+`focused` now.
+
+**Left open, and small**: `index.d.ts`'s hand-written `Env` / `WindowEnv` /
+`EnvInput` shapes are types, not values, so no test reaches them; they are
+one restatement the table does not pin. Lua has no `scale` reading, which
+the row records rather than fixes.
+
+The original finding:
+
+`Env` (`refresh_hz`, `focused`, `window`) and `WindowEnv` (`id`,
+`custom_chrome`, `maximized`, `fullscreen`, `native_controls`) reach three
+bindings through three hand-written restatements: Lua's `env_table` builds
+`refresh_hz`, `frame_budget_ms`, `focused`, `focus`, `focus_visible`,
+`viewport_w/h` and a `window` table with `native_controls` **flattened** to
+`controls_w` / `controls_h`; Node's `env()` (B2) builds `{refreshHz,
+frameBudgetMs, focused, viewport, window}` with `nativeControls` nested; C
+writes through `kui_env_set` / `kui_env_set_window` and has no read side.
+Nothing pins the three against each other or against the Rust structs, and
+`docs/props.md` — the cross-binding reference for props, composites,
+elements, events and resources — does not document `env` at all. Not a
+verified defect; a verified unguarded surface, which is exactly the state
+the first review found P1 and P2 in before they were defects.
+
+---
+
 ## Suggested sequence
 
 Rewritten 2026-09-05. The original six-step order is history now: every

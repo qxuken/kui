@@ -1838,7 +1838,7 @@ pub extern "C" fn kui_set_window_size(ptr: *mut KuiCtx, window: u32, w: f32, h: 
 /// Asks the driver to give `window` keyboard focus; queued and drained the
 /// same way, as `KUI_CMD_FOCUS`. Advisory, like every focus request an app
 /// makes of a window manager: whether it was granted shows up through
-/// `kui_env_set_focused` on the frames that follow, not as a reply here.
+/// `kui_env_set`'s `focused` on the frames that follow, not as a reply here.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_focus_window(ptr: *mut KuiCtx, window: u32) {
     guard((), || {
@@ -3597,6 +3597,50 @@ mod schema_parity {
         // code past the end is ignored rather than folded onto a real role.
         assert_eq!(role_of_code(0), None);
         assert_eq!(role_of_code(kui_core::Role::ALL.len() as u32 + 1), None);
+    }
+
+    /// C's `env` is two setters and no reading, so the header's prototypes
+    /// are the whole of what a host sees of the shape. This holds them to
+    /// `schema::ENV_FIELDS`'s C column: each setter's parameter list, in
+    /// order, is exactly the arguments the rows name for it, and every
+    /// stored fact (a row from `Env` or `WindowEnv`) is written by one of
+    /// the two. An argument added to a prototype, or a field added to the
+    /// structs and not to a setter, fails here by name.
+    #[test]
+    fn the_env_setters_take_exactly_the_documented_fields() {
+        use kui_core::schema::ENV_FIELDS;
+        let header = include_str!("../include/kui.h");
+        let params = |name: &str| -> Vec<String> {
+            let decl = format!("void {name}(KuiCtx *ctx,");
+            let start = header
+                .find(&decl)
+                .unwrap_or_else(|| panic!("{name}'s prototype is not in kui.h"));
+            let rest = &header[start + decl.len()..];
+            rest[..rest.find(");").unwrap()]
+                .split(',')
+                .map(|a| a.split_whitespace().last().unwrap().to_string())
+                .collect()
+        };
+        for setter in ["kui_env_set", "kui_env_set_window"] {
+            let documented: Vec<String> = ENV_FIELDS
+                .iter()
+                .filter_map(|f| f.c.strip_prefix(&format!("`{setter}(")))
+                .flat_map(|rest| rest[..rest.find(')').unwrap()].split(", "))
+                .map(str::to_string)
+                .collect();
+            assert_eq!(
+                params(setter),
+                documented,
+                "{setter}: the header's parameters and schema::ENV_FIELDS's C column disagree"
+            );
+        }
+        for f in ENV_FIELDS.iter().filter(|f| !f.from.contains('(')) {
+            assert!(
+                f.c.starts_with("`kui_env_set(") || f.c.starts_with("`kui_env_set_window("),
+                "{}: a stored env fact C cannot write",
+                f.name
+            );
+        }
     }
 
     /// Every `PROPS` row, applied with a sample value through the schema,

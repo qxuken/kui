@@ -1,6 +1,12 @@
 //! Host environment facts pushed into the core by the frame driver — the
 //! inbound mirror of events-as-data. The core never touches a window; the
 //! driver (runner, FFI host) reports what it knows and views read it.
+//!
+//! The reading a view gets — this struct, [`WindowEnv`], the derived
+//! budget and the frame facts beside them, under each binding's spelling —
+//! is written down once in `schema::ENV_FIELDS` and every binding is pinned
+//! to that table; a field added here fails `schema`'s tests until it has a
+//! row.
 
 use crate::window::WindowEnv;
 

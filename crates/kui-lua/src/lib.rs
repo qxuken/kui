@@ -146,7 +146,9 @@ impl Extension for LuaExtension {
     }
 }
 
-/// Host facts handed to `view(env)`: `refresh_hz` (nil if unknown),
+/// Host facts handed to `view(env)`, the reading `schema::ENV_FIELDS`
+/// documents and `the_env_table_is_the_documented_env_shape` pins to it key
+/// for key: `refresh_hz` (nil if unknown),
 /// `frame_budget_ms`, `focused` (the *window*'s keyboard focus, a bool),
 /// `focus` (the focused *node*'s key), `focus_visible`,
 /// `viewport_w`/`viewport_h` (logical px), `window` chrome facts, the
@@ -1007,7 +1009,7 @@ pub fn value_to_lua(lua: &Lua, v: &Value) -> mlua::Result<mlua::Value> {
 mod tests {
     use super::*;
     use kui_core::{
-        Core, Edges, FontFamily, InputEvent, NodeSpec, OriginId, Size, TextStyle, Vec2,
+        Core, Edges, FontFamily, InputEvent, NodeSpec, OriginId, Rect, Size, TextStyle, Vec2,
         WindowButton, WindowId,
     };
 
@@ -1940,6 +1942,79 @@ mod tests {
     /// `env.focus_next` / `env.focus_prev` walk the Tab ring, `env.blur`
     /// drops it — and `env.focus` reads back the node's key, which is a
     /// different fact from `env.focused`, the window's.
+    /// The table `view(env)` gets is the documented env reading and
+    /// nothing else: its value keys are `schema::ENV_FIELDS`'s Lua
+    /// spellings, key for key, under an env with every optional fact
+    /// present. The queries and verbs beside them are Lua's own surface —
+    /// Node and C spell them as calls on the context — and are pinned here
+    /// too, so adding one is a deliberate two-place change.
+    #[test]
+    fn the_env_table_is_the_documented_env_shape() {
+        let mut ext = LuaExtension::from_source(
+            "env",
+            r#"
+                function view(env)
+                  values, calls = {}, {}
+                  for k, v in pairs(env) do
+                    if type(v) == "function" then calls[#calls + 1] = k
+                    elseif type(v) == "table" then
+                      for wk in pairs(v) do values[#values + 1] = k .. "." .. wk end
+                    else values[#values + 1] = k end
+                  end
+                  return column { key = "root",
+                    row { key = "a", focusable = true, width = 50, height = 20 },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        // Every key that only appears when set: a rate, a controls rect,
+        // and a focused node (which the ring has to see a frame first).
+        core.env.refresh_hz = Some(60.0);
+        core.env.window.native_controls = Some(Rect::new(0.0, 0.0, 78.0, 28.0));
+        frame(&mut core, &mut ext);
+        core.set_focus(Some(Key::ROOT.str("root").str("a")));
+        frame(&mut core, &mut ext);
+
+        let sorted = |name: &str| -> Vec<String> {
+            let mut v: Vec<String> = ext.lua.globals().get(name).unwrap();
+            v.sort();
+            v
+        };
+        let mut documented: Vec<String> = kui_core::schema::ENV_FIELDS
+            .iter()
+            .flat_map(|f| f.lua.iter().map(|k| (*k).to_string()))
+            .collect();
+        documented.sort();
+        assert_eq!(
+            sorted("values"),
+            documented,
+            "env's value keys and schema::ENV_FIELDS's Lua column disagree"
+        );
+        assert_eq!(
+            sorted("calls"),
+            [
+                "blur",
+                "edit_text",
+                "focus_next",
+                "focus_prev",
+                "focus_window",
+                "is_focused",
+                "is_hovered",
+                "is_pressed",
+                "measure_text",
+                "reveal",
+                "scroll_geometry",
+                "scroll_offset",
+                "set_focus",
+                "set_scroll",
+                "set_window_size",
+            ],
+            "env's queries and verbs changed; update env_table's doc too"
+        );
+    }
+
     #[test]
     fn scripts_move_focus_with_the_verbs() {
         let mut ext = LuaExtension::from_source(

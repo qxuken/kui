@@ -1349,6 +1349,152 @@ pub const RESOURCES: &[ResourceDef] = &[
     },
 ];
 
+/// One value in the host-environment reading a view gets — `ui.env()` in
+/// Rust, `view(env)` in Lua, `ctx.env()` / `win.env()` in Node — and the
+/// key each binding puts it under. C has no reading: a C host is the frame
+/// driver, so it is the *writer* (`kui_env_set`, `kui_env_set_window`), and
+/// its column names the argument that carries the fact in.
+///
+/// `Env` and `WindowEnv` are the shape; this table is the cross-binding
+/// restatement of it, and every restatement is pinned to it rather than
+/// trusted: `schema`'s tests check the rows against the two structs, the
+/// Lua and Node key-set tests check each binding's reading against the
+/// `lua` / `node` columns, and kui-ffi checks the header's two prototypes
+/// against the `c` column. The frame facts a view wants at the same moment
+/// (the viewport, the focused node) ride in the same reading and have rows
+/// here too, marked as the frame's rather than `Env`'s.
+///
+/// Two divergences are deliberate and named in their rows: `native_controls`
+/// is the `Rect` the core holds in Node and a width/height at the window
+/// origin in Lua and C, and `frame_budget_ms` is derived from `refresh_hz`
+/// but part of the reading everywhere.
+pub struct EnvField {
+    /// The canonical name: the Rust field path (`window.custom_chrome`).
+    pub name: &'static str,
+    /// Where it comes from — the Rust struct and field for a stored fact,
+    /// the call for a derived or frame fact.
+    pub from: &'static str,
+    /// The key path(s) it occupies in Node's `ctx.env()`; empty when Node
+    /// carries the fact as a call on the context instead (the `doc` says
+    /// which) or not at all.
+    pub node: &'static [&'static str],
+    /// The same for Lua's `view(env)` table. Two entries where Lua flattens
+    /// one fact into two keys.
+    pub lua: &'static [&'static str],
+    /// The C spelling: `function(argument)` for the setter argument that
+    /// writes it — the first thing in the cell, so kui-ffi can parse it —
+    /// or the call that reads it.
+    pub c: &'static str,
+    pub doc: &'static str,
+}
+
+pub const ENV_FIELDS: &[EnvField] = &[
+    EnvField {
+        name: "refresh_hz",
+        from: "`Env::refresh_hz`",
+        node: &["refreshHz"],
+        lua: &["refresh_hz"],
+        c: "`kui_env_set(refresh_hz)`",
+        doc: "Display refresh rate in Hz. \"The host cannot tell\" is `null` in Node (a stable shape to destructure, typed `number | null`), an absent key in Lua, and a rate at or below zero in C.",
+    },
+    EnvField {
+        name: "frame_budget_ms",
+        from: "`Env::frame_budget_ms()`, derived",
+        node: &["frameBudgetMs"],
+        lua: &["frame_budget_ms"],
+        c: "—",
+        doc: "One vsync interval at `refresh_hz`, or at 120 Hz when the host cannot tell: the per-frame time budget, and what the latency HUD draws its line at. Derived, and in the reading anyway, so no view restates the fallback. A C host is the one that knows the rate and computes its own.",
+    },
+    EnvField {
+        name: "focused",
+        from: "`Env::focused`",
+        node: &["focused"],
+        lua: &["focused"],
+        c: "`kui_env_set(focused)`",
+        doc: "Whether the *window* has the keyboard at all. Not the focused node — that is the `focus` row.",
+    },
+    EnvField {
+        name: "window.id",
+        from: "`WindowEnv::id`",
+        node: &["window.id"],
+        lua: &["window.id"],
+        c: "`kui_env_set_window(window)`, read back by `kui_ctx_window`",
+        doc: "Which window this frame draws, assigned by the driver: 0 for the window the app starts in. Every event from it carries the same number.",
+    },
+    EnvField {
+        name: "window.custom_chrome",
+        from: "`WindowEnv::custom_chrome`",
+        node: &["window.customChrome"],
+        lua: &["window.custom_chrome"],
+        c: "`kui_env_set_window(custom_chrome)`",
+        doc: "The host asked the app to draw its own chrome, so there is no native titlebar to sit under. `<titlebar>` and `<windowButtons>` build nothing when this is false.",
+    },
+    EnvField {
+        name: "window.maximized",
+        from: "`WindowEnv::maximized`",
+        node: &["window.maximized"],
+        lua: &["window.maximized"],
+        c: "`kui_env_set_window(maximized)`",
+        doc: "The window is maximized — what picks the restore glyph over the maximize one.",
+    },
+    EnvField {
+        name: "window.fullscreen",
+        from: "`WindowEnv::fullscreen`",
+        node: &["window.fullscreen"],
+        lua: &["window.fullscreen"],
+        c: "`kui_env_set_window(fullscreen)`",
+        doc: "The window is fullscreen.",
+    },
+    EnvField {
+        name: "window.native_controls",
+        from: "`WindowEnv::native_controls`",
+        node: &["window.nativeControls"],
+        lua: &["window.controls_w", "window.controls_h"],
+        c: "`kui_env_set_window(controls_w, controls_h)`",
+        doc: "Area (logical px, window coordinates) covered by controls the OS still draws over our content — the macOS traffic lights under custom chrome. Keep out of it. Node hands back the `Rect` the core holds (`{x, y, w, h}`, or `null` for none); Lua and C flatten it to a width and height anchored at the window origin (absent in Lua, `0` in C, for none), which is the shape C's two numbers can express and where the one real instance sits.",
+    },
+    EnvField {
+        name: "viewport.w",
+        from: "`Core::viewport()`, the frame's",
+        node: &["viewport.width"],
+        lua: &["viewport_w"],
+        c: "`kui_frame_begin(w)`",
+        doc: "The logical width the current (or last) frame was begun with — the other host fact a view wants at the same moment, so it rides in the same reading. Node's `viewport` is the `WindowSize` shape `runWindowed` already uses.",
+    },
+    EnvField {
+        name: "viewport.h",
+        from: "`Core::viewport()`, the frame's",
+        node: &["viewport.height"],
+        lua: &["viewport_h"],
+        c: "`kui_frame_begin(h)`",
+        doc: "Its logical height.",
+    },
+    EnvField {
+        name: "scale",
+        from: "`Core::scale()`, the frame's",
+        node: &["viewport.scale"],
+        lua: &[],
+        c: "`kui_frame_begin(scale)`",
+        doc: "Device pixels per logical px. Lua has no reading: a script sees logical px only.",
+    },
+    EnvField {
+        name: "focus",
+        from: "`Core::focus()`, the frame's",
+        node: &[],
+        lua: &["focus"],
+        c: "`kui_focused()`",
+        doc: "The focused *node*'s key, as events carry it (absent for none). A value the host wrote before the view ran, so it lags a same-frame verb by one frame; `env.is_focused(key)` is the live query. Node spells it as the call `focused()` on the context, and C as `kui_focused`, rather than a key on `env`.",
+    },
+    EnvField {
+        name: "focus_visible",
+        from: "`Core::focus_visible()`, the frame's",
+        node: &[],
+        lua: &["focus_visible"],
+        c: "`kui_focus_visible()`",
+        doc: "Whether focus shows — it got there by Tab or assistive technology rather than a click. Node: `focusVisible()` on the context.",
+    },
+];
+
 static SNAKE_NAMES: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     PROPS
         .iter()
@@ -1651,6 +1797,102 @@ mod tests {
             for (other_name, other_id) in &all[i + 1..] {
                 assert_ne!(name, other_name, "duplicate prop name");
                 assert_ne!(id, other_id, "duplicate wire id for {name} / {other_name}");
+            }
+        }
+    }
+
+    /// `ENV_FIELDS` restates `Env` and `WindowEnv`; this pins the three
+    /// together. The exhaustive patterns are the pin on the structs — a
+    /// field added to either stops this compiling until it is named here
+    /// — and the list beside them is then checked against the table in
+    /// both directions, so a row cannot be forgotten and a row cannot
+    /// claim a field that does not exist.
+    #[test]
+    fn env_fields_restate_env_and_window_env_exactly() {
+        use crate::env::Env;
+        use crate::window::WindowEnv;
+        let Env {
+            refresh_hz: _,
+            focused: _,
+            window,
+        } = Env::default();
+        let WindowEnv {
+            id: _,
+            custom_chrome: _,
+            maximized: _,
+            fullscreen: _,
+            native_controls: _,
+        } = window;
+        let stored = [
+            "refresh_hz",
+            "focused",
+            "window.id",
+            "window.custom_chrome",
+            "window.maximized",
+            "window.fullscreen",
+            "window.native_controls",
+        ];
+        // A stored fact's `from` is the struct and the field, spelled the
+        // one way; everything else in the column is a call.
+        let from_structs: Vec<&str> = ENV_FIELDS
+            .iter()
+            .filter(|f| !f.from.contains('('))
+            .map(|f| {
+                let (strukt, field) = match f.name.strip_prefix("window.") {
+                    Some(field) => ("WindowEnv", field),
+                    None => ("Env", f.name),
+                };
+                assert_eq!(f.from, format!("`{strukt}::{field}`"), "{}", f.name);
+                f.name
+            })
+            .collect();
+        assert_eq!(from_structs, stored);
+        for f in ENV_FIELDS.iter().filter(|f| f.from.contains('(')) {
+            assert!(
+                f.from.contains("derived") || f.from.contains("the frame's"),
+                "{}: a call in `from` is derived or the frame's, and says which",
+                f.name
+            );
+        }
+    }
+
+    /// Every spelling in `ENV_FIELDS` is unique per binding — two rows
+    /// cannot land on one key — and every row says something in every
+    /// column, so the generated table has no blank cells to wonder about.
+    #[test]
+    fn env_field_spellings_are_unique_and_complete() {
+        let mut names: Vec<&str> = ENV_FIELDS.iter().map(|f| f.name).collect();
+        let mut node: Vec<&str> = ENV_FIELDS
+            .iter()
+            .flat_map(|f| f.node.iter().copied())
+            .collect();
+        let mut lua: Vec<&str> = ENV_FIELDS
+            .iter()
+            .flat_map(|f| f.lua.iter().copied())
+            .collect();
+        for list in [&mut names, &mut node, &mut lua] {
+            let before = list.len();
+            list.sort_unstable();
+            list.dedup();
+            assert_eq!(list.len(), before, "a spelling is used twice");
+        }
+        for f in ENV_FIELDS {
+            assert!(!f.c.is_empty() && !f.doc.is_empty(), "{}", f.name);
+            // A binding that has no key for a fact says where it went
+            // instead, so the empty cell is explained by the row itself.
+            if f.node.is_empty() {
+                assert!(
+                    f.doc.contains("Node"),
+                    "{}: where does Node carry it?",
+                    f.name
+                );
+            }
+            if f.lua.is_empty() {
+                assert!(
+                    f.doc.contains("Lua"),
+                    "{}: where does Lua carry it?",
+                    f.name
+                );
             }
         }
     }
