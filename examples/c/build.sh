@@ -48,3 +48,23 @@ cc examples/c/panel.c \
     -Wall -Wextra -o examples/c/panel.so
 
 echo "built examples/c/panel.so"
+
+# The same plugin with its kui_ext_abi deleted: a plugin built against a
+# header from before ADR 0006 gave plugins a version, which is the one the
+# host must refuse and used to load unchecked (backlog S1). Produced from
+# panel.c by deleting the one line rather than kept as a second source, so
+# the mutant cannot drift from the example. CI loads it through
+# `c_panel --headless` and requires the refusal; the grep below is what makes
+# a sed that stopped matching fail here instead of there.
+noabi=target/panel-noabi.c
+sed '/^uint32_t kui_ext_abi(void)/d' examples/c/panel.c > "$noabi"
+if grep -q kui_ext_abi "$noabi"; then
+    echo "panel-noabi.c still defines kui_ext_abi; the mutation missed" >&2
+    exit 1
+fi
+cc "$noabi" \
+    -I crates/kui-ffi/include \
+    -shared -fPIC "${undef[@]+"${undef[@]}"}" \
+    -Wall -Wextra -o target/panel-noabi.so
+
+echo "built target/panel-noabi.so (kui_ext_abi deleted; must be refused)"

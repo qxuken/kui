@@ -2082,7 +2082,38 @@ reach — plus a new one for the new mechanisms: does each guard refuse what it
 exists to refuse? State at the sweep: 512 Rust tests, 55 Node, 14 scenes in
 four adapters, `KUI_ABI_VERSION` 6, fmt and clippy clean.
 
-### `!` S1 — A C plugin that omits `kui_ext_abi` loads unchecked
+### `!` S1 — A C plugin that omits `kui_ext_abi` loads unchecked — **done (2026-09-05)**
+
+`kui_ext_abi` is required. `CExtension::open` now refuses a plugin without
+the symbol — `{path}: plugin declares no ABI; this build is {KUI_ABI_VERSION}`,
+the same shape as the mismatch error — and does so before `kui_ext_view` is
+looked up, so a pre-0006 plugin is turned away as the ABI mismatch it is
+rather than as anything else. The six-function list in `ext.rs`'s module
+doc and in `include/kui.h` now says which two are required (`kui_ext_abi`,
+`kui_ext_view`) and which four are optional; the header's `kui_ext_abi` row
+says why absence cannot mean unchecked. The alpha.6 CHANGELOG entry, which
+had said "five of them optional", is corrected in place.
+
+Two checks pin it. A unit test in `ext.rs` opens the platform's own C
+runtime (`libSystem.B.dylib` / `libc.so.6` / `kernel32.dll`) as a plugin —
+a library that loads everywhere and defines no `kui_ext_*` symbol at all,
+so no compiler is needed in the test — and asserts the whole refusal
+message. And the mutation recipe from the finding is automated:
+`examples/c/build.sh` builds `target/panel-noabi.so` from `panel.c` with
+the one `kui_ext_abi` line deleted by `sed` (and fails if the deletion
+missed), and a new CI step after "C extension (dlopen + origin routing)"
+runs `c_panel --headless target/panel-noabi.so` and requires exit 1 plus the
+message. Verified locally: the un-mutated plugin still prints `ok: clicks
+routed by origin, both ways`; the mutant is refused.
+
+**Lua has no analogous hole**, confirmed. `kui_lua::LuaExtension` is a
+`Core` wrapper over `mlua::Lua::new()`: it `dlopen`s nothing, and no
+`repr(C)` struct crosses to the script — the prelude hands it tables and
+functions, and layout is settled by the Rust build that contains both
+sides. There is no version to check because there is nothing that can be
+compiled against an older header.
+
+The original finding:
 
 `crates/kui-ffi/src/ext.rs:103`: the ABI check runs only `if let Some(abi) =
 sym("kui_ext_abi")`. A plugin without the symbol skips it. **Verified by

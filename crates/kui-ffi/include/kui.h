@@ -1229,23 +1229,28 @@ bool kui_run(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user);
  * (examples/lua/panel.lua), and the loader on the host's side is
  * kui_ffi::CExtension.
  *
- * YOU define these six; the library only calls them. All but kui_ext_view
- * are optional, and a missing one is not an error:
+ * YOU define these six; the library only calls them. Two are required -
+ * kui_ext_abi and kui_ext_view - and the host refuses to load a plugin
+ * without either. The other four are optional, and a missing one is not an
+ * error:
  *
- *   kui_ext_abi      Your KUI_ABI_VERSION. The host refuses a mismatch,
- *                    which is the check a C host makes for itself against
- *                    kui_abi_version(). Absent = unchecked.
+ *   kui_ext_abi      REQUIRED. Your KUI_ABI_VERSION. The host refuses a
+ *                    mismatch, which is the check a C host makes for itself
+ *                    against kui_abi_version(), and it refuses absence the
+ *                    same way: a plugin built against a header from before
+ *                    this symbol existed is exactly the mismatched plugin
+ *                    the check is for, so "absent" cannot mean "unchecked".
  *   kui_ext_name     A name for logs; a NUL-terminated static string. Absent
  *                    = the library's file stem.
  *   kui_ext_init     Your state, handed back to every call below. Absent =
  *                    NULL, which is fine for a stateless panel.
- *   kui_ext_view     Called once per frame with a context borrowing the
- *                    host's frame. Call the kui_open / kui_text / kui_close
- *                    builders on it; the nodes are tagged with the origin
- *                    the host assigned you. It is alive for that one call
- *                    only - store nothing - and the input, frame and draw
- *                    entry points do not apply to it, since the host drives
- *                    those.
+ *   kui_ext_view     REQUIRED. Called once per frame with a context
+ *                    borrowing the host's frame. Call the kui_open /
+ *                    kui_text / kui_close builders on it; the nodes are
+ *                    tagged with the origin the host assigned you. It is
+ *                    alive for that one call only - store nothing - and the
+ *                    input, frame and draw entry points do not apply to it,
+ *                    since the host drives those.
  *   kui_ext_on_event One event of yours, payload borrowed for the call.
  *   kui_ext_free     Your state, at unload.
  *
