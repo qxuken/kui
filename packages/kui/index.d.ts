@@ -315,50 +315,95 @@ export interface TextMetrics {
   lines: number;
 }
 
+// -- generated from the core's warning codes; edit crates/kui-core/src/diag.rs, then `npm run gen` --
+export type WarningCode =
+  /** A grow weight other than 1 on the only grow child of its parent (the
+   *  weight splits space between grow siblings, so alone it changes nothing) or
+   *  across the parent's main axis (cross-axis grow fills the parent whatever
+   *  its weight). */
+  | 'grow-weight-ignored'
+  /** The child count of a node changed while one of its children carries a
+   *  transition under an auto-assigned key. Auto keys are sibling positions, so
+   *  the children that shifted became new nodes and snapped instead of easing.
+   *  Give list items a key. */
+  | 'transition-auto-key'
+  /** Two nodes in one frame share a key: everything retained per key
+   *  (transitions, scroll offsets, editors, layout events, hover state) is
+   *  mixed between them. Siblings need distinct keys. */
+  | 'duplicate-key'
+  /** An image with no `label`: assistive technology has nothing to say for it.
+   *  Decorative images take `role="none"`. */
+  | 'image-without-label'
+  /** The frame's modal surface is not in a float, and content painted after it
+   *  is drawn on top of it: everything the user can see over the modal is
+   *  inert, which looks like inert-behind is broken. A modal that has to cover
+   *  the app is a float (`float="viewport"`); see
+   *  `docs/adr/0003-modal-surfaces.md`. */
+  | 'modal-behind-content'
+  /** A control (a button, link, tab, checkbox, slider, editor) with no
+   *  computable name: no `label`, and no text inside it. Icon buttons and
+   *  editors need a `label`. */
+  | 'control-without-name'
+  /** A focusable node inside a composite's *item* — a button inside a list row,
+   *  a link inside a tab. The item is one roving stop of a composite
+   *  (`docs/adr/0007-composite-keyboard-patterns.md`), so the Tab ring stops at
+   *  the item and nothing reaches what is inside it: declared, and impossible,
+   *  which is what `modal-behind-content` set the precedent for. A focusable
+   *  node inside the *container* but outside every item — a "+" at the end of a
+   *  tab bar — is reachable and is not reported. */
+  | 'focusable-inside-item'
+  /** A `modal` surface with no `label`. A dialog is not named by the text
+   *  inside it (it is not one of ARIA's name-from-content roles), so a screen
+   *  reader announces it as an unnamed dialog — the same silent defect
+   *  `control-without-name` catches, on the node that just took the user's
+   *  focus. Only the derived dialog role is checked: a modal that says what it
+   *  is with an explicit `role` says it with a `label` too, or means something
+   *  naming works differently for. */
+  | 'modal-without-name'
+  /** `wrapChildren` on a container that cannot break lines: a column, or a row
+   *  whose main axis scrolls. Both lay out exactly as if the flag were absent,
+   *  which reads as "wrapping is broken"; see `LayoutSpec::wrap` for why a
+   *  column cannot have it. */
+  | 'wrap-ignored'
+  /** More nodes are departing at once than the exit store will hold (512,
+   *  `depart::MAX_NODES`), so the subtrees past the budget vanished instead of
+   *  animating out. Correct — that is what a node with no `exit` does — and
+   *  invisible from the outside, which is the whole reason it is a line here: a
+   *  list that drops a thousand rows wants `exit` on the list, not on every
+   *  row. */
+  | 'exit-budget'
+  /** A prop name nothing claims: not a schema row, not a composite, not one of
+   *  the element's own props (see `schema::known_prop`). The binding threw the
+   *  declaration away — `hoverBg` in a Lua table, `onclick` in JSX — so unlike
+   *  every other code here this one is raised by the frontend that saw it,
+   *  through `Core::warn`: by the time a frame is a tree the name is gone. The
+   *  message names the likely spelling. */
+  | 'unknown-prop'
+  /** One name declared with two different window configs on the frame it
+   *  opened. The config is read on the opening edge only, and on that edge the
+   *  lowest declaring window wins (the first declaration within one frame), so
+   *  the pick is deterministic — but two places in the app disagree about what
+   *  `"palette"` is, and only one of them is right. See
+   *  `docs/adr/0004-multi-window.md`, decision 4. */
+  | 'duplicate-window-config'
+  /** A window the user closed is still declared, so it stays closed: a
+   *  declaration reopens a window only when it *starts*, and this one never
+   *  stopped. The first version of every multi-window app does this — it
+   *  declares the window unconditionally — and from outside it looks like
+   *  `windows` being ignored. Handle the `{kind:"window", phase:"closed"}`
+   *  event, stop declaring the name, and declare it again to reopen. See
+   *  `docs/adr/0004-multi-window.md`, decision 6. */
+  | 'window-declared-while-closed';
+// -- end generated --
+
 /** A silent misconfiguration the core noticed while finishing a frame —
  *  the kind that otherwise looks like "the feature is broken". Each
  *  distinct (code, node) pair is raised once. */
 export interface Warning {
-  /** Stable: match on it. `grow-weight-ignored` — a `{ grow: n }` with
-   *  nothing to split against (the only grow child, or across the parent's
-   *  main axis); `transition-auto-key` — a node's child count changed while
-   *  an unkeyed child carries a `transition`, so the shifted children
-   *  snapped (give list items a `key`); `duplicate-key` — two nodes share
-   *  a key in one frame. */
-  code:
-    | 'grow-weight-ignored'
-    | 'transition-auto-key'
-    | 'duplicate-key'
-    /** An `<image>` with no `label` (decorative ones take `role="none"`). */
-    | 'image-without-label'
-    /** A button, link, tab, checkbox, slider or editor with no `label` and
-     *  no text inside it: a screen reader announces an unnamed control. */
-    | 'control-without-name'
-    /** A `modal` with no `label`: a dialog is not named by the text inside
-     *  it, so a reader announces an unnamed dialog. */
-    | 'modal-without-name'
-    /** `wrapChildren` where nothing can break: a column, or a `scrollX`
-     *  row. It lays out exactly as if the flag were absent. */
-    | 'wrap-ignored'
-    /** A `modal` that is not in a float, with content declared after it
-     *  painting over it — everything drawn over a modal is inert. */
-    | 'modal-behind-content'
-    /** One window name declared with two different configs on the frame it
-     *  opened. The pick is deterministic (the lowest declaring window's
-     *  first declaration) and a live window's config is never re-read, so
-     *  the other one never applies. */
-    | 'duplicate-window-config'
-    /** A window the user closed is still declared, so it stays closed: a
-     *  declaration reopens a window only when it starts. Handle the
-     *  `{kind:"window", phase:"closed"}` message, stop declaring the name,
-     *  and declare it again to reopen. */
-    | 'window-declared-while-closed'
-    /** A prop name nothing reads — not a schema row, not a composite, not
-     *  one of the element's own — so the encoder dropped the declaration
-     *  before it crossed. Usually the other binding's spelling
-     *  (`hover_bg`) or a typo; the message names the likely one. */
-    | 'unknown-prop'
-    | (string & {});
+  /** Stable: match on it. Every code, with what it means, is `WarningCode`
+   *  (and the Warnings table in docs/props.md); the `string` arm keeps a
+   *  newer addon's codes from being a type error. */
+  code: WarningCode | (string & {});
   /** The node it is about (hex, like event keys). */
   key: string;
   message: string;
@@ -608,11 +653,136 @@ export declare function createEncoder(p: Protocol): {
 export declare function protocol(): Protocol
 
 /**
+ * The binary-frame protocol tables (`{version, op, prop}`). The JS encoder
+ * reads its opcodes and prop ids from here at module init, so the two sides
+ * cannot drift.
+ */
+export declare function protocol(): Protocol
+
+/**
  * A headless kui core: build frames from JSX trees, feed input, poll events.
  * Everything a window does except open one, so an app's behaviour is
  * testable without a display.
  */
 export declare class Ctx {
+
+}
+
+/**
+ * A headless kui core: build frames from JSX trees, feed input, poll events.
+ * Everything a window does except open one, so an app's behaviour is
+ * testable without a display.
+ */
+export declare class Ctx {
+  constructor()
+  /**
+   * `frame` from an already-encoded binary instruction stream, for
+   * callers that own their encoder (`createEncoder(protocol())`) — the
+   * fastest path, and what the JS drivers use. Buffers are read
+   * zero-copy.
+   */
+  frameBinary(width: number, height: number, scale: number, stream: Float64Array, strings: Uint8Array): void
+  /**
+   * The frame clock for `transition` props: monotonic seconds, any
+   * origin. Set before each frame; never setting it makes transitions
+   * snap (the default for headless tests).
+   */
+  setTime(nowSecs: number): void
+  /**
+   * Declares host facts a real window would have pushed — what C spells
+   * `kui_env_set` + `kui_env_set_window`, in one call shaped like what
+   * `env()` reads back. Only the keys you pass move; the rest keep their
+   * values, so `setEnv({window: {customChrome: true}})` is the whole of
+   * "pretend this app draws its own titlebar" and `<titlebar>`,
+   * `<windowButtons>` and `widgets::window_buttons` start building
+   * something. `refreshHz: null` means "the host cannot tell" (the
+   * default), and `nativeControls: null` means the OS draws nothing over
+   * our content. `window.id` is the one fact here an app never chooses —
+   * a driver assigns it — and setting it is how a headless test says
+   * "these events came from that window"; it is 0 otherwise.
+   *
+   * Headless only, and on purpose: a `KuiWindow` has no such call because
+   * its runner reports the real window every frame, and anything set here
+   * would be overwritten before the next view ran.
+   */
+  setEnv(env: EnvInput): void
+  cursor(x: number, y: number): void
+  cursorLeft(): void
+  /**
+   * A button press or release. `clicks`: 1 single, 2 double (word
+   * select), 3 triple (line select). `button` defaults to "primary", and
+   * only that one presses, drags, places the caret and clicks;
+   * "secondary" asks the node under the pointer for a context menu and
+   * moves nothing else, and nothing routes "middle" yet.
+   */
+  mouse(down: boolean, clicks?: number, button?: MouseButtonName): void
+  scroll(dx: number, dy: number): void
+  /** Committed text input (typing, paste); routed to the focused editor. */
+  text(text: string): void
+  /**
+   * Editing key by name ("left", "backspace", "enter", ...) with optional
+   * modifiers `{shift, word, doc}`.
+   */
+  key(name: EditKeyName, mods?: KeyMods): void
+  /**
+   * Raw key press for `onKey` sinks (modal keymaps): a single character
+   * (layout-resolved, e.g. "W" or "$"), a name ("left", "enter", "escape",
+   * "f5", ...), with mods `{shift, ctrl, alt, super}`. Editing keys for
+   * focused editors still go through `key()`. `repeat` marks a press the
+   * OS auto-repeated. The sink hears `{kind:"key", phase:"down", ...}`.
+   */
+  keyDown(code: string, mods?: KeySinkMods, repeat?: boolean): void
+  /**
+   * The release of a key, spelled the way `keyDown` spells it: the sink
+   * hears `{kind:"key", phase:"up", ...}` with `text` null. A release
+   * whose press the sink never got resolves nothing, and moving focus
+   * while a key is held delivers the `up` first.
+   */
+  keyUp(code: string, mods?: KeySinkMods): void
+  /**
+   * Physical modifier state changed: `{shift, ctrl, alt, super}`. The
+   * host receives `{kind:"modifiers", ...}` when it differs from the
+   * last report.
+   */
+  modifiers(mods?: KeySinkMods): void
+  /**
+   * Drains the audio commands the core queued, as plain objects
+   * (`{kind:"play", playback, sound, volume, loop, fadeIn}`, ...) — what a
+   * windowed driver would play. For tests and custom drivers.
+   */
+  audioCommands(): AudioCommand[]
+  /**
+   * A custom driver reports a playback finished on its own; a tagged
+   * one becomes a `sound` event in `pollEvents`.
+   */
+  audioEnded(playback: number): void
+  /**
+   * Drains the window commands the core queued, as plain objects: what
+   * chrome nodes asked for (`{kind:"startDrag"|"close"|"minimize"|
+   * "toggleMaximize", window}`) and what the declared window set decided
+   * (`{kind:"open", window, origin, config:{kind, width, height,
+   * activates}}` / `{kind:"close", window}`).
+   */
+  windowCommands(): WindowCommand[]
+  /**
+   * A custom driver reports that the OS closed window `id`: it stays
+   * closed while still declared, whatever only it declared closes with
+   * it, and `{kind:"window", phase:"closed", name, id}` lands in
+   * `pollEvents`. Nothing happens for the main window (0) or for a
+   * window the diff already closed.
+   */
+  windowClosed(id: number): void
+  /**
+   * The window title the last frame declared (a root `<box title>`), or
+   * null when it declared none. `runWindowed` applies it to the real
+   * window; a bare `Ctx` hands it back so a test can assert on it.
+   */
+  windowTitle(): string | null
+  /**
+   * Raw quads for the finished frame, `quadStride()` bytes each, laid out
+   * as kui-ffi's KuiQuad (see include/kui.h). Copied into the Buffer.
+   */
+  quads(): Buffer
   constructor()
   /**
    * `frame` from an already-encoded binary instruction stream, for
@@ -967,6 +1137,251 @@ export declare class Ctx {
   focusWindow(window: number): void
   editText(key: string): string | null
   setEditText(key: string, text: string): void
+  /**
+   * Registers a w×h RGBA image (pixels copied); returns its id for
+   * `<image src={id}>`. Stable until `removeImage`.
+   */
+  addImage(width: number, height: number, rgba: Buffer): string
+  removeImage(id: string): void
+  /**
+   * Registers a font from file bytes (TTF/OTF/TTC); returns its id
+   * for the `font` prop on `<text>` / `<edit>`. Throws when the
+   * data holds no usable face.
+   */
+  addFont(data: Buffer): string
+  /**
+   * Registers an installed font by family name; null when none
+   * matches (see `systemFontFamilies`). Also finds families loaded
+   * with `loadFontsDir` / `loadFontFile`; the same family gets the
+   * same id.
+   */
+  addSystemFont(name: string): string | null
+  /**
+   * Registers a font file by path (memory-mapped); throws when it
+   * cannot be read or holds no usable face.
+   */
+  loadFontFile(path: string): string
+  /**
+   * Loads every font file under a folder (recursively) so its
+   * families can be picked by name with `addSystemFont`; returns
+   * the face count.
+   */
+  loadFontsDir(dir: string): number
+  removeFont(id: string): void
+  /**
+   * Family names of every font the core can see, installed or
+   * loaded (sorted).
+   */
+  systemFontFamilies(): Array<string>
+  /**
+   * Registers a sound from its encoded bytes (wav/ogg/mp3/flac);
+   * returns its id for `<audio src>`, the `clickSound` /
+   * `hoverSound` props and `play`. Stable until `removeSound`.
+   */
+  addSound(data: Buffer): string
+  removeSound(id: string): void
+  /**
+   * Starts a playback: `{volume, loop, fadeIn, tag}`; returns its
+   * id for `stop` / `setVolume` / `pause` / `resume`. A `tag` comes
+   * back as a `SoundMsg` when the playback finishes on its own.
+   * A window plays it on its own device at once; headless nothing
+   * sounds and the command queues for `audioCommands()`.
+   */
+  play(sound: string, opts?: PlayOptions): number
+  stop(playback: number, fadeMs?: number): void
+  setVolume(playback: number, volume: number, tweenMs?: number): void
+  pause(playback: number, fadeMs?: number): void
+  resume(playback: number, fadeMs?: number): void
+  setMasterVolume(volume: number, tweenMs?: number): void
+  /**
+   * Events since the last poll: `[{origin, window, key, payload}]`,
+   * payloads as plain data (your Elm messages come back out
+   * here). `A` types them — the app's own union, or one core
+   * message type when only that is being watched.
+   */
+  pollEvents<A = AppMsg | CoreMsg>(): UiEvent<A>[]
+  /**
+   * True when the last frame left a transition mid-flight. A window
+   * schedules its own redraws for that; this is for tests and
+   * drivers that want to know when motion has settled.
+   */
+  animating(): boolean
+  /** Summary of the last frame's display list. */
+  stats(): FrameStats
+  /**
+   * Host facts the frame driver pushed in: what the window and the
+   * display are doing, as of now (see `Env`). This is the same
+   * surface Lua's `view(env)` reads and C's `kui_env_set*` writes —
+   * a JSX app needs it to build its own titlebar (inset past the
+   * macOS traffic lights, pick the maximize glyph), to dim its
+   * chrome when the window loses focus, or to pace itself against
+   * the real refresh rate.
+   *
+   * Note `env().focused` is the *window*'s keyboard focus, not the
+   * focused node's key — that is `focused()`, one call up.
+   */
+  env(): Env
+  /**
+   * Measures text the way layout would, without adding a node:
+   * `{width, height, lines}` in logical px, wrapped to `maxWidth`
+   * when given. `content` is whatever `<text>` takes (a string, or
+   * children with `<span>`s); `style` the `<text>` props (`size`,
+   * `font`, `wrap`, `maxLines`, `ellipsis`, ...). Works before the
+   * first frame; a window answers at its own scale once a frame has
+   * run. Size a column to its widest label, or pick the tier that
+   * fits, from these numbers instead of constants found by
+   * screenshot.
+   */
+  measureText(content: KuiNode, style?: TextProps, maxWidth?: number): TextMetrics
+  /**
+   * Drains the warnings the core raised since the last call
+   * (see `Warning`), each distinct (code, node) pair once.
+   * `createApp` collects them on `app.warnings` for you, and
+   * `runWindowed` prints them, unless either was told not to.
+   */
+  warnings(): Warning[]
+  /**
+   * Turns the per-frame diagnostic checks behind `warnings` on or
+   * off. A bare `Ctx` has them on; `createApp` / `runWindowed`
+   * turn them off under `NODE_ENV=production`.
+   */
+  setDiagnostics(on: boolean): void
+  /**
+   * The prop names the encoder threw away while lowering a tree,
+   * as `[element, name]` pairs, raised as `unknown-prop` warnings
+   * (see `Warning`). A name outside the schema never reaches the
+   * binary stream, so the encoder is the only side that sees it;
+   * `frame` / `setView` report what they dropped through here.
+   * Behind the same `setDiagnostics` gate, and once per name.
+   */
+  warnUnknownProps(props: [string, string][]): void
+  /**
+   * What assistive technology sees of the last frame (see
+   * `AccessTree`). A window hands it to the platform by itself
+   * (AccessKit); this is for tests and tooling.
+   */
+  accessTree(): AccessTree
+  /**
+   * A request from assistive technology on a node (`key`, hex as in
+   * events): an `AccessAction` name the node advertises, with
+   * `value` the new text for `setValue`. Resolved like its
+   * pointer/keyboard equivalent, so the resulting events come out of
+   * `pollEvents`. A real screen reader's requests arrive through a
+   * window on their own.
+   */
+  access(key: string, action: AccessAction, value?: string | AccessArg): void
+  /**
+   * Hover state as of the last frame (keys come from events, e.g.
+   * an `onHover` enter). For plain hover styling prefer the
+   * `hoverBg` / `pressedBg` props — the core resolves those without
+   * a round trip.
+   */
+  isHovered(key: string): boolean
+  isPressed(key: string): boolean
+  /**
+   * Whether a node holds keyboard focus — any node: an editor, an
+   * `onKey` sink, a button Tab landed on (see `focused`).
+   */
+  isFocused(key: string): boolean
+  /**
+   * The node holding keyboard focus (hex key), or null. Tab /
+   * Shift-Tab (`key("tab")`) walk every control in tree order,
+   * Enter and Space press the focused one, and the arrows nudge a
+   * focused slider.
+   */
+  focused(): string | null
+  /**
+   * Whether focus got where it is by keyboard or assistive
+   * technology rather than a click — when it shows (the ring, or
+   * `focusBg`).
+   */
+  focusVisible(): boolean
+  /**
+   * Moves keyboard focus to a node now (an editor, an `onKey` sink,
+   * a control, a `focusable` box); `keyFocus` on a box is the
+   * declarative, edge-triggered form.
+   */
+  focus(key: string): void
+  blur(): void
+  /**
+   * What Tab does, as a call — for an `onKey` sink that binds Tab
+   * itself and wants to hand the keyboard on: the next focusable
+   * node in tree order, wrapping.
+   */
+  focusNext(): void
+  /** What Shift-Tab does. */
+  focusPrev(): void
+  /**
+   * Scrolls whatever contains a node so it shows — "scroll to the
+   * selected row", which needs the container geometry only the core
+   * has. The request resolves against the *next* frame's layout (one
+   * is requested), so a row the view is about to declare for the
+   * first time reveals fine. If that frame does not declare the key,
+   * or nothing above it scrolls, it is a no-op and is not kept for a
+   * later frame; two reveals before one frame are contradictory, so
+   * the last wins.
+   */
+  reveal(key: string): void
+  /**
+   * A scroll container's retained offset `{x, y}` as the last layout
+   * clamped it (positive = content moved up / left) — the number to
+   * keep in a model and hand back to `setScroll`. Zero for a node
+   * that never scrolled.
+   */
+  scrollOffset(key: string): ScrollOffset
+  /**
+   * Everything the last layout resolved for the scroll container
+   * `key`: its box `{x, y, w, h}`, its content size `{contentW,
+   * contentH}` and the clamped `offset` — `null` for a key no layout
+   * has resolved as a container.
+   *
+   * This is what makes a long list affordable. The core builds every
+   * child a view declares, so ten thousand rows cost ten thousand
+   * rows; knowing `h` and `offset.y`, a view renders the rows that
+   * fit plus two spacers holding the space of the rest. Read while
+   * building, it describes the previous frame, so a resize slices one
+   * frame late — render a row or two extra at each end.
+   */
+  scrollGeometry(key: string): ScrollGeometry | null
+  /**
+   * Sets that offset the way the wheel would; the next frame's
+   * layout clamps it, so `(0, 0)` jumps to the top and a huge `y` to
+   * the end without knowing the content height.
+   */
+  setScroll(key: string, x: number, y: number): void
+  /**
+   * The names of every window open right now, `"main"` first,
+   * then in the order they opened — what a view's root
+   * `windows` declared and the diff has opened. `view(model,
+   * window)` is called once per name.
+   */
+  windows(): Array<string>
+  /**
+   * The name of the window this core draws: `"main"`, or the
+   * name the declaration that opened `env().window.id` used.
+   */
+  windowName(): string
+  /**
+   * Asks the driver to resize a window to `width`×`height` logical
+   * px. A request and not a declaration: a window's `size` config
+   * is read on the frame it opens and never again, because the user
+   * owns a window's size once it exists, so this is the only way an
+   * app moves a live one. Queued the way `reveal` is — a `KuiWindow`
+   * applies it on its next pump, and the window answers with the
+   * ordinary `resize` event carrying the size it actually became,
+   * while a headless `Ctx` has no window and simply keeps the
+   * request. `window` is the id events carry (`env().window.id`),
+   * 0 for the main window.
+   */
+  setWindowSize(window: number, width: number, height: number): void
+  /**
+   * Asks the driver to give a window keyboard focus; queued the same
+   * way. Advisory: whether the window manager agreed shows up as
+   * `env().focused` on the frames that follow, not as a reply.
+   */
+  focusWindow(window: number): void
+  editText(key: string): string | null
+  setEditText(key: string, text: string): void
 }
 
 /** Byte stride of one quad in the `quads()` buffer. */
@@ -1018,6 +1433,302 @@ export declare class KuiWindow {
   frameStats(): FrameTiming
   /** Asks the window to close; the next pump returns false. */
   close(): void
+}
+
+/** Byte stride of one quad in the `quads()` buffer. */
+export declare function quadStride(): number
+
+/**
+ * A real kui window (winit + wgpu) driven from Node. The event loop is
+ * pumped, not run: call `pump()` from a timer loop so winit and libuv share
+ * the main thread — or prefer `runWindowed`, which does that for you, unless
+ * you are building your own loop. One event loop per process (winit event
+ * loops are not recreatable on every platform), any number of windows on
+ * it: a view whose root declares `windows` opens more, `windows()` lists
+ * them, and `setView` takes the name of the one a tree is for.
+ */
+export declare class KuiWindow {
+  /**
+   * Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
+   * chrome: "native" | "custom" | "borderless"}`. The min/max pairs bound
+   * what the user can resize the window to; either half may stand alone.
+   */
+  constructor(title: string, options?: WindowOptions)
+  /**
+   * `setView` with a flat binary instruction stream (see `Ctx::frame_binary`).
+   * Copied once so redraws (resize, hover) can re-lower it between pumps.
+   * `window` names which window the tree is for — `"main"` when left
+   * out; the names `windows()` lists otherwise.
+   */
+  setViewBinary(stream: Float64Array, strings: Uint8Array, window?: string | undefined | null): void
+  /**
+   * Processes pending OS events without blocking. Returns false once the
+   * window has closed.
+   */
+  pump(): boolean
+  /**
+   * The window's inner size in logical px plus its scale factor:
+   * `{width, height, scale}`. Readable before the first frame (in
+   * `setup`), and re-reported as a `{kind:"resize", width, height,
+   * scale}` event through `pollEvents` — a `ResizeMsg` — whenever the
+   * window changes size or moves to a display with another DPI.
+   */
+  size(): WindowSize
+  /**
+   * Frame timing measured by the runner — what the latency HUD draws,
+   * as data: `{frames, last: {inputMs, viewMs, layoutMs, renderMs,
+   * waitMs, totalMs, workMs} | null, avgTotalMs, maxTotalMs, avgWorkMs,
+   * maxWorkMs}` over the last 120 frames. `waitMs` is vsync
+   * backpressure; `workMs` is everything else.
+   */
+  frameStats(): FrameTiming
+  /** Asks the window to close; the next pump returns false. */
+  close(): void
+  /**
+   * Registers a w×h RGBA image (pixels copied); returns its id for
+   * `<image src={id}>`. Stable until `removeImage`.
+   */
+  addImage(width: number, height: number, rgba: Buffer): string
+  removeImage(id: string): void
+  /**
+   * Registers a font from file bytes (TTF/OTF/TTC); returns its id
+   * for the `font` prop on `<text>` / `<edit>`. Throws when the
+   * data holds no usable face.
+   */
+  addFont(data: Buffer): string
+  /**
+   * Registers an installed font by family name; null when none
+   * matches (see `systemFontFamilies`). Also finds families loaded
+   * with `loadFontsDir` / `loadFontFile`; the same family gets the
+   * same id.
+   */
+  addSystemFont(name: string): string | null
+  /**
+   * Registers a font file by path (memory-mapped); throws when it
+   * cannot be read or holds no usable face.
+   */
+  loadFontFile(path: string): string
+  /**
+   * Loads every font file under a folder (recursively) so its
+   * families can be picked by name with `addSystemFont`; returns
+   * the face count.
+   */
+  loadFontsDir(dir: string): number
+  removeFont(id: string): void
+  /**
+   * Family names of every font the core can see, installed or
+   * loaded (sorted).
+   */
+  systemFontFamilies(): Array<string>
+  /**
+   * Registers a sound from its encoded bytes (wav/ogg/mp3/flac);
+   * returns its id for `<audio src>`, the `clickSound` /
+   * `hoverSound` props and `play`. Stable until `removeSound`.
+   */
+  addSound(data: Buffer): string
+  removeSound(id: string): void
+  /**
+   * Starts a playback: `{volume, loop, fadeIn, tag}`; returns its
+   * id for `stop` / `setVolume` / `pause` / `resume`. A `tag` comes
+   * back as a `SoundMsg` when the playback finishes on its own.
+   * A window plays it on its own device at once; headless nothing
+   * sounds and the command queues for `audioCommands()`.
+   */
+  play(sound: string, opts?: PlayOptions): number
+  stop(playback: number, fadeMs?: number): void
+  setVolume(playback: number, volume: number, tweenMs?: number): void
+  pause(playback: number, fadeMs?: number): void
+  resume(playback: number, fadeMs?: number): void
+  setMasterVolume(volume: number, tweenMs?: number): void
+  /**
+   * Events since the last poll: `[{origin, window, key, payload}]`,
+   * payloads as plain data (your Elm messages come back out
+   * here). `A` types them — the app's own union, or one core
+   * message type when only that is being watched.
+   */
+  pollEvents<A = AppMsg | CoreMsg>(): UiEvent<A>[]
+  /**
+   * True when the last frame left a transition mid-flight. A window
+   * schedules its own redraws for that; this is for tests and
+   * drivers that want to know when motion has settled.
+   */
+  animating(): boolean
+  /** Summary of the last frame's display list. */
+  stats(): FrameStats
+  /**
+   * Host facts the frame driver pushed in: what the window and the
+   * display are doing, as of now (see `Env`). This is the same
+   * surface Lua's `view(env)` reads and C's `kui_env_set*` writes —
+   * a JSX app needs it to build its own titlebar (inset past the
+   * macOS traffic lights, pick the maximize glyph), to dim its
+   * chrome when the window loses focus, or to pace itself against
+   * the real refresh rate.
+   *
+   * Note `env().focused` is the *window*'s keyboard focus, not the
+   * focused node's key — that is `focused()`, one call up.
+   */
+  env(): Env
+  /**
+   * Measures text the way layout would, without adding a node:
+   * `{width, height, lines}` in logical px, wrapped to `maxWidth`
+   * when given. `content` is whatever `<text>` takes (a string, or
+   * children with `<span>`s); `style` the `<text>` props (`size`,
+   * `font`, `wrap`, `maxLines`, `ellipsis`, ...). Works before the
+   * first frame; a window answers at its own scale once a frame has
+   * run. Size a column to its widest label, or pick the tier that
+   * fits, from these numbers instead of constants found by
+   * screenshot.
+   */
+  measureText(content: KuiNode, style?: TextProps, maxWidth?: number): TextMetrics
+  /**
+   * Drains the warnings the core raised since the last call
+   * (see `Warning`), each distinct (code, node) pair once.
+   * `createApp` collects them on `app.warnings` for you, and
+   * `runWindowed` prints them, unless either was told not to.
+   */
+  warnings(): Warning[]
+  /**
+   * Turns the per-frame diagnostic checks behind `warnings` on or
+   * off. A bare `Ctx` has them on; `createApp` / `runWindowed`
+   * turn them off under `NODE_ENV=production`.
+   */
+  setDiagnostics(on: boolean): void
+  /**
+   * The prop names the encoder threw away while lowering a tree,
+   * as `[element, name]` pairs, raised as `unknown-prop` warnings
+   * (see `Warning`). A name outside the schema never reaches the
+   * binary stream, so the encoder is the only side that sees it;
+   * `frame` / `setView` report what they dropped through here.
+   * Behind the same `setDiagnostics` gate, and once per name.
+   */
+  warnUnknownProps(props: [string, string][]): void
+  /**
+   * What assistive technology sees of the last frame (see
+   * `AccessTree`). A window hands it to the platform by itself
+   * (AccessKit); this is for tests and tooling.
+   */
+  accessTree(): AccessTree
+  /**
+   * A request from assistive technology on a node (`key`, hex as in
+   * events): an `AccessAction` name the node advertises, with
+   * `value` the new text for `setValue`. Resolved like its
+   * pointer/keyboard equivalent, so the resulting events come out of
+   * `pollEvents`. A real screen reader's requests arrive through a
+   * window on their own.
+   */
+  access(key: string, action: AccessAction, value?: string | AccessArg): void
+  /**
+   * Hover state as of the last frame (keys come from events, e.g.
+   * an `onHover` enter). For plain hover styling prefer the
+   * `hoverBg` / `pressedBg` props — the core resolves those without
+   * a round trip.
+   */
+  isHovered(key: string): boolean
+  isPressed(key: string): boolean
+  /**
+   * Whether a node holds keyboard focus — any node: an editor, an
+   * `onKey` sink, a button Tab landed on (see `focused`).
+   */
+  isFocused(key: string): boolean
+  /**
+   * The node holding keyboard focus (hex key), or null. Tab /
+   * Shift-Tab (`key("tab")`) walk every control in tree order,
+   * Enter and Space press the focused one, and the arrows nudge a
+   * focused slider.
+   */
+  focused(): string | null
+  /**
+   * Whether focus got where it is by keyboard or assistive
+   * technology rather than a click — when it shows (the ring, or
+   * `focusBg`).
+   */
+  focusVisible(): boolean
+  /**
+   * Moves keyboard focus to a node now (an editor, an `onKey` sink,
+   * a control, a `focusable` box); `keyFocus` on a box is the
+   * declarative, edge-triggered form.
+   */
+  focus(key: string): void
+  blur(): void
+  /**
+   * What Tab does, as a call — for an `onKey` sink that binds Tab
+   * itself and wants to hand the keyboard on: the next focusable
+   * node in tree order, wrapping.
+   */
+  focusNext(): void
+  /** What Shift-Tab does. */
+  focusPrev(): void
+  /**
+   * Scrolls whatever contains a node so it shows — "scroll to the
+   * selected row", which needs the container geometry only the core
+   * has. The request resolves against the *next* frame's layout (one
+   * is requested), so a row the view is about to declare for the
+   * first time reveals fine. If that frame does not declare the key,
+   * or nothing above it scrolls, it is a no-op and is not kept for a
+   * later frame; two reveals before one frame are contradictory, so
+   * the last wins.
+   */
+  reveal(key: string): void
+  /**
+   * A scroll container's retained offset `{x, y}` as the last layout
+   * clamped it (positive = content moved up / left) — the number to
+   * keep in a model and hand back to `setScroll`. Zero for a node
+   * that never scrolled.
+   */
+  scrollOffset(key: string): ScrollOffset
+  /**
+   * Everything the last layout resolved for the scroll container
+   * `key`: its box `{x, y, w, h}`, its content size `{contentW,
+   * contentH}` and the clamped `offset` — `null` for a key no layout
+   * has resolved as a container.
+   *
+   * This is what makes a long list affordable. The core builds every
+   * child a view declares, so ten thousand rows cost ten thousand
+   * rows; knowing `h` and `offset.y`, a view renders the rows that
+   * fit plus two spacers holding the space of the rest. Read while
+   * building, it describes the previous frame, so a resize slices one
+   * frame late — render a row or two extra at each end.
+   */
+  scrollGeometry(key: string): ScrollGeometry | null
+  /**
+   * Sets that offset the way the wheel would; the next frame's
+   * layout clamps it, so `(0, 0)` jumps to the top and a huge `y` to
+   * the end without knowing the content height.
+   */
+  setScroll(key: string, x: number, y: number): void
+  /**
+   * The names of every window open right now, `"main"` first,
+   * then in the order they opened — what a view's root
+   * `windows` declared and the diff has opened. `view(model,
+   * window)` is called once per name.
+   */
+  windows(): Array<string>
+  /**
+   * The name of the window this core draws: `"main"`, or the
+   * name the declaration that opened `env().window.id` used.
+   */
+  windowName(): string
+  /**
+   * Asks the driver to resize a window to `width`×`height` logical
+   * px. A request and not a declaration: a window's `size` config
+   * is read on the frame it opens and never again, because the user
+   * owns a window's size once it exists, so this is the only way an
+   * app moves a live one. Queued the way `reveal` is — a `KuiWindow`
+   * applies it on its next pump, and the window answers with the
+   * ordinary `resize` event carrying the size it actually became,
+   * while a headless `Ctx` has no window and simply keeps the
+   * request. `window` is the id events carry (`env().window.id`),
+   * 0 for the main window.
+   */
+  setWindowSize(window: number, width: number, height: number): void
+  /**
+   * Asks the driver to give a window keyboard focus; queued the same
+   * way. Advisory: whether the window manager agreed shows up as
+   * `env().focused` on the frames that follow, not as a reply.
+   */
+  focusWindow(window: number): void
+  editText(key: string): string | null
+  setEditText(key: string, text: string): void
   /**
    * Registers a w×h RGBA image (pixels copied); returns its id for
    * `<image src={id}>`. Stable until `removeImage`.

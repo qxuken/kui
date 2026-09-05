@@ -48,86 +48,108 @@ pub struct Warning {
     pub message: String,
 }
 
-/// A `Grow(f)` with `f != 1` on the only grow child of its parent (the
-/// weight splits space between grow siblings, so alone it changes nothing)
-/// or across the parent's main axis (cross-axis grow fills the parent
-/// whatever its weight).
-pub const GROW_WEIGHT_IGNORED: &str = "grow-weight-ignored";
-/// The child count of a node changed while one of its children carries a
-/// transition under an auto-assigned key. Auto keys are sibling positions,
-/// so the children that shifted became new nodes and snapped instead of
-/// easing. Give list items a key.
-pub const TRANSITION_AUTO_KEY: &str = "transition-auto-key";
-/// Two nodes in one frame share a key: everything retained per key
-/// (transitions, scroll offsets, editors, layout events, hover state) is
-/// mixed between them. Siblings need distinct labels.
-pub const DUPLICATE_KEY: &str = "duplicate-key";
-/// An image with no `label`: assistive technology has nothing to say
-/// for it. Decorative images take `role="none"`.
-pub const IMAGE_WITHOUT_LABEL: &str = "image-without-label";
-/// The frame's modal surface is not in a float, and content painted after
-/// it is drawn on top of it: everything the user can see over the modal is
-/// inert, which looks like inert-behind is broken. A modal that has to
-/// cover the app is a float (`float="viewport"`); see
-/// `docs/adr/0003-modal-surfaces.md`.
-pub const MODAL_BEHIND_CONTENT: &str = "modal-behind-content";
-/// A control (a button, link, tab, checkbox, slider, editor) with no
-/// computable name: no `label`, and no text inside it. Icon buttons and
-/// editors need a `label`.
-pub const CONTROL_WITHOUT_NAME: &str = "control-without-name";
-/// A focusable node inside a composite's *item* — a button inside a list
-/// row, a link inside a tab. The item is one roving stop of a composite
-/// (`docs/adr/0007-composite-keyboard-patterns.md`), so the Tab ring
-/// stops at the item and nothing reaches what is inside it: declared, and
-/// impossible, which is what [`MODAL_BEHIND_CONTENT`] set the precedent
-/// for. A focusable node inside the *container* but outside every item —
-/// a "+" at the end of a tab bar — is reachable and is not reported.
-pub const FOCUSABLE_INSIDE_ITEM: &str = "focusable-inside-item";
-/// A `modal` surface with no `label`. A dialog is not named by the text
-/// inside it (it is not one of ARIA's name-from-content roles), so a
-/// screen reader announces it as an unnamed dialog — the same silent
-/// defect [`CONTROL_WITHOUT_NAME`] catches, on the node that just took
-/// the user's focus. Only the derived `Role::Dialog` is checked: a modal
-/// that says what it is with an explicit `role` says it with a `label`
-/// too, or means something naming works differently for.
-pub const MODAL_WITHOUT_NAME: &str = "modal-without-name";
-/// `wrapChildren` on a container that cannot break lines: a column, or a
-/// row whose main axis scrolls. Both lay out exactly as if the flag were
-/// absent, which reads as "wrapping is broken"; see `LayoutSpec::wrap` for
-/// why a column cannot have it.
-pub const WRAP_IGNORED: &str = "wrap-ignored";
+/// One warning code and what it means, for the tables the bindings
+/// generate from the core (`docs/props.md`, the Node `WarningCode` union).
+/// `doc` is the const's own doc comment, so there is one text to edit.
+pub struct WarningDef {
+    pub code: &'static str,
+    pub doc: &'static str,
+}
 
-/// More nodes are departing at once than the exit store will hold (see
-/// [`crate::depart::MAX_NODES`]), so the subtrees past the budget vanished
-/// instead of animating out. Correct — that is what a node with no `exit`
-/// does — and invisible from the outside, which is the whole reason it is a
-/// line here: a list that drops a thousand rows wants `exit` on the list,
-/// not on every row.
-pub const EXIT_BUDGET: &str = "exit-budget";
+/// Declares the codes as the `pub const`s they have always been *and* the
+/// [`WARNINGS`] table from the same tokens: the doc comment on each const
+/// is the table's `doc`. A code added outside this block compiles, but
+/// `every_code_is_in_the_table_and_vice_versa` fails, so the two cannot
+/// drift.
+macro_rules! warnings {
+    ($( $(#[doc = $doc:literal])+ pub const $name:ident: &str = $code:literal; )*) => {
+        $( $(#[doc = $doc])+ pub const $name: &str = $code; )*
+        /// Every warning code with its description, in declaration order.
+        pub const WARNINGS: &[WarningDef] = &[
+            $( WarningDef { code: $code, doc: concat!($($doc, "\n"),+) }, )*
+        ];
+    };
+}
 
-/// A prop name nothing claims: not a schema row, not a composite, not one of
-/// the element's own props (see `schema::known_prop`). The binding threw the
-/// declaration away — `hoverBg` in a Lua table, `onclick` in JSX — so unlike
-/// every other code here this one is raised by the frontend that saw it,
-/// through [`crate::Core::warn`]: by the time a frame is a tree the name is
-/// gone.
-pub const UNKNOWN_PROP: &str = "unknown-prop";
-
-/// One name declared with two different window configs on the frame it
-/// opened. The config is read on the opening edge only, and on that edge
-/// the lowest declaring window wins (the first declaration within one
-/// frame), so the pick is deterministic — but two places in the app
-/// disagree about what `"palette"` is, and only one of them is right. See
-/// `docs/adr/0004-multi-window.md`, decision 4.
-pub const DUPLICATE_WINDOW_CONFIG: &str = "duplicate-window-config";
-/// A window the user closed is still declared, so it stays closed: a
-/// declaration reopens a window only when it *starts*, and this one never
-/// stopped. The first version of every multi-window app does this — it
-/// declares the window unconditionally — and from outside it looks like
-/// `windows` being ignored. Handle the `{kind:"window", phase:"closed"}`
-/// event, stop declaring the name, and declare it again to reopen. See
-/// `docs/adr/0004-multi-window.md`, decision 6.
-pub const WINDOW_DECLARED_WHILE_CLOSED: &str = "window-declared-while-closed";
+warnings! {
+    /// A grow weight other than 1 on the only grow child of its parent (the
+    /// weight splits space between grow siblings, so alone it changes nothing)
+    /// or across the parent's main axis (cross-axis grow fills the parent
+    /// whatever its weight).
+    pub const GROW_WEIGHT_IGNORED: &str = "grow-weight-ignored";
+    /// The child count of a node changed while one of its children carries a
+    /// transition under an auto-assigned key. Auto keys are sibling positions,
+    /// so the children that shifted became new nodes and snapped instead of
+    /// easing. Give list items a key.
+    pub const TRANSITION_AUTO_KEY: &str = "transition-auto-key";
+    /// Two nodes in one frame share a key: everything retained per key
+    /// (transitions, scroll offsets, editors, layout events, hover state) is
+    /// mixed between them. Siblings need distinct keys.
+    pub const DUPLICATE_KEY: &str = "duplicate-key";
+    /// An image with no `label`: assistive technology has nothing to say
+    /// for it. Decorative images take `role="none"`.
+    pub const IMAGE_WITHOUT_LABEL: &str = "image-without-label";
+    /// The frame's modal surface is not in a float, and content painted after
+    /// it is drawn on top of it: everything the user can see over the modal is
+    /// inert, which looks like inert-behind is broken. A modal that has to
+    /// cover the app is a float (`float="viewport"`); see
+    /// `docs/adr/0003-modal-surfaces.md`.
+    pub const MODAL_BEHIND_CONTENT: &str = "modal-behind-content";
+    /// A control (a button, link, tab, checkbox, slider, editor) with no
+    /// computable name: no `label`, and no text inside it. Icon buttons and
+    /// editors need a `label`.
+    pub const CONTROL_WITHOUT_NAME: &str = "control-without-name";
+    /// A focusable node inside a composite's *item* — a button inside a list
+    /// row, a link inside a tab. The item is one roving stop of a composite
+    /// (`docs/adr/0007-composite-keyboard-patterns.md`), so the Tab ring
+    /// stops at the item and nothing reaches what is inside it: declared, and
+    /// impossible, which is what `modal-behind-content` set the precedent
+    /// for. A focusable node inside the *container* but outside every item —
+    /// a "+" at the end of a tab bar — is reachable and is not reported.
+    pub const FOCUSABLE_INSIDE_ITEM: &str = "focusable-inside-item";
+    /// A `modal` surface with no `label`. A dialog is not named by the text
+    /// inside it (it is not one of ARIA's name-from-content roles), so a
+    /// screen reader announces it as an unnamed dialog — the same silent
+    /// defect `control-without-name` catches, on the node that just took
+    /// the user's focus. Only the derived dialog role is checked: a modal
+    /// that says what it is with an explicit `role` says it with a `label`
+    /// too, or means something naming works differently for.
+    pub const MODAL_WITHOUT_NAME: &str = "modal-without-name";
+    /// `wrapChildren` on a container that cannot break lines: a column, or a
+    /// row whose main axis scrolls. Both lay out exactly as if the flag were
+    /// absent, which reads as "wrapping is broken"; see `LayoutSpec::wrap` for
+    /// why a column cannot have it.
+    pub const WRAP_IGNORED: &str = "wrap-ignored";
+    /// More nodes are departing at once than the exit store will hold (512,
+    /// `depart::MAX_NODES`), so the subtrees past the budget vanished
+    /// instead of animating out. Correct — that is what a node with no `exit`
+    /// does — and invisible from the outside, which is the whole reason it is a
+    /// line here: a list that drops a thousand rows wants `exit` on the list,
+    /// not on every row.
+    pub const EXIT_BUDGET: &str = "exit-budget";
+    /// A prop name nothing claims: not a schema row, not a composite, not one of
+    /// the element's own props (see `schema::known_prop`). The binding threw the
+    /// declaration away — `hoverBg` in a Lua table, `onclick` in JSX — so unlike
+    /// every other code here this one is raised by the frontend that saw it,
+    /// through `Core::warn`: by the time a frame is a tree the name is
+    /// gone. The message names the likely spelling.
+    pub const UNKNOWN_PROP: &str = "unknown-prop";
+    /// One name declared with two different window configs on the frame it
+    /// opened. The config is read on the opening edge only, and on that edge
+    /// the lowest declaring window wins (the first declaration within one
+    /// frame), so the pick is deterministic — but two places in the app
+    /// disagree about what `"palette"` is, and only one of them is right. See
+    /// `docs/adr/0004-multi-window.md`, decision 4.
+    pub const DUPLICATE_WINDOW_CONFIG: &str = "duplicate-window-config";
+    /// A window the user closed is still declared, so it stays closed: a
+    /// declaration reopens a window only when it *starts*, and this one never
+    /// stopped. The first version of every multi-window app does this — it
+    /// declares the window unconditionally — and from outside it looks like
+    /// `windows` being ignored. Handle the `{kind:"window", phase:"closed"}`
+    /// event, stop declaring the name, and declare it again to reopen. See
+    /// `docs/adr/0004-multi-window.md`, decision 6.
+    pub const WINDOW_DECLARED_WHILE_CLOSED: &str = "window-declared-while-closed";
+}
 
 /// The [`DUPLICATE_WINDOW_CONFIG`] warning for one window name. Keyed by
 /// the name: there is no node, and the conflict is between declarations,
@@ -510,5 +532,59 @@ impl Diagnostics {
             }
         }
         self.scratch = keys;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The `pub const NAME: &str = "code";` lines of this file, read back
+    /// from the source: a code declared outside the `warnings!` block would
+    /// compile and be missing from the table, and this is what notices.
+    fn codes_in_source() -> Vec<&'static str> {
+        include_str!("diag.rs")
+            .lines()
+            .filter_map(|line| {
+                let rest = line.trim_start().strip_prefix("pub const ")?;
+                let (_name, rest) = rest.split_once(": &str = \"")?;
+                let (code, tail) = rest.split_once('"')?;
+                (tail == ";").then_some(code)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn every_code_is_in_the_table_and_vice_versa() {
+        let in_source = codes_in_source();
+        let in_table: Vec<&str> = WARNINGS.iter().map(|w| w.code).collect();
+        assert!(
+            in_source.len() >= 13,
+            "the scan missed the consts: {in_source:?}"
+        );
+        assert_eq!(in_source, in_table);
+        for (i, code) in in_table.iter().enumerate() {
+            assert!(!in_table[i + 1..].contains(code), "duplicate code {code}");
+            assert!(
+                code.bytes().all(|b| b == b'-' || b.is_ascii_lowercase()),
+                "{code}: codes are kebab-case"
+            );
+        }
+    }
+
+    #[test]
+    fn every_row_has_a_doc() {
+        for w in WARNINGS {
+            assert!(
+                w.doc.split_whitespace().count() > 5,
+                "{}: no description",
+                w.code
+            );
+            assert!(
+                !w.doc.contains("[`"),
+                "{}: rustdoc link syntax leaks into the bindings' docs",
+                w.code
+            );
+        }
     }
 }

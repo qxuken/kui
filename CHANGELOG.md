@@ -9,6 +9,14 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **The warning codes are one table** (backlog S2). `kui_core::diag::WARNINGS`
+  lists every code with the const's own doc comment, the addon's `protocol()`
+  exports it as `warnings`, and `npm run gen` writes the `WarningCode` union
+  into `index.d.ts` and a Warnings table into `docs/props.md` from it — the
+  mechanism the props already use. The hand-written union had drifted to 11
+  of 13 (`exit-budget` and `focusable-inside-item` were missing); a unit
+  test now pins the table to the consts, and CI's `git diff --exit-code`
+  pins the generated files to the table.
 - **An app can ask for a window's size and focus** (backlog C11 step 5, ADR
   0004 decision 5). `WindowCommand` gained `SetSize { window, size }` and
   `Focus(WindowId)`, queued by `Core::set_window_size` / `Core::focus_window`

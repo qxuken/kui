@@ -2129,17 +2129,33 @@ functions list calls `kui_ext_abi` one of the five optional ones; it should
 be the one required one, or absence should refuse with the same message a
 mismatch gives.
 
-### `!` S2 — Warning codes are hand-listed in three places and have drifted
+### `.` S2 — The warning codes drifted across three hand-written copies — **done (2026-09-05)**
 
-`diag.rs` has 13 codes. The TS `code` union in `packages/kui/index.d.ts`
-(the hand-written half, not the generated one) has 11 — `exit-budget` and
-`focusable-inside-item` are missing, so a typed `switch (w.code)` cannot name
-two live warnings. The README names 3. `docs/props.md` has no warnings
-section at all, though it is the cross-binding reference for everything
-else. Each `pub const` in `diag.rs` already carries the doc comment a table
-needs; the fix is the mechanism props use — export the codes through
-`protocol()`, generate the union and a `## Warnings` table in `gen-types.mjs`,
-and add the union to the CI `git diff --exit-code` list.
+Closed by the mechanism the props already use. `diag.rs` declares its codes
+through a `warnings!` macro that emits the same `pub const`s and a
+`WARNINGS: &[WarningDef]` table whose `doc` is each const's own doc
+comment, so there is one text to edit; a unit test reads the file's
+`pub const NAME: &str = "code";` lines back and asserts they are the table,
+so a const declared outside the block fails the test instead of drifting.
+The addon's `protocol()` exports the table as `warnings`, and `npm run gen`
+writes it into `index.d.ts` as the `WarningCode` union (between generated
+markers, the way `jsx-runtime.d.ts` takes its props) and into `docs/props.md`
+as a Warnings table. `index.d.ts` was already in CI's `git diff
+--exit-code` list from P5. The README keeps its three examples and points
+at the table; the doc comments lost their rustdoc intra-doc links (they now
+name the other code in backticks) because the same text is now read by
+TypeScript and Markdown, and the test refuses `[\``.
+
+The original finding:
+
+`crates/kui-core/src/diag.rs` defines 13 warning codes as `pub const`s with
+doc comments. `packages/kui/index.d.ts`'s `code` union — the hand-written
+half; P5 generated only the addon's `#[napi]` surface — listed 11:
+`exit-budget` and `focusable-inside-item` were missing, so a TypeScript app
+with a typed `switch (w.code)` could not name two live warnings. The README
+named three by name. `docs/props.md`, the generated cross-binding reference,
+had no warnings section at all. Same shape as P5 and X1: a list Rust owns,
+restated by hand, drifting.
 
 ### `~` S3 — Two thousand lines of test oracle ship in the library
 
