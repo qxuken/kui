@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fails unless the workspace version, every kui-* dependency requirement,
-# packages/kui/package.json and the changelog's top heading all name $1 - the
-# version a `v*` tag names.
+# packages/kui/package.json, the changelog's top heading and the examples' npm
+# lockfile all name $1 - the version a `v*` tag names.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 want="${1:?usage: scripts/check-version.sh 0.1.0-alpha.2}"
@@ -14,12 +14,31 @@ cargo metadata --no-deps --offline --format-version 1 \
       if (p.version !== want) bad.push(`${p.name} is ${p.version}`);
       for (const d of p.dependencies) {
         if (!d.name.startsWith("kui")) continue;
+        // kui-core dev-depends on itself to turn on the `conformance`
+        // feature for its own tests. A self dependency resolves to the crate
+        // being built, never to the registry, so it carries a path and no
+        // version - and cargo publish strips it. Requiring a version here
+        // would demand kui-core 0.1.0-alpha.6 from the registry while
+        // publishing kui-core 0.1.0-alpha.6. Every other dev-dependency is
+        // still checked: kui-lua names two, both with versions.
+        if (d.name === p.name) continue;
         const req = d.req.replace(/^\^/, "");
         if (req !== want) bad.push(`${p.name} requires ${d.name} ${d.req}`);
       }
     }
     const npm = require("./packages/kui/package.json").version;
     if (npm !== want) bad.push(`packages/kui/package.json is ${npm}`);
+    // examples/node links packages/kui by `file:` path, so its lockfile
+    // mirrors the version in that manifest. Nothing wrote it and nothing
+    // read it until now, which is how it sat at alpha.2 through two
+    // releases.
+    const lockPath = "./examples/node/package-lock.json";
+    const linked = require(lockPath).packages?.["../../packages/kui"];
+    if (!linked) {
+      bad.push(`${lockPath} has no "../../packages/kui" entry`);
+    } else if (linked.version !== want) {
+      bad.push(`${lockPath} records ${linked.version}`);
+    }
     // The changelog heading is written by hand, so it is the one that ships
     // saying "unreleased" the day the release goes out.
     const heading = require("fs").readFileSync("CHANGELOG.md", "utf8")

@@ -2834,6 +2834,40 @@ binding-parity corpus that pins all of it.
   run gen` and `git diff --exit-code` on the three generated files — parallel
   worktree merges left them stale once this round (`80baacc`), and the CI
   guard catches it, but catch it before the tag commit, not after.
+  **Two blockers found and fixed ahead of the run (2026-09-05); R5 itself is
+  still open.** Both were found by running `scripts/set-version.sh
+  0.1.0-alpha.6` for real and reverting it, which is worth doing before the
+  tag rather than during it.
+  **`check-version.sh` failed for every version**, so the release job step
+  that refuses a mismatched tag (`Tag matches the manifests`) would have
+  failed the alpha.6 tag. It walks every dependency whose name starts with
+  `kui` and demands the version next to the path, and S3 (`0903542`) gave
+  kui-core a **dev-dependency on itself** to turn on the `conformance`
+  feature for its own tests — a path with no version, reported as `kui-core
+  requires kui-core *`. A self dependency resolves to the crate being built
+  and never to the registry (cargo publish strips it), and requiring a
+  version would ask the registry for kui-core 0.1.0-alpha.6 while publishing
+  kui-core 0.1.0-alpha.6. So the check skips a dependency on the package
+  itself and nothing else: the two real dev-dependencies (kui-lua on kui and
+  on kui-core) both carry versions and are still checked, which is why
+  skipping dev-dependencies as a class was the wrong fix.
+  **`examples/node/package-lock.json` was three releases stale**, recording
+  the linked `../../packages/kui` at `0.1.0-alpha.2` against a package at
+  alpha.5, because nothing wrote it and nothing read it. `set-version.sh` now
+  writes it (`npm install --package-lock-only --offline` right after the
+  `npm version` that makes it stale — npm stays the only thing that writes
+  its own format, and it needs no network and no `node_modules`), and
+  `check-version.sh` reads it, so the tag is refused if it drifts.
+  **CI could not have caught this and now can.** The `git diff --exit-code`
+  guard covers the three files `npm run gen` writes, which this is not; and
+  `npm ci`, which the Node example job already runs, was confirmed by
+  experiment to install and typecheck happily against the stale lockfile and
+  to never rewrite it — that is exactly how it survived alpha.2 → alpha.5. A
+  new step compares the lockfile entry with `packages/kui/package.json`
+  directly rather than regenerating and diffing, so a runner whose npm
+  formats the file differently cannot make it flake.
+  **Not in the changelog**, on X2's precedent: that file lists what an app
+  gains and what it can delete, and release tooling is neither.
 - `.` **R6 — The README benchmark table predates most of what ships.** The
   numbers were measured before exit animations, opacity, shadows, rounded
   clipping, wrapping and composites touched the hot path, and half the
