@@ -120,11 +120,15 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         "#
         .to_string(),
         "keys" => r#"
-            local function sink(name, key_up)
+            local function sink(name, key_up, child)
               return row { key = name, width = 100, height = 24, bg = 0x1b1d27ff,
-                           on_key = 1, key_up = key_up, role = "group", label = name }
+                           on_key = 1, key_up = key_up, role = "group", label = name,
+                           child }
             end
-            return column { pad = 10, gap = 6, sink("press", false), sink("held", true) }
+            local go = row { key = "go", width = 80, height = 16, bg = 0x3b5bd4ff,
+                             on_click = { kind = "go" }, label = "Go", key_focus = true }
+            return column { pad = 10, gap = 6, sink("press", false), sink("held", true),
+                            sink("shell", true, go) }
         "#
         .to_string(),
         "modal" => r#"

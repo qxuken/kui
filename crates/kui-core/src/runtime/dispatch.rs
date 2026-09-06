@@ -65,7 +65,19 @@ impl Core {
                     // 9). Otherwise Space presses the focused control (a
                     // sink would have taken the press as data; an editor
                     // took the text).
-                    if !self.type_ahead(i, &s, &mut out) && s == " " {
+                    //
+                    // Unless the control claims neither and a sink above it
+                    // does: the raw press already bubbled there, and the
+                    // two channels have to agree about who owns the key
+                    // (`docs/adr/0011`, decision 3).
+                    let code = match s.chars().next() {
+                        Some(c) => KeyCode::Char(c),
+                        None => KeyCode::Unknown,
+                    };
+                    if !self.bubbles(i, code, false)
+                        && !self.type_ahead(i, &s, &mut out)
+                        && s == " "
+                    {
                         self.click_node(self.tree.keys[i], &mut out);
                     }
                 }
@@ -110,7 +122,15 @@ impl Core {
                     if ek == EditKey::Escape {
                         self.set_focus(None);
                     }
-                } else if let Some(i) = self.focused_control() {
+                } else if let Some(i) = self.focused_control()
+                    // A key this control does not claim has already gone to
+                    // the sink above it as a raw press, so it must not act
+                    // here as well (`docs/adr/0011`, decision 3). With no
+                    // sink above, nothing bubbled and every arm below runs
+                    // as it always did — including Escape, which is how a
+                    // control with no shortcut layer over it is let go of.
+                    && !edit_key_code(ek).is_some_and(|c| self.bubbles(i, c, mods.word || mods.doc))
+                {
                     // A control that is neither an editor nor a sink:
                     // Enter presses it, the arrows nudge a slider (the
                     // same events assistive technology produces), Escape
@@ -461,16 +481,21 @@ impl Core {
         &self.access
     }
 
-    /// Delivers one key event to the focused sink, tagged with the sink's
-    /// `on_key` payload; returns whether anything took it. The focused edit
-    /// widget owns the keyboard (it takes the Text/EditKey path), so a sink
-    /// only hears while no editor is focused and it is still in the last
-    /// frame's hit list.
+    /// Delivers one key event to the sink it resolves to, tagged with that
+    /// sink's `on_key` payload; returns whether anything took it. The
+    /// focused edit widget owns the keyboard (it takes the Text/EditKey
+    /// path), so a sink only hears while no editor is focused and it is
+    /// still in the last frame's hit list. *Which* sink is
+    /// [`Self::key_target`]'s answer: the focused one, or — when a control
+    /// holds focus and does not claim this key — the nearest one above it
+    /// (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`).
     fn route_key(&mut self, kp: &KeyPress, phase: KeyPhase, out: &mut Vec<UiEvent>) -> bool {
         if self.edit.focused().is_some() {
             return false;
         }
-        let Some(focus) = self.focus else {
+        let Some(target) =
+            self.key_target(kp.code, kp.mods.ctrl || kp.mods.alt || kp.mods.super_key)
+        else {
             return false;
         };
         let Some(h) = self
@@ -478,7 +503,7 @@ impl Core {
             .hits
             .iter()
             .rev()
-            .find(|h| h.key == focus && h.key_sink.is_some())
+            .find(|h| h.key == target && h.key_sink.is_some())
         else {
             return false;
         };
@@ -525,6 +550,84 @@ impl Core {
         // input event. `handle_input` appends it before returning, so a
         // click that moved focus and the release it forced arrive together.
         self.pending.append(&mut out);
+    }
+
+    /// Which node hears a raw press: the focused sink, the nearest sink
+    /// above a focused control that does not claim the key, or nothing
+    /// (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`, decision 1).
+    ///
+    /// `chord` is whether a modifier other than Shift is down. A chord is
+    /// never a control's key — it is what a shortcut layer is made of — so
+    /// it bubbles whatever the focused control would have done with the
+    /// bare key.
+    fn key_target(&self, code: KeyCode, chord: bool) -> Option<Key> {
+        let i = self.focus_index()?;
+        // A sink that holds focus keeps everything, as it always has
+        // (`docs/adr/0002`, decision 3).
+        if self.tree.specs[i].events().on_key.is_some() {
+            return Some(self.tree.keys[i]);
+        }
+        if !chord && self.claims(i, code) {
+            return None;
+        }
+        self.enclosing_sink(i).map(|j| self.tree.keys[j])
+    }
+
+    /// Whether the key `code` pressed on the focused node `i` reaches a
+    /// sink above it instead of the node itself — the question the
+    /// `EditKey` and `Text` channels ask, so that both agree with the raw
+    /// press channel about who owns the key. False with no sink above, so
+    /// a key nothing claims does exactly what it did before.
+    fn bubbles(&self, i: usize, code: KeyCode, chord: bool) -> bool {
+        (chord || !self.claims(i, code)) && self.enclosing_sink(i).is_some()
+    }
+
+    /// Whether the focused node `i` takes `code` for itself: the keys the
+    /// core acts on *for that node*, which are exactly the keys that never
+    /// bubble (`docs/adr/0011`, decision 2). Static — a press is resolved
+    /// on its way down, before the channel that would act on it arrives,
+    /// so the question has to be answerable from the node and the key
+    /// alone rather than from what a handler did.
+    fn claims(&self, i: usize, code: KeyCode) -> bool {
+        use crate::access::Role;
+        // A space bar reported as a character is still the space bar.
+        let code = match code {
+            KeyCode::Char(' ') => KeyCode::Space,
+            c => c,
+        };
+        // Tab belongs to the ring wherever focus is: a shell sink that
+        // heard every Tab would be this ADR's own bug in reverse.
+        if code == KeyCode::Tab {
+            return true;
+        }
+        // Only a control the core presses itself claims anything else; a
+        // plain box someone focused by hand claims nothing.
+        if self.focused_control() != Some(i) {
+            return false;
+        }
+        let key = self.tree.keys[i];
+        // Enter and Space activate what there is to activate: a node with
+        // no click payload has nothing, so its Space is free to bubble.
+        let activates = self
+            .interaction
+            .hits
+            .iter()
+            .rev()
+            .find(|h| h.key == key)
+            .is_some_and(|h| h.payload.is_some() || h.window.is_some());
+        let item = crate::composite::owner(&self.tree, i, &mut Vec::new()).is_some();
+        let slider = self.tree.specs[i].access().role == Some(Role::Slider);
+        match code {
+            KeyCode::Enter => activates,
+            // Inside a composite, Space either extends a type-ahead search
+            // or presses the item (`docs/adr/0007`, decision 9).
+            KeyCode::Space => activates || item,
+            KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down => slider || item,
+            KeyCode::Home | KeyCode::End => item,
+            // Type-ahead inside a composite; nothing anywhere else.
+            KeyCode::Char(_) => item,
+            _ => false,
+        }
     }
 
     /// Whether the focused node is a key sink (it owns its keys).
@@ -645,4 +748,24 @@ impl Core {
     pub fn cursor_shape(&self) -> crate::cursor::CursorShape {
         self.interaction.cursor_shape()
     }
+}
+
+/// The raw key an editing key came from, for the keys a focused control
+/// acts on — the one place the two input channels have to name the same
+/// press (`docs/adr/0011`, decision 3). `None` for the editing vocabulary
+/// with no control behaviour behind it (Backspace, PageUp, Undo): those
+/// arms do nothing on a control either way.
+fn edit_key_code(ek: EditKey) -> Option<KeyCode> {
+    Some(match ek {
+        EditKey::Enter => KeyCode::Enter,
+        EditKey::Escape => KeyCode::Escape,
+        EditKey::Tab => KeyCode::Tab,
+        EditKey::Left => KeyCode::Left,
+        EditKey::Right => KeyCode::Right,
+        EditKey::Up => KeyCode::Up,
+        EditKey::Down => KeyCode::Down,
+        EditKey::Home => KeyCode::Home,
+        EditKey::End => KeyCode::End,
+        _ => return None,
+    })
 }

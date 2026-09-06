@@ -1574,12 +1574,17 @@ const SCENE_TREES = {
     ]),
   // Two key sinks: the press-only default and one that asked for releases
   // (`keyUp`). The tag is an integer, so the report's event column shows
-  // the phase instead of a tag kind.
+  // the phase instead of a tag kind. Then a third with a button inside it,
+  // which holds focus: a shell over a ring, hearing what the button does
+  // not claim (docs/adr/0011-keys-bubble-to-the-enclosing-sink.md).
   keys: () =>
     root({}, [
       box({ pad: 10, gap: 6 }, [
         box({ width: 100, height: 24, bg: '#1b1d27', onKey: 1, role: 'group', label: 'press' }, [], 'press'),
         box({ width: 100, height: 24, bg: '#1b1d27', onKey: 1, keyUp: true, role: 'group', label: 'held' }, [], 'held'),
+        box({ width: 100, height: 24, bg: '#1b1d27', onKey: 1, keyUp: true, role: 'group', label: 'shell' }, [
+          box({ width: 80, height: 16, bg: '#3b5bd4', onClick: { kind: 'go' }, label: 'Go', keyFocus: true }, [], 'go'),
+        ], 'shell'),
       ]),
     ]),
   // docs/adr/0003-modal-surfaces.md: the app behind the dialog is inert,

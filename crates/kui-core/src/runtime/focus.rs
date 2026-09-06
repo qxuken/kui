@@ -228,17 +228,35 @@ impl Core {
         if self.tree.specs[i].events().on_key.is_some() {
             return Some(key);
         }
+        match self.enclosing_sink(i) {
+            Some(j) => Some(self.tree.keys[j]),
+            None => focusable.then_some(key),
+        }
+    }
+
+    /// The nearest key sink strictly above node `i`: the walk
+    /// [`Self::press_focus`] makes for a press, made for a key as well
+    /// (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`, decision 1).
+    ///
+    /// A disabled node is not a sink at all (`docs/adr/0002`, decision 6),
+    /// so it neither answers here nor hides a live sink further up. The
+    /// walk stops at the modal boundary rather than climbing through it:
+    /// the app around a dialog is inert (`docs/adr/0003`), and a shell that
+    /// kept hearing shortcuts while its own dialog was up would be running
+    /// commands against a surface the user cannot see the state of.
+    pub(crate) fn enclosing_sink(&self, i: usize) -> Option<usize> {
         let mut n = self.tree.parent[i];
         while n != crate::tree::NIL {
             let j = n as usize;
-            // A disabled node is not a sink at all (decision 6), so it
-            // neither answers here nor hides a live sink further up.
+            if !self.interactive(j) {
+                return None;
+            }
             if self.tree.specs[j].events().on_key.is_some() && !self.tree.specs[j].disabled {
-                return Some(self.tree.keys[j]);
+                return Some(j);
             }
             n = self.tree.parent[j];
         }
-        focusable.then_some(key)
+        None
     }
 
     /// The focused node's index in the last frame, if it is there.

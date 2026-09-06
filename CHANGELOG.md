@@ -193,6 +193,31 @@ bumped past alpha.6 should delete.
 
 ### Changed
 
+- **Keys a focused control does not claim bubble to the nearest enclosing
+  key sink** (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`, backlog
+  F7, from both field reports). An app could have a keyboard shortcut or a
+  Tab ring, never both: a sink hears a press only while it *holds* focus,
+  so a root `onKey` box either kept focus through every Tab — the
+  pomodoro's three sliders were reachable by a screen reader and not by
+  the keyboard — or handed the ring on with `focusNext` and went deaf, and
+  Space stopped starting the timer. Now a focused control keeps the keys
+  the core presses it with (**Enter** and **Space** where there is
+  something to activate, a **slider's arrows**, a **composite's** arrows,
+  Home, End and type-ahead) and **Tab stays the ring's wherever focus
+  is**; every other press — a letter, a function key, Escape, and any
+  chord, since ⌘ and ⌥ are what a shortcut layer is made of — walks up to
+  the first non-disabled `onKey` ancestor and arrives there as the same
+  `{kind:"key"}` payload a sink already handles. The nearest sink wins, a
+  bubbled release follows its press under the same `keyUp` opt-in, and the
+  walk stops at a modal boundary, so a shell under its own dialog is as
+  inert as the app it wraps. **No new prop:** a shell is an `onKey` box
+  around its content, which is what both reports already wrote. A sink
+  that holds focus still keeps every key, Tab included (ADR 0002, decision
+  3, unchanged, and now half of a pattern rather than a whole answer).
+  **What breaks:** a chord that used to press the focused control — ⌘Enter
+  on a button — reaches the shell instead, and a focused control's Escape
+  now goes to a shell that is listening rather than blurring. The corpus's
+  `keys` scene grew a shell over a ring, so all four bindings reproduce it.
 - **A key sink hears presses only, unless it says `keyUp`** (backlog F3,
   from the pomodoro field report). alpha.6 made `onKey` deliver both
   halves of every key to one sink as `{kind:"key", phase:"down"|"up"}` —
@@ -269,6 +294,13 @@ bumped past alpha.6 should delete.
   which of two overlapping stubs won, and the elbow-only layout the boxes
   forced: one `<line points curve/>` per link, in the same coordinates the
   cards already float in, replaces all of it.
+- **The alias a shortcut was hidden behind, and the `focus()` after every
+  keypress.** A node that is both a control and a sink never had its
+  Enter, Space or Tab claimed by the core — the mind map's `insert` alias
+  hedged against a collision that was not there, and the README now says
+  so in a sentence. And a shell that took focus back after handing the
+  ring on, to keep hearing its own keys, can stop: what its controls do
+  not claim arrives on its own.
 - **The `phase` guard in every keymap.** `if (msg.phase !== 'down')
   return` — or the alpha.4 → alpha.6 migration line, `phase !== 'down' ||
   repeat` — is what a sink without `keyUp` does by itself now. The four

@@ -1248,13 +1248,13 @@ static void conf_modal_button(KuiCtx *ui, const char *key, const char *kind,
 
 /* Two key sinks clicked into focus in turn: the first says only on_key and
  * hears the press alone, the second sets key_up and hears both halves. An
- * integer tag, so the report's event column shows the phase. */
+ * integer tag, so the report's event column shows the phase. Left open, so
+ * the third can hold a button (see conf_keys). */
 static void conf_keys_sink(KuiCtx *ui, const char *name, uint32_t key_up) {
     KuiSpec spec = {.dir = KUI_ROW, .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 24},
                     .bg = 0x1b1d27ff, .role = KUI_ROLE_GROUP, .label = KUI_STR(name),
                     .key_up = key_up};
     kui_open_with(ui, KUI_STR(name), &spec, NULL, NULL, kui_value_int(1), NULL);
-    kui_close(ui);
 }
 
 static void conf_keys(KuiCtx *ui, const Fixtures *f, int phase) {
@@ -1263,7 +1263,20 @@ static void conf_keys(KuiCtx *ui, const Fixtures *f, int phase) {
     KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10, .gap = 6};
     kui_open(ui, &outer, NULL);
     conf_keys_sink(ui, "press", 0);
+    kui_close(ui);
     conf_keys_sink(ui, "held", 1);
+    kui_close(ui);
+    /* A shell over a ring: the sink hears what the button inside it does
+     * not claim, and the button holds focus from the first frame
+     * (docs/adr/0011-keys-bubble-to-the-enclosing-sink.md). */
+    conf_keys_sink(ui, "shell", 1);
+    KuiValue *go_tag = kui_value_map();
+    kui_value_map_set(go_tag, KUI_STR("kind"), kui_value_str(KUI_STR("go")));
+    KuiSpec go = {.dir = KUI_ROW, .width = {KUI_FIXED, 80}, .height = {KUI_FIXED, 16},
+                  .bg = 0x3b5bd4ff, .label = KUI_STR("Go")};
+    uint64_t go_key = kui_open_keyed(ui, KUI_STR("go"), &go, go_tag);
+    kui_close(ui);
+    kui_set_key_focus(ui, go_key);
     kui_close(ui);
 }
 

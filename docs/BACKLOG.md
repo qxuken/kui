@@ -285,40 +285,6 @@ have the same split; C at least gets `kui_press`. **Test:** `press('escape')`
 dismisses a modal *and* reaches a sink under it; `press('tab')` moves focus;
 `press('right')` on a focused slider nudges it.
 
-### `~` F7 — An app with global shortcuts cannot also have a Tab ring (wants an ADR)
-
-Evidence: pomodoro 2.5, mind-map #5. A root box with `onKey` + `keyFocus`
-keeps focus through every Tab (the report verified both ways: a minimal app
-without the sink tabs to the slider), so the three duration sliders are
-reachable by VoiceOver and not by keyboard. This is ADR 0002 decision 3 as
-designed — a sink owns its keyboard, Tab included — and the ADR rejects
-"let a key sink give up Tab" by name, handing the sink `focusNext()`
-instead. That answer does not survive the next step: once focus is on a
-slider, the sink hears nothing, so Space stops starting the timer. Both
-apps want the same thing and neither can have it: *a few* keys, globally,
-with the ring and the controls' own keys intact.
-
-The mind map adds the other half of the confusion: a node that is both a
-control and a sink, whose author could not tell whether Enter/Space would be
-claimed and whether a window's Tab traversal would eat their `tab` binding.
-Neither happens — `focused_control()` (`dispatch.rs:530-535`) excludes
-sinks, so a sink's Enter, Space and Tab are its own data — but nothing an
-app author reads says so, and the report shipped an `insert` alias to hedge.
-
-**Do:** an ADR. The shape worth writing up first: **unhandled keys bubble to
-the nearest enclosing sink** — a focused control takes the keys the core
-gives it (Enter, Space, a slider's arrows, a composite's arrows and
-type-ahead) and every other press walks up to the first non-disabled
-`onKey` ancestor, which hears it as it hears everything today. A sink that
-holds focus keeps everything, as now. The core already knows which presses
-did nothing (the `_ => {}` arms in `dispatch.rs`), and the ancestor walk is
-`press_focus`'s (`focus.rs:218`). That makes the pomodoro's root sink a
-shortcut layer under a working ring with no new row, and it is the pattern
-every app shell wants. The alternative, a `keys` allow-list on the sink,
-needs a vocabulary and answers only the Tab half. Whichever wins, decision
-3's "what a sink owns" and "what a control owns" go into the README's Input
-paragraph in one sentence each.
-
 ### `~` F8 — Sliders announce as percentages: no `valueText`
 
 Evidence: pomodoro 2.1, confirmed under real VoiceOver: 25 min in [5..60]
@@ -479,9 +445,10 @@ and both of the last two carry a "what breaks" line in the CHANGELOG for the
 next tag. **F4** (the modal restore overriding a `keyFocus` edge) is the one
 left. Then the gaps in rough order of cost: F9 and F10 are an afternoon, F6
 and F11 a day each (~~F5~~ was one, and is **done (2026-09-06)**), F8
-needs one AccessKit question answered first. F7 (global shortcuts under a
-Tab ring) joins the ADR group below, where ~~F12~~ (a line primitive) also
-sat until it landed as `docs/adr/0010-a-segment-primitive.md`. F13
+needs one AccessKit question answered first. ~~F7~~ (global shortcuts under
+a Tab ring) went to the ADR group below and landed there as
+`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`, as ~~F12~~ (a line
+primitive) had as `docs/adr/0010-a-segment-primitive.md`. F13
 (VoiceOver at launch) and F15 (panning in a window) are reports nobody in
 this repo has reproduced yet, and each says what to try first. ~~F14~~ —
 **done (2026-09-06)**: F2 closed its `DragMsg` bullet and the other three
@@ -505,9 +472,13 @@ real announcement in `TreeUpdate` (two of the three platforms have the API
 behind it; AccessKit's whole event surface is a tree diff). The exit
 animations' `animating()` policy, revisited against a real view that removes
 many nodes (ADR 0005 left it opt-in + a 512-node budget with no duration
-cap). And from the field: F7, whether keys a focused control did not
+cap). ~~And from the field, F7, whether keys a focused control did not
 take should bubble to the enclosing sink — ADR 0002 rejected the narrower
-"sink gives up Tab" and both reports need the wider thing. ~~And F12, a
+"sink gives up Tab" and both reports need the wider thing~~ — **done
+(2026-09-06)**, as `docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`,
+accepted *and* built: they bubble, a control keeps only the keys the core
+presses it with, Tab stays the ring's, and ADR 0002 decision 3 keeps
+everything a sink that holds focus hears. ~~And F12, a
 segment primitive beside the six rounded-rect quad kinds, which ADR 0005
 never considered~~ — **done (2026-09-06)**, as
 `docs/adr/0010-a-segment-primitive.md`, accepted *and* built: a seventh
@@ -584,11 +555,12 @@ suggested sequence as it stood on 2026-09-05, and
 [Release 0.1.0-alpha.6](backlog/closed-2026-09.md#release-010-alpha6-2026-09-05),
 whose R1–R7 are the half-baked items finished before the tag.
 
-**From two field reports (2026-09-06)** — F2, F5, F14
+**From two field reports (2026-09-06)** — F2, F5, F7, F14
 
 - `!` **F2** — [Drag deltas lie twice: `end` zeroes them, and sub-slop motion never reaches them](backlog/closed-2026-09.md#-f2--drag-deltas-lie-twice-end-zeroes-them-and-sub-slop-motion-never-reaches-them--done-2026-09-06) — done (2026-09-06) — F14's `DragMsg` bullet closed with it
 - `~` **F5** — [Nothing outside Rust can name a node by the key it declared](backlog/closed-2026-09.md#-f5--nothing-outside-rust-can-name-a-node-by-the-key-it-declared--done-2026-09-06) — done (2026-09-06)
 - `.` **F14** — [Four doc gaps the two reports paid for](backlog/closed-2026-09.md#-f14--four-doc-gaps-the-two-reports-paid-for-three-of-them-open--done-2026-09-06) — done (2026-09-06) — its `DragMsg` bullet closed with F2
+- `~` **F7** — [An app with global shortcuts cannot also have a Tab ring](backlog/closed-2026-09.md#-f7--an-app-with-global-shortcuts-cannot-also-have-a-tab-ring-wants-an-adr--done-2026-09-06) — done (2026-09-06) — ADR 0011, accepted and built
 
 **From building C11 step 4 (2026-09-06)** — W1
 

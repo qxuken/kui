@@ -24,8 +24,8 @@ use crate::edit::{EditOptions, EditStore};
 use crate::env::Env;
 use crate::geom::{Rect, Size, Vec2};
 use crate::input::{
-    EditKey, HitRegion, InputEvent, Interaction, KeyPhase, KeyPress, MouseButton, ScrollAxis,
-    ScrollRegion, ScrollbarRegion, UiEvent,
+    EditKey, HitRegion, InputEvent, Interaction, KeyCode, KeyPhase, KeyPress, MouseButton,
+    ScrollAxis, ScrollRegion, ScrollbarRegion, UiEvent,
 };
 use crate::key::{Key, LabelIndex};
 use crate::keyframes::{self, Keyframe};

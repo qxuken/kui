@@ -686,12 +686,27 @@ pub const SCENES: &[Scene] = &[
         doc: "Two key sinks, clicked into focus in turn and each pressed and \
               released once. The first says only `on_key` and hears the press \
               alone — the keymap default, so a binding runs once per key; the \
-              second says `key_up` too and hears both halves.",
-        custom: &["key"],
+              second says `key_up` too and hears both halves. Then a third \
+              sink with a button inside it, holding focus from the frame it \
+              was declared in: a shell over a ring \
+              (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`). The \
+              letter reaches the shell in both halves, because the button \
+              claims no letter; the space presses the button and never \
+              reaches the shell, because the button has something to \
+              activate; and Tab moves focus off it, because Tab is the \
+              ring\'s wherever focus is.",
+        custom: &["key", "keyFocus"],
         elements: &["box"],
         build: build_keys,
         env: NATIVE_CHROME,
         steps: &[
+            // The shell, first, while the button still holds the focus it
+            // was declared with.
+            Step::KeyDown('m' as u32),
+            Step::KeyUp('m' as u32),
+            Step::Type(' ' as u32),
+            Step::Tab,
+            // The two leaf sinks, each clicked into focus in turn.
             Step::Cursor(60, 22),
             Step::MouseDown,
             Step::MouseUp,
@@ -704,13 +719,21 @@ pub const SCENES: &[Scene] = &[
             Step::KeyUp('b' as u32),
         ],
         expect: Expect {
-            solid: 2,
+            solid: 4,
             shadows: 0,
             images: 0,
             segments: 0,
             glyphs_min: 0,
-            access: &["0 window ||", "1 group press||", "1 group held||"],
-            events: &["key down", "key down", "key up"],
+            access: &[
+                "0 window ||",
+                "1 group press||",
+                "1 group held||",
+                "1 group shell||",
+                "2 button Go||",
+            ],
+            events: &[
+                "key down", "key up", "go -", "key down", "key down", "key up",
+            ],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -1504,6 +1527,21 @@ fn build_keys(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with(NodeSpec::column().pad(10.0).gap(6.0), |ui| {
         ui.with_keyed("press", sink("press"), |_| {});
         ui.with_keyed("held", sink("held").key_up(), |_| {});
+        // A shell over a ring: the sink hears what the button inside it
+        // does not claim, and the button holds focus from the first frame.
+        ui.with_keyed("shell", sink("shell").key_up(), |ui| {
+            let go = ui.with_keyed(
+                "go",
+                NodeSpec::row()
+                    .width(Sizing::Fixed(80.0))
+                    .height(Sizing::Fixed(16.0))
+                    .bg(Color::hex(0x3b5bd4ff))
+                    .on_click(Value::map([("kind", Value::str("go"))]))
+                    .label("Go"),
+                |_| {},
+            );
+            ui.take_key_focus(go);
+        });
     });
 }
 

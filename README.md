@@ -897,6 +897,16 @@ position names is dropped rather than delivered as `unknown`. Presses and
 releases route to the key sink and no further (C9): the core keeps no "which
 keys are down" query, since the app that asked for the pair already has one.
 
+A key sink owns its keyboard: while it holds focus every press is its data,
+Tab included, and it hands the ring on with `focusNext` when it wants to
+(ADR 0002, decision 3). A focused control owns only the keys the core
+presses it with — Enter and Space where there is something to activate, a
+slider's arrows, a composite's arrows, Home, End and type-ahead — and every
+other press, chords included, walks up to the nearest enclosing sink
+([ADR 0011](docs/adr/0011-keys-bubble-to-the-enclosing-sink.md)), which is
+how an app shell keeps its shortcuts while the Tab ring works underneath
+it.
+
 The pointer shape is derived, not declared: the core resolves one per frame
 from whatever is under the pointer, and the `cursor` prop overrides it — but
 only from this list (`text`, `pointer`, `grab`, `grabbing`, `notAllowed`, the
