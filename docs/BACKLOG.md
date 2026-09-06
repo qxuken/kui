@@ -1393,7 +1393,15 @@ a build settled differently from its text.
    config carries that and the *driver* adds the owner's position. That is
    what "no new geometry query" is worth — the alternative needs a window
    position query this ADR does not add. Amended into the ADR.
-   **Two bugs the real window found that the corpus could not.** A window
+   **Three bugs the real window found that the corpus could not.** The
+   owner flashed unfocused whenever a popup opened or closed — focus moving
+   between two windows is two events (three around a new one, since winit
+   announces every window it creates with a `Focused(false)`), and in the
+   middle of any ordering of them no window claims the keyboard. `focused`
+   is now derived from every pane's copy at the end of the batch rather than
+   written per event, an owner and its non-activating popup read as focused
+   together, and a popup destroyed while holding the keyboard hands it back.
+   Then: a window
    just ordered front reports its surface occluded for a frame or two, and
    `render`'s "nothing to present, try next frame" scheduled no next frame
    — so a popup drew nothing until a stray mouse move woke it. A window

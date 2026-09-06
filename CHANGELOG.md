@@ -47,6 +47,17 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Fixed
 
+- **A window no longer flashes unfocused while a popup opens or closes.**
+  What a view reads as `focused` is now derived from what the platform said
+  about *every* window, once per event batch, rather than written per event
+  — because focus moving between two windows is two events (three around a
+  new window, which winit announces with a `Focused(false)` of its own), and
+  in the middle of any ordering of them no window claims the keyboard.
+  Reading that moment was the flicker. An owner and its non-activating popup
+  also read as focused *together*, since between them the keyboard is being
+  routed rather than lost, and a popup that is destroyed while holding it
+  hands it back to its owner instead of leaving the owner to wait for the
+  platform. `env.focused` is unchanged for a single-window app.
 - **A window's first frame no longer waits for a mouse move.** A window that
   has just been ordered front reports its surface *occluded* for a frame or
   two while the platform catches up, and `render` answering "nothing to

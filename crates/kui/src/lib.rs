@@ -378,6 +378,11 @@ struct Pane {
     /// Whether it took OS focus when it opened. False is the popup default
     /// and what makes the borrowing necessary.
     activates: bool,
+    /// Whether the OS says *this* window holds the keyboard — what winit
+    /// last reported, before the borrowing in [`Shell::settle_focus`] is
+    /// applied. `core.env.focused`, which is what a view reads, is derived
+    /// from every pane's copy of this and is not always the same answer.
+    os_focused: bool,
     core: Core,
     window: Arc<Window>,
     renderer: kui_wgpu::Renderer,
@@ -740,6 +745,58 @@ impl<A: App> Shell<A> {
             .collect()
     }
 
+    /// Works out what each window's *view* should believe about keyboard
+    /// focus, from what the OS said about all of them.
+    ///
+    /// The two are not the same answer, and ADR 0004 decision 9 is why: a
+    /// non-activating popup must not take the focus ring off the field
+    /// that opened it, so **a window that owns one reads as focused while
+    /// the popup holds the keyboard**. Without that the owner draws one
+    /// unfocused frame every time a popup opens — the platform hands the
+    /// key window over and back, and the frame in between is real. It is
+    /// derived rather than patched at each event, and derived at the end of
+    /// the batch rather than inside it, because focus *moving* is two
+    /// events — three around a new window, since winit queues a
+    /// `Focused(false)` for every one it creates — and in the middle of any
+    /// ordering of them there is a moment when no window claims the
+    /// keyboard. Reading that moment is the flicker.
+    ///
+    /// Only what changed is written, so a window whose answer did not move
+    /// is not redrawn and does not let go of a held key.
+    fn settle_focus(&mut self) {
+        for i in 0..self.panes.len() {
+            let (id, owner, lends) = {
+                let p = &self.panes[i];
+                (p.id, p.owner, p.kind == WindowKind::Popup && !p.activates)
+            };
+            // The pair reads as focused together, because between them the
+            // keyboard is being routed rather than lost: an owner while its
+            // popup holds it, and the popup while the owner does.
+            let together = self.panes.iter().any(|p| {
+                p.os_focused
+                    && if lends {
+                        p.id == owner
+                    } else {
+                        p.kind == WindowKind::Popup && !p.activates && p.owner == id
+                    }
+            });
+            let focused = self.panes[i].os_focused || together;
+            let pane = &mut self.panes[i];
+            if pane.core.env.focused == focused {
+                continue;
+            }
+            pane.core.env.focused = focused;
+            if !focused {
+                // The OS stops sending key events to a window that lost
+                // the keyboard, so the release of anything held over a
+                // Cmd-Tab would never arrive. Let go now; the synthetic
+                // `up`s route out with the pending events.
+                pane.core.release_held_keys();
+            }
+            pane.window.request_redraw();
+        }
+    }
+
     /// The app has no window with the keyboard any more, so every popup is
     /// asked to go away: a menu left standing over another application is
     /// the one thing every platform agrees is wrong.
@@ -752,7 +809,10 @@ impl<A: App> Shell<A> {
     /// the loop is about to wait, both halves have landed and "no window of
     /// ours holds the keyboard" is a fact rather than a moment.
     fn dismiss_popups_if_deactivated(&mut self) {
-        if self.panes.iter().any(|p| p.core.env.focused) {
+        // `os_focused` and not `env.focused`: the whole point of the
+        // latter is that an owner reads as focused while its popup holds
+        // the keyboard, which would make this condition unreachable.
+        if self.panes.iter().any(|p| p.os_focused) {
             return;
         }
         let popups: Vec<WindowId> = self
@@ -1064,6 +1124,7 @@ impl<A: App> Shell<A> {
             caret_stamp_seen: 0,
             resize_edge: None,
             cursor_icon: CursorIcon::Default,
+            os_focused: false,
             first_frame: Some((FIRST_FRAME_RETRIES, std::time::Instant::now())),
             access,
             #[cfg(target_os = "windows")]
@@ -1112,10 +1173,25 @@ impl<A: App> Shell<A> {
     /// pane goes.
     fn close_pane(&mut self, event_loop: &ActiveEventLoop, id: WindowId) {
         let Some(i) = self.pane_of(id) else { return };
+        // A non-activating popup that holds the keyboard is about to stop
+        // existing, so the keyboard is going *somewhere*: say where, rather
+        // than letting the owner read as unfocused until the platform gets
+        // round to confirming it. Without this, choosing an item from a
+        // menu — the click that closes it — flashes the window behind it
+        // unfocused for a frame or two.
+        let hand_back = (self.panes[i].kind == WindowKind::Popup
+            && !self.panes[i].activates
+            && self.panes[i].os_focused)
+            .then_some(self.panes[i].owner);
         self.panes[i].core.window_closed(id);
         let events = self.panes[i].core.take_pending_events();
         let cmds = self.panes[i].core.take_window_commands();
         self.panes.remove(i);
+        if let Some(j) = hand_back.and_then(|o| self.pane_of(o)) {
+            self.panes[j].os_focused = true;
+            self.panes[j].window.focus_window();
+        }
+        self.settle_focus();
         self.route_events(events);
         self.apply_commands(event_loop, cmds);
         for p in &self.panes {
@@ -1619,18 +1695,11 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 self.dispatch(event_loop, i, InputEvent::CursorMoved(p));
             }
             WindowEvent::CursorLeft { .. } => self.dispatch(event_loop, i, InputEvent::CursorLeft),
-            WindowEvent::Focused(focused) => {
-                let pane = &mut self.panes[i];
-                pane.core.env.focused = focused;
-                if !focused {
-                    // The OS stops sending key events to a window that
-                    // lost the keyboard, so the release of anything held
-                    // over a Cmd-Tab would never arrive. Let go now; the
-                    // synthetic `up`s route out with the pending events.
-                    pane.core.release_held_keys();
-                }
-                pane.window.request_redraw();
-            }
+            // Recorded, not acted on: what a view reads is derived from
+            // every window's copy at the end of the batch (`settle_focus`),
+            // because focus *moving* is two events and neither alone is the
+            // answer.
+            WindowEvent::Focused(focused) => self.panes[i].os_focused = focused,
             // The four keyboard events go to `key_target`, which is this
             // pane unless it is lending its keyboard to a non-activating
             // popup. The modifier mirror follows them, or the popup would
@@ -1786,6 +1855,7 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
     /// asks for the next frame right away (vsync paces it). While a sound
     /// plays, the loop wakes every `AUDIO_POLL` to notice it finishing.
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.settle_focus();
         self.dismiss_popups_if_deactivated();
         self.poll_audio();
         self.apply_audio();
