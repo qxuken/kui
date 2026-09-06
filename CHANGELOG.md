@@ -181,6 +181,21 @@ the case that needed a guard. A sink that wants releases says `keyUp`. The
 `### Changed` entry below has the whole of it, including what an alpha.4 app
 bumped past alpha.6 should delete.
 
+### Fixed
+
+- **`Quad` declares what `decodeQuads` has been returning since alpha.7**
+  (backlog F17, from the mind map's report). The decoder gained `blur` with
+  ADR 0005's shadow quad and `ends` with ADR 0010's segment, and the
+  interface in `index.d.ts` — the hand-written half — got neither, with a
+  `kind` comment that still stopped at 4. The report's preview script
+  filtered the display list to `kind === 0`, which is what the type
+  suggested a display list held, and silently dropped every connector; the
+  app declared the field itself to get on. `Quad` now carries `blur`,
+  `ends` (`null` off a segment), and the seven kinds in `QuadKind`'s
+  order, and a test decodes one of each.
+  **What you can delete:** the `Quad` augmentation an app wrote to read a
+  stroke's endpoints (`src/kui.d.ts` in the mind map).
+
 ### Native verification
 
 The same by-hand round alpha.6 introduced (backlog R4), run before this tag.

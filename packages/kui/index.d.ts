@@ -1673,9 +1673,20 @@ export interface Quad {
   /** The top-left radius — the uniform value for boxes rounded with `radius`. */
   radius: number;
   borderW: number;
-  /** 0 solid, 1 mask glyph, 2 color glyph, 3 image, 4 subpixel glyph. */
+  /** Shadow quads (kind 5) only: the blur radius, which is also how far
+   *  the rect is inflated past the shape being blurred. 0 otherwise. */
+  blur: number;
+  /** 0 solid, 1 mask glyph, 2 color glyph, 3 image, 4 subpixel glyph,
+   *  5 shadow, 6 segment — `QuadKind` in the core and `KUI_QUAD_*` in
+   *  `include/kui.h`, in the same order. */
   kind: number;
   uv: [number, number, number, number];
+  /** Segment quads (kind 6) only: the stroke's endpoints `x0, y0, x1, y1`
+   *  in physical px, with `borderW` the stroke width and `color` the
+   *  stroke. A `<line>` is one of these per piece — a curve is flattened
+   *  in the core, so a display list carries many. `null` on every other
+   *  kind. */
+  ends: [number, number, number, number] | null;
   clip: [number, number, number, number];
   /** Corner radii of the clip, same order as `radii`: a clipping node with a
    *  radius rounds what it clips. All zero = a plain rect clip. */

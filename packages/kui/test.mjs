@@ -204,6 +204,28 @@ test('every element lowers', () => {
 // A name outside the schema has no wire id, so the encoder is the only side
 // that ever sees it. It reports what it dropped instead of dropping it in
 // silence.
+test('a stroke decodes with its endpoints and a shadow with its blur (F17)', () => {
+  // The mind map's preview filtered the display list to `kind === 0` and
+  // silently lost every connector: the `Quad` type stopped at kind 4 and
+  // declared no `ends`, though the decoder had carried both since ADR 0010.
+  const { quads } = run(() =>
+    box({ width: 200, height: 100 }, [
+      box({ width: 40, height: 20, bg: '#ffffff', shadowBlur: 6, shadowColor: '#000000' }, [], 'lit'),
+      el('line', { from: [10, 10], to: [90, 60], width: 3, color: '#7f9cf5' }, [], 'seg'),
+    ]),
+  );
+  const all = decodeQuads(quads);
+  const seg = all.find((q) => q.kind === 6);
+  assert.ok(seg, 'the line is a segment quad');
+  assert.deepEqual(seg.ends, [10, 10, 90, 60]);
+  assert.equal(seg.borderW, 3);
+  const shadow = all.find((q) => q.kind === 5);
+  assert.ok(shadow, 'the shadow is its own quad');
+  assert.equal(shadow.blur, 6);
+  assert.equal(shadow.ends, null);
+  assert.ok(all.filter((q) => q.kind === 0).every((q) => q.ends === null && q.blur === 0));
+});
+
 test('an unknown prop warns once, with the name it was probably meant to be', () => {
   const view = () =>
     box({ pad: 4 }, [
