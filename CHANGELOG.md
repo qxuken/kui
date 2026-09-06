@@ -45,6 +45,17 @@ upgrades remove code from the apps on it is doing the job.
   `kind: "popup"` declaration and an `anchor` now. The handler does not
   change: it was already answering `dismiss`.
 
+### Fixed
+
+- **A window's first frame no longer waits for a mouse move.** A window that
+  has just been ordered front reports its surface *occluded* for a frame or
+  two while the platform catches up, and `render` answering "nothing to
+  present, try next frame" was scheduling no next frame — so nothing else
+  being on the event loop, the window sat blank until a stray input woke it.
+  A window that has not yet presented now asks again, one frame apart and at
+  most sixty times; in practice a popup lands on the third try, about 50ms
+  in. Visible on any second window, popup or not.
+
 ### Changed
 
 - **The C ABI went 6 → 7, and this is the one bump the `size` handshake

@@ -335,6 +335,12 @@ const MULTI_CLICK_SLOP: f32 = 4.0;
 const BLINK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
 /// How often the loop wakes to notice a playing sound finishing.
 const AUDIO_POLL: std::time::Duration = std::time::Duration::from_millis(50);
+/// How long to wait between tries at a window's first frame, and how many
+/// tries to make: about a second of a just-shown window insisting it is
+/// occluded, after which it is taken at its word and the ordinary redraw
+/// path (a resize, an expose, any input) is what wakes it.
+const FIRST_FRAME_RETRY: std::time::Duration = std::time::Duration::from_millis(16);
+const FIRST_FRAME_RETRIES: u32 = 60;
 
 /// The core's derived pointer shape in winit's vocabulary. One-to-one:
 /// `CursorShape` is spelled after the platform names on purpose.
@@ -395,6 +401,10 @@ struct Pane {
     /// Cursor icon last set on the window, so a shape that did not change
     /// costs nothing.
     cursor_icon: CursorIcon,
+    /// Tries left at getting this window's *first* frame onto the screen,
+    /// and when to make the next one — `None` once a frame has landed. See
+    /// the `Skip` arm of [`Shell::redraw`].
+    first_frame: Option<(u32, std::time::Instant)>,
     /// The platform accessibility bridge.
     access: Option<access_bridge::Bridge>,
     /// Windows: answers WM_NCHITTEST from the frame's chrome regions, which
@@ -1054,6 +1064,7 @@ impl<A: App> Shell<A> {
             caret_stamp_seen: 0,
             resize_edge: None,
             cursor_icon: CursorIcon::Default,
+            first_frame: Some((FIRST_FRAME_RETRIES, std::time::Instant::now())),
             access,
             #[cfg(target_os = "windows")]
             nc,
@@ -1479,12 +1490,23 @@ impl<A: App> Shell<A> {
         let (dl, atlas) = pane.core.output();
         let mut wait_ms = 0.0;
         match pane.renderer.render(dl, atlas) {
-            Ok(report) => wait_ms = report.vsync_wait_ms,
+            Ok(report) => {
+                wait_ms = report.vsync_wait_ms;
+                pane.first_frame = None;
+            }
             Err(kui_wgpu::RenderError::Reconfigure) => {
                 pane.renderer.resize(size.width, size.height);
                 window.request_redraw();
             }
             // Occluded or timed out: nothing to present, try next frame.
+            // Occluded or timed out: nothing to present, try next frame —
+            // and, until a window has managed one, *schedule* that next
+            // frame. A window ordered front reports itself occluded for a
+            // beat or two before the platform catches up, and nothing else
+            // was asking for a redraw, so its first frame never landed and
+            // it sat blank until a stray mouse move woke it. Only until it
+            // has presented once, and only for a bounded number of tries,
+            // so a window that really is hidden does not spin.
             Err(kui_wgpu::RenderError::Skip) => {}
             Err(err) => eprintln!("kui: render error: {err}"),
         }
@@ -1772,6 +1794,21 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
         for pane in &mut self.panes {
             if pane.core.animating() {
                 pane.window.request_redraw();
+            }
+            // A window still waiting for its first frame asks again — one
+            // frame apart, and only so many times. Paced rather than spun:
+            // asking again the instant a try fails would burn every try in
+            // a millisecond, which is exactly how long the platform has
+            // *not* had to stop calling a just-shown window occluded.
+            if let Some((left, at)) = &mut pane.first_frame
+                && *left > 0
+            {
+                if now >= *at {
+                    *left -= 1;
+                    *at = now + FIRST_FRAME_RETRY;
+                    pane.window.request_redraw();
+                }
+                deadline = Some(deadline.map_or(*at, |d| d.min(*at)));
             }
             if pane.core.edit.focused().is_none() {
                 if !pane.blink_visible {

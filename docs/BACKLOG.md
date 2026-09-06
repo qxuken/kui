@@ -1393,7 +1393,15 @@ a build settled differently from its text.
    config carries that and the *driver* adds the owner's position. That is
    what "no new geometry query" is worth — the alternative needs a window
    position query this ADR does not add. Amended into the ADR.
-   **One bug the real window found that the corpus could not.** One app's
+   **Two bugs the real window found that the corpus could not.** A window
+   just ordered front reports its surface occluded for a frame or two, and
+   `render`'s "nothing to present, try next frame" scheduled no next frame
+   — so a popup drew nothing until a stray mouse move woke it. A window
+   that has not yet presented now re-asks, one frame apart and at most
+   sixty times (a popup lands on the third try, ~50ms in). Not a popup bug:
+   any second window had it, and only a real surface can report occlusion,
+   so no headless test could have.
+   And one app's
    handler can change *another* window's declaration — choosing an item in
    a popup is the app closing the popup, and the declaration that closes it
    is in the window that opened it — so a handler that ran now redraws

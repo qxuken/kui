@@ -82,6 +82,12 @@ impl App for Combo {
             NodeSpec::column()
                 .pad(16.0)
                 .gap(10.0)
+                // The window's whole surface, not just the content box: a
+                // `Fit` column would paint its background around the text
+                // and leave the rest of the window whatever the renderer
+                // cleared it to.
+                .width(Sizing::Grow(1.0))
+                .height(Sizing::Grow(1.0))
                 .bg(Color::hex(0x14161eff)),
             |ui| {
                 ui.text("Alloy", TextStyle::new(12.0).color(Color::hex(0x8b90a0ff)));
