@@ -743,21 +743,6 @@ impl Ctx {
         self.core.window_title().map(str::to_string)
     }
 
-    // -- Draw output ------------------------------------------------------
-
-    /// Raw quads for the finished frame, `quadStride()` bytes each, laid out
-    /// as kui-ffi's KuiQuad (see include/kui.h). Copied into the Buffer.
-    #[napi]
-    pub fn quads(&mut self) -> Buffer {
-        let (dl, _) = self.core.output();
-        let bytes = unsafe {
-            std::slice::from_raw_parts(
-                dl.quads.as_ptr().cast::<u8>(),
-                std::mem::size_of_val(dl.quads.as_slice()),
-            )
-        };
-        Buffer::from(bytes.to_vec())
-    }
 }
 
 /// Window commands as the objects `windowCommands()` hands out.
@@ -1312,6 +1297,24 @@ macro_rules! core_methods {
             #[napi(ts_return_type = "FrameStats")]
             pub fn stats(&mut self) -> Json {
                 stats_json(self.$core())
+            }
+
+            /// Raw quads for the finished frame, `quadStride()` bytes each,
+            /// laid out as kui-ffi's KuiQuad (see include/kui.h) and decoded
+            /// by `decodeQuads`. Copied into the Buffer. A window answers
+            /// with what its last pump drew, so a smoke test can read the
+            /// frame the shipping driver painted and not only a headless
+            /// one's (backlog F19).
+            #[napi]
+            pub fn quads(&mut self) -> Buffer {
+                let (dl, _) = self.$core().output();
+                let bytes = unsafe {
+                    std::slice::from_raw_parts(
+                        dl.quads.as_ptr().cast::<u8>(),
+                        std::mem::size_of_val(dl.quads.as_slice()),
+                    )
+                };
+                Buffer::from(bytes.to_vec())
             }
 
             // -- Environment -----------------------------------------------

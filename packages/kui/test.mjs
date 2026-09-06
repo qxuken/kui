@@ -2938,6 +2938,16 @@ test('nativeControls inset the titlebar and take its buttons away', () => {
   assert.deepEqual(titleX({ w: 78, h: 28 }), { x: 78, buttons: 0 });
 });
 
+test('quads() is on both classes, so a smoke test can read what a window drew (F19)', () => {
+  // It sat on `Ctx` alone while `accessTree()`, `stats()` and `animating()`
+  // answered for a window through the same core; the pomodoro's report
+  // asked for `win.quads()` so its smoke test could cover the driver that
+  // ships rather than the one that is convenient. A window needs a display,
+  // so the shape is what a headless run can check.
+  assert.equal(typeof Ctx.prototype.quads, 'function');
+  assert.equal(typeof KuiWindow.prototype.quads, 'function');
+});
+
 test('env() is on both classes and setEnv is only on the headless one', () => {
   // A window's runner reports the real window every frame, so a fact set on
   // one would be overwritten before the next view ran; the read is shared.

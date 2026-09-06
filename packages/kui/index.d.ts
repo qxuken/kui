@@ -946,11 +946,6 @@ export declare class Ctx {
    */
   windowTitle(): string | null
   /**
-   * Raw quads for the finished frame, `quadStride()` bytes each, laid out
-   * as kui-ffi's KuiQuad (see include/kui.h). Copied into the Buffer.
-   */
-  quads(): Buffer
-  /**
    * Registers a w×h RGBA image (pixels copied); returns its id for
    * `<image src={id}>`. Stable until `removeImage`.
    */
@@ -1033,6 +1028,15 @@ export declare class Ctx {
   animating(): boolean
   /** Summary of the last frame's display list. */
   stats(): FrameStats
+  /**
+   * Raw quads for the finished frame, `quadStride()` bytes each,
+   * laid out as kui-ffi's KuiQuad (see include/kui.h) and decoded
+   * by `decodeQuads`. Copied into the Buffer. A window answers
+   * with what its last pump drew, so a smoke test can read the
+   * frame the shipping driver painted and not only a headless
+   * one's (backlog F19).
+   */
+  quads(): Buffer
   /**
    * Host facts the frame driver pushed in: what the window and the
    * display are doing, as of now (see `Env`). This is the same
@@ -1374,6 +1378,15 @@ export declare class KuiWindow {
   animating(): boolean
   /** Summary of the last frame's display list. */
   stats(): FrameStats
+  /**
+   * Raw quads for the finished frame, `quadStride()` bytes each,
+   * laid out as kui-ffi's KuiQuad (see include/kui.h) and decoded
+   * by `decodeQuads`. Copied into the Buffer. A window answers
+   * with what its last pump drew, so a smoke test can read the
+   * frame the shipping driver painted and not only a headless
+   * one's (backlog F19).
+   */
+  quads(): Buffer
   /**
    * Host facts the frame driver pushed in: what the window and the
    * display are doing, as of now (see `Env`). This is the same

@@ -61,6 +61,17 @@ it says so. See `### Changed` — the two alpha.7 field reports are why.
   arrive any more. And the toggle itself, if the flag was one: assignment
   is enough now.
 
+- **`win.quads()`: the display list a real window drew** (backlog F19,
+  from the pomodoro's report). Headless coverage was the whole of the
+  app's coverage — "the window path has none" — and the ask was small:
+  `quads()` on the window, so the smoke test can read the frame the
+  shipping driver painted. It was on `Ctx` alone for no reason the code
+  could give: `accessTree()`, `stats()` and `animating()` already answer
+  for a window through the same core. It is in the shared surface now,
+  reads what the last pump drew, and `decodeQuads` takes the buffer as
+  before. Pixels — a `capture()` — are a wgpu readback and wait for a smoke
+  test that needs them rather than the display list.
+
 - **`description`: the sentence a reader says after the name** (backlog P1,
   open since the 2026-09-03 architecture review). The accessible
   description had one spelling — `tooltip` — which also hover-tracks the
