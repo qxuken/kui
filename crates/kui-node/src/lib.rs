@@ -503,9 +503,11 @@ impl Ctx {
     }
 
     /// The release of a key, spelled the way `keyDown` spells it (`physical`
-    /// included): the sink hears `{kind:"key", phase:"up", ...}` with `text`
-    /// null. A release whose press the sink never got resolves nothing, and
-    /// moving focus while a key is held delivers the `up` first.
+    /// included): a sink that declared `keyUp` hears `{kind:"key",
+    /// phase:"up", ...}` with `text` null; one that did not hears nothing,
+    /// since presses only is the keymap default. A release whose press the
+    /// sink never got resolves nothing, and moving focus while a key is
+    /// held delivers the `up` first.
     #[napi(ts_args_type = "code: string, mods?: KeySinkMods, physical?: string")]
     pub fn key_up(
         &mut self,

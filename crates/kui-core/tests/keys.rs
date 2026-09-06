@@ -8,6 +8,8 @@ use kui_core::{
 };
 
 /// Two side-by-side key sinks (think: two editor panes), left one focused.
+/// Both opt into releases: the tests below are about the two halves of a
+/// key, and a sink hears the second half only by asking (`key_up`).
 fn frame(core: &mut Core, focus_left: bool) -> (Key, Key) {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::row().fill());
@@ -15,14 +17,16 @@ fn frame(core: &mut Core, focus_left: bool) -> (Key, Key) {
         NodeSpec::column()
             .width(Sizing::Grow(1.0))
             .height(Sizing::Grow(1.0))
-            .on_key(Value::map([("pane", Value::Int(0))])),
+            .on_key(Value::map([("pane", Value::Int(0))]))
+            .key_up(),
         |_| {},
     );
     let right = ui.with(
         NodeSpec::column()
             .width(Sizing::Grow(1.0))
             .height(Sizing::Grow(1.0))
-            .on_key(Value::map([("pane", Value::Int(1))])),
+            .on_key(Value::map([("pane", Value::Int(1))]))
+            .key_up(),
         |_| {},
     );
     ui.take_key_focus(if focus_left { left } else { right });
@@ -222,6 +226,43 @@ fn a_press_and_its_release_are_one_kind_with_a_phase() {
     assert_eq!(evs[1].payload.get("repeat"), Some(&Value::Bool(false)));
 }
 
+/// The keymap case, which is the default: a sink that says only `on_key`
+/// hears the press and not the release, so Space toggles once. Nothing
+/// else changes — a repeat is still a press, and the key is still tracked
+/// as held, so the stray release resolves to nothing rather than to a
+/// second event.
+#[test]
+fn a_sink_without_key_up_hears_presses_only() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let sink = ui.with(NodeSpec::column().fill().on_key(Value::Null), |_| {});
+    ui.take_key_focus(sink);
+    ui.finish();
+    let down = |repeat| {
+        InputEvent::KeyDown(KeyPress {
+            repeat,
+            ..KeyPress::new(KeyCode::Char(' '), KeyMods::default())
+        })
+    };
+    let evs = drive(
+        &mut core,
+        &[down(false), down(true), release(KeyCode::Char(' '))],
+    );
+    assert_eq!(
+        keys(&evs),
+        [("down".into(), " ".into()), ("down".into(), " ".into())],
+        "a press and its repeat, and no release"
+    );
+    assert!(evs.iter().all(|e| e.key == sink));
+    // Nor a synthetic one: focus leaving with a key held lets go of it
+    // silently, since the sink never asked to hear the way up.
+    drive(&mut core, &[press(KeyCode::Char('w'))]);
+    core.set_focus(None);
+    assert!(core.take_pending_events().is_empty());
+    assert!(drive(&mut core, &[release(KeyCode::Char('w'))]).is_empty());
+}
+
 #[test]
 fn a_release_never_carries_text_or_repeat() {
     let mut core = Core::new();
@@ -357,7 +398,10 @@ fn a_key_held_over_an_editor_taking_focus_is_not_delivered_twice() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let sink = ui.with(NodeSpec::column().fill().on_key(Value::Null), |_| {});
+    let sink = ui.with(
+        NodeSpec::column().fill().on_key(Value::Null).key_up(),
+        |_| {},
+    );
     ui.take_key_focus(sink);
     ui.finish();
     drive(&mut core, &[press(KeyCode::Char('w'))]);

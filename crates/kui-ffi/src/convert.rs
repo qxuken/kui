@@ -306,6 +306,9 @@ pub(crate) fn spec_of(
     if let Some(v) = take_msg(on_drag) {
         spec = spec.on_drag(v);
     }
+    if s.key_up != 0 {
+        spec = spec.key_up();
+    }
     if let Some(v) = take_msg(on_key) {
         spec = spec.on_key(v);
     }

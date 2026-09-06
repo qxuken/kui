@@ -123,6 +123,34 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Changed
 
+- **A key sink hears presses only, unless it says `keyUp`** (backlog F3,
+  from the pomodoro field report). alpha.6 made `onKey` deliver both
+  halves of every key to one sink as `{kind:"key", phase:"down"|"up"}` —
+  the right shape, and the guarantee behind it (a key only comes up where
+  it went down, which two sinks could not promise) stands — but it made
+  press-only, which is what every keymap is, the case that needed a guard.
+  An alpha.4 app bumped to alpha.6 type-checked, ran, and toggled every
+  shortcut back: Space started and paused the timer, `m` and `a` flipped
+  twice, and nothing pointed at the one line (`phase !== 'down'`) that
+  fixed it. Nothing *could*: a sink that ignores `phase` looks exactly
+  like a sink that wants both, so no warning tells them apart. So the
+  default is presses again, and releases are one flag away. **`keyUp`**
+  (`key_up` in Lua and C, `.key_up()` in Rust) beside `onKey` delivers
+  both halves, the payload shape unchanged and the guarantee kept: a
+  release whose press the sink never got is still dropped, and focus
+  leaving still lets go first — to a sink that asked. A sink without it
+  hears nothing on the way up, synthetic or real; the key is still tracked
+  as held, so a stray release resolves silently rather than to a second
+  event, and a sink that opts in mid-hold hears the release it is owed.
+  One schema row, so all four bindings got it mechanically, and the ABI
+  parity test forced the C field (`KuiSpec.key_up`, an [in] append — no
+  version bump). The corpus's new **`keys`** scene pins both behaviours
+  across the four transports, with `keydown` / `keyup` steps to drive
+  them, and `packages/kui/test.mjs` has the fixture the report was
+  missing: a keymap that presses *and* releases, and toggles once.
+  **What breaks:** a held-key binding written against alpha.6 — WASD,
+  press-and-hold, a key that arms a mode — stops hearing its `up` until
+  the sink adds `keyUp`. Nothing else changes.
 - **The C ABI went 6 → 7, and this is the one bump the `size` handshake
   cannot absorb.** `KuiWindowConfig` gained four `anchor_*` floats and
   `KuiWindowCommand` gained `owner` — each the compatible kind of change on
@@ -153,6 +181,12 @@ upgrades remove code from the apps on it is doing the job.
   Copy button that announces.
 
 ### What you can delete
+
+- **The `phase` guard in every keymap.** `if (msg.phase !== 'down')
+  return` — or the alpha.4 → alpha.6 migration line, `phase !== 'down' ||
+  repeat` — is what a sink without `keyUp` does by itself now. The four
+  Rust examples that carried it lost it. `repeat` is still yours to
+  filter: an auto-repeat is a press.
 
 - **The workaround for a list that did not fit.** Whatever a view did to
   keep a long dropdown inside the window — a scroll container sized to the

@@ -21,12 +21,15 @@ export type DragMsg<T = AppMsg> = {
   tag?: T;
 };
 
-/** A key press or release on the focused `onKey` sink; `code` is a character
- *  or a name ("left", "f5"), `text` what the press would insert (null for a
- *  chord, and on every release), `repeat` set when the OS auto-repeated the
- *  press. A key only comes up where it went down: a release whose press the
- *  sink never got is dropped, and focus leaving while a key is held delivers
- *  the `up` first — so a held-key binding cannot be left stuck down. */
+/** A key press on the focused `onKey` sink — and its release too, as
+ *  `phase: 'up'`, when the sink also declares `keyUp`; without that flag a
+ *  sink hears presses only, so a keymap runs each binding once. `code` is a
+ *  character or a name ("left", "f5"), `text` what the press would insert
+ *  (null for a chord, and on every release), `repeat` set when the OS
+ *  auto-repeated the press. A key only comes up where it went down: a release
+ *  whose press the sink never got is dropped, and focus leaving while a key is
+ *  held delivers the `up` first — so a held-key binding cannot be left stuck
+ *  down. */
 export type KeyMsg<T = AppMsg> = {
   kind: 'key';
   phase: 'down' | 'up';
@@ -818,9 +821,11 @@ export declare class Ctx {
   keyDown(code: string, mods?: KeySinkMods, repeat?: boolean, physical?: string): void
   /**
    * The release of a key, spelled the way `keyDown` spells it (`physical`
-   * included): the sink hears `{kind:"key", phase:"up", ...}` with `text`
-   * null. A release whose press the sink never got resolves nothing, and
-   * moving focus while a key is held delivers the `up` first.
+   * included): a sink that declared `keyUp` hears `{kind:"key",
+   * phase:"up", ...}` with `text` null; one that did not hears nothing,
+   * since presses only is the keymap default. A release whose press the
+   * sink never got resolves nothing, and moving focus while a key is
+   * held delivers the `up` first.
    */
   keyUp(code: string, mods?: KeySinkMods, physical?: string): void
   /**

@@ -53,7 +53,7 @@ use crate::display::{Quad, QuadKind};
 use crate::edit::EditOptions;
 use crate::enter::Enter;
 use crate::geom::{Edges, Rect, Size, Vec2};
-use crate::input::{EditKey, InputEvent, Mods};
+use crate::input::{EditKey, InputEvent, KeyCode, KeyMods, KeyPress, Mods};
 use crate::key::Key;
 use crate::resources::{ImageId, SoundId};
 use crate::runtime::Core;
@@ -208,6 +208,13 @@ pub enum Step {
     /// by four languages. Inside a composite it searches the items by name;
     /// a space presses the focused item unless a search is under way.
     Type(u32),
+    /// A raw key going down and coming up on the focused `on_key` sink,
+    /// as the character's Unicode scalar value like [`Step::Type`] —
+    /// `InputEvent::KeyDown` / `KeyUp` rather than the editing keys above,
+    /// which is what a keymap or a held-key binding is routed. No text,
+    /// no modifiers, no repeat.
+    KeyDown(u32),
+    KeyUp(u32),
     /// Not an input: the view is a function of a phase, and this is the
     /// view changing its mind. Every scene but `exit` builds the same tree
     /// for every phase; a departing node is one the later phases stop
@@ -257,6 +264,12 @@ impl Step {
             Step::End => out.push_str("step end\n"),
             Step::Type(c) => {
                 let _ = writeln!(out, "step type {c}");
+            }
+            Step::KeyDown(c) => {
+                let _ = writeln!(out, "step keydown {c}");
+            }
+            Step::KeyUp(c) => {
+                let _ = writeln!(out, "step keyup {c}");
             }
             Step::Phase(n) => {
                 let _ = writeln!(out, "step phase {n}");
@@ -310,6 +323,14 @@ impl Step {
                     .expect("a printable step character")
                     .to_string(),
             ),
+            Step::KeyDown(c) => InputEvent::KeyDown(KeyPress::new(
+                KeyCode::Char(char::from_u32(c).expect("a printable step character")),
+                KeyMods::default(),
+            )),
+            Step::KeyUp(c) => InputEvent::KeyUp(KeyPress::new(
+                KeyCode::Char(char::from_u32(c).expect("a printable step character")),
+                KeyMods::default(),
+            )),
         })
     }
 }
@@ -641,6 +662,41 @@ pub const SCENES: &[Scene] = &[
             glyphs_min: 7,
             access: &["0 window ||", "1 button go||", "1 textInput Note||hello"],
             events: &["go -", "contextmenu menu"],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            title: None,
+        },
+    },
+    Scene {
+        name: "keys",
+        doc: "Two key sinks, clicked into focus in turn and each pressed and \
+              released once. The first says only `on_key` and hears the press \
+              alone — the keymap default, so a binding runs once per key; the \
+              second says `key_up` too and hears both halves.",
+        custom: &["key"],
+        elements: &["box"],
+        build: build_keys,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Cursor(60, 22),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::KeyDown('a' as u32),
+            Step::KeyUp('a' as u32),
+            Step::Cursor(60, 52),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::KeyDown('b' as u32),
+            Step::KeyUp('b' as u32),
+        ],
+        expect: Expect {
+            solid: 2,
+            shadows: 0,
+            images: 0,
+            glyphs_min: 0,
+            access: &["0 window ||", "1 group press||", "1 group held||"],
+            events: &["key down", "key down", "key up"],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -1335,6 +1391,27 @@ fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             },
             NodeSpec::column().width(Sizing::Fixed(160.0)).label("Note"),
         );
+    });
+}
+
+/// The keys scene: two sinks at known rows — (60, 22) is the press-only
+/// one, (60, 52) the one that hears releases. The tag is an integer, not
+/// a map with a `kind`, so the report's event column falls back to the
+/// phase — which is what the scene is about — and Lua, which has no
+/// spelling for a null tag, can declare the same sink.
+fn build_keys(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    let sink = |label: &str| {
+        NodeSpec::row()
+            .width(Sizing::Fixed(100.0))
+            .height(Sizing::Fixed(24.0))
+            .bg(Color::hex(0x1b1d27ff))
+            .on_key(Value::Int(1))
+            .role(Role::Group)
+            .label(label)
+    };
+    ui.with(NodeSpec::column().pad(10.0).gap(6.0), |ui| {
+        ui.with_keyed("press", sink("press"), |_| {});
+        ui.with_keyed("held", sink("held").key_up(), |_| {});
     });
 }
 
