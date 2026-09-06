@@ -28,6 +28,16 @@ pub fn sd_rounded_box(p: [f32; 2], half: [f32; 2], radii: [f32; 4]) -> f32 {
     outside + q[0].max(q[1]).min(0.0) - rr
 }
 
+/// `sd_segment`: the capsule from `a` to `b` of radius `r`, y down.
+pub fn sd_segment(p: [f32; 2], a: [f32; 2], b: [f32; 2], r: f32) -> f32 {
+    let pa = [p[0] - a[0], p[1] - a[1]];
+    let ba = [b[0] - a[0], b[1] - a[1]];
+    let h = ((pa[0] * ba[0] + pa[1] * ba[1]) / (ba[0] * ba[0] + ba[1] * ba[1]).max(1e-6))
+        .clamp(0.0, 1.0);
+    let d = [pa[0] - ba[0] * h, pa[1] - ba[1] * h];
+    (d[0] * d[0] + d[1] * d[1]).sqrt() - r
+}
+
 pub fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)

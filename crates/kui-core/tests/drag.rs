@@ -336,3 +336,96 @@ fn a_captured_drag_keeps_its_hover_group_pressed() {
     core.handle_input(InputEvent::mouse_up());
     assert!(!core.interaction.is_group_pressed(group));
 }
+
+/// `dx`/`dy` are the displacement from the press point in every phase, not
+/// the step since the last event (backlog F2). Two 2 px moves sit inside the
+/// slop, then a 4 px one leaves it: the `move` carries the whole 8, and so
+/// does `end` — which used to report zero, so "accumulate on `move`, commit
+/// on `end`" snapped the dragged thing back to where it started, and the
+/// distance under the slop went missing from every sum.
+#[test]
+fn drag_deltas_are_measured_from_the_press_point() {
+    let mut core = Core::new();
+    drag_frame(&mut core);
+
+    let mut all = Vec::new();
+    all.extend(core.handle_input(InputEvent::CursorMoved(Vec2::new(105.0, 50.0))));
+    all.extend(core.handle_input(InputEvent::mouse_down(1)));
+    all.extend(core.handle_input(InputEvent::CursorMoved(Vec2::new(107.0, 50.0))));
+    all.extend(core.handle_input(InputEvent::CursorMoved(Vec2::new(109.0, 50.0))));
+    all.extend(core.handle_input(InputEvent::CursorMoved(Vec2::new(113.0, 50.0))));
+    all.extend(core.handle_input(InputEvent::mouse_up()));
+
+    let dx = |e: &UiEvent| e.payload.get("dx").and_then(Value::as_float).unwrap();
+    let dy = |e: &UiEvent| e.payload.get("dy").and_then(Value::as_float).unwrap();
+    // The slop is measured from the press: 2 px is inside it, 4 px is not,
+    // and the move that leaves it reports the whole distance so far.
+    assert_eq!(phases(&all), ["start", "move", "move", "end"]);
+    assert_eq!((dx(&all[0]), dy(&all[0])), (0.0, 0.0), "start is zero");
+    assert_eq!(
+        dx(&all[1]),
+        4.0,
+        "the first move carries the sub-slop distance too"
+    );
+    assert_eq!(
+        dx(&all[2]),
+        8.0,
+        "a move is the displacement from the press, not a step"
+    );
+    assert_eq!(
+        dx(&all[3]),
+        8.0,
+        "end is the total, so an app can commit from it"
+    );
+    assert_eq!(
+        all[3].payload.get("x").and_then(Value::as_float),
+        Some(113.0)
+    );
+    // And a click it was not.
+    assert!(!all.iter().any(|e| e.payload.as_str() == Some("clicked")));
+}
+
+/// A slow pointer never covers the slop between two events; measured from
+/// the press it still gets there, so a careful 1 px-at-a-time drag is a drag.
+#[test]
+fn a_slow_drag_still_leaves_the_slop() {
+    let mut core = Core::new();
+    drag_frame(&mut core);
+
+    let mut all = Vec::new();
+    all.extend(core.handle_input(InputEvent::CursorMoved(Vec2::new(105.0, 50.0))));
+    all.extend(core.handle_input(InputEvent::mouse_down(1)));
+    for x in 106..=110 {
+        all.extend(core.handle_input(InputEvent::CursorMoved(Vec2::new(x as f32, 50.0))));
+    }
+    all.extend(core.handle_input(InputEvent::mouse_up()));
+
+    assert_eq!(phases(&all), ["start", "move", "move", "end"]);
+    let dx: Vec<f64> = all
+        .iter()
+        .filter_map(|e| e.payload.get("dx").and_then(Value::as_float))
+        .collect();
+    assert_eq!(dx, [0.0, 4.0, 5.0, 5.0]);
+    assert!(!all.iter().any(|e| e.payload.as_str() == Some("clicked")));
+}
+
+/// A drag released with the cursor outside the window ends where the
+/// pointer was last seen, and the total is measured to there.
+#[test]
+fn a_drag_released_off_window_ends_at_the_last_seen_point() {
+    let mut core = Core::new();
+    drag_frame(&mut core);
+
+    let mut all = Vec::new();
+    all.extend(core.handle_input(InputEvent::CursorMoved(Vec2::new(105.0, 50.0))));
+    all.extend(core.handle_input(InputEvent::mouse_down(1)));
+    all.extend(core.handle_input(InputEvent::CursorMoved(Vec2::new(125.0, 60.0))));
+    all.extend(core.handle_input(InputEvent::CursorLeft));
+    all.extend(core.handle_input(InputEvent::mouse_up()));
+
+    assert_eq!(phases(&all), ["start", "move", "end"]);
+    let end = &all[2].payload;
+    assert_eq!(end.get("x").and_then(Value::as_float), Some(125.0));
+    assert_eq!(end.get("dx").and_then(Value::as_float), Some(20.0));
+    assert_eq!(end.get("dy").and_then(Value::as_float), Some(10.0));
+}

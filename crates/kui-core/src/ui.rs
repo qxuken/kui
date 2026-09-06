@@ -6,6 +6,7 @@ use crate::edit::EditOptions;
 use crate::env::Env;
 use crate::geom::{Size, Vec2};
 use crate::key::Key;
+use crate::line::Stroke;
 use crate::runtime::Core;
 use crate::spec::{NodeSpec, TextStyle};
 use crate::text::Span;
@@ -113,7 +114,10 @@ impl<'a> Ui<'a> {
     /// Measures text the way layout would, without adding a node; see
     /// `Core::measure_text`. Sizing a column to its widest label, or
     /// choosing a tier that fits, is arithmetic on these numbers instead
-    /// of hand-tuned constants.
+    /// of hand-tuned constants. The metrics do not scale linearly:
+    /// `measured × zoom` is not `measure(size × zoom)`, because shaping
+    /// rounds per size, so anything that zooms measures at the size it
+    /// draws.
     pub fn measure_text(
         &mut self,
         content: &str,
@@ -191,6 +195,35 @@ impl<'a> Ui<'a> {
         self.core.image_node(id, spec);
     }
 
+    /// A round-capped segment from `from` to `to`, in the parent's box
+    /// space; see `Core::line_node` for what it is and is not.
+    pub fn line(&mut self, from: Vec2, to: Vec2, stroke: Stroke, spec: NodeSpec) {
+        self.core.line_node(&[from, to], stroke, spec);
+    }
+
+    /// [`Self::line`] under a label key.
+    pub fn line_keyed(
+        &mut self,
+        label: &str,
+        from: Vec2,
+        to: Vec2,
+        stroke: Stroke,
+        spec: NodeSpec,
+    ) {
+        self.core.line_node_keyed(label, &[from, to], stroke, spec);
+    }
+
+    /// A stroke through `points`: a polyline, or a smooth curve through
+    /// them with [`Stroke::curve`]; see `Core::line_node`.
+    pub fn polyline(&mut self, points: &[Vec2], stroke: Stroke, spec: NodeSpec) {
+        self.core.line_node(points, stroke, spec);
+    }
+
+    /// [`Self::polyline`] under a label key.
+    pub fn polyline_keyed(&mut self, label: &str, points: &[Vec2], stroke: Stroke, spec: NodeSpec) {
+        self.core.line_node_keyed(label, points, stroke, spec);
+    }
+
     /// An `audio` node: a playback retained for as long as the view keeps
     /// declaring it; see `Core::audio_node`.
     pub fn audio(&mut self, spec: crate::audio::AudioSpec) -> Key {
@@ -239,6 +272,14 @@ impl<'a> Ui<'a> {
     /// view that styles its own focus should show it.
     pub fn focus_visible(&self) -> bool {
         self.core.focus_visible()
+    }
+
+    /// The key of the node opened under `label` — in this frame so far,
+    /// then in the last finished one. For a caller that holds only the
+    /// label and cannot spell the path (`child_key` is the same question
+    /// asked from the parent); see `Core::key_of`.
+    pub fn key_of(&mut self, label: &str) -> Option<Key> {
+        self.core.key_of(label)
     }
 
     /// Moves keyboard focus to `key` now (an editor, an `on_key` sink, a

@@ -165,6 +165,8 @@ export interface GeneratedSpecProps {
   hoverable?: boolean;
   /** Where focus lands when the enclosing `modal` scope is entered: the first node in the modal's Tab ring declaring it, so a destructive confirm opens on its Cancel rather than on whichever control is declared first. Read on entry only — a Tab press afterwards stands, and the scope re-entered (a nested confirm closing) leaves focus where it was. Declared on nothing, or only on nodes the ring skips (disabled, `role="none"`, not focusable), entry stays the ring's first node. */
   initialFocus?: boolean;
+  /** With `onKey`: releases arrive too, as the same payload with phase:"up" (`text` null, `repeat` false) — for a held-key interaction (WASD, press-and-hold, a key that arms a mode while it is down). A key only comes up where it went down: a release whose press the sink never got is dropped, and focus leaving while a key is held delivers the `up` first, so nothing is left stuck down. Without it a sink hears presses only, which is what a keymap wants — one that heard both halves would run every binding twice. */
+  keyUp?: boolean;
   /** CSS-style stops `[{ at?, width?, height?, bg?, radius?, opacity? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. */
   keyframes?: KeyframeProp[];
   /** The accessible name. Without one a button, link, tab or heading is named by the text inside it; an image, an icon-only button and a `modal` dialog have none, and the core warns (`image-without-label`, `control-without-name`, `modal-without-name`). */
@@ -181,17 +183,17 @@ export interface GeneratedSpecProps {
   minHeight?: number;
   /** Lower width clamp (logical px). */
   minWidth?: number;
-  /** Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside emits {kind:"dismiss", reason:"escape"|"outside", tag} on it — the app stops declaring the node. The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float. */
+  /** Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside emits {kind:"dismiss", reason:"escape"|"outside", tag} on it — the app stops declaring the node. The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float. The access tree is not pruned to the modal: it keeps every node of the frame and marks the one in effect `modal` (`docs/adr/0003-modal-surfaces.md`, decision 7), which is what assistive technology acts on. */
   modal?: AppMsg | null;
   /** Message emitted when clicked (data, not a callback). */
   onClick?: AppMsg;
   /** Context-menu tag: a secondary-button (right) press emits {kind:"contextmenu", x, y, tag} on the node, at the logical viewport point to open the menu at. The press moves no focus, places no caret and produces no click, so right-clicking a selection keeps it; the topmost node under the pointer is the one asked, as for a click. */
   onContextMenu?: AppMsg | null;
-  /** Drag tag: emits {kind:"drag", phase, x, y, dx, dy, parent, tag} events. */
+  /** Drag tag: emits {kind:"drag", phase, x, y, dx, dy, parent, tag} events, `dx`/`dy` measured from the press point in every phase. */
   onDrag?: AppMsg | null;
   /** Hover tag: the pointer entering/leaving emits {kind:"hover", phase:"enter"|"leave", tag} events. */
   onHover?: AppMsg | null;
-  /** Key-sink tag: with key focus held, presses and releases arrive as {kind:"key", phase:"down"|"up", ...} events. */
+  /** Key-sink tag: with key focus held, presses arrive as {kind:"key", phase:"down", code, ...} events. Releases only with `keyUp` beside it. */
   onKey?: AppMsg | null;
   /** Layout tag: the node's laid-out rect arrives as {kind:"layout", x, y, w, h, parent, tag} on its first frame and whenever it changes (needs a stable key). */
   onLayout?: AppMsg | null;
@@ -227,7 +229,7 @@ export interface GeneratedSpecProps {
   shadowX?: number;
   /** Drop-shadow vertical offset (logical px); positive casts downward. */
   shadowY?: number;
-  /** With transition: also ease the node's position (reordered siblings slide). */
+  /** With transition: also ease the node's position (reordered siblings slide). While it eases, the node is drawn between where it was and where this frame put it — not at the declared `dx`/`dy`, or its slot in the row — so anything else positioned from those numbers drifts for the transition's length: a canvas of floats eases everything or nothing. */
   slide?: boolean;
   /** Animate sizing/colors/radius changes over this many ms (needs a stable key). */
   transition?: number;
@@ -355,6 +357,24 @@ export declare namespace JSX {
     /** A registered image (id from addImage). Fit sizing = pixel size as
      *  logical px; Fit height against a resolved width keeps the aspect. */
     image: Omit<BoxProps, 'children'> & { src: string };
+    /** A round-capped stroke (docs/adr/0010-a-segment-primitive.md): one
+     *  segment from `from` to `to`, a polyline through `points`, or a smooth
+     *  curve through them with `curve`. Points are in the parent's box space
+     *  (`float="viewport"` for viewport space). Never in layout: it floats,
+     *  sized to its own bounding box, so it takes no room in a row or
+     *  column. `width` is the stroke width in px (default 1), `color` the
+     *  stroke colour (default the foreground); `transition` eases the colour.
+     *  Takes no pointer input and has no access row. */
+    line: Keyed &
+      Pick<GeneratedSpecProps, 'opacity' | 'transition' | 'enter' | 'exit' | 'onLayout' | 'label' | 'role'> & {
+        from?: [number, number];
+        to?: [number, number];
+        points?: [number, number][];
+        curve?: boolean;
+        width?: number;
+        color?: ColorProp;
+        float?: 'parent' | 'viewport';
+      };
     /** Adaptive titlebar (drag strip + window buttons per env facts).
      *  `title` alone draws the standard title; children host custom content. */
     titlebar: Keyed & { title?: string; children?: KuiNode };

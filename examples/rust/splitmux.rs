@@ -317,9 +317,11 @@ struct Splitmux {
     /// cursor is off the strip.
     dragging: Option<String>,
     /// Tab drag in flight: (current slot, sign of the last horizontal
-    /// motion). The sign gates reorder direction so unequal-width tabs
-    /// can't oscillate around the cursor.
-    tab_drag: Option<(usize, f32)>,
+    /// motion, the last `dx` seen). The sign gates reorder direction so
+    /// unequal-width tabs can't oscillate around the cursor; it is the
+    /// difference between two `dx`es, since each is the displacement from
+    /// the press point and not a step.
+    tab_drag: Option<(usize, f32, f32)>,
     /// Physical modifiers, straight from `{kind="modifiers"}` events.
     mods: KeyMods,
     /// ⌘-drag of a pane in flight: (pane id, cursor x, cursor y).
@@ -508,7 +510,7 @@ impl Splitmux {
                 // keeps reordering after it has left the bar vertically.
                 let dragging_tab = self.tab_drag.is_some();
                 let column_h = ui.viewport().h;
-                if let Some((from, sign)) = self.tab_drag
+                if let Some((from, sign, last_dx)) = self.tab_drag
                     && sign != 0.0
                     && from < self.tabs.len()
                 {
@@ -530,12 +532,12 @@ impl Splitmux {
                         } else {
                             self.tab
                         };
-                        self.tab_drag = Some((j, sign));
+                        self.tab_drag = Some((j, sign, last_dx));
                     }
                 }
                 for i in 0..self.tabs.len() {
                     let active = i == self.tab;
-                    let lifted = self.tab_drag.is_some_and(|(s, _)| s == i);
+                    let lifted = self.tab_drag.is_some_and(|(s, ..)| s == i);
                     let (bg, fg) = if active {
                         (pal.panel, pal.fg)
                     } else {
@@ -866,7 +868,9 @@ impl App for Splitmux {
 
     fn on_event(&mut self, ev: UiEvent) {
         match ev.payload.get("kind").and_then(Value::as_str) {
-            Some("key") if ev.payload.get("phase").and_then(Value::as_str) == Some("down") => {
+            // Presses only — the sink never asked for releases (`key_up`),
+            // so a chord fires once.
+            Some("key") => {
                 // The chord map: Alt (⌥ Option on macOS) + a letter or digit.
                 let alt = ev
                     .payload
@@ -922,7 +926,7 @@ impl App for Splitmux {
                         Some("start") => {
                             if let Some(i) = tag.and_then(|t| t.get("tab")).and_then(Value::as_int)
                             {
-                                self.tab_drag = Some((i as usize, 0.0));
+                                self.tab_drag = Some((i as usize, 0.0, 0.0));
                             }
                         }
                         Some("move") => {
@@ -931,10 +935,15 @@ impl App for Splitmux {
                                 .get("dx")
                                 .and_then(Value::as_float)
                                 .unwrap_or(0.0);
-                            if let Some((_, sign)) = self.tab_drag.as_mut()
-                                && dx != 0.0
-                            {
-                                *sign = dx as f32;
+                            // `dx` is measured from the press point, so
+                            // the direction of this move is the change
+                            // since the last one.
+                            if let Some((_, sign, last)) = self.tab_drag.as_mut() {
+                                let step = dx as f32 - *last;
+                                if step != 0.0 {
+                                    *sign = step;
+                                }
+                                *last = dx as f32;
                             }
                         }
                         Some("end") => self.tab_drag = None,

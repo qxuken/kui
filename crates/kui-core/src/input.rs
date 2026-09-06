@@ -498,6 +498,9 @@ pub struct HitRegion {
     /// Key-sink tag when the node declared `on_key`: clicking it takes
     /// key focus, and key presses then arrive on it carrying this tag.
     pub key_sink: Option<Value>,
+    /// The sink declared `key_up`: releases reach it too. Without it a
+    /// release is dropped at routing, and the sink hears presses only.
+    pub key_up: bool,
     /// Context-menu tag when the node declared `on_context_menu`: a
     /// secondary-button press emits `{kind="contextmenu", x, y, tag}` on
     /// it. Like a click, the topmost region under the pointer is the one
@@ -578,14 +581,33 @@ struct DragState {
     origin: OriginId,
     tag: Value,
     parent_rect: Rect,
+    /// Where the press landed. Every `dx`/`dy` the drag reports is the
+    /// displacement from here — `start` is zero, a `move` is where the
+    /// pointer is now, `end` is the whole distance — so a handler commits
+    /// from any phase without summing anything, and the slop below drops
+    /// nothing from the total (backlog F2).
+    press: Vec2,
+    /// Where the pointer was last seen: the `end` position of a drag
+    /// released while the cursor was outside the window.
     last: Vec2,
-    /// Whether motion exceeded the click slop; suppresses the click on
-    /// release so a node can carry both `on_click` and `on_drag`.
+    /// Whether motion left the click slop; suppresses the click on
+    /// release so a node can carry both `on_click` and `on_drag`. Once
+    /// set it stays set — a drag that wanders back is still a drag.
     moved: bool,
 }
 
-/// How far a press may wander before it stops counting as a click.
+/// How far from the press point a pointer may wander before the press
+/// stops counting as a click and the drag starts reporting `move`s.
+/// Measured from the press, not per event, so a slow pointer that never
+/// covers 3 px between two events still gets there.
 const DRAG_SLOP: f32 = 3.0;
+
+impl DragState {
+    /// The displacement `p` is from the press point.
+    fn displacement(&self, p: Vec2) -> Vec2 {
+        Vec2::new(p.x - self.press.x, p.y - self.press.y)
+    }
+}
 
 #[derive(Default)]
 pub struct Interaction {
@@ -808,16 +830,16 @@ impl Interaction {
             InputEvent::CursorMoved(p) => {
                 self.cursor = Some(p);
                 self.refresh_hover(out);
-                if let Some(drag) = &mut self.drag {
-                    let d = Vec2::new(p.x - drag.last.x, p.y - drag.last.y);
-                    if d.x != 0.0 || d.y != 0.0 {
-                        drag.last = p;
-                        if d.x.abs() + d.y.abs() > DRAG_SLOP {
-                            drag.moved = true;
-                        }
-                        if drag.moved {
-                            out.push(Self::drag_event(drag, "move", p, d));
-                        }
+                if let Some(drag) = &mut self.drag
+                    && p != drag.last
+                {
+                    drag.last = p;
+                    let d = drag.displacement(p);
+                    if d.x.abs() + d.y.abs() > DRAG_SLOP {
+                        drag.moved = true;
+                    }
+                    if drag.moved {
+                        out.push(Self::drag_event(drag, "move", p, d));
                     }
                 }
             }
@@ -854,6 +876,7 @@ impl Interaction {
                             origin: h.origin,
                             tag: tag.clone(),
                             parent_rect: h.parent_rect,
+                            press: p,
                             last: p,
                             moved: false,
                         };
@@ -885,7 +908,7 @@ impl Interaction {
             InputEvent::MouseUp { .. } => {
                 let dragged = self.drag.take().inspect(|drag| {
                     let p = self.cursor.unwrap_or(drag.last);
-                    out.push(Self::drag_event(drag, "end", p, Vec2::ZERO));
+                    out.push(Self::drag_event(drag, "end", p, drag.displacement(p)));
                 });
                 // A press that actually dragged is not a click.
                 let click_ok = !dragged.is_some_and(|d| d.moved);
@@ -1016,6 +1039,7 @@ mod tests {
             parent_rect: Rect::new(0.0, 0.0, 0.0, 0.0),
             edit_origin: None,
             key_sink: None,
+            key_up: false,
             context_menu: None,
             focusable: true,
             window: None,

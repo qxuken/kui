@@ -273,7 +273,37 @@ impl Core {
     pub fn open_keyed(&mut self, label: &str, spec: NodeSpec) -> Key {
         let key = self.child_key(label);
         self.open_with_key(key, spec);
+        self.key_labels.push(key, label);
         key
+    }
+
+    /// The key of the node opened under `label` (`open_keyed`; a `key`
+    /// prop in JSX or a Lua table) in the last finished frame — or, while
+    /// a frame is being built, in it so far and then in the last one. The
+    /// door for a caller that holds only strings: keys are hashes of the
+    /// path from the root, and that path runs through auto-keyed
+    /// ancestors nothing outside the build can spell, so "focus the node
+    /// I just declared" is this and not `child_key`. None when no node
+    /// declared the label. Labels are unique among siblings, not across a
+    /// tree, so two nodes may share one under different parents: the
+    /// first in tree order wins and an `ambiguous-key` warning says so.
+    pub fn key_of(&mut self, label: &str) -> Option<Key> {
+        let (first, count) = {
+            let mut hits = self.key_labels.find(label);
+            match hits.next() {
+                Some(k) => (k, 1 + hits.count()),
+                None if self.building => {
+                    let mut hits = self.key_labels_last.find(label);
+                    (hits.next()?, 1 + hits.count())
+                }
+                None => return None,
+            }
+        };
+        if count > 1 {
+            self.diag
+                .raise(crate::diag::ambiguous_key(label, first, count));
+        }
+        Some(first)
     }
 
     /// `open_keyed` in the sibling-index namespace: the key auto-keying
@@ -405,6 +435,9 @@ impl Core {
         let parent = self.current();
         self.tree
             .push(parent, key, self.origin, spec, NodeContent::Edit(key));
+        // A leaf keyed by its label, like `open_keyed`: `key_of` must find
+        // the editor an app wants to focus by name.
+        self.key_labels.push(key, label);
         key
     }
 
@@ -428,6 +461,128 @@ impl Core {
         let parent = self.current();
         self.tree
             .push(parent, key, self.origin, spec, NodeContent::Image(id));
+    }
+
+    /// A stroke through `points` in the parent's box space: one round-capped
+    /// segment for two points, a polyline for more, a smooth curve through
+    /// them with [`Stroke::curve`] (`docs/adr/0010-a-segment-primitive.md`).
+    ///
+    /// Never in layout. The node is a float sized to the stroke's padded
+    /// bounding box, so it takes no room in a row or column, and `spec`'s
+    /// sizing, clamps, padding, gap and alignment are ignored. What `spec`
+    /// carries that matters: `transition` (the colour eases — it rides in
+    /// the `bg` slot — and `slide`, `enter` and `exit` offsets move the
+    /// float), `opacity`, `on_layout` (reports the bounding box), a
+    /// declared `float` whose *anchor* is kept (`FloatAnchor::Viewport`
+    /// reads the points in viewport space), and `role` / `label`, which are
+    /// honoured like any node's; without them a line has no access row. It
+    /// takes no pointer input: `on_click`, `on_drag`, `on_key`, `on_hover`,
+    /// `hoverable` and `focusable` are ignored, with a
+    /// `line-ignores-input` warning. Fewer than two points draw nothing.
+    ///
+    /// Consecutive segments overlap at their round caps, which is the
+    /// join: exact for an opaque stroke, and a translucent one
+    /// double-blends there, the way a faded subtree shows its seams.
+    pub fn line_node(&mut self, points: &[Vec2], stroke: Stroke, spec: NodeSpec) {
+        if self.tree.is_empty() {
+            return;
+        }
+        let key = self.auto_key();
+        self.line_with_key(key, points, stroke, spec);
+    }
+
+    /// [`Self::line_node`] under a label key, for a stroke that transitions
+    /// or exits and needs a stable identity across frames.
+    pub fn line_node_keyed(
+        &mut self,
+        label: &str,
+        points: &[Vec2],
+        stroke: Stroke,
+        spec: NodeSpec,
+    ) {
+        if self.tree.is_empty() {
+            return;
+        }
+        let key = self.child_key(label);
+        self.line_with_key(key, points, stroke, spec);
+    }
+
+    fn line_with_key(&mut self, key: Key, points: &[Vec2], stroke: Stroke, mut spec: NodeSpec) {
+        let Some((id, rect)) = self.lines.push(points, stroke) else {
+            return;
+        };
+        let ev = spec.events();
+        if spec.hoverable
+            || spec.focusable
+            || ev.on_click.is_some()
+            || ev.on_drag.is_some()
+            || ev.on_key.is_some()
+            || ev.on_hover.is_some()
+        {
+            self.diag.raise(Warning {
+                code: crate::diag::LINE_IGNORES_INPUT,
+                key,
+                message: "a line takes no pointer input, so the interaction it declares does \
+                          nothing; put it on the nodes the line connects"
+                    .to_string(),
+            });
+        }
+        // The stroke colour rides in the slot backgrounds tween through, so
+        // `transition`, `enter` and `exit` reach it with no slot of its own;
+        // nothing else of the box vocabulary applies to a stroke.
+        spec.style.bg = stroke.color;
+        spec.style.border_w = 0.0;
+        spec.style.border_color = Color::TRANSPARENT;
+        spec.style.shadow = crate::spec::Shadow::default();
+        self.ease_spec(key, &mut spec);
+        // The box is the stroke's own, and the points are stored relative
+        // to it: it is not a size the view chose or a tween may lag.
+        let anchor = spec
+            .layout
+            .float
+            .map_or(crate::spec::FloatAnchor::Parent, |f| f.anchor);
+        spec.layout.float = Some(crate::spec::FloatConfig {
+            anchor,
+            offset: crate::spec::Vec2Offset {
+                x: rect.x,
+                y: rect.y,
+            },
+            ..crate::spec::FloatConfig::default()
+        });
+        spec.layout.width = Sizing::Fixed(rect.w);
+        spec.layout.height = Sizing::Fixed(rect.h);
+        spec.layout.min_w = 0.0;
+        spec.layout.max_w = f32::INFINITY;
+        spec.layout.min_h = 0.0;
+        spec.layout.max_h = f32::INFINITY;
+        spec.layout.clip = false;
+        spec.layout.scroll_x = false;
+        spec.layout.scroll_y = false;
+        self.any_float = true;
+        if spec.style.opacity < 1.0 {
+            self.any_opacity = true;
+        }
+        if let Some(events) = spec.events.as_deref()
+            && events.on_layout.is_some()
+        {
+            self.any_layout = true;
+        }
+        if spec.transition.is_some() {
+            match spec.anim.as_deref() {
+                Some(anim) => {
+                    if spec.slide || anim.enter.is_some_and(|e| e.offsets()) {
+                        self.any_slide = true;
+                    }
+                    if anim.exit.is_some() {
+                        self.any_exit = true;
+                    }
+                }
+                None => self.any_slide |= spec.slide,
+            }
+        }
+        let parent = self.current();
+        self.tree
+            .push(parent, key, self.origin, spec, NodeContent::Line(id));
     }
 
     /// A paragraph of styled spans, shaped and wrapped as one flow.

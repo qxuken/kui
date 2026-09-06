@@ -103,13 +103,10 @@ console.log(`after +1 +1 -1: count = ${app.model.count}`);
 
 // The editor is declared `autofocus`, but that only takes the keyboard
 // while nothing else holds it (ADR 0002) — the three clicks above left
-// focus on a button. So click into it first, the way a user would: a press
-// moves focus and places the caret, and the field is still empty, so the
-// caret lands at the start either way. The access tree is the tidiest way
-// to find it: it carries each node's rect, no quad archaeology needed.
-const note = app.accessTree().nodes.find((n) => n.name === 'note');
-if (!note) throw new Error('the editor is missing from the access tree');
-app.click(...center(note.rect));
+// focus on a button. So move it there by name: `focus` takes the label the
+// editor's `key` prop declared, resolved through the last frame, so no
+// event from the editor (and no rect to click) is needed first.
+app.ctx.focus('note');
 app.type('hello from node');
 console.log(`note: "${app.model.note}"`);
 
@@ -141,7 +138,7 @@ for (let i = 0; i < 8 * 8; i++) pixels.writeUInt32BE(0xff8800ff, i * 4);
 const img = modal.addImage(8, 8, pixels);
 
 modal.frame(240, 240, 1, (
-  <box pad={12} gap={8} keyFocus onKey={{ tool: 'brush' }}>
+  <box pad={12} gap={8} keyFocus onKey={{ tool: 'brush' }} keyUp>
     <image src={img} width={32} radius={4} label="swatch" />
     <text><span bold>bold</span> and <span italic color="#ff8888">red italic</span></text>
   </box>
@@ -151,8 +148,9 @@ console.log(`image quads: ${imageQuads}`);
 
 modal.keyDown('x', { ctrl: true });
 modal.keyUp('x', { ctrl: true });
-// Poll for one known payload shape: a key, both halves, carrying this sink's
-// tag. `phase` is what tells a press from a release — one shape, two events.
+// Poll for one known payload shape: a key, both halves (the sink asked for
+// releases with `keyUp`), carrying this sink's tag. `phase` is what tells a
+// press from a release — one shape, two events.
 const kevs = modal.pollEvents<KeyMsg<{ tool: string }>>().filter((e) => e.payload.kind === 'key');
 const p = kevs[0]?.payload;
 const up = kevs[1]?.payload;
