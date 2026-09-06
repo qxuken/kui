@@ -7,6 +7,19 @@ upgrades remove code from the apps on it is doing the job.
 
 ## Unreleased
 
+**What breaks.** **A drag's `dx`/`dy` are measured from the press point
+now, in every phase.** They were the step since the previous event on
+`move` and always zero on `end`, and the doc said neither — so a handler
+that accumulated on `move` and committed on `end` snapped whatever it moved
+back to where it started, and lost up to the 3 px click slop from every sum
+besides (backlog F2, from a field report). Now `start` carries zero, a
+`move` how far the pointer is from where it pressed, `end` the whole
+distance: `value = start + dx` replaces `value += dx`, and `end` is a phase
+an app can commit from. A handler that adds deltas will now move things
+quadratically fast; the `drag` scene of the corpus pins the new numbers in
+all four bindings. The click slop is measured from the press too, so a slow
+pointer that never covers 3 px between two events still starts its drag.
+
 ### Added
 
 - **Popup windows** (`docs/adr/0004-multi-window.md`, decision 9 — the last
@@ -142,6 +155,18 @@ upgrades remove code from the apps on it is doing the job.
   change what another declares, which is exactly how choosing an item in a
   popup closes it. Only when more than one window is open; a single-window
   app draws what it always drew.
+- **Drag deltas are displacements from the press point** (backlog F2, the
+  "what breaks" above). `DragMsg`, the `EVENTS` row (so `docs/props.md`),
+  `kui_open_draggable`'s comment and the README now say what `dx`/`dy` are
+  relative to; `crates/kui-core/tests/drag.rs` pins press, 2 px, 2 px, 4
+  px, release as `move 4`, `move 8`, `end 8`, and the corpus's new `drag`
+  scene carries the deltas on its event rows — `event drag split move 8
+  0` — so a binding that summed steps would fail to match the reference
+  rather than agree on the kind and disagree on the number. Of the
+  consumers this repo ships, only `examples/rust/splitmux.rs`'s tab
+  reorder read a per-move `dx` (for its sign); it now differences two
+  `dx`es. The others already anchored to the absolute `x`/`y`, which is
+  the shape the report recommended and is unchanged.
 
 - `KuiAccessNode` reports liveness as two new `flags` bits
   (`KUI_ACCESS_LIVE_POLITE`, `KUI_ACCESS_LIVE_ASSERTIVE`) rather than a
@@ -154,6 +179,10 @@ upgrades remove code from the apps on it is doing the job.
 
 ### What you can delete
 
+- **The accumulator behind a drag.** The model field that summed `dx` over
+  `move`s so that something could be committed on `end`, and the `start`
+  handler that zeroed it: `end` carries the total now, and `x - x0` computed
+  by hand from the absolute coordinates is what `dx` is.
 - **The workaround for a list that did not fit.** Whatever a view did to
   keep a long dropdown inside the window — a scroll container sized to the
   space left below the field, a menu that opened upwards past a hand-rolled

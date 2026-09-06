@@ -8,8 +8,14 @@ export type { KuiNode, KuiElement, Msg, KuiMsg, AppMsg } from './jsx-runtime.js'
 // node (`onDrag` / `onHover` / `onKey`), left off when the node declared
 // none.
 
-/** A pointer-captured drag on an `onDrag` node; `parent` is the container
- *  rect, so fractions need no geometry query. */
+/** A pointer-captured drag on an `onDrag` node. `x`/`y` are where the
+ *  pointer is; `dx`/`dy` are its displacement **from the press point**, in
+ *  every phase — `start` carries zero, a `move` how far the pointer is from
+ *  where it pressed, `end` the whole distance — so a handler sets
+ *  `value = start + dx` rather than summing deltas, and can commit from
+ *  `end` alone. Nothing is dropped under the click slop (3 px, measured
+ *  from the press): the first `move` already carries the whole distance.
+ *  `parent` is the container rect, so fractions need no geometry query. */
 export type DragMsg<T = AppMsg> = {
   kind: 'drag';
   phase: 'start' | 'move' | 'end';

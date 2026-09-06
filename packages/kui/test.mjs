@@ -1614,6 +1614,11 @@ SCENE_TREES.live = (_fx, phase, ctx) => {
   ]);
 };
 
+// `conformance::build_drag`: one keyed handle whose drag deltas the event
+// rows carry, measured from the press point in every phase.
+SCENE_TREES.drag = () =>
+  root({}, [box({ width: 80, height: 40, bg: '#30344a', onDrag: { kind: 'split' } }, [], 'handle')]);
+
 /** `conformance::EXIT_BULK_ROWS`: with its own root, one node past
  *  `kui_core::depart::MAX_NODES`, so the whole subtree is refused. */
 const EXIT_BULK_ROWS = 512;
@@ -1777,7 +1782,12 @@ function sceneReport(name, env, steps, { ctx, events, commands }) {
     // The tag column, or — for the two window-level events, which have none
     // — the field that tells one from its siblings (`conformance::event_row`).
     const p = ev.payload;
-    lines.push(`event ${p?.kind ?? '-'} ${p?.tag?.kind ?? p?.phase ?? p?.reason ?? '-'}`);
+    let tag = p?.tag?.kind ?? p?.phase ?? p?.reason ?? '-';
+    // A drag's phase and deltas ride in the tag column: `dx`/`dy` are the
+    // displacement from the press point in every phase, and the corpus
+    // steps are integers, so the deltas print exactly.
+    if (p?.kind === 'drag') tag += ` ${p.phase} ${Math.trunc(p.dx)} ${Math.trunc(p.dy)}`;
+    lines.push(`event ${p?.kind ?? '-'} ${tag}`);
   }
   for (const c of commands) lines.push(commandLine(c));
   for (const a of ctx.announcements()) lines.push(`announce ${a.live} ${a.text}`);

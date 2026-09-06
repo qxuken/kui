@@ -1020,6 +1020,48 @@ pub const SCENES: &[Scene] = &[
             title: None,
         },
     },
+    Scene {
+        name: "drag",
+        doc: "A pointer-captured drag on an `onDrag` handle, and what its \
+              deltas mean: `dx`/`dy` are the displacement from the press \
+              point in every phase (backlog F2). The pointer presses at \
+              (40, 20), moves 2 px, 2 px and 4 px, and lets go: the first \
+              move sits inside the 3 px slop and emits nothing, the second \
+              is 4 px from the press — past the slop, measured from the \
+              press and not per event — and carries all 4, the third \
+              carries 8, and `end` carries 8 too — not zero — so a handler \
+              can commit from it. The event rows carry the deltas, which \
+              is what pins them across the four transports.",
+        custom: &["key"],
+        elements: &["box"],
+        build: build_drag,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Cursor(40, 20),
+            Step::MouseDown,
+            Step::Cursor(42, 20),
+            Step::Cursor(44, 20),
+            Step::Cursor(48, 20),
+            Step::MouseUp,
+        ],
+        expect: Expect {
+            solid: 1,
+            shadows: 0,
+            images: 0,
+            glyphs_min: 0,
+            access: &["0 window ||"],
+            events: &[
+                "drag split start 0 0",
+                "drag split move 4 0",
+                "drag split move 8 0",
+                "drag split end 8 0",
+            ],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            title: None,
+        },
+    },
 ];
 
 fn build_layout(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
@@ -1607,6 +1649,21 @@ fn build_popup(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
     );
 }
 
+fn build_drag(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    // A splitter handle: 80x40 at the origin, so (40, 20) is its middle
+    // and every step lands on it. Keyed, so the press has a stable node
+    // to capture on across the frames the scene drives.
+    ui.with_keyed(
+        "handle",
+        NodeSpec::column()
+            .width(Sizing::Fixed(80.0))
+            .height(Sizing::Fixed(40.0))
+            .bg(Color::hex(0x30344aff))
+            .on_drag(Value::map([("kind", Value::str("split"))])),
+        |_ui| {},
+    );
+}
+
 fn build_live(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
     if phase == 1 {
         // The queue half: one thing to say, on the frame it happened.
@@ -1998,7 +2055,7 @@ fn event_row(payload: &Value) -> (String, String) {
     // line, which is exactly the difference those scenes are about. So an
     // untagged payload shows the field that tells it from its siblings:
     // `phase` for a `window`, `reason` for a `dismiss`.
-    let tag = payload
+    let mut tag = payload
         .get("tag")
         .and_then(|t| t.get("kind"))
         .or_else(|| payload.get("phase"))
@@ -2006,6 +2063,16 @@ fn event_row(payload: &Value) -> (String, String) {
         .and_then(Value::as_str)
         .unwrap_or("-")
         .to_string();
+    // A drag's phase and deltas ride in the tag column (`split move 8 0`),
+    // because the deltas are the contract: `dx`/`dy` are measured from the
+    // press point in every phase (backlog F2), and a binding that summed
+    // steps instead would agree on the kind and disagree here. Printed as
+    // integers — the steps are integers, so the deltas are exact.
+    if kind == "drag" {
+        let num = |k: &str| payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as i64;
+        let phase = payload.get("phase").and_then(Value::as_str).unwrap_or("-");
+        let _ = write!(tag, " {phase} {} {}", num("dx"), num("dy"));
+    }
     (kind, tag)
 }
 

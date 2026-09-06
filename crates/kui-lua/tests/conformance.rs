@@ -257,6 +257,11 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        "drag" => r#"
+            return column { key = "handle", width = 80, height = 40, bg = 0x30344aff,
+                            on_drag = { kind = "split" } }
+        "#
+        .to_string(),
         other => panic!("no Lua scene for {other:?} — every corpus scene needs one"),
     };
     // Every scene also records what the script saw in `env.window`, so the

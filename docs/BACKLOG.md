@@ -154,38 +154,6 @@ click, `advance(50)`, assert the decoded quad's width is strictly between
 Mutation-test it by deleting the new `setTime` line (the D2 rule for
 `encoder.js` applies to the loop too).
 
-### `!` F2 — Drag deltas lie twice: `end` zeroes them, and sub-slop motion never reaches them
-
-Evidence: mind-map #1. `crates/kui-core/src/input.rs:888` emits `end` with
-`Vec2::ZERO`, so "accumulate on `move`, commit on `end`" snaps the dragged
-thing back to where it started — the costliest surprise in that report, and
-invisible: nothing warns and it reads as the app's own bug. The half the
-report did not see: lines 812–820 update `drag.last` on every cursor move
-but emit nothing until the motion exceeds `DRAG_SLOP` (3 px), so the
-distance travelled under the slop is dropped from every delta — Σ`dx` over a
-drag is short of `x − x₀` by up to the slop, and a real pointer always starts
-under it (the headless trace moved 20 px in one step, which is why the
-report's numbers add up). The `DragMsg` doc (`index.d.ts:10`) and the schema
-row (`schema.rs:1259`) say what `parent` is for and nothing about what
-`dx`/`dy` are relative to.
-
-The report ends by dropping the deltas altogether and anchoring both of its
-gestures to the press point through the absolute `x`/`y` — "the shape I
-would recommend to anyone else".
-
-**Do:** make `dx`/`dy` the displacement from the press point in every
-phase — `start` is zero, `move` is where it is, `end` is the total. That is
-what both of the report's gestures compute by hand, it makes the slop
-irrelevant (the first `move` carries the whole distance), and it makes `end`
-the one phase an app can commit from. It changes the meaning for per-move
-consumers, which today are `examples/rust/splitmux.rs`,
-`examples/rust/modal_editor.rs`, `examples/node/counter.tsx`,
-`examples/c/counter.c` and `packages/kui/test.mjs` — each is a one-line
-change from `+= dx` to `= start + dx`. Say it in both docs. **Test:**
-`crates/kui-core/tests`: press, two 2 px moves, one 4 px move, release —
-the `move` reports 8 and `end` reports 8; a corpus scene pins the payload
-across the four transports.
-
 ### `!` F3 — `onKey` fires on release too, and an alpha.4 keymap runs every binding twice
 
 Evidence: pomodoro 1.1. C9 made `KeyMsg` carry `phase: 'down' | 'up'` and
@@ -448,8 +416,9 @@ Each is one sentence in a doc that exists; none needs code.
 - **`modal` "scopes the access tree" reads as pruning** (mind-map, Smaller
   things). The tree keeps every node and marks the modal; say so in the row
   doc.
-- **`DragMsg`'s `dx`/`dy` say nothing about their origin** — settled by
-  F2's rewrite, listed here so the doc is not forgotten if F2 is deferred.
+- ~~**`DragMsg`'s `dx`/`dy` say nothing about their origin**~~ — **done
+  with F2 (2026-09-06)**: every doc that names the payload now says they are
+  the displacement from the press point in every phase.
 
 ### `~` F15 — Panning does not work in the window (unreproduced)
 
@@ -481,8 +450,8 @@ changed. Plus the CI threshold on `frame_10k_rects` and `frame_1k_typical`,
 which the size test does not replace.
 
 **From the field (F1–F15).** Four defects first: F1 (the Node loop never
-sets the frame clock, which is why nothing eased is testable from Node), F2
-(drag deltas), F4 (the modal restore overriding a `keyFocus` edge) and F3
+sets the frame clock, which is why nothing eased is testable from Node), ~~F2
+(drag deltas)~~ — **done (2026-09-06)**, F4 (the modal restore overriding a `keyFocus` edge) and F3
 (an alpha.4 keymap runs twice — a decision between its (a) and (b) before
 the next tag, since every migrating app hits it). Then the gaps in rough
 order of cost: F9 and F10 are an afternoon, F5, F6 and F11 a day each, F8
@@ -598,7 +567,7 @@ Worth doing before anyone builds a real combobox on this.
 
 ## Closed — index
 
-Forty-seven entries, all in
+Forty-eight entries, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim.
 This index is here so an id resolves without opening that file: the open items
 above cite A1, C7, C9, C10, D2, P3, P5, P8, R3 and S2, "After alpha.6" and the hygiene note cite C2,
@@ -616,6 +585,10 @@ whose R1–R7 are the half-baked items finished before the tag.
 **From building C11 step 4 (2026-09-06)** — W1
 
 - `!` **W1** — [A `Chrome::Borderless` window is dead to the mouse on macOS](backlog/closed-2026-09.md#-w1--a-chromeborderless-window-is-dead-to-the-mouse-on-macos--done-2026-09-06) — done (2026-09-06) — W2, the open half, is above
+
+**From two field reports (2026-09-06)** — F2
+
+- `!` **F2** — [Drag deltas lie twice: `end` zeroes them, and sub-slop motion never reaches them](backlog/closed-2026-09.md#-f2--drag-deltas-lie-twice-end-zeroes-them-and-sub-slop-motion-never-reaches-them--done-2026-09-06) — done (2026-09-06) — F14's `DragMsg` bullet closed with it
 
 **Binding parity** — P1–P9
 

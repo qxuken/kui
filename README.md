@@ -591,10 +591,14 @@ opened at their data index (`ui.with_indexed`), so a row keeps its hover,
 focus and edit buffer as the built range slides over it.
 
 Dragging: `.on_drag(tag)` makes any node a pointer-captured drag source —
-handlers get `{kind="drag", phase, x, y, dx, dy, parent, tag}` events (the
-parent rect turns absolute positions into container fractions, e.g. a
-splitter ratio; see the splitmux example's pane dividers). A drag past the
-click slop suppresses the node's `on_click`.
+handlers get `{kind="drag", phase, x, y, dx, dy, parent, tag}` events.
+`dx`/`dy` are the displacement from the press point in every phase —
+`start` is zero, a `move` is how far the pointer is from where it pressed,
+`end` is the whole distance — so a handler sets `value = start + dx` rather
+than summing, and can commit from `end` alone; the parent rect turns
+absolute positions into container fractions, e.g. a splitter ratio (see the
+splitmux example's pane dividers). A drag past the click slop (3 px from
+the press) suppresses the node's `on_click`.
 
 Pointer buttons: only the primary one presses, drags, places the caret and
 clicks. A secondary (right) press goes to `on_context_menu`, which emits

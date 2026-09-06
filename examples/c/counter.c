@@ -1477,6 +1477,18 @@ static void conf_live(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_drag: one keyed 80x40 handle whose drag deltas the
+ * event rows carry, measured from the press point in every phase. */
+static void conf_drag(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiValue *split = kui_value_map();
+    kui_value_map_set(split, KUI_STR("kind"), kui_value_str(KUI_STR("split")));
+    KuiSpec handle = {.width = {KUI_FIXED, 80}, .height = {KUI_FIXED, 40}, .bg = 0x30344aff};
+    kui_open_draggable(ui, KUI_STR("handle"), &handle, NULL, split);
+    kui_close(ui);
+}
+
 /* One entry per scene of conformance::SCENES; a scene in the reference with
  * no entry here fails the run rather than being skipped. */
 static const ConfScene CONF_SCENES[] = {
@@ -1498,6 +1510,7 @@ static const ConfScene CONF_SCENES[] = {
     {"windows", conf_windows},
     {"popup", conf_popup},
     {"live", conf_live},
+    {"drag", conf_drag},
 };
 
 /* -- driving one scene --------------------------------------------------- */
@@ -1593,7 +1606,23 @@ static void conf_drain(KuiCtx *ctx, Rep *events) {
             if (!tk) tk = kui_value_get(ev.payload, KUI_STR("reason"));
         }
         if (tk) kui_value_as_str(tk, &tag);
-        repf(events, "event %.*s %.*s\n", (int)kind.len, kind.ptr, (int)tag.len, tag.ptr);
+        repf(events, "event %.*s %.*s", (int)kind.len, kind.ptr, (int)tag.len, tag.ptr);
+        /* A drag's phase and deltas ride in the tag column: dx/dy are the
+         * displacement from the press point in every phase, and the corpus
+         * steps are integers, so they print exactly (kui_value_as_int
+         * truncates a float the way the reference's cast does). */
+        if (kind.len == 4 && memcmp(kind.ptr, "drag", 4) == 0) {
+            KuiStr phase = KUI_STR("-");
+            const KuiValue *p = kui_value_get(ev.payload, KUI_STR("phase"));
+            if (p) kui_value_as_str(p, &phase);
+            int64_t dx = 0, dy = 0;
+            const KuiValue *vx = kui_value_get(ev.payload, KUI_STR("dx"));
+            const KuiValue *vy = kui_value_get(ev.payload, KUI_STR("dy"));
+            if (vx) kui_value_as_int(vx, &dx);
+            if (vy) kui_value_as_int(vy, &dy);
+            repf(events, " %.*s %lld %lld", (int)phase.len, phase.ptr, (long long)dx, (long long)dy);
+        }
+        repf(events, "\n");
     }
 }
 

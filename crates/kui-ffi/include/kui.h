@@ -1128,8 +1128,13 @@ void kui_root(KuiCtx *ctx, const KuiSpec *spec);
 uint64_t kui_open(KuiCtx *ctx, const KuiSpec *spec, KuiValue *on_click);
 uint64_t kui_open_keyed(KuiCtx *ctx, KuiStr label, const KuiSpec *spec, KuiValue *on_click);
 /* Draggable container: press-drag emits {kind="drag", phase="start"|"move"|
- * "end", x, y, dx, dy, tag} events; a drag past the click slop suppresses
- * on_click. on_click/on_drag are nullable and consumed. */
+ * "end", x, y, dx, dy, parent, tag} events. dx/dy are the displacement from
+ * the press point in every phase - start is zero, a move is how far the
+ * pointer is from where it pressed, end is the whole distance - so a handler
+ * sets value = start + dx rather than summing, and can commit from end
+ * alone; nothing is lost under the click slop. A drag past the slop (3 px
+ * from the press) suppresses on_click. on_click/on_drag are nullable and
+ * consumed. */
 uint64_t kui_open_draggable(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
                             KuiValue *on_click, KuiValue *on_drag);
 /* The general container: every message prop at once, each nullable and
