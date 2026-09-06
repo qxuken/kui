@@ -36,14 +36,41 @@ upgrades remove code from the apps on it is doing the job.
   an Escape, and the app hears the `dismiss`. `kui::app(…).run(…)` and
   `runWindowed` do it themselves.
 
-### What you can delete
+- **Live regions and one-off announcements**
+  (`docs/adr/0008-live-regions-and-announcements.md`), the last thing ADR
+  0001 named and did not build. Two shapes, because the problem has two
+  halves.
 
-- **The workaround for a list that did not fit.** Whatever a view did to
-  keep a long dropdown inside the window — a scroll container sized to the
-  space left below the field, a menu that opened upwards past a hand-rolled
-  threshold, a "show 6 of 40" that existed because 40 did not fit — is a
-  `kind: "popup"` declaration and an `anchor` now. The handler does not
-  change: it was already answering `dismiss`.
+  **The row.** `live="polite" | "assertive"` marks a node a live region:
+  when the text inside it changes, a screen reader reads the change
+  without being asked. It is a plain schema row in all four bindings
+  (`live` in JSX and Lua, `KuiSpec.live` / `KUI_LIVE_*` in C). A live box
+  is never elided — a region that vanished from the access tree could not
+  carry liveness to its text — and it reads as **one message**: the text
+  inside becomes its name, and that name is what moves when the message
+  does.
+
+  **The verb.** `ui.announce(text, live)` in Rust, `ctx.announce(text,
+  live)` on both Node classes, `env.announce(text, live)` in Lua,
+  `kui_announce` in C: something to say once, with no node behind it
+  ("Saved", "3 results"). Queued and drained like every other channel the
+  core has — `Core::take_announcements` / `ctx.announcements()` /
+  `kui_take_announcements` — so a headless test asserts on what an app
+  asked to say, and the corpus's `live` scene pins it in all four
+  bindings. The windowed runners drain every frame whether or not
+  assistive technology is attached, so nothing is spoken late.
+
+  Two diagnostics come with it: `live-region-without-name` (a region with
+  no `label` and no text, which can never announce anything) and
+  `announcement-repeated` (the same text on two consecutive frames —
+  what an unguarded `announce` in a frame builder looks like).
+
+  Verified against the macOS accessibility API, not only against kui's
+  types: `scripts/ax-audit.swift` now observes the
+  `AXAnnouncementRequested` notification VoiceOver listens for, and
+  checks that a region's changed text announces, politely, that a
+  node-less announcement arrives, and that the same message twice in a
+  row is said twice. 96/96.
 
 ### Fixed
 
@@ -116,6 +143,30 @@ upgrades remove code from the apps on it is doing the job.
   popup closes it. Only when more than one window is open; a single-window
   app draws what it always drew.
 
+- `KuiAccessNode` reports liveness as two new `flags` bits
+  (`KUI_ACCESS_LIVE_POLITE`, `KUI_ACCESS_LIVE_ASSERTIVE`) rather than a
+  new field, so the [out-array] struct's layout is unchanged. **No ABI
+  bump**: `KuiSpec.live` is an [in] append and `kui_announce` /
+  `kui_take_announcements` are new functions (ADR 0006, decision 2).
+- `examples/rust/accessibility.rs` scrolls its controls instead of
+  sizing the window around them, and gained a live status line and a
+  Copy button that announces.
+
+### What you can delete
+
+- **The workaround for a list that did not fit.** Whatever a view did to
+  keep a long dropdown inside the window — a scroll container sized to the
+  space left below the field, a menu that opened upwards past a hand-rolled
+  threshold, a "show 6 of 40" that existed because 40 did not fit — is a
+  `kind: "popup"` declaration and an `anchor` now. The handler does not
+  change: it was already answering `dismiss`.
+
+- The state field that held a status message *only* so a screen reader
+  would see it change, and the code that cleared it a frame later. A
+  message with a place on screen takes `live` on the node it is already
+  in; one without takes `announce` and needs no node at all.
+
+
 ## 0.1.0-alpha.6 (2026-09-05)
 
 The release that made a window something you can build a real app in.
@@ -132,7 +183,10 @@ The C ABI has a version and a size handshake, C can be an *extension*
 inside a Rust host and not only a host itself, and one scene corpus drives
 all four bindings in CI.
 
-**What breaks.** **The C ABI went 2 → 6**: every C host recompiles and
+**What breaks.** **The C ABI has a version now, and it is 6**: alpha.5 had
+none at all, and 1 through 5 came and went inside this release's own
+development (bumps are per change, not per release — ADR 0006 decision 8),
+so 6 is the first number anything shipped. Every C host recompiles and
 checks `kui_abi_version()`. `kui_take_window_commands`, which filled a
 `uint32_t` array, is now `bool kui_take_window_command(ctx,
 KuiWindowCommand *)` popping one at a time — renamed so an un-edited host
@@ -150,7 +204,8 @@ keyboard at all — which breaks nothing today, and `env.focus` is
 deprecated below.
 
 Everything after this is the detail as each piece landed;
-`docs/BACKLOG.md` carries the reasoning and the alternatives declined.
+`docs/backlog/closed-2026-09.md` carries the reasoning and the alternatives
+declined, and `docs/BACKLOG.md` what is still open.
 
 ### Native verification
 
@@ -1718,12 +1773,12 @@ anything — the job is written and waits on a runner, not on an edit.
   (`Env::focused`), and the only thing `focused` has ever meant in `env`.
   Node keeps the two apart by having two objects, `env` and `ctx`; Lua has
   one table, so the collision is structural rather than a naming slip.
-  **P3 in `docs/BACKLOG.md` is why both exist today**: `env.focused` was
-  spent on the window fact before the node reading needed it, and neither
-  name can move inside 0.1 — renaming either is breaking, and simply
-  dropping `env.focus` would leave the node key unreadable from Lua
-  altogether. So this is the announcement, not the change; converging the
-  two, and giving the window fact its own unambiguous name, is 0.2's.
+  **P3 in `docs/backlog/closed-2026-09.md` is why both exist today**:
+  `env.focused` was spent on the window fact before the node reading needed
+  it, and neither name can move inside 0.1 — renaming either is breaking,
+  and simply dropping `env.focus` would leave the node key unreadable from
+  Lua altogether. So this is the announcement, not the change; converging
+  the two, and giving the window fact its own unambiguous name, is 0.2's.
   Until then the module doc at the top of `crates/kui-lua/src/lib.rs`
   documents them against each other.
 

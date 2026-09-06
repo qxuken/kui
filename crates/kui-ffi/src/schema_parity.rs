@@ -251,6 +251,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "checked" => s.checked = 1,
             "selected" => s.selected = 1,
             "expanded" => s.expanded = KUI_EXPANDED_EXPANDED,
+            "live" => s.live = KUI_LIVE_POLITE, // the parity index is 1; LIVE[1] = polite
             "valueNow" => (s.value_set, s.value_now) = (KUI_VALUE_NOW, F),
             "valueMin" => (s.value_set, s.value_min) = (KUI_VALUE_MIN, F),
             "valueMax" => (s.value_set, s.value_max) = (KUI_VALUE_MAX, F),
@@ -391,6 +392,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         cursor: 7, // KUI_CURSOR_EW_RESIZE
         selected: 1,
         expanded: KUI_EXPANDED_EXPANDED,
+        live: KUI_LIVE_ASSERTIVE,
         opacity_set: 1,
         opacity: 0.4,
         shadow_color: 0x00_00_00_66,
@@ -452,6 +454,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .checked(true)
         .selected(true)
         .expanded(true)
+        .live(kui_core::Live::Assertive)
         .value_now(3.0)
         .value_min(0.0)
         .value_max(10.0)

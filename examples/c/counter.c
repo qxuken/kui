@@ -1452,6 +1452,31 @@ static void conf_popup(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_live: the `live` prop on a box that would otherwise be
+ * elided, and `kui_announce` for the half with no node behind it. A C host
+ * holds the context, so the announce could sit in its event loop; here it
+ * is in the builder because the corpus's phase is the only clock a scene
+ * has, and phase 1 is built once. */
+static void conf_live(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    if (phase == 1) kui_announce(ui, KUI_STR("Saved"), KUI_LIVE_ASSERTIVE);
+    KuiSpec box = {0};
+    box.pad_l = box.pad_r = box.pad_t = box.pad_b = 8;
+    box.gap = 4;
+    box.bg = 0x14161eff;
+    kui_open(ui, &box, NULL);
+    KuiSpec region = {0};
+    region.live = KUI_LIVE_POLITE;
+    kui_open_keyed(ui, KUI_STR("status"), &region, NULL);
+    KuiTextStyle st = {0};
+    st.size = 12;
+    kui_text(ui, KUI_STR(phase == 0 ? "0 results" : "3 results"), &st);
+    kui_close(ui);
+    kui_open_keyed(ui, KUI_STR("empty"), &region, NULL);
+    kui_close(ui);
+    kui_close(ui);
+}
+
 /* One entry per scene of conformance::SCENES; a scene in the reference with
  * no entry here fails the run rather than being skipped. */
 static const ConfScene CONF_SCENES[] = {
@@ -1472,6 +1497,7 @@ static const ConfScene CONF_SCENES[] = {
     {"exit", conf_exit},
     {"windows", conf_windows},
     {"popup", conf_popup},
+    {"live", conf_live},
 };
 
 /* -- driving one scene --------------------------------------------------- */
@@ -1682,11 +1708,14 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
         const char *orientation = a->orientation == KUI_ORIENTATION_HORIZONTAL ? "h"
                                   : a->orientation == KUI_ORIENTATION_VERTICAL ? "v"
                                                                                : "-";
-        repf(out, "node %d %016llx %s %d %d %s %s %s %d %s %.*s | %.*s | %.*s\n",
+        const char *live = (a->flags & KUI_ACCESS_LIVE_POLITE)      ? "p"
+                           : (a->flags & KUI_ACCESS_LIVE_ASSERTIVE) ? "a"
+                                                                    : "-";
+        repf(out, "node %d %016llx %s %d %d %s %s %s %s %d %s %.*s | %.*s | %.*s\n",
              depth, (unsigned long long)a->key, role_name(a->role),
              (a->flags & KUI_ACCESS_FOCUSED) ? 1 : 0,
              (a->flags & KUI_ACCESS_DISABLED) ? 1 : 0,
-             checked, selected, orientation,
+             checked, selected, orientation, live,
              (a->flags & KUI_ACCESS_HAS_SCROLL) ? 1 : 0,
              off ? actions : "-",
              (int)a->name.len, a->name.ptr,
@@ -1698,6 +1727,14 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
     rep_free(&events);
     repf(out, "%s", cmds.buf);
     rep_free(&cmds);
+
+    KuiAnnouncement said[16];
+    size_t na = kui_take_announcements(ctx, said, 16);
+    for (size_t i = 0; i < na && i < 16; i++) {
+        repf(out, "announce %s %.*s\n",
+             said[i].live == KUI_LIVE_ASSERTIVE ? "assertive" : "polite",
+             (int)said[i].text.len, said[i].text.ptr);
+    }
 
     KuiWarning warnings[32];
     size_t nw = kui_take_warnings(ctx, warnings, 32);

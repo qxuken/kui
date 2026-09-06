@@ -169,6 +169,8 @@ export interface GeneratedSpecProps {
   keyframes?: KeyframeProp[];
   /** The accessible name. Without one a button, link, tab or heading is named by the text inside it; an image, an icon-only button and a `modal` dialog have none, and the core warns (`image-without-label`, `control-without-name`, `modal-without-name`). */
   label?: string;
+  /** Marks this node a live region: when the text inside it changes, a screen reader reads the change without being asked — `polite` at the next pause, `assertive` interrupting. Put it on the smallest node that holds the message, since everything inside a live node is live. For a one-off with no node behind it ("Saved") the binding's `announce` verb is the other half. */
+  live?: 'off' | 'polite' | 'assertive';
   /** Child alignment along the main axis. */
   mainAlign?: 'start' | 'center' | 'end';
   /** Upper height clamp (logical px). */

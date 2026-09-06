@@ -9,7 +9,7 @@ use crate::keyframes::Keyframe;
 use crate::value::Value;
 use crate::window::{WindowButton, WindowRole};
 
-pub use crate::access::{Label, Role};
+pub use crate::access::{Label, Live, Role};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Sizing {
@@ -495,7 +495,7 @@ pub struct NodeSpec {
 
 /// Event payloads a node declares. Boxed on `NodeSpec` because most
 /// nodes declare none, and seven `Option<Value>` inline cost 224 bytes
-/// on every node built (see C15 in `docs/BACKLOG.md`).
+/// on every node built (see C15 in `docs/backlog/closed-2026-09.md`).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct EventSpec {
     /// Payload emitted as a `UiEvent` when this node is clicked.
@@ -634,6 +634,11 @@ pub struct AccessSpec {
     /// (see [`crate::access`]).
     pub caret: Option<u32>,
     pub selection_anchor: Option<u32>,
+    /// When the text inside this node changes, a reader reads the change
+    /// without being asked (ARIA's `aria-live`). Off by default; a node
+    /// that declares it is semantic, so a plain box marked live is not
+    /// elided (see `docs/adr/0008-live-regions-and-announcements.md`).
+    pub live: Live,
 }
 
 impl AccessSpec {
@@ -651,6 +656,7 @@ impl AccessSpec {
         value_max: None,
         caret: None,
         selection_anchor: None,
+        live: Live::Off,
     };
 }
 
@@ -1186,6 +1192,12 @@ impl NodeSpec {
         self
     }
 
+    /// Marks this node a live region (see the `live` field).
+    pub fn live(mut self, live: Live) -> Self {
+        self.access_mut().live = live;
+        self
+    }
+
     /// A slider role's current value.
     pub fn value_now(mut self, v: f32) -> Self {
         self.access_mut().value_now = Some(v);
@@ -1465,7 +1477,7 @@ mod size_tests {
     /// `Vec<NodeSpec>` in `Tree::push` — so its size is a per-node cost that
     /// every app pays whether or not it declares the fields. It reached 728
     /// bytes one feature at a time and cost ~2.5x on the frame benches before
-    /// anyone measured it (C15 in `docs/BACKLOG.md`).
+    /// anyone measured it (C15 in `docs/backlog/closed-2026-09.md`).
     ///
     /// This is the number a review can fail. Adding a prop is fine; adding it
     /// *inline* past this bound is the thing to notice. Put cold fields in one

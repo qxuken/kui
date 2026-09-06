@@ -263,6 +263,11 @@ pub(crate) fn spec_of(
         // KUI_EXPANDED_* = schema index + 1, so zero can mean "unset".
         spec = spec.expanded(s.expanded == KUI_EXPANDED_EXPANDED);
     }
+    if s.live != 0 {
+        // KUI_LIVE_* is the schema index itself: "off" and "unset" are the
+        // same thing, so zero needs no reservation.
+        spec = spec.live(kui_core::Live::from_index(s.live as usize));
+    }
     if s.value_set & KUI_VALUE_NOW != 0 {
         spec = spec.value_now(s.value_now);
     }

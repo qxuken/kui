@@ -640,8 +640,15 @@ impl Pane {
     }
 
     /// Hands the frame's access tree to the platform when assistive
-    /// technology is attached and the tree changed; nothing otherwise.
+    /// technology is attached and the tree changed, and whatever the frame
+    /// asked to say (`ui.announce`) with it.
+    ///
+    /// The queue is drained **every frame, attached or not**, and what a
+    /// silent window cannot deliver is dropped here: an announcement kept
+    /// is an announcement said minutes after the thing it describes
+    /// (`docs/adr/0008-live-regions-and-announcements.md`, decision 6).
     fn publish_access(&mut self) {
+        let said = self.core.take_announcements();
         let Some(bridge) = self.access.as_mut() else {
             return;
         };
@@ -649,7 +656,7 @@ impl Pane {
             return;
         }
         let scale = self.window.scale_factor() as f32;
-        bridge.publish(self.core.access_tree(), scale);
+        bridge.publish(self.core.access_tree(), scale, &said);
     }
 
     fn mods(&self) -> Mods {

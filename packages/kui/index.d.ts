@@ -411,6 +411,19 @@ export type WarningCode =
    *  is with an explicit `role` says it with a `label` too, or means something
    *  naming works differently for. */
   | 'modal-without-name'
+  /** A node declares `live` but carries no `label` and holds no text, so
+   *  nothing it ever does can be announced: every platform derives the spoken
+   *  string from a name, and there is none to derive. The same silent defect
+   *  `image-without-label` catches, on the node that was meant to speak (see
+   *  `docs/adr/0008-live-regions-and-announcements.md`). */
+  | 'live-region-without-name'
+  /** The same announcement text was queued on two consecutive frames. That is
+   *  what an unguarded `announce` in a frame builder looks like — a view runs
+   *  every frame, so the message is said every frame — and it is never what an
+   *  app means: a message genuinely repeated is repeated across frames the user
+   *  did something in between. The announcement still goes through; this names
+   *  the builder that is shouting. */
+  | 'announcement-repeated'
   /** `wrapChildren` on a container that cannot break lines: a column, or a row
    *  whose main axis scrolls. Both lay out exactly as if the flag were absent,
    *  which reads as "wrapping is broken"; see `LayoutSpec::wrap` for why a
@@ -496,6 +509,19 @@ export type AudioCommand =
   | { kind: 'resume'; playback: number; fade: number }
   | { kind: 'masterVolume'; volume: number; tween: number }
   | { kind: 'unload'; sound: string };
+
+/** How urgently a screen reader should read a change it was not asked to
+ *  read (the `live` prop, and `announce`'s politeness). */
+export type Live = 'off' | 'polite' | 'assertive';
+
+/** One thing to say once, with no node behind it. `Ctx.announcements()`
+ *  drains them (headless); a `KuiWindow` delivers them itself. See
+ *  docs/adr/0008-live-regions-and-announcements.md. */
+export interface Announcement {
+  text: string;
+  /** Never `'off'` — `announce` drops those. */
+  live: Live;
+}
 
 // --------------------------------------------------------------------------
 
@@ -810,6 +836,13 @@ export declare class Ctx {
    */
   audioCommands(): AudioCommand[]
   /**
+   * Drains the announcements queued since the last drain, as plain
+   * objects (`{text, live}`). `runWindowed` drains and delivers them
+   * itself; a bare `Ctx` hands them back so a driver or a test can see
+   * what a frame asked to say.
+   */
+  announcements(): Announcement[]
+  /**
    * A custom driver reports a playback finished on its own; a tagged
    * one becomes a `sound` event in `pollEvents`.
    */
@@ -897,6 +930,18 @@ export declare class Ctx {
    * Starts a playback: `{volume, loop, fadeIn, tag}`; returns its
    * id for `stop` / `setVolume` / `pause` / `resume`. A `tag` comes
    * back as a `SoundMsg` when the playback finishes on its own.
+   * Says something once, with no node behind it: `announce("Saved")`,
+   * `announce("3 results", "assertive")`. `"off"` and an empty string
+   * are both no-ops. A region whose message is on screen is the `live`
+   * prop instead
+   * (`docs/adr/0008-live-regions-and-announcements.md`).
+   *
+   * Call it from an event handler. Called while building a frame it
+   * fires every frame, which the core reports as
+   * `announcement-repeated`.
+   */
+  announce(text: string, live?: Live): void
+  /**
    * A window plays it on its own device at once; headless nothing
    * sounds and the command queues for `audioCommands()`.
    */
@@ -1204,6 +1249,18 @@ export declare class KuiWindow {
    * Starts a playback: `{volume, loop, fadeIn, tag}`; returns its
    * id for `stop` / `setVolume` / `pause` / `resume`. A `tag` comes
    * back as a `SoundMsg` when the playback finishes on its own.
+   * Says something once, with no node behind it: `announce("Saved")`,
+   * `announce("3 results", "assertive")`. `"off"` and an empty string
+   * are both no-ops. A region whose message is on screen is the `live`
+   * prop instead
+   * (`docs/adr/0008-live-regions-and-announcements.md`).
+   *
+   * Call it from an event handler. Called while building a frame it
+   * fires every frame, which the core reports as
+   * `announcement-repeated`.
+   */
+  announce(text: string, live?: Live): void
+  /**
    * A window plays it on its own device at once; headless nothing
    * sounds and the command queues for `audioCommands()`.
    */

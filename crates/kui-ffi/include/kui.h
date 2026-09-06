@@ -51,7 +51,18 @@ extern "C" {
  * a host that does not call one is unaffected, and one that does fails to
  * link, which is loud.
  *
- * ABI 4 is the first release to append to an [out] struct: KuiEvent gained
+ * It bumps per change, not per release, so what follows is a log of breaks
+ * and not a list of published versions. 1 through 5 all came and went
+ * between two releases and no release carried any of them: this scheme
+ * landed after 0.1.0-alpha.5, and 0.1.0-alpha.6 is the first version to
+ * have a number at all - 6. A gap is normal, and a number you never saw
+ * published is one nothing was published against. It costs you nothing,
+ * because the check above is equality: you compare your header's number
+ * with the library you loaded, and never reason about the distance between
+ * two. The entries below are kept so a host crossing several bumps at once
+ * can read what each of them changed.
+ *
+ * ABI 4 was the first bump to append to an [out] struct: KuiEvent gained
  * `window`. If you set `size` (KUI_EVENT_INIT does) you need no source
  * change for it - the library writes the prefix your build reserved and
  * stops. The version still bumps, because a host that skipped this check
@@ -494,6 +505,14 @@ typedef struct KuiSpec {
      * departing at once is refused past the budget (the rest vanish) with an
      * "exit-budget" warning. */
     KuiEnter exit;
+    /* KUI_LIVE_*: when the text inside this node changes, a screen reader
+     * reads the change without being asked. A node that declares it is
+     * semantic, so a plain box marked live is not elided from the access
+     * tree; put it on the smallest node holding the message, since
+     * everything inside a live node is live. For a one-off with no node
+     * behind it, kui_announce is the other half. See
+     * docs/adr/0008-live-regions-and-announcements.md. */
+    uint32_t live;
 } KuiSpec;
 
 /* Disclosure state (KuiSpec.expanded): the schema index plus one, so zero
@@ -501,6 +520,16 @@ typedef struct KuiSpec {
 enum {
     KUI_EXPANDED_COLLAPSED = 1,
     KUI_EXPANDED_EXPANDED = 2,
+};
+
+/* Live-region politeness (KuiSpec.live, KuiAnnouncement.live): the schema
+ * index itself, not the index plus one — unlike a disclosure, "not a live
+ * region" is what a zeroed field already means, so there is no unset state
+ * to reserve zero for. */
+enum {
+    KUI_LIVE_OFF = 0,
+    KUI_LIVE_POLITE = 1,
+    KUI_LIVE_ASSERTIVE = 2,
 };
 
 /* Pointer shapes (KuiSpec.cursor), and what kui_cursor_shape answers with. */
@@ -597,7 +626,22 @@ enum {
     /* pos_in_set holds (on an item), set_size holds (on its container). */
     KUI_ACCESS_HAS_POS_IN_SET = 1u << 16,
     KUI_ACCESS_HAS_SET_SIZE = 1u << 17,
+    /* The node declared KuiSpec.live, and which politeness. Two flag bits
+     * rather than a `live` field: KuiAccessNode is [out[]], so the host
+     * allocates the array and appending to it would be an ABI break. */
+    KUI_ACCESS_LIVE_POLITE = 1u << 18,
+    KUI_ACCESS_LIVE_ASSERTIVE = 1u << 19,
 };
+
+/* [out[]] One queued announcement (kui_take_announcements): something to say
+ * once, with no node behind it. `live` is KUI_LIVE_POLITE or
+ * KUI_LIVE_ASSERTIVE, never KUI_LIVE_OFF. Strings are borrowed until the
+ * next kui_take_announcements on the context.
+ * See docs/adr/0008-live-regions-and-announcements.md. */
+typedef struct KuiAnnouncement {
+    KuiStr text;
+    uint32_t live;
+} KuiAnnouncement;
 
 /* [out[]] One node of the access tree (kui_access_tree): what assistive technology
  * sees. Plain boxes are elided, so `parent` is the nearest semantic
@@ -1236,6 +1280,20 @@ void kui_set_diagnostics(KuiCtx *ctx, bool on);
  * platform accessibility layer reads it after each frame; a test asserts
  * on it. Never asking costs nothing. */
 size_t kui_access_tree(KuiCtx *ctx, KuiAccessNode *out, size_t cap);
+/* Says something once, with no node behind it: "Saved", "3 results".
+ * `live` is KUI_LIVE_POLITE or KUI_LIVE_ASSERTIVE; KUI_LIVE_OFF and an
+ * empty text are both no-ops, the first so a caller can gate politeness
+ * without a branch. A region whose message is on screen is KuiSpec.live
+ * instead. Call it where the event is handled: called from a frame builder
+ * it fires every frame, which the core reports as "announcement-repeated".
+ * See docs/adr/0008-live-regions-and-announcements.md. */
+void kui_announce(KuiCtx *ctx, KuiStr text, uint32_t live);
+/* Drains queued announcements into out (up to cap; the rest are dropped, so
+ * size it generously) and returns the count. Drain every frame whether or
+ * not assistive technology is attached and discard what you cannot deliver
+ * — an announcement kept is an announcement said minutes late. kui_run
+ * does this itself. */
+size_t kui_take_announcements(KuiCtx *ctx, KuiAnnouncement *out, size_t cap);
 /* A request from assistive technology on a node: one KUI_ACCESS_* bit the
  * node advertises, with value the new text for KUI_ACCESS_SET_VALUE (empty
  * otherwise). Resolved like its pointer/keyboard equivalent: a click emits

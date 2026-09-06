@@ -43,8 +43,8 @@ pub mod widgets;
 pub mod window;
 
 pub use access::{
-    AccessAction, AccessNode, AccessRequest, AccessRun, AccessTree, Orientation, Role, ScrollState,
-    TextPos,
+    AccessAction, AccessNode, AccessRequest, AccessRun, AccessTree, Announcement, Live,
+    Orientation, Role, ScrollState, TextPos,
 };
 pub use anim::{Easing, Repeat, Transition};
 pub use audio::{AudioCommand, AudioSpec, AudioStore, PlayOptions, PlaybackId};

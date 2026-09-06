@@ -4,7 +4,8 @@
 //! (refresh rate, focus, viewport), queries (`env.edit_text(key)`,
 //! `env.is_focused(key)`, `env.is_hovered(key)`, `env.is_pressed(key)`,
 //! `env.measure_text(s, opts, max_w)`), focus verbs (`env.set_focus(key)`,
-//! `env.blur()`, `env.focus_next()`, `env.focus_prev()`) and scroll calls
+//! `env.blur()`, `env.focus_next()`, `env.focus_prev()`),
+//! `env.announce(text, politeness)` and scroll calls
 //! (`env.reveal(key)`, `env.scroll_offset(key)`, `env.set_scroll(key, x, y)`,
 //! `env.scroll_geometry(key)`) and window requests
 //! (`env.set_window_size(window, w, h)`, `env.focus_window(window)`); the
@@ -256,6 +257,31 @@ fn env_table<'scope, 'env: 'scope>(
         "focus_prev",
         scope.create_function(move |_, ()| {
             ui.borrow_mut().focus_prev();
+            Ok(())
+        })?,
+    )?;
+    // `env.announce(text, politeness)` says something once, with no node
+    // behind it (`docs/adr/0008-live-regions-and-announcements.md`).
+    // `politeness` is "polite" (the default) or "assertive"; "off" and an
+    // empty text are no-ops. A region whose message is on screen is the
+    // `live` prop instead.
+    //
+    // `env` exists only inside `view`, and a view runs every frame, so a
+    // call here needs a guard the script clears — `on_event` sets a field,
+    // `view` announces it and clears it. The core reports the unguarded
+    // case as `announcement-repeated`.
+    t.set(
+        "announce",
+        scope.create_function(move |_, (text, live): (String, Option<String>)| {
+            let live = live.unwrap_or_else(|| "polite".to_string());
+            let Some(i) = schema::LIVE.iter().position(|v| *v == live) else {
+                return Err(mlua::Error::runtime(format!(
+                    "bad politeness {live:?} (one of {})",
+                    schema::LIVE.join(" | ")
+                )));
+            };
+            ui.borrow_mut()
+                .announce(&text, kui_core::Live::from_index(i));
             Ok(())
         })?,
     )?;
@@ -2108,6 +2134,7 @@ mod tests {
         assert_eq!(
             sorted("calls"),
             [
+                "announce",
                 "blur",
                 "edit_text",
                 "focus_next",

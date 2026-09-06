@@ -315,6 +315,7 @@ fn asserts() -> String {
         cross_gap: f32 => "float",
         initial_focus: u32 => "uint32_t",
         exit: KuiEnter => "KuiEnter",
+        live: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -382,6 +383,11 @@ fn asserts() -> String {
         code: KuiStr => "KuiStr",
         key: u64 => "uint64_t",
         message: KuiStr => "KuiStr",
+    });
+
+    abi_struct!(o, KuiAnnouncement {
+        text: KuiStr => "KuiStr",
+        live: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiPlay {

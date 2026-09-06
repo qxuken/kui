@@ -131,6 +131,7 @@ pub const P_CROSS_GAP: u32 = 76;
 pub const P_INITIAL_FOCUS: u32 = 77;
 pub const P_EXIT: u32 = 78;
 pub const P_WINDOWS: u32 = 79;
+pub const P_LIVE: u32 = 80;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -162,6 +163,10 @@ pub const WRAPS: &[&str] = &["word", "glyph", "none"];
 /// to keep meaning "this node does not expand" (AccessKit's `expanded`,
 /// ARIA's `aria-expanded`, are three-state for the same reason).
 pub const EXPANDED: &[&str] = &["collapsed", "expanded"];
+/// How urgently a reader should read a change it was not asked to read
+/// (`crate::access::Live::name` spellings, in wire order — a binding
+/// sends the index). `off` is the default and means "not a live region".
+pub const LIVE: &[&str] = &["off", "polite", "assertive"];
 /// The roles a view can declare (`crate::access::Role::name` spellings),
 /// in wire order — a binding sends the index. The purely derived roles are
 /// the ones [`DERIVED_ONLY`] names, and every other `Role::ALL` variant is
@@ -855,6 +860,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "A disclosure's state: what a node that shows and hides something (a twisty, an accordion header, a menu button) reads as. Unset, the node does not expand at all — which is why this names its state instead of being a flag.",
     },
     PropDef {
+        name: "live",
+        id: P_LIVE,
+        kind: Kind::Enum(LIVE),
+        apply: Apply::SpecEnum(|s, i| s.live(crate::access::Live::from_index(i))),
+        doc: "Marks this node a live region: when the text inside it changes, a screen reader reads the change without being asked — `polite` at the next pause, `assertive` interrupting. Put it on the smallest node that holds the message, since everything inside a live node is live. For a one-off with no node behind it (\"Saved\") the binding's `announce` verb is the other half.",
+    },
+    PropDef {
         name: "valueNow",
         id: P_VALUE_NOW,
         kind: Kind::F32,
@@ -1053,6 +1065,7 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     ("hoverGroup", "`hover_group` (KuiStr)"),
     ("role", "`role` (`KUI_ROLE_*`)"),
     ("expanded", "`expanded` (`KUI_EXPANDED_*`)"),
+    ("live", "`live` (`KUI_LIVE_*`)"),
     ("cursor", "`cursor` (`KUI_CURSOR_*`)"),
     ("label", "`label` (KuiStr)"),
     (

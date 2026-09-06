@@ -58,7 +58,14 @@
 /// function: a host that does not call one is unaffected, and one that does
 /// fails to *link*, which is loud.
 ///
-/// ABI 4 is the first release that appended to an [out] struct
+/// **It bumps per change, not per release** (ADR 0006 decision 8), so the
+/// entries below are a log of breaks and not a list of published versions:
+/// 1 through 5 all came and went between two releases and none of them
+/// shipped, the scheme having landed after 0.1.0-alpha.5. A skipped number
+/// is normal and costs a host nothing, because the check is equality — no
+/// one reasons about the distance between two of these.
+///
+/// ABI 4 was the first bump that appended to an [out] struct
 /// (`KuiEvent.window`). Hosts that set `size` need no source change for it;
 /// the bump is for the ones that skipped `kui_abi_version()` and would
 /// otherwise take the short write unaware.

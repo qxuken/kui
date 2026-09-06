@@ -277,6 +277,19 @@ impl<'a> Ui<'a> {
         self.core.edit_text(key)
     }
 
+    /// Says something once, with no node behind it (`Core::announce`).
+    /// Takes effect at once, unlike `focus_next`: the queue is not made of
+    /// a finished tree.
+    ///
+    /// A view runs every frame, so a call made from here needs a guard the
+    /// app clears — the core reports the unguarded case as
+    /// `announcement-repeated`. A region whose message is on screen is the
+    /// `live` prop instead
+    /// (`docs/adr/0008-live-regions-and-announcements.md`).
+    pub fn announce(&mut self, text: &str, live: crate::access::Live) {
+        self.core.announce(text, live);
+    }
+
     /// Scrolls whatever contains `key` so the node shows — "scroll to the
     /// selected row", without the container geometry the app cannot see.
     /// Resolved when this frame finishes laying out, so a row the view is
