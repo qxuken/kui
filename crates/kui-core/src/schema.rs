@@ -1012,7 +1012,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`keyFocus`",
         lua: "`key_focus`",
         c: "`kui_set_key_focus`",
-        doc: "Focuses this node (an `onKey` sink, an editor, any focusable node) when it starts being declared: declared every frame it takes focus once, so a later Tab press is not clobbered. To move focus at any time call the binding's focus verb (`ctx.focus`, `kui_focus`, `env.set_focus`).",
+        doc: "Focuses this node (an `onKey` sink, an editor, any focusable node) when it starts being declared: declared every frame it takes focus once, so a later Tab press is not clobbered. Declaring it on the frame a `modal` stops being declared is how a view says where focus lands on the way out — the edge stands, and the focus the modal displaced is not handed back over it (`docs/adr/0003-modal-surfaces.md`, decision 4). To move focus at any time call the binding's focus verb (`ctx.focus`, `kui_focus`, `env.set_focus`).",
     },
     CustomProp {
         name: "key",

@@ -98,7 +98,14 @@ can stop declaring the dialog.
    not on screen any more. Only the core can do this: in a view that is
    data there is no moment for the app to capture "what was focused
    before this dialog existed", and without it every dismissed dialog
-   drops the keyboard user back at the top of the document.
+   drops the keyboard user back at the top of the document. The restore
+   is what an app that says nothing gets, so a `keyFocus` edge on the
+   closing frame — a node declared focused there and not on the frame
+   before — stands and the remembered focus is dropped, which is how a
+   view says where focus lands on the way *out* (backlog F4: a rename
+   editor opened on a node created in the same frame displaced the node
+   the user came from, and handing that back put the next Enter in the
+   wrong place).
 5. **Everything outside the scope is inert.** Nodes outside emit no hit
    region, so they cannot be clicked, dragged, hovered, pressed, focused
    by a press, or activated by Enter, Space or an assistive-technology

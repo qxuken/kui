@@ -89,14 +89,57 @@ written:
 that half is the per-node logic the features added, not the struct. It wants
 its own profile now that the cache behaviour has changed — the shape of the
 answer is which of the added passes can be skipped wholesale with a tree-level
-flag, the way `any_exit` already skips the depart diff. Also still open: a
-threshold on `frame_10k_rects` and `frame_1k_typical`. The size test catches
-the specific mistake that caused this one; it does not catch a slow pass, and
-a threshold would. **Not in CI** — decided 2026-09-06: the docker runner is
-too weak, and a check that false-fails gets disabled. The guard is a local
-`scripts/bench-check.sh` that benches HEAD against the previous tag in a
-worktree (the method C15's bisect and the alpha.5-vs-alpha.6 measurement
-both used) and sits on the pre-tag run list.
+flag, the way `any_exit` already skips the depart diff. **The threshold half
+is done (2026-09-06)**, as `scripts/bench-check.sh`; the profile is what is
+left.
+
+The guard, and why it is not the CI check this entry first asked for. The
+size test catches the specific mistake that caused this regression; it does
+not catch a slow pass, and this one was a staircase of tens-of-microsecond
+steps across ~190 commits, no step of which was large enough to fail a
+review. R6 found it only by re-measuring the README table for the release.
+So the threshold was worth having — but **not in CI**, decided 2026-09-06:
+the docker runner is too weak to measure a frame, it would false-fail, and a
+check that false-fails gets turned off, which is worse than not having it.
+The guard is instead a local `scripts/bench-check.sh` on the pre-tag run
+list. It scripts what was already done by hand twice — C15's own bisect and
+the alpha.5-vs-alpha.6 table below — checking the previous `v*` tag out into
+a worktree under `target/bench-base/`, benching both sides back to back on
+the one machine, and comparing medians. Four rows are guarded and fail it at
+more than 10% slower (`frame_10k_rects`, `frame_1k_typical`,
+`frame_10k_rects_with_text_and_hits`, `deep_nesting_64_levels`); 10% is
+twice the ~5% noise floor these measurements have shown. Every other row is
+reported and not judged, and a row only one side has is listed rather than
+compared.
+
+Two things it does beyond the threshold, both because of how this entry
+went. It prints the README's table with HEAD's medians filled in, so
+refreshing those numbers at tag time is the same command as the guard rather
+than the separate manual pass R6 did. And it watches for the trap the
+alpha.5-vs-alpha.6 measurement hit: the bench *builder* can change between
+refs (`f6eec64` unified the grid), and then a row is not comparable even
+though its name is. When `crates/kui-core/benches/frame.rs` differs it says
+which rows still build from source that reads the same at both refs and
+which are touched, transitively, and by which item. For a plain grid row
+every `Grid` switch is off, so a builder change that only adds a switch
+leaves those four comparable; a new switch the row turns on does not.
+
+The same reasoning that kept it out of CI is inside it: a loaded machine
+cannot measure a frame either, and this repo's own worktrees are usually
+compiling in one. So each side runs twice and the second is read, and a row
+whose own two runs disagree by more than the tolerance is marked
+**unreadable** rather than given either verdict — it cannot resolve a
+difference smaller than its own jitter. The run is **INCONCLUSIVE** (exit 2)
+when no readable row failed but some row was unreadable. Both halves of that
+were worth having, and both were proven on 2026-09-06 against a busy
+machine: `frame_10k_rects` read 119% slower there and the gate refused it,
+which is the false-fail the whole design is against; and judging per row
+rather than per run is what stops the cheapest bench from vetoing the
+others, since `deep_nesting_64_levels` is ~80 µs, where one preemption is
+20%, and a global veto threw away three good verdicts to buy nothing. It
+also warns before starting, off the summed CPU of what is running rather
+than the load average: a one-minute decaying average both cries wolf on a
+box that has just gone quiet and misses a lull long enough to bench in.
 
 A note for whoever picks that up: `Quad` also grew, 92 → 124 bytes, and the
 display list is one per quad. It did not show up in either profile — emission
@@ -230,7 +273,32 @@ sink that wants both). (a) is the honest fix; (b) is the fallback if C9's
 "one sink, both phases" is to stay the only shape. Either way `test.mjs`
 gets a keymap fixture that presses *and releases* and asserts one toggle.
 
-### `!` F4 — A modal's focus restore beats the closing frame's own `keyFocus` edge
+### `!` F4 — A modal's focus restore beats the closing frame's own `keyFocus` edge — **done (2026-09-06)**
+
+**Done (2026-09-06), as the entry asks.** `resolve_modal_focus`
+(`crates/kui-core/src/runtime/focus.rs`) skips the restore when this
+frame's `declared_focus` holds a key last frame's did not — the same edge
+`set_key_focus` itself tests, so the restore yields exactly to the
+declarations that actually moved focus. A view that repeats one
+declaration every frame (an app owning its keyboard) declares nothing new
+on the closing frame, so decision 4 is untouched for it: that is the half
+`a_modal_closing_over_no_edge_still_gives_the_focus_back` pins, beside
+`a_key_focus_edge_beats_the_focus_the_modal_gives_back` in
+`crates/kui-core/tests/focus.rs`, which is the report's own sequence — a
+node and its editor created together, the editor dropped, the new node
+declared. ADR 0003's decision 4 carries the sentence, and the `keyFocus`
+schema row says it too, since the app that hit this could not find the
+rule from the props table. The corpus's `modal` scene gained the second
+phase: the app declares `open` focused while the dialog is shut and the
+freshly created `note` on the frame that drops it, and the report's last
+frame has focus on `note` where the restore alone would have put it back
+on `open`. Two things the phase cost, both paid: the three ring steps used
+to prove the scoped ring through the *last frame's* focus, which is now a
+frame with no dialog in it, so a Space press after them puts `cancel` in
+the event list — the ring's landing said as an event, which no later frame
+can take away — and the scene's expectations moved to the app-only frame
+(three solid quads, two buttons, four events). Reference regenerated, and
+the Lua, C and Node adapters reproduce it.
 
 Evidence: mind-map #3. A rename editor opened on a freshly created node: the
 node was created and the modal opened in one frame, so the focus the modal
@@ -284,40 +352,6 @@ for precise tests and documented as halves. Lua's and C's headless injectors
 have the same split; C at least gets `kui_press`. **Test:** `press('escape')`
 dismisses a modal *and* reaches a sink under it; `press('tab')` moves focus;
 `press('right')` on a focused slider nudges it.
-
-### `~` F7 — An app with global shortcuts cannot also have a Tab ring (wants an ADR)
-
-Evidence: pomodoro 2.5, mind-map #5. A root box with `onKey` + `keyFocus`
-keeps focus through every Tab (the report verified both ways: a minimal app
-without the sink tabs to the slider), so the three duration sliders are
-reachable by VoiceOver and not by keyboard. This is ADR 0002 decision 3 as
-designed — a sink owns its keyboard, Tab included — and the ADR rejects
-"let a key sink give up Tab" by name, handing the sink `focusNext()`
-instead. That answer does not survive the next step: once focus is on a
-slider, the sink hears nothing, so Space stops starting the timer. Both
-apps want the same thing and neither can have it: *a few* keys, globally,
-with the ring and the controls' own keys intact.
-
-The mind map adds the other half of the confusion: a node that is both a
-control and a sink, whose author could not tell whether Enter/Space would be
-claimed and whether a window's Tab traversal would eat their `tab` binding.
-Neither happens — `focused_control()` (`dispatch.rs:530-535`) excludes
-sinks, so a sink's Enter, Space and Tab are its own data — but nothing an
-app author reads says so, and the report shipped an `insert` alias to hedge.
-
-**Do:** an ADR. The shape worth writing up first: **unhandled keys bubble to
-the nearest enclosing sink** — a focused control takes the keys the core
-gives it (Enter, Space, a slider's arrows, a composite's arrows and
-type-ahead) and every other press walks up to the first non-disabled
-`onKey` ancestor, which hears it as it hears everything today. A sink that
-holds focus keeps everything, as now. The core already knows which presses
-did nothing (the `_ => {}` arms in `dispatch.rs`), and the ancestor walk is
-`press_focus`'s (`focus.rs:218`). That makes the pomodoro's root sink a
-shortcut layer under a working ring with no new row, and it is the pattern
-every app shell wants. The alternative, a `keys` allow-list on the sink,
-needs a vocabulary and answers only the Tab half. Whichever wins, decision
-3's "what a sink owns" and "what a control owns" go into the README's Input
-paragraph in one sentence each.
 
 ### `~` F8 — Sliders announce as percentages: no `valueText` — done (2026-09-06)
 
@@ -396,7 +430,7 @@ harness). ADR 0008's rule applies: a nudge announces the text, not the
 number. **Test:** the AX audit script asserts the string on the slider; the
 corpus pins the row across transports; `docs/props.md` regenerates.
 
-### `.` F9 — `AccessMsg` is the one core message without a type parameter
+### `.` F9 — `AccessMsg` is the one core message without a type parameter — **done (2026-09-06)**
 
 Evidence: pomodoro 2.2. `index.d.ts:176`: `interface AccessMsg { … tag?:
 unknown }` while `DragMsg<T = AppMsg>` and `KeyMsg<T>` carry the app's
@@ -408,7 +442,13 @@ second half of this entry — the `access()` doc saying the key is hex and
 naming the other spelling — closed with F5 (2026-09-06): the doc on the
 generated method names both, and the label spelling works.
 
-### `.` F10 — A slider's declared range is never checked against its value
+Done: `AccessMsg<T = AppMsg>` with `tag?: T`, the same shape as `DragMsg`
+and `KeyMsg`; `CoreMsg` picks up the default. `examples/node/counter.tsx`
+grew a `slider` for the count and an `access` arm in `update` that reads
+`by` off `msg.tag` with no cast — under `tag?: unknown` that arm did not
+compile. Same session as F10, which shares the slider.
+
+### `.` F10 — A slider's declared range is never checked against its value — **done (2026-09-06)**
 
 Evidence: pomodoro 2.3: `valueNow={999} valueMin={0} valueMax={10}` is
 advertised verbatim and warns nothing; the app clamps in its own `update`,
@@ -418,7 +458,43 @@ visible only to a screen-reader user. **Do:** `slider-value-out-of-range` in
 `image-without-label`), also firing when `min > max`. **Test:** the diag
 tests gain the three cases.
 
-### `~` F11 — `init` and `view` cannot reach the surface
+Done: `SLIDER_VALUE_OUT_OF_RANGE` in the `warnings!` block, so the TS
+union and `docs/props.md` came out of `npm run gen`; the check runs on
+every node the walk derives as a slider, before the name check, and
+compares only the rows declared (a slider with no `valueMin` has no floor
+to fall under). `slider_value_outside_its_range_warns` in
+`crates/kui-core/tests/access.rs` has below, above, inverted, an in-range
+node that stays silent, and a rangeless one.
+
+### `~` F11 — `init` and `view` cannot reach the surface — **done (2026-09-06)**
+
+Both arguments are in, additive and typed by the `S` that `LoopConfig`
+already carried: `init: M | ((surface: S) => M)` is called with the surface
+after `setup`, so a first model measures against the fonts and images
+`setup` just registered and, under a window, reads the size it really
+opened at; `view(model, window, surface)` gets it third, so the README's
+own suggestion — size a column to its widest label — is a thing a view can
+do. Two call sites in `packages/kui/index.js` (`init(surface)` and
+`view(model, name, surface)`) and the two signatures in `index.d.ts`; the
+value form of `init` and a two-argument `view` are untouched.
+`examples/node/counter-window.tsx` was the pattern the entry describes and
+now deletes its `openedAt` module-level variable.
+
+One thing the entry assumed that is not there: a headless `Ctx` has **no**
+`size()` — only `KuiWindow` does, and `Ctx.env().viewport` is the viewport
+the last frame was begun with, which before `init` is nothing. So the size
+half of this is the windowed spelling (`init: (win) => ({ size: win.size()
+})`, which `examples/node` typechecks), and headless the size is the one an
+app handed `createApp` in its own options. The `test.mjs` test measures
+instead: an `init` that builds its model from `measureText` and a `view`
+that sizes a column from it, asserting the decoded quad is the measurement
+plus its padding and that the glyphs fit inside it. Whether a headless
+`Ctx` should answer `size()` from the options the loop already holds is a
+separate question, and small.
+
+Lua needed nothing — its `view(env)` already carries measurement — and C
+hosts own their loop, so there is nothing to add there either. The original
+entry:
 
 Evidence: mind-map #7 and #11. `LoopConfig.init` is `M | (() => M)` and
 `view` is `(model, window)` (`index.d.ts:1445-1453`), so `measureText` and
@@ -471,7 +547,112 @@ is not: arbitrary paths, fills, dashes. Rounded hit-testing (Status / next)
 is the same shape of question and the ADR should settle it or say it does
 not.
 
-### `!` F13 — VoiceOver says "node is not responding" at every windowed Node launch (undiagnosed)
+### `~` F13 — VoiceOver says "node is not responding" at every windowed Node launch — **diagnosed, not Node's and not the tree's (2026-09-06)**
+
+**Diagnosed on this Mac with VoiceOver really running, and downgraded**: the
+cause is real and reproducible, it is neither of the two things this entry
+guessed, and what is left of it is the platform's. Every kui launch on macOS
+has exactly **one** long accessibility request — **0.23–0.26 s warm, 0.38–0.44 s
+cold**, measured over six launches, one per launch, never two. It begins the
+moment the process becomes AX-addressable and ends when the first frame is
+done, and the whole of `resumed` sits inside it. A screen reader that asks
+anything in that window waits that long for an answer, and a client that runs
+out of patience announces exactly what the report heard. It clears by itself
+at the first frame, which is why the report also says it recovers and reads
+the tree correctly afterwards.
+
+The measured timeline (Node, cold, ms after `exec`; the Rust example's is the
+same shape one step shorter):
+
+| +ms | what |
+| --- | --- |
+| 887 | `EventLoop::build` returns — NSApplication exists, **the app is now AX-addressable** |
+| 957 | a screen reader asks `AXWindows` — *this is the request that waits* |
+| 980 | `resumed` starts: `create_window` (46 ms), then `Renderer::new` (184 ms) |
+| 1224 | `set_visible(true)`; the constructor returns to JS |
+| 1238 | JS `setup` + `init` + first `render` done (14 ms), first `pump` |
+| 1310 | first frame drawn |
+| ~1341 | **the +957 ms request is finally answered, 0.384 s later** |
+
+**Both of the entry's leads were wrong, and the evidence says so.**
+
+*The tree is not the gap*, so step (2) has nothing to fix. `Shell::user_event`
+already calls `pane.publish_access()` unconditionally after
+`Bridge::on_event`, so `InitialTreeRequested` is answered **in the same
+handler, within microseconds** — every trace shows `user_event: …
+InitialTreeRequested` and `publish_access: published` on the same
+timestamp. This entry's "the tree goes out on the next frame" was a misreading
+of `access_bridge.rs` alone: `on_event` does only flip `active`, but its
+caller publishes straight after. (`InitialTreeRequested` also arrives *after*
+the stall, not before it, so it could not have caused it. The one real edge —
+a request landing before any frame exists — is harmless: the empty tree is
+stamped, the next frame's hash differs, and the real tree replaces it.)
+
+*The JS gap is not it either*, so step (3) would not have helped. The
+pure-Rust example — `Launcher::run`, `run_app`, no JS, no `setTimeout`, no
+`KuiWindow` constructor — stalls **identically**: 0.35 s, 0.43 s and 0.44 s on
+three launches, in the same place. `runWindowed` showing the window from the
+first pump moves nothing, because the block is upstream of both the window
+being shown and the loop being pumped. Node's own contribution is the 14 ms of
+`setup` + `init` + first `render` between the constructor returning and the
+first `pump` — inside the stall, and 4% of it.
+
+*Step (4) was right*: the unbundled `node` is cosmetic. It supplies the name
+the announcement uses and nothing else; the Rust example does the same thing
+under its own name.
+
+**What is left is the platform's, which is why this is now `~` and not `!`.**
+The stall is one uninterrupted stretch of main-thread work — creating an
+NSWindow, creating a Metal device and surface, drawing once — that begins
+*after* the process has announced itself to the system as an application and
+*before* the event loop has ever serviced a request. macOS delivers
+accessibility requests to the main run loop, so nothing is answered until that
+stretch ends. The largest single piece is `Renderer::new` (184 ms cold), which
+is real work that has to happen before there is anything to describe. Splitting
+it across loop turns does not obviously help: the run loop only answers when it
+goes idle (`about_to_wait`), and with a redraw pending it does not idle until
+the first frame is done. Any app that initialises a GPU on its main thread has
+this shape.
+
+**If someone wants to take it further**, the one lever this diagnosis found is
+that the app becomes addressable ~70 ms *before* `resumed` begins, so a run-loop
+turn deliberately spent idle between `EventLoop::build` and the window's
+creation would answer whatever is already queued before the expensive part
+starts. That shortens the stall for requests that arrive early — which
+VoiceOver's do — without touching the 184 ms itself. It was not built: it
+changes startup ordering for a benefit measured against a threshold nobody
+here can read (see below).
+
+**The one thing not measured**, honestly: VoiceOver's own patience. Its speech
+could not be captured without changing the user's settings — it logs nothing
+to the unified log, and reading `last phrase` needs "Allow VoiceOver to be
+controlled with AppleScript" turned on — so what is proven is that the app is
+unresponsive to accessibility for 0.23–0.44 s at every launch, not that
+0.23 s is over the line and 0.44 s further over it. It is the only candidate
+in the launch window and it matches the report in both timing and recovery.
+
+**The repro is a script, not a listening test**:
+`scripts/ax-launch-probe.swift` launches a command and times every AX request
+from t=0, telling apart "not addressable yet" (an immediate
+`cannotComplete`, which every process answers for its first moments) from "did
+not answer" (a slow one). `--patience S` is the verdict and the exit status.
+It is the companion to `ax-audit.swift`, which deliberately waits this gap out
+before checking what the tree says.
+
+    swift scripts/ax-launch-probe.swift -- node dist/counter-window.mjs
+    swift scripts/ax-launch-probe.swift -- ./target/release/examples/accessibility
+
+**P8 smoke item, the day a macOS runner exists**: run the probe against both
+examples with `--patience` set to whatever the runner's launch can hold, and
+fail on a regression. It needs no screen reader, only Accessibility permission
+for the runner — which is the same permission `ax-audit.swift` already needs,
+so the two share a job.
+
+---
+
+*The original finding, as filed:*
+
+#### `!` F13 — VoiceOver says "node is not responding" at every windowed Node launch (undiagnosed)
 
 Evidence: pomodoro §3, reproduced at every launch; it recovers and reads the
 tree correctly afterwards. The report measured out blocking `setup` work
@@ -527,25 +708,40 @@ are still per window because `Core::output` hands out `&mut GlyphAtlas`
 share enough text to matter. C15's remainder: `frame_10k_rects` is still
 ~1.5× its 2026-08-31 cost after the boxing fix, and that half is the per-node
 logic rather than the struct — it wants a profile now the cache behaviour has
-changed. Plus the CI threshold on `frame_10k_rects` and `frame_1k_typical`,
-which the size test does not replace.
+changed. The threshold that went with it is **done (2026-09-06)** and is not
+the CI check this list used to name: benches in CI were declined the same day
+because the docker runner is too weak and would false-fail, so it is
+`scripts/bench-check.sh`, run against the previous tag before tagging. When
+the next release section is written, carry the pre-tag run list over from
+[`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) with that step on
+it.
 
-**From the field (F1–F15).** Of the four defects, three are done:
+**From the field (F1–F15).** All four defects are done:
 ~~F1~~ (the Node loop never set the frame clock, which is why nothing eased
 was testable from Node), ~~F2~~ (drag deltas) and ~~F3~~ (an alpha.4 keymap
 ran twice, closed as its (a), the `keyUp` flag) all landed **2026-09-06**,
 and both of the last two carry a "what breaks" line in the CHANGELOG for the
-next tag. **F4** (the modal restore overriding a `keyFocus` edge) is the one
-left. Then the gaps in rough order of cost: F9 and F10 are an afternoon, F6
-and F11 a day each (~~F5~~ was one, and is **done (2026-09-06)**). ~~F8~~ —
-**done (2026-09-06)**: the AccessKit question it turned on was answered on
-the platform first, and the answer (one value slot, the string takes it and
-replaces the number) is what put the reading in `AccessNode.value` and kept
-the ABI at 7. F7 (global shortcuts under a
-Tab ring) joins the ADR group below, where ~~F12~~ (a line primitive) also
-sat until it landed as `docs/adr/0010-a-segment-primitive.md`. F13
-(VoiceOver at launch) and F15 (panning in a window) are reports nobody in
-this repo has reproduced yet, and each says what to try first. ~~F14~~ —
+next tag. ~~F4~~ (the modal restore overriding a `keyFocus` edge) landed
+**2026-09-06** too, and its rule is a sentence in ADR 0003's decision 4.
+Then the gaps in rough order of cost: ~~F9~~ and ~~F10~~ were the
+afternoon they were billed as and landed together **2026-09-06** (they
+share the slider fixture), F6 is a day (~~F5~~ was one and ~~F11~~ rather
+less, both **done (2026-09-06)**). ~~F8~~ — **done (2026-09-06)**: the
+one AccessKit question it turned on was answered on the platform before
+the row was designed, and the answer (a node has one value slot, a string
+in it beats the number) is what put the reading in `AccessNode.value` and
+left both the bridge and the ABI alone. ~~F7~~ (global shortcuts under
+a Tab ring) went to the ADR group below and landed there as
+`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`, as ~~F12~~ (a line
+primitive) had as `docs/adr/0010-a-segment-primitive.md`. **F13**
+(VoiceOver at launch) is **diagnosed and downgraded (2026-09-06)**: every kui
+launch on macOS is unresponsive to accessibility for 0.23–0.44 s while the
+main thread creates a window and a GPU device, which neither the Node loop nor
+the access tree causes — the pure-Rust example does it identically — so what is
+left is the platform's shape and the entry says what a further fix would have
+to move. It leaves behind `scripts/ax-launch-probe.swift`, which measures the
+gap `ax-audit.swift` waits out. **F15** (panning in a window) is the one report
+nobody here has reproduced yet, and it says what to try first. ~~F14~~ —
 **done (2026-09-06)**: F2 closed its `DragMsg` bullet and the other three
 sentences are written, so the whole entry is in the archive.
 
@@ -567,9 +763,13 @@ real announcement in `TreeUpdate` (two of the three platforms have the API
 behind it; AccessKit's whole event surface is a tree diff). The exit
 animations' `animating()` policy, revisited against a real view that removes
 many nodes (ADR 0005 left it opt-in + a 512-node budget with no duration
-cap). And from the field: F7, whether keys a focused control did not
+cap). ~~And from the field, F7, whether keys a focused control did not
 take should bubble to the enclosing sink — ADR 0002 rejected the narrower
-"sink gives up Tab" and both reports need the wider thing. ~~And F12, a
+"sink gives up Tab" and both reports need the wider thing~~ — **done
+(2026-09-06)**, as `docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`,
+accepted *and* built: they bubble, a control keeps only the keys the core
+presses it with, Tab stays the ring's, and ADR 0002 decision 3 keeps
+everything a sink that holds focus hears. ~~And F12, a
 segment primitive beside the six rounded-rect quad kinds, which ADR 0005
 never considered~~ — **done (2026-09-06)**, as
 `docs/adr/0010-a-segment-primitive.md`, accepted *and* built: a seventh
@@ -596,8 +796,10 @@ of them moved verbatim into
 the five open headings, this section and the index below. The suggested
 sequence went with them rather than staying: three of its four steps had
 shipped, and this section is what says what is next. Still open: enable
-`SMOKE_MACOS` / `SMOKE_WINDOWS` the day a runner exists (P8) and remove Lua
-`env.focus` at 0.2 (P3, R7); F14's doc sentences are written (2026-09-06).
+`SMOKE_MACOS` / `SMOKE_WINDOWS` the day a runner exists (P8) — which now has a
+second job waiting for it, F13's launch probe beside the AX audit, sharing the
+one Accessibility permission — and remove Lua `env.focus` at 0.2 (P3, R7);
+F14's doc sentences are written (2026-09-06).
 
 ---
 
@@ -646,11 +848,12 @@ suggested sequence as it stood on 2026-09-05, and
 [Release 0.1.0-alpha.6](backlog/closed-2026-09.md#release-010-alpha6-2026-09-05),
 whose R1–R7 are the half-baked items finished before the tag.
 
-**From two field reports (2026-09-06)** — F2, F5, F14
+**From two field reports (2026-09-06)** — F2, F5, F7, F14
 
 - `!` **F2** — [Drag deltas lie twice: `end` zeroes them, and sub-slop motion never reaches them](backlog/closed-2026-09.md#-f2--drag-deltas-lie-twice-end-zeroes-them-and-sub-slop-motion-never-reaches-them--done-2026-09-06) — done (2026-09-06) — F14's `DragMsg` bullet closed with it
 - `~` **F5** — [Nothing outside Rust can name a node by the key it declared](backlog/closed-2026-09.md#-f5--nothing-outside-rust-can-name-a-node-by-the-key-it-declared--done-2026-09-06) — done (2026-09-06)
 - `.` **F14** — [Four doc gaps the two reports paid for](backlog/closed-2026-09.md#-f14--four-doc-gaps-the-two-reports-paid-for-three-of-them-open--done-2026-09-06) — done (2026-09-06) — its `DragMsg` bullet closed with F2
+- `~` **F7** — [An app with global shortcuts cannot also have a Tab ring](backlog/closed-2026-09.md#-f7--an-app-with-global-shortcuts-cannot-also-have-a-tab-ring-wants-an-adr--done-2026-09-06) — done (2026-09-06) — ADR 0011, accepted and built
 
 **From building C11 step 4 (2026-09-06)** — W1
 
