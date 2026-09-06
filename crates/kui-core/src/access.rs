@@ -470,8 +470,14 @@ pub struct AccessNode {
     pub description: Option<String>,
     /// Final laid-out rect, logical px, viewport coordinates.
     pub rect: Rect,
-    /// An editor's committed text (a custom editor's: the lines it draws,
-    /// joined by `"\n"`).
+    /// The node's string value, which the platform has exactly one slot
+    /// for: an editor's committed text (a custom editor's: the lines it
+    /// draws, joined by `"\n"`), or a slider's declared `value_text`.
+    /// A slider that names its reading has *only* that reading — the
+    /// string wins over the number wherever both could be said, which is
+    /// what `aria-valuetext` means and what `accesskit_macos` does with
+    /// `AXValue` (see `docs/BACKLOG.md`, F8). `min` / `max` are unaffected,
+    /// and so are the increment actions.
     pub value: Option<String>,
     /// An editor's caret, a byte offset into `value`.
     pub caret: Option<usize>,
@@ -506,7 +512,9 @@ pub struct AccessNode {
     /// the count on the container and the ordinal on the item, unlike
     /// ARIA's `aria-setsize` on every item; this follows AccessKit.
     pub set_size: Option<usize>,
-    /// `valueNow` / `valueMin` / `valueMax` for a slider.
+    /// `valueNow` / `valueMin` / `valueMax` for a slider. What the
+    /// position *reads as* is `valueText`, which lands in `value` above
+    /// because the platform has one string slot for both.
     pub number: Option<f32>,
     pub min: Option<f32>,
     pub max: Option<f32>,
@@ -939,6 +947,12 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
                 node.number = ax.value_now;
                 node.min = ax.value_min;
                 node.max = ax.value_max;
+                // The declared reading, in the one string slot the
+                // platform gives a node (see `value`). Slider-only, like
+                // the three numbers: a `group` shaped like a progress bar
+                // carries none of them either, and a role whose numbers
+                // are ignored should not have a reading that is not.
+                node.value = ax.value_text.as_deref().map(str::to_owned);
                 if !spec.disabled {
                     actions |= AccessAction::Increment.bit() | AccessAction::Decrement.bit();
                 }

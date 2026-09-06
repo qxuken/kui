@@ -116,24 +116,35 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
               button { label = "go", on_click = { kind = "go" } },
               edit { key = "note", initial = "hello", size = 13, width = 160,
                      label = "Note" },
+              row { key = "focus", width = 120, height = 12, role = "slider",
+                    label = "Focus length", value_now = 25, value_min = 5,
+                    value_max = 60, value_text = "25 minutes" },
             }
         "#
         .to_string(),
         "keys" => r#"
-            local function sink(name, key_up)
+            local function sink(name, key_up, child)
               return row { key = name, width = 100, height = 24, bg = 0x1b1d27ff,
-                           on_key = 1, key_up = key_up, role = "group", label = name }
+                           on_key = 1, key_up = key_up, role = "group", label = name,
+                           child }
             end
-            return column { pad = 10, gap = 6, sink("press", false), sink("held", true) }
+            local go = row { key = "go", width = 80, height = 16, bg = 0x3b5bd4ff,
+                             on_click = { kind = "go" }, label = "Go", key_focus = true }
+            return column { pad = 10, gap = 6, sink("press", false), sink("held", true),
+                            sink("shell", true, go) }
         "#
         .to_string(),
+        // `phase` is the host-seeded global the `exit` scene uses: here it
+        // drops the dialog, and the declaration the app makes on its way
+        // out moves from `open` to the node it was renaming.
         "modal" => r#"
-            return column { width = { grow = 1 }, gap = 6,
-              titlebar { text("app", { size = 12 }) },
-              row { key = "open", width = 100, height = 20, bg = 0x30344aff,
-                    on_click = { kind = "open" }, label = "Open" },
-              column { key = "dialog", width = 120, height = 100, pad = 8, gap = 6,
-                       bg = 0x202030ff,
+            -- The dialog and the node it was renaming never coexist, so
+            -- one trailing child is both of them: a nil in the middle of a
+            -- table constructor would end the child list early.
+            local last
+            if phase == 0 then
+              last = column { key = "dialog", width = 120, height = 100,
+                       pad = 8, gap = 6, bg = 0x202030ff,
                        float = { anchor = "viewport", at = { "end", "end" },
                                  self_at = { "end", "end" } },
                        modal = { kind = "dlg" }, label = "Settings",
@@ -141,7 +152,18 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                       on_click = { kind = "ok" }, label = "OK" },
                 row { key = "cancel", width = 100, height = 24, bg = 0x3b5bd4ff,
                       on_click = { kind = "cancel" }, label = "Cancel" },
-              },
+              }
+            else
+              last = row { key = "note", width = 100, height = 20,
+                    bg = 0x30344aff, on_click = { kind = "note" },
+                    label = "Note", key_focus = true }
+            end
+            return column { width = { grow = 1 }, gap = 6,
+              titlebar { text("app", { size = 12 }) },
+              row { key = "open", width = 100, height = 20, bg = 0x30344aff,
+                    on_click = { kind = "open" }, label = "Open",
+                    key_focus = phase == 0 },
+              last,
             }
         "#
         .to_string(),

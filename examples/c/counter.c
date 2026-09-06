@@ -1207,6 +1207,20 @@ static void conf_controls(KuiCtx *ui, const Fixtures *f, int phase) {
     KuiTextStyle s13 = {.size = 13};
     KuiSpec note = {.width = {KUI_FIXED, 160}, .label = KUI_STR("Note")};
     kui_text_edit(ui, KUI_STR("note"), KUI_STR("hello"), &s13, 0, &note);
+    /* A slider that names its own reading: value_text is what a reader says
+     * instead of the percentage value_now and the range alone would give,
+     * and it comes back in KuiAccessNode.value (backlog F8). */
+    KuiSpec focus = {.width = {KUI_FIXED, 120},
+                     .height = {KUI_FIXED, 12},
+                     .role = KUI_ROLE_SLIDER,
+                     .label = KUI_STR("Focus length"),
+                     .value_set = KUI_VALUE_NOW | KUI_VALUE_MIN | KUI_VALUE_MAX,
+                     .value_now = 25,
+                     .value_min = 5,
+                     .value_max = 60,
+                     .value_text = KUI_STR("25 minutes")};
+    kui_open_keyed(ui, KUI_STR("focus"), &focus, NULL);
+    kui_close(ui);
     kui_close(ui);
     kui_value_free(menu);
 }
@@ -1269,13 +1283,13 @@ static void conf_modal_button(KuiCtx *ui, const char *key, const char *kind,
 
 /* Two key sinks clicked into focus in turn: the first says only on_key and
  * hears the press alone, the second sets key_up and hears both halves. An
- * integer tag, so the report's event column shows the phase. */
+ * integer tag, so the report's event column shows the phase. Left open, so
+ * the third can hold a button (see conf_keys). */
 static void conf_keys_sink(KuiCtx *ui, const char *name, uint32_t key_up) {
     KuiSpec spec = {.dir = KUI_ROW, .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 24},
                     .bg = 0x1b1d27ff, .role = KUI_ROLE_GROUP, .label = KUI_STR(name),
                     .key_up = key_up};
     kui_open_with(ui, KUI_STR(name), &spec, NULL, NULL, kui_value_int(1), NULL);
-    kui_close(ui);
 }
 
 static void conf_keys(KuiCtx *ui, const Fixtures *f, int phase) {
@@ -1284,7 +1298,20 @@ static void conf_keys(KuiCtx *ui, const Fixtures *f, int phase) {
     KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10, .gap = 6};
     kui_open(ui, &outer, NULL);
     conf_keys_sink(ui, "press", 0);
+    kui_close(ui);
     conf_keys_sink(ui, "held", 1);
+    kui_close(ui);
+    /* A shell over a ring: the sink hears what the button inside it does
+     * not claim, and the button holds focus from the first frame
+     * (docs/adr/0011-keys-bubble-to-the-enclosing-sink.md). */
+    conf_keys_sink(ui, "shell", 1);
+    KuiValue *go_tag = kui_value_map();
+    kui_value_map_set(go_tag, KUI_STR("kind"), kui_value_str(KUI_STR("go")));
+    KuiSpec go = {.dir = KUI_ROW, .width = {KUI_FIXED, 80}, .height = {KUI_FIXED, 16},
+                  .bg = 0x3b5bd4ff, .label = KUI_STR("Go")};
+    uint64_t go_key = kui_open_keyed(ui, KUI_STR("go"), &go, go_tag);
+    kui_close(ui);
+    kui_set_key_focus(ui, go_key);
     kui_close(ui);
 }
 
@@ -1294,7 +1321,6 @@ static void conf_keys(KuiCtx *ui, const Fixtures *f, int phase) {
  * under a modal. */
 static void conf_modal(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
-    (void)phase;
     KuiSpec outer = {.gap = 6, .width = {KUI_GROW, 1}};
     kui_open(ui, &outer, NULL);
     kui_titlebar_with(ui, conf_modal_titlebar, NULL);
@@ -1303,8 +1329,27 @@ static void conf_modal(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_value_map_set(open_tag, KUI_STR("kind"), kui_value_str(KUI_STR("open")));
     KuiSpec open = {.dir = KUI_ROW, .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 20},
                     .bg = 0x30344aff, .label = KUI_STR("Open")};
-    kui_open_keyed(ui, KUI_STR("open"), &open, open_tag);
+    uint64_t open_key = kui_open_keyed(ui, KUI_STR("open"), &open, open_tag);
     kui_close(ui);
+    /* The app owns its keyboard while the dialog is shut and says so every
+     * frame - an edge once, and no clobber after. */
+    if (phase == 0) kui_set_key_focus(ui, open_key);
+
+    /* Phase 1 drops the dialog and declares the node it was renaming
+     * focused instead: that change of declaration is an edge, and an edge
+     * on the closing frame beats the focus the modal displaced (see
+     * docs/adr/0003-modal-surfaces.md, decision 4). */
+    if (phase != 0) {
+        KuiValue *note_tag = kui_value_map();
+        kui_value_map_set(note_tag, KUI_STR("kind"), kui_value_str(KUI_STR("note")));
+        KuiSpec note = {.dir = KUI_ROW, .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 20},
+                        .bg = 0x30344aff, .label = KUI_STR("Note")};
+        uint64_t note_key = kui_open_keyed(ui, KUI_STR("note"), &note, note_tag);
+        kui_close(ui);
+        kui_set_key_focus(ui, note_key);
+        kui_close(ui);
+        return;
+    }
 
     /* KuiSpec.modal is the `modal` prop, borrowed for the open call. */
     KuiValue *modal = kui_value_map();

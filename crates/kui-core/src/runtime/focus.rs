@@ -174,7 +174,21 @@ impl Core {
             .iter()
             .find(|(k, _)| !now.iter().any(|(n, _)| n == k))
             .map(|(_, saved)| saved.filter(|key| self.tree.keys.contains(key)));
-        if let Some(saved) = closed {
+        // A `keyFocus` *edge* on this same frame — a node declared focused
+        // now and not last frame — is the app saying where focus lands on
+        // the way out, and it wins over the restore (ADR 0003, decision
+        // 4): a rename editor opened on a node created in the same frame
+        // displaced the node the user was on *before*, and the restore
+        // is the default for an app that says nothing, not a rule for one
+        // that did. A sink redeclaring itself every frame is no edge, so
+        // the restore still lands where it always has under one.
+        let edge = self
+            .declared_focus
+            .iter()
+            .any(|k| !self.declared_focus_last.contains(k));
+        if let Some(saved) = closed
+            && !edge
+        {
             // Exactly what it displaced, nothing included: leaving focus
             // on the dismissed modal's own button would be a focus on a
             // node that is not there any more.
@@ -228,17 +242,35 @@ impl Core {
         if self.tree.specs[i].events().on_key.is_some() {
             return Some(key);
         }
+        match self.enclosing_sink(i) {
+            Some(j) => Some(self.tree.keys[j]),
+            None => focusable.then_some(key),
+        }
+    }
+
+    /// The nearest key sink strictly above node `i`: the walk
+    /// [`Self::press_focus`] makes for a press, made for a key as well
+    /// (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`, decision 1).
+    ///
+    /// A disabled node is not a sink at all (`docs/adr/0002`, decision 6),
+    /// so it neither answers here nor hides a live sink further up. The
+    /// walk stops at the modal boundary rather than climbing through it:
+    /// the app around a dialog is inert (`docs/adr/0003`), and a shell that
+    /// kept hearing shortcuts while its own dialog was up would be running
+    /// commands against a surface the user cannot see the state of.
+    pub(crate) fn enclosing_sink(&self, i: usize) -> Option<usize> {
         let mut n = self.tree.parent[i];
         while n != crate::tree::NIL {
             let j = n as usize;
-            // A disabled node is not a sink at all (decision 6), so it
-            // neither answers here nor hides a live sink further up.
+            if !self.interactive(j) {
+                return None;
+            }
             if self.tree.specs[j].events().on_key.is_some() && !self.tree.specs[j].disabled {
-                return Some(self.tree.keys[j]);
+                return Some(j);
             }
             n = self.tree.parent[j];
         }
-        focusable.then_some(key)
+        None
     }
 
     /// The focused node's index in the last frame, if it is there.

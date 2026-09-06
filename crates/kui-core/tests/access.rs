@@ -3,7 +3,7 @@
 //! resolves assistive-technology requests the way pointer input would, and
 //! reports missing names as warnings.
 
-use kui_core::diag::{CONTROL_WITHOUT_NAME, IMAGE_WITHOUT_LABEL};
+use kui_core::diag::{CONTROL_WITHOUT_NAME, IMAGE_WITHOUT_LABEL, SLIDER_VALUE_OUT_OF_RANGE};
 use kui_core::{
     AccessAction, AccessRequest, AccessTree, Core, EditOptions, InputEvent, Key, NodeSpec, Role,
     Size, Sizing, TextStyle, UiEvent, Value, Warning, WindowButton, WindowCommand,
@@ -217,6 +217,20 @@ fn explicit_roles_win_and_carry_their_state() {
             .on_drag(Value::str("vol")),
         |_| {},
     );
+    // The same control naming its own reading: 25 in [5..60] is "36
+    // percent" to a reader with only the numbers, which is the bug F8
+    // reported.
+    let text_slider = ui.with_keyed(
+        "focus",
+        NodeSpec::row()
+            .role(Role::Slider)
+            .label("Focus length")
+            .value_now(25.0)
+            .value_min(5.0)
+            .value_max(60.0)
+            .value_text("25 minutes"),
+        |_| {},
+    );
     let heading = ui.with_keyed("h", NodeSpec::row().role(Role::Heading), |ui| {
         ui.text("Settings", TextStyle::new(20.0))
     });
@@ -240,6 +254,24 @@ fn explicit_roles_win_and_carry_their_state() {
     assert_eq!((s.number, s.min, s.max), (Some(0.4), Some(0.0), Some(1.0)));
     assert!(s.supports(AccessAction::Increment));
     assert!(!s.supports(AccessAction::Click), "no click payload");
+    assert_eq!(
+        s.value, None,
+        "a slider that named no reading has no string value"
+    );
+
+    let t = tree.get(text_slider).unwrap();
+    assert_eq!(
+        t.value.as_deref(),
+        Some("25 minutes"),
+        "value_text lands in the node's one string slot, which is what the \
+         platform reads instead of the number (backlog F8)"
+    );
+    assert_eq!(
+        (t.number, t.min, t.max),
+        (Some(25.0), Some(5.0), Some(60.0)),
+        "the range still travels: only the reading is replaced"
+    );
+    assert!(t.supports(AccessAction::Increment), "still nudgeable");
 
     let h = tree.get(heading).unwrap();
     assert_eq!(h.role, Role::Heading);
@@ -618,6 +650,81 @@ fn missing_names_are_warnings_raised_once() {
     assert_eq!(ws[1].key, Key::ROOT.str("icon"));
     assert!(ws[1].message.contains("button"), "{}", ws[1].message);
     assert!(ws[2].message.contains("textInput"), "{}", ws[2].message);
+    frame(&mut core);
+    assert!(core.take_warnings().is_empty(), "each once");
+}
+
+/// A slider's `valueNow` is read to a screen reader as declared, so a
+/// value outside the declared range — or a range with nothing inside it —
+/// is a defect only that user sees (backlog F10). Three ways to be wrong,
+/// one node in range that stays silent, and a slider that declares no
+/// range at all, which has nothing to be outside of.
+#[test]
+fn slider_value_outside_its_range_warns() {
+    let mut core = Core::new();
+    let slider = |label: &'static str| NodeSpec::row().role(Role::Slider).label(label);
+    let frame = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.with_keyed(
+            "fine",
+            slider("fine").value_now(5.0).value_min(0.0).value_max(10.0),
+            |_| {},
+        );
+        ui.with_keyed(
+            "below",
+            slider("below")
+                .value_now(-1.0)
+                .value_min(0.0)
+                .value_max(10.0),
+            |_| {},
+        );
+        ui.with_keyed(
+            "above",
+            slider("above")
+                .value_now(999.0)
+                .value_min(0.0)
+                .value_max(10.0),
+            |_| {},
+        );
+        ui.with_keyed(
+            "inverted",
+            slider("inverted")
+                .value_now(5.0)
+                .value_min(10.0)
+                .value_max(0.0),
+            |_| {},
+        );
+        ui.with_keyed("open", slider("open").value_now(999.0), |_| {});
+        ui.finish();
+    };
+    frame(&mut core);
+    let ws = core.take_warnings();
+    assert_eq!(
+        codes(&ws),
+        [
+            SLIDER_VALUE_OUT_OF_RANGE,
+            SLIDER_VALUE_OUT_OF_RANGE,
+            SLIDER_VALUE_OUT_OF_RANGE
+        ]
+    );
+    assert_eq!(ws[0].key, Key::ROOT.str("below"));
+    assert!(
+        ws[0].message.contains("below valueMin 0"),
+        "{}",
+        ws[0].message
+    );
+    assert_eq!(ws[1].key, Key::ROOT.str("above"));
+    assert!(
+        ws[1].message.contains("above valueMax 10"),
+        "{}",
+        ws[1].message
+    );
+    assert_eq!(ws[2].key, Key::ROOT.str("inverted"));
+    assert!(
+        ws[2].message.contains("valueMin 10 is above valueMax 0"),
+        "{}",
+        ws[2].message
+    );
     frame(&mut core);
     assert!(core.take_warnings().is_empty(), "each once");
 }

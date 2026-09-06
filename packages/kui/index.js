@@ -149,14 +149,17 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
 
   // A frame, without the `stats()` round trip `render` hands back — the
   // windowed pump draws sixty times a second and asks for none of it.
-  // `view(model, name)` runs once per open window; the main window's tree
-  // also carries what `windows(model)` declares, so the set the loop draws
-  // is the set the core diffs. A headless `Ctx` is one window, the main.
+  // `view(model, name, surface)` runs once per open window; the main window's
+  // tree also carries what `windows(model)` declares, so the set the loop
+  // draws is the set the core diffs. A headless `Ctx` is one window, the main.
+  // The surface rides along as the third argument so a view can measure —
+  // `measureText` to size a column to its widest label, `size()` to pick a
+  // tier — without the app parking it in a module-level variable.
   function draw() {
     surface.setTime?.(at() / 1000);
     const declared = windows ? windows(model) : undefined;
     for (const name of open()) {
-      const tree = view(model, name);
+      const tree = view(model, name, surface);
       show(name === 'main' ? withWindows(tree, declared) : tree, name);
     }
     drainWarnings();
@@ -275,9 +278,11 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
   };
 
   // Resources before the model: `setup` registers fonts and images so `init`
-  // can name their ids.
+  // can name their ids. `init` is handed the surface too, so a first model
+  // can be built against the real window size and the fonts just registered
+  // rather than against constants corrected on the first `resize`.
   opts.setup?.(surface, app);
-  model = typeof init === 'function' ? init() : init;
+  model = typeof init === 'function' ? init(surface) : init;
   return app;
 }
 
@@ -289,7 +294,7 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
  * Resolves with the final model when the main window closes. One event
  * loop per process (winit event loops are not recreatable everywhere); any
  * number of windows on it — `windows: (model) => [...]` declares them, and
- * `view(model, window)` is called once per open window.
+ * `view(model, window, win)` is called once per open window.
  */
 export function runWindowed(config, opts = {}) {
   const { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome } = opts;

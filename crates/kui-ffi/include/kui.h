@@ -530,6 +530,15 @@ typedef struct KuiSpec {
      * is what a keymap wants - one that heard both halves would run every
      * binding twice. */
     uint32_t key_up;
+    /* What a slider role's position reads as, empty for none (ARIA's
+     * aria-valuetext). Without one a reader has only value_now and the
+     * range and says a percentage - 25 in [5..60] is "36 percent" - so a
+     * value whose unit carries the meaning says it here: "25 minutes". It
+     * replaces the number in the reading rather than joining it, and a
+     * nudge announces the new text; putting the reading in `label` instead
+     * renames the control on every nudge. Copied while the node opens, and
+     * read back as KuiAccessNode.value (KUI_ACCESS_HAS_VALUE). */
+    KuiStr value_text;
 } KuiSpec;
 
 /* Disclosure state (KuiSpec.expanded): the schema index plus one, so zero
@@ -673,7 +682,10 @@ typedef struct KuiAccessNode {
     uint32_t actions; /* KUI_ACCESS_* the node accepts */
     KuiStr name;
     KuiStr description;
-    KuiStr value; /* an editor's text (KUI_ACCESS_HAS_VALUE) */
+    /* The node's one string value (KUI_ACCESS_HAS_VALUE): an editor's text,
+     * or a slider's value_text - a slider that named its reading reads as
+     * that string instead of its number. */
+    KuiStr value;
     float x, y, w, h;
     uint32_t caret, selection_start, selection_end; /* byte offsets into value */
     float value_now, value_min, value_max;          /* a slider's position and range */

@@ -28,6 +28,50 @@ bumped past alpha.6 should delete.
 
 ### Added
 
+- **`valueText`: a slider says what its position reads as** (backlog F8,
+  from the pomodoro field report). Without it a screen reader has only
+  `valueNow` and the range and turns the position into a percentage — 25
+  minutes in [5..60] is announced "36 percent", which is what the report
+  hit on all three of its sliders. `valueText` is the reading itself:
+  `<box role="slider" valueText="25 minutes">`, `value_text` in Lua and C,
+  `.value_text()` in Rust. It is ARIA's `aria-valuetext`, and it
+  **replaces** the number rather than joining it — settled by driving the
+  real macOS accessibility API before the row was designed:
+  `accesskit_macos` gives a node one value slot, and a string in it wins
+  over the number. The range still travels (F10's check reads the numbers,
+  not the reading), `AXIncrement` and `AXDecrement` still work, and a nudge
+  announces the new *text*
+  (`docs/adr/0008-live-regions-and-announcements.md`). It arrives back as
+  the access node's `value`, the same field an editor's text uses, so
+  nothing on the readback side grew and `KUI_ABI_VERSION` stays at 7.
+  Meaningful on the slider role alone, like the three numbers.
+  **What you can delete:** the name that carries the reading. An app
+  working around this baked the value into `label` — `"FOCUS LENGTH, 25
+  MINUTES"` — which is the wrong attribute twice over: it renames the
+  control on every nudge, so a reader announces a *new control* rather than
+  a new value, and the name is what a voice-control user has to say to
+  reach it. Move the number to `valueText` and let `label` go back to being
+  the control's name.
+
+- **Node's `init` and `view` are handed the surface** (backlog F11, from
+  two field reports). The function form of `init` takes it —
+  `init: (surface) => model`, called after `setup`, so a first model
+  measures against the fonts `setup` registered and, under a window, reads
+  the size the window really opened at — and `view` takes it third:
+  `view(model, window, surface)`. Both are additive and typed by the `S`
+  that `LoopConfig` already carried (`Ctx` headless, `KuiWindow` under
+  `runWindowed`), so a value `init` and a two-argument `view` are unchanged.
+  This is what makes the README's own suggestion for `measureText` — size a
+  column to its widest label — something a view can do, rather than
+  something only `update` could.
+  **What you can delete:** the module-level variable an app parked the
+  surface in from `setup`, the hardcoded window size its first model was
+  built against, and the `resize` handler that existed only to correct it —
+  with it, the frames between the first draw and that correction, where the
+  camera and every hit test were off. `examples/node/counter-window.tsx`
+  deletes its `openedAt` exactly this way. Note that a headless `Ctx` still
+  has no `size()`: the size it draws at is the one you hand `createApp`.
+
 - **`press` and `release`: one key, both channels** (backlog F6, from the
   mind-map and pomodoro field reports). A key press has always been two
   events, and a window has always sent both: the raw press to whatever
@@ -153,8 +197,38 @@ bumped past alpha.6 should delete.
   `ambiguous-key` warning; a label nothing declared is an error naming
   both spellings, where `bad id "beta"` named neither.
 
+- **`slider-value-out-of-range`** (backlog F10, from the pomodoro field
+  report). A `slider` whose `valueNow` is outside its own `valueMin` /
+  `valueMax`, or whose `valueMin` is above its `valueMax`, was advertised
+  verbatim and warned nothing — the app that clamps in `update` keeps the
+  range in two places, and the drift is visible only to a screen-reader
+  user. Now the diagnostics walk compares the rows a slider declares
+  (only those: a slider with no `valueMin` has no floor) and reports the
+  node once, beside `image-without-label`. One more row in the single
+  warnings table, so the Node `WarningCode` union and `docs/props.md`
+  regenerated from it.
+
 ### Fixed
 
+- **A modal gives focus back unless the closing frame says otherwise**
+  (backlog F4, the mind map's rename editor). The focus a modal displaces
+  comes back when it goes away (ADR 0003, decision 4) — but a rename
+  editor opened on a node created in the *same* frame displaced the node
+  the user came from, so dismissing it put focus back there and the next
+  Enter added a sibling in the wrong place. The app had no way out:
+  `focus()` needed a key it did not have, and `keyFocus` on the new node
+  had spent its edge. Now a `keyFocus` edge on the frame a modal stops
+  being declared — a node declared focused there and not on the frame
+  before — stands, and the remembered focus is dropped. That is
+  `initialFocus`'s missing half: `initialFocus` says which control a
+  dialog opens on, `keyFocus` on the closing frame says where the
+  keyboard lands on the way out, and neither needed a new row. An app
+  that declares nothing, or that repeats one declaration every frame (a
+  key sink owning its keyboard), is untouched — a redeclaration is no
+  edge, so the restore still lands where it always did. The corpus's
+  `modal` scene drops its dialog in a second phase and declares the node
+  it was renaming focused, so all four bindings agree on where the
+  keyboard ends up.
 - **A `transition` eases under `createApp`, so it is testable from Node**
   (backlog F1, the mind-map field report's #8). The loop set the core's
   frame clock only inside `advance(ms)`; `render()`, `click()`, `type()`
@@ -214,8 +288,41 @@ bumped past alpha.6 should delete.
   most sixty times; in practice a popup lands on the third try, about 50ms
   in. Visible on any second window, popup or not.
 
+- **`AccessMsg` takes the app's union** (backlog F9, pomodoro 2.2). It was
+  the one core message with `tag?: unknown` while `DragMsg<T = AppMsg>`
+  and `KeyMsg<T>` carried the app's messages, so handling a slider nudge
+  needed `p.tag as PomoMsg` in a library whose pitch is one union and no
+  casts. Now `AccessMsg<T = AppMsg>` with `tag?: T`; `CoreMsg` picks up
+  the default, and `examples/node/counter.tsx` reads a step off a nudge's
+  tag with no cast.
+
 ### Changed
 
+- **Keys a focused control does not claim bubble to the nearest enclosing
+  key sink** (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`, backlog
+  F7, from both field reports). An app could have a keyboard shortcut or a
+  Tab ring, never both: a sink hears a press only while it *holds* focus,
+  so a root `onKey` box either kept focus through every Tab — the
+  pomodoro's three sliders were reachable by a screen reader and not by
+  the keyboard — or handed the ring on with `focusNext` and went deaf, and
+  Space stopped starting the timer. Now a focused control keeps the keys
+  the core presses it with (**Enter** and **Space** where there is
+  something to activate, a **slider's arrows**, a **composite's** arrows,
+  Home, End and type-ahead) and **Tab stays the ring's wherever focus
+  is**; every other press — a letter, a function key, Escape, and any
+  chord, since ⌘ and ⌥ are what a shortcut layer is made of — walks up to
+  the first non-disabled `onKey` ancestor and arrives there as the same
+  `{kind:"key"}` payload a sink already handles. The nearest sink wins, a
+  bubbled release follows its press under the same `keyUp` opt-in, and the
+  walk stops at a modal boundary, so a shell under its own dialog is as
+  inert as the app it wraps. **No new prop:** a shell is an `onKey` box
+  around its content, which is what both reports already wrote. A sink
+  that holds focus still keeps every key, Tab included (ADR 0002, decision
+  3, unchanged, and now half of a pattern rather than a whole answer).
+  **What breaks:** a chord that used to press the focused control — ⌘Enter
+  on a button — reaches the shell instead, and a focused control's Escape
+  now goes to a shell that is listening rather than blurring. The corpus's
+  `keys` scene grew a shell over a ring, so all four bindings reproduce it.
 - **A key sink hears presses only, unless it says `keyUp`** (backlog F3,
   from the pomodoro field report). alpha.6 made `onKey` deliver both
   halves of every key to one sink as `{kind:"key", phase:"down"|"up"}` —
@@ -292,6 +399,13 @@ bumped past alpha.6 should delete.
   which of two overlapping stubs won, and the elbow-only layout the boxes
   forced: one `<line points curve/>` per link, in the same coordinates the
   cards already float in, replaces all of it.
+- **The alias a shortcut was hidden behind, and the `focus()` after every
+  keypress.** A node that is both a control and a sink never had its
+  Enter, Space or Tab claimed by the core — the mind map's `insert` alias
+  hedged against a collision that was not there, and the README now says
+  so in a sentence. And a shell that took focus back after handing the
+  ring on, to keep hearing its own keys, can stop: what its controls do
+  not claim arrives on its own.
 - **The `phase` guard in every keymap.** `if (msg.phase !== 'down')
   return` — or the alpha.4 → alpha.6 migration line, `phase !== 'down' ||
   repeat` — is what a sink without `keyUp` does by itself now. The four

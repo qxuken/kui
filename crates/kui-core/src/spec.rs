@@ -643,6 +643,14 @@ pub struct AccessSpec {
     pub value_now: Option<f32>,
     pub value_min: Option<f32>,
     pub value_max: Option<f32>,
+    /// For a slider role: what the position *reads as* (ARIA's
+    /// `aria-valuetext`). Without one a reader has only the three numbers
+    /// above and says a percentage — 25 in [5..60] is "36 percent" — so a
+    /// value whose unit matters says it here: "25 minutes". It replaces
+    /// the number rather than joining it (see [`crate::access`]), and a
+    /// nudge announces the new text, not the new number
+    /// (`docs/adr/0008-live-regions-and-announcements.md`).
+    pub value_text: Option<Label>,
     /// On a `Role::Line` of a custom editor: the caret's byte offset into
     /// the line's text, and the byte offset of the selection's other end
     /// (see [`crate::access`]).
@@ -668,6 +676,7 @@ impl AccessSpec {
         value_now: None,
         value_min: None,
         value_max: None,
+        value_text: None,
         caret: None,
         selection_anchor: None,
         live: Live::Off,
@@ -1225,6 +1234,12 @@ impl NodeSpec {
 
     pub fn value_max(mut self, v: f32) -> Self {
         self.access_mut().value_max = Some(v);
+        self
+    }
+
+    /// What a slider's position reads as (see the `value_text` field).
+    pub fn value_text(mut self, text: impl Into<Label>) -> Self {
+        self.access_mut().value_text = Some(text.into());
         self
     }
 

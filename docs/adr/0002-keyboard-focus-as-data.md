@@ -63,7 +63,10 @@ technology landing on the same focus a Tab press moves.
    focused they enter from either end. A multiline editor (built-in or a
    custom editor role) keeps Tab as indentation, and a key sink keeps
    every key, Tab included, because a sink is an app that owns its
-   keyboard; it hands focus on with `Ui::focus_next` when it wants to. On
+   keyboard; it hands focus on with `Ui::focus_next` when it wants to.
+   (What the sink hears *after* it has handed focus on is the amendment at
+   the end of this file, and
+   `docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`.) On
    a focused control that is neither an editor nor a sink, Enter and Space
    emit its click payload through the path `AccessAction::Click` already
    uses, and on a focused slider the arrow keys emit the `increment` /
@@ -272,3 +275,34 @@ for opposite reasons.
   in the docs, a second name table in C and Lua, and match arms that no
   longer line up with `code`'s. Reusing the one vocabulary makes switching
   a keymap between the two a one-word edit.
+
+## Amendment: what a sink hears once it is not the focus, built (2026-09-06)
+
+Decision 3 answers the Tab half of an app that owns some of its keyboard:
+a sink keeps Tab and hands the ring on with `focus_next`. It has no answer
+to the half that comes next. Once focus is on a control, `route_key`
+resolves nothing — a sink hears a press only while it holds focus — so an
+app shell that hands the ring on goes deaf, and the pomodoro in backlog F7
+loses the Space that starts its timer the moment its slider becomes
+reachable. Both field reports on alpha.6 found it, from opposite ends: one
+had a ring and no shortcuts, the other shortcuts and no ring.
+
+The rejected option above, "let a key sink give up Tab to the ring", is
+still rejected and still for the same reason. What was missing is not a
+way to take keys *from* a sink but a way to give it the ones nothing else
+wanted:
+
+13. **A press the focused node does not claim goes to the nearest
+    enclosing sink.** A focused control keeps the keys the core presses it
+    with — Enter and Space where there is a click payload, a slider's
+    arrows, a composite's arrows, Home, End and type-ahead — and Tab stays
+    the ring's wherever focus is. Every other press, chords included,
+    walks up to the first non-disabled `on_key` ancestor, which hears it
+    as it hears everything today. A sink that holds focus keeps every key,
+    exactly as decision 3 says.
+
+The rules, the alternatives (a `keys` allow-list on the sink, claiming by
+role, bubbling dynamically), the phase question and the modal boundary are
+in `docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`. Decisions 2, 3, 5
+and 9 are unchanged; decision 3's `focus_next` is now half of a pattern
+rather than a whole answer.

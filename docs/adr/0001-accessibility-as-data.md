@@ -368,3 +368,47 @@ selection and all of them get `Some(spec.selected)`, and if none does they
 all stay `None`. A quiet list stays quiet, and a real selection becomes
 settable. That is a change to accepted semantics, so it is written down
 here rather than made in passing.
+
+## Outcome: a slider's reading (2026-09-06)
+
+The companion rows this ADR landed for `slider` were the three numbers,
+and that turned out to be half a slider. A field report (backlog F8) ran
+an alpha.6 pomodoro under real VoiceOver and heard all three of its
+sliders announce percentages: 25 minutes in [5..60] is "36 percent". The
+numbers are right and the reading is useless, because only the app knows
+that the unit is minutes. ARIA has `aria-valuetext` for exactly this, and
+kui had no row for it.
+
+`valueText` (id 82) is that row, and where it *goes* was decided by asking
+the platform rather than by reading the ARIA mapping. The harness is the
+one `docs/adr/0008` used: `examples/rust/accessibility` driven through the
+macOS AX API, with a scratch patch that gave the slider a string value
+beside its `numeric_value`.
+
+**`accesskit_macos` 0.27 has one value slot, and the string takes it.**
+`NodeWrapper::value` (`node.rs:344`) tries a toggle state, then a tab's
+selection, then the roles whose label is exposed as their value, then the
+node's string value — and only reaches `numeric_value` when all of those
+are absent. With both set, `AXValue` came back as the string and the
+number was not readable there at all. `AXMinValue` and `AXMaxValue` were
+untouched, since the adapter reads them straight off the node, and
+`AXIncrement` / `AXDecrement` stayed advertised and still worked.
+
+Two things follow. First, the semantics: a reading **replaces** the
+number, it does not join it — which is what `aria-valuetext` means, so
+kui's row means the same thing on every platform its backends map to.
+Second, the shape of the IR: `AccessNode` gets no new field. The reading
+lands in `value`, the string slot an editor's text already used, because
+an IR with two string fields feeding one `set_value` could express a frame
+no platform can draw. The bridge was already correct, `KuiAccessNode` did
+not grow — it is an [out-array] struct, so growing it would have bumped
+`KUI_ABI_VERSION` for every C host — and the corpus report's value column
+pinned the row across all four bindings for free.
+
+Where it is *not*: a progress-shaped `group`. A group carries none of
+`valueNow` / `valueMin` / `valueMax` — they are set in the `Role::Slider`
+arm and nowhere else — and a role whose numbers are ignored should not
+have a reading that is not. The adapter would put the string in `AXValue`
+on any role, but whether VoiceOver speaks an `AXGroup`'s value is its
+policy, and a harness that reads attributes cannot settle what a reader
+says. A progress role of its own is the honest way to want this.

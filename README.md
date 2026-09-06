@@ -270,15 +270,15 @@ that are hard to reverse and would look arbitrary without their context.
   press the focused control (the event a click would emit), the arrows
   nudge a focused slider (the access events a screen reader would send),
   and keyboard focus draws a ring on top of the frame in every binding
-  unless the node declares `focus_bg`. All of that is the *second* of the
-  two channels one key press travels — the first is the raw press an
-  `on_key` sink hears — so a driver sends both, in that order, and a
-  headless test presses a key with the one call that does the same
-  (`Core::press`, `ctx.press` / `app.press`, `kui_input_press`). A click's focus draws nothing. A
+  unless the node declares `focus_bg`. A click's focus draws nothing. A
   key sink keeps every key, Tab included — it is an app that owns its
   keyboard — and hands focus on with `focus_next`. A screen reader's focus
   request lands on the same focus, so its cursor follows Tab into
-  buttons.
+  buttons. Everything in this bullet is the *second* of the two channels
+  one key press travels — the first is the raw press an `on_key` sink
+  hears — so a driver sends both, in that order, and a headless test
+  presses a key with the one call that does the same (`Core::press`,
+  `ctx.press` / `app.press`, `kui_input_press`).
 - **Modal surfaces are a row**
   ([ADR 0003](docs/adr/0003-modal-surfaces.md)). A node declaring `modal`
   (`modal` in JSX, `modal = true` in Lua, `KuiSpec.modal` in C) is the
@@ -707,7 +707,13 @@ C15 carries the profile, the bisect and the fix in
 [docs/backlog/closed-2026-09.md](docs/backlog/closed-2026-09.md), and what is
 left in [docs/BACKLOG.md](docs/BACKLOG.md). `size_of::<NodeSpec>()` now has a
 test with a bound on it, so the next inline field has a number to fail against
-rather than a release audit to wait for.
+rather than a release audit to wait for. A fat struct is not the only way to
+lose a frame, though, so there is a second guard for the case that test cannot
+see: `scripts/bench-check.sh` benches HEAD against the previous `v*` tag in a
+worktree and fails if one of four frame benches is more than 10% slower. It is
+run before tagging rather than in CI — the docker runner is too weak to
+measure a frame and would false-fail — and it prints the table above with the
+run's own medians, so re-measuring these numbers is that same command.
 
 A built-in latency graph shows per-phase frame cost live —
 `widgets::latency_hud(ui)` floats it in a viewport corner as a translucent
@@ -903,6 +909,16 @@ cannot tell the two Shifts apart, and a key that neither the layout nor the
 position names is dropped rather than delivered as `unknown`. Presses and
 releases route to the key sink and no further (C9): the core keeps no "which
 keys are down" query, since the app that asked for the pair already has one.
+
+A key sink owns its keyboard: while it holds focus every press is its data,
+Tab included, and it hands the ring on with `focusNext` when it wants to
+(ADR 0002, decision 3). A focused control owns only the keys the core
+presses it with — Enter and Space where there is something to activate, a
+slider's arrows, a composite's arrows, Home, End and type-ahead — and every
+other press, chords included, walks up to the nearest enclosing sink
+([ADR 0011](docs/adr/0011-keys-bubble-to-the-enclosing-sink.md)), which is
+how an app shell keeps its shortcuts while the Tab ring works underneath
+it.
 
 The pointer shape is derived, not declared: the core resolves one per frame
 from whatever is under the pointer, and the `cursor` prop overrides it — but

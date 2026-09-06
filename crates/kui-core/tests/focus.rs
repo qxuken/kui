@@ -1147,3 +1147,106 @@ fn a_press_behind_released_after_a_modal_appears_is_not_a_click() {
     let out = core.handle_input(InputEvent::mouse_up());
     assert!(payloads(&out).is_empty(), "{:?}", payloads(&out));
 }
+
+// -- The way out of a modal (backlog F4) -------------------------------------
+
+/// The mind map's rename editor: a list of nodes, and — when `editing`
+/// says so — a floated modal holding the editor. `focus_on` is the frame's
+/// `keyFocus` declaration, the only way a data view has of saying where
+/// the keyboard belongs.
+fn rename_frame(
+    core: &mut Core,
+    nodes: &[&str],
+    editing: bool,
+    focus_on: Option<&str>,
+) -> Vec<Key> {
+    let mut ui = core.frame(Size::new(200.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let row = || {
+        NodeSpec::row()
+            .width(Sizing::Fixed(100.0))
+            .height(Sizing::Fixed(H))
+    };
+    let keys: Vec<Key> = nodes
+        .iter()
+        .map(|n| ui.with_keyed(n, row().focusable().label(*n), |_| {}))
+        .collect();
+    if let Some(name) = focus_on {
+        let i = nodes
+            .iter()
+            .position(|n| n == &name)
+            .expect("a declared node");
+        ui.take_key_focus(keys[i]);
+    }
+    if editing {
+        ui.with_keyed(
+            "rename",
+            NodeSpec::column()
+                .width(Sizing::Fixed(100.0))
+                .height(Sizing::Fixed(2.0 * H))
+                .float(
+                    FloatConfig::viewport()
+                        .at(Align::End, Align::End)
+                        .self_at(Align::End, Align::End),
+                )
+                .modal(Value::str("rename"))
+                .label("Rename"),
+            |ui| {
+                ui.text_edit("field", "", &EditOptions::default(), row().label("Name"));
+            },
+        );
+    }
+    ui.finish();
+    keys
+}
+
+#[test]
+fn a_key_focus_edge_beats_the_focus_the_modal_gives_back() {
+    // The report's case: a node is created and its rename editor opened in
+    // one frame, so what the modal displaced is the node the user was on
+    // *before* — and handing that back on the way out puts the next Enter
+    // in the wrong place. The app says where focus lands by declaring it,
+    // and the declaration wins (ADR 0003, decision 4).
+    let mut core = Core::new();
+    let k = rename_frame(&mut core, &["a"], false, Some("a"));
+    let a = k[0];
+    assert_eq!(core.focus(), Some(a));
+
+    // `b` is created and the editor opened together: the modal remembers
+    // `a`, and containment puts focus in the editor.
+    let k = rename_frame(&mut core, &["a", "b"], true, None);
+    let b = k[1];
+    assert_eq!(core.focus(), Some(Key::ROOT.str("rename").str("field")));
+
+    // The editor goes away and the app declares the new node focused.
+    rename_frame(&mut core, &["a", "b"], false, Some("b"));
+    assert_eq!(
+        core.focus(),
+        Some(b),
+        "the edge stands, the restore is dropped"
+    );
+    assert_ne!(core.focus(), Some(a));
+}
+
+#[test]
+fn a_modal_closing_over_no_edge_still_gives_the_focus_back() {
+    // The other half, and the reason the rule is an *edge*: a view that
+    // repeats `keyFocus` every frame — an app that owns its keyboard —
+    // declares nothing new on the frame the modal drops, so decision 4 is
+    // untouched and the focus the dialog displaced comes back.
+    let mut core = Core::new();
+    let k = rename_frame(&mut core, &["a", "b"], false, Some("a"));
+    let a = k[0];
+    core.set_focus(Some(k[1]));
+
+    rename_frame(&mut core, &["a", "b"], true, Some("a"));
+    assert_eq!(core.focus(), Some(Key::ROOT.str("rename").str("field")));
+    rename_frame(&mut core, &["a", "b"], false, Some("a"));
+    assert_eq!(core.focus(), Some(k[1]), "back where the editor found it");
+
+    // And with no declaration at all, which is where it always landed.
+    core.set_focus(Some(a));
+    rename_frame(&mut core, &["a", "b"], true, None);
+    rename_frame(&mut core, &["a", "b"], false, None);
+    assert_eq!(core.focus(), Some(a));
+}

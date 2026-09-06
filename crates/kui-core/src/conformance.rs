@@ -652,9 +652,13 @@ pub const SCENES: &[Scene] = &[
     },
     Scene {
         name: "controls",
-        doc: "A clicked button and a keyed editor, inside a panel that asks \
-              for a context menu: the secondary press routes to the panel \
-              and moves neither focus nor the caret.",
+        doc: "A clicked button, a keyed editor and a slider, inside a panel \
+              that asks for a context menu: the secondary press routes to \
+              the panel and moves neither focus nor the caret. The slider \
+              names its own reading (`valueText`), which lands in the value \
+              column beside the editor's text — a node has one string slot, \
+              and a slider that named its reading reads as that instead of \
+              its number (backlog F8).",
         custom: &["key", "size"],
         elements: &["button", "edit", "box", "text"],
         build: build_controls,
@@ -673,7 +677,12 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             glyphs_min: 7,
-            access: &["0 window ||", "1 button go||", "1 textInput Note||hello"],
+            access: &[
+                "0 window ||",
+                "1 button go||",
+                "1 textInput Note||hello",
+                "1 slider Focus length||25 minutes",
+            ],
             events: &["go -", "contextmenu menu"],
             announcements: &[],
             warnings: &[],
@@ -686,12 +695,27 @@ pub const SCENES: &[Scene] = &[
         doc: "Two key sinks, clicked into focus in turn and each pressed and \
               released once. The first says only `on_key` and hears the press \
               alone — the keymap default, so a binding runs once per key; the \
-              second says `key_up` too and hears both halves.",
-        custom: &["key"],
+              second says `key_up` too and hears both halves. Then a third \
+              sink with a button inside it, holding focus from the frame it \
+              was declared in: a shell over a ring \
+              (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`). The \
+              letter reaches the shell in both halves, because the button \
+              claims no letter; the space presses the button and never \
+              reaches the shell, because the button has something to \
+              activate; and Tab moves focus off it, because Tab is the \
+              ring\'s wherever focus is.",
+        custom: &["key", "keyFocus"],
         elements: &["box"],
         build: build_keys,
         env: NATIVE_CHROME,
         steps: &[
+            // The shell, first, while the button still holds the focus it
+            // was declared with.
+            Step::KeyDown('m' as u32),
+            Step::KeyUp('m' as u32),
+            Step::Type(' ' as u32),
+            Step::Tab,
+            // The two leaf sinks, each clicked into focus in turn.
             Step::Cursor(60, 22),
             Step::MouseDown,
             Step::MouseUp,
@@ -704,13 +728,21 @@ pub const SCENES: &[Scene] = &[
             Step::KeyUp('b' as u32),
         ],
         expect: Expect {
-            solid: 2,
+            solid: 4,
             shadows: 0,
             images: 0,
             segments: 0,
             glyphs_min: 0,
-            access: &["0 window ||", "1 group press||", "1 group held||"],
-            events: &["key down", "key down", "key up"],
+            access: &[
+                "0 window ||",
+                "1 group press||",
+                "1 group held||",
+                "1 group shell||",
+                "2 button Go||",
+            ],
+            events: &[
+                "key down", "key up", "go -", "key down", "key down", "key up",
+            ],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -784,11 +816,18 @@ pub const SCENES: &[Scene] = &[
               asks it to go away a second time, so both dismiss reasons are \
               in the event list with a live event between them. Then the \
               ring: focus enters the dialog by itself, and Shift-Tab, \
-              Shift-Tab, Tab walk it. Those three are chosen so the ring's \
-              scope shows up in the one frame the report keeps — over the \
-              dialog's two stops they land back on Cancel, over the whole \
-              tree's three they would land on Open.",
-        custom: &["float", "key"],
+              Shift-Tab, Tab walk it — over the dialog's two stops they land \
+              back on Cancel, over the whole tree's three they would land on \
+              Open — and a Space presses where they landed, so the walk is \
+              an event rather than a fact about the last frame. Last, the \
+              way out (backlog F4): the app owns its keyboard, so it \
+              declares `open` focused every frame the dialog is shut, and \
+              the frame that drops the dialog declares the freshly created \
+              `note` instead. That change is an edge, and an edge on the \
+              closing frame stands — the report's last frame has focus on \
+              `note`, where the restore alone would have put it back on \
+              `open`.",
+        custom: &["float", "key", "keyFocus"],
         elements: &["box", "text", "titlebar"],
         build: build_modal,
         env: NATIVE_CHROME,
@@ -809,10 +848,22 @@ pub const SCENES: &[Scene] = &[
             Step::ShiftTab,
             Step::ShiftTab,
             Step::Tab,
+            // Space presses where the ring landed, which is how the walk
+            // survives into a report that keeps one frame: the last frame
+            // has no dialog in it any more, and `cancel` in the event list
+            // is the whole of the claim the three steps make.
+            Step::Type(' ' as u32),
             Step::Escape,
+            // The app drops the dialog and declares the node it was
+            // renaming focused: a `keyFocus` edge on the closing frame
+            // stands, and the focus the modal displaced (`open`) is not
+            // handed back over it.
+            Step::Phase(1),
         ],
         expect: Expect {
-            solid: 5,
+            // The frame the report keeps is the one after the dialog: the
+            // two app buttons and the focus ring on `note`.
+            solid: 3,
             shadows: 0,
             images: 0,
             segments: 0,
@@ -822,11 +873,9 @@ pub const SCENES: &[Scene] = &[
                 "1 titleBar ||",
                 "2 staticText app||",
                 "1 button Open||",
-                "1 dialog Settings||",
-                "2 button OK||",
-                "2 button Cancel||",
+                "1 button Note||",
             ],
-            events: &["dismiss dlg", "ok -", "dismiss dlg"],
+            events: &["dismiss dlg", "ok -", "cancel -", "dismiss dlg"],
             announcements: &[],
             warnings: &[],
             // The titlebar press: chrome stays live under a modal, and a
@@ -1483,6 +1532,25 @@ fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             },
             NodeSpec::column().width(Sizing::Fixed(160.0)).label("Note"),
         );
+        // A slider that says what its position reads as. Without
+        // `value_text` a reader has only the three numbers and says a
+        // percentage — 25 in [5..60] is "36 percent" — and the reading
+        // travels in the access row's value column, the one string slot a
+        // node has (backlog F8). No background, so the scene's quad counts
+        // are the button's and the editor's as before.
+        ui.with_keyed(
+            "focus",
+            NodeSpec::row()
+                .role(Role::Slider)
+                .label("Focus length")
+                .value_now(25.0)
+                .value_min(5.0)
+                .value_max(60.0)
+                .value_text("25 minutes")
+                .width(Sizing::Fixed(120.0))
+                .height(Sizing::Fixed(12.0)),
+            |_| {},
+        );
     });
 }
 
@@ -1504,6 +1572,21 @@ fn build_keys(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with(NodeSpec::column().pad(10.0).gap(6.0), |ui| {
         ui.with_keyed("press", sink("press"), |_| {});
         ui.with_keyed("held", sink("held").key_up(), |_| {});
+        // A shell over a ring: the sink hears what the button inside it
+        // does not claim, and the button holds focus from the first frame.
+        ui.with_keyed("shell", sink("shell").key_up(), |ui| {
+            let go = ui.with_keyed(
+                "go",
+                NodeSpec::row()
+                    .width(Sizing::Fixed(80.0))
+                    .height(Sizing::Fixed(16.0))
+                    .bg(Color::hex(0x3b5bd4ff))
+                    .on_click(Value::map([("kind", Value::str("go"))]))
+                    .label("Go"),
+                |_| {},
+            );
+            ui.take_key_focus(go);
+        });
     });
 }
 
@@ -1575,7 +1658,7 @@ fn build_lines(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// while the modal is up. The titlebar is the one platform-dependent
 /// height in the tree (34 logical px, 32 on Windows), so the two points
 /// above it and below it are chosen to land the same way on either.
-fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
     let button = |kind: &str, label: &str| {
         NodeSpec::row()
             .width(Sizing::Fixed(100.0))
@@ -1591,7 +1674,7 @@ fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         widgets::titlebar_with(ui, |ui| {
             ui.text("app", TextStyle::new(12.0));
         });
-        ui.with_keyed(
+        let open = ui.with_keyed(
             "open",
             NodeSpec::row()
                 .width(Sizing::Fixed(100.0))
@@ -1601,6 +1684,31 @@ fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 .label("Open"),
             |_| {},
         );
+        // Phase 1 is the app with the dialog gone: the node it was opened
+        // to rename, created with it and still here, declared focused so
+        // that the restore has a declaration to yield to
+        // (`docs/adr/0003-modal-surfaces.md`, decision 4).
+        if phase != 0 {
+            let note = ui.with_keyed(
+                "note",
+                NodeSpec::row()
+                    .width(Sizing::Fixed(100.0))
+                    .height(Sizing::Fixed(20.0))
+                    .bg(Color::hex(0x30344aff))
+                    .on_click(Value::map([("kind", Value::str("note"))]))
+                    .label("Note"),
+                |_| {},
+            );
+            ui.take_key_focus(note);
+            return;
+        }
+        // The app owns its keyboard while the dialog is shut, and says so
+        // the only way a data view can. Redeclared every frame, so it is
+        // an edge once and clobbers nothing afterwards — which is what
+        // makes the *change* of declaration above an edge at all.
+        ui.take_key_focus(open);
+        // The dialog: declared in phase 0 and dropped in phase 1, which is
+        // the only way to ask for a modal to close.
         ui.with_keyed(
             "dialog",
             NodeSpec::column()

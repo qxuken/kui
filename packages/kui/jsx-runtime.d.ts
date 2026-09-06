@@ -239,6 +239,8 @@ export interface GeneratedSpecProps {
   valueMin?: number;
   /** A `slider` role's current value (the drawing stays yours; this is what assistive technology reads). */
   valueNow?: number;
+  /** What a `slider` role's position reads as (ARIA's `aria-valuetext`). Without one a reader has only `valueNow` and the range and says a percentage — 25 in [5..60] is "36 percent" — so a value whose unit carries the meaning says it here: "25 minutes". It replaces the number in the reading rather than joining it, and a nudge announces the new text. Meaningful on the slider role alone, like the three numbers; putting the reading in `label` instead renames the control on every nudge, which is the wrong attribute. */
+  valueText?: string;
   /** Horizontal size: px | "fit" | "grow" | "N%". */
   width?: SizingProp;
   /** Window-chrome role: interactions become window commands, not events. */
