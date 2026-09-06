@@ -211,7 +211,32 @@ change from `+= dx` to `= start + dx`. Say it in both docs. **Test:**
 the `move` reports 8 and `end` reports 8; a corpus scene pins the payload
 across the four transports.
 
-### `!` F3 — `onKey` fires on release too, and an alpha.4 keymap runs every binding twice
+### `!` F3 — `onKey` fires on release too, and an alpha.4 keymap runs every binding twice — done (2026-09-06)
+
+**Done (2026-09-06), as (a).** `keyUp` is a `Flag` row (id 81) beside
+`onKey` — `key_up` in Lua and C, `.key_up()` in Rust: `onKey` alone hears
+presses, `onKey` + `keyUp` hears both, the payload unchanged. The argument
+for (a) over (b): a keymap is every sink in this repo's examples and in
+both field reports, and a default the dominant case has to guard against
+is the wrong default however well the note is written — (b) would have
+moved the sentence, not the bug. C9's guarantee survives for the sinks
+that opt in. The routing change is one guard in `route_key`
+(`runtime/dispatch.rs`): a release is dropped at delivery when the hit
+region's `key_up` is unset, and the held-key bookkeeping is untouched, so
+a stray release still resolves to nothing, focus leaving still lets go
+(silently, to a sink that never asked), and a sink that opts in mid-hold
+hears the release it is owed. One schema row, so the four bindings got it
+mechanically; the ABI parity test forced `KuiSpec.key_up` (an [in]
+append, no bump). Tests: `keys.rs`
+`a_sink_without_key_up_hears_presses_only`; `test.mjs` has the keymap
+fixture that presses *and* releases and asserts one toggle; the corpus's
+`keys` scene — two sinks clicked into focus in turn, driven by the new
+`keydown` / `keyup` steps, reporting `key down` / `key down` / `key up` —
+pins it across Rust, Lua, C and Node. Examples: the C and Node counters'
+sinks, which deliberately count both halves, say `key_up`; the four Rust
+examples that guarded on `phase == "down"` lost the guard. The CHANGELOG
+carries the "what breaks" line for the alpha.7 tag: a held-key binding
+written against alpha.6 adds `keyUp`.
 
 Evidence: pomodoro 1.1. C9 made `KeyMsg` carry `phase: 'down' | 'up'` and
 deliver both to one sink (`CHANGELOG.md` line 849, `index.d.ts:30`). A bare
@@ -507,9 +532,10 @@ which the size test does not replace.
 
 **From the field (F1–F15).** Four defects first: ~~F1 (the Node loop never
 sets the frame clock, which is why nothing eased is testable from Node)~~
-(done 2026-09-06), F2 (drag deltas), F4 (the modal restore overriding a `keyFocus` edge) and F3
-(an alpha.4 keymap runs twice — a decision between its (a) and (b) before
-the next tag, since every migrating app hits it). Then the gaps in rough
+(done 2026-09-06), F2 (drag deltas) and F4 (the modal restore overriding a
+`keyFocus` edge); ~~F3~~ (an alpha.4 keymap runs twice) is **done
+(2026-09-06)** as its (a), the `keyUp` flag, and its "what breaks" line is
+in the CHANGELOG for the next tag. Then the gaps in rough
 order of cost: F9 and F10 are an afternoon, F5, F6 and F11 a day each, F8
 needs one AccessKit question answered first. F7 (global shortcuts under a
 Tab ring) and F12 (a line primitive) join the ADR group below. F13

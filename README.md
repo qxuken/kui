@@ -198,15 +198,16 @@ that are hard to reverse and would look arbitrary without their context.
   mechanisms.
   Full keyboard input is data too: a node declaring `on_key` becomes a
   key sink, and while it holds key focus (`ui.take_key_focus`, or a
-  click) every press *and release* arrives as `{kind="key",
-  phase="down"|"up", code, mods, text, repeat}` — one payload shape with
-  a phase, the way a drag has three and a hover two. So a keymap reads
-  `phase="down"` and ignores the rest, and a held-key interaction (WASD,
-  press-and-hold to preview, a key that arms a mode) is a pair of events
-  rather than a guess about timing. A key only comes up where it went
-  down: a release whose press the sink never saw is dropped, and focus
-  moving — or the window losing the keyboard — delivers the release
-  first, so nothing is ever left stuck down. Modal keymaps live in the
+  click) every press arrives as `{kind="key", phase="down", code, mods,
+  text, repeat}` — which is all a keymap needs. A sink that also declares
+  `key_up` hears releases as the same shape with `phase="up"`, so a
+  held-key interaction (WASD, press-and-hold to preview, a key that arms
+  a mode) is a pair of events rather than a guess about timing; one
+  payload shape with a phase, the way a drag has three and a hover two.
+  A key only comes up where it went down: a release whose press the sink
+  never saw is dropped, and focus moving — or the window losing the
+  keyboard — delivers the release first, so nothing is ever left stuck
+  down. Modal keymaps live in the
   app, in any language, with no runner hook (the `modal_editor` and
   `splitmux` examples are built on this). Modifier
   state is data too: the host gets `{kind="modifiers", shift, ctrl, alt,

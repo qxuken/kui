@@ -137,10 +137,9 @@ impl KeyEv {
     /// A press, from a `{kind="key"}` payload. Modal editing is a keymap,
     /// not a held-key interaction: the releases the same sink delivers
     /// (`phase="up"`) are not commands, so they stop here.
+    /// Every key event is a press: the sink never asked for releases
+    /// (`key_up`), so a keymap needs no phase check.
     fn from_payload(p: &Value) -> Option<Self> {
-        if p.get("phase")?.as_str()? != "down" {
-            return None;
-        }
         Some(Self {
             code: p.get("code")?.as_str()?.to_string(),
             text: p.get("text").and_then(Value::as_str).map(str::to_string),
@@ -989,9 +988,9 @@ gg ge G   document    x d dd    delete
 The caret block is normal mode; the bar is insert.
 Try dd on this line, then p a few times.
 
-— events are data: every key you press and let go
-  arrives as {kind=key, phase=down|up, code=..} on
-  one on_key sink; a keymap reads the down half.
+— events are data: every key you press arrives as
+  {kind=key, phase=down, code=..} on one on_key sink;
+  a sink that also says key_up hears the release.
   The same dispatch would run from Lua or C.";
 
 fn main() {

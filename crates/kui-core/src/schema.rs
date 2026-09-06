@@ -132,6 +132,7 @@ pub const P_INITIAL_FOCUS: u32 = 77;
 pub const P_EXIT: u32 = 78;
 pub const P_WINDOWS: u32 = 79;
 pub const P_LIVE: u32 = 80;
+pub const P_KEY_UP: u32 = 81;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -668,7 +669,14 @@ pub const PROPS: &[PropDef] = &[
         id: P_ON_KEY,
         kind: Kind::Tag,
         apply: Apply::SpecMsg(|s, v| s.on_key(v)),
-        doc: "Key-sink tag: with key focus held, presses and releases arrive as {kind:\"key\", phase:\"down\"|\"up\", ...} events.",
+        doc: "Key-sink tag: with key focus held, presses arrive as {kind:\"key\", phase:\"down\", code, ...} events. Releases only with `keyUp` beside it.",
+    },
+    PropDef {
+        name: "keyUp",
+        id: P_KEY_UP,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.key_up()),
+        doc: "With `onKey`: releases arrive too, as the same payload with phase:\"up\" (`text` null, `repeat` false) — for a held-key interaction (WASD, press-and-hold, a key that arms a mode while it is down). A key only comes up where it went down: a release whose press the sink never got is dropped, and focus leaving while a key is held delivers the `up` first, so nothing is left stuck down. Without it a sink hears presses only, which is what a keymap wants — one that heard both halves would run every binding twice.",
     },
     PropDef {
         name: "onContextMenu",

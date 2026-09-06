@@ -507,9 +507,22 @@ pub struct EventSpec {
     /// suppresses the node's `on_click`, so both can coexist.
     pub on_drag: Option<Value>,
     /// Marks this node as a key sink: while it holds key focus, key
-    /// presses arrive as `UiEvent`s on it, with this payload merged in
-    /// under `tag`. Clicking the node takes key focus.
+    /// presses arrive as `UiEvent`s on it as `{kind="key", phase="down",
+    /// code, ...}`, with this payload merged in under `tag`. Clicking the
+    /// node takes key focus. Releases are not delivered unless the sink
+    /// also declares [`key_up`](Self::key_up): a keymap is the common
+    /// case, and a keymap that heard both halves would run every binding
+    /// twice.
     pub on_key: Option<Value>,
+    /// With `on_key`: the sink hears releases too, as the same payload
+    /// with `phase="up"` (`text` null, `repeat` false). For a held-key
+    /// interaction — WASD, press-and-hold to preview, a key that arms a
+    /// mode while it is down. A key only comes up where it went down: a
+    /// release whose press the sink never got is dropped, and focus
+    /// leaving while a key is held delivers the `up` first, so nothing is
+    /// left stuck down. Without it a sink hears presses only, which is
+    /// what a keymap wants.
+    pub key_up: bool,
     /// Asks for a context menu: a secondary-button press over this node
     /// emits `{kind="contextmenu", x, y, tag}` on it with this payload
     /// under `tag`, and does nothing else — the press moves no focus,
@@ -550,6 +563,7 @@ impl EventSpec {
         on_click: None,
         on_drag: None,
         on_key: None,
+        key_up: false,
         on_context_menu: None,
         on_hover: None,
         on_layout: None,
@@ -1233,6 +1247,13 @@ impl NodeSpec {
     /// identification enough.
     pub fn on_key(mut self, tag: impl Into<Value>) -> Self {
         self.events_mut().on_key = Some(tag.into());
+        self
+    }
+
+    /// Delivers releases to this key sink as well as presses (see the
+    /// `key_up` field). Meaningless without `on_key`.
+    pub fn key_up(mut self) -> Self {
+        self.events_mut().key_up = true;
         self
     }
 

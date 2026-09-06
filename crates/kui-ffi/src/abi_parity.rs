@@ -316,6 +316,7 @@ fn asserts() -> String {
         initial_focus: u32 => "uint32_t",
         exit: KuiEnter => "KuiEnter",
         live: u32 => "uint32_t",
+        key_up: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {

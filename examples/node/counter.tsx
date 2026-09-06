@@ -141,7 +141,7 @@ for (let i = 0; i < 8 * 8; i++) pixels.writeUInt32BE(0xff8800ff, i * 4);
 const img = modal.addImage(8, 8, pixels);
 
 modal.frame(240, 240, 1, (
-  <box pad={12} gap={8} keyFocus onKey={{ tool: 'brush' }}>
+  <box pad={12} gap={8} keyFocus onKey={{ tool: 'brush' }} keyUp>
     <image src={img} width={32} radius={4} label="swatch" />
     <text><span bold>bold</span> and <span italic color="#ff8888">red italic</span></text>
   </box>
@@ -151,8 +151,9 @@ console.log(`image quads: ${imageQuads}`);
 
 modal.keyDown('x', { ctrl: true });
 modal.keyUp('x', { ctrl: true });
-// Poll for one known payload shape: a key, both halves, carrying this sink's
-// tag. `phase` is what tells a press from a release — one shape, two events.
+// Poll for one known payload shape: a key, both halves (the sink asked for
+// releases with `keyUp`), carrying this sink's tag. `phase` is what tells a
+// press from a release — one shape, two events.
 const kevs = modal.pollEvents<KeyMsg<{ tool: string }>>().filter((e) => e.payload.kind === 'key');
 const p = kevs[0]?.payload;
 const up = kevs[1]?.payload;
