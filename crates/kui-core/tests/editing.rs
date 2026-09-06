@@ -68,11 +68,36 @@ fn typing_inserts_at_cursor_end() {
         rig.core.is_focused(rig.key),
         "autofocus should focus the field"
     );
-    // Fresh editors start with the cursor at the buffer start.
-    rig.press(EditKey::End, Mods::default());
+    // A fresh single-line field opens with the caret after its seeded text
+    // (backlog F20): no `End` press first.
     let events = rig.type_str(" world");
     assert_eq!(rig.text(), "hello world");
     assert_eq!(events, 1, "expected one changed event");
+}
+
+#[test]
+fn a_seeded_document_opens_at_its_top() {
+    // A multiline editor is a document: the caret opens at (0, 0), as a
+    // native text view's does, so typing lands before the seed.
+    let mut rig = Rig::new("second line", true);
+    rig.type_str("first line\n");
+    assert_eq!(rig.text(), "first line\nsecond line");
+}
+
+#[test]
+fn a_returning_editor_keeps_its_draft() {
+    // `initial` seeds a new editor only; the same key declared again with
+    // another seed keeps what the user typed (the mind map's "abandoned
+    // draft comes back" note). `set_edit_text` is what resets one.
+    let mut rig = Rig::new("draft", false);
+    rig.type_str("!");
+    assert_eq!(rig.text(), "draft!");
+    frame(&mut rig.core, "something else", false);
+    assert_eq!(rig.text(), "draft!", "a redeclaration is not a reseed");
+    rig.core.set_edit_text(rig.key, "reset");
+    assert_eq!(rig.text(), "reset");
+    rig.type_str("?");
+    assert_eq!(rig.text(), "reset?", "set_edit_text leaves the caret at the end");
 }
 
 #[test]
@@ -100,7 +125,9 @@ fn word_motion_and_word_backspace() {
 #[test]
 fn shift_selection_then_type_replaces() {
     let mut rig = Rig::new("abcdef", false);
-    // Select "abc" from the start, then replace it.
+    // Select "abc" from the start, then replace it. The field opens with
+    // the caret after its seed (F20), so go to the start first.
+    rig.press(EditKey::Home, Mods::default());
     for _ in 0..3 {
         rig.press(EditKey::Right, SHIFT);
     }

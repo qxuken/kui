@@ -105,7 +105,8 @@ fn backspace_run_coalesces_and_restores() {
 #[test]
 fn forward_delete_coalesces() {
     let mut rig = Rig::new("hello", false);
-    // Cursor starts at buffer start.
+    // A single-line field opens at its end (F20): go to the start first.
+    rig.press(EditKey::Home, Mods::default());
     for _ in 0..3 {
         rig.press(EditKey::Delete, Mods::default());
     }
@@ -117,6 +118,7 @@ fn forward_delete_coalesces() {
 #[test]
 fn selection_replace_undoes_to_selection_text() {
     let mut rig = Rig::new("abcdef", false);
+    rig.press(EditKey::Home, Mods::default());
     for _ in 0..3 {
         rig.press(EditKey::Right, SHIFT);
     }
@@ -192,7 +194,9 @@ fn undo_at_empty_history_emits_nothing() {
 #[test]
 fn backspace_at_buffer_start_emits_nothing() {
     let mut rig = Rig::new("x", false);
-    // Cursor starts at buffer start: nothing to delete leftwards.
+    // At the buffer start there is nothing to delete leftwards; the field
+    // opens at its end (F20), so go there first.
+    rig.press(EditKey::Home, Mods::default());
     let events = rig.press(EditKey::Backspace, Mods::default());
     assert_eq!(events, 0, "boundary backspace is not a change");
     assert_eq!(rig.text(), "x");

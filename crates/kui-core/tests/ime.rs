@@ -166,6 +166,10 @@ fn ime_rect_tracks_the_focused_caret() {
         core.ime_rect().is_some(),
         "focused edit exposes a caret rect"
     );
+    // A single-line field opens with the caret after its seed (F20), so
+    // walk to the start first and measure from there.
+    core.handle_input(InputEvent::Key(EditKey::Home, Mods::default()));
+    frame(&mut core);
     let start = core.ime_rect().unwrap();
 
     core.handle_input(InputEvent::Key(EditKey::End, Mods::default()));

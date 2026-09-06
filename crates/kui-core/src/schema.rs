@@ -1205,7 +1205,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<edit key initial multiline autofocus>`",
         lua: "`edit { key=, initial=, … }`, `input { label= }`",
         c: "`kui_text_edit`, `kui_text_input`",
-        doc: "Retained editor state by key; read it back with `editText(key)` after a `changed` event.",
+        doc: "Retained editor state by key; read it back with `editText(key)` after a `changed` event. `initial` seeds a new editor only — a key declared again keeps the draft the user typed, and `setEditText(key, text)` is what resets one (it leaves the caret at the end). A single-line editor opens with the caret after its seeded text, as a native field does; a multiline one is a document and opens at its top.",
     },
     ElementDef {
         name: "image",

@@ -146,8 +146,8 @@ fn roles_derive_from_behaviour_and_plain_boxes_are_elided() {
     assert_eq!(field.value.as_deref(), Some("hello"));
     assert_eq!(
         field.caret,
-        Some(0),
-        "a fresh editor's caret sits at the start"
+        Some(5),
+        "a fresh single-line editor's caret sits after its seeded text (F20)"
     );
     assert_eq!(field.selection, None);
     assert!(!field.focused);

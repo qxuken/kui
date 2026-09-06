@@ -396,8 +396,23 @@ impl EditStore {
                 Shaping::Advanced,
                 None,
             );
+            let mut editor = Editor::new(buffer);
+            // A single-line field opens with the caret after its seeded
+            // text — what a native field does with a prefilled value, and
+            // what a rename wants, since typing into a name meant to be
+            // extended otherwise prepends to it (backlog F20). A multiline
+            // editor is a document and opens at its top, as native text
+            // views do. Placed, not moved: no `touch_caret`, so nothing
+            // scrolls to reveal it before the user has touched it.
+            if !opts.multiline {
+                let end = editor.with_buffer(|b| {
+                    let line = b.lines.len().saturating_sub(1);
+                    Cursor::new(line, b.lines.get(line).map_or(0, |l| l.text().len()))
+                });
+                editor.set_cursor(end);
+            }
             EditState {
-                editor: Editor::new(buffer),
+                editor,
                 style: opts.style,
                 accent: opts.accent,
                 multiline: opts.multiline,

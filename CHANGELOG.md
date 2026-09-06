@@ -19,6 +19,11 @@ app expects a click in the app to act. The `### Added` entry below is why
 it had to change — with the press passed through, a field that opens on
 mouse-down would dismiss and reopen its own menu in one gesture.
 
+**A single-line `<edit>` seeded with `initial` opens with the caret after
+its text.** It opened at offset 0, so typing into a value meant to be
+extended prepended to it; see `### Changed`. A multiline editor still opens
+at its top.
+
 **`ctx.setTime` throws under `createApp`.** It was overwritten by the loop's
 own stamp before every frame since alpha.7, so it already did nothing; now
 it says so. See `### Changed` — the two alpha.7 field reports are why.
@@ -103,6 +108,29 @@ it says so. See `### Changed` — the two alpha.7 field reports are why.
   control instead of describing it.
 
 ### Changed
+
+- **A seeded single-line editor opens with the caret after its text**
+  (backlog F20, from the mind map's report). A rename field seeded with
+  the current name and `autofocus` opened with the caret at 0, "so typing
+  into a name you meant to extend prepends to it", and nothing declared
+  otherwise: `caret` is a row for an editor the app draws itself, and
+  `key('end')` is headless-only by design (F6), so a fix built on it
+  passed every headless check and did nothing in the window. The app's
+  way through was `setEditText(key, text)` with the unchanged text from an
+  `onLayout` latch, because that call happens to leave the caret at the
+  end. Now a single-line field seeds with the caret after its text — what
+  a native field does with a prefilled value — and a multiline editor,
+  being a document, still opens at its top as a native text view does.
+  Placed rather than moved, so nothing scrolls to reveal it before the
+  user has touched it. The `<edit>` row also says the two things the
+  report had to find out: `initial` seeds a new editor only — a key
+  declared again keeps the draft the user typed — and `setEditText` is
+  what resets one. The corpus `controls` scene's editor pins the new
+  caret in all four bindings.
+  **What you can delete:** the `onLayout` latch that wrote the editor's
+  own text back to move its caret, and the `initial`-does-not-reset
+  surprise on reopen — write the model's draft with `setEditText` when
+  the editor opens, which places the caret in the same move.
 
 - **The npm package ships this file and the ADRs its types cite** (backlog
   F18, from the pomodoro's report). The tarball was the runtime, the types
