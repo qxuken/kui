@@ -224,6 +224,19 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        // The row is a plain snake_case prop; the queue is `env.announce`,
+        // which is the only place a Lua script can call it from — `env`
+        // exists inside `view` and nowhere else, so the phase guard is the
+        // script's own (see the `announcement-repeated` warning).
+        "live" => r#"
+            if phase == 1 then env.announce("Saved", "assertive") end
+            return column { pad = 8, gap = 4, bg = 0x14161eff,
+              column { key = "status", live = "polite",
+                text(phase == 0 and "0 results" or "3 results", { size = 12 }) },
+              column { key = "empty", live = "polite" },
+            }
+        "#
+        .to_string(),
         other => panic!("no Lua scene for {other:?} — every corpus scene needs one"),
     };
     // Every scene also records what the script saw in `env.window`, so the

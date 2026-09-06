@@ -9,7 +9,7 @@ use crate::keyframes::Keyframe;
 use crate::value::Value;
 use crate::window::{WindowButton, WindowRole};
 
-pub use crate::access::{Label, Role};
+pub use crate::access::{Label, Live, Role};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Sizing {
@@ -634,6 +634,11 @@ pub struct AccessSpec {
     /// (see [`crate::access`]).
     pub caret: Option<u32>,
     pub selection_anchor: Option<u32>,
+    /// When the text inside this node changes, a reader reads the change
+    /// without being asked (ARIA's `aria-live`). Off by default; a node
+    /// that declares it is semantic, so a plain box marked live is not
+    /// elided (see `docs/adr/0008-live-regions-and-announcements.md`).
+    pub live: Live,
 }
 
 impl AccessSpec {
@@ -651,6 +656,7 @@ impl AccessSpec {
         value_max: None,
         caret: None,
         selection_anchor: None,
+        live: Live::Off,
     };
 }
 
@@ -1183,6 +1189,12 @@ impl NodeSpec {
     /// A disclosure's state (see the `expanded` field).
     pub fn expanded(mut self, expanded: bool) -> Self {
         self.access_mut().expanded = Some(expanded);
+        self
+    }
+
+    /// Marks this node a live region (see the `live` field).
+    pub fn live(mut self, live: Live) -> Self {
+        self.access_mut().live = live;
         self
     }
 

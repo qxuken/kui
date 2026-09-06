@@ -123,6 +123,21 @@ warnings! {
     /// that says what it is with an explicit `role` says it with a `label`
     /// too, or means something naming works differently for.
     pub const MODAL_WITHOUT_NAME: &str = "modal-without-name";
+    /// A node declares `live` but carries no `label` and holds no text, so
+    /// nothing it ever does can be announced: every platform derives the
+    /// spoken string from a name, and there is none to derive. The same
+    /// silent defect `image-without-label` catches, on the node that was
+    /// meant to speak (see
+    /// `docs/adr/0008-live-regions-and-announcements.md`).
+    pub const LIVE_REGION_WITHOUT_NAME: &str = "live-region-without-name";
+    /// The same announcement text was queued on two consecutive frames.
+    /// That is what an unguarded `announce` in a frame builder looks like
+    /// — a view runs every frame, so the message is said every frame —
+    /// and it is never what an app means: a message genuinely repeated is
+    /// repeated across frames the user did something in between. The
+    /// announcement still goes through; this names the builder that is
+    /// shouting.
+    pub const ANNOUNCEMENT_REPEATED: &str = "announcement-repeated";
     /// `wrapChildren` on a container that cannot break lines: a column, or a
     /// row whose main axis scrolls. Both lay out exactly as if the flag were
     /// absent, which reads as "wrapping is broken"; see `LayoutSpec::wrap` for
@@ -189,6 +204,22 @@ pub fn foreign_resource(f: &Foreign) -> Warning {
             .str(f.kind.name())
             .index(f.raw),
         message: f.message(),
+    }
+}
+
+/// The [`ANNOUNCEMENT_REPEATED`] warning for one text. Keyed by the text:
+/// there is no node behind an announcement, and one line per repeated
+/// message is the useful count however many frames repeat it.
+pub fn announcement_repeated(text: &str) -> Warning {
+    Warning {
+        code: ANNOUNCEMENT_REPEATED,
+        key: Key::ROOT.str(ANNOUNCEMENT_REPEATED).str(text),
+        message: format!(
+            "the announcement {text:?} was queued on two consecutive frames: `announce` says \
+             something once, and a view runs every frame, so a call made from a frame builder \
+             needs a guard the app clears (announce from the event handler, or keep a field the \
+             handler sets and the view clears)"
+        ),
     }
 }
 
@@ -341,6 +372,7 @@ impl Diagnostics {
         self.check_modal(tree);
         self.check_composites(tree);
         self.check_access(tree, text, edit);
+        self.check_live_regions(tree, text);
     }
 
     /// A modal painted under content it makes inert. Paint order is
@@ -461,6 +493,28 @@ impl Diagnostics {
                     )
                 });
             }
+        }
+    }
+
+    /// Live regions that can never say anything: `live` declared with no
+    /// `label` and no text inside. Its own walk rather than a branch in
+    /// [`Self::check_access`], because that one skips the subtree of a
+    /// presentational role and a live region can sit inside one.
+    fn check_live_regions(&mut self, tree: &Tree, text: &TextSystem) {
+        for i in 0..tree.len() {
+            let spec = &tree.specs[i];
+            if spec.access().live == access::Live::Off
+                || spec.access().role == Some(Role::None)
+                || access::live_region_speaks(tree, text, i)
+            {
+                continue;
+            }
+            self.warn(LIVE_REGION_WITHOUT_NAME, tree.keys[i], || {
+                "this node is a live region but has no accessible name: no `label`, and no text \
+                 inside it — every platform reads a live region by its name, so nothing this \
+                 node ever does can be announced (put `live` on the node that holds the message)"
+                    .to_string()
+            });
         }
     }
 

@@ -314,6 +314,9 @@ pub struct Expect {
     pub access: &'static [&'static str],
     /// Events in order, `kind tag`.
     pub events: &'static [&'static str],
+    /// Announcements in order, `politeness text` (see
+    /// `docs/adr/0008-live-regions-and-announcements.md`).
+    pub announcements: &'static [&'static str],
     /// Diagnostic codes, in order.
     pub warnings: &'static [&'static str],
     /// Window commands in order, as [`write_command`] spells them without
@@ -381,6 +384,7 @@ pub const SCENES: &[Scene] = &[
                 "1 staticText a b c||",
             ],
             events: &[],
+            announcements: &[],
             warnings: &[],
             commands: &[],
             title: None,
@@ -409,6 +413,7 @@ pub const SCENES: &[Scene] = &[
             glyphs_min: 0,
             access: &["0 window ||"],
             events: &[],
+            announcements: &[],
             warnings: &[],
             commands: &[],
             title: None,
@@ -432,6 +437,7 @@ pub const SCENES: &[Scene] = &[
             glyphs_min: 0,
             access: &["0 window ||"],
             events: &[],
+            announcements: &[],
             warnings: &[],
             commands: &[],
             title: None,
@@ -454,6 +460,7 @@ pub const SCENES: &[Scene] = &[
             glyphs_min: 0,
             access: &["0 window ||", "1 scrollView ||"],
             events: &[],
+            announcements: &[],
             warnings: &[],
             commands: &[],
             title: None,
@@ -479,6 +486,7 @@ pub const SCENES: &[Scene] = &[
             glyphs_min: 0,
             access: &["0 window ||"],
             events: &[],
+            announcements: &[],
             warnings: &[],
             commands: &[],
             title: None,
@@ -505,6 +513,7 @@ pub const SCENES: &[Scene] = &[
                 "2 staticText a hint||",
             ],
             events: &[],
+            announcements: &[],
             warnings: &[],
             commands: &[],
             title: None,
@@ -547,6 +556,7 @@ pub const SCENES: &[Scene] = &[
                 "1 group Sink||",
             ],
             events: &[],
+            announcements: &[],
             warnings: &[],
             commands: &[],
             title: Some("kui conformance"),
@@ -582,6 +592,7 @@ pub const SCENES: &[Scene] = &[
                 "1 group Sink||",
             ],
             events: &[],
+            announcements: &[],
             warnings: &[],
             commands: &[],
             title: Some("kui conformance"),
@@ -611,6 +622,7 @@ pub const SCENES: &[Scene] = &[
             glyphs_min: 7,
             access: &["0 window ||", "1 button go||", "1 textInput Note||hello"],
             events: &["go -", "contextmenu menu"],
+            announcements: &[],
             warnings: &[],
             commands: &[],
             title: None,
@@ -633,6 +645,7 @@ pub const SCENES: &[Scene] = &[
             glyphs_min: 20,
             access: &["0 window ||", "1 image ||"],
             events: &[],
+            announcements: &[],
             warnings: &["image-without-label"],
             commands: &[],
             title: None,
@@ -695,6 +708,7 @@ pub const SCENES: &[Scene] = &[
                 "2 button Cancel||",
             ],
             events: &["dismiss dlg", "ok -", "dismiss dlg"],
+            announcements: &[],
             warnings: &[],
             // The titlebar press: chrome stays live under a modal, and a
             // live drag strip asks the driver to move the window.
@@ -778,6 +792,7 @@ pub const SCENES: &[Scene] = &[
                 "3 staticText Bravo||",
             ],
             events: &["one -", "two -", "three -", "alpha -"],
+            announcements: &[],
             warnings: &[],
             commands: &[],
             title: None,
@@ -839,6 +854,7 @@ pub const SCENES: &[Scene] = &[
             glyphs_min: 3,
             access: &["0 window ||", "1 group A||", "1 group B||"],
             events: &["hit -"],
+            announcements: &[],
             warnings: &["exit-budget"],
             commands: &[],
             title: None,
@@ -883,8 +899,44 @@ pub const SCENES: &[Scene] = &[
             glyphs_min: 6,
             access: &["0 window ||", "1 staticText closed||"],
             events: &["window -", "window -", "window -", "window -"],
+            announcements: &[],
             warnings: &["duplicate-window-config", "window-declared-while-closed"],
             commands: &["open 1 0 0 400 300 1", "open 2 0 0 400 300 1", "close 2"],
+            title: None,
+        },
+    },
+    Scene {
+        name: "live",
+        doc: "Both halves of \
+              `docs/adr/0008-live-regions-and-announcements.md`. The \
+              **row**: a `live` box holding a result count. It is a plain \
+              box, so eliding it would drop the liveness on the floor — \
+              the scene pins that it is a `group` in the tree instead, \
+              with the counted text read as part of it: a live region is \
+              one message, and its name is what moves when the message \
+              does. Phase 1 changes the count, which is the whole event: \
+              nothing else about the frame moves. The **queue**: \
+              the same phase announces \"Saved\" once, with no node behind \
+              it, and the report carries it on an `announce` line the way \
+              it carries a warning — drained over the scene, not read off \
+              the last frame. And the defect: a second live box with \
+              nothing inside it can never say anything, which is \
+              `live-region-without-name`.",
+        custom: &["key", "pad"],
+        elements: &["box", "text"],
+        build: build_live,
+        env: NATIVE_CHROME,
+        steps: &[Step::Phase(1)],
+        expect: Expect {
+            solid: 1,
+            shadows: 0,
+            images: 0,
+            glyphs_min: 8,
+            access: &["0 window ||", "1 group 3 results||", "1 group ||"],
+            events: &[],
+            announcements: &["assertive Saved"],
+            warnings: &["live-region-without-name"],
+            commands: &[],
             title: None,
         },
     },
@@ -1447,6 +1499,39 @@ fn build_exit(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
 /// phase it is in), and a declaration that comes and goes. Phase 0 declares
 /// `palette` twice, disagreeing about the size; phases 1 and 3 declare
 /// nothing; phase 2 declares it once.
+fn build_live(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
+    if phase == 1 {
+        // The queue half: one thing to say, on the frame it happened.
+        // Phase 1 is the last frame the scene builds, so this is called
+        // once and `announcement-repeated` stays quiet.
+        ui.announce("Saved", crate::access::Live::Assertive);
+    }
+    ui.with(
+        NodeSpec::column()
+            .pad(8.0)
+            .gap(4.0)
+            .bg(Color::hex(0x14161eff)),
+        |ui| {
+            // The row half. A plain box that would otherwise be elided:
+            // `live` is what keeps it in the tree.
+            ui.with_keyed(
+                "status",
+                NodeSpec::column().live(crate::access::Live::Polite),
+                |ui| {
+                    let n = if phase == 0 { "0" } else { "3" };
+                    ui.text(&format!("{n} results"), TextStyle::new(12.0));
+                },
+            );
+            // Live, and with nothing to be live about.
+            ui.with_keyed(
+                "empty",
+                NodeSpec::column().live(crate::access::Live::Polite),
+                |_ui| {},
+            );
+        },
+    );
+}
+
 fn build_windows(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
     if phase == 0 || phase == 2 {
         ui.window("palette", WindowConfig::sized(400.0, 300.0));
@@ -1645,6 +1730,11 @@ pub struct Output {
     pub kinds: [usize; 6],
     pub nodes: Vec<NodeRow>,
     pub events: Vec<(String, String)>,
+    /// Everything `announce` queued over the whole scene, in order —
+    /// drained once at the end, the way warnings are, because an
+    /// announcement is something that *happened* during the scene and the
+    /// report keeps only one frame.
+    pub announcements: Vec<crate::access::Announcement>,
     pub warnings: Vec<&'static str>,
     /// Every window command the replay drained, in order — what a frame
     /// driver would have applied to real windows.
@@ -1672,6 +1762,8 @@ pub struct NodeRow {
     pub selected: Option<bool>,
     /// `-` / `h` / `v`: how a composite container arranges its items.
     pub orientation: &'static str,
+    /// `-` / `p` / `a`: the liveness the node declared.
+    pub live: &'static str,
     pub scrollable: bool,
     /// Action names in `AccessAction::ALL` (bit) order, comma-joined.
     pub actions: String,
@@ -1762,6 +1854,11 @@ fn rows(tree: &AccessTree) -> Vec<NodeRow> {
                     Some(crate::access::Orientation::Horizontal) => "h",
                     Some(crate::access::Orientation::Vertical) => "v",
                     None => "-",
+                },
+                live: match n.live {
+                    crate::access::Live::Off => "-",
+                    crate::access::Live::Polite => "p",
+                    crate::access::Live::Assertive => "a",
                 },
                 scrollable: n.scroll.is_some(),
                 actions: n
@@ -1865,6 +1962,7 @@ pub fn drive(
     }
 
     let title = core.window_title().map(str::to_string);
+    let announcements = core.take_announcements();
     let warnings = core.take_warnings().into_iter().map(|w| w.code).collect();
     let nodes = rows(core.access_tree());
     let quads = &core.output().0.quads;
@@ -1885,6 +1983,7 @@ pub fn drive(
         kinds,
         nodes,
         events,
+        announcements,
         warnings,
         commands,
         title,
@@ -1985,7 +2084,7 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
     for n in &out.nodes {
         let _ = writeln!(
             s,
-            "node {} {:016x} {} {} {} {} {} {} {} {} {} | {} | {}",
+            "node {} {:016x} {} {} {} {} {} {} {} {} {} {} | {} | {}",
             n.depth,
             n.key.0,
             n.role,
@@ -1995,6 +2094,7 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
             n.selected
                 .map_or("-".to_string(), |c| (c as u8).to_string()),
             n.orientation,
+            n.live,
             n.scrollable as u8,
             if n.actions.is_empty() {
                 "-"
@@ -2008,6 +2108,9 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
     }
     for (kind, tag) in &out.events {
         let _ = writeln!(s, "event {kind} {tag}");
+    }
+    for a in &out.announcements {
+        let _ = writeln!(s, "announce {} {}", a.live.name(), a.text);
     }
     for c in &out.commands {
         write_command(c, &mut s);

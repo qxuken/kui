@@ -108,6 +108,58 @@ func setRange(_ el: AXUIElement, _ name: String, _ loc: Int, _ len: Int) -> Bool
     return AXUIElementSetAttributeValue(el, name as CFString, v) == .success
 }
 
+// -------------------------------------------------- announcement observer
+// The one part of the access story with no attribute to read: an
+// announcement is a *notification* the app posts on its window
+// (NSAccessibilityAnnouncementRequested), which is exactly what VoiceOver
+// listens for. AccessKit derives it from a tree diff — a live node that was
+// added, or whose label changed — so observing it is the only way to know
+// the round trip works end to end.
+// See docs/adr/0008-live-regions-and-announcements.md.
+
+/// What the callback collects: (text, priority). A C function pointer
+/// cannot capture, so this is a global.
+var announcements: [(String, Int)] = []
+
+let announceCallback: AXObserverCallbackWithInfo = { _, _, _, info, _ in
+    guard let info = info as? [String: Any] else { return }
+    let text = (info[kAXAnnouncementKey as String] as? String) ?? ""
+    let priority = (info[kAXPriorityKey as String] as? NSNumber)?.intValue ?? 0
+    announcements.append((text, priority))
+}
+
+/// Registers for AXAnnouncementRequested on `els` and returns the observer,
+/// which must stay alive for the notifications to arrive.
+func watchAnnouncements(_ pid: pid_t, _ els: [AXUIElement]) -> AXObserver? {
+    var observer: AXObserver?
+    guard AXObserverCreateWithInfoCallback(pid, announceCallback, &observer) == .success,
+        let observer
+    else { return nil }
+    CFRunLoopAddSource(
+        CFRunLoopGetCurrent(), AXObserverGetRunLoopSource(observer), .defaultMode)
+    for el in els {
+        AXObserverAddNotification(
+            observer, el, kAXAnnouncementRequestedNotification as CFString, nil)
+    }
+    return observer
+}
+
+/// Spins the run loop until `n` announcements have arrived or time is up.
+func waitForAnnouncements(_ n: Int, seconds: Double = 2.0) {
+    let deadline = Date().addingTimeInterval(seconds)
+    while announcements.count < n, Date() < deadline {
+        CFRunLoopRunInMode(.defaultMode, 0.05, true)
+    }
+}
+
+/// Lets anything still in flight land, then clears — so the next check
+/// reads what its own press produced and not the tail of the last one.
+func settleAnnouncements() {
+    let deadline = Date().addingTimeInterval(0.5)
+    while Date() < deadline { CFRunLoopRunInMode(.defaultMode, 0.05, true) }
+    announcements = []
+}
+
 // ---------------------------------------------------------------- the tree
 
 struct Found {
@@ -687,6 +739,81 @@ if let actions = find(role: kAXButtonRole as String, title: "Actions ▾") {
     }
 } else {
     check("the menu opens", false, "Actions ▾ not found")
+}
+
+// -- Live regions and announcements --------------------------------------
+// docs/adr/0008-live-regions-and-announcements.md. Two halves, and macOS
+// spells them the same way underneath: a live node the adapter sees appear
+// or get renamed becomes one AXAnnouncementRequested on the window. The
+// region half is a *change*; the announcement half is a node kui invents
+// for the purpose. Both are checked through the notification, because
+// macOS exposes no attribute for either.
+
+print("\n=== live regions and announcements")
+all = []
+walk(window, 0)
+// The region is a plain box: the `live` row is the only reason it is in
+// the tree at all, and its text is a child rather than its name — which is
+// what a reader announces when it changes.
+let statusText = all.first { $0.value == "No changes saved" || $0.title == "No changes saved" }
+check("the live region's text is exposed", statusText != nil, "No changes saved")
+
+// The window only: AccessKit posts the announcement on it, and an observer
+// registered on the application element as well receives the same
+// notification a second time.
+let observer = watchAnnouncements(pid, [window])
+check("the announcement notification can be observed", observer != nil)
+if observer != nil {
+    // Half one: pressing Save changes the region's text. Nothing announces
+    // anything — the change *is* the announcement.
+    settleAnnouncements()
+    if let save = find(role: kAXButtonRole as String, title: "Save") {
+        AXUIElementPerformAction(save.el, kAXPressAction as CFString)
+        waitForAnnouncements(1)
+        check(
+            "changing a live region's text announces it",
+            announcements.first?.0, "Saved 1 change")
+        // Polite, not assertive: NSAccessibilityPriorityMedium is 50.
+        check("politely", announcements.first?.1, 50)
+        all = []
+        walk(window, 0)
+        check(
+            "and the region still reads its new text",
+            all.contains { $0.value == "Saved 1 change" || $0.title == "Saved 1 change" })
+    } else {
+        check("the Save button is there to press", false)
+    }
+
+    // Half two: an announcement with no node behind it. Nothing on screen
+    // changes, so the notification is the whole of what a reader gets.
+    settleAnnouncements()
+    if let copy = find(role: kAXButtonRole as String, title: "Copy") {
+        AXUIElementPerformAction(copy.el, kAXPressAction as CFString)
+        waitForAnnouncements(1)
+        check("an announcement with no node reaches the OS", announcements.first?.0, "Copied to clipboard")
+        // The same message again. This is the check that pins decision 7:
+        // the bridge mints a *fresh* node id per announcement, so the
+        // adapter takes its node_added path. Reusing one id would take the
+        // node_updated path, which fires only when the label changed — and
+        // the second "Copied to clipboard" would be silent.
+        settleAnnouncements()
+        AXUIElementPerformAction(copy.el, kAXPressAction as CFString)
+        waitForAnnouncements(1)
+        check(
+            "and the same message twice in a row is said twice",
+            announcements.first?.0, "Copied to clipboard")
+        // It is left standing in the tree afterwards: UIA reads the name
+        // back after its own live-region event, so a node removed in the
+        // update it announced in would be a race. macOS does not need it,
+        // but the tree is one shape for all three platforms.
+        all = []
+        walk(window, 0)
+        check(
+            "the last announcement stays readable in the tree",
+            all.contains { $0.title == "Copied to clipboard" || $0.value == "Copied to clipboard" })
+    } else {
+        check("the Copy button is there to press", false)
+    }
 }
 
 print("\n\(checks - failures)/\(checks) checks passed")

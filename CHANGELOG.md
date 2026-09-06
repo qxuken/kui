@@ -5,6 +5,64 @@ the workaround, the model field or the arithmetic the release made
 unnecessary. The second list is the point of the first — a library whose
 upgrades remove code from the apps on it is doing the job.
 
+## Unreleased
+
+### Added
+
+- **Live regions and one-off announcements**
+  (`docs/adr/0008-live-regions-and-announcements.md`), the last thing ADR
+  0001 named and did not build. Two shapes, because the problem has two
+  halves.
+
+  **The row.** `live="polite" | "assertive"` marks a node a live region:
+  when the text inside it changes, a screen reader reads the change
+  without being asked. It is a plain schema row in all four bindings
+  (`live` in JSX and Lua, `KuiSpec.live` / `KUI_LIVE_*` in C). A live box
+  is never elided — a region that vanished from the access tree could not
+  carry liveness to its text — and it reads as **one message**: the text
+  inside becomes its name, and that name is what moves when the message
+  does.
+
+  **The verb.** `ui.announce(text, live)` in Rust, `ctx.announce(text,
+  live)` on both Node classes, `env.announce(text, live)` in Lua,
+  `kui_announce` in C: something to say once, with no node behind it
+  ("Saved", "3 results"). Queued and drained like every other channel the
+  core has — `Core::take_announcements` / `ctx.announcements()` /
+  `kui_take_announcements` — so a headless test asserts on what an app
+  asked to say, and the corpus's `live` scene pins it in all four
+  bindings. The windowed runners drain every frame whether or not
+  assistive technology is attached, so nothing is spoken late.
+
+  Two diagnostics come with it: `live-region-without-name` (a region with
+  no `label` and no text, which can never announce anything) and
+  `announcement-repeated` (the same text on two consecutive frames —
+  what an unguarded `announce` in a frame builder looks like).
+
+  Verified against the macOS accessibility API, not only against kui's
+  types: `scripts/ax-audit.swift` now observes the
+  `AXAnnouncementRequested` notification VoiceOver listens for, and
+  checks that a region's changed text announces, politely, that a
+  node-less announcement arrives, and that the same message twice in a
+  row is said twice. 96/96.
+
+### Changed
+
+- `KuiAccessNode` reports liveness as two new `flags` bits
+  (`KUI_ACCESS_LIVE_POLITE`, `KUI_ACCESS_LIVE_ASSERTIVE`) rather than a
+  new field, so the [out-array] struct's layout is unchanged. **No ABI
+  bump**: `KuiSpec.live` is an [in] append and `kui_announce` /
+  `kui_take_announcements` are new functions (ADR 0006, decision 2).
+- `examples/rust/accessibility.rs` scrolls its controls instead of
+  sizing the window around them, and gained a live status line and a
+  Copy button that announces.
+
+### What you can delete
+
+- The state field that held a status message *only* so a screen reader
+  would see it change, and the code that cleared it a frame later. A
+  message with a place on screen takes `live` on the node it is already
+  in; one without takes `announce` and needs no node at all.
+
 ## 0.1.0-alpha.6 (2026-09-05)
 
 The release that made a window something you can build a real app in.

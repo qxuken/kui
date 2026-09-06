@@ -205,6 +205,57 @@ impl Role {
     }
 }
 
+/// How urgently a reader should read a change it was not asked to read:
+/// ARIA's `aria-live`, AccessKit's `Live`. Declared on the node holding
+/// the text (`live` prop) and, for a one-off with no node behind it, the
+/// politeness of a [`Announcement`]. See
+/// `docs/adr/0008-live-regions-and-announcements.md`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Live {
+    /// Not a live region: changes are read only when asked for.
+    #[default]
+    Off,
+    /// Read at the next pause, without interrupting.
+    Polite,
+    /// Read now, interrupting whatever is being said.
+    Assertive,
+}
+
+impl Live {
+    /// The camelCase spelling every binding uses, and `schema::LIVE`'s
+    /// wire order.
+    pub fn name(self) -> &'static str {
+        match self {
+            Live::Off => "off",
+            Live::Polite => "polite",
+            Live::Assertive => "assertive",
+        }
+    }
+
+    /// The variant `schema::LIVE` index `i` names.
+    pub fn from_index(i: usize) -> Live {
+        match i {
+            1 => Live::Polite,
+            2 => Live::Assertive,
+            _ => Live::Off,
+        }
+    }
+}
+
+/// One thing to say once, with no node behind it: "Saved", "3 results".
+/// Queued by `Core::announce` and drained by `Core::take_announcements`,
+/// the way window commands, audio commands and warnings are — an
+/// announcement is an event on a timeline, and the frame's tree has no
+/// place to keep one (see
+/// `docs/adr/0008-live-regions-and-announcements.md`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Announcement {
+    pub text: String,
+    /// Never [`Live::Off`]: `Core::announce` drops those rather than
+    /// queueing something no reader would say.
+    pub live: Live,
+}
+
 /// How a container arranges its items, for the platform to announce
 /// (`AXOrientation`, UIA's `Orientation`). Derived from the container's
 /// `dir` and never declared: the layout is what arranges the items, so a
@@ -473,6 +524,13 @@ pub struct AccessNode {
     pub scroll: Option<ScrollState>,
     /// Bitset of [`AccessAction::bit`].
     pub actions: u32,
+    /// Declared `live`: when the text inside this node changes, a reader
+    /// reads the change without being asked. Carried exactly where the
+    /// view declared it — the platform consumer inherits it down the
+    /// subtree, and duplicating that here would be a second copy of a
+    /// rule kui does not own (see
+    /// `docs/adr/0008-live-regions-and-announcements.md`).
+    pub live: Live,
 }
 
 impl AccessNode {
@@ -599,6 +657,12 @@ pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
         // land, so a reader has to be able to see it there.
         return Some(Role::Group);
     }
+    if spec.access().live != Live::Off {
+        // A live region that was elided would carry its liveness
+        // nowhere: its text would inherit the window's instead, and the
+        // change would go unread (ADR 0008, decision 2).
+        return Some(Role::Group);
+    }
     None
 }
 
@@ -653,7 +717,18 @@ pub(crate) fn semantic(
     // Window buttons read as one control; the drag strip keeps its
     // children (the buttons sit inside it). A custom editor's lines are
     // its text, not children.
+    //
+    // A live region joins them: it reads as **one message**, named by the
+    // text inside it, and that is what changes when the message does. The
+    // alternative — the region carrying only liveness and each platform
+    // announcing the changed descendant — is what ADR 0008 first built,
+    // and macOS does not deliver it: `accesskit_macos` derives a live
+    // node's announcement from `NodeWrapper::label()`, which for a
+    // `Role::Label` reads the node's *value*, so a live static text
+    // announces nothing at all. One named node is also one announcement
+    // on all three platforms rather than one per live descendant.
     let presentational = role.presentational()
+        || spec.access().live != Live::Off
         || matches!(spec.window, Some(WindowRole::Button(_)))
         || is_custom_editor(tree, i);
     let name = match (&spec.access().label, spec.window) {
@@ -675,7 +750,9 @@ pub(crate) fn semantic(
             // itself the same thing would have a screen reader read it
             // twice (it keeps its children, so its own text is read).
             Role::Window => title.map(str::to_string),
-            _ if role.presentational() => content_name(tree, text, i),
+            _ if role.presentational() || spec.access().live != Live::Off => {
+                content_name(tree, text, i)
+            }
             _ => None,
         },
     };
@@ -684,6 +761,15 @@ pub(crate) fn semantic(
         name,
         presentational,
     })
+}
+
+/// Whether a live region has anything a reader could ever say: a `label`
+/// of its own, or text somewhere inside it (which is where the string
+/// actually comes from — liveness inherits, and the changed descendant is
+/// what gets announced). Shared with the diagnostics so both agree on
+/// what a silent live region is.
+pub(crate) fn live_region_speaks(tree: &Tree, text: &TextSystem, i: usize) -> bool {
+    tree.specs[i].access().label.is_some() || content_name(tree, text, i).is_some()
 }
 
 /// The text inside node `i`, in order, joined by spaces — ARIA's
@@ -788,6 +874,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             modal: src.modal == Some(key),
             scroll: None,
             actions: 0,
+            live: spec.access().live,
         };
         let mut actions = 0u32;
         match spec.window {
@@ -1254,6 +1341,7 @@ fn hash_of(tree: &AccessTree) -> u64 {
             }
         }
         mix(&n.actions.to_le_bytes());
+        mix(&[n.live as u8]);
     }
     mix(&tree.focus.map_or(0, |k| k.0).to_le_bytes());
     h

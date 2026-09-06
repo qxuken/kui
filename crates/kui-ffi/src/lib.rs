@@ -88,6 +88,7 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             last_edit_text: None,
             last_warnings: Vec::new(),
             last_access: Default::default(),
+            last_announcements: Vec::new(),
             open_tooltips: Vec::new(),
             window_commands: VecDeque::new(),
             last_window_name: None,

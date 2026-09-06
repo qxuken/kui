@@ -10,12 +10,15 @@
 #[cfg(feature = "accesskit")]
 mod imp {
     use accesskit::{
-        Action, ActionData, Affine, Node, NodeId, Orientation as AkOrientation, Rect,
-        Role as AkRole, TextDirection, TextPosition, TextSelection, Toggled, TreeId, TreeInfo,
-        TreeUpdate,
+        Action, ActionData, Affine, Live as AkLive, Node, NodeId, Orientation as AkOrientation,
+        Rect, Role as AkRole, TextDirection, TextPosition, TextSelection, Toggled, TreeId,
+        TreeInfo, TreeUpdate,
     };
     use accesskit_winit::{Adapter, Event, WindowEvent as AkWindowEvent};
-    use kui_core::{AccessAction, AccessRequest, AccessTree, Key, Orientation, Role, TextPos};
+    use kui_core::{
+        AccessAction, AccessRequest, AccessTree, Announcement, Key, Live, Orientation, Role,
+        TextPos,
+    };
     use winit::event::WindowEvent;
     use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
     use winit::window::Window;
@@ -43,8 +46,25 @@ mod imp {
         adapter: Adapter,
         /// Assistive technology asked for the tree and has not gone away.
         active: bool,
-        /// Hash of the tree last pushed; a frame with the same one is silent.
-        sent: Option<u64>,
+        /// Hash of the tree last pushed, and the announcement generation
+        /// that went with it; a frame matching both is silent.
+        sent: Option<(u64, u64)>,
+        /// The nodes standing in for the most recent announcing frame, and
+        /// the generation counter that numbers them. AccessKit has no
+        /// announcement API — its whole event surface is a tree update —
+        /// so an announcement is delivered as a **live node the adapters
+        /// see appear**, which is what every platform's live-region event
+        /// is derived from
+        /// (`docs/adr/0008-live-regions-and-announcements.md`).
+        announced: Vec<(NodeId, String, Live)>,
+        announce_gen: u64,
+        /// The next synthetic node id, counting down from `u64::MAX`. A
+        /// **fresh** id per announcement is the point: the adapters
+        /// announce a live node on `node_added` unconditionally, but on
+        /// `node_updated` only when its label changed — so reusing one id
+        /// would swallow the same message said twice in a row. `Key` is a
+        /// hash of a tree path and never issues from this end.
+        next_id: u64,
     }
 
     impl Bridge {
@@ -59,6 +79,9 @@ mod imp {
                 adapter: Adapter::with_event_loop_proxy(event_loop, window, proxy),
                 active: false,
                 sent: None,
+                announced: Vec::new(),
+                announce_gen: 0,
+                next_id: u64::MAX,
             })
         }
 
@@ -118,12 +141,40 @@ mod imp {
 
         /// Pushes the tree when assistive technology is attached and the
         /// tree differs from the last one sent.
-        pub fn publish(&mut self, tree: &AccessTree, scale: f32) {
-            if !self.active || self.sent == Some(tree.hash) {
+        pub fn publish(&mut self, tree: &AccessTree, scale: f32, said: &[Announcement]) {
+            if !self.active {
                 return;
             }
-            self.adapter.update_if_active(|| tree_update(tree, scale));
-            self.sent = Some(tree.hash);
+            if !said.is_empty() {
+                // The previous frame's announcement nodes go away as these
+                // arrive, and not before: UIA's live-region event carries
+                // no text, so the client reads the name back afterwards
+                // and a node removed in the update it was announced in is
+                // a race.
+                self.announce_gen += 1;
+                self.announced.clear();
+                for a in said {
+                    self.next_id -= 1;
+                    self.announced
+                        .push((NodeId(self.next_id), a.text.clone(), a.live));
+                }
+            }
+            let stamp = (tree.hash, self.announce_gen);
+            if self.sent == Some(stamp) {
+                return;
+            }
+            let said = &self.announced;
+            self.adapter
+                .update_if_active(|| tree_update(tree, scale, said));
+            self.sent = Some(stamp);
+        }
+    }
+
+    fn live_of(live: Live) -> AkLive {
+        match live {
+            Live::Off => AkLive::Off,
+            Live::Polite => AkLive::Polite,
+            Live::Assertive => AkLive::Assertive,
         }
     }
 
@@ -203,7 +254,7 @@ mod imp {
     /// coordinates; the root carries the scale so the platform sees
     /// physical px. An editor's runs become `TextRun` children, ahead of
     /// its semantic children.
-    fn tree_update(tree: &AccessTree, scale: f32) -> TreeUpdate {
+    fn tree_update(tree: &AccessTree, scale: f32, said: &[(NodeId, String, Live)]) -> TreeUpdate {
         let root_key = tree.root().map_or(Key::ROOT, |r| r.key);
         let root = NodeId(root_key.0);
         let mut nodes = Vec::with_capacity(tree.nodes.len().max(1));
@@ -212,7 +263,15 @@ mod imp {
             nodes.push((root, Node::new(AkRole::Window)));
         }
         for n in &tree.nodes {
-            let mut node = Node::new(role_of(n.role));
+            // A live region with no role of its own is ARIA's `status`:
+            // an AXGroup with the AXApplicationStatus subrole on macOS,
+            // rather than a bare group.
+            let role = if n.live != Live::Off && n.role == Role::Group {
+                AkRole::Status
+            } else {
+                role_of(n.role)
+            };
+            let mut node = Node::new(role);
             if let Some(name) = &n.name {
                 node.set_label(name.as_str());
             }
@@ -242,6 +301,13 @@ mod imp {
                 nodes.push((id, run));
             }
             children.extend(tree.children(n.key).map(|c| NodeId(c.key.0)));
+            if n.key == root_key {
+                // The standing announcements hang off the root, after
+                // everything the view declared: a reader walking to the end
+                // of the window finds the last status message there, which
+                // is what an ARIA `status` region is.
+                children.extend(said.iter().map(|(id, _, _)| *id));
+            }
             node.set_children(children);
             for a in n.action_list() {
                 node.add_action(action_of(a));
@@ -309,7 +375,23 @@ mod imp {
                 node.set_scroll_y_min(0.0);
                 node.set_scroll_y_max(s.max_y as f64);
             }
+            if n.live != Live::Off {
+                // Liveness inherits down the subtree inside
+                // `accesskit_consumer`, so the string a reader hears is
+                // the changed descendant's name — kui sets it exactly
+                // where the view declared it (ADR 0008, decision 3).
+                node.set_live(live_of(n.live));
+            }
             nodes.push((NodeId(n.key.0), node));
+        }
+        for (id, text, live) in said {
+            // `Status`, not `Label`: on macOS a `Role::Label`'s announcement
+            // is derived from its *value* rather than its label
+            // (`label_comes_from_value`), so a live label never speaks.
+            let mut node = Node::new(AkRole::Status);
+            node.set_label(text.as_str());
+            node.set_live(live_of(*live));
+            nodes.push((*id, node));
         }
         TreeUpdate {
             nodes,
@@ -322,7 +404,7 @@ mod imp {
 
 #[cfg(not(feature = "accesskit"))]
 mod imp {
-    use kui_core::{AccessRequest, AccessTree};
+    use kui_core::{AccessRequest, AccessTree, Announcement};
     use winit::event::WindowEvent;
     use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
     use winit::window::Window;
@@ -357,7 +439,7 @@ mod imp {
             match ev {}
         }
 
-        pub fn publish(&mut self, _tree: &AccessTree, _scale: f32) {}
+        pub fn publish(&mut self, _tree: &AccessTree, _scale: f32, _said: &[Announcement]) {}
     }
 }
 

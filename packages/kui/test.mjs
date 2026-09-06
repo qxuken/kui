@@ -1580,6 +1580,19 @@ SCENE_TREES.windows = (_fx, phase) =>
     [box({ pad: 8, bg: '#14161e' }, [text(phase === 0 || phase === 2 ? 'open' : 'closed', { size: 12 })])],
   );
 
+// `conformance::build_live`: the row on a box that would otherwise be
+// elided, and the queue through `ctx.announce` — the third argument, since
+// an announcement is an act and a tree is not.
+SCENE_TREES.live = (_fx, phase, ctx) => {
+  if (phase === 1) ctx.announce('Saved', 'assertive');
+  return root({}, [
+    box({ pad: 8, gap: 4, bg: '#14161e' }, [
+      box({ live: 'polite' }, [text(phase === 0 ? '0 results' : '3 results', { size: 12 })], 'status'),
+      box({ live: 'polite' }, [], 'empty'),
+    ]),
+  ]);
+};
+
 /** `conformance::EXIT_BULK_ROWS`: with its own root, one node past
  *  `kui_core::depart::MAX_NODES`, so the whole subtree is refused. */
 const EXIT_BULK_ROWS = 512;
@@ -1645,8 +1658,11 @@ function driveScene(env, steps, build) {
   let phase = 0;
   const events = [];
   const commands = [];
+  // `ctx` is the third argument because one scene has an imperative half:
+  // `live` announces through `ctx.announce`, which is where the other
+  // three bindings call `ui.announce` / `env.announce` / `kui_announce`.
   const frame = () => {
-    ctx.frame(320, 240, 1, build(fx, phase));
+    ctx.frame(320, 240, 1, build(fx, phase, ctx));
     events.push(...ctx.pollEvents());
     commands.push(...ctx.windowCommands());
   };
@@ -1719,6 +1735,7 @@ function sceneReport(name, env, steps, { ctx, events, commands }) {
         n.checked === null || n.checked === undefined ? '-' : n.checked ? 1 : 0,
         n.selected === null || n.selected === undefined ? '-' : n.selected ? 1 : 0,
         n.orientation === 'horizontal' ? 'h' : n.orientation === 'vertical' ? 'v' : '-',
+        n.live === 'polite' ? 'p' : n.live === 'assertive' ? 'a' : '-',
         n.scroll ? 1 : 0,
         n.actions.length ? n.actions.join(',') : '-',
         `${n.name ?? ''} | ${n.description ?? ''} | ${n.value ?? ''}`,
@@ -1729,6 +1746,7 @@ function sceneReport(name, env, steps, { ctx, events, commands }) {
     lines.push(`event ${ev.payload?.kind ?? '-'} ${ev.payload?.tag?.kind ?? '-'}`);
   }
   for (const c of commands) lines.push(commandLine(c));
+  for (const a of ctx.announcements()) lines.push(`announce ${a.live} ${a.text}`);
   for (const w of ctx.warnings()) lines.push(`warn ${w.code}`);
   lines.push('end', '');
   return lines.join('\n');
@@ -1766,6 +1784,48 @@ function referenceBlocks(text) {
   }
   return out;
 }
+
+// -- Live regions and announcements ----------------------------------------
+// docs/adr/0008-live-regions-and-announcements.md: the `live` prop is the
+// sustained half, `announce` the one-off.
+
+test('a live box survives elision and is named by its message', () => {
+  const ctx = new Ctx();
+  ctx.frame(320, 240, 1, box({ pad: 8 }, [box({ live: 'polite' }, [text('3 results', { size: 12 })], 'status')]));
+  const rows = ctx.accessTree().nodes.map((n) => [n.role, n.live, n.name]);
+  assert.deepEqual(rows, [
+    ['window', 'off', null],
+    // A plain box: without `live` it would not be in the tree at all, and
+    // the text inside is read as part of it — a live region is one
+    // message, and its name is what moves when the message does.
+    ['group', 'polite', '3 results'],
+  ]);
+  // The same box without the row leaves no trace.
+  ctx.frame(320, 240, 1, box({ pad: 8 }, [box({}, [text('3 results', { size: 12 })], 'status')]));
+  assert.deepEqual(ctx.accessTree().nodes.map((n) => n.role), ['window', 'staticText']);
+});
+
+test('announce queues, drains once, and rejects a politeness it does not know', () => {
+  const ctx = new Ctx();
+  ctx.announce('Saved');
+  ctx.announce('3 results', 'assertive');
+  // 'off' and an empty string are both no-ops.
+  ctx.announce('dropped', 'off');
+  ctx.announce('');
+  assert.deepEqual(ctx.announcements(), [
+    { text: 'Saved', live: 'polite' },
+    { text: '3 results', live: 'assertive' },
+  ]);
+  assert.deepEqual(ctx.announcements(), []);
+  assert.throws(() => ctx.announce('Saved', 'shouting'), /bad politeness/);
+});
+
+test('a live region with nothing to say is a warning', () => {
+  const ctx = new Ctx();
+  ctx.setDiagnostics(true);
+  ctx.frame(320, 240, 1, box({ pad: 8 }, [box({ live: 'polite' }, [], 'status')]));
+  assert.deepEqual(ctx.warnings().map((w) => w.code), ['live-region-without-name']);
+});
 
 // -- Declared windows ------------------------------------------------------
 // `windows(model)` is the root's `windows` prop, written by the loop; the

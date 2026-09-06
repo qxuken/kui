@@ -191,6 +191,18 @@ pub struct Core {
     /// was seen: a different rect, or a node not seen last frame, posts a
     /// `layout` event (see `emit_layout_events`).
     layouts: FxHashMap<Key, (Rect, u64)>,
+    /// One-off announcements queued since the last drain (see
+    /// [`Self::announce`] and
+    /// `docs/adr/0008-live-regions-and-announcements.md`). The fourth of
+    /// the four drained channels, and the same shape as the other three:
+    /// the core appends, a driver drains, a headless test asserts on what
+    /// it drained.
+    announcements: Vec<crate::access::Announcement>,
+    /// The last announcement's text and the frame it was queued on: the
+    /// same text on two consecutive frames is what an unguarded
+    /// `ui.announce(...)` in a view looks like, and `announcement-repeated`
+    /// says so.
+    last_announcement: Option<(String, u64)>,
     /// A `reveal(key)` waiting for a layout to resolve against: the next
     /// `finish_frame` scrolls the node's scrolling ancestor to show it,
     /// then clears this. Last writer wins.
@@ -308,6 +320,8 @@ impl Core {
             framed: false,
             frame_no: 0,
             layouts: FxHashMap::default(),
+            announcements: Vec::new(),
+            last_announcement: None,
             diag: Diagnostics::default(),
         };
         core.sync_font_names();
@@ -346,6 +360,51 @@ impl Core {
         let sess = &mut *self.session.state();
         self.text
             .measure_rich(spans, base, &sess.resources, &mut sess.fonts, max_w)
+    }
+
+    // -- Announcements ---------------------------------------------------
+
+    /// Says something once, with no node behind it: "Saved", "3 results".
+    /// Queued for [`Self::take_announcements`], the way `play` queues an
+    /// audio command — an announcement is a consequence of an event, and
+    /// the frame's tree, which is a function of state, has no place to
+    /// keep one (see `docs/adr/0008-live-regions-and-announcements.md`).
+    /// A region whose text changes on screen is the other half, and is
+    /// the `live` prop instead.
+    ///
+    /// [`Live::Off`] and an empty string are both no-ops — the first so a
+    /// caller can gate politeness without an `if`, the second because
+    /// every platform needs a name to say.
+    pub fn announce(&mut self, text: &str, live: crate::access::Live) {
+        if live == crate::access::Live::Off || text.is_empty() {
+            return;
+        }
+        if let Some((last, frame)) = &self.last_announcement
+            && last == text
+            && *frame + 1 >= self.frame_no
+        {
+            self.diag.raise(crate::diag::announcement_repeated(text));
+        }
+        self.last_announcement = Some((text.to_string(), self.frame_no));
+        self.announcements.push(crate::access::Announcement {
+            text: text.to_string(),
+            live,
+        });
+    }
+
+    /// Drains the announcements queued since the last drain. Windowed
+    /// runners drain every frame whether or not assistive technology is
+    /// attached, and discard what they cannot deliver, so a real app never
+    /// accumulates and nothing is spoken minutes late; headless drivers
+    /// assert on what comes back.
+    pub fn take_announcements(&mut self) -> Vec<crate::access::Announcement> {
+        std::mem::take(&mut self.announcements)
+    }
+
+    /// Announcements queued and not yet drained (what `pending` is for
+    /// audio commands).
+    pub fn pending_announcements(&self) -> &[crate::access::Announcement] {
+        &self.announcements
     }
 
     // -- Diagnostics ----------------------------------------------------

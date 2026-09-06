@@ -54,7 +54,7 @@
 
 use kui::widgets;
 use kui::{
-    Align, App, Color, EditOptions, FloatConfig, Key, NodeSpec, Role, Sizing, TextStyle, Ui,
+    Align, App, Color, EditOptions, FloatConfig, Key, Live, NodeSpec, Role, Sizing, TextStyle, Ui,
     UiEvent, Value,
 };
 
@@ -87,6 +87,17 @@ struct A11y {
     /// nothing else: a menu is a modal float that the app stops
     /// declaring.
     menu: bool,
+    /// The live region's message, and how many saves are behind it. This
+    /// is state a view reads, like everything else here — the region is
+    /// `live`, so a reader hears it *because it changed*, without being
+    /// asked and without the app saying "now".
+    saves: u32,
+    /// The other half: something to say once, with nothing on screen
+    /// holding it. `on_event` takes no `Ui`, so the handler leaves it
+    /// here and the view announces it and clears it — the guard the core
+    /// reports as `announcement-repeated` when an app forgets it
+    /// (`docs/adr/0008-live-regions-and-announcements.md`).
+    pending: Option<String>,
 }
 
 impl A11y {
@@ -104,6 +115,8 @@ impl A11y {
             row: 1,
             theme: 1,
             menu: false,
+            saves: 0,
+            pending: None,
         }
     }
 
@@ -116,359 +129,414 @@ impl A11y {
 impl App for A11y {
     fn view(&mut self, ui: &mut Ui<'_>) {
         let text = TextStyle::new(14.0).color(Color::rgb8(0xd6, 0xd8, 0xe0));
-        ui.configure_root(
-            NodeSpec::column()
-                .fill()
-                .bg(Color::rgb8(0x11, 0x13, 0x1a))
-                .gap(10.0)
-                .pad(14.0),
-        );
+        // No pad or gap on the root: the scrolling column below owns
+        // both, so the scrollbar rides the window edge rather than
+        // floating inside a margin.
+        ui.configure_root(NodeSpec::column().fill().bg(Color::rgb8(0x11, 0x13, 0x1a)));
         widgets::titlebar(ui, "kui — accessibility");
 
-        // A heading: named by the text inside it, which is then read as
-        // part of it rather than as a label of its own.
-        ui.with(NodeSpec::row().role(Role::Heading), |ui| {
-            ui.text("Controls", TextStyle::new(20.0).color(Color::WHITE))
-        });
+        // Everything but the chrome scrolls. Every control below is in one
+        // column, and a column that overflows squeezes its children —
+        // squeezed rows are exactly what a fixture must not show when the
+        // point of it is that they read correctly. Scrolling keeps them
+        // their own size on a window too short for all of them, and gives
+        // assistive technology a scroll view it can move (`ScrollIntoView`
+        // arrives as an access request and the core applies it).
+        //
+        // The modal and the latency HUD stay outside it: both are floats,
+        // and a float inside a clipping container is clipped by it.
+        let mut sink = Key::ROOT;
+        ui.with_keyed(
+            "content",
+            NodeSpec::column().fill().scroll_y().gap(10.0).pad(14.0),
+            |ui| {
+                // A heading: named by the text inside it, which is then read as
+                // part of it rather than as a label of its own.
+                ui.with(NodeSpec::row().role(Role::Heading), |ui| {
+                    ui.text("Controls", TextStyle::new(20.0).color(Color::WHITE))
+                });
 
-        // A tab list: `selected` is which one the view shows, and every
-        // tab reports the state so a reader can say which is on. Nothing
-        // here says "1 of 3" — the core counts what the list holds.
-        ui.with_keyed("tabs", NodeSpec::row().role(Role::TabList).gap(4.0), |ui| {
-            for (i, name) in ["General", "Network", "About"].iter().enumerate() {
-                let on = i == self.tab;
+                // A tab list: `selected` is which one the view shows, and every
+                // tab reports the state so a reader can say which is on. Nothing
+                // here says "1 of 3" — the core counts what the list holds.
+                ui.with_keyed("tabs", NodeSpec::row().role(Role::TabList).gap(4.0), |ui| {
+                    for (i, name) in ["General", "Network", "About"].iter().enumerate() {
+                        let on = i == self.tab;
+                        ui.with_keyed(
+                            name,
+                            NodeSpec::row()
+                                .role(Role::Tab)
+                                .selected(on)
+                                .on_click(Value::Int(i as i64))
+                                .pad_xy(10.0, 6.0)
+                                .bg(if on {
+                                    Color::rgb8(0x3b, 0x5b, 0xd4)
+                                } else {
+                                    Color::rgb8(0x1d, 0x20, 0x2b)
+                                })
+                                .radius(6.0),
+                            |ui| {
+                                ui.text(
+                                    name,
+                                    TextStyle::new(13.0).color(if on {
+                                        Color::WHITE
+                                    } else {
+                                        Color::rgb8(0x8a, 0x8f, 0xa3)
+                                    }),
+                                )
+                            },
+                        );
+                    }
+                });
+
+                // A disclosure: `expanded` names its state, so a reader says
+                // "collapsed" rather than nothing at all when it is shut.
                 ui.with_keyed(
-                    name,
-                    NodeSpec::row()
-                        .role(Role::Tab)
-                        .selected(on)
-                        .on_click(Value::Int(i as i64))
-                        .pad_xy(10.0, 6.0)
-                        .bg(if on {
-                            Color::rgb8(0x3b, 0x5b, 0xd4)
-                        } else {
-                            Color::rgb8(0x1d, 0x20, 0x2b)
-                        })
-                        .radius(6.0),
+                    "advanced",
+                    widgets::button_spec()
+                        .expanded(self.advanced)
+                        .on_click(Value::str("advanced"))
+                        .label("Advanced"),
                     |ui| {
                         ui.text(
-                            name,
-                            TextStyle::new(13.0).color(if on {
-                                Color::WHITE
+                            if self.advanced {
+                                "▾ Advanced"
                             } else {
-                                Color::rgb8(0x8a, 0x8f, 0xa3)
-                            }),
+                                "▸ Advanced"
+                            },
+                            TextStyle::new(widgets::BUTTON_TEXT).color(Color::WHITE),
                         )
                     },
                 );
-            }
-        });
-
-        // A disclosure: `expanded` names its state, so a reader says
-        // "collapsed" rather than nothing at all when it is shut.
-        ui.with_keyed(
-            "advanced",
-            widgets::button_spec()
-                .expanded(self.advanced)
-                .on_click(Value::str("advanced"))
-                .label("Advanced"),
-            |ui| {
-                ui.text(
-                    if self.advanced {
-                        "▾ Advanced"
-                    } else {
-                        "▸ Advanced"
-                    },
-                    TextStyle::new(widgets::BUTTON_TEXT).color(Color::WHITE),
-                )
-            },
-        );
-        if self.advanced {
-            ui.with(
-                NodeSpec::row()
-                    .pad_xy(10.0, 6.0)
-                    .bg(Color::rgb8(0x0e, 0x10, 0x16))
-                    .radius(6.0),
-                |ui| ui.text("Nothing here yet.", text),
-            );
-        }
-
-        // A radio group: the one pattern whose arrows *must* also check
-        // the radio they land on, which is why the group is here at all.
-        // `radioGroup` is the container; each `radio` says `checked`, and
-        // the group's own `dir` is what tells the platform the set is
-        // laid out horizontally. Nothing declares a Tab stop or an arrow
-        // key — the group holds focusable radios, and that is a composite.
-        ui.with(NodeSpec::row().role(Role::Heading), |ui| {
-            ui.text("Theme", TextStyle::new(15.0).color(Color::WHITE))
-        });
-        ui.with_keyed(
-            "theme",
-            NodeSpec::row()
-                .role(Role::RadioGroup)
-                .gap(4.0)
-                .label("Theme"),
-            |ui| {
-                for (i, name) in ["Light", "Dark", "Auto"].iter().enumerate() {
-                    let on = i == self.theme;
-                    ui.with_keyed(
-                        name,
+                if self.advanced {
+                    ui.with(
                         NodeSpec::row()
-                            .role(Role::Radio)
-                            .checked(on)
-                            .on_click(Value::str(format!("theme{i}")))
                             .pad_xy(10.0, 6.0)
-                            .bg(if on {
-                                Color::rgb8(0x3b, 0x5b, 0xd4)
-                            } else {
-                                Color::rgb8(0x1d, 0x20, 0x2b)
-                            })
+                            .bg(Color::rgb8(0x0e, 0x10, 0x16))
                             .radius(6.0),
-                        |ui| {
-                            ui.text(
-                                name,
-                                TextStyle::new(13.0).color(if on {
-                                    Color::WHITE
-                                } else {
-                                    Color::rgb8(0x8a, 0x8f, 0xa3)
-                                }),
-                            )
-                        },
+                        |ui| ui.text("Nothing here yet.", text),
                     );
                 }
-            },
-        );
 
-        // A list whose rows can be picked. A row is not named by its
-        // content the way a button is — it is a container of content, and
-        // giving it a label as well would have it read twice — so its
-        // text child is what a reader announces. Nothing here says "2 of
-        // 3" either: the core numbers the rows it holds.
-        ui.with_keyed(
-            "mailboxes",
-            NodeSpec::column().role(Role::List).gap(2.0),
-            |ui| {
-                for (i, name) in ["Inbox", "Drafts", "Sent"].iter().enumerate() {
-                    let on = i == self.row;
-                    ui.with_keyed(
-                        name,
-                        NodeSpec::row()
-                            .role(Role::ListItem)
-                            .selected(on)
-                            .focusable()
-                            .on_click(Value::str(format!("row{i}")))
-                            .width(Sizing::Fixed(200.0))
-                            .pad_xy(10.0, 5.0)
-                            .bg(if on {
-                                Color::rgb8(0x2f, 0x54, 0xc4)
-                            } else {
-                                Color::rgb8(0x1d, 0x20, 0x2b)
-                            })
-                            .radius(4.0),
-                        |ui| {
-                            ui.text(
-                                name,
-                                TextStyle::new(13.0).color(if on {
-                                    Color::WHITE
-                                } else {
-                                    Color::rgb8(0x8a, 0x8f, 0xa3)
-                                }),
-                            )
-                        },
-                    );
-                }
-            },
-        );
-
-        // A button named by its content, so a press is visible through
-        // the accessibility API alone. Keyed by hand: `widgets::button`
-        // keys a node by its text, and this text changes on every press —
-        // a re-keyed node is a new node, which drops keyboard focus and
-        // leaves a screen reader's cursor on an element that no longer
-        // exists.
-        ui.with_keyed(
-            "count",
-            widgets::button_spec().on_click(Value::str("press")),
-            |ui| {
-                ui.text(
-                    &format!("count {}", self.presses),
-                    TextStyle::new(widgets::BUTTON_TEXT).color(Color::WHITE),
-                )
-            },
-        );
-
-        // An icon button: nothing to read inside, so it needs a label.
-        ui.with_keyed(
-            "save",
-            widgets::button_spec()
-                .on_click(Value::str("save"))
-                .label("Save"),
-            |ui| ui.text("⌘", TextStyle::new(15.0).color(Color::WHITE)),
-        );
-
-        // The button that opens the modal below.
-        widgets::button(ui, "Delete…", Value::str("open-confirm"));
-
-        // A menu, opened from a button: `modal` plus `role="menu"`, which
-        // is the shape a context menu takes. It floats below its trigger,
-        // so the plain box around the pair is what the float anchors to —
-        // a button is read as one control, and a menu declared inside it
-        // would be read as part of that control rather than as a menu.
-        // Focus enters it, the arrows move between its items *without*
-        // running them (a menu that ran whatever you passed over would be
-        // unusable), and Enter, Space or Escape ends it.
-        ui.with(NodeSpec::column(), |ui| {
-            widgets::button(ui, "Actions ▾", Value::str("open-menu"));
-            if self.menu {
+                // A radio group: the one pattern whose arrows *must* also check
+                // the radio they land on, which is why the group is here at all.
+                // `radioGroup` is the container; each `radio` says `checked`, and
+                // the group's own `dir` is what tells the platform the set is
+                // laid out horizontally. Nothing declares a Tab stop or an arrow
+                // key — the group holds focusable radios, and that is a composite.
+                ui.with(NodeSpec::row().role(Role::Heading), |ui| {
+                    ui.text("Theme", TextStyle::new(15.0).color(Color::WHITE))
+                });
                 ui.with_keyed(
-                    "menu",
-                    NodeSpec::column()
-                        .float(FloatConfig::below())
-                        .modal(Value::str("menu"))
-                        .role(Role::Menu)
-                        .label("Actions")
-                        .width(Sizing::Fixed(180.0))
-                        .pad(4.0)
-                        .gap(2.0)
-                        .bg(Color::rgb8(0x1d, 0x20, 0x2b))
-                        .border(1.0, Color::rgb8(0x3b, 0x5b, 0xd4))
-                        .radius(6.0),
+                    "theme",
+                    NodeSpec::row()
+                        .role(Role::RadioGroup)
+                        .gap(4.0)
+                        .label("Theme"),
                     |ui| {
-                        for name in ["Rename", "Duplicate", "Archive"] {
+                        for (i, name) in ["Light", "Dark", "Auto"].iter().enumerate() {
+                            let on = i == self.theme;
                             ui.with_keyed(
                                 name,
                                 NodeSpec::row()
-                                    .role(Role::MenuItem)
-                                    .on_click(Value::str(format!("menu:{name}")))
-                                    .width(Sizing::Grow(1.0))
-                                    .pad_xy(8.0, 5.0)
-                                    .radius(4.0)
-                                    .focus_bg(Color::rgb8(0x3b, 0x5b, 0xd4)),
+                                    .role(Role::Radio)
+                                    .checked(on)
+                                    .on_click(Value::str(format!("theme{i}")))
+                                    .pad_xy(10.0, 6.0)
+                                    .bg(if on {
+                                        Color::rgb8(0x3b, 0x5b, 0xd4)
+                                    } else {
+                                        Color::rgb8(0x1d, 0x20, 0x2b)
+                                    })
+                                    .radius(6.0),
                                 |ui| {
                                     ui.text(
                                         name,
-                                        TextStyle::new(13.0).color(Color::rgb8(0xd6, 0xd8, 0xe0)),
+                                        TextStyle::new(13.0).color(if on {
+                                            Color::WHITE
+                                        } else {
+                                            Color::rgb8(0x8a, 0x8f, 0xa3)
+                                        }),
                                     )
                                 },
                             );
                         }
                     },
                 );
-            }
-        });
 
-        // A switch: `checked` is the state assistive technology reads.
-        ui.with_keyed(
-            "mute",
-            NodeSpec::row()
-                .role(Role::Switch)
-                .checked(self.muted)
-                .on_click(Value::str("mute"))
-                .pad_xy(10.0, 6.0)
-                .bg(Color::rgb8(0x1d, 0x20, 0x2b))
-                .radius(6.0)
-                .label("Mute"),
-            |ui| {
-                ui.text(
-                    if self.muted { "on" } else { "off" },
-                    TextStyle::new(13.0).color(Color::rgb8(0x8a, 0x8f, 0xa3)),
-                )
-            },
-        );
-
-        // A slider the app draws: the value and range are data, and the
-        // increment / decrement requests arrive as `access` events.
-        ui.with_keyed(
-            "volume",
-            NodeSpec::row()
-                .role(Role::Slider)
-                .label("Volume")
-                .value_now(self.volume)
-                .value_min(0.0)
-                .value_max(10.0)
-                .on_drag(Value::str("volume"))
-                .width(Sizing::Fixed(200.0))
-                .height(Sizing::Fixed(16.0))
-                .bg(Color::rgb8(0x1d, 0x20, 0x2b))
-                .radius(8.0),
-            |ui| {
-                ui.with(
-                    NodeSpec::row()
-                        .width(Sizing::Percent(self.volume / 10.0))
-                        .height(Sizing::Grow(1.0))
-                        .bg(Color::rgb8(0x3b, 0x5b, 0xd4))
-                        .radius(8.0),
-                    |_| {},
-                );
-            },
-        );
-
-        // A built-in editor: the core owns the buffer, so its runs, caret
-        // and selection come out of the edit store, and a screen reader's
-        // selection and text requests are applied for you.
-        ui.with(NodeSpec::row().role(Role::Heading), |ui| {
-            ui.text("Built-in editor", TextStyle::new(15.0).color(Color::WHITE))
-        });
-        self.edit = ui.text_edit(
-            "doc",
-            DOC,
-            &EditOptions {
-                multiline: true,
-                style: text,
-                ..Default::default()
-            },
-            NodeSpec::column()
-                .width(Sizing::Fixed(280.0))
-                .height(Sizing::Fixed(56.0))
-                .pad(8.0)
-                .bg(Color::rgb8(0x0e, 0x10, 0x16))
-                .radius(6.0)
-                .clip()
-                .label("Notes"),
-        );
-
-        // An editor the app owns: the sink says what it is, each drawn
-        // row is a line of its text, and the caret rides along as a byte
-        // offset. Text requests come back as `access` events.
-        ui.with(NodeSpec::row().role(Role::Heading), |ui| {
-            ui.text("App-owned editor", TextStyle::new(15.0).color(Color::WHITE))
-        });
-        let (lines, caret) = (&self.lines, self.caret);
-        let sink = ui.with_keyed(
-            "code",
-            NodeSpec::column()
-                .width(Sizing::Fixed(280.0))
-                .pad(8.0)
-                .bg(Color::rgb8(0x0e, 0x10, 0x16))
-                .radius(6.0)
-                .on_key(Value::str("code"))
-                .role(Role::MultilineTextInput)
-                .label("Source"),
-            |ui| {
-                ui.with(NodeSpec::row().gap(8.0), |ui| {
-                    // Decoration: line numbers are not part of the text.
-                    ui.with(NodeSpec::column().role(Role::None), |ui| {
-                        for i in 0..lines.len() {
-                            ui.text(
-                                &format!("{}", i + 1),
-                                TextStyle::new(12.0)
-                                    .mono()
-                                    .color(Color::rgb8(0x50, 0x55, 0x66)),
+                // A list whose rows can be picked. A row is not named by its
+                // content the way a button is — it is a container of content, and
+                // giving it a label as well would have it read twice — so its
+                // text child is what a reader announces. Nothing here says "2 of
+                // 3" either: the core numbers the rows it holds.
+                ui.with_keyed(
+                    "mailboxes",
+                    NodeSpec::column().role(Role::List).gap(2.0),
+                    |ui| {
+                        for (i, name) in ["Inbox", "Drafts", "Sent"].iter().enumerate() {
+                            let on = i == self.row;
+                            ui.with_keyed(
+                                name,
+                                NodeSpec::row()
+                                    .role(Role::ListItem)
+                                    .selected(on)
+                                    .focusable()
+                                    .on_click(Value::str(format!("row{i}")))
+                                    .width(Sizing::Fixed(200.0))
+                                    .pad_xy(10.0, 5.0)
+                                    .bg(if on {
+                                        Color::rgb8(0x2f, 0x54, 0xc4)
+                                    } else {
+                                        Color::rgb8(0x1d, 0x20, 0x2b)
+                                    })
+                                    .radius(4.0),
+                                |ui| {
+                                    ui.text(
+                                        name,
+                                        TextStyle::new(13.0).color(if on {
+                                            Color::WHITE
+                                        } else {
+                                            Color::rgb8(0x8a, 0x8f, 0xa3)
+                                        }),
+                                    )
+                                },
                             );
                         }
-                    });
-                    ui.with(NodeSpec::column(), |ui| {
-                        for (i, line) in lines.iter().enumerate() {
-                            let mut row = NodeSpec::row().role(Role::Line);
-                            if caret.0 == i {
-                                row = row.caret(caret.1.min(line.len()) as u32);
-                            }
-                            ui.with_keyed(&format!("l{i}"), row, |ui| {
-                                ui.text(line, TextStyle::new(13.0).mono().color(text.color));
-                            });
-                        }
-                    });
+                    },
+                );
+
+                // A button named by its content, so a press is visible through
+                // the accessibility API alone. Keyed by hand: `widgets::button`
+                // keys a node by its text, and this text changes on every press —
+                // a re-keyed node is a new node, which drops keyboard focus and
+                // leaves a screen reader's cursor on an element that no longer
+                // exists.
+                ui.with_keyed(
+                    "count",
+                    widgets::button_spec().on_click(Value::str("press")),
+                    |ui| {
+                        ui.text(
+                            &format!("count {}", self.presses),
+                            TextStyle::new(widgets::BUTTON_TEXT).color(Color::WHITE),
+                        )
+                    },
+                );
+
+                // An icon button: nothing to read inside, so it needs a label.
+                ui.with_keyed(
+                    "save",
+                    widgets::button_spec()
+                        .on_click(Value::str("save"))
+                        .label("Save"),
+                    |ui| ui.text("⌘", TextStyle::new(15.0).color(Color::WHITE)),
+                );
+
+                // A one-off announcement: nothing on screen says "Copied", and
+                // nothing should — a reader hears it, everyone else sees the
+                // button they just pressed. Announced here rather than in
+                // `on_event` because `App::on_event` takes no `Ui`; the `take`
+                // is the guard, since a view runs every frame.
+                if let Some(msg) = self.pending.take() {
+                    ui.announce(&msg, Live::Polite);
+                }
+                widgets::button(ui, "Copy", Value::str("copy"));
+
+                // The live region. A plain box, so without the row it would be
+                // elided and its text would be read only when asked for; with it
+                // the box stays in the tree as a group, its liveness reaches the
+                // text inside, and a reader announces the count each time it
+                // changes. `polite` waits for a pause — `assertive` would
+                // interrupt, which a save confirmation has not earned.
+                ui.with_keyed(
+                    "status",
+                    NodeSpec::row()
+                        .live(Live::Polite)
+                        .pad_xy(10.0, 5.0)
+                        .bg(Color::rgb8(0x0e, 0x10, 0x16))
+                        .radius(4.0),
+                    |ui| {
+                        ui.text(
+                            &if self.saves == 0 {
+                                "No changes saved".to_string()
+                            } else if self.saves == 1 {
+                                "Saved 1 change".to_string()
+                            } else {
+                                format!("Saved {} changes", self.saves)
+                            },
+                            text,
+                        )
+                    },
+                );
+
+                // The button that opens the modal below.
+                widgets::button(ui, "Delete…", Value::str("open-confirm"));
+
+                // A menu, opened from a button: `modal` plus `role="menu"`, which
+                // is the shape a context menu takes. It floats below its trigger,
+                // so the plain box around the pair is what the float anchors to —
+                // a button is read as one control, and a menu declared inside it
+                // would be read as part of that control rather than as a menu.
+                // Focus enters it, the arrows move between its items *without*
+                // running them (a menu that ran whatever you passed over would be
+                // unusable), and Enter, Space or Escape ends it.
+                ui.with(NodeSpec::column(), |ui| {
+                    widgets::button(ui, "Actions ▾", Value::str("open-menu"));
+                    if self.menu {
+                        ui.with_keyed(
+                            "menu",
+                            NodeSpec::column()
+                                .float(FloatConfig::below())
+                                .modal(Value::str("menu"))
+                                .role(Role::Menu)
+                                .label("Actions")
+                                .width(Sizing::Fixed(180.0))
+                                .pad(4.0)
+                                .gap(2.0)
+                                .bg(Color::rgb8(0x1d, 0x20, 0x2b))
+                                .border(1.0, Color::rgb8(0x3b, 0x5b, 0xd4))
+                                .radius(6.0),
+                            |ui| {
+                                for name in ["Rename", "Duplicate", "Archive"] {
+                                    ui.with_keyed(
+                                        name,
+                                        NodeSpec::row()
+                                            .role(Role::MenuItem)
+                                            .on_click(Value::str(format!("menu:{name}")))
+                                            .width(Sizing::Grow(1.0))
+                                            .pad_xy(8.0, 5.0)
+                                            .radius(4.0)
+                                            .focus_bg(Color::rgb8(0x3b, 0x5b, 0xd4)),
+                                        |ui| {
+                                            ui.text(
+                                                name,
+                                                TextStyle::new(13.0)
+                                                    .color(Color::rgb8(0xd6, 0xd8, 0xe0)),
+                                            )
+                                        },
+                                    );
+                                }
+                            },
+                        );
+                    }
                 });
+
+                // A switch: `checked` is the state assistive technology reads.
+                ui.with_keyed(
+                    "mute",
+                    NodeSpec::row()
+                        .role(Role::Switch)
+                        .checked(self.muted)
+                        .on_click(Value::str("mute"))
+                        .pad_xy(10.0, 6.0)
+                        .bg(Color::rgb8(0x1d, 0x20, 0x2b))
+                        .radius(6.0)
+                        .label("Mute"),
+                    |ui| {
+                        ui.text(
+                            if self.muted { "on" } else { "off" },
+                            TextStyle::new(13.0).color(Color::rgb8(0x8a, 0x8f, 0xa3)),
+                        )
+                    },
+                );
+
+                // A slider the app draws: the value and range are data, and the
+                // increment / decrement requests arrive as `access` events.
+                ui.with_keyed(
+                    "volume",
+                    NodeSpec::row()
+                        .role(Role::Slider)
+                        .label("Volume")
+                        .value_now(self.volume)
+                        .value_min(0.0)
+                        .value_max(10.0)
+                        .on_drag(Value::str("volume"))
+                        .width(Sizing::Fixed(200.0))
+                        .height(Sizing::Fixed(16.0))
+                        .bg(Color::rgb8(0x1d, 0x20, 0x2b))
+                        .radius(8.0),
+                    |ui| {
+                        ui.with(
+                            NodeSpec::row()
+                                .width(Sizing::Percent(self.volume / 10.0))
+                                .height(Sizing::Grow(1.0))
+                                .bg(Color::rgb8(0x3b, 0x5b, 0xd4))
+                                .radius(8.0),
+                            |_| {},
+                        );
+                    },
+                );
+
+                // A built-in editor: the core owns the buffer, so its runs, caret
+                // and selection come out of the edit store, and a screen reader's
+                // selection and text requests are applied for you.
+                ui.with(NodeSpec::row().role(Role::Heading), |ui| {
+                    ui.text("Built-in editor", TextStyle::new(15.0).color(Color::WHITE))
+                });
+                self.edit = ui.text_edit(
+                    "doc",
+                    DOC,
+                    &EditOptions {
+                        multiline: true,
+                        style: text,
+                        ..Default::default()
+                    },
+                    NodeSpec::column()
+                        .width(Sizing::Fixed(280.0))
+                        .height(Sizing::Fixed(56.0))
+                        .pad(8.0)
+                        .bg(Color::rgb8(0x0e, 0x10, 0x16))
+                        .radius(6.0)
+                        .clip()
+                        .label("Notes"),
+                );
+
+                // An editor the app owns: the sink says what it is, each drawn
+                // row is a line of its text, and the caret rides along as a byte
+                // offset. Text requests come back as `access` events.
+                ui.with(NodeSpec::row().role(Role::Heading), |ui| {
+                    ui.text("App-owned editor", TextStyle::new(15.0).color(Color::WHITE))
+                });
+                let (lines, caret) = (&self.lines, self.caret);
+                sink = ui.with_keyed(
+                    "code",
+                    NodeSpec::column()
+                        .width(Sizing::Fixed(280.0))
+                        .pad(8.0)
+                        .bg(Color::rgb8(0x0e, 0x10, 0x16))
+                        .radius(6.0)
+                        .on_key(Value::str("code"))
+                        .role(Role::MultilineTextInput)
+                        .label("Source"),
+                    |ui| {
+                        ui.with(NodeSpec::row().gap(8.0), |ui| {
+                            // Decoration: line numbers are not part of the text.
+                            ui.with(NodeSpec::column().role(Role::None), |ui| {
+                                for i in 0..lines.len() {
+                                    ui.text(
+                                        &format!("{}", i + 1),
+                                        TextStyle::new(12.0)
+                                            .mono()
+                                            .color(Color::rgb8(0x50, 0x55, 0x66)),
+                                    );
+                                }
+                            });
+                            ui.with(NodeSpec::column(), |ui| {
+                                for (i, line) in lines.iter().enumerate() {
+                                    let mut row = NodeSpec::row().role(Role::Line);
+                                    if caret.0 == i {
+                                        row = row.caret(caret.1.min(line.len()) as u32);
+                                    }
+                                    ui.with_keyed(&format!("l{i}"), row, |ui| {
+                                        ui.text(
+                                            line,
+                                            TextStyle::new(13.0).mono().color(text.color),
+                                        );
+                                    });
+                                }
+                            });
+                        });
+                    },
+                );
             },
         );
         ui.take_key_focus(sink);
@@ -538,7 +606,16 @@ impl App for A11y {
                 return;
             }
             Some("save") => {
-                println!("save");
+                // Changes the live region's text; nothing announces.
+                self.saves += 1;
+                println!("save -> {}", self.saves);
+                return;
+            }
+            Some("copy") => {
+                // Changes nothing on screen, so the announcement is the
+                // only thing a reader gets.
+                self.pending = Some("Copied to clipboard".to_string());
+                println!("copy");
                 return;
             }
             // Opening the dialog is a field the view reads; closing it is
@@ -664,10 +741,8 @@ impl App for A11y {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     kui::app("kui — accessibility")
-        // Every control in one column, so the window has to be tall
-        // enough for all of them: a column that overflows squeezes its
-        // children, and squeezed rows are exactly what a fixture must not
-        // show when the point of it is that the rows read correctly.
+        // Tall enough for most of the controls; the rest are a scroll
+        // away, because the column holding them scrolls (see `view`).
         .size(560.0, 820.0)
         .run(A11y::new())
 }

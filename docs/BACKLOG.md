@@ -2968,8 +2968,22 @@ logic rather than the struct — it wants a profile now the cache behaviour has
 changed. Plus the CI threshold on `frame_10k_rects` and `frame_1k_typical`,
 which the size test does not replace.
 
-**Design, each wanting an ADR.** Live regions and announcements (ADR 0001's
-open follow-up — an event on a timeline, not a tree property). The exit
+**Design, each wanting an ADR.** ~~Live regions and announcements~~ —
+**done (2026-09-06)**, as `docs/adr/0008-live-regions-and-announcements.md`,
+accepted *and* built. The split it settles: the sustained half is a `live`
+row on the node whose text changes, the one-off half is `Core::announce`
+queued and drained like window commands, audio commands and warnings —
+because a message with a place on screen is a property of the view and one
+without is a consequence of an event. Two things the ADR only learned by
+running `scripts/ax-audit.swift` against the OS, both now written into it:
+a live `Role::Label` announces nothing on macOS (the adapter reads its
+*value*, not its label), which is why a live region reads as one named
+message rather than as the ARIA-shaped container whose descendant changed;
+and an announcement needs a **fresh** AccessKit node id each time or the
+same message twice in a row is silently swallowed. Left open by it, and
+not yet worth a row: `aria-atomic`, and asking AccessKit upstream for a
+real announcement in `TreeUpdate` (two of the three platforms have the API
+behind it; AccessKit's whole event surface is a tree diff). The exit
 animations' `animating()` policy, revisited against a real view that removes
 many nodes (ADR 0005 left it opt-in + a 512-node budget with no duration
 cap). S8: one sentence in ADR 0006 on bump cadence.

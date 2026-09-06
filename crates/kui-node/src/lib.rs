@@ -581,6 +581,26 @@ impl Ctx {
         audio_commands_json(self.core.take_audio_commands())
     }
 
+    /// Drains the announcements queued since the last drain, as plain
+    /// objects (`{text, live}`). `runWindowed` drains and delivers them
+    /// itself; a bare `Ctx` hands them back so a driver or a test can see
+    /// what a frame asked to say.
+    #[napi(ts_return_type = "Announcement[]")]
+    pub fn announcements(&mut self) -> Json {
+        Json::Array(
+            self.core
+                .take_announcements()
+                .into_iter()
+                .map(|a| {
+                    let mut o = JsonMap::new();
+                    o.insert("text".into(), Json::String(a.text));
+                    o.insert("live".into(), Json::String(a.live.name().into()));
+                    Json::Object(o)
+                })
+                .collect(),
+        )
+    }
+
     /// A custom driver reports a playback finished on its own; a tagged
     /// one becomes a `sound` event in `pollEvents`.
     #[napi]
@@ -1079,6 +1099,29 @@ macro_rules! core_methods {
             /// Starts a playback: `{volume, loop, fadeIn, tag}`; returns its
             /// id for `stop` / `setVolume` / `pause` / `resume`. A `tag` comes
             /// back as a `SoundMsg` when the playback finishes on its own.
+            /// Says something once, with no node behind it: `announce("Saved")`,
+            /// `announce("3 results", "assertive")`. `"off"` and an empty string
+            /// are both no-ops. A region whose message is on screen is the `live`
+            /// prop instead
+            /// (`docs/adr/0008-live-regions-and-announcements.md`).
+            ///
+            /// Call it from an event handler. Called while building a frame it
+            /// fires every frame, which the core reports as
+            /// `announcement-repeated`.
+            #[napi(ts_args_type = "text: string, live?: Live")]
+            pub fn announce(&mut self, text: String, live: Option<String>) -> Result<()> {
+                let live = live.as_deref().unwrap_or("polite");
+                let i = kui_core::schema::LIVE.iter().position(|v| *v == live);
+                let Some(i) = i else {
+                    return Err(err(format!(
+                        "bad politeness {live:?} (one of {})",
+                        kui_core::schema::LIVE.join(" | ")
+                    )));
+                };
+                self.$core().announce(&text, kui_core::Live::from_index(i));
+                Ok(())
+            }
+
             /// A window plays it on its own device at once; headless nothing
             /// sounds and the command queues for `audioCommands()`.
             #[napi(ts_args_type = "sound: string, opts?: PlayOptions")]
@@ -1696,6 +1739,7 @@ fn access_tree_json(tree: &kui_core::AccessTree) -> Json {
                 n.orientation
                     .map_or(Json::Null, |o| Json::String(o.name().to_string())),
             );
+            o.insert("live".into(), Json::String(n.live.name().into()));
             o.insert("valueNow".into(), opt_num(n.number));
             o.insert("valueMin".into(), opt_num(n.min));
             o.insert("valueMax".into(), opt_num(n.max));

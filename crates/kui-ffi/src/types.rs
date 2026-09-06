@@ -27,6 +27,9 @@ pub struct KuiCtx {
     /// Access tree most recently handed out by kui_access_tree; its strings
     /// stay valid until the next call.
     pub(crate) last_access: kui_core::AccessTree,
+    /// Announcements most recently handed out by kui_take_announcements;
+    /// their strings stay valid until the next call.
+    pub(crate) last_announcements: Vec<kui_core::Announcement>,
     /// One entry per node the `kui_open*` family has open, holding its key
     /// and `KuiSpec.tooltip` hint. `kui_close` pops it and floats the hint
     /// as the node's last child while it is hovered — which is what the
@@ -62,6 +65,7 @@ impl KuiCtx {
             last_edit_text: None,
             last_warnings: Vec::new(),
             last_access: Default::default(),
+            last_announcements: Vec::new(),
             open_tooltips: Vec::new(),
             window_commands: VecDeque::new(),
             last_window_name: None,
@@ -353,6 +357,13 @@ pub struct KuiSpec {
     /// were to these values (see `KuiEnter`, which an exit reuses: an exit
     /// is an entrance read the other way).
     pub exit: KuiEnter,
+    /// KUI_LIVE_* (0 = KUI_LIVE_OFF, the default): when the text inside
+    /// this node changes, a screen reader reads the change without being
+    /// asked. A node that declares it is semantic, so a plain box marked
+    /// live is not elided from the access tree. For a one-off with no node
+    /// behind it, `kui_announce` is the other half (see
+    /// `docs/adr/0008-live-regions-and-announcements.md`).
+    pub live: u32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -472,6 +483,13 @@ pub const KUI_ACCESS_EXPANDED: u32 = 1 << 15;
 /// `pos_in_set` holds (on an item), `set_size` holds (on its container).
 pub const KUI_ACCESS_HAS_POS_IN_SET: u32 = 1 << 16;
 pub const KUI_ACCESS_HAS_SET_SIZE: u32 = 1 << 17;
+/// The node declared `live` (see `KuiSpec.live`), and which politeness.
+/// Two bits rather than a `live` field, because `KuiAccessNode` is an
+/// [out-array] struct that a host allocates: appending to it would be an
+/// ABI break, and `flags` has room (see
+/// `docs/adr/0006-c-abi-versioning.md`).
+pub const KUI_ACCESS_LIVE_POLITE: u32 = 1 << 18;
+pub const KUI_ACCESS_LIVE_ASSERTIVE: u32 = 1 << 19;
 
 /// KUI_ORIENTATION_* is the position in `Orientation::ALL` plus one
 /// (0 = unset: the node is not a composite container).
@@ -487,6 +505,27 @@ pub(crate) fn orientation_code(o: Option<kui_core::Orientation>) -> u32 {
 /// the node does not expand).
 pub const KUI_EXPANDED_COLLAPSED: u32 = 1;
 pub const KUI_EXPANDED_EXPANDED: u32 = 2;
+
+/// KUI_LIVE_* is the position in `schema::LIVE` itself, not the position
+/// plus one: unlike a disclosure, a live region's zero *is* a value —
+/// "not a live region" is what an unset field already means, so there is
+/// no unset state to reserve zero for.
+pub const KUI_LIVE_OFF: u32 = 0;
+pub const KUI_LIVE_POLITE: u32 = 1;
+pub const KUI_LIVE_ASSERTIVE: u32 = 2;
+
+/// One queued announcement (`kui_take_announcements`): something to say
+/// once, with no node behind it. `live` is KUI_LIVE_POLITE or
+/// KUI_LIVE_ASSERTIVE — never KUI_LIVE_OFF, which `kui_announce` drops.
+/// `text` borrows the context's buffer and stays valid until the next
+/// `kui_take_announcements` on the same context (see
+/// `docs/adr/0008-live-regions-and-announcements.md`).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiAnnouncement {
+    pub text: KuiStr,
+    pub live: u32,
+}
 
 pub const KUI_VALUE_NOW: u32 = 1 << 0;
 pub const KUI_VALUE_MIN: u32 = 1 << 1;

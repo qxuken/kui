@@ -28,6 +28,15 @@ fn access_rows(out: &Output) -> Vec<String> {
         .collect()
 }
 
+/// The checked-in spelling of an announcement: the report's `announce`
+/// line without its prefix.
+fn announcements(out: &Output) -> Vec<String> {
+    out.announcements
+        .iter()
+        .map(|a| format!("{} {}", a.live.name(), a.text))
+        .collect()
+}
+
 fn events(out: &Output) -> Vec<String> {
     out.events
         .iter()
@@ -63,6 +72,11 @@ fn check(scene: &Scene) {
     );
     assert_eq!(access_rows(&out), e.access, "{name}: access tree");
     assert_eq!(events(&out), e.events, "{name}: events");
+    assert_eq!(
+        announcements(&out),
+        e.announcements,
+        "{name}: announcements"
+    );
     assert_eq!(out.warnings, e.warnings, "{name}: warnings");
     assert_eq!(commands(&out), e.commands, "{name}: window commands");
     assert_eq!(out.title.as_deref(), e.title, "{name}: window title");

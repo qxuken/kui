@@ -86,6 +86,11 @@ pub extern "C" fn kui_access_tree(ptr: *mut KuiCtx, out: *mut KuiAccessNode, cap
             if n.modal {
                 flags |= KUI_ACCESS_MODAL;
             }
+            match n.live {
+                kui_core::Live::Off => {}
+                kui_core::Live::Polite => flags |= KUI_ACCESS_LIVE_POLITE,
+                kui_core::Live::Assertive => flags |= KUI_ACCESS_LIVE_ASSERTIVE,
+            }
             let scroll = n.scroll.unwrap_or_default();
             let (sel_start, sel_end) = n.selection.unwrap_or((0, 0));
             unsafe {
@@ -254,4 +259,66 @@ pub extern "C" fn kui_input_access_text(
         }
         push_input(ptr, InputEvent::Access(req));
     });
+}
+
+/// Says something once, with no node behind it: "Saved", "3 results".
+/// `live` is KUI_LIVE_POLITE or KUI_LIVE_ASSERTIVE; KUI_LIVE_OFF and an
+/// empty string are both no-ops, the first so a caller can gate politeness
+/// without a branch. A region whose message is on screen is `KuiSpec.live`
+/// instead (see `docs/adr/0008-live-regions-and-announcements.md`).
+///
+/// A host holding the context calls this from wherever the event is
+/// handled; called from a frame builder it fires every frame, which the
+/// core reports as `announcement-repeated`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_announce(ptr: *mut KuiCtx, text: KuiStr, live: u32) {
+    guard((), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
+        let text = kstr(text);
+        c.core()
+            .announce(&text, kui_core::Live::from_index(live as usize));
+    })
+}
+
+/// Drains queued announcements into `out` (up to `cap`; the rest are
+/// dropped, so size it generously) and returns the count. The strings stay
+/// valid until the next call on this context.
+///
+/// Drain every frame whether or not assistive technology is attached and
+/// discard what you cannot deliver: an announcement kept is an
+/// announcement said minutes late. kui_run does this itself.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_take_announcements(
+    ptr: *mut KuiCtx,
+    out: *mut KuiAnnouncement,
+    cap: usize,
+) -> usize {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        if out.is_null() || cap == 0 {
+            return 0;
+        }
+        c.last_announcements = c.core().take_announcements();
+        let n = c.last_announcements.len().min(cap);
+        for (i, a) in c.last_announcements.iter().take(n).enumerate() {
+            unsafe {
+                out.add(i).write(KuiAnnouncement {
+                    text: KuiStr {
+                        ptr: a.text.as_ptr(),
+                        len: a.text.len(),
+                    },
+                    live: match a.live {
+                        kui_core::Live::Off => KUI_LIVE_OFF,
+                        kui_core::Live::Polite => KUI_LIVE_POLITE,
+                        kui_core::Live::Assertive => KUI_LIVE_ASSERTIVE,
+                    },
+                })
+            };
+        }
+        n
+    })
 }
