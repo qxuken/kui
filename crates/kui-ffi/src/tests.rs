@@ -489,6 +489,8 @@ mod queries_headless {
             tag: 2,
             value: 50.0,
         };
+        // Releases are opt-in: without this the sink hears presses only.
+        spec.key_up = 1;
         kui_frame_begin(ctx, 200.0, 100.0, 1.0);
         let sink = kui_open_with(
             ctx,

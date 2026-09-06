@@ -1327,7 +1327,8 @@ impl<A: App> Shell<A> {
     fn on_key(&mut self, event_loop: &ActiveEventLoop, i: usize, event: winit::event::KeyEvent) {
         let pressed = event.state == ElementState::Pressed;
         // Full-keyboard path: every press *and release* travels as data to
-        // the key-focused sink (`NodeSpec::on_key`); the core drops it when
+        // the key-focused sink (`NodeSpec::on_key`) — the core delivers the
+        // release only to a sink that said `key_up`, and drops both when
         // an edit widget holds focus instead. Everything below this block
         // is the editor path, which is press-only.
         let kmods = self.panes[i].kmods();

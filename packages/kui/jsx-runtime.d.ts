@@ -165,6 +165,8 @@ export interface GeneratedSpecProps {
   hoverable?: boolean;
   /** Where focus lands when the enclosing `modal` scope is entered: the first node in the modal's Tab ring declaring it, so a destructive confirm opens on its Cancel rather than on whichever control is declared first. Read on entry only — a Tab press afterwards stands, and the scope re-entered (a nested confirm closing) leaves focus where it was. Declared on nothing, or only on nodes the ring skips (disabled, `role="none"`, not focusable), entry stays the ring's first node. */
   initialFocus?: boolean;
+  /** With `onKey`: releases arrive too, as the same payload with phase:"up" (`text` null, `repeat` false) — for a held-key interaction (WASD, press-and-hold, a key that arms a mode while it is down). A key only comes up where it went down: a release whose press the sink never got is dropped, and focus leaving while a key is held delivers the `up` first, so nothing is left stuck down. Without it a sink hears presses only, which is what a keymap wants — one that heard both halves would run every binding twice. */
+  keyUp?: boolean;
   /** CSS-style stops `[{ at?, width?, height?, bg?, radius?, opacity? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. */
   keyframes?: KeyframeProp[];
   /** The accessible name. Without one a button, link, tab or heading is named by the text inside it; an image, an icon-only button and a `modal` dialog have none, and the core warns (`image-without-label`, `control-without-name`, `modal-without-name`). */
@@ -191,7 +193,7 @@ export interface GeneratedSpecProps {
   onDrag?: AppMsg | null;
   /** Hover tag: the pointer entering/leaving emits {kind:"hover", phase:"enter"|"leave", tag} events. */
   onHover?: AppMsg | null;
-  /** Key-sink tag: with key focus held, presses and releases arrive as {kind:"key", phase:"down"|"up", ...} events. */
+  /** Key-sink tag: with key focus held, presses arrive as {kind:"key", phase:"down", code, ...} events. Releases only with `keyUp` beside it. */
   onKey?: AppMsg | null;
   /** Layout tag: the node's laid-out rect arrives as {kind:"layout", x, y, w, h, parent, tag} on its first frame and whenever it changes (needs a stable key). */
   onLayout?: AppMsg | null;

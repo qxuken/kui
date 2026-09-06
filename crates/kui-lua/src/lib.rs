@@ -1162,7 +1162,7 @@ mod tests {
                 float = {anchor = "viewport", at = {"end", "end"}, self_at = {"end", "end"},
                          dx = -8, dy = -8, fit = true},
                 hoverable = true, window = "close",
-                on_click = {kind = "hit"}, on_drag = "d", on_key = 7,
+                on_click = {kind = "hit"}, on_drag = "d", on_key = 7, key_up = true,
                 modal = "dlg", on_context_menu = {kind = "menu"},
                 initial_focus = true,
                 key = "panel", key_focus = true,
@@ -1203,6 +1203,7 @@ mod tests {
             .on_click(Value::map([("kind", "hit".into())]))
             .on_drag("d")
             .on_key(Value::Int(7))
+            .key_up()
             .modal("dlg".into())
             .initial_focus()
             .on_context_menu(Value::map([("kind", "menu".into())]));
@@ -1792,9 +1793,10 @@ mod tests {
         assert_eq!(seen.as_deref(), Some("!hi"));
     }
 
-    /// A script that owns its keyboard sees both halves of a key on one
-    /// `{kind="key"}` payload: a held key is `phase="down"` then `"up"`,
-    /// and focus leaving while it is held delivers the `up` anyway.
+    /// A script that owns its keyboard and asks for releases (`key_up`)
+    /// sees both halves of a key on one `{kind="key"}` payload: a held key
+    /// is `phase="down"` then `"up"`, and focus leaving while it is held
+    /// delivers the `up` anyway.
     #[test]
     fn a_lua_key_sink_hears_press_and_release() {
         use kui_core::{KeyCode, KeyMods, KeyPress};
@@ -1803,8 +1805,8 @@ mod tests {
             r#"
                 log = {}
                 function view(env)
-                  return column { key = "world", on_key = "keys", key_focus = true,
-                    width = 400, height = 300 }
+                  return column { key = "world", on_key = "keys", key_up = true,
+                    key_focus = true, width = 400, height = 300 }
                 end
                 function on_event(ev)
                   if ev.kind == "key" then

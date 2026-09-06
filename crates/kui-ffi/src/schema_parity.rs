@@ -232,6 +232,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "onClick" => click = msg(Value::Int(7)),
             "onDrag" => drag = msg(Value::Int(7)),
             "onKey" => key = msg(Value::Int(7)),
+            "keyUp" => s.key_up = 1,
             "onHover" => hover = msg(Value::Int(7)),
             "onLayout" => s.on_layout = &layout_tag,
             "modal" => s.modal = &layout_tag,
@@ -393,6 +394,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         selected: 1,
         expanded: KUI_EXPANDED_EXPANDED,
         live: KUI_LIVE_ASSERTIVE,
+        key_up: 1,
         opacity_set: 1,
         opacity: 0.4,
         shadow_color: 0x00_00_00_66,
@@ -455,6 +457,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .selected(true)
         .expanded(true)
         .live(kui_core::Live::Assertive)
+        .key_up()
         .value_now(3.0)
         .value_min(0.0)
         .value_max(10.0)

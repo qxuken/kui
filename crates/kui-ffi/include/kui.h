@@ -513,6 +513,16 @@ typedef struct KuiSpec {
      * behind it, kui_announce is the other half. See
      * docs/adr/0008-live-regions-and-announcements.md. */
     uint32_t live;
+    /* Non-zero, with a non-NULL on_key on kui_open_with: the sink hears
+     * releases too, as the same {kind="key"} payload with phase="up" (a
+     * null `text`, `repeat` false) - for a held-key interaction: WASD,
+     * press-and-hold, a key that arms a mode while it is down. A key only
+     * comes up where it went down (a release whose press the sink never got
+     * resolves nothing), and focus leaving while a key is held delivers the
+     * "up" first, so nothing is left stuck down. Zero: presses only, which
+     * is what a keymap wants - one that heard both halves would run every
+     * binding twice. */
+    uint32_t key_up;
 } KuiSpec;
 
 /* Disclosure state (KuiSpec.expanded): the schema index plus one, so zero
@@ -954,11 +964,13 @@ void kui_input_key(KuiCtx *ctx, uint32_t key, uint32_t mods); /* KUI_KEY_* + KUI
  * the host does not track positions (then it equals `code`); `kmods` is
  * KUI_KMOD_* bits; `text` is what the press inserts, or {NULL, 0} to derive
  * it from `code`; `repeat` marks an auto-repeat. The focused sink polls
- * {kind="key", phase="down"|"up", code, physical, ctrl, alt, shift, super,
- * text, repeat, tag}; a release carries a null `text`. A release whose press
- * the sink never got resolves nothing, and moving focus while a key is held
- * delivers the "up" first, so a held-key binding (WASD, press-and-hold)
- * cannot be left stuck down. An unknown `code` or `physical` is ignored.
+ * {kind="key", phase="down", code, physical, ctrl, alt, shift, super, text,
+ * repeat, tag} for each press; a sink whose KuiSpec set key_up hears the
+ * release too, as the same payload with phase="up" and a null `text`. A
+ * release whose press the sink never got resolves nothing, and moving focus
+ * while a key is held delivers the "up" first, so a held-key binding (WASD,
+ * press-and-hold) cannot be left stuck down. An unknown `code` or `physical`
+ * is ignored.
  *
  * Passing both is what makes a keymap portable. A layout that produces
  * something outside ASCII (Cyrillic, Greek, Hebrew, Arabic) would leave a
@@ -1136,7 +1148,8 @@ uint64_t kui_open_draggable(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
  * consumed. NULL means absent (a NULL on_drag here does NOT make the node
  * draggable, unlike kui_open_draggable). A non-NULL on_key makes the node a
  * key sink: focus it with kui_set_key_focus and every press arrives as
- * {kind="key", code, ctrl, alt, shift, super, text, repeat, tag}. A non-NULL
+ * {kind="key", phase="down", code, ctrl, alt, shift, super, text, repeat,
+ * tag} - releases too, with phase="up", when KuiSpec.key_up is set. A non-NULL
  * on_hover makes the pointer entering/leaving emit
  * {kind="hover", phase="enter"|"leave", tag} — for hover-dependent layout;
  * plain hover colors belong in KuiSpec.hover_bg / pressed_bg. A tag of
