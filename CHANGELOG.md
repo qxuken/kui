@@ -132,6 +132,25 @@ bumped past alpha.6 should delete.
 
 ### Fixed
 
+- **A modal gives focus back unless the closing frame says otherwise**
+  (backlog F4, the mind map's rename editor). The focus a modal displaces
+  comes back when it goes away (ADR 0003, decision 4) — but a rename
+  editor opened on a node created in the *same* frame displaced the node
+  the user came from, so dismissing it put focus back there and the next
+  Enter added a sibling in the wrong place. The app had no way out:
+  `focus()` needed a key it did not have, and `keyFocus` on the new node
+  had spent its edge. Now a `keyFocus` edge on the frame a modal stops
+  being declared — a node declared focused there and not on the frame
+  before — stands, and the remembered focus is dropped. That is
+  `initialFocus`'s missing half: `initialFocus` says which control a
+  dialog opens on, `keyFocus` on the closing frame says where the
+  keyboard lands on the way out, and neither needed a new row. An app
+  that declares nothing, or that repeats one declaration every frame (a
+  key sink owning its keyboard), is untouched — a redeclaration is no
+  edge, so the restore still lands where it always did. The corpus's
+  `modal` scene drops its dialog in a second phase and declares the node
+  it was renaming focused, so all four bindings agree on where the
+  keyboard ends up.
 - **A `transition` eases under `createApp`, so it is testable from Node**
   (backlog F1, the mind-map field report's #8). The loop set the core's
   frame clock only inside `advance(ms)`; `render()`, `click()`, `type()`

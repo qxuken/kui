@@ -1583,17 +1583,33 @@ const SCENE_TREES = {
       ]),
     ]),
   // docs/adr/0003-modal-surfaces.md: the app behind the dialog is inert,
-  // the titlebar is not, and both dismiss gestures reach the dialog.
-  modal: () =>
+  // the titlebar is not, and both dismiss gestures reach the dialog. Then
+  // the way out (backlog F4): the app declares `open` focused while the
+  // dialog is shut and the freshly created `note` on the frame that drops
+  // it, and that change of declaration is what the restore yields to.
+  modal: (_fx, phase) =>
     root({}, [
       box({ width: 'grow', gap: 6 }, [
         el('titlebar', {}, [text('app', { size: 12 })]),
         box(
-          { dir: 'row', width: 100, height: 20, bg: '#30344a', onClick: { kind: 'open' }, label: 'Open' },
+          {
+            dir: 'row', width: 100, height: 20, bg: '#30344a',
+            onClick: { kind: 'open' }, label: 'Open',
+            keyFocus: phase === 0,
+          },
           [],
           'open',
         ),
-        box(
+        phase !== 0 && box(
+          {
+            dir: 'row', width: 100, height: 20, bg: '#30344a',
+            onClick: { kind: 'note' }, label: 'Note',
+            keyFocus: true,
+          },
+          [],
+          'note',
+        ),
+        phase === 0 && box(
           {
             width: 120, height: 100, pad: 8, gap: 6, bg: '#202030',
             float: { anchor: 'viewport', at: ['end', 'end'], self: ['end', 'end'] },
@@ -1614,7 +1630,7 @@ const SCENE_TREES = {
           ],
           'dialog',
         ),
-      ]),
+      ].filter(Boolean)),
     ]),
   // docs/adr/0007-composite-keyboard-patterns.md: a tab bar and a picker
   // list, each one Tab stop because its items are focusable, with an

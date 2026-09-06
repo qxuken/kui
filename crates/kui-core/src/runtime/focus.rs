@@ -174,7 +174,21 @@ impl Core {
             .iter()
             .find(|(k, _)| !now.iter().any(|(n, _)| n == k))
             .map(|(_, saved)| saved.filter(|key| self.tree.keys.contains(key)));
-        if let Some(saved) = closed {
+        // A `keyFocus` *edge* on this same frame — a node declared focused
+        // now and not last frame — is the app saying where focus lands on
+        // the way out, and it wins over the restore (ADR 0003, decision
+        // 4): a rename editor opened on a node created in the same frame
+        // displaced the node the user was on *before*, and the restore
+        // is the default for an app that says nothing, not a rule for one
+        // that did. A sink redeclaring itself every frame is no edge, so
+        // the restore still lands where it always has under one.
+        let edge = self
+            .declared_focus
+            .iter()
+            .any(|k| !self.declared_focus_last.contains(k));
+        if let Some(saved) = closed
+            && !edge
+        {
             // Exactly what it displaced, nothing included: leaving focus
             // on the dismissed modal's own button would be a focus on a
             // node that is not there any more.

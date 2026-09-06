@@ -230,7 +230,32 @@ sink that wants both). (a) is the honest fix; (b) is the fallback if C9's
 "one sink, both phases" is to stay the only shape. Either way `test.mjs`
 gets a keymap fixture that presses *and releases* and asserts one toggle.
 
-### `!` F4 — A modal's focus restore beats the closing frame's own `keyFocus` edge
+### `!` F4 — A modal's focus restore beats the closing frame's own `keyFocus` edge — **done (2026-09-06)**
+
+**Done (2026-09-06), as the entry asks.** `resolve_modal_focus`
+(`crates/kui-core/src/runtime/focus.rs`) skips the restore when this
+frame's `declared_focus` holds a key last frame's did not — the same edge
+`set_key_focus` itself tests, so the restore yields exactly to the
+declarations that actually moved focus. A view that repeats one
+declaration every frame (an app owning its keyboard) declares nothing new
+on the closing frame, so decision 4 is untouched for it: that is the half
+`a_modal_closing_over_no_edge_still_gives_the_focus_back` pins, beside
+`a_key_focus_edge_beats_the_focus_the_modal_gives_back` in
+`crates/kui-core/tests/focus.rs`, which is the report's own sequence — a
+node and its editor created together, the editor dropped, the new node
+declared. ADR 0003's decision 4 carries the sentence, and the `keyFocus`
+schema row says it too, since the app that hit this could not find the
+rule from the props table. The corpus's `modal` scene gained the second
+phase: the app declares `open` focused while the dialog is shut and the
+freshly created `note` on the frame that drops it, and the report's last
+frame has focus on `note` where the restore alone would have put it back
+on `open`. Two things the phase cost, both paid: the three ring steps used
+to prove the scoped ring through the *last frame's* focus, which is now a
+frame with no dialog in it, so a Space press after them puts `cancel` in
+the event list — the ring's landing said as an event, which no later frame
+can take away — and the scene's expectations moved to the app-only frame
+(three solid quads, two buttons, four events). Reference regenerated, and
+the Lua, C and Node adapters reproduce it.
 
 Evidence: mind-map #3. A rename editor opened on a freshly created node: the
 node was created and the modal opened in one frame, so the focus the modal
@@ -471,13 +496,14 @@ logic rather than the struct — it wants a profile now the cache behaviour has
 changed. Plus the CI threshold on `frame_10k_rects` and `frame_1k_typical`,
 which the size test does not replace.
 
-**From the field (F1–F15).** Of the four defects, three are done:
+**From the field (F1–F15).** All four defects are done:
 ~~F1~~ (the Node loop never set the frame clock, which is why nothing eased
 was testable from Node), ~~F2~~ (drag deltas) and ~~F3~~ (an alpha.4 keymap
 ran twice, closed as its (a), the `keyUp` flag) all landed **2026-09-06**,
 and both of the last two carry a "what breaks" line in the CHANGELOG for the
-next tag. **F4** (the modal restore overriding a `keyFocus` edge) is the one
-left. Then the gaps in rough order of cost: F9 and F10 are an afternoon, F6
+next tag. ~~F4~~ (the modal restore overriding a `keyFocus` edge) landed
+**2026-09-06** too, and its rule is a sentence in ADR 0003's decision 4.
+Then the gaps in rough order of cost: F9 and F10 are an afternoon, F6
 and F11 a day each (~~F5~~ was one, and is **done (2026-09-06)**), F8
 needs one AccessKit question answered first. F7 (global shortcuts under a
 Tab ring) joins the ADR group below, where ~~F12~~ (a line primitive) also
