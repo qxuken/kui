@@ -359,7 +359,35 @@ visible only to a screen-reader user. **Do:** `slider-value-out-of-range` in
 `image-without-label`), also firing when `min > max`. **Test:** the diag
 tests gain the three cases.
 
-### `~` F11 — `init` and `view` cannot reach the surface
+### `~` F11 — `init` and `view` cannot reach the surface — **done (2026-09-06)**
+
+Both arguments are in, additive and typed by the `S` that `LoopConfig`
+already carried: `init: M | ((surface: S) => M)` is called with the surface
+after `setup`, so a first model measures against the fonts and images
+`setup` just registered and, under a window, reads the size it really
+opened at; `view(model, window, surface)` gets it third, so the README's
+own suggestion — size a column to its widest label — is a thing a view can
+do. Two call sites in `packages/kui/index.js` (`init(surface)` and
+`view(model, name, surface)`) and the two signatures in `index.d.ts`; the
+value form of `init` and a two-argument `view` are untouched.
+`examples/node/counter-window.tsx` was the pattern the entry describes and
+now deletes its `openedAt` module-level variable.
+
+One thing the entry assumed that is not there: a headless `Ctx` has **no**
+`size()` — only `KuiWindow` does, and `Ctx.env().viewport` is the viewport
+the last frame was begun with, which before `init` is nothing. So the size
+half of this is the windowed spelling (`init: (win) => ({ size: win.size()
+})`, which `examples/node` typechecks), and headless the size is the one an
+app handed `createApp` in its own options. The `test.mjs` test measures
+instead: an `init` that builds its model from `measureText` and a `view`
+that sizes a column from it, asserting the decoded quad is the measurement
+plus its padding and that the glyphs fit inside it. Whether a headless
+`Ctx` should answer `size()` from the options the loop already holds is a
+separate question, and small.
+
+Lua needed nothing — its `view(env)` already carries measurement — and C
+hosts own their loop, so there is nothing to add there either. The original
+entry:
 
 Evidence: mind-map #7 and #11. `LoopConfig.init` is `M | (() => M)` and
 `view` is `(model, window)` (`index.d.ts:1445-1453`), so `measureText` and
@@ -478,7 +506,8 @@ ran twice, closed as its (a), the `keyUp` flag) all landed **2026-09-06**,
 and both of the last two carry a "what breaks" line in the CHANGELOG for the
 next tag. **F4** (the modal restore overriding a `keyFocus` edge) is the one
 left. Then the gaps in rough order of cost: F9 and F10 are an afternoon, F6
-and F11 a day each (~~F5~~ was one, and is **done (2026-09-06)**), F8
+is a day (~~F5~~ was one and ~~F11~~ rather less, both **done
+(2026-09-06)**), F8
 needs one AccessKit question answered first. F7 (global shortcuts under a
 Tab ring) joins the ADR group below, where ~~F12~~ (a line primitive) also
 sat until it landed as `docs/adr/0010-a-segment-primitive.md`. F13

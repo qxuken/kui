@@ -28,6 +28,25 @@ bumped past alpha.6 should delete.
 
 ### Added
 
+- **Node's `init` and `view` are handed the surface** (backlog F11, from
+  two field reports). The function form of `init` takes it —
+  `init: (surface) => model`, called after `setup`, so a first model
+  measures against the fonts `setup` registered and, under a window, reads
+  the size the window really opened at — and `view` takes it third:
+  `view(model, window, surface)`. Both are additive and typed by the `S`
+  that `LoopConfig` already carried (`Ctx` headless, `KuiWindow` under
+  `runWindowed`), so a value `init` and a two-argument `view` are unchanged.
+  This is what makes the README's own suggestion for `measureText` — size a
+  column to its widest label — something a view can do, rather than
+  something only `update` could.
+  **What you can delete:** the module-level variable an app parked the
+  surface in from `setup`, the hardcoded window size its first model was
+  built against, and the `resize` handler that existed only to correct it —
+  with it, the frames between the first draw and that correction, where the
+  camera and every hit test were off. `examples/node/counter-window.tsx`
+  deletes its `openedAt` exactly this way. Note that a headless `Ctx` still
+  has no `size()`: the size it draws at is the one you hand `createApp`.
+
 - **A stroke primitive: `QuadKind::Segment` and the `line` element**
   (`docs/adr/0010-a-segment-primitive.md`, backlog F12 from the mind-map
   field report, whose every connector was three thin boxes). A segment is a
