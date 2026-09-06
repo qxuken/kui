@@ -97,7 +97,11 @@ fn a_returning_editor_keeps_its_draft() {
     rig.core.set_edit_text(rig.key, "reset");
     assert_eq!(rig.text(), "reset");
     rig.type_str("?");
-    assert_eq!(rig.text(), "reset?", "set_edit_text leaves the caret at the end");
+    assert_eq!(
+        rig.text(),
+        "reset?",
+        "set_edit_text leaves the caret at the end"
+    );
 }
 
 #[test]

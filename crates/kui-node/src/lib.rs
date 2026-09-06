@@ -742,7 +742,6 @@ impl Ctx {
     pub fn window_title(&self) -> Option<String> {
         self.core.window_title().map(str::to_string)
     }
-
 }
 
 /// Window commands as the objects `windowCommands()` hands out.

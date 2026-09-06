@@ -586,7 +586,8 @@ mod queries_headless {
         assert_eq!(ed.run_count, 1);
         assert_ne!(ed.flags & KUI_ACCESS_HAS_TEXT_SELECTION, 0);
         assert_ne!(ed.flags & KUI_ACCESS_FOCUSED, 0);
-        assert_eq!((ed.focus_char, ed.anchor_char), (0, 0));
+        // A single-line field opens with the caret after its seed (F20).
+        assert_eq!((ed.focus_char, ed.anchor_char), (11, 11));
 
         let mut runs = [unsafe { std::mem::zeroed::<KuiAccessRun>() }; 4];
         assert_eq!(kui_access_runs(ctx, key, runs.as_mut_ptr(), runs.len()), 1);
