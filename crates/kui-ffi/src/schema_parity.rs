@@ -249,6 +249,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "hoverSound" => s.hover_sound = 7,
             "role" => s.role = 2, // KUI_ROLE_* = Role::ALL index + 1; ROLES[1] = button
             "label" => s.label = name,
+            "description" => s.description = name,
             "checked" => s.checked = 1,
             "selected" => s.selected = 1,
             "expanded" => s.expanded = KUI_EXPANDED_EXPANDED,
@@ -393,6 +394,10 @@ fn fully_populated_spec_matches_the_rust_builder() {
             ptr: "hint".as_ptr(),
             len: 4,
         },
+        description: KuiStr {
+            ptr: "desc".as_ptr(),
+            len: 4,
+        },
         modal: &modal_tag,
         on_context_menu: &menu_tag,
         cursor: 7, // KUI_CURSOR_EW_RESIZE
@@ -455,7 +460,9 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .initial_focus()
         .disabled(true)
         .focus_bg(Color::hex(0x11_22_33_ff))
-        .description("hint")
+        // `tooltip` sets "hint" and the `description` field overwrites it:
+        // the explicit prop wins over the shorthand.
+        .description("desc")
         .role(kui_core::Role::Button)
         .label("lbl")
         .checked(true)

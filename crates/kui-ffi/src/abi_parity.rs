@@ -323,6 +323,7 @@ fn asserts() -> String {
         live: u32 => "uint32_t",
         key_up: u32 => "uint32_t",
         value_text: KuiStr => "KuiStr",
+        description: KuiStr => "KuiStr",
     });
 
     abi_struct!(o, KuiAccessNode {

@@ -1774,6 +1774,10 @@ const SCENE_TREES = {
           [text('badge', { size: 12 })],
           'tip',
         ),
+        box({
+          dir: 'row', width: 100, height: 20, role: 'button', label: 'Save',
+          description: 'Nothing to save yet',
+        }),
       ]),
     ]),
   chrome: () =>

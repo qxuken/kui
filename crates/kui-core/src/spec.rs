@@ -625,8 +625,9 @@ pub struct AccessSpec {
     /// name at all, and the core says so (`control-without-name`,
     /// `image-without-label` warnings).
     pub label: Option<Label>,
-    /// The accessible description — what the `tooltip` prop sets in the
-    /// bindings, read after the name.
+    /// The accessible description, read after the name — what the
+    /// `description` prop sets, and what the `tooltip` prop sets on the way
+    /// to drawing the same string.
     pub description: Option<Label>,
     /// For checkbox / radio / switch roles: the on state.
     pub checked: bool,

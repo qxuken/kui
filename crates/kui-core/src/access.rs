@@ -466,7 +466,7 @@ pub struct AccessNode {
     /// presentational roles) the text inside it, else the window title
     /// for the root.
     pub name: Option<String>,
-    /// `description` on the spec — what the `tooltip` prop sets.
+    /// `description` on the spec — the `description` prop, or a `tooltip`.
     pub description: Option<String>,
     /// Final laid-out rect, logical px, viewport coordinates.
     pub rect: Rect,

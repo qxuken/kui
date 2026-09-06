@@ -1162,6 +1162,14 @@ static void conf_tooltip(KuiCtx *ui, const Fixtures *f, int phase) {
     KuiTextStyle s12 = {.size = 12};
     kui_text(ui, KUI_STR("badge"), &s12);
     kui_close(ui);
+    /* KuiSpec.description is the same slot without the hover tracking or
+     * the float: spoken, never drawn. */
+    KuiSpec saved = {.dir = KUI_ROW, .width = {KUI_FIXED, 100},
+                     .height = {KUI_FIXED, 20}, .role = KUI_ROLE_BUTTON,
+                     .label = KUI_STR("Save"),
+                     .description = KUI_STR("Nothing to save yet")};
+    kui_open(ui, &saved, NULL);
+    kui_close(ui);
     kui_close(ui);
 }
 

@@ -303,6 +303,12 @@ pub(crate) fn spec_of(
         // float, while hovered) once it knows the node closed.
         spec = spec.apply_tooltip(&hint);
     }
+    if let Some(d) = opt_str(s.description) {
+        // The description on its own — spoken, never drawn. After the
+        // tooltip, so the explicit field wins over the shorthand rather
+        // than the order of two `if`s deciding it.
+        spec = spec.description(d);
+    }
     if let Some(v) = take_msg(on_click) {
         spec = spec.on_click(v);
     }

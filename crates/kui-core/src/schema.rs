@@ -134,6 +134,7 @@ pub const P_WINDOWS: u32 = 79;
 pub const P_LIVE: u32 = 80;
 pub const P_KEY_UP: u32 = 81;
 pub const P_VALUE_TEXT: u32 = 82;
+pub const P_DESCRIPTION: u32 = 83;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -848,6 +849,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "The accessible name. Without one a button, link, tab or heading is named by the text inside it; an image, an icon-only button and a `modal` dialog have none, and the core warns (`image-without-label`, `control-without-name`, `modal-without-name`).",
     },
     PropDef {
+        name: "description",
+        id: P_DESCRIPTION,
+        kind: Kind::Str,
+        apply: Apply::SpecStr(|s, v| s.description(v)),
+        doc: "The accessible description: the extra sentence a reader says after the name, for what the name cannot say on its own — what a button will do, why a control is disabled, what format a field wants. `tooltip` is the shorthand that also draws the string and hover-tracks the node; this is the description alone, for a hint that is spoken and never drawn. Both write the one slot, so a node declaring both keeps whichever its binding applied last. It reads only on a node that reaches the access tree — a role, a label, a control — since a plain box is elided and takes its description with it.",
+    },
+    PropDef {
         name: "checked",
         id: P_CHECKED,
         kind: Kind::Flag,
@@ -1052,7 +1060,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`tooltip=\"hint\"`",
         lua: "`tooltip = \"hint\"`",
         c: "`KuiSpec.tooltip` (`kui_tooltip` / `kui_tooltip_with` draw a hint that is not hover-gated)",
-        doc: "Floats a hint below the node while hovered. All three effects — hover tracking, the accessible description, and the float itself — come from `PropsOut::apply_tooltip` / `NodeSpec::apply_tooltip`, so no frontend can implement two of them.",
+        doc: "Floats a hint below the node while hovered. All three effects — hover tracking, the accessible description, and the float itself — come from `PropsOut::apply_tooltip` / `NodeSpec::apply_tooltip`, so no frontend can implement two of them. The `description` row is that middle effect on its own, for a hint that is spoken and never drawn.",
     },
 ];
 

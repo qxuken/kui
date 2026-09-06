@@ -97,6 +97,8 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
               row { key = "tip", width = 100, height = 40, bg = 0x333333ff,
                     role = "group", tooltip = "a hint",
                     text("badge", { size = 12 }) },
+              row { width = 100, height = 20, role = "button", label = "Save",
+                    description = "Nothing to save yet" },
             }
         "#
         .to_string(),

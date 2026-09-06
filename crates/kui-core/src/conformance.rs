@@ -544,7 +544,9 @@ pub const SCENES: &[Scene] = &[
     Scene {
         name: "tooltip",
         doc: "The tooltip prop: hover tracking, the accessible description \
-              it sets, and the hint that floats only while hovered.",
+              it sets, and the hint that floats only while hovered — beside \
+              the `description` prop on its own, which sets the same slot \
+              and draws nothing.",
         custom: &["tooltip", "key"],
         elements: &["tooltip", "box", "text"],
         build: build_tooltip,
@@ -561,6 +563,7 @@ pub const SCENES: &[Scene] = &[
                 "1 group |a hint|",
                 "2 staticText badge||",
                 "2 staticText a hint||",
+                "1 button Save|Nothing to save yet|",
             ],
             events: &[],
             announcements: &[],
@@ -1461,6 +1464,13 @@ fn build_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// The tooltip prop, spelled out: the bindings' parsers turn `tooltip`
 /// into `hoverable` plus an accessible `description`, and draw
 /// `widgets::tooltip` as the node's last child while it is hovered.
+///
+/// The second node is the `description` prop on its own — the same slot
+/// with neither the hover tracking nor the float, which is what a hint
+/// that is spoken and never drawn looks like. It sits here rather than in
+/// a scene of its own so the two are read side by side: the same string
+/// arrives in the same column of the access dump, and only the tooltip
+/// draws anything for it.
 fn build_tooltip(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with(NodeSpec::column().pad(10.0), |ui| {
         let key = ui.child_key("tip");
@@ -1479,6 +1489,15 @@ fn build_tooltip(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                     widgets::tooltip(ui, "a hint");
                 }
             },
+        );
+        ui.with(
+            NodeSpec::row()
+                .width(Sizing::Fixed(100.0))
+                .height(Sizing::Fixed(20.0))
+                .role(Role::Button)
+                .label("Save")
+                .description("Nothing to save yet"),
+            |_| {},
         );
     });
 }

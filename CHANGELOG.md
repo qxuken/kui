@@ -5,6 +5,40 @@ the workaround, the model field or the arithmetic the release made
 unnecessary. The second list is the point of the first — a library whose
 upgrades remove code from the apps on it is doing the job.
 
+## Unreleased
+
+### Added
+
+- **`description`: the sentence a reader says after the name** (backlog P1,
+  open since the 2026-09-03 architecture review). The accessible
+  description had one spelling — `tooltip` — which also hover-tracks the
+  node and floats the string under it, so a hint that should be *spoken and
+  never drawn* could not be said at all, and in C it could not be said even
+  with a tooltip until the shorthand shipped. `description` is now a row in
+  the shared prop schema like any other: `<box role="button" label="Save"
+  description="Nothing to save yet">`, `description` in a Lua table,
+  `KuiSpec.description` in C, `.description()` in Rust. `tooltip` is
+  unchanged and is still the shorthand for all three effects at once.
+  Being a schema row rather than a tenth hand-written composite is the
+  point of it: Lua looks it up by name, the JS encoder writes it by kind,
+  `npm run gen` put it in `jsx-runtime.d.ts` and `docs/props.md`, and the
+  parity test forced the `KuiSpec` field, its `include/kui.h` mirror and
+  its application in `spec_of` rather than a reviewer having to notice
+  they were missing. `KuiSpec` is host-allocated and read by the library,
+  so appending the field costs no ABI bump: `KUI_ABI_VERSION` stays at 7.
+  Two things worth knowing. `description` and `tooltip` write one slot —
+  in C the explicit field is applied second and wins; in the parsers the
+  later declaration wins, as with `center` and `mainAlign`. And a
+  description only reads on a node that reaches the access tree: an
+  unlabelled plain box is elided and takes its description with it, so put
+  it where the `role` or the `label` is. The corpus `tooltip` scene now
+  builds both nodes side by side in all four bindings.
+  **What you can delete:** the tooltip you did not want. A view that wanted
+  a reader to explain a disabled control, a format, or what a button is
+  about to do, and had to accept a floating hint over the pointer to get
+  it — or gave up and stuffed the sentence into `label`, which renames the
+  control instead of describing it.
+
 ## 0.1.0-alpha.7 (2026-09-06)
 
 **What breaks.** **A drag's `dx`/`dy` are measured from the press point

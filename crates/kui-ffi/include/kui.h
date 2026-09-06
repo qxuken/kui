@@ -539,6 +539,17 @@ typedef struct KuiSpec {
      * renames the control on every nudge. Copied while the node opens, and
      * read back as KuiAccessNode.value (KUI_ACCESS_HAS_VALUE). */
     KuiStr value_text;
+    /* The accessible description (empty = none): the extra sentence a
+     * reader says after the name, for what the name cannot say on its own -
+     * what a button will do, why a control is disabled, what format a field
+     * wants. `tooltip` above is the shorthand that also draws the string and
+     * hover-tracks the node; this is the description alone, for a hint that
+     * is spoken and never drawn. Both write the one slot and this one is
+     * applied second, so it wins over a `tooltip` on the same node. It reads
+     * only on a node that reaches the access tree - a role, a label, a
+     * control - since a plain box is elided and takes its description with
+     * it. Borrowed while the node opens. */
+    KuiStr description;
 } KuiSpec;
 
 /* Disclosure state (KuiSpec.expanded): the schema index plus one, so zero

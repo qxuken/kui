@@ -187,8 +187,7 @@ have the API behind it, and AccessKit's whole event surface is a tree diff.
 it). `required` / `invalid` and heading `level` (ADR 0001 follow-ups).
 Per-button `on_click` and middle-button routing (C2 left them "reach the
 core and route nowhere"). Physical key positions beyond what `60ca137`
-carried. A `description` `PROPS` row (P1's open half — the C tooltip shipped
-and the row did not).
+carried.
 
 **Parked on their own terms.** C12 (column wrapping), C13 (`space-between`
 and baseline), C14 (aspect ratio), C5(b) (core-side virtualisation), rounded
@@ -253,7 +252,7 @@ Sixty-three entries, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim.
 This index is here so an id resolves without opening that file: the open items
 above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.7" and
-the hygiene note cite C2, C5(b), P1, P3, R4 and R7, and code comments, ADRs and
+the hygiene note cite C2, C5(b), P3, R4 and R7, and code comments, ADRs and
 commit messages cite ids of their own. Sixty-one of these are simply closed;
 **C15** and **W2** appear in both files, whole there and trimmed to what is
 still open here. **C11** was a third, until its last step landed on 2026-09-06
@@ -294,7 +293,7 @@ move.
 
 **Binding parity** — P1–P9
 
-- `!` **P1** — [Add a `description` prop row](backlog/closed-2026-09.md#-p1--add-a-description-prop-row--partly-done-2026-09-03) — partly done (2026-09-03) — the `description` `PROPS` row is still unbuilt, and the entry says so
+- `!` **P1** — [Add a `description` prop row](backlog/closed-2026-09.md#-p1--add-a-description-prop-row--done-2026-09-06) — done (2026-09-06) — the C tooltip in 2026-09-03, the `PROPS` row itself three days later
 - `!` **P2** — [Fix the Lua float `self_at` docs mismatch](backlog/closed-2026-09.md#-p2--fix-the-lua-float-self_at-docs-mismatch--done-2026-09-03) — done (2026-09-03)
 - `~` **P3** — [Give Lua imperative focus and `is_pressed`](backlog/closed-2026-09.md#-p3--give-lua-imperative-focus-and-is_pressed--done-2026-09-04) — done (2026-09-04)
 - `.` **P4** — [Warn on unknown props](backlog/closed-2026-09.md#-p4--warn-on-unknown-props--done-2026-09-04) — done (2026-09-04)
