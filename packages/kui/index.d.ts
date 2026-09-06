@@ -226,10 +226,11 @@ export type CoreMsg =
   | AccessMsg;
 
 /** Assistive technology nudged a `slider` role. `tag` is the node's
- *  `onClick` payload (or its `onDrag` / `onKey` tag). Activation, focus,
- *  text and scrolling requests resolve in the core and arrive as the
- *  messages a pointer would have produced. */
-export interface AccessMsg {
+ *  `onClick` payload (or its `onDrag` / `onKey` tag), typed as the app's
+ *  own union like every other core message, so a handler reads it with no
+ *  cast. Activation, focus, text and scrolling requests resolve in the
+ *  core and arrive as the messages a pointer would have produced. */
+export interface AccessMsg<T = AppMsg> {
   kind: 'access';
   /** `increment` / `decrement` on a `slider` role; `setValue`,
    *  `replaceSelectedText` (with `text`) and `setTextSelection` (with
@@ -241,7 +242,7 @@ export interface AccessMsg {
    *  into their text. */
   anchor?: { line: number; offset: number };
   focus?: { line: number; offset: number };
-  tag?: unknown;
+  tag?: T;
 }
 
 /** A position in an editor's text: one of its `runs` and a character
@@ -401,6 +402,13 @@ export type WarningCode =
   /** An image with no `label`: assistive technology has nothing to say for it.
    *  Decorative images take `role="none"`. */
   | 'image-without-label'
+  /** A `slider` whose `valueNow` lies outside its own `valueMin` / `valueMax`,
+   *  or whose `valueMin` is above its `valueMax`. The row is advertised
+   *  verbatim, so a screen reader reads a value the range says is impossible;
+   *  the app that clamps in its own `update` keeps the range in two places with
+   *  nothing tying them, and this is the tie. Declare the range the value is
+   *  really held to, or clamp where the view declares it. */
+  | 'slider-value-out-of-range'
   /** A `line` declares `onClick`, `onDrag`, `onKey`, `onHover`, `hoverable` or
    *  `focusable`. A line takes no pointer input and emits no hit region — its
    *  bounding box is mostly not the stroke, and a shape-aware hit test is not

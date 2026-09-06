@@ -337,7 +337,7 @@ harness). ADR 0008's rule applies: a nudge announces the text, not the
 number. **Test:** the AX audit script asserts the string on the slider; the
 corpus pins the row across transports; `docs/props.md` regenerates.
 
-### `.` F9 — `AccessMsg` is the one core message without a type parameter
+### `.` F9 — `AccessMsg` is the one core message without a type parameter — **done (2026-09-06)**
 
 Evidence: pomodoro 2.2. `index.d.ts:176`: `interface AccessMsg { … tag?:
 unknown }` while `DragMsg<T = AppMsg>` and `KeyMsg<T>` carry the app's
@@ -349,7 +349,13 @@ second half of this entry — the `access()` doc saying the key is hex and
 naming the other spelling — closed with F5 (2026-09-06): the doc on the
 generated method names both, and the label spelling works.
 
-### `.` F10 — A slider's declared range is never checked against its value
+Done: `AccessMsg<T = AppMsg>` with `tag?: T`, the same shape as `DragMsg`
+and `KeyMsg`; `CoreMsg` picks up the default. `examples/node/counter.tsx`
+grew a `slider` for the count and an `access` arm in `update` that reads
+`by` off `msg.tag` with no cast — under `tag?: unknown` that arm did not
+compile. Same session as F10, which shares the slider.
+
+### `.` F10 — A slider's declared range is never checked against its value — **done (2026-09-06)**
 
 Evidence: pomodoro 2.3: `valueNow={999} valueMin={0} valueMax={10}` is
 advertised verbatim and warns nothing; the app clamps in its own `update`,
@@ -358,6 +364,14 @@ visible only to a screen-reader user. **Do:** `slider-value-out-of-range` in
 `diag.rs`'s tree walk (one more constant in S2's single list, checked beside
 `image-without-label`), also firing when `min > max`. **Test:** the diag
 tests gain the three cases.
+
+Done: `SLIDER_VALUE_OUT_OF_RANGE` in the `warnings!` block, so the TS
+union and `docs/props.md` came out of `npm run gen`; the check runs on
+every node the walk derives as a slider, before the name check, and
+compares only the rows declared (a slider with no `valueMin` has no floor
+to fall under). `slider_value_outside_its_range_warns` in
+`crates/kui-core/tests/access.rs` has below, above, inverted, an in-range
+node that stays silent, and a rangeless one.
 
 ### `~` F11 — `init` and `view` cannot reach the surface
 

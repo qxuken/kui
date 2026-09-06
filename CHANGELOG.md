@@ -130,6 +130,17 @@ bumped past alpha.6 should delete.
   `ambiguous-key` warning; a label nothing declared is an error naming
   both spellings, where `bad id "beta"` named neither.
 
+- **`slider-value-out-of-range`** (backlog F10, from the pomodoro field
+  report). A `slider` whose `valueNow` is outside its own `valueMin` /
+  `valueMax`, or whose `valueMin` is above its `valueMax`, was advertised
+  verbatim and warned nothing — the app that clamps in `update` keeps the
+  range in two places, and the drift is visible only to a screen-reader
+  user. Now the diagnostics walk compares the rows a slider declares
+  (only those: a slider with no `valueMin` has no floor) and reports the
+  node once, beside `image-without-label`. One more row in the single
+  warnings table, so the Node `WarningCode` union and `docs/props.md`
+  regenerated from it.
+
 ### Fixed
 
 - **A `transition` eases under `createApp`, so it is testable from Node**
@@ -190,6 +201,14 @@ bumped past alpha.6 should delete.
   A window that has not yet presented now asks again, one frame apart and at
   most sixty times; in practice a popup lands on the third try, about 50ms
   in. Visible on any second window, popup or not.
+
+- **`AccessMsg` takes the app's union** (backlog F9, pomodoro 2.2). It was
+  the one core message with `tag?: unknown` while `DragMsg<T = AppMsg>`
+  and `KeyMsg<T>` carried the app's messages, so handling a slider nudge
+  needed `p.tag as PomoMsg` in a library whose pitch is one union and no
+  casts. Now `AccessMsg<T = AppMsg>` with `tag?: T`; `CoreMsg` picks up
+  the default, and `examples/node/counter.tsx` reads a step off a nudge's
+  tag with no cast.
 
 ### Changed
 
