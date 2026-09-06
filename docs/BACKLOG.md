@@ -89,10 +89,14 @@ written:
 that half is the per-node logic the features added, not the struct. It wants
 its own profile now that the cache behaviour has changed — the shape of the
 answer is which of the added passes can be skipped wholesale with a tree-level
-flag, the way `any_exit` already skips the depart diff. Also still open: a CI
+flag, the way `any_exit` already skips the depart diff. Also still open: a
 threshold on `frame_10k_rects` and `frame_1k_typical`. The size test catches
 the specific mistake that caused this one; it does not catch a slow pass, and
-a threshold would.
+a threshold would. **Not in CI** — decided 2026-09-06: the docker runner is
+too weak, and a check that false-fails gets disabled. The guard is a local
+`scripts/bench-check.sh` that benches HEAD against the previous tag in a
+worktree (the method C15's bisect and the alpha.5-vs-alpha.6 measurement
+both used) and sits on the pre-tag run list.
 
 A note for whoever picks that up: `Quad` also grew, 92 → 124 bytes, and the
 display list is one per quad. It did not show up in either profile — emission
