@@ -1774,6 +1774,15 @@ export interface App<M, A = AppMsg | CoreMsg> extends Loop<M, A, Ctx> {
    *  and the app re-renders. This is the window's timer by hand — what makes
    *  a ticking app drivable by a test. */
   advance(ms: number): void;
+  /** Draws a frame, then `advance`s in frame steps (`stepMs`, default 16)
+   *  until `animating()` is false — the settled frame a capture or an
+   *  end-state assertion wants, by name. A frame that applies a change is
+   *  frame 0 of its transitions, so a `render()` straight after a dispatch
+   *  is the *start* of the motion; this runs it out. Returns the
+   *  milliseconds advanced, and stops at `maxMs` (default 10 000) with
+   *  `animating()` still true if something never settles — a looping
+   *  keyframe, say. */
+  runOut(maxMs?: number, stepMs?: number): number;
 }
 
 /** The loop `runWindowed` builds, handed to `setup`. It has no `advance`:

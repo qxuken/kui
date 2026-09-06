@@ -53,7 +53,9 @@ effect it performs. An app with a clock is no exception — Node's two drivers
 are one loop over an injected surface, so `tick` runs headless too and
 `app.advance(ms)` is the window's timer by hand: it fires every tick inside
 the span and moves the frame clock with them, which is how a countdown or a
-mid-flight transition gets stepped through in a test. Rust tests drive `Core` the same way
+mid-flight transition gets stepped through in a test — and `app.runOut()`
+advances until nothing animates, for a test that wants the settled frame
+rather than the first one. Rust tests drive `Core` the same way
 ([crates/kui-core/tests](crates/kui-core/tests)), and C runs the same API
 headless (`./examples/c/counter --headless`) — as does a C *extension* inside
 a Rust host (`cargo run -p kui-ffi --example c_panel -- --headless`, which

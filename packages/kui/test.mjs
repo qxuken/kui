@@ -1037,6 +1037,46 @@ test('setTime under a loop throws and names advance; a bare Ctx keeps it (F16)',
   assert.ok(barWidth(bare) > 20 && barWidth(bare) < 200, 'a bare Ctx eases under its own clock');
 });
 
+test('runOut advances until nothing animates and says how long it took (F22)', () => {
+  // Both alpha.7 reports captured a frame straight after a change and got
+  // frame 0 of every transition — panels fully transparent, labels
+  // mid-slide — then wrote the same `for (…animating()) advance(16)` loop.
+  const app = createApp(
+    {
+      init: { wide: false },
+      update: (m, msg) => (msg === 'go' ? { wide: true } : m),
+      view: (m) =>
+        box({ pad: 0 }, [
+          box({ transition: 200, width: m.wide ? 200 : 20, height: 10, bg: '#ffffff' }, [], 'bar'),
+        ]),
+    },
+    { startTime: 0, width: 320, height: 240 },
+  );
+  const barWidth = () => decodeQuads(app.ctx.quads()).find((q) => q.h === 10).w;
+  app.render();
+  assert.equal(app.runOut(), 0, 'nothing to run out on a still frame');
+  app.dispatch('go');
+  // No render in between: runOut draws the frame that applies the change
+  // itself, so a stale `animating()` cannot make it return early.
+  const ms = app.runOut();
+  assert.equal(app.ctx.animating(), false);
+  assert.equal(barWidth(), 200, 'the settled frame');
+  assert.ok(ms >= 200 && ms < 400, `ran the 200 ms transition out in ${ms} ms`);
+  // A cap: something that never settles hands control back with the truth.
+  const looping = createApp(
+    {
+      init: {},
+      view: () =>
+        box({ pad: 0 }, [
+          box({ width: 20, height: 10, bg: '#ffffff', transition: 100, keyframes: [{ opacity: 0 }, { opacity: 1 }] }, [], 'k'),
+        ]),
+    },
+    { startTime: 0, width: 320, height: 240 },
+  );
+  assert.equal(looping.runOut(160), 160);
+  assert.equal(looping.ctx.animating(), true);
+});
+
 test('render and an event-driven frame share the clock advance moves (F1)', () => {
   // The mind map's repro (`playground/kui/mind-maps/repro/transition-advance.tsx`):
   // the loop used to set the frame clock only inside `advance`, so a frame

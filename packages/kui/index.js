@@ -238,6 +238,20 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
       draw();
       app.settle();
     },
+    /** Draws a frame, then advances the clock in frame steps until nothing
+     *  is animating — the settled frame a capture or an end-state assertion
+     *  wants, by name rather than by the loop both alpha.7 field reports
+     *  wrote (backlog F22). Returns the milliseconds advanced; stops at
+     *  `maxMs` with `animating()` still true if something never settles. */
+    runOut(maxMs = 10_000, stepMs = 16) {
+      draw();
+      let elapsed = 0;
+      while (surface.animating() && elapsed < maxMs) {
+        app.advance(stepMs);
+        elapsed += stepMs;
+      }
+      return elapsed;
+    },
     click(x, y, clicks = 1) {
       const mouse = must('mouse');
       must('cursor')(x, y);

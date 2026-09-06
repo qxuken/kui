@@ -66,6 +66,21 @@ it says so. See `### Changed` — the two alpha.7 field reports are why.
   arrive any more. And the toggle itself, if the flag was one: assignment
   is enough now.
 
+- **`app.runOut()`: the settled frame, by name** (backlog F22, from both
+  alpha.7 field reports). Since the loop owns the clock, the frame that
+  applies a change is frame 0 of its transitions, and a capture taken
+  straight after a dispatch shows exactly that — the mind map's preview
+  rendered every overlay panel fully transparent with its labels
+  mid-slide, and stayed green, because the access tree was complete and
+  correctly named while only the paint was gone. Both apps then wrote the
+  same loop, `for (let i = 0; i < 40 && app.ctx.animating(); i += 1)
+  app.advance(16)`. `runOut(maxMs?, stepMs?)` is that loop: it draws once
+  so a pending change is frame 0 rather than a stale `animating()`, then
+  advances in frame steps until nothing moves, returns the milliseconds it
+  took, and stops at the cap with `animating()` still true if something
+  never settles — a looping keyframe. Headless only, like `advance`.
+  **What you can delete:** the loop.
+
 - **`win.quads()`: the display list a real window drew** (backlog F19,
   from the pomodoro's report). Headless coverage was the whole of the
   app's coverage — "the window path has none" — and the ask was small:
