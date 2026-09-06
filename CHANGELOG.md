@@ -7,7 +7,55 @@ upgrades remove code from the apps on it is doing the job.
 
 ## Unreleased
 
+**What breaks.** **A press that dismisses a popup no longer reaches the
+window it landed in.** It reports `{kind:"dismiss", reason:"outside"}` as
+before and then stops there, and its release stops with it — which is what
+every native menu does, and what an in-window modal already did by accident
+(everything outside a modal emits no hit region, so the outside press lands
+on nothing). A popup's owner is live, so there the press used to dismiss
+*and* act. Only non-activating popups are affected: an `activates: true`
+panel keeps the pass-through, since someone working in a panel beside the
+app expects a click in the app to act. The `### Added` entry below is why
+it had to change — with the press passed through, a field that opens on
+mouse-down would dismiss and reopen its own menu in one gesture.
+
 ### Added
+
+- **Press the field, drag into the menu, release on an item** — the native
+  select gesture, in one gesture with no second click
+  (`docs/adr/0009-press-drag-release-into-a-popup.md`, backlog W2). It could
+  not be built by an app, and the reason is measurable: the OS gives a
+  captured drag to the window that received the mouse-down, so a press on
+  the field and a release over the popup deliver **nothing** to the popup
+  and everything to the owner, in coordinates that mean nothing to it —
+  `93,-1`, `95,-5`, `97,-10` walking off the top edge. That is what
+  `NSMenu`'s tracking loop, Win32's menu message loop and a GTK pointer grab
+  exist to do, and none of them is reachable through winit. The runner does
+  it instead: a non-activating popup that opens while the primary button is
+  down **joins that press**, the owner's moves are translated through the
+  screen into the popup's own coordinates and fed to its core as ordinary
+  `CursorMoved`s, and the release is classified by where it lands — over the
+  popup, the press-and-release it never saw are synthesised into it; on the
+  anchor, nothing, so the two-click interaction stays whole; anywhere else,
+  `dismiss`. The mapping is in physical pixels, so it holds on a mixed-DPI
+  desktop where two windows do not share a logical origin.
+  **Nothing new to declare.** A popup's core is never told it was
+  retargeted, there is no `onPress` row, and an app opens on `onDrag`'s
+  `start` phase — a press by another name, with a capture and an `end` a
+  bare press event would not have. The protocol is *everything opens, only a
+  dismissal or a choice closes*: `start` sets `open`, `click` sets it too
+  (that is the keyboard, assistive technology, and a stationary release),
+  `dismiss` and choosing clear it. Nothing toggles, so nothing has to know
+  which press it is answering — which is what the consumed press above buys.
+  `examples/rust/popup.rs` is the whole of it: `on_drag`, `on_click` and
+  `cursor: "pointer"` over the `grab` a draggable node would derive.
+  **What you can delete:** the guard against the click you were dismissed
+  by. A view that answered `{kind:"dismiss"}` by clearing a flag and then
+  had to survive the press arriving in the owner a moment later — the
+  "was this the press that closed me?" timestamp, the one-frame latch, the
+  re-entrancy check around a toggle — can drop it: that press does not
+  arrive any more. And the toggle itself, if the flag was one: assignment
+  is enough now.
 
 - **`description`: the sentence a reader says after the name** (backlog P1,
   open since the 2026-09-03 architecture review). The accessible

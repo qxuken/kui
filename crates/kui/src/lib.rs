@@ -18,7 +18,7 @@ pub use kui_core::*;
 
 mod access_bridge;
 pub mod audio;
-/// ADR 0009's arithmetic, ahead of the driver half that will call it.
+/// ADR 0009's arithmetic: where a pointer in one window is in another.
 mod retarget;
 #[cfg(target_os = "windows")]
 mod windows_nc;
@@ -184,6 +184,9 @@ impl Launcher {
             clipboard: arboard::Clipboard::new().ok(),
             audio: audio::Audio::new(),
             exit_requested: false,
+            primary_down: None,
+            armed: Vec::new(),
+            swallowed_press: None,
             proxy: None,
         }
     }
@@ -411,6 +414,13 @@ struct Pane {
     /// Whether it took OS focus when it opened. False is the popup default
     /// and what makes the borrowing necessary.
     activates: bool,
+    /// A popup's anchor as its `Open` carried it, in the **owner's** logical
+    /// coordinates: the rect an `onLayout` node reported. `popup_position`
+    /// turned it into a screen position once; ADR 0009 decision 4 needs it
+    /// again, to tell a release on the field that opened the menu from a
+    /// release on nothing. Zero-sized for a window that is not a popup, and
+    /// so a rect nothing lands in.
+    anchor: Rect,
     /// A non-activating popup only: whether the keyboard has already been
     /// asked back for since this window last took it. One request per
     /// acquisition — the ask is advisory, so repeating it every batch until
@@ -587,6 +597,21 @@ impl Pane {
         )
     }
 
+    /// This window as retargeting sees it (`retarget::Surface`): where its
+    /// client area sits on the screen in **physical** pixels, its scale, and
+    /// its logical size. `None` when the platform will not say where the
+    /// window is — the same thing `popup_position` gives up on, and the same
+    /// answer: leave the pointer where it was.
+    fn surface(&self) -> Option<retarget::Surface> {
+        let origin = self.window.inner_position().ok()?;
+        let (size, scale) = self.size();
+        Some(retarget::Surface {
+            origin: (origin.x as f64, origin.y as f64),
+            scale: scale as f64,
+            size,
+        })
+    }
+
     /// Undecorated windows get no OS resize borders; the runner synthesizes
     /// them from a band inside the window edges (macOS custom chrome keeps
     /// native edge resizing, and on Windows the non-client subclass answers
@@ -680,6 +705,20 @@ impl Pane {
     }
 }
 
+/// A popup this press is about (`docs/adr/0009-press-drag-release-into-a-popup.md`,
+/// decision 1): one that opened while the primary button was down, or the
+/// one the button went down inside. For the rest of that press the owner's
+/// moves are retargeted into it and its release is classified against it.
+struct Armed {
+    /// The popup. Its owner and its anchor are the pane's, so nothing here
+    /// can go stale against the window it names.
+    id: WindowId,
+    /// Whether the last retargeted move landed inside this popup, so that
+    /// dragging off the list costs one `CursorLeft` and staying off it
+    /// costs nothing.
+    inside: bool,
+}
+
 struct Shell<A: App> {
     title: String,
     chrome: Chrome,
@@ -713,6 +752,21 @@ struct Shell<A: App> {
     /// Set by `WindowCommand::Close` on the main window; honored at the end
     /// of the event.
     exit_requested: bool,
+    /// Which pane the primary button is down in, if any. ADR 0009 arms a
+    /// popup against it: a non-activating popup that opens while this is
+    /// set joins that press, which is the observable form of "the drag
+    /// whose press opened the popup" and needs no geometry.
+    primary_down: Option<WindowId>,
+    /// The popups armed into the press `primary_down` names, in opening
+    /// order — where two overlap the last is on top. Emptied by the release
+    /// that classifies it, and by `close_pane` for a window that goes
+    /// first.
+    armed: Vec<Armed>,
+    /// A primary press that dismissed a non-activating popup and was
+    /// consumed rather than dispatched (ADR 0009 decision 5), by the pane
+    /// it landed in. Its release is swallowed with it: the core never saw
+    /// the `down`, so nothing should see the `up`.
+    swallowed_press: Option<WindowId>,
     /// Hands AccessKit a way back into the loop; set before the window
     /// exists.
     proxy: Option<EventLoopProxy<access_bridge::UserEvent>>,
@@ -769,12 +823,17 @@ impl<A: App> Shell<A> {
     /// keyboard, should ask to go away: all of them except one the press
     /// landed in. A press in the owner counts — the owner is "outside" the
     /// popup, which is the whole distinction a separate surface makes.
-    fn popups_outside(&self, i: usize) -> Vec<WindowId> {
+    ///
+    /// Each is paired with whether it took OS focus when it opened, because
+    /// ADR 0009 decision 5 treats the two kinds differently: the press that
+    /// dismisses a **non-activating** popup is consumed, while an
+    /// activating one (a tear-off panel) keeps the pass-through it has.
+    fn popups_outside(&self, i: usize) -> Vec<(WindowId, bool)> {
         self.panes
             .iter()
             .enumerate()
             .filter(|(j, p)| *j != i && p.kind == WindowKind::Popup)
-            .map(|(_, p)| p.id)
+            .map(|(_, p)| (p.id, p.activates))
             .collect()
     }
 
@@ -898,6 +957,168 @@ impl<A: App> Shell<A> {
         self.panes[i].core.dismiss_window(id, reason);
         let events = self.panes[i].core.take_pending_events();
         self.route_events(events);
+    }
+
+    /// Feeds a move the pressed pane received to every popup armed into
+    /// that press, in that popup's own coordinates (ADR 0009 decision 2).
+    ///
+    /// The OS gives a captured drag to the window of the mouse-down, so a
+    /// press on a combobox field and a drag over its menu arrive here, at
+    /// the owner, and the menu is sent nothing at all. This is the driver
+    /// doing what `NSMenu`'s tracking loop, Win32's menu message loop and a
+    /// GTK pointer grab do — moving the events, since it cannot move the
+    /// drag — and the popup's core is never told: hover, `hover_bg`,
+    /// `onHover` and the popup's own drag state all follow from an ordinary
+    /// `CursorMoved`. Dragging off the list costs one `CursorLeft` to the
+    /// popup left behind, so a row stops highlighting the way a native
+    /// menu's does, and staying off it costs nothing.
+    ///
+    /// The owner keeps every move it would have had (decision 3): nothing
+    /// is withheld from it here and nothing is added to it.
+    fn retarget_move(&mut self, event_loop: &ActiveEventLoop, from: WindowId, p: Vec2) {
+        if self.primary_down != Some(from) || self.armed.is_empty() {
+            return;
+        }
+        let Some(owner) = self.pane_of(from).and_then(|i| self.panes[i].surface()) else {
+            return;
+        };
+        // By id rather than by index: a popup that answers one of these
+        // moves by closing takes its own entry out of `armed` underneath us.
+        let armed: Vec<WindowId> = self.armed.iter().map(|a| a.id).collect();
+        for id in armed {
+            // The pane the press is in is armed only so its own release is
+            // classified (decision 4's last paragraph); it already has
+            // these moves first-hand.
+            if id == from {
+                continue;
+            }
+            let Some(k) = self.armed.iter().position(|a| a.id == id) else {
+                continue;
+            };
+            let Some(j) = self.pane_of(id) else { continue };
+            let Some(popup) = self.panes[j].surface() else {
+                continue;
+            };
+            let at = retarget::retarget(&owner, p, &popup);
+            let was = std::mem::replace(&mut self.armed[k].inside, at.is_some());
+            match at {
+                Some(q) => {
+                    self.panes[j].cursor = q;
+                    self.dispatch(event_loop, j, InputEvent::CursorMoved(q));
+                }
+                None if was => self.dispatch(event_loop, j, InputEvent::CursorLeft),
+                None => {}
+            }
+        }
+    }
+
+    /// Classifies the primary release that ends an armed press (ADR 0009
+    /// decision 4), and disarms it whatever the answer.
+    ///
+    /// **Over an armed popup**, the driver synthesises the press-and-release
+    /// that popup never saw, straight into its core rather than back through
+    /// the `MouseInput` arm below — so the press-outside rule never sees it
+    /// and cannot dismiss the window it is choosing from. The popup's core
+    /// then does everything a real press-and-release there does: the focus
+    /// move, the pressed styling, the click sound, and the
+    /// `pressed == hovered` check that makes it a `click` at all. Neither
+    /// input event carries a point, so the core presses wherever its cursor
+    /// is; the retargeted moves have already put it there, and the
+    /// `CursorMoved` below is for the release that arrives without one.
+    ///
+    /// **Inside the anchor**, nothing: the press opened the menu and the
+    /// release on the field keeps it, which is how this gesture degrades
+    /// into the two-click interaction that was here first.
+    ///
+    /// **Anywhere else**, every armed popup is asked to go away, because a
+    /// native menu closes when the pointer is dragged off it and released.
+    /// That is also the measured case in backlog W2 — pressed in the popup
+    /// and dragged off its top edge — where the pane the press is in is the
+    /// armed popup itself: a release over it is its own release and gets no
+    /// synthetic pair, and a release over the field it hangs under is that
+    /// popup's own anchor, mapped into the window the press is in, and
+    /// keeps the menu.
+    fn classify_release(&mut self, event_loop: &ActiveEventLoop, from: WindowId, p: Vec2) {
+        let armed = std::mem::take(&mut self.armed);
+        if armed.is_empty() {
+            return;
+        }
+        let Some(pressed) = self.pane_of(from).and_then(|i| self.panes[i].surface()) else {
+            return;
+        };
+        // A popup whose window will not say where it is cannot be landed
+        // on; an empty surface contains nothing, which is that answer.
+        let nowhere = retarget::Surface {
+            origin: (0.0, 0.0),
+            scale: 1.0,
+            size: Size::ZERO,
+        };
+        let surfaces: Vec<retarget::Surface> = armed
+            .iter()
+            .map(|a| {
+                self.pane_of(a.id)
+                    .and_then(|j| self.panes[j].surface())
+                    .unwrap_or(nowhere)
+            })
+            .collect();
+        // The last armed popup's anchor, in the coordinates of the window
+        // the press is in. Usually it is already in them — the popup was
+        // opened against a field in that very window — but for a press that
+        // began *inside* the popup the field is a rect of the window next
+        // door, and it maps here the way a point does, through the screen.
+        // That is the measured case in backlog W2: dragged off the popup's
+        // top edge, the pointer is over the field, and releasing there
+        // keeps the menu.
+        let anchor = armed
+            .iter()
+            .rev()
+            .find_map(|a| {
+                let j = self.pane_of(a.id)?;
+                let (rect, owner) = (self.panes[j].anchor, self.panes[j].owner);
+                if owner == from {
+                    return Some(rect);
+                }
+                let space = self.pane_of(owner).and_then(|k| self.panes[k].surface())?;
+                let tl = pressed.to_local(space.to_screen(Vec2::new(rect.x, rect.y)));
+                let br =
+                    pressed.to_local(space.to_screen(Vec2::new(rect.x + rect.w, rect.y + rect.h)));
+                Some(Rect::new(tl.x, tl.y, br.x - tl.x, br.y - tl.y))
+            })
+            .unwrap_or(Rect::new(0.0, 0.0, 0.0, 0.0));
+        match retarget::landing(&pressed, p, anchor, &surfaces) {
+            retarget::Landing::Popup { index, at } => {
+                let id = armed[index].id;
+                if id == from {
+                    return;
+                }
+                if let Some(j) = self.pane_of(id)
+                    && self.panes[j].cursor != at
+                {
+                    self.panes[j].cursor = at;
+                    self.dispatch(event_loop, j, InputEvent::CursorMoved(at));
+                }
+                for ev in [
+                    InputEvent::MouseDown {
+                        button: MouseButton::Primary,
+                        clicks: 1,
+                    },
+                    InputEvent::MouseUp {
+                        button: MouseButton::Primary,
+                    },
+                ] {
+                    // Re-found each time: the press can close the window the
+                    // release is for, and then there is nothing to release.
+                    let Some(j) = self.pane_of(id) else { return };
+                    self.dispatch(event_loop, j, ev);
+                }
+            }
+            retarget::Landing::Anchor => {}
+            retarget::Landing::Outside => {
+                for a in &armed {
+                    self.dismiss(a.id, DismissReason::Outside);
+                }
+            }
+        }
     }
 
     fn dispatch(&mut self, event_loop: &ActiveEventLoop, i: usize, ev: InputEvent) {
@@ -1059,6 +1280,19 @@ impl<A: App> Shell<A> {
         core.set_subpixel_text(self.subpixel);
         core.env.window.id = id;
         self.push_pane(event_loop, id, config, owner, core, window, renderer);
+        // ADR 0009 decision 1: a non-activating popup that opens while the
+        // primary button is down **joins that press**. Evaluated once, here,
+        // with no geometry — and it is tight because of the press-outside
+        // rule, which guarantees that a press in the owner while a popup is
+        // up dismisses that popup: a popup opening under a held button was
+        // opened by that button, unless the app declined a dismissal, in
+        // which case it is still the popup the user is pressing towards. A
+        // second popup opening during the same press (a submenu the app
+        // opened from a retargeted hover) joins the same press, whoever owns
+        // it, and is on top of the ones before it.
+        if config.kind == WindowKind::Popup && !config.activates && self.primary_down.is_some() {
+            self.armed.push(Armed { id, inside: false });
+        }
         if !config.activates {
             // Hand the keyboard back before the platform has even said it
             // took it. Ordering a window front is enough to make it key on
@@ -1152,6 +1386,7 @@ impl<A: App> Shell<A> {
             kind: config.kind,
             owner,
             activates: config.activates,
+            anchor: config.anchor,
             core,
             window,
             renderer,
@@ -1215,6 +1450,11 @@ impl<A: App> Shell<A> {
     /// pane goes.
     fn close_pane(&mut self, event_loop: &ActiveEventLoop, id: WindowId) {
         let Some(i) = self.pane_of(id) else { return };
+        // Whatever this press was about, it is not about this window any
+        // more (ADR 0009): a popup chosen from closes here, and its release
+        // must not be classified against a surface that has stopped
+        // existing.
+        self.armed.retain(|a| a.id != id);
         // A non-activating popup that holds the keyboard is about to stop
         // existing, so the keyboard is going *somewhere*: say where, rather
         // than letting the owner read as unfocused until the platform gets
@@ -1721,7 +1961,11 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                     pane.resize_edge = pane.resize_edge_at(p);
                 }
                 pane.cursor = p;
+                let from = pane.id;
                 self.dispatch(event_loop, i, InputEvent::CursorMoved(p));
+                // And then, if this pane is holding a press that a popup
+                // joined, the same move again in that popup's coordinates.
+                self.retarget_move(event_loop, from, p);
             }
             WindowEvent::CursorLeft { .. } => self.dispatch(event_loop, i, InputEvent::CursorLeft),
             // Recorded, not acted on: what a view reads is derived from
@@ -1778,17 +2022,88 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                     }
                 };
                 let primary = button == MouseButton::Primary;
+                let here = self.panes[i].id;
+                // Which pane holds a primary press, for ADR 0009's arming.
+                // Set for a consumed press too: the button is down whatever
+                // the core was told, and the release below clears it.
+                if primary {
+                    self.primary_down = (state == ElementState::Pressed).then_some(here);
+                    if state == ElementState::Pressed {
+                        // A consumed press whose release never arrived — the
+                        // window lost the keyboard mid-gesture, say — must
+                        // not swallow the next one instead.
+                        self.swallowed_press = None;
+                    }
+                }
                 // A press anywhere but inside a popup is "outside" it —
                 // the owner's own window included, which is exactly the
                 // line a separate surface draws. Reported before the press
                 // is dispatched, so an app that stops declaring the popup
                 // on the dismissal still sees the click it was dismissed
                 // by, the way a modal's dismissal works (ADR 0003).
+                //
+                // And then a primary press that dismissed a
+                // **non-activating** popup is **consumed** — not dispatched
+                // to the window it landed in, and its release swallowed with
+                // it (ADR 0009 decision 5). The pass-through this replaces
+                // claimed to mirror ADR 0003 and had it backwards: under an
+                // in-window modal everything outside emits no hit region, so
+                // the outside press dismisses and lands on nothing, while a
+                // popup's owner is live (ADR 0004 decision 10) and the press
+                // dismisses *and* acts. Invisible with click-to-open;
+                // decisive with open-on-press, where a press on the open
+                // field would otherwise dismiss and reopen in one gesture,
+                // and no ordering of the two events lets the app tell that
+                // press from the first. An **activating** popup — a tear-off
+                // panel — keeps the pass-through, since someone working in a
+                // panel beside the app expects a click in the app to act.
                 if state == ElementState::Pressed {
-                    for id in self.popups_outside(i) {
+                    let mut consumed = false;
+                    for (id, activates) in self.popups_outside(i) {
                         self.dismiss(id, DismissReason::Outside);
+                        consumed |= primary && !activates;
+                    }
+                    if consumed {
+                        self.swallowed_press = Some(here);
+                        for p in &self.panes {
+                            p.window.request_redraw();
+                        }
+                        return;
                     }
                 }
+                // A press inside a non-activating popup arms that popup for
+                // its own release (ADR 0009 decision 4's last paragraph):
+                // the OS keeps the drag here whatever it wanders over, so a
+                // drag off the top edge and a release on the desktop has to
+                // be classified rather than ignored — the measured case in
+                // backlog W2. It gets no retargeted moves, having the real
+                // ones already.
+                if primary
+                    && state == ElementState::Pressed
+                    && self.panes[i].kind == WindowKind::Popup
+                    && !self.panes[i].activates
+                    && !self.armed.iter().any(|a| a.id == here)
+                {
+                    self.armed.push(Armed {
+                        id: here,
+                        inside: true,
+                    });
+                }
+                if state == ElementState::Released && primary {
+                    // The release of a press the driver ate goes with it:
+                    // the core never saw the `down`, so nothing should see
+                    // this `up`.
+                    if self.swallowed_press == Some(here) {
+                        self.swallowed_press = None;
+                        self.primary_down = None;
+                        return;
+                    }
+                    let at = self.panes[i].cursor;
+                    self.classify_release(event_loop, here, at);
+                }
+                // The frame the classification ran may have closed a window
+                // and moved this one down the list.
+                let Some(i) = self.pane_of(here) else { return };
                 let pane = &mut self.panes[i];
                 // A press on the synthesized resize band starts an OS resize
                 // instead of reaching the UI.

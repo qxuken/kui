@@ -10,12 +10,13 @@ than guessed at.
 outcome written on top of the original finding, and the tables, profiles and
 evidence it argued from — are in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md); forty-six moved there
-on 2026-09-06 and the remaining ten field-report entries followed the same
-day, before the alpha.7 tag. The index at the bottom of this file names
-every one of them, so an id cited by an open item, a code comment or a commit
-message can be resolved without opening the archive. Nothing was renumbered in
-either move, and nothing ever is. What is left here is five headings — C12,
-C13, C14 and the remainders of C15 and W2 — plus what comes next.
+on 2026-09-06, the remaining ten field-report entries followed the same day
+before the alpha.7 tag, and W2 went whole on 2026-09-07 when ADR 0009's driver
+half was built. The index at the bottom of this file names every one of them,
+so an id cited by an open item, a code comment or a commit message can be
+resolved without opening the archive. Nothing was renumbered in any of those
+moves, and nothing ever is. What is left here is four headings — C12, C13, C14
+and the remainder of C15 — plus what comes next.
 
 Ordered by area, not by priority. What to do next is under "After alpha.7".
 
@@ -169,11 +170,6 @@ It wants a profile, and the shape of the answer is which added pass can be
 skipped wholesale with a tree-level flag, the way `any_exit` already skips
 the depart diff.
 
-**Build next.** W2's driver half, below — the one item with a written ADR
-and no code. It is the only thing on this file that a user can hit today
-(press-drag-release into a popup does nothing), and every part of it is in
-`crates/kui/src/lib.rs`.
-
 **Design, wanting an ADR.** The exit animations' `animating()` policy,
 revisited against a real view that removes many nodes (ADR 0005 left it
 opt-in + a 512-node budget with no duration cap). Rounded hit-testing, which
@@ -194,9 +190,10 @@ and baseline), C14 (aspect ratio), C5(b) (core-side virtualisation), rounded
 clip nesting. Each says "wait for a view that wants it", and each should keep
 saying it until one does.
 
-**Hygiene.** Archiving is done twice over: the forty-six of 2026-09-06 and
-the ten field-report entries that followed them before this tag, so all of
-F1–F15 sit together and this file is five open headings and this section.
+**Hygiene.** Archiving is done three times over: the forty-six of
+2026-09-06, the ten field-report entries that followed them before the tag —
+so all of F1–F15 sit together — and W2 whole on 2026-09-07, once its driver
+half was built. This file is four open headings and this section.
 Still open, both waiting on something outside the repo: enable `SMOKE_MACOS`
 / `SMOKE_WINDOWS` the day a runner exists (P8) — which has two jobs waiting
 for it now, F13's launch probe beside the AX audit, sharing the one
@@ -212,37 +209,11 @@ release, which no headless assertion reads:
   cards and connectors together, not jump into place on release. That is
   ~~F15~~, checked for alpha.7 with `screencapture` inside a synthetic drag
   (`kui-macos-window-quirks` has the recipe); by hand, a slow drag is enough.
-- The same gesture into a popup, once W2's driver half exists: press in the
-  owner, drag into the popup, release on an item. ADR 0009's consequences
-  name the four `CGEvent` checks. There is nothing to run until it is built.
-
----
-
-## From building C11 step 4 (2026-09-06)
-
-Two findings, neither about the popup itself. Both are decided and in the
-archive; this is what W2 left to build.
-
-### `~` W2 — Press-drag-release does not reach a popup, and only the driver can make it — **accepted, unbuilt (2026-09-06)**
-
-The whole entry, with its measurement and the outcome on top, is in
-[`backlog/closed-2026-09.md`](backlog/closed-2026-09.md#-w2--press-drag-release-does-not-reach-a-popup-and-only-the-driver-can-make-it--accepted-unbuilt-2026-09-06).
-`docs/adr/0009-press-drag-release-into-a-popup.md` settled the four
-questions it raised; what shipped with it is the arithmetic only
-(`crates/kui/src/retarget.rs`, decision 7, with its tests). **Still to
-build**, all in `crates/kui/src/lib.rs` and none of it headlessly testable:
-
-- `Shell` arms a non-activating popup that opens while the owner's primary
-  button is down (decision 1), retargets the owner's `CursorMoved`s into it
-  (decision 2), classifies the release with `retarget::landing` — synthesise
-  the press-and-release, keep the menu, or dismiss (decision 4) — and
-  disarms in `close_pane`.
-- The press that dismisses a non-activating popup is consumed rather than
-  dispatched (decision 5). This is the one visible change for existing
-  apps, and the release that carries it says so under "what you can delete".
-- `examples/rust/popup.rs` opens on `on_drag`'s `start` with
-  `cursor: "pointer"`, handlers set rather than toggle (decision 6), and the
-  four `CGEvent` checks the ADR's consequences list are run on macOS.
+- The same gesture into a popup: press in the owner, drag into the popup,
+  release on an item. ADR 0009's consequences name four `CGEvent` checks and
+  W2's archived entry records what each one showed when the driver half was
+  built (2026-09-07). Windows adds a fifth nothing has run — mixed DPI across
+  two monitors, which is what the arithmetic is in physical pixels for.
 
 ---
 
@@ -253,10 +224,11 @@ Sixty-three entries, all in
 This index is here so an id resolves without opening that file: the open items
 above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.7" and
 the hygiene note cite C2, C5(b), P3, R4 and R7, and code comments, ADRs and
-commit messages cite ids of their own. Sixty-one of these are simply closed;
-**C15** and **W2** appear in both files, whole there and trimmed to what is
-still open here. **C11** was a third, until its last step landed on 2026-09-06
-and took the whole entry to the archive.
+commit messages cite ids of their own. Sixty-two of these are simply closed;
+**C15** alone appears in both files, whole there and trimmed to what is still
+open here. **C11** and **W2** were the other two, until their remainders landed
+— C11's last step on 2026-09-06, ADR 0009's driver half on 2026-09-07 — and
+took each whole entry to the archive.
 
 The archive also holds four sections that are records rather than work: the
 suggested sequence as it stood on 2026-09-05, "After alpha.6" as it stood on
@@ -289,7 +261,7 @@ move.
 **From building C11 step 4 (2026-09-06)** — W1
 
 - `!` **W1** — [A `Chrome::Borderless` window is dead to the mouse on macOS](backlog/closed-2026-09.md#-w1--a-chromeborderless-window-is-dead-to-the-mouse-on-macos--done-2026-09-06) — done (2026-09-06)
-- `~` **W2** — [Press-drag-release does not reach a popup, and only the driver can make it](backlog/closed-2026-09.md#-w2--press-drag-release-does-not-reach-a-popup-and-only-the-driver-can-make-it--accepted-unbuilt-2026-09-06) — accepted, unbuilt (2026-09-06) — ADR 0009; the arithmetic shipped, the driver half is the entry above
+- `~` **W2** — [Press-drag-release does not reach a popup, and only the driver can make it](backlog/closed-2026-09.md#-w2--press-drag-release-does-not-reach-a-popup-and-only-the-driver-can-make-it--done-2026-09-07) — done (2026-09-07) — ADR 0009, accepted and built; a press that dismisses a popup is consumed now, and the CHANGELOG says so
 
 **Binding parity** — P1–P9
 
