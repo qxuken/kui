@@ -202,7 +202,8 @@ pub extern "C" fn kui_open_draggable(
 /// NULL `on_drag` here does NOT make the node draggable, unlike
 /// `kui_open_draggable`). A non-NULL `on_key` makes the node a key sink;
 /// give it focus with `kui_set_key_focus` and presses arrive as
-/// `{kind="key", code, ctrl, alt, shift, super, text, repeat, tag}`.
+/// `{kind="key", phase="down", code, ctrl, alt, shift, super, text, repeat,
+/// tag}` — releases too, with `phase="up"`, when the spec sets `key_up`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_open_with(
     ptr: *mut KuiCtx,

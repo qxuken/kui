@@ -482,6 +482,13 @@ impl Core {
         else {
             return false;
         };
+        // A sink hears releases only by asking (`key_up`): press-only is
+        // the keymap case, and a keymap handed both halves runs every
+        // binding twice. The key is still tracked as held either way, so
+        // a sink that opts in mid-hold hears the release it is owed.
+        if phase == KeyPhase::Up && !h.key_up {
+            return false;
+        }
         let mut payload = kp.to_value(phase);
         if let Some(tag) = &h.key_sink
             && *tag != Value::Null

@@ -294,15 +294,48 @@ test('a null tag declares the behaviour without a tag on the event', () => {
   assert.ok(!('tag' in p), 'no tag field');
 });
 
-// Held keys: a press and its release are one payload shape apart by `phase`,
-// so a game binds one handler. The release carries no `text` and never
-// repeats, and a key held while focus moves comes up on the sink that took
-// the press — nothing stays stuck down.
-test('a key sink hears both halves of a held key', () => {
+// A keymap is the common sink, and it hears presses only: Space starts the
+// timer once, not once on the way down and again on the way up. This is the
+// alpha.4 shape of a key sink — an app that never asked for releases keeps
+// toggling once after the bump (backlog F3).
+test('a sink without keyUp hears a press once, release and all', () => {
+  const build = () => box({ onKey: null, keyFocus: true, width: 100, height: 50 }, [], 'timer');
+  const { ctx } = run(build);
+  let running = false;
+  const keymap = { space: () => (running = !running) };
+  const pump = () => {
+    for (const { payload: p } of ctx.pollEvents()) {
+      if (p.kind === 'key' && !p.repeat) keymap[p.code]?.();
+    }
+  };
+  ctx.keyDown('space');
+  ctx.keyUp('space');
+  pump();
+  assert.equal(running, true, 'one toggle for a press and its release');
+  // A repeat is still a press, and the guard against it is the app's.
+  ctx.keyDown('space', {}, true);
+  ctx.keyUp('space');
+  pump();
+  assert.equal(running, true, 'a repeat is filtered by `repeat`, not by a phase');
+  // Focus leaving with a key held owes no release to a sink that never
+  // asked for one — nothing arrives, and the stray physical release is
+  // resolved silently.
+  ctx.keyDown('m');
+  ctx.pollEvents();
+  ctx.blur();
+  ctx.keyUp('m');
+  assert.deepEqual(ctx.pollEvents(), [], 'no release, synthetic or real');
+});
+
+// Held keys: with `keyUp`, a press and its release are one payload shape
+// apart by `phase`, so a game binds one handler. The release carries no
+// `text` and never repeats, and a key held while focus moves comes up on
+// the sink that took the press — nothing stays stuck down.
+test('a key sink that asks for releases hears both halves of a held key', () => {
   const build = () =>
     box({}, [
-      box({ onKey: { pane: 0 }, keyFocus: true, width: 100, height: 50 }, [], 'a'),
-      box({ onKey: { pane: 1 }, width: 100, height: 50 }, [], 'b'),
+      box({ onKey: { pane: 0 }, keyUp: true, keyFocus: true, width: 100, height: 50 }, [], 'a'),
+      box({ onKey: { pane: 1 }, keyUp: true, width: 100, height: 50 }, [], 'b'),
     ]);
   const { ctx } = run(build);
   ctx.keyDown('w');
@@ -328,7 +361,7 @@ test('a key sink hears both halves of a held key', () => {
 });
 
 test('a keymap written in Latin survives the layout under it', () => {
-  const build = () => box({ onKey: null, keyFocus: true, width: 100, height: 50 }, [], 'a');
+  const build = () => box({ onKey: null, keyUp: true, keyFocus: true, width: 100, height: 50 }, [], 'a');
   const { ctx } = run(build);
   // What a driver reports: the layout's key, then the key's position. Omit
   // the position and it is the key you named.
@@ -357,7 +390,7 @@ test('a keymap written in Latin survives the layout under it', () => {
 });
 
 test('focus moving releases the keys the old sink held', () => {
-  const build = () => box({ onKey: { pane: 0 }, keyFocus: true, width: 100, height: 50 }, [], 'a');
+  const build = () => box({ onKey: { pane: 0 }, keyUp: true, keyFocus: true, width: 100, height: 50 }, [], 'a');
   const { ctx } = run(build);
   ctx.keyDown('w');
   ctx.keyDown('a');
@@ -426,6 +459,64 @@ test('tab reaches a button and enter presses it', () => {
   assert.ok(ctx.focusVisible(), 'programmatic focus keeps the keyboard modality');
   ctx.focusNext();
   assert.equal(ctx.focused(), focused, 'the only stop wraps to itself');
+});
+
+// Backlog F5: a node the app never interacted with is named by the label
+// its `key` declared. `focus`, `isFocused`, `reveal` and `access` take that
+// spelling beside the hex one, resolved through the last frame — the path
+// from the root runs through auto-keyed ancestors JS cannot spell.
+test('focus, isFocused and access resolve a declared label', () => {
+  const build = () =>
+    box({ pad: 4 }, [
+      box({}, [
+        box({ width: 60, height: 20, focusable: true }, [], 'alpha'),
+        box({ width: 60, height: 20, onClick: { kind: 'beta' }, label: 'beta' }, [], 'beta'),
+        el('edit', { initial: '', label: 'Note', width: 100 }, [], 'note'),
+      ]),
+    ]);
+  const { ctx } = run(build);
+  assert.equal(ctx.focused(), null);
+  // The case the finding came from: an editor the app just created.
+  ctx.focus('note');
+  assert.equal(ctx.focused(), nodesByName(ctx).Note.key, 'the editor, by its key prop');
+  ctx.focus('beta'); // never clicked, tabbed to, or reported by an event
+  const hex = ctx.focused();
+  assert.match(hex, /^[0-9a-f]{16}$/, 'focused() still reports the hex key');
+  assert.ok(ctx.isFocused('beta') && ctx.isFocused(hex), 'either spelling');
+  assert.ok(!ctx.isFocused('alpha'));
+  // The hex path is unchanged: what an event carried is still accepted.
+  ctx.blur();
+  ctx.focus(hex);
+  assert.equal(ctx.focused(), hex);
+  ctx.access('beta', 'click');
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [{ kind: 'beta' }]);
+  // A label nothing declared is an error that names both spellings —
+  // "bad id" named neither.
+  assert.throws(() => ctx.focus('gamma'), /no node is keyed "gamma".*`key` prop.*hex key/);
+  assert.throws(() => ctx.isFocused('gamma'), /no node is keyed/);
+  assert.throws(() => ctx.reveal('gamma'), /no node is keyed/);
+  assert.throws(() => ctx.access('gamma', 'click'), /no node is keyed/);
+  assert.deepEqual(ctx.warnings(), []);
+});
+
+test('two nodes on one label: the first in tree order wins, and the frame warns once', () => {
+  const build = () =>
+    box({ pad: 4 }, [
+      box({}, [box({ width: 60, height: 20, focusable: true }, [], 'beta')]),
+      box({}, [box({ width: 60, height: 20, focusable: true }, [], 'beta')]),
+    ]);
+  const { ctx } = run(build);
+  ctx.focus('beta');
+  const first = ctx.focused();
+  const groups = ctx.accessTree().nodes.filter((n) => n.role === 'group');
+  assert.equal(groups.length, 2, 'both focusable boxes are in the tree');
+  assert.equal(first, groups[0].key, 'the first in tree order');
+  const ws = ctx.warnings();
+  assert.deepEqual(ws.map((w) => w.code), ['ambiguous-key']);
+  assert.equal(ws[0].key, first);
+  assert.match(ws[0].message, /2 nodes are keyed "beta"/);
+  assert.ok(ctx.isFocused('beta'));
+  assert.deepEqual(ctx.warnings(), [], 'once per label');
 });
 
 // Modal surfaces (docs/adr/0003-modal-surfaces.md): the dialog takes focus
@@ -705,6 +796,40 @@ test('advance moves the frame clock, so a transition runs headless', () => {
   app.advance(100);
   assert.equal(app.ctx.animating(), false);
   assert.equal(barWidth(), 200);
+});
+
+test('render and an event-driven frame share the clock advance moves (F1)', () => {
+  // The mind map's repro (`playground/kui/mind-maps/repro/transition-advance.tsx`):
+  // the loop used to set the frame clock only inside `advance`, so a frame
+  // drawn by `render()` or by an event ran with none — where the core snaps
+  // — and a keyed box going 100 → 400 under `transition: 200` was already at
+  // 400 in the frame that applied the change, with `animating()` true for
+  // 200 ms of nothing moving. Now the loop stamps the clock before every
+  // frame, so the baseline is taken at t0 and the first `advance` is
+  // mid-flight.
+  const app = createApp(
+    {
+      init: { wide: false },
+      update: (m, msg) => (msg === 'go' ? { wide: true } : m),
+      view: (m) =>
+        box({ width: 'grow', height: 'grow', pad: 20 }, [
+          box({ width: m.wide ? 400 : 100, height: 30, bg: '#7aa2ff', transition: 200 }, [], 'bar'),
+        ]),
+    },
+    { width: 640, height: 480, startTime: 0 },
+  );
+  const barWidth = () => decodeQuads(app.ctx.quads()).find((q) => Math.round(q.h) === 30).w;
+  app.render();
+  assert.equal(barWidth(), 100);
+  app.dispatch('go');
+  app.render();
+  assert.equal(barWidth(), 100, 'the frame that applies the change is the baseline');
+  app.advance(50);
+  assert.ok(barWidth() > 100 && barWidth() < 400, `mid-flight at 50 ms, not ${barWidth()}`);
+  assert.ok(app.ctx.animating(), 'animating while it moves');
+  app.advance(200);
+  assert.equal(barWidth(), 400);
+  assert.equal(app.ctx.animating(), false);
 });
 
 test("a loop on a wall clock resyncs rather than firing a burst of ticks", () => {
@@ -1447,6 +1572,16 @@ const SCENE_TREES = {
         el('edit', { initial: 'hello', size: 13, width: 160, label: 'Note' }, [], 'note'),
       ]),
     ]),
+  // Two key sinks: the press-only default and one that asked for releases
+  // (`keyUp`). The tag is an integer, so the report's event column shows
+  // the phase instead of a tag kind.
+  keys: () =>
+    root({}, [
+      box({ pad: 10, gap: 6 }, [
+        box({ width: 100, height: 24, bg: '#1b1d27', onKey: 1, role: 'group', label: 'press' }, [], 'press'),
+        box({ width: 100, height: 24, bg: '#1b1d27', onKey: 1, keyUp: true, role: 'group', label: 'held' }, [], 'held'),
+      ]),
+    ]),
   // docs/adr/0003-modal-surfaces.md: the app behind the dialog is inert,
   // the titlebar is not, and both dismiss gestures reach the dialog.
   modal: () =>
@@ -1741,6 +1876,9 @@ function driveScene(env, steps, build) {
     else if (step[0] === 'end') ctx.key('end');
     // A Unicode scalar value, so a step line carries only integers.
     else if (step[0] === 'type') ctx.text(String.fromCodePoint(step[1]));
+    // The same spelling for a raw key on an `onKey` sink, down and up.
+    else if (step[0] === 'keydown') ctx.keyDown(String.fromCodePoint(step[1]));
+    else if (step[0] === 'keyup') ctx.keyUp(String.fromCodePoint(step[1]));
     else throw new Error(`unknown conformance step ${step[0]}`);
     events.push(...ctx.pollEvents());
     commands.push(...ctx.windowCommands());
@@ -2126,6 +2264,16 @@ test('reveal scrolls a row into view against the frame that follows it', () => {
   assert.deepEqual(ctx.scrollOffset(list), after);
 });
 
+test('reveal takes the row\'s declared label too', () => {
+  const { ctx, render, list } = listCtx();
+  ctx.reveal('row15');
+  render();
+  const after = ctx.scrollOffset(list);
+  assert.ok(after.y > 0, `reveal moved nothing: ${JSON.stringify(after)}`);
+  const row = nodesByName(ctx)['row 15'];
+  assert.ok(row.rect.y >= 0 && row.rect.y + row.rect.h <= LIST_H, `row 15 not in view: ${JSON.stringify(row.rect)}`);
+});
+
 // -- Window requests -------------------------------------------------------
 // `setWindowSize` / `focusWindow` queue commands for the driver (ADR 0004
 // step 5) — the two things a declaration cannot say, since a window's config
@@ -2164,7 +2312,7 @@ test('reveal of a key the next frame does not declare is a no-op', () => {
   // not find it, so a later frame does not act on it.
   render();
   assert.deepEqual(ctx.scrollOffset(list), { x: 0, y: 0 });
-  assert.throws(() => ctx.reveal('nope'), /bad id/);
+  assert.throws(() => ctx.reveal('nope'), /no node is keyed "nope"/);
 });
 
 test('reveal reaches a row the coming frame declares for the first time', () => {

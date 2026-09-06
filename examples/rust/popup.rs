@@ -152,20 +152,16 @@ impl App for Combo {
             // The arrows arrive on the popup's core, because the runner
             // routes the owner's keyboard there while a non-activating
             // popup is up. The field keeps its ring throughout.
-            Some("key") => {
-                if ev.payload.get("phase").and_then(Value::as_str) != Some("down") {
-                    return;
+            // Presses only: the list's sink never asked for releases.
+            Some("key") => match ev.payload.get("code").and_then(Value::as_str) {
+                Some("down") => self.cursor = (self.cursor + 1) % ITEMS.len(),
+                Some("up") => self.cursor = (self.cursor + ITEMS.len() - 1) % ITEMS.len(),
+                Some("enter") => {
+                    self.chosen = self.cursor;
+                    self.open = false;
                 }
-                match ev.payload.get("code").and_then(Value::as_str) {
-                    Some("down") => self.cursor = (self.cursor + 1) % ITEMS.len(),
-                    Some("up") => self.cursor = (self.cursor + ITEMS.len() - 1) % ITEMS.len(),
-                    Some("enter") => {
-                        self.chosen = self.cursor;
-                        self.open = false;
-                    }
-                    _ => {}
-                }
-            }
+                _ => {}
+            },
             _ => {}
         }
     }

@@ -408,6 +408,71 @@ mod queries_headless {
         }
     }
 
+    /// A host that never saw an event from a node names it by the label it
+    /// opened it under (backlog F5): `kui_key_of` hands back the key the
+    /// build gave, through the auto-keyed ancestors the host cannot
+    /// spell, and `kui_focus` takes it from there.
+    #[test]
+    fn a_label_resolves_to_the_key_the_build_gave_it() {
+        let ctx = kui_ctx_new();
+        kui_set_diagnostics(ctx, true);
+        let mut spec = unsafe { std::mem::zeroed::<KuiSpec>() };
+        spec.width = KuiSizing {
+            tag: 2,
+            value: 100.0,
+        };
+        spec.height = KuiSizing {
+            tag: 2,
+            value: 50.0,
+        };
+        spec.focusable = 1;
+        let plain = unsafe { std::mem::zeroed::<KuiSpec>() };
+        let build = |ctx: *mut KuiCtx, twice: bool| -> (u64, u64) {
+            kui_frame_begin(ctx, 200.0, 100.0, 1.0);
+            kui_open(ctx, &plain, NONE); // auto-keyed
+            let first = kui_open_with(ctx, ks("item"), &spec, NONE, NONE, NONE, NONE);
+            kui_close(ctx);
+            kui_close(ctx);
+            let mut second = 0;
+            if twice {
+                kui_open(ctx, &plain, NONE);
+                second = kui_open_with(ctx, ks("item"), &spec, NONE, NONE, NONE, NONE);
+                kui_close(ctx);
+                kui_close(ctx);
+            }
+            kui_frame_finish(ctx);
+            (first, second)
+        };
+        let (first, _) = build(ctx, false);
+        assert_ne!(first, 0);
+        assert_eq!(kui_key_of(ctx, ks("item")), first);
+        assert_eq!(kui_key_of(ctx, ks("nope")), 0, "an undeclared label is 0");
+        kui_focus(ctx, kui_key_of(ctx, ks("item")));
+        assert!(kui_is_focused(ctx, first), "focused with no event from it");
+
+        // Two nodes on one label under different parents: the first in
+        // tree order, and the frame says so once.
+        let (first, second) = build(ctx, true);
+        assert_ne!(first, second);
+        assert_eq!(kui_key_of(ctx, ks("item")), first);
+        let mut out = [KuiWarning {
+            code: KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
+            key: 0,
+            message: KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
+        }; 4];
+        let n = kui_take_warnings(ctx, out.as_mut_ptr(), out.len());
+        assert_eq!(n, 1, "one ambiguous-key line");
+        assert_eq!(&*kstr(out[0].code), "ambiguous-key");
+        assert_eq!(out[0].key, first);
+        kui_ctx_free(ctx);
+    }
+
     /// Raw keys cross as strings: a C host drives an `on_key` sink with
     /// `kui_input_key_down` / `_up`, gets both halves back as one
     /// `{kind="key"}` payload apart by `phase`, and lets go of what is
@@ -424,6 +489,8 @@ mod queries_headless {
             tag: 2,
             value: 50.0,
         };
+        // Releases are opt-in: without this the sink hears presses only.
+        spec.key_up = 1;
         kui_frame_begin(ctx, 200.0, 100.0, 1.0);
         let sink = kui_open_with(
             ctx,

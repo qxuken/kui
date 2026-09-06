@@ -97,8 +97,34 @@ upgrades remove code from the apps on it is doing the job.
   node-less announcement arrives, and that the same message twice in a
   row is said twice. 96/96.
 
+- **A node is named by the label its `key` declared** (backlog F5). Node's
+  `focus`, `isFocused`, `reveal` and `access` took only the hex key an
+  event carried, so a node the user had never touched — "focus the editor
+  I just created" — could not be named at all. They now take either
+  spelling: `focus('note')` resolves the label through the last frame
+  (`Core::key_of`, `Ui::key_of` in Rust; the build records every keyed
+  node's label as it goes, into a buffer cleared between frames). Lua's
+  `env.set_focus`, `env.is_focused` and `env.reveal` take a string beside
+  the integer, and C gets `kui_key_of(ctx, label)` for its `uint64_t`
+  callers. Labels are unique among siblings, not across a tree, so two
+  nodes on one label resolve to the first in tree order with a new
+  `ambiguous-key` warning; a label nothing declared is an error naming
+  both spellings, where `bad id "beta"` named neither.
+
 ### Fixed
 
+- **A `transition` eases under `createApp`, so it is testable from Node**
+  (backlog F1, the mind-map field report's #8). The loop set the core's
+  frame clock only inside `advance(ms)`; `render()`, `click()`, `type()`
+  and every event-driven frame ran with the clock unset, where the core
+  snaps by design — so a keyed box going 100 → 400 under `transition: 200`
+  was already at 400 in the frame that applied the change, and
+  `animating()` said true for 200 ms while nothing moved. The loop now
+  stamps the clock when it is built and before every frame it draws, so
+  the baseline is taken at the loop's time and the first `advance` is
+  mid-flight. A test that wants only the end state advances past the
+  duration. Nothing changed for a window: its runner already stamps each
+  frame from its own epoch, and `KuiWindow` has no `setTime`.
 - **The accessibility example's Actions menu was drawn half outside the
   window.** `FloatConfig::below()` centres a float on its anchor, so a
   180-wide menu under a 90-wide button near the left edge hung off it, and
@@ -148,6 +174,34 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Changed
 
+- **A key sink hears presses only, unless it says `keyUp`** (backlog F3,
+  from the pomodoro field report). alpha.6 made `onKey` deliver both
+  halves of every key to one sink as `{kind:"key", phase:"down"|"up"}` —
+  the right shape, and the guarantee behind it (a key only comes up where
+  it went down, which two sinks could not promise) stands — but it made
+  press-only, which is what every keymap is, the case that needed a guard.
+  An alpha.4 app bumped to alpha.6 type-checked, ran, and toggled every
+  shortcut back: Space started and paused the timer, `m` and `a` flipped
+  twice, and nothing pointed at the one line (`phase !== 'down'`) that
+  fixed it. Nothing *could*: a sink that ignores `phase` looks exactly
+  like a sink that wants both, so no warning tells them apart. So the
+  default is presses again, and releases are one flag away. **`keyUp`**
+  (`key_up` in Lua and C, `.key_up()` in Rust) beside `onKey` delivers
+  both halves, the payload shape unchanged and the guarantee kept: a
+  release whose press the sink never got is still dropped, and focus
+  leaving still lets go first — to a sink that asked. A sink without it
+  hears nothing on the way up, synthetic or real; the key is still tracked
+  as held, so a stray release resolves silently rather than to a second
+  event, and a sink that opts in mid-hold hears the release it is owed.
+  One schema row, so all four bindings got it mechanically, and the ABI
+  parity test forced the C field (`KuiSpec.key_up`, an [in] append — no
+  version bump). The corpus's new **`keys`** scene pins both behaviours
+  across the four transports, with `keydown` / `keyup` steps to drive
+  them, and `packages/kui/test.mjs` has the fixture the report was
+  missing: a keymap that presses *and* releases, and toggles once.
+  **What breaks:** a held-key binding written against alpha.6 — WASD,
+  press-and-hold, a key that arms a mode — stops hearing its `up` until
+  the sink adds `keyUp`. Nothing else changes.
 - **The C ABI went 6 → 7, and this is the one bump the `size` handshake
   cannot absorb.** `KuiWindowConfig` gained four `anchor_*` floats and
   `KuiWindowCommand` gained `owner` — each the compatible kind of change on
@@ -184,6 +238,12 @@ upgrades remove code from the apps on it is doing the job.
   which of two overlapping stubs won, and the elbow-only layout the boxes
   forced: one `<line points curve/>` per link, in the same coordinates the
   cards already float in, replaces all of it.
+- **The `phase` guard in every keymap.** `if (msg.phase !== 'down')
+  return` — or the alpha.4 → alpha.6 migration line, `phase !== 'down' ||
+  repeat` — is what a sink without `keyUp` does by itself now. The four
+  Rust examples that carried it lost it. `repeat` is still yours to
+  filter: an auto-repeat is a press.
+
 - **The workaround for a list that did not fit.** Whatever a view did to
   keep a long dropdown inside the window — a scroll container sized to the
   space left below the field, a menu that opened upwards past a hand-rolled
@@ -191,10 +251,20 @@ upgrades remove code from the apps on it is doing the job.
   `kind: "popup"` declaration and an `anchor` now. The handler does not
   change: it was already answering `dismiss`.
 
+- The `app.ctx.setTime(s)` calls a test wrapped around each `render()`,
+  or the `app.advance(0)` it made before a change, to see a `transition`
+  move at all. The loop keeps the clock now; `advance(ms)` alone moves it.
+
 - The state field that held a status message *only* so a screen reader
   would see it change, and the code that cleared it a frame later. A
   message with a place on screen takes `live` on the node it is already
   in; one without takes `announce` and needs no node at all.
+
+- **The key harvest.** An `onLayout` on every node whose only job was to
+  learn its hex key so `focus()` could be called later — an event per node
+  per frame — and the model field that stored them. A node is `focus('its
+  label')` now, and the access-tree lookup that found an editor's rect just
+  to click it into focus is `focus('note')` too.
 
 
 ## 0.1.0-alpha.6 (2026-09-05)

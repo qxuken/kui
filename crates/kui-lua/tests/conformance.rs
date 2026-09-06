@@ -119,6 +119,14 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        "keys" => r#"
+            local function sink(name, key_up)
+              return row { key = name, width = 100, height = 24, bg = 0x1b1d27ff,
+                           on_key = 1, key_up = key_up, role = "group", label = name }
+            end
+            return column { pad = 10, gap = 6, sink("press", false), sink("held", true) }
+        "#
+        .to_string(),
         "modal" => r#"
             return column { width = { grow = 1 }, gap = 6,
               titlebar { text("app", { size = 12 }) },

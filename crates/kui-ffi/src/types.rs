@@ -364,6 +364,14 @@ pub struct KuiSpec {
     /// behind it, `kui_announce` is the other half (see
     /// `docs/adr/0008-live-regions-and-announcements.md`).
     pub live: u32,
+    /// Non-zero, with a non-NULL `on_key` on `kui_open_with`: the sink hears
+    /// releases too, as the same `{kind="key"}` payload with `phase="up"`
+    /// (`text` null, `repeat` false) — for a held-key interaction (WASD,
+    /// press-and-hold, a key that arms a mode while it is down). A key only
+    /// comes up where it went down, and focus leaving while a key is held
+    /// delivers the `up` first. Zero: presses only, which is what a keymap
+    /// wants — one that heard both halves would run every binding twice.
+    pub key_up: u32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a

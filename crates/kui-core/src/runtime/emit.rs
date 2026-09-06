@@ -92,6 +92,7 @@ impl Core {
                 drag: spec.events().on_drag.clone().filter(|_| live),
                 parent_rect,
                 key_sink: spec.events().on_key.clone().filter(|_| live),
+                key_up: spec.events().key_up,
                 context_menu: spec.events().on_context_menu.clone().filter(|_| live),
                 focusable: crate::access::focusable(&self.tree, i),
                 edit_origin: None,
@@ -140,6 +141,7 @@ impl Core {
                         parent_rect: rect,
                         edit_origin: Some(content_origin),
                         key_sink: None,
+                        key_up: false,
                         context_menu: None,
                         focusable: !spec.disabled,
                         window: None,
@@ -214,6 +216,7 @@ impl Core {
     pub fn finish_frame(&mut self) {
         self.layout_frame();
         self.emit_frame();
+        self.building = false;
     }
 
     /// The frame's first half: layout, then everything that resolves

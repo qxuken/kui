@@ -28,6 +28,22 @@ pub extern "C" fn kui_focus(ptr: *mut KuiCtx, key: u64) {
     });
 }
 
+/// The key of the node opened under `label` (`kui_open` with a label, the
+/// widgets' `label` argument) in the last finished frame — or, from inside
+/// a view callback, in the frame so far and then the last one. 0 when no
+/// node declared it. The door for a host that never saw an event from the
+/// node: keys hash the path from the root, through the auto-keyed
+/// ancestors a host cannot spell, so `kui_focus(ctx, kui_key_of(ctx,
+/// KUI_STR("note")))` is how "focus the editor I just declared" is said.
+/// Two nodes on one label under different parents resolve to the first in
+/// tree order and raise `ambiguous-key` (`kui_take_warnings`).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_key_of(ptr: *mut KuiCtx, label: KuiStr) -> u64 {
+    guard(0, || {
+        unsafe { ctx(ptr) }.map_or(0, |c| c.core().key_of(&kstr(label)).map_or(0, |k| k.0))
+    })
+}
+
 /// What Tab (`forward`) / Shift-Tab does: focus the next / previous
 /// focusable node in tree order, wrapping. A key sink that binds Tab
 /// itself calls this to hand the keyboard on.
