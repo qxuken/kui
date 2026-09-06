@@ -2724,9 +2724,37 @@ bumps coalesce within a release window, or they do not — settles it. No chip.
 
 ## From building C11 step 4 (2026-09-06)
 
-One finding that is not about the popup, found by clicking one.
+One finding that is not about the popup, found by clicking one — and fixed
+with it, since the popup had to take the working path anyway.
 
-### `!` W1 — A `Chrome::Borderless` window is dead to the mouse on macOS
+### `.` W1 — A `Chrome::Borderless` window is dead to the mouse on macOS — **done (2026-09-06)**
+
+Fixed with the finding, in one shared helper: `undecorated(attrs)` is
+"chromeless in the spelling the platform honours" — `with_decorations(false)`
+everywhere but macOS, and there the four attributes `Chrome::Custom` already
+uses plus the traffic lights hidden. `Chrome::Borderless` and the popup
+surface both go through it, since they were separately wrong in the same way.
+
+**Three things it fixed at once, all checked on a real borderless window**
+(the launcher's `borderless()` on `examples/rust/popup.rs`, driven with real
+`CGEvent`s): a press now releases, so the field opens its menu and a menu
+item selects where before the click did nothing at all; the window keeps the
+rounded corners and drop shadow it had none of; and **native edge resizing
+works** — dragging the right edge took it 360 → 478 logical px, which a
+window with no decorations could not do and `Pane::synthesizes_resize` was
+declining to fake on macOS. That last one closes the second question this
+entry raised: the assumption that native edge resizing survives kui's custom
+chrome is now true for `Chrome::Borderless` too, so the band stays off.
+
+One thing checked and *not* a problem: a hidden titlebar over a fullsize
+content view leaves the top strip hit-testable. The first row of a popup —
+the one sitting where a titlebar would be — selects like any other.
+
+Still no headless test, and the note below stands: what would catch a
+regression is a P8 smoke job that presses a control in a
+`Chrome::Borderless` window and asserts the click.
+
+The original finding:
 
 `with_decorations(false)` produces an `NSWindow` with the borderless style
 mask, and **AppKit never sends `mouseUp:` to one**. winit passes the event
@@ -2743,23 +2771,6 @@ whose buttons do not work**. Nothing caught it because `Chrome::Custom` —
 which the smoke round drives, and which macOS implements as a *hidden*
 titlebar over a fullsize content view rather than as no titlebar at all —
 is unaffected, and because a headless core has no window at all.
-
-The popup already takes the working path: on macOS it asks for the four
-attributes `Chrome::Custom` asks for (`titlebar_transparent`,
-`fullsize_content_view`, `title_hidden`, `titlebar_buttons_hidden`) and
-uses `with_decorations(false)` only elsewhere. `Chrome::Borderless` should
-do the same, in `Shell::window_attrs`, which is where the launcher's chrome
-is turned into attributes — the popup's arm exists beside it and should
-collapse into it rather than being copied.
-
-Two things to settle while doing it. `Chrome::Borderless` on macOS today
-also loses the rounded corners and the shadow that the popup visibly has,
-so the fix changes how a borderless window *looks* as well as whether it
-works; that is an improvement, but it is a change and belongs in the
-changelog. And the synthesized resize band (`Pane::synthesizes_resize`) is
-switched off on macOS on the assumption that native edge resizing survives
-custom chrome — true for `Chrome::Custom`, and worth re-checking for a
-borderless window once it has a real style mask again.
 
 No test can be written for this headlessly. What would have caught it is a
 P8 smoke job that presses a button in a `Chrome::Borderless` window and
@@ -3063,10 +3074,8 @@ runs · then commit, `git tag v0.1.0-alpha.6`, push the tag.
 
 Grouped by kind, not urgency. Nothing here blocks the tag.
 
-**Build.** ~~C11 step 4, `WindowKind::Popup`~~ — **done 2026-09-06**, and
-it left W1 behind: a `Chrome::Borderless` window is dead to the mouse on
-macOS, which is a live defect in a shipped API rather than anything to do
-with popups. ADR 0004 step 1's leftover: the glyph atlas and shape cache
+**Build.** ~~C11 step 4, `WindowKind::Popup`~~ and ~~W1~~ — both **done
+2026-09-06**. ADR 0004 step 1's leftover: the glyph atlas and shape cache
 are still per window because `Core::output` hands out `&mut GlyphAtlas`
 (see `kui-session-atlas-constraint`); it waits for a case where two windows
 share enough text to matter. C15's remainder: `frame_10k_rects` is still

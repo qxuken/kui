@@ -47,6 +47,17 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Fixed
 
+- **A `Chrome::Borderless` window is no longer dead to the mouse on macOS**
+  (backlog W1). `with_decorations(false)` produces an `NSWindow` with the
+  borderless style mask, and AppKit never sends `mouseUp:` to one — so every
+  press in such a window landed and never released: no click, no drag end,
+  no pressed style cleared. Chromeless is now spelled as a hidden titlebar
+  over a fullsize content view, which is what `Chrome::Custom` already asked
+  for and what a Mac app that draws its own chrome actually wants. Such a
+  window also **gains rounded corners, a drop shadow and native edge
+  resizing**, none of which a borderless one had; if you were drawing your
+  own square corners under the old behaviour, that is the one thing to look
+  at.
 - **A window no longer greys out while you press an item in its popup.**
   AppKit makes a window key when you press it, and the *platform's own*
   titlebar dims under whatever is no longer key — however `env.focused`

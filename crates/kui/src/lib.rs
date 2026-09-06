@@ -344,6 +344,37 @@ const FIRST_FRAME_RETRIES: u32 = 60;
 
 /// The core's derived pointer shape in winit's vocabulary. One-to-one:
 /// `CursorShape` is spelled after the platform names on purpose.
+/// Chromeless, in the spelling each platform actually honours.
+///
+/// Everywhere but macOS that is `with_decorations(false)`. On macOS it is
+/// **not**: `with_decorations(false)` gives a window with the borderless
+/// style mask, and AppKit never sends `mouseUp:` to one — every press in it
+/// lands and never releases, so nothing in the window can be clicked, no
+/// drag ever ends, and a pressed style never clears. A hidden titlebar over
+/// a fullsize content view looks the same, is a real window, and is what
+/// `Chrome::Custom` already asks for; chromeless is that plus the traffic
+/// lights hidden. It keeps the rounded corners, the drop shadow and the
+/// native edge-resizing that a borderless window has none of.
+///
+/// Found by pressing a menu item and watching nothing happen (backlog W1);
+/// the popup surface and `Chrome::Borderless` share this because they were
+/// separately wrong in the same way.
+fn undecorated(attrs: winit::window::WindowAttributes) -> winit::window::WindowAttributes {
+    #[cfg(target_os = "macos")]
+    {
+        use winit::platform::macos::WindowAttributesExtMacOS;
+        attrs
+            .with_titlebar_transparent(true)
+            .with_fullsize_content_view(true)
+            .with_title_hidden(true)
+            .with_titlebar_buttons_hidden(true)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        attrs.with_decorations(false)
+    }
+}
+
 fn cursor_icon(shape: CursorShape) -> CursorIcon {
     match shape {
         CursorShape::Default => CursorIcon::Default,
@@ -989,27 +1020,7 @@ impl<A: App> Shell<A> {
             // decorations whatever the launcher asked for, above its owner,
             // and placed against the anchor rather than wherever the window
             // manager would have put a new window.
-            attrs = attrs.with_window_level(winit::window::WindowLevel::AlwaysOnTop);
-            // macOS spells "no chrome" as a hidden titlebar over a
-            // fullsize content view, **not** as `with_decorations(false)`:
-            // AppKit never sends `mouseUp:` to an undecorated `NSWindow`,
-            // so a click on a menu item presses and never releases. Found
-            // by clicking one; the same is true of a `Chrome::Borderless`
-            // main window, which is why the launcher's macOS custom chrome
-            // is these four attributes and not that one.
-            #[cfg(target_os = "macos")]
-            {
-                use winit::platform::macos::WindowAttributesExtMacOS;
-                attrs = attrs
-                    .with_titlebar_transparent(true)
-                    .with_fullsize_content_view(true)
-                    .with_title_hidden(true)
-                    .with_titlebar_buttons_hidden(true);
-            }
-            #[cfg(not(target_os = "macos"))]
-            {
-                attrs = attrs.with_decorations(false);
-            }
+            attrs = undecorated(attrs).with_window_level(winit::window::WindowLevel::AlwaysOnTop);
             if let Some(pos) = self.popup_position(owner, config, size) {
                 attrs = attrs.with_position(pos);
             }
@@ -1194,7 +1205,7 @@ impl<A: App> Shell<A> {
                     attrs = attrs.with_decorations(false);
                 }
             }
-            Chrome::Borderless => attrs = attrs.with_decorations(false),
+            Chrome::Borderless => attrs = undecorated(attrs),
         }
         attrs
     }
