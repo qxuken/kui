@@ -487,8 +487,9 @@ the `u64` form is untouched.
 
 - Nothing ships from this ADR, deliberately. `CHANGELOG.md` is untouched:
   the changelog lists what a release adds and what an app can delete, and
-  this release adds no behaviour. `docs/BACKLOG.md` C7 becomes done, and
-  the build work it points at becomes a new item.
+  this release adds no behaviour. C7 becomes done — it is now in
+  `docs/backlog/closed-2026-09.md` — and the build work it points at
+  becomes a new item.
 - Two named breaks when it is built, both in C, and neither reaching the
   other three bindings: `kui_take_window_commands` stops being a
   `uint32_t` array (a source break — hosts edit their drain loop), and

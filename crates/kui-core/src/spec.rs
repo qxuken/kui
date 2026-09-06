@@ -495,7 +495,7 @@ pub struct NodeSpec {
 
 /// Event payloads a node declares. Boxed on `NodeSpec` because most
 /// nodes declare none, and seven `Option<Value>` inline cost 224 bytes
-/// on every node built (see C15 in `docs/BACKLOG.md`).
+/// on every node built (see C15 in `docs/backlog/closed-2026-09.md`).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct EventSpec {
     /// Payload emitted as a `UiEvent` when this node is clicked.
@@ -1465,7 +1465,7 @@ mod size_tests {
     /// `Vec<NodeSpec>` in `Tree::push` — so its size is a per-node cost that
     /// every app pays whether or not it declares the fields. It reached 728
     /// bytes one feature at a time and cost ~2.5x on the frame benches before
-    /// anyone measured it (C15 in `docs/BACKLOG.md`).
+    /// anyone measured it (C15 in `docs/backlog/closed-2026-09.md`).
     ///
     /// This is the number a review can fail. Adding a prop is fine; adding it
     /// *inline* past this bound is the thing to notice. Put cold fields in one

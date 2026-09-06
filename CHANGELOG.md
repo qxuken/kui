@@ -39,7 +39,8 @@ keyboard at all — which breaks nothing today, and `env.focus` is
 deprecated below.
 
 Everything after this is the detail as each piece landed;
-`docs/BACKLOG.md` carries the reasoning and the alternatives declined.
+`docs/backlog/closed-2026-09.md` carries the reasoning and the alternatives
+declined, and `docs/BACKLOG.md` what is still open.
 
 ### Native verification
 
@@ -1607,12 +1608,12 @@ anything — the job is written and waits on a runner, not on an edit.
   (`Env::focused`), and the only thing `focused` has ever meant in `env`.
   Node keeps the two apart by having two objects, `env` and `ctx`; Lua has
   one table, so the collision is structural rather than a naming slip.
-  **P3 in `docs/BACKLOG.md` is why both exist today**: `env.focused` was
-  spent on the window fact before the node reading needed it, and neither
-  name can move inside 0.1 — renaming either is breaking, and simply
-  dropping `env.focus` would leave the node key unreadable from Lua
-  altogether. So this is the announcement, not the change; converging the
-  two, and giving the window fact its own unambiguous name, is 0.2's.
+  **P3 in `docs/backlog/closed-2026-09.md` is why both exist today**:
+  `env.focused` was spent on the window fact before the node reading needed
+  it, and neither name can move inside 0.1 — renaming either is breaking,
+  and simply dropping `env.focus` would leave the node key unreadable from
+  Lua altogether. So this is the announcement, not the change; converging
+  the two, and giving the window fact its own unambiguous name, is 0.2's.
   Until then the module doc at the top of `crates/kui-lua/src/lib.rs`
   documents them against each other.
 

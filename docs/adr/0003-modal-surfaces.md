@@ -26,7 +26,8 @@ can stop declaring the dialog.
   subtrees and disabled nodes. Nothing scopes it, and nothing exposes it,
   so no binding and no app can contain focus inside a dialog: the ring is
   core-private state, which is exactly the test `docs/BACKLOG.md` uses
-  for "belongs in the core" (C1).
+  for "belongs in the core" (C1, archived in
+  `docs/backlog/closed-2026-09.md`).
 - The pointer had the same hole from the other side. Hit regions are
   emitted for the whole tree in paint order (`Core::finish_frame`), and
   `Interaction::hit_at` takes the topmost. A dialog drawn over an app

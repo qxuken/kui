@@ -7,7 +7,7 @@
 //! `parse_props_json` used to lower a whole frame; since the JSON transport
 //! went away its only caller is `measureText`, which reads the `style` half
 //! and drops the rest. The spec half it still builds has no caller — see
-//! D1/D2 in `docs/BACKLOG.md`.
+//! D1/D2 in `docs/backlog/closed-2026-09.md`.
 
 use kui_core::diag::{WARNINGS, WarningDef};
 pub use kui_core::schema::*;
