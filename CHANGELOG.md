@@ -47,6 +47,14 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Fixed
 
+- **A window no longer greys out while you press an item in its popup.**
+  AppKit makes a window key when you press it, and the *platform's own*
+  titlebar dims under whatever is no longer key — however `env.focused`
+  reads, since that is kui's answer and not the OS's. A non-activating
+  popup that ends up with the keyboard now asks for it to go back
+  immediately (once per acquisition, since the request is advisory), so the
+  window behind keeps its key styling for the whole press. Nothing else
+  notices this: it is not a state any frame is drawn from.
 - **A window no longer flashes unfocused while a popup opens or closes.**
   What a view reads as `focused` is now derived from what the platform said
   about *every* window, once per event batch, rather than written per event

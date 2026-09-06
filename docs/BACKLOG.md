@@ -1393,8 +1393,15 @@ a build settled differently from its text.
    config carries that and the *driver* adds the owner's position. That is
    what "no new geometry query" is worth — the alternative needs a window
    position query this ADR does not add. Amended into the ADR.
-   **Three bugs the real window found that the corpus could not.** The
-   owner flashed unfocused whenever a popup opened or closed — focus moving
+   **Four bugs the real window found that the corpus could not.** Pressing
+   an item greyed the window behind: AppKit makes a window key when it is
+   pressed, and the *platform's* titlebar dims under whatever is no longer
+   key, which no value of `env.focused` can reach. A non-activating popup
+   that ends up with the keyboard asks for it back at once — once per
+   acquisition, the request being advisory — and `os_focused` stays the
+   platform's own answer rather than an optimistic one, so app deactivation
+   is still detectable. The owner also flashed unfocused whenever a popup
+   opened or closed — focus moving
    between two windows is two events (three around a new one, since winit
    announces every window it creates with a `Focused(false)`), and in the
    middle of any ordering of them no window claims the keyboard. `focused`

@@ -378,6 +378,11 @@ struct Pane {
     /// Whether it took OS focus when it opened. False is the popup default
     /// and what makes the borrowing necessary.
     activates: bool,
+    /// A non-activating popup only: whether the keyboard has already been
+    /// asked back for since this window last took it. One request per
+    /// acquisition — the ask is advisory, so repeating it every batch until
+    /// the platform agrees would be a request storm.
+    handed_back: bool,
     /// Whether the OS says *this* window holds the keyboard — what winit
     /// last reported, before the borrowing in [`Shell::settle_focus`] is
     /// applied. `core.env.focused`, which is what a view reads, is derived
@@ -764,6 +769,33 @@ impl<A: App> Shell<A> {
     /// Only what changed is written, so a window whose answer did not move
     /// is not redrawn and does not let go of a held key.
     fn settle_focus(&mut self) {
+        // A non-activating popup that has ended up with the keyboard gives
+        // it straight back. It should never have taken it — that is what
+        // `activates: false` asked for — but a platform can make a window
+        // key for reasons of its own, and pressing one is the reason that
+        // matters: AppKit makes the popup key on mouse-down, and the
+        // *platform's* titlebar greys out under a window that is not key
+        // however `env.focused` reads. Asking again here is the only thing
+        // that shortens that to a frame, since nothing else notices.
+        for i in 0..self.panes.len() {
+            let p = &self.panes[i];
+            if p.kind != WindowKind::Popup || p.activates {
+                continue;
+            }
+            if !p.os_focused {
+                self.panes[i].handed_back = false;
+                continue;
+            }
+            if p.handed_back {
+                continue;
+            }
+            let owner = p.owner;
+            let Some(j) = self.pane_of(owner) else {
+                continue;
+            };
+            self.panes[i].handed_back = true;
+            self.panes[j].window.focus_window();
+        }
         for i in 0..self.panes.len() {
             let (id, owner, lends) = {
                 let p = &self.panes[i];
@@ -1020,14 +1052,15 @@ impl<A: App> Shell<A> {
         core.env.window.id = id;
         self.push_pane(event_loop, id, config, owner, core, window, renderer);
         if !config.activates {
-            // Hand the keyboard back. Ordering a window front is enough to
-            // make it key on some platforms whatever `with_active(false)`
-            // asked for, and a popup that ends up holding the keyboard
-            // takes the focus ring off the field that opened it — the one
-            // thing decision 9 says must not happen. Re-keying the owner
-            // costs a pair of focus events at open time and leaves
-            // `env.focused` where the app draws it; `key_target` then
-            // walks the owner's keys over to the popup.
+            // Hand the keyboard back before the platform has even said it
+            // took it. Ordering a window front is enough to make it key on
+            // some platforms whatever `with_active(false)` asked for, and
+            // `settle_focus` will ask again when it sees that happen — but
+            // that is a batch later, and a batch is long enough for the
+            // window behind to be drawn without its key styling. Asking
+            // eagerly here closes the gap at the one moment it is
+            // predictable; `settle_focus` covers every other way a popup
+            // can end up with the keyboard, a press on it above all.
             if let Some(j) = self.pane_of(owner) {
                 self.panes[j].window.focus_window();
             }
@@ -1125,6 +1158,7 @@ impl<A: App> Shell<A> {
             resize_edge: None,
             cursor_icon: CursorIcon::Default,
             os_focused: false,
+            handed_back: false,
             first_frame: Some((FIRST_FRAME_RETRIES, std::time::Instant::now())),
             access,
             #[cfg(target_os = "windows")]
