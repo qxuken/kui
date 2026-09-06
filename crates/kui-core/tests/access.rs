@@ -640,17 +640,26 @@ fn slider_value_outside_its_range_warns() {
         );
         ui.with_keyed(
             "below",
-            slider("below").value_now(-1.0).value_min(0.0).value_max(10.0),
+            slider("below")
+                .value_now(-1.0)
+                .value_min(0.0)
+                .value_max(10.0),
             |_| {},
         );
         ui.with_keyed(
             "above",
-            slider("above").value_now(999.0).value_min(0.0).value_max(10.0),
+            slider("above")
+                .value_now(999.0)
+                .value_min(0.0)
+                .value_max(10.0),
             |_| {},
         );
         ui.with_keyed(
             "inverted",
-            slider("inverted").value_now(5.0).value_min(10.0).value_max(0.0),
+            slider("inverted")
+                .value_now(5.0)
+                .value_min(10.0)
+                .value_max(0.0),
             |_| {},
         );
         ui.with_keyed("open", slider("open").value_now(999.0), |_| {});
@@ -667,11 +676,23 @@ fn slider_value_outside_its_range_warns() {
         ]
     );
     assert_eq!(ws[0].key, Key::ROOT.str("below"));
-    assert!(ws[0].message.contains("below valueMin 0"), "{}", ws[0].message);
+    assert!(
+        ws[0].message.contains("below valueMin 0"),
+        "{}",
+        ws[0].message
+    );
     assert_eq!(ws[1].key, Key::ROOT.str("above"));
-    assert!(ws[1].message.contains("above valueMax 10"), "{}", ws[1].message);
+    assert!(
+        ws[1].message.contains("above valueMax 10"),
+        "{}",
+        ws[1].message
+    );
     assert_eq!(ws[2].key, Key::ROOT.str("inverted"));
-    assert!(ws[2].message.contains("valueMin 10 is above valueMax 0"), "{}", ws[2].message);
+    assert!(
+        ws[2].message.contains("valueMin 10 is above valueMax 0"),
+        "{}",
+        ws[2].message
+    );
     frame(&mut core);
     assert!(core.take_warnings().is_empty(), "each once");
 }
