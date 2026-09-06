@@ -273,7 +273,37 @@ impl Core {
     pub fn open_keyed(&mut self, label: &str, spec: NodeSpec) -> Key {
         let key = self.child_key(label);
         self.open_with_key(key, spec);
+        self.key_labels.push(key, label);
         key
+    }
+
+    /// The key of the node opened under `label` (`open_keyed`; a `key`
+    /// prop in JSX or a Lua table) in the last finished frame — or, while
+    /// a frame is being built, in it so far and then in the last one. The
+    /// door for a caller that holds only strings: keys are hashes of the
+    /// path from the root, and that path runs through auto-keyed
+    /// ancestors nothing outside the build can spell, so "focus the node
+    /// I just declared" is this and not `child_key`. None when no node
+    /// declared the label. Labels are unique among siblings, not across a
+    /// tree, so two nodes may share one under different parents: the
+    /// first in tree order wins and an `ambiguous-key` warning says so.
+    pub fn key_of(&mut self, label: &str) -> Option<Key> {
+        let (first, count) = {
+            let mut hits = self.key_labels.find(label);
+            match hits.next() {
+                Some(k) => (k, 1 + hits.count()),
+                None if self.building => {
+                    let mut hits = self.key_labels_last.find(label);
+                    (hits.next()?, 1 + hits.count())
+                }
+                None => return None,
+            }
+        };
+        if count > 1 {
+            self.diag
+                .raise(crate::diag::ambiguous_key(label, first, count));
+        }
+        Some(first)
     }
 
     /// `open_keyed` in the sibling-index namespace: the key auto-keying
@@ -405,6 +435,9 @@ impl Core {
         let parent = self.current();
         self.tree
             .push(parent, key, self.origin, spec, NodeContent::Edit(key));
+        // A leaf keyed by its label, like `open_keyed`: `key_of` must find
+        // the editor an app wants to focus by name.
+        self.key_labels.push(key, label);
         key
     }
 

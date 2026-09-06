@@ -241,6 +241,14 @@ impl<'a> Ui<'a> {
         self.core.focus_visible()
     }
 
+    /// The key of the node opened under `label` — in this frame so far,
+    /// then in the last finished one. For a caller that holds only the
+    /// label and cannot spell the path (`child_key` is the same question
+    /// asked from the parent); see `Core::key_of`.
+    pub fn key_of(&mut self, label: &str) -> Option<Key> {
+        self.core.key_of(label)
+    }
+
     /// Moves keyboard focus to `key` now (an editor, an `on_key` sink, a
     /// control, a `focusable` node); see `Core::set_focus`.
     pub fn focus(&mut self, key: Key) {

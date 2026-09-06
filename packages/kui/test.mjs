@@ -448,6 +448,64 @@ test('tab reaches a button and enter presses it', () => {
   assert.equal(ctx.focused(), focused, 'the only stop wraps to itself');
 });
 
+// Backlog F5: a node the app never interacted with is named by the label
+// its `key` declared. `focus`, `isFocused`, `reveal` and `access` take that
+// spelling beside the hex one, resolved through the last frame — the path
+// from the root runs through auto-keyed ancestors JS cannot spell.
+test('focus, isFocused and access resolve a declared label', () => {
+  const build = () =>
+    box({ pad: 4 }, [
+      box({}, [
+        box({ width: 60, height: 20, focusable: true }, [], 'alpha'),
+        box({ width: 60, height: 20, onClick: { kind: 'beta' }, label: 'beta' }, [], 'beta'),
+        el('edit', { initial: '', label: 'Note', width: 100 }, [], 'note'),
+      ]),
+    ]);
+  const { ctx } = run(build);
+  assert.equal(ctx.focused(), null);
+  // The case the finding came from: an editor the app just created.
+  ctx.focus('note');
+  assert.equal(ctx.focused(), nodesByName(ctx).Note.key, 'the editor, by its key prop');
+  ctx.focus('beta'); // never clicked, tabbed to, or reported by an event
+  const hex = ctx.focused();
+  assert.match(hex, /^[0-9a-f]{16}$/, 'focused() still reports the hex key');
+  assert.ok(ctx.isFocused('beta') && ctx.isFocused(hex), 'either spelling');
+  assert.ok(!ctx.isFocused('alpha'));
+  // The hex path is unchanged: what an event carried is still accepted.
+  ctx.blur();
+  ctx.focus(hex);
+  assert.equal(ctx.focused(), hex);
+  ctx.access('beta', 'click');
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [{ kind: 'beta' }]);
+  // A label nothing declared is an error that names both spellings —
+  // "bad id" named neither.
+  assert.throws(() => ctx.focus('gamma'), /no node is keyed "gamma".*`key` prop.*hex key/);
+  assert.throws(() => ctx.isFocused('gamma'), /no node is keyed/);
+  assert.throws(() => ctx.reveal('gamma'), /no node is keyed/);
+  assert.throws(() => ctx.access('gamma', 'click'), /no node is keyed/);
+  assert.deepEqual(ctx.warnings(), []);
+});
+
+test('two nodes on one label: the first in tree order wins, and the frame warns once', () => {
+  const build = () =>
+    box({ pad: 4 }, [
+      box({}, [box({ width: 60, height: 20, focusable: true }, [], 'beta')]),
+      box({}, [box({ width: 60, height: 20, focusable: true }, [], 'beta')]),
+    ]);
+  const { ctx } = run(build);
+  ctx.focus('beta');
+  const first = ctx.focused();
+  const groups = ctx.accessTree().nodes.filter((n) => n.role === 'group');
+  assert.equal(groups.length, 2, 'both focusable boxes are in the tree');
+  assert.equal(first, groups[0].key, 'the first in tree order');
+  const ws = ctx.warnings();
+  assert.deepEqual(ws.map((w) => w.code), ['ambiguous-key']);
+  assert.equal(ws[0].key, first);
+  assert.match(ws[0].message, /2 nodes are keyed "beta"/);
+  assert.ok(ctx.isFocused('beta'));
+  assert.deepEqual(ctx.warnings(), [], 'once per label');
+});
+
 // Modal surfaces (docs/adr/0003-modal-surfaces.md): the dialog takes focus
 // and keeps it, the app behind it is inert, and Escape and a press outside
 // both ask it to close.
@@ -2179,6 +2237,16 @@ test('reveal scrolls a row into view against the frame that follows it', () => {
   assert.deepEqual(ctx.scrollOffset(list), after);
 });
 
+test('reveal takes the row\'s declared label too', () => {
+  const { ctx, render, list } = listCtx();
+  ctx.reveal('row15');
+  render();
+  const after = ctx.scrollOffset(list);
+  assert.ok(after.y > 0, `reveal moved nothing: ${JSON.stringify(after)}`);
+  const row = nodesByName(ctx)['row 15'];
+  assert.ok(row.rect.y >= 0 && row.rect.y + row.rect.h <= LIST_H, `row 15 not in view: ${JSON.stringify(row.rect)}`);
+});
+
 // -- Window requests -------------------------------------------------------
 // `setWindowSize` / `focusWindow` queue commands for the driver (ADR 0004
 // step 5) — the two things a declaration cannot say, since a window's config
@@ -2217,7 +2285,7 @@ test('reveal of a key the next frame does not declare is a no-op', () => {
   // not find it, so a later frame does not act on it.
   render();
   assert.deepEqual(ctx.scrollOffset(list), { x: 0, y: 0 });
-  assert.throws(() => ctx.reveal('nope'), /bad id/);
+  assert.throws(() => ctx.reveal('nope'), /no node is keyed "nope"/);
 });
 
 test('reveal reaches a row the coming frame declares for the first time', () => {

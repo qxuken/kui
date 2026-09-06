@@ -1171,6 +1171,15 @@ uint64_t kui_open_with(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
 void kui_set_key_focus(KuiCtx *ctx, uint64_t key);
 /* Moves focus to key now (0 blurs). */
 void kui_focus(KuiCtx *ctx, uint64_t key);
+/* The key of the node opened under label in the last finished frame (from
+ * inside a view callback: this frame so far, then the last one); 0 for a
+ * label no node declared. Keys hash the path from the root, through the
+ * auto-keyed ancestors a host cannot spell, so a node no event has come
+ * from is named this way: kui_focus(ctx, kui_key_of(ctx, KUI_STR("note"))).
+ * Labels are unique among siblings, not across the tree: two nodes on one
+ * label under different parents resolve to the first in tree order, with an
+ * "ambiguous-key" warning (kui_take_warnings). */
+uint64_t kui_key_of(KuiCtx *ctx, KuiStr label);
 /* What Tab (forward) / Shift-Tab does: the next / previous focusable node,
  * wrapping. */
 void kui_focus_next(KuiCtx *ctx, bool forward);
