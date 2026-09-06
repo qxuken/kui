@@ -31,6 +31,15 @@
 //! bindings. `env.blur()`, `env.focus_next()` and `env.focus_prev()` need
 //! no such dodge and keep the Node and C spellings.
 //!
+//! `env.set_focus`, `env.is_focused` and `env.reveal` take the node either
+//! way it can be spelled: the integer key an event carried, or the string
+//! its `key` field declared — `env.set_focus("note")` — resolved through
+//! the frame being built so far and then the last finished one
+//! (`Ui::key_of`), so a node no event has come from can be named. Two
+//! nodes on one label under different parents resolve to the first in tree
+//! order with an `ambiguous-key` warning; a label no node declared is an
+//! error naming both spellings.
+//!
 //! `set_focus` and `blur` take effect at once; `focus_next` / `focus_prev`
 //! resolve when the frame finishes, because the Tab ring is made of a
 //! finished tree and `view` is still declaring one (`Ui::focus_next`).
@@ -154,12 +163,38 @@ impl Extension for LuaExtension {
 /// `focus` (the focused *node*'s key), `focus_visible`,
 /// `viewport_w`/`viewport_h` (logical px), `window` chrome facts, the
 /// queries `edit_text(key)`, `is_focused(key)`, `is_hovered(key)`,
-/// `is_pressed(key)` (keys are the integers events carry),
-/// `measure_text(s, opts, max_w)` (see `measure_from_lua`), the focus verbs
-/// `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()` and the
-/// scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
+/// `is_pressed(key)` (keys are the integers events carry; `is_focused`,
+/// `set_focus` and `reveal` also take a declared `key` string, see
+/// `key_arg`), `measure_text(s, opts, max_w)` (see `measure_from_lua`), the
+/// focus verbs `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()`
+/// and the scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
 /// `scroll_geometry(key)` and the window requests `set_window_size(window,
 /// w, h)` / `focus_window(window)`.
+/// A node named either way a script can: the integer key an event carried,
+/// or the string label its `key` field declared, resolved through the
+/// frame so far and then the last finished one (`Ui::key_of`). A string no
+/// node declared is an error naming both spellings, since nothing else
+/// would (backlog F5).
+fn key_arg(ui: &mut Ui<'_>, v: mlua::Value) -> mlua::Result<Key> {
+    match v {
+        mlua::Value::Integer(i) => Ok(Key(i as u64)),
+        mlua::Value::String(s) => {
+            let label = s.to_str()?;
+            ui.key_of(&label).ok_or_else(|| {
+                mlua::Error::runtime(format!(
+                    "no node is keyed {:?}: pass the label a `key` field declared in this or the last \
+                     frame, or the integer key an event carried",
+                    &*label
+                ))
+            })
+        }
+        other => Err(mlua::Error::runtime(format!(
+            "a node key is an integer or a declared label, not {}",
+            other.type_name()
+        ))),
+    }
+}
+
 fn env_table<'scope, 'env: 'scope>(
     lua: &Lua,
     scope: &'scope mlua::Scope<'scope, 'env>,
@@ -206,9 +241,15 @@ fn env_table<'scope, 'env: 'scope>(
         "edit_text",
         scope.create_function(move |_, key: i64| Ok(ui.borrow().edit_text(Key(key as u64))))?,
     )?;
+    // Takes a label too (`key_arg`): a view styles the row it declares by
+    // the name it gives it, without an event having told it the key.
     t.set(
         "is_focused",
-        scope.create_function(move |_, key: i64| Ok(ui.borrow().is_focused(Key(key as u64))))?,
+        scope.create_function(move |_, key: mlua::Value| {
+            let mut ui = ui.borrow_mut();
+            let key = key_arg(&mut ui, key)?;
+            Ok(ui.is_focused(key))
+        })?,
     )?;
     t.set(
         "is_hovered",
@@ -226,10 +267,15 @@ fn env_table<'scope, 'env: 'scope>(
     // and alpha.5 shipped it, so the verb takes the longer name rather
     // than change what a name means under a script that already runs.
     // `blur` / `focus_next` / `focus_prev` match Node and C exactly.
+    // The key is an integer or a declared label (`key_arg`): "focus the
+    // editor I just created" is `env.set_focus("editor")`, with no event
+    // from it needed first.
     t.set(
         "set_focus",
-        scope.create_function(move |_, key: i64| {
-            ui.borrow_mut().focus(Key(key as u64));
+        scope.create_function(move |_, key: mlua::Value| {
+            let mut ui = ui.borrow_mut();
+            let key = key_arg(&mut ui, key)?;
+            ui.focus(key);
             Ok(())
         })?,
     )?;
@@ -295,8 +341,10 @@ fn env_table<'scope, 'env: 'scope>(
     // no-op; the request is not kept for a later frame.
     t.set(
         "reveal",
-        scope.create_function(move |_, key: i64| {
-            ui.borrow_mut().reveal(Key(key as u64));
+        scope.create_function(move |_, key: mlua::Value| {
+            let mut ui = ui.borrow_mut();
+            let key = key_arg(&mut ui, key)?;
+            ui.reveal(key);
             Ok(())
         })?,
     )?;
@@ -2227,9 +2275,57 @@ mod tests {
         frame(&mut core, &mut ext);
         assert_eq!(seen(&ext), None);
 
+        // By label: the node's own `key` string, with no event from it
+        // first (F5). `c` was never clicked, tabbed to or reported.
+        ext.lua.globals().set("target", "c").unwrap();
+        cmd(&ext, "set");
+        frame(&mut core, &mut ext);
+        assert_eq!(core.focus(), Some(c), "set_focus(\"c\") resolves the label");
+        assert!(live(&ext), "and is_focused(\"c\") answers about it");
+        assert!(core.take_warnings().is_empty());
+        // A label nothing declares is an error that names both spellings.
+        ext.lua.globals().set("target", "nope").unwrap();
+        cmd(&ext, "set");
+        let mut ui = core.frame(Size::new(800.0, 600.0), 1.0);
+        let e = ext.view(&mut ui).unwrap_err().to_string();
+        ui.finish();
+        assert!(e.contains("no node is keyed \"nope\"") && e.contains("integer key"), "{e}");
+
         // `env.focused` is the window's focus, not the node's: it stays a
         // bool through all of the above, and follows the host env instead.
         assert!(ext.lua.globals().get::<bool>("seen_window").unwrap());
+    }
+
+    /// Two nodes on one label under different parents: the first in tree
+    /// order is the one focused, and the frame says so once.
+    #[test]
+    fn a_shared_label_resolves_to_the_first_and_warns() {
+        let mut ext = LuaExtension::from_source(
+            "dup",
+            r#"
+                function view(env)
+                  if go then env.set_focus("item"); go = nil end
+                  return column { key = "root",
+                    row { row { key = "item", focusable = true, width = 50, height = 20 } },
+                    row { row { key = "item", focusable = true, width = 50, height = 20 } },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        ext.lua.globals().set("go", true).unwrap();
+        frame(&mut core, &mut ext);
+        assert_eq!(
+            core.focus(),
+            Some(Key::ROOT.str("root").index(0).str("item")),
+            "the first, under the auto-keyed first row"
+        );
+        let ws = core.take_warnings();
+        assert_eq!(ws.len(), 1, "{ws:?}");
+        assert_eq!(ws[0].code, kui_core::diag::AMBIGUOUS_KEY);
+        assert!(ws[0].message.contains("\"item\""), "{}", ws[0].message);
     }
 
     /// A script virtualizes a 10k-row list with nothing but

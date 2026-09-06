@@ -72,6 +72,20 @@ upgrades remove code from the apps on it is doing the job.
   node-less announcement arrives, and that the same message twice in a
   row is said twice. 96/96.
 
+- **A node is named by the label its `key` declared** (backlog F5). Node's
+  `focus`, `isFocused`, `reveal` and `access` took only the hex key an
+  event carried, so a node the user had never touched — "focus the editor
+  I just created" — could not be named at all. They now take either
+  spelling: `focus('note')` resolves the label through the last frame
+  (`Core::key_of`, `Ui::key_of` in Rust; the build records every keyed
+  node's label as it goes, into a buffer cleared between frames). Lua's
+  `env.set_focus`, `env.is_focused` and `env.reveal` take a string beside
+  the integer, and C gets `kui_key_of(ctx, label)` for its `uint64_t`
+  callers. Labels are unique among siblings, not across a tree, so two
+  nodes on one label resolve to the first in tree order with a new
+  `ambiguous-key` warning; a label nothing declared is an error naming
+  both spellings, where `bad id "beta"` named neither.
+
 ### Fixed
 
 - **The accessibility example's Actions menu was drawn half outside the
@@ -165,6 +179,12 @@ upgrades remove code from the apps on it is doing the job.
   would see it change, and the code that cleared it a frame later. A
   message with a place on screen takes `live` on the node it is already
   in; one without takes `announce` and needs no node at all.
+
+- **The key harvest.** An `onLayout` on every node whose only job was to
+  learn its hex key so `focus()` could be called later — an event per node
+  per frame — and the model field that stored them. A node is `focus('its
+  label')` now, and the access-tree lookup that found an editor's rect just
+  to click it into focus is `focus('note')` too.
 
 
 ## 0.1.0-alpha.6 (2026-09-05)

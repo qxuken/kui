@@ -240,32 +240,6 @@ N+1 drops the modal and declares `keyFocus` on new node B; `focus() == B`.
 And the ADR 0003 corpus scene `modal` gains the step — a report keeps one
 frame and this is a two-frame fact (A1 says how those are pinned).
 
-### `~` F5 — Nothing outside Rust can name a node by the key it declared
-
-Evidence: mind-map #2, pomodoro 2.6. `focus('beta')`, `reveal`, `isFocused`
-and `access('sl', …)` throw `bad id "beta"` (`crates/kui-node/src/lib.rs:201`):
-they take the hex key, and the only way to learn one is to receive an event
-from that node. "Focus the node I just created" is not expressible — it has
-never been interacted with — and harvesting keys through `onLayout` on every
-node is an event per node per frame under a camera. The error names neither
-of the two things it could have been handed.
-
-The keys are deterministic — `parent.str(label)` / `parent.index(i)`
-(`runtime/builder.rs:183-191`) — and Rust has `child_key(label)` for exactly
-this. What the app lacks is the path from the root, because unkeyed
-ancestors are auto-indexed.
-
-**Do:** resolve a declared label in the core: `Core::key_of(label) ->
-Option<Key>` over the last frame. A per-node label is not kept today, so the
-build pushes `(Key, label)` for every `.str`-keyed node into a per-frame
-`Vec` (cleared like `declared_focus`, cheap) and the call scans it. Then
-Node's `focus` / `isFocused` / `reveal` / `access` accept a non-hex string
-and resolve it there, warning `ambiguous-key` (one more constant in S2's
-list) when two nodes share the label, and the error for an unknown string
-names both spellings. Lua's `env.focus` (P3) and C's `kui_focus` get the
-same door. **Test:** `test.mjs`: `focus('beta')` on a node never clicked;
-two `beta`s warn and the first wins; the hex path unchanged.
-
 ### `~` F6 — Headless key input is two channels, and a window drives both
 
 Evidence: mind-map #4, pomodoro 2.4. `ctx.keyDown(code)` reaches `onKey`
@@ -352,9 +326,10 @@ unknown }` while `DragMsg<T = AppMsg>` and `KeyMsg<T>` carry the app's
 union; handling a nudge needs `p.tag as PomoMsg` in a library whose pitch is
 one union and no casts. `CoreMsg` already lists it (line 158), so half of
 the report's ask is done. **Do:** `AccessMsg<T = AppMsg>`, `tag?: T`. It is
-in the hand-written half of the file (P5), so no generator change. While
-there, the `access()` doc (line 968) should say the key is hex and, once F5
-lands, name the other spelling.
+in the hand-written half of the file (P5), so no generator change. The
+second half of this entry — the `access()` doc saying the key is hex and
+naming the other spelling — closed with F5 (2026-09-06): the doc on the
+generated method names both, and the label spelling works.
 
 ### `.` F10 — A slider's declared range is never checked against its value
 
@@ -485,7 +460,8 @@ sets the frame clock, which is why nothing eased is testable from Node), F2
 (drag deltas), F4 (the modal restore overriding a `keyFocus` edge) and F3
 (an alpha.4 keymap runs twice — a decision between its (a) and (b) before
 the next tag, since every migrating app hits it). Then the gaps in rough
-order of cost: F9 and F10 are an afternoon, F5, F6 and F11 a day each, F8
+order of cost: F9 and F10 are an afternoon, F6 and F11 a day each (F5 was one,
+and is done), F8
 needs one AccessKit question answered first. F7 (global shortcuts under a
 Tab ring) and F12 (a line primitive) join the ADR group below. F13
 (VoiceOver at launch) and F15 (panning in a window) are reports nobody in
@@ -598,7 +574,7 @@ Worth doing before anyone builds a real combobox on this.
 
 ## Closed — index
 
-Forty-seven entries, all in
+Forty-eight entries, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim.
 This index is here so an id resolves without opening that file: the open items
 above cite A1, C7, C9, C10, D2, P3, P5, P8, R3 and S2, "After alpha.6" and the hygiene note cite C2,
@@ -612,6 +588,10 @@ The archive also holds two sections that are records rather than work: the
 suggested sequence as it stood on 2026-09-05, and
 [Release 0.1.0-alpha.6](backlog/closed-2026-09.md#release-010-alpha6-2026-09-05),
 whose R1–R7 are the half-baked items finished before the tag.
+
+**From two field reports (2026-09-06)** — F5
+
+- `~` **F5** — [Nothing outside Rust can name a node by the key it declared](backlog/closed-2026-09.md#-f5--nothing-outside-rust-can-name-a-node-by-the-key-it-declared--done-2026-09-06) — done (2026-09-06)
 
 **From building C11 step 4 (2026-09-06)** — W1
 

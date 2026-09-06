@@ -520,7 +520,11 @@ static int surface(void) {
      * host drives its raw keys directly: kui_input_key carries the editing
      * keys (KUI_KEY_*), kui_input_key_down / _up the whole keyboard. A held
      * key is one {kind="key"} payload twice, phase="down" then "up". */
-    kui_focus(ui, k.sink);
+    /* A node the host never got an event from is named by the label it was
+     * opened under: kui_key_of walks the path from the root for it. */
+    check(kui_key_of(ui, KUI_STR("sink")) == k.sink, "kui_key_of resolves a declared label");
+    check(kui_key_of(ui, KUI_STR("no such node")) == 0, "kui_key_of is 0 for an undeclared one");
+    kui_focus(ui, kui_key_of(ui, KUI_STR("sink")));
     check(kui_is_focused(ui, k.sink), "kui_is_focused");
     KuiStr no_text = {0};
     /* {0} for `physical` means "the key I just named" - what a host that

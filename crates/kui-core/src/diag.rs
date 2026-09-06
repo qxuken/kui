@@ -94,6 +94,14 @@ warnings! {
     /// (transitions, scroll offsets, editors, layout events, hover state) is
     /// mixed between them. Siblings need distinct keys.
     pub const DUPLICATE_KEY: &str = "duplicate-key";
+    /// A label resolved by name (`focus("beta")` in Node, `env.set_focus("beta")`
+    /// in Lua, `kui_key_of` in C) is declared by more than one node in the
+    /// frame, under different parents, so they have distinct keys and the name
+    /// picked the first in tree order. Labels are unique among siblings, not
+    /// across a tree. Give the node meant a label nothing else declares, or
+    /// pass the hex key an event carried. Two nodes with the *same* key are
+    /// `duplicate-key`.
+    pub const AMBIGUOUS_KEY: &str = "ambiguous-key";
     /// An image with no `label`: assistive technology has nothing to say
     /// for it. Decorative images take `role="none"`.
     pub const IMAGE_WITHOUT_LABEL: &str = "image-without-label";
@@ -269,6 +277,22 @@ pub fn unknown_window_kind(name: &str, kind: u32) -> Warning {
             "window `{name}` was declared with kind {kind}, which this build does not have; \
              `KUI_WINDOW_KIND_NORMAL` (0) and `KUI_WINDOW_KIND_POPUP` (1) are the ones there \
              are, so it opened as a normal window"
+        ),
+    }
+}
+
+/// The [`AMBIGUOUS_KEY`] warning for one label `Core::key_of` found `count`
+/// nodes under. Keyed by the node the name resolved to, so a label asked
+/// for every frame costs one line.
+pub fn ambiguous_key(label: &str, first: Key, count: usize) -> Warning {
+    Warning {
+        code: AMBIGUOUS_KEY,
+        key: first,
+        message: format!(
+            "{count} nodes are keyed {label:?} under different parents; the first in tree order \
+             ({:016x}) was used — give the one meant a label nothing else declares, or pass its \
+             hex key",
+            first.0
         ),
     }
 }

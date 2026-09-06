@@ -197,6 +197,7 @@ impl Core {
     pub fn finish_frame(&mut self) {
         self.layout_frame();
         self.emit_frame();
+        self.building = false;
     }
 
     /// The frame's first half: layout, then everything that resolves

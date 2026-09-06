@@ -382,6 +382,13 @@ export type WarningCode =
    *  (transitions, scroll offsets, editors, layout events, hover state) is
    *  mixed between them. Siblings need distinct keys. */
   | 'duplicate-key'
+  /** A label resolved by name (`focus("beta")` in Node, `env.set_focus("beta")`
+   *  in Lua, `kui_key_of` in C) is declared by more than one node in the frame,
+   *  under different parents, so they have distinct keys and the name picked
+   *  the first in tree order. Labels are unique among siblings, not across a
+   *  tree. Give the node meant a label nothing else declares, or pass the hex
+   *  key an event carried. Two nodes with the *same* key are `duplicate-key`. */
+  | 'ambiguous-key'
   /** An image with no `label`: assistive technology has nothing to say for it.
    *  Decorative images take `role="none"`. */
   | 'image-without-label'
@@ -1020,12 +1027,14 @@ export declare class Ctx {
    */
   accessTree(): AccessTree
   /**
-   * A request from assistive technology on a node (`key`, hex as in
-   * events): an `AccessAction` name the node advertises, with
-   * `value` the new text for `setValue`. Resolved like its
-   * pointer/keyboard equivalent, so the resulting events come out of
-   * `pollEvents`. A real screen reader's requests arrive through a
-   * window on their own.
+   * A request from assistive technology on a node: an `AccessAction`
+   * name the node advertises, with `value` the new text for
+   * `setValue`. `key` is either spelling of the node — the hex key
+   * an event carried (16 digits), or the label its `key` prop
+   * declared, resolved through the last frame (see `focus`).
+   * Resolved like its pointer/keyboard equivalent, so the resulting
+   * events come out of `pollEvents`. A real screen reader's
+   * requests arrive through a window on their own.
    */
   access(key: string, action: AccessAction, value?: string | AccessArg): void
   /**
@@ -1049,7 +1058,8 @@ export declare class Ctx {
   cursorShape(): CursorShape
   /**
    * Whether a node holds keyboard focus — any node: an editor, an
-   * `onKey` sink, a button Tab landed on (see `focused`).
+   * `onKey` sink, a button Tab landed on (see `focused`). `key` is
+   * a hex key or a declared label, as for `focus`.
    */
   isFocused(key: string): boolean
   /**
@@ -1069,6 +1079,15 @@ export declare class Ctx {
    * Moves keyboard focus to a node now (an editor, an `onKey` sink,
    * a control, a `focusable` box); `keyFocus` on a box is the
    * declarative, edge-triggered form.
+   *
+   * `key` is either spelling of the node: the 16-digit hex key an
+   * event carried, or the label its `key` prop declared —
+   * `focus('note')` — resolved through the last frame, so a node
+   * the user has never touched can be named. Labels are unique
+   * among siblings, not across the tree: when two nodes declare
+   * the same one, the first in tree order wins and an
+   * `ambiguous-key` warning says so. A label no node declared
+   * throws.
    */
   focus(key: string): void
   blur(): void
@@ -1088,7 +1107,10 @@ export declare class Ctx {
    * first time reveals fine. If that frame does not declare the key,
    * or nothing above it scrolls, it is a no-op and is not kept for a
    * later frame; two reveals before one frame are contradictory, so
-   * the last wins.
+   * the last wins. `key` is a hex key or a declared label, as for
+   * `focus` — a label resolves through the *last* frame, so a row
+   * the coming frame declares for the first time is reachable by
+   * its hex key only.
    */
   reveal(key: string): void
   /**
@@ -1339,12 +1361,14 @@ export declare class KuiWindow {
    */
   accessTree(): AccessTree
   /**
-   * A request from assistive technology on a node (`key`, hex as in
-   * events): an `AccessAction` name the node advertises, with
-   * `value` the new text for `setValue`. Resolved like its
-   * pointer/keyboard equivalent, so the resulting events come out of
-   * `pollEvents`. A real screen reader's requests arrive through a
-   * window on their own.
+   * A request from assistive technology on a node: an `AccessAction`
+   * name the node advertises, with `value` the new text for
+   * `setValue`. `key` is either spelling of the node — the hex key
+   * an event carried (16 digits), or the label its `key` prop
+   * declared, resolved through the last frame (see `focus`).
+   * Resolved like its pointer/keyboard equivalent, so the resulting
+   * events come out of `pollEvents`. A real screen reader's
+   * requests arrive through a window on their own.
    */
   access(key: string, action: AccessAction, value?: string | AccessArg): void
   /**
@@ -1368,7 +1392,8 @@ export declare class KuiWindow {
   cursorShape(): CursorShape
   /**
    * Whether a node holds keyboard focus — any node: an editor, an
-   * `onKey` sink, a button Tab landed on (see `focused`).
+   * `onKey` sink, a button Tab landed on (see `focused`). `key` is
+   * a hex key or a declared label, as for `focus`.
    */
   isFocused(key: string): boolean
   /**
@@ -1388,6 +1413,15 @@ export declare class KuiWindow {
    * Moves keyboard focus to a node now (an editor, an `onKey` sink,
    * a control, a `focusable` box); `keyFocus` on a box is the
    * declarative, edge-triggered form.
+   *
+   * `key` is either spelling of the node: the 16-digit hex key an
+   * event carried, or the label its `key` prop declared —
+   * `focus('note')` — resolved through the last frame, so a node
+   * the user has never touched can be named. Labels are unique
+   * among siblings, not across the tree: when two nodes declare
+   * the same one, the first in tree order wins and an
+   * `ambiguous-key` warning says so. A label no node declared
+   * throws.
    */
   focus(key: string): void
   blur(): void
@@ -1407,7 +1441,10 @@ export declare class KuiWindow {
    * first time reveals fine. If that frame does not declare the key,
    * or nothing above it scrolls, it is a no-op and is not kept for a
    * later frame; two reveals before one frame are contradictory, so
-   * the last wins.
+   * the last wins. `key` is a hex key or a declared label, as for
+   * `focus` — a label resolves through the *last* frame, so a row
+   * the coming frame declares for the first time is reachable by
+   * its hex key only.
    */
   reveal(key: string): void
   /**

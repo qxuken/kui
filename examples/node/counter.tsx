@@ -103,13 +103,10 @@ console.log(`after +1 +1 -1: count = ${app.model.count}`);
 
 // The editor is declared `autofocus`, but that only takes the keyboard
 // while nothing else holds it (ADR 0002) — the three clicks above left
-// focus on a button. So click into it first, the way a user would: a press
-// moves focus and places the caret, and the field is still empty, so the
-// caret lands at the start either way. The access tree is the tidiest way
-// to find it: it carries each node's rect, no quad archaeology needed.
-const note = app.accessTree().nodes.find((n) => n.name === 'note');
-if (!note) throw new Error('the editor is missing from the access tree');
-app.click(...center(note.rect));
+// focus on a button. So move it there by name: `focus` takes the label the
+// editor's `key` prop declared, resolved through the last frame, so no
+// event from the editor (and no rect to click) is needed first.
+app.ctx.focus('note');
 app.type('hello from node');
 console.log(`note: "${app.model.note}"`);
 
