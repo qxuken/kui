@@ -28,6 +28,30 @@ pub enum QuadKind {
     /// spread, so a backend only has to soften the SDF it already
     /// computes. Ignores `uv`, `border_color` and `border_w`.
     Shadow,
+    /// A round-capped stroke between two endpoints
+    /// (`docs/adr/0010-a-segment-primitive.md`). `uv` holds the endpoints
+    /// as `[x0, y0, x1, y1]` in physical px, each an `f32` stored through
+    /// `to_bits` — [`Quad::segment_ends`] reads them back — `border_w` is
+    /// the stroke width and `color` the stroke. `rect` is the bounding
+    /// box, the endpoints inflated by half the width plus two logical px
+    /// so the edge ramp is never cut by the quad's own edge. A backend
+    /// evaluates an SDF capsule against the fragment's position. Ignores
+    /// `radius`, `border_color` and `blur`.
+    Segment,
+}
+
+impl QuadKind {
+    /// Every kind, in discriminant order — what the conformance report's
+    /// `kinds` line counts and the C header's `KUI_QUAD_*` mirror.
+    pub const ALL: [QuadKind; 7] = [
+        QuadKind::Solid,
+        QuadKind::GlyphMask,
+        QuadKind::GlyphColor,
+        QuadKind::Image,
+        QuadKind::GlyphSubpixel,
+        QuadKind::Shadow,
+        QuadKind::Segment,
+    ];
 }
 
 #[repr(C)]
@@ -46,7 +70,8 @@ pub struct Quad {
     /// Zero elsewhere.
     pub blur: f32,
     pub kind: QuadKind,
-    /// Atlas texels: x, y, w, h.
+    /// Atlas texels: x, y, w, h. For [`QuadKind::Segment`] the two
+    /// endpoints instead, as `f32` bits (see [`Quad::segment_ends`]).
     pub uv: [u32; 4],
     /// Clip rect in physical pixels; pixels outside are discarded.
     pub clip: Rect,
@@ -56,6 +81,20 @@ pub struct Quad {
     /// clip is the plain rect, which is what lets a backend skip the second
     /// SDF. See [`Clip`] for where the radii come from.
     pub clip_radius: [f32; 4],
+}
+
+impl Quad {
+    /// A [`QuadKind::Segment`]'s endpoints, `[x0, y0, x1, y1]` in physical
+    /// px, decoded from the bits `uv` carries. Meaningless for any other
+    /// kind.
+    pub fn segment_ends(&self) -> [f32; 4] {
+        self.uv.map(f32::from_bits)
+    }
+
+    /// The `uv` a [`QuadKind::Segment`] carries for these endpoints.
+    pub fn segment_uv(ends: [f32; 4]) -> [u32; 4] {
+        ends.map(f32::to_bits)
+    }
 }
 
 /// A clip that clips nothing.

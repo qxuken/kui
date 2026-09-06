@@ -105,6 +105,75 @@ pub extern "C" fn kui_image(ptr: *mut KuiCtx, id: u64, spec: *const KuiSpec) {
     });
 }
 
+/// A round-capped stroke from (x0, y0) to (x1, y1); see `Core::line_node`.
+/// `spec` may be NULL. `width <= 0` is 1; `color` 0 is the default
+/// foreground, like a text style's.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_line(
+    ptr: *mut KuiCtx,
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
+    width: f32,
+    color: u32,
+    spec: *const KuiSpec,
+) {
+    let xy = [x0, y0, x1, y1];
+    let none = KuiStr {
+        ptr: std::ptr::null(),
+        len: 0,
+    };
+    kui_polyline(ptr, none, xy.as_ptr(), 2, width, color, false, spec);
+}
+
+/// A stroke through `count` points at `xy` (x0, y0, x1, y1, ...): a
+/// polyline, or with `curve` a smooth curve through them, flattened in the
+/// core. `label` keys the node (empty = a key from the tree position), for
+/// a stroke that transitions or exits. See `Core::line_node`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_polyline(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    xy: *const f32,
+    count: usize,
+    width: f32,
+    color: u32,
+    curve: bool,
+    spec: *const KuiSpec,
+) {
+    guard((), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
+        if xy.is_null() || count < 2 {
+            return;
+        }
+        let floats = unsafe { std::slice::from_raw_parts(xy, count * 2) };
+        let points: Vec<kui_core::Vec2> = floats
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|p| kui_core::Vec2::new(p[0], p[1]))
+            .collect();
+        let spec = match unsafe { spec.as_ref() } {
+            Some(s) => spec_of(s, NONE, NONE, NONE, NONE),
+            None => kui_core::NodeSpec::column(),
+        };
+        let color = if color == 0 {
+            kui_core::TextStyle::default().color
+        } else {
+            color_of(color)
+        };
+        let mut stroke = kui_core::Stroke::new(if width > 0.0 { width } else { 1.0 }, color);
+        stroke.curve = curve;
+        match opt_str(label) {
+            Some(label) => c.core().line_node_keyed(&label, &points, stroke, spec),
+            None => c.core().line_node(&points, stroke, spec),
+        }
+    });
+}
+
 /// Like `kui_open_keyed`, but the node is draggable: press-drag emits
 /// `{kind="drag", phase, x, y, dx, dy, tag}` events. `on_drag` (the tag,
 /// nullable) and `on_click` (nullable) are consumed. A drag past the click
@@ -133,7 +202,8 @@ pub extern "C" fn kui_open_draggable(
 /// NULL `on_drag` here does NOT make the node draggable, unlike
 /// `kui_open_draggable`). A non-NULL `on_key` makes the node a key sink;
 /// give it focus with `kui_set_key_focus` and presses arrive as
-/// `{kind="key", code, ctrl, alt, shift, super, text, repeat, tag}`.
+/// `{kind="key", phase="down", code, ctrl, alt, shift, super, text, repeat,
+/// tag}` — releases too, with `phase="up"`, when the spec sets `key_up`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_open_with(
     ptr: *mut KuiCtx,

@@ -49,6 +49,16 @@ function image(t)
   return t
 end
 
+-- line { from = {x, y}, to = {x, y}, width = 2, color = 0x7f9cf5ff } or
+-- line { points = {{x, y}, ...}, curve = true, ... }: a round-capped stroke
+-- in the parent's box space, never in layout (it floats, sized to its own
+-- bounding box). `width` is the stroke width, `color` the stroke colour;
+-- `key`, `transition`, `opacity`, `on_layout` apply, input props do not.
+function line(t)
+  t.type = "line"
+  return t
+end
+
 -- audio { src = id, loop = true, volume = 0.5, paused = false, tag = {...},
 -- key = "music" }: a playback retained by key while the view declares it
 -- (present = playing, gone = stopped; volume/paused apply live). Draws

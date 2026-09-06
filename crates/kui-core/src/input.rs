@@ -498,6 +498,9 @@ pub struct HitRegion {
     /// Key-sink tag when the node declared `on_key`: clicking it takes
     /// key focus, and key presses then arrive on it carrying this tag.
     pub key_sink: Option<Value>,
+    /// The sink declared `key_up`: releases reach it too. Without it a
+    /// release is dropped at routing, and the sink hears presses only.
+    pub key_up: bool,
     /// Context-menu tag when the node declared `on_context_menu`: a
     /// secondary-button press emits `{kind="contextmenu", x, y, tag}` on
     /// it. Like a click, the topmost region under the pointer is the one
@@ -1036,6 +1039,7 @@ mod tests {
             parent_rect: Rect::new(0.0, 0.0, 0.0, 0.0),
             edit_origin: None,
             key_sink: None,
+            key_up: false,
             context_menu: None,
             focusable: true,
             window: None,

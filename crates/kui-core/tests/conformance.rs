@@ -64,6 +64,7 @@ fn check(scene: &Scene) {
     assert_eq!(out.kinds[0], e.solid, "{name}: solid quads");
     assert_eq!(out.kinds[5], e.shadows, "{name}: shadow quads");
     assert_eq!(out.kinds[3], e.images, "{name}: image quads");
+    assert_eq!(out.kinds[6], e.segments, "{name}: segment quads");
     let glyphs = out.kinds[1] + out.kinds[2] + out.kinds[4];
     assert!(
         glyphs >= e.glyphs_min,

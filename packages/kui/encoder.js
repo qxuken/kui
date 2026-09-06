@@ -489,6 +489,34 @@ export function createEncoder(P) {
         props(p, null, false);
         return;
       }
+      case 'line': {
+        // `from`/`to` or `points`, each an [x, y] pair; `width` is the
+        // stroke width and `color` the stroke colour, the latter a schema
+        // row the props pass writes into the style. `width` also rides
+        // the props pass as a sizing, harmlessly: the core sizes a line
+        // to its own box (docs/adr/0010-a-segment-primitive.md).
+        let pts = p.points;
+        if (pts == null) {
+          if (!Array.isArray(p.from) || !Array.isArray(p.to)) throw new Error('<line> needs from and to, or points');
+          pts = [p.from, p.to];
+        }
+        if (!Array.isArray(pts) || pts.length < 2) throw new Error('<line> needs at least two points');
+        if (p.width !== undefined && typeof p.width !== 'number') throw new Error(`bad width ${JSON.stringify(p.width)} for <line> (a stroke width in px)`);
+        reserve(6 + pts.length * 2);
+        f[fi++] = OP.line;
+        f[fi++] = pts.length;
+        for (const pt of pts) {
+          if (!Array.isArray(pt) || pt.length !== 2 || typeof pt[0] !== 'number' || typeof pt[1] !== 'number') {
+            throw new Error(`bad point ${JSON.stringify(pt)} for <line> (an [x, y] pair)`);
+          }
+          f[fi++] = pt[0];
+          f[fi++] = pt[1];
+        }
+        f[fi++] = typeof p.width === 'number' ? p.width : 1;
+        f[fi++] = p.curve ? 1 : 0;
+        props(p, el.key, false);
+        return;
+      }
       case 'audio': {
         if (typeof p.src !== 'string') throw new Error('<audio> needs a src (an id from addSound)');
         const id = BigInt('0x' + p.src);

@@ -28,6 +28,10 @@ pub enum NodeContent {
     Edit(Key),
     /// A host-registered image (see `Resources`), drawn via the atlas.
     Image(crate::resources::ImageId),
+    /// A stroke through a run of points: one segment quad per straight
+    /// piece (see `crate::line`). The node is a float sized to the
+    /// stroke's bounding box, and its `bg` is the stroke colour.
+    Line(crate::line::LineId),
 }
 
 impl Tree {

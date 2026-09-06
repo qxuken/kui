@@ -868,7 +868,9 @@ impl App for Splitmux {
 
     fn on_event(&mut self, ev: UiEvent) {
         match ev.payload.get("kind").and_then(Value::as_str) {
-            Some("key") if ev.payload.get("phase").and_then(Value::as_str) == Some("down") => {
+            // Presses only — the sink never asked for releases (`key_up`),
+            // so a chord fires once.
+            Some("key") => {
                 // The chord map: Alt (⌥ Option on macOS) + a letter or digit.
                 let alt = ev
                     .payload

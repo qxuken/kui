@@ -122,7 +122,32 @@ the legend mark rather than by report; "After alpha.6" says where each goes.
 The reports' own app bugs (a visible label used as a key, a font id shared
 across cores) are theirs and are not here.
 
-### `!` F1 — The Node loop never sets the frame clock until the first `advance`
+### `!` F1 — The Node loop never sets the frame clock until the first `advance` — **done (2026-09-06)**
+
+`createLoop` stamps the frame clock when it is built and at the top of
+`draw()` (`surface.setTime?.(at() / 1000)`), and `advance` no longer sets
+it itself — one place, so `render()`, `click()`, `type()`, `step()` and
+`advance()` all draw under the same hands. The window needed nothing:
+`KuiWindow` has no `setTime` (the optional call is a no-op there) and the
+Rust runner already stamps every frame from its own epoch
+(`crates/kui/src/lib.rs`, `pane.core.set_time(epoch.elapsed())`), so a
+wall-clock loop does not double it; the `clock` option is only where `at()`
+reads from. The repro is a test in `packages/kui/test.mjs` ("render and an
+event-driven frame share the clock advance moves (F1)"): render, dispatch,
+render — still 100, the baseline — then `advance(50)` is strictly between
+100 and 400 with `animating()` true, and `advance(200)` is 400 and false.
+
+Mutation-tested: deleting the `setTime` in `draw()` fails that test at
+"mid-flight at 50 ms, not 100" and also fails the older `advance`
+transition test, which had only passed because it called `advance(0)`
+before the change — the workaround in disguise. Deleting the creation-time
+line alone fails nothing, because `draw()` covers it; it stays for anything
+that reads the surface before the first frame. The rest of the suite passed
+unchanged, so no in-repo test was leaning on the snap. Docs: `setTime`'s
+doc (in `lib.rs` and `index.d.ts`, edited by hand to the same words) no
+longer calls the unset clock "the default for headless tests", the README's
+Testing section says the loop keeps the clock, and the changelog carries it
+under Fixed and "what you can delete". F14's first bullet still stands.
 
 Evidence: mind-map #8, `repro/transition-advance.tsx`. A keyed box going
 100 → 400 under `transition={200}` is already at 400 in the frame that
@@ -154,7 +179,32 @@ click, `advance(50)`, assert the decoded quad's width is strictly between
 Mutation-test it by deleting the new `setTime` line (the D2 rule for
 `encoder.js` applies to the loop too).
 
-### `!` F3 — `onKey` fires on release too, and an alpha.4 keymap runs every binding twice
+### `!` F3 — `onKey` fires on release too, and an alpha.4 keymap runs every binding twice — done (2026-09-06)
+
+**Done (2026-09-06), as (a).** `keyUp` is a `Flag` row (id 81) beside
+`onKey` — `key_up` in Lua and C, `.key_up()` in Rust: `onKey` alone hears
+presses, `onKey` + `keyUp` hears both, the payload unchanged. The argument
+for (a) over (b): a keymap is every sink in this repo's examples and in
+both field reports, and a default the dominant case has to guard against
+is the wrong default however well the note is written — (b) would have
+moved the sentence, not the bug. C9's guarantee survives for the sinks
+that opt in. The routing change is one guard in `route_key`
+(`runtime/dispatch.rs`): a release is dropped at delivery when the hit
+region's `key_up` is unset, and the held-key bookkeeping is untouched, so
+a stray release still resolves to nothing, focus leaving still lets go
+(silently, to a sink that never asked), and a sink that opts in mid-hold
+hears the release it is owed. One schema row, so the four bindings got it
+mechanically; the ABI parity test forced `KuiSpec.key_up` (an [in]
+append, no bump). Tests: `keys.rs`
+`a_sink_without_key_up_hears_presses_only`; `test.mjs` has the keymap
+fixture that presses *and* releases and asserts one toggle; the corpus's
+`keys` scene — two sinks clicked into focus in turn, driven by the new
+`keydown` / `keyup` steps, reporting `key down` / `key down` / `key up` —
+pins it across Rust, Lua, C and Node. Examples: the C and Node counters'
+sinks, which deliberately count both halves, say `key_up`; the four Rust
+examples that guarded on `phase == "down"` lost the guard. The CHANGELOG
+carries the "what breaks" line for the alpha.7 tag: a held-key binding
+written against alpha.6 adds `keyUp`.
 
 Evidence: pomodoro 1.1. C9 made `KeyMsg` carry `phase: 'down' | 'up'` and
 deliver both to one sink (`CHANGELOG.md` line 849, `index.d.ts:30`). A bare
@@ -207,32 +257,6 @@ focus lands on the way out by declaring it, and no new row is needed.
 N+1 drops the modal and declares `keyFocus` on new node B; `focus() == B`.
 And the ADR 0003 corpus scene `modal` gains the step — a report keeps one
 frame and this is a two-frame fact (A1 says how those are pinned).
-
-### `~` F5 — Nothing outside Rust can name a node by the key it declared
-
-Evidence: mind-map #2, pomodoro 2.6. `focus('beta')`, `reveal`, `isFocused`
-and `access('sl', …)` throw `bad id "beta"` (`crates/kui-node/src/lib.rs:201`):
-they take the hex key, and the only way to learn one is to receive an event
-from that node. "Focus the node I just created" is not expressible — it has
-never been interacted with — and harvesting keys through `onLayout` on every
-node is an event per node per frame under a camera. The error names neither
-of the two things it could have been handed.
-
-The keys are deterministic — `parent.str(label)` / `parent.index(i)`
-(`runtime/builder.rs:183-191`) — and Rust has `child_key(label)` for exactly
-this. What the app lacks is the path from the root, because unkeyed
-ancestors are auto-indexed.
-
-**Do:** resolve a declared label in the core: `Core::key_of(label) ->
-Option<Key>` over the last frame. A per-node label is not kept today, so the
-build pushes `(Key, label)` for every `.str`-keyed node into a per-frame
-`Vec` (cleared like `declared_focus`, cheap) and the call scans it. Then
-Node's `focus` / `isFocused` / `reveal` / `access` accept a non-hex string
-and resolve it there, warning `ambiguous-key` (one more constant in S2's
-list) when two nodes share the label, and the error for an unknown string
-names both spellings. Lua's `env.focus` (P3) and C's `kui_focus` get the
-same door. **Test:** `test.mjs`: `focus('beta')` on a node never clicked;
-two `beta`s warn and the first wins; the hex path unchanged.
 
 ### `~` F6 — Headless key input is two channels, and a window drives both
 
@@ -320,9 +344,10 @@ unknown }` while `DragMsg<T = AppMsg>` and `KeyMsg<T>` carry the app's
 union; handling a nudge needs `p.tag as PomoMsg` in a library whose pitch is
 one union and no casts. `CoreMsg` already lists it (line 158), so half of
 the report's ask is done. **Do:** `AccessMsg<T = AppMsg>`, `tag?: T`. It is
-in the hand-written half of the file (P5), so no generator change. While
-there, the `access()` doc (line 968) should say the key is hex and, once F5
-lands, name the other spelling.
+in the hand-written half of the file (P5), so no generator change. The
+second half of this entry — the `access()` doc saying the key is hex and
+naming the other spelling — closed with F5 (2026-09-06): the doc on the
+generated method names both, and the label spelling works.
 
 ### `.` F10 — A slider's declared range is never checked against its value
 
@@ -351,7 +376,26 @@ additive, both typed by the `S` that `LoopConfig` already carries. Lua's
 **Test:** `test.mjs`: an `init` that reads `ctx.size()` and a `view` that
 sizes a column from `measureText`.
 
-### `~` F12 — There is no line (wants an ADR)
+### `~` F12 — There is no line — **done (2026-09-06)**
+
+**Done as `docs/adr/0010-a-segment-primitive.md`, accepted and built.**
+`QuadKind::Segment` (an SDF capsule in the über-pipeline, endpoints in the
+`uv` slot, width in `border_w`, `Quad` still 124 bytes); the `line` element
+in all four bindings (`<line from to width color/>`, `<line points curve/>`,
+`line { … }`, `kui_line` / `kui_polyline`, `ui.line` / `ui.polyline`);
+polylines and curves flattened in the core; the `lines` corpus scene; the
+`frame_10k_segments` and `frame_1k_curves` benches (a 10k-segment frame is
+~8% over the 10k-rect frame with the same quad count, the plain frame is
+unchanged); `examples/rust/connectors.rs` as the mind-map shape. What it
+settled that the entry asked about: a line is **always a float** positioned
+by its endpoints in the parent's box space and `on_layout` reports its
+bounding box; it takes **no input**, and rounded hit-testing is **not**
+settled — the ADR names the one change (a shape on `HitRegion`) that would
+settle both, and leaves it for a view that clicks a connector. Declined or
+deferred with reasons: paths, fills, dashes, arrowheads, a tweening width.
+For the mind-map author: `examples/rust/connectors.rs` is the three-box
+connector as one curve, and the CHANGELOG's "what you can delete" names the
+rest. The original entry, for the record:
 
 Evidence: mind-map #6. Every connector is three thin boxes (a stub, a
 vertical run, a stub), which works for orthogonal elbows and is the ceiling:
@@ -398,9 +442,11 @@ constructor (`kui-macos-window-quirks`: `set_visible(true)` is
 probably cosmetic, rule it out last. Not a headless test; a P8 smoke item
 once a runner exists.
 
-### `.` F14 — Four doc gaps the two reports paid for
+### `.` F14 — Four doc gaps the two reports paid for, three of them open
 
-Each is one sentence in a doc that exists; none needs code.
+Each is one sentence in a doc that exists; none needs code. The fourth
+closed with F2, and is struck below rather than deleted so the count the
+two reports paid for stays readable.
 
 - **`slide` decouples where a node is from where the view put it**
   (mind-map #9). The row's doc is "also ease the node's position"
@@ -449,17 +495,20 @@ logic rather than the struct — it wants a profile now the cache behaviour has
 changed. Plus the CI threshold on `frame_10k_rects` and `frame_1k_typical`,
 which the size test does not replace.
 
-**From the field (F1–F15).** Four defects first: F1 (the Node loop never
-sets the frame clock, which is why nothing eased is testable from Node), ~~F2
-(drag deltas)~~ — **done (2026-09-06)**, F4 (the modal restore overriding a `keyFocus` edge) and F3
-(an alpha.4 keymap runs twice — a decision between its (a) and (b) before
-the next tag, since every migrating app hits it). Then the gaps in rough
-order of cost: F9 and F10 are an afternoon, F5, F6 and F11 a day each, F8
+**From the field (F1–F15).** Of the four defects, three are done:
+~~F1~~ (the Node loop never set the frame clock, which is why nothing eased
+was testable from Node), ~~F2~~ (drag deltas) and ~~F3~~ (an alpha.4 keymap
+ran twice, closed as its (a), the `keyUp` flag) all landed **2026-09-06**,
+and both of the last two carry a "what breaks" line in the CHANGELOG for the
+next tag. **F4** (the modal restore overriding a `keyFocus` edge) is the one
+left. Then the gaps in rough order of cost: F9 and F10 are an afternoon, F6
+and F11 a day each (~~F5~~ was one, and is **done (2026-09-06)**), F8
 needs one AccessKit question answered first. F7 (global shortcuts under a
-Tab ring) and F12 (a line primitive) join the ADR group below. F13
+Tab ring) joins the ADR group below, where ~~F12~~ (a line primitive) also
+sat until it landed as `docs/adr/0010-a-segment-primitive.md`. F13
 (VoiceOver at launch) and F15 (panning in a window) are reports nobody in
-this repo has reproduced yet, and each says what to try first. F14 is four
-sentences of docs.
+this repo has reproduced yet, and each says what to try first. F14 is three
+sentences of docs now that F2 closed its fourth.
 
 **Design, each wanting an ADR.** ~~Live regions and announcements~~ —
 **done (2026-09-06)**, as `docs/adr/0008-live-regions-and-announcements.md`,
@@ -481,9 +530,14 @@ animations' `animating()` policy, revisited against a real view that removes
 many nodes (ADR 0005 left it opt-in + a 512-node budget with no duration
 cap). And from the field: F7, whether keys a focused control did not
 take should bubble to the enclosing sink — ADR 0002 rejected the narrower
-"sink gives up Tab" and both reports need the wider thing; and F12, a
+"sink gives up Tab" and both reports need the wider thing. ~~And F12, a
 segment primitive beside the six rounded-rect quad kinds, which ADR 0005
-never considered.
+never considered~~ — **done (2026-09-06)**, as
+`docs/adr/0010-a-segment-primitive.md`, accepted *and* built: a seventh
+quad kind that is an SDF capsule, the `line` element in four bindings,
+curves flattened in the core, a corpus scene and two benches. The one
+thing it declined to settle is rounded hit-testing, which stays parked
+below with the change that would settle it named.
 
 **Rows, when a view asks.** A configurable focus-ring colour (README names
 it). `required` / `invalid` and heading `level` (ADR 0001 follow-ups).
@@ -567,12 +621,12 @@ Worth doing before anyone builds a real combobox on this.
 
 ## Closed — index
 
-Forty-eight entries, all in
+Forty-nine entries, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim.
 This index is here so an id resolves without opening that file: the open items
 above cite A1, C7, C9, C10, D2, P3, P5, P8, R3 and S2, "After alpha.6" and the hygiene note cite C2,
 C5(b), P3 and R7, and code comments, ADRs and commit messages cite ids of
-their own. Forty-six of these are simply closed; only **C15** appears in both
+their own. Forty-eight of these are simply closed; only **C15** appears in both
 files, whole there and trimmed to what is still open here. **C11** was the
 other, until its last step landed on 2026-09-06 and took the whole entry to
 the archive.
@@ -582,13 +636,14 @@ suggested sequence as it stood on 2026-09-05, and
 [Release 0.1.0-alpha.6](backlog/closed-2026-09.md#release-010-alpha6-2026-09-05),
 whose R1–R7 are the half-baked items finished before the tag.
 
+**From two field reports (2026-09-06)** — F2, F5
+
+- `!` **F2** — [Drag deltas lie twice: `end` zeroes them, and sub-slop motion never reaches them](backlog/closed-2026-09.md#-f2--drag-deltas-lie-twice-end-zeroes-them-and-sub-slop-motion-never-reaches-them--done-2026-09-06) — done (2026-09-06) — F14's `DragMsg` bullet closed with it
+- `~` **F5** — [Nothing outside Rust can name a node by the key it declared](backlog/closed-2026-09.md#-f5--nothing-outside-rust-can-name-a-node-by-the-key-it-declared--done-2026-09-06) — done (2026-09-06)
+
 **From building C11 step 4 (2026-09-06)** — W1
 
 - `!` **W1** — [A `Chrome::Borderless` window is dead to the mouse on macOS](backlog/closed-2026-09.md#-w1--a-chromeborderless-window-is-dead-to-the-mouse-on-macos--done-2026-09-06) — done (2026-09-06) — W2, the open half, is above
-
-**From two field reports (2026-09-06)** — F2
-
-- `!` **F2** — [Drag deltas lie twice: `end` zeroes them, and sub-slop motion never reaches them](backlog/closed-2026-09.md#-f2--drag-deltas-lie-twice-end-zeroes-them-and-sub-slop-motion-never-reaches-them--done-2026-09-06) — done (2026-09-06) — F14's `DragMsg` bullet closed with it
 
 **Binding parity** — P1–P9
 

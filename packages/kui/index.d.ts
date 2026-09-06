@@ -27,12 +27,15 @@ export type DragMsg<T = AppMsg> = {
   tag?: T;
 };
 
-/** A key press or release on the focused `onKey` sink; `code` is a character
- *  or a name ("left", "f5"), `text` what the press would insert (null for a
- *  chord, and on every release), `repeat` set when the OS auto-repeated the
- *  press. A key only comes up where it went down: a release whose press the
- *  sink never got is dropped, and focus leaving while a key is held delivers
- *  the `up` first — so a held-key binding cannot be left stuck down. */
+/** A key press on the focused `onKey` sink — and its release too, as
+ *  `phase: 'up'`, when the sink also declares `keyUp`; without that flag a
+ *  sink hears presses only, so a keymap runs each binding once. `code` is a
+ *  character or a name ("left", "f5"), `text` what the press would insert
+ *  (null for a chord, and on every release), `repeat` set when the OS
+ *  auto-repeated the press. A key only comes up where it went down: a release
+ *  whose press the sink never got is dropped, and focus leaving while a key is
+ *  held delivers the `up` first — so a held-key binding cannot be left stuck
+ *  down. */
 export type KeyMsg<T = AppMsg> = {
   kind: 'key';
   phase: 'down' | 'up';
@@ -388,9 +391,23 @@ export type WarningCode =
    *  (transitions, scroll offsets, editors, layout events, hover state) is
    *  mixed between them. Siblings need distinct keys. */
   | 'duplicate-key'
+  /** A label resolved by name (`focus("beta")` in Node, `env.set_focus("beta")`
+   *  in Lua, `kui_key_of` in C) is declared by more than one node in the frame,
+   *  under different parents, so they have distinct keys and the name picked
+   *  the first in tree order. Labels are unique among siblings, not across a
+   *  tree. Give the node meant a label nothing else declares, or pass the hex
+   *  key an event carried. Two nodes with the *same* key are `duplicate-key`. */
+  | 'ambiguous-key'
   /** An image with no `label`: assistive technology has nothing to say for it.
    *  Decorative images take `role="none"`. */
   | 'image-without-label'
+  /** A `line` declares `onClick`, `onDrag`, `onKey`, `onHover`, `hoverable` or
+   *  `focusable`. A line takes no pointer input and emits no hit region — its
+   *  bounding box is mostly not the stroke, and a shape-aware hit test is not
+   *  built — so the declaration does nothing
+   *  (`docs/adr/0010-a-segment-primitive.md`, decisions 7 and 8). Put the
+   *  interaction on the nodes the line connects. */
+  | 'line-ignores-input'
   /** The frame's modal surface is not in a float, and content painted after it
    *  is drawn on top of it: everything the user can see over the modal is
    *  inert, which looks like inert-behind is broken. A modal that has to cover
@@ -769,7 +786,8 @@ export declare class Ctx {
   /**
    * The frame clock for `transition` props: monotonic seconds, any
    * origin. Set before each frame; never setting it makes transitions
-   * snap (the default for headless tests).
+   * snap. `createApp`'s loop sets it before every frame it draws and
+   * `advance` moves it, so only a bare `Ctx` snaps.
    */
   setTime(nowSecs: number): void
   /**
@@ -824,9 +842,11 @@ export declare class Ctx {
   keyDown(code: string, mods?: KeySinkMods, repeat?: boolean, physical?: string): void
   /**
    * The release of a key, spelled the way `keyDown` spells it (`physical`
-   * included): the sink hears `{kind:"key", phase:"up", ...}` with `text`
-   * null. A release whose press the sink never got resolves nothing, and
-   * moving focus while a key is held delivers the `up` first.
+   * included): a sink that declared `keyUp` hears `{kind:"key",
+   * phase:"up", ...}` with `text` null; one that did not hears nothing,
+   * since presses only is the keymap default. A release whose press the
+   * sink never got resolves nothing, and moving focus while a key is
+   * held delivers the `up` first.
    */
   keyUp(code: string, mods?: KeySinkMods, physical?: string): void
   /**
@@ -1026,12 +1046,14 @@ export declare class Ctx {
    */
   accessTree(): AccessTree
   /**
-   * A request from assistive technology on a node (`key`, hex as in
-   * events): an `AccessAction` name the node advertises, with
-   * `value` the new text for `setValue`. Resolved like its
-   * pointer/keyboard equivalent, so the resulting events come out of
-   * `pollEvents`. A real screen reader's requests arrive through a
-   * window on their own.
+   * A request from assistive technology on a node: an `AccessAction`
+   * name the node advertises, with `value` the new text for
+   * `setValue`. `key` is either spelling of the node — the hex key
+   * an event carried (16 digits), or the label its `key` prop
+   * declared, resolved through the last frame (see `focus`).
+   * Resolved like its pointer/keyboard equivalent, so the resulting
+   * events come out of `pollEvents`. A real screen reader's
+   * requests arrive through a window on their own.
    */
   access(key: string, action: AccessAction, value?: string | AccessArg): void
   /**
@@ -1055,7 +1077,8 @@ export declare class Ctx {
   cursorShape(): CursorShape
   /**
    * Whether a node holds keyboard focus — any node: an editor, an
-   * `onKey` sink, a button Tab landed on (see `focused`).
+   * `onKey` sink, a button Tab landed on (see `focused`). `key` is
+   * a hex key or a declared label, as for `focus`.
    */
   isFocused(key: string): boolean
   /**
@@ -1075,6 +1098,15 @@ export declare class Ctx {
    * Moves keyboard focus to a node now (an editor, an `onKey` sink,
    * a control, a `focusable` box); `keyFocus` on a box is the
    * declarative, edge-triggered form.
+   *
+   * `key` is either spelling of the node: the 16-digit hex key an
+   * event carried, or the label its `key` prop declared —
+   * `focus('note')` — resolved through the last frame, so a node
+   * the user has never touched can be named. Labels are unique
+   * among siblings, not across the tree: when two nodes declare
+   * the same one, the first in tree order wins and an
+   * `ambiguous-key` warning says so. A label no node declared
+   * throws.
    */
   focus(key: string): void
   blur(): void
@@ -1094,7 +1126,10 @@ export declare class Ctx {
    * first time reveals fine. If that frame does not declare the key,
    * or nothing above it scrolls, it is a no-op and is not kept for a
    * later frame; two reveals before one frame are contradictory, so
-   * the last wins.
+   * the last wins. `key` is a hex key or a declared label, as for
+   * `focus` — a label resolves through the *last* frame, so a row
+   * the coming frame declares for the first time is reachable by
+   * its hex key only.
    */
   reveal(key: string): void
   /**
@@ -1345,12 +1380,14 @@ export declare class KuiWindow {
    */
   accessTree(): AccessTree
   /**
-   * A request from assistive technology on a node (`key`, hex as in
-   * events): an `AccessAction` name the node advertises, with
-   * `value` the new text for `setValue`. Resolved like its
-   * pointer/keyboard equivalent, so the resulting events come out of
-   * `pollEvents`. A real screen reader's requests arrive through a
-   * window on their own.
+   * A request from assistive technology on a node: an `AccessAction`
+   * name the node advertises, with `value` the new text for
+   * `setValue`. `key` is either spelling of the node — the hex key
+   * an event carried (16 digits), or the label its `key` prop
+   * declared, resolved through the last frame (see `focus`).
+   * Resolved like its pointer/keyboard equivalent, so the resulting
+   * events come out of `pollEvents`. A real screen reader's
+   * requests arrive through a window on their own.
    */
   access(key: string, action: AccessAction, value?: string | AccessArg): void
   /**
@@ -1374,7 +1411,8 @@ export declare class KuiWindow {
   cursorShape(): CursorShape
   /**
    * Whether a node holds keyboard focus — any node: an editor, an
-   * `onKey` sink, a button Tab landed on (see `focused`).
+   * `onKey` sink, a button Tab landed on (see `focused`). `key` is
+   * a hex key or a declared label, as for `focus`.
    */
   isFocused(key: string): boolean
   /**
@@ -1394,6 +1432,15 @@ export declare class KuiWindow {
    * Moves keyboard focus to a node now (an editor, an `onKey` sink,
    * a control, a `focusable` box); `keyFocus` on a box is the
    * declarative, edge-triggered form.
+   *
+   * `key` is either spelling of the node: the 16-digit hex key an
+   * event carried, or the label its `key` prop declared —
+   * `focus('note')` — resolved through the last frame, so a node
+   * the user has never touched can be named. Labels are unique
+   * among siblings, not across the tree: when two nodes declare
+   * the same one, the first in tree order wins and an
+   * `ambiguous-key` warning says so. A label no node declared
+   * throws.
    */
   focus(key: string): void
   blur(): void
@@ -1413,7 +1460,10 @@ export declare class KuiWindow {
    * first time reveals fine. If that frame does not declare the key,
    * or nothing above it scrolls, it is a no-op and is not kept for a
    * later frame; two reveals before one frame are contradictory, so
-   * the last wins.
+   * the last wins. `key` is a hex key or a declared label, as for
+   * `focus` — a label resolves through the *last* frame, so a row
+   * the coming frame declares for the first time is reachable by
+   * its hex key only.
    */
   reveal(key: string): void
   /**

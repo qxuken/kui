@@ -132,6 +132,7 @@ pub const P_INITIAL_FOCUS: u32 = 77;
 pub const P_EXIT: u32 = 78;
 pub const P_WINDOWS: u32 = 79;
 pub const P_LIVE: u32 = 80;
+pub const P_KEY_UP: u32 = 81;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -668,7 +669,14 @@ pub const PROPS: &[PropDef] = &[
         id: P_ON_KEY,
         kind: Kind::Tag,
         apply: Apply::SpecMsg(|s, v| s.on_key(v)),
-        doc: "Key-sink tag: with key focus held, presses and releases arrive as {kind:\"key\", phase:\"down\"|\"up\", ...} events.",
+        doc: "Key-sink tag: with key focus held, presses arrive as {kind:\"key\", phase:\"down\", code, ...} events. Releases only with `keyUp` beside it.",
+    },
+    PropDef {
+        name: "keyUp",
+        id: P_KEY_UP,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.key_up()),
+        doc: "With `onKey`: releases arrive too, as the same payload with phase:\"up\" (`text` null, `repeat` false) — for a held-key interaction (WASD, press-and-hold, a key that arms a mode while it is down). A key only comes up where it went down: a release whose press the sink never got is dropped, and focus leaving while a key is held delivers the `up` first, so nothing is left stuck down. Without it a sink hears presses only, which is what a keymap wants — one that heard both halves would run every binding twice.",
     },
     PropDef {
         name: "onContextMenu",
@@ -1190,6 +1198,17 @@ pub const ELEMENTS: &[ElementDef] = &[
         lua: "`image { id= }`",
         c: "`kui_image`",
         doc: "A registered RGBA image; `fit` takes the pixel size, a fit height against a resolved width keeps the aspect, radius rounds it.",
+    },
+    ElementDef {
+        name: "line",
+        // `width` and `color` are schema rows already (a sizing and the text
+        // colour); on a line they are the stroke's width and colour.
+        jsx_own: &["from", "to", "points", "curve"],
+        lua_own: &["from", "to", "points", "curve"],
+        jsx: "`<line from={[x,y]} to={[x,y]} width color/>`, `<line points={[[x,y],…]} curve/>`",
+        lua: "`line { from={x,y}, to={x,y}, width=, color= }`, `line { points={{x,y},…}, curve=true }`",
+        c: "`kui_line`, `kui_polyline`",
+        doc: "A round-capped stroke: one segment, a polyline through `points`, or a smooth curve through them with `curve`. Always a float in its parent's box space (`float=\"viewport\"` for viewport space), sized to its own bounding box, so it takes no room in a row or column. `width` is the stroke width (default 1) and `color` the stroke colour; `transition` eases the colour. Takes no pointer input and has no access row (`docs/adr/0010-a-segment-primitive.md`).",
     },
     ElementDef {
         name: "titlebar",

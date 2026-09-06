@@ -75,6 +75,7 @@ cargo run -p kui --example splitmux       # tmux-style splits, tabs, focus, ⌘-
 cargo run -p kui --example syntax_view    # syntax highlighting as coalesced style runs
 cargo run -p kui --example gallery        # registered images: Fit sizing, kept aspect, rounded corners
 cargo run -p kui --example toasts         # enter/exit: toasts that slide in and back out, a panel that springs open
+cargo run -p kui --example connectors     # a mind map whose links are `line` nodes: curves between floats, no boxes
 ```
 
 The same app from Node with JSX — build the addon with
@@ -183,9 +184,10 @@ that are hard to reverse and would look arbitrary without their context.
   simple prop is one row (+ `npm run gen`); the composites (`pad`, `border`,
   overflow, `float`) keep per-binding shapes on purpose. Elements are the
   same set everywhere too: containers, text and rich spans, editors, images,
-  buttons, titlebar (plain or with custom content), window buttons, latency
-  graph/HUD, and tooltips — Lua reaches them through the prelude (`edit`,
-  `tooltip`, `window_buttons`, `latency_hud`, ...), C through `kui_*`
+  lines (segments, polylines and curves), buttons, titlebar (plain or with
+  custom content), window buttons, latency graph/HUD, and tooltips — Lua
+  reaches them through the prelude (`edit`, `line`, `tooltip`,
+  `window_buttons`, `latency_hud`, ...), C through `kui_*`
   widget calls with body callbacks for the containers, and a `tooltip =
   "hint"` prop on any container is hover-gated in every binding.
 - **Events are data, not callbacks.** Nodes declare an `on_click` payload
@@ -198,15 +200,16 @@ that are hard to reverse and would look arbitrary without their context.
   mechanisms.
   Full keyboard input is data too: a node declaring `on_key` becomes a
   key sink, and while it holds key focus (`ui.take_key_focus`, or a
-  click) every press *and release* arrives as `{kind="key",
-  phase="down"|"up", code, mods, text, repeat}` — one payload shape with
-  a phase, the way a drag has three and a hover two. So a keymap reads
-  `phase="down"` and ignores the rest, and a held-key interaction (WASD,
-  press-and-hold to preview, a key that arms a mode) is a pair of events
-  rather than a guess about timing. A key only comes up where it went
-  down: a release whose press the sink never saw is dropped, and focus
-  moving — or the window losing the keyboard — delivers the release
-  first, so nothing is ever left stuck down. Modal keymaps live in the
+  click) every press arrives as `{kind="key", phase="down", code, mods,
+  text, repeat}` — which is all a keymap needs. A sink that also declares
+  `key_up` hears releases as the same shape with `phase="up"`, so a
+  held-key interaction (WASD, press-and-hold to preview, a key that arms
+  a mode) is a pair of events rather than a guess about timing; one
+  payload shape with a phase, the way a drag has three and a hover two.
+  A key only comes up where it went down: a release whose press the sink
+  never saw is dropped, and focus moving — or the window losing the
+  keyboard — delivers the release first, so nothing is ever left stuck
+  down. Modal keymaps live in the
   app, in any language, with no runner hook (the `modal_editor` and
   `splitmux` examples are built on this). Modifier
   state is data too: the host gets `{kind="modifiers", shift, ctrl, alt,
@@ -618,6 +621,18 @@ page doubles up to 4096² when needed). `Fit` takes the pixel size, a `Fit`
 height against a resolved width keeps aspect, and `style.radius` (all four
 corners, or per corner) rounds them.
 
+Lines: `ui.line(from, to, Stroke::new(width, color), spec)` draws a
+round-capped segment, `ui.polyline(&points, stroke, spec)` a polyline, and
+`Stroke::curve()` a smooth curve through the points, flattened in the core so
+every binding gets the same segments
+([ADR 0010](docs/adr/0010-a-segment-primitive.md)). Points are in the
+parent's box space — the space a floated sibling's offset is in — and a line
+is never in layout: it floats, sized to its own bounding box, takes no room
+in a row or column, and paints in the float pass in tree order, so a
+connector goes under two cards by being declared before them. Its colour is
+the node's `bg` slot, which is what makes `transition`, `enter` and `exit`
+reach it; it takes no pointer input and has no access row.
+
 ## Performance
 
 `cargo bench -p kui-core`, measured 2026-09-05 on an Apple M3 Pro MacBook Pro
@@ -823,11 +838,19 @@ What v0 does not do, by area, with the ADR or backlog entry each limit
 belongs to.
 
 **Paint.** Fill, border, four radii, group opacity and one outer drop shadow
-per node ([ADR 0005](docs/adr/0005-the-paint-vocabulary.md)). There are **no
+per node ([ADR 0005](docs/adr/0005-the-paint-vocabulary.md)), and one stroke
+primitive: a round-capped segment, which the `line` element emits one of per
+straight piece of a segment, a polyline or a curve flattened in the core
+([ADR 0010](docs/adr/0010-a-segment-primitive.md)). There are **no
 gradients** (a stop list, a type, a geometry and an interpolation space are
 not a paint prop's worth of work — use an image or stack solids), no inset or
 multiple shadows, and the single shadow is not knocked out of the middle of
-the shape, so a translucent background shows it through. Opacity is a per-quad
+the shape, so a translucent background shows it through. There are **no
+paths, fills, dashes or arrowheads**: a line is segments and nothing else, a
+translucent polyline double-blends where its caps overlap at a join, its
+width does not tween (its colour does), and it takes no pointer input — a
+shape-aware hit test is the same unbuilt change rounded hit-testing below
+waits on, and a `line` that declares one warns. Opacity is a per-quad
 alpha multiply rather than an offscreen composite, so overlapping pieces of one
 faded subtree show their seams. There is no z-index: floats stack in tree order.
 Transitions cover sizing, colors, radius, opacity, shadows, position (`slide`,

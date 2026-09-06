@@ -634,6 +634,10 @@ pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
         NodeContent::Text(_) => return Some(Role::StaticText),
         NodeContent::Edit(_) => return Some(Role::TextInput),
         NodeContent::Image(_) => return Some(Role::Image),
+        // A stroke is decoration and takes no input, so nothing below —
+        // not even an `on_click` it ignores — can make it a control
+        // (`docs/adr/0010-a-segment-primitive.md`, decision 7).
+        NodeContent::Line(_) => return None,
         NodeContent::Container => {}
     }
     match spec.window {

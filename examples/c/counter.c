@@ -374,6 +374,9 @@ static void surface_view(void *user, KuiCtx *ui) {
             .width = {KUI_FIXED, 120}, .height = {KUI_FIXED, 24},
             .bg = 0x11131aff, .focusable = 1,
             .role = KUI_ROLE_GROUP, .label = KUI_STR("key sink"),
+            /* Releases are opt-in: a sink that only says on_key hears
+             * presses, which is what a keymap wants. This one counts ups. */
+            .key_up = 1,
         };
         k->sink = kui_open_with(ui, KUI_STR("sink"), &sink, NULL, NULL,
                                 kui_value_str(KUI_STR("sink")),
@@ -519,8 +522,13 @@ static int surface(void) {
     /* The key sink is focusable and takes focus like anything else, and a
      * host drives its raw keys directly: kui_input_key carries the editing
      * keys (KUI_KEY_*), kui_input_key_down / _up the whole keyboard. A held
-     * key is one {kind="key"} payload twice, phase="down" then "up". */
-    kui_focus(ui, k.sink);
+     * key on a sink with key_up set is one {kind="key"} payload twice,
+     * phase="down" then "up". */
+    /* A node the host never got an event from is named by the label it was
+     * opened under: kui_key_of walks the path from the root for it. */
+    check(kui_key_of(ui, KUI_STR("sink")) == k.sink, "kui_key_of resolves a declared label");
+    check(kui_key_of(ui, KUI_STR("no such node")) == 0, "kui_key_of is 0 for an undeclared one");
+    kui_focus(ui, kui_key_of(ui, KUI_STR("sink")));
     check(kui_is_focused(ui, k.sink), "kui_is_focused");
     KuiStr no_text = {0};
     /* {0} for `physical` means "the key I just named" - what a host that
@@ -898,7 +906,8 @@ static void repf(Rep *r, const char *fmt, ...) {
 }
 
 /* FNV-1a over each quad's words 0..18 and 23..30 - KuiQuad without its uv,
- * which follows glyph insertion order. Mirrors conformance::quad_digest. */
+ * which follows glyph insertion order - plus the uv of a KUI_QUAD_SEGMENT,
+ * where it is the endpoints. Mirrors conformance::quad_digest. */
 _Static_assert(sizeof(KuiQuad) == 31 * sizeof(uint32_t), "KuiQuad is not 31 words");
 
 static uint64_t quad_digest(const KuiQuad *quads, size_t count) {
@@ -906,8 +915,9 @@ static uint64_t quad_digest(const KuiQuad *quads, size_t count) {
     for (size_t i = 0; i < count; i++) {
         uint32_t w[31];
         memcpy(w, &quads[i], sizeof w);
+        int segment = quads[i].kind == KUI_QUAD_SEGMENT;
         for (int j = 0; j < 31; j++) {
-            if (j >= 19 && j <= 22) continue; /* uv */
+            if (j >= 19 && j <= 22 && !segment) continue; /* uv */
             uint32_t v = w[j];
             for (int b = 0; b < 4; b++) {
                 h ^= (uint8_t)(v & 0xff);
@@ -1192,6 +1202,31 @@ static void conf_media(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* docs/adr/0010-a-segment-primitive.md: three strokes and a box in a 200x120
+ * canvas; the elbow's on_click is the one a line ignores. The curve is keyed
+ * through kui_polyline's label; the other two are auto-keyed. */
+static void conf_lines(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec canvas = {.width = {KUI_FIXED, 200}, .height = {KUI_FIXED, 120},
+                      .bg = 0x14161eff};
+    kui_open(ui, &canvas, NULL);
+    kui_line(ui, 10, 10, 90, 70, 2, 0x7f9cf5ff, NULL);
+    float elbow[] = {100, 20, 140, 20, 140, 60};
+    /* The interaction a line ignores: kui_polyline takes no on_click, so the
+     * C scene declares the same intent through the one input prop the spec
+     * carries, and the warning is the same. */
+    KuiSpec hover = {.hoverable = 1};
+    kui_polyline(ui, KUI_STR(""), elbow, 3, 3, 0xd8863bff, false, &hover);
+    float curve[] = {20, 100, 60, 80, 100, 110, 180, 90};
+    KuiSpec faded = {.opacity_set = 1, .opacity = 0.5f};
+    kui_polyline(ui, KUI_STR("curve"), curve, 4, 1.5f, 0x9ad9a0ff, true, &faded);
+    KuiSpec box = {.width = {KUI_FIXED, 40}, .height = {KUI_FIXED, 20}, .bg = 0x202030ff};
+    kui_open(ui, &box, NULL);
+    kui_close(ui);
+    kui_close(ui);
+}
+
 static void conf_modal_titlebar(void *user, KuiCtx *ui) {
     (void)user;
     KuiTextStyle s12 = {.size = 12};
@@ -1208,6 +1243,27 @@ static void conf_modal_button(KuiCtx *ui, const char *key, const char *kind,
     KuiSpec spec = {.dir = KUI_ROW, .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 24},
                     .bg = 0x3b5bd4ff, .label = KUI_STR(label)};
     kui_open_keyed(ui, KUI_STR(key), &spec, tag);
+    kui_close(ui);
+}
+
+/* Two key sinks clicked into focus in turn: the first says only on_key and
+ * hears the press alone, the second sets key_up and hears both halves. An
+ * integer tag, so the report's event column shows the phase. */
+static void conf_keys_sink(KuiCtx *ui, const char *name, uint32_t key_up) {
+    KuiSpec spec = {.dir = KUI_ROW, .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 24},
+                    .bg = 0x1b1d27ff, .role = KUI_ROLE_GROUP, .label = KUI_STR(name),
+                    .key_up = key_up};
+    kui_open_with(ui, KUI_STR(name), &spec, NULL, NULL, kui_value_int(1), NULL);
+    kui_close(ui);
+}
+
+static void conf_keys(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10, .gap = 6};
+    kui_open(ui, &outer, NULL);
+    conf_keys_sink(ui, "press", 0);
+    conf_keys_sink(ui, "held", 1);
     kui_close(ui);
 }
 
@@ -1503,7 +1559,9 @@ static const ConfScene CONF_SCENES[] = {
      * reports the OS controls, so the two scenes differ only in the env. */
     {"chrome-inset", conf_chrome},
     {"controls", conf_controls},
+    {"keys", conf_keys},
     {"media", conf_media},
+    {"lines", conf_lines},
     {"modal", conf_modal},
     {"composite", conf_composite},
     {"exit", conf_exit},
@@ -1581,6 +1639,18 @@ static void conf_apply(KuiCtx *ctx, const ConfStep *s) {
     else if (strcmp(s->kind, "type") == 0) {
         uint8_t c = (uint8_t)s->a;
         kui_input_text(ctx, (KuiStr){&c, 1});
+    }
+    /* The same spelling for a raw key on an on_key sink, down and up: no
+     * position ({0} = the key named), no modifiers, no text, no repeat. */
+    else if (strcmp(s->kind, "keydown") == 0) {
+        uint8_t c = (uint8_t)s->a;
+        KuiStr none = {0};
+        kui_input_key_down(ctx, (KuiStr){&c, 1}, none, 0, none, false);
+    }
+    else if (strcmp(s->kind, "keyup") == 0) {
+        uint8_t c = (uint8_t)s->a;
+        KuiStr none = {0};
+        kui_input_key_up(ctx, (KuiStr){&c, 1}, none, 0);
     }
     else {
         fprintf(stderr, "conformance: unknown step '%s'\n", s->kind);
@@ -1694,12 +1764,12 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
     kui_draw_data(ctx, &dd);
     repf(out, "quads %zu %016llx\n", dd.quad_count,
          (unsigned long long)quad_digest(dd.quads, dd.quad_count));
-    size_t kinds[6] = {0};
+    size_t kinds[7] = {0};
     for (size_t i = 0; i < dd.quad_count; i++) {
-        if (dd.quads[i].kind < 6) kinds[dd.quads[i].kind]++;
+        if (dd.quads[i].kind < 7) kinds[dd.quads[i].kind]++;
     }
-    repf(out, "kinds %zu %zu %zu %zu %zu %zu\n", kinds[0], kinds[1], kinds[2],
-         kinds[3], kinds[4], kinds[5]);
+    repf(out, "kinds %zu %zu %zu %zu %zu %zu %zu\n", kinds[0], kinds[1], kinds[2],
+         kinds[3], kinds[4], kinds[5], kinds[6]);
 
     KuiAccessNode nodes[128];
     size_t total = kui_access_tree(ctx, nodes, 128);
