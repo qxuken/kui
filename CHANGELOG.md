@@ -28,6 +28,29 @@ bumped past alpha.6 should delete.
 
 ### Added
 
+- **`press` and `release`: one key, both channels** (backlog F6, from the
+  mind-map and pomodoro field reports). A key press has always been two
+  events, and a window has always sent both: the raw press to whatever
+  holds key focus, and then what the *core* is asked to do with that key —
+  Escape dismisses a modal, Tab walks the focus ring, an arrow nudges a
+  focused slider, Space presses a focused control, a printable character
+  reaches the focused editor. Headless, the two were separate calls with
+  nothing saying so, so a test picked one and got half a keyboard: six of
+  the mind map's first-run failures were `keyDown('escape')` reaching the
+  editor's keymap and leaving the modal it sat in open, and the pomodoro's
+  "the arrows do nothing on a focused slider" is the same split from the
+  other side. `ctx.press(code, mods)` / `app.press(code, mods)` in Node,
+  `Core::press` / `Core::release` in Rust (which is how a Lua extension's
+  host drives it), and `kui_input_press` / `kui_input_release` in C now do
+  what the window does, in the window's order. **The old calls stay as the
+  halves** and say so: `key()` drives the second channel alone, `keyDown()`
+  / `kui_input_key_down` the first, for a test that means to drive one and
+  not the other. The table that maps a key to its second event moved into
+  the core (`KeyPress::edit_event`) and the winit runner reads it from
+  there, so there is one copy of it rather than one per driver — which is
+  what let the two drift in the first place. No behaviour changed in a
+  window, and C gains two functions without an ABI bump.
+
 - **A stroke primitive: `QuadKind::Segment` and the `line` element**
   (`docs/adr/0010-a-segment-primitive.md`, backlog F12 from the mind-map
   field report, whose every connector was three thin boxes). A segment is a
@@ -278,6 +301,13 @@ bumped past alpha.6 should delete.
   `move`s so that something could be committed on `end`, and the `start`
   handler that zeroed it: `end` carries the total now, and `x - x0` computed
   by hand from the absolute coordinates is what `dx` is.
+
+- **The second call after every simulated key.** The `ctx.keyDown('escape')`
+  followed by `ctx.key('escape')` that a test needed to press one key — and,
+  more often, the missing half of that pair and the assertion written around
+  it (a modal asserted still-open because it was, a slider whose arrows were
+  believed not to work). `press('escape')` is the whole key. Any test that
+  really did want one channel keeps the call it was already using.
 
 - **The workaround for a list that did not fit.** Whatever a view did to
   keep a long dropdown inside the window — a scroll container sized to the

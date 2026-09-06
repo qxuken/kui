@@ -989,6 +989,27 @@ void kui_input_key_down(KuiCtx *ctx, KuiStr code, KuiStr physical,
                         uint32_t kmods, KuiStr text, bool repeat);
 void kui_input_key_up(KuiCtx *ctx, KuiStr code, KuiStr physical,
                       uint32_t kmods);
+/* A whole key going down, the way a window sends it - the call a host
+ * driving kui from its own event loop wants, and the one a headless test
+ * wants. Spelled exactly as kui_input_key_down, and it sends that press
+ * first; then it asks the core what that key *means*, which is what
+ * kui_input_key carries on its own: Escape dismisses a modal, Tab walks the
+ * focus ring, an arrow nudges a focused slider, Space presses a focused
+ * control, a printable character reaches the focused editor.
+ *
+ * The two calls above stay as the halves, for a host that means to drive one
+ * channel and not the other. A host that means "the user pressed this key"
+ * wants this one: kui_input_key_down(ctx, KUI_STR("escape"), ...) alone
+ * leaves a modal open, because it is only half of what a keyboard does. An
+ * unknown `code` or `physical` is ignored, as there. */
+void kui_input_press(KuiCtx *ctx, KuiStr code, KuiStr physical, uint32_t kmods,
+                     KuiStr text, bool repeat);
+/* The same key coming up, spelled the way kui_input_press spells it
+ * (`physical` included, {NULL, 0} for "same as `code`"). One channel,
+ * because only one has a second half: the editing keys act on the way down,
+ * so this is kui_input_key_up under the name that pairs with the press. */
+void kui_input_release(KuiCtx *ctx, KuiStr code, KuiStr physical,
+                       uint32_t kmods);
 /* Lets go of every key the focused sink is holding, as if the user had
  * released them. Call it when the window loses the keyboard: the OS stops
  * delivering key events to it, so the release of anything held over an app

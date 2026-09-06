@@ -422,6 +422,66 @@ impl KeyPress {
         self
     }
 
+    /// The **second** event a real key press produces, after its
+    /// [`InputEvent::KeyDown`] — the other half of what a window does with
+    /// one key going down, and the one table that says which key is which.
+    ///
+    /// A press is two channels, and every driver drives both, in this
+    /// order. `KeyDown` goes to whatever holds key focus, so an app that
+    /// owns its keyboard hears the raw key; this is what the *core* is
+    /// asked to do with the same key — Escape dismisses a modal, Tab walks
+    /// the focus ring, the arrows nudge a focused slider, Space presses a
+    /// focused control, a printable character reaches the focused editor.
+    /// A test that sent only `KeyDown` got the first channel and none of
+    /// the second, which is why `key_down("escape")` left a modal open
+    /// (backlog F6); [`crate::Core::press`] is the pair.
+    ///
+    /// `None` for a key this vocabulary does not name — a function key,
+    /// Insert — and for every chord, which carries no `text` because it
+    /// inserts nothing. The press still stands on the sink channel.
+    pub fn edit_event(&self) -> Option<InputEvent> {
+        let key = match self.code {
+            KeyCode::Left => EditKey::Left,
+            KeyCode::Right => EditKey::Right,
+            KeyCode::Up => EditKey::Up,
+            KeyCode::Down => EditKey::Down,
+            KeyCode::Home => EditKey::Home,
+            KeyCode::End => EditKey::End,
+            KeyCode::PageUp => EditKey::PageUp,
+            KeyCode::PageDown => EditKey::PageDown,
+            KeyCode::Backspace => EditKey::Backspace,
+            KeyCode::Delete => EditKey::Delete,
+            KeyCode::Enter => EditKey::Enter,
+            KeyCode::Tab => EditKey::Tab,
+            KeyCode::Escape => EditKey::Escape,
+            // Space is the text channel rather than an `EditKey`: it
+            // inserts into a focused editor and presses a focused control
+            // (`docs/adr/0002`), and it says " " whatever is held — the
+            // rule the winit runner has always applied, kept here so
+            // lifting the table changed no window's behaviour.
+            KeyCode::Space => return Some(InputEvent::Text(" ".to_string())),
+            // Anything else inserts whatever it inserts. A driver leaves
+            // `text` unset for a chord, so this is where one stops.
+            _ => {
+                let text = self.text.as_deref()?;
+                return text
+                    .chars()
+                    .any(|c| !c.is_control())
+                    .then(|| InputEvent::Text(text.to_string()));
+            }
+        };
+        // `word` is Alt and `doc` the platform primary, which is the whole
+        // of what the editing vocabulary normalizes (see [`Mods`]).
+        Some(InputEvent::Key(
+            key,
+            Mods {
+                shift: self.mods.shift,
+                word: self.mods.alt,
+                doc: self.mods.primary(),
+            },
+        ))
+    }
+
     /// Strips a press down to what a release reports: nothing is inserted
     /// on the way up, and a release never comes from key repeat.
     pub fn released(mut self) -> Self {

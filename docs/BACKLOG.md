@@ -258,33 +258,6 @@ N+1 drops the modal and declares `keyFocus` on new node B; `focus() == B`.
 And the ADR 0003 corpus scene `modal` gains the step — a report keeps one
 frame and this is a two-frame fact (A1 says how those are pinned).
 
-### `~` F6 — Headless key input is two channels, and a window drives both
-
-Evidence: mind-map #4, pomodoro 2.4. `ctx.keyDown(code)` reaches `onKey`
-sinks and never dismissed a modal; `app.key(name)` drives the core (Escape
-dismisses, Tab traverses, the arrows nudge a slider) and never reaches a
-sink. Six of the mind map's first-run failures were `keyDown('escape')`
-leaving an editor open and everything after typing into it. The pomodoro's
-"arrows do nothing on a focused slider" is the same split from the other
-side: the arrows are in (`runtime/dispatch.rs:119-126`), on the `Key`
-channel, and `keyDown('right')` is the sink channel — with F7 explaining why
-a control in that app never held focus in the first place. A real press does
-both, in order: `crates/kui/src/lib.rs:1045-1058` dispatches `KeyDown`, then
-lines 1136-1150 the `EditKey` for a named key (or `Text(" ")` for Space).
-The `focused()` doc says Tab is `key("tab")`, which is the one place the
-split is written down, and it is on a method nobody reads to learn how to
-press a key.
-
-**Do:** `press(code, mods)` / `release(code, mods)` on `Ctx` and `App` that
-do what the window does — `keyDown`, then the edit-key mapping for the named
-keys the runner maps (lines 1136-1150 are the table, and should become one
-shared function rather than a second copy), then `text` for a printable,
-and `keyUp` on release — with `key()` / `keyDown()` staying as the halves
-for precise tests and documented as halves. Lua's and C's headless injectors
-have the same split; C at least gets `kui_press`. **Test:** `press('escape')`
-dismisses a modal *and* reaches a sink under it; `press('tab')` moves focus;
-`press('right')` on a focused slider nudges it.
-
 ### `~` F7 — An app with global shortcuts cannot also have a Tab ring (wants an ADR)
 
 Evidence: pomodoro 2.5, mind-map #5. A root box with `onKey` + `keyFocus`
@@ -477,9 +450,9 @@ was testable from Node), ~~F2~~ (drag deltas) and ~~F3~~ (an alpha.4 keymap
 ran twice, closed as its (a), the `keyUp` flag) all landed **2026-09-06**,
 and both of the last two carry a "what breaks" line in the CHANGELOG for the
 next tag. **F4** (the modal restore overriding a `keyFocus` edge) is the one
-left. Then the gaps in rough order of cost: F9 and F10 are an afternoon, F6
-and F11 a day each (~~F5~~ was one, and is **done (2026-09-06)**), F8
-needs one AccessKit question answered first. F7 (global shortcuts under a
+left. Then the gaps in rough order of cost: F9 and F10 are an afternoon and
+F11 a day (~~F5~~ was one and ~~F6~~ another, both **done (2026-09-06)**),
+F8 needs one AccessKit question answered first. F7 (global shortcuts under a
 Tab ring) joins the ADR group below, where ~~F12~~ (a line primitive) also
 sat until it landed as `docs/adr/0010-a-segment-primitive.md`. F13
 (VoiceOver at launch) and F15 (panning in a window) are reports nobody in
@@ -584,10 +557,11 @@ suggested sequence as it stood on 2026-09-05, and
 [Release 0.1.0-alpha.6](backlog/closed-2026-09.md#release-010-alpha6-2026-09-05),
 whose R1–R7 are the half-baked items finished before the tag.
 
-**From two field reports (2026-09-06)** — F2, F5, F14
+**From two field reports (2026-09-06)** — F2, F5, F6, F14
 
 - `!` **F2** — [Drag deltas lie twice: `end` zeroes them, and sub-slop motion never reaches them](backlog/closed-2026-09.md#-f2--drag-deltas-lie-twice-end-zeroes-them-and-sub-slop-motion-never-reaches-them--done-2026-09-06) — done (2026-09-06) — F14's `DragMsg` bullet closed with it
 - `~` **F5** — [Nothing outside Rust can name a node by the key it declared](backlog/closed-2026-09.md#-f5--nothing-outside-rust-can-name-a-node-by-the-key-it-declared--done-2026-09-06) — done (2026-09-06)
+- `~` **F6** — [Headless key input is two channels, and a window drives both](backlog/closed-2026-09.md#-f6--headless-key-input-is-two-channels-and-a-window-drives-both--done-2026-09-06) — done (2026-09-06) — one table in the core, `press` in every binding
 - `.` **F14** — [Four doc gaps the two reports paid for](backlog/closed-2026-09.md#-f14--four-doc-gaps-the-two-reports-paid-for-three-of-them-open--done-2026-09-06) — done (2026-09-06) — its `DragMsg` bullet closed with F2
 
 **From building C11 step 4 (2026-09-06)** — W1

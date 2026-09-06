@@ -3,8 +3,8 @@
 //! its own text model (a modal editor, a terminal) binds against.
 
 use kui_core::{
-    Core, EditOptions, InputEvent, Key, KeyCode, KeyMods, KeyPress, NodeSpec, Size, Sizing,
-    UiEvent, Value, Vec2,
+    Align, Core, EditKey, EditOptions, FloatConfig, InputEvent, Key, KeyCode, KeyMods, KeyPress,
+    Mods, NodeSpec, Size, Sizing, UiEvent, Value, Vec2,
 };
 
 /// Two side-by-side key sinks (think: two editor panes), left one focused.
@@ -433,6 +433,210 @@ fn key_names_round_trip_through_from_name() {
     assert_eq!(KeyCode::from_name("f0"), None);
     assert_eq!(KeyCode::from_name("f25"), None);
     assert_eq!(KeyCode::from_name("nonsense"), None);
+}
+
+// -- Both channels of one press (backlog F6) --------------------------------
+
+/// A press is two channels and a window drives both: the raw key to the
+/// focused sink, and then what the *core* is asked to do with that key.
+/// [`KeyPress::edit_event`] is the second one, and the one table every
+/// driver and every headless injector reads — so this pins the table.
+#[test]
+fn the_second_channel_of_a_press_is_one_table() {
+    let plain = |code| KeyPress::new(code, KeyMods::default());
+    let named = |ek| Some(InputEvent::Key(ek, Mods::default()));
+    // The keys the editing vocabulary names.
+    assert_eq!(plain(KeyCode::Escape).edit_event(), named(EditKey::Escape));
+    assert_eq!(plain(KeyCode::Tab).edit_event(), named(EditKey::Tab));
+    assert_eq!(plain(KeyCode::Right).edit_event(), named(EditKey::Right));
+    assert_eq!(
+        plain(KeyCode::Backspace).edit_event(),
+        named(EditKey::Backspace)
+    );
+    // Shift-Tab is the same key carrying the modifier the ring reads, and
+    // Alt is `word`, the platform primary `doc` — the whole of what the
+    // editing vocabulary normalizes.
+    let shift = KeyMods {
+        shift: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        KeyPress::new(KeyCode::Tab, shift).edit_event(),
+        Some(InputEvent::Key(
+            EditKey::Tab,
+            Mods {
+                shift: true,
+                ..Default::default()
+            }
+        ))
+    );
+    let alt = KeyMods {
+        alt: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        KeyPress::new(KeyCode::Left, alt).edit_event(),
+        Some(InputEvent::Key(
+            EditKey::Left,
+            Mods {
+                word: true,
+                ..Default::default()
+            }
+        ))
+    );
+    // Space is the text channel, not an `EditKey`: it presses a focused
+    // control and inserts into a focused editor.
+    assert_eq!(
+        plain(KeyCode::Space).edit_event(),
+        Some(InputEvent::Text(" ".to_string()))
+    );
+    // A printable key inserts what the layout said it inserts.
+    assert_eq!(
+        plain(KeyCode::Char('w')).with_text("w").edit_event(),
+        Some(InputEvent::Text("w".to_string()))
+    );
+    // A chord carries no text, so it stops at the sink channel — as does a
+    // key the vocabulary does not name at all.
+    assert_eq!(plain(KeyCode::Char('w')).edit_event(), None);
+    assert_eq!(plain(KeyCode::F(5)).edit_event(), None);
+    assert_eq!(plain(KeyCode::Insert).edit_event(), None);
+}
+
+/// A key sink inside a modal — the field report's editor — and the two
+/// channels one Escape travels: the keymap hears it, *and* the modal asks
+/// to go away. Driving only `KeyDown` is what left every one of those
+/// editors open.
+fn sink_in_a_modal(core: &mut Core) -> (Key, Key) {
+    let mut ui = core.frame(Size::new(200.0, 200.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with_keyed(
+        "behind",
+        NodeSpec::row()
+            .width(Sizing::Fixed(60.0))
+            .height(Sizing::Fixed(20.0))
+            .on_click(Value::str("behind"))
+            .label("Behind"),
+        |_| {},
+    );
+    let mut sink = Key::ROOT;
+    let dialog = ui.with_keyed(
+        "dialog",
+        NodeSpec::column()
+            .width(Sizing::Fixed(120.0))
+            .height(Sizing::Fixed(60.0))
+            .float(
+                FloatConfig::viewport()
+                    .at(Align::End, Align::End)
+                    .self_at(Align::End, Align::End),
+            )
+            .modal(Value::str("editor"))
+            .label("Editor"),
+        |ui| {
+            sink = ui.with_keyed(
+                "notes",
+                NodeSpec::column()
+                    .width(Sizing::Fixed(100.0))
+                    .height(Sizing::Fixed(40.0))
+                    .on_key(Value::str("notes"))
+                    .label("Notes"),
+                |_| {},
+            );
+        },
+    );
+    ui.take_key_focus(sink);
+    ui.finish();
+    (sink, dialog)
+}
+
+/// The `kind` of every event in a batch, in order.
+fn kinds(evs: &[UiEvent]) -> Vec<&str> {
+    evs.iter()
+        .map(|e| e.payload.get("kind").and_then(Value::as_str).unwrap_or(""))
+        .collect()
+}
+
+#[test]
+fn a_press_reaches_the_sink_and_the_core_both() {
+    let mut core = Core::new();
+    let (sink, dialog) = sink_in_a_modal(&mut core);
+    let escape = || KeyPress::new(KeyCode::Escape, KeyMods::default());
+
+    // The half that was never enough: the keymap hears it and the modal
+    // stays open, because dismissal lives on the other channel.
+    let evs = core.handle_input(InputEvent::KeyDown(escape()));
+    assert_eq!(kinds(&evs), ["key"]);
+    assert_eq!(evs[0].key, sink);
+
+    // The whole press: the same event, then the dismissal, in the order a
+    // window sends them.
+    let evs = core.press(escape());
+    assert_eq!(kinds(&evs), ["key", "dismiss"]);
+    assert_eq!(evs[0].key, sink);
+    assert_eq!(evs[1].key, dialog);
+    assert_eq!(
+        evs[1].payload.get("reason").and_then(Value::as_str),
+        Some("escape")
+    );
+
+    // The release is one channel, because only one has a second half. This
+    // sink never asked for `key_up`, so it hears nothing at all.
+    assert_eq!(kinds(&core.release(escape())), [] as [&str; 0]);
+}
+
+/// The pomodoro report's side of the same split: Tab, Space and the arrows
+/// are *all* on the channel `KeyDown` is not, so a control reached by
+/// keyboard did nothing until the whole press arrived.
+#[test]
+fn a_press_walks_the_ring_presses_a_control_and_nudges_a_slider() {
+    use kui_core::access::Role;
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(200.0, 200.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let go = ui.with_keyed(
+        "go",
+        NodeSpec::row()
+            .width(Sizing::Fixed(60.0))
+            .height(Sizing::Fixed(20.0))
+            .on_click(Value::str("go"))
+            .label("Go"),
+        |_| {},
+    );
+    let vol = ui.with_keyed(
+        "vol",
+        NodeSpec::row()
+            .width(Sizing::Fixed(100.0))
+            .height(Sizing::Fixed(10.0))
+            .role(Role::Slider)
+            .label("Volume")
+            .value_now(3.0)
+            .value_min(0.0)
+            .value_max(10.0)
+            .on_drag(Value::str("vol")),
+        |_| {},
+    );
+    ui.finish();
+
+    assert_eq!(core.focus(), None, "nothing focused at first");
+    let press = |core: &mut Core, code| core.press(KeyPress::new(code, KeyMods::default()));
+
+    assert_eq!(kinds(&press(&mut core, KeyCode::Tab)), [] as [&str; 0]);
+    assert_eq!(core.focus(), Some(go), "tab moved focus onto the button");
+
+    let evs = press(&mut core, KeyCode::Space);
+    assert_eq!(evs.len(), 1, "space pressed the focused control");
+    assert_eq!(evs[0].key, go);
+    assert_eq!(evs[0].payload.as_str(), Some("go"));
+
+    press(&mut core, KeyCode::Tab);
+    assert_eq!(core.focus(), Some(vol), "tab moved on to the slider");
+
+    let evs = press(&mut core, KeyCode::Right);
+    assert_eq!(kinds(&evs), ["access"]);
+    assert_eq!(evs[0].key, vol);
+    assert_eq!(
+        evs[0].payload.get("action").and_then(Value::as_str),
+        Some("increment")
+    );
 }
 
 /// splitmux's shape: one sink wrapping the panes, each pane clickable so a

@@ -243,6 +243,24 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
       must('key')(name, mods);
       app.settle();
     },
+    /** A whole key going down, the way a window sends it: the raw press to
+     *  an `onKey` sink, and then what the core is asked to do with that key
+     *  — Escape dismisses a modal, Tab walks the focus ring, an arrow
+     *  nudges a focused slider, Space presses a focused control, a
+     *  printable character reaches the focused editor. This is the one a
+     *  test that means "the user pressed this key" wants; `key` and
+     *  `ctx.keyDown` are its two halves. */
+    press(code, mods, repeat, physical) {
+      must('press')(code, mods, repeat, physical);
+      app.settle();
+    },
+    /** The same key coming up, spelled the way `press` spells it. One
+     *  channel: the editing keys act on the way down, so this is the
+     *  release a sink that declared `keyUp` hears. */
+    release(code, mods, physical) {
+      must('release')(code, mods, physical);
+      app.settle();
+    },
     /** What assistive technology sees of the last render. */
     accessTree() {
       return surface.accessTree();

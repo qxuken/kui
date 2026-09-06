@@ -38,6 +38,9 @@ app.ctx.cursor(knob.x + 64, knob.y + 4);
 app.ctx.mouse(false);
 app.settle();                                         // events → update → render
 assert.equal(app.model.volume, 0.5);
+app.press('tab');                                     // a whole key, both channels
+app.press('right');                                   // so the ring moves and the slider nudges
+assert.equal(app.model.volume, 0.55);
 assert.deepEqual(app.ctx.audioCommands().map((c) => c.kind), ['setVolume']);
 assert.ok(decodeQuads(app.ctx.quads()).every((q) => q.x + q.w <= 320), 'nothing overflows');
 assert.deepEqual(app.warnings, []);                   // nothing misconfigured
@@ -267,7 +270,11 @@ that are hard to reverse and would look arbitrary without their context.
   press the focused control (the event a click would emit), the arrows
   nudge a focused slider (the access events a screen reader would send),
   and keyboard focus draws a ring on top of the frame in every binding
-  unless the node declares `focus_bg`. A click's focus draws nothing. A
+  unless the node declares `focus_bg`. All of that is the *second* of the
+  two channels one key press travels — the first is the raw press an
+  `on_key` sink hears — so a driver sends both, in that order, and a
+  headless test presses a key with the one call that does the same
+  (`Core::press`, `ctx.press` / `app.press`, `kui_input_press`). A click's focus draws nothing. A
   key sink keeps every key, Tab included — it is an app that owns its
   keyboard — and hands focus on with `focus_next`. A screen reader's focus
   request lands on the same focus, so its cursor follows Tab into

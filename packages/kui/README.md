@@ -68,10 +68,16 @@ still runs headless.
 comes back as data, so a test drives the app the way a user would and
 asserts on what the core produced:
 
-- **Input**: `app.click(x, y)`, `app.type(s)`, `app.key(name)` settle the
-  loop for you; `app.ctx.cursor` / `mouse` / `scroll` / `keyDown` /
-  `modifiers` are the raw events (a drag is cursor, mouse down, cursor,
-  mouse up). The loop sets the frame clock before every frame, so a
+- **Input**: `app.click(x, y)`, `app.type(s)`, `app.press(code)` settle the
+  loop for you; `app.ctx.cursor` / `mouse` / `scroll` / `modifiers` are the
+  raw events (a drag is cursor, mouse down, cursor, mouse up).
+  **`press` is the key one.** A real key press is two channels and a window
+  drives both — the raw press an `onKey` sink hears, and then what the core
+  is asked to do with that key (Escape dismisses a modal, Tab walks the
+  ring, an arrow nudges a focused slider, Space presses a focused control).
+  `press('escape')` does both; `app.key(name)` and `app.ctx.keyDown(code)`
+  are its two halves, for a test that means to drive one channel and not
+  the other. `app.release(code)` is the key coming up. The loop sets the frame clock before every frame, so a
   `transition` eases from the frame that changes it and `app.advance(ms)`
   is what moves it; a test that wants only the end state advances past
   the duration. (A bare `Ctx` whose `setTime` is never called snaps.)

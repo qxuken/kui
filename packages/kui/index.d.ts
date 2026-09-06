@@ -850,6 +850,34 @@ export declare class Ctx {
    */
   keyUp(code: string, mods?: KeySinkMods, physical?: string): void
   /**
+   * A whole key going down, the way a window sends it: the raw press
+   * to an `onKey` sink, and then what the core is asked to do with that
+   * key — Escape dismisses a modal, Tab walks the focus ring, an arrow
+   * nudges a focused slider, Space presses a focused control, a
+   * printable character reaches the focused editor.
+   *
+   * **This is the one to reach for.** `keyDown` and `key` are its two
+   * halves, kept for a test that means to drive one channel and not the
+   * other; a test that means "the user pressed this key" wants both,
+   * and `keyDown("escape")` leaving a modal open is what having to
+   * choose used to cost (backlog F6).
+   *
+   * Spelled exactly as `keyDown`: a single character (layout-resolved,
+   * e.g. "W" or "$") or a name ("left", "enter", "escape", "f5", ...),
+   * with mods `{shift, ctrl, alt, super}`, `repeat` for an OS
+   * auto-repeat, and `physical` for the US-QWERTY key at that position.
+   * `release()` is the other end of the same key.
+   */
+  press(code: string, mods?: KeySinkMods, repeat?: boolean, physical?: string): void
+  /**
+   * The same key coming up, spelled the way `press` spells it. One
+   * channel, because only one has a second half: the editing keys act
+   * on the way down, so this is `keyUp` under the name that pairs with
+   * `press`. A sink that declared `keyUp` hears it; one that did not
+   * hears nothing.
+   */
+  release(code: string, mods?: KeySinkMods, physical?: string): void
+  /**
    * Physical modifier state changed: `{shift, ctrl, alt, super}`. The
    * host receives `{kind:"modifiers", ...}` when it differs from the
    * last report.
@@ -1086,9 +1114,13 @@ export declare class Ctx {
   isFocused(key: string): boolean
   /**
    * The node holding keyboard focus (hex key), or null. Tab /
-   * Shift-Tab (`key("tab")`) walk every control in tree order,
-   * Enter and Space press the focused one, and the arrows nudge a
-   * focused slider.
+   * Shift-Tab walk every control in tree order, Enter and Space
+   * press the focused one, and the arrows nudge a focused
+   * slider — `press("tab")`, `press(" ")`, `press("right")`,
+   * which is what a keyboard sends. (`key("tab")` is the half
+   * of that press the core acts on, for a test that means to
+   * drive one channel; `keyDown` is the other half, the one an
+   * `onKey` sink hears.)
    */
   focused(): string | null
   /**
@@ -1423,9 +1455,13 @@ export declare class KuiWindow {
   isFocused(key: string): boolean
   /**
    * The node holding keyboard focus (hex key), or null. Tab /
-   * Shift-Tab (`key("tab")`) walk every control in tree order,
-   * Enter and Space press the focused one, and the arrows nudge a
-   * focused slider.
+   * Shift-Tab walk every control in tree order, Enter and Space
+   * press the focused one, and the arrows nudge a focused
+   * slider — `press("tab")`, `press(" ")`, `press("right")`,
+   * which is what a keyboard sends. (`key("tab")` is the half
+   * of that press the core acts on, for a test that means to
+   * drive one channel; `keyDown` is the other half, the one an
+   * `onKey` sink hears.)
    */
   focused(): string | null
   /**
@@ -1660,7 +1696,21 @@ export interface Loop<M, A, S> {
    *  node under it gets a `contextmenu` message, and nothing else moves. */
   rightClick(x: number, y: number): void;
   type(text: string): void;
+  /** One half of a key: what the *core* is asked to do with it (Escape
+   *  dismisses a modal, Tab walks the ring, an arrow nudges a focused
+   *  slider). `press` is the whole key and the one to reach for. */
   key(name: EditKeyName, mods?: KeyMods): void;
+  /** A whole key going down, the way a window sends it: the raw press to an
+   *  `onKey` sink, and then what the core is asked to do with that key —
+   *  Escape dismisses a modal, Tab walks the focus ring, an arrow nudges a
+   *  focused slider, Space presses a focused control, a printable character
+   *  reaches the focused editor. Spelled as `ctx.keyDown` spells it: a
+   *  character ("W", "$") or a name ("left", "escape", "f5", ...). */
+  press(code: string, mods?: KeySinkMods, repeat?: boolean, physical?: string): void;
+  /** The same key coming up, spelled the way `press` spells it. One
+   *  channel: the editing keys act on the way down, so this is the release
+   *  a sink that declared `keyUp` hears. */
+  release(code: string, mods?: KeySinkMods, physical?: string): void;
   /** What assistive technology sees of the last render. */
   accessTree(): AccessTree;
   /** Drives the app the way a screen reader would — `access(key, 'click')`

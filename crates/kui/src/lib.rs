@@ -661,18 +661,6 @@ impl Pane {
         bridge.publish(self.core.access_tree(), scale, &said);
     }
 
-    fn mods(&self) -> Mods {
-        Mods {
-            shift: self.modifiers.shift_key(),
-            word: self.modifiers.alt_key(),
-            doc: if cfg!(target_os = "macos") {
-                self.modifiers.super_key()
-            } else {
-                self.modifiers.control_key()
-            },
-        }
-    }
-
     /// The platform primary shortcut modifier (Cmd on macOS, Ctrl elsewhere).
     fn primary(&self) -> bool {
         if cfg!(target_os = "macos") {
@@ -1392,19 +1380,19 @@ impl<A: App> Shell<A> {
         // goes through it, so a C host with its own windowing gets the same
         // rule as this one.
         let kp = KeyPress::from_layout(logical_code, physical, kmods);
+        let kp = KeyPress {
+            text: ktext,
+            repeat: event.repeat,
+            ..kp
+        };
         if kp.code != KeyCode::Unknown {
-            let kp = KeyPress {
-                text: ktext,
-                repeat: event.repeat,
-                ..kp
-            };
             self.dispatch(
                 event_loop,
                 i,
                 if pressed {
-                    InputEvent::KeyDown(kp)
+                    InputEvent::KeyDown(kp.clone())
                 } else {
-                    InputEvent::KeyUp(kp.released())
+                    InputEvent::KeyUp(kp.clone().released())
                 },
             );
         }
@@ -1472,37 +1460,21 @@ impl<A: App> Shell<A> {
             }
         }
 
-        let named = match &event.logical_key {
-            WinitKey::Named(n) => Some(match n {
-                NamedKey::ArrowLeft => EditKey::Left,
-                NamedKey::ArrowRight => EditKey::Right,
-                NamedKey::ArrowUp => EditKey::Up,
-                NamedKey::ArrowDown => EditKey::Down,
-                NamedKey::Home => EditKey::Home,
-                NamedKey::End => EditKey::End,
-                NamedKey::PageUp => EditKey::PageUp,
-                NamedKey::PageDown => EditKey::PageDown,
-                NamedKey::Backspace => EditKey::Backspace,
-                NamedKey::Delete => EditKey::Delete,
-                NamedKey::Enter => EditKey::Enter,
-                NamedKey::Tab => EditKey::Tab,
-                NamedKey::Escape => EditKey::Escape,
-                NamedKey::Space => {
-                    self.dispatch(event_loop, i, InputEvent::Text(" ".to_string()));
-                    return;
-                }
-                _ => return,
-            }),
-            _ => None,
-        };
-        if let Some(key) = named {
+        // The editor channel: the same press again, as what the core is
+        // asked to *do* with that key. The table lives in the core
+        // (`KeyPress::edit_event`) rather than here, so this runner and
+        // every headless injector send the same second event for the same
+        // key — pressing Escape dismissed a modal in a window and did
+        // nothing in a test for as long as there were two copies of it
+        // (backlog F6).
+        if let Some(ev) = kp.edit_event() {
             // A popup owns Escape the way a modal node does, and for the
             // same reason (ADR 0003, one level up): it asks to go away, and
             // nothing else happens. A modal *inside* the popup is asked
             // first, which is the core's own precedence read at this level
             // — the surface nearest the user answers.
             let pane = &self.panes[i];
-            if key == EditKey::Escape
+            if matches!(ev, InputEvent::Key(EditKey::Escape, _))
                 && pane.kind == WindowKind::Popup
                 && pane.core.modal().is_none()
             {
@@ -1510,11 +1482,13 @@ impl<A: App> Shell<A> {
                 self.dismiss(id, DismissReason::Escape);
                 return;
             }
-            let mods = self.panes[i].mods();
-            self.dispatch(event_loop, i, InputEvent::Key(key, mods));
+            self.dispatch(event_loop, i, ev);
             return;
         }
-        // Plain typed text (IME commits arrive via WindowEvent::Ime).
+        // Plain typed text (IME commits arrive via WindowEvent::Ime). Not
+        // the core's table's business: this is the *composed* character
+        // the platform produced, which a chord-view `KeyPress` does not
+        // carry — macOS's ⌥o is "ø" here and no text at all there.
         let pane = &self.panes[i];
         if !pane.primary()
             && !pane.modifiers.control_key()

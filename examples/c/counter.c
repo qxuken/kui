@@ -229,11 +229,21 @@ static int headless(void) {
     }
 
     /* Declare it, then let Escape ask for it back: a modal float dismisses
-     * itself the way the dialog in the Rust examples does. */
+     * itself the way the dialog in the Rust examples does.
+     *
+     * kui_input_press is the whole key, which is what a host with a real
+     * keyboard sends: the raw press to an on_key sink, and then what the
+     * core is asked to do with that key - dismissal, here. Driving only
+     * kui_input_key_down leaves this menu open, because dismissal is on
+     * the other channel. */
     kui_frame_begin(ctx, 800, 600, 1.0f);
     view(&state, ctx);
     kui_frame_finish(ctx);
-    kui_input_key(ctx, KUI_KEY_ESCAPE, 0);
+    {
+        KuiStr none = {0};
+        kui_input_press(ctx, KUI_STR("escape"), none, 0, none, false);
+        kui_input_release(ctx, KUI_STR("escape"), none, 0);
+    }
     while (kui_poll_event(ctx, &ev)) apply_event(&state, &ev);
     if (state.menu_open) {
         fprintf(stderr, "FAIL: escape did not dismiss the menu\n");
@@ -553,6 +563,14 @@ static int surface(void) {
     kui_focus(ui, k.sink);
     kui_input_key(ui, KUI_KEY_RIGHT, 0);
     kui_input_key(ui, KUI_KEY_TAB, 0);
+    /* Those two calls are one half of a key each, which is what they are
+     * for: a host that means to drive one channel on purpose. A host that
+     * means "the user pressed this key" sends kui_input_press, which does
+     * both in the order a window does them - the sink hears the press, and
+     * then the core acts on it. */
+    kui_focus(ui, k.sink);
+    kui_input_press(ui, KUI_STR("w"), same_key, 0, no_text, false);
+    kui_input_release(ui, KUI_STR("w"), same_key, 0);
 
     /* Editors: type, compose, select, read back. */
     kui_focus(ui, k.editor);
@@ -733,10 +751,13 @@ static int surface(void) {
     check(events > 0, "the inputs produced events");
     check(layouts > 0, "on_layout reported the card's rect");
     check(access > 0, "the slider nudge arrived as an access event");
-    /* Four presses (w, its repeat, the Cyrillic w, ctrl-a) and a release for
-     * each of the three distinct holds — the last synthesized by letting go. */
-    check(downs == 4, "the sink took the presses, repeat included");
-    check(ups == 3, "every held key came back up exactly once");
+    /* Four presses through kui_input_key_down (w, its repeat, the Cyrillic
+     * w, ctrl-a) and a release for each of the three distinct holds — the
+     * last synthesized by letting go — plus the whole-key pair that
+     * kui_input_press and kui_input_release send. The press channel is the
+     * same one either way; what the press call adds is the second one. */
+    check(downs == 5, "the sink took the presses, repeat included");
+    check(ups == 4, "every held key came back up exactly once");
     check(latin == downs + ups,
           "every code is a Latin key, the Cyrillic press included");
     check(physical == downs + ups, "and every one carries its position");

@@ -20,6 +20,35 @@ impl Core {
         out
     }
 
+    /// One whole key going down: both channels, in the order a window
+    /// drives them (backlog F6). The press reaches whatever holds key
+    /// focus, and then [`KeyPress::edit_event`] asks the core for what
+    /// that key *means* — Escape dismisses a modal, Tab walks the ring,
+    /// an arrow nudges a focused slider, a printable character reaches
+    /// the focused editor.
+    ///
+    /// This is what a driver with a real keyboard does, so it is what a
+    /// headless test should do too. [`Core::handle_input`] with a bare
+    /// `KeyDown` is still the way to drive one channel on purpose.
+    pub fn press(&mut self, key: KeyPress) -> Vec<UiEvent> {
+        // Read before the move, and before the press: the key's meaning is
+        // a property of the key, not of what the first channel did with it.
+        let edit = key.edit_event();
+        let mut out = self.handle_input(InputEvent::KeyDown(key));
+        if let Some(ev) = edit {
+            out.extend(self.handle_input(ev));
+        }
+        out
+    }
+
+    /// The same key coming up. One channel, because only one has a second
+    /// half: the editing keys act on the way down. Paired with
+    /// [`Core::press`] so a held key is a press and a release, and a sink
+    /// that asked for `key_up` hears both.
+    pub fn release(&mut self, key: KeyPress) -> Vec<UiEvent> {
+        self.handle_input(InputEvent::KeyUp(key.released()))
+    }
+
     /// Says which window every event on its way out came from.
     ///
     /// The producers cannot: hit-testing, the edit buffer and the audio

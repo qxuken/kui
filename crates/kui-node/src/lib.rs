@@ -547,6 +547,58 @@ impl Ctx {
         Ok(())
     }
 
+    /// A whole key going down, the way a window sends it: the raw press
+    /// to an `onKey` sink, and then what the core is asked to do with that
+    /// key — Escape dismisses a modal, Tab walks the focus ring, an arrow
+    /// nudges a focused slider, Space presses a focused control, a
+    /// printable character reaches the focused editor.
+    ///
+    /// **This is the one to reach for.** `keyDown` and `key` are its two
+    /// halves, kept for a test that means to drive one channel and not the
+    /// other; a test that means "the user pressed this key" wants both,
+    /// and `keyDown("escape")` leaving a modal open is what having to
+    /// choose used to cost (backlog F6).
+    ///
+    /// Spelled exactly as `keyDown`: a single character (layout-resolved,
+    /// e.g. "W" or "$") or a name ("left", "enter", "escape", "f5", ...),
+    /// with mods `{shift, ctrl, alt, super}`, `repeat` for an OS
+    /// auto-repeat, and `physical` for the US-QWERTY key at that position.
+    /// `release()` is the other end of the same key.
+    #[napi(ts_args_type = "code: string, mods?: KeySinkMods, repeat?: boolean, physical?: string")]
+    pub fn press(
+        &mut self,
+        code: String,
+        mods: Option<Json>,
+        repeat: Option<bool>,
+        physical: Option<String>,
+    ) -> Result<()> {
+        let kp = self.key_press(&code, mods.as_ref(), physical.as_deref())?;
+        let evs = self.core.press(KeyPress {
+            repeat: repeat.unwrap_or(false),
+            ..kp
+        });
+        self.events.extend(evs);
+        Ok(())
+    }
+
+    /// The same key coming up, spelled the way `press` spells it. One
+    /// channel, because only one has a second half: the editing keys act
+    /// on the way down, so this is `keyUp` under the name that pairs with
+    /// `press`. A sink that declared `keyUp` hears it; one that did not
+    /// hears nothing.
+    #[napi(ts_args_type = "code: string, mods?: KeySinkMods, physical?: string")]
+    pub fn release(
+        &mut self,
+        code: String,
+        mods: Option<Json>,
+        physical: Option<String>,
+    ) -> Result<()> {
+        let kp = self.key_press(&code, mods.as_ref(), physical.as_deref())?;
+        let evs = self.core.release(kp);
+        self.events.extend(evs);
+        Ok(())
+    }
+
     /// One press from the `{shift, ctrl, alt, super}` shape both key calls
     /// take, with the text a plain key would insert already resolved.
     fn key_press(
@@ -1417,9 +1469,13 @@ macro_rules! core_methods {
             }
 
             /// The node holding keyboard focus (hex key), or null. Tab /
-            /// Shift-Tab (`key("tab")`) walk every control in tree order,
-            /// Enter and Space press the focused one, and the arrows nudge a
-            /// focused slider.
+            /// Shift-Tab walk every control in tree order, Enter and Space
+            /// press the focused one, and the arrows nudge a focused
+            /// slider — `press("tab")`, `press(" ")`, `press("right")`,
+            /// which is what a keyboard sends. (`key("tab")` is the half
+            /// of that press the core acts on, for a test that means to
+            /// drive one channel; `keyDown` is the other half, the one an
+            /// `onKey` sink hears.)
             #[napi]
             pub fn focused(&mut self) -> Option<String> {
                 self.$core().focus().map(key_str)

@@ -587,6 +587,123 @@ test('a modal contains focus and asks to be dismissed', () => {
   assert.equal(ctx.focused(), ok.key, 'escape does not let go');
 });
 
+// Backlog F6: a real key press is two channels and a window drives both —
+// the raw press to an `onKey` sink, and then what the core is asked to do
+// with that key. `press` is the pair. Six of the mind map's first-run
+// failures were `keyDown('escape')` reaching the editor's keymap and
+// leaving the modal it sat in open, because the second channel is where
+// dismissal lives.
+test('press drives both channels: the sink hears the key and the core acts on it', () => {
+  const build = () =>
+    box({ pad: 4 }, [
+      box({ width: 60, height: 20, bg: '#333333', onClick: { kind: 'behind' } }, [], 'behind'),
+      box(
+        {
+          width: 80,
+          height: 40,
+          bg: '#222222',
+          float: { anchor: 'viewport', at: ['end', 'end'], self: ['end', 'end'] },
+          modal: { kind: 'editor' },
+          label: 'Editor',
+        },
+        [
+          box(
+            {
+              width: 60,
+              height: 20,
+              bg: '#444444',
+              onKey: { pane: 'notes' },
+              keyFocus: true,
+              label: 'Notes',
+            },
+            [],
+            'notes',
+          ),
+        ],
+        'dialog',
+      ),
+    ]);
+  const { ctx } = run(build);
+  assert.ok(ctx.isFocused('notes'), 'the sink inside the modal holds the keyboard');
+
+  // The half that was never enough: the sink hears the key, the modal
+  // stays.
+  ctx.keyDown('escape');
+  const half = ctx.pollEvents();
+  assert.deepEqual(
+    half.map((e) => e.payload.kind),
+    ['key'],
+    'keyDown alone is the sink channel and nothing else',
+  );
+
+  // The whole press: the same event, and then the dismissal, in the order
+  // a window sends them.
+  ctx.press('escape');
+  const whole = ctx.pollEvents();
+  assert.deepEqual(
+    whole.map((e) => e.payload.kind),
+    ['key', 'dismiss'],
+    'press reaches the sink and dismisses the modal',
+  );
+  assert.equal(whole[0].payload.code, 'escape');
+  assert.deepEqual(whole[0].payload.tag, { pane: 'notes' });
+  assert.deepEqual(whole[1].payload, {
+    kind: 'dismiss',
+    reason: 'escape',
+    tag: { kind: 'editor' },
+  });
+
+  // The release is the other end of the same key, and one channel: the
+  // editing keys act on the way down. This sink never asked for `keyUp`,
+  // so it hears nothing at all.
+  ctx.release('escape');
+  assert.deepEqual(ctx.pollEvents(), [], 'a sink without keyUp hears no release');
+});
+
+// The other three keys the split hid, from the pomodoro report's side of
+// it: they are all on the channel `keyDown` is not.
+test('press walks the focus ring, presses a control and nudges a slider', () => {
+  const app = createApp(
+    {
+      init: { pressed: 0, nudged: null },
+      update: (m, msg) => {
+        if (msg === 'go') return { ...m, pressed: m.pressed + 1 };
+        if (msg?.kind === 'access') return { ...m, nudged: msg.action };
+      },
+      view: () =>
+        box({ pad: 4, gap: 4 }, [
+          box({ onClick: 'go', width: 60, height: 20, bg: '#333333', label: 'Go' }, [], 'go'),
+          box(
+            {
+              role: 'slider',
+              label: 'Volume',
+              valueNow: 3,
+              valueMin: 0,
+              valueMax: 10,
+              onDrag: 'vol',
+              width: 100,
+              height: 10,
+            },
+            [],
+            'vol',
+          ),
+        ]),
+    },
+    { warnings: false },
+  );
+  app.render();
+  assert.equal(app.ctx.focused(), null, 'nothing focused at first');
+  app.press('tab');
+  assert.ok(app.ctx.isFocused('go'), 'tab moved focus onto the button');
+  app.press(' ');
+  assert.equal(app.model.pressed, 1, 'space pressed the focused control');
+  app.press('tab');
+  assert.ok(app.ctx.isFocused('vol'), 'tab moved on to the slider');
+  app.press('right');
+  assert.equal(app.model.nudged, 'increment', 'right nudged the focused slider');
+  assert.deepEqual(app.warnings, []);
+});
+
 // The row that says where a modal opens focused: a destructive confirm on
 // its Cancel rather than on whichever control is declared first.
 test('initialFocus names the control a modal opens on', () => {
