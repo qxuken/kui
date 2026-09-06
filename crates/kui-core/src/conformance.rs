@@ -65,7 +65,7 @@ use crate::tree::{NodeContent, Tree};
 use crate::ui::Ui;
 use crate::value::Value;
 use crate::widgets;
-use crate::window::{WindowCommand, WindowConfig, WindowEnv, WindowId, WindowRole};
+use crate::window::{DismissReason, WindowCommand, WindowConfig, WindowEnv, WindowId, WindowRole};
 
 /// Every scene is built at this viewport and scale. A binding that drives
 /// its own frames has to use the same numbers or nothing lines up.
@@ -161,6 +161,12 @@ pub fn fixtures(core: &mut Core) -> Fixtures {
 /// Down to the next; in a wrapped container the cross-axis pair moves by
 /// a line instead.
 pub const ARROWS: [EditKey; 4] = [EditKey::Left, EditKey::Right, EditKey::Up, EditKey::Down];
+/// The reasons [`Step::WindowDismissed`] indexes, in the order a step line
+/// carries — an index, like [`ARROWS`], so every argument stays an integer.
+pub const DISMISS_REASONS: [DismissReason; 2] = [DismissReason::Outside, DismissReason::Escape];
+/// [`DISMISS_REASONS`] positions, for a scene to read as words.
+pub const OUTSIDE: u32 = 0;
+pub const ESCAPE: u32 = 1;
 /// [`ARROWS`] positions, for a scene to read as words.
 pub const LEFT: u32 = 0;
 pub const RIGHT: u32 = 1;
@@ -217,6 +223,13 @@ pub enum Step {
     /// button. What a declared window does after that is the half of ADR
     /// 0004's edge rule a headless core can pin.
     WindowClosed(u32),
+    /// Not an input either: the driver reporting that the window with this
+    /// id was asked to go away (`Core::dismiss_window`), with the reason as
+    /// an index into [`DISMISS_REASONS`]. A press outside a window and a
+    /// key routed to a non-activating popup are both facts only an OS has,
+    /// so this is the only way the event exists headlessly — and the event
+    /// is the whole contract, since the core closes nothing in answer.
+    WindowDismissed(u32, u32),
 }
 
 impl Step {
@@ -254,6 +267,9 @@ impl Step {
             Step::WindowClosed(id) => {
                 let _ = writeln!(out, "step windowclosed {id}");
             }
+            Step::WindowDismissed(id, reason) => {
+                let _ = writeln!(out, "step windowdismissed {id} {reason}");
+            }
         }
     }
 
@@ -262,7 +278,9 @@ impl Step {
     /// and [`Step::Time`].
     pub fn event(&self) -> Option<InputEvent> {
         Some(match *self {
-            Step::Phase(_) | Step::Time(_) | Step::WindowClosed(_) => return None,
+            Step::Phase(_) | Step::Time(_) | Step::WindowClosed(_) | Step::WindowDismissed(..) => {
+                return None;
+            }
             Step::Cursor(x, y) => InputEvent::CursorMoved(Vec2::new(x as f32, y as f32)),
             Step::CursorLeft => InputEvent::CursorLeft,
             Step::MouseDown => InputEvent::mouse_down(1),
@@ -317,7 +335,8 @@ pub struct Expect {
     /// Diagnostic codes, in order.
     pub warnings: &'static [&'static str],
     /// Window commands in order, as [`write_command`] spells them without
-    /// the `cmd ` prefix: `drag 0`, `open 1 0 0 400 300 1`, `close 1`.
+    /// the `cmd ` prefix: `drag 0`, `open 1 0 0 0 400 300 1 0 0 0 0`,
+    /// `close 1`.
     pub commands: &'static [&'static str],
     pub title: Option<&'static str>,
 }
@@ -882,9 +901,66 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             glyphs_min: 6,
             access: &["0 window ||", "1 staticText closed||"],
-            events: &["window -", "window -", "window -", "window -"],
+            events: &[
+                "window opened",
+                "window closed",
+                "window opened",
+                "window closed",
+            ],
             warnings: &["duplicate-window-config", "window-declared-while-closed"],
-            commands: &["open 1 0 0 400 300 1", "open 2 0 0 400 300 1", "close 2"],
+            commands: &[
+                "open 1 0 0 0 400 300 1 0 0 0 0",
+                "open 2 0 0 0 400 300 1 0 0 0 0",
+                "close 2",
+            ],
+            title: None,
+        },
+    },
+    Scene {
+        name: "popup",
+        doc: "A popup window (`docs/adr/0004-multi-window.md`, decision 9) \
+              and its `dismiss`, which is the half of step 4 a headless core \
+              can pin — a borderless non-activating surface placed in screen \
+              coordinates has no headless equivalent, so the OS half is a \
+              smoke job. The declaration differs from a normal window's in \
+              four numbers and a kind: the `open` line carries kind 1, \
+              `activates` 0, the owner that declared it (main, 0) and the \
+              anchor rect an `onLayout` node reported for the field the menu \
+              belongs to. Then the driver reports the two dismissals, and \
+              **neither closes anything**: the window is still open, still \
+              declared, and no command follows — the app stops declaring it \
+              on the frame it chooses, which is phase 1, and only that \
+              closes it (ADR 0003 decision 6, one level up). The last step \
+              dismisses a window that no longer exists and gets nothing, so \
+              a driver reporting a stale id cannot invent an event.",
+        custom: &["windows", "size"],
+        elements: &["box", "text"],
+        build: build_popup,
+        env: NATIVE_CHROME,
+        steps: &[
+            // A press landed outside it, then Escape reached it. Two
+            // events, no commands, and the window stays up.
+            Step::WindowDismissed(1, OUTSIDE),
+            Step::WindowDismissed(1, ESCAPE),
+            // The app answers the way it answers a modal's dismiss.
+            Step::Phase(1),
+            // And a dismissal of what is no longer there says nothing.
+            Step::WindowDismissed(1, OUTSIDE),
+        ],
+        expect: Expect {
+            solid: 1,
+            shadows: 0,
+            images: 0,
+            glyphs_min: 6,
+            access: &["0 window ||", "1 staticText closed||"],
+            events: &[
+                "window opened",
+                "dismiss outside",
+                "dismiss escape",
+                "window closed",
+            ],
+            warnings: &[],
+            commands: &["open 1 0 0 1 160 320 0 12 40 160 24", "close 1"],
             title: None,
         },
     },
@@ -1447,6 +1523,34 @@ fn build_exit(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
 /// phase it is in), and a declaration that comes and goes. Phase 0 declares
 /// `palette` twice, disagreeing about the size; phases 1 and 3 declare
 /// nothing; phase 2 declares it once.
+/// The anchor the popup scene is placed against: what an `onLayout` node
+/// would have reported for the field the menu belongs to, spelled out so
+/// every binding declares the same four numbers rather than reproducing a
+/// layout to discover them.
+pub const POPUP_ANCHOR: Rect = Rect {
+    x: 12.0,
+    y: 40.0,
+    w: 160.0,
+    h: 24.0,
+};
+
+fn build_popup(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
+    // A list 320 tall under a 240-tall viewport: the case `FloatConfig::fit`
+    // cannot place, which is the whole reason for the kind.
+    if phase == 0 {
+        ui.window("menu", WindowConfig::popup(POPUP_ANCHOR, 160.0, 320.0));
+    }
+    ui.with(
+        NodeSpec::column().pad(8.0).bg(Color::hex(0x14161eff)),
+        |ui| {
+            ui.text(
+                if phase == 0 { "menu" } else { "closed" },
+                TextStyle::new(12.0),
+            );
+        },
+    );
+}
+
 fn build_windows(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
     if phase == 0 || phase == 2 {
         ui.window("palette", WindowConfig::sized(400.0, 300.0));
@@ -1787,9 +1891,17 @@ fn event_row(payload: &Value) -> (String, String) {
         .and_then(Value::as_str)
         .unwrap_or("-")
         .to_string();
+    // The second column is the event's tag. The two window-level events
+    // carry none — they are on the window and not on a node — and without
+    // a fallback two `window` lines or two `dismiss` lines are the same
+    // line, which is exactly the difference those scenes are about. So an
+    // untagged payload shows the field that tells it from its siblings:
+    // `phase` for a `window`, `reason` for a `dismiss`.
     let tag = payload
         .get("tag")
         .and_then(|t| t.get("kind"))
+        .or_else(|| payload.get("phase"))
+        .or_else(|| payload.get("reason"))
         .and_then(Value::as_str)
         .unwrap_or("-")
         .to_string();
@@ -1854,6 +1966,14 @@ pub fn drive(
                         .map(|e| event_row(&e.payload)),
                 );
                 commands.extend(core.take_window_commands());
+            }
+            Step::WindowDismissed(id, reason) => {
+                core.dismiss_window(WindowId(id), DISMISS_REASONS[reason as usize]);
+                events.extend(
+                    core.take_pending_events()
+                        .iter()
+                        .map(|e| event_row(&e.payload)),
+                );
             }
             _ => {
                 let evs = core.handle_input(step.event().expect("an input step"));
@@ -1922,24 +2042,35 @@ pub fn write_env(env: WindowEnv, out: &mut String) {
 
 /// The `cmd` line for one window command: the verb, the window, and what
 /// else that verb carries — for an `Open` the rest of what the driver reads
-/// (origin, kind as its index with 0 for normal, initial width and height,
-/// and whether it activates), for a `SetSize` the size asked for. All
-/// integers, like every other line.
+/// (the owner window, the origin, the kind as its index with 0 for normal
+/// and 1 for popup, the initial width and height, whether it activates, and
+/// the anchor rect a popup is placed against), for a `SetSize` the size
+/// asked for. All integers, like every other line.
 pub fn write_command(cmd: &WindowCommand, out: &mut String) {
     let _ = match *cmd {
         WindowCommand::StartDrag(w) => writeln!(out, "cmd drag {}", w.0),
         WindowCommand::Close(w) => writeln!(out, "cmd close {}", w.0),
         WindowCommand::Minimize(w) => writeln!(out, "cmd minimize {}", w.0),
         WindowCommand::ToggleMaximize(w) => writeln!(out, "cmd maximize {}", w.0),
-        WindowCommand::Open { id, origin, config } => writeln!(
+        WindowCommand::Open {
+            id,
+            owner,
+            origin,
+            config,
+        } => writeln!(
             out,
-            "cmd open {} {} {} {} {} {}",
+            "cmd open {} {} {} {} {} {} {} {} {} {} {}",
             id.0,
+            owner.0,
             origin.0,
             config.kind as u32,
             config.size.w as i32,
             config.size.h as i32,
             config.activates as u8,
+            config.anchor.x as i32,
+            config.anchor.y as i32,
+            config.anchor.w as i32,
+            config.anchor.h as i32,
         ),
         WindowCommand::SetSize { window, size } => writeln!(
             out,

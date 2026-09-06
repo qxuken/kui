@@ -55,7 +55,7 @@
 use kui_core::schema::{self, Kind, Parsed, PropsOut};
 use kui_core::{
     Align, Color, EditOptions, Extension, FloatConfig, Key, PadShorthand, Sizing, Span, Ui,
-    UiEvent, Value, WindowConfig, widgets,
+    UiEvent, Value, WindowConfig, WindowKind, widgets,
 };
 use mlua::{Lua, Table};
 
@@ -453,11 +453,13 @@ fn element_of(ty: &str) -> &str {
 }
 
 /// The root table's `windows` list (`docs/adr/0004-multi-window.md`): each
-/// entry a name, or a table `{ name=, width=, height=, activates= }` (no
-/// `kind`: the popup is ADR 0004 step 4, so an entry that sets one errors), and
-/// every one a `Ui::window` declaration. The embedding host drains the
-/// `Open` / `Close` the declared set produces and opens the surfaces;
-/// this binding has no runner of its own.
+/// entry a name, or a table
+/// `{ name=, kind=, anchor=, width=, height=, activates= }`, and every one a
+/// `Ui::window` declaration. `kind = "popup"` is decision 9's menu surface,
+/// placed against `anchor = { x=, y=, w=, h= }` — the rect an `on_layout`
+/// event reported — and non-activating unless the entry says otherwise. The
+/// embedding host drains the `Open` / `Close` the declared set produces and
+/// opens the surfaces; this binding has no runner of its own.
 fn declare_windows(ui: &mut Ui<'_>, root: &Table) -> mlua::Result<()> {
     let Some(list) = root.get::<Option<Table>>("windows")? else {
         return Ok(());
@@ -469,7 +471,28 @@ fn declare_windows(ui: &mut Ui<'_>, root: &Table) -> mlua::Result<()> {
             }
             mlua::Value::Table(t) => {
                 let name: String = t.get("name")?;
-                let mut cfg = WindowConfig::default();
+                // An entry is plain data with a fixed shape, not a node's
+                // loose prop bag, so a value that does nothing is refused
+                // rather than dropped: a kind kui does not have would
+                // otherwise open a normal window and read as the popup
+                // having worked.
+                let kind = match t.get::<Option<String>>("kind")?.as_deref() {
+                    None | Some("normal") => WindowKind::Normal,
+                    Some("popup") => WindowKind::Popup,
+                    Some(other) => {
+                        return Err(mlua::Error::runtime(format!(
+                            "windows entry `{name}` has kind {other:?}; the kinds are \
+                             \"normal\" and \"popup\""
+                        )));
+                    }
+                };
+                let mut cfg = WindowConfig {
+                    kind,
+                    // A popup that takes OS focus blurs the field that
+                    // opened it, so it does not unless asked.
+                    activates: kind == WindowKind::Normal,
+                    ..WindowConfig::default()
+                };
                 if let (Some(w), Some(h)) = (
                     t.get::<Option<f32>>("width")?,
                     t.get::<Option<f32>>("height")?,
@@ -479,17 +502,13 @@ fn declare_windows(ui: &mut Ui<'_>, root: &Table) -> mlua::Result<()> {
                 if let Some(a) = t.get::<Option<bool>>("activates")? {
                     cfg.activates = a;
                 }
-                // An entry is plain data with a fixed shape, not a node's
-                // loose prop bag, so a key that does nothing is refused
-                // rather than dropped. `kind` is the one anybody reaches
-                // for: the popup is ADR 0004 step 4 and this release has no
-                // window kind but the normal one.
-                if t.contains_key("kind")? {
-                    return Err(mlua::Error::runtime(format!(
-                        "windows entry `{name}` sets `kind`, which no window kind exists for \
-                         yet (the popup is ADR 0004 step 4); drop it, and reach for a modal \
-                         float meanwhile"
-                    )));
+                if let Some(a) = t.get::<Option<Table>>("anchor")? {
+                    cfg.anchor = kui_core::Rect::new(
+                        a.get::<Option<f32>>("x")?.unwrap_or(0.0),
+                        a.get::<Option<f32>>("y")?.unwrap_or(0.0),
+                        a.get::<Option<f32>>("w")?.unwrap_or(0.0),
+                        a.get::<Option<f32>>("h")?.unwrap_or(0.0),
+                    );
                 }
                 ui.window(&name, cfg);
             }
@@ -1275,6 +1294,7 @@ mod tests {
             cmds[0],
             WindowCommand::Open {
                 id: WindowId(1),
+                owner: WindowId::MAIN,
                 origin: OriginId(1),
                 config: WindowConfig {
                     size: Size::new(400.0, 300.0),
@@ -1287,6 +1307,7 @@ mod tests {
             cmds[1],
             WindowCommand::Open {
                 id: WindowId(2),
+                owner: WindowId::MAIN,
                 origin: OriginId(1),
                 config: WindowConfig::default(),
             }
@@ -1297,17 +1318,56 @@ mod tests {
         assert!(core.take_warnings().is_empty());
     }
 
-    /// A `kind` on a windows entry is refused rather than dropped: the
-    /// popup is ADR 0004 step 4, and encoding it as the normal window this
-    /// release has would read as the popup having shipped.
+    /// `kind = "popup"` is ADR 0004 decision 9's menu surface: the anchor
+    /// rides through untouched, and it does not activate unless asked —
+    /// a popup that takes OS focus blurs the field that opened it.
     #[test]
-    fn a_windows_entry_cannot_name_a_kind() {
+    fn a_windows_entry_declares_a_popup() {
+        use kui_core::{Rect, WindowCommand, WindowConfig, WindowKind};
+        let mut ext = LuaExtension::from_source(
+            "windows-popup",
+            r#"
+                function view(env)
+                  return column {
+                    windows = { { name = "menu", kind = "popup",
+                                  width = 160, height = 320,
+                                  anchor = { x = 12, y = 40, w = 160, h = 24 } } },
+                    text("main"),
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        assert_eq!(
+            core.take_window_commands(),
+            vec![WindowCommand::Open {
+                id: WindowId(1),
+                owner: WindowId::MAIN,
+                origin: OriginId(1),
+                config: WindowConfig {
+                    kind: WindowKind::Popup,
+                    size: Size::new(160.0, 320.0),
+                    activates: false,
+                    anchor: Rect::new(12.0, 40.0, 160.0, 24.0),
+                },
+            }]
+        );
+    }
+
+    /// A kind kui does not have is refused where it is written rather than
+    /// dropped: opening a normal window for it would read as the popup
+    /// having worked. (C cannot do this — an integer field has no room to
+    /// refuse in — so it warns `unknown-window-kind` a frame later.)
+    #[test]
+    fn a_windows_entry_cannot_name_an_unknown_kind() {
         let mut ext = LuaExtension::from_source(
             "windows-kind",
             r#"
                 function view(env)
                   return column {
-                    windows = { { name = "palette", kind = "popup" } },
+                    windows = { { name = "palette", kind = "sheet" } },
                     text("main"),
                   }
                 end
@@ -1318,8 +1378,8 @@ mod tests {
         let mut ui = core.frame(Size::new(800.0, 600.0), 1.0);
         ui.set_origin(OriginId(1));
         let err = ext.view(&mut ui).unwrap_err();
-        assert!(err.contains("kind"), "{err}");
-        assert!(err.contains("step 4"), "{err}");
+        assert!(err.contains("sheet"), "{err}");
+        assert!(err.contains("popup"), "{err}");
     }
 
     /// Every node type the prelude offers lowers without error and draws.

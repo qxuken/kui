@@ -44,6 +44,7 @@ fn window_cmds(ctx: *mut KuiCtx) -> Vec<KuiWindowCommand> {
             config: cmd.config,
             width: cmd.width,
             height: cmd.height,
+            owner: cmd.owner,
         });
     }
     out
@@ -74,6 +75,7 @@ fn frame_declaring(ctx: *mut KuiCtx, declare: &[(f32, f32)]) {
             width: *w,
             height: *h,
             activates: 1,
+            ..Default::default()
         };
         kui_window_declare(ctx, ks("palette"), &cfg);
     }

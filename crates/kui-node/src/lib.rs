@@ -596,8 +596,8 @@ impl Ctx {
     /// Drains the window commands the core queued, as plain objects: what
     /// chrome nodes asked for (`{kind:"startDrag"|"close"|"minimize"|
     /// "toggleMaximize", window}`) and what the declared window set decided
-    /// (`{kind:"open", window, origin, config:{kind, width, height,
-    /// activates}}` / `{kind:"close", window}`).
+    /// (`{kind:"open", window, owner, origin, config:{kind, width, height,
+    /// activates, anchor}}` / `{kind:"close", window}`).
     #[napi(ts_return_type = "WindowCommand[]")]
     pub fn window_commands(&mut self) -> Json {
         window_commands_json(self.core.take_window_commands())
@@ -611,6 +611,22 @@ impl Ctx {
     #[napi]
     pub fn window_closed(&mut self, id: u32) {
         self.core.window_closed(kui_core::WindowId(id));
+        self.events.extend(self.core.take_pending_events());
+    }
+
+    /// A custom driver reports that window `id` was asked to go away: a
+    /// press landed outside it (`"outside"`) or Escape reached it
+    /// (`"escape"`). `{kind:"dismiss", reason, name, id}` lands in
+    /// `pollEvents` and **nothing closes** — the app stops declaring the
+    /// window on the frame it decides to, exactly as it answers a `modal`
+    /// node's dismissal. Nothing happens for a window that is not open.
+    #[napi]
+    pub fn window_dismissed(&mut self, id: u32, reason: String) {
+        let reason = match &*reason {
+            "escape" => kui_core::DismissReason::Escape,
+            _ => kui_core::DismissReason::Outside,
+        };
+        self.core.dismiss_window(kui_core::WindowId(id), reason);
         self.events.extend(self.core.take_pending_events());
     }
 
@@ -663,7 +679,14 @@ fn window_commands_json(cmds: Vec<kui_core::WindowCommand>) -> Json {
                     o.insert("width".into(), Json::from(size.w as f64));
                     o.insert("height".into(), Json::from(size.h as f64));
                 }
-                if let WindowCommand::Open { origin, config, .. } = cmd {
+                if let WindowCommand::Open {
+                    owner,
+                    origin,
+                    config,
+                    ..
+                } = cmd
+                {
+                    o.insert("owner".into(), Json::from(owner.0));
                     o.insert("origin".into(), Json::from(origin.0));
                     let mut c = JsonMap::new();
                     c.insert(
@@ -671,6 +694,7 @@ fn window_commands_json(cmds: Vec<kui_core::WindowCommand>) -> Json {
                         Json::String(
                             match config.kind {
                                 kui_core::WindowKind::Normal => "normal",
+                                kui_core::WindowKind::Popup => "popup",
                             }
                             .into(),
                         ),
@@ -678,6 +702,7 @@ fn window_commands_json(cmds: Vec<kui_core::WindowCommand>) -> Json {
                     c.insert("width".into(), Json::from(config.size.w as f64));
                     c.insert("height".into(), Json::from(config.size.h as f64));
                     c.insert("activates".into(), Json::Bool(config.activates));
+                    c.insert("anchor".into(), rect_json(config.anchor));
                     o.insert("config".into(), Json::Object(c));
                 }
                 Json::Object(o)

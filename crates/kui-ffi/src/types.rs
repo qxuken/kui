@@ -680,12 +680,28 @@ pub struct KuiWindowConfig {
     /// Initial inner size, logical px. Zero means the default.
     pub width: f32,
     pub height: f32,
-    /// Whether opening it takes OS focus.
+    /// Whether opening it takes OS focus. Start a popup from
+    /// `KUI_WINDOW_POPUP_INIT`, which clears it: a popup that takes focus
+    /// blurs the field that opened it.
     pub activates: u32,
+    /// `KUI_WINDOW_KIND_POPUP` only: the rect the popup is placed against,
+    /// in the **declaring window's** logical coordinates — the `x`/`y`/`w`/
+    /// `h` an `onLayout` event already reports for the field or button the
+    /// menu belongs to. The host resolves it to screen coordinates against
+    /// that window's own position. Ignored by a normal window, and read on
+    /// the opening edge with the rest of the config.
+    pub anchor_x: f32,
+    pub anchor_y: f32,
+    pub anchor_w: f32,
+    pub anchor_h: f32,
 }
 
-/// `KUI_WINDOW_KIND_NORMAL`: the only kind until ADR 0004's step 4.
+/// `KUI_WINDOW_KIND_NORMAL`: a regular top-level window.
 pub const KUI_WINDOW_KIND_NORMAL: u32 = 0;
+/// `KUI_WINDOW_KIND_POPUP`: a borderless, taskbar-less menu surface owned
+/// by the window that declared it, placed against `anchor_*` in screen
+/// coordinates and closed when its owner closes (ADR 0004 decision 9).
+pub const KUI_WINDOW_KIND_POPUP: u32 = 1;
 
 pub(crate) fn window_config_of(c: Option<&KuiWindowConfig>) -> WindowConfig {
     let Some(c) = c else {
@@ -697,13 +713,17 @@ pub(crate) fn window_config_of(c: Option<&KuiWindowConfig>) -> WindowConfig {
         WindowConfig::DEFAULT_SIZE
     };
     WindowConfig {
-        // Every kind but the one that exists reads as it, so a host built
-        // against a later header degrades to a window rather than to
-        // nothing. `kui_window_declare` raises `unknown-window-kind` on the
-        // way past, so the degradation is reported and not silent.
-        kind: WindowKind::Normal,
+        // A kind this build does not have reads as a normal window, so a
+        // host built against a later header degrades to a window rather
+        // than to nothing. `kui_window_declare` raises `unknown-window-kind`
+        // on the way past, so the degradation is reported and not silent.
+        kind: match c.kind {
+            KUI_WINDOW_KIND_POPUP => WindowKind::Popup,
+            _ => WindowKind::Normal,
+        },
         size,
         activates: c.activates != 0,
+        anchor: Rect::new(c.anchor_x, c.anchor_y, c.anchor_w, c.anchor_h),
     }
 }
 
@@ -711,12 +731,22 @@ fn window_config_to_c(c: WindowConfig) -> KuiWindowConfig {
     KuiWindowConfig {
         kind: match c.kind {
             WindowKind::Normal => KUI_WINDOW_KIND_NORMAL,
+            WindowKind::Popup => KUI_WINDOW_KIND_POPUP,
         },
         width: c.size.w,
         height: c.size.h,
         activates: c.activates as u32,
+        anchor_x: c.anchor.x,
+        anchor_y: c.anchor.y,
+        anchor_w: c.anchor.w,
+        anchor_h: c.anchor.h,
     }
 }
+
+/// `KUI_DISMISS_OUTSIDE`, `KUI_DISMISS_ESCAPE`: why a window was asked to
+/// go away (`kui_window_dismissed`).
+pub const KUI_DISMISS_OUTSIDE: u32 = 0;
+pub const KUI_DISMISS_ESCAPE: u32 = 1;
 
 /// `KUI_CMD_START_DRAG`, `KUI_CMD_CLOSE`, `KUI_CMD_MINIMIZE`,
 /// `KUI_CMD_TOGGLE_MAXIMIZE`: the verbs chrome nodes issue.
@@ -763,6 +793,13 @@ pub struct KuiWindowCommand {
     /// exists.
     pub width: f32,
     pub height: f32,
+    /// `KUI_CMD_OPEN` only: the window whose frame declared this one. For a
+    /// `KUI_WINDOW_KIND_POPUP` it is the owner — the surface `config`'s
+    /// `anchor_*` is measured against, the one to parent it to, and the one
+    /// whose closing closes it. (The core closes it either way: an owner's
+    /// declarations leave the declared set with it, so the same drain
+    /// carries the popup's `KUI_CMD_CLOSE`.)
+    pub owner: u32,
 }
 
 impl Default for KuiWindowCommand {
@@ -775,6 +812,7 @@ impl Default for KuiWindowCommand {
             config: KuiWindowConfig::default(),
             width: 0.0,
             height: 0.0,
+            owner: 0,
         }
     }
 }
@@ -782,8 +820,15 @@ impl Default for KuiWindowCommand {
 // SAFETY: `repr(C)` with `size: u32` first.
 unsafe impl OutParam for KuiWindowCommand {
     /// Through `config`: the whole struct as it first shipped, in ABI 5.
-    /// ABI 6's `width`/`height` sit past it, so the floor does not move and
-    /// an ABI-5 host's reservation is still accepted.
+    /// ABI 6's `width`/`height` and ABI 7's `owner` sit past it, so the
+    /// floor never moved for those — but ABI 7 also grew `KuiWindowConfig`
+    /// itself, by the four anchor floats a popup is placed against, and a
+    /// field appended *inside* an embedded struct moves everything after
+    /// it. So the floor is 16 bytes higher than the whole ABI-6 struct was,
+    /// an ABI-6 host's reservation is refused rather than short-written
+    /// (`out_accepts`), and `kui_abi_version()` is what catches that before
+    /// it looks like an empty queue. The size handshake bounds the damage;
+    /// only the version check prevents it.
     const ABI_V1_SIZE: u32 = abi_through!(KuiWindowCommand, config, KuiWindowConfig);
     fn size_mut(&mut self) -> &mut u32 {
         &mut self.size
@@ -792,6 +837,7 @@ unsafe impl OutParam for KuiWindowCommand {
 
 pub(crate) fn window_command_to_c(cmd: WindowCommand) -> KuiWindowCommand {
     let mut size = Size::new(0.0, 0.0);
+    let mut owner = 0;
     let (kind, origin, config) = match cmd {
         WindowCommand::StartDrag(_) => (KUI_CMD_START_DRAG, 0, KuiWindowConfig::default()),
         WindowCommand::Close(_) => (KUI_CMD_CLOSE, 0, KuiWindowConfig::default()),
@@ -799,7 +845,13 @@ pub(crate) fn window_command_to_c(cmd: WindowCommand) -> KuiWindowCommand {
         WindowCommand::ToggleMaximize(_) => {
             (KUI_CMD_TOGGLE_MAXIMIZE, 0, KuiWindowConfig::default())
         }
-        WindowCommand::Open { origin, config, .. } => {
+        WindowCommand::Open {
+            owner: o,
+            origin,
+            config,
+            ..
+        } => {
+            owner = o.0;
             (KUI_CMD_OPEN, origin.0, window_config_to_c(config))
         }
         WindowCommand::SetSize { size: s, .. } => {
@@ -815,6 +867,7 @@ pub(crate) fn window_command_to_c(cmd: WindowCommand) -> KuiWindowCommand {
         config,
         width: size.w,
         height: size.h,
+        owner,
         ..Default::default()
     }
 }

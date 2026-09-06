@@ -78,5 +78,6 @@ pub use tree::OriginId;
 pub use ui::Ui;
 pub use value::Value;
 pub use window::{
-    WindowButton, WindowCommand, WindowConfig, WindowEnv, WindowId, WindowKind, WindowRole,
+    DismissReason, WindowButton, WindowCommand, WindowConfig, WindowEnv, WindowId, WindowKind,
+    WindowRole,
 };

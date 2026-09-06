@@ -108,10 +108,11 @@ mod window_commands_headless {
         let ctx = kui_ctx_new();
         kui_set_diagnostics(ctx, true);
         let cfg = KuiWindowConfig {
-            kind: KUI_WINDOW_KIND_NORMAL + 1,
+            kind: KUI_WINDOW_KIND_POPUP + 1,
             width: 320.0,
             height: 240.0,
             activates: 1,
+            ..Default::default()
         };
         kui_frame_begin(ctx, 300.0, 100.0, 1.0);
         kui_window_declare(ctx, ks("palette"), &cfg);
@@ -143,15 +144,26 @@ mod window_commands_headless {
 
     /// Every kind the header does spell passes without a line.
     #[test]
-    fn the_only_kind_the_header_has_does_not_warn() {
+    fn the_kinds_the_header_has_do_not_warn() {
         let ctx = kui_ctx_new();
         kui_set_diagnostics(ctx, true);
         let cfg = KuiWindowConfig {
             kind: KUI_WINDOW_KIND_NORMAL,
             ..Default::default()
         };
+        let popup = KuiWindowConfig {
+            kind: KUI_WINDOW_KIND_POPUP,
+            width: 160.0,
+            height: 320.0,
+            anchor_x: 12.0,
+            anchor_y: 40.0,
+            anchor_w: 160.0,
+            anchor_h: 24.0,
+            ..Default::default()
+        };
         kui_frame_begin(ctx, 300.0, 100.0, 1.0);
         kui_window_declare(ctx, ks("palette"), &cfg);
+        kui_window_declare(ctx, ks("menu"), &popup);
         kui_window_declare(ctx, ks("tools"), std::ptr::null());
         kui_frame_finish(ctx);
         let mut out = [KuiWarning {
@@ -169,13 +181,17 @@ mod window_commands_headless {
         kui_ctx_free(ctx);
     }
 
-    /// The ABI-6 append is the compatible kind: a host that reserved only
-    /// through `config` (every ABI-5 build) still drains, still reads the
-    /// verb and the window, and simply never sees the size — which it
-    /// cannot need, since only its own `kui_set_window_size` produces the
-    /// verb that fills it.
+    /// An append past `config` is the compatible kind: a host that reserved
+    /// only through `config` still drains, still reads the verb and the
+    /// window, and simply never sees the size — which it cannot need, since
+    /// only its own `kui_set_window_size` produces the verb that fills it.
+    ///
+    /// Written for ABI 6's `width`/`height` against an ABI-5 host, and it
+    /// asserts the same thing for ABI 7's `owner`; what it can no longer
+    /// say is "every ABI-5 build", because ABI 7 grew `KuiWindowConfig`
+    /// itself and so moved this floor — see the test below.
     #[test]
-    fn an_abi_5_host_drains_without_seeing_the_appended_size() {
+    fn a_host_that_reserved_through_config_drains_without_the_appended_tail() {
         let ctx = kui_ctx_new();
         kui_set_window_size(ctx, MAIN, 640.0, 480.0);
         let mut cmd = KuiWindowCommand {
@@ -191,6 +207,113 @@ mod window_commands_headless {
             "the prefix it asked for"
         );
         assert_eq!(cmd.width, 12.5, "and nothing written past it");
+        kui_ctx_free(ctx);
+    }
+
+    /// The one growth the size handshake cannot absorb, asserted rather
+    /// than only described (ADR 0006; `abi.rs`'s note on ABI 7).
+    /// `KuiWindowCommand` embeds a `KuiWindowConfig` **by value**, so the
+    /// four `anchor_*` floats appended to the config moved every field
+    /// after it and lifted this struct's floor past the whole size of the
+    /// ABI-6 struct. An ABI-6 host is therefore refused — not
+    /// short-written, which is the handshake working — and its drain loop
+    /// sees an empty queue. `kui_abi_version()` is the only thing that
+    /// turns that into a message, which is why this test exists next to it.
+    #[test]
+    fn an_abi_6_reservation_is_refused_because_the_config_grew_inside() {
+        const ABI_6_SIZE: u32 = 40;
+        // Constant on both sides, deliberately: the number 40 is what an
+        // ABI-6 header laid out, and nothing in this build can recompute
+        // it, so it is written down and compared.
+        #[allow(
+            clippy::assertions_on_constants,
+            reason = "the constant is the assertion"
+        )]
+        {
+            assert!(
+                KuiWindowCommand::ABI_V1_SIZE > ABI_6_SIZE,
+                "the floor moved past the whole ABI-6 struct"
+            );
+        }
+        let ctx = kui_ctx_new();
+        kui_set_window_size(ctx, MAIN, 640.0, 480.0);
+        let mut cmd = KuiWindowCommand {
+            size: ABI_6_SIZE,
+            kind: 0xdead,
+            ..Default::default()
+        };
+        assert!(!kui_take_window_command(ctx, &raw mut cmd));
+        assert_eq!(cmd.kind, 0xdead, "nothing was written");
+        // And the command is still there for a host that recompiled.
+        let mut cmd = KuiWindowCommand::default();
+        assert!(kui_take_window_command(ctx, &raw mut cmd));
+        assert_eq!(cmd.kind, KUI_CMD_SET_SIZE);
+        kui_ctx_free(ctx);
+    }
+
+    /// ADR 0004 decision 9 through the C surface: the kind and the anchor
+    /// ride the declaration out to the `KUI_CMD_OPEN` untouched, `owner`
+    /// names the window whose frame declared it, and a dismissal reported
+    /// by the host is an event and nothing else — no command, and the
+    /// window still open and still declared.
+    #[test]
+    fn a_popup_declaration_and_its_dismissal_cross_the_c_surface() {
+        let ctx = kui_ctx_new();
+        let popup = KuiWindowConfig {
+            kind: KUI_WINDOW_KIND_POPUP,
+            width: 160.0,
+            height: 320.0,
+            activates: 0,
+            anchor_x: 12.0,
+            anchor_y: 40.0,
+            anchor_w: 160.0,
+            anchor_h: 24.0,
+        };
+        kui_frame_begin(ctx, 300.0, 100.0, 1.0);
+        kui_window_declare(ctx, ks("menu"), &popup);
+        kui_frame_finish(ctx);
+
+        let mut cmd = KuiWindowCommand::default();
+        assert!(kui_take_window_command(ctx, &raw mut cmd));
+        assert_eq!((cmd.kind, cmd.window, cmd.owner), (KUI_CMD_OPEN, 1, MAIN));
+        assert_eq!(cmd.config.kind, KUI_WINDOW_KIND_POPUP);
+        assert_eq!(cmd.config.activates, 0);
+        assert_eq!(
+            (
+                cmd.config.anchor_x,
+                cmd.config.anchor_y,
+                cmd.config.anchor_w,
+                cmd.config.anchor_h
+            ),
+            (12.0, 40.0, 160.0, 24.0)
+        );
+        assert!(!kui_take_window_command(ctx, &raw mut cmd));
+
+        // The frame's own `{kind:"window", phase:"opened"}` comes first.
+        let mut ev = KuiEvent::default();
+        assert!(kui_poll_event(ctx, &raw mut ev));
+        assert_eq!(
+            unsafe { &(*ev.payload).0 }
+                .get("kind")
+                .and_then(Value::as_str),
+            Some("window")
+        );
+        assert!(!kui_poll_event(ctx, &raw mut ev));
+
+        kui_window_dismissed(ctx, 1, KUI_DISMISS_ESCAPE);
+        assert!(kui_poll_event(ctx, &raw mut ev));
+        let payload = unsafe { &(*ev.payload).0 };
+        assert_eq!(payload.get("kind").and_then(Value::as_str), Some("dismiss"));
+        assert_eq!(
+            payload.get("reason").and_then(Value::as_str),
+            Some("escape")
+        );
+        assert_eq!(payload.get("name").and_then(Value::as_str), Some("menu"));
+        assert!(!kui_poll_event(ctx, &raw mut ev), "one event, no more");
+        assert!(
+            !kui_take_window_command(ctx, &raw mut cmd),
+            "and nothing closed: only the app can stop declaring it"
+        );
         kui_ctx_free(ctx);
     }
 }

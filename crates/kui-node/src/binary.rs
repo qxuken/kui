@@ -24,8 +24,8 @@
 //!   in the table.
 
 use kui_core::{
-    Align, Color, Core, EditOptions, FloatConfig, ImageId, NodeSpec, PadShorthand, Size, Span,
-    TextStyle, WindowConfig, widgets,
+    Align, Color, Core, EditOptions, FloatConfig, ImageId, NodeSpec, PadShorthand, Rect, Size,
+    Span, TextStyle, WindowConfig, WindowKind, widgets,
 };
 use serde_json::{Map as JsonMap, Value as Json};
 
@@ -243,16 +243,25 @@ fn read_props(r: &mut Reader<'_>) -> Result<PropsOut> {
             P_KEY => out.key = Some(r.req_str()?.to_string()),
             P_TITLE => out.title = Some(r.req_str()?.to_string()),
             // A count, then per window: name, kind, width, height (zero =
-            // the default size), activates.
+            // the default size), activates, and the anchor rect a popup is
+            // placed against (four zeros for a normal window).
             P_WINDOWS => {
                 let n = r.u()?;
                 for _ in 0..n {
                     let name = r.req_str()?.to_string();
-                    let _kind = r.u()?;
+                    let kind = match r.u()? {
+                        0 => WindowKind::Normal,
+                        1 => WindowKind::Popup,
+                        k => return Err(err(format!("unknown window kind {k}"))),
+                    };
                     let (w, h) = (r.f()? as f32, r.f()? as f32);
                     let activates = r.u()? == 1;
+                    let anchor =
+                        Rect::new(r.f()? as f32, r.f()? as f32, r.f()? as f32, r.f()? as f32);
                     let mut cfg = WindowConfig {
+                        kind,
                         activates,
+                        anchor,
                         ..WindowConfig::default()
                     };
                     if w > 0.0 && h > 0.0 {
@@ -639,15 +648,19 @@ mod tests {
                     expected.apply_tooltip("abc");
                 }
                 "windows" => {
-                    // One window: "abc", normal, 400x300, non-activating.
-                    s.extend([1.0, 0.0, 3.0, 0.0, 400.0, 300.0, 0.0]);
+                    // One window: "abc", a popup 400x300, non-activating,
+                    // anchored to a 60x20 rect at (10, 20).
+                    s.extend([
+                        1.0, 0.0, 3.0, 1.0, 400.0, 300.0, 0.0, 10.0, 20.0, 60.0, 20.0,
+                    ]);
                     strings = b"abc";
                     expected.windows.push((
                         "abc".into(),
                         WindowConfig {
+                            kind: WindowKind::Popup,
                             size: Size::new(400.0, 300.0),
                             activates: false,
-                            ..WindowConfig::default()
+                            anchor: Rect::new(10.0, 20.0, 60.0, 20.0),
                         },
                     ));
                 }

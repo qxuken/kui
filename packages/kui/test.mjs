@@ -1580,6 +1580,27 @@ SCENE_TREES.windows = (_fx, phase) =>
     [box({ pad: 8, bg: '#14161e' }, [text(phase === 0 || phase === 2 ? 'open' : 'closed', { size: 12 })])],
   );
 
+// `conformance::build_popup`: one declaration, with the kind and the anchor
+// a menu carries. The dismissals are steps, not anything the tree says.
+SCENE_TREES.popup = (_fx, phase) =>
+  root(
+    {
+      windows:
+        phase === 0
+          ? [
+              {
+                name: 'menu',
+                kind: 'popup',
+                width: 160,
+                height: 320,
+                anchor: { x: 12, y: 40, w: 160, h: 24 },
+              },
+            ]
+          : undefined,
+    },
+    [box({ pad: 8, bg: '#14161e' }, [text(phase === 0 ? 'menu' : 'closed', { size: 12 })])],
+  );
+
 /** `conformance::EXIT_BULK_ROWS`: with its own root, one node past
  *  `kui_core::depart::MAX_NODES`, so the whole subtree is refused. */
 const EXIT_BULK_ROWS = 512;
@@ -1652,11 +1673,15 @@ function driveScene(env, steps, build) {
   };
   frame();
   for (const step of steps) {
-    // None of the first three is input: the frame clock the transitions
-    // read, the view changing its mind, and the OS closing a window.
+    // None of the first four is input: the frame clock the transitions
+    // read, the view changing its mind, and the OS closing a window or
+    // asking a popup to go away.
     if (step[0] === 'phase') phase = step[1];
     else if (step[0] === 'time') ctx.setTime(step[1] / 1000);
     else if (step[0] === 'windowclosed') ctx.windowClosed(step[1]);
+    // `conformance::DISMISS_REASONS` order: outside, escape.
+    else if (step[0] === 'windowdismissed')
+      ctx.windowDismissed(step[1], ['outside', 'escape'][step[2]]);
     else if (step[0] === 'cursor') ctx.cursor(step[1], step[2]);
     else if (step[0] === 'cursorleft') ctx.cursorLeft();
     else if (step[0] === 'mousedown') ctx.mouse(true, 1);
@@ -1685,8 +1710,14 @@ function driveScene(env, steps, build) {
 function commandLine(c) {
   const verb = { startDrag: 'drag', close: 'close', minimize: 'minimize', toggleMaximize: 'maximize' }[c.kind];
   if (verb) return `cmd ${verb} ${c.window}`;
-  const k = c.config.kind === 'normal' ? 0 : -1;
-  return `cmd open ${c.window} ${c.origin} ${k} ${Math.trunc(c.config.width)} ${Math.trunc(c.config.height)} ${c.config.activates ? 1 : 0}`;
+  const k = ['normal', 'popup'].indexOf(c.config.kind);
+  const a = c.config.anchor;
+  return [
+    'cmd open', c.window, c.owner, c.origin, k,
+    Math.trunc(c.config.width), Math.trunc(c.config.height),
+    c.config.activates ? 1 : 0,
+    Math.trunc(a.x), Math.trunc(a.y), Math.trunc(a.w), Math.trunc(a.h),
+  ].join(' ');
 }
 
 /** Renders a scene block in the report format `conformance::report`
@@ -1726,7 +1757,10 @@ function sceneReport(name, env, steps, { ctx, events, commands }) {
     );
   }
   for (const ev of events) {
-    lines.push(`event ${ev.payload?.kind ?? '-'} ${ev.payload?.tag?.kind ?? '-'}`);
+    // The tag column, or — for the two window-level events, which have none
+    // — the field that tells one from its siblings (`conformance::event_row`).
+    const p = ev.payload;
+    lines.push(`event ${p?.kind ?? '-'} ${p?.tag?.kind ?? p?.phase ?? p?.reason ?? '-'}`);
   }
   for (const c of commands) lines.push(commandLine(c));
   for (const w of ctx.warnings()) lines.push(`warn ${w.code}`);
@@ -1809,7 +1843,19 @@ test('a window the user closed stays closed while declared, and says so', () => 
   const declare = () => ctx.frame(320, 240, 1, box({ windows: ['palette'] }, []));
   declare();
   assert.deepEqual(ctx.windowCommands(), [
-    { kind: 'open', window: 1, origin: 0, config: { kind: 'normal', width: 640, height: 480, activates: true } },
+    {
+      kind: 'open',
+      window: 1,
+      owner: 0,
+      origin: 0,
+      config: {
+        kind: 'normal',
+        width: 640,
+        height: 480,
+        activates: true,
+        anchor: { x: 0, y: 0, w: 0, h: 0 },
+      },
+    },
   ]);
   assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [{ kind: 'window', phase: 'opened', name: 'palette', id: 1 }]);
   ctx.windowClosed(1);
@@ -1825,13 +1871,71 @@ test('a window the user closed stays closed while declared, and says so', () => 
   assert.deepEqual(ctx.windows(), ['main', 'palette']);
 });
 
-test('a windows entry cannot name a kind while there is only one', () => {
+test('a windows entry cannot name a kind kui does not have', () => {
   const ctx = new Ctx();
   assert.throws(
-    () => ctx.frame(320, 240, 1, box({ windows: [{ name: 'palette', kind: 'popup' }] }, [])),
-    /kind.*step 4/s,
-    'the popup is ADR 0004 step 4; encoding it as a normal window would read as it having shipped',
+    () => ctx.frame(320, 240, 1, box({ windows: [{ name: 'palette', kind: 'sheet' }] }, [])),
+    /sheet/,
+    'opening a normal window for it would read as the unknown kind having worked',
   );
+});
+
+// -- Popup windows ---------------------------------------------------------
+// ADR 0004 decision 9: the declaration differs from a normal window's in a
+// kind and an anchor, and the dismissal is an event that closes nothing.
+
+test('a popup declaration carries its kind and anchor and does not activate', () => {
+  const ctx = new Ctx();
+  const menu = { name: 'menu', kind: 'popup', width: 160, height: 320, anchor: { x: 12, y: 40, w: 160, h: 24 } };
+  ctx.frame(320, 240, 1, box({ windows: [menu] }, []));
+  assert.deepEqual(ctx.windowCommands(), [
+    {
+      kind: 'open',
+      window: 1,
+      owner: 0,
+      origin: 0,
+      config: {
+        kind: 'popup',
+        width: 160,
+        height: 320,
+        // Not asked for, and off: a popup that takes OS focus blurs the
+        // field that opened it.
+        activates: false,
+        anchor: { x: 12, y: 40, w: 160, h: 24 },
+      },
+    },
+  ]);
+  // `activates: true` is still available for the surface that wants it.
+  ctx.frame(320, 240, 1, box({ windows: [{ ...menu, name: 'other', activates: true }, menu] }, []));
+  assert.equal(ctx.windowCommands()[0].config.activates, true);
+});
+
+test('a dismissed popup closes nothing until the app stops declaring it', () => {
+  const ctx = new Ctx();
+  const menu = { name: 'menu', kind: 'popup', width: 160, height: 320 };
+  const declare = () => ctx.frame(320, 240, 1, box({ windows: [menu] }, []));
+  declare();
+  ctx.windowCommands();
+  ctx.pollEvents();
+
+  ctx.windowDismissed(1, 'outside');
+  ctx.windowDismissed(1, 'escape');
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [
+    { kind: 'dismiss', reason: 'outside', name: 'menu', id: 1 },
+    { kind: 'dismiss', reason: 'escape', name: 'menu', id: 1 },
+  ]);
+  assert.deepEqual(ctx.windowCommands(), [], 'the core closes nothing in answer');
+  declare();
+  assert.deepEqual(ctx.windows(), ['main', 'menu'], 'still open, still declared');
+
+  // The app answers on the frame it chooses — the same answer a `modal`
+  // node's dismissal gets.
+  ctx.frame(320, 240, 1, box({}, []));
+  assert.deepEqual(ctx.windowCommands().map((c) => [c.kind, c.window]), [['close', 1]]);
+  ctx.pollEvents();
+  // And a stale id invents nothing.
+  ctx.windowDismissed(1, 'outside');
+  assert.deepEqual(ctx.pollEvents(), []);
 });
 
 test('every corpus scene lowers the way kui-core does', (t) => {

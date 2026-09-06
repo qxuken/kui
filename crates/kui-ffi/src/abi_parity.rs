@@ -437,6 +437,10 @@ fn asserts() -> String {
         width: f32 => "float",
         height: f32 => "float",
         activates: u32 => "uint32_t",
+        anchor_x: f32 => "float",
+        anchor_y: f32 => "float",
+        anchor_w: f32 => "float",
+        anchor_h: f32 => "float",
     });
 
     abi_struct!(o, KuiWindowCommand {
@@ -447,11 +451,13 @@ fn asserts() -> String {
         config: KuiWindowConfig => "KuiWindowConfig",
         width: f32 => "float",
         height: f32 => "float",
+        owner: u32 => "uint32_t",
     });
     abi_out_struct!(o, KuiWindowCommand);
 
-    // The command verbs and the window kind are plain constants on
-    // both sides; pinned here so the header cannot renumber one.
+    // The command verbs, the window kinds and the dismiss reasons are
+    // plain constants on both sides; pinned here so the header cannot
+    // renumber one.
     for (name, value) in [
         ("KUI_CMD_START_DRAG", KUI_CMD_START_DRAG),
         ("KUI_CMD_CLOSE", KUI_CMD_CLOSE),
@@ -461,6 +467,9 @@ fn asserts() -> String {
         ("KUI_CMD_TOGGLE_MAXIMIZE", KUI_CMD_TOGGLE_MAXIMIZE),
         ("KUI_CMD_OPEN", KUI_CMD_OPEN),
         ("KUI_WINDOW_KIND_NORMAL", KUI_WINDOW_KIND_NORMAL),
+        ("KUI_WINDOW_KIND_POPUP", KUI_WINDOW_KIND_POPUP),
+        ("KUI_DISMISS_OUTSIDE", KUI_DISMISS_OUTSIDE),
+        ("KUI_DISMISS_ESCAPE", KUI_DISMISS_ESCAPE),
         ("KUI_WINDOW_MAIN", WindowId::MAIN.0),
     ] {
         writeln!(o, "KUI_ENUM({name}, {value});").unwrap();

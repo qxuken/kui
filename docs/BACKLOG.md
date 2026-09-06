@@ -1214,9 +1214,11 @@ is a small share of a frame — but it is the same mistake in the same place,
 and `frame_10k_rects_with_shadows_and_opacity` (20k quads) is the bench that
 would show it.
 
-### `.` C11 — Build multi-window
+### `.` C11 — Build multi-window — **done (2026-09-06)**
 
-The work ADR 0004 (C7) decided but did not do. Each step ships alone, in order:
+The work ADR 0004 (C7) decided but did not do. Each step ships alone, in
+order; all five are built, and the ADR carries an amendment for each place
+a build settled differently from its text.
 
 1. **`Session`.** — **done (2026-09-04)**. `Resources`, `AudioStore` and
    the font database moved out of `Core` and behind a `Session` a `Core` is
@@ -1369,19 +1371,56 @@ The work ADR 0004 (C7) decided but did not do. Each step ships alone, in order:
    raised on the core whose frame declared the name, so it inherits the
    per-`(code, key)`-per-core dedup and costs one line however many frames
    the app keeps asking.
-4. **`WindowKind::Popup`.** Anchoring in screen coordinates, ownership,
-   non-activating focus routing, and `dismiss` on the window.
-   **Open, and it is the first build item after alpha.6** — see "After
-   alpha.6" below. The release ships steps 1-3 and 5 and states the line
-   rather than leaving it to be found (R3): ADR 0004's Consequences carry a
-   dated amendment, the README's Status / next has a Windows group, and
-   nothing can name a kind that quietly opens a normal window — `WindowKind`
-   has only `Normal`, a JSX or Lua `windows` entry with a `kind` key is
-   refused, and C's `KuiWindowConfig.kind` warns `unknown-window-kind` and
-   opens a normal window. So the three cases the ADR opens with — a dropdown
-   taller than the window, a menu with nowhere in-window to go, a panel
-   beside the app — stay unbuildable until this step, and everything that
-   fits in the window is `FloatConfig::fit` plus a `modal` float meanwhile.
+4. **`WindowKind::Popup`** — **done (2026-09-06)**. `WindowKind::Popup`,
+   `WindowConfig::anchor` + `WindowConfig::popup`, `owner` on
+   `WindowCommand::Open`, `Core::dismiss_window` and `DismissReason`, in
+   all four bindings, with the runner opening a real borderless,
+   non-activating, anchored surface. `KUI_WINDOW_KIND_POPUP` is 1,
+   `kind: "popup"` works in JSX and Lua (an unknown kind is still refused
+   where it is written), and `unknown-window-kind` now covers only the
+   kinds a later header might invent.
+   **Three of the four halves of decision 9 needed no new mechanism.**
+   Ownership is step 3's cascade: an owner's declarations leave the union
+   when it closes, so the diff already closed the popup, parent first, and
+   `owner` on the `Open` exists for the two things only a driver can do —
+   place the anchor against that window's position, and know whose
+   keyboard to route. `dismiss` is ADR 0003's payload plus `name`/`id`,
+   raised by `Core::dismiss_window` and closing nothing. Borderless is
+   `Chrome::Borderless`, as the ADR said.
+   **The anchor is the one place the ADR's text had to be read closely.**
+   "Screen coordinates against a rect the app gets from `on_layout`" only
+   reconciles one way: `on_layout` reports a **viewport** rect, so the
+   config carries that and the *driver* adds the owner's position. That is
+   what "no new geometry query" is worth — the alternative needs a window
+   position query this ADR does not add. Amended into the ADR.
+   **One bug the real window found that the corpus could not.** One app's
+   handler can change *another* window's declaration — choosing an item in
+   a popup is the app closing the popup, and the declaration that closes it
+   is in the window that opened it — so a handler that ran now redraws
+   every pane, not only the one the input landed in. Before that fix the
+   popup stayed on screen after it had been chosen from, which is exactly
+   the class of thing C11's last paragraph says belongs to a real surface.
+   **And one platform fact worth writing down** (see W1): AppKit never
+   sends `mouseUp:` to an undecorated `NSWindow`, so a macOS popup asks for
+   a hidden titlebar over a fullsize content view rather than
+   `with_decorations(false)` — the four attributes `Chrome::Custom`
+   already uses. Non-activating is a request and not a guarantee there
+   either: ordering a window front makes it key, and
+   `Window::set_visible(true)` *is* `makeKeyAndOrderFront`, so a popup is
+   created visible and the runner hands the keyboard straight back to its
+   owner. The owner's `env.focused` then stays true and the field keeps its
+   ring — the contract decision 9 states — but the popup does briefly hold
+   key status, and only an `NSPanel` with the non-activating mask (which
+   winit 0.30 cannot make) would stop it.
+   **Checked on a real window**, since half of this has no headless
+   equivalent: `examples/rust/popup.rs` is a combobox in a 360x150 window
+   whose 300-tall list is placed under the field and draws well past the
+   frame. Verified on macOS 26.6.2 by driving it with real CGEvents — the
+   list opens anchored and chromeless, the owner keeps its traffic lights
+   (so the field keeps the ring) while the arrows walk the list, Enter
+   chooses, and Escape, a press in the owner and choosing an item each
+   close it through `dismiss` or the declaration lapsing. Windows and Linux
+   are unrun, as R4 already says of everything else.
 5. **`SetSize` / `Focus`** — **done (2026-09-05)**, after step 3 and
    through its struct. `WindowCommand::SetSize { window, size }` and
    `Focus(WindowId)`, queued by `Core::set_window_size` /
@@ -2660,6 +2699,50 @@ since alpha.5 a host sees one jump. But the header's history now reads as a
 per-merge log, and ADR 0006 says nothing about cadence. One sentence there —
 bumps coalesce within a release window, or they do not — settles it. No chip.
 
+## From building C11 step 4 (2026-09-06)
+
+One finding that is not about the popup, found by clicking one.
+
+### `!` W1 — A `Chrome::Borderless` window is dead to the mouse on macOS
+
+`with_decorations(false)` produces an `NSWindow` with the borderless style
+mask, and **AppKit never sends `mouseUp:` to one**. winit passes the event
+through faithfully; there is nothing to pass. So every press in such a
+window lands and never releases: no click, no drag end, no press style
+cleared — the node stays in its pressed colour until something else moves.
+
+Found while building the popup, whose first version asked for
+`with_decorations(false)` and whose list could be hovered but never chosen
+from. Confirmed against the main window too, and that is the part that
+matters: `Launcher::borderless()` (`Chrome::Borderless`) takes the same
+path, so **an app that asks kui for a borderless window on macOS gets one
+whose buttons do not work**. Nothing caught it because `Chrome::Custom` —
+which the smoke round drives, and which macOS implements as a *hidden*
+titlebar over a fullsize content view rather than as no titlebar at all —
+is unaffected, and because a headless core has no window at all.
+
+The popup already takes the working path: on macOS it asks for the four
+attributes `Chrome::Custom` asks for (`titlebar_transparent`,
+`fullsize_content_view`, `title_hidden`, `titlebar_buttons_hidden`) and
+uses `with_decorations(false)` only elsewhere. `Chrome::Borderless` should
+do the same, in `Shell::window_attrs`, which is where the launcher's chrome
+is turned into attributes — the popup's arm exists beside it and should
+collapse into it rather than being copied.
+
+Two things to settle while doing it. `Chrome::Borderless` on macOS today
+also loses the rounded corners and the shadow that the popup visibly has,
+so the fix changes how a borderless window *looks* as well as whether it
+works; that is an improvement, but it is a change and belongs in the
+changelog. And the synthesized resize band (`Pane::synthesizes_resize`) is
+switched off on macOS on the assumption that native edge resizing survives
+custom chrome — true for `Chrome::Custom`, and worth re-checking for a
+borderless window once it has a real style mask again.
+
+No test can be written for this headlessly. What would have caught it is a
+P8 smoke job that presses a button in a `Chrome::Borderless` window and
+asserts the click event, which is one line in the same driver the popup was
+verified with (`examples/rust/popup.rs`, real `CGEvent`s).
+
 ## Suggested sequence
 
 Rewritten 2026-09-05. The original six-step order is history now: every
@@ -2957,9 +3040,10 @@ runs · then commit, `git tag v0.1.0-alpha.6`, push the tag.
 
 Grouped by kind, not urgency. Nothing here blocks the tag.
 
-**Build.** C11 step 4, `WindowKind::Popup` — the one multi-window step
-left, and the case (`fit` cannot place a dropdown taller than the window)
-that forces it. ADR 0004 step 1's leftover: the glyph atlas and shape cache
+**Build.** ~~C11 step 4, `WindowKind::Popup`~~ — **done 2026-09-06**, and
+it left W1 behind: a `Chrome::Borderless` window is dead to the mouse on
+macOS, which is a live defect in a shipped API rather than anything to do
+with popups. ADR 0004 step 1's leftover: the glyph atlas and shape cache
 are still per window because `Core::output` hands out `&mut GlyphAtlas`
 (see `kui-session-atlas-constraint`); it waits for a case where two windows
 share enough text to matter. C15's remainder: `frame_10k_rects` is still

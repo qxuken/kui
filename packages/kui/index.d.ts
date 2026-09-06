@@ -75,13 +75,24 @@ export type LayoutMsg<T = AppMsg> = {
   tag?: T;
 };
 
-/** The frame's `modal` node was asked to go away: Escape, or a press that
- *  landed outside it. The core closes nothing — stop declaring the node
- *  (or ask first). Only the modal in effect gets one. */
+/** A surface was asked to go away: Escape, or a press that landed outside
+ *  it. The core closes nothing — stop declaring the surface (or ask first).
+ *
+ *  On a node it is the frame's `modal`, carrying its `tag`, and only the
+ *  modal in effect gets one. On the root it is a `kind: 'popup'` window,
+ *  carrying that window's `name` and `id`; the driver reports it, because a
+ *  press outside a window and a key sent to a non-activating one are facts
+ *  only the OS has. The two are one event, so a dropdown that graduates
+ *  from a modal float to a popup window changes its declaration and keeps
+ *  its handler. */
 export type DismissMsg<T = AppMsg> = {
   kind: 'dismiss';
   reason: 'escape' | 'outside';
   tag?: T;
+  /** Popup windows only: which window, as `windows` named it and as its
+   *  events carry it. */
+  name?: string;
+  id?: number;
 };
 
 /** The viewport changed size or DPI (logical px, delivered on the root);
@@ -110,9 +121,33 @@ export type WindowMsg = {
  *  window that should exist, by stable name. `width`/`height` are the
  *  initial inner size in logical px (640x480 when left out) and are read on
  *  the frame the window opens and never again — the user owns its geometry
- *  once it exists. `activates` (default true) is whether opening it takes
- *  OS focus. A bare string is a name at the defaults. */
-export type WindowDecl = string | { name: string; width?: number; height?: number; activates?: boolean };
+ *  once it exists. `activates` is whether opening it takes OS focus
+ *  (default true for a normal window, false for a popup). A bare string is
+ *  a name at the defaults.
+ *
+ *  `kind: 'popup'` makes it a menu surface instead: borderless, off the
+ *  taskbar, owned by the window that declared it and closed with it, placed
+ *  in screen coordinates against `anchor` — the `{x, y, w, h}` a
+ *  `LayoutMsg` already reports for the field or button the menu belongs to
+ *  — and non-activating, so the field keeps its focus ring while the arrows
+ *  walk the list. A press outside it or Escape arrives as a `DismissMsg`
+ *  and closes nothing: stop declaring the window, the way you stop
+ *  declaring a `modal` node. Reach for one only where an in-window float
+ *  cannot go — a list taller than the window, a menu with nowhere in-window
+ *  to sit, a panel beside the app; everything else is cheaper as a `float`
+ *  with `fit`. See `docs/adr/0004-multi-window.md`, decision 9. */
+export type WindowDecl =
+  | string
+  | {
+      name: string;
+      kind?: 'normal' | 'popup';
+      width?: number;
+      height?: number;
+      activates?: boolean;
+      /** `kind: 'popup'` only: what to place it against, in the declaring
+       *  window's own logical coordinates — a `LayoutMsg`'s rect. */
+      anchor?: { x?: number; y?: number; w?: number; h?: number };
+    };
 
 /** What `Ctx.windowCommands()` drains: what chrome nodes asked for
  *  (`startDrag` / `close` / `minimize` / `toggleMaximize`, about `window`)
@@ -121,12 +156,24 @@ export type WindowDecl = string | { name: string; width?: number; height?: numbe
  *  these itself. */
 export type WindowCommand =
   | { kind: 'startDrag' | 'close' | 'minimize' | 'toggleMaximize'; window: number }
+  | { kind: 'setSize'; window: number; width: number; height: number }
+  | { kind: 'focus'; window: number }
   | {
       kind: 'open';
       window: number;
+      /** The window whose frame declared this one: a popup's owner, whose
+       *  position its `anchor` is measured against and whose closing closes
+       *  it. */
+      owner: number;
       /** Whose declaration won: 0 is your app, 1+ an extension. */
       origin: number;
-      config: { kind: 'normal'; width: number; height: number; activates: boolean };
+      config: {
+        kind: 'normal' | 'popup';
+        width: number;
+        height: number;
+        activates: boolean;
+        anchor: { x: number; y: number; w: number; h: number };
+      };
     };
 
 /** The physical modifier state changed (delivered on the root). */
@@ -398,11 +445,11 @@ export type WarningCode =
    *  event, stop declaring the name, and declare it again to reopen. See
    *  `docs/adr/0004-multi-window.md`, decision 6. */
   | 'window-declared-while-closed'
-  /** A window declared with a `KUI_WINDOW_KIND_*` this build does not have.
-   *  Only `KUI_WINDOW_KIND_NORMAL` exists — ADR 0004's step 4, the borderless
-   *  non-activating popup, is not in alpha.6 — and a C host is the only binding
-   *  that can name a kind at all, since `windows` in JSX and Lua has no `kind`
-   *  key. The window still opens, as a normal one, so a host built against a
+  /** A window declared with a `KUI_WINDOW_KIND_*` this build does not have —
+   *  `KUI_WINDOW_KIND_NORMAL` and `KUI_WINDOW_KIND_POPUP` are the two there
+   *  are. Only a C host can reach this: JSX and Lua name a kind by string, so
+   *  an unknown one is refused where it is written rather than reported a frame
+   *  later. The window still opens, as a normal one, so a host built against a
    *  later header degrades to a window rather than to nothing; this line is
    *  what keeps that from being silent. See `docs/adr/0004-multi-window.md`,
    *  decision 9. */
@@ -771,8 +818,8 @@ export declare class Ctx {
    * Drains the window commands the core queued, as plain objects: what
    * chrome nodes asked for (`{kind:"startDrag"|"close"|"minimize"|
    * "toggleMaximize", window}`) and what the declared window set decided
-   * (`{kind:"open", window, origin, config:{kind, width, height,
-   * activates}}` / `{kind:"close", window}`).
+   * (`{kind:"open", window, owner, origin, config:{kind, width, height,
+   * activates, anchor}}` / `{kind:"close", window}`).
    */
   windowCommands(): WindowCommand[]
   /**
@@ -783,6 +830,15 @@ export declare class Ctx {
    * window the diff already closed.
    */
   windowClosed(id: number): void
+  /**
+   * A custom driver reports that window `id` was asked to go away: a
+   * press landed outside it (`"outside"`) or Escape reached it
+   * (`"escape"`). `{kind:"dismiss", reason, name, id}` lands in
+   * `pollEvents` and **nothing closes** — the app stops declaring the
+   * window on the frame it decides to, exactly as it answers a `modal`
+   * node's dismissal. Nothing happens for a window that is not open.
+   */
+  windowDismissed(id: number, reason: string): void
   /**
    * The window title the last frame declared (a root `<box title>`), or
    * null when it declared none. `runWindowed` applies it to the real

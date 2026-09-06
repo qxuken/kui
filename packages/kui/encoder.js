@@ -12,6 +12,12 @@
 // Turns a protocol name list into its name -> wire index map.
 const indexOf = (names) => Object.fromEntries(names.map((n, i) => [n, i]));
 
+// `kind` on a `windows` entry, as the integer the addon decodes. Spelled
+// here and not in the schema because a window is not a node: the list is
+// plain data with a fixed shape (see `docs/adr/0004-multi-window.md`).
+const WINDOW_KINDS = ['normal', 'popup'];
+const WINDOW_NORMAL = 0;
+
 export function createEncoder(P) {
   const OP = P.op;
   const PR = P.prop;
@@ -252,32 +258,39 @@ export function createEncoder(P) {
           break;
         case 'windows':
           // Root only, like `title`: a count, then per window its name,
-          // kind (always 0 = normal; no entry can name another), width,
-          // height (0 = the default size) and
-          // whether it activates. An entry may be just a name.
+          // kind (0 = normal, 1 = popup), width, height (0 = the default
+          // size), whether it activates, and the anchor rect a popup is
+          // placed against. An entry may be just a name.
           if (isRoot && Array.isArray(v)) {
             f[fi++] = PR.windows.id;
             f[fi++] = v.length;
             for (const w of v) {
-              reserve(8);
+              reserve(12);
               const d = typeof w === 'string' ? { name: w } : w;
               if (d == null || typeof d.name !== 'string') {
-                throw new Error(`bad windows entry ${JSON.stringify(w)} (a name, or { name, width?, height?, activates? })`);
+                throw new Error(`bad windows entry ${JSON.stringify(w)} (a name, or { name, kind?, anchor?, width?, height?, activates? })`);
               }
               // An entry is plain data with a fixed shape, not a node's loose
-              // prop bag, so a key that does nothing is refused rather than
-              // dropped. `kind` is the one anybody reaches for: the popup is
-              // ADR 0004 step 4 and this release has no window kind but the
-              // normal one, and silently opening a normal window would read
-              // as the popup having shipped.
-              if ('kind' in d) {
-                throw new Error(`windows entry ${JSON.stringify(d.name)} sets \`kind\`, which no window kind exists for yet (the popup is ADR 0004 step 4); drop it, and reach for a modal float meanwhile`);
+              // prop bag, so a value that does nothing is refused rather than
+              // dropped: a kind kui does not have would otherwise open a
+              // normal window and read as the popup having worked.
+              const kind = WINDOW_KINDS.indexOf(d.kind ?? 'normal');
+              if (kind < 0) {
+                throw new Error(`windows entry ${JSON.stringify(d.name)} has kind ${JSON.stringify(d.kind)}; the kinds are ${WINDOW_KINDS.map((k) => JSON.stringify(k)).join(' and ')}`);
               }
+              // A popup is non-activating unless the entry says otherwise:
+              // one that takes OS focus blurs the field that opened it.
+              const a = d.anchor ?? {};
               strRef(d.name);
-              f[fi++] = 0;
+              f[fi++] = kind;
               f[fi++] = d.width ?? 0;
               f[fi++] = d.height ?? 0;
-              f[fi++] = d.activates === false ? 0 : 1;
+              const activates = d.activates ?? kind === WINDOW_NORMAL;
+              f[fi++] = activates ? 1 : 0;
+              f[fi++] = a.x ?? 0;
+              f[fi++] = a.y ?? 0;
+              f[fi++] = a.w ?? 0;
+              f[fi++] = a.h ?? 0;
             }
             n++;
           }

@@ -72,6 +72,10 @@ name = "modal_editor"
 path = "../../examples/rust/modal_editor.rs"
 
 [[example]]
+name = "popup"
+path = "../../examples/rust/popup.rs"
+
+[[example]]
 name = "rich_text"
 path = "../../examples/rust/rich_text.rs"
 

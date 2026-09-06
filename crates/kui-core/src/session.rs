@@ -120,6 +120,9 @@ pub(crate) enum WindowChange {
     Opened {
         id: WindowId,
         name: Rc<str>,
+        /// The window whose slot won the declaration — a popup's owner,
+        /// and the surface its anchor is measured against.
+        owner: WindowId,
         origin: OriginId,
         config: WindowConfig,
         /// Two declarations of this name disagreed about the config on the
@@ -259,7 +262,7 @@ impl WindowRegistry {
                 })
                 .collect();
             if gone.is_empty() {
-                for (name, config, origin, conflict) in union {
+                for (name, config, owner, origin, conflict) in union {
                     if self.windows.iter().any(|w| w.name == name) {
                         continue;
                     }
@@ -273,6 +276,7 @@ impl WindowRegistry {
                     out.push(WindowChange::Opened {
                         id,
                         name,
+                        owner,
                         origin,
                         config,
                         conflict,
@@ -294,14 +298,16 @@ impl WindowRegistry {
     }
 
     /// The declared set: one entry per name, from the lowest declaring
-    /// slot, with whether any declaration of it disagreed.
-    fn union(&self) -> Vec<(Rc<str>, WindowConfig, OriginId, bool)> {
-        let mut union: Vec<(Rc<str>, WindowConfig, OriginId, bool)> = Vec::new();
-        for (_, decls) in &self.slots {
+    /// slot — whose window id rides along as the owner, since the slot key
+    /// *is* the window whose frame declared it — with whether any
+    /// declaration of it disagreed.
+    fn union(&self) -> Vec<(Rc<str>, WindowConfig, WindowId, OriginId, bool)> {
+        let mut union: Vec<(Rc<str>, WindowConfig, WindowId, OriginId, bool)> = Vec::new();
+        for (slot, decls) in &self.slots {
             for d in decls {
                 match union.iter_mut().find(|u| u.0 == d.name) {
-                    Some(u) => u.3 |= u.1 != d.config,
-                    None => union.push((d.name.clone(), d.config, d.origin, d.conflict)),
+                    Some(u) => u.4 |= u.1 != d.config,
+                    None => union.push((d.name.clone(), d.config, *slot, d.origin, d.conflict)),
                 }
             }
         }

@@ -5,6 +5,68 @@ the workaround, the model field or the arithmetic the release made
 unnecessary. The second list is the point of the first — a library whose
 upgrades remove code from the apps on it is doing the job.
 
+## Unreleased
+
+### Added
+
+- **Popup windows** (`docs/adr/0004-multi-window.md`, decision 9 — the last
+  of ADR 0004's five build steps). A `windows` entry can say
+  `kind: "popup"`, and what opens is a menu surface rather than a window
+  with the app's chrome: borderless, off the taskbar, above and owned by
+  the window that declared it, and placed in **screen** coordinates against
+  an `anchor` — the `{x, y, w, h}` an `onLayout` node already reports for
+  the field or button the menu belongs to, so nothing new has to be
+  queried. It does not take OS focus, so the field that opened it keeps its
+  focus ring while the driver routes that window's keys to the popup, and
+  the arrows walk the list with the ring still on the field.
+  A press outside it or Escape arrives as **the same `dismiss` event a
+  `modal` node gets** — `{kind: "dismiss", reason, name, id}`, on the root
+  — and closes nothing: the app stops declaring the window, on the frame it
+  decides to. So a dropdown that outgrows its window is a change to a
+  declaration and not to a handler.
+  Reach for one only where an in-window float cannot go: a list taller than
+  the window, a menu near an edge with nowhere in-window to sit, a panel
+  beside the app. Everything else stays `float` with `fit` plus a `modal`
+  node, which costs one tree and one draw call where this costs an OS
+  surface, a swapchain, a `Core` and an accessibility adapter.
+  `examples/rust/popup.rs` is a combobox in a 360x150 window whose 300-tall
+  list draws well past the frame.
+- **`kui_window_dismissed`** in C, `ctx.windowDismissed(id, reason)` in
+  Node: a host driving its own windows reports a press outside a popup or
+  an Escape, and the app hears the `dismiss`. `kui::app(…).run(…)` and
+  `runWindowed` do it themselves.
+
+### What you can delete
+
+- **The workaround for a list that did not fit.** Whatever a view did to
+  keep a long dropdown inside the window — a scroll container sized to the
+  space left below the field, a menu that opened upwards past a hand-rolled
+  threshold, a "show 6 of 40" that existed because 40 did not fit — is a
+  `kind: "popup"` declaration and an `anchor` now. The handler does not
+  change: it was already answering `dismiss`.
+
+### Changed
+
+- **The C ABI went 6 → 7, and this is the one bump the `size` handshake
+  cannot absorb.** `KuiWindowConfig` gained four `anchor_*` floats and
+  `KuiWindowCommand` gained `owner` — each the compatible kind of change on
+  its own, but `KuiWindowCommand` embeds a `KuiWindowConfig` *by value*, so
+  appending inside the config moved every field after it and lifted the
+  floor `kui_take_window_command` accepts past the whole size of the ABI-6
+  struct. An un-recompiled ABI-6 binary is **refused** rather than
+  short-written: no corruption, but its drain loop sees an empty queue
+  instead of its windows. Check `kui_abi_version()` before your first call
+  — this is the release where that check is the difference between a
+  message and a mystery. Recompiling changes no source.
+- **`unknown-window-kind` now means a kind neither `KUI_WINDOW_KIND_NORMAL`
+  nor `KUI_WINDOW_KIND_POPUP`.** JSX and Lua still refuse an unknown kind
+  where it is written rather than warning a frame later.
+- **A handler that runs now redraws every window**, not only the one the
+  input landed in — one app and one model means a press in one window can
+  change what another declares, which is exactly how choosing an item in a
+  popup closes it. Only when more than one window is open; a single-window
+  app draws what it always drew.
+
 ## 0.1.0-alpha.6 (2026-09-05)
 
 The release that made a window something you can build a real app in.

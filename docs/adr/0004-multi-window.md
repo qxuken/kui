@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-09-04
-amended: 2026-09-05
+amended: 2026-09-06
 ---
 
 # Multi-window: a `Core` per window, and a window set the app declares
@@ -569,6 +569,53 @@ the `u64` form is untouched.
   raised by the binding that saw the declaration through `Core::warn` —
   `diag`'s module doc, which step 3 took from three codes outside the tree
   walk to four, now says five.
+- **Amended 2026-09-06, by building step 4 — the two amendments above are
+  now history, not the state of things.** `WindowKind::Popup` exists, JSX
+  and Lua take `kind = "popup"` (refusing only a kind kui does not have),
+  and `KUI_WINDOW_KIND_POPUP` is 1. Four places the build settled
+  differently from decision 9's text, and one it could not settle at all:
+  - **The anchor is in the owner's coordinates, and the driver makes it a
+    screen rect.** Decision 9 says "positioned in screen coordinates
+    against an anchor rect the app already gets from `on_layout`", and the
+    two halves only meet this way: `on_layout` reports a **viewport** rect,
+    so `WindowConfig::anchor` carries exactly that and the runner adds the
+    owner's own position. That is what "no new geometry query" buys — an
+    app that wanted to hand over screen coordinates would need the window
+    position query this ADR does not add. Read on the opening edge with
+    the rest of the config: a popup that must follow a moving anchor stops
+    being declared and is declared again, which is what a dropdown does
+    when its field scrolls away anyway.
+  - **`Open` carries an `owner`**, the window whose slot won the
+    declaration. The close-with-owner half of decision 9 needed no code:
+    an owner's declarations leave the union when it closes (step 3's
+    cascade), so the diff already closed the popup, parent first. What
+    `owner` is actually for is the two things only the driver can do —
+    resolving the anchor against that window's position, and knowing whose
+    keyboard to route.
+  - **`dismiss` is reported by the driver, not noticed by the core**
+    (`Core::dismiss_window`), because both facts are the OS's: a press
+    outside a window lands in another surface, and a non-activating popup
+    is never the window the OS hands keys to. The event is
+    `{kind:"dismiss", reason, name, id}` on the root — ADR 0003's payload
+    plus the two fields that say which window — and it closes nothing, so
+    the app answers it exactly as it answers a modal node's.
+  - **One app's handler can change another window's declaration**, which
+    the runner did not account for: choosing an item in a popup is the app
+    closing the popup, and the declaration that closes it lives in the
+    window that opened it. So a handler that ran now redraws every pane,
+    not only the one the input landed in. Guarded on there being more than
+    one window, so the single-window path is unchanged.
+  - **Not settled: non-activating is a request, not a guarantee.**
+    `with_active(false)` is honoured at creation, but ordering a window
+    front makes it key on macOS regardless, and `Window::set_visible(true)`
+    *is* `makeKeyAndOrderFront` there — so a popup is created visible
+    (skipping the hidden-until-hooked dance every other window does, at the
+    cost of a possible flash of undrawn surface) and the runner hands the
+    keyboard straight back to the owner. The owner's `env.focused` then
+    stays true and the field keeps its ring, which is the contract decision
+    9 actually states; what is *not* true is that the popup never becomes
+    key, and a platform that cannot be talked out of it would need an
+    `NSPanel` with the non-activating mask, which winit 0.30 cannot make.
 - Not decided here, and each wanting its own answer when something needs
   it: window position as a declared or reported fact (the app cannot
   currently restore a window where the user left it), multi-monitor and

@@ -99,6 +99,37 @@ impl Core {
         self.apply_window_changes(changes);
     }
 
+    /// The driver reports that window `id` was asked to go away — a press
+    /// landed outside it, or Escape reached it (see
+    /// [`crate::window::DismissReason`]). Raises `{kind:"dismiss", reason,
+    /// name, id}` on the root, pending like a resize, and **closes
+    /// nothing**: only the app can stop declaring the window, and it does
+    /// that on the frame it decides to, which is ADR 0003 decision 6 one
+    /// level up. So an app that graduates a dropdown from a `modal` float
+    /// to a popup window changes its declaration and keeps its handler.
+    ///
+    /// Both facts behind it are the OS's — a press outside a window lands
+    /// in another surface, and a non-activating popup never holds the
+    /// keyboard — so the core cannot notice either; a driver reports them
+    /// the way it reports a close ([`Self::window_closed`]). Nothing
+    /// happens for a window the session has not opened.
+    pub fn dismiss_window(&mut self, id: WindowId, reason: crate::window::DismissReason) {
+        let Some(name) = self.session.state().windows.name_of(id) else {
+            return;
+        };
+        self.pending.push(UiEvent {
+            origin: OriginId::HOST,
+            window: WindowId::MAIN,
+            key: Key::ROOT,
+            payload: Value::map([
+                ("kind", Value::str("dismiss")),
+                ("reason", Value::str(reason.as_str())),
+                ("name", Value::str(&*name)),
+                ("id", Value::Int(id.0 as i64)),
+            ]),
+        });
+    }
+
     /// Hands this frame's declarations to the session and takes back what
     /// the union's diff decided. Runs at `finish_frame`; skipped whole when
     /// this frame declared what the last one did and no window is sitting
@@ -135,13 +166,19 @@ impl Core {
                 WindowChange::Opened {
                     id,
                     name,
+                    owner,
                     origin,
                     config,
                     conflict,
                 } => {
                     self.interaction
                         .window_commands
-                        .push(crate::window::WindowCommand::Open { id, origin, config });
+                        .push(crate::window::WindowCommand::Open {
+                            id,
+                            owner,
+                            origin,
+                            config,
+                        });
                     self.push_window_event("opened", &name, id);
                     if conflict {
                         self.diag.raise(crate::diag::duplicate_window_config(&name));

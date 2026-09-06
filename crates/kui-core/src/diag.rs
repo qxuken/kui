@@ -158,13 +158,13 @@ warnings! {
     /// `docs/adr/0004-multi-window.md`, decision 6.
     pub const WINDOW_DECLARED_WHILE_CLOSED: &str = "window-declared-while-closed";
     /// A window declared with a `KUI_WINDOW_KIND_*` this build does not
-    /// have. Only `KUI_WINDOW_KIND_NORMAL` exists — ADR 0004's step 4, the
-    /// borderless non-activating popup, is not in alpha.6 — and a C host is
-    /// the only binding that can name a kind at all, since `windows` in JSX
-    /// and Lua has no `kind` key. The window still opens, as a normal one,
-    /// so a host built against a later header degrades to a window rather
-    /// than to nothing; this line is what keeps that from being silent. See
-    /// `docs/adr/0004-multi-window.md`, decision 9.
+    /// have — `KUI_WINDOW_KIND_NORMAL` and `KUI_WINDOW_KIND_POPUP` are the
+    /// two there are. Only a C host can reach this: JSX and Lua name a kind
+    /// by string, so an unknown one is refused where it is written rather
+    /// than reported a frame later. The window still opens, as a normal
+    /// one, so a host built against a later header degrades to a window
+    /// rather than to nothing; this line is what keeps that from being
+    /// silent. See `docs/adr/0004-multi-window.md`, decision 9.
     pub const UNKNOWN_WINDOW_KIND: &str = "unknown-window-kind";
 
     /// A `FontId` / `ImageId` / `SoundId` registered in one `Session` and used
@@ -236,8 +236,8 @@ pub fn unknown_window_kind(name: &str, kind: u32) -> Warning {
             .index(kind as u64),
         message: format!(
             "window `{name}` was declared with kind {kind}, which this build does not have; \
-             `KUI_WINDOW_KIND_NORMAL` (0) is the only one, so it opened as a normal window — \
-             the popup kind is ADR 0004 step 4 and is not in this release"
+             `KUI_WINDOW_KIND_NORMAL` (0) and `KUI_WINDOW_KIND_POPUP` (1) are the ones there \
+             are, so it opened as a normal window"
         ),
     }
 }

@@ -901,16 +901,32 @@ whole-node rects, not the boxes of lines or glyphs inside a paragraph.
 Sounds decode fully into memory, and synthesis, effects, positional audio and
 disk streaming are out of scope.
 
-**Windows.** alpha.6 ships `WindowKind::Normal` and nothing else, with
-`SetSize` and `Focus` as commands an app can queue (C11 steps 3 and 5). There
-is no `Popup` kind — that is [ADR 0004](docs/adr/0004-multi-window.md) step 4
-(C11 step 4), which owes screen-coordinate anchoring, ownership,
-non-activating focus routing and `dismiss` on the window. So a dropdown or a
-context menu today is an in-window float: `FloatConfig::fit` flips it across
-its anchor and clamps what still overflows, and a `modal` float takes the
-dismiss. What a float cannot do is
-leave the window — a menu taller than the viewport is clamped rather than
-placed.
+**Windows.** A frame declares which windows exist, by name, and the runner
+opens them; `SetSize` and `Focus` are commands an app queues, because the
+user owns a window's geometry once it exists
+([ADR 0004](docs/adr/0004-multi-window.md)). A window is `kind: "normal"`
+or `kind: "popup"` — a menu surface, borderless, off the taskbar, owned by
+the window that declared it, placed in screen coordinates against an
+`anchor` the app already has from `onLayout`, and non-activating, so the
+field that opened it keeps its focus ring while the arrows walk the list. A
+press outside it or Escape is the same `dismiss` a `modal` node gets and
+closes nothing: the app stops declaring the window.
+
+**A popup is the exception, not the default.** It costs an OS surface, a
+swapchain, a `Core` and an accessibility adapter, where a float costs one
+tree and one draw call — so a dropdown, a tooltip and a context menu stay
+in-window (`FloatConfig::fit` flips across the anchor and clamps what still
+overflows, a `modal` float takes the dismiss) until they provably do not
+fit. The three cases that do not are what the kind exists for: a list
+taller than the window, a menu near an edge with nowhere in-window to sit,
+and a panel the user wants beside the app.
+
+There is no window **position** an app can declare or read, no app-modal
+window (decision 10 keeps modality per window), and no native menu bar.
+Non-activating is a request, not a guarantee: on macOS a window that is
+ordered front becomes key, so the runner hands the keyboard straight back
+to the owner — the owner's `focused` stays true, but the popup does hold
+key status for a moment.
 
 The glyph atlas and the shaped-text cache stay per window (ADR 0004 step 1,
 which amended decision 2 to say so): a `CachedText` entry stamps the atlas

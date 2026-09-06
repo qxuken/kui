@@ -224,6 +224,26 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        // A popup, declared with the kind and the anchor a menu carries.
+        "popup" => format!(
+            r#"
+            local declared = nil
+            if phase == 0 then
+              declared = {{ {{ name = "menu", kind = "popup",
+                               width = {w}, height = {h},
+                               anchor = {{ x = {x}, y = {y}, w = {aw}, h = {ah} }} }} }}
+            end
+            return column {{ windows = declared, pad = 8, bg = 0x14161eff,
+              text(phase == 0 and "menu" or "closed", {{ size = 12 }}),
+            }}
+        "#,
+            w = 160,
+            h = 320,
+            x = conformance::POPUP_ANCHOR.x as i32,
+            y = conformance::POPUP_ANCHOR.y as i32,
+            aw = conformance::POPUP_ANCHOR.w as i32,
+            ah = conformance::POPUP_ANCHOR.h as i32,
+        ),
         other => panic!("no Lua scene for {other:?} — every corpus scene needs one"),
     };
     // Every scene also records what the script saw in `env.window`, so the

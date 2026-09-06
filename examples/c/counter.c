@@ -1427,6 +1427,31 @@ static void conf_windows(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_popup: one declaration, with the kind and the anchor
+ * a menu carries (ADR 0004 decision 9). The dismissals are steps, not
+ * anything the tree says. */
+static void conf_popup(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    if (phase == 0) {
+        KuiWindowConfig cfg = KUI_WINDOW_POPUP_INIT;
+        cfg.width = 160;
+        cfg.height = 320;
+        cfg.anchor_x = 12;
+        cfg.anchor_y = 40;
+        cfg.anchor_w = 160;
+        cfg.anchor_h = 24;
+        kui_window_declare(ui, KUI_STR("menu"), &cfg);
+    }
+    KuiSpec box = {0};
+    box.pad_l = box.pad_r = box.pad_t = box.pad_b = 8;
+    box.bg = 0x14161eff;
+    kui_open(ui, &box, NULL);
+    KuiTextStyle st = {0};
+    st.size = 12;
+    kui_text(ui, KUI_STR(phase == 0 ? "menu" : "closed"), &st);
+    kui_close(ui);
+}
+
 /* One entry per scene of conformance::SCENES; a scene in the reference with
  * no entry here fails the run rather than being skipped. */
 static const ConfScene CONF_SCENES[] = {
@@ -1446,6 +1471,7 @@ static const ConfScene CONF_SCENES[] = {
     {"composite", conf_composite},
     {"exit", conf_exit},
     {"windows", conf_windows},
+    {"popup", conf_popup},
 };
 
 /* -- driving one scene --------------------------------------------------- */
@@ -1482,9 +1508,11 @@ static void conf_drain_cmds(KuiCtx *ctx, Rep *cmds) {
         case KUI_CMD_MINIMIZE: repf(cmds, "cmd minimize %u\n", c.window); break;
         case KUI_CMD_TOGGLE_MAXIMIZE: repf(cmds, "cmd maximize %u\n", c.window); break;
         case KUI_CMD_OPEN:
-            repf(cmds, "cmd open %u %u %u %d %d %u\n", c.window, (unsigned)c.origin,
-                 c.config.kind, (int)c.config.width, (int)c.config.height,
-                 c.config.activates ? 1u : 0u);
+            repf(cmds, "cmd open %u %u %u %u %d %d %u %d %d %d %d\n", c.window, c.owner,
+                 (unsigned)c.origin, c.config.kind, (int)c.config.width,
+                 (int)c.config.height, c.config.activates ? 1u : 0u,
+                 (int)c.config.anchor_x, (int)c.config.anchor_y,
+                 (int)c.config.anchor_w, (int)c.config.anchor_h);
             break;
         default: repf(cmds, "cmd ? %u\n", c.window); break;
         }
@@ -1531,6 +1559,13 @@ static void conf_drain(KuiCtx *ctx, Rep *events) {
         if (k) kui_value_as_str(k, &kind);
         const KuiValue *t = ev.payload ? kui_value_get(ev.payload, KUI_STR("tag")) : NULL;
         const KuiValue *tk = t ? kui_value_get(t, KUI_STR("kind")) : NULL;
+        /* The tag column, or - for the two window-level events, which have
+         * none - the field that tells one from its siblings
+         * (conformance::event_row). */
+        if (!tk && ev.payload) {
+            tk = kui_value_get(ev.payload, KUI_STR("phase"));
+            if (!tk) tk = kui_value_get(ev.payload, KUI_STR("reason"));
+        }
         if (tk) kui_value_as_str(tk, &tag);
         repf(events, "event %.*s %.*s\n", (int)kind.len, kind.ptr, (int)tag.len, tag.ptr);
     }
@@ -1557,9 +1592,9 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
     int phase = 0;
     for (int i = 0; i <= nsteps; i++) {
         if (i > 0) {
-            /* Three steps are not input: one moves the clock the
-             * transitions read, one is the view changing its mind, one is
-             * the OS closing a window. */
+            /* Four steps are not input: one moves the clock the
+             * transitions read, one is the view changing its mind, and two
+             * are the OS closing a window and asking a popup to go away. */
             const ConfStep *s = &steps[i - 1];
             if (strcmp(s->kind, "phase") == 0) {
                 phase = s->a;
@@ -1569,6 +1604,9 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
                 kui_window_closed(ctx, (uint32_t)s->a);
                 conf_drain(ctx, &events);
                 conf_drain_cmds(ctx, &cmds);
+            } else if (strcmp(s->kind, "windowdismissed") == 0) {
+                kui_window_dismissed(ctx, (uint32_t)s->a, (uint32_t)s->b);
+                conf_drain(ctx, &events);
             } else {
                 conf_apply(ctx, s);
                 conf_drain(ctx, &events);

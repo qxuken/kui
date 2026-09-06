@@ -70,8 +70,20 @@ extern "C" {
  * writes the prefix your build reserved and stops. Nor can the new verb
  * reach a host that never calls kui_set_window_size - only that call
  * produces it. The version bumps for the host that skipped this check.
+ *
+ * ABI 7 is the popup (ADR 0004 step 4): KuiWindowConfig gains the four
+ * anchor_* floats a popup is placed against, and KuiWindowCommand appends
+ * owner. This is the one growth `size` cannot absorb, and it is worth
+ * knowing why: KuiWindowCommand embeds a KuiWindowConfig by value, so
+ * appending inside the config moves everything after it and lifts the
+ * floor kui_take_window_command will accept past the whole size of the
+ * ABI-6 struct. A binary that was not recompiled is refused rather than
+ * short-written - its drain loop sees an empty queue instead of its
+ * windows - so this is the release where checking kui_abi_version() first
+ * is the difference between a message and a mystery. Recompile and nothing
+ * in your source changes.
  */
-#define KUI_ABI_VERSION 6u
+#define KUI_ABI_VERSION 7u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -748,25 +760,47 @@ typedef struct KuiSpan {
  * carried. */
 #define KUI_WINDOW_MAIN 0u
 
-/* What kind of surface a declared window is (KuiWindowConfig.kind). Only
- * the normal window exists: the borderless, non-activating popup is ADR
- * 0004's step 4, which this release does not ship, so there is no
- * KUI_WINDOW_KIND_POPUP to name yet. Any other value opens a normal window
- * - so a host built against a later header degrades to a window rather than
- * to nothing - and raises the unknown-window-kind warning saying so. */
+/* What kind of surface a declared window is (KuiWindowConfig.kind).
+ * KUI_WINDOW_KIND_POPUP is a menu surface: borderless, off the taskbar,
+ * owned by the window that declared it and closed when that window closes,
+ * placed against KuiWindowConfig.anchor_* in screen coordinates rather than
+ * clamped into a viewport, and non-activating - it must not take OS focus,
+ * or opening a combobox would blur the field that opened it, so while it is
+ * up you route the owner's keys to it and leave the owner's env `focused`
+ * true. Reach for it only for the placements an in-window float cannot
+ * make: a list taller than the window, a menu near an edge with nowhere
+ * in-window to go, a panel beside the app.
+ *
+ * Any other value opens a normal window - so a host built against a later
+ * header degrades to a window rather than to nothing - and raises the
+ * unknown-window-kind warning saying so. */
 #define KUI_WINDOW_KIND_NORMAL 0u
+#define KUI_WINDOW_KIND_POPUP 1u
+
+/* Why a window was asked to go away (kui_window_dismissed). */
+#define KUI_DISMISS_OUTSIDE 0u
+#define KUI_DISMISS_ESCAPE 1u
 
 /* [in] What a declared window is (kui_window_declare), and what a
  * KUI_CMD_OPEN carries back out. Read literally, so start from
- * KUI_WINDOW_CONFIG_INIT - a normal, activating 640x480 window - or pass
- * NULL for exactly that. A zero width or height means the default. */
+ * KUI_WINDOW_CONFIG_INIT - a normal, activating 640x480 window -
+ * KUI_WINDOW_POPUP_INIT for a non-activating popup, or pass NULL for
+ * exactly the first. A zero width or height means the default. */
 typedef struct KuiWindowConfig {
     uint32_t kind;      /* KUI_WINDOW_KIND_*; anything else warns and opens normal */
     float width, height; /* initial inner size, logical px */
     uint32_t activates; /* whether opening it takes OS focus */
+    /* KUI_WINDOW_KIND_POPUP only: what the popup is placed against, in the
+     * declaring window's own logical coordinates - which is exactly the
+     * rect an onLayout event reports for the field the menu belongs to, so
+     * you need no new geometry query. Resolve it to screen coordinates
+     * against that window's position. */
+    float anchor_x, anchor_y, anchor_w, anchor_h;
 } KuiWindowConfig;
 #define KUI_WINDOW_CONFIG_INIT \
     ((KuiWindowConfig){ .kind = KUI_WINDOW_KIND_NORMAL, .width = 640, .height = 480, .activates = 1 })
+#define KUI_WINDOW_POPUP_INIT \
+    ((KuiWindowConfig){ .kind = KUI_WINDOW_KIND_POPUP, .activates = 0 })
 
 /* [out] One window command (kui_take_window_command): what a chrome node
  * asked for, or what the declared window set decided. Plain data - an open
@@ -779,6 +813,10 @@ typedef struct KuiWindowCommand {
     uint16_t origin; /* KUI_CMD_OPEN: whose declaration won (0 = you, 1+ = an extension) */
     KuiWindowConfig config; /* KUI_CMD_OPEN only */
     float width, height;    /* KUI_CMD_SET_SIZE only: the size asked for, logical px */
+    uint32_t owner;         /* KUI_CMD_OPEN: the window whose frame declared this one -
+                             * a popup's owner, whose position its anchor is measured
+                             * against and whose closing closes it (the core queues
+                             * that KUI_CMD_CLOSE for you) */
 } KuiWindowCommand;
 #define KUI_WINDOW_COMMAND_INIT ((KuiWindowCommand){ .size = sizeof(KuiWindowCommand) })
 
@@ -965,7 +1003,17 @@ bool kui_take_window_command(KuiCtx *ctx, KuiWindowCommand *out);
  * and says so with the "window-declared-while-closed" warning. Two
  * declarations of one name that disagree on the frame it opens warn
  * "duplicate-window-config"; the lowest declaring window's first one
- * wins. Call between kui_frame_begin and kui_frame_finish. */
+ * wins. Call between kui_frame_begin and kui_frame_finish.
+ *
+ * A cfg with kind = KUI_WINDOW_KIND_POPUP (start from
+ * KUI_WINDOW_POPUP_INIT) declares a menu surface instead: open it
+ * borderless, off the taskbar, without activating it, placed against
+ * cfg->anchor_* resolved into screen coordinates against cmd.owner's
+ * position - and while it is up, route cmd.owner's key input to it and
+ * leave the owner's env `focused` true, so the field that opened it keeps
+ * its ring while the arrows walk the list. Report a press outside it or an
+ * Escape with kui_window_dismissed; you close it when the app stops
+ * declaring it, and the core closes it for you when its owner closes. */
 void kui_window_declare(KuiCtx *ctx, KuiStr name, const KuiWindowConfig *cfg);
 /* Asks the driver to resize a window to w x h logical px, or to give it
  * keyboard focus. Requests, not declarations: kui_window_declare's config is
@@ -980,6 +1028,16 @@ void kui_window_declare(KuiCtx *ctx, KuiStr name, const KuiWindowConfig *cfg);
  * was granted through kui_env_set's focused - neither is a reply here. */
 void kui_set_window_size(KuiCtx *ctx, uint32_t window, float w, float h);
 void kui_focus_window(KuiCtx *ctx, uint32_t window);
+/* Reports that window `id` was asked to go away: a press landed outside it
+ * (KUI_DISMISS_OUTSIDE) or Escape reached it (KUI_DISMISS_ESCAPE). The app
+ * sees {kind:"dismiss", reason, name, id} through kui_poll_event, and
+ * nothing closes - the same contract a modal node's dismissal has, one
+ * level up: only the app can stop declaring the window, on the frame it
+ * decides to. You report it because neither fact is the frame's: a press
+ * outside a window lands in another surface, and a non-activating popup is
+ * never the window the OS hands keys to. Nothing happens for a window that
+ * is not open. */
+void kui_window_dismissed(KuiCtx *ctx, uint32_t id, uint32_t reason);
 /* Which window this context draws (what kui_env_set_window set;
  * KUI_WINDOW_MAIN until then). In a kui_run view callback: the window
  * being drawn. */

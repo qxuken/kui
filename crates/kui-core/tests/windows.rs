@@ -3,7 +3,9 @@
 //! runs in a session of one core. Two cores in one session are what the
 //! union, the lowest-id rule and the cascade are *for*.
 
-use kui_core::{Core, Session, Size, UiEvent, WindowCommand, WindowConfig, WindowId};
+use kui_core::{
+    Core, DismissReason, Rect, Session, Size, UiEvent, Value, WindowCommand, WindowConfig, WindowId,
+};
 
 fn frame(core: &mut Core, declare: &[(&str, WindowConfig)]) -> (Vec<WindowCommand>, Vec<UiEvent>) {
     let mut ui = core.frame(Size::new(320.0, 240.0), 1.0);
@@ -21,6 +23,27 @@ fn opened(cmds: &[WindowCommand]) -> Vec<(u32, WindowConfig)> {
             _ => None,
         })
         .collect()
+}
+
+/// `(id, owner)` for every `Open`: who the window is and whose frame
+/// declared it, which is what a popup is anchored against and owned by.
+fn owners(cmds: &[WindowCommand]) -> Vec<(u32, u32)> {
+    cmds.iter()
+        .filter_map(|c| match *c {
+            WindowCommand::Open { id, owner, .. } => Some((id.0, owner.0)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn row(ev: &UiEvent) -> (Option<String>, Option<String>) {
+    let get = |k: &str| {
+        ev.payload
+            .get(k)
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    };
+    (get("kind"), get("reason").or_else(|| get("phase")))
 }
 
 fn closed(cmds: &[WindowCommand]) -> Vec<u32> {
@@ -162,4 +185,84 @@ fn a_core_named_for_a_window_the_session_never_opened_still_has_a_name() {
     let core = pane(&session, 9);
     assert_eq!(&*core.window_name(), "window-9");
     assert_eq!(&*Core::new().window_name(), "main");
+}
+
+/// ADR 0004 decision 9's popup, in the parts a core decides: the kind and
+/// the anchor ride the declaration through to the `Open` untouched, the
+/// owner is the window whose frame declared it, and closing that window
+/// takes the popup with it without the driver saying anything.
+#[test]
+fn a_popup_is_owned_by_the_window_that_declared_it_and_closes_with_it() {
+    let session = Session::new();
+    let mut main = pane(&session, 0);
+    let cfg = WindowConfig::sized(400.0, 300.0);
+    let menu = WindowConfig::popup(Rect::new(12.0, 40.0, 160.0, 24.0), 160.0, 320.0);
+
+    // Non-activating by construction: the field that opens a dropdown
+    // keeps the ring, which is the reason the constructor exists.
+    assert!(!menu.activates);
+    assert_eq!(menu.kind, kui_core::WindowKind::Popup);
+
+    let (cmds, _) = frame(&mut main, &[("palette", cfg)]);
+    assert_eq!(owners(&cmds), vec![(1, 0)]);
+
+    // The palette declares the popup, so the palette owns it — not main,
+    // whose frame never named it.
+    let mut palette = pane(&session, 1);
+    let (cmds, _) = frame(&mut palette, &[("menu", menu)]);
+    assert_eq!(opened(&cmds), vec![(2, menu)]);
+    assert_eq!(owners(&cmds), vec![(2, 1)]);
+
+    // The user closes the owner: its declarations leave the union with it,
+    // so the popup closes in the same diff and nothing had to know that a
+    // popup is a child.
+    main.window_closed(WindowId(1));
+    assert_eq!(closed(&main.take_window_commands()), vec![2]);
+    assert_eq!(main.windows().len(), 1);
+}
+
+/// A dismissal is an event and nothing else (ADR 0003 decision 6, one
+/// level up): the window stays open, still declared, until the app says
+/// otherwise — and a dismissal naming a window the session never opened,
+/// or one it has already closed, says nothing at all.
+#[test]
+fn a_dismissed_popup_closes_nothing_until_the_app_stops_declaring_it() {
+    let session = Session::new();
+    let mut main = pane(&session, 0);
+    let menu = WindowConfig::popup(Rect::new(0.0, 0.0, 80.0, 20.0), 120.0, 400.0);
+    frame(&mut main, &[("menu", menu)]);
+
+    main.dismiss_window(WindowId(1), DismissReason::Outside);
+    main.dismiss_window(WindowId(1), DismissReason::Escape);
+    let events = main.take_pending_events();
+    assert_eq!(
+        events.iter().map(row).collect::<Vec<_>>(),
+        vec![
+            (Some("dismiss".into()), Some("outside".into())),
+            (Some("dismiss".into()), Some("escape".into())),
+        ]
+    );
+    assert_eq!(
+        events[0].payload.get("name").and_then(Value::as_str),
+        Some("menu"),
+        "the event says which window, since it is on the root of whichever core noticed"
+    );
+    assert!(
+        main.take_window_commands().is_empty(),
+        "the core closes nothing in answer to a dismissal"
+    );
+
+    // Still declared, still open, and a frame that says so again is the
+    // no-op it is for any live window.
+    assert!(frame(&mut main, &[("menu", menu)]).0.is_empty());
+    assert_eq!(main.windows().len(), 2);
+
+    // The app answers on the frame it chooses.
+    assert_eq!(closed(&frame(&mut main, &[]).0), vec![1]);
+
+    // Nothing to dismiss now, and nothing invented: a driver reporting a
+    // stale id gets silence rather than an event about a closed window.
+    main.dismiss_window(WindowId(1), DismissReason::Outside);
+    main.dismiss_window(WindowId(7), DismissReason::Escape);
+    assert!(main.take_pending_events().is_empty());
 }

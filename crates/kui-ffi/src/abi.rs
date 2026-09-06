@@ -76,7 +76,23 @@
 /// stops — and no host that never calls `kui_set_window_size` can even
 /// receive the new verb. The version bumps anyway, for the host that
 /// skipped the check.
-pub const KUI_ABI_VERSION: u32 = 6;
+///
+/// ABI 7 is the popup (ADR 0004 step 4): `KuiWindowConfig` gains the four
+/// `anchor_*` floats a popup is placed against, and `KuiWindowCommand`
+/// appends `owner`. **This is the first change the size handshake cannot
+/// make compatible**, and it is worth being precise about why. Appending
+/// to `KuiWindowConfig` is the compatible move for an [in] struct, and
+/// `owner` is the compatible move for an [out] one — but `KuiWindowCommand`
+/// embeds a `KuiWindowConfig` **by value**, and a field appended inside an
+/// embedded struct moves every field after it. So the [out] floor
+/// (`ABI_V1_SIZE`, measured through `config`) rises by those 16 bytes, past
+/// the whole size of the ABI-6 struct: an ABI-6 host's reservation is
+/// *refused* by `out_accepts` rather than short-written, and its drain loop
+/// sees an empty queue instead of its windows. Nothing is corrupted, which
+/// is the handshake doing its job; `kui_abi_version()` is what turns a
+/// silent empty queue into a message. Every host recompiles anyway — the
+/// header changed — and none of them edits a line.
+pub const KUI_ABI_VERSION: u32 = 7;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its

@@ -22,7 +22,7 @@ pub mod audio;
 mod windows_nc;
 
 use winit::application::ApplicationHandler;
-use winit::dpi::LogicalSize;
+use winit::dpi::{LogicalPosition, LogicalSize};
 use winit::event::{ElementState, Ime, MouseButton as WinitButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
@@ -360,6 +360,18 @@ fn cursor_icon(shape: CursorShape) -> CursorIcon {
 /// with `WindowId::MAIN`; the rest are what frames declared.
 struct Pane {
     id: WindowId,
+    /// What kind of surface this is, from the `Open` that created it. A
+    /// [`WindowKind::Popup`] is the one the runner treats differently after
+    /// it is open: it takes the owner's keys while it is up, and Escape or
+    /// a press anywhere else asks it to go away.
+    kind: WindowKind,
+    /// The window whose frame declared this one — itself for the main
+    /// window, and for a popup the surface its anchor was measured against
+    /// and whose keyboard it borrows.
+    owner: WindowId,
+    /// Whether it took OS focus when it opened. False is the popup default
+    /// and what makes the borrowing necessary.
+    activates: bool,
     core: Core,
     window: Arc<Window>,
     renderer: kui_wgpu::Renderer,
@@ -688,6 +700,76 @@ impl<A: App> Shell<A> {
         self.panes.iter().position(|p| p.id == id)
     }
 
+    /// Which pane a key event that arrived at pane `i` is for.
+    ///
+    /// A non-activating popup never takes OS focus — that is the point of
+    /// it, since a combobox that blurred the field it belongs to would be
+    /// useless — so the keyboard stays with the owner and the runner hands
+    /// it on (ADR 0004 decision 9). The owner's `env.focused` is left true
+    /// meanwhile, so the field still draws focused while the arrow keys
+    /// walk the list. A popup that *did* ask to activate holds its own
+    /// keyboard and needs none of this.
+    fn key_target(&self, i: usize) -> usize {
+        let owner = self.panes[i].id;
+        self.panes
+            .iter()
+            .position(|p| p.kind == WindowKind::Popup && p.owner == owner && !p.activates)
+            .unwrap_or(i)
+    }
+
+    /// Every popup that a press on pane `i`, or pane `i` losing the
+    /// keyboard, should ask to go away: all of them except one the press
+    /// landed in. A press in the owner counts — the owner is "outside" the
+    /// popup, which is the whole distinction a separate surface makes.
+    fn popups_outside(&self, i: usize) -> Vec<WindowId> {
+        self.panes
+            .iter()
+            .enumerate()
+            .filter(|(j, p)| *j != i && p.kind == WindowKind::Popup)
+            .map(|(_, p)| p.id)
+            .collect()
+    }
+
+    /// The app has no window with the keyboard any more, so every popup is
+    /// asked to go away: a menu left standing over another application is
+    /// the one thing every platform agrees is wrong.
+    ///
+    /// Decided here, at the end of a batch of events, and not in the
+    /// `Focused` handler — because focus *moving* is two events and their
+    /// order is the platform's business. A popup opening deactivates its
+    /// owner on some window managers, and acting on that `Focused(false)`
+    /// alone would dismiss the popup on the frame it appeared. By the time
+    /// the loop is about to wait, both halves have landed and "no window of
+    /// ours holds the keyboard" is a fact rather than a moment.
+    fn dismiss_popups_if_deactivated(&mut self) {
+        if self.panes.iter().any(|p| p.core.env.focused) {
+            return;
+        }
+        let popups: Vec<WindowId> = self
+            .panes
+            .iter()
+            .filter(|p| p.kind == WindowKind::Popup)
+            .map(|p| p.id)
+            .collect();
+        for id in popups {
+            self.dismiss(id, DismissReason::Outside);
+        }
+    }
+
+    /// Reports a dismissal to the popup's own core and routes the event.
+    /// **Closes nothing**: the app stops declaring the window on the frame
+    /// it decides to, exactly as it answers a `modal` node's dismissal
+    /// (ADR 0003 decision 6, one level up). Raised on the popup's own core,
+    /// so `UiEvent::window` is the window it is about — the `window` event
+    /// cannot do that, because the window it names has just stopped or not
+    /// yet started existing.
+    fn dismiss(&mut self, id: WindowId, reason: DismissReason) {
+        let Some(i) = self.pane_of(id) else { return };
+        self.panes[i].core.dismiss_window(id, reason);
+        let events = self.panes[i].core.take_pending_events();
+        self.route_events(events);
+    }
+
     fn dispatch(&mut self, event_loop: &ActiveEventLoop, i: usize, ev: InputEvent) {
         let t0 = std::time::Instant::now();
         let events = self.panes[i].core.handle_input(ev);
@@ -752,9 +834,11 @@ impl<A: App> Shell<A> {
                 }
                 // Every origin may open a window here; a host that wants
                 // to refuse an extension's checks `origin` before this.
-                WindowCommand::Open { id, config, .. } => {
+                WindowCommand::Open {
+                    id, owner, config, ..
+                } => {
                     if self.pane_of(id).is_none() {
-                        self.open_pane(event_loop, id, config);
+                        self.open_pane(event_loop, id, owner, config);
                     }
                 }
                 // The app asking, rather than the declaration: a live
@@ -781,7 +865,13 @@ impl<A: App> Shell<A> {
     }
 
     /// Opens the window a frame declared, on the shared session and device.
-    fn open_pane(&mut self, event_loop: &ActiveEventLoop, id: WindowId, config: WindowConfig) {
+    fn open_pane(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        id: WindowId,
+        owner: WindowId,
+        config: WindowConfig,
+    ) {
         let size = if config.size.w > 0.0 && config.size.h > 0.0 {
             config.size
         } else {
@@ -789,9 +879,52 @@ impl<A: App> Shell<A> {
         };
         // Untitled until its first frame's `window_title` lands (ADR 0004
         // decision 5): the declaration carries no string.
-        let attrs = self
+        let mut attrs = self
             .window_attrs("", (size.w as f64, size.h as f64))
             .with_active(config.activates);
+        if config.kind == WindowKind::Popup {
+            // A menu surface, not a window with the app's chrome: no
+            // decorations whatever the launcher asked for, above its owner,
+            // and placed against the anchor rather than wherever the window
+            // manager would have put a new window.
+            attrs = attrs.with_window_level(winit::window::WindowLevel::AlwaysOnTop);
+            // macOS spells "no chrome" as a hidden titlebar over a
+            // fullsize content view, **not** as `with_decorations(false)`:
+            // AppKit never sends `mouseUp:` to an undecorated `NSWindow`,
+            // so a click on a menu item presses and never releases. Found
+            // by clicking one; the same is true of a `Chrome::Borderless`
+            // main window, which is why the launcher's macOS custom chrome
+            // is these four attributes and not that one.
+            #[cfg(target_os = "macos")]
+            {
+                use winit::platform::macos::WindowAttributesExtMacOS;
+                attrs = attrs
+                    .with_titlebar_transparent(true)
+                    .with_fullsize_content_view(true)
+                    .with_title_hidden(true)
+                    .with_titlebar_buttons_hidden(true);
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                attrs = attrs.with_decorations(false);
+            }
+            if let Some(pos) = self.popup_position(owner, config, size) {
+                attrs = attrs.with_position(pos);
+            }
+            // "Absent from the taskbar" is a Windows and X11 fact; macOS
+            // has no per-window taskbar entry to be absent from (the Dock
+            // is per application), so there is nothing to ask for there.
+            #[cfg(target_os = "windows")]
+            {
+                use winit::platform::windows::WindowAttributesExtWindows;
+                attrs = attrs.with_skip_taskbar(true);
+            }
+            #[cfg(all(unix, not(target_os = "macos")))]
+            {
+                use winit::platform::x11::{WindowAttributesExtX11, WindowType};
+                attrs = attrs.with_x11_window_type(vec![WindowType::PopupMenu]);
+            }
+        }
         let window = match event_loop.create_window(attrs) {
             Ok(w) => Arc::new(w),
             Err(err) => {
@@ -815,15 +948,79 @@ impl<A: App> Shell<A> {
         core.set_diagnostics(self.diagnostics);
         core.set_subpixel_text(self.subpixel);
         core.env.window.id = id;
-        self.push_pane(event_loop, id, core, window, renderer);
+        self.push_pane(event_loop, id, config, owner, core, window, renderer);
+        if !config.activates {
+            // Hand the keyboard back. Ordering a window front is enough to
+            // make it key on some platforms whatever `with_active(false)`
+            // asked for, and a popup that ends up holding the keyboard
+            // takes the focus ring off the field that opened it — the one
+            // thing decision 9 says must not happen. Re-keying the owner
+            // costs a pair of focus events at open time and leaves
+            // `env.focused` where the app draws it; `key_target` then
+            // walks the owner's keys over to the popup.
+            if let Some(j) = self.pane_of(owner) {
+                self.panes[j].window.focus_window();
+            }
+        }
+    }
+
+    /// Where a popup's top-left goes, in screen coordinates: below the
+    /// anchor its owner reported, flipped above it when the monitor's
+    /// bottom edge is nearer than the popup is tall — the placement a menu
+    /// wants, and the one `FloatConfig::fit` cannot make, since it clamps
+    /// into the window instead of leaving it.
+    ///
+    /// The anchor arrives in the owner's own logical coordinates (it is a
+    /// rect an `onLayout` node reported), so this is where it stops being a
+    /// window fact and becomes a screen one. `None` when the owner is gone
+    /// or the platform will not say where it is; the window manager then
+    /// places the popup and the app is no worse off than a float.
+    fn popup_position(
+        &self,
+        owner: WindowId,
+        config: WindowConfig,
+        size: Size,
+    ) -> Option<LogicalPosition<f64>> {
+        let pane = self.panes.get(self.pane_of(owner)?)?;
+        let scale = pane.window.scale_factor();
+        let origin = pane.window.inner_position().ok()?.to_logical::<f64>(scale);
+        let a = config.anchor;
+        let x = origin.x + a.x as f64;
+        let below = origin.y + (a.y + a.h) as f64;
+        // The monitor the owner is on, in its own logical coordinates. With
+        // no monitor to ask, "below" is the answer and the WM may move it.
+        let y = match pane.window.current_monitor() {
+            Some(m) => {
+                let top = m.position().to_logical::<f64>(scale).y;
+                let height = m.size().to_logical::<f64>(scale).height;
+                if below + size.h as f64 > top + height {
+                    // Above the anchor instead, unless there is even less
+                    // room up there — then stay below and let it clip.
+                    let above = origin.y + a.y as f64 - size.h as f64;
+                    if above >= top { above } else { below }
+                } else {
+                    below
+                }
+            }
+            None => below,
+        };
+        Some(LogicalPosition::new(x, y))
     }
 
     /// Finishes a window whose surface and renderer exist: the platform
     /// hooks, the pane, and showing it.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "one private call site; every argument is a distinct fact about the \
+                  window being adopted, and a struct to carry them would be built and \
+                  destructured in the same breath"
+    )]
     fn push_pane(
         &mut self,
         event_loop: &ActiveEventLoop,
         id: WindowId,
+        config: WindowConfig,
+        owner: WindowId,
         core: Core,
         window: Arc<Window>,
         renderer: kui_wgpu::Renderer,
@@ -841,6 +1038,9 @@ impl<A: App> Shell<A> {
         window.request_redraw();
         self.panes.push(Pane {
             id,
+            kind: config.kind,
+            owner,
+            activates: config.activates,
             core,
             window,
             renderer,
@@ -943,11 +1143,26 @@ impl<A: App> Shell<A> {
     }
 
     fn route_events(&mut self, events: Vec<UiEvent>) {
+        let mut reached_app = false;
         for ev in events {
             if ev.origin == OriginId::HOST {
+                reached_app = true;
                 self.app.on_event(ev);
             } else if let Some(ext) = self.extensions.get_mut(ev.origin.0 as usize - 1) {
                 ext.on_event(&ev);
+            }
+        }
+        // One app, one model, N windows: a handler that ran in answer to
+        // input in *this* window can change what *another* window declares
+        // — choosing an item in a popup is the app closing the popup, and
+        // the declaration that closes it lives in the window that opened
+        // it. So anything that reached the app redraws every window; the
+        // caller has already redrawn the one the input landed in. Guarded
+        // on there being more than one, so the single-window path — every
+        // hover, every keystroke — is exactly what it was.
+        if reached_app && self.panes.len() > 1 {
+            for p in &self.panes {
+                p.window.request_redraw();
             }
         }
     }
@@ -1139,6 +1354,20 @@ impl<A: App> Shell<A> {
             _ => None,
         };
         if let Some(key) = named {
+            // A popup owns Escape the way a modal node does, and for the
+            // same reason (ADR 0003, one level up): it asks to go away, and
+            // nothing else happens. A modal *inside* the popup is asked
+            // first, which is the core's own precedence read at this level
+            // — the surface nearest the user answers.
+            let pane = &self.panes[i];
+            if key == EditKey::Escape
+                && pane.kind == WindowKind::Popup
+                && pane.core.modal().is_none()
+            {
+                let id = pane.id;
+                self.dismiss(id, DismissReason::Escape);
+                return;
+            }
             let mods = self.panes[i].mods();
             self.dispatch(event_loop, i, InputEvent::Key(key, mods));
             return;
@@ -1315,7 +1544,15 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
             .expect("the main core is built once, by the launcher");
         core.set_subpixel_text(self.subpixel);
         core.env.window.id = WindowId::MAIN;
-        self.push_pane(event_loop, WindowId::MAIN, core, window, renderer);
+        self.push_pane(
+            event_loop,
+            WindowId::MAIN,
+            WindowConfig::default(),
+            WindowId::MAIN,
+            core,
+            window,
+            renderer,
+        );
         self.panes[0].applied_title = self.title.clone();
     }
 
@@ -1372,17 +1609,27 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 }
                 pane.window.request_redraw();
             }
+            // The four keyboard events go to `key_target`, which is this
+            // pane unless it is lending its keyboard to a non-activating
+            // popup. The modifier mirror follows them, or the popup would
+            // read a stale Shift.
             WindowEvent::ModifiersChanged(m) => {
-                self.panes[i].modifiers = m.state();
-                let kmods = self.panes[i].kmods();
-                self.dispatch(event_loop, i, InputEvent::Modifiers(kmods));
+                let t = self.key_target(i);
+                self.panes[t].modifiers = m.state();
+                let kmods = self.panes[t].kmods();
+                self.dispatch(event_loop, t, InputEvent::Modifiers(kmods));
             }
-            WindowEvent::KeyboardInput { event, .. } => self.on_key(event_loop, i, event),
+            WindowEvent::KeyboardInput { event, .. } => {
+                let t = self.key_target(i);
+                self.on_key(event_loop, t, event)
+            }
             WindowEvent::Ime(Ime::Commit(text)) => {
-                self.dispatch(event_loop, i, InputEvent::Text(text))
+                let t = self.key_target(i);
+                self.dispatch(event_loop, t, InputEvent::Text(text))
             }
             WindowEvent::Ime(Ime::Preedit(text, cursor)) => {
-                self.dispatch(event_loop, i, InputEvent::Preedit(text, cursor));
+                let t = self.key_target(i);
+                self.dispatch(event_loop, t, InputEvent::Preedit(text, cursor));
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let scale = self.panes[i].window.scale_factor() as f32;
@@ -1411,6 +1658,17 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                     }
                 };
                 let primary = button == MouseButton::Primary;
+                // A press anywhere but inside a popup is "outside" it —
+                // the owner's own window included, which is exactly the
+                // line a separate surface draws. Reported before the press
+                // is dispatched, so an app that stops declaring the popup
+                // on the dismissal still sees the click it was dismissed
+                // by, the way a modal's dismissal works (ADR 0003).
+                if state == ElementState::Pressed {
+                    for id in self.popups_outside(i) {
+                        self.dismiss(id, DismissReason::Outside);
+                    }
+                }
                 let pane = &mut self.panes[i];
                 // A press on the synthesized resize band starts an OS resize
                 // instead of reaching the UI.
@@ -1506,6 +1764,7 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
     /// asks for the next frame right away (vsync paces it). While a sound
     /// plays, the loop wakes every `AUDIO_POLL` to notice it finishing.
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.dismiss_popups_if_deactivated();
         self.poll_audio();
         self.apply_audio();
         let now = std::time::Instant::now();

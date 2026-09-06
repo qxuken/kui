@@ -4,7 +4,10 @@
 //! window. A frame can declare that a *window exists* (`Core::declare_window`,
 //! `docs/adr/0004-multi-window.md`): the core diffs the declared set and the
 //! same queue carries the [`WindowCommand::Open`] / [`WindowCommand::Close`]
-//! the diff produces. Host window facts flow back in through [`WindowEnv`]
+//! the diff produces. A declared window is a [`WindowKind::Normal`] one or
+//! a [`WindowKind::Popup`] — borderless, owned, anchored, non-activating —
+//! and a driver reports a popup dismissed the way it reports one closed
+//! ([`DismissReason`]). Host window facts flow back in through [`WindowEnv`]
 //! on `Env`. The core never touches a window — headless drivers just never
 //! drain.
 
@@ -61,13 +64,31 @@ impl WindowButton {
     }
 }
 
-/// What kind of OS surface a declared window is. Only `Normal` exists yet;
-/// ADR 0004's step 4 adds the borderless, non-activating popup.
+/// What kind of OS surface a declared window is
+/// (`docs/adr/0004-multi-window.md`, decision 9).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum WindowKind {
     /// A regular top-level window with the launcher's chrome.
     #[default]
     Normal,
+    /// A menu surface: borderless, absent from the taskbar, owned by the
+    /// window that declared it and closed when that window closes, placed
+    /// in screen coordinates against [`WindowConfig::anchor`] rather than
+    /// clamped into a viewport, and **non-activating** by default — it
+    /// must not take OS focus, or opening a combobox would blur the field
+    /// that opened it. While a non-activating popup is up the driver
+    /// routes its owner's keyboard input to it and the owner's
+    /// `env.focused` stays true, so the field still draws focused while
+    /// the arrow keys walk the list.
+    ///
+    /// Reach for it only for the three placements a float cannot make: a
+    /// list taller than the window, a menu near an edge with nowhere
+    /// in-window to go, and a panel the user wants beside the app.
+    /// Everything else is cheaper as a float — see
+    /// [`crate::spec::FloatConfig::fit`] — because a float costs one tree
+    /// and one draw call where this costs an OS surface, a swapchain, a
+    /// `Core` and an accessibility adapter.
+    Popup,
 }
 
 /// What a frame says about a window it declares (`Core::declare_window`).
@@ -85,9 +106,23 @@ pub struct WindowConfig {
     pub kind: WindowKind,
     /// Initial inner size, logical px.
     pub size: Size,
-    /// Whether opening it takes OS focus. True for a normal window; a popup
-    /// (step 4) defaults it off so the field that opened it keeps the ring.
+    /// Whether opening it takes OS focus. True for a normal window;
+    /// [`WindowConfig::popup`] turns it off, so the field that opened a
+    /// dropdown keeps the ring while the list is up.
     pub activates: bool,
+    /// [`WindowKind::Popup`] only: what the popup is placed against, as a
+    /// rect in the **declaring window's** logical viewport coordinates —
+    /// which is exactly the rect an `onLayout` node reports, so an app
+    /// needs no new geometry query to fill it. The driver resolves it to
+    /// screen coordinates against the owner's own position and puts the
+    /// popup below it, flipping above when the display's bottom edge is
+    /// nearer than the popup is tall.
+    ///
+    /// Read on the opening edge with the rest of the config and never
+    /// again: a popup that has to follow a moving anchor stops being
+    /// declared and is declared again, which is what a dropdown does when
+    /// its field scrolls away anyway. Ignored by a `Normal` window.
+    pub anchor: Rect,
 }
 
 impl WindowConfig {
@@ -101,6 +136,24 @@ impl WindowConfig {
             ..Self::default()
         }
     }
+
+    /// A [`WindowKind::Popup`] of `w` x `h` logical px placed against
+    /// `anchor` — the rect, in the declaring window's viewport
+    /// coordinates, that an `onLayout` handler reported for the field or
+    /// button the menu belongs to.
+    ///
+    /// Non-activating, which is the default a popup wants and the reason
+    /// this is a constructor rather than a `kind` you set: a popup that
+    /// takes OS focus blurs whatever opened it. Set `activates` back to
+    /// true afterwards for the rare surface that should steal focus.
+    pub fn popup(anchor: Rect, w: f32, h: f32) -> Self {
+        Self {
+            kind: WindowKind::Popup,
+            size: Size::new(w, h),
+            activates: false,
+            anchor,
+        }
+    }
 }
 
 impl Default for WindowConfig {
@@ -109,6 +162,7 @@ impl Default for WindowConfig {
             kind: WindowKind::Normal,
             size: Self::DEFAULT_SIZE,
             activates: true,
+            anchor: Rect::new(0.0, 0.0, 0.0, 0.0),
         }
     }
 }
@@ -136,9 +190,15 @@ pub enum WindowCommand {
     ToggleMaximize(WindowId),
     /// Open a window the declared set gained. `id` is the one the core
     /// assigned and will stamp on the window's events; `origin` is the
-    /// frontend whose declaration won (a host may refuse an extension's).
+    /// frontend whose declaration won (a host may refuse an extension's);
+    /// `owner` is the window whose frame that declaration came from — what
+    /// a [`WindowKind::Popup`] is anchored against and owned by, and what
+    /// closing takes the popup with it (the owner's declarations leave the
+    /// declared set when the owner does, so the diff closes the child in
+    /// the same pass).
     Open {
         id: WindowId,
+        owner: WindowId,
         origin: OriginId,
         config: WindowConfig,
     },
@@ -170,6 +230,36 @@ impl WindowCommand {
             | WindowCommand::Focus(w) => w,
             WindowCommand::Open { id, .. } => id,
             WindowCommand::SetSize { window, .. } => window,
+        }
+    }
+}
+
+/// Why a window was asked to go away (`Core::dismiss_window`): the same
+/// two reasons ADR 0003 gave a modal node, one level up.
+///
+/// A [`WindowKind::Popup`] is dismissed by the driver, because both facts
+/// are the OS's and not the frame's: a press outside a window lands in
+/// another surface, and Escape reaches a non-activating popup only through
+/// whichever window the OS gave the keyboard to. What the core does with
+/// either is what ADR 0003 decided — raise `{kind:"dismiss", reason}` and
+/// close nothing. The app stops declaring the window on the frame it
+/// decides to, so a dropdown that graduates from a `modal` float to a
+/// popup window changes its declaration and not its handler.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DismissReason {
+    /// A press landed outside the window.
+    Outside,
+    /// Escape, wherever the OS delivered it.
+    Escape,
+}
+
+impl DismissReason {
+    /// The string the `dismiss` payload carries, the same spelling a
+    /// modal's `reason` uses.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DismissReason::Outside => "outside",
+            DismissReason::Escape => "escape",
         }
     }
 }

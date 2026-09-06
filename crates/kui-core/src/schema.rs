@@ -1011,10 +1011,10 @@ pub const CUSTOM: &[CustomProp] = &[
         id: P_WINDOWS,
         jsx_names: &["windows"],
         lua_names: &["windows"],
-        jsx: "`windows={[{ name, width?, height?, activates? }]}` (root box only; `windows: (model) => [...]` in the loop config)",
-        lua: "`windows = { { name=, width=, height=, activates= } }` (root table)",
+        jsx: "`windows={[{ name, kind?, anchor?, width?, height?, activates? }]}` (root box only; `windows: (model) => [...]` in the loop config)",
+        lua: "`windows = { { name=, kind=, anchor=, width=, height=, activates= } }` (root table)",
         c: "`kui_window_declare`",
-        doc: "Declares which windows exist this frame, by stable name (`docs/adr/0004-multi-window.md`). A window opens on the first frame any window's frame declares it — its config is read then and never again, since the user owns its geometry once it exists — and closes on the first frame none does. The driver drains the `Open` / `Close` that result, and the app sees `{kind:\"window\", phase, name, id}`. A window the user closed does not reopen while it is still declared: stop declaring it, then declare it again. There is no `kind` key: every window is a normal one, since the borderless non-activating popup is ADR 0004's step 4 and this release does not ship it — JSX and Lua refuse an entry that sets one, and C's `KuiWindowConfig.kind` warns `unknown-window-kind` and opens a normal window. A dropdown or a context menu meanwhile is an in-window float: `fit` plus a `modal` float.",
+        doc: "Declares which windows exist this frame, by stable name (`docs/adr/0004-multi-window.md`). A window opens on the first frame any window's frame declares it — its config is read then and never again, since the user owns its geometry once it exists — and closes on the first frame none does. The driver drains the `Open` / `Close` that result, and the app sees `{kind:\"window\", phase, name, id}`. A window the user closed does not reopen while it is still declared: stop declaring it, then declare it again. `kind: \"popup\"` makes it a menu surface instead: borderless, off the taskbar, owned by the window that declared it and closed with it, placed in screen coordinates against `anchor` — the `{x, y, w, h}` an `onLayout` node reported — and non-activating unless `activates` says otherwise, so the field that opened it keeps the focus ring while the arrows walk the list. A press outside it or Escape raises `{kind:\"dismiss\", reason, name, id}` and closes nothing, exactly as a `modal` node's does: stop declaring the window. Reach for a popup only for the placements a float cannot make — a list taller than the window, a menu with nowhere in-window to go, a panel beside the app; everything else stays `fit` plus a `modal` float, which costs one tree instead of an OS surface.",
     },
     CustomProp {
         name: "tooltip",
@@ -1292,8 +1292,8 @@ pub const EVENTS: &[EventDef] = &[
     },
     EventDef {
         kind: "dismiss",
-        payload: "`{ kind: \"dismiss\", reason: \"escape\" | \"outside\", tag }`",
-        doc: "The user asked for the frame's `modal` node to go away — Escape, or a press that landed outside it. The core closes nothing: the app stops declaring the node (or asks first). Only the modal in effect gets one.",
+        payload: "`{ kind: \"dismiss\", reason: \"escape\" | \"outside\", tag }` on a node; `{ kind: \"dismiss\", reason, name, id }` on the root for a popup window",
+        doc: "The user asked for a surface to go away — Escape, or a press that landed outside it. The core closes nothing: the app stops declaring the surface (or asks first). A `modal` node gets one on the node, carrying its tag, and only the modal in effect does; a `kind: \"popup\"` window gets one on the root, carrying the window's `name` and `id`, reported by the driver because a press outside a window and a key sent to a non-activating one are both facts only the OS has. The two are the same event, so a dropdown that graduates from a modal float to a popup window changes its declaration and not its handler.",
     },
     EventDef {
         kind: "access",

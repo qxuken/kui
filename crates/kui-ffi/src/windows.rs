@@ -71,6 +71,13 @@ pub extern "C" fn kui_take_window_command(ptr: *mut KuiCtx, out: *mut KuiWindowC
 /// (`kui_window_closed`) stays closed while still declared: stop declaring
 /// it, then declare it again. Call between `kui_frame_begin` and
 /// `kui_frame_finish`.
+///
+/// A `cfg` with `kind = KUI_WINDOW_KIND_POPUP` (start from
+/// `KUI_WINDOW_POPUP_INIT`) declares a menu surface instead: borderless,
+/// off the taskbar, owned by this window and closed with it, placed
+/// against `cfg->anchor_*` in screen coordinates, and non-activating — so
+/// the host opens it without focus and routes this window's keys to it.
+/// Report a press outside it or an Escape with `kui_window_dismissed`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_window_declare(ptr: *mut KuiCtx, name: KuiStr, cfg: *const KuiWindowConfig) {
     guard((), || {
@@ -81,7 +88,10 @@ pub extern "C" fn kui_window_declare(ptr: *mut KuiCtx, name: KuiStr, cfg: *const
             // A kind this build does not have degrades to `Normal` (see
             // `window_config_of`) — but silently it would read as the popup
             // having shipped, so the degradation says so.
-            if let Some(k) = raw.map(|c| c.kind).filter(|k| *k != KUI_WINDOW_KIND_NORMAL) {
+            if let Some(k) = raw
+                .map(|c| c.kind)
+                .filter(|k| *k != KUI_WINDOW_KIND_NORMAL && *k != KUI_WINDOW_KIND_POPUP)
+            {
                 c.core().warn(kui_core::diag::unknown_window_kind(&name, k));
             }
             c.core().declare_window(&name, cfg);
@@ -154,6 +164,34 @@ pub extern "C" fn kui_ctx_window_name(ptr: *mut KuiCtx, out: *mut KuiStr) -> boo
         c.last_window_name = Some(name);
         true
     })
+}
+
+/// A host reports that window `id` was asked to go away: a press landed
+/// outside it (`KUI_DISMISS_OUTSIDE`), or Escape reached it
+/// (`KUI_DISMISS_ESCAPE`). The app gets `{kind:"dismiss", reason, name,
+/// id}` from `kui_poll_event` and **nothing closes** — exactly what a
+/// `modal` node's dismissal does, one level up: only the app can stop
+/// declaring the window, and it does that on the frame it decides to. So a
+/// dropdown that graduates from a modal float to a popup window changes
+/// its declaration and keeps its handler.
+///
+/// This is a host call and not something the core notices, because neither
+/// fact is the frame's: a press outside a window lands in another surface,
+/// and a non-activating popup is never the window the OS hands keys to.
+/// Nothing happens for a window the session has not opened.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_window_dismissed(ptr: *mut KuiCtx, id: u32, reason: u32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            let reason = match reason {
+                KUI_DISMISS_ESCAPE => DismissReason::Escape,
+                _ => DismissReason::Outside,
+            };
+            c.core().dismiss_window(WindowId(id), reason);
+            let evs = c.core().take_pending_events();
+            c.events.extend(evs);
+        }
+    });
 }
 
 /// A host reports that the OS closed window `id` — its close button, the
