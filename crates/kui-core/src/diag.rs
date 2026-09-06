@@ -105,6 +105,14 @@ warnings! {
     /// An image with no `label`: assistive technology has nothing to say
     /// for it. Decorative images take `role="none"`.
     pub const IMAGE_WITHOUT_LABEL: &str = "image-without-label";
+    /// A `slider` whose `valueNow` lies outside its own `valueMin` /
+    /// `valueMax`, or whose `valueMin` is above its `valueMax`. The row is
+    /// advertised verbatim, so a screen reader reads a value the range
+    /// says is impossible; the app that clamps in its own `update` keeps the
+    /// range in two places with nothing tying them, and this is the tie.
+    /// Declare the range the value is really held to, or clamp where the
+    /// view declares it.
+    pub const SLIDER_VALUE_OUT_OF_RANGE: &str = "slider-value-out-of-range";
     /// A `line` declares `onClick`, `onDrag`, `onKey`, `onHover`, `hoverable`
     /// or `focusable`. A line takes no pointer input and emits no hit
     /// region — its bounding box is mostly not the stroke, and a
@@ -498,6 +506,9 @@ impl Diagnostics {
             if sem.role == Role::None || sem.presentational {
                 skip_until = tree.subtree_end(i);
             }
+            if sem.role == Role::Slider {
+                self.check_slider_range(tree, i);
+            }
             if sem.name.is_some() || sem.role == Role::None {
                 continue;
             }
@@ -525,6 +536,34 @@ impl Diagnostics {
                 });
             }
         }
+    }
+
+    /// A slider's declared value against its declared range (see
+    /// [`SLIDER_VALUE_OUT_OF_RANGE`]). Only the rows it declares are
+    /// compared: a slider with no `valueMin` has no floor to fall under.
+    fn check_slider_range(&mut self, tree: &Tree, i: usize) {
+        let ax = tree.specs[i].access();
+        let (now, min, max) = (ax.value_now, ax.value_min, ax.value_max);
+        let reason = match (now, min, max) {
+            (_, Some(lo), Some(hi)) if lo > hi => {
+                format!("valueMin {lo} is above valueMax {hi}, so no value is in range")
+            }
+            (Some(v), Some(lo), _) if v < lo => {
+                format!("valueNow {v} is below valueMin {lo}")
+            }
+            (Some(v), _, Some(hi)) if v > hi => {
+                format!("valueNow {v} is above valueMax {hi}")
+            }
+            _ => return,
+        };
+        self.warn(SLIDER_VALUE_OUT_OF_RANGE, tree.keys[i], || {
+            format!(
+                "this slider's value and its declared range disagree: {reason} — the rows are \
+                 read to a screen reader exactly as declared, so a value the app clamps \
+                 somewhere else is announced unclamped (declare the range the value is really \
+                 held to, or clamp where the view declares it)"
+            )
+        });
     }
 
     /// Live regions that can never say anything: `live` declared with no

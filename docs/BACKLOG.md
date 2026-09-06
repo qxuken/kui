@@ -362,7 +362,7 @@ harness). ADR 0008's rule applies: a nudge announces the text, not the
 number. **Test:** the AX audit script asserts the string on the slider; the
 corpus pins the row across transports; `docs/props.md` regenerates.
 
-### `.` F9 — `AccessMsg` is the one core message without a type parameter
+### `.` F9 — `AccessMsg` is the one core message without a type parameter — **done (2026-09-06)**
 
 Evidence: pomodoro 2.2. `index.d.ts:176`: `interface AccessMsg { … tag?:
 unknown }` while `DragMsg<T = AppMsg>` and `KeyMsg<T>` carry the app's
@@ -374,7 +374,13 @@ second half of this entry — the `access()` doc saying the key is hex and
 naming the other spelling — closed with F5 (2026-09-06): the doc on the
 generated method names both, and the label spelling works.
 
-### `.` F10 — A slider's declared range is never checked against its value
+Done: `AccessMsg<T = AppMsg>` with `tag?: T`, the same shape as `DragMsg`
+and `KeyMsg`; `CoreMsg` picks up the default. `examples/node/counter.tsx`
+grew a `slider` for the count and an `access` arm in `update` that reads
+`by` off `msg.tag` with no cast — under `tag?: unknown` that arm did not
+compile. Same session as F10, which shares the slider.
+
+### `.` F10 — A slider's declared range is never checked against its value — **done (2026-09-06)**
 
 Evidence: pomodoro 2.3: `valueNow={999} valueMin={0} valueMax={10}` is
 advertised verbatim and warns nothing; the app clamps in its own `update`,
@@ -384,7 +390,43 @@ visible only to a screen-reader user. **Do:** `slider-value-out-of-range` in
 `image-without-label`), also firing when `min > max`. **Test:** the diag
 tests gain the three cases.
 
-### `~` F11 — `init` and `view` cannot reach the surface
+Done: `SLIDER_VALUE_OUT_OF_RANGE` in the `warnings!` block, so the TS
+union and `docs/props.md` came out of `npm run gen`; the check runs on
+every node the walk derives as a slider, before the name check, and
+compares only the rows declared (a slider with no `valueMin` has no floor
+to fall under). `slider_value_outside_its_range_warns` in
+`crates/kui-core/tests/access.rs` has below, above, inverted, an in-range
+node that stays silent, and a rangeless one.
+
+### `~` F11 — `init` and `view` cannot reach the surface — **done (2026-09-06)**
+
+Both arguments are in, additive and typed by the `S` that `LoopConfig`
+already carried: `init: M | ((surface: S) => M)` is called with the surface
+after `setup`, so a first model measures against the fonts and images
+`setup` just registered and, under a window, reads the size it really
+opened at; `view(model, window, surface)` gets it third, so the README's
+own suggestion — size a column to its widest label — is a thing a view can
+do. Two call sites in `packages/kui/index.js` (`init(surface)` and
+`view(model, name, surface)`) and the two signatures in `index.d.ts`; the
+value form of `init` and a two-argument `view` are untouched.
+`examples/node/counter-window.tsx` was the pattern the entry describes and
+now deletes its `openedAt` module-level variable.
+
+One thing the entry assumed that is not there: a headless `Ctx` has **no**
+`size()` — only `KuiWindow` does, and `Ctx.env().viewport` is the viewport
+the last frame was begun with, which before `init` is nothing. So the size
+half of this is the windowed spelling (`init: (win) => ({ size: win.size()
+})`, which `examples/node` typechecks), and headless the size is the one an
+app handed `createApp` in its own options. The `test.mjs` test measures
+instead: an `init` that builds its model from `measureText` and a `view`
+that sizes a column from it, asserting the decoded quad is the measurement
+plus its padding and that the glyphs fit inside it. Whether a headless
+`Ctx` should answer `size()` from the options the loop already holds is a
+separate question, and small.
+
+Lua needed nothing — its `view(env)` already carries measurement — and C
+hosts own their loop, so there is nothing to add there either. The original
+entry:
 
 Evidence: mind-map #7 and #11. `LoopConfig.init` is `M | (() => M)` and
 `view` is `(model, window)` (`index.d.ts:1445-1453`), so `measureText` and
@@ -503,8 +545,10 @@ ran twice, closed as its (a), the `keyUp` flag) all landed **2026-09-06**,
 and both of the last two carry a "what breaks" line in the CHANGELOG for the
 next tag. ~~F4~~ (the modal restore overriding a `keyFocus` edge) landed
 **2026-09-06** too, and its rule is a sentence in ADR 0003's decision 4.
-Then the gaps in rough order of cost: F9 and F10 are an afternoon, F6
-and F11 a day each (~~F5~~ was one, and is **done (2026-09-06)**), F8
+Then the gaps in rough order of cost: ~~F9~~ and ~~F10~~ were the
+afternoon they were billed as and landed together **2026-09-06** (they
+share the slider fixture), F6 is a day (~~F5~~ was one and ~~F11~~ rather
+less, both **done (2026-09-06)**), F8
 needs one AccessKit question answered first. F7 (global shortcuts under a
 Tab ring) joins the ADR group below, where ~~F12~~ (a line primitive) also
 sat until it landed as `docs/adr/0010-a-segment-primitive.md`. F13

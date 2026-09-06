@@ -3,7 +3,7 @@
 //! resolves assistive-technology requests the way pointer input would, and
 //! reports missing names as warnings.
 
-use kui_core::diag::{CONTROL_WITHOUT_NAME, IMAGE_WITHOUT_LABEL};
+use kui_core::diag::{CONTROL_WITHOUT_NAME, IMAGE_WITHOUT_LABEL, SLIDER_VALUE_OUT_OF_RANGE};
 use kui_core::{
     AccessAction, AccessRequest, AccessTree, Core, EditOptions, InputEvent, Key, NodeSpec, Role,
     Size, Sizing, TextStyle, UiEvent, Value, Warning, WindowButton, WindowCommand,
@@ -618,6 +618,60 @@ fn missing_names_are_warnings_raised_once() {
     assert_eq!(ws[1].key, Key::ROOT.str("icon"));
     assert!(ws[1].message.contains("button"), "{}", ws[1].message);
     assert!(ws[2].message.contains("textInput"), "{}", ws[2].message);
+    frame(&mut core);
+    assert!(core.take_warnings().is_empty(), "each once");
+}
+
+/// A slider's `valueNow` is read to a screen reader as declared, so a
+/// value outside the declared range — or a range with nothing inside it —
+/// is a defect only that user sees (backlog F10). Three ways to be wrong,
+/// one node in range that stays silent, and a slider that declares no
+/// range at all, which has nothing to be outside of.
+#[test]
+fn slider_value_outside_its_range_warns() {
+    let mut core = Core::new();
+    let slider = |label: &'static str| NodeSpec::row().role(Role::Slider).label(label);
+    let frame = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.with_keyed(
+            "fine",
+            slider("fine").value_now(5.0).value_min(0.0).value_max(10.0),
+            |_| {},
+        );
+        ui.with_keyed(
+            "below",
+            slider("below").value_now(-1.0).value_min(0.0).value_max(10.0),
+            |_| {},
+        );
+        ui.with_keyed(
+            "above",
+            slider("above").value_now(999.0).value_min(0.0).value_max(10.0),
+            |_| {},
+        );
+        ui.with_keyed(
+            "inverted",
+            slider("inverted").value_now(5.0).value_min(10.0).value_max(0.0),
+            |_| {},
+        );
+        ui.with_keyed("open", slider("open").value_now(999.0), |_| {});
+        ui.finish();
+    };
+    frame(&mut core);
+    let ws = core.take_warnings();
+    assert_eq!(
+        codes(&ws),
+        [
+            SLIDER_VALUE_OUT_OF_RANGE,
+            SLIDER_VALUE_OUT_OF_RANGE,
+            SLIDER_VALUE_OUT_OF_RANGE
+        ]
+    );
+    assert_eq!(ws[0].key, Key::ROOT.str("below"));
+    assert!(ws[0].message.contains("below valueMin 0"), "{}", ws[0].message);
+    assert_eq!(ws[1].key, Key::ROOT.str("above"));
+    assert!(ws[1].message.contains("above valueMax 10"), "{}", ws[1].message);
+    assert_eq!(ws[2].key, Key::ROOT.str("inverted"));
+    assert!(ws[2].message.contains("valueMin 10 is above valueMax 0"), "{}", ws[2].message);
     frame(&mut core);
     assert!(core.take_warnings().is_empty(), "each once");
 }
