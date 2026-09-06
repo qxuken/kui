@@ -169,16 +169,29 @@ It wants a profile, and the shape of the answer is which added pass can be
 skipped wholesale with a tree-level flag, the way `any_exit` already skips
 the depart diff.
 
-**Build next.** W2's driver half, below — the one item with a written ADR
-and no code. It is the only thing on this file that a user can hit today
-(press-drag-release into a popup does nothing), and every part of it is in
-`crates/kui/src/lib.rs`.
+**Build next.** W2's driver half, below, and ADR 0012 — the two items with
+a written ADR and no code. W2 is the only thing on this file that a user
+can hit today (press-drag-release into a popup does nothing), and every
+part of it is in `crates/kui/src/lib.rs`. ADR 0012's decision 5 (guard the
+unconditional `retire` in `depart()`) **landed on its own on 2026-09-07**,
+being behaviour-preserving and measurable; what is left of that ADR is the
+per-frame admission of decisions 2 and 3, decision 6's warning sentence,
+and the corpus phase its consequences name.
 
-**Design, wanting an ADR.** The exit animations' `animating()` policy,
-revisited against a real view that removes many nodes (ADR 0005 left it
-opt-in + a 512-node budget with no duration cap). Rounded hit-testing, which
-ADR 0010 declined to settle and Status / next names: `HitRegion.clip` is a
-`Rect`, so a hit near a rounded corner is a hit. Two things ADR 0008 left
+**Design, wanting an ADR.** The exit animations' `animating()` policy is
+**done (2026-09-07)**, as
+[`docs/adr/0012-the-exit-budget.md`](adr/0012-the-exit-budget.md) —
+accepted, unbuilt. It moved the question: `animating()` itself is measured
+free (a full store owes the driver 12 frames at 0.09% of a budget each) and
+does not change; the boundary is what was wrong. A frame's departures now
+animate whole or not at all, a new removal outranks ghosts in flight, and
+the O(N²) `retire` that was quietly defending the 512 is guarded. It also
+found the two things this entry used to say that the code disagreed with —
+the `exit-budget` warning has existed since C8, and `mindmap.tsx` removes
+nothing. What is left is building it, under "Build next" above. Still
+wanting an ADR: rounded hit-testing, which ADR 0010 declined to settle and
+Status / next names: `HitRegion.clip` is a `Rect`, so a hit near a rounded
+corner is a hit. Two things ADR 0008 left
 open and did not think worth a row yet: `aria-atomic`, and asking AccessKit
 upstream for a real announcement in `TreeUpdate` — two of the three platforms
 have the API behind it, and AccessKit's whole event surface is a tree diff.

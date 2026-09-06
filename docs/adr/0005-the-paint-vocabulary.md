@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-09-04
-amended: 2026-09-04
+amended: 2026-09-07
 ---
 
 # The paint vocabulary: group opacity and shadows in, gradients out, exit animations designed
@@ -22,6 +22,15 @@ amended: 2026-09-04
 > why" is superseded — there is one, and the two corpus-protocol additions
 > it declined (a clock step, a per-frame builder in Node) were built. See
 > [the superseding note](#no-corpus-scene-and-why--superseded-there-is-one-backlog-b3).
+>
+> **Revisited 2026-09-07** by
+> [ADR 0012](0012-the-exit-budget.md), which is what the placeholder policy
+> below was waiting for. Two of its three answers hold and are now measured
+> rather than assumed: `exit` stays opt-in, and there is still no duration
+> cap. The third — what happens at the budget's edge — does not: the split
+> is positional and its size depends on nodes-per-row, so a frame's
+> departures will animate whole or not at all. `animating()` itself was the
+> wrong thing to have worried about, and 0012 says so with the numbers.
 
 `crates/kui-core/src/display.rs` was the whole renderer contract — fill,
 border, four radii, glyph, image — and three things a real UI wants were
@@ -228,6 +237,17 @@ on every toast and on the panel, and a "clear" button that drops the whole
 stack in one frame.
 
 ### The answer: `exit` is opt-in, the store is bounded, and the duration is the view's
+
+> **Partly superseded by [ADR 0012](0012-the-exit-budget.md)
+> (2026-09-07)**, which measured this policy against a view that reaches
+> the boundary — something no view in this repo had ever done. The first
+> and third bullets stand. The second does not: "what is refused vanishes
+> at once, which is *exactly* what a node with no `exit` does" is true of a
+> subtree and false of a view, because a 1000-row list gets its first 512
+> rows animated and the rest dropped, which is a third behaviour neither
+> policy produces. The claim in the paragraph below it — that the 1000-row
+> list "animates its first 512 nodes' worth of rows out and drops the rest
+> at once, having said so" — is exactly right, and is the defect.
 
 The open question was what a ghost does to `animating()`, with three
 candidate policies. The answer is that two of them are needed and the third

@@ -39,6 +39,30 @@ upgrades remove code from the apps on it is doing the job.
   it — or gave up and stuffed the sentence into `label`, which renames the
   control instead of describing it.
 
+### Changed
+
+- **A mass removal's departing frame stops being quadratic** (ADR 0012,
+  decision 5). `DepartStore::depart` retires any ghost already holding the
+  departing key — two pictures of one node are never right — and that
+  retire is a pass over the whole store, taken unconditionally, so a frame
+  that dropped N subtrees with an `exit` paid N walks. It now keeps an
+  exact set of the keys it holds and takes the walk only when the key is
+  actually in it. Dropping a thousand rows that declare an `exit` costs
+  ~217 µs where it cost ~256 µs (four interleaved rounds, no overlap), and
+  the shape matters more than the frame it saves today: past the 512-node
+  budget the old path ran away — 10 000 subtrees cost 32 ms against 1.05 ms
+  — so the budget could not have been raised without this regardless of
+  what it was raised to. No behaviour changes, and nothing in the IR, the
+  ABI or any binding moves.
+
+  Worth recording because the obvious fix does not work: a 64-bit
+  membership mask over the key, which is what the store already uses for
+  the neighbouring `before` keys, saves **nothing at any size**. A mass
+  removal is hundreds of distinct keys, 64 bits saturate after about
+  sixty-four of them, and the mask then answers "maybe" for every row. A
+  membership mask wants a field that is sparse, and a departing key never
+  is.
+
 ## 0.1.0-alpha.7 (2026-09-06)
 
 **What breaks.** **A drag's `dx`/`dy` are measured from the press point

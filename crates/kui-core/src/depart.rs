@@ -209,6 +209,14 @@ pub struct DepartStore {
     /// the walk that would hand its place on. Never cleared: a stale bit
     /// costs one walk, and there are at most a few hundred ghosts to walk.
     before_mask: u64,
+    /// The ghosts' own keys, as an exact set kept in step with `ghosts`,
+    /// so a departure of a key no ghost holds skips [`Self::retire`] —
+    /// which is a pass over the whole store, and a mass removal would
+    /// otherwise pay one per row. Exact rather than a 64-bit mask like
+    /// `before_mask`: a mass removal is hundreds of distinct keys, which
+    /// saturates 64 bits and makes a mask answer "maybe" every time. See
+    /// `docs/adr/0012-the-exit-budget.md`, decision 5.
+    held: rustc_hash::FxHashSet<Key>,
 }
 
 impl DepartStore {
@@ -246,10 +254,12 @@ impl DepartStore {
 
     fn drop_where(&mut self, mut pred: impl FnMut(&Ghost) -> bool) {
         let nodes = &mut self.nodes;
+        let held = &mut self.held;
         self.ghosts.retain(|g| {
             let drop = pred(g);
             if drop {
                 *nodes -= g.nodes.len();
+                held.remove(&g.key);
             }
             !drop
         });
@@ -308,8 +318,19 @@ impl DepartStore {
         let key = tree.keys[root];
         // A second departure of the same key (the view showed it, dropped
         // it, showed it and dropped it again inside one exit) replaces the
-        // first: two pictures of one node are never right.
-        self.retire(key);
+        // first: two pictures of one node are never right. Behind `held`
+        // because `retire` walks the whole store: unguarded, a frame that
+        // drops a thousand rows pays one walk per row, which is the one
+        // quadratic left in a mass removal — 32 ms for 10k subtrees
+        // against 1.05 ms guarded, and 44% of the departing frame at
+        // today's budget. Kept rather than deleted even though the frame
+        // path cannot reach it — `collect_departures` retires a returning
+        // key before it can depart again — because that argument runs
+        // through another module's early returns, and a set lookup is a
+        // cheap thing to be wrong about.
+        if self.held.contains(&key) {
+            self.retire(key);
+        }
         let mut points = Vec::new();
         let nodes = (root..end)
             .map(|i| GhostNode {
@@ -355,6 +376,7 @@ impl DepartStore {
         if let Some(before) = place.before {
             self.before_mask |= 1u64 << (before.0 & 63);
         }
+        self.held.insert(key);
         self.ghosts.push(Ghost {
             key,
             nodes,
@@ -377,6 +399,7 @@ impl DepartStore {
     pub(crate) fn begin_replay(&mut self, now: f64) -> Replay {
         let frame_no = self.frame_no;
         let nodes = &mut self.nodes;
+        let held = &mut self.held;
         let mut plays = Vec::with_capacity(self.ghosts.len());
         let mut mask = 0u64;
         self.ghosts.retain_mut(|g| match g.playback(now) {
@@ -390,6 +413,7 @@ impl DepartStore {
             }
             None => {
                 *nodes -= g.nodes.len();
+                held.remove(&g.key);
                 false
             }
         });
@@ -408,6 +432,11 @@ impl DepartStore {
     pub(crate) fn end_replay(&mut self, replay: Replay) {
         debug_assert!(self.ghosts.is_empty());
         self.ghosts = replay.ghosts;
+        // `held` is what lets `depart` skip the walk, so it has to be the
+        // ghosts' keys exactly: a key missing from it is a retire that
+        // will not happen, which is two pictures of one node. Checked here
+        // because every frame that replays passes through.
+        debug_assert_eq!(self.held.len(), self.ghosts.len());
     }
 
     /// Every still-running ghost handed to `emit` in store order, and the
@@ -426,6 +455,7 @@ impl DepartStore {
     /// wants a clean slate does.
     pub fn clear(&mut self) {
         self.ghosts.clear();
+        self.held.clear();
         self.nodes = 0;
         self.active = false;
     }
@@ -563,6 +593,28 @@ mod tests {
         d.retire(Key::ROOT.str("x"));
         assert!(d.is_empty());
         assert_eq!(d.node_count(), 0);
+    }
+
+    /// One key departing twice with no return in between: the second
+    /// picture replaces the first rather than joining it. The frame path
+    /// cannot produce this — `collect_departures` retires a returning key
+    /// first — so this is the only cover the `retire` inside `depart` has,
+    /// and it is what says the `held` guard (ADR 0012 decision 5) does not
+    /// skip a retire it owed.
+    #[test]
+    fn a_second_departure_of_one_key_replaces_the_first() {
+        let mut d = DepartStore::default();
+        let text = crate::text::TextSystem::new();
+        let lines = crate::line::LineStore::default();
+        let tree = tree_with(departing(NodeSpec::column()), 2);
+        d.begin_frame();
+        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines);
+        assert_eq!(d.keys().count(), 1);
+        assert_eq!(d.node_count(), 3);
+
+        d.depart(&tree, 1, 0.05, 1.0, IN_FLOW, &text, &lines);
+        assert_eq!(d.keys().count(), 1, "one picture of one node, not two");
+        assert_eq!(d.node_count(), 3, "and the budget charged once for it");
     }
 
     #[test]
