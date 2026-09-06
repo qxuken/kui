@@ -2725,7 +2725,8 @@ bumps coalesce within a release window, or they do not — settles it. No chip.
 ## From building C11 step 4 (2026-09-06)
 
 One finding that is not about the popup, found by clicking one — and fixed
-with it, since the popup had to take the working path anyway.
+with it, since the popup had to take the working path anyway — and one gap
+the popup opens, found by asking what a native select does.
 
 ### `.` W1 — A `Chrome::Borderless` window is dead to the mouse on macOS — **done (2026-09-06)**
 
@@ -2776,6 +2777,56 @@ No test can be written for this headlessly. What would have caught it is a
 P8 smoke job that presses a button in a `Chrome::Borderless` window and
 asserts the click event, which is one line in the same driver the popup was
 verified with (`examples/rust/popup.rs`, real `CGEvent`s).
+
+### `~` W2 — Press-drag-release does not reach a popup, and only the driver can make it
+
+The native gesture for a select on all three platforms: press the field, the
+menu opens under the pointer, drag through it, and **release** on an item to
+choose it — one continuous gesture, no second click. kui supports the other
+half of the pair (click to open, click to choose), which is a complete
+interaction and what the popup example does; this is the missing one.
+
+**It cannot be built in an app, and the reason is measurable.** The OS gives
+the whole drag to the window that received the mouse-down. Pressing inside
+the popup and dragging up out of it, every move still arrives at the popup's
+own core, with coordinates that walk off its top edge — `93,-1`, `95,-5`,
+`97,-10` — and the release arrives there too, not at the window under the
+cursor. So for the real gesture, where the press is on the *field* in the
+owner window and the release is over the popup, the popup would receive
+nothing at all and the owner would receive the whole thing in coordinates
+that mean nothing to it. This is what a native menu's nested tracking loop
+(`NSMenu`, Win32's menu message loop, a GTK pointer grab) exists to do.
+
+**The information needed is already there**, which is what makes this worth
+doing rather than declining. Those out-of-bounds coordinates are not
+garbage: the driver knows both windows' screen positions — it computed the
+popup's from the anchor — so it can translate the owner's drag into the
+popup's space, feed the popup's core ordinary `CursorMoved`s, and on release
+synthesise the press-and-release the popup never saw. The popup's core would
+not need to know it was retargeted.
+
+What wants deciding first, and why this is an ADR rather than a patch:
+
+- **What arms the retargeting.** "A drag whose press opened a popup" is not
+  a thing the driver can see — the app opens the popup a frame later, in
+  answer to the press. A rule it *can* evaluate is "while a non-activating
+  popup owned by this window is open, a drag over its rect retargets", which
+  is simple but also catches drags that have nothing to do with the menu.
+- **What the owner's core sees meanwhile.** Today it gets out-of-bounds
+  moves, which clear its hover. That is probably right and should be said so
+  on purpose.
+- **How it meets the press-outside rule**, which currently dismisses on
+  mouse-*down*: the opening press of this gesture must not dismiss the popup
+  it is about to open, and the release must not read as a press outside.
+- **Whether a popup should open on press at all.** The example opens on
+  `on_click`, so press-and-hold does nothing until release — correct for
+  what it declares, and wrong for a native select. There is no "on press"
+  event in the schema; `onDrag`'s `start` phase is the nearest thing, and
+  whether that is the answer or a new row is its own question.
+
+Not urgent: the two-click interaction works, and a menu that only supports it
+is a menu that behaves like half the applications on any of these platforms.
+Worth doing before anyone builds a real combobox on this.
 
 ## Suggested sequence
 
