@@ -19,6 +19,10 @@ app expects a click in the app to act. The `### Added` entry below is why
 it had to change — with the press passed through, a field that opens on
 mouse-down would dismiss and reopen its own menu in one gesture.
 
+**`ctx.setTime` throws under `createApp`.** It was overwritten by the loop's
+own stamp before every frame since alpha.7, so it already did nothing; now
+it says so. See `### Changed` — the two alpha.7 field reports are why.
+
 ### Added
 
 - **Press the field, drag into the menu, release on an item** — the native
@@ -88,6 +92,27 @@ mouse-down would dismiss and reopen its own menu in one gesture.
   control instead of describing it.
 
 ### Changed
+
+- **A frame clock set by hand under a loop is refused rather than ignored**
+  (backlog F16, from both alpha.7 field reports). alpha.7 gave the loop
+  the clock: `createApp` stamps `setTime` before every frame it draws, and
+  `advance(ms)` is what moves the hands. What that left behind is the
+  alpha.6 idiom — `ctx.setTime(t)` around each `render()` — which still
+  compiled, still ran, and did something worse than snap: the stamp that
+  overwrote it reads a clock only `advance` moves, so a tween driven that
+  way never left its baseline and `animating()` never fell. One report's
+  test "stopped observing motion"; the other's hung on `while
+  (ctx.animating())`, "not at t=0.3s, not at t=1000s". The changelog line
+  under alpha.7's "what you can delete" was the only signal. Now the loop
+  keeps the surface's native `setTime` for its own stamping and replaces
+  the method on the instance with one that throws and names `advance` —
+  the mirror of `advance()` refusing a wall clock, and the same shape as
+  the surface saying it has no `click()` to drive it with. A bare `Ctx`
+  keeps the method: that is still the one place to set the clock by hand,
+  and `setTime`'s doc says so in both bindings' words.
+  **What you can delete:** nothing new — the alpha.7 entry already listed
+  those calls. What changes is that a test that kept one fails at the call
+  with the fix in the message, instead of at a timeout.
 
 - **A plain frame is ~11% cheaper, and C15 is closed** (backlog C15, the
   half left open after alpha.6's boxing fix). The second profile the entry

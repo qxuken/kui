@@ -977,6 +977,44 @@ test('advance moves the frame clock, so a transition runs headless', () => {
   assert.equal(barWidth(), 200);
 });
 
+test('setTime under a loop throws and names advance; a bare Ctx keeps it (F16)', () => {
+  // Both alpha.7 field reports drove `ctx.setTime` around `render()` under
+  // `createApp` — the alpha.6 idiom — and got a bar pinned at its baseline
+  // with `animating()` true forever: the loop stamps the clock before every
+  // frame from hands only `advance` moves. Silent, and non-terminating for
+  // a test that waits on `animating()`; so it is not silent any more.
+  const config = {
+    init: { wide: false },
+    update: (m, msg) => (msg === 'go' ? { wide: true } : m),
+    view: (m) =>
+      box({ pad: 0 }, [
+        box({ transition: 200, width: m.wide ? 200 : 20, height: 10, bg: '#ffffff' }, [], 'bar'),
+      ]),
+  };
+  const app = createApp(config, { startTime: 0, width: 320, height: 240 });
+  app.render();
+  assert.throws(() => app.ctx.setTime(0.5), /advance/);
+  // The loop's own stamping is untouched: its frames still ease.
+  app.dispatch('go');
+  app.render(); // the frame that applies the change takes the baseline
+  app.advance(100);
+  const barWidth = (c) => decodeQuads(c.quads()).find((q) => q.h === 10).w;
+  assert.ok(barWidth(app.ctx) > 20 && barWidth(app.ctx) < 200, 'mid-flight under advance');
+  // A surface handed in is the one taken over, not a copy of it.
+  const own = new Ctx();
+  createApp(config, { surface: own, startTime: 0, width: 320, height: 240 });
+  assert.throws(() => own.setTime(1), /advance/);
+  // A bare Ctx keeps the method and snaps without it, as documented.
+  const bare = new Ctx();
+  bare.setTime(0);
+  bare.frame(320, 240, 1, config.view({ wide: false }));
+  bare.setTime(0.1);
+  bare.frame(320, 240, 1, config.view({ wide: true }));
+  bare.setTime(0.2);
+  bare.frame(320, 240, 1, config.view({ wide: true }));
+  assert.ok(barWidth(bare) > 20 && barWidth(bare) < 200, 'a bare Ctx eases under its own clock');
+});
+
 test('render and an event-driven frame share the clock advance moves (F1)', () => {
   // The mind map's repro (`playground/kui/mind-maps/repro/transition-advance.tsx`):
   // the loop used to set the frame clock only inside `advance`, so a frame

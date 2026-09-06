@@ -357,8 +357,10 @@ impl Ctx {
 
     /// The frame clock for `transition` props: monotonic seconds, any
     /// origin. Set before each frame; never setting it makes transitions
-    /// snap. `createApp`'s loop sets it before every frame it draws and
-    /// `advance` moves it, so only a bare `Ctx` snaps.
+    /// snap. A bare `Ctx` is the only place to call it: `createApp`'s loop
+    /// owns the clock, stamps it before every frame it draws, and replaces
+    /// this method on its surface with one that throws — `app.advance(ms)`
+    /// is what moves time there.
     #[napi]
     pub fn set_time(&mut self, now_secs: f64) {
         self.core.set_time(now_secs);

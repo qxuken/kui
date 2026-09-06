@@ -103,7 +103,21 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
   // moves: a tween's baseline is taken under a clock, not under none (where
   // the core snaps). A real window has no `setTime` — its runner stamps the
   // frame from its own epoch — so a wall-clock loop over one is a no-op here.
-  surface.setTime?.(at() / 1000);
+  //
+  // That stamping is why the surface's own `setTime` is taken away from the
+  // app (backlog F16): a time set by hand is overwritten by the next draw,
+  // and the hands it is overwritten with only move in `advance`, so a
+  // tween driven that way never leaves its start and `animating()` never
+  // falls — a test waiting on it hangs. The loop keeps the native method
+  // for itself and the instance gets one that says so, the way `advance`
+  // refuses a wall clock.
+  const stamp = typeof surface.setTime === 'function' ? surface.setTime.bind(surface) : null;
+  if (stamp) {
+    surface.setTime = () => {
+      throw new Error('kui: this loop owns the frame clock; app.advance(ms) moves it');
+    };
+  }
+  stamp?.(at() / 1000);
   // The clock, when asked for: `tick.msg` (or `tick.msg(now)`) goes through
   // `update` every `tick.every` ms.
   const every = tick?.every > 0 ? tick.every : 0;
@@ -156,7 +170,7 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
   // `measureText` to size a column to its widest label, `size()` to pick a
   // tier — without the app parking it in a module-level variable.
   function draw() {
-    surface.setTime?.(at() / 1000);
+    stamp?.(at() / 1000);
     const declared = windows ? windows(model) : undefined;
     for (const name of open()) {
       const tree = view(model, name, surface);
