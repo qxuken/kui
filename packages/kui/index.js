@@ -332,6 +332,9 @@ export function decodeQuads(buffer) {
       blur: f[17],
       kind: u[18],
       uv: [u[19], u[20], u[21], u[22]],
+      // Segment quads (kind 6) only: the endpoints `uv` carries as float
+      // bits, x0, y0, x1, y1 in physical px; `borderW` is the stroke width.
+      ends: u[18] === 6 ? [f[19], f[20], f[21], f[22]] : null,
       clip: [f[23], f[24], f[25], f[26]],
       // Corner radii of the clip, same order as `radii`: a clipping node
       // with a radius rounds what it clips. All zero = a plain rect clip.

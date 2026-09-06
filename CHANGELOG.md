@@ -9,6 +9,31 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Added
 
+- **A stroke primitive: `QuadKind::Segment` and the `line` element**
+  (`docs/adr/0010-a-segment-primitive.md`, backlog F12 from the mind-map
+  field report, whose every connector was three thin boxes). A segment is a
+  round-capped line between two endpoints, drawn by an SDF capsule in the
+  same über-pipeline and the same draw call as everything else; `Quad`
+  did not grow — the endpoints ride in the `uv` slot glyphs use, the width
+  in `border_w`. `<line from to width color/>` draws one,
+  `<line points curve/>` a polyline through the points or a smooth curve
+  through them, **flattened in the core** so every binding gets the same
+  segments and the corpus pins the count (`line { … }` in Lua, `kui_line` /
+  `kui_polyline` in C, `ui.line` / `ui.polyline` with a `Stroke` in Rust).
+  A line is **never in layout**: it floats, sized to its own bounding box,
+  in its parent's box space (`float="viewport"` for viewport space), takes
+  no room in a row or column, and paints in the float pass in tree order,
+  so a connector declared before two cards sits under them. Its colour is
+  the node's `bg` slot, so `transition` eases it and `enter` / `exit`
+  reach it; `exit` replays a line's points like any ghost. It takes **no
+  pointer input** and has no access row (`line-ignores-input` says so when
+  a line declares a click). Not in it, each with its reason in the ADR:
+  paths, fills, dashes, arrowheads, a tweening width, and a shape-aware
+  hit test — the last is the same unbuilt change rounded hit-testing waits
+  on. Measured: a 10k-segment frame costs about 8% more than the 10k-rect
+  frame with the same quad count, and the plain frame is unchanged.
+  `examples/rust/connectors.rs` is a mind map whose links are curves.
+
 - **Popup windows** (`docs/adr/0004-multi-window.md`, decision 9 — the last
   of ADR 0004's five build steps). A `windows` entry can say
   `kind: "popup"`, and what opens is a menu surface rather than a window
@@ -154,6 +179,11 @@ upgrades remove code from the apps on it is doing the job.
 
 ### What you can delete
 
+- **The three-box connector.** The stub, the vertical run and the second
+  stub a diagram drew for every link, the colour arithmetic that decided
+  which of two overlapping stubs won, and the elbow-only layout the boxes
+  forced: one `<line points curve/>` per link, in the same coordinates the
+  cards already float in, replaces all of it.
 - **The workaround for a list that did not fit.** Whatever a view did to
   keep a long dropdown inside the window — a scroll container sized to the
   space left below the field, a menu that opened upwards past a hand-rolled

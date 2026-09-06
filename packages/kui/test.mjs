@@ -154,6 +154,8 @@ test('every element lowers', () => {
       el('button', { onClick: { kind: 'go' } }, ['go'], 'go-btn'),
       el('edit', { initial: 'hello', width: 'grow', size: 13, multiline: true }, [], 'note'),
       el('image', { src: img, width: 16, radius: 2 }),
+      el('line', { from: [0, 0], to: [40, 20], width: 2, color: '#7f9cf5' }),
+      el('line', { points: [[0, 30], [20, 10], [40, 30]], curve: true }, [], 'curve'),
       el('latencyGraph'),
       el('latencyHud', { at: ['start', 'end'] }),
       el('audio', { src: ctx.addSound(Buffer.from('RIFF....WAVE')), loop: true, volume: 0.5, tag: { k: 1 } }, [], 'music'),
@@ -170,6 +172,13 @@ test('every element lowers', () => {
     if (b.quads.readUInt32LE(off + KIND_WORD * 4) === 3) images++;
   }
   assert.equal(images, 1, 'one image quad');
+  // Segment quads (kind 6): the straight line is one, the curve is what the
+  // core's flattening makes of two 28.3px chords (5 pieces each).
+  let segments = 0;
+  for (let off = 0; off < b.quads.byteLength; off += stride) {
+    if (b.quads.readUInt32LE(off + KIND_WORD * 4) === 6) segments++;
+  }
+  assert.equal(segments, 11, 'one segment plus a flattened curve');
 
   // An element writing its own operands by hand (rather than through a
   // schema row) needs its argument *order* pinned, not just its presence:
@@ -250,6 +259,10 @@ test('a malformed view is rejected, with the offending name in the message', () 
     [() => el('edit', { initial: '' }), /<edit> needs a key or id prop/],
     [() => el('span', {}, ['x']), /<span> only works inside <text>/],
     [() => el('image', {}), /<image> needs a src/],
+    [() => el('line', {}), /<line> needs from and to, or points/],
+    [() => el('line', { points: [[0, 0]] }), /<line> needs at least two points/],
+    [() => el('line', { from: [0, 0], to: [1], }), /bad point \[1\] for <line>/],
+    [() => el('line', { from: [0, 0], to: [1, 1], width: 'grow' }), /bad width "grow" for <line>/],
     [() => box({ dir: 'diagonal' }), /bad dir "diagonal" \(row \| column\)/],
     [() => box({ mainAlign: 'middle' }), /bad value "middle" for mainAlign \(one of start \| center \| end\)/],
     [() => box({ bg: 'blue' }), /bad color "blue"/],
@@ -1511,6 +1524,17 @@ const SCENE_TREES = {
       ]),
     ]);
   },
+  // docs/adr/0010-a-segment-primitive.md: three strokes and a box; the
+  // elbow's onClick is the one a line ignores.
+  lines: () =>
+    root({}, [
+      box({ width: 200, height: 120, bg: '#14161e' }, [
+        el('line', { from: [10, 10], to: [90, 70], width: 2, color: '#7f9cf5' }),
+        el('line', { points: [[100, 20], [140, 20], [140, 60]], width: 3, color: '#d8863b', onClick: 'elbow' }),
+        el('line', { points: [[20, 100], [60, 80], [100, 110], [180, 90]], curve: true, width: 1.5, color: '#9ad9a0', opacity: 0.5 }, [], 'curve'),
+        box({ width: 40, height: 20, bg: '#202030' }),
+      ]),
+    ]),
   media: (fx) =>
     root({}, [
       box({ pad: 6, gap: 4 }, [
@@ -1639,14 +1663,17 @@ const FNV_PRIME = 0x100000001b3n;
 const MASK = 0xffffffffffffffffn;
 
 /** FNV-1a over each quad's words 0..18 and 23..30 — `KuiQuad` without its
- *  `uv`, which depends on glyph insertion order. Mirrors
+ *  `uv`, which depends on glyph insertion order — plus the `uv` of a segment
+ *  quad (kind 6), where it is the endpoints. Mirrors
  *  `conformance::quad_digest`. */
 function quadDigest(buffer) {
   const stride = quadStride();
   const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
   let h = FNV_OFFSET;
   for (let off = 0; off + stride <= buffer.byteLength; off += stride) {
-    for (const i of [...Array(19).keys(), 23, 24, 25, 26, 27, 28, 29, 30]) {
+    const segment = view.getUint32(off + KIND_WORD * 4, true) === 6;
+    const words = [...Array(19).keys(), ...(segment ? [19, 20, 21, 22] : []), 23, 24, 25, 26, 27, 28, 29, 30];
+    for (const i of words) {
       let word = BigInt(view.getUint32(off + i * 4, true));
       for (let b = 0; b < 4; b++) {
         h = (h ^ (word & 0xffn)) & MASK;
@@ -1751,7 +1778,7 @@ function sceneReport(name, env, steps, { ctx, events, commands }) {
   const stride = quadStride();
   const count = quads.byteLength / stride;
   lines.push(`quads ${count} ${quadDigest(quads)}`);
-  const kinds = [0, 0, 0, 0, 0, 0];
+  const kinds = [0, 0, 0, 0, 0, 0, 0];
   for (let off = 0; off < quads.byteLength; off += stride) kinds[quads.readUInt32LE(off + KIND_WORD * 4)]++;
   lines.push(`kinds ${kinds.join(' ')}`);
   const depth = new Map();

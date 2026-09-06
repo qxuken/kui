@@ -928,6 +928,8 @@ pub struct KuiQuad {
     pub blur: f32,
     /// KUI_QUAD_*
     pub kind: u32,
+    /// Atlas texels: x, y, w, h. `KUI_QUAD_SEGMENT`: the endpoints as
+    /// float bits (see `kui_core::Quad::segment_ends`).
     pub uv: [u32; 4],
     /// Clip rect (physical px): x, y, w, h. Pixels outside are transparent.
     pub clip: [f32; 4],

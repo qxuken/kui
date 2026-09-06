@@ -170,8 +170,15 @@ enum { KUI_START = 0, KUI_CENTER = 1, KUI_END = 2 };
 /* KUI_QUAD_SHADOW: `color` fills a rounded rect inset from the quad by
    `blur` on every side, its edge ramped over `blur` px; ignores uv,
    border_color and border_w. */
+/* KUI_QUAD_SEGMENT: a round-capped stroke between two endpoints. `uv` holds
+ * them as float bits - x0, y0, x1, y1 in physical px, memcpy each uint32_t
+ * into a float - `border_w` is the stroke width and `color` the stroke; the
+ * quad is the bounding box padded past the edge ramp. A renderer evaluates
+ * the capsule SDF against the fragment position. Ignores radius,
+ * border_color and blur. (docs/adr/0010-a-segment-primitive.md) */
 enum { KUI_QUAD_SOLID = 0, KUI_QUAD_GLYPH_MASK = 1, KUI_QUAD_GLYPH_COLOR = 2,
-       KUI_QUAD_IMAGE = 3, KUI_QUAD_GLYPH_SUBPIXEL = 4, KUI_QUAD_SHADOW = 5 };
+       KUI_QUAD_IMAGE = 3, KUI_QUAD_GLYPH_SUBPIXEL = 4, KUI_QUAD_SHADOW = 5,
+       KUI_QUAD_SEGMENT = 6 };
 /* Font families (KuiTextStyle.family) */
 enum { KUI_FONT_SANS = 0, KUI_FONT_SERIF = 1, KUI_FONT_MONO = 2 };
 /* Line breaking (KuiTextStyle.wrap) */
@@ -889,7 +896,7 @@ typedef struct KuiQuad {
     float border_w;
     float blur;              /* KUI_QUAD_SHADOW: blur radius, also how far the rect is inflated */
     uint32_t kind;           /* KUI_QUAD_* */
-    uint32_t uv[4];          /* atlas texels: x, y, w, h */
+    uint32_t uv[4];          /* atlas texels: x, y, w, h; KUI_QUAD_SEGMENT: the endpoints as float bits */
     float clip[4];           /* clip rect (physical px): pixels outside are transparent */
     /* Corner radii of the clip (physical px), clockwise from the top-left:
      * pixels outside the ROUNDED clip are transparent too. A clipping node
@@ -1247,6 +1254,24 @@ void kui_audio_ended(KuiCtx *ctx, uint64_t playback);
 /* An image node. Fit sizing = the image's pixel size as logical px; a Fit
  * height against a resolved width keeps the aspect; radius rounds corners. */
 void kui_image(KuiCtx *ctx, uint64_t id, const KuiSpec *spec);
+/* A round-capped stroke from (x0, y0) to (x1, y1), in the parent's box space
+ * (docs/adr/0010-a-segment-primitive.md). Never in layout: the node is a float
+ * sized to the stroke's bounding box, so spec's sizing, padding and alignment
+ * are ignored; what it keeps is transition/enter/exit (the colour eases),
+ * opacity, on_layout (the bounding box), a label/role, and a declared float
+ * anchor (KUI_FLOAT_VIEWPORT reads the points in viewport space). width is the
+ * stroke width in logical px (<= 0: 1); color 0xRRGGBBAA (0: the default
+ * foreground). Takes no pointer input - interaction on spec warns
+ * `line-ignores-input`. spec may be NULL. */
+void kui_line(KuiCtx *ctx, float x0, float y0, float x1, float y1, float width,
+              uint32_t color, const KuiSpec *spec);
+/* The same through `count` points (xy: x0, y0, x1, y1, ...; fewer than two draw
+ * nothing): a polyline, or with `curve` a smooth curve through the points,
+ * flattened in the core. Consecutive pieces overlap at their round caps.
+ * label keys the node (empty = a key from the tree position) so a stroke can
+ * transition or exit; kui_line is auto-keyed. */
+void kui_polyline(KuiCtx *ctx, KuiStr label, const float *xy, size_t count,
+                  float width, uint32_t color, bool curve, const KuiSpec *spec);
 void kui_close(KuiCtx *ctx);
 void kui_text(KuiCtx *ctx, KuiStr text, const KuiTextStyle *style);
 void kui_rich_text(KuiCtx *ctx, const KuiSpan *spans, size_t span_count,

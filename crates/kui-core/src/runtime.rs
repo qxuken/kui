@@ -30,6 +30,7 @@ use crate::input::{
 use crate::key::Key;
 use crate::keyframes::{self, Keyframe};
 use crate::layout::{self, TextMeasure};
+use crate::line::Stroke;
 use crate::resources::{FontId, Resources};
 use crate::scroll::ScrollStore;
 use crate::session::{
@@ -125,6 +126,9 @@ pub struct Core {
     /// the frame that notices a node gone still has the node. Empty (and
     /// untouched) for every frame that declares no exit.
     prev_tree: Tree,
+    /// The frame's strokes, indexed by the `line` nodes' `LineId`s; the
+    /// previous frame's kept alongside on the same terms as `prev_tree`.
+    pub(crate) lines: crate::line::LineStore,
     pub(crate) display: DisplayList,
     pub(crate) viewport: Size,
     pub(crate) scale: f32,
@@ -289,6 +293,7 @@ impl Core {
             access_built: 0,
             tree: Tree::new(),
             prev_tree: Tree::new(),
+            lines: Default::default(),
             display: DisplayList::default(),
             viewport: Size::ZERO,
             scale: 1.0,
@@ -582,6 +587,9 @@ impl Core {
         // that frame's `TextId`s, and nothing else can resolve them.
         self.text
             .begin_frame(&mut self.session.state().fonts, scale, keep_prev);
+        // And the strokes, for the same reason: a kept frame's `line`
+        // nodes index that frame's list.
+        self.lines.begin_frame(keep_prev);
         self.sync_font_names();
         self.anim.begin_frame();
         self.depart.begin_frame();

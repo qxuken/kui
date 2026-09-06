@@ -6,6 +6,7 @@ use crate::edit::EditOptions;
 use crate::env::Env;
 use crate::geom::{Size, Vec2};
 use crate::key::Key;
+use crate::line::Stroke;
 use crate::runtime::Core;
 use crate::spec::{NodeSpec, TextStyle};
 use crate::text::Span;
@@ -189,6 +190,35 @@ impl<'a> Ui<'a> {
     /// A registered image; see `Core::image_node` for sizing semantics.
     pub fn image(&mut self, id: crate::resources::ImageId, spec: NodeSpec) {
         self.core.image_node(id, spec);
+    }
+
+    /// A round-capped segment from `from` to `to`, in the parent's box
+    /// space; see `Core::line_node` for what it is and is not.
+    pub fn line(&mut self, from: Vec2, to: Vec2, stroke: Stroke, spec: NodeSpec) {
+        self.core.line_node(&[from, to], stroke, spec);
+    }
+
+    /// [`Self::line`] under a label key.
+    pub fn line_keyed(
+        &mut self,
+        label: &str,
+        from: Vec2,
+        to: Vec2,
+        stroke: Stroke,
+        spec: NodeSpec,
+    ) {
+        self.core.line_node_keyed(label, &[from, to], stroke, spec);
+    }
+
+    /// A stroke through `points`: a polyline, or a smooth curve through
+    /// them with [`Stroke::curve`]; see `Core::line_node`.
+    pub fn polyline(&mut self, points: &[Vec2], stroke: Stroke, spec: NodeSpec) {
+        self.core.line_node(points, stroke, spec);
+    }
+
+    /// [`Self::polyline`] under a label key.
+    pub fn polyline_keyed(&mut self, label: &str, points: &[Vec2], stroke: Stroke, spec: NodeSpec) {
+        self.core.line_node_keyed(label, points, stroke, spec);
     }
 
     /// An `audio` node: a playback retained for as long as the view keeps

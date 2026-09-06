@@ -1192,6 +1192,17 @@ pub const ELEMENTS: &[ElementDef] = &[
         doc: "A registered RGBA image; `fit` takes the pixel size, a fit height against a resolved width keeps the aspect, radius rounds it.",
     },
     ElementDef {
+        name: "line",
+        // `width` and `color` are schema rows already (a sizing and the text
+        // colour); on a line they are the stroke's width and colour.
+        jsx_own: &["from", "to", "points", "curve"],
+        lua_own: &["from", "to", "points", "curve"],
+        jsx: "`<line from={[x,y]} to={[x,y]} width color/>`, `<line points={[[x,y],…]} curve/>`",
+        lua: "`line { from={x,y}, to={x,y}, width=, color= }`, `line { points={{x,y},…}, curve=true }`",
+        c: "`kui_line`, `kui_polyline`",
+        doc: "A round-capped stroke: one segment, a polyline through `points`, or a smooth curve through them with `curve`. Always a float in its parent's box space (`float=\"viewport\"` for viewport space), sized to its own bounding box, so it takes no room in a row or column. `width` is the stroke width (default 1) and `color` the stroke colour; `transition` eases the colour. Takes no pointer input and has no access row (`docs/adr/0010-a-segment-primitive.md`).",
+    },
+    ElementDef {
         name: "titlebar",
         jsx_own: &[],
         // The window's own title is `window_title` on the root table; this

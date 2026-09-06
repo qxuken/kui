@@ -190,6 +190,11 @@ fn asserts() -> String {
         "KUI_REPEAT_NORMAL", "KUI_REPEAT_REVERSE", "KUI_REPEAT_ALTERNATE",
         "KUI_REPEAT_ALTERNATE_REVERSE",
     ]);
+    abi_enum!(o, kui_core::QuadKind::ALL, 0 => [
+        "KUI_QUAD_SOLID", "KUI_QUAD_GLYPH_MASK", "KUI_QUAD_GLYPH_COLOR",
+        "KUI_QUAD_IMAGE", "KUI_QUAD_GLYPH_SUBPIXEL", "KUI_QUAD_SHADOW",
+        "KUI_QUAD_SEGMENT",
+    ]);
 
     abi_struct!(o, KuiScrollGeometry {
         size: u32 => "uint32_t",

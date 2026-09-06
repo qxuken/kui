@@ -612,6 +612,43 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             ui.image(kui_core::ImageId::from_ffi(id as u64), spec);
             Ok(())
         }
+        "line" => {
+            // `from`/`to` or `points`, each point a `{x, y}` pair. `width`
+            // parses as a sizing row too, harmlessly: the core overrides a
+            // line's sizing with its own box. `color` is the text-colour
+            // row, read off the parsed style, so it defaults to the
+            // foreground like a text node's.
+            let p = parse_props(t, false)?;
+            let point = |v: mlua::Value| -> mlua::Result<kui_core::Vec2> {
+                let mlua::Value::Table(pt) = v else {
+                    return Err(bad("a line point is a {x, y} table"));
+                };
+                Ok(kui_core::Vec2::new(pt.get(1)?, pt.get(2)?))
+            };
+            let points: Vec<kui_core::Vec2> = match t.get::<Option<Table>>("points")? {
+                Some(list) => list
+                    .sequence_values::<mlua::Value>()
+                    .map(|v| point(v?))
+                    .collect::<mlua::Result<_>>()?,
+                None => {
+                    let (Some(from), Some(to)) = (
+                        t.get::<Option<mlua::Value>>("from")?,
+                        t.get::<Option<mlua::Value>>("to")?,
+                    ) else {
+                        return Err(bad("line needs from and to, or points"));
+                    };
+                    vec![point(from)?, point(to)?]
+                }
+            };
+            let width = t.get::<Option<f32>>("width")?.unwrap_or(1.0);
+            let mut stroke = kui_core::Stroke::new(width, p.style.color);
+            stroke.curve = t.get::<Option<bool>>("curve")?.unwrap_or(false);
+            match &p.key {
+                Some(label) => ui.polyline_keyed(label, &points, stroke, p.spec),
+                None => ui.polyline(&points, stroke, p.spec),
+            }
+            Ok(())
+        }
         "audio" => {
             // Handle from the host (kui_sound_add / Core::add_sound), passed
             // to scripts as a plain integer, like images.

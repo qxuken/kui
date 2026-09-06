@@ -385,6 +385,13 @@ export type WarningCode =
   /** An image with no `label`: assistive technology has nothing to say for it.
    *  Decorative images take `role="none"`. */
   | 'image-without-label'
+  /** A `line` declares `onClick`, `onDrag`, `onKey`, `onHover`, `hoverable` or
+   *  `focusable`. A line takes no pointer input and emits no hit region — its
+   *  bounding box is mostly not the stroke, and a shape-aware hit test is not
+   *  built — so the declaration does nothing
+   *  (`docs/adr/0010-a-segment-primitive.md`, decisions 7 and 8). Put the
+   *  interaction on the nodes the line connects. */
+  | 'line-ignores-input'
   /** The frame's modal surface is not in a float, and content painted after it
    *  is drawn on top of it: everything the user can see over the modal is
    *  inert, which looks like inert-behind is broken. A modal that has to cover

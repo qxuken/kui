@@ -383,7 +383,26 @@ additive, both typed by the `S` that `LoopConfig` already carries. Lua's
 **Test:** `test.mjs`: an `init` that reads `ctx.size()` and a `view` that
 sizes a column from `measureText`.
 
-### `~` F12 — There is no line (wants an ADR)
+### `~` F12 — There is no line — **done (2026-09-06)**
+
+**Done as `docs/adr/0010-a-segment-primitive.md`, accepted and built.**
+`QuadKind::Segment` (an SDF capsule in the über-pipeline, endpoints in the
+`uv` slot, width in `border_w`, `Quad` still 124 bytes); the `line` element
+in all four bindings (`<line from to width color/>`, `<line points curve/>`,
+`line { … }`, `kui_line` / `kui_polyline`, `ui.line` / `ui.polyline`);
+polylines and curves flattened in the core; the `lines` corpus scene; the
+`frame_10k_segments` and `frame_1k_curves` benches (a 10k-segment frame is
+~8% over the 10k-rect frame with the same quad count, the plain frame is
+unchanged); `examples/rust/connectors.rs` as the mind-map shape. What it
+settled that the entry asked about: a line is **always a float** positioned
+by its endpoints in the parent's box space and `on_layout` reports its
+bounding box; it takes **no input**, and rounded hit-testing is **not**
+settled — the ADR names the one change (a shape on `HitRegion`) that would
+settle both, and leaves it for a view that clicks a connector. Declined or
+deferred with reasons: paths, fills, dashes, arrowheads, a tweening width.
+For the mind-map author: `examples/rust/connectors.rs` is the three-box
+connector as one curve, and the CHANGELOG's "what you can delete" names the
+rest. The original entry, for the record:
 
 Evidence: mind-map #6. Every connector is three thin boxes (a stub, a
 vertical run, a stub), which works for orthogonal elbows and is the ceiling:
@@ -512,9 +531,14 @@ animations' `animating()` policy, revisited against a real view that removes
 many nodes (ADR 0005 left it opt-in + a 512-node budget with no duration
 cap). And from the field: F7, whether keys a focused control did not
 take should bubble to the enclosing sink — ADR 0002 rejected the narrower
-"sink gives up Tab" and both reports need the wider thing; and F12, a
+"sink gives up Tab" and both reports need the wider thing. ~~And F12, a
 segment primitive beside the six rounded-rect quad kinds, which ADR 0005
-never considered.
+never considered~~ — **done (2026-09-06)**, as
+`docs/adr/0010-a-segment-primitive.md`, accepted *and* built: a seventh
+quad kind that is an SDF capsule, the `line` element in four bindings,
+curves flattened in the core, a corpus scene and two benches. The one
+thing it declined to settle is rounded hit-testing, which stays parked
+below with the change that would settle it named.
 
 **Rows, when a view asks.** A configurable focus-ring colour (README names
 it). `required` / `invalid` and heading `level` (ADR 0001 follow-ups).

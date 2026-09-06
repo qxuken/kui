@@ -165,6 +165,20 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        // docs/adr/0010-a-segment-primitive.md: three strokes and a box in
+        // a 200×120 canvas; the elbow's on_click is the one a line ignores.
+        "lines" => r#"
+            return column { width = 200, height = 120, bg = 0x14161eff,
+              line { from = {10, 10}, to = {90, 70}, width = 2, color = 0x7f9cf5ff },
+              line { points = {{100, 20}, {140, 20}, {140, 60}}, width = 3,
+                     color = 0xd8863bff, on_click = "elbow" },
+              line { key = "curve", curve = true, width = 1.5, color = 0x9ad9a0ff,
+                     opacity = 0.5,
+                     points = {{20, 100}, {60, 80}, {100, 110}, {180, 90}} },
+              column { width = 40, height = 20, bg = 0x202030ff },
+            }
+        "#
+        .to_string(),
         "media" => format!(
             r#"
             return column {{ pad = 6, gap = 4,

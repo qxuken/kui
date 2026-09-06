@@ -55,6 +55,7 @@ use crate::enter::Enter;
 use crate::geom::{Edges, Rect, Size, Vec2};
 use crate::input::{EditKey, InputEvent, Mods};
 use crate::key::Key;
+use crate::line::Stroke;
 use crate::resources::{ImageId, SoundId};
 use crate::runtime::Core;
 use crate::spec::{
@@ -324,6 +325,9 @@ pub struct Expect {
     pub shadows: usize,
     /// Exact image-quad count.
     pub images: usize,
+    /// Exact segment-quad count: one per straight piece of every `line`,
+    /// so a curve's flattening is pinned too.
+    pub segments: usize,
     /// Glyph quads are one per rendered glyph — a lower bound keeps a font
     /// that maps a run differently from failing the build.
     pub glyphs_min: usize,
@@ -395,6 +399,7 @@ pub const SCENES: &[Scene] = &[
             solid: 3,
             shadows: 1,
             images: 0,
+            segments: 0,
             glyphs_min: 7,
             access: &[
                 "0 window ||",
@@ -429,6 +434,7 @@ pub const SCENES: &[Scene] = &[
             solid: 6,
             shadows: 0,
             images: 0,
+            segments: 0,
             glyphs_min: 0,
             access: &["0 window ||"],
             events: &[],
@@ -453,6 +459,7 @@ pub const SCENES: &[Scene] = &[
             solid: 5,
             shadows: 0,
             images: 0,
+            segments: 0,
             glyphs_min: 0,
             access: &["0 window ||"],
             events: &[],
@@ -476,6 +483,7 @@ pub const SCENES: &[Scene] = &[
             solid: 5,
             shadows: 0,
             images: 0,
+            segments: 0,
             glyphs_min: 0,
             access: &["0 window ||", "1 scrollView ||"],
             events: &[],
@@ -502,6 +510,7 @@ pub const SCENES: &[Scene] = &[
             solid: 5,
             shadows: 0,
             images: 0,
+            segments: 0,
             glyphs_min: 0,
             access: &["0 window ||"],
             events: &[],
@@ -524,6 +533,7 @@ pub const SCENES: &[Scene] = &[
             solid: 2,
             shadows: 0,
             images: 0,
+            segments: 0,
             glyphs_min: 10,
             access: &[
                 "0 window ||",
@@ -559,6 +569,7 @@ pub const SCENES: &[Scene] = &[
             solid: 5,
             shadows: 0,
             images: 0,
+            segments: 0,
             glyphs_min: 3,
             access: &[
                 "0 window kui conformance||",
@@ -603,6 +614,7 @@ pub const SCENES: &[Scene] = &[
             solid: 1,
             shadows: 0,
             images: 0,
+            segments: 0,
             glyphs_min: 3,
             access: &[
                 "0 window kui conformance||",
@@ -638,6 +650,7 @@ pub const SCENES: &[Scene] = &[
             solid: 1,
             shadows: 0,
             images: 0,
+            segments: 0,
             glyphs_min: 7,
             access: &["0 window ||", "1 button go||", "1 textInput Note||hello"],
             events: &["go -", "contextmenu menu"],
@@ -661,11 +674,40 @@ pub const SCENES: &[Scene] = &[
             solid: 2,
             shadows: 0,
             images: 1,
+            segments: 0,
             glyphs_min: 20,
             access: &["0 window ||", "1 image ||"],
             events: &[],
             announcements: &[],
             warnings: &["image-without-label"],
+            commands: &[],
+            title: None,
+        },
+    },
+    Scene {
+        name: "lines",
+        doc: "The stroke primitive (`docs/adr/0010-a-segment-primitive.md`): \
+              a diagonal segment, an orthogonal elbow through three points, \
+              and a faded curve through four knots — 8, 9 and 14 pieces by \
+              the core's flattening, so the segment count pins it — beside \
+              a box, which the lines paint over because a line is a float. \
+              Every line is elided from the access tree and takes no input; \
+              the elbow declares a click anyway, and the warning says so.",
+        custom: &["key"],
+        elements: &["box", "line"],
+        build: build_lines,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            solid: 2,
+            shadows: 0,
+            images: 0,
+            segments: 34,
+            glyphs_min: 0,
+            access: &["0 window ||"],
+            events: &[],
+            announcements: &[],
+            warnings: &["line-ignores-input"],
             commands: &[],
             title: None,
         },
@@ -716,6 +758,7 @@ pub const SCENES: &[Scene] = &[
             solid: 5,
             shadows: 0,
             images: 0,
+            segments: 0,
             glyphs_min: 3,
             access: &[
                 "0 window ||",
@@ -796,6 +839,7 @@ pub const SCENES: &[Scene] = &[
             solid: 7,
             shadows: 0,
             images: 0,
+            segments: 0,
             glyphs_min: 20,
             access: &[
                 "0 window ||",
@@ -870,6 +914,7 @@ pub const SCENES: &[Scene] = &[
             solid: 9,
             shadows: 0,
             images: 0,
+            segments: 0,
             glyphs_min: 3,
             access: &["0 window ||", "1 group A||", "1 group B||"],
             events: &["hit -"],
@@ -915,6 +960,7 @@ pub const SCENES: &[Scene] = &[
             solid: 1,
             shadows: 0,
             images: 0,
+            segments: 0,
             glyphs_min: 6,
             access: &["0 window ||", "1 staticText closed||"],
             events: &[
@@ -968,6 +1014,7 @@ pub const SCENES: &[Scene] = &[
             solid: 1,
             shadows: 0,
             images: 0,
+            segments: 0,
             glyphs_min: 6,
             access: &["0 window ||", "1 staticText closed||"],
             events: &[
@@ -1011,6 +1058,7 @@ pub const SCENES: &[Scene] = &[
             solid: 1,
             shadows: 0,
             images: 0,
+            segments: 0,
             glyphs_min: 8,
             access: &["0 window ||", "1 group 3 results||", "1 group ||"],
             events: &[],
@@ -1347,6 +1395,55 @@ fn build_media(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
         ui.audio_keyed("music", AudioSpec::new(f.sound).volume(0.5).looped());
         widgets::latency_graph(ui);
     });
+}
+
+/// The `lines` scene: a 200×120 canvas holding three strokes and one box.
+/// Points are in the canvas's box space, the way a floated card's offset
+/// is. The curve's chords are 44.7, 50 and 82.5, which
+/// `line::flatten_curve` cuts into 8, 9 and 14 pieces at `CURVE_STEP` 6.
+fn build_lines(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    ui.with(
+        NodeSpec::column()
+            .width(Sizing::Fixed(200.0))
+            .height(Sizing::Fixed(120.0))
+            .bg(Color::hex(0x14161eff)),
+        |ui| {
+            ui.line(
+                Vec2::new(10.0, 10.0),
+                Vec2::new(90.0, 70.0),
+                Stroke::new(2.0, Color::hex(0x7f9cf5ff)),
+                NodeSpec::column(),
+            );
+            // An elbow that declares a click, which a line ignores.
+            ui.polyline(
+                &[
+                    Vec2::new(100.0, 20.0),
+                    Vec2::new(140.0, 20.0),
+                    Vec2::new(140.0, 60.0),
+                ],
+                Stroke::new(3.0, Color::hex(0xd8863bff)),
+                NodeSpec::column().on_click(Value::str("elbow")),
+            );
+            ui.polyline_keyed(
+                "curve",
+                &[
+                    Vec2::new(20.0, 100.0),
+                    Vec2::new(60.0, 80.0),
+                    Vec2::new(100.0, 110.0),
+                    Vec2::new(180.0, 90.0),
+                ],
+                Stroke::new(1.5, Color::hex(0x9ad9a0ff)).curve(),
+                NodeSpec::column().opacity(0.5),
+            );
+            ui.with(
+                NodeSpec::column()
+                    .width(Sizing::Fixed(40.0))
+                    .height(Sizing::Fixed(20.0))
+                    .bg(Color::hex(0x202030ff)),
+                |_| {},
+            );
+        },
+    );
 }
 
 /// The modal scene's dialog and the app under it. The dialog is a
@@ -1818,6 +1915,9 @@ fn observe(core: &Core, cov: &mut Coverage) {
             NodeContent::Image(_) => {
                 cov.elements.insert("image");
             }
+            NodeContent::Line(_) => {
+                cov.elements.insert("line");
+            }
         }
 
         if i > 0 && is_label_keyed(t, i) {
@@ -1835,7 +1935,7 @@ pub struct Output {
     pub quad_count: usize,
     pub quad_digest: u64,
     /// Per [`QuadKind`], in its discriminant order.
-    pub kinds: [usize; 6],
+    pub kinds: [usize; 7],
     pub nodes: Vec<NodeRow>,
     pub events: Vec<(String, String)>,
     /// Everything `announce` queued over the whole scene, in order —
@@ -1924,6 +2024,16 @@ pub fn quad_digest(quads: &[Quad]) -> u64 {
             mix(&mut h, v.to_bits());
         }
         mix(&mut h, q.kind as u32);
+        // `uv` is skipped because atlas coordinates follow glyph insertion
+        // order; on a segment it is the endpoints, which are geometry —
+        // the two diagonals of one box would otherwise digest the same.
+        // Mixed here, in the struct's word order, so the C and Node
+        // mirrors can walk the words in sequence.
+        if q.kind == QuadKind::Segment {
+            for v in q.uv {
+                mix(&mut h, v);
+            }
+        }
         for v in [
             q.clip.x,
             q.clip.y,
@@ -2090,7 +2200,7 @@ pub fn drive(
     let warnings = core.take_warnings().into_iter().map(|w| w.code).collect();
     let nodes = rows(core.access_tree());
     let quads = &core.output().0.quads;
-    let mut kinds = [0usize; 6];
+    let mut kinds = [0usize; 7];
     for q in quads.iter() {
         kinds[match q.kind {
             QuadKind::Solid => 0,
@@ -2099,6 +2209,7 @@ pub fn drive(
             QuadKind::Image => 3,
             QuadKind::GlyphSubpixel => 4,
             QuadKind::Shadow => 5,
+            QuadKind::Segment => 6,
         }] += 1;
     }
     Output {
@@ -2195,7 +2306,7 @@ pub fn write_command(cmd: &WindowCommand, out: &mut String) {
 /// step <...>                 the replayed input, so an adapter need not restate it
 /// title <text|->
 /// quads <count> <digest:016x>
-/// kinds <solid> <glyphMask> <glyphColor> <image> <glyphSubpixel> <shadow>
+/// kinds <solid> <glyphMask> <glyphColor> <image> <glyphSubpixel> <shadow> <segment>
 /// node <depth> <key:016x> <role> <focused> <disabled> <checked> <scroll> <actions> <name> | <description> | <value>
 /// event <kind> <tag>
 /// cmd <verb> <window> [...]  a window command the driver would have applied
@@ -2213,8 +2324,14 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
     let _ = writeln!(s, "quads {} {:016x}", out.quad_count, out.quad_digest);
     let _ = writeln!(
         s,
-        "kinds {} {} {} {} {} {}",
-        out.kinds[0], out.kinds[1], out.kinds[2], out.kinds[3], out.kinds[4], out.kinds[5]
+        "kinds {} {} {} {} {} {} {}",
+        out.kinds[0],
+        out.kinds[1],
+        out.kinds[2],
+        out.kinds[3],
+        out.kinds[4],
+        out.kinds[5],
+        out.kinds[6]
     );
     for n in &out.nodes {
         let _ = writeln!(

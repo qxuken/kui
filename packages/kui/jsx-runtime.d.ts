@@ -355,6 +355,24 @@ export declare namespace JSX {
     /** A registered image (id from addImage). Fit sizing = pixel size as
      *  logical px; Fit height against a resolved width keeps the aspect. */
     image: Omit<BoxProps, 'children'> & { src: string };
+    /** A round-capped stroke (docs/adr/0010-a-segment-primitive.md): one
+     *  segment from `from` to `to`, a polyline through `points`, or a smooth
+     *  curve through them with `curve`. Points are in the parent's box space
+     *  (`float="viewport"` for viewport space). Never in layout: it floats,
+     *  sized to its own bounding box, so it takes no room in a row or
+     *  column. `width` is the stroke width in px (default 1), `color` the
+     *  stroke colour (default the foreground); `transition` eases the colour.
+     *  Takes no pointer input and has no access row. */
+    line: Keyed &
+      Pick<GeneratedSpecProps, 'opacity' | 'transition' | 'enter' | 'exit' | 'onLayout' | 'label' | 'role'> & {
+        from?: [number, number];
+        to?: [number, number];
+        points?: [number, number][];
+        curve?: boolean;
+        width?: number;
+        color?: ColorProp;
+        float?: 'parent' | 'viewport';
+      };
     /** Adaptive titlebar (drag strip + window buttons per env facts).
      *  `title` alone draws the standard title; children host custom content. */
     titlebar: Keyed & { title?: string; children?: KuiNode };

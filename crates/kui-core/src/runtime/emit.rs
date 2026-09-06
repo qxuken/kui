@@ -48,12 +48,17 @@ impl Core {
         let spec = &self.tree.specs[i];
         let style = spec.style;
         let first_quad = self.display.quads.len();
+        // A stroke's `bg` is its colour, not a box to fill, and it emits no
+        // hit region: it takes no input (ADR 0010, decision 7).
+        let is_line = matches!(self.tree.content[i], NodeContent::Line(_));
         if style.shadow.is_visible() {
             self.display
                 .quads
                 .push(shadow_quad(&style, rect, clip, scale));
         }
-        if style.bg.is_visible() || (style.border_w > 0.0 && style.border_color.is_visible()) {
+        if !is_line
+            && (style.bg.is_visible() || (style.border_w > 0.0 && style.border_color.is_visible()))
+        {
             self.display.quads.push(Quad {
                 rect: rect.scaled(scale),
                 color: style.bg,
@@ -67,7 +72,7 @@ impl Core {
                 clip_radius: clip_px.radius,
             });
         }
-        if spec.hover_tracked() && interactive {
+        if spec.hover_tracked() && interactive && !is_line {
             let parent = self.tree.parent[i];
             let parent_rect = if parent == NIL {
                 Rect::new(0.0, 0.0, self.viewport.w, self.viewport.h)
@@ -184,6 +189,18 @@ impl Core {
                         clip_radius: clip_px.radius,
                     });
                 }
+            }
+            NodeContent::Line(id) => {
+                let (run, points) = self.lines.run(id);
+                push_segments(
+                    &mut self.display.quads,
+                    self.tree.pos[i],
+                    points,
+                    run.width,
+                    style.bg,
+                    clip_px,
+                    scale,
+                );
             }
             NodeContent::Container => {}
         }
@@ -606,8 +623,15 @@ impl Core {
                 base *= self.prev_tree.specs[a as usize].style.opacity;
                 a = self.prev_tree.parent[a as usize];
             }
-            self.depart
-                .depart(&self.prev_tree, i, now, base, place, &self.text);
+            self.depart.depart(
+                &self.prev_tree,
+                i,
+                now,
+                base,
+                place,
+                &self.text,
+                &self.lines,
+            );
         }
         if let Some(key) = self.depart.refused.take() {
             self.diag.raise(Warning {
@@ -745,6 +769,20 @@ impl Core {
                             clip_radius: crate::display::SQUARE,
                         });
                     }
+                }
+                GhostContent::Line { first, len, width } => {
+                    // The points are the ghost's own copy; the colour is
+                    // the `bg` slot, which `play.bg` eases on the root.
+                    let points = &g.points[first as usize..(first + len) as usize];
+                    push_segments(
+                        &mut self.display.quads,
+                        Vec2::new(rect.x, rect.y),
+                        points,
+                        width,
+                        style.bg,
+                        Clip::NONE.scaled(scale),
+                        scale,
+                    );
                 }
             }
             if opacity < 1.0 {
@@ -1013,6 +1051,49 @@ impl PaintOrder {
             pass: if float { Pass::Float } else { Pass::InFlow },
             before: (after != NIL).then(|| prev.keys[after as usize]),
         }
+    }
+}
+
+/// One [`QuadKind::Segment`] per straight piece of a stroke: `points` are
+/// relative to `origin` (the node's box, logical px) and `width` is
+/// logical; everything on the quad is physical. The rect is the piece's
+/// bounding box padded by half the width plus two logical px, so the
+/// backend's edge ramp is never cut by the quad's own edge, and the
+/// endpoints ride in `uv` (see [`Quad::segment_ends`]).
+fn push_segments(
+    quads: &mut Vec<Quad>,
+    origin: Vec2,
+    points: &[Vec2],
+    width: f32,
+    color: Color,
+    clip: Clip,
+    scale: f32,
+) {
+    let pad = crate::line::pad(width) * scale;
+    let w = width.max(0.0) * scale;
+    for pair in points.windows(2) {
+        let a = Vec2::new(
+            (origin.x + pair[0].x) * scale,
+            (origin.y + pair[0].y) * scale,
+        );
+        let b = Vec2::new(
+            (origin.x + pair[1].x) * scale,
+            (origin.y + pair[1].y) * scale,
+        );
+        let (x0, x1) = (a.x.min(b.x) - pad, a.x.max(b.x) + pad);
+        let (y0, y1) = (a.y.min(b.y) - pad, a.y.max(b.y) + pad);
+        quads.push(Quad {
+            rect: Rect::new(x0, y0, x1 - x0, y1 - y0),
+            color,
+            border_color: Color::TRANSPARENT,
+            radius: crate::display::SQUARE,
+            border_w: w,
+            blur: 0.0,
+            kind: QuadKind::Segment,
+            uv: Quad::segment_uv([a.x, a.y, b.x, b.y]),
+            clip: clip.rect,
+            clip_radius: clip.radius,
+        });
     }
 }
 
