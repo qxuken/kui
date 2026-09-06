@@ -10,13 +10,11 @@
 //! two monitors can have two scales, and on a mixed-DPI desktop logical
 //! coordinates do not share an origin.
 //!
-//! Nothing calls this yet — ADR 0009 is accepted and the driver half is
-//! unbuilt — so the module is allowed to be dead until `Shell` arms it.
-#![allow(
-    dead_code,
-    reason = "ADR 0009 step 1: the arithmetic and its tests ship ahead of the driver \
-              wiring, which is not headlessly testable"
-)]
+//! `Shell` calls it from three places: `retarget_move` while a press is
+//! armed, `classify_release` when that press ends, and `Pane::surface`,
+//! which is where a window becomes a [`Surface`]. Those are not headlessly
+//! testable — they want two OS windows and a captured drag — and this is,
+//! which is the whole reason the arithmetic is a module of its own.
 
 use kui_core::{Rect, Size, Vec2};
 

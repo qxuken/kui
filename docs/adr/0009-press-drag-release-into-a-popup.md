@@ -281,3 +281,33 @@ it was retargeted; the only headless part is the arithmetic.
   ownership chain beyond decision 1's "joins the same press"; whether an
   activating popup should be dismissed by an owner press at all, which
   the driver does today and nothing has argued for.
+
+## Amendment: the driver half, built (2026-09-07)
+
+Two of the consequences above are records of the day this was accepted and
+stopped being true when it was built. This says so rather than editing them.
+
+**"Nothing ships to an app from this ADR."** Something does now, and it is
+decision 5: a primary press that dismisses a non-activating popup is
+consumed, and its release is swallowed with it, so an app that guarded
+against the click it was dismissed by can drop the guard. That is one "what
+breaks" line and one "what you can delete" line in `CHANGELOG.md`, which is
+no longer untouched.
+
+**"The build is one change in one file … roughly a hundred and fifty
+lines."** It was. `Shell` gained `primary_down`, an `armed` list and
+`swallowed_press`; `Pane` gained `surface()` and the `anchor` its `Open`
+carried; `open_pane` arms, `retarget_move` retargets, `classify_release`
+classifies, and `close_pane` disarms. One thing decision 4's last paragraph
+implies is worth naming, because the code has to spell it: a press that
+**begins** in a popup arms that popup too, and it is the one armed popup that
+gets neither retargeted moves nor a synthesised pair — it has the real ones.
+Its anchor is a rect of the window next door, so it is mapped into the
+pressed window through the screen, the same way a point is.
+
+**The four checks ran** on macOS 26.6.2 (arm64) on 2026-09-07, with real
+`CGEvent`s through the HID tap and `screencapture` from inside the held drag,
+and all four pass. So does a fifth, this entry's own measurement driven from
+the other end: press in the list, drag off its top edge, and release — on the
+field the menu stays, on the desktop it goes. Backlog W2 records what each
+one showed. The mixed-DPI check on Windows is still what nothing has run.

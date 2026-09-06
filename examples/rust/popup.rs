@@ -11,7 +11,7 @@
 //! the declaration stops and the window closes. Nothing calls a "close
 //! popup" function, because there isn't one.
 //!
-//! Three things to watch with it running:
+//! Four things to watch with it running:
 //!
 //! - The **field keeps its focus ring** while the list is up, and the arrow
 //!   keys walk the list. A popup does not take OS focus, so the owner still
@@ -21,10 +21,22 @@
 //!   answers by clearing `open`, which is the whole of "closing" a popup.
 //! - The **list draws past the bottom edge** of the main window, which an
 //!   in-window float cannot do. Shrink the window and it still does.
+//! - **Press the field, drag into the list, release on a row** — the native
+//!   select gesture, in one gesture with no second click
+//!   (`docs/adr/0009-press-drag-release-into-a-popup.md`). None of it is in
+//!   this file: the OS gives the whole drag to the window the press landed
+//!   in, and the runner translates the moves into the popup's coordinates
+//!   and synthesises the press-and-release the popup never saw. All this
+//!   app does is open on `on_drag`'s `start` phase instead of waiting for a
+//!   click, and **set** rather than toggle — which is safe because a press
+//!   that dismisses a popup is consumed rather than passed through, so a
+//!   press on the open field closes the menu and cannot reopen it.
 //!
 //! Run: cargo run --example popup
 
-use kui::{App, Color, NodeSpec, Rect, Sizing, TextStyle, Ui, UiEvent, Value, WindowConfig};
+use kui::{
+    App, Color, CursorShape, NodeSpec, Rect, Sizing, TextStyle, Ui, UiEvent, Value, WindowConfig,
+};
 
 /// The list is twelve rows of 24 plus the panel's padding — deliberately
 /// twice the window's height, so "taller than the window" is not a detail
@@ -106,7 +118,19 @@ impl App for Combo {
                         .focusable()
                         .label("Alloy")
                         .on_layout(Value::str("field"))
-                        .on_click(Value::map([("kind", Value::str("toggle"))])),
+                        // Two ways in, and both of them *open*. `on_drag`
+                        // is the press: its `start` phase arrives on
+                        // mouse-down, before any slop, which is what makes
+                        // press-drag-release one gesture. `on_click` is the
+                        // release that never moved, and the keyboard, and
+                        // assistive technology — idempotent after a `start`
+                        // that already opened the list.
+                        .on_drag(Value::Null)
+                        .on_click(Value::map([("kind", Value::str("open"))]))
+                        // A draggable node derives `grab`, and this one is
+                        // not a thing being dragged — it is a field being
+                        // pressed. The `cursor` row exists for exactly this.
+                        .cursor(CursorShape::Pointer),
                     |ui| {
                         ui.text(ITEMS[self.chosen], TextStyle::new(14.0).color(Color::WHITE));
                         ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
@@ -115,9 +139,9 @@ impl App for Combo {
                 );
                 ui.text(
                     if self.open {
-                        "Escape or a press outside asks it to go away"
+                        "Release on a row, or press outside to dismiss"
                     } else {
-                        "Click the field, or Tab to it and press Space"
+                        "Press and drag into the list, or Tab here and press Space"
                     },
                     TextStyle::new(11.0).color(Color::hex(0x6c7180ff)),
                 );
@@ -134,8 +158,17 @@ impl App for Combo {
                 let n = |k: &str| ev.payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as f32;
                 self.field = Rect::new(n("x"), n("y"), n("w"), n("h"));
             }
-            Some("toggle") => {
-                self.open = !self.open;
+            // Everything opens; only a dismissal or a choice closes. The
+            // press (`drag`'s `start`) and the click that follows a
+            // stationary release both land here, and assigning rather than
+            // toggling is what lets them: neither has to know which press
+            // it is answering.
+            Some("drag") if ev.payload.get("phase").and_then(Value::as_str) == Some("start") => {
+                self.open = true;
+                self.cursor = self.chosen;
+            }
+            Some("open") => {
+                self.open = true;
                 self.cursor = self.chosen;
             }
             // The same event a `modal` float would have given, on the
