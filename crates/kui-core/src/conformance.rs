@@ -652,9 +652,13 @@ pub const SCENES: &[Scene] = &[
     },
     Scene {
         name: "controls",
-        doc: "A clicked button and a keyed editor, inside a panel that asks \
-              for a context menu: the secondary press routes to the panel \
-              and moves neither focus nor the caret.",
+        doc: "A clicked button, a keyed editor and a slider, inside a panel \
+              that asks for a context menu: the secondary press routes to \
+              the panel and moves neither focus nor the caret. The slider \
+              names its own reading (`valueText`), which lands in the value \
+              column beside the editor's text — a node has one string slot, \
+              and a slider that named its reading reads as that instead of \
+              its number (backlog F8).",
         custom: &["key", "size"],
         elements: &["button", "edit", "box", "text"],
         build: build_controls,
@@ -673,7 +677,12 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             glyphs_min: 7,
-            access: &["0 window ||", "1 button go||", "1 textInput Note||hello"],
+            access: &[
+                "0 window ||",
+                "1 button go||",
+                "1 textInput Note||hello",
+                "1 slider Focus length||25 minutes",
+            ],
             events: &["go -", "contextmenu menu"],
             announcements: &[],
             warnings: &[],
@@ -1482,6 +1491,25 @@ fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 ..Default::default()
             },
             NodeSpec::column().width(Sizing::Fixed(160.0)).label("Note"),
+        );
+        // A slider that says what its position reads as. Without
+        // `value_text` a reader has only the three numbers and says a
+        // percentage — 25 in [5..60] is "36 percent" — and the reading
+        // travels in the access row's value column, the one string slot a
+        // node has (backlog F8). No background, so the scene's quad counts
+        // are the button's and the editor's as before.
+        ui.with_keyed(
+            "focus",
+            NodeSpec::row()
+                .role(Role::Slider)
+                .label("Focus length")
+                .value_now(25.0)
+                .value_min(5.0)
+                .value_max(60.0)
+                .value_text("25 minutes")
+                .width(Sizing::Fixed(120.0))
+                .height(Sizing::Fixed(12.0)),
+            |_| {},
         );
     });
 }

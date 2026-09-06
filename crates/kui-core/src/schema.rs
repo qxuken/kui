@@ -133,6 +133,7 @@ pub const P_EXIT: u32 = 78;
 pub const P_WINDOWS: u32 = 79;
 pub const P_LIVE: u32 = 80;
 pub const P_KEY_UP: u32 = 81;
+pub const P_VALUE_TEXT: u32 = 82;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -896,6 +897,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "A `slider` role's maximum.",
     },
     PropDef {
+        name: "valueText",
+        id: P_VALUE_TEXT,
+        kind: Kind::Str,
+        apply: Apply::SpecStr(|s, v| s.value_text(v)),
+        doc: "What a `slider` role's position reads as (ARIA's `aria-valuetext`). Without one a reader has only `valueNow` and the range and says a percentage — 25 in [5..60] is \"36 percent\" — so a value whose unit carries the meaning says it here: \"25 minutes\". It replaces the number in the reading rather than joining it, and a nudge announces the new text. Meaningful on the slider role alone, like the three numbers; putting the reading in `label` instead renames the control on every nudge, which is the wrong attribute.",
+    },
+    PropDef {
         name: "caret",
         id: P_CARET,
         kind: Kind::F32,
@@ -1088,6 +1096,7 @@ pub const C_FIELDS: &[(&str, &str)] = &[
         "valueMax",
         "`value_max` with `KUI_VALUE_MAX` in `value_set`",
     ),
+    ("valueText", "`value_text` (KuiStr)"),
     ("caret", "`caret` with `KUI_VALUE_CARET` in `value_set`"),
     (
         "selectionAnchor",

@@ -311,7 +311,9 @@ export interface AccessNode {
   description: string | null;
   /** Logical px, viewport coordinates. */
   rect: { x: number; y: number; w: number; h: number };
-  /** An editor's text, with its caret and non-empty selection as byte offsets. */
+  /** The node's one string value: an editor's text, with its caret and
+   *  non-empty selection as byte offsets, or a slider's `valueText` — a
+   *  slider that named its reading reads as that instead of its number. */
   value: string | null;
   caret: number | null;
   selection: [number, number] | null;
@@ -335,7 +337,8 @@ export interface AccessNode {
   /** How a composite container (`radioGroup`, `tabList`, `menu`, `list`)
    *  arranges its items, from its own `dir`. `null` for anything else. */
   orientation: 'horizontal' | 'vertical' | null;
-  /** `valueNow` / `valueMin` / `valueMax` for a slider. */
+  /** `valueNow` / `valueMin` / `valueMax` for a slider. What the position
+   *  reads as is `valueText`, which arrives in `value` above. */
   valueNow: number | null;
   valueMin: number | null;
   valueMax: number | null;

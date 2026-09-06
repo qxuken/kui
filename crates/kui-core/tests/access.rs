@@ -217,6 +217,20 @@ fn explicit_roles_win_and_carry_their_state() {
             .on_drag(Value::str("vol")),
         |_| {},
     );
+    // The same control naming its own reading: 25 in [5..60] is "36
+    // percent" to a reader with only the numbers, which is the bug F8
+    // reported.
+    let text_slider = ui.with_keyed(
+        "focus",
+        NodeSpec::row()
+            .role(Role::Slider)
+            .label("Focus length")
+            .value_now(25.0)
+            .value_min(5.0)
+            .value_max(60.0)
+            .value_text("25 minutes"),
+        |_| {},
+    );
     let heading = ui.with_keyed("h", NodeSpec::row().role(Role::Heading), |ui| {
         ui.text("Settings", TextStyle::new(20.0))
     });
@@ -240,6 +254,24 @@ fn explicit_roles_win_and_carry_their_state() {
     assert_eq!((s.number, s.min, s.max), (Some(0.4), Some(0.0), Some(1.0)));
     assert!(s.supports(AccessAction::Increment));
     assert!(!s.supports(AccessAction::Click), "no click payload");
+    assert_eq!(
+        s.value, None,
+        "a slider that named no reading has no string value"
+    );
+
+    let t = tree.get(text_slider).unwrap();
+    assert_eq!(
+        t.value.as_deref(),
+        Some("25 minutes"),
+        "value_text lands in the node's one string slot, which is what the \
+         platform reads instead of the number (backlog F8)"
+    );
+    assert_eq!(
+        (t.number, t.min, t.max),
+        (Some(25.0), Some(5.0), Some(60.0)),
+        "the range still travels: only the reading is replaced"
+    );
+    assert!(t.supports(AccessAction::Increment), "still nudgeable");
 
     let h = tree.get(heading).unwrap();
     assert_eq!(h.role, Role::Heading);

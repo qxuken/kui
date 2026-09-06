@@ -277,6 +277,9 @@ pub(crate) fn spec_of(
     if s.value_set & KUI_VALUE_MAX != 0 {
         spec = spec.value_max(s.value_max);
     }
+    if !s.value_text.ptr.is_null() && s.value_text.len > 0 {
+        spec = spec.value_text(kstr(s.value_text).into_owned());
+    }
     if s.value_set & KUI_VALUE_CARET != 0 {
         spec = spec.caret(s.caret);
     }

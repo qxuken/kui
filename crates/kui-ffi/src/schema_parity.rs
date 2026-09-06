@@ -256,6 +256,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "valueNow" => (s.value_set, s.value_now) = (KUI_VALUE_NOW, F),
             "valueMin" => (s.value_set, s.value_min) = (KUI_VALUE_MIN, F),
             "valueMax" => (s.value_set, s.value_max) = (KUI_VALUE_MAX, F),
+            "valueText" => s.value_text = name,
             "caret" => (s.value_set, s.caret) = (KUI_VALUE_CARET, F as u32),
             "selectionAnchor" => (s.value_set, s.selection_anchor) = (KUI_VALUE_ANCHOR, F as u32),
             "lineHeight" => t.line_height = F,
@@ -379,6 +380,10 @@ fn fully_populated_spec_matches_the_rust_builder() {
         value_now: 3.0,
         value_min: 0.0,
         value_max: 10.0,
+        value_text: KuiStr {
+            ptr: "3 of 10".as_ptr(),
+            len: 7,
+        },
         caret: 0,
         selection_anchor: 0,
         focusable: 1,
@@ -461,6 +466,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .value_now(3.0)
         .value_min(0.0)
         .value_max(10.0)
+        .value_text("3 of 10")
         .opacity(0.4)
         .shadow(kui_core::Shadow {
             color: Color::hex(0x00_00_00_66),

@@ -1570,6 +1570,20 @@ const SCENE_TREES = {
       box({ pad: 10, gap: 6, onContextMenu: { kind: 'menu' } }, [
         el('button', { onClick: { kind: 'go' } }, ['go']),
         el('edit', { initial: 'hello', size: 13, width: 160, label: 'Note' }, [], 'note'),
+        box(
+          {
+            width: 120,
+            height: 12,
+            role: 'slider',
+            label: 'Focus length',
+            valueNow: 25,
+            valueMin: 5,
+            valueMax: 60,
+            valueText: '25 minutes',
+          },
+          [],
+          'focus',
+        ),
       ]),
     ]),
   // Two key sinks: the press-only default and one that asked for releases

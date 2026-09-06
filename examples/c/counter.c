@@ -1186,6 +1186,20 @@ static void conf_controls(KuiCtx *ui, const Fixtures *f, int phase) {
     KuiTextStyle s13 = {.size = 13};
     KuiSpec note = {.width = {KUI_FIXED, 160}, .label = KUI_STR("Note")};
     kui_text_edit(ui, KUI_STR("note"), KUI_STR("hello"), &s13, 0, &note);
+    /* A slider that names its own reading: value_text is what a reader says
+     * instead of the percentage value_now and the range alone would give,
+     * and it comes back in KuiAccessNode.value (backlog F8). */
+    KuiSpec focus = {.width = {KUI_FIXED, 120},
+                     .height = {KUI_FIXED, 12},
+                     .role = KUI_ROLE_SLIDER,
+                     .label = KUI_STR("Focus length"),
+                     .value_set = KUI_VALUE_NOW | KUI_VALUE_MIN | KUI_VALUE_MAX,
+                     .value_now = 25,
+                     .value_min = 5,
+                     .value_max = 60,
+                     .value_text = KUI_STR("25 minutes")};
+    kui_open_keyed(ui, KUI_STR("focus"), &focus, NULL);
+    kui_close(ui);
     kui_close(ui);
     kui_value_free(menu);
 }

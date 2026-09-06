@@ -28,6 +28,30 @@ bumped past alpha.6 should delete.
 
 ### Added
 
+- **`valueText`: a slider says what its position reads as** (backlog F8,
+  from the pomodoro field report). Without it a screen reader has only
+  `valueNow` and the range and turns the position into a percentage — 25
+  minutes in [5..60] is announced "36 percent", which is what the report
+  hit on all three of its sliders. `valueText` is the reading itself:
+  `<box role="slider" valueText="25 minutes">`, `value_text` in Lua and C,
+  `.value_text()` in Rust. It is ARIA's `aria-valuetext`, and it
+  **replaces** the number rather than joining it — settled by driving the
+  real macOS accessibility API before the row was designed:
+  `accesskit_macos` gives a node one value slot, and a string in it wins
+  over the number. The range still travels, `AXIncrement` and
+  `AXDecrement` still work, and a nudge announces the new *text*
+  (`docs/adr/0008-live-regions-and-announcements.md`). It arrives back as
+  the access node's `value`, the same field an editor's text uses, so
+  nothing on the readback side grew and `KUI_ABI_VERSION` stays at 7.
+  Meaningful on the slider role alone, like the three numbers.
+
+**What you can delete:** the name that carries the reading. An app working
+around this baked the value into `label` — `"FOCUS LENGTH, 25 MINUTES"` —
+which is the wrong attribute twice over: it renames the control on every
+nudge, so a reader announces a *new control* rather than a new value, and
+the name is what a voice-control user has to say to reach it. Move the
+number to `valueText` and let `label` go back to being the control's name.
+
 - **A stroke primitive: `QuadKind::Segment` and the `line` element**
   (`docs/adr/0010-a-segment-primitive.md`, backlog F12 from the mind-map
   field report, whose every connector was three thin boxes). A segment is a

@@ -372,6 +372,15 @@ pub struct KuiSpec {
     /// delivers the `up` first. Zero: presses only, which is what a keymap
     /// wants — one that heard both halves would run every binding twice.
     pub key_up: u32,
+    /// What a slider role's position reads as, empty for none (ARIA's
+    /// `aria-valuetext`). Without one a reader has only `value_now` and the
+    /// range and says a percentage — 25 in [5..60] is "36 percent" — so a
+    /// value whose unit carries the meaning says it here: "25 minutes". It
+    /// replaces the number in the reading rather than joining it, and a
+    /// nudge announces the new text. Copied while the node opens. It
+    /// arrives back as `KuiAccessNode.value` (KUI_ACCESS_HAS_VALUE), the
+    /// one string slot a node has.
+    pub value_text: KuiStr,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -426,7 +435,9 @@ pub struct KuiAccessNode {
     pub actions: u32,
     pub name: KuiStr,
     pub description: KuiStr,
-    /// An editor's text (KUI_ACCESS_HAS_VALUE).
+    /// The node's one string value (KUI_ACCESS_HAS_VALUE): an editor's
+    /// text, or a slider's `value_text` — the platform has one slot, and a
+    /// slider that named its reading reads as that instead of its number.
     pub value: KuiStr,
     /// Logical px, viewport coordinates.
     pub x: f32,

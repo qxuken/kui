@@ -116,6 +116,9 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
               button { label = "go", on_click = { kind = "go" } },
               edit { key = "note", initial = "hello", size = 13, width = 160,
                      label = "Note" },
+              row { key = "focus", width = 120, height = 12, role = "slider",
+                    label = "Focus length", value_now = 25, value_min = 5,
+                    value_max = 60, value_text = "25 minutes" },
             }
         "#
         .to_string(),

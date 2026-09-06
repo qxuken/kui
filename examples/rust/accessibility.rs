@@ -2,8 +2,11 @@
 //! audit drives (`scripts/ax-audit.swift` on macOS, or a screen reader by
 //! hand). Each control is built so that assistive technology can both
 //! read it and change it, and see the change: the button's name counts
-//! its presses, the slider's value follows increment and decrement, and
-//! both editors report the text they hold.
+//! its presses, the sliders' values follow increment and decrement, and
+//! both editors report the text they hold. The two sliders differ in one
+//! row: `Volume` declares only its number, so a reader turns the position
+//! into a percentage, while `Focus length` also declares a `value_text`
+//! and is read as "25 minutes" (backlog F8).
 //!
 //! Run: cargo run -p kui --example accessibility
 //!
@@ -13,7 +16,7 @@
 //!
 //! With the keyboard alone (`docs/adr/0002-keyboard-focus-as-data.md`):
 //! Tab walks every control in order — the button, the icon button, the
-//! switch, the slider, the built-in editor, the app-owned editor — with a
+//! switch, the two sliders, the built-in editor, the app-owned editor — with a
 //! ring around the focused one; Enter or Space presses a button or flips
 //! the switch, the arrows move the slider, Escape lets go. The app-owned
 //! editor is a key sink, so it keeps Tab; its declaration below takes
@@ -63,6 +66,10 @@ const DOC: &str = "hello world\nsecond line";
 struct A11y {
     presses: u32,
     volume: f32,
+    /// Minutes, in [5..60] — the pomodoro report's own range. Its slider
+    /// says what the number *reads as*; the volume slider above says only
+    /// the number, so the window carries both readings side by side.
+    focus_min: f32,
     muted: bool,
     /// The custom editor's document and its caret (line, byte offset):
     /// the app owns the buffer, kui only learns where the caret sits.
@@ -105,6 +112,7 @@ impl A11y {
         Self {
             presses: 0,
             volume: 3.0,
+            focus_min: 25.0,
             muted: false,
             lines: vec!["fn main() {".into(), "    greet()".into(), "}".into()],
             caret: (1, 4),
@@ -482,6 +490,40 @@ impl App for A11y {
                     },
                 );
 
+                // The same control, saying what its position *reads as*.
+                // With only `value_now` and the range a reader has to
+                // invent a reading and says a percentage — 25 in [5..60]
+                // is "36 percent", which is what the pomodoro report hit
+                // (backlog F8). `value_text` is the reading itself, and it
+                // replaces the number rather than joining it. It is not
+                // the `label`: the name of the control does not change
+                // when its value does.
+                ui.with_keyed(
+                    "focus_length",
+                    NodeSpec::row()
+                        .role(Role::Slider)
+                        .label("Focus length")
+                        .value_now(self.focus_min)
+                        .value_min(5.0)
+                        .value_max(60.0)
+                        .value_text(format!("{} minutes", self.focus_min as i32))
+                        .on_drag(Value::str("focus"))
+                        .width(Sizing::Fixed(200.0))
+                        .height(Sizing::Fixed(16.0))
+                        .bg(Color::rgb8(0x1d, 0x20, 0x2b))
+                        .radius(8.0),
+                    |ui| {
+                        ui.with(
+                            NodeSpec::row()
+                                .width(Sizing::Percent((self.focus_min - 5.0) / 55.0))
+                                .height(Sizing::Grow(1.0))
+                                .bg(Color::rgb8(0x3b, 0x5b, 0xd4))
+                                .radius(8.0),
+                            |_| {},
+                        );
+                    },
+                );
+
                 // A built-in editor: the core owns the buffer, so its runs, caret
                 // and selection come out of the edit store, and a screen reader's
                 // selection and text requests are applied for you.
@@ -721,11 +763,22 @@ impl App for A11y {
         }
         let action = payload.get("action").and_then(Value::as_str).unwrap_or("");
         match action {
-            // The slider: the app decides what a step means.
+            // The sliders: the app decides what a step means, and which
+            // slider was nudged is the node's own tag.
             "increment" | "decrement" => {
                 let step = if action == "increment" { 1.0 } else { -1.0 };
-                self.volume = (self.volume + step).clamp(0.0, 10.0);
-                println!("volume -> {}", self.volume);
+                match payload.get("tag").and_then(Value::as_str) {
+                    Some("focus") => {
+                        // Five minutes a step, and the reading the next
+                        // frame declares is what a reader announces.
+                        self.focus_min = (self.focus_min + step * 5.0).clamp(5.0, 60.0);
+                        println!("focus length -> {} minutes", self.focus_min as i32);
+                    }
+                    _ => {
+                        self.volume = (self.volume + step).clamp(0.0, 10.0);
+                        println!("volume -> {}", self.volume);
+                    }
+                }
             }
             // The app-owned editor: line ordinals among the rows it drew
             // (all of them here), byte offsets into their text.

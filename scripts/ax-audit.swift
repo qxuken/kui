@@ -265,6 +265,27 @@ if let slider {
     check("slider min", num(slider.el, kAXMinValueAttribute as String), 0.0)
     check("slider max", num(slider.el, kAXMaxValueAttribute as String), 10.0)
 }
+// A slider that declared `valueText` reads as that string instead of its
+// number: AccessKit has one value slot and the string wins it, which is
+// what `aria-valuetext` means (backlog F8). Without it a reader has only
+// the three numbers and says a percentage — 25 in [5..60] is "36 percent",
+// the bug this row fixes. The range survives, and so does the name: the
+// reading is not baked into AXTitle, so the control is not renamed when
+// its value moves.
+let focus = find(role: kAXSliderRole as String, title: "Focus length")
+check("the slider that names its reading is exposed", focus != nil)
+if let focus {
+    check(
+        "its value is the declared text, not the number",
+        str(focus.el, kAXValueAttribute as String), "25 minutes")
+    check(
+        "the number is gone from AXValue, replaced rather than joined",
+        num(focus.el, kAXValueAttribute as String) == nil,
+        String(describing: num(focus.el, kAXValueAttribute as String)))
+    check("its min survives the text", num(focus.el, kAXMinValueAttribute as String), 5.0)
+    check("its max survives the text", num(focus.el, kAXMaxValueAttribute as String), 60.0)
+    check("the reading is not the name", str(focus.el, kAXTitleAttribute as String), "Focus length")
+}
 
 // -- Selection and disclosure --------------------------------------------
 // AccessKit maps these three facts very differently on macOS, and the
@@ -458,6 +479,26 @@ if let press {
         "the reader's element is still alive after the press",
         str(press.el, kAXRoleAttribute as String) != nil)
 }
+// ADR 0008's rule for a valued control: a nudge announces the *text*, not
+// the number. The app moves five minutes a step and redeclares the reading,
+// so the string the OS hands back after AXIncrement is the new one — and
+// the control's name never moved (backlog F8).
+if let focus = find(role: kAXSliderRole as String, title: "Focus length") {
+    check("it advertises increment", actions(focus.el).contains(kAXIncrementAction as String))
+    AXUIElementPerformAction(focus.el, kAXIncrementAction as CFString)
+    usleep(400_000)
+    check(
+        "a nudge announces the new text",
+        str(focus.el, kAXValueAttribute as String), "30 minutes")
+    check(
+        "and did not rename the control",
+        str(focus.el, kAXTitleAttribute as String), "Focus length")
+    AXUIElementPerformAction(focus.el, kAXDecrementAction as CFString)
+    usleep(400_000)
+    check(
+        "and back down", str(focus.el, kAXValueAttribute as String), "25 minutes")
+}
+
 if let slider = find(role: kAXSliderRole as String, title: "Volume") {
     check("slider advertises increment", actions(slider.el).contains(kAXIncrementAction as String))
     AXUIElementPerformAction(slider.el, kAXIncrementAction as CFString)

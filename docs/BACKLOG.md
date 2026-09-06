@@ -319,7 +319,64 @@ needs a vocabulary and answers only the Tab half. Whichever wins, decision
 3's "what a sink owns" and "what a control owns" go into the README's Input
 paragraph in one sentence each.
 
-### `~` F8 — Sliders announce as percentages: no `valueText`
+### `~` F8 — Sliders announce as percentages: no `valueText` — done (2026-09-06)
+
+**Done (2026-09-06).** `valueText` is a `Str` row (id 82) beside the three
+numbers — `value_text` in Lua and C, `.value_text()` in Rust. Meaningful
+on the slider role alone.
+
+**The AccessKit question, answered on the platform before anything was
+built.** The harness `kui-ax-repro` describes drove
+`examples/rust/accessibility` with a scratch patch that put a string value
+on the slider that already had `numeric_value`, and asked the real macOS
+AX API what it saw. `accesskit_macos` 0.27 has **one** value slot and the
+string takes it: `NodeWrapper::value` tries `toggled`, then a tab's
+selection, then `label_is_exposed_in_value`, then the node's *string*
+value, and reaches `numeric_value` only if all of those are absent
+(`node.rs:344`). So `AXValue` came back as the string and the number was
+not readable there at all — `num(AXValue)` was nil, not 3.0. `AXMinValue`
+and `AXMaxValue` survived (they are read straight off the node, not
+through `value()`), `AXIncrement` and `AXDecrement` stayed advertised, and
+after a nudge the string was the new one. **Replaces, does not join** —
+which is exactly what `aria-valuetext` means, and it settles where the
+string goes.
+
+**So it goes in the slot the platform has.** `AccessNode.value` — the
+field that already carried an editor's text — is now "the node's one
+string value", and the `Role::Slider` arm fills it from `value_text`. That
+is not a shortcut: an IR with two string fields feeding one `set_value`
+could express a frame the platform cannot draw. It also costs nothing
+downstream. `access_bridge.rs` is unchanged (it already calls
+`set_value`), `KuiAccessNode` does not grow — and that matters, because it
+is an [out-array] struct whose growth would have bumped `KUI_ABI_VERSION`
+and broken the stride for every C host — and the corpus report's `value`
+column, Node's `accessTree()` and the audit script all read it as they
+were. The ABI moved by one [in] append, `KuiSpec.value_text`, which old
+hosts survive by construction; the version stays at 7.
+
+**Not on a progress-shaped `group`**, which the entry asked about. A group
+carries none of `valueNow` / `valueMin` / `valueMax` either — `number`,
+`min` and `max` are set in the `Role::Slider` arm and nowhere else — and a
+role whose numbers are ignored should not have a reading that is not. The
+adapter would put the string in `AXValue` on any role (`value()` does not
+filter), but whether VoiceOver *speaks* an `AXGroup`'s value is its own
+policy, and the harness reads attributes, not utterances: it could not
+have settled that half. A progress role of its own is the honest way to
+want this, and no report has asked for one.
+
+Tests. `tests/access.rs`: the access node carries the string, the range
+still travels, the nudge action is still advertised, and a slider that
+named no reading has no string value. The corpus `controls` scene grew a
+slider carrying `valueText` — the row travels in the report's value
+column, so Rust, Lua, C and Node all reproduce `1 slider Focus length||25
+minutes` byte-identically. `scripts/ax-audit.swift` asserts it against a
+real window: the string is the value, the number is *gone* from `AXValue`,
+min and max survive, the name is untouched, and — ADR 0008's rule for a
+valued control — `AXIncrement` announces "30 minutes" and leaves the name
+alone. 106/106 checks pass. `examples/rust/accessibility.rs` now shows
+both readings side by side: `Volume` declares only its number, `Focus
+length` declares 25 in [5..60] with the text, which is the report's own
+case. `npm run gen` regenerated `docs/props.md` and `jsx-runtime.d.ts`.
 
 Evidence: pomodoro 2.1, confirmed under real VoiceOver: 25 min in [5..60]
 reads as "36 percent", and the arithmetic matches for all three sliders.
@@ -327,6 +384,8 @@ reads as "36 percent", and the arithmetic matches for all three sliders.
 else — no `aria-valuetext`. The workaround bakes the reading into the name
 (`"FOCUS LENGTH, 25 MINUTES"`), which is the wrong attribute and renames the
 control on every nudge.
+
+**The original entry follows.**
 
 **Do:** a `valueText` row (`Kind::Str`, meaningful on the slider role)
 carried on `AccessNode` and set on the AccessKit node as its string value —
@@ -478,8 +537,11 @@ ran twice, closed as its (a), the `keyUp` flag) all landed **2026-09-06**,
 and both of the last two carry a "what breaks" line in the CHANGELOG for the
 next tag. **F4** (the modal restore overriding a `keyFocus` edge) is the one
 left. Then the gaps in rough order of cost: F9 and F10 are an afternoon, F6
-and F11 a day each (~~F5~~ was one, and is **done (2026-09-06)**), F8
-needs one AccessKit question answered first. F7 (global shortcuts under a
+and F11 a day each (~~F5~~ was one, and is **done (2026-09-06)**). ~~F8~~ —
+**done (2026-09-06)**: the AccessKit question it turned on was answered on
+the platform first, and the answer (one value slot, the string takes it and
+replaces the number) is what put the reading in `AccessNode.value` and kept
+the ABI at 7. F7 (global shortcuts under a
 Tab ring) joins the ADR group below, where ~~F12~~ (a line primitive) also
 sat until it landed as `docs/adr/0010-a-segment-primitive.md`. F13
 (VoiceOver at launch) and F15 (panning in a window) are reports nobody in
