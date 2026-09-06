@@ -763,7 +763,8 @@ export declare class Ctx {
   /**
    * The frame clock for `transition` props: monotonic seconds, any
    * origin. Set before each frame; never setting it makes transitions
-   * snap (the default for headless tests).
+   * snap. `createApp`'s loop sets it before every frame it draws and
+   * `advance` moves it, so only a bare `Ctx` snaps.
    */
   setTime(nowSecs: number): void
   /**

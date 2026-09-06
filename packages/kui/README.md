@@ -71,8 +71,10 @@ asserts on what the core produced:
 - **Input**: `app.click(x, y)`, `app.type(s)`, `app.key(name)` settle the
   loop for you; `app.ctx.cursor` / `mouse` / `scroll` / `keyDown` /
   `modifiers` are the raw events (a drag is cursor, mouse down, cursor,
-  mouse up). `app.ctx.setTime(s)` is the clock — never set, transitions
-  snap, which is what most tests want.
+  mouse up). The loop sets the frame clock before every frame, so a
+  `transition` eases from the frame that changes it and `app.advance(ms)`
+  is what moves it; a test that wants only the end state advances past
+  the duration. (A bare `Ctx` whose `setTime` is never called snaps.)
 - **Time**: `app.advance(ms)` is the window's timer by hand. It fires every
   `tick` that falls inside the span, moves the frame clock behind
   `transition` with it, and re-renders — so a ticking app (a countdown, a

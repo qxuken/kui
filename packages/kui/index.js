@@ -98,6 +98,12 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
 
   let now = clock ? clock() : (opts.startTime ?? Date.now());
   const at = () => (clock ? clock() : now);
+  // The frame clock behind `transition` is set here and before every frame,
+  // so `render()` and an event-driven frame see the same hands `advance`
+  // moves: a tween's baseline is taken under a clock, not under none (where
+  // the core snaps). A real window has no `setTime` — its runner stamps the
+  // frame from its own epoch — so a wall-clock loop over one is a no-op here.
+  surface.setTime?.(at() / 1000);
   // The clock, when asked for: `tick.msg` (or `tick.msg(now)`) goes through
   // `update` every `tick.every` ms.
   const every = tick?.every > 0 ? tick.every : 0;
@@ -147,6 +153,7 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
   // also carries what `windows(model)` declares, so the set the loop draws
   // is the set the core diffs. A headless `Ctx` is one window, the main.
   function draw() {
+    surface.setTime?.(at() / 1000);
     const declared = windows ? windows(model) : undefined;
     for (const name of open()) {
       const tree = view(model, name);
@@ -210,7 +217,6 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
         throw new Error('kui: advance() moves the loop\'s own clock; this one runs on the wall clock');
       }
       now += ms;
-      surface.setTime?.(now / 1000);
       ticksTo(now, true);
       draw();
       app.settle();

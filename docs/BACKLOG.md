@@ -122,7 +122,32 @@ the legend mark rather than by report; "After alpha.6" says where each goes.
 The reports' own app bugs (a visible label used as a key, a font id shared
 across cores) are theirs and are not here.
 
-### `!` F1 — The Node loop never sets the frame clock until the first `advance`
+### `!` F1 — The Node loop never sets the frame clock until the first `advance` — **done (2026-09-06)**
+
+`createLoop` stamps the frame clock when it is built and at the top of
+`draw()` (`surface.setTime?.(at() / 1000)`), and `advance` no longer sets
+it itself — one place, so `render()`, `click()`, `type()`, `step()` and
+`advance()` all draw under the same hands. The window needed nothing:
+`KuiWindow` has no `setTime` (the optional call is a no-op there) and the
+Rust runner already stamps every frame from its own epoch
+(`crates/kui/src/lib.rs`, `pane.core.set_time(epoch.elapsed())`), so a
+wall-clock loop does not double it; the `clock` option is only where `at()`
+reads from. The repro is a test in `packages/kui/test.mjs` ("render and an
+event-driven frame share the clock advance moves (F1)"): render, dispatch,
+render — still 100, the baseline — then `advance(50)` is strictly between
+100 and 400 with `animating()` true, and `advance(200)` is 400 and false.
+
+Mutation-tested: deleting the `setTime` in `draw()` fails that test at
+"mid-flight at 50 ms, not 100" and also fails the older `advance`
+transition test, which had only passed because it called `advance(0)`
+before the change — the workaround in disguise. Deleting the creation-time
+line alone fails nothing, because `draw()` covers it; it stays for anything
+that reads the surface before the first frame. The rest of the suite passed
+unchanged, so no in-repo test was leaning on the snap. Docs: `setTime`'s
+doc (in `lib.rs` and `index.d.ts`, edited by hand to the same words) no
+longer calls the unset clock "the default for headless tests", the README's
+Testing section says the loop keeps the clock, and the changelog carries it
+under Fixed and "what you can delete". F14's first bullet still stands.
 
 Evidence: mind-map #8, `repro/transition-advance.tsx`. A keyed box going
 100 → 400 under `transition={200}` is already at 400 in the frame that
@@ -480,9 +505,9 @@ logic rather than the struct — it wants a profile now the cache behaviour has
 changed. Plus the CI threshold on `frame_10k_rects` and `frame_1k_typical`,
 which the size test does not replace.
 
-**From the field (F1–F15).** Four defects first: F1 (the Node loop never
-sets the frame clock, which is why nothing eased is testable from Node), F2
-(drag deltas), F4 (the modal restore overriding a `keyFocus` edge) and F3
+**From the field (F1–F15).** Four defects first: ~~F1 (the Node loop never
+sets the frame clock, which is why nothing eased is testable from Node)~~
+(done 2026-09-06), F2 (drag deltas), F4 (the modal restore overriding a `keyFocus` edge) and F3
 (an alpha.4 keymap runs twice — a decision between its (a) and (b) before
 the next tag, since every migrating app hits it). Then the gaps in rough
 order of cost: F9 and F10 are an afternoon, F5, F6 and F11 a day each, F8

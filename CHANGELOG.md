@@ -74,6 +74,18 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Fixed
 
+- **A `transition` eases under `createApp`, so it is testable from Node**
+  (backlog F1, the mind-map field report's #8). The loop set the core's
+  frame clock only inside `advance(ms)`; `render()`, `click()`, `type()`
+  and every event-driven frame ran with the clock unset, where the core
+  snaps by design — so a keyed box going 100 → 400 under `transition: 200`
+  was already at 400 in the frame that applied the change, and
+  `animating()` said true for 200 ms while nothing moved. The loop now
+  stamps the clock when it is built and before every frame it draws, so
+  the baseline is taken at the loop's time and the first `advance` is
+  mid-flight. A test that wants only the end state advances past the
+  duration. Nothing changed for a window: its runner already stamps each
+  frame from its own epoch, and `KuiWindow` has no `setTime`.
 - **The accessibility example's Actions menu was drawn half outside the
   window.** `FloatConfig::below()` centres a float on its anchor, so a
   180-wide menu under a 90-wide button near the left edge hung off it, and
@@ -160,6 +172,10 @@ upgrades remove code from the apps on it is doing the job.
   threshold, a "show 6 of 40" that existed because 40 did not fit — is a
   `kind: "popup"` declaration and an `anchor` now. The handler does not
   change: it was already answering `dismiss`.
+
+- The `app.ctx.setTime(s)` calls a test wrapped around each `render()`,
+  or the `app.advance(0)` it made before a change, to see a `transition`
+  move at all. The loop keeps the clock now; `advance(ms)` alone moves it.
 
 - The state field that held a status message *only* so a screen reader
   would see it change, and the code that cleared it a frame later. A

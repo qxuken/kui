@@ -694,6 +694,40 @@ test('advance moves the frame clock, so a transition runs headless', () => {
   assert.equal(barWidth(), 200);
 });
 
+test('render and an event-driven frame share the clock advance moves (F1)', () => {
+  // The mind map's repro (`playground/kui/mind-maps/repro/transition-advance.tsx`):
+  // the loop used to set the frame clock only inside `advance`, so a frame
+  // drawn by `render()` or by an event ran with none — where the core snaps
+  // — and a keyed box going 100 → 400 under `transition: 200` was already at
+  // 400 in the frame that applied the change, with `animating()` true for
+  // 200 ms of nothing moving. Now the loop stamps the clock before every
+  // frame, so the baseline is taken at t0 and the first `advance` is
+  // mid-flight.
+  const app = createApp(
+    {
+      init: { wide: false },
+      update: (m, msg) => (msg === 'go' ? { wide: true } : m),
+      view: (m) =>
+        box({ width: 'grow', height: 'grow', pad: 20 }, [
+          box({ width: m.wide ? 400 : 100, height: 30, bg: '#7aa2ff', transition: 200 }, [], 'bar'),
+        ]),
+    },
+    { width: 640, height: 480, startTime: 0 },
+  );
+  const barWidth = () => decodeQuads(app.ctx.quads()).find((q) => Math.round(q.h) === 30).w;
+  app.render();
+  assert.equal(barWidth(), 100);
+  app.dispatch('go');
+  app.render();
+  assert.equal(barWidth(), 100, 'the frame that applies the change is the baseline');
+  app.advance(50);
+  assert.ok(barWidth() > 100 && barWidth() < 400, `mid-flight at 50 ms, not ${barWidth()}`);
+  assert.ok(app.ctx.animating(), 'animating while it moves');
+  app.advance(200);
+  assert.equal(barWidth(), 400);
+  assert.equal(app.ctx.animating(), false);
+});
+
 test("a loop on a wall clock resyncs rather than firing a burst of ticks", () => {
   // The windowed half of the same bookkeeping: `runWindowed` fills `clock`
   // with `Date.now`, so a fake one drives it without a display.
