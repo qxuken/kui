@@ -45,6 +45,19 @@ fn instance_of(q: &Quad) -> Instance {
         QuadKind::Image => 3.0,
         QuadKind::GlyphSubpixel => 4.0,
         QuadKind::Shadow => 5.0,
+        QuadKind::Segment => 6.0,
+    };
+    // `uv` is atlas texels on every kind but one; a segment carries its
+    // endpoints there as f32 bits, and the shader wants them as floats.
+    let uv = if q.kind == QuadKind::Segment {
+        q.segment_ends()
+    } else {
+        [
+            q.uv[0] as f32,
+            q.uv[1] as f32,
+            q.uv[2] as f32,
+            q.uv[3] as f32,
+        ]
     };
     Instance {
         pos: [q.rect.x, q.rect.y],
@@ -57,12 +70,7 @@ fn instance_of(q: &Quad) -> Instance {
             q.border_color.a,
         ],
         params: [q.blur, q.border_w, kind, 0.0],
-        uv: [
-            q.uv[0] as f32,
-            q.uv[1] as f32,
-            q.uv[2] as f32,
-            q.uv[3] as f32,
-        ],
+        uv,
         clip: [q.clip.x, q.clip.y, q.clip.w, q.clip.h],
         radii: q.radius,
         clip_radii: q.clip_radius,

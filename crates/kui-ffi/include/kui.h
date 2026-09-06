@@ -170,8 +170,15 @@ enum { KUI_START = 0, KUI_CENTER = 1, KUI_END = 2 };
 /* KUI_QUAD_SHADOW: `color` fills a rounded rect inset from the quad by
    `blur` on every side, its edge ramped over `blur` px; ignores uv,
    border_color and border_w. */
+/* KUI_QUAD_SEGMENT: a round-capped stroke between two endpoints. `uv` holds
+ * them as float bits - x0, y0, x1, y1 in physical px, memcpy each uint32_t
+ * into a float - `border_w` is the stroke width and `color` the stroke; the
+ * quad is the bounding box padded past the edge ramp. A renderer evaluates
+ * the capsule SDF against the fragment position. Ignores radius,
+ * border_color and blur. (docs/adr/0010-a-segment-primitive.md) */
 enum { KUI_QUAD_SOLID = 0, KUI_QUAD_GLYPH_MASK = 1, KUI_QUAD_GLYPH_COLOR = 2,
-       KUI_QUAD_IMAGE = 3, KUI_QUAD_GLYPH_SUBPIXEL = 4, KUI_QUAD_SHADOW = 5 };
+       KUI_QUAD_IMAGE = 3, KUI_QUAD_GLYPH_SUBPIXEL = 4, KUI_QUAD_SHADOW = 5,
+       KUI_QUAD_SEGMENT = 6 };
 /* Font families (KuiTextStyle.family) */
 enum { KUI_FONT_SANS = 0, KUI_FONT_SERIF = 1, KUI_FONT_MONO = 2 };
 /* Line breaking (KuiTextStyle.wrap) */
@@ -513,6 +520,16 @@ typedef struct KuiSpec {
      * behind it, kui_announce is the other half. See
      * docs/adr/0008-live-regions-and-announcements.md. */
     uint32_t live;
+    /* Non-zero, with a non-NULL on_key on kui_open_with: the sink hears
+     * releases too, as the same {kind="key"} payload with phase="up" (a
+     * null `text`, `repeat` false) - for a held-key interaction: WASD,
+     * press-and-hold, a key that arms a mode while it is down. A key only
+     * comes up where it went down (a release whose press the sink never got
+     * resolves nothing), and focus leaving while a key is held delivers the
+     * "up" first, so nothing is left stuck down. Zero: presses only, which
+     * is what a keymap wants - one that heard both halves would run every
+     * binding twice. */
+    uint32_t key_up;
 } KuiSpec;
 
 /* Disclosure state (KuiSpec.expanded): the schema index plus one, so zero
@@ -889,7 +906,7 @@ typedef struct KuiQuad {
     float border_w;
     float blur;              /* KUI_QUAD_SHADOW: blur radius, also how far the rect is inflated */
     uint32_t kind;           /* KUI_QUAD_* */
-    uint32_t uv[4];          /* atlas texels: x, y, w, h */
+    uint32_t uv[4];          /* atlas texels: x, y, w, h; KUI_QUAD_SEGMENT: the endpoints as float bits */
     float clip[4];           /* clip rect (physical px): pixels outside are transparent */
     /* Corner radii of the clip (physical px), clockwise from the top-left:
      * pixels outside the ROUNDED clip are transparent too. A clipping node
@@ -954,11 +971,13 @@ void kui_input_key(KuiCtx *ctx, uint32_t key, uint32_t mods); /* KUI_KEY_* + KUI
  * the host does not track positions (then it equals `code`); `kmods` is
  * KUI_KMOD_* bits; `text` is what the press inserts, or {NULL, 0} to derive
  * it from `code`; `repeat` marks an auto-repeat. The focused sink polls
- * {kind="key", phase="down"|"up", code, physical, ctrl, alt, shift, super,
- * text, repeat, tag}; a release carries a null `text`. A release whose press
- * the sink never got resolves nothing, and moving focus while a key is held
- * delivers the "up" first, so a held-key binding (WASD, press-and-hold)
- * cannot be left stuck down. An unknown `code` or `physical` is ignored.
+ * {kind="key", phase="down", code, physical, ctrl, alt, shift, super, text,
+ * repeat, tag} for each press; a sink whose KuiSpec set key_up hears the
+ * release too, as the same payload with phase="up" and a null `text`. A
+ * release whose press the sink never got resolves nothing, and moving focus
+ * while a key is held delivers the "up" first, so a held-key binding (WASD,
+ * press-and-hold) cannot be left stuck down. An unknown `code` or `physical`
+ * is ignored.
  *
  * Passing both is what makes a keymap portable. A layout that produces
  * something outside ASCII (Cyrillic, Greek, Hebrew, Arabic) would leave a
@@ -1128,15 +1147,21 @@ void kui_root(KuiCtx *ctx, const KuiSpec *spec);
 uint64_t kui_open(KuiCtx *ctx, const KuiSpec *spec, KuiValue *on_click);
 uint64_t kui_open_keyed(KuiCtx *ctx, KuiStr label, const KuiSpec *spec, KuiValue *on_click);
 /* Draggable container: press-drag emits {kind="drag", phase="start"|"move"|
- * "end", x, y, dx, dy, tag} events; a drag past the click slop suppresses
- * on_click. on_click/on_drag are nullable and consumed. */
+ * "end", x, y, dx, dy, parent, tag} events. dx/dy are the displacement from
+ * the press point in every phase - start is zero, a move is how far the
+ * pointer is from where it pressed, end is the whole distance - so a handler
+ * sets value = start + dx rather than summing, and can commit from end
+ * alone; nothing is lost under the click slop. A drag past the slop (3 px
+ * from the press) suppresses on_click. on_click/on_drag are nullable and
+ * consumed. */
 uint64_t kui_open_draggable(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
                             KuiValue *on_click, KuiValue *on_drag);
 /* The general container: every message prop at once, each nullable and
  * consumed. NULL means absent (a NULL on_drag here does NOT make the node
  * draggable, unlike kui_open_draggable). A non-NULL on_key makes the node a
  * key sink: focus it with kui_set_key_focus and every press arrives as
- * {kind="key", code, ctrl, alt, shift, super, text, repeat, tag}. A non-NULL
+ * {kind="key", phase="down", code, ctrl, alt, shift, super, text, repeat,
+ * tag} - releases too, with phase="up", when KuiSpec.key_up is set. A non-NULL
  * on_hover makes the pointer entering/leaving emit
  * {kind="hover", phase="enter"|"leave", tag} — for hover-dependent layout;
  * plain hover colors belong in KuiSpec.hover_bg / pressed_bg. A tag of
@@ -1158,6 +1183,15 @@ uint64_t kui_open_with(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
 void kui_set_key_focus(KuiCtx *ctx, uint64_t key);
 /* Moves focus to key now (0 blurs). */
 void kui_focus(KuiCtx *ctx, uint64_t key);
+/* The key of the node opened under label in the last finished frame (from
+ * inside a view callback: this frame so far, then the last one); 0 for a
+ * label no node declared. Keys hash the path from the root, through the
+ * auto-keyed ancestors a host cannot spell, so a node no event has come
+ * from is named this way: kui_focus(ctx, kui_key_of(ctx, KUI_STR("note"))).
+ * Labels are unique among siblings, not across the tree: two nodes on one
+ * label under different parents resolve to the first in tree order, with an
+ * "ambiguous-key" warning (kui_take_warnings). */
+uint64_t kui_key_of(KuiCtx *ctx, KuiStr label);
 /* What Tab (forward) / Shift-Tab does: the next / previous focusable node,
  * wrapping. */
 void kui_focus_next(KuiCtx *ctx, bool forward);
@@ -1247,6 +1281,24 @@ void kui_audio_ended(KuiCtx *ctx, uint64_t playback);
 /* An image node. Fit sizing = the image's pixel size as logical px; a Fit
  * height against a resolved width keeps the aspect; radius rounds corners. */
 void kui_image(KuiCtx *ctx, uint64_t id, const KuiSpec *spec);
+/* A round-capped stroke from (x0, y0) to (x1, y1), in the parent's box space
+ * (docs/adr/0010-a-segment-primitive.md). Never in layout: the node is a float
+ * sized to the stroke's bounding box, so spec's sizing, padding and alignment
+ * are ignored; what it keeps is transition/enter/exit (the colour eases),
+ * opacity, on_layout (the bounding box), a label/role, and a declared float
+ * anchor (KUI_FLOAT_VIEWPORT reads the points in viewport space). width is the
+ * stroke width in logical px (<= 0: 1); color 0xRRGGBBAA (0: the default
+ * foreground). Takes no pointer input - interaction on spec warns
+ * `line-ignores-input`. spec may be NULL. */
+void kui_line(KuiCtx *ctx, float x0, float y0, float x1, float y1, float width,
+              uint32_t color, const KuiSpec *spec);
+/* The same through `count` points (xy: x0, y0, x1, y1, ...; fewer than two draw
+ * nothing): a polyline, or with `curve` a smooth curve through the points,
+ * flattened in the core. Consecutive pieces overlap at their round caps.
+ * label keys the node (empty = a key from the tree position) so a stroke can
+ * transition or exit; kui_line is auto-keyed. */
+void kui_polyline(KuiCtx *ctx, KuiStr label, const float *xy, size_t count,
+                  float width, uint32_t color, bool curve, const KuiSpec *spec);
 void kui_close(KuiCtx *ctx);
 void kui_text(KuiCtx *ctx, KuiStr text, const KuiTextStyle *style);
 void kui_rich_text(KuiCtx *ctx, const KuiSpan *spans, size_t span_count,

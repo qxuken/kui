@@ -18,10 +18,12 @@ struct Instance {
     @location(1) size: vec2<f32>,
     @location(2) color: vec4<f32>,
     @location(3) border_color: vec4<f32>,
-    // blur (shadows), border_w, kind (0 solid / 1 mask glyph / 2 color
-    // glyph / 3 image / 4 subpixel glyph / 5 shadow), unused
+    // blur (shadows), border_w (also the stroke width of a segment), kind
+    // (0 solid / 1 mask glyph / 2 color glyph / 3 image / 4 subpixel glyph
+    // / 5 shadow / 6 segment), unused
     @location(4) params: vec4<f32>,
-    // atlas texels: x, y, w, h
+    // atlas texels: x, y, w, h — or, for a segment, its two endpoints in
+    // physical px: x0, y0, x1, y1 (the Rust side decodes the bits)
     @location(5) uv: vec4<f32>,
     // clip rect in physical px: x, y, w, h
     @location(6) clip: vec4<f32>,
@@ -42,6 +44,10 @@ struct VsOut {
     @location(6) clip: vec4<f32>,
     @location(7) radii: vec4<f32>,
     @location(8) clip_radii: vec4<f32>,
+    // The instance's uv untouched, for a segment's endpoints: `uv` above
+    // has been divided by the atlas size, which is right for a glyph and
+    // meaningless here.
+    @location(9) seg: vec4<f32>,
 };
 
 @vertex
@@ -68,6 +74,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, inst: Instance) -> VsOut {
     out.clip = inst.clip;
     out.radii = inst.radii;
     out.clip_radii = inst.clip_radii;
+    out.seg = inst.uv;
     return out;
 }
 
@@ -86,6 +93,15 @@ fn sd_rounded_box(p: vec2<f32>, half: vec2<f32>, radii: vec4<f32>) -> f32 {
     let rr = min(r, min(half.x, half.y));
     let q = abs(p) - half + vec2<f32>(rr, rr);
     return length(max(q, vec2<f32>(0.0, 0.0))) + min(max(q.x, q.y), 0.0) - rr;
+}
+
+// Signed distance from `p` to the segment `a`–`b` with round caps of
+// radius `r`: the capsule. A zero-length segment is a dot of radius `r`.
+fn sd_segment(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>, r: f32) -> f32 {
+    let pa = p - a;
+    let ba = b - a;
+    let h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0);
+    return length(pa - ba * h) - r;
 }
 
 // A fragment's straight (non-premultiplied) color and its per-channel
@@ -135,6 +151,17 @@ fn shade(in: VsOut) -> Shaded {
         // LCD subpixel glyph: the atlas holds one coverage per channel.
         let t = textureSample(atlas_tex, atlas_smp, in.uv);
         return Shaded(in.color.rgb, t.rgb * in.color.a * inside);
+    }
+
+    if kind == 6u {
+        // A round-capped stroke between two endpoints, in the same
+        // framebuffer space as the clip: the capsule SDF against the
+        // fragment, half the stroke width as its radius, ramped over the
+        // same AA as every other edge. The quad is the bounding box padded
+        // past the ramp, so nothing is cut by its edge.
+        let d = sd_segment(p, in.seg.xy, in.seg.zw, in.params.y * 0.5);
+        let cov = 1.0 - smoothstep(-AA, AA, d);
+        return Shaded(in.color.rgb, vec3<f32>(in.color.a * cov * inside));
     }
 
     // Solid rounded rect with optional border, SDF antialiased. Images

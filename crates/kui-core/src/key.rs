@@ -34,9 +34,60 @@ impl Key {
     }
 }
 
+/// The `.str`-keyed nodes of one frame with the labels they were opened
+/// under — what `Core::key_of` resolves a name through. A binding that
+/// holds only strings cannot rebuild a key: the path from the root runs
+/// through auto-keyed ancestors it cannot spell. So the build records
+/// `(key, label)` as it goes, into one `Vec` and one `String` that are
+/// cleared, not dropped, between frames — a frame that keys a thousand
+/// rows allocates nothing after its first.
+#[derive(Default)]
+pub(crate) struct LabelIndex {
+    entries: Vec<(Key, u32, u32)>,
+    text: String,
+}
+
+impl LabelIndex {
+    pub(crate) fn clear(&mut self) {
+        self.entries.clear();
+        self.text.clear();
+    }
+
+    pub(crate) fn push(&mut self, key: Key, label: &str) {
+        let start = self.text.len() as u32;
+        self.text.push_str(label);
+        self.entries.push((key, start, label.len() as u32));
+    }
+
+    /// The keys opened under `label`, in tree order.
+    pub(crate) fn find<'a>(&'a self, label: &'a str) -> impl Iterator<Item = Key> + 'a {
+        self.entries
+            .iter()
+            .filter(move |(_, start, len)| {
+                *len as usize == label.len()
+                    && &self.text[*start as usize..(*start + *len) as usize] == label
+            })
+            .map(|(k, _, _)| *k)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn label_index_finds_in_tree_order_and_clears() {
+        let mut idx = LabelIndex::default();
+        idx.push(Key::ROOT.str("a"), "a");
+        idx.push(Key::ROOT.str("ab"), "ab");
+        idx.push(Key::ROOT.index(0).str("a"), "a");
+        let a: Vec<Key> = idx.find("a").collect();
+        assert_eq!(a, [Key::ROOT.str("a"), Key::ROOT.index(0).str("a")]);
+        assert_eq!(idx.find("ab").count(), 1, "a prefix is not a match");
+        assert_eq!(idx.find("b").count(), 0);
+        idx.clear();
+        assert_eq!(idx.find("a").count(), 0);
+    }
 
     #[test]
     fn keys_are_stable() {

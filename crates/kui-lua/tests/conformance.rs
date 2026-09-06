@@ -119,6 +119,14 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        "keys" => r#"
+            local function sink(name, key_up)
+              return row { key = name, width = 100, height = 24, bg = 0x1b1d27ff,
+                           on_key = 1, key_up = key_up, role = "group", label = name }
+            end
+            return column { pad = 10, gap = 6, sink("press", false), sink("held", true) }
+        "#
+        .to_string(),
         "modal" => r#"
             return column { width = { grow = 1 }, gap = 6,
               titlebar { text("app", { size = 12 }) },
@@ -162,6 +170,20 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
               column { key = "rows", role = "list", gap = 2,
                 pick("Alpha", "alpha"),
                 pick("Bravo", "bravo") },
+            }
+        "#
+        .to_string(),
+        // docs/adr/0010-a-segment-primitive.md: three strokes and a box in
+        // a 200×120 canvas; the elbow's on_click is the one a line ignores.
+        "lines" => r#"
+            return column { width = 200, height = 120, bg = 0x14161eff,
+              line { from = {10, 10}, to = {90, 70}, width = 2, color = 0x7f9cf5ff },
+              line { points = {{100, 20}, {140, 20}, {140, 60}}, width = 3,
+                     color = 0xd8863bff, on_click = "elbow" },
+              line { key = "curve", curve = true, width = 1.5, color = 0x9ad9a0ff,
+                     opacity = 0.5,
+                     points = {{20, 100}, {60, 80}, {100, 110}, {180, 90}} },
+              column { width = 40, height = 20, bg = 0x202030ff },
             }
         "#
         .to_string(),
@@ -255,6 +277,11 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                 text(phase == 0 and "0 results" or "3 results", { size = 12 }) },
               column { key = "empty", live = "polite" },
             }
+        "#
+        .to_string(),
+        "drag" => r#"
+            return column { key = "handle", width = 80, height = 40, bg = 0x30344aff,
+                            on_drag = { kind = "split" } }
         "#
         .to_string(),
         other => panic!("no Lua scene for {other:?} — every corpus scene needs one"),

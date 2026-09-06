@@ -71,9 +71,20 @@ const EVICT_AFTER_FRAMES: u64 = 300;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum GhostContent {
     Container,
-    Text { cache_key: u64, color: Color },
+    Text {
+        cache_key: u64,
+        color: Color,
+    },
     Edit(Key),
     Image(ImageId),
+    /// A stroke: `len` points from `first` in the ghost's own point list
+    /// (relative to the node's box, like the live run's), drawn `width`
+    /// wide in the colour the node's `bg` slot eases to.
+    Line {
+        first: u32,
+        len: u32,
+        width: f32,
+    },
 }
 
 pub(crate) struct GhostNode {
@@ -108,6 +119,10 @@ pub(crate) struct Place {
 pub(crate) struct Ghost {
     pub key: Key,
     pub nodes: Vec<GhostNode>,
+    /// The points of every `line` in the subtree, copied out of the frame
+    /// that had them (a `LineId` indexes a list that is rebuilt every
+    /// frame). Empty, and unallocated, for a subtree with no lines.
+    pub points: Vec<Vec2>,
     /// Where it is painted, relative to the live frame.
     pub place: Place,
     /// Clock reading (driver seconds) of the frame that noticed it gone.
@@ -260,6 +275,10 @@ impl DepartStore {
     /// nodes carry its ids.
     /// Refused, and remembered as refused, when it would put the store
     /// over [`MAX_NODES`].
+    // The two lists at the end are the frame's per-node side tables, read
+    // for the same kept frame `tree` is; a struct for the pair would name
+    // one thing that only exists here.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn depart(
         &mut self,
         tree: &Tree,
@@ -268,6 +287,7 @@ impl DepartStore {
         base_opacity: f32,
         place: Place,
         text: &crate::text::TextSystem,
+        lines: &crate::line::LineStore,
     ) {
         let spec = &tree.specs[root];
         let (Some(t), Some(exit)) = (spec.transition, spec.anim().exit) else {
@@ -290,6 +310,7 @@ impl DepartStore {
         // it, showed it and dropped it again inside one exit) replaces the
         // first: two pictures of one node are never right.
         self.retire(key);
+        let mut points = Vec::new();
         let nodes = (root..end)
             .map(|i| GhostNode {
                 parent: if i == root {
@@ -306,6 +327,16 @@ impl DepartStore {
                     }
                     NodeContent::Edit(k) => GhostContent::Edit(k),
                     NodeContent::Image(id) => GhostContent::Image(id),
+                    NodeContent::Line(id) => {
+                        let (run, pts) = lines.prev_run(id);
+                        let first = points.len() as u32;
+                        points.extend_from_slice(pts);
+                        GhostContent::Line {
+                            first,
+                            len: pts.len() as u32,
+                            width: run.width,
+                        }
+                    }
                 },
                 rect: Rect::from_pos_size(tree.pos[i], tree.size[i]),
             })
@@ -327,6 +358,7 @@ impl DepartStore {
         self.ghosts.push(Ghost {
             key,
             nodes,
+            points,
             place,
             left_at: now,
             duration,
@@ -499,9 +531,10 @@ mod tests {
     fn a_ghost_plays_out_and_then_goes() {
         let mut d = DepartStore::default();
         let text = crate::text::TextSystem::new();
+        let lines = crate::line::LineStore::default();
         let tree = tree_with(departing(NodeSpec::column()), 2);
         d.begin_frame();
-        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text);
+        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines);
         assert_eq!(d.node_count(), 3, "the subtree, not just its root");
 
         let mut seen = Vec::new();
@@ -522,9 +555,10 @@ mod tests {
     fn a_key_that_comes_back_takes_its_ghost_with_it() {
         let mut d = DepartStore::default();
         let text = crate::text::TextSystem::new();
+        let lines = crate::line::LineStore::default();
         let tree = tree_with(departing(NodeSpec::column()), 0);
         d.begin_frame();
-        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text);
+        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines);
         assert_eq!(d.keys().collect::<Vec<_>>(), vec![Key::ROOT.str("x")]);
         d.retire(Key::ROOT.str("x"));
         assert!(d.is_empty());
@@ -534,6 +568,7 @@ mod tests {
     #[test]
     fn a_node_without_both_halves_never_departs() {
         let text = crate::text::TextSystem::new();
+        let lines = crate::line::LineStore::default();
         for spec in [
             NodeSpec::column(),
             NodeSpec::column().transition(100.0),
@@ -545,7 +580,7 @@ mod tests {
             let mut d = DepartStore::default();
             let tree = tree_with(spec, 0);
             d.begin_frame();
-            d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text);
+            d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines);
             assert!(d.is_empty());
         }
     }
@@ -554,6 +589,7 @@ mod tests {
     fn the_budget_refuses_rather_than_grows() {
         let mut d = DepartStore::default();
         let text = crate::text::TextSystem::new();
+        let lines = crate::line::LineStore::default();
         // Subtrees of 16 nodes each: 32 fit, the 33rd does not.
         let tree = tree_with(departing(NodeSpec::column()), 15);
         d.begin_frame();
@@ -582,7 +618,7 @@ mod tests {
                     NodeContent::Container,
                 );
             }
-            d.depart(&t, 1, 0.0, 1.0, IN_FLOW, &text);
+            d.depart(&t, 1, 0.0, 1.0, IN_FLOW, &text, &lines);
         }
         assert_eq!(d.node_count(), MAX_NODES);
         assert_eq!(d.keys().count(), MAX_NODES / 16);
@@ -597,9 +633,10 @@ mod tests {
     fn a_ghost_nobody_replays_is_swept() {
         let mut d = DepartStore::default();
         let text = crate::text::TextSystem::new();
+        let lines = crate::line::LineStore::default();
         let tree = tree_with(departing(NodeSpec::column()), 0);
         d.begin_frame();
-        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text);
+        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines);
         // Frames without a replay: the sweep runs on the 240th.
         for _ in 0..480 {
             d.begin_frame();
@@ -612,13 +649,14 @@ mod tests {
     fn springs_play_out_as_ease_out() {
         let mut d = DepartStore::default();
         let text = crate::text::TextSystem::new();
+        let lines = crate::line::LineStore::default();
         let spec = NodeSpec::column()
             .transition(100.0)
             .easing(Easing::Spring)
             .exit(Enter::from(100.0, 0.0));
         let tree = tree_with(spec, 0);
         d.begin_frame();
-        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text);
+        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines);
         let mut x = 0.0;
         d.replay(0.05, |_, p| x = p.offset.x);
         let expect = Easing::EaseOut.apply(0.5) * 100.0;
@@ -629,6 +667,7 @@ mod tests {
     fn the_exit_reads_an_enter_backwards() {
         let mut d = DepartStore::default();
         let text = crate::text::TextSystem::new();
+        let lines = crate::line::LineStore::default();
         let spec = NodeSpec::column()
             .bg(Color::hex(0xff0000ff))
             .radius(10.0)
@@ -643,7 +682,7 @@ mod tests {
         let mut tree = tree_with(spec, 0);
         tree.size[1] = crate::geom::Size::new(40.0, 20.0);
         d.begin_frame();
-        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text);
+        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines);
         d.replay(0.05, |_, p| {
             assert!((p.opacity - 0.5).abs() < 1e-4, "halfway faded");
             assert!((p.bg.unwrap().a - 0.5).abs() < 1e-4, "halfway transparent");

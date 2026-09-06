@@ -205,6 +205,32 @@ fn parse_key(key: &str) -> Result<Key> {
     parse_u64(key).map(Key)
 }
 
+/// A key in the form events carry it: sixteen hex digits, `0x` or not.
+/// Anything else is a label (see `resolve_key`).
+fn hex_key(s: &str) -> Option<Key> {
+    let hex = s.strip_prefix("0x").unwrap_or(s);
+    (hex.len() == 16 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
+        .then(|| u64::from_str_radix(hex, 16).ok().map(Key))
+        .flatten()
+}
+
+/// The two spellings of a node the app can hand `focus` / `isFocused` /
+/// `reveal` / `access`: the hex key an event carried, or the label its
+/// `key` prop declared — resolved through the last frame (`Core::key_of`),
+/// so a node never interacted with can be named. An unknown label is an
+/// error naming both, since "bad id" named neither (backlog F5).
+fn resolve_key(core: &mut kui_core::Core, s: &str) -> Result<Key> {
+    if let Some(k) = hex_key(s) {
+        return Ok(k);
+    }
+    core.key_of(s).ok_or_else(|| {
+        err(format!(
+            "no node is keyed {s:?}: pass the label a `key` prop declared in the last frame, or the \
+             16-digit hex key an event carried"
+        ))
+    })
+}
+
 fn keycode_of(s: &str) -> Result<KeyCode> {
     KeyCode::from_name(s).ok_or_else(|| err(format!("unknown key code {s:?}")))
 }
@@ -331,7 +357,8 @@ impl Ctx {
 
     /// The frame clock for `transition` props: monotonic seconds, any
     /// origin. Set before each frame; never setting it makes transitions
-    /// snap (the default for headless tests).
+    /// snap. `createApp`'s loop sets it before every frame it draws and
+    /// `advance` moves it, so only a bare `Ctx` snaps.
     #[napi]
     pub fn set_time(&mut self, now_secs: f64) {
         self.core.set_time(now_secs);
@@ -503,9 +530,11 @@ impl Ctx {
     }
 
     /// The release of a key, spelled the way `keyDown` spells it (`physical`
-    /// included): the sink hears `{kind:"key", phase:"up", ...}` with `text`
-    /// null. A release whose press the sink never got resolves nothing, and
-    /// moving focus while a key is held delivers the `up` first.
+    /// included): a sink that declared `keyUp` hears `{kind:"key",
+    /// phase:"up", ...}` with `text` null; one that did not hears nothing,
+    /// since presses only is the keymap default. A release whose press the
+    /// sink never got resolves nothing, and moving focus while a key is
+    /// held delivers the `up` first.
     #[napi(ts_args_type = "code: string, mods?: KeySinkMods, physical?: string")]
     pub fn key_up(
         &mut self,
@@ -1321,12 +1350,14 @@ macro_rules! core_methods {
                 access_tree_json(self.$core().access_tree())
             }
 
-            /// A request from assistive technology on a node (`key`, hex as in
-            /// events): an `AccessAction` name the node advertises, with
-            /// `value` the new text for `setValue`. Resolved like its
-            /// pointer/keyboard equivalent, so the resulting events come out of
-            /// `pollEvents`. A real screen reader's requests arrive through a
-            /// window on their own.
+            /// A request from assistive technology on a node: an `AccessAction`
+            /// name the node advertises, with `value` the new text for
+            /// `setValue`. `key` is either spelling of the node — the hex key
+            /// an event carried (16 digits), or the label its `key` prop
+            /// declared, resolved through the last frame (see `focus`).
+            /// Resolved like its pointer/keyboard equivalent, so the resulting
+            /// events come out of `pollEvents`. A real screen reader's
+            /// requests arrive through a window on their own.
             #[napi(ts_args_type = "key: string, action: AccessAction, value?: string | AccessArg")]
             pub fn access(
                 &mut self,
@@ -1334,7 +1365,8 @@ macro_rules! core_methods {
                 action: String,
                 value: Option<Json>,
             ) -> Result<()> {
-                let req = access_request(&key, &action, value)?;
+                let key = resolve_key(self.$core(), &key)?;
+                let req = access_request(key, &action, value)?;
                 let events = self.$core().handle_input(InputEvent::Access(req));
                 self.$events().extend(events);
                 self.$redraw();
@@ -1375,10 +1407,13 @@ macro_rules! core_methods {
             // -- Focus ------------------------------------------------------
 
             /// Whether a node holds keyboard focus — any node: an editor, an
-            /// `onKey` sink, a button Tab landed on (see `focused`).
+            /// `onKey` sink, a button Tab landed on (see `focused`). `key` is
+            /// a hex key or a declared label, as for `focus`.
             #[napi]
             pub fn is_focused(&mut self, key: String) -> Result<bool> {
-                Ok(self.$core().is_focused(parse_key(&key)?))
+                let core = self.$core();
+                let key = resolve_key(core, &key)?;
+                Ok(core.is_focused(key))
             }
 
             /// The node holding keyboard focus (hex key), or null. Tab /
@@ -1401,9 +1436,20 @@ macro_rules! core_methods {
             /// Moves keyboard focus to a node now (an editor, an `onKey` sink,
             /// a control, a `focusable` box); `keyFocus` on a box is the
             /// declarative, edge-triggered form.
+            ///
+            /// `key` is either spelling of the node: the 16-digit hex key an
+            /// event carried, or the label its `key` prop declared —
+            /// `focus('note')` — resolved through the last frame, so a node
+            /// the user has never touched can be named. Labels are unique
+            /// among siblings, not across the tree: when two nodes declare
+            /// the same one, the first in tree order wins and an
+            /// `ambiguous-key` warning says so. A label no node declared
+            /// throws.
             #[napi]
             pub fn focus(&mut self, key: String) -> Result<()> {
-                self.$core().set_focus(Some(parse_key(&key)?));
+                let core = self.$core();
+                let key = resolve_key(core, &key)?;
+                core.set_focus(Some(key));
                 self.$redraw();
                 Ok(())
             }
@@ -1439,10 +1485,15 @@ macro_rules! core_methods {
             /// first time reveals fine. If that frame does not declare the key,
             /// or nothing above it scrolls, it is a no-op and is not kept for a
             /// later frame; two reveals before one frame are contradictory, so
-            /// the last wins.
+            /// the last wins. `key` is a hex key or a declared label, as for
+            /// `focus` — a label resolves through the *last* frame, so a row
+            /// the coming frame declares for the first time is reachable by
+            /// its hex key only.
             #[napi]
             pub fn reveal(&mut self, key: String) -> Result<()> {
-                self.$core().reveal(parse_key(&key)?);
+                let core = self.$core();
+                let key = resolve_key(core, &key)?;
+                core.reveal(key);
                 self.$redraw();
                 Ok(())
             }
@@ -1638,10 +1689,10 @@ fn measure_text_impl(
 /// (`setValue`, `replaceSelectedText`), or `{anchor: {run, character},
 /// focus: {run, character}}` for `setTextSelection` (run keys from the
 /// node's `runs`; an object may also carry `text`).
-fn access_request(key: &str, action: &str, arg: Option<Json>) -> Result<kui_core::AccessRequest> {
+fn access_request(key: Key, action: &str, arg: Option<Json>) -> Result<kui_core::AccessRequest> {
     let action = kui_core::AccessAction::parse(action)
         .ok_or_else(|| err(format!("unknown access action {action:?}")))?;
-    let mut req = kui_core::AccessRequest::new(parse_key(key)?, action);
+    let mut req = kui_core::AccessRequest::new(key, action);
     let pos = |v: &Json| -> Result<kui_core::TextPos> {
         let run = v
             .get("run")

@@ -132,6 +132,7 @@ pub const P_INITIAL_FOCUS: u32 = 77;
 pub const P_EXIT: u32 = 78;
 pub const P_WINDOWS: u32 = 79;
 pub const P_LIVE: u32 = 80;
+pub const P_KEY_UP: u32 = 81;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -661,14 +662,21 @@ pub const PROPS: &[PropDef] = &[
         id: P_ON_DRAG,
         kind: Kind::Tag,
         apply: Apply::SpecMsg(|s, v| s.on_drag(v)),
-        doc: "Drag tag: emits {kind:\"drag\", phase, x, y, dx, dy, parent, tag} events.",
+        doc: "Drag tag: emits {kind:\"drag\", phase, x, y, dx, dy, parent, tag} events, `dx`/`dy` measured from the press point in every phase.",
     },
     PropDef {
         name: "onKey",
         id: P_ON_KEY,
         kind: Kind::Tag,
         apply: Apply::SpecMsg(|s, v| s.on_key(v)),
-        doc: "Key-sink tag: with key focus held, presses and releases arrive as {kind:\"key\", phase:\"down\"|\"up\", ...} events.",
+        doc: "Key-sink tag: with key focus held, presses arrive as {kind:\"key\", phase:\"down\", code, ...} events. Releases only with `keyUp` beside it.",
+    },
+    PropDef {
+        name: "keyUp",
+        id: P_KEY_UP,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.key_up()),
+        doc: "With `onKey`: releases arrive too, as the same payload with phase:\"up\" (`text` null, `repeat` false) — for a held-key interaction (WASD, press-and-hold, a key that arms a mode while it is down). A key only comes up where it went down: a release whose press the sink never got is dropped, and focus leaving while a key is held delivers the `up` first, so nothing is left stuck down. Without it a sink hears presses only, which is what a keymap wants — one that heard both halves would run every binding twice.",
     },
     PropDef {
         name: "onContextMenu",
@@ -1192,6 +1200,17 @@ pub const ELEMENTS: &[ElementDef] = &[
         doc: "A registered RGBA image; `fit` takes the pixel size, a fit height against a resolved width keeps the aspect, radius rounds it.",
     },
     ElementDef {
+        name: "line",
+        // `width` and `color` are schema rows already (a sizing and the text
+        // colour); on a line they are the stroke's width and colour.
+        jsx_own: &["from", "to", "points", "curve"],
+        lua_own: &["from", "to", "points", "curve"],
+        jsx: "`<line from={[x,y]} to={[x,y]} width color/>`, `<line points={[[x,y],…]} curve/>`",
+        lua: "`line { from={x,y}, to={x,y}, width=, color= }`, `line { points={{x,y},…}, curve=true }`",
+        c: "`kui_line`, `kui_polyline`",
+        doc: "A round-capped stroke: one segment, a polyline through `points`, or a smooth curve through them with `curve`. Always a float in its parent's box space (`float=\"viewport\"` for viewport space), sized to its own bounding box, so it takes no room in a row or column. `width` is the stroke width (default 1) and `color` the stroke colour; `transition` eases the colour. Takes no pointer input and has no access row (`docs/adr/0010-a-segment-primitive.md`).",
+    },
+    ElementDef {
         name: "titlebar",
         jsx_own: &[],
         // The window's own title is `window_title` on the root table; this
@@ -1256,7 +1275,7 @@ pub const EVENTS: &[EventDef] = &[
     EventDef {
         kind: "drag",
         payload: "`{ kind: \"drag\", phase: \"start\" | \"move\" | \"end\", x, y, dx, dy, parent: { x, y, w, h }, tag }`",
-        doc: "A pointer-captured drag on an `onDrag` node; `parent` is the container rect, so fractions need no geometry query. Today `dx`/`dy` are the change since the previous cursor position, not since the press: `start` and `end` carry zero, and the motion before the drag armed (cursor steps until one exceeds the 3 px slop) is dropped, so summing them over a drag falls short of `x − x₀` — anchor to `x`/`y` and the press point instead. F2 in `docs/BACKLOG.md` changes them to the displacement from the press point in every phase.",
+        doc: "A pointer-captured drag on an `onDrag` node. `x`/`y` are where the pointer is; `dx`/`dy` are its displacement **from the press point**, in every phase — `start` carries zero, a `move` how far the pointer is from where it pressed, `end` the whole distance — so a handler sets `value = start + dx` rather than summing deltas, and can commit from `end` alone. Nothing is dropped under the click slop (3 px, measured from the press): the first `move` already carries the whole distance. `parent` is the container rect, so fractions need no geometry query.",
     },
     EventDef {
         kind: "key",

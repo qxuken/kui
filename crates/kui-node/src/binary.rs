@@ -56,6 +56,7 @@ pub const OP_WINDOW_BUTTONS: u32 = 10;
 pub const OP_LATENCY_GRAPH: u32 = 11;
 pub const OP_LATENCY_HUD: u32 = 12;
 pub const OP_AUDIO: u32 = 13;
+pub const OP_LINE: u32 = 14;
 
 pub fn protocol_json() -> Json {
     let mut o = JsonMap::new();
@@ -78,6 +79,7 @@ pub fn protocol_json() -> Json {
                 ("latencyGraph", OP_LATENCY_GRAPH),
                 ("latencyHud", OP_LATENCY_HUD),
                 ("audio", OP_AUDIO),
+                ("line", OP_LINE),
             ]
             .into_iter()
             .map(|(k, v)| (k.to_string(), Json::from(v)))
@@ -415,6 +417,28 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
                 Some(label) => core.audio_node_keyed(label, spec),
                 None => core.audio_node(spec),
             };
+            Ok(())
+        }
+        // n, then n (x, y) pairs, width, flags (1 curve), then the prop
+        // list — `color` lands in the style, `key` in `p.key`, and the
+        // core decides the box (docs/adr/0010-a-segment-primitive.md).
+        OP_LINE => {
+            let n = r.u()? as usize;
+            let mut points = Vec::with_capacity(n);
+            for _ in 0..n {
+                let x = r.f()? as f32;
+                let y = r.f()? as f32;
+                points.push(kui_core::Vec2::new(x, y));
+            }
+            let width = r.f()? as f32;
+            let flags = r.u()?;
+            let p = read_props(r)?;
+            let mut stroke = kui_core::Stroke::new(width, p.style.color);
+            stroke.curve = flags & 1 != 0;
+            match &p.key {
+                Some(label) => core.line_node_keyed(label, &points, stroke, p.spec),
+                None => core.line_node(&points, stroke, p.spec),
+            }
             Ok(())
         }
         OP_TITLEBAR => {

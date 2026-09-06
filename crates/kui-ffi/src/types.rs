@@ -364,6 +364,14 @@ pub struct KuiSpec {
     /// behind it, `kui_announce` is the other half (see
     /// `docs/adr/0008-live-regions-and-announcements.md`).
     pub live: u32,
+    /// Non-zero, with a non-NULL `on_key` on `kui_open_with`: the sink hears
+    /// releases too, as the same `{kind="key"}` payload with `phase="up"`
+    /// (`text` null, `repeat` false) — for a held-key interaction (WASD,
+    /// press-and-hold, a key that arms a mode while it is down). A key only
+    /// comes up where it went down, and focus leaving while a key is held
+    /// delivers the `up` first. Zero: presses only, which is what a keymap
+    /// wants — one that heard both halves would run every binding twice.
+    pub key_up: u32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -928,6 +936,8 @@ pub struct KuiQuad {
     pub blur: f32,
     /// KUI_QUAD_*
     pub kind: u32,
+    /// Atlas texels: x, y, w, h. `KUI_QUAD_SEGMENT`: the endpoints as
+    /// float bits (see `kui_core::Quad::segment_ends`).
     pub uv: [u32; 4],
     /// Clip rect (physical px): x, y, w, h. Pixels outside are transparent.
     pub clip: [f32; 4],

@@ -27,9 +27,10 @@ use crate::input::{
     EditKey, HitRegion, InputEvent, Interaction, KeyPhase, KeyPress, MouseButton, ScrollAxis,
     ScrollRegion, ScrollbarRegion, UiEvent,
 };
-use crate::key::Key;
+use crate::key::{Key, LabelIndex};
 use crate::keyframes::{self, Keyframe};
 use crate::layout::{self, TextMeasure};
+use crate::line::Stroke;
 use crate::resources::{FontId, Resources};
 use crate::scroll::ScrollStore;
 use crate::session::{
@@ -108,6 +109,17 @@ pub struct Core {
     /// does not clobber a Tab press.
     declared_focus: Vec<Key>,
     declared_focus_last: Vec<Key>,
+    /// The `.str`-keyed nodes this frame and last, with their labels
+    /// (`open_keyed`): what `key_of` resolves a name through. The same
+    /// swap-and-clear pair as the focus declarations, so a frame that
+    /// keys nothing costs two clears.
+    key_labels: LabelIndex,
+    key_labels_last: LabelIndex,
+    /// Between `begin_frame` and `finish_frame`: `key_labels` is partial
+    /// and `key_labels_last` is the last whole frame, and `key_of` reads
+    /// both; outside a build `key_labels` is the whole last frame and is
+    /// the only one read.
+    building: bool,
     /// Windows this frame and last declared (`declare_window`): the same
     /// edge-triggered shape as the focus pair, one level up. The session's
     /// registry diffs the union across every core at `finish_frame`; the
@@ -125,6 +137,9 @@ pub struct Core {
     /// the frame that notices a node gone still has the node. Empty (and
     /// untouched) for every frame that declares no exit.
     prev_tree: Tree,
+    /// The frame's strokes, indexed by the `line` nodes' `LineId`s; the
+    /// previous frame's kept alongside on the same terms as `prev_tree`.
+    pub(crate) lines: crate::line::LineStore,
     pub(crate) display: DisplayList,
     pub(crate) viewport: Size,
     pub(crate) scale: f32,
@@ -282,6 +297,9 @@ impl Core {
             focus_visible: false,
             declared_focus: Vec::new(),
             declared_focus_last: Vec::new(),
+            key_labels: LabelIndex::default(),
+            key_labels_last: LabelIndex::default(),
+            building: false,
             declared_windows: Vec::new(),
             declared_windows_last: Vec::new(),
             keys_held: Vec::new(),
@@ -289,6 +307,7 @@ impl Core {
             access_built: 0,
             tree: Tree::new(),
             prev_tree: Tree::new(),
+            lines: Default::default(),
             display: DisplayList::default(),
             viewport: Size::ZERO,
             scale: 1.0,
@@ -560,6 +579,10 @@ impl Core {
         // compared against (see `set_key_focus`).
         std::mem::swap(&mut self.declared_focus, &mut self.declared_focus_last);
         self.declared_focus.clear();
+        // And the labels `key_of` resolves through, the same way.
+        std::mem::swap(&mut self.key_labels, &mut self.key_labels_last);
+        self.key_labels.clear();
+        self.building = true;
         // And the window declarations, which `finish_frame` diffs the same
         // way (see `declare_window`).
         std::mem::swap(&mut self.declared_windows, &mut self.declared_windows_last);
@@ -582,6 +605,9 @@ impl Core {
         // that frame's `TextId`s, and nothing else can resolve them.
         self.text
             .begin_frame(&mut self.session.state().fonts, scale, keep_prev);
+        // And the strokes, for the same reason: a kept frame's `line`
+        // nodes index that frame's list.
+        self.lines.begin_frame(keep_prev);
         self.sync_font_names();
         self.anim.begin_frame();
         self.depart.begin_frame();

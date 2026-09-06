@@ -3,7 +3,9 @@
 //!
 //! Run: cargo bench -p kui-core
 
-use kui_core::{Color, Core, Key, NodeSpec, Size, Sizing, TextStyle, Ui, Value, Vec2, widgets};
+use kui_core::{
+    Color, Core, Key, NodeSpec, Size, Sizing, Stroke, TextStyle, Ui, Value, Vec2, widgets,
+};
 
 /// What one grid frame contains. Every grid bench below goes through the
 /// same builder and differs only in these switches, so their medians can be
@@ -203,6 +205,84 @@ fn frame_10k_rects_with_shadows_and_opacity(bencher: divan::Bencher) {
     let mut core = Core::new();
     run_frame(&mut core, g);
     bencher.bench_local(|| run_frame(&mut core, g));
+}
+
+// -- Strokes ----------------------------------------------------------------
+// A `line` is a float sized to its own box that emits one segment quad per
+// straight piece (`docs/adr/0010-a-segment-primitive.md`). The first bench
+// has exactly the quad count of `frame_10k_rects`, so the difference
+// between the two is what a segment costs over a box: the line store, the
+// float placement, the endpoint encoding. The second is the flattening's
+// own bill — a thousand curves through eight knots, cut into pieces by
+// chord length every frame.
+
+fn segments(ui: &mut Ui<'_>, rows: usize, cols: usize) {
+    ui.configure_root(NodeSpec::column().fill());
+    for r in 0..rows {
+        for c in 0..cols {
+            let x = 8.0 + c as f32 * 19.0;
+            let y = 8.0 + r as f32 * 10.6;
+            ui.line(
+                Vec2::new(x, y),
+                Vec2::new(x + 14.0, y + 6.0),
+                Stroke::new(1.5, Color::rgb8((r % 255) as u8, (c % 255) as u8, 128)),
+                NodeSpec::column(),
+            );
+        }
+    }
+}
+
+fn run_segments(core: &mut Core, rows: usize, cols: usize) -> usize {
+    let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
+    segments(&mut ui, rows, cols);
+    ui.finish();
+    let (dl, _) = core.output();
+    dl.quads.len()
+}
+
+/// 10,000 one-segment lines: the same 10k quads as `frame_10k_rects`.
+#[divan::bench]
+fn frame_10k_segments(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    run_segments(&mut core, 100, 100);
+    bencher.bench_local(|| run_segments(&mut core, 100, 100));
+}
+
+fn curves(ui: &mut Ui<'_>, n: usize) {
+    ui.configure_root(NodeSpec::column().fill());
+    let mut knots = [Vec2::ZERO; 8];
+    for i in 0..n {
+        let x0 = (i % 40) as f32 * 48.0;
+        let y0 = (i / 40) as f32 * 40.0;
+        for (k, knot) in knots.iter_mut().enumerate() {
+            *knot = Vec2::new(
+                x0 + k as f32 * 6.0,
+                y0 + if k % 2 == 0 { 0.0 } else { 24.0 },
+            );
+        }
+        ui.polyline(
+            &knots,
+            Stroke::new(1.0, Color::rgb8(200, 200, 200)).curve(),
+            NodeSpec::column(),
+        );
+    }
+}
+
+fn run_curves(core: &mut Core, n: usize) -> usize {
+    let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
+    curves(&mut ui, n);
+    ui.finish();
+    let (dl, _) = core.output();
+    dl.quads.len()
+}
+
+/// 1,000 curves through eight knots each, flattened per frame: every span
+/// is a ~24.7px chord, five pieces, so 35 segments a curve.
+#[divan::bench]
+fn frame_1k_curves(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    run_curves(&mut core, 1000);
+    bencher.bench_local(|| run_curves(&mut core, 1000));
 }
 
 // -- Clipping ---------------------------------------------------------------

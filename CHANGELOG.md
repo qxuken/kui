@@ -7,7 +7,51 @@ upgrades remove code from the apps on it is doing the job.
 
 ## Unreleased
 
+**What breaks.** **A drag's `dx`/`dy` are measured from the press point
+now, in every phase.** They were the step since the previous event on
+`move` and always zero on `end`, and the doc said neither — so a handler
+that accumulated on `move` and committed on `end` snapped whatever it moved
+back to where it started, and lost up to the 3 px click slop from every sum
+besides (backlog F2, from a field report). Now `start` carries zero, a
+`move` how far the pointer is from where it pressed, `end` the whole
+distance: `value = start + dx` replaces `value += dx`, and `end` is a phase
+an app can commit from. A handler that adds deltas will now move things
+quadratically fast; the `drag` scene of the corpus pins the new numbers in
+all four bindings. The click slop is measured from the press too, so a slow
+pointer that never covers 3 px between two events still starts its drag.
+
+**And a key sink hears presses only again** — alpha.6 delivered both halves
+of every key to one sink, which made press-only, the shape every keymap has,
+the case that needed a guard. A sink that wants releases says `keyUp`. The
+`### Changed` entry below has the whole of it, including what an alpha.4 app
+bumped past alpha.6 should delete.
+
 ### Added
+
+- **A stroke primitive: `QuadKind::Segment` and the `line` element**
+  (`docs/adr/0010-a-segment-primitive.md`, backlog F12 from the mind-map
+  field report, whose every connector was three thin boxes). A segment is a
+  round-capped line between two endpoints, drawn by an SDF capsule in the
+  same über-pipeline and the same draw call as everything else; `Quad`
+  did not grow — the endpoints ride in the `uv` slot glyphs use, the width
+  in `border_w`. `<line from to width color/>` draws one,
+  `<line points curve/>` a polyline through the points or a smooth curve
+  through them, **flattened in the core** so every binding gets the same
+  segments and the corpus pins the count (`line { … }` in Lua, `kui_line` /
+  `kui_polyline` in C, `ui.line` / `ui.polyline` with a `Stroke` in Rust).
+  A line is **never in layout**: it floats, sized to its own bounding box,
+  in its parent's box space (`float="viewport"` for viewport space), takes
+  no room in a row or column, and paints in the float pass in tree order,
+  so a connector declared before two cards sits under them. Its colour is
+  the node's `bg` slot, so `transition` eases it and `enter` / `exit`
+  reach it; `exit` replays a line's points like any ghost. It takes **no
+  pointer input** and has no access row (`line-ignores-input` says so when
+  a line declares a click). Not in it, each with its reason in the ADR:
+  paths, fills, dashes, arrowheads, a tweening width, and a shape-aware
+  hit test — the last is the same unbuilt change rounded hit-testing waits
+  on. Measured: a 10k-segment frame costs about 8% more than the 10k-rect
+  frame with the same quad count, and the plain frame is unchanged.
+  `examples/rust/connectors.rs` is a mind map whose links are curves.
 
 - **Popup windows** (`docs/adr/0004-multi-window.md`, decision 9 — the last
   of ADR 0004's five build steps). A `windows` entry can say
@@ -72,8 +116,34 @@ upgrades remove code from the apps on it is doing the job.
   node-less announcement arrives, and that the same message twice in a
   row is said twice. 96/96.
 
+- **A node is named by the label its `key` declared** (backlog F5). Node's
+  `focus`, `isFocused`, `reveal` and `access` took only the hex key an
+  event carried, so a node the user had never touched — "focus the editor
+  I just created" — could not be named at all. They now take either
+  spelling: `focus('note')` resolves the label through the last frame
+  (`Core::key_of`, `Ui::key_of` in Rust; the build records every keyed
+  node's label as it goes, into a buffer cleared between frames). Lua's
+  `env.set_focus`, `env.is_focused` and `env.reveal` take a string beside
+  the integer, and C gets `kui_key_of(ctx, label)` for its `uint64_t`
+  callers. Labels are unique among siblings, not across a tree, so two
+  nodes on one label resolve to the first in tree order with a new
+  `ambiguous-key` warning; a label nothing declared is an error naming
+  both spellings, where `bad id "beta"` named neither.
+
 ### Fixed
 
+- **A `transition` eases under `createApp`, so it is testable from Node**
+  (backlog F1, the mind-map field report's #8). The loop set the core's
+  frame clock only inside `advance(ms)`; `render()`, `click()`, `type()`
+  and every event-driven frame ran with the clock unset, where the core
+  snaps by design — so a keyed box going 100 → 400 under `transition: 200`
+  was already at 400 in the frame that applied the change, and
+  `animating()` said true for 200 ms while nothing moved. The loop now
+  stamps the clock when it is built and before every frame it draws, so
+  the baseline is taken at the loop's time and the first `advance` is
+  mid-flight. A test that wants only the end state advances past the
+  duration. Nothing changed for a window: its runner already stamps each
+  frame from its own epoch, and `KuiWindow` has no `setTime`.
 - **The accessibility example's Actions menu was drawn half outside the
   window.** `FloatConfig::below()` centres a float on its anchor, so a
   180-wide menu under a 90-wide button near the left edge hung off it, and
@@ -123,6 +193,34 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Changed
 
+- **A key sink hears presses only, unless it says `keyUp`** (backlog F3,
+  from the pomodoro field report). alpha.6 made `onKey` deliver both
+  halves of every key to one sink as `{kind:"key", phase:"down"|"up"}` —
+  the right shape, and the guarantee behind it (a key only comes up where
+  it went down, which two sinks could not promise) stands — but it made
+  press-only, which is what every keymap is, the case that needed a guard.
+  An alpha.4 app bumped to alpha.6 type-checked, ran, and toggled every
+  shortcut back: Space started and paused the timer, `m` and `a` flipped
+  twice, and nothing pointed at the one line (`phase !== 'down'`) that
+  fixed it. Nothing *could*: a sink that ignores `phase` looks exactly
+  like a sink that wants both, so no warning tells them apart. So the
+  default is presses again, and releases are one flag away. **`keyUp`**
+  (`key_up` in Lua and C, `.key_up()` in Rust) beside `onKey` delivers
+  both halves, the payload shape unchanged and the guarantee kept: a
+  release whose press the sink never got is still dropped, and focus
+  leaving still lets go first — to a sink that asked. A sink without it
+  hears nothing on the way up, synthetic or real; the key is still tracked
+  as held, so a stray release resolves silently rather than to a second
+  event, and a sink that opts in mid-hold hears the release it is owed.
+  One schema row, so all four bindings got it mechanically, and the ABI
+  parity test forced the C field (`KuiSpec.key_up`, an [in] append — no
+  version bump). The corpus's new **`keys`** scene pins both behaviours
+  across the four transports, with `keydown` / `keyup` steps to drive
+  them, and `packages/kui/test.mjs` has the fixture the report was
+  missing: a keymap that presses *and* releases, and toggles once.
+  **What breaks:** a held-key binding written against alpha.6 — WASD,
+  press-and-hold, a key that arms a mode — stops hearing its `up` until
+  the sink adds `keyUp`. Nothing else changes.
 - **The C ABI went 6 → 7, and this is the one bump the `size` handshake
   cannot absorb.** `KuiWindowConfig` gained four `anchor_*` floats and
   `KuiWindowCommand` gained `owner` — each the compatible kind of change on
@@ -142,6 +240,18 @@ upgrades remove code from the apps on it is doing the job.
   change what another declares, which is exactly how choosing an item in a
   popup closes it. Only when more than one window is open; a single-window
   app draws what it always drew.
+- **Drag deltas are displacements from the press point** (backlog F2, the
+  "what breaks" above). `DragMsg`, the `EVENTS` row (so `docs/props.md`),
+  `kui_open_draggable`'s comment and the README now say what `dx`/`dy` are
+  relative to; `crates/kui-core/tests/drag.rs` pins press, 2 px, 2 px, 4
+  px, release as `move 4`, `move 8`, `end 8`, and the corpus's new `drag`
+  scene carries the deltas on its event rows — `event drag split move 8
+  0` — so a binding that summed steps would fail to match the reference
+  rather than agree on the kind and disagree on the number. Of the
+  consumers this repo ships, only `examples/rust/splitmux.rs`'s tab
+  reorder read a per-move `dx` (for its sign); it now differences two
+  `dx`es. The others already anchored to the absolute `x`/`y`, which is
+  the shape the report recommended and is unchanged.
 
 - `KuiAccessNode` reports liveness as two new `flags` bits
   (`KUI_ACCESS_LIVE_POLITE`, `KUI_ACCESS_LIVE_ASSERTIVE`) rather than a
@@ -154,6 +264,21 @@ upgrades remove code from the apps on it is doing the job.
 
 ### What you can delete
 
+- **The three-box connector.** The stub, the vertical run and the second
+  stub a diagram drew for every link, the colour arithmetic that decided
+  which of two overlapping stubs won, and the elbow-only layout the boxes
+  forced: one `<line points curve/>` per link, in the same coordinates the
+  cards already float in, replaces all of it.
+- **The `phase` guard in every keymap.** `if (msg.phase !== 'down')
+  return` — or the alpha.4 → alpha.6 migration line, `phase !== 'down' ||
+  repeat` — is what a sink without `keyUp` does by itself now. The four
+  Rust examples that carried it lost it. `repeat` is still yours to
+  filter: an auto-repeat is a press.
+- **The accumulator behind a drag.** The model field that summed `dx` over
+  `move`s so that something could be committed on `end`, and the `start`
+  handler that zeroed it: `end` carries the total now, and `x - x0` computed
+  by hand from the absolute coordinates is what `dx` is.
+
 - **The workaround for a list that did not fit.** Whatever a view did to
   keep a long dropdown inside the window — a scroll container sized to the
   space left below the field, a menu that opened upwards past a hand-rolled
@@ -161,10 +286,20 @@ upgrades remove code from the apps on it is doing the job.
   `kind: "popup"` declaration and an `anchor` now. The handler does not
   change: it was already answering `dismiss`.
 
+- The `app.ctx.setTime(s)` calls a test wrapped around each `render()`,
+  or the `app.advance(0)` it made before a change, to see a `transition`
+  move at all. The loop keeps the clock now; `advance(ms)` alone moves it.
+
 - The state field that held a status message *only* so a screen reader
   would see it change, and the code that cleared it a frame later. A
   message with a place on screen takes `live` on the node it is already
   in; one without takes `announce` and needs no node at all.
+
+- **The key harvest.** An `onLayout` on every node whose only job was to
+  learn its hex key so `focus()` could be called later — an event per node
+  per frame — and the model field that stored them. A node is `focus('its
+  label')` now, and the access-tree lookup that found an editor's rect just
+  to click it into focus is `focus('note')` too.
 
 
 ## 0.1.0-alpha.6 (2026-09-05)

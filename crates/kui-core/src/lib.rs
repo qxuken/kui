@@ -28,6 +28,7 @@ pub mod input;
 pub mod key;
 pub mod keyframes;
 pub mod layout;
+pub mod line;
 pub mod resources;
 pub mod runtime;
 pub mod schema;
@@ -63,6 +64,7 @@ pub use input::{
 };
 pub use key::Key;
 pub use keyframes::Keyframe;
+pub use line::{LineId, LineStore, Stroke};
 pub use resources::{FontId, ImageId, Resources, SessionId, SoundId};
 pub use runtime::{Core, Extension};
 pub use scroll::ScrollGeometry;

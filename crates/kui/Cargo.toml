@@ -95,3 +95,7 @@ path = "../../examples/rust/syntax_view.rs"
 [[example]]
 name = "toasts"
 path = "../../examples/rust/toasts.rs"
+
+[[example]]
+name = "connectors"
+path = "../../examples/rust/connectors.rs"
