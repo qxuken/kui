@@ -1258,7 +1258,10 @@ macro_rules! core_methods {
             /// first frame; a window answers at its own scale once a frame has
             /// run. Size a column to its widest label, or pick the tier that
             /// fits, from these numbers instead of constants found by
-            /// screenshot.
+            /// screenshot. The metrics do not scale linearly: `measured ×
+            /// zoom` is not `measure(size × zoom)`, because shaping rounds
+            /// per size, so anything that zooms measures at the size it
+            /// draws.
             #[napi(
                 ts_args_type = "content: KuiNode, style?: TextProps, maxWidth?: number",
                 ts_return_type = "TextMetrics"

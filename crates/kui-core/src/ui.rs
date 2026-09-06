@@ -113,7 +113,10 @@ impl<'a> Ui<'a> {
     /// Measures text the way layout would, without adding a node; see
     /// `Core::measure_text`. Sizing a column to its widest label, or
     /// choosing a tier that fits, is arithmetic on these numbers instead
-    /// of hand-tuned constants.
+    /// of hand-tuned constants. The metrics do not scale linearly:
+    /// `measured × zoom` is not `measure(size × zoom)`, because shaping
+    /// rounds per size, so anything that zooms measures at the size it
+    /// draws.
     pub fn measure_text(
         &mut self,
         content: &str,

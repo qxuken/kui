@@ -619,7 +619,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_MODAL,
         kind: Kind::Tag,
         apply: Apply::SpecMsg(|s, v| s.modal(v)),
-        doc: "Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside emits {kind:\"dismiss\", reason:\"escape\"|\"outside\", tag} on it — the app stops declaring the node. The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float.",
+        doc: "Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside emits {kind:\"dismiss\", reason:\"escape\"|\"outside\", tag} on it — the app stops declaring the node. The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float. The access tree is not pruned to the modal: it keeps every node of the frame and marks the one in effect `modal` (`docs/adr/0003-modal-surfaces.md`, decision 7), which is what assistive technology acts on.",
     },
     PropDef {
         name: "initialFocus",
@@ -716,7 +716,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_SLIDE,
         kind: Kind::Flag,
         apply: Apply::SpecFlag(|s| s.slide()),
-        doc: "With transition: also ease the node's position (reordered siblings slide).",
+        doc: "With transition: also ease the node's position (reordered siblings slide). While it eases, the node is drawn between where it was and where this frame put it — not at the declared `dx`/`dy`, or its slot in the row — so anything else positioned from those numbers drifts for the transition's length: a canvas of floats eases everything or nothing.",
     },
     PropDef {
         name: "keyframes",
@@ -1256,7 +1256,7 @@ pub const EVENTS: &[EventDef] = &[
     EventDef {
         kind: "drag",
         payload: "`{ kind: \"drag\", phase: \"start\" | \"move\" | \"end\", x, y, dx, dy, parent: { x, y, w, h }, tag }`",
-        doc: "A pointer-captured drag on an `onDrag` node; `parent` is the container rect, so fractions need no geometry query.",
+        doc: "A pointer-captured drag on an `onDrag` node; `parent` is the container rect, so fractions need no geometry query. Today `dx`/`dy` are the change since the previous cursor position, not since the press: `start` and `end` carry zero, and the motion before the drag armed (cursor steps until one exceeds the 3 px slop) is dropped, so summing them over a drag falls short of `x − x₀` — anchor to `x`/`y` and the press point instead. F2 in `docs/BACKLOG.md` changes them to the displacement from the press point in every phase.",
     },
     EventDef {
         kind: "key",

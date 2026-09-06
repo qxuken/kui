@@ -181,7 +181,7 @@ export interface GeneratedSpecProps {
   minHeight?: number;
   /** Lower width clamp (logical px). */
   minWidth?: number;
-  /** Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside emits {kind:"dismiss", reason:"escape"|"outside", tag} on it — the app stops declaring the node. The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float. */
+  /** Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside emits {kind:"dismiss", reason:"escape"|"outside", tag} on it — the app stops declaring the node. The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float. The access tree is not pruned to the modal: it keeps every node of the frame and marks the one in effect `modal` (`docs/adr/0003-modal-surfaces.md`, decision 7), which is what assistive technology acts on. */
   modal?: AppMsg | null;
   /** Message emitted when clicked (data, not a callback). */
   onClick?: AppMsg;
@@ -227,7 +227,7 @@ export interface GeneratedSpecProps {
   shadowX?: number;
   /** Drop-shadow vertical offset (logical px); positive casts downward. */
   shadowY?: number;
-  /** With transition: also ease the node's position (reordered siblings slide). */
+  /** With transition: also ease the node's position (reordered siblings slide). While it eases, the node is drawn between where it was and where this frame put it — not at the declared `dx`/`dy`, or its slot in the row — so anything else positioned from those numbers drifts for the transition's length: a canvas of floats eases everything or nothing. */
   slide?: boolean;
   /** Animate sizing/colors/radius changes over this many ms (needs a stable key). */
   transition?: number;

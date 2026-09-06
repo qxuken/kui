@@ -430,27 +430,6 @@ constructor (`kui-macos-window-quirks`: `set_visible(true)` is
 probably cosmetic, rule it out last. Not a headless test; a P8 smoke item
 once a runner exists.
 
-### `.` F14 — Four doc gaps the two reports paid for
-
-Each is one sentence in a doc that exists; none needs code.
-
-- **`slide` decouples where a node is from where the view put it**
-  (mind-map #9). The row's doc is "also ease the node's position"
-  (`schema.rs:719`). Add: while it eases, the rendered position is not the
-  declared `dx`/`dy`, so anything else positioned from those numbers drifts
-  for the transition's length — a canvas of floats eases everything or
-  nothing. The report tore its map apart this way, invisibly to its tests
-  (F1).
-- **Text metrics do not scale linearly** (mind-map #10). `measureText`'s
-  doc (`index.d.ts:928`) says the metrics follow the font; say `measured ×
-  zoom` is not `measure(size × zoom)` — shaping rounds per size — so
-  anything that zooms measures at the size it draws.
-- **`modal` "scopes the access tree" reads as pruning** (mind-map, Smaller
-  things). The tree keeps every node and marks the modal; say so in the row
-  doc.
-- **`DragMsg`'s `dx`/`dy` say nothing about their origin** — settled by
-  F2's rewrite, listed here so the doc is not forgotten if F2 is deferred.
-
 ### `~` F15 — Panning does not work in the window (unreproduced)
 
 Evidence: mind-map "Still open". A canvas `onDrag` pans headlessly (there is
@@ -489,8 +468,8 @@ order of cost: F9 and F10 are an afternoon, F5, F6 and F11 a day each, F8
 needs one AccessKit question answered first. F7 (global shortcuts under a
 Tab ring) and F12 (a line primitive) join the ADR group below. F13
 (VoiceOver at launch) and F15 (panning in a window) are reports nobody in
-this repo has reproduced yet, and each says what to try first. F14 is four
-sentences of docs.
+this repo has reproduced yet, and each says what to try first. F14, four
+sentences of docs, is done (2026-09-06) and in the archive.
 
 **Design, each wanting an ADR.** ~~Live regions and announcements~~ —
 **done (2026-09-06)**, as `docs/adr/0008-live-regions-and-announcements.md`,
@@ -534,8 +513,8 @@ of them moved verbatim into
 the five open headings, this section and the index below. The suggested
 sequence went with them rather than staying: three of its four steps had
 shipped, and this section is what says what is next. Still open: enable
-`SMOKE_MACOS` / `SMOKE_WINDOWS` the day a runner exists (P8), remove Lua
-`env.focus` at 0.2 (P3, R7), and F14's four doc sentences.
+`SMOKE_MACOS` / `SMOKE_WINDOWS` the day a runner exists (P8) and remove Lua
+`env.focus` at 0.2 (P3, R7); F14's four doc sentences are written (2026-09-06).
 
 ---
 
@@ -598,12 +577,12 @@ Worth doing before anyone builds a real combobox on this.
 
 ## Closed — index
 
-Forty-seven entries, all in
+Forty-eight entries, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim.
 This index is here so an id resolves without opening that file: the open items
 above cite A1, C7, C9, C10, D2, P3, P5, P8, R3 and S2, "After alpha.6" and the hygiene note cite C2,
 C5(b), P3 and R7, and code comments, ADRs and commit messages cite ids of
-their own. Forty-six of these are simply closed; only **C15** appears in both
+their own. Forty-seven of these are simply closed; only **C15** appears in both
 files, whole there and trimmed to what is still open here. **C11** was the
 other, until its last step landed on 2026-09-06 and took the whole entry to
 the archive.
@@ -616,6 +595,10 @@ whose R1–R7 are the half-baked items finished before the tag.
 **From building C11 step 4 (2026-09-06)** — W1
 
 - `!` **W1** — [A `Chrome::Borderless` window is dead to the mouse on macOS](backlog/closed-2026-09.md#-w1--a-chromeborderless-window-is-dead-to-the-mouse-on-macos--done-2026-09-06) — done (2026-09-06) — W2, the open half, is above
+
+**From two field reports (2026-09-06)** — F14
+
+- `.` **F14** — [Four doc gaps the two reports paid for](backlog/closed-2026-09.md#-f14--four-doc-gaps-the-two-reports-paid-for--done-2026-09-06) — done (2026-09-06) — F1–F13 and F15 are open above
 
 **Binding parity** — P1–P9
 

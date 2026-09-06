@@ -9,7 +9,13 @@ export type { KuiNode, KuiElement, Msg, KuiMsg, AppMsg } from './jsx-runtime.js'
 // none.
 
 /** A pointer-captured drag on an `onDrag` node; `parent` is the container
- *  rect, so fractions need no geometry query. */
+ *  rect, so fractions need no geometry query. Today `dx`/`dy` are the
+ *  change since the previous cursor position, not since the press: `start`
+ *  and `end` carry zero, and the motion before the drag armed (cursor steps
+ *  until one exceeds the 3 px slop) is dropped, so summing them over a drag
+ *  falls short of `x − x₀` — anchor to `x`/`y` and the press point instead.
+ *  F2 in `docs/BACKLOG.md` changes them to the displacement from the press
+ *  point in every phase. */
 export type DragMsg<T = AppMsg> = {
   kind: 'drag';
   phase: 'start' | 'move' | 'end';
@@ -988,7 +994,10 @@ export declare class Ctx {
    * first frame; a window answers at its own scale once a frame has
    * run. Size a column to its widest label, or pick the tier that
    * fits, from these numbers instead of constants found by
-   * screenshot.
+   * screenshot. The metrics do not scale linearly: `measured ×
+   * zoom` is not `measure(size × zoom)`, because shaping rounds
+   * per size, so anything that zooms measures at the size it
+   * draws.
    */
   measureText(content: KuiNode, style?: TextProps, maxWidth?: number): TextMetrics
   /**
@@ -1307,7 +1316,10 @@ export declare class KuiWindow {
    * first frame; a window answers at its own scale once a frame has
    * run. Size a column to its widest label, or pick the tier that
    * fits, from these numbers instead of constants found by
-   * screenshot.
+   * screenshot. The metrics do not scale linearly: `measured ×
+   * zoom` is not `measure(size × zoom)`, because shaping rounds
+   * per size, so anything that zooms measures at the size it
+   * draws.
    */
   measureText(content: KuiNode, style?: TextProps, maxWidth?: number): TextMetrics
   /**

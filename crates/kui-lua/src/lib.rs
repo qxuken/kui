@@ -400,7 +400,10 @@ fn env_table<'scope, 'env: 'scope>(
 /// wrapped to `max_w` when given. `s` is a string, a span list (the same
 /// shape `text({...})` takes) or a whole `text(...)` node table, whose own
 /// props are then the style; `opts` is a style table (`size`, `font`,
-/// `wrap`, `max_lines`, `ellipsis`, ...).
+/// `wrap`, `max_lines`, `ellipsis`, ...). The metrics do not scale
+/// linearly: `measured × zoom` is not `measure(size × zoom)`, because
+/// shaping rounds per size, so anything that zooms measures at the size it
+/// draws.
 fn measure_from_lua(
     ui: &mut Ui<'_>,
     s: &mlua::Value,
