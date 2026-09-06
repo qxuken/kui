@@ -412,7 +412,112 @@ is not: arbitrary paths, fills, dashes. Rounded hit-testing (Status / next)
 is the same shape of question and the ADR should settle it or say it does
 not.
 
-### `!` F13 — VoiceOver says "node is not responding" at every windowed Node launch (undiagnosed)
+### `~` F13 — VoiceOver says "node is not responding" at every windowed Node launch — **diagnosed, not Node's and not the tree's (2026-09-06)**
+
+**Diagnosed on this Mac with VoiceOver really running, and downgraded**: the
+cause is real and reproducible, it is neither of the two things this entry
+guessed, and what is left of it is the platform's. Every kui launch on macOS
+has exactly **one** long accessibility request — **0.23–0.26 s warm, 0.38–0.44 s
+cold**, measured over six launches, one per launch, never two. It begins the
+moment the process becomes AX-addressable and ends when the first frame is
+done, and the whole of `resumed` sits inside it. A screen reader that asks
+anything in that window waits that long for an answer, and a client that runs
+out of patience announces exactly what the report heard. It clears by itself
+at the first frame, which is why the report also says it recovers and reads
+the tree correctly afterwards.
+
+The measured timeline (Node, cold, ms after `exec`; the Rust example's is the
+same shape one step shorter):
+
+| +ms | what |
+| --- | --- |
+| 887 | `EventLoop::build` returns — NSApplication exists, **the app is now AX-addressable** |
+| 957 | a screen reader asks `AXWindows` — *this is the request that waits* |
+| 980 | `resumed` starts: `create_window` (46 ms), then `Renderer::new` (184 ms) |
+| 1224 | `set_visible(true)`; the constructor returns to JS |
+| 1238 | JS `setup` + `init` + first `render` done (14 ms), first `pump` |
+| 1310 | first frame drawn |
+| ~1341 | **the +957 ms request is finally answered, 0.384 s later** |
+
+**Both of the entry's leads were wrong, and the evidence says so.**
+
+*The tree is not the gap*, so step (2) has nothing to fix. `Shell::user_event`
+already calls `pane.publish_access()` unconditionally after
+`Bridge::on_event`, so `InitialTreeRequested` is answered **in the same
+handler, within microseconds** — every trace shows `user_event: …
+InitialTreeRequested` and `publish_access: published` on the same
+timestamp. This entry's "the tree goes out on the next frame" was a misreading
+of `access_bridge.rs` alone: `on_event` does only flip `active`, but its
+caller publishes straight after. (`InitialTreeRequested` also arrives *after*
+the stall, not before it, so it could not have caused it. The one real edge —
+a request landing before any frame exists — is harmless: the empty tree is
+stamped, the next frame's hash differs, and the real tree replaces it.)
+
+*The JS gap is not it either*, so step (3) would not have helped. The
+pure-Rust example — `Launcher::run`, `run_app`, no JS, no `setTimeout`, no
+`KuiWindow` constructor — stalls **identically**: 0.35 s, 0.43 s and 0.44 s on
+three launches, in the same place. `runWindowed` showing the window from the
+first pump moves nothing, because the block is upstream of both the window
+being shown and the loop being pumped. Node's own contribution is the 14 ms of
+`setup` + `init` + first `render` between the constructor returning and the
+first `pump` — inside the stall, and 4% of it.
+
+*Step (4) was right*: the unbundled `node` is cosmetic. It supplies the name
+the announcement uses and nothing else; the Rust example does the same thing
+under its own name.
+
+**What is left is the platform's, which is why this is now `~` and not `!`.**
+The stall is one uninterrupted stretch of main-thread work — creating an
+NSWindow, creating a Metal device and surface, drawing once — that begins
+*after* the process has announced itself to the system as an application and
+*before* the event loop has ever serviced a request. macOS delivers
+accessibility requests to the main run loop, so nothing is answered until that
+stretch ends. The largest single piece is `Renderer::new` (184 ms cold), which
+is real work that has to happen before there is anything to describe. Splitting
+it across loop turns does not obviously help: the run loop only answers when it
+goes idle (`about_to_wait`), and with a redraw pending it does not idle until
+the first frame is done. Any app that initialises a GPU on its main thread has
+this shape.
+
+**If someone wants to take it further**, the one lever this diagnosis found is
+that the app becomes addressable ~70 ms *before* `resumed` begins, so a run-loop
+turn deliberately spent idle between `EventLoop::build` and the window's
+creation would answer whatever is already queued before the expensive part
+starts. That shortens the stall for requests that arrive early — which
+VoiceOver's do — without touching the 184 ms itself. It was not built: it
+changes startup ordering for a benefit measured against a threshold nobody
+here can read (see below).
+
+**The one thing not measured**, honestly: VoiceOver's own patience. Its speech
+could not be captured without changing the user's settings — it logs nothing
+to the unified log, and reading `last phrase` needs "Allow VoiceOver to be
+controlled with AppleScript" turned on — so what is proven is that the app is
+unresponsive to accessibility for 0.23–0.44 s at every launch, not that
+0.23 s is over the line and 0.44 s further over it. It is the only candidate
+in the launch window and it matches the report in both timing and recovery.
+
+**The repro is a script, not a listening test**:
+`scripts/ax-launch-probe.swift` launches a command and times every AX request
+from t=0, telling apart "not addressable yet" (an immediate
+`cannotComplete`, which every process answers for its first moments) from "did
+not answer" (a slow one). `--patience S` is the verdict and the exit status.
+It is the companion to `ax-audit.swift`, which deliberately waits this gap out
+before checking what the tree says.
+
+    swift scripts/ax-launch-probe.swift -- node dist/counter-window.mjs
+    swift scripts/ax-launch-probe.swift -- ./target/release/examples/accessibility
+
+**P8 smoke item, the day a macOS runner exists**: run the probe against both
+examples with `--patience` set to whatever the runner's launch can hold, and
+fail on a regression. It needs no screen reader, only Accessibility permission
+for the runner — which is the same permission `ax-audit.swift` already needs,
+so the two share a job.
+
+---
+
+*The original finding, as filed:*
+
+#### `!` F13 — VoiceOver says "node is not responding" at every windowed Node launch (undiagnosed)
 
 Evidence: pomodoro §3, reproduced at every launch; it recovers and reads the
 tree correctly afterwards. The report measured out blocking `setup` work
@@ -481,9 +586,15 @@ left. Then the gaps in rough order of cost: F9 and F10 are an afternoon, F6
 and F11 a day each (~~F5~~ was one, and is **done (2026-09-06)**), F8
 needs one AccessKit question answered first. F7 (global shortcuts under a
 Tab ring) joins the ADR group below, where ~~F12~~ (a line primitive) also
-sat until it landed as `docs/adr/0010-a-segment-primitive.md`. F13
-(VoiceOver at launch) and F15 (panning in a window) are reports nobody in
-this repo has reproduced yet, and each says what to try first. ~~F14~~ —
+sat until it landed as `docs/adr/0010-a-segment-primitive.md`. **F13**
+(VoiceOver at launch) is **diagnosed and downgraded (2026-09-06)**: every kui
+launch on macOS is unresponsive to accessibility for 0.23–0.44 s while the
+main thread creates a window and a GPU device, which neither the Node loop nor
+the access tree causes — the pure-Rust example does it identically — so what is
+left is the platform's shape and the entry says what a further fix would have
+to move. It leaves behind `scripts/ax-launch-probe.swift`, which measures the
+gap `ax-audit.swift` waits out. **F15** (panning in a window) is the one report
+nobody here has reproduced yet, and it says what to try first. ~~F14~~ —
 **done (2026-09-06)**: F2 closed its `DragMsg` bullet and the other three
 sentences are written, so the whole entry is in the archive.
 
@@ -534,8 +645,10 @@ of them moved verbatim into
 the five open headings, this section and the index below. The suggested
 sequence went with them rather than staying: three of its four steps had
 shipped, and this section is what says what is next. Still open: enable
-`SMOKE_MACOS` / `SMOKE_WINDOWS` the day a runner exists (P8) and remove Lua
-`env.focus` at 0.2 (P3, R7); F14's doc sentences are written (2026-09-06).
+`SMOKE_MACOS` / `SMOKE_WINDOWS` the day a runner exists (P8) — which now has a
+second job waiting for it, F13's launch probe beside the AX audit, sharing the
+one Accessibility permission — and remove Lua `env.focus` at 0.2 (P3, R7);
+F14's doc sentences are written (2026-09-06).
 
 ---
 
