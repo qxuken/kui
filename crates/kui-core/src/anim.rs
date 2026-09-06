@@ -191,6 +191,26 @@ struct Tween {
 }
 
 impl Tween {
+    /// Where this tween's current leg stands at `now`, without touching it.
+    /// A settled leg (`start` infinitely far back) reads as its target.
+    fn eased_at(&self, now: f64) -> [f32; 4] {
+        let dur = self.transition.duration_ms.max(0.0) as f64 / 1000.0;
+        let p = if dur <= 0.0 {
+            1.0
+        } else {
+            (((now - self.start) / dur) as f32).clamp(0.0, 1.0)
+        };
+        if p >= 1.0 {
+            return self.to;
+        }
+        let e = self.transition.easing.apply(p);
+        let mut v = [0.0; 4];
+        for (i, out) in v.iter_mut().enumerate() {
+            *out = self.from[i] + (self.to[i] - self.from[i]) * e;
+        }
+        v
+    }
+
     /// Advances a spring toward `to` from `last_time` to `now`; returns
     /// whether it is still moving. Semi-implicit Euler on a unit-mass
     /// spring with stiffness and damping from the response time and ratio
@@ -390,7 +410,14 @@ impl AnimStore {
             return tw.value;
         }
         if tw.to != target {
-            tw.from = tw.value;
+            // Where the running leg stands *at `now`*, not where it stood
+            // when it was last sampled. The difference is the whole frame:
+            // a new leg starts at `p == 0`, so retargeting from the stale
+            // value spends none of the elapsed time — and a target the view
+            // moves every frame (a canvas of `slide` floats under a drag)
+            // then retargets every frame and never advances at all. Backlog
+            // F15: the pan was live in the model and frozen on screen.
+            tw.from = tw.eased_at(now);
             tw.to = target;
             tw.start = now;
             tw.transition = transition;
@@ -664,6 +691,43 @@ mod tests {
             300.0
         );
         assert!(!a.animating());
+    }
+
+    /// The gesture behind backlog F15: a canvas of `slide` floats panned by
+    /// a drag retargets every slot on every frame. Each retarget starts a
+    /// fresh leg at `p == 0`, so a tween that reads its stale value spends
+    /// none of the frame's time and never moves — the pan is live in the
+    /// model and frozen on screen. It has to follow, a fixed distance back.
+    #[test]
+    fn a_target_that_moves_every_frame_still_advances() {
+        let mut a = AnimStore::default();
+        let k = Key::ROOT.str("card");
+        let t = Transition::ms(160.0);
+        a.set_time(0.0);
+        a.begin_frame();
+        a.drive(k, Slot::Pos, None, one(0.0), t, true);
+        // 16 ms frames, 9.6 px of pan each: a second of a drag in flight.
+        let mut behind = Vec::new();
+        let mut drawn = 0.0;
+        for f in 1..=60 {
+            let target = f as f32 * 9.6;
+            a.set_time(f as f64 * 0.016);
+            a.begin_frame();
+            drawn = a.drive(k, Slot::Pos, None, one(target), t, true)[0];
+            behind.push(target - drawn);
+        }
+        let target = 60.0 * 9.6;
+        assert!(
+            drawn > target * 0.8,
+            "the pan reaches the screen: drawn {drawn} of {target}"
+        );
+        // And it trails by a fixed distance rather than falling further
+        // behind every frame — one transition's worth of travel, no more.
+        let (early, late) = (behind[29], behind[59]);
+        assert!(
+            (early - late).abs() < 1.0,
+            "the gap stops growing: {early} then {late}"
+        );
     }
 
     #[test]

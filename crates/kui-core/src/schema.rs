@@ -1217,7 +1217,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<line from={[x,y]} to={[x,y]} width color/>`, `<line points={[[x,y],…]} curve/>`",
         lua: "`line { from={x,y}, to={x,y}, width=, color= }`, `line { points={{x,y},…}, curve=true }`",
         c: "`kui_line`, `kui_polyline`",
-        doc: "A round-capped stroke: one segment, a polyline through `points`, or a smooth curve through them with `curve`. Always a float in its parent's box space (`float=\"viewport\"` for viewport space), sized to its own bounding box, so it takes no room in a row or column. `width` is the stroke width (default 1) and `color` the stroke colour; `transition` eases the colour. Takes no pointer input and has no access row (`docs/adr/0010-a-segment-primitive.md`).",
+        doc: "A round-capped stroke: one segment, a polyline through `points`, or a smooth curve through them with `curve`. Always a float in its parent's box space (`float=\"viewport\"` for viewport space), sized to its own bounding box, so it takes no room in a row or column. `width` is the stroke width (default 1) and `color` the stroke colour; `transition` eases the colour, and with `slide` beside it the stroke's position too — the points ride its box, so a stroke whose ends all move together slides with them, while one whose ends move apart resizes at once (a canvas of floats eases everything or nothing, connectors included). Takes no pointer input and has no access row (`docs/adr/0010-a-segment-primitive.md`).",
     },
     ElementDef {
         name: "titlebar",

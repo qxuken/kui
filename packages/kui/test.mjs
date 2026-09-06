@@ -1011,6 +1011,48 @@ test('render and an event-driven frame share the clock advance moves (F1)', () =
   assert.equal(app.ctx.animating(), false);
 });
 
+test('a target the view moves every frame still reaches the screen (F15)', () => {
+  // The mind map's pan: a canvas of `slide` floats dragged by the pointer
+  // moves every card's target on every frame. Each retarget starts a fresh
+  // leg at p == 0, and the tween used to retarget from its *stale* value —
+  // so it spent none of the frame's time, never advanced, and the map sat
+  // frozen while the model panned under it. Only a window showed it: a
+  // headless assertion reads the model, which was right all along, and
+  // before F1 the clock never moved so nothing eased at all.
+  const app = createApp(
+    {
+      init: { pan: 0 },
+      update: (m, msg) => (typeof msg === 'number' ? { pan: msg } : undefined),
+      view: (m) =>
+        box({ width: 'grow', height: 'grow' }, [
+          box(
+            { float: { anchor: 'parent', dx: 100 + m.pan, dy: 40 }, width: 60, height: 30,
+              bg: '#7aa2ff', transition: 160, slide: true },
+            [],
+            'card',
+          ),
+        ]),
+    },
+    { width: 640, height: 480, startTime: 0 },
+  );
+  const cardX = () => decodeQuads(app.ctx.quads()).find((q) => Math.round(q.h) === 30).x;
+  app.render();
+  assert.equal(cardX(), 100);
+  // 16 ms frames, 9.6 px of pan each: a second of a drag in flight.
+  const behind = [];
+  for (let f = 1; f <= 60; f++) {
+    app.dispatch(f * 9.6);
+    app.advance(16);
+    behind.push(100 + f * 9.6 - cardX());
+  }
+  const target = 100 + 60 * 9.6;
+  assert.ok(cardX() > 100 + 0.8 * 60 * 9.6, `the pan reaches the screen: ${cardX()} of ${target}`);
+  assert.ok(
+    Math.abs(behind[29] - behind[59]) < 1,
+    `it trails by a fixed distance rather than falling further behind: ${behind[29]} then ${behind[59]}`,
+  );
+});
+
 test("a loop on a wall clock resyncs rather than firing a burst of ticks", () => {
   // The windowed half of the same bookkeeping: `runWindowed` fills `clock`
   // with `Date.now`, so a fake one drives it without a display.

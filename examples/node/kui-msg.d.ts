@@ -14,7 +14,10 @@ type AppMessages =
   // menu declares as its modal tag.
   | { kind: 'menu' }
   // The key sink's tag in counter.tsx: tags are messages too.
-  | { tool: string };
+  | { tool: string }
+  // mindmap.tsx: the canvas's drag tag and a card's click payload.
+  | { kind: 'pan' }
+  | { kind: 'card'; id: string };
 
 declare module '@qxuken/kui/jsx-runtime' {
   interface KuiMsg {

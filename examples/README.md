@@ -76,5 +76,18 @@ Build the addon with `cargo build -p kui-node --release`, then in
 npm install
 npm start        # headless
 npm run window   # a real winit + wgpu window, pumped from a timer
+npm run mindmap  # a canvas of easing floats, panned by dragging it
 npm run bench    # the JSX/Node side of lua/bench.rs
 ```
+
+| Example | What it shows |
+|---|---|
+| [`counter.tsx`](node/counter.tsx) | The Elm loop headless, driven by its own hit tests |
+| [`counter-window.tsx`](node/counter-window.tsx) | The same app in a real window, with images, sounds and an editor |
+| [`mindmap.tsx`](node/mindmap.tsx) | A canvas of floats and `line` connectors, all easing, panned by an `onDrag` root |
+
+`mindmap.tsx` is the one to open when a gesture works in a test and not on
+screen. It moves every tween's target on every frame, which is what backlog
+F15 turned out to be — the map panned in the model and stood still in the
+window — so it is a by-hand check (`--headless` only asserts the model, which
+was never the half that broke).

@@ -326,6 +326,67 @@ N+1 drops the modal and declares `keyFocus` on new node B; `focus() == B`.
 And the ADR 0003 corpus scene `modal` gains the step — a report keeps one
 frame and this is a two-frame fact (A1 says how those are pinned).
 
+### `!` F15 — Panning does not work in the window — **done (2026-09-06)**
+
+A tween whose target the view moves on **every** frame never advanced at
+all. `AnimStore::drive` starts a fresh leg on a retarget (`start = now`, so
+`p == 0`) and took the new leg's `from` from `tw.value` — the value sampled
+at the *previous* frame. Retarget, sample at zero, return last frame's
+number: a frame's worth of time went in and no motion came out, and with the
+target moving again next frame it never got a frame that did not retarget.
+The value sat on its starting number for the whole gesture and jumped only
+when the target held still. Fixed by reading where the running leg actually
+stands at `now` (`Tween::eased_at`) before starting the new one, which is
+what CSS does: the value then trails its target by a fixed distance —
+roughly one transition's worth of travel — instead of freezing.
+
+That is a canvas of floats panned by a drag: every card's `dx`/`dy` moves
+every frame, so every card froze while `pan` in the model was correct. Both
+halves of the report follow from it. It "pans headlessly" because a headless
+assertion reads the model, and the model was right the whole time — and
+before ~~F1~~ the Node loop never set the frame clock, so nothing eased
+headlessly at all and even a drawn frame would have looked right. It fails
+"in the window" because the window is the only driver that was stamping a
+real clock. Nothing in the runner was wrong.
+
+**Reproduced first, as the entry asked**, and the report's own next check
+was answered before anything was changed: hovering the empty canvas of
+`examples/node/mindmap.tsx` in a real window gives the open hand, so the
+canvas has the press and the fault was downstream. Neither of the two things
+this repo knew was it. W1's fix does cover a `chrome: 'borderless'` main
+window — both it and the popup surface go through `Shell::undecorated`
+(`crates/kui/src/lib.rs`), and a real drag pans a borderless window exactly
+as it pans a native one. And the runner's pointer dispatch is not the
+divergence the entry proposed bisecting for: driven by real `CGEvent`s, a
+window emits the *byte-identical* `drag` sequence to `ctx.cursor` /
+`ctx.mouse` for the same gesture — `start` with zero displacement, one
+`move`, one `end`, same coordinates, same `parent` rect. The corpus's drag
+scene needed no change, and no conformance report moved.
+
+What it took to see was a frame drawn *between* the press and the release,
+which is why it survived a field report, a headless suite and six review
+rounds: `screencapture` while a synthetic drag holds the button down
+(`kui-macos-window-quirks` has the recipe). Now regression-tested from both
+ends, each mutation-checked to fail without the fix: a core test drives 60
+retargeting frames through `drive` (`anim.rs`,
+`a_target_that_moves_every_frame_still_advances` — 0 px of 576 without it),
+and a Node one drives the same pan through the encoder and reads the drawn
+quad back (`packages/kui/test.mjs`, F15). The example is the by-hand half:
+`npm run mindmap` in `examples/node`, on the smoke list below.
+
+**A second, smaller thing the repro found and fixed.** A mind map's
+connectors are `line` nodes, and `slide` was missing from the `line`
+element's props in `packages/kui/jsx-runtime.d.ts` — the runtime has always
+honoured it (the points ride the node's box, ADR 0010), so a canvas that
+eased its cards and its connectors together was *typed* as an error while
+easing only the cards type-checked. That is the one shape the `slide` doc's
+own rule — a canvas of floats eases everything or nothing — most needs, and
+it is what tore the map in the first screenshot of the repro: cards mid-ease,
+connectors already at the new pan. The prop is on the element now, and both
+docs say what it does to a stroke, including the honest limit measured while
+writing them: `slide` eases position only, so a stroke whose ends all move
+together slides with them, while one whose ends move apart resizes at once.
+
 ### `~` F8 — Sliders announce as percentages: no `valueText` — done (2026-09-06)
 
 **Done (2026-09-06).** `valueText` is a `Str` row (id 82) beside the three
@@ -655,20 +716,6 @@ constructor (`kui-macos-window-quirks`: `set_visible(true)` is
 probably cosmetic, rule it out last. Not a headless test; a P8 smoke item
 once a runner exists.
 
-### `~` F15 — Panning does not work in the window (unreproduced)
-
-Evidence: mind-map "Still open". A canvas `onDrag` pans headlessly (there is
-a test) and not in the window; the pan reads only absolute `x`/`y`, so F2 is
-not the cause. The report's next check is the right one: hover the empty
-canvas and read the cursor — `grab` means the canvas has the press and the
-fault is downstream; `default` means the press lands somewhere else. Two
-things this repo knows that the report does not: an undecorated window gets
-no `mouseUp` (`kui-macos-window-quirks`, W1) — if that app runs `chrome:
-'borderless'`, that is it — and the same note has the recipe for driving a
-real window by hand. **Do:** reproduce first, with a Node example shaped
-like the app (float-positioned children under an `onDrag` root, panned by
-the drag); if it reproduces, it is a `!` and goes above F1.
-
 ---
 
 ## After alpha.6
@@ -689,7 +736,7 @@ the next release section is written, carry the pre-tag run list over from
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) with that step on
 it.
 
-**From the field (F1–F15).** All four defects are done:
+**From the field (F1–F15).** All five defects are done:
 ~~F1~~ (the Node loop never set the frame clock, which is why nothing eased
 was testable from Node), ~~F2~~ (drag deltas) and ~~F3~~ (an alpha.4 keymap
 ran twice, closed as its (a), the `keyUp` flag) all landed **2026-09-06**,
@@ -714,8 +761,13 @@ main thread creates a window and a GPU device, which neither the Node loop nor
 the access tree causes — the pure-Rust example does it identically — so what is
 left is the platform's shape and the entry says what a further fix would have
 to move. It leaves behind `scripts/ax-launch-probe.swift`, which measures the
-gap `ax-audit.swift` waits out. **F15** (panning in a window) is the one report
-nobody here has reproduced yet, and it says what to try first. ~~F14~~ —
+gap `ax-audit.swift` waits out. ~~F15~~ (panning in a window) — **done
+(2026-09-06)**: reproduced, and it was neither of the two things this repo
+suspected. A tween whose target moves every frame restarted its leg every
+frame and never advanced, so a canvas of `slide` floats panned in the model
+and stood still on screen; the window was only the one driver stamping a
+real clock. Its entry says why a headless suite could not see it and what
+the two regression tests now pin. ~~F14~~ —
 **done (2026-09-06)**: F2 closed its `DragMsg` bullet and the other three
 sentences are written, so the whole entry is in the archive.
 
@@ -774,6 +826,16 @@ shipped, and this section is what says what is next. Still open: enable
 second job waiting for it, F13's launch probe beside the AX audit, sharing the
 one Accessibility permission — and remove Lua `env.focus` at 0.2 (P3, R7);
 F14's doc sentences are written (2026-09-06).
+
+**One item for the by-hand round** (R4's list, in the archive; a P8 job the
+day a runner and a GUI session exist). `npm run mindmap` in `examples/node`,
+then **drag the empty canvas and watch it while the button is down**: the map
+has to follow the cursor, cards and connectors together, not jump into place
+on release. That is ~~F15~~, and it is on this list rather than in a test
+because the frame it lives in is between a press and a release — the drawn
+half no headless assertion reads. `screencapture` while a synthetic drag
+holds the button down is how it was checked
+(`kui-macos-window-quirks` has the recipe); by hand, a slow drag is enough.
 
 ---
 

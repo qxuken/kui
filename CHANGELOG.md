@@ -210,6 +210,31 @@ bumped past alpha.6 should delete.
 
 ### Fixed
 
+- **A tween whose target moves every frame now moves too** (backlog F15,
+  the mind map's canvas). Retargeting starts a fresh leg at progress zero,
+  and the new leg began from the value sampled on the *previous* frame — so
+  each frame put a frame's worth of time in and got no motion out, and a
+  target the view moved again next frame never got a frame that did not
+  retarget. The value sat exactly where it started for the whole gesture
+  and jumped only once the target held still. That is a canvas of `slide`
+  floats panned by a drag: every card's position changes every frame, so
+  the map froze on screen while `pan` in the model was correct the whole
+  time. A retarget now reads where the running leg stands *at that instant*
+  and continues from there, the way CSS does, so the value trails its
+  target by a fixed distance — about one transition's worth of travel —
+  instead of standing still. Springs were never affected: they carry
+  velocity across a retarget and integrate per frame.
+  Nothing about it was window-specific — a real window and `ctx.mouse`
+  emit the same `drag` events for the same gesture — but only a window was
+  stamping a real clock, which is why every headless assertion passed and
+  the report said "not in the window".
+  **What you can delete:** the transition an app took *off* its canvas to
+  make dragging work, and any pan reimplemented outside the view to dodge
+  it. `examples/node/mindmap.tsx` is the shape, with its connectors easing
+  beside its cards — `slide` is on the `line` element's props now, which it
+  was missing from in TypeScript while the runtime had always honoured it,
+  so a canvas that eases everything (the rule `slide`'s own doc states) is
+  finally the one that type-checks.
 - **A modal gives focus back unless the closing frame says otherwise**
   (backlog F4, the mind map's rename editor). The focus a modal displaces
   comes back when it goes away (ADR 0003, decision 4) — but a rename

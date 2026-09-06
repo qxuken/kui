@@ -365,10 +365,14 @@ export declare namespace JSX {
      *  (`float="viewport"` for viewport space). Never in layout: it floats,
      *  sized to its own bounding box, so it takes no room in a row or
      *  column. `width` is the stroke width in px (default 1), `color` the
-     *  stroke colour (default the foreground); `transition` eases the colour.
+     *  stroke colour (default the foreground); `transition` eases the colour,
+     *  and with `slide` beside it the stroke's position too — the points ride
+     *  its box, so a stroke whose ends all move together slides with them,
+     *  while one whose ends move apart resizes at once. A canvas of floats
+     *  eases everything or nothing, connectors included.
      *  Takes no pointer input and has no access row. */
     line: Keyed &
-      Pick<GeneratedSpecProps, 'opacity' | 'transition' | 'enter' | 'exit' | 'onLayout' | 'label' | 'role'> & {
+      Pick<GeneratedSpecProps, 'opacity' | 'transition' | 'slide' | 'enter' | 'exit' | 'onLayout' | 'label' | 'role'> & {
         from?: [number, number];
         to?: [number, number];
         points?: [number, number][];
