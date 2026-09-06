@@ -47,6 +47,14 @@ upgrades remove code from the apps on it is doing the job.
 
 ### Fixed
 
+- **The accessibility example's Actions menu was drawn half outside the
+  window.** `FloatConfig::below()` centres a float on its anchor, so a
+  180-wide menu under a 90-wide button near the left edge hung off it, and
+  without `fit` nothing pulled it back — the item labels read "name",
+  "plicate", "hive". It is left-aligned under the button and `fit` now,
+  which is the placement a menu wants and the in-window answer ADR 0004
+  decision 11 keeps `fit` for. The example, not the library: no float
+  behaviour changed.
 - **A `Chrome::Borderless` window is no longer dead to the mouse on macOS**
   (backlog W1). `with_decorations(false)` produces an `NSWindow` with the
   borderless style mask, and AppKit never sends `mouseUp:` to one — so every

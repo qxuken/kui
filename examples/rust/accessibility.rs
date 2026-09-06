@@ -323,7 +323,21 @@ impl App for A11y {
                 ui.with_keyed(
                     "menu",
                     NodeSpec::column()
-                        .float(FloatConfig::below())
+                        // Left-aligned under the button and clamped into
+                        // the window: `below()` alone centres the float on
+                        // its anchor, which hangs a 180-wide menu off the
+                        // left edge of a 90-wide button near the window
+                        // edge, and without `fit` nothing pulls it back.
+                        // A menu belongs under the left edge of the control
+                        // that opened it — and `fit` is what ADR 0004
+                        // decision 11 keeps as the in-window answer, since
+                        // this one does fit once it is placed properly.
+                        .float(
+                            FloatConfig::below()
+                                .at(Align::Start, Align::End)
+                                .self_at(Align::Start, Align::Start)
+                                .fit(),
+                        )
                         .modal(Value::str("menu"))
                         .role(Role::Menu)
                         .label("Actions")
