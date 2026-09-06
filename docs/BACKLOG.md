@@ -541,72 +541,43 @@ shipped, and this section is what says what is next. Still open: enable
 
 ## From building C11 step 4 (2026-09-06)
 
-Two findings, neither about the popup itself. W1 was fixed with it and is in
-the archive; this is the one that is open.
+Two findings, neither about the popup itself. Both are decided and in the
+archive; this is what W2 left to build.
 
-### `~` W2 — Press-drag-release does not reach a popup, and only the driver can make it
+### `~` W2 — Press-drag-release does not reach a popup, and only the driver can make it — **accepted, unbuilt (2026-09-06)**
 
-The native gesture for a select on all three platforms: press the field, the
-menu opens under the pointer, drag through it, and **release** on an item to
-choose it — one continuous gesture, no second click. kui supports the other
-half of the pair (click to open, click to choose), which is a complete
-interaction and what the popup example does; this is the missing one.
+The whole entry, with its measurement and the outcome on top, is in
+[`backlog/closed-2026-09.md`](backlog/closed-2026-09.md#-w2--press-drag-release-does-not-reach-a-popup-and-only-the-driver-can-make-it--accepted-unbuilt-2026-09-06).
+`docs/adr/0009-press-drag-release-into-a-popup.md` settled the four
+questions it raised; what shipped with it is the arithmetic only
+(`crates/kui/src/retarget.rs`, decision 7, with its tests). **Still to
+build**, all in `crates/kui/src/lib.rs` and none of it headlessly testable:
 
-**It cannot be built in an app, and the reason is measurable.** The OS gives
-the whole drag to the window that received the mouse-down. Pressing inside
-the popup and dragging up out of it, every move still arrives at the popup's
-own core, with coordinates that walk off its top edge — `93,-1`, `95,-5`,
-`97,-10` — and the release arrives there too, not at the window under the
-cursor. So for the real gesture, where the press is on the *field* in the
-owner window and the release is over the popup, the popup would receive
-nothing at all and the owner would receive the whole thing in coordinates
-that mean nothing to it. This is what a native menu's nested tracking loop
-(`NSMenu`, Win32's menu message loop, a GTK pointer grab) exists to do.
-
-**The information needed is already there**, which is what makes this worth
-doing rather than declining. Those out-of-bounds coordinates are not
-garbage: the driver knows both windows' screen positions — it computed the
-popup's from the anchor — so it can translate the owner's drag into the
-popup's space, feed the popup's core ordinary `CursorMoved`s, and on release
-synthesise the press-and-release the popup never saw. The popup's core would
-not need to know it was retargeted.
-
-What wants deciding first, and why this is an ADR rather than a patch:
-
-- **What arms the retargeting.** "A drag whose press opened a popup" is not
-  a thing the driver can see — the app opens the popup a frame later, in
-  answer to the press. A rule it *can* evaluate is "while a non-activating
-  popup owned by this window is open, a drag over its rect retargets", which
-  is simple but also catches drags that have nothing to do with the menu.
-- **What the owner's core sees meanwhile.** Today it gets out-of-bounds
-  moves, which clear its hover. That is probably right and should be said so
-  on purpose.
-- **How it meets the press-outside rule**, which currently dismisses on
-  mouse-*down*: the opening press of this gesture must not dismiss the popup
-  it is about to open, and the release must not read as a press outside.
-- **Whether a popup should open on press at all.** The example opens on
-  `on_click`, so press-and-hold does nothing until release — correct for
-  what it declares, and wrong for a native select. There is no "on press"
-  event in the schema; `onDrag`'s `start` phase is the nearest thing, and
-  whether that is the answer or a new row is its own question.
-
-Not urgent: the two-click interaction works, and a menu that only supports it
-is a menu that behaves like half the applications on any of these platforms.
-Worth doing before anyone builds a real combobox on this.
+- `Shell` arms a non-activating popup that opens while the owner's primary
+  button is down (decision 1), retargets the owner's `CursorMoved`s into it
+  (decision 2), classifies the release with `retarget::landing` — synthesise
+  the press-and-release, keep the menu, or dismiss (decision 4) — and
+  disarms in `close_pane`.
+- The press that dismisses a non-activating popup is consumed rather than
+  dispatched (decision 5). This is the one visible change for existing
+  apps, and the release that carries it says so under "what you can delete".
+- `examples/rust/popup.rs` opens on `on_drag`'s `start` with
+  `cursor: "pointer"`, handlers set rather than toggle (decision 6), and the
+  four `CGEvent` checks the ADR's consequences list are run on macOS.
 
 ---
 
 ## Closed — index
 
-Forty-seven entries, all in
+Forty-eight entries, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim.
 This index is here so an id resolves without opening that file: the open items
 above cite A1, C7, C9, C10, D2, P3, P5, P8, R3 and S2, "After alpha.6" and the hygiene note cite C2,
 C5(b), P3 and R7, and code comments, ADRs and commit messages cite ids of
-their own. Forty-six of these are simply closed; only **C15** appears in both
-files, whole there and trimmed to what is still open here. **C11** was the
-other, until its last step landed on 2026-09-06 and took the whole entry to
-the archive.
+their own. Forty-six of these are simply closed; **C15** and **W2** appear in
+both files, whole there and trimmed to what is still open here. **C11** was
+once the third, until its last step landed on 2026-09-06 and took the whole
+entry to the archive.
 
 The archive also holds two sections that are records rather than work: the
 suggested sequence as it stood on 2026-09-05, and
@@ -615,7 +586,8 @@ whose R1–R7 are the half-baked items finished before the tag.
 
 **From building C11 step 4 (2026-09-06)** — W1
 
-- `!` **W1** — [A `Chrome::Borderless` window is dead to the mouse on macOS](backlog/closed-2026-09.md#-w1--a-chromeborderless-window-is-dead-to-the-mouse-on-macos--done-2026-09-06) — done (2026-09-06) — W2, the open half, is above
+- `!` **W1** — [A `Chrome::Borderless` window is dead to the mouse on macOS](backlog/closed-2026-09.md#-w1--a-chromeborderless-window-is-dead-to-the-mouse-on-macos--done-2026-09-06) — done (2026-09-06)
+- `~` **W2** — [Press-drag-release does not reach a popup, and only the driver can make it](backlog/closed-2026-09.md#-w2--press-drag-release-does-not-reach-a-popup-and-only-the-driver-can-make-it--accepted-unbuilt-2026-09-06) — accepted, unbuilt (2026-09-06) — ADR 0009; the arithmetic shipped, the driver half is the entry above
 
 **Binding parity** — P1–P9
 

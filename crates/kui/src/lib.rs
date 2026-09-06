@@ -18,6 +18,8 @@ pub use kui_core::*;
 
 mod access_bridge;
 pub mod audio;
+/// ADR 0009's arithmetic, ahead of the driver half that will call it.
+mod retarget;
 #[cfg(target_os = "windows")]
 mod windows_nc;
 
