@@ -1568,15 +1568,24 @@ export interface KuiWindow {
  *  `KuiWindow` under `runWindowed`. `M` is the model, `A` every message
  *  `update` can see. */
 export interface LoopConfig<M, A, S> {
-  init: M | (() => M);
+  /** The first model, or a function that builds it. The function form is
+   *  handed the surface — after `setup` has run, so the fonts and images it
+   *  registered are there to measure against — which is how a first model
+   *  gets the real `size()` and its own `measureText` numbers instead of
+   *  constants it corrects on the first `resize`. */
+  init: M | ((surface: S) => M);
   /** Returns the next model; returning undefined keeps the current one.
    *  `surface` is the thing being driven — for `editText`, `focus`,
    *  `play`, `scrollGeometry` and the rest. */
   update: (model: M, msg: A, event: UiEvent<A>, surface: S) => M | undefined | void;
   /** The tree for one window. Called once per open window per frame with
    *  its name — `'main'` for the one the app starts in, else a name
-   *  `windows` declared — so a single-window app ignores the argument. */
-  view: (model: M, window: string) => KuiNode;
+   *  `windows` declared — so a single-window app ignores the argument. The
+   *  surface comes third, for the measurement a tree needs while it is being
+   *  built: `surface.measureText(...)` to size a column to its widest label,
+   *  `size()` to pick the tier that fits. Measure, do not mutate — a view
+   *  runs every frame. */
+  view: (model: M, window: string, surface: S) => KuiNode;
   /** Which windows exist besides `main`, by name (see `WindowDecl`). A
    *  window opens on the first frame that lists it and closes on the first
    *  that does not; the `WindowMsg` says when. Leave it out for one window. */
