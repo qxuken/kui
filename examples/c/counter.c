@@ -1286,7 +1286,6 @@ static void conf_keys(KuiCtx *ui, const Fixtures *f, int phase) {
  * under a modal. */
 static void conf_modal(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
-    (void)phase;
     KuiSpec outer = {.gap = 6, .width = {KUI_GROW, 1}};
     kui_open(ui, &outer, NULL);
     kui_titlebar_with(ui, conf_modal_titlebar, NULL);
@@ -1295,8 +1294,27 @@ static void conf_modal(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_value_map_set(open_tag, KUI_STR("kind"), kui_value_str(KUI_STR("open")));
     KuiSpec open = {.dir = KUI_ROW, .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 20},
                     .bg = 0x30344aff, .label = KUI_STR("Open")};
-    kui_open_keyed(ui, KUI_STR("open"), &open, open_tag);
+    uint64_t open_key = kui_open_keyed(ui, KUI_STR("open"), &open, open_tag);
     kui_close(ui);
+    /* The app owns its keyboard while the dialog is shut and says so every
+     * frame - an edge once, and no clobber after. */
+    if (phase == 0) kui_set_key_focus(ui, open_key);
+
+    /* Phase 1 drops the dialog and declares the node it was renaming
+     * focused instead: that change of declaration is an edge, and an edge
+     * on the closing frame beats the focus the modal displaced (see
+     * docs/adr/0003-modal-surfaces.md, decision 4). */
+    if (phase != 0) {
+        KuiValue *note_tag = kui_value_map();
+        kui_value_map_set(note_tag, KUI_STR("kind"), kui_value_str(KUI_STR("note")));
+        KuiSpec note = {.dir = KUI_ROW, .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 20},
+                        .bg = 0x30344aff, .label = KUI_STR("Note")};
+        uint64_t note_key = kui_open_keyed(ui, KUI_STR("note"), &note, note_tag);
+        kui_close(ui);
+        kui_set_key_focus(ui, note_key);
+        kui_close(ui);
+        return;
+    }
 
     /* KuiSpec.modal is the `modal` prop, borrowed for the open call. */
     KuiValue *modal = kui_value_map();

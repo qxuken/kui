@@ -40,10 +40,26 @@ function update(model: Model, msg: Msg, ev: UiEvent<Msg>, ui: Ctx | KuiWindow): 
   }
 }
 
-const view = (model: Model) => (
+// `init` is the first model, or a function the surface is handed to — after
+// `setup`, so the fonts and images it registered are there to measure
+// against. Under a window that argument is the window, so a first model can
+// be built at the size it really opened at instead of at a constant
+// corrected on the first `resize`:
+//   runWindowed({ init: (win) => ({ count: 0, size: win.size() }), ... })
+const init = (): Model => ({ count: 0 });
+
+// `view(model, window, surface)`: the window's name (`'main'` unless
+// `windows` declared others) and the surface, for the measurement a tree
+// needs while it is being built. A single-window app that measures nothing
+// takes `model` alone.
+const view = (model: Model, _window: string, ui: Ctx | KuiWindow) => (
   <box pad={24} gap={16}>
     <button onClick={{ kind: 'add', by: 1 }}>+1</button>
-    <text size={20}>{`count = ${model.count}`}</text>
+    {/* Wide enough for the widest count it will ever show, so the button
+        beside it does not shift as the number grows. */}
+    <box width={ui.measureText('count = 0000', { size: 20 }).width}>
+      <text size={20}>{`count = ${model.count}`}</text>
+    </box>
   </box>
 );
 const app = createApp({ init, update, view }, { width: 640, height: 480 });   // headless
@@ -96,6 +112,8 @@ asserts on what the core produced:
   is what a window would have played.
 - **Measurement**: `app.ctx.measureText(content, style, maxWidth)` is what
   layout gives the same `<text>`, so a breakpoint assertion is arithmetic.
+  It is the same object `view`'s third argument is, so a test measures what
+  the view measured.
 - **Warnings**: `app.warnings` is every silent misconfiguration the core
   noticed (a `grow` weight with nothing to split, a transition on an unkeyed
   list item, a duplicate key); assert it is empty.
@@ -171,7 +189,10 @@ package as [props.md](props.md) (`docs/props.md` in the repository).
   layout gives a `<text>` with that content and those props, at the
   window's scale; pass a `maxWidth` to see it wrapped, and `wrap` /
   `maxLines` / `ellipsis` apply. Size a column to its widest label, or pick
-  the tier whose labels fit, from these numbers; they follow the font.
+  the tier whose labels fit, from these numbers; they follow the font. Both
+  are reachable where the sizing happens: `view(model, window, surface)`
+  gets the surface third, and `init(surface)` gets it before the first
+  model, so neither needs the surface parked in a module-level variable.
 - **Where did layout put it**: `onLayout={tag}` on a keyed box brings back
   `{ kind: 'layout', x, y, w, h, parent, tag }` — on its first frame and
   whenever the rect changes, never on a frame that left it alone, so
@@ -186,7 +207,8 @@ package as [props.md](props.md) (`docs/props.md` in the repository).
   are a development aid: under `NODE_ENV=production` they do not run at
   all (`diagnostics: true` forces them on).
 - **Window size**: `win.size()` gives `{width, height, scale}` (logical px)
-  — in `setup(win)` before the first frame, and any time after. Changes
+  — in `setup(win)` before the first frame, in `init(win)` while the first
+  model is built, and any time after. Changes
   arrive as `{kind: 'resize', width, height, scale}` events, so a model that
   tracks the size updates in `update` like anything else. Bound what the
   user can resize to with `minWidth` / `minHeight` / `maxWidth` / `maxHeight`

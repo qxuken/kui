@@ -28,6 +28,25 @@ bumped past alpha.6 should delete.
 
 ### Added
 
+- **Node's `init` and `view` are handed the surface** (backlog F11, from
+  two field reports). The function form of `init` takes it —
+  `init: (surface) => model`, called after `setup`, so a first model
+  measures against the fonts `setup` registered and, under a window, reads
+  the size the window really opened at — and `view` takes it third:
+  `view(model, window, surface)`. Both are additive and typed by the `S`
+  that `LoopConfig` already carried (`Ctx` headless, `KuiWindow` under
+  `runWindowed`), so a value `init` and a two-argument `view` are unchanged.
+  This is what makes the README's own suggestion for `measureText` — size a
+  column to its widest label — something a view can do, rather than
+  something only `update` could.
+  **What you can delete:** the module-level variable an app parked the
+  surface in from `setup`, the hardcoded window size its first model was
+  built against, and the `resize` handler that existed only to correct it —
+  with it, the frames between the first draw and that correction, where the
+  camera and every hit test were off. `examples/node/counter-window.tsx`
+  deletes its `openedAt` exactly this way. Note that a headless `Ctx` still
+  has no `size()`: the size it draws at is the one you hand `createApp`.
+
 - **A stroke primitive: `QuadKind::Segment` and the `line` element**
   (`docs/adr/0010-a-segment-primitive.md`, backlog F12 from the mind-map
   field report, whose every connector was three thin boxes). A segment is a
@@ -130,8 +149,38 @@ bumped past alpha.6 should delete.
   `ambiguous-key` warning; a label nothing declared is an error naming
   both spellings, where `bad id "beta"` named neither.
 
+- **`slider-value-out-of-range`** (backlog F10, from the pomodoro field
+  report). A `slider` whose `valueNow` is outside its own `valueMin` /
+  `valueMax`, or whose `valueMin` is above its `valueMax`, was advertised
+  verbatim and warned nothing — the app that clamps in `update` keeps the
+  range in two places, and the drift is visible only to a screen-reader
+  user. Now the diagnostics walk compares the rows a slider declares
+  (only those: a slider with no `valueMin` has no floor) and reports the
+  node once, beside `image-without-label`. One more row in the single
+  warnings table, so the Node `WarningCode` union and `docs/props.md`
+  regenerated from it.
+
 ### Fixed
 
+- **A modal gives focus back unless the closing frame says otherwise**
+  (backlog F4, the mind map's rename editor). The focus a modal displaces
+  comes back when it goes away (ADR 0003, decision 4) — but a rename
+  editor opened on a node created in the *same* frame displaced the node
+  the user came from, so dismissing it put focus back there and the next
+  Enter added a sibling in the wrong place. The app had no way out:
+  `focus()` needed a key it did not have, and `keyFocus` on the new node
+  had spent its edge. Now a `keyFocus` edge on the frame a modal stops
+  being declared — a node declared focused there and not on the frame
+  before — stands, and the remembered focus is dropped. That is
+  `initialFocus`'s missing half: `initialFocus` says which control a
+  dialog opens on, `keyFocus` on the closing frame says where the
+  keyboard lands on the way out, and neither needed a new row. An app
+  that declares nothing, or that repeats one declaration every frame (a
+  key sink owning its keyboard), is untouched — a redeclaration is no
+  edge, so the restore still lands where it always did. The corpus's
+  `modal` scene drops its dialog in a second phase and declares the node
+  it was renaming focused, so all four bindings agree on where the
+  keyboard ends up.
 - **A `transition` eases under `createApp`, so it is testable from Node**
   (backlog F1, the mind-map field report's #8). The loop set the core's
   frame clock only inside `advance(ms)`; `render()`, `click()`, `type()`
@@ -190,6 +239,14 @@ bumped past alpha.6 should delete.
   A window that has not yet presented now asks again, one frame apart and at
   most sixty times; in practice a popup lands on the third try, about 50ms
   in. Visible on any second window, popup or not.
+
+- **`AccessMsg` takes the app's union** (backlog F9, pomodoro 2.2). It was
+  the one core message with `tag?: unknown` while `DragMsg<T = AppMsg>`
+  and `KeyMsg<T>` carried the app's messages, so handling a slider nudge
+  needed `p.tag as PomoMsg` in a library whose pitch is one union and no
+  casts. Now `AccessMsg<T = AppMsg>` with `tag?: T`; `CoreMsg` picks up
+  the default, and `examples/node/counter.tsx` reads a step off a nudge's
+  tag with no cast.
 
 ### Changed
 
