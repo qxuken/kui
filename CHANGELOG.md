@@ -67,21 +67,34 @@ release. That is the whole of the F15 symptom, and it is on the by-hand list
 rather than in a test because the model was always right — only the screen
 was wrong.
 
-**The performance guard passed; the README's table was deliberately not
-refreshed.** `scripts/bench-check.sh` benches HEAD against the previous tag
+**The performance guard passed; the README's table took a second run to
+refresh.** `scripts/bench-check.sh` benches HEAD against the previous tag
 back to back on one machine: **none of the four guarded rows is more than 10%
 slower than alpha.6** (`frame_10k_rects` +1.4%, `frame_1k_typical` +1.2%,
 `frame_10k_rects_with_text_and_hits` +2.6%, `deep_nesting_64_levels` −4.2%),
 with a worst run-to-run spread of 4.6% on a guarded row. That verdict is a
 *difference* measured under identical conditions and it stands. The absolute
-table under "Performance" in the README is **alpha.6's numbers and is still
-labelled as alpha.6's**, because this machine was not idle and the run says
-so in a way worth recording: benching the alpha.6 tag *itself* today gives
-`frame_10k_rects_all_transitioning` at 2.80 ms against the 1.73 ms the README
-records for that same commit, with a ±27% spread between that row's own two
-runs. Taking today's medians would have made the table less true, not
-fresher. Re-running the script on an idle machine is what refreshes it, and
-that is in the backlog rather than done here.
+table under "Performance" could not be taken from that run, and the reason is
+worth recording: this machine was not idle, and benching the alpha.6 tag
+*itself* gave `frame_10k_rects_all_transitioning` at 2.80 ms against the
+1.73 ms the README recorded for that same commit, with a ±27% spread between
+that row's own two runs. Those medians would have made the table less true,
+not fresher.
+
+**The table is now the idle re-run's**, done the same day once the machine was
+quiet: two full passes, the guarded rows agreeing with themselves within 3%
+and no row disagreeing by more than 7%. `frame_10k_segments` and
+`frame_1k_curves` joined it, the ratios under it were re-derived, and the
+editing-latency table was re-measured in the same sitting. Two rows moved
+more than the rest — `frame_10k_rects_all_transitioning` 1.73 → 1.92 ms and
+`frame_10k_rects_all_declaring_exit` 2.21 → 2.61 ms — and that is **not** a
+regression: the alpha.6 tag benched on the quiet machine reads 1.98 ms and
+2.48 ms, so the same commit measures the same way. Those two are heavy-tailed
+(fastest ~1.6 ms against slowest ~2.9 ms), so their median is the statistic
+that moves between days, and one pass in eight read them a full 12% low.
+Reading a single pass is what the script's own two-runs-per-side spread is
+there to catch. Every other row is within ~4% of what the table carried,
+`replay_a_full_depart_store` (13.2 → 14.1 µs) apart.
 
 **Not run, and so not claimed.** Nothing has executed on **Windows** — no
 machine or VM was reachable, so `crates/kui/src/windows_nc.rs` has still

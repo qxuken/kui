@@ -169,20 +169,6 @@ It wants a profile, and the shape of the answer is which added pass can be
 skipped wholesale with a tree-level flag, the way `any_exit` already skips
 the depart diff.
 
-**The one thing alpha.7's own pre-tag round could not do.** `bench-check.sh`
-guards *differences* and passed — no guarded row is more than 10% slower than
-alpha.6, measured back to back on one machine. What it could not do is
-refresh the README's **absolute** table, and the release section says why:
-this machine was not idle, and the proof is in the run rather than in the
-warning. Benching the alpha.6 tag itself today gives
-`frame_10k_rects_all_transitioning` at 2.80 ms against the 1.73 ms the README
-records for that same commit, with a ±27% spread between its own two runs —
-so the table would have been made worse, not fresher, by taking today's
-numbers. The guarded rows are steady (±0.5–4.6%) and their verdict stands.
-**Do:** re-run `scripts/bench-check.sh` on an idle machine and take the
-table it prints, which is R6's method with the by-hand parts removed. Until
-then the README's numbers are alpha.6's and are labelled as such.
-
 **Build next.** W2's driver half, below — the one item with a written ADR
 and no code. It is the only thing on this file that a user can hit today
 (press-drag-release into a popup does nothing), and every part of it is in
@@ -266,8 +252,8 @@ build**, all in `crates/kui/src/lib.rs` and none of it headlessly testable:
 Sixty-three entries, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim.
 This index is here so an id resolves without opening that file: the open items
-above cite A1, C7, C9, C10, D2, P3, P5, P8, R3 and S2, "After alpha.7" and the
-hygiene note cite C2, C5(b), P1, P3, R4, R6 and R7, and code comments, ADRs and
+above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.7" and
+the hygiene note cite C2, C5(b), P1, P3, R4 and R7, and code comments, ADRs and
 commit messages cite ids of their own. Sixty-one of these are simply closed;
 **C15** and **W2** appear in both files, whole there and trimmed to what is
 still open here. **C11** was a third, until its last step landed on 2026-09-06
