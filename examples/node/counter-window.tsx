@@ -11,11 +11,11 @@ type Model = { count: number; note: string; size: WindowSize; hum: boolean };
 type CounterMsg = { kind: 'add'; by: number } | { kind: 'reset' } | { kind: 'hum' };
 type Msg = CounterMsg | CoreMsg;
 
-// setup() runs before init(), so the first model already knows the size the
-// window actually opened at; `resize` messages keep it current after that.
-let openedAt: WindowSize = { width: 0, height: 0, scale: 1 };
-
-const init = (): Model => ({ count: 0, note: '', size: openedAt, hum: false });
+// `init` is handed the window, and runs after setup(), so the first model
+// already knows the size the window actually opened at — no module-level
+// variable, no constant corrected on the first `resize`. `resize` messages
+// keep it current after that.
+const init = (win: KuiWindow): Model => ({ count: 0, note: '', size: win.size(), hum: false });
 
 function update(model: Model, msg: Msg, ev: UiEvent<Msg>, win: KuiWindow): Model | undefined {
   switch (msg.kind) {
@@ -121,7 +121,6 @@ const done = runWindowed({ init, update, view }, {
     const tone = Float32Array.from({ length: 2000 }, (_, i) => Math.sin((i / 200) * 2 * Math.PI) * 0.25);
     click = win.addSound(wav(rate, blip));
     hum = win.addSound(wav(rate, tone));
-    openedAt = win.size();
   },
 });
 
