@@ -15,8 +15,9 @@ before the alpha.7 tag, and W2 went whole on 2026-09-07 when ADR 0009's driver
 half was built. The index at the bottom of this file names every one of them,
 so an id cited by an open item, a code comment or a commit message can be
 resolved without opening the archive. Nothing was renumbered in any of those
-moves, and nothing ever is. What is left here is four headings — C12, C13, C14
-and the remainder of C15 — plus what comes next.
+moves, and nothing ever is. What is left here is three headings — C12, C13
+and C14 — plus what comes next. C15's remainder was the last split entry, and
+it closed on 2026-09-07.
 
 Ordered by area, not by priority. What to do next is under "After alpha.7".
 
@@ -79,80 +80,6 @@ already do half of it — a `Fit` height on an `<image>` preserves the intrinsic
 aspect against a final width (`fit_heights`), so the machinery and the pass
 ordering are proven; this generalises it to a declared ratio on any node.
 
-### `~` C15 — `NodeSpec` was 728 bytes and the frame got ~2.5× more expensive — **fixed (2026-09-05), ~two-thirds recovered**
-
-Fixed for the tag by boxing the four cold field groups, which took `NodeSpec`
-from 728 bytes to 224 and made alpha.6 16–22% faster than the release before
-it. The measurement record — the bisect staircase, the `sample` profiles, the
-padding experiment, the recovery table and the two guards now in place — is in
-[the archived entry](backlog/closed-2026-09.md#-c15--nodespec-was-728-bytes-and-the-frame-got-25-more-expensive--fixed-2026-09-05-two-thirds-recovered).
-What that entry ends on is what is still open, and it is reproduced here as
-written:
-
-**What is left.** `frame_10k_rects` is still ~1.5× its 2026-08-31 cost, and
-that half is the per-node logic the features added, not the struct. It wants
-its own profile now that the cache behaviour has changed — the shape of the
-answer is which of the added passes can be skipped wholesale with a tree-level
-flag, the way `any_exit` already skips the depart diff. **The threshold half
-is done (2026-09-06)**, as `scripts/bench-check.sh`; the profile is what is
-left.
-
-The guard, and why it is not the CI check this entry first asked for. The
-size test catches the specific mistake that caused this regression; it does
-not catch a slow pass, and this one was a staircase of tens-of-microsecond
-steps across ~190 commits, no step of which was large enough to fail a
-review. R6 found it only by re-measuring the README table for the release.
-So the threshold was worth having — but **not in CI**, decided 2026-09-06:
-the docker runner is too weak to measure a frame, it would false-fail, and a
-check that false-fails gets turned off, which is worse than not having it.
-The guard is instead a local `scripts/bench-check.sh` on the pre-tag run
-list. It scripts what was already done by hand twice — C15's own bisect and
-the alpha.5-vs-alpha.6 table below — checking the previous `v*` tag out into
-a worktree under `target/bench-base/`, benching both sides back to back on
-the one machine, and comparing medians. Four rows are guarded and fail it at
-more than 10% slower (`frame_10k_rects`, `frame_1k_typical`,
-`frame_10k_rects_with_text_and_hits`, `deep_nesting_64_levels`); 10% is
-twice the ~5% noise floor these measurements have shown. Every other row is
-reported and not judged, and a row only one side has is listed rather than
-compared.
-
-Two things it does beyond the threshold, both because of how this entry
-went. It prints the README's table with HEAD's medians filled in, so
-refreshing those numbers at tag time is the same command as the guard rather
-than the separate manual pass R6 did. And it watches for the trap the
-alpha.5-vs-alpha.6 measurement hit: the bench *builder* can change between
-refs (`f6eec64` unified the grid), and then a row is not comparable even
-though its name is. When `crates/kui-core/benches/frame.rs` differs it says
-which rows still build from source that reads the same at both refs and
-which are touched, transitively, and by which item. For a plain grid row
-every `Grid` switch is off, so a builder change that only adds a switch
-leaves those four comparable; a new switch the row turns on does not.
-
-The same reasoning that kept it out of CI is inside it: a loaded machine
-cannot measure a frame either, and this repo's own worktrees are usually
-compiling in one. So each side runs twice and the second is read, and a row
-whose own two runs disagree by more than the tolerance is marked
-**unreadable** rather than given either verdict — it cannot resolve a
-difference smaller than its own jitter. The run is **INCONCLUSIVE** (exit 2)
-when no readable row failed but some row was unreadable. Both halves of that
-were worth having, and both were proven on 2026-09-06 against a busy
-machine: `frame_10k_rects` read 119% slower there and the gate refused it,
-which is the false-fail the whole design is against; and judging per row
-rather than per run is what stops the cheapest bench from vetoing the
-others, since `deep_nesting_64_levels` is ~80 µs, where one preemption is
-20%, and a global veto threw away three good verdicts to buy nothing. It
-also warns before starting, off the summed CPU of what is running rather
-than the load average: a one-minute decaying average both cries wolf on a
-box that has just gone quiet and misses a lull long enough to bench in.
-
-A note for whoever picks that up: `Quad` also grew, 92 → 124 bytes, and the
-display list is one per quad. It did not show up in either profile — emission
-is a small share of a frame — but it is the same mistake in the same place,
-and `frame_10k_rects_with_shadows_and_opacity` (20k quads) is the bench that
-would show it.
----
-
-
 ## After alpha.7
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It replaces
@@ -163,12 +90,10 @@ rather than accumulating strikethroughs: every line of it had closed.
 **Build.** ADR 0004 step 1's leftover: the glyph atlas and shape cache are
 still per window because `Core::output` hands out `&mut GlyphAtlas` (see
 `kui-session-atlas-constraint`); it waits for a case where two windows share
-enough text to matter. C15's remainder is unchanged and is the one open
-performance item: `frame_10k_rects` is still ~1.5× its 2026-08-31 cost after
-the boxing fix, and that half is the per-node logic rather than the struct.
-It wants a profile, and the shape of the answer is which added pass can be
-skipped wholesale with a tree-level flag, the way `any_exit` already skips
-the depart diff.
+enough text to matter. C15 is closed (2026-09-07): its remainder was
+profiled and the passes that could be skipped are, and what is still above
+the 2026-08-31 baseline is the struct's size in the app's own builder chain,
+which the archived entry measures and leaves.
 
 **Build next.** ADR 0012's decisions 2, 3 and 6 — the one item on this file
 with a written ADR and no code, now that W2's driver half is built. A
@@ -243,11 +168,12 @@ Sixty-three entries, all in
 This index is here so an id resolves without opening that file: the open items
 above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.7" and
 the hygiene note cite C2, C5(b), P3, R4 and R7, and code comments, ADRs and
-commit messages cite ids of their own. Sixty-two of these are simply closed;
-**C15** alone appears in both files, whole there and trimmed to what is still
-open here. **C11** and **W2** were the other two, until their remainders landed
-— C11's last step on 2026-09-06, ADR 0009's driver half on 2026-09-07 — and
-took each whole entry to the archive.
+commit messages cite ids of their own. All sixty-three are whole in the
+archive. **C11**, **W2** and **C15** were each split for a while — an entry
+appearing there in full and here trimmed to what was still open — until their
+remainders landed: C11's last step on 2026-09-06, ADR 0009's driver half on
+2026-09-07, and C15's profile the same day. Each move took the whole entry to
+the archive, and none renumbered it.
 
 The archive also holds four sections that are records rather than work: the
 suggested sequence as it stood on 2026-09-05, "After alpha.6" as it stood on
@@ -306,7 +232,7 @@ move.
 - `.` **C8** — [Extend the paint vocabulary](backlog/closed-2026-09.md#-c8--extend-the-paint-vocabulary--done-2026-09-04) — done (2026-09-04)
 - `.` **C9** — [`KeyUp` and key repeat](backlog/closed-2026-09.md#-c9--keyup-and-key-repeat--done-2026-09-04) — done (2026-09-04)
 - `.` **C10** — [Flex wrapping](backlog/closed-2026-09.md#-c10--flex-wrapping--done-2026-09-04) — done (2026-09-04)
-- `~` **C15** — [`NodeSpec` was 728 bytes and the frame got ~2.5× more expensive](backlog/closed-2026-09.md#-c15--nodespec-was-728-bytes-and-the-frame-got-25-more-expensive--fixed-2026-09-05-two-thirds-recovered) — fixed (2026-09-05), ~two-thirds recovered — the measurement record — the profile, the bisect and the fix; the remainder is above
+- `~` **C15** — [`NodeSpec` was 728 bytes and the frame got ~2.5× more expensive](backlog/closed-2026-09.md#-c15--nodespec-was-728-bytes-and-the-frame-got-25-more-expensive--fixed-2026-09-05-closed-2026-09-07) — fixed (2026-09-05), closed (2026-09-07) — the bisect, the two profiles, the padding experiments, the boxing fix and the pass gates; what is still above the 2026-08-31 baseline is measured and named
 - `.` **C11** — [Build multi-window](backlog/closed-2026-09.md#-c11--build-multi-window--done-2026-09-06) — done (2026-09-06), all five steps
 
 **Repetition** — D1–D4

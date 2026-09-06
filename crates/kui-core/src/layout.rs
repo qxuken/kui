@@ -18,8 +18,11 @@ use crate::scroll::ScrollStore;
 use crate::spec::{Align, Dir, FloatAnchor, Sizing};
 use crate::tree::{NIL, NodeContent, Tree};
 
+/// Gated on the tree-level flag first: on a frame with no floats this is
+/// one predicted branch rather than a read through every child's spec.
+#[inline]
 fn is_float(tree: &Tree, i: u32) -> bool {
-    tree.specs[i as usize].layout.float.is_some()
+    tree.any_float && tree.specs[i as usize].layout.float.is_some()
 }
 
 fn align_factor(a: Align) -> f32 {
@@ -66,8 +69,12 @@ fn overflow(pos: f32, len: f32, limit: f32) -> f32 {
 /// the lines. `scroll_x` says the same thing a different way — an axis that
 /// scrolls is unbounded, and an unbounded axis has nothing to break
 /// against. `diag::WRAP_IGNORED` reports both.
+#[inline]
 fn wraps(tree: &Tree, i: u32) -> bool {
-    let s = tree.specs[i as usize].layout;
+    if !tree.any_wrap {
+        return false;
+    }
+    let s = &tree.specs[i as usize].layout;
     s.wrap && s.dir == Dir::Row && !s.scroll_x
 }
 
@@ -490,8 +497,14 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
         }
     }
 
-    // Floating children size Grow/Percent against their anchor.
-    let mut c = tree.first_child[i as usize];
+    // Floating children size Grow/Percent against their anchor. A frame
+    // with no floats skips the walk: it would read every child's spec to
+    // find none.
+    let mut c = if tree.any_float {
+        tree.first_child[i as usize]
+    } else {
+        NIL
+    };
     while c != NIL {
         if let Some(cfg) = tree.specs[c as usize].layout.float {
             let anchor_dim = match (cfg.anchor, axis) {
@@ -510,8 +523,8 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
     }
 
     // Text children have no spec sizing; clamp their width to the content box
-    // so fit_heights wraps them.
-    if axis == AxisSel::Width {
+    // so fit_heights wraps them. Same walk, same gate: no text, no clamp.
+    if axis == AxisSel::Width && tree.any_text {
         let mut c = tree.first_child[i as usize];
         while c != NIL {
             if matches!(tree.content[c as usize], NodeContent::Text(_))
@@ -857,8 +870,12 @@ pub(crate) fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Siz
         };
 
         // Out of flow first, so the in-flow walk is one shape whether or
-        // not it goes line by line.
-        let mut c = tree.first_child[i];
+        // not it goes line by line. A frame with no floats skips the walk.
+        let mut c = if tree.any_float {
+            tree.first_child[i]
+        } else {
+            NIL
+        };
         while c != NIL {
             if let Some(cfg) = tree.specs[c as usize].layout.float {
                 place_float(tree, cfg, c, Rect::from_pos_size(origin, size), viewport);

@@ -74,6 +74,19 @@ pub struct Tree {
     /// in-flow children of one line are always a contiguous sibling run,
     /// so a line is a range rather than a list.
     pub line: Vec<u32>,
+
+    // Set by `push`, cleared by `clear`: what this frame declared at all,
+    // so a pass whose work exists for one feature can skip it wholesale
+    // when no node asked for that feature. A float check in a layout pass
+    // is a scattered read through the spec of every child of every node;
+    // behind a flag that is false on nearly every frame it is one
+    // predicted branch (C15).
+    /// Whether any node declares `float`.
+    pub any_float: bool,
+    /// Whether any node declares `wrap_children`.
+    pub any_wrap: bool,
+    /// Whether any node is text (a `Text` or `Edit` content).
+    pub any_text: bool,
 }
 
 impl Tree {
@@ -103,8 +116,12 @@ impl Tree {
         self.pos.clear();
         self.scroll_max.clear();
         self.line.clear();
+        self.any_float = false;
+        self.any_wrap = false;
+        self.any_text = false;
     }
 
+    #[inline]
     pub fn push(
         &mut self,
         parent: u32,
@@ -114,6 +131,10 @@ impl Tree {
         content: NodeContent,
     ) -> u32 {
         let idx = self.keys.len() as u32;
+        // Read before the move, while the spec is in cache anyway.
+        self.any_float |= spec.layout.float.is_some();
+        self.any_wrap |= spec.layout.wrap;
+        self.any_text |= matches!(content, NodeContent::Text(_) | NodeContent::Edit(_));
         self.keys.push(key);
         self.origins.push(origin);
         self.specs.push(spec);

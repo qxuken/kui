@@ -335,7 +335,7 @@ impl Core {
         // paint order; parents precede children).
         for i in 0..self.tree.len() {
             let parent = self.tree.parent[i];
-            let floats_here = self.tree.specs[i].layout.float.is_some();
+            let floats_here = any_float && self.tree.specs[i].layout.float.is_some();
             if any_float {
                 self.in_float[i] = floats_here || (parent != NIL && self.in_float[parent as usize]);
             }

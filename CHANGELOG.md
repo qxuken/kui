@@ -89,6 +89,30 @@ mouse-down would dismiss and reopen its own menu in one gesture.
 
 ### Changed
 
+- **A plain frame is ~11% cheaper, and C15 is closed** (backlog C15, the
+  half left open after alpha.6's boxing fix). The second profile the entry
+  asked for was taken, and it says where the remaining ~1.5× against the
+  2026-08-31 table went: about a third is still the struct's size, now
+  paid in the app's own builder chain and the moves down the open chain,
+  and the rest was per-node reads that features added to passes a plain
+  frame runs anyway. Those are gone. `Tree` carries `any_float`, `any_wrap`
+  and `any_text`, set as nodes are pushed, and the layout passes skip the
+  float, wrap and text-clamp walks wholesale behind them — the same shape as
+  `any_exit` skipping the depart diff; emission's float check sits behind
+  the flag it already had; the hover-style and transition early-outs are
+  branches at the call site rather than calls that return; `hover_tracked`
+  tests each boxed group once; and `Ui::open` → `Core::open` →
+  `open_with_key` → `Tree::push` are inlined so a spec is copied once, into
+  the tree. Against alpha.7, interleaved on one machine: `frame_10k_rects`
+  816 → 725 µs (−11%), `frame_1k_typical` 117 → 110 µs, text-and-hits
+  1.22 → 1.14 ms, the chip grids −12 to −14%, the clip and one-exit grids
+  −12%, with `deep_nesting_64_levels` unchanged (+1%, inside its noise).
+  Nothing in the IR, the ABI or any binding moves. The entry also measures
+  what it declines: `Quad` at 124 bytes is an ABI field and costs ~5% on
+  the 20k-quad bench, and the one pass left that a flag could skip — the
+  drop walk over 10k specs in `begin_frame`, ~3% — needs kui-core's first
+  `unsafe` block, which is a decision and not an optimisation.
+
 - **A mass removal's departing frame stops being quadratic** (ADR 0012,
   decision 5). `DepartStore::depart` retires any ghost already holding the
   departing key — two pictures of one node are never right — and that

@@ -642,17 +642,17 @@ reach it; it takes no pointer input and has no access row.
 
 ## Performance
 
-`cargo bench -p kui-core`, measured 2026-09-06 on an Apple M3 Pro MacBook Pro
+`cargo bench -p kui-core`, measured 2026-09-07 on an Apple M3 Pro MacBook Pro
 (macOS 26.6.2, rustc 1.98.0, release, steady-state warm caches — full frame:
 build + layout + emit). The suite was run twice back to back and the second
 run read; most rows reproduce to within ~3% that way. Two do not:
 `frame_10k_rects_all_transitioning` and `frame_10k_rects_all_declaring_exit`
-spanned 1.69–1.94 ms and 2.15–2.61 ms over four passes, so their medians below
-are the median of those four and should be read as **±10%**, not as three
+disagree with themselves by 5–6% run to run where every other row holds to
+~3%, so their medians below should be read as **±10%**, not as three
 significant figures. Nothing separated the passes — the same binary on mains
 and on battery agrees to within 1%, and every other row held steady across all
 of them. Measuring a row alone after an idle also reads lower than measuring it
-inside the whole suite (`frame_10k_rects` ~765 µs against ~807 µs), so these
+inside the whole suite (`frame_10k_rects` ~715 µs against ~725 µs), so these
 are the numbers the command above gives, which is the point of quoting them.
 The grid benches all go through the same builder at 1920×1080 and differ only
 in which props are switched on, so the difference between two of them is what
@@ -660,27 +660,27 @@ that prop costs.
 
 | bench | what it holds | median |
 |---|---|---|
-| `frame_1k_typical` | 32×32 grid, every 8th cell a label, every 4th clickable — a "typical app" frame | ~117 µs |
-| `frame_10k_rects` | 100×100 plain rects, nothing switched on | ~807 µs |
-| `frame_10k_rects_with_text_and_hits` | the same grid plus 1.2k texts and 2.5k hit regions | ~1.23 ms |
-| `frame_10k_rects_with_access_tree` | that frame with `core.access_tree()` derived after it — what a frame costs while assistive technology is attached | ~1.66 ms |
-| `frame_10k_rects_with_shadows_and_opacity` | the plain grid with only the paint props on: every cell casts a shadow under a faded root | ~882 µs |
-| `frame_10k_rects_square_clip` | the plain grid with every row clipping, so all 10k cells inherit a clip | ~872 µs |
-| `frame_10k_rects_rounded_clip` | the same with a radius on every clipping row, so each cell pays the per-corner intersect | ~899 µs |
-| `frame_10k_segments` | 10k one-segment `line` floats — the same 10k quads as `frame_10k_rects`, so the gap between the two is what a segment costs over a box | ~869 µs |
-| `frame_1k_curves` | 1k curves through eight knots each, re-flattened by chord length every frame — 35 segments a curve | ~270 µs |
-| `frame_10k_rects_all_transitioning` | every cell declares a `transition` — nine retained tween slots each | ~1.88 ms |
-| `frame_10k_rects_all_declaring_exit` | every cell also declares an `exit`, so the whole frame is kept for the next one to diff against | ~2.54 ms |
-| `frame_10k_rects_one_exit` | the same 10k grid with a single cell declaring an `exit` | ~832 µs |
-| `drop_1k_rows_plain` | 1k rows removed from the tree in one frame, no exits declared | ~64.8 µs |
-| `drop_1k_rows_declaring_exit` | the same removal with exits declared, so 1k ghosts start playing out | ~269 µs |
-| `replay_a_full_depart_store` | replaying a saturated depart store (the 512-node budget) for one frame | ~14.1 µs |
-| `frame_10k_chips_unwrapped` | 10k chips in 100 rows, one line per row | ~737 µs |
-| `frame_10k_chips_wrapped` | the same tree with every row breaking onto several lines | ~924 µs |
-| `deep_nesting_64_levels` | 16 chains nested 64 levels deep | ~78.1 µs |
-| `list_10k_rows_naive` | a 10k-row list held at its middle, built row by row | ~3.69 ms |
-| `list_10k_rows_virtual` | the same list through `widgets::virtual_column` | ~16.5 µs |
-| `list_100k_rows_virtual` | 100k rows through the same widget | ~16.6 µs |
+| `frame_1k_typical` | 32×32 grid, every 8th cell a label, every 4th clickable — a "typical app" frame | ~110 µs |
+| `frame_10k_rects` | 100×100 plain rects, nothing switched on | ~725 µs |
+| `frame_10k_rects_with_text_and_hits` | the same grid plus 1.2k texts and 2.5k hit regions | ~1.14 ms |
+| `frame_10k_rects_with_access_tree` | that frame with `core.access_tree()` derived after it — what a frame costs while assistive technology is attached | ~1.57 ms |
+| `frame_10k_rects_with_shadows_and_opacity` | the plain grid with only the paint props on: every cell casts a shadow under a faded root | ~797 µs |
+| `frame_10k_rects_square_clip` | the plain grid with every row clipping, so all 10k cells inherit a clip | ~777 µs |
+| `frame_10k_rects_rounded_clip` | the same with a radius on every clipping row, so each cell pays the per-corner intersect | ~803 µs |
+| `frame_10k_segments` | 10k one-segment `line` floats — the same 10k quads as `frame_10k_rects`, so the gap between the two is what a segment costs over a box | ~829 µs |
+| `frame_1k_curves` | 1k curves through eight knots each, re-flattened by chord length every frame — 35 segments a curve | ~271 µs |
+| `frame_10k_rects_all_transitioning` | every cell declares a `transition` — nine retained tween slots each | ~1.79 ms |
+| `frame_10k_rects_all_declaring_exit` | every cell also declares an `exit`, so the whole frame is kept for the next one to diff against | ~2.20 ms |
+| `frame_10k_rects_one_exit` | the same 10k grid with a single cell declaring an `exit` | ~737 µs |
+| `drop_1k_rows_plain` | 1k rows removed from the tree in one frame, no exits declared | ~59.2 µs |
+| `drop_1k_rows_declaring_exit` | the same removal with exits declared, so 1k ghosts start playing out | ~221 µs |
+| `replay_a_full_depart_store` | replaying a saturated depart store (the 512-node budget) for one frame | ~14.2 µs |
+| `frame_10k_chips_unwrapped` | 10k chips in 100 rows, one line per row | ~648 µs |
+| `frame_10k_chips_wrapped` | the same tree with every row breaking onto several lines | ~822 µs |
+| `deep_nesting_64_levels` | 16 chains nested 64 levels deep | ~79.3 µs |
+| `list_10k_rows_naive` | a 10k-row list held at its middle, built row by row | ~3.57 ms |
+| `list_10k_rows_virtual` | the same list through `widgets::virtual_column` | ~16.2 µs |
+| `list_100k_rows_virtual` | 100k rows through the same widget | ~16.4 µs |
 
 What the pairs say. Deriving the access tree costs **~1.35×** the frame it
 follows. Shadows under a faded root are **twice the quads** (20k against 10k)
@@ -716,11 +716,20 @@ accessibility, hover styling), which puts `NodeSpec` at **224 bytes** and
 `memmove` back below the profiler's noise floor. That recovered about
 two-thirds of the regression — `frame_10k_rects` 1.37 ms → 788 µs — and every
 bench in the table moved with it, including ones that touch none of those
-fields. What remains against the 2026-08-31 baseline is ~1.5×, which is the
-per-node logic the features added rather than the cost of moving the struct;
-C15 carries the profile, the bisect and the fix in
-[docs/backlog/closed-2026-09.md](docs/backlog/closed-2026-09.md), and what is
-left in [docs/BACKLOG.md](docs/BACKLOG.md). `size_of::<NodeSpec>()` now has a
+fields. A second profile then went after the rest (2026-09-07): the passes
+that had grown a per-node read for a feature the frame does not use — the
+float, wrap and text walks in layout, the float check in emission, the
+hover-style and transition early-outs in the builder — are now behind
+tree-level flags or inlined branches, and the open chain carries a spec by
+pointer instead of moving it at every call. That took `frame_10k_rects`
+from 816 µs to 725 µs and the chips, clip and exit grids 10–14% with it. What
+is still above the 2026-08-31 baseline (~1.4×) is measured and is not a pass:
+a padded copy of the old struct at 224 bytes reproduces most of it, and the
+profile puts it in the app's own builder chain, where a `NodeSpec` is
+default-constructed and moved by value before the core sees it. C15 carries
+the bisect, both profiles, the padding experiments and both fixes in
+[docs/backlog/closed-2026-09.md](docs/backlog/closed-2026-09.md).
+`size_of::<NodeSpec>()` now has a
 test with a bound on it, so the next inline field has a number to fail against
 rather than a release audit to wait for. A fat struct is not the only way to
 lose a frame, though, so there is a second guard for the case that test cannot

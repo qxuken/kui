@@ -796,25 +796,33 @@ impl NodeSpec {
     /// Whether the core registers a hit region for this node (any of the
     /// interaction props, or an explicit `hoverable`).
     pub fn hover_tracked(&self) -> bool {
+        // Asked of every node at emission; the inline flags first, then
+        // each boxed group once — a node that declares neither group is
+        // answered by two null checks rather than a read per field (C15).
         self.hoverable
             || self.focusable
-            // A modal's own background is not "outside" it: a press there
-            // must find a region (see `docs/adr/0003-modal-surfaces.md`).
-            || self.events().modal.is_some()
-            || self.events().on_click.is_some()
-            || self.events().on_drag.is_some()
-            || self.events().on_key.is_some()
-            || self.events().on_context_menu.is_some()
             || self.window.is_some()
-            || self.interact().hover_bg.is_some()
-            || self.interact().pressed_bg.is_some()
-            || self.interact().hover_group.is_some()
-            || self.events().on_hover.is_some()
-            || self.interact().click_sound.is_some()
-            || self.interact().hover_sound.is_some()
             // A `cursor` override has to be found under the pointer to be
             // read, even on an otherwise inert box.
             || self.cursor.is_some()
+            || self.events.as_deref().is_some_and(|e| {
+                // A modal's own background is not "outside" it: a press
+                // there must find a region (see
+                // `docs/adr/0003-modal-surfaces.md`).
+                e.modal.is_some()
+                    || e.on_click.is_some()
+                    || e.on_drag.is_some()
+                    || e.on_key.is_some()
+                    || e.on_context_menu.is_some()
+                    || e.on_hover.is_some()
+            })
+            || self.interact.as_deref().is_some_and(|i| {
+                i.hover_bg.is_some()
+                    || i.pressed_bg.is_some()
+                    || i.hover_group.is_some()
+                    || i.click_sound.is_some()
+                    || i.hover_sound.is_some()
+            })
     }
 
     /// The group id `hover_group(name)` assigns — reproducible from any

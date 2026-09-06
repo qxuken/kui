@@ -81,12 +81,19 @@ impl Core {
     }
 
     /// Replaces a transitioning node's animatable values with this frame's
-    /// eased ones. Nodes without a transition cost one branch. A slot the
-    /// node's keyframes name is sampled from its cycle instead of tweened.
+    /// eased ones. Nodes without a transition cost one branch — inlined at
+    /// the call site, so it is a branch and not a call that returns (C15).
+    /// A slot the node's keyframes name is sampled from its cycle instead
+    /// of tweened.
+    #[inline]
     fn ease_spec(&mut self, key: Key, spec: &mut NodeSpec) {
-        let Some(t) = spec.transition else {
-            return;
-        };
+        if let Some(t) = spec.transition {
+            self.ease_transitioning(key, spec, t);
+        }
+    }
+
+    #[inline(never)]
+    fn ease_transitioning(&mut self, key: Key, spec: &mut NodeSpec, t: crate::anim::Transition) {
         let anim = &mut self.anim;
         let tracks = (!spec.anim().keyframes.is_empty()).then(|| Tracks::of(spec));
         let track = |slot: Slot| tracks.as_ref().and_then(|k| k.get(slot));
@@ -169,6 +176,7 @@ impl Core {
         self.stack.last().copied().unwrap_or(0)
     }
 
+    #[inline]
     pub(crate) fn auto_key(&mut self) -> Key {
         let parent = self.current() as usize;
         let i = self.counters.last().copied().unwrap_or(0);
@@ -228,10 +236,19 @@ impl Core {
     /// keyboard-visible focus wins over hover. A disabled node keeps its
     /// plain `bg`. Runs before easing so a `transition` tweens between
     /// the states.
+    #[inline]
     fn resolve_hover_style(&self, key: Key, spec: &mut NodeSpec) {
         // Runs for every node of every frame, and almost every node declares
         // none of this — so the early-out is one null check on the boxed
-        // group rather than three `Option`s read out of the spec (C15).
+        // group rather than three `Option`s read out of the spec, and it is
+        // inlined so the check is a branch rather than a call (C15).
+        if spec.interact.is_some() {
+            self.resolve_declared_hover_style(key, spec);
+        }
+    }
+
+    #[inline(never)]
+    fn resolve_declared_hover_style(&self, key: Key, spec: &mut NodeSpec) {
         let Some(interact) = spec.interact.as_deref() else {
             return;
         };
@@ -264,12 +281,19 @@ impl Core {
         self.interaction.modifiers()
     }
 
+    // The open chain is inlined end to end (`Ui::open` → here →
+    // `open_with_key` → `Tree::push`): a `NodeSpec` is 224 bytes and moved
+    // by value at every step, and each step that is a real call is a copy
+    // of all of them. Inlined, the spec the view built travels by pointer
+    // and is copied once, into the tree (C15).
+    #[inline]
     pub fn open(&mut self, spec: NodeSpec) -> Key {
         let key = self.auto_key();
         self.open_with_key(key, spec);
         key
     }
 
+    #[inline]
     pub fn open_keyed(&mut self, label: &str, spec: NodeSpec) -> Key {
         let key = self.child_key(label);
         self.open_with_key(key, spec);
@@ -311,12 +335,14 @@ impl Core {
     /// 900..930 opens each with its *data* index, so row 900 keeps the key
     /// it has when the whole list is built — hover, focus, edit buffers and
     /// tweens follow the row instead of the slot it happens to occupy.
+    #[inline]
     pub fn open_indexed(&mut self, i: u64, spec: NodeSpec) -> Key {
         let key = self.child_key_index(i);
         self.open_with_key(key, spec);
         key
     }
 
+    #[inline]
     fn open_with_key(&mut self, key: Key, mut spec: NodeSpec) {
         if self.tree.is_empty() {
             return;
@@ -365,6 +391,7 @@ impl Core {
         self.counters.push(0);
     }
 
+    #[inline]
     pub fn close(&mut self) {
         if self.stack.len() > 1 {
             self.stack.pop();

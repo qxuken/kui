@@ -137,10 +137,12 @@ impl<'a> Ui<'a> {
         self.core.measure_rich_text(spans, base, max_w)
     }
 
+    #[inline]
     pub fn open(&mut self, spec: NodeSpec) -> Key {
         self.core.open(spec)
     }
 
+    #[inline]
     pub fn open_keyed(&mut self, label: &str, spec: NodeSpec) -> Key {
         self.core.open_keyed(label, spec)
     }
@@ -149,10 +151,12 @@ impl<'a> Ui<'a> {
     /// the `i`th child. A virtualizing list opens each row with its data
     /// index, so a row keeps its identity when the built range slides past
     /// it. See `Core::open_indexed`.
+    #[inline]
     pub fn open_indexed(&mut self, i: u64, spec: NodeSpec) -> Key {
         self.core.open_indexed(i, spec)
     }
 
+    #[inline]
     pub fn close(&mut self) {
         self.core.close();
     }
