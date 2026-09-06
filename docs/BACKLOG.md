@@ -5,7 +5,7 @@ and the six rounds that followed it. Every item names the evidence that
 produced it, so a task that turns out to be wrong can be argued with rather
 than guessed at.
 
-**This file is the open list.** The forty-five closed entries — each with its
+**This file is the open list.** The forty-six closed entries — each with its
 outcome written on top of the original finding, and the tables, profiles and
 evidence it argued from — moved to
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) on 2026-09-06. The
@@ -132,25 +132,6 @@ shipped.
 
 ---
 
-## From the fresh sweep of the grown surface (2026-09-05)
-
-The rounds added ~20k lines the first review never saw. This pass asked the
-same question of them that found the original defects — what is hand-written
-without enforcement, and what state does the core keep that a binding cannot
-reach — plus a new one for the new mechanisms: does each guard refuse what it
-exists to refuse? State at the sweep: 512 Rust tests, 55 Node, 14 scenes in
-four adapters, `KUI_ABI_VERSION` 6, fmt and clippy clean.
-
-### `.` S8 — ABI bumps per merge, and the header knows it
-
-`KUI_ABI_VERSION` went 3 → 6 in one day, each bump documented in the header
-with its reason. Correct under ADR 0006's rule, and since nothing has shipped
-since alpha.5 a host sees one jump. But the header's history now reads as a
-per-merge log, and ADR 0006 says nothing about cadence. One sentence there —
-bumps coalesce within a release window, or they do not — settles it. No chip.
-
----
-
 ## After alpha.6
 
 Grouped by kind, not urgency. Nothing here blocks the tag.
@@ -170,7 +151,7 @@ which the size test does not replace.
 open follow-up — an event on a timeline, not a tree property). The exit
 animations' `animating()` policy, revisited against a real view that removes
 many nodes (ADR 0005 left it opt-in + a 512-node budget with no duration
-cap). S8: one sentence in ADR 0006 on bump cadence.
+cap).
 
 **Rows, when a view asks.** A configurable focus-ring colour (README names
 it). `required` / `invalid` and heading `level` (ADR 0001 follow-ups).
@@ -184,10 +165,10 @@ clip nesting and rounded hit-testing (Status / next names both). Each says
 "wait for a view that wants it", and each should keep saying it until one
 does.
 
-**Hygiene.** **Archiving the closed entries — done (2026-09-06).** Forty-five
+**Hygiene.** **Archiving the closed entries — done (2026-09-06).** Forty-six
 of them moved verbatim into
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md); what stayed here is
-the six open headings, this section and the index below. The suggested
+the five open headings, this section and the index below. The suggested
 sequence went with them rather than staying: three of its four steps had
 shipped, and this section is what says what is next. Still open: enable
 `SMOKE_MACOS` / `SMOKE_WINDOWS` the day a runner exists (P8), and remove Lua
@@ -197,12 +178,12 @@ shipped, and this section is what says what is next. Still open: enable
 
 ## Closed — index
 
-Forty-five entries, all in
+Forty-six entries, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim.
 This index is here so an id resolves without opening that file: the open items
 above cite C7, C10, P8 and R3, "After alpha.6" and the hygiene note cite C2,
 C5(b), P3 and R7, and code comments, ADRs and commit messages cite ids of
-their own. Forty-three of these are simply closed; **C11** and **C15** appear
+their own. Forty-four of these are simply closed; **C11** and **C15** appear
 in both files, whole there and trimmed to what is still open here.
 
 The archive also holds two sections that are records rather than work: the
@@ -266,7 +247,7 @@ whose R1–R7 are the half-baked items finished before the tag.
 - `~` **B3** — [Exit animations changed the frame model and have no scene](backlog/closed-2026-09.md#-b3--exit-animations-changed-the-frame-model-and-have-no-scene--done-2026-09-04) — done (2026-09-04)
 - `.` **B4** — [Backlog headings lag the work, three rounds running](backlog/closed-2026-09.md#-b4--backlog-headings-lag-the-work-three-rounds-running--done-2026-09-05) — done (2026-09-05)
 
-**From the fresh sweep of the grown surface (2026-09-05)** — S1–S7
+**From the fresh sweep of the grown surface (2026-09-05)** — S1–S8
 
 - `!` **S1** — [A C plugin that omits `kui_ext_abi` loads unchecked](backlog/closed-2026-09.md#-s1--a-c-plugin-that-omits-kui_ext_abi-loads-unchecked--done-2026-09-05) — done (2026-09-05)
 - `.` **S2** — [The warning codes drifted across three hand-written copies](backlog/closed-2026-09.md#-s2--the-warning-codes-drifted-across-three-hand-written-copies--done-2026-09-05) — done (2026-09-05)
@@ -275,4 +256,4 @@ whose R1–R7 are the half-baked items finished before the tag.
 - `!` **S5** — [Resource handles are session-blind](backlog/closed-2026-09.md#-s5--resource-handles-are-session-blind--done-2026-09-05) — done (2026-09-05)
 - `~` **S6** — [Node cannot read the derived cursor shape](backlog/closed-2026-09.md#-s6--node-cannot-read-the-derived-cursor-shape--done-2026-09-05) — done (2026-09-05)
 - `.` **S7** — [`env` reaches three bindings through three restatements and nothing pins them](backlog/closed-2026-09.md#-s7--env-reaches-three-bindings-through-three-restatements-and-nothing-pins-them--done-2026-09-05) — done (2026-09-05)
-
+- `.` **S8** — [ABI bumps per merge, and the header knows it](backlog/closed-2026-09.md#-s8--abi-bumps-per-merge-and-the-header-knows-it--done-2026-09-06) — done (2026-09-06)
