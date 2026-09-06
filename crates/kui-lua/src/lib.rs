@@ -1828,9 +1828,9 @@ mod tests {
             ext.on_event(ev);
         }
         frame(&mut core, &mut ext);
-        // Autofocus places the caret at the start of the initial text.
+        // A single-line field opens with the caret after its seed (F20).
         let seen: Option<String> = ext.lua.globals().get("seen").unwrap();
-        assert_eq!(seen.as_deref(), Some("!hi"));
+        assert_eq!(seen.as_deref(), Some("hi!"));
     }
 
     /// A script that owns its keyboard and asks for releases (`key_up`)
