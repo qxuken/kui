@@ -38,6 +38,14 @@ function update(model: Model, msg: Msg, ev: UiEvent<Msg>): Model | undefined {
     case 'dismiss':
       // Escape, or a press outside the menu.
       return { ...model, menu: null };
+    case 'access': {
+      // A screen reader nudged the count slider. `msg.tag` is the slider's
+      // own payload, typed as this app's union — no cast — so the step the
+      // node declared is the step the nudge takes, in the direction asked.
+      const tag = msg.tag;
+      const by = tag && 'kind' in tag && tag.kind === 'add' ? tag.by : 1;
+      return { ...model, count: model.count + (msg.action === 'increment' ? by : -by) };
+    }
   }
 }
 
@@ -65,6 +73,12 @@ function Counter({ count }: { count: number }) {
       <button onClick={{ kind: 'add', by: -1 }}>-1</button>
       <button onClick={{ kind: 'reset' }}>reset</button>
       <text size={20} color="#e8e8f0">{`count = ${count}`}</text>
+      {/* The count as a slider, for assistive technology: the range it
+          declares is the range the value is held to, or the core warns
+          (`slider-value-out-of-range`). Its payload is what a nudge
+          carries back. */}
+      <box key="tally" role="slider" label="count" valueNow={count} valueMin={0} valueMax={10}
+           onClick={{ kind: 'add', by: 1 }} width={100} height={8} bg="#2a2c3a" radius={4} />
     </box>
   );
 }
@@ -129,6 +143,12 @@ const items = decodeQuads(app.ctx.quads())
 app.click(...center(items[0]));
 console.log(`after the menu's +10: count = ${app.model.count}, menu = ${app.model.menu}`);
 
+// A screen reader's nudge on the slider, by the label its `key` declared:
+// the `access` message carries the slider's own `{ kind: 'add', by: 1 }`,
+// and `update` reads `by` from it without a cast.
+app.access('tally', 'decrement');
+console.log(`after a decrement nudge: count = ${app.model.count}`);
+
 // ---------------------------------------------------------------------------
 // Part 2: images + key sinks (a fresh context so no editor holds focus)
 
@@ -158,7 +178,7 @@ console.log(`key sink got: code=${p?.code} ctrl=${p?.ctrl} tag=${JSON.stringify(
 console.log(`phases: ${kevs.map((e) => e.payload.phase).join(', ')}`);
 
 const ok =
-  app.model.count === 10 &&
+  app.model.count === 9 &&
   app.model.menu === null &&
   app.model.note === 'hello from jsx' &&
   imageQuads === 1 &&

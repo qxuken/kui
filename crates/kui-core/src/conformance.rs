@@ -784,11 +784,18 @@ pub const SCENES: &[Scene] = &[
               asks it to go away a second time, so both dismiss reasons are \
               in the event list with a live event between them. Then the \
               ring: focus enters the dialog by itself, and Shift-Tab, \
-              Shift-Tab, Tab walk it. Those three are chosen so the ring's \
-              scope shows up in the one frame the report keeps — over the \
-              dialog's two stops they land back on Cancel, over the whole \
-              tree's three they would land on Open.",
-        custom: &["float", "key"],
+              Shift-Tab, Tab walk it — over the dialog's two stops they land \
+              back on Cancel, over the whole tree's three they would land on \
+              Open — and a Space presses where they landed, so the walk is \
+              an event rather than a fact about the last frame. Last, the \
+              way out (backlog F4): the app owns its keyboard, so it \
+              declares `open` focused every frame the dialog is shut, and \
+              the frame that drops the dialog declares the freshly created \
+              `note` instead. That change is an edge, and an edge on the \
+              closing frame stands — the report's last frame has focus on \
+              `note`, where the restore alone would have put it back on \
+              `open`.",
+        custom: &["float", "key", "keyFocus"],
         elements: &["box", "text", "titlebar"],
         build: build_modal,
         env: NATIVE_CHROME,
@@ -809,10 +816,22 @@ pub const SCENES: &[Scene] = &[
             Step::ShiftTab,
             Step::ShiftTab,
             Step::Tab,
+            // Space presses where the ring landed, which is how the walk
+            // survives into a report that keeps one frame: the last frame
+            // has no dialog in it any more, and `cancel` in the event list
+            // is the whole of the claim the three steps make.
+            Step::Type(' ' as u32),
             Step::Escape,
+            // The app drops the dialog and declares the node it was
+            // renaming focused: a `keyFocus` edge on the closing frame
+            // stands, and the focus the modal displaced (`open`) is not
+            // handed back over it.
+            Step::Phase(1),
         ],
         expect: Expect {
-            solid: 5,
+            // The frame the report keeps is the one after the dialog: the
+            // two app buttons and the focus ring on `note`.
+            solid: 3,
             shadows: 0,
             images: 0,
             segments: 0,
@@ -822,11 +841,9 @@ pub const SCENES: &[Scene] = &[
                 "1 titleBar ||",
                 "2 staticText app||",
                 "1 button Open||",
-                "1 dialog Settings||",
-                "2 button OK||",
-                "2 button Cancel||",
+                "1 button Note||",
             ],
-            events: &["dismiss dlg", "ok -", "dismiss dlg"],
+            events: &["dismiss dlg", "ok -", "cancel -", "dismiss dlg"],
             announcements: &[],
             warnings: &[],
             // The titlebar press: chrome stays live under a modal, and a
@@ -1575,7 +1592,7 @@ fn build_lines(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// while the modal is up. The titlebar is the one platform-dependent
 /// height in the tree (34 logical px, 32 on Windows), so the two points
 /// above it and below it are chosen to land the same way on either.
-fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
     let button = |kind: &str, label: &str| {
         NodeSpec::row()
             .width(Sizing::Fixed(100.0))
@@ -1591,7 +1608,7 @@ fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         widgets::titlebar_with(ui, |ui| {
             ui.text("app", TextStyle::new(12.0));
         });
-        ui.with_keyed(
+        let open = ui.with_keyed(
             "open",
             NodeSpec::row()
                 .width(Sizing::Fixed(100.0))
@@ -1601,6 +1618,31 @@ fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 .label("Open"),
             |_| {},
         );
+        // Phase 1 is the app with the dialog gone: the node it was opened
+        // to rename, created with it and still here, declared focused so
+        // that the restore has a declaration to yield to
+        // (`docs/adr/0003-modal-surfaces.md`, decision 4).
+        if phase != 0 {
+            let note = ui.with_keyed(
+                "note",
+                NodeSpec::row()
+                    .width(Sizing::Fixed(100.0))
+                    .height(Sizing::Fixed(20.0))
+                    .bg(Color::hex(0x30344aff))
+                    .on_click(Value::map([("kind", Value::str("note"))]))
+                    .label("Note"),
+                |_| {},
+            );
+            ui.take_key_focus(note);
+            return;
+        }
+        // The app owns its keyboard while the dialog is shut, and says so
+        // the only way a data view can. Redeclared every frame, so it is
+        // an edge once and clobbers nothing afterwards — which is what
+        // makes the *change* of declaration above an edge at all.
+        ui.take_key_focus(open);
+        // The dialog: declared in phase 0 and dropped in phase 1, which is
+        // the only way to ask for a modal to close.
         ui.with_keyed(
             "dialog",
             NodeSpec::column()

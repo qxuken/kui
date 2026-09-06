@@ -127,13 +127,17 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             return column { pad = 10, gap = 6, sink("press", false), sink("held", true) }
         "#
         .to_string(),
+        // `phase` is the host-seeded global the `exit` scene uses: here it
+        // drops the dialog, and the declaration the app makes on its way
+        // out moves from `open` to the node it was renaming.
         "modal" => r#"
-            return column { width = { grow = 1 }, gap = 6,
-              titlebar { text("app", { size = 12 }) },
-              row { key = "open", width = 100, height = 20, bg = 0x30344aff,
-                    on_click = { kind = "open" }, label = "Open" },
-              column { key = "dialog", width = 120, height = 100, pad = 8, gap = 6,
-                       bg = 0x202030ff,
+            -- The dialog and the node it was renaming never coexist, so
+            -- one trailing child is both of them: a nil in the middle of a
+            -- table constructor would end the child list early.
+            local last
+            if phase == 0 then
+              last = column { key = "dialog", width = 120, height = 100,
+                       pad = 8, gap = 6, bg = 0x202030ff,
                        float = { anchor = "viewport", at = { "end", "end" },
                                  self_at = { "end", "end" } },
                        modal = { kind = "dlg" }, label = "Settings",
@@ -141,7 +145,18 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                       on_click = { kind = "ok" }, label = "OK" },
                 row { key = "cancel", width = 100, height = 24, bg = 0x3b5bd4ff,
                       on_click = { kind = "cancel" }, label = "Cancel" },
-              },
+              }
+            else
+              last = row { key = "note", width = 100, height = 20,
+                    bg = 0x30344aff, on_click = { kind = "note" },
+                    label = "Note", key_focus = true }
+            end
+            return column { width = { grow = 1 }, gap = 6,
+              titlebar { text("app", { size = 12 }) },
+              row { key = "open", width = 100, height = 20, bg = 0x30344aff,
+                    on_click = { kind = "open" }, label = "Open",
+                    key_focus = phase == 0 },
+              last,
             }
         "#
         .to_string(),

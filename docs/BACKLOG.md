@@ -230,7 +230,32 @@ sink that wants both). (a) is the honest fix; (b) is the fallback if C9's
 "one sink, both phases" is to stay the only shape. Either way `test.mjs`
 gets a keymap fixture that presses *and releases* and asserts one toggle.
 
-### `!` F4 — A modal's focus restore beats the closing frame's own `keyFocus` edge
+### `!` F4 — A modal's focus restore beats the closing frame's own `keyFocus` edge — **done (2026-09-06)**
+
+**Done (2026-09-06), as the entry asks.** `resolve_modal_focus`
+(`crates/kui-core/src/runtime/focus.rs`) skips the restore when this
+frame's `declared_focus` holds a key last frame's did not — the same edge
+`set_key_focus` itself tests, so the restore yields exactly to the
+declarations that actually moved focus. A view that repeats one
+declaration every frame (an app owning its keyboard) declares nothing new
+on the closing frame, so decision 4 is untouched for it: that is the half
+`a_modal_closing_over_no_edge_still_gives_the_focus_back` pins, beside
+`a_key_focus_edge_beats_the_focus_the_modal_gives_back` in
+`crates/kui-core/tests/focus.rs`, which is the report's own sequence — a
+node and its editor created together, the editor dropped, the new node
+declared. ADR 0003's decision 4 carries the sentence, and the `keyFocus`
+schema row says it too, since the app that hit this could not find the
+rule from the props table. The corpus's `modal` scene gained the second
+phase: the app declares `open` focused while the dialog is shut and the
+freshly created `note` on the frame that drops it, and the report's last
+frame has focus on `note` where the restore alone would have put it back
+on `open`. Two things the phase cost, both paid: the three ring steps used
+to prove the scoped ring through the *last frame's* focus, which is now a
+frame with no dialog in it, so a Space press after them puts `cancel` in
+the event list — the ring's landing said as an event, which no later frame
+can take away — and the scene's expectations moved to the app-only frame
+(three solid quads, two buttons, four events). Reference regenerated, and
+the Lua, C and Node adapters reproduce it.
 
 Evidence: mind-map #3. A rename editor opened on a freshly created node: the
 node was created and the modal opened in one frame, so the focus the modal
@@ -337,7 +362,7 @@ harness). ADR 0008's rule applies: a nudge announces the text, not the
 number. **Test:** the AX audit script asserts the string on the slider; the
 corpus pins the row across transports; `docs/props.md` regenerates.
 
-### `.` F9 — `AccessMsg` is the one core message without a type parameter
+### `.` F9 — `AccessMsg` is the one core message without a type parameter — **done (2026-09-06)**
 
 Evidence: pomodoro 2.2. `index.d.ts:176`: `interface AccessMsg { … tag?:
 unknown }` while `DragMsg<T = AppMsg>` and `KeyMsg<T>` carry the app's
@@ -349,7 +374,13 @@ second half of this entry — the `access()` doc saying the key is hex and
 naming the other spelling — closed with F5 (2026-09-06): the doc on the
 generated method names both, and the label spelling works.
 
-### `.` F10 — A slider's declared range is never checked against its value
+Done: `AccessMsg<T = AppMsg>` with `tag?: T`, the same shape as `DragMsg`
+and `KeyMsg`; `CoreMsg` picks up the default. `examples/node/counter.tsx`
+grew a `slider` for the count and an `access` arm in `update` that reads
+`by` off `msg.tag` with no cast — under `tag?: unknown` that arm did not
+compile. Same session as F10, which shares the slider.
+
+### `.` F10 — A slider's declared range is never checked against its value — **done (2026-09-06)**
 
 Evidence: pomodoro 2.3: `valueNow={999} valueMin={0} valueMax={10}` is
 advertised verbatim and warns nothing; the app clamps in its own `update`,
@@ -359,7 +390,43 @@ visible only to a screen-reader user. **Do:** `slider-value-out-of-range` in
 `image-without-label`), also firing when `min > max`. **Test:** the diag
 tests gain the three cases.
 
-### `~` F11 — `init` and `view` cannot reach the surface
+Done: `SLIDER_VALUE_OUT_OF_RANGE` in the `warnings!` block, so the TS
+union and `docs/props.md` came out of `npm run gen`; the check runs on
+every node the walk derives as a slider, before the name check, and
+compares only the rows declared (a slider with no `valueMin` has no floor
+to fall under). `slider_value_outside_its_range_warns` in
+`crates/kui-core/tests/access.rs` has below, above, inverted, an in-range
+node that stays silent, and a rangeless one.
+
+### `~` F11 — `init` and `view` cannot reach the surface — **done (2026-09-06)**
+
+Both arguments are in, additive and typed by the `S` that `LoopConfig`
+already carried: `init: M | ((surface: S) => M)` is called with the surface
+after `setup`, so a first model measures against the fonts and images
+`setup` just registered and, under a window, reads the size it really
+opened at; `view(model, window, surface)` gets it third, so the README's
+own suggestion — size a column to its widest label — is a thing a view can
+do. Two call sites in `packages/kui/index.js` (`init(surface)` and
+`view(model, name, surface)`) and the two signatures in `index.d.ts`; the
+value form of `init` and a two-argument `view` are untouched.
+`examples/node/counter-window.tsx` was the pattern the entry describes and
+now deletes its `openedAt` module-level variable.
+
+One thing the entry assumed that is not there: a headless `Ctx` has **no**
+`size()` — only `KuiWindow` does, and `Ctx.env().viewport` is the viewport
+the last frame was begun with, which before `init` is nothing. So the size
+half of this is the windowed spelling (`init: (win) => ({ size: win.size()
+})`, which `examples/node` typechecks), and headless the size is the one an
+app handed `createApp` in its own options. The `test.mjs` test measures
+instead: an `init` that builds its model from `measureText` and a `view`
+that sizes a column from it, asserting the decoded quad is the measurement
+plus its padding and that the glyphs fit inside it. Whether a headless
+`Ctx` should answer `size()` from the options the loop already holds is a
+separate question, and small.
+
+Lua needed nothing — its `view(env)` already carries measurement — and C
+hosts own their loop, so there is nothing to add there either. The original
+entry:
 
 Evidence: mind-map #7 and #11. `LoopConfig.init` is `M | (() => M)` and
 `view` is `(model, window)` (`index.d.ts:1445-1453`), so `measureText` and
@@ -576,14 +643,17 @@ logic rather than the struct — it wants a profile now the cache behaviour has
 changed. Plus the CI threshold on `frame_10k_rects` and `frame_1k_typical`,
 which the size test does not replace.
 
-**From the field (F1–F15).** Of the four defects, three are done:
+**From the field (F1–F15).** All four defects are done:
 ~~F1~~ (the Node loop never set the frame clock, which is why nothing eased
 was testable from Node), ~~F2~~ (drag deltas) and ~~F3~~ (an alpha.4 keymap
 ran twice, closed as its (a), the `keyUp` flag) all landed **2026-09-06**,
 and both of the last two carry a "what breaks" line in the CHANGELOG for the
-next tag. **F4** (the modal restore overriding a `keyFocus` edge) is the one
-left. Then the gaps in rough order of cost: F9 and F10 are an afternoon, F6
-and F11 a day each (~~F5~~ was one, and is **done (2026-09-06)**), F8
+next tag. ~~F4~~ (the modal restore overriding a `keyFocus` edge) landed
+**2026-09-06** too, and its rule is a sentence in ADR 0003's decision 4.
+Then the gaps in rough order of cost: ~~F9~~ and ~~F10~~ were the
+afternoon they were billed as and landed together **2026-09-06** (they
+share the slider fixture), F6 is a day (~~F5~~ was one and ~~F11~~ rather
+less, both **done (2026-09-06)**), F8
 needs one AccessKit question answered first. F7 (global shortcuts under a
 Tab ring) joins the ADR group below, where ~~F12~~ (a line primitive) also
 sat until it landed as `docs/adr/0010-a-segment-primitive.md`. **F13**

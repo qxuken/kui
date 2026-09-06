@@ -773,6 +773,68 @@ test('a ticking app runs headless: advance is the window timer, by hand', () => 
   assert.equal(app.model.ticks, 5);
 });
 
+test('init and view are handed the surface, so a tree can be measured where it is built (F11)', () => {
+  // Before this, the surface reached only `setup` and `update`: an app that
+  // wanted its own measurements parked the surface in a module-level
+  // variable from `setup` and built its first model against constants,
+  // correcting them on the first `resize`. `init(surface)` and
+  // `view(model, window, surface)` are the two arguments that removes.
+  const surface = new Ctx();
+  const LABEL = 'Wednesday';
+  const STYLE = { size: 14 };
+  const PAD = 6;
+  let initSurface = null;
+  let viewSurface = null;
+  const app = createApp(
+    {
+      // A first model measured against the real surface, after `setup` —
+      // so the font `setup` registered is the one measured with.
+      init: (ui) => {
+        initSurface = ui;
+        return { column: Math.round(ui.measureText(LABEL, STYLE).width) };
+      },
+      update: () => undefined,
+      // The column is as wide as its widest label, which is arithmetic the
+      // view can only do with the surface in hand.
+      view: (model, window, ui) => {
+        viewSurface = ui;
+        return box({ pad: 0 }, [
+          box({ width: model.column + PAD * 2, padX: PAD, bg: '#3b5bd4' }, [text(LABEL, STYLE)], 'col'),
+        ]);
+      },
+    },
+    { surface, width: 320, height: 240 },
+  );
+  // Both arguments are the surface the loop drives — the slot `runWindowed`
+  // fills with the `KuiWindow` whose `size()` a first model wants.
+  assert.equal(initSurface, surface);
+  app.render();
+  assert.equal(viewSurface, surface);
+
+  const measured = surface.measureText(LABEL, STYLE);
+  assert.ok(measured.width > 0, 'the label measures to something');
+  assert.equal(app.model.column, Math.round(measured.width));
+  // What layout drew is what the view measured: the column is the label
+  // plus its padding, at scale 1, where logical and physical px agree.
+  const column = decodeQuads(app.ctx.quads()).find((q) => q.kind === 0 && q.w > 0 && q.h > 0);
+  assert.equal(column.w, Math.round(measured.width) + PAD * 2);
+  // And the glyphs inside it fit the box that was sized for them.
+  const glyphs = decodeQuads(app.ctx.quads()).filter((q) => q.kind !== 0);
+  assert.ok(glyphs.length > 0, 'the label drew');
+  assert.ok(glyphs.every((q) => q.x >= column.x && q.x + q.w <= column.x + column.w), 'no overflow');
+});
+
+test('a plain init is still a value, and a view that ignores the surface still draws', () => {
+  // Both arguments are additive: the old spellings are untouched.
+  const app = createApp(
+    { init: { n: 7 }, update: () => undefined, view: (m) => box({ pad: 4 }, [text(`${m.n}`)]) },
+    { width: 320, height: 240 },
+  );
+  assert.deepEqual(app.model, { n: 7 });
+  app.render();
+  assert.ok(app.ctx.stats().quadCount > 0);
+});
+
 test('advance moves the frame clock, so a transition runs headless', () => {
   const app = createApp(
     {
@@ -1583,17 +1645,33 @@ const SCENE_TREES = {
       ]),
     ]),
   // docs/adr/0003-modal-surfaces.md: the app behind the dialog is inert,
-  // the titlebar is not, and both dismiss gestures reach the dialog.
-  modal: () =>
+  // the titlebar is not, and both dismiss gestures reach the dialog. Then
+  // the way out (backlog F4): the app declares `open` focused while the
+  // dialog is shut and the freshly created `note` on the frame that drops
+  // it, and that change of declaration is what the restore yields to.
+  modal: (_fx, phase) =>
     root({}, [
       box({ width: 'grow', gap: 6 }, [
         el('titlebar', {}, [text('app', { size: 12 })]),
         box(
-          { dir: 'row', width: 100, height: 20, bg: '#30344a', onClick: { kind: 'open' }, label: 'Open' },
+          {
+            dir: 'row', width: 100, height: 20, bg: '#30344a',
+            onClick: { kind: 'open' }, label: 'Open',
+            keyFocus: phase === 0,
+          },
           [],
           'open',
         ),
-        box(
+        phase !== 0 && box(
+          {
+            dir: 'row', width: 100, height: 20, bg: '#30344a',
+            onClick: { kind: 'note' }, label: 'Note',
+            keyFocus: true,
+          },
+          [],
+          'note',
+        ),
+        phase === 0 && box(
           {
             width: 120, height: 100, pad: 8, gap: 6, bg: '#202030',
             float: { anchor: 'viewport', at: ['end', 'end'], self: ['end', 'end'] },
@@ -1614,7 +1692,7 @@ const SCENE_TREES = {
           ],
           'dialog',
         ),
-      ]),
+      ].filter(Boolean)),
     ]),
   // docs/adr/0007-composite-keyboard-patterns.md: a tab bar and a picker
   // list, each one Tab stop because its items are focusable, with an
