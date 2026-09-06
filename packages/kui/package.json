@@ -36,12 +36,14 @@
     "encoder.js",
     "native.cjs",
     "prebuilds/",
-    "props.md"
+    "props.md",
+    "CHANGELOG.md",
+    "docs/adr/"
   ],
   "scripts": {
     "build:native": "cargo build -p kui-node --release",
     "gen": "node gen-types.mjs",
-    "prepack": "node -e \"require('node:fs').copyFileSync('../../docs/props.md', 'props.md')\"",
+    "prepack": "node prepack.mjs",
     "test": "node --test test.mjs"
   }
 }

@@ -128,7 +128,11 @@ asserts on what the core produced:
 
 Things the package already does that are easy to miss when building a
 real window. The full prop / element / event reference ships with the
-package as [props.md](props.md) (`docs/props.md` in the repository).
+package as [props.md](props.md) (`docs/props.md` in the repository), and so
+do [CHANGELOG.md](CHANGELOG.md) — every release lists what it adds and,
+separately, what you can delete — and the ADRs under `docs/adr/`, which
+is where a doc comment pointing at `docs/adr/0003-modal-surfaces.md`
+resolves from inside `node_modules`.
 
 - **Hover and pressed colors** are props, not queries: `hoverBg`,
   `pressedBg`, and `hoverGroup="name"` to light connected pieces together.

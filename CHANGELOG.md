@@ -93,6 +93,17 @@ it says so. See `### Changed` — the two alpha.7 field reports are why.
 
 ### Changed
 
+- **The npm package ships this file and the ADRs its types cite** (backlog
+  F18, from the pomodoro's report). The tarball was the runtime, the types
+  and `props.md`; learning what alpha.7 changed "meant downloading both
+  tarballs and diffing three files", and the doc comments in `index.d.ts`
+  and `jsx-runtime.d.ts` point at `docs/adr/0003-modal-surfaces.md`,
+  `0004`, `0008` and `0010` eleven times — paths relative to a repository a
+  `node_modules` reader does not have. `prepack` now copies `CHANGELOG.md`
+  and `docs/adr/` into the package under the same paths, so every citation
+  resolves where it points, and the package README says so. Nothing in the
+  comments moves.
+
 - **A frame clock set by hand under a loop is refused rather than ignored**
   (backlog F16, from both alpha.7 field reports). alpha.7 gave the loop
   the clock: `createApp` stamps `setTime` before every frame it draws, and
