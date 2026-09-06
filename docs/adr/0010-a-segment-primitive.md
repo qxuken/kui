@@ -111,7 +111,8 @@ test — is declined or deferred below, each with the reason.
    `points` is a list of at least two; `<line points curve/>` draws a
    smooth curve *through* them (a Catmull-Rom spline, each span flattened
    into a fixed number of pieces by its chord length, capped at 32) and
-   without `curve` the straight polyline. Two points with `curve` is a
+   without `curve` the straight polyline. *This shipped uniformly
+   parameterized and is centripetal now — see the amendment below.* Two points with `curve` is a
    straight segment. The flattening is one function in the core, the same
    in every binding, so a curve's segment count is reproducible and the
    corpus can pin it. Consecutive segments overlap at their round caps,
@@ -285,3 +286,72 @@ Not measured here: the GPU side. What is checked is that both preprocessed
 shader variants still validate (`shader_variants_validate`) and that the
 capsule the shader cuts is the capsule the core described, by the CPU
 transcription in `segment_coverage.rs`.
+
+## Amendment: the spline is centripetal, not uniform
+
+Decision 4 said "a Catmull-Rom spline" and meant the textbook one, which is
+uniformly parameterized: every span gets one unit of curve parameter,
+however long or short its chord is. The first view drawn on top of it —
+`examples/rust/connectors.rs`, a mind map whose links are elbows — showed
+what that costs, and the flattening is now **centripetal** (Lee's α = ½:
+each span's parameter is `√chord`).
+
+### What uniform gets wrong
+
+A uniform parameter is a claim that the knots are evenly spaced, and when
+they are not, the curve has to move fast through the tight ones to spend
+the parameter they were given. Two symptoms, both measured rather than
+recalled:
+
+- **It bows out of the wrong side of a corner.** The connectors example's
+  first link runs 60px flat and then turns 140px upward. The uniform
+  spline leaves the card **10.3px below** the edge it starts on before it
+  turns — three links out of one card, each hooking the wrong way and
+  crossing each other just past its edge. Centripetal halves that to 5.3px.
+- **It ties loops.** Over 20,000 random four-knot sets, the middle span of
+  the uniform spline crossed itself in **82**; the centripetal one in
+  **none**, which is the theorem (Yuksel, Schaefer and Keyser) and not
+  luck. `a_tight_knot_between_two_long_ones_neither_loops_nor_cusps` pins
+  one of them: chords of 671, 36 and 328, where uniform ties a visible
+  knot at `CURVE_STEP`'s own sampling and turns 95° in one piece.
+
+### What it does not fix, and what does
+
+Centripetal **reduces** the lean into a corner; it does not remove it,
+because a spline through its knots must arrive at each one. A shape whose
+middle points should only *pull* is a Bézier, and that is what the
+connectors example now samples for its links — the four points it used to
+hand to `curve` are the Bézier's own control points, which were never
+knots. The two are both in the tree: `curve` is the primitive for a run of
+points a stroke should visit, and a caller who wants handles builds them.
+
+### What it cost
+
+Three things changed inside `flatten_curve`, none of them visible through
+any binding:
+
+- **The evaluation is Barry and Goldman's pyramid**, not a cubic in `t`,
+  because the knot times are no longer evenly spaced. Six interpolations
+  instead of one polynomial per axis.
+- **The end knots are no longer doubled.** A repeated knot is a zero-length
+  chord, and centripetal has no parameter for it; each end gets a mirrored
+  phantom (`2·p1 − p2`) instead, and a *coincident pair of real knots*
+  takes the same branch — so a duplicated point in a caller's list is a
+  kink and not a division by zero.
+- **Chords are rolled forward** rather than recomputed per neighbour (two
+  square roots a span, not six), and a span's five denominators are
+  reciprocated once and reused by every piece. Both were needed: without
+  them the bench was +35%.
+
+Interleaved A/B, three rounds each on the same machine, `divan` medians:
+
+| Bench | uniform | centripetal | Δ |
+| --- | --- | --- | --- |
+| `frame_1k_curves` (1k eight-knot curves, 35k quads) | 241.5 µs | 268.6 µs | +11.2% |
+
+Which is 7.7 ns a segment against 6.9, flattening included. Nothing else
+moved: the piece count is still `ceil(chord / CURVE_STEP)`, so every scene's
+segment count, every `Expect`, and every binding's mirror of it are
+unchanged — the corpus's quad digests shifted only in the point values, and
+all four adapters shifted together, which is what the shared reference
+report is for.

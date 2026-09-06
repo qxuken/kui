@@ -1,7 +1,9 @@
 //! The stroke primitive (`docs/adr/0010-a-segment-primitive.md`): a small
 //! mind map whose links are `line` nodes — one curve per link, drawn in the
 //! canvas's box space between the floats it connects, instead of the three
-//! thin boxes a box-only vocabulary forces. Hover a card and its links
+//! thin boxes a box-only vocabulary forces. Each link is the cubic Bézier
+//! every flow chart draws, sampled here into the polyline the element
+//! takes (see `link`). Hover a card and its links
 //! brighten: the stroke colour rides the `bg` slot, so a `transition` eases
 //! it like any background. The links are declared before the cards, so
 //! they paint under them (floats stack in tree order).
@@ -20,8 +22,45 @@ struct Card {
 const W: f32 = 120.0;
 const H: f32 = 36.0;
 
+/// Samples the link from `from` to `to` into `out`: the cubic Bézier whose
+/// two handles sit halfway across the gap, level with the edge each end
+/// leaves, so the stroke departs the parent and meets the child dead
+/// horizontal.
+///
+/// The four points are deliberately *not* handed to [`Stroke::curve`]. A
+/// spline passes **through** its knots, so the two handles would become
+/// places the line has to visit, and a curve that has to arrive at a
+/// corner leans into it: the link out of `kui` bows about 5px below the
+/// card's edge before it turns up, and the three links out of that one
+/// card cross each other doing it. (It used to bow 10px — the core's
+/// spline was uniformly parameterized until this example was drawn. It is
+/// centripetal now, which halves the lean without removing it.) As Bézier
+/// handles the same four points are only *pulled* towards, so the curve
+/// stays inside them and leaves each card level.
+///
+/// One piece per [`kui::line::CURVE_STEP`] of control polygon, so the
+/// sampling is as fine as the flattening the core would have done.
+fn link(from: Vec2, to: Vec2, out: &mut Vec<Vec2>) {
+    let h = (to.x - from.x) * 0.5;
+    let (c1, c2) = (Vec2::new(from.x + h, from.y), Vec2::new(to.x - h, to.y));
+    let span = h.abs() * 2.0 + (to.y - from.y).abs();
+    let n = ((span / kui::line::CURVE_STEP).ceil() as usize).clamp(1, 64);
+    out.clear();
+    for i in 0..=n {
+        let t = i as f32 / n as f32;
+        let u = 1.0 - t;
+        let (a, b, c, d) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
+        out.push(Vec2::new(
+            a * from.x + b * c1.x + c * c2.x + d * to.x,
+            a * from.y + b * c1.y + c * c2.y + d * to.y,
+        ));
+    }
+}
+
 struct Map {
     cards: Vec<Card>,
+    /// Refilled per link per frame, so a frame allocates nothing.
+    points: Vec<Vec2>,
 }
 
 impl Map {
@@ -43,6 +82,7 @@ impl Map {
                 c("segments", 540.0, 240.0, Some(2)),
                 c("focus", 540.0, 340.0, Some(3)),
             ],
+            points: Vec::new(),
         }
     }
 }
@@ -52,7 +92,7 @@ impl App for Map {
         ui.configure_root(NodeSpec::column().fill().pad(24.0).gap(12.0));
         kui::widgets::titlebar(ui, "kui — connectors");
         ui.text(
-            "Links are `line` nodes: a curve through four points, in the canvas's box space. Hover a card.",
+            "Links are `line` nodes: a Bézier sampled into a polyline, in the canvas's box space. Hover a card.",
             TextStyle::new(12.0).color(Color::rgb8(0x8a, 0x8f, 0xa3)),
         );
         let canvas = NodeSpec::column()
@@ -66,21 +106,23 @@ impl App for Map {
             let hovered: Vec<bool> = (0..self.cards.len())
                 .map(|i| ui.is_hovered(ui.child_key(&format!("card{i}"))))
                 .collect();
-            for (i, card) in self.cards.iter().enumerate() {
-                let Some(p) = card.parent else { continue };
+            for i in 0..self.cards.len() {
+                let Some(p) = self.cards[i].parent else {
+                    continue;
+                };
                 let from = Vec2::new(self.cards[p].at.x + W, self.cards[p].at.y + H / 2.0);
-                let to = Vec2::new(card.at.x, card.at.y + H / 2.0);
-                let mid = (from.x + to.x) / 2.0;
+                let to = Vec2::new(self.cards[i].at.x, self.cards[i].at.y + H / 2.0);
                 let lit = hovered[i] || hovered[p];
                 let color = if lit {
                     Color::rgb8(0x7f, 0x9c, 0xf5)
                 } else {
                     Color::rgb8(0x3a, 0x3f, 0x52)
                 };
+                link(from, to, &mut self.points);
                 ui.polyline_keyed(
                     &format!("link{i}"),
-                    &[from, Vec2::new(mid, from.y), Vec2::new(mid, to.y), to],
-                    Stroke::new(if lit { 3.0 } else { 2.0 }, color).curve(),
+                    &self.points,
+                    Stroke::new(if lit { 3.0 } else { 2.0 }, color),
                     NodeSpec::column().transition(160.0),
                 );
             }

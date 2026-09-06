@@ -323,6 +323,32 @@ bumped past alpha.6 should delete.
 
 ### Changed
 
+- **`curve` is a centripetal Catmull-Rom spline, not a uniform one**
+  (`docs/adr/0010-a-segment-primitive.md`, amendment). A uniform parameter
+  is a claim that the knots are evenly spaced: every span gets one unit of
+  curve however long or short its chord, so the stroke has to move fast
+  through the tight ones. On an elbow that is a bow out of the wrong side
+  of the corner — `examples/rust/connectors.rs` had three links leaving one
+  card 10.3 px below the edge they start on and crossing each other doing
+  it — and on knots spaced unevenly enough it is a loop: over 20,000 random
+  four-knot sets the uniform middle span crossed itself in 82 and the
+  centripetal one in none, which is a theorem and not a sample. Each span's
+  parameter is `sqrt(chord)` now, the end knots are mirrored rather than
+  doubled — a repeated knot is a zero-length chord and centripetal has no
+  parameter for one, so a duplicated point in a list is a kink instead of a
+  division by zero — and a span is still cut into `ceil(chord / 6)` pieces,
+  so **no scene's segment count moved**. It costs 11% on `frame_1k_curves`:
+  7.7 ns a segment against 6.9, flattening included.
+  **What breaks:** the same `points` draw a different curve. Nothing about
+  the count, the box or the endpoints changes — a run still starts, ends
+  and passes through every knot exactly — but a test that pins a curve's
+  interior, or a digest over one, will see new numbers.
+  **And what it does not fix:** a spline passes *through* its knots, so it
+  still leans into a corner it has to arrive at; centripetal halves that
+  lean rather than removing it. A shape whose middle points should only
+  *pull* is a Bézier, which is what the connectors example samples for its
+  links now — the four points it used to hand to `curve` were a Bézier's
+  control points and never knots.
 - **Keys a focused control does not claim bubble to the nearest enclosing
   key sink** (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`, backlog
   F7, from both field reports). An app could have a keyboard shortcut or a
@@ -419,6 +445,12 @@ bumped past alpha.6 should delete.
 
 ### What you can delete
 
+- **The knots you added to talk a curve out of its overshoot.** The extra
+  point either side of an elbow, the corner nudged off the grid, the second
+  copy of a knot that a uniform span was looping around: a centripetal span
+  does not loop, and a link that wants *handles* rather than waypoints is a
+  Bézier the caller samples into `points` — `examples/rust/connectors.rs`
+  is that, in one function.
 - **The three-box connector.** The stub, the vertical run and the second
   stub a diagram drew for every link, the colour arithmetic that decided
   which of two overlapping stubs won, and the elbow-only layout the boxes
