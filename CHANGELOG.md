@@ -132,6 +132,15 @@ it says so. See `### Changed` — the two alpha.7 field reports are why.
   surprise on reopen — write the model's draft with `setEditText` when
   the editor opens, which places the caret in the same move.
 
+- **The `line` row says what a curve costs** (backlog F21, from the mind
+  map's report): one quad per piece, a curve flattened at one piece per
+  6 logical px of chord and at most 32 per span, fixed rather than
+  tolerance-driven so all four bindings get the same pieces and the corpus
+  can pin them. The report's nine-point curve came back as 63 segments and
+  took its frame from 68 quads to 477 — exactly what the constant
+  predicts, and nothing visible slowed, but a `quadCount` budget will
+  notice and now the row says so.
+
 - **The npm package ships this file and the ADRs its types cite** (backlog
   F18, from the pomodoro's report). The tarball was the runtime, the types
   and `props.md`; learning what alpha.7 changed "meant downloading both
