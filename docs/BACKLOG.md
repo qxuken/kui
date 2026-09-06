@@ -89,14 +89,57 @@ written:
 that half is the per-node logic the features added, not the struct. It wants
 its own profile now that the cache behaviour has changed — the shape of the
 answer is which of the added passes can be skipped wholesale with a tree-level
-flag, the way `any_exit` already skips the depart diff. Also still open: a
-threshold on `frame_10k_rects` and `frame_1k_typical`. The size test catches
-the specific mistake that caused this one; it does not catch a slow pass, and
-a threshold would. **Not in CI** — decided 2026-09-06: the docker runner is
-too weak, and a check that false-fails gets disabled. The guard is a local
-`scripts/bench-check.sh` that benches HEAD against the previous tag in a
-worktree (the method C15's bisect and the alpha.5-vs-alpha.6 measurement
-both used) and sits on the pre-tag run list.
+flag, the way `any_exit` already skips the depart diff. **The threshold half
+is done (2026-09-06)**, as `scripts/bench-check.sh`; the profile is what is
+left.
+
+The guard, and why it is not the CI check this entry first asked for. The
+size test catches the specific mistake that caused this regression; it does
+not catch a slow pass, and this one was a staircase of tens-of-microsecond
+steps across ~190 commits, no step of which was large enough to fail a
+review. R6 found it only by re-measuring the README table for the release.
+So the threshold was worth having — but **not in CI**, decided 2026-09-06:
+the docker runner is too weak to measure a frame, it would false-fail, and a
+check that false-fails gets turned off, which is worse than not having it.
+The guard is instead a local `scripts/bench-check.sh` on the pre-tag run
+list. It scripts what was already done by hand twice — C15's own bisect and
+the alpha.5-vs-alpha.6 table below — checking the previous `v*` tag out into
+a worktree under `target/bench-base/`, benching both sides back to back on
+the one machine, and comparing medians. Four rows are guarded and fail it at
+more than 10% slower (`frame_10k_rects`, `frame_1k_typical`,
+`frame_10k_rects_with_text_and_hits`, `deep_nesting_64_levels`); 10% is
+twice the ~5% noise floor these measurements have shown. Every other row is
+reported and not judged, and a row only one side has is listed rather than
+compared.
+
+Two things it does beyond the threshold, both because of how this entry
+went. It prints the README's table with HEAD's medians filled in, so
+refreshing those numbers at tag time is the same command as the guard rather
+than the separate manual pass R6 did. And it watches for the trap the
+alpha.5-vs-alpha.6 measurement hit: the bench *builder* can change between
+refs (`f6eec64` unified the grid), and then a row is not comparable even
+though its name is. When `crates/kui-core/benches/frame.rs` differs it says
+which rows still build from source that reads the same at both refs and
+which are touched, transitively, and by which item. For a plain grid row
+every `Grid` switch is off, so a builder change that only adds a switch
+leaves those four comparable; a new switch the row turns on does not.
+
+The same reasoning that kept it out of CI is inside it: a loaded machine
+cannot measure a frame either, and this repo's own worktrees are usually
+compiling in one. So each side runs twice and the second is read, and a row
+whose own two runs disagree by more than the tolerance is marked
+**unreadable** rather than given either verdict — it cannot resolve a
+difference smaller than its own jitter. The run is **INCONCLUSIVE** (exit 2)
+when no readable row failed but some row was unreadable. Both halves of that
+were worth having, and both were proven on 2026-09-06 against a busy
+machine: `frame_10k_rects` read 119% slower there and the gate refused it,
+which is the false-fail the whole design is against; and judging per row
+rather than per run is what stops the cheapest bench from vetoing the
+others, since `deep_nesting_64_levels` is ~80 µs, where one preemption is
+20%, and a global veto threw away three good verdicts to buy nothing. It
+also warns before starting, off the summed CPU of what is running rather
+than the load average: a one-minute decaying average both cries wolf on a
+box that has just gone quiet and misses a lull long enough to bench in.
 
 A note for whoever picks that up: `Quad` also grew, 92 → 124 bytes, and the
 display list is one per quad. It did not show up in either profile — emission
@@ -468,8 +511,13 @@ are still per window because `Core::output` hands out `&mut GlyphAtlas`
 share enough text to matter. C15's remainder: `frame_10k_rects` is still
 ~1.5× its 2026-08-31 cost after the boxing fix, and that half is the per-node
 logic rather than the struct — it wants a profile now the cache behaviour has
-changed. Plus the CI threshold on `frame_10k_rects` and `frame_1k_typical`,
-which the size test does not replace.
+changed. The threshold that went with it is **done (2026-09-06)** and is not
+the CI check this list used to name: benches in CI were declined the same day
+because the docker runner is too weak and would false-fail, so it is
+`scripts/bench-check.sh`, run against the previous tag before tagging. When
+the next release section is written, carry the pre-tag run list over from
+[`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) with that step on
+it.
 
 **From the field (F1–F15).** Of the four defects, three are done:
 ~~F1~~ (the Node loop never set the frame clock, which is why nothing eased

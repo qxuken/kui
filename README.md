@@ -700,7 +700,13 @@ C15 carries the profile, the bisect and the fix in
 [docs/backlog/closed-2026-09.md](docs/backlog/closed-2026-09.md), and what is
 left in [docs/BACKLOG.md](docs/BACKLOG.md). `size_of::<NodeSpec>()` now has a
 test with a bound on it, so the next inline field has a number to fail against
-rather than a release audit to wait for.
+rather than a release audit to wait for. A fat struct is not the only way to
+lose a frame, though, so there is a second guard for the case that test cannot
+see: `scripts/bench-check.sh` benches HEAD against the previous `v*` tag in a
+worktree and fails if one of four frame benches is more than 10% slower. It is
+run before tagging rather than in CI — the docker runner is too weak to
+measure a frame and would false-fail — and it prints the table above with the
+run's own medians, so re-measuring these numbers is that same command.
 
 A built-in latency graph shows per-phase frame cost live —
 `widgets::latency_hud(ui)` floats it in a viewport corner as a translucent
