@@ -5,7 +5,7 @@ the workaround, the model field or the arithmetic the release made
 unnecessary. The second list is the point of the first — a library whose
 upgrades remove code from the apps on it is doing the job.
 
-## Unreleased
+## 0.1.0-alpha.7 (2026-09-06)
 
 **What breaks.** **A drag's `dx`/`dy` are measured from the press point
 now, in every phase.** They were the step since the previous event on
@@ -25,6 +25,74 @@ of every key to one sink, which made press-only, the shape every keymap has,
 the case that needed a guard. A sink that wants releases says `keyUp`. The
 `### Changed` entry below has the whole of it, including what an alpha.4 app
 bumped past alpha.6 should delete.
+
+### Native verification
+
+The same by-hand round alpha.6 introduced (backlog R4), run before this tag.
+What follows is what executed on what, and what did not.
+
+**macOS 26.6.2 (arm64), rustc 1.98.0, 2026-09-06.** `cargo test --workspace`
+passes: **629 tests over 60 suites, 0 failed, 0 ignored** — still with no
+display, no installed fonts and no GPU. `cargo fmt --all --check` and
+`cargo clippy --workspace --all-targets -- -D warnings` are clean. The scene
+corpus runs in all four adapters against one reference report: **19 scenes**,
+Rust and Lua through `cargo test`, C through `examples/c/counter
+--conformance`, Node through `npm test` with `KUI_CONFORMANCE_REQUIRED=1`
+(75 Node tests, 0 failed). The C header still matches the Rust structs — 234
+fields and 81 enum members — the C plugin dlopens into a Rust host and routes
+clicks both ways, and the same plugin with `kui_ext_abi` deleted is refused
+against ABI 7. `npm run gen` leaves the three generated files unchanged.
+
+`scripts/ax-audit.swift` against `examples/rust/accessibility.rs` passes
+**106/106 checks**, up from alpha.6's 88 — the eighteen new ones are ADR
+0008's live regions and announcements, driven through the real macOS AX API:
+a live region's text is exposed and re-announced when it changes, an
+announcement with no node reaches the OS, the same message twice in a row is
+said twice (the fresh-node-id rule the ADR records), and the last
+announcement stays readable in the tree afterwards.
+
+Every host opened a window and drew, each one captured with `screencapture
+-l` and looked at: the **eleven** Rust examples (`accessibility`,
+`connectors`, `counter`, `editor`, `gallery`, `modal_editor`, `popup`,
+`rich_text`, `splitmux`, `syntax_view`, `toasts` — `popup` is new this
+release), `examples/c/counter`, `c_panel`, `lua_panel`, and
+`counter-window.mjs` on Node.
+
+**F15 was checked in the one frame no headless test reads** — between a press
+and a release. `npm run mindmap`, then a synthetic drag posted through the
+HID tap and `screencapture` run *while the button was down*: at "move pan
+180,110" the four cards and their three connectors have moved together to
+where the cursor is, rather than standing still and jumping into place on
+release. That is the whole of the F15 symptom, and it is on the by-hand list
+rather than in a test because the model was always right — only the screen
+was wrong.
+
+**The performance guard passed; the README's table was deliberately not
+refreshed.** `scripts/bench-check.sh` benches HEAD against the previous tag
+back to back on one machine: **none of the four guarded rows is more than 10%
+slower than alpha.6** (`frame_10k_rects` +1.4%, `frame_1k_typical` +1.2%,
+`frame_10k_rects_with_text_and_hits` +2.6%, `deep_nesting_64_levels` −4.2%),
+with a worst run-to-run spread of 4.6% on a guarded row. That verdict is a
+*difference* measured under identical conditions and it stands. The absolute
+table under "Performance" in the README is **alpha.6's numbers and is still
+labelled as alpha.6's**, because this machine was not idle and the run says
+so in a way worth recording: benching the alpha.6 tag *itself* today gives
+`frame_10k_rects_all_transitioning` at 2.80 ms against the 1.73 ms the README
+records for that same commit, with a ±27% spread between that row's own two
+runs. Taking today's medians would have made the table less true, not
+fresher. Re-running the script on an idle machine is what refreshes it, and
+that is in the backlog rather than done here.
+
+**Not run, and so not claimed.** Nothing has executed on **Windows** — no
+machine or VM was reachable, so `crates/kui/src/windows_nc.rs` has still
+never run, and neither has the win32-x64 prebuild. The **published prebuilds
+are untested as artifacts** on every platform: what ran here was built from
+source on this machine, not the cross-compiled binary the release ships.
+`SMOKE_MACOS` / `SMOKE_WINDOWS` stay unset, because turning either on without
+a matching runner registered leaves the job queued on every push instead of
+reporting anything. **W2's driver half is unbuilt**, so press-drag-release
+into a popup was not run: ADR 0009 settled it and only the arithmetic
+(`crates/kui/src/retarget.rs`) shipped.
 
 ### Added
 
