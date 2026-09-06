@@ -645,14 +645,18 @@ reach it; it takes no pointer input and has no access row.
 `cargo bench -p kui-core`, measured 2026-09-06 on an Apple M3 Pro MacBook Pro
 (macOS 26.6.2, rustc 1.98.0, release, steady-state warm caches — full frame:
 build + layout + emit). The suite was run twice back to back and the second
-run read; the four guarded rows agreed with themselves within 3% and no row
-disagreed by more than 7%. The two heaviest —
-`frame_10k_rects_all_transitioning` and `frame_10k_rects_all_declaring_exit` —
-are the jittery ones, and 7% is about as steady as they get here. Every median
-below comes from that one machine and that one run, so the rows can be compared
-with each other. The grid benches all go through the same builder at
-1920×1080 and differ only in which props are switched on, so the difference
-between two of them is what that prop costs.
+run read; most rows reproduce to within ~3% that way. Two do not:
+`frame_10k_rects_all_transitioning` and `frame_10k_rects_all_declaring_exit`
+spanned 1.69–1.94 ms and 2.15–2.61 ms over four passes, so their medians below
+are the median of those four and should be read as **±10%**, not as three
+significant figures. Nothing separated the passes — the same binary on mains
+and on battery agrees to within 1%, and every other row held steady across all
+of them. Measuring a row alone after an idle also reads lower than measuring it
+inside the whole suite (`frame_10k_rects` ~765 µs against ~807 µs), so these
+are the numbers the command above gives, which is the point of quoting them.
+The grid benches all go through the same builder at 1920×1080 and differ only
+in which props are switched on, so the difference between two of them is what
+that prop costs.
 
 | bench | what it holds | median |
 |---|---|---|
@@ -665,8 +669,8 @@ between two of them is what that prop costs.
 | `frame_10k_rects_rounded_clip` | the same with a radius on every clipping row, so each cell pays the per-corner intersect | ~899 µs |
 | `frame_10k_segments` | 10k one-segment `line` floats — the same 10k quads as `frame_10k_rects`, so the gap between the two is what a segment costs over a box | ~869 µs |
 | `frame_1k_curves` | 1k curves through eight knots each, re-flattened by chord length every frame — 35 segments a curve | ~270 µs |
-| `frame_10k_rects_all_transitioning` | every cell declares a `transition` — nine retained tween slots each | ~1.92 ms |
-| `frame_10k_rects_all_declaring_exit` | every cell also declares an `exit`, so the whole frame is kept for the next one to diff against | ~2.61 ms |
+| `frame_10k_rects_all_transitioning` | every cell declares a `transition` — nine retained tween slots each | ~1.88 ms |
+| `frame_10k_rects_all_declaring_exit` | every cell also declares an `exit`, so the whole frame is kept for the next one to diff against | ~2.54 ms |
 | `frame_10k_rects_one_exit` | the same 10k grid with a single cell declaring an `exit` | ~832 µs |
 | `drop_1k_rows_plain` | 1k rows removed from the tree in one frame, no exits declared | ~64.8 µs |
 | `drop_1k_rows_declaring_exit` | the same removal with exits declared, so 1k ghosts start playing out | ~269 µs |
@@ -735,18 +739,19 @@ fallback), with a red cap on frames whose work exceeds it. The runner feeds
 `core.stats` and `core.env` automatically; all examples show it.
 
 Editing latency (`cargo bench -p kui-core --bench editing`, same machine and
-day, run the same way — one keystroke: applying the edit, then the full frame
-it causes, warm caches):
+day — one keystroke: applying the edit, then the full frame it causes, warm
+caches). Each cell is the median of four runs, because a single run of the
+100k row moves by ~10%:
 
 | document | apply | frame | quads |
 |---|---|---|---|
-| 50 lines | 0.090 ms | 0.052 ms | 1860 |
-| 500 lines | 0.090 ms | 0.053 ms | 1860 |
-| 2k lines | 0.092 ms | 0.065 ms | 1860 |
-| 10k lines | 0.140 ms | 0.147 ms | 1860 |
-| 100k lines | 2.09 ms | 2.51 ms | 1860 |
+| 50 lines | 0.087 ms | 0.050 ms | 1860 |
+| 500 lines | 0.090 ms | 0.052 ms | 1860 |
+| 2k lines | 0.096 ms | 0.067 ms | 1860 |
+| 10k lines | 0.130 ms | 0.140 ms | 1860 |
+| 100k lines | 1.79 ms | 2.08 ms | 1860 |
 
-So a keystroke costs well under a frame's worth up to 10k lines, and ~4.6 ms
+So a keystroke costs well under a frame's worth up to 10k lines, and ~3.9 ms
 at 100k. The quad count is flat because glyph emission is viewport-culled (a
 huge document emits only the visible screenful), and single-line reshapes go
 through cosmic-text's shape-run cache. This bench never regressed with the

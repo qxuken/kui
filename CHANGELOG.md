@@ -81,20 +81,27 @@ worth recording: this machine was not idle, and benching the alpha.6 tag
 that row's own two runs. Those medians would have made the table less true,
 not fresher.
 
-**The table is now the idle re-run's**, done the same day once the machine was
-quiet: two full passes, the guarded rows agreeing with themselves within 3%
-and no row disagreeing by more than 7%. `frame_10k_segments` and
-`frame_1k_curves` joined it, the ratios under it were re-derived, and the
-editing-latency table was re-measured in the same sitting. Two rows moved
-more than the rest — `frame_10k_rects_all_transitioning` 1.73 → 1.92 ms and
-`frame_10k_rects_all_declaring_exit` 2.21 → 2.61 ms — and that is **not** a
-regression: the alpha.6 tag benched on the quiet machine reads 1.98 ms and
-2.48 ms, so the same commit measures the same way. Those two are heavy-tailed
-(fastest ~1.6 ms against slowest ~2.9 ms), so their median is the statistic
-that moves between days, and one pass in eight read them a full 12% low.
-Reading a single pass is what the script's own two-runs-per-side spread is
-there to catch. Every other row is within ~4% of what the table carried,
-`replay_a_full_depart_store` (13.2 → 14.1 µs) apart.
+**The table is now a quiet machine's**, and the re-measure found something
+the guard cannot: two rows do not reproduce. `frame_10k_rects_all_transitioning`
+spans **1.69–1.94 ms** and `frame_10k_rects_all_declaring_exit` **2.15–2.61 ms**
+across four full-suite passes of one binary, while every other row holds to ~3%.
+Their table entries are the median of those passes and carry a stated ±10%;
+quoting them to three figures was never meaningful. What was ruled out: power
+source (the same binary on mains and on battery agrees to within 1%) and a
+regression (alpha.6 benched beside it moves the same way). What is left is
+unexplained, so nothing here names a cause. Protocol matters too — a row
+measured alone after an idle reads below the same row inside the whole suite
+(`frame_10k_rects` ~765 µs against ~807 µs) — so the table quotes what
+`cargo bench -p kui-core` gives, since that is the command it names.
+
+`frame_10k_segments` and `frame_1k_curves` joined the table and the ratios
+under it were re-derived. The editing-latency table was re-measured four
+times over: a first attempt taken straight after a long benching session read
+the 100k row ~18% high, and four rested runs put it back at 1.79 / 2.08 ms —
+where the table already had it. `replay_a_full_depart_store` is the one row
+where alpha.7 is consistently slower than alpha.6 (13.1 against 12.4 µs,
+five comparisons out of five), which is ~1 µs and below the guard, but it is
+the only row that always leans one way.
 
 **Not run, and so not claimed.** Nothing has executed on **Windows** — no
 machine or VM was reachable, so `crates/kui/src/windows_nc.rs` has still
