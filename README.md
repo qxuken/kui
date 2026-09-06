@@ -677,10 +677,11 @@ two-thirds of the regression — `frame_10k_rects` 1.37 ms → 788 µs — and e
 bench in the table moved with it, including ones that touch none of those
 fields. What remains against the 2026-08-31 baseline is ~1.5×, which is the
 per-node logic the features added rather than the cost of moving the struct;
-C15 in [docs/BACKLOG.md](docs/BACKLOG.md) carries the profile, the bisect and
-what is left. `size_of::<NodeSpec>()` now has a test with a bound on it, so
-the next inline field has a number to fail against rather than a release
-audit to wait for.
+C15 carries the profile, the bisect and the fix in
+[docs/backlog/closed-2026-09.md](docs/backlog/closed-2026-09.md), and what is
+left in [docs/BACKLOG.md](docs/BACKLOG.md). `size_of::<NodeSpec>()` now has a
+test with a bound on it, so the next inline field has a number to fail against
+rather than a release audit to wait for.
 
 A built-in latency graph shows per-phase frame cost live —
 `widgets::latency_hud(ui)` floats it in a viewport corner as a translucent

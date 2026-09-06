@@ -79,7 +79,10 @@ The C ABI has a version and a size handshake, C can be an *extension*
 inside a Rust host and not only a host itself, and one scene corpus drives
 all four bindings in CI.
 
-**What breaks.** **The C ABI went 2 → 6**: every C host recompiles and
+**What breaks.** **The C ABI has a version now, and it is 6**: alpha.5 had
+none at all, and 1 through 5 came and went inside this release's own
+development (bumps are per change, not per release — ADR 0006 decision 8),
+so 6 is the first number anything shipped. Every C host recompiles and
 checks `kui_abi_version()`. `kui_take_window_commands`, which filled a
 `uint32_t` array, is now `bool kui_take_window_command(ctx,
 KuiWindowCommand *)` popping one at a time — renamed so an un-edited host
@@ -97,7 +100,8 @@ keyboard at all — which breaks nothing today, and `env.focus` is
 deprecated below.
 
 Everything after this is the detail as each piece landed;
-`docs/BACKLOG.md` carries the reasoning and the alternatives declined.
+`docs/backlog/closed-2026-09.md` carries the reasoning and the alternatives
+declined, and `docs/BACKLOG.md` what is still open.
 
 ### Native verification
 
@@ -1665,12 +1669,12 @@ anything — the job is written and waits on a runner, not on an edit.
   (`Env::focused`), and the only thing `focused` has ever meant in `env`.
   Node keeps the two apart by having two objects, `env` and `ctx`; Lua has
   one table, so the collision is structural rather than a naming slip.
-  **P3 in `docs/BACKLOG.md` is why both exist today**: `env.focused` was
-  spent on the window fact before the node reading needed it, and neither
-  name can move inside 0.1 — renaming either is breaking, and simply
-  dropping `env.focus` would leave the node key unreadable from Lua
-  altogether. So this is the announcement, not the change; converging the
-  two, and giving the window fact its own unambiguous name, is 0.2's.
+  **P3 in `docs/backlog/closed-2026-09.md` is why both exist today**:
+  `env.focused` was spent on the window fact before the node reading needed
+  it, and neither name can move inside 0.1 — renaming either is breaking,
+  and simply dropping `env.focus` would leave the node key unreadable from
+  Lua altogether. So this is the announcement, not the change; converging
+  the two, and giving the window fact its own unambiguous name, is 0.2's.
   Until then the module doc at the top of `crates/kui-lua/src/lib.rs`
   documents them against each other.
 
