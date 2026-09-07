@@ -673,6 +673,14 @@ Node spells them `textHit` / `caretRect`, Lua `env.text_hit` /
 `env.caret_rect`, C `kui_text_hit` / `kui_caret_rect` with `KuiTextHit` /
 `KuiCaretRect` out-structs (backlog C18).
 
+A terminal's screen is one node: `ui.cells(&CellGrid { rows, cols, cells,
+style, cursor })` draws `rows × cols` sixteen-byte cells — a character,
+colours, attribute bits — by looking each glyph up in a table filled by
+shaping that character once, placed at `col × cell_w`, never shaped again;
+so a pane whose every cell changes every frame costs what a still one does
+(~60 µs for 200 × 50, against ~2.2 ms as text nodes). Rust-only for now
+(backlog C20).
+
 Font features ride the style: `TextStyle::features(FontFeatures::parse("liga=0
 calt=0"))` — `features="liga=0 calt=0"` in JSX and Lua, `KuiTextStyle.features`
 in C — keeps a coding font from joining `->`, and `"tnum"` lines figures up in
@@ -787,6 +795,9 @@ that prop costs.
 | `long_line_100k_first_frame` (`--bench long_line`) | a 100k-character no-wrap line opened in a horizontally scrolling view — shaped in chunks as they show | ~18 ms (was 662 ms whole) |
 | `long_line_100k_scroll` | a viewport's width of scrolling through it per frame | ~160 µs, a few ms when a chunk first shows |
 | `long_line_100k_edit` | one character inserted in the middle, the view held there | ~160 µs (was 102 ms) |
+| `cells_200x50_warm` (`--bench cells`) | a terminal's screen as one `ui.cells` node, unchanged | ~58 µs |
+| `cells_200x50_streaming` | the same grid with every character new each frame | ~60 µs |
+| `cells_200x50_as_text_nodes` | the same 10k cells as one text node each — the path an app had | ~2.2 ms |
 
 What the pairs say. Deriving the access tree costs **~1.35×** the frame it
 follows. Shadows under a faded root are **twice the quads** (20k against 10k)

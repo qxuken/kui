@@ -32,6 +32,8 @@ pub enum NodeContent {
     /// piece (see `crate::line`). The node is a float sized to the
     /// stroke's bounding box, and its `bg` is the stroke colour.
     Line(crate::line::LineId),
+    /// A cell grid (see `crate::cells`): a terminal's screen as one node.
+    Cells(crate::cells::CellsId),
 }
 
 impl Tree {
@@ -134,7 +136,10 @@ impl Tree {
         // Read before the move, while the spec is in cache anyway.
         self.any_float |= spec.layout.float.is_some();
         self.any_wrap |= spec.layout.wrap;
-        self.any_text |= matches!(content, NodeContent::Text(_) | NodeContent::Edit(_));
+        self.any_text |= matches!(
+            content,
+            NodeContent::Text(_) | NodeContent::Edit(_) | NodeContent::Cells(_)
+        );
         self.keys.push(key);
         self.origins.push(origin);
         self.specs.push(spec);

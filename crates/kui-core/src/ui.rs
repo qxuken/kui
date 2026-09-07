@@ -255,6 +255,12 @@ impl<'a> Ui<'a> {
     }
 
     /// A paragraph of styled spans, shaped and wrapped as one flow.
+    /// A cell grid — a terminal's screen — as one node; see
+    /// `crate::cells` (backlog C20).
+    pub fn cells(&mut self, grid: &crate::cells::CellGrid<'_>) {
+        self.core.cells(grid);
+    }
+
     pub fn rich_text(&mut self, spans: &[Span<'_>], base: TextStyle) {
         self.core.rich_text_node(spans, base);
     }

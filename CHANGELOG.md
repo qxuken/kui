@@ -96,6 +96,29 @@ that asserts on an empty warning list is what notices.
   is cosmic-text's (the same fifty lines shaped through it alone measure
   the same), which is C20's entry and not this one's.
 
+- **A cell grid, in Rust, as the prototype backlog C20 gated the element
+  on.** `ui.cells(&CellGrid { rows, cols, cells, style, cursor })` is one
+  node holding a terminal's screen: a `Cell` is a character, `fg` and
+  `bg` as `0xRRGGBBAA`, and attribute bits (bold, italic, underline,
+  strikethrough, wide) in sixteen bytes; the node lays out at `cols ×
+  cell_w` by `rows × cell_h`, the cell width being `M`'s advance snapped
+  to whole pixels and the height the style's line height. Its emission
+  is a table walk: a glyph is shaped once per character and style
+  variant — ASCII by direct index, the rest by map — rasterized into the
+  same atlas, and thereafter placed at `col × cell_w` without shaping, so
+  a screen whose every cell is new costs what an unchanged one costs.
+  Backgrounds coalesce per run of one colour per row, underlines and
+  strikethroughs per run of one flag, and the cursor (`Block`, `Bar`,
+  `Underline`, in its own colour) paints under the glyph it sits on.
+  Measured with `benches/cells.rs` at 200 × 50 cells: **~58 µs warm,
+  ~60 µs with every character new each frame**, against ~2.2 ms for the
+  same cells as one text node each — the gate was 0.2 ms and flat under
+  streaming, and it clears both by a wide margin. Rust-only and
+  prototype-grade on purpose: the element rows, the bindings' packed
+  transports, the terminal access role and the `cell` field on click and
+  drag payloads are C20's steps 1–4, now unblocked; a departing grid
+  ghosts as its box, and the access tree sees a group. Three tests.
+
 - **A long line is shaped in chunks, on demand** (backlog C19). A plain
   text with `wrap: none` and no line breaks of its own that is
   `LONG_LINE_BYTES` (4096) or longer — a minified bundle, a log line with

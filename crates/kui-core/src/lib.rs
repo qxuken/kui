@@ -10,6 +10,7 @@ pub mod access;
 pub mod anim;
 pub mod atlas;
 pub mod audio;
+pub mod cells;
 pub mod color;
 pub(crate) mod composite;
 /// The scene corpus every binding is checked against. Test infrastructure,
@@ -50,6 +51,7 @@ pub use access::{
 };
 pub use anim::{Easing, Repeat, Transition};
 pub use audio::{AudioCommand, AudioSpec, AudioStore, PlayOptions, PlaybackId};
+pub use cells::{Cell, CellGrid, CellStore, CellsId, CursorShape as CellCursor};
 pub use color::Color;
 pub use cursor::CursorShape;
 pub use depart::DepartStore;

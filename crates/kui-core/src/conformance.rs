@@ -2365,6 +2365,8 @@ fn observe(core: &Core, cov: &mut Coverage) {
                     cov.elements.insert("box");
                 }
             }
+            // No element yet: Rust-only (backlog C20).
+            NodeContent::Cells(_) => {}
             // `size` is as far as the tree goes: the frame's text list
             // keeps a cache key and a color, not the `TextStyle` it was
             // shaped from, so the font size cannot be read back — only

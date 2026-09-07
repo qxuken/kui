@@ -396,6 +396,9 @@ impl DepartStore {
                     }
                     NodeContent::Edit(k) => GhostContent::Edit(k),
                     NodeContent::Image(id) => GhostContent::Image(id),
+                    // A departing grid is its box: the cells are the
+                    // frame's and go with it.
+                    NodeContent::Cells(_) => GhostContent::Container,
                     NodeContent::Line(id) => {
                         let (run, pts) = lines.prev_run(id);
                         let first = points.len() as u32;

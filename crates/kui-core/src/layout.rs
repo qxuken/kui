@@ -215,6 +215,10 @@ pub trait TextMeasure {
     fn image_size(&mut self, _id: crate::resources::ImageId) -> Size {
         Size::ZERO
     }
+    /// The laid-out size of a cell grid (`rows × cols` cells).
+    fn cells_size(&mut self, _id: crate::cells::CellsId) -> Size {
+        Size::ZERO
+    }
 }
 
 pub fn compute(
@@ -243,6 +247,7 @@ fn fit_width(tree: &Tree, i: usize, text: &mut dyn TextMeasure) -> f32 {
         NodeContent::Edit(key) => text.edit_intrinsic(key).w + spec.padding.x(),
         // Image pixels as logical px (1:1 at scale 1).
         NodeContent::Image(id) => text.image_size(id).w,
+        NodeContent::Cells(id) => text.cells_size(id).w + spec.padding.x(),
         _ => {
             let mut w = 0.0f32;
             let mut n = 0u32;
@@ -307,6 +312,7 @@ fn fit_height(tree: &Tree, i: usize, text: &mut dyn TextMeasure, edit: Size) -> 
     let spec = &tree.specs[i].layout;
     match tree.content[i] {
         NodeContent::Edit(_) => edit.h + spec.padding.y(),
+        NodeContent::Cells(id) => text.cells_size(id).h + spec.padding.y(),
         // Width is final by now: a Fit height preserves the aspect.
         NodeContent::Image(id) => {
             let intrinsic = text.image_size(id);

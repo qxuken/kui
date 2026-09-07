@@ -69,6 +69,8 @@ pub struct Core {
     /// its cache entries are stamped with `atlas`'s epoch, and `TextId`
     /// indexes its per-frame list.
     pub text: TextSystem,
+    /// The frame's cell grids and their glyph tables (backlog C20).
+    pub cells: crate::cells::CellStore,
     /// This window's glyph atlas — the CPU side of its renderer's texture,
     /// handed out by `output`.
     pub atlas: GlyphAtlas,
@@ -296,6 +298,7 @@ impl Core {
         let mut core = Self {
             session: session.clone(),
             text: TextSystem::new(),
+            cells: crate::cells::CellStore::new(),
             atlas: GlyphAtlas::new(),
             resources: SharedResources::new(session),
             audio: SharedAudio::new(session),
@@ -704,6 +707,7 @@ impl Core {
         // And the strokes, for the same reason: a kept frame's `line`
         // nodes index that frame's list.
         self.lines.begin_frame(keep_prev);
+        self.cells.begin_frame(scale);
         self.sync_font_names();
         self.anim.begin_frame();
         self.depart.begin_frame();

@@ -144,6 +144,19 @@ impl Core {
                     self.tree.pos[i],
                 );
             }
+            NodeContent::Cells(cid) => {
+                let sess = &mut *self.session.state();
+                self.cells.emit(
+                    cid,
+                    self.tree.pos[i],
+                    clip_px,
+                    &sess.resources,
+                    &mut sess.fonts,
+                    self.text.raster_mut(),
+                    &mut self.atlas,
+                    &mut self.display.quads,
+                );
+            }
             NodeContent::Edit(key) => {
                 let pad = spec.layout.padding;
                 let content_origin = Vec2::new(rect.x + pad.l, rect.y + pad.t);
@@ -249,6 +262,7 @@ impl Core {
             let sess = &mut *self.session.state();
             let mut measure = Measure {
                 text: &mut self.text,
+                cells: &mut self.cells,
                 fonts: &mut sess.fonts,
                 edit: &mut self.edit,
                 resources: &sess.resources,
@@ -1029,6 +1043,7 @@ impl Core {
 /// images through the resource registry.
 struct Measure<'a> {
     text: &'a mut TextSystem,
+    cells: &'a mut crate::cells::CellStore,
     fonts: &'a mut cosmic_text::FontSystem,
     edit: &'a mut EditStore,
     resources: &'a Resources,
@@ -1049,6 +1064,10 @@ impl TextMeasure for Measure<'_> {
 
     fn edit_wrapped(&mut self, key: Key, max_w: f32) -> Size {
         self.edit.wrapped(key, max_w, self.fonts)
+    }
+
+    fn cells_size(&mut self, id: crate::cells::CellsId) -> Size {
+        self.cells.size(id, self.resources, self.fonts)
     }
 
     fn image_size(&mut self, id: crate::resources::ImageId) -> Size {

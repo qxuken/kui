@@ -741,7 +741,7 @@ impl TextSystem {
         }
     }
 
-    fn style_key(content: &str, style: &TextStyle, scale: f32) -> u64 {
+    pub(crate) fn style_key(content: &str, style: &TextStyle, scale: f32) -> u64 {
         // FNV over content + shaping-relevant style bits (color excluded).
         let mut h = 0xcbf2_9ce4_8422_2325u64;
         let mut mix = |bytes: &[u8]| {

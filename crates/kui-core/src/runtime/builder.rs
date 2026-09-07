@@ -433,6 +433,24 @@ impl Core {
         );
     }
 
+    /// A cell grid as one leaf node, sized `cols × cell_w` by `rows ×
+    /// cell_h` (backlog C20; see `crate::cells`).
+    pub fn cells(&mut self, grid: &crate::cells::CellGrid<'_>) {
+        if self.tree.is_empty() {
+            return;
+        }
+        let cid = self.cells.add(grid);
+        let key = self.auto_key();
+        let parent = self.current();
+        self.tree.push(
+            parent,
+            key,
+            self.origin,
+            NodeSpec::default(),
+            NodeContent::Cells(cid),
+        );
+    }
+
     /// An editable text node. State (buffer, cursor, selection) is retained
     /// by key across frames; edits arrive via `handle_input` and come back to
     /// the host as "changed"/"submit" events. Read with `edit_text`.

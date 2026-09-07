@@ -646,6 +646,8 @@ pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
         // not even an `on_click` it ignores — can make it a control
         // (`docs/adr/0010-a-segment-primitive.md`, decision 7).
         NodeContent::Line(_) => return None,
+        // A grid is a group until the terminal role lands (backlog C20).
+        NodeContent::Cells(_) => return Some(Role::Group),
         NodeContent::Container => {}
     }
     match spec.window {

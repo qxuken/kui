@@ -971,7 +971,36 @@ and the first frame should not be the whole line's. A `~` because the
 general case has no path today, and the special case (monospace ASCII)
 is the app's to keep getting right.
 
-### `.` C20 — A cell grid inside the core, if it beats per-cell nodes by an order of magnitude
+### `.` C20 — A cell grid inside the core, if it beats per-cell nodes by an order of magnitude — **gate cleared (2026-09-08); the element is the open half**
+
+The prototype the entry gated on is built and measured, and it clears
+the bar by a wide margin: `crates/kui-core/src/cells.rs`, reached as
+`ui.cells(&CellGrid { rows, cols, cells, style, cursor })` from Rust.
+`benches/cells.rs` at 200 × 50 cells: **~58 µs warm, ~60 µs with every
+character new each frame** — flat under streaming, which is the property
+text runs cannot have — against ~2.2 ms for the same cells as one text
+node each (the bench's third row, the path the entry measured at 1.8
+ms), so ~37×. The table is per style and scale: `M`'s advance snapped to
+whole pixels is the cell width, the style's line height the cell
+height, ASCII glyphs by direct index in four variants (plain, bold,
+italic, both) and the rest by map, each shaped once through a one-cell
+cosmic buffer and rasterized into the shared atlas; a repacked atlas
+empties the table. Emission coalesces backgrounds per run of one colour
+per row and lines per run of one flag, paints the cursor under its
+glyph, and skips the rows and columns outside the clip. Three tests in
+`tests/cells.rs`. Not in the numbers: the frame's copy of the cells (160
+KB for 10k, inside the 58 µs).
+
+**Still to build, in the entry's order** — steps 1–4 now that the
+measurement says yes: (1) the `cells` element in JSX, Lua and C with its
+packed transports (Node: one `Uint32Array` through the encoder, one op;
+Lua: a string per row plus colour runs; C: a `repr(C)` `KuiCell` array,
+an ABI bump since it travels as an array); (3) `cell: {row, col}` on the
+node's click and drag payloads; (4) AccessKit's `Role::Terminal` with
+the rows joined as the value — today the node is a `Group` with no
+value; and the ghost of a departing grid, which is its box. Also open:
+`inverse`/`dim` are the app's (it swaps and darkens colours itself),
+and a wide cell's spacer is the app's blank.
 
 The three terminal shapes an app can build today are the streaming
 rows in the table: one text node per line (0.08 ms warm, 21–63 ms when
