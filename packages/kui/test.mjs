@@ -857,6 +857,54 @@ test('measureText answers what layout gives the text', () => {
   assert.ok(rich.width > 0 && rich.lines === 1);
 });
 
+// IME for an editor the app owns (backlog C17): a composition and its
+// commit reach the focused sink as data, the candidate window is anchored
+// at the `line` carrying `caret`, and plain typing is never doubled.
+test('a composition and its commit reach the focused sink, anchored at its caret', () => {
+  const ctx = new Ctx();
+  const mono = { size: 14, family: 'mono' };
+  const editor = (caret) =>
+    box({ onKey: { kind: 'ed' }, role: 'multilineTextInput', label: 'Buffer' }, [
+      box({ dir: 'row', role: 'line' }, [text('first', mono)], 'l0'),
+      box({ dir: 'row', role: 'line', caret }, [text('let ', mono), text('value', mono)], 'l1'),
+    ], 'editor');
+  // Inside a root box: the root's own key is dropped, so a label on the
+  // top-level element would name nothing.
+  const view = (caret) => box({}, [editor(caret)]);
+  ctx.frame(400, 100, 1, view(6));
+  ctx.focus('editor');
+  ctx.frame(400, 100, 1, view(6));
+  ctx.pollEvents();
+  ctx.preedit('日本', [0, 6]);
+  ctx.commit('日本語');
+  ctx.preedit('');
+  assert.deepEqual(
+    ctx.pollEvents().map((e) => e.payload),
+    [
+      { kind: 'preedit', text: '日本', cursor: [0, 6], tag: { kind: 'ed' } },
+      { kind: 'text', text: '日本語', tag: { kind: 'ed' } },
+      { kind: 'preedit', text: '', cursor: null, tag: { kind: 'ed' } },
+    ],
+    'the sink hears both halves, tagged',
+  );
+  // The candidate window sits at the caret: byte 6 of "let value" on line 1.
+  const anchor = ctx.imeRect();
+  const w = ctx.measureText('M', mono).width;
+  assert.ok(Math.abs(anchor.x - 6 * w) < 0.75, JSON.stringify(anchor));
+  assert.deepEqual(anchor, ctx.caretRect('l1', 6));
+  // Typing is one event, not two: the key carries its text, and the text
+  // channel a driver sends beside the press stays away from sinks.
+  ctx.press('a');
+  const typed = ctx.pollEvents().map((e) => e.payload);
+  assert.equal(typed.length, 1, JSON.stringify(typed));
+  assert.equal(typed[0].kind, 'key');
+  assert.equal(typed[0].text, 'a');
+  // Nothing focused, nothing to anchor.
+  ctx.blur();
+  ctx.frame(400, 100, 1, view(6));
+  assert.equal(ctx.imeRect(), null);
+});
+
 // A point on the text a keyed node drew is a byte offset, and a byte
 // offset is a caret rect (backlog C18): the `line` row of a custom editor
 // answers across its token runs, so a click becomes a caret with one call.

@@ -665,6 +665,15 @@ Node spells them `textHit` / `caretRect`, Lua `env.text_hit` /
 `env.caret_rect`, C `kui_text_hit` / `kui_caret_rect` with `KuiTextHit` /
 `KuiCaretRect` out-structs (backlog C18).
 
+An editor the app owns hears an IME the way the stock editor does: while
+a composition is under way the focused `onKey` sink gets `{kind:"preedit",
+text, cursor, tag}` to draw inline, the commit arrives as `{kind:"text",
+text, tag}` — the one committed text a `key` event never carries — and the
+OS candidate window is anchored at the `line` carrying `caret` (backlog
+C17). `ctx.preedit` / `ctx.commit` drive it headless in Node,
+`kui_input_preedit` / `kui_input_commit` in C, and `kui_ime_rect` is where a
+C host places the window.
+
 Dragging: `.on_drag(tag)` makes any node a pointer-captured drag source —
 handlers get `{kind="drag", phase, x, y, dx, dy, parent, tag}` events.
 `dx`/`dy` are the displacement from the press point in every phase —

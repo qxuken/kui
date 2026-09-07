@@ -49,6 +49,32 @@ export type KeyMsg<T = AppMsg> = {
   tag?: T;
 };
 
+/** Text an IME committed at the end of a composition, on the focused
+ *  `onKey` sink (or the nearest one above the focused control) — the one
+ *  committed text the platform never reports as a key press carrying
+ *  `text`, so insert it as you would a key's `text`. Plain typing does not
+ *  arrive this way: the `key` event already carries it, and a sink hearing
+ *  both would type every character twice. A focused `<edit>` takes the
+ *  commit itself and reports `changed`. */
+export type TextMsg<T = AppMsg> = {
+  kind: 'text';
+  text: string;
+  tag?: T;
+};
+
+/** An in-progress IME composition on the focused `onKey` sink: `text` is
+ *  the uncommitted string to show inline at the caret, `cursor` the byte
+ *  range inside it the IME's own caret covers (null when it does not say),
+ *  and an empty `text` means the composition ended without a commit. The
+ *  OS candidate window is anchored for you: the `line` carrying `caret`
+ *  says where (`imeRect()` headless). */
+export type PreeditMsg<T = AppMsg> = {
+  kind: 'preedit';
+  text: string;
+  cursor: [number, number] | null;
+  tag?: T;
+};
+
 /** A secondary-button (right) press on an `onContextMenu` node — on the
  *  press, not the release. `x`/`y` are logical viewport coordinates: where
  *  the menu goes. The core opens nothing; declare the menu as a `modal`
@@ -214,6 +240,8 @@ export type SoundMsg<T = AppMsg> = {
 export type CoreMsg =
   | DragMsg
   | KeyMsg
+  | TextMsg
+  | PreeditMsg
   | ContextMenuMsg
   | HoverMsg
   | LayoutMsg
@@ -881,6 +909,21 @@ export declare class Ctx {
   /** Committed text input (typing, paste); routed to the focused editor. */
   text(text: string): void
   /**
+   * Text an IME committed at the end of a composition: a focused
+   * `<edit>` takes it, otherwise the focused `onKey` sink hears it as
+   * `{kind:"text", text, tag}` — the one committed text a `key` event
+   * never carries. `type`/`press` stay the way to type.
+   */
+  commit(text: string): void
+  /**
+   * An in-progress IME composition: `text` is the uncommitted string
+   * (empty ends the composition without a commit), `cursor` the byte
+   * range inside it the IME's caret covers, or null. A focused `<edit>`
+   * shows it inline; otherwise the focused `onKey` sink hears
+   * `{kind:"preedit", text, cursor, tag}`.
+   */
+  preedit(text: string, cursor?: [number, number] | null): void
+  /**
    * Editing key by name ("left", "backspace", "enter", ...) with optional
    * modifiers `{shift, word, doc}`.
    */
@@ -1290,6 +1333,14 @@ export declare class Ctx {
    */
   caretRect(key: string, byte: number): Rect | null
   /**
+   * Where the OS candidate window goes while a composition is
+   * under way: the focused `<edit>`'s caret, or a custom editor's
+   * `line` carrying `caret`; null when nothing with a caret is
+   * focused. The windowed driver applies it itself; headless,
+   * it is what a test reads to see the anchor moved.
+   */
+  imeRect(): Rect | null
+  /**
    * Sets that offset the way the wheel would; the next frame's
    * layout clamps it, so `(0, 0)` jumps to the top and a huge `y` to
    * the end without knowing the content height.
@@ -1689,6 +1740,14 @@ export declare class KuiWindow {
    * no text.
    */
   caretRect(key: string, byte: number): Rect | null
+  /**
+   * Where the OS candidate window goes while a composition is
+   * under way: the focused `<edit>`'s caret, or a custom editor's
+   * `line` carrying `caret`; null when nothing with a caret is
+   * focused. The windowed driver applies it itself; headless,
+   * it is what a test reads to see the anchor moved.
+   */
+  imeRect(): Rect | null
   /**
    * Sets that offset the way the wheel would; the next frame's
    * layout clamps it, so `(0, 0)` jumps to the top and a huge `y` to

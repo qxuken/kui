@@ -986,22 +986,39 @@ impl Core {
         });
     }
 
-    /// See the `ime_rect` field. None when no editor is focused.
+    /// See the `ime_rect` field. None when nothing with a caret is
+    /// focused: neither a stock editor nor a sink holding a `line` that
+    /// declares one.
     pub fn ime_rect(&self) -> Option<Rect> {
         self.ime_rect
     }
 
     fn focused_caret_rect(&mut self) -> Option<Rect> {
-        let key = self.edit.focused()?;
-        let i = (0..self.tree.len()).find(|&i| self.tree.content[i] == NodeContent::Edit(key))?;
-        let caret = self.edit_with_fonts(|edit, fs| edit.caret_rect(key, fs))?;
-        let pad = self.tree.specs[i].layout.padding;
-        Some(Rect::new(
-            self.tree.pos[i].x + pad.l + caret.x / self.scale,
-            self.tree.pos[i].y + pad.t + caret.y / self.scale,
-            caret.w / self.scale,
-            caret.h / self.scale,
-        ))
+        if let Some(key) = self.edit.focused() {
+            let i =
+                (0..self.tree.len()).find(|&i| self.tree.content[i] == NodeContent::Edit(key))?;
+            let caret = self.edit_with_fonts(|edit, fs| edit.caret_rect(key, fs))?;
+            let pad = self.tree.specs[i].layout.padding;
+            return Some(Rect::new(
+                self.tree.pos[i].x + pad.l + caret.x / self.scale,
+                self.tree.pos[i].y + pad.t + caret.y / self.scale,
+                caret.w / self.scale,
+                caret.h / self.scale,
+            ));
+        }
+        // A custom editor (backlog C17): the focused node's subtree holds
+        // the `line` rows it draws, and the one carrying `caret` says
+        // where the caret is — a byte offset into that line's runs, which
+        // is the question `caret_rect` answers. This runs after the text
+        // pass, so the places it reads are this frame's.
+        let i = self.focus_index()?;
+        let end = self.tree.subtree_end(i);
+        let l = (i..end).find(|&l| {
+            let a = self.tree.specs[l].access();
+            a.role == Some(crate::access::Role::Line) && a.caret.is_some()
+        })?;
+        let caret = self.tree.specs[l].access().caret? as usize;
+        self.text.caret_at(self.tree.keys[l], caret, false)
     }
 }
 

@@ -1,184 +1,170 @@
-//! IME composition through a live `Core`: the preedit lives inline in the
-//! buffer (following text shifts, the caret sits inside it), commits and
-//! cancels leave the committed text and undo history exactly right, and
-//! the caret rect drivers anchor the IME to tracks it.
+//! IME for an editor the app owns (backlog C17). The stock editor took
+//! every composition; a custom editor — an `onKey` sink drawing `line`
+//! rows with `caret` — got nothing: no preedit, no commit (the platform
+//! reports neither as a key press with `text`), and the OS candidate
+//! window at the window's origin. Now both arrive on the sink as data and
+//! the candidate window is anchored at the `line`'s caret.
 
-use kui_core::{
-    Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, QuadKind, Size, Sizing,
-};
+use kui_core::{Color, Core, InputEvent, Key, NodeSpec, Role, Size, Sizing, TextStyle, Value};
 
-fn frame(core: &mut Core) -> Key {
+const LH: f32 = 20.0;
+
+fn mono() -> TextStyle {
+    TextStyle::new(14.0).mono().line_height(LH)
+}
+
+/// A custom editor: one sink with two lines, the caret on the second at
+/// byte `caret`. Returns the sink's key and the second line's.
+fn frame(core: &mut Core, caret: u32) -> (Key, Key) {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill().pad(10.0));
-    let key = ui.text_edit(
-        "field",
-        "hello world",
-        &EditOptions {
-            multiline: false,
-            autofocus: true,
-            ..Default::default()
+    let sink = ui.with_keyed(
+        "editor",
+        NodeSpec::column()
+            .on_key(Value::str("ed"))
+            .role(Role::MultilineTextInput)
+            .label("Buffer"),
+        |ui| {
+            ui.with_keyed(
+                "l0",
+                NodeSpec::row().height(Sizing::Fixed(LH)).role(Role::Line),
+                |ui| ui.text("first line", mono()),
+            );
+            ui.with_keyed(
+                "l1",
+                NodeSpec::row()
+                    .height(Sizing::Fixed(LH))
+                    .role(Role::Line)
+                    .caret(caret),
+                |ui| {
+                    ui.text("let ", mono().color(Color::rgb8(200, 100, 255)));
+                    ui.text("value", mono());
+                },
+            );
         },
-        NodeSpec::column().width(Sizing::Grow(1.0)).pad(5.0),
     );
     ui.finish();
-    key
+    (sink, sink.str("l1"))
 }
 
-/// x of the right-most glyph quad: where the visible text ends.
-fn text_right_edge(core: &mut Core) -> f32 {
-    let (dl, _) = core.output();
-    dl.quads
+fn kinds(events: &[kui_core::UiEvent]) -> Vec<String> {
+    events
         .iter()
-        .filter(|q| matches!(q.kind, QuadKind::GlyphMask | QuadKind::GlyphColor))
-        .map(|q| q.rect.x + q.rect.w)
-        .fold(0.0, f32::max)
+        .map(|e| match &e.payload {
+            Value::Map(m) => m
+                .iter()
+                .find(|(k, _)| k == "kind")
+                .and_then(|(_, v)| match v {
+                    Value::Str(s) => Some(s.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default(),
+            _ => String::new(),
+        })
+        .collect()
 }
 
-fn solid_count(core: &mut Core) -> usize {
-    let (dl, _) = core.output();
-    dl.quads
-        .iter()
-        .filter(|q| q.kind == QuadKind::Solid)
-        .count()
-}
-
-/// Caret after "hello " (the IME composes mid-sentence).
-fn caret_after_hello(core: &mut Core) {
-    core.handle_input(InputEvent::Key(EditKey::Home, Mods::default()));
-    for _ in 0..6 {
-        core.handle_input(InputEvent::Key(EditKey::Right, Mods::default()));
+fn field<'a>(ev: &'a kui_core::UiEvent, name: &str) -> Option<&'a Value> {
+    match &ev.payload {
+        Value::Map(m) => m.iter().find(|(k, _)| k == name).map(|(_, v)| v),
+        _ => None,
     }
 }
 
 #[test]
-fn composition_reflows_the_text_and_is_marked() {
+fn a_composition_reaches_the_focused_sink_as_data() {
     let mut core = Core::new();
-    let key = frame(&mut core);
-    caret_after_hello(&mut core);
-    frame(&mut core);
-    let edge = text_right_edge(&mut core);
-    let solids = solid_count(&mut core);
-    let caret = core.ime_rect().unwrap();
+    let (sink, _) = frame(&mut core, 6);
+    core.set_focus(Some(sink));
+    frame(&mut core, 6);
 
-    core.handle_input(InputEvent::Preedit("かな".into(), Some((6, 6))));
-    assert_eq!(core.edit.preedit(key), Some("かな"));
-    frame(&mut core);
-    assert!(
-        text_right_edge(&mut core) > edge + 10.0,
-        "\"world\" shifted right to make room for the composition"
-    );
-    assert!(
-        solid_count(&mut core) >= solids + 2,
-        "composition backdrop + underline are drawn"
-    );
-    // The caret moved past the composition (IME offset = its end).
-    let composing = core.ime_rect().unwrap();
-    assert!(
-        composing.x > caret.x + 10.0,
-        "{} vs {}",
-        composing.x,
-        caret.x
-    );
-    // The committed text is untouched.
-    assert_eq!(core.edit_text(key).as_deref(), Some("hello world"));
-
-    // Updating the composition replaces it in place.
-    core.handle_input(InputEvent::Preedit("か".into(), Some((3, 3))));
-    frame(&mut core);
-    let shorter = core.ime_rect().unwrap();
-    assert!(shorter.x < composing.x && shorter.x > caret.x);
-    assert_eq!(core.edit_text(key).as_deref(), Some("hello world"));
-
-    // Commit: the composition leaves, the text lands where it began.
-    core.handle_input(InputEvent::Preedit(String::new(), None));
-    core.handle_input(InputEvent::Text("仮名".into()));
-    assert_eq!(core.edit.preedit(key), None);
-    assert_eq!(core.edit_text(key).as_deref(), Some("hello 仮名world"));
-    frame(&mut core);
-    assert_eq!(solid_count(&mut core), solids, "no marking left behind");
-}
-
-#[test]
-fn cancel_restores_the_text_and_leaves_undo_alone() {
-    let mut core = Core::new();
-    let key = frame(&mut core);
-    caret_after_hello(&mut core);
-    core.handle_input(InputEvent::Text("X".into()));
-    assert_eq!(core.edit_text(key).as_deref(), Some("hello Xworld"));
-
-    core.handle_input(InputEvent::Preedit("あい".into(), None));
-    core.handle_input(InputEvent::Preedit(String::new(), None));
-    assert_eq!(core.edit.preedit(key), None);
-    assert_eq!(core.edit_text(key).as_deref(), Some("hello Xworld"));
-    // Undo skips the composition entirely and removes the typed X.
-    core.handle_input(InputEvent::Key(EditKey::Undo, Mods::default()));
-    assert_eq!(core.edit_text(key).as_deref(), Some("hello world"));
-    core.handle_input(InputEvent::Key(EditKey::Undo, Mods::default()));
+    let pre = core.handle_input(InputEvent::Preedit("日本".into(), Some((0, 6))));
+    assert_eq!(kinds(&pre), ["preedit"]);
+    assert_eq!(pre[0].key, sink);
+    assert_eq!(field(&pre[0], "text"), Some(&Value::str("日本")));
     assert_eq!(
-        core.edit_text(key).as_deref(),
-        Some("hello world"),
-        "nothing else recorded"
+        field(&pre[0], "cursor"),
+        Some(&Value::List(vec![Value::Int(0), Value::Int(6)]))
     );
-}
-
-#[test]
-fn composing_over_a_selection_replaces_it() {
-    let mut core = Core::new();
-    let key = frame(&mut core);
-    core.handle_input(InputEvent::Key(EditKey::SelectAll, Mods::default()));
-    core.handle_input(InputEvent::Preedit("あ".into(), None));
     assert_eq!(
-        core.edit_text(key).as_deref(),
-        Some(""),
-        "selection replaced"
+        field(&pre[0], "tag"),
+        Some(&Value::str("ed")),
+        "the sink's tag rides along"
     );
-    core.handle_input(InputEvent::Preedit(String::new(), None));
-    core.handle_input(InputEvent::Text("亜".into()));
-    assert_eq!(core.edit_text(key).as_deref(), Some("亜"));
-    core.handle_input(InputEvent::Key(EditKey::Undo, Mods::default()));
-    assert_eq!(core.edit_text(key).as_deref(), Some(""));
-    core.handle_input(InputEvent::Key(EditKey::Undo, Mods::default()));
-    assert_eq!(core.edit_text(key).as_deref(), Some("hello world"));
+
+    let done = core.handle_input(InputEvent::Commit("日本語".into()));
+    assert_eq!(kinds(&done), ["text"]);
+    assert_eq!(field(&done[0], "text"), Some(&Value::str("日本語")));
+    assert_eq!(field(&done[0], "tag"), Some(&Value::str("ed")));
+
+    // A composition that ends without a commit says so: empty text, no cursor.
+    let gone = core.handle_input(InputEvent::Preedit(String::new(), None));
+    assert_eq!(kinds(&gone), ["preedit"]);
+    assert_eq!(field(&gone[0], "text"), Some(&Value::str("")));
+    assert_eq!(field(&gone[0], "cursor"), Some(&Value::Null));
 }
 
+/// Plain typing is not a commit: the sink hears the key press with its
+/// `text`, and the `Text` channel — which every driver sends beside the
+/// press — stays away from it, so nothing is typed twice.
 #[test]
-fn blur_abandons_the_composition() {
+fn typing_reaches_a_sink_once() {
     let mut core = Core::new();
-    let key = frame(&mut core);
-    core.handle_input(InputEvent::Preedit("あ".into(), None));
-    assert!(core.edit.preedit(key).is_some());
-    core.edit.set_focus(None);
-    assert_eq!(core.edit.preedit(key), None);
-    assert_eq!(
-        core.edit_text(key).as_deref(),
-        Some("hello world"),
-        "nothing committed"
-    );
-    frame(&mut core);
-    assert!(text_right_edge(&mut core) > 0.0);
+    let (sink, _) = frame(&mut core, 0);
+    core.set_focus(Some(sink));
+    frame(&mut core, 0);
+    let events = core.press(kui_core::KeyPress {
+        text: Some("a".into()),
+        ..kui_core::KeyPress::new(kui_core::KeyCode::Char('a'), kui_core::KeyMods::default())
+    });
+    assert_eq!(kinds(&events), ["key"], "one event for one keystroke");
+    let events = core.handle_input(InputEvent::Text("a".into()));
+    assert!(events.is_empty(), "the text channel alone reaches no sink");
 }
 
+/// The candidate window goes where the `line` carrying `caret` says.
 #[test]
-fn ime_rect_tracks_the_focused_caret() {
+fn the_ime_rect_follows_the_custom_caret() {
     let mut core = Core::new();
-    frame(&mut core);
-    assert!(
-        core.ime_rect().is_some(),
-        "focused edit exposes a caret rect"
-    );
-    // A single-line field opens with the caret after its seed (F20), so
-    // walk to the start first and measure from there.
-    core.handle_input(InputEvent::Key(EditKey::Home, Mods::default()));
-    frame(&mut core);
-    let start = core.ime_rect().unwrap();
+    let (sink, line) = frame(&mut core, 6);
+    core.set_focus(Some(sink));
+    frame(&mut core, 6);
+    let rect = core
+        .ime_rect()
+        .expect("a caret row anchors the candidate window");
+    assert_eq!(Some(rect), core.caret_rect(line, 6));
+    let w = core.measure_text("M", &mono(), None).width;
+    assert!((rect.x - (10.0 + 6.0 * w)).abs() < 0.75, "{}", rect.x);
+    assert_eq!(rect.y, 10.0 + LH, "the second line");
+    assert_eq!(rect.h, LH);
+    // The caret moves, the anchor moves with it.
+    frame(&mut core, 2);
+    let moved = core.ime_rect().unwrap();
+    assert!(moved.x < rect.x);
+    // Nothing focused: nothing to anchor.
+    core.set_focus(None);
+    frame(&mut core, 2);
+    assert_eq!(core.ime_rect(), None);
+}
 
-    core.handle_input(InputEvent::Key(EditKey::End, Mods::default()));
-    frame(&mut core);
-    let end = core.ime_rect().unwrap();
-    assert!(
-        end.x > start.x,
-        "caret at line end sits further right ({} vs {})",
-        end.x,
-        start.x
+/// The stock editor still takes a composition itself: a commit there is a
+/// `changed`, not a `text` event.
+#[test]
+fn a_stock_editor_takes_the_commit_itself() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(300.0, 100.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let key = ui.text_edit(
+        "note",
+        "",
+        &kui_core::EditOptions {
+            autofocus: true,
+            ..Default::default()
+        },
+        NodeSpec::column().width(Sizing::Grow(1.0)),
     );
+    ui.finish();
+    let events = core.handle_input(InputEvent::Commit("日本語".into()));
+    assert_eq!(kinds(&events), ["changed"]);
+    assert_eq!(core.edit_text(key).as_deref(), Some("日本語"));
 }

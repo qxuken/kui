@@ -341,10 +341,23 @@ pub extern "C" fn kui_cursor_shape(ptr: *mut KuiCtx) -> u32 {
     })
 }
 
-/// In-progress IME composition, shown at the focused editor's caret.
-/// Empty text clears it; the commit arrives via `kui_input_text`.
-/// `cursor_start`/`cursor_end` are byte offsets into `text`, or
-/// `UINT32_MAX` for none.
+/// Text an IME committed at the end of a composition: a focused editor
+/// takes it as `kui_input_text` would; otherwise the focused `onKey` sink
+/// hears `{kind:"text", text, tag}` — the one committed text a `key`
+/// event never carries (backlog C17). Typing stays on `kui_input_text`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_input_commit(ptr: *mut KuiCtx, text: KuiStr) {
+    guard((), || {
+        let text = kstr(text).into_owned();
+        push_input(ptr, InputEvent::Commit(text));
+    });
+}
+
+/// In-progress IME composition, shown at the focused editor's caret, or
+/// with no editor focused delivered to the focused `onKey` sink as
+/// `{kind:"preedit", text, cursor, tag}`. Empty text clears it; the commit
+/// arrives via `kui_input_commit`. `cursor_start`/`cursor_end` are byte
+/// offsets into `text`, or `UINT32_MAX` for none.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_preedit(
     ptr: *mut KuiCtx,

@@ -93,6 +93,32 @@ that asserts on an empty warning list is what notices.
   is cosmic-text's (the same fifty lines shaped through it alone measure
   the same), which is C20's entry and not this one's.
 
+- **IME reaches an editor the app owns** (backlog C17). A custom editor —
+  an `onKey` sink drawing `line` rows with `caret` — heard nothing of a
+  composition: the preedit went to the stock editor only, the commit is
+  the one committed text the platform never reports as a key press with
+  `text`, and the OS candidate window opened at the window's origin. Now
+  both arrive on the focused sink (or the nearest sink above the focused
+  control) as data, tagged like a `key` event: `{kind:"preedit", text,
+  cursor:[start,end]|null, tag}` while composing — an empty `text` is the
+  composition ending without a commit — and `{kind:"text", text, tag}` on
+  the commit. Plain typing is not a commit: the `key` event already
+  carries what the press would insert, and the text channel every driver
+  sends beside a press stays away from sinks, so nothing is typed twice —
+  which is why the commit has its own input, `InputEvent::Commit`
+  (`ctx.commit(text)` in Node beside the new `ctx.preedit(text, cursor)`,
+  `kui_input_commit` in C, `Ime::Commit` in the winit driver), and a
+  focused `<edit>` takes it exactly as it took `Text`. The candidate
+  window is anchored for you: `ime_rect` reads a custom editor's caret
+  from the `line` carrying `caret` through C18's `caret_rect`, so it
+  follows the caret across runs and lines; `imeRect()` in Node and the
+  new `kui_ime_rect` in C read it back, the second because a C host
+  driving its own window had no way to place the window at all, stock
+  editor or not. `TextMsg` and `PreeditMsg` join `CoreMsg`; the two rows
+  are in the events table. `tests/ime.rs` pins the sink route, the
+  once-only typing, the moving anchor and the stock editor's unchanged
+  path; the Node test drives all of it headless.
+
 - **A point on text the app owns is a byte offset, and a byte offset is a
   caret rect** (backlog C18). `Core::text_hit(key, point)` /
   `ui.text_hit` — `textHit` in Node, `env.text_hit` in Lua, `kui_text_hit`
@@ -391,6 +417,16 @@ that asserts on an empty warning list is what notices.
   Keying an editor per opening is now bounded by the library.
 
 ### Fixed
+
+- **`npm run gen` describes the addon it just built, not the one before.**
+  The generator loaded the addon first — for the prop, element, event and
+  warning tables `docs/props.md` and the TS unions are written from — and
+  built it afterwards, for the `#[napi]` type defs `index.d.ts`'s addon
+  half comes from. So a schema row added in Rust reached `props.md` one
+  `gen` late, while the method that landed beside it was current, and CI's
+  `git diff --exit-code` on the generated files was checking the previous
+  build's tables. The build step now runs before the load. Found while
+  building C17, whose two event rows did not appear the first time.
 
 - **Lua's `text(s, opts)` copies its options.** It wrote `type` and
   `value` into the table it was handed and returned that table, so a

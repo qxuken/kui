@@ -409,6 +409,32 @@ pub extern "C" fn kui_caret_rect(
     })
 }
 
+/// Where the OS candidate window goes while a composition is under way:
+/// the focused editor's caret, or a custom editor's `line` carrying
+/// `caret`. False when nothing with a caret is focused. A host driving its
+/// own window reads it after each frame and hands it to the platform.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_ime_rect(ptr: *mut KuiCtx, out: *mut KuiCaretRect) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let Some(r) = c.core().ime_rect() else {
+            return false;
+        };
+        write_out(
+            out,
+            KuiCaretRect {
+                x: r.x,
+                y: r.y,
+                w: r.w,
+                h: r.h,
+                ..Default::default()
+            },
+        )
+    })
+}
+
 /// `kui_measure_text` for a rich-text paragraph.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_measure_rich_text(

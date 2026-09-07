@@ -1369,6 +1369,16 @@ pub const EVENTS: &[EventDef] = &[
         doc: "A key press or release on the focused `onKey` sink; `code` is a character or a name (`\"left\"`, `\"f5\"`) and is what a keymap binds against. `physical` is the US-QWERTY key at that *position*, spelled the same way — bind it instead when you want the finger rather than the label (WASD stays a square on every layout). `code` follows the layout while the layout speaks ASCII, so a chord lands on the key the user can see (Dvorak's `⌥v` on the key printed V); on a layout that does not (Cyrillic, Greek, Hebrew, Arabic) the position's US letter stands in, so a Latin keymap keeps matching instead of matching nothing. `repeat` marks a press the OS auto-repeated; `text` is what the press would insert — always the layout's own character — and is null on every release. A key only comes up where it went down: a release whose press the sink never got is dropped, and focus leaving while a key is held delivers the `up` first, so a held-key binding (WASD, press-and-hold) cannot be left stuck down.",
     },
     EventDef {
+        kind: "text",
+        payload: "`{ kind: \"text\", text, tag }`",
+        doc: "Text an IME committed at the end of a composition, on the focused `onKey` sink (or the nearest one above the focused control) — the one committed text the platform never reports as a key press carrying `text`, so a custom editor inserts it as it would a key's `text`. Plain typing does not arrive this way: the `key` event already carries what the press would insert, and a sink hearing both would type every character twice. A focused `<edit>` takes the commit itself and reports `changed`.",
+    },
+    EventDef {
+        kind: "preedit",
+        payload: "`{ kind: \"preedit\", text, cursor: [start, end] | null, tag }`",
+        doc: "An in-progress IME composition on the focused `onKey` sink: `text` is the uncommitted string to show inline at the caret, `cursor` the byte range inside it the IME's own caret covers (null when it does not say), and an empty `text` means the composition ended without a commit, so what was shown goes away. The OS candidate window is anchored for you: the `line` carrying `caret` says where. A focused `<edit>` draws the composition itself.",
+    },
+    EventDef {
         kind: "contextmenu",
         payload: "`{ kind: \"contextmenu\", x, y, tag }`",
         doc: "A secondary-button press on an `onContextMenu` node, on the press rather than the release; `x`/`y` are logical viewport coordinates — where the menu goes. The core opens nothing: the app declares the menu (a `modal` float) and stops declaring it on `dismiss`.",

@@ -13,6 +13,31 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
+// The addon is built before it is loaded: the schema tables below come from
+// the addon `native.cjs` resolves, and loading it first meant every run
+// described the *previous* build - a schema row added in Rust reached
+// docs/props.md one `npm run gen` late while index.d.ts's `#[napi]` half,
+// read from the type defs the build writes, was current (found while
+// building backlog C17).
+const defsPath = new URL('../../target/napi-type-defs/kui-node', import.meta.url);
+let defsSrc;
+try {
+  defsSrc = readFileSync(defsPath, 'utf8');
+} catch {
+  // The file is written while the addon compiles, so a target dir that is
+  // up to date has it already. If it went missing on its own, a plain
+  // `cargo build` says "Fresh" and writes nothing; NAPI_FORCE_BUILD_KUI_NODE
+  // is the env var napi-build declares `rerun-if-env-changed` on, so a value
+  // that has never been seen before re-runs the build script and the macro.
+  console.log('no napi type defs yet - rebuilding the addon to emit them');
+  execFileSync('cargo', ['build', '-p', 'kui-node', '--release'], {
+    cwd: fileURLToPath(new URL('../../', import.meta.url)),
+    env: { ...process.env, NAPI_FORCE_BUILD_KUI_NODE: String(Date.now()) },
+    stdio: 'inherit',
+  });
+  defsSrc = readFileSync(defsPath, 'utf8');
+}
+
 const native = createRequire(import.meta.url)('./native.cjs');
 const { prop, elements, events, resources, warnings, env } = native.protocol();
 
@@ -221,25 +246,6 @@ console.log(`index.d.ts: ${warnings.length} warning codes generated`);
 //
 // This file only lays the defs out. It refuses a kind it has never seen
 // rather than dropping it silently, which is the whole point of the exercise.
-
-const defsPath = new URL('../../target/napi-type-defs/kui-node', import.meta.url);
-let defsSrc;
-try {
-  defsSrc = readFileSync(defsPath, 'utf8');
-} catch {
-  // The file is written while the addon compiles, so a target dir that is
-  // up to date has it already. If it went missing on its own, a plain
-  // `cargo build` says "Fresh" and writes nothing; NAPI_FORCE_BUILD_KUI_NODE
-  // is the env var napi-build declares `rerun-if-env-changed` on, so a value
-  // that has never been seen before re-runs the build script and the macro.
-  console.log('no napi type defs yet - rebuilding the addon to emit them');
-  execFileSync('cargo', ['build', '-p', 'kui-node', '--release'], {
-    cwd: fileURLToPath(new URL('../../', import.meta.url)),
-    env: { ...process.env, NAPI_FORCE_BUILD_KUI_NODE: String(Date.now()) },
-    stdio: 'inherit',
-  });
-  defsSrc = readFileSync(defsPath, 'utf8');
-}
 
 // Method lines arrive with one leading space and JSDoc lines with none, so
 // that `/**`, ` * …` and ` */` land aligned under a two-space indent. A blank

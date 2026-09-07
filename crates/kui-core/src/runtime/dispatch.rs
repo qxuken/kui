@@ -111,9 +111,40 @@ impl Core {
                     }
                 }
             }
+            InputEvent::Commit(s) => {
+                if let Some(key) = self.edit.focused() {
+                    if self.edit_with_fonts(|edit, fs| edit.apply_text(key, &s, fs)) {
+                        self.push_edit_event(key, "changed", &mut out);
+                    }
+                } else {
+                    // A custom editor: the composition's result as data,
+                    // on the sink the focused node reports to (backlog
+                    // C17). Never reaches the `Text` arm above, so a
+                    // sink hears a commit once and a keystroke once.
+                    self.sink_event(
+                        Value::map([("kind", Value::str("text")), ("text", Value::Str(s))]),
+                        &mut out,
+                    );
+                }
+            }
             InputEvent::Preedit(s, cursor) => {
                 if let Some(key) = self.edit.focused() {
                     self.edit_with_fonts(|edit, fs| edit.set_preedit(key, &s, cursor, fs));
+                } else {
+                    let cursor = match cursor {
+                        Some((a, b)) => {
+                            Value::List(vec![Value::Int(a as i64), Value::Int(b as i64)])
+                        }
+                        None => Value::Null,
+                    };
+                    self.sink_event(
+                        Value::map([
+                            ("kind", Value::str("preedit")),
+                            ("text", Value::Str(s)),
+                            ("cursor", cursor),
+                        ]),
+                        &mut out,
+                    );
                 }
             }
             InputEvent::Key(ek, mods) => {
@@ -544,6 +575,47 @@ impl Core {
             return false;
         }
         let mut payload = kp.to_value(phase);
+        if let Some(tag) = &h.key_sink
+            && *tag != Value::Null
+            && let Value::Map(entries) = &mut payload
+        {
+            entries.push(("tag".to_string(), tag.clone()));
+        }
+        out.push(UiEvent {
+            origin: h.origin,
+            window: WindowId::MAIN,
+            key: h.key,
+            payload,
+        });
+        true
+    }
+
+    /// Delivers `payload` to the sink the focused node reports to — the
+    /// focused sink itself, or the nearest one above a focused control —
+    /// with the sink's tag merged in, the way a `key` event is. A
+    /// composition is never a control's to claim, so unlike `route_key`
+    /// nothing is asked about the key. False with no sink to hear it.
+    fn sink_event(&mut self, mut payload: Value, out: &mut Vec<UiEvent>) -> bool {
+        let Some(i) = self.focus_index() else {
+            return false;
+        };
+        let target = if self.tree.specs[i].events().on_key.is_some() {
+            self.tree.keys[i]
+        } else {
+            match self.enclosing_sink(i) {
+                Some(j) => self.tree.keys[j],
+                None => return false,
+            }
+        };
+        let Some(h) = self
+            .interaction
+            .hits
+            .iter()
+            .rev()
+            .find(|h| h.key == target && h.key_sink.is_some())
+        else {
+            return false;
+        };
         if let Some(tag) = &h.key_sink
             && *tag != Value::Null
             && let Value::Map(entries) = &mut payload

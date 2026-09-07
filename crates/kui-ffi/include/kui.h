@@ -1008,9 +1008,18 @@ void kui_input_mouse_button(KuiCtx *ctx, bool down, uint32_t button,
                             uint32_t clicks);
 void kui_input_scroll(KuiCtx *ctx, float dx, float dy); /* +y = scroll up */
 void kui_input_text(KuiCtx *ctx, KuiStr text);   /* typing/paste -> focused editor */
-/* In-progress IME composition shown at the focused caret; empty text clears
- * it, the commit arrives via kui_input_text. cursor_* are byte offsets into
- * text (UINT32_MAX = none). */
+/* Text an IME committed at the end of a composition: a focused editor takes
+ * it as kui_input_text would; otherwise the focused on_key sink hears
+ * {kind:"text", text, tag} - the one committed text a key event never
+ * carries. Typing stays on kui_input_text (a sink already hears it as the
+ * key event's text). */
+void kui_input_commit(KuiCtx *ctx, KuiStr text);
+/* In-progress IME composition shown at the focused editor's caret, or with
+ * no editor focused delivered to the focused on_key sink as
+ * {kind:"preedit", text, cursor, tag}; empty text clears it, the commit
+ * arrives via kui_input_commit. cursor_* are byte offsets into text
+ * (UINT32_MAX = none). The candidate window's place is kui_ime_rect either
+ * way: a custom editor's `line` carrying `caret` says where. */
 void kui_input_preedit(KuiCtx *ctx, KuiStr text, uint32_t cursor_start,
                        uint32_t cursor_end);
 void kui_input_key(KuiCtx *ctx, uint32_t key, uint32_t mods); /* KUI_KEY_* + KUI_MOD_* */
@@ -1421,6 +1430,11 @@ bool kui_text_hit(KuiCtx *ctx, uint64_t key, float x, float y, KuiTextHit *out);
  * selection edge or an IME candidate window goes. A byte past the text is
  * the end. False for a key that drew no text. */
 bool kui_caret_rect(KuiCtx *ctx, uint64_t key, size_t byte, KuiCaretRect *out);
+/* Where the OS candidate window goes while a composition is under way: the
+ * focused editor's caret, or a custom editor's `line` carrying `caret`.
+ * False when nothing with a caret is focused. A host driving its own window
+ * reads it after each frame and hands it to the platform. */
+bool kui_ime_rect(KuiCtx *ctx, KuiCaretRect *out);
 /* -- Diagnostics ---------------------------------------------------------- */
 /* Drains the warnings the core raised since the last call into out (up to
  * cap; the rest wait), returns the count. Each distinct (code, node) pair

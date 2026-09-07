@@ -2021,8 +2021,11 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 self.on_key(event_loop, t, event)
             }
             WindowEvent::Ime(Ime::Commit(text)) => {
+                // Its own channel, not `Text`: a sink hears a commit as a
+                // `text` event and a keystroke as a `key` event, once each
+                // (backlog C17); a stock editor takes both the same way.
                 let t = self.key_target(i);
-                self.dispatch(event_loop, t, InputEvent::Text(text))
+                self.dispatch(event_loop, t, InputEvent::Commit(text))
             }
             WindowEvent::Ime(Ime::Preedit(text, cursor)) => {
                 let t = self.key_target(i);

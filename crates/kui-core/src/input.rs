@@ -30,12 +30,26 @@ pub enum InputEvent {
     },
     /// Wheel/trackpad delta in logical px (positive y = scroll up).
     Scroll(Vec2),
-    /// Committed text (typing, IME commit, paste). Routed to the focused editor.
+    /// Committed text (typing, paste). Routed to the focused editor; with
+    /// none, a printable character presses or searches the focused
+    /// control. Never delivered to an `onKey` sink: the raw press already
+    /// reached it as a `key` event carrying `text`, and a sink hearing
+    /// both would type every character twice.
     Text(String),
+    /// Text an IME committed at the end of a composition (backlog C17).
+    /// Routed like `Text` to a focused editor; otherwise delivered to the
+    /// focused sink as `{kind:"text", text, tag}` — the one committed text
+    /// the platform never reports as a key press with `text`, so it is the
+    /// one a sink has to be told about. Drivers send `Ime::Commit` here and
+    /// keep typing on `Text`.
+    Commit(String),
     /// In-progress IME composition (text and the caret byte range inside
     /// it), inserted inline at the focused editor's caret as an uncommitted
     /// marked range: following text shifts and the paragraph rewraps.
-    /// Empty text cancels it; a commit arrives separately as `Text`.
+    /// Empty text cancels it; the commit arrives separately as `Commit`.
+    /// With no editor focused it goes to the focused sink as
+    /// `{kind:"preedit", text, cursor: [start, end] | null, tag}`, an
+    /// empty `text` meaning the composition ended without a commit.
     Preedit(String, Option<(usize, usize)>),
     /// Navigation/editing key. Routed to the focused editor.
     Key(EditKey, Mods),
@@ -959,6 +973,7 @@ impl Interaction {
             // Routed by the core (they need the retained stores).
             InputEvent::Scroll(_)
             | InputEvent::Text(_)
+            | InputEvent::Commit(_)
             | InputEvent::Preedit(..)
             | InputEvent::Key(..)
             | InputEvent::KeyDown(_)

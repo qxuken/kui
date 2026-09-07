@@ -486,6 +486,28 @@ impl Ctx {
         self.input(InputEvent::Text(text));
     }
 
+    /// Text an IME committed at the end of a composition: a focused
+    /// `<edit>` takes it, otherwise the focused `onKey` sink hears it as
+    /// `{kind:"text", text, tag}` — the one committed text a `key` event
+    /// never carries. `type`/`press` stay the way to type.
+    #[napi]
+    pub fn commit(&mut self, text: String) {
+        self.input(InputEvent::Commit(text));
+    }
+
+    /// An in-progress IME composition: `text` is the uncommitted string
+    /// (empty ends the composition without a commit), `cursor` the byte
+    /// range inside it the IME's caret covers, or null. A focused `<edit>`
+    /// shows it inline; otherwise the focused `onKey` sink hears
+    /// `{kind:"preedit", text, cursor, tag}`.
+    #[napi(ts_args_type = "text: string, cursor?: [number, number] | null")]
+    pub fn preedit(&mut self, text: String, cursor: Option<Vec<u32>>) {
+        let cursor = cursor
+            .filter(|c| c.len() == 2)
+            .map(|c| (c[0] as usize, c[1] as usize));
+        self.input(InputEvent::Preedit(text, cursor));
+    }
+
     /// Editing key by name ("left", "backspace", "enter", ...) with optional
     /// modifiers `{shift, word, doc}`.
     #[napi(ts_args_type = "name: EditKeyName, mods?: KeyMods")]
@@ -1642,6 +1664,16 @@ macro_rules! core_methods {
                     .$core()
                     .caret_rect(key, byte.max(0.0) as usize)
                     .map(rect_json))
+            }
+
+            /// Where the OS candidate window goes while a composition is
+            /// under way: the focused `<edit>`'s caret, or a custom editor's
+            /// `line` carrying `caret`; null when nothing with a caret is
+            /// focused. The windowed driver applies it itself; headless,
+            /// it is what a test reads to see the anchor moved.
+            #[napi(ts_return_type = "Rect | null")]
+            pub fn ime_rect(&mut self) -> Option<Json> {
+                self.$core().ime_rect().map(rect_json)
             }
 
             /// Sets that offset the way the wheel would; the next frame's

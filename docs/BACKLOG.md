@@ -752,7 +752,37 @@ microseconds. The CHANGELOG entry says what an app can delete: nothing,
 and what changes: a text cache that used to hold five seconds of
 everything now holds a budget.
 
-### `~` C17 — IME reaches the stock editor only
+### `~` C17 — IME reaches the stock editor only — **done (2026-09-07)**
+
+Done as (1) and (2); (3)'s corpus half was not built, and the tests went
+elsewhere. (1) needed one thing the "Do" did not name: a commit has to be
+its own input. Every driver sends `InputEvent::Text` beside a key press
+(the winit one at three sites: typing, paste, and `Ime::Commit`), and a
+sink already hears the press as a `key` event with `text`, so routing
+`Text` to sinks would have typed every character twice — ADR 0011's
+"both channels agree" in reverse. `InputEvent::Commit(String)` is the
+new variant: a focused editor takes it exactly as `Text`, otherwise
+`sink_event` delivers `{kind:"text", text, tag}` to the sink the focused
+node reports to (itself, or `enclosing_sink`), the tag merged in the way
+`route_key` does it; `Preedit` goes the same way as `{kind:"preedit",
+text, cursor:[a,b]|null, tag}`, empty text meaning the composition ended.
+(2) `focused_caret_rect` falls through to the focused node's subtree:
+the `line` carrying `caret` and C18's `caret_at` give the rect, after
+the text pass so the places are this frame's. Doors: `ctx.commit` and
+`ctx.preedit(text, cursor)` in Node — Node had no preedit input at all —
+`kui_input_commit` in C, `Ime::Commit` → `Commit` in the driver, and
+`imeRect()` / `kui_ime_rect` to read the anchor back: a C host driving
+its own window could not place the candidate window for the *stock*
+editor either, which this closes on the way. Two `EventDef` rows
+(`text`, `preedit`) so `docs/props.md` and the TS `CoreMsg` union carry
+them. Tests: `tests/ime.rs` (the sink route with tag and cursor, typing
+reaching a sink once while the `Text` channel reaches none, the anchor
+following the caret and vanishing on blur, the stock editor's commit
+still a `changed`) and a Node test driving the same headless. Not the
+corpus: a step line carries integers only, so a preedit step would be
+one codepoint with the cursor at its end — enough to pin the route in
+four adapters, and a round of its own; the Lua adapter has no input to
+drive it with. Left for the day a Lua host wants IME.
 
 `InputEvent::Text` is routed to `self.edit.focused()` and otherwise to the
 focused control's type-ahead (`dispatch.rs:85`); `InputEvent::Preedit`

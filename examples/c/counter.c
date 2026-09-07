@@ -541,6 +541,7 @@ static int surface(void) {
               th.byte < 14,
           "the middle is inside");
     check(!kui_caret_rect(ui, 12345, 0, &start), "a key that drew no text answers false");
+    check(!kui_ime_rect(ui, &start), "nothing with a caret is focused: no candidate window");
 
     /* Pointer state and scrolling. */
     kui_input_cursor(ui, 400, 300);
@@ -601,6 +602,11 @@ static int surface(void) {
     kui_focus(ui, k.sink);
     kui_input_press(ui, KUI_STR("w"), same_key, 0, no_text, false);
     kui_input_release(ui, KUI_STR("w"), same_key, 0);
+    /* An IME on a sink: the composition and its commit arrive as data
+     * ({kind="preedit"} then {kind="text"}), where kui_input_text would have
+     * reached no sink at all. */
+    kui_input_preedit(ui, KUI_STR("日本"), 0, 6);
+    kui_input_commit(ui, KUI_STR("日本語"));
 
     /* Editors: type, compose, select, read back. */
     kui_focus(ui, k.editor);
@@ -750,7 +756,7 @@ static int surface(void) {
     /* Everything above lands as data. */
     KuiEvent ev = KUI_EVENT_INIT;
     int events = 0, layouts = 0, access = 0, downs = 0, ups = 0;
-    int latin = 0, physical = 0;
+    int latin = 0, physical = 0, preedits = 0, commits = 0;
     while (kui_poll_event(ui, &ev)) {
         events++;
         check(ev.size == sizeof ev, "a current host is filled all the way");
@@ -761,6 +767,8 @@ static int surface(void) {
         if (!kind || !kui_value_as_str(kind, &s)) continue;
         if (s.len == 6 && memcmp(s.ptr, "layout", 6) == 0) layouts++;
         if (s.len == 6 && memcmp(s.ptr, "access", 6) == 0) access++;
+        if (s.len == 7 && memcmp(s.ptr, "preedit", 7) == 0) preedits++;
+        if (s.len == 4 && memcmp(s.ptr, "text", 4) == 0) commits++;
         if (s.len == 3 && memcmp(s.ptr, "key", 3) == 0) {
             KuiStr phase;
             const KuiValue *p = kui_value_get(ev.payload, KUI_STR("phase"));
@@ -791,6 +799,8 @@ static int surface(void) {
     check(latin == downs + ups,
           "every code is a Latin key, the Cyrillic press included");
     check(physical == downs + ups, "and every one carries its position");
+    check(preedits == 1 && commits == 1,
+          "the sink heard the composition and its commit as data");
 
     /* Values round-trip, including the ones the counter never builds. */
     KuiValue *map = kui_value_map();
