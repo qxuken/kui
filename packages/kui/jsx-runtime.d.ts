@@ -325,7 +325,18 @@ export interface SpanProps extends Keyed {
   children?: KuiNode;
 }
 
-export interface ButtonProps extends Keyed {
+/** The stock button (`widgets::button_spec`: padding, colours, radius,
+ *  hover and pressed backgrounds). Its look is its own, so the layout and
+ *  paint rows are not here — declared anyway they are dropped with an
+ *  `unknown-prop` warning — and what is here are the rows a reader hears:
+ *  `label` when the text is not the name, `description` for what the
+ *  button will do, `tooltip`, and `disabled` (inert, and dimmed to half).
+ *  A button that needs any other row is a `<box role="button">` with the
+ *  same rows spelled out. Keyed by its text unless `key` says otherwise. */
+export interface ButtonProps
+  extends Keyed,
+    Pick<GeneratedSpecProps, 'label' | 'description' | 'disabled'>,
+    Pick<CustomSpecProps, 'tooltip'> {
   /** Message emitted on click. */
   onClick?: AppMsg;
   children?: KuiNode;

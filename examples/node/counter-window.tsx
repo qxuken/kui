@@ -71,7 +71,7 @@ const view = (model: Model) => (
     <box dir="row" gap={12} crossAlign="center">
       <button onClick={{ kind: 'add', by: 1 }}>+1</button>
       <button onClick={{ kind: 'add', by: -1 }}>-1</button>
-      <button onClick={{ kind: 'reset' }}>reset</button>
+      <button onClick={{ kind: 'reset' }} description="Back to zero">reset</button>
       <text size={20} color="#e8e8f0">{`count = ${model.count}`}</text>
     </box>
     <box dir="row" gap={12} crossAlign="center">

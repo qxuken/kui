@@ -1181,17 +1181,49 @@ pub struct ElementDef {
     pub jsx_own: &'static [&'static str],
     /// The same for a Lua node table.
     pub lua_own: &'static [&'static str],
+    /// The schema rows this element reads, or `None` for every one. A
+    /// composite whose look *is* its spec — the stock button, whose
+    /// padding, colours and radius are `widgets::button_spec` — cannot take
+    /// the whole prop list: `dir` alone rebuilds the spec from nothing. It
+    /// names the rows it reads instead, and a binding drops the rest with a
+    /// warning that says which rows it does take ([`known_prop`],
+    /// `diag::unknown_prop`). JSX spellings here, Lua's below.
+    pub jsx_rows: Option<&'static [&'static str]>,
+    pub lua_rows: Option<&'static [&'static str]>,
     pub jsx: &'static str,
     pub lua: &'static str,
     pub c: &'static str,
     pub doc: &'static str,
 }
 
+/// The rows the stock button reads (`ElementDef::jsx_rows` / `lua_rows`):
+/// the click, the identity, and the access rows — what a button *is*
+/// and what a reader says of it, never what it looks like. The two lists
+/// are the same rows in each spelling, index for index.
+pub const BUTTON_ROWS_JSX: &[&str] = &[
+    "onClick",
+    "key",
+    "label",
+    "description",
+    "tooltip",
+    "disabled",
+];
+pub const BUTTON_ROWS_LUA: &[&str] = &[
+    "on_click",
+    "key",
+    "label",
+    "description",
+    "tooltip",
+    "disabled",
+];
+
 pub const ELEMENTS: &[ElementDef] = &[
     ElementDef {
         name: "box",
         jsx_own: &[],
         lua_own: &[],
+        jsx_rows: None,
+        lua_rows: None,
         jsx: "`<box>`",
         lua: "`row { }`, `column { }`",
         c: "`kui_open*` … `kui_close`",
@@ -1201,6 +1233,8 @@ pub const ELEMENTS: &[ElementDef] = &[
         name: "text",
         jsx_own: &["bold", "italic"],
         lua_own: &["value", "spans"],
+        jsx_rows: None,
+        lua_rows: None,
         jsx: "`<text>` with `<span bold italic color>` children",
         lua: "`text(\"s\", {…})`, `text({ \"a\", { \"b\", bold = true } })`",
         c: "`kui_text`, `kui_rich_text`",
@@ -1209,16 +1243,20 @@ pub const ELEMENTS: &[ElementDef] = &[
     ElementDef {
         name: "button",
         jsx_own: &[],
-        lua_own: &[],
-        jsx: "`<button onClick>`",
-        lua: "`button { label=, on_click= }`",
-        c: "`kui_button`",
-        doc: "The stock button: `widgets::button_spec()` with hover/pressed colors declared on the node.",
+        lua_own: &["text"],
+        jsx_rows: Some(BUTTON_ROWS_JSX),
+        lua_rows: Some(BUTTON_ROWS_LUA),
+        jsx: "`<button onClick label description tooltip disabled>`",
+        lua: "`button { label=, on_click=, text=, description=, tooltip=, disabled= }`",
+        c: "`kui_button`, `kui_button_with`",
+        doc: "The stock button: `widgets::button_spec()` with hover/pressed colors declared on the node, keyed by its text (`key` overrides). Its look is its spec, so the layout and paint rows are closed — declared, they are dropped with an `unknown-prop` warning naming the rows it does read — and those are the access rows: `label` when the text is not the name, `description`, `tooltip`, and `disabled` (inert, and dimmed to half). In Lua `label` is the name and the text both unless `text` says otherwise; in C the rows ride a `KuiSpec` whose other fields `kui_button_with` ignores. A button that needs any other row is a box with `role=\"button\"` and the same rows spelled out.",
     },
     ElementDef {
         name: "edit",
         jsx_own: &["id", "initial", "multiline", "autofocus"],
         lua_own: &["initial", "multiline", "autofocus"],
+        jsx_rows: None,
+        lua_rows: None,
         jsx: "`<edit key initial multiline autofocus>`",
         lua: "`edit { key=, initial=, … }`, `input { label= }`",
         c: "`kui_text_edit`, `kui_text_input`",
@@ -1228,6 +1266,8 @@ pub const ELEMENTS: &[ElementDef] = &[
         name: "image",
         jsx_own: &["src"],
         lua_own: &["id"],
+        jsx_rows: None,
+        lua_rows: None,
         jsx: "`<image src={id}>`",
         lua: "`image { id= }`",
         c: "`kui_image`",
@@ -1239,6 +1279,8 @@ pub const ELEMENTS: &[ElementDef] = &[
         // colour); on a line they are the stroke's width and colour.
         jsx_own: &["from", "to", "points", "curve"],
         lua_own: &["from", "to", "points", "curve"],
+        jsx_rows: None,
+        lua_rows: None,
         jsx: "`<line from={[x,y]} to={[x,y]} width color/>`, `<line points={[[x,y],…]} curve/>`",
         lua: "`line { from={x,y}, to={x,y}, width=, color= }`, `line { points={{x,y},…}, curve=true }`",
         c: "`kui_line`, `kui_polyline`",
@@ -1250,6 +1292,8 @@ pub const ELEMENTS: &[ElementDef] = &[
         // The window's own title is `window_title` on the root table; this
         // is the string the titlebar draws.
         lua_own: &["title"],
+        jsx_rows: None,
+        lua_rows: None,
         jsx: "`<titlebar title>` or `<titlebar>…</titlebar>`",
         lua: "`titlebar { title= }` / `titlebar { … }`",
         c: "`kui_titlebar`, `kui_titlebar_with`",
@@ -1259,6 +1303,8 @@ pub const ELEMENTS: &[ElementDef] = &[
         name: "windowButtons",
         jsx_own: &[],
         lua_own: &[],
+        jsx_rows: None,
+        lua_rows: None,
         jsx: "`<windowButtons/>`",
         lua: "`window_buttons()`",
         c: "`kui_window_buttons`",
@@ -1268,6 +1314,8 @@ pub const ELEMENTS: &[ElementDef] = &[
         name: "tooltip",
         jsx_own: &[],
         lua_own: &["value"],
+        jsx_rows: None,
+        lua_rows: None,
         jsx: "`tooltip=\"hint\"` prop (see composites)",
         lua: "`tooltip(\"hint\")` / `tooltip { … }` nodes, or the prop",
         c: "`kui_tooltip`, `kui_tooltip_with`",
@@ -1277,6 +1325,8 @@ pub const ELEMENTS: &[ElementDef] = &[
         name: "latencyGraph",
         jsx_own: &["at"],
         lua_own: &["at"],
+        jsx_rows: None,
+        lua_rows: None,
         jsx: "`<latencyGraph/>`, `<latencyHud at/>`",
         lua: "`latency_graph()`, `latency_hud { at= }`",
         c: "`kui_latency_graph`, `kui_latency_hud`",
@@ -1286,6 +1336,8 @@ pub const ELEMENTS: &[ElementDef] = &[
         name: "audio",
         jsx_own: &["src", "loop", "volume", "paused", "tag"],
         lua_own: &["src", "loop", "volume", "paused", "tag"],
+        jsx_rows: None,
+        lua_rows: None,
         jsx: "`<audio src={id} loop volume paused tag/>`",
         lua: "`audio { src=, loop=, volume=, paused=, tag= }`",
         c: "`kui_audio`",
@@ -1655,11 +1707,39 @@ pub fn element_own(element: &str, spelling: Spelling) -> &'static [&'static str]
     }
 }
 
+/// The schema rows `element` reads, in `spelling`, when it does not read
+/// them all (`ElementDef::jsx_rows`); `None` for an element that takes
+/// every row, and for one the table does not know.
+pub fn element_rows(element: &str, spelling: Spelling) -> Option<&'static [&'static str]> {
+    let e = ELEMENTS.iter().find(|e| e.name == element)?;
+    if spelling == Spelling::Camel {
+        e.jsx_rows
+    } else {
+        e.lua_rows
+    }
+}
+
+/// Is `name` a row every element reads — a schema row, a composite, an
+/// alias — as opposed to a misspelling? What [`known_prop`] answers for an
+/// element that admits only some rows still depends on this: a row the
+/// element does not read is dropped like a misspelling, but the warning
+/// can say so instead of hunting for a nearer spelling.
+pub fn shared_prop(name: &str, spelling: Spelling) -> bool {
+    shared_names(spelling).contains(name)
+}
+
 /// Is `name` a prop `element` reads — a schema row, a composite, an alias,
 /// or one of the element's own? A binding drops everything else on the
-/// floor, so everything else is a `diag::UNKNOWN_PROP` warning.
+/// floor, so everything else is a `diag::UNKNOWN_PROP` warning. An element
+/// that names its rows reads those and its own, and nothing else.
 pub fn known_prop(element: &str, name: &str, spelling: Spelling) -> bool {
-    shared_names(spelling).contains(name) || element_own(element, spelling).contains(&name)
+    if element_own(element, spelling).contains(&name) {
+        return true;
+    }
+    match element_rows(element, spelling) {
+        Some(rows) => rows.contains(&name),
+        None => shared_names(spelling).contains(name),
+    }
 }
 
 /// The name an unknown one was probably meant to be: the same word in the
@@ -1669,11 +1749,13 @@ pub fn known_prop(element: &str, name: &str, spelling: Spelling) -> bool {
 pub fn suggest(element: &str, name: &str, spelling: Spelling) -> Option<&'static str> {
     let squash = |s: &str| s.replace('_', "").to_ascii_lowercase();
     let want = squash(name);
-    shared_names(spelling)
-        .iter()
-        .chain(element_own(element, spelling))
-        .copied()
-        .find(|c| squash(c) == want)
+    let near = |c: &&&str| squash(c) == want;
+    let own = element_own(element, spelling).iter();
+    // An element that names its rows is not sent to a row it would drop.
+    match element_rows(element, spelling) {
+        Some(rows) => rows.iter().chain(own).find(near).copied(),
+        None => shared_names(spelling).iter().chain(own).find(near).copied(),
+    }
 }
 
 /// A parsed prop value, transport-independent.
@@ -1971,6 +2053,65 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// An element's admitted rows are real rows in each spelling and the
+    /// same rows in both, so the JSX check and the Lua check admit the
+    /// same button.
+    #[test]
+    fn admitted_rows_are_shared_rows_in_both_spellings() {
+        for e in ELEMENTS {
+            let (Some(jsx), Some(lua)) = (e.jsx_rows, e.lua_rows) else {
+                assert!(
+                    e.jsx_rows.is_none() && e.lua_rows.is_none(),
+                    "{}: one spelling only",
+                    e.name
+                );
+                continue;
+            };
+            assert_eq!(
+                jsx.len(),
+                lua.len(),
+                "{}: the lists differ in length",
+                e.name
+            );
+            for (j, l) in jsx.iter().zip(lua) {
+                assert!(
+                    shared_prop(j, Spelling::Camel),
+                    "{}: `{j}` is not a row",
+                    e.name
+                );
+                assert!(
+                    shared_prop(l, Spelling::Snake),
+                    "{}: `{l}` is not a row",
+                    e.name
+                );
+                assert_eq!(
+                    snake_case(j),
+                    *l,
+                    "{}: `{j}` and `{l}` are not one row",
+                    e.name
+                );
+            }
+            // The row a reader hears first: a stock button without a name
+            // is the warning `control-without-name`, so `label` is never
+            // the row a closed element leaves out.
+            assert!(jsx.contains(&"label"), "{}: `label` missing", e.name);
+        }
+        assert!(known_prop("button", "description", Spelling::Camel));
+        assert!(known_prop("button", "on_click", Spelling::Snake));
+        assert!(known_prop("button", "text", Spelling::Snake));
+        assert!(!known_prop("button", "radius", Spelling::Camel));
+        assert!(!known_prop("button", "text", Spelling::Camel));
+        assert!(known_prop("box", "radius", Spelling::Camel));
+        // The other spelling is looked for among the rows it reads: a row
+        // it would drop is not offered as the fix.
+        assert_eq!(
+            suggest("button", "on_click", Spelling::Camel),
+            Some("onClick")
+        );
+        assert_eq!(suggest("button", "hover_bg", Spelling::Camel), None);
+        assert_eq!(suggest("box", "hover_bg", Spelling::Camel), Some("hoverBg"));
     }
 
     #[test]

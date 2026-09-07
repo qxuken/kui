@@ -308,7 +308,8 @@ export interface AccessNode {
   /** `label`, else the node's own text, else (for buttons, links, tabs,
    *  headings) the text inside it, else the window title for the root. */
   name: string | null;
-  /** What the `tooltip` prop sets. */
+  /** What the `description` prop sets, or the `tooltip` shorthand: both
+   *  write this one slot, and the later declaration wins. */
   description: string | null;
   /** Logical px, viewport coordinates. */
   rect: { x: number; y: number; w: number; h: number };

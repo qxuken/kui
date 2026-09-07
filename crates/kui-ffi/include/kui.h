@@ -1430,6 +1430,17 @@ void kui_input_access_text(KuiCtx *ctx, uint64_t key, uint32_t action,
                            uint64_t focus_run, uint32_t focus_char, KuiStr value);
 /* Styled button with hover/press states; payload consumed (may be NULL). */
 void kui_button(KuiCtx *ctx, KuiStr label, KuiValue *payload);
+/* kui_button with the rows the stock button admits read off spec - label
+ * (the accessible name, when the text is not it), description, tooltip
+ * (its description, and the hint floated while hovered) and disabled
+ * (inert, and dimmed to half) - and every other field of spec ignored: the
+ * button's look is its own (kui_core::widgets::button_spec), and a zeroed
+ * KuiSpec is the schema default rather than "unset", so there is nothing
+ * to merge; a button that needs another row is kui_open_keyed with a role.
+ * Keyed by text. spec may be NULL (then this is kui_button); payload
+ * consumed (may be NULL). Appended after alpha.8 - a new function, no
+ * KUI_ABI_VERSION bump (see the note above KuiSpec). */
+void kui_button_with(KuiCtx *ctx, KuiStr text, const KuiSpec *spec, KuiValue *payload);
 /* -- Widgets (the same kui_core::widgets every frontend uses) ------------ */
 /* Body callbacks build content through the same ctx (see KuiViewFn). */
 typedef void (*KuiViewFn)(void *user, KuiCtx *ctx);

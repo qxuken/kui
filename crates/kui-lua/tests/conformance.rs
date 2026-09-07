@@ -149,7 +149,9 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         .to_string(),
         "controls" => r#"
             return column { pad = 10, gap = 6, on_context_menu = { kind = "menu" },
-              button { label = "go", on_click = { kind = "go" } },
+              button { label = "go", on_click = { kind = "go" }, description = "Starts the run" },
+              button { key = "stop", label = "Stop the run", text = "stop", on_click = { kind = "stop" },
+                       disabled = true, tooltip = "Nothing is running" },
               edit { key = "note", initial = "hello", size = 13, width = 160,
                      label = "Note" },
               row { key = "focus", width = 120, height = 12, role = "slider",

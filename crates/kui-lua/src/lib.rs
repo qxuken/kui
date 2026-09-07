@@ -838,12 +838,46 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             Ok(())
         }
         "button" => {
+            // `label` is the accessible name, and the text too unless
+            // `text` says otherwise — the one string a script always gave
+            // its button is the row a reader hears first. The other rows
+            // the stock button admits (`schema::BUTTON_ROWS_LUA`) are read
+            // by name over `widgets::button_spec`, as the JSX encoder and
+            // `kui_button_with` read them: the look stays the widget's.
+            // The tooltip goes first so an explicit `description` wins
+            // over the shorthand, as it does in C — a table has no order
+            // to make "the later one" mean anything.
             let label: String = t.get("label")?;
+            let text: String = t
+                .get::<Option<String>>("text")?
+                .unwrap_or_else(|| label.clone());
+            let key: String = t
+                .get::<Option<String>>("key")?
+                .unwrap_or_else(|| label.clone());
             let payload = match t.get::<Option<mlua::Value>>("on_click")? {
                 Some(v) => lua_to_value(&v)?,
                 None => Value::Null,
             };
-            widgets::button(ui, &label, payload);
+            let mut out = PropsOut::new();
+            out.spec = widgets::button_spec()
+                .on_click(payload)
+                .label(label.as_str());
+            if let Some(hint) = t.get::<Option<String>>("tooltip")? {
+                out.apply_tooltip(&hint);
+            }
+            for name in ["description", "disabled"] {
+                let v = t.get::<mlua::Value>(name)?;
+                if v.is_nil() {
+                    continue;
+                }
+                let def = schema::by_snake_name(name).expect("a button row");
+                if let Some(parsed) =
+                    parse_value(&def.kind, &v).map_err(|e| bad(format!("{name}: {e}")))?
+                {
+                    schema::apply(def, parsed, &mut out).map_err(bad)?;
+                }
+            }
+            widgets::button_with(ui, &key, &text, out.spec, out.tooltip.as_deref());
             Ok(())
         }
         other => Err(mlua::Error::runtime(format!("unknown node type '{other}'"))),
@@ -1724,6 +1758,64 @@ mod tests {
     }
 
     /// `role` / `label` / `checked` / `selected` / `expanded` / `value_*`
+    /// The stock button reads the access rows and nothing else
+    /// (`schema::BUTTON_ROWS_LUA`): `label` is the name and the text
+    /// unless `text` says otherwise, `tooltip` is the description, and a
+    /// row it would drop is warned about with the rows it does read.
+    #[test]
+    fn the_stock_button_admits_the_access_rows() {
+        let mut ext = LuaExtension::from_source(
+            "button",
+            r#"
+                function view(env)
+                  return column { pad = 10, gap = 4,
+                    button { label = "go", on_click = "go", description = "Starts the run" },
+                    button { label = "Stop the run", text = "stop", on_click = "stop",
+                             disabled = true, tooltip = "Nothing is running" },
+                    button { label = "x", on_click = "x", radius = 12, hoverBg = 0x333333ff },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let tree = core.access_tree().clone();
+        let named = |n: &str| {
+            tree.nodes
+                .iter()
+                .find(|node| node.name.as_deref() == Some(n))
+        };
+        let go = named("go").expect("the button, named by its label");
+        assert_eq!(go.role, kui_core::Role::Button);
+        assert_eq!(go.description.as_deref(), Some("Starts the run"));
+        assert!(!go.disabled);
+        let stop = named("Stop the run").expect("named past its text");
+        assert_eq!(stop.description.as_deref(), Some("Nothing is running"));
+        assert!(stop.disabled);
+        assert_eq!(tree.nodes.len(), 4, "window and three buttons");
+        let ws = core.take_warnings();
+        assert_eq!(ws.len(), 2, "{ws:?}");
+        let radius = ws
+            .iter()
+            .find(|w| w.message.contains("`radius`"))
+            .expect("a row the button does not read");
+        assert!(
+            radius
+                .message
+                .contains("is a prop, but not one button reads")
+        );
+        assert!(radius.message.contains("`description`"));
+        // The camel spelling is a misspelling here, and the fix offered is
+        // never a row the button would drop.
+        let hover = ws
+            .iter()
+            .find(|w| w.message.contains("hoverBg"))
+            .expect("a misspelling");
+        assert!(hover.message.contains("is not a prop of button"));
+        assert!(!hover.message.contains("did you mean"));
+    }
+
     /// are schema rows, so a script declares semantics like any other
     /// prop; the access tree shows them (and numbers a tab list itself),
     /// and an assistive request on a script's button emits its message.

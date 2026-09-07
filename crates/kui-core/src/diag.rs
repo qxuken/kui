@@ -399,17 +399,37 @@ pub fn ambiguous_key(label: &str, first: Key, count: usize) -> Warning {
 /// the element and the name rather than from a node, so a misspelling costs
 /// one line however many nodes carry it and however many frames draw them.
 pub fn unknown_prop(element: &str, name: &str, spelling: schema::Spelling) -> Warning {
-    let hint = match schema::suggest(element, name, spelling) {
-        Some(near) => format!(" (did you mean `{near}`?)"),
-        None => String::new(),
+    // A real row on an element that reads only some of them is not a
+    // misspelling, and the nearest spelling would be the row itself; the
+    // warning says which rows the element does read instead.
+    let message = match schema::element_rows(element, spelling) {
+        Some(rows) if schema::shared_prop(name, spelling) => {
+            let rows = rows
+                .iter()
+                .map(|r| format!("`{r}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                "`{name}` is a prop, but not one {element} reads: its look is its own, and it \
+                 takes only {rows}, so this declaration is dropped — a box with `role` set takes \
+                 every row"
+            )
+        }
+        _ => {
+            let hint = match schema::suggest(element, name, spelling) {
+                Some(near) => format!(" (did you mean `{near}`?)"),
+                None => String::new(),
+            };
+            format!(
+                "`{name}` is not a prop of {element}: no binding reads it, so this declaration \
+                 is dropped{hint}"
+            )
+        }
     };
     Warning {
         code: UNKNOWN_PROP,
         key: Key::ROOT.str(UNKNOWN_PROP).str(element).str(name),
-        message: format!(
-            "`{name}` is not a prop of {element}: no binding reads it, so this declaration is \
-             dropped{hint}"
-        ),
+        message,
     }
 }
 

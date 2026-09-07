@@ -327,6 +327,13 @@ pub fn protocol_tables() -> Vec<(&'static str, Json)> {
                         .map(|n| Json::String((*n).into()))
                         .collect(),
                 );
+                // And the rows it admits when not every one — the
+                // encoder both checks against the list and writes only
+                // those, so a closed composite's look is never rebuilt.
+                if let Some(admitted) = def.jsx_rows {
+                    row["rows"] =
+                        Json::Array(admitted.iter().map(|n| Json::String((*n).into())).collect());
+                }
             }
             rows
         }),

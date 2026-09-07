@@ -43,6 +43,15 @@ export function createEncoder(P) {
     else KNOWN.add(name);
   }
   const OWN = new Map((P.elements ?? []).map((e) => [e.name, new Set(e.own ?? [])]));
+  // An element that reads only some rows names them (`ElementDef::jsx_rows`):
+  // the check admits those and its own, and the lowering writes only those,
+  // so a row it would drop — `radius` on the stock button — is warned about
+  // rather than silently lost, and never crosses the wire either. `null` is
+  // every row.
+  const ROWS = new Map((P.elements ?? []).map((e) => [e.name, e.rows ? new Set(e.rows) : null]));
+  // The stock button's prop list: its admitted rows less the click, which
+  // rides beside the list as its own field.
+  const BUTTON_ROWS = new Set([...(ROWS.get('button') ?? [])].filter((k) => k !== 'onClick'));
   // `<span>` is part of the text element (its props are read by collectSpans),
   // and the hud is the graph's other spelling.
   const ELEMENT_OF = { span: 'text', latencyHud: 'latencyGraph' };
@@ -52,8 +61,9 @@ export function createEncoder(P) {
     const element = ELEMENT_OF[type] ?? type;
     const own = OWN.get(element);
     if (own === undefined) return; // fragment, or an element that already threw
+    const rows = ROWS.get(element) ?? KNOWN;
     for (const k in p) {
-      if (KNOWN.has(k) || own.has(k)) continue;
+      if (rows.has(k) || own.has(k)) continue;
       unknown.push([element, k]);
     }
   }
@@ -182,8 +192,10 @@ export function createEncoder(P) {
   // protocol kind (no names or shapes hardcoded here); only composites (the
   // pad family, border, overflow bits, float) and the constructor-ordering
   // specials (dir, size) have hand-written stanzas, mirroring binary.rs.
-  // `key` rides along as P_KEY; `isRoot` admits `title` (and drops `key`).
-  function props(p, key, isRoot) {
+  // `key` rides along as P_KEY; `isRoot` admits `title` (and drops `key`);
+  // `admit`, when given, is the only names written (a closed composite's
+  // rows — the rest were already reported by checkProps).
+  function props(p, key, isRoot, admit) {
     const np = fi++;
     let n = 0;
     // dir and size first: the decoder constructs spec/style from them.
@@ -211,6 +223,7 @@ export function createEncoder(P) {
       reserve(16);
       const v = p[k];
       if (v === undefined) continue;
+      if (admit !== undefined && !admit.has(k)) continue;
       if (v === null) {
         // A null tag (onKey / onDrag / onHover / onLayout) still declares
         // the behaviour, just with no `tag` on its events; every other
@@ -486,6 +499,11 @@ export function createEncoder(P) {
         strRef(collectText(el.children, ''));
         strRef(el.key);
         strRef(p.onClick != null ? JSON.stringify(p.onClick) : null);
+        // The access rows the stock button admits, and only those: the
+        // decoder reads them over `widgets::button_spec`, so the button
+        // keeps its look and takes its name, description, tooltip and
+        // disabled state from the view.
+        props(p, null, false, BUTTON_ROWS);
         return;
       case 'edit': {
         const label = el.key ?? p.id;

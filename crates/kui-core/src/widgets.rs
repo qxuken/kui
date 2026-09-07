@@ -477,14 +477,45 @@ pub fn button_spec() -> NodeSpec {
 }
 
 pub const BUTTON_TEXT: f32 = 15.0;
+/// What a disabled stock button's opacity is multiplied by. The core makes
+/// it inert and drops its hover and pressed backgrounds, and nothing else
+/// would show a sighted user the state a reader is told.
+pub const BUTTON_DISABLED_OPACITY: f32 = 0.5;
 
 /// A push button showing `text`, keyed by it. A label that changes re-keys
 /// the node — a new node, so it loses keyboard focus and a screen reader's
-/// cursor; declare such a button with `with_keyed` and [`button_spec`]
-/// instead.
+/// cursor; declare such a button with [`button_with`] and a key of its own.
 pub fn button(ui: &mut Ui<'_>, text: &str, payload: impl Into<Value>) {
-    ui.with_keyed(text, button_spec().on_click(payload.into()), |ui| {
-        ui.text(text, TextStyle::new(BUTTON_TEXT).color(Color::WHITE))
+    button_with(ui, text, text, button_spec().on_click(payload.into()), None);
+}
+
+/// [`button`] with its spec in the caller's hands: `spec` is [`button_spec`]
+/// plus what the caller declared on it — the `on_click`, and the rows the
+/// stock button admits in every binding (`schema::BUTTON_ROWS_JSX`): a
+/// `label` when the text is not the name, a `description`, `disabled`,
+/// and the hover tracking and description a `tooltip` sets, whose float
+/// is `hint` — drawn under the button while it is hovered, as every
+/// binding's `tooltip` prop floats one. Keyed by `key`, so a label that
+/// changes need not re-key the node. A disabled button is dimmed
+/// ([`BUTTON_DISABLED_OPACITY`]) as well as inert.
+///
+/// This is what `<button>`, `button { }` and `kui_button_with` lower to,
+/// so a binding cannot end up with a button of its own.
+pub fn button_with(ui: &mut Ui<'_>, key: &str, text: &str, spec: NodeSpec, hint: Option<&str>) {
+    let spec = if spec.disabled {
+        let o = spec.style.opacity * BUTTON_DISABLED_OPACITY;
+        spec.opacity(o)
+    } else {
+        spec
+    };
+    let node = ui.child_key(key);
+    ui.with_keyed(key, spec, |ui| {
+        ui.text(text, TextStyle::new(BUTTON_TEXT).color(Color::WHITE));
+        if let Some(hint) = hint
+            && ui.is_hovered(node)
+        {
+            tooltip(ui, hint);
+        }
     });
 }
 

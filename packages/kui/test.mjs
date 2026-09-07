@@ -256,6 +256,56 @@ test('an unknown prop warns once, with the name it was probably meant to be', ()
   assert.deepEqual(quiet.warnings(), []);
 });
 
+// The stock button reads the access rows and nothing else
+// (`schema::BUTTON_ROWS_JSX`): a row it would drop is warned about with
+// the rows it does read, and never changes its look.
+test('the stock button admits the access rows and warns about the rest', () => {
+  const view = (extra = {}) =>
+    box({ pad: 4, gap: 4 }, [
+      el('button', { onClick: 'go', description: 'Starts the run' }, ['go']),
+      el('button', { onClick: 'stop', label: 'Stop the run', disabled: true, tooltip: 'Nothing is running' }, ['stop']),
+      el('button', { onClick: 'x', ...extra }, ['x']),
+    ]);
+  const ctx = new Ctx();
+  ctx.frame(320, 240, 1, view({ radius: 12, hoverbg: '#333333' }));
+  const tree = ctx.accessTree();
+  const byName = (n) => tree.nodes.find((x) => x.name === n);
+  const go = byName('go');
+  assert.equal(go.role, 'button');
+  assert.equal(go.description, 'Starts the run');
+  assert.equal(go.disabled, false);
+  const stop = byName('Stop the run');
+  assert.equal(stop.role, 'button', 'named past its text');
+  assert.equal(stop.description, 'Nothing is running', 'the tooltip is the description');
+  assert.equal(stop.disabled, true);
+  assert.equal(tree.nodes.length, 4, 'window and three buttons');
+
+  // A real row the button does not read says so, and names the rows it
+  // does; a misspelling is a misspelling, but the fix offered is never a
+  // row the button would drop.
+  const ws = ctx.warnings().filter((w) => w.code === 'unknown-prop');
+  assert.equal(ws.length, 2, JSON.stringify(ws));
+  const radius = ws.find((w) => w.message.includes('`radius`'));
+  assert.match(radius.message, /is a prop, but not one button reads/);
+  assert.match(radius.message, /`description`/);
+  assert.match(radius.message, /a box with `role` set takes every row/);
+  const hoverbg = ws.find((w) => w.message.includes('hoverbg'));
+  assert.match(hoverbg.message, /is not a prop of button/);
+  assert.doesNotMatch(hoverbg.message, /did you mean/);
+
+  // The dropped rows drew nothing: the same quads as a button without them.
+  const plain = new Ctx();
+  plain.frame(320, 240, 1, view());
+  assert.deepEqual(ctx.quads(), plain.quads(), 'the look is the widget\'s');
+
+  // A disabled button keeps its hit region, so its tooltip can say why:
+  // hovered, the hint floats under it.
+  const before = plain.quads().length;
+  plain.cursor(stop.rect.x + 2, stop.rect.y + 2);
+  plain.frame(320, 240, 1, view());
+  assert.ok(plain.quads().length > before, 'the tooltip floated under the disabled button');
+});
+
 test('createApp reports unknown props too, and a shipped build does not', () => {
   const app = createApp(
     { init: 0, update: () => undefined, view: () => box({ onclick: 'go', width: 10, height: 10 }) },
@@ -1920,7 +1970,8 @@ const SCENE_TREES = {
   controls: () =>
     root({}, [
       box({ pad: 10, gap: 6, onContextMenu: { kind: 'menu' } }, [
-        el('button', { onClick: { kind: 'go' } }, ['go']),
+        el('button', { onClick: { kind: 'go' }, description: 'Starts the run' }, ['go']),
+        el('button', { onClick: { kind: 'stop' }, label: 'Stop the run', disabled: true, tooltip: 'Nothing is running' }, ['stop']),
         el('edit', { initial: 'hello', size: 13, width: 160, label: 'Note' }, [], 'note'),
         box(
           {

@@ -57,7 +57,10 @@ static void context_menu(KuiCtx *ui, const AppState *state) {
 
         KuiValue *reset = kui_value_map();
         kui_value_map_set(reset, KUI_STR("kind"), kui_value_str(KUI_STR("reset")));
-        kui_button(ui, KUI_STR("Reset"), reset);
+        /* The sentence a reader hears after the name: the stock button
+         * takes the access rows off a spec and nothing else (kui_button_with). */
+        KuiSpec reset_rows = {.description = KUI_STR("Back to zero")};
+        kui_button_with(ui, KUI_STR("Reset"), &reset_rows, reset);
     }
     kui_close(ui);
     kui_value_free(tag);
@@ -1253,7 +1256,17 @@ static void conf_controls(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_open(ui, &outer, NULL);
     KuiValue *go = kui_value_map();
     kui_value_map_set(go, KUI_STR("kind"), kui_value_str(KUI_STR("go")));
-    kui_button(ui, KUI_STR("go"), go);
+    KuiSpec go_rows = {.description = KUI_STR("Starts the run")};
+    kui_button_with(ui, KUI_STR("go"), &go_rows, go);
+    /* Every row the stock button admits, on a button the steps never
+     * touch: the name past its text, disabled, and a tooltip whose
+     * description reaches the access row while nothing hovers it. */
+    KuiValue *stop = kui_value_map();
+    kui_value_map_set(stop, KUI_STR("kind"), kui_value_str(KUI_STR("stop")));
+    KuiSpec stop_rows = {.label = KUI_STR("Stop the run"),
+                         .disabled = 1,
+                         .tooltip = KUI_STR("Nothing is running")};
+    kui_button_with(ui, KUI_STR("stop"), &stop_rows, stop);
     KuiTextStyle s13 = {.size = 13};
     KuiSpec note = {.width = {KUI_FIXED, 160}, .label = KUI_STR("Note")};
     kui_text_edit(ui, KUI_STR("note"), KUI_STR("hello"), &s13, 0, &note);

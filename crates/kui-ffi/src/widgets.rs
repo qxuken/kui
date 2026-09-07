@@ -91,6 +91,21 @@ pub extern "C" fn kui_text_input(ptr: *mut KuiCtx, label: KuiStr, initial: KuiSt
 /// Convenience button matching `kui_core::widgets::button`. Consumes payload.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_button(ptr: *mut KuiCtx, label: KuiStr, payload: *mut KuiValue) {
+    kui_button_with(ptr, label, std::ptr::null(), payload);
+}
+
+/// [`kui_button`] with the rows the stock button admits read off `spec` —
+/// `label`, `description`, `tooltip`, `disabled` — and every other field
+/// ignored: the look is `widgets::button_spec`'s, and a zeroed `KuiSpec`
+/// is the schema default rather than "unset", so there is nothing to
+/// merge. A NULL `spec` is [`kui_button`]. Consumes payload.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_button_with(
+    ptr: *mut KuiCtx,
+    text: KuiStr,
+    spec: *const KuiSpec,
+    payload: *mut KuiValue,
+) {
     guard((), || {
         let Some(c) = (unsafe { ctx(ptr) }) else {
             if !payload.is_null() {
@@ -98,21 +113,38 @@ pub extern "C" fn kui_button(ptr: *mut KuiCtx, label: KuiStr, payload: *mut KuiV
             }
             return;
         };
-        let label = kstr(label);
+        let text = kstr(text);
         let value = if payload.is_null() {
             Value::Null
         } else {
             unsafe { Box::from_raw(payload) }.0
         };
         // The same data as kui_core::widgets::button: hover/pressed colors
-        // are declared on the spec and resolved by the core.
-        c.core()
-            .open_keyed(&label, kui_core::widgets::button_spec().on_click(value));
-        c.core().text_node(
-            &label,
-            TextStyle::new(kui_core::widgets::BUTTON_TEXT).color(Color::WHITE),
+        // are declared on the spec and resolved by the core. The tooltip
+        // is applied before the description, as `spec_of` orders them, so
+        // the explicit field wins over the shorthand.
+        let mut node = kui_core::widgets::button_spec().on_click(value);
+        let mut hint = None;
+        if let Some(s) = unsafe { spec.as_ref() } {
+            if let Some(h) = opt_str(s.tooltip) {
+                node = node.apply_tooltip(&h);
+                hint = Some(h);
+            }
+            if let Some(l) = opt_str(s.label) {
+                node = node.label(l.as_ref());
+            }
+            if let Some(d) = opt_str(s.description) {
+                node = node.description(d.as_ref());
+            }
+            node = node.disabled(s.disabled != 0);
+        }
+        kui_core::widgets::button_with(
+            &mut kui_core::Ui::wrap(c.core()),
+            &text,
+            &text,
+            node,
+            hint.as_deref(),
         );
-        c.core().close();
     });
 }
 

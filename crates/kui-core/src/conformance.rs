@@ -698,8 +698,13 @@ pub const SCENES: &[Scene] = &[
               names its own reading (`valueText`), which lands in the value \
               column beside the editor's text — a node has one string slot, \
               and a slider that named its reading reads as that instead of \
-              its number (backlog F8).",
-        custom: &["key", "size"],
+              its number (backlog F8). The clicked button says what it will \
+              do (`description`), and a second stock button takes the other \
+              rows the composite admits at once — a `label` past its text, \
+              `disabled`, and a `tooltip` whose description reaches the \
+              access row while its float never draws, since nothing hovers \
+              it — through each binding's own button, not a box.",
+        custom: &["key", "size", "tooltip"],
         elements: &["button", "edit", "box", "text"],
         build: build_controls,
         env: NATIVE_CHROME,
@@ -712,14 +717,17 @@ pub const SCENES: &[Scene] = &[
             Step::SecondaryUp,
         ],
         expect: Expect {
-            solid: 1,
+            // Two buttons: the disabled one is dimmed, and a quad at half
+            // alpha is still one solid quad.
+            solid: 2,
             shadows: 0,
             images: 0,
             segments: 0,
-            glyphs_min: 7,
+            glyphs_min: 11,
             access: &[
                 "0 window ||",
-                "1 button go||",
+                "1 button go|Starts the run|",
+                "1 button Stop the run|Nothing is running|",
                 "1 textInput Note||hello",
                 "1 slider Focus length||25 minutes",
             ],
@@ -1632,7 +1640,33 @@ fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         .gap(6.0)
         .on_context_menu(Value::map([("kind", Value::str("menu"))]));
     ui.with(panel, |ui| {
-        widgets::button(ui, "go", Value::map([("kind", Value::str("go"))]));
+        widgets::button_with(
+            ui,
+            "go",
+            "go",
+            widgets::button_spec()
+                .on_click(Value::map([("kind", Value::str("go"))]))
+                .description("Starts the run"),
+            None,
+        );
+        // Every row the stock button admits, on a button the steps never
+        // touch. The spec is what a binding's parser builds from
+        // `tooltip = "…"` — `apply_tooltip` for the hover tracking and the
+        // description — plus the hint it floats while hovered, and the
+        // access row is the proof: a name that is not the text, the
+        // disabled column, and the tooltip's string in the description
+        // column with nothing drawn for it.
+        widgets::button_with(
+            ui,
+            "stop",
+            "stop",
+            widgets::button_spec()
+                .on_click(Value::map([("kind", Value::str("stop"))]))
+                .label("Stop the run")
+                .disabled(true)
+                .apply_tooltip("Nothing is running"),
+            Some("Nothing is running"),
+        );
         ui.text_edit(
             "note",
             "hello",

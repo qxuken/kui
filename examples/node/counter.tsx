@@ -61,7 +61,7 @@ function Menu({ at }: { at: { x: number; y: number } }) {
       pad={4} gap={4} width={120} bg="#22242c" radius={6}
     >
       <button onClick={{ kind: 'add', by: 10 }}>+10</button>
-      <button onClick={{ kind: 'reset' }}>reset</button>
+      <button onClick={{ kind: 'reset' }} description="Back to zero">reset</button>
     </box>
   );
 }
@@ -71,7 +71,7 @@ function Counter({ count }: { count: number }) {
     <box dir="row" gap={12} crossAlign="center">
       <button onClick={{ kind: 'add', by: 1 }}>+1</button>
       <button onClick={{ kind: 'add', by: -1 }}>-1</button>
-      <button onClick={{ kind: 'reset' }}>reset</button>
+      <button onClick={{ kind: 'reset' }} description="Back to zero">reset</button>
       <text size={20} color="#e8e8f0">{`count = ${count}`}</text>
       {/* The count as a slider, for assistive technology: the range it
           declares is the range the value is held to, or the core warns

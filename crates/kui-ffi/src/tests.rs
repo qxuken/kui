@@ -643,6 +643,86 @@ mod queries_headless {
         kui_ctx_free(ctx);
     }
 
+    /// `kui_button_with` reads the rows the stock button admits off the
+    /// spec — label, description, tooltip, disabled — and nothing else:
+    /// a width on the same spec changes no quad, since the look is
+    /// `widgets::button_spec`'s. A NULL spec is `kui_button`.
+    #[test]
+    fn the_stock_button_reads_its_rows_off_a_spec() {
+        let ctx = kui_ctx_new();
+        let frame = |ctx: *mut KuiCtx, rows: bool| {
+            kui_frame_begin(ctx, 200.0, 100.0, 1.0);
+            let mut go = unsafe { std::mem::zeroed::<KuiSpec>() };
+            go.description = ks("Starts the run");
+            // A row the button does not read: no effect, by design.
+            go.width = KuiSizing {
+                tag: 2,
+                value: 180.0,
+            };
+            let mut stop = unsafe { std::mem::zeroed::<KuiSpec>() };
+            stop.label = ks("Stop the run");
+            stop.tooltip = ks("Nothing is running");
+            stop.disabled = 1;
+            if rows {
+                kui_button_with(ctx, ks("go"), &go, kui_value_str(ks("go")));
+                kui_button_with(ctx, ks("stop"), &stop, kui_value_str(ks("stop")));
+            } else {
+                kui_button_with(ctx, ks("go"), std::ptr::null(), kui_value_str(ks("go")));
+                kui_button(ctx, ks("stop"), kui_value_str(ks("stop")));
+            }
+            kui_frame_finish(ctx);
+        };
+        frame(ctx, true);
+        let mut out = [unsafe { std::mem::zeroed::<KuiAccessNode>() }; 4];
+        assert_eq!(kui_access_tree(ctx, out.as_mut_ptr(), out.len()), 3);
+        assert_eq!(out[1].role, role_code(kui_core::Role::Button));
+        assert_eq!(kstr(out[1].name).as_ref(), "go");
+        assert_eq!(kstr(out[1].description).as_ref(), "Starts the run");
+        assert_eq!(out[1].flags & KUI_ACCESS_DISABLED, 0);
+        assert_eq!(
+            kstr(out[2].name).as_ref(),
+            "Stop the run",
+            "named past its text"
+        );
+        assert_eq!(
+            kstr(out[2].description).as_ref(),
+            "Nothing is running",
+            "the tooltip is the description"
+        );
+        assert_ne!(out[2].flags & KUI_ACCESS_DISABLED, 0);
+        // Each solid quad's box and alpha; the glyphs are the same either way.
+        let boxes = |ctx: *mut KuiCtx| {
+            let mut draw = KuiDrawData::default();
+            kui_draw_data(ctx, &mut draw);
+            unsafe { std::slice::from_raw_parts(draw.quads, draw.quad_count) }
+                .iter()
+                .filter(|q| q.kind == kui_core::QuadKind::Solid as u32)
+                .map(|q| (q.x, q.y, q.w, q.h, q.color[3]))
+                .collect::<Vec<_>>()
+        };
+        let with_rows = boxes(ctx);
+
+        // The same two buttons with no rows: the width was never read, so
+        // the only difference the rows made is the dimming of the
+        // disabled one.
+        frame(ctx, false);
+        let plain = boxes(ctx);
+        assert_eq!(with_rows.len(), 2);
+        assert_eq!(plain.len(), 2);
+        assert_eq!(
+            with_rows[0], plain[0],
+            "the go button's box is the widget's, not the spec's width"
+        );
+        assert_eq!(with_rows[1].0..=with_rows[1].3, plain[1].0..=plain[1].3);
+        assert!(
+            with_rows[1].4 < plain[1].4,
+            "the disabled button is dimmed: {} vs {}",
+            with_rows[1].4,
+            plain[1].4
+        );
+        kui_ctx_free(ctx);
+    }
+
     /// The access tree crosses as rows (plain boxes elided), and an
     /// assistive request comes back in as input: a click on a labelled
     /// button emits its payload, a slider nudge arrives as an `access`

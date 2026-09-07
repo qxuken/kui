@@ -24,8 +24,8 @@
 //!   in the table.
 
 use kui_core::{
-    Align, Color, Core, EditOptions, FloatConfig, ImageId, NodeSpec, PadShorthand, Rect, Size,
-    Span, TextStyle, WindowConfig, WindowKind, widgets,
+    Align, Core, EditOptions, FloatConfig, ImageId, NodeSpec, PadShorthand, Rect, Size, Span,
+    TextStyle, WindowConfig, WindowKind, widgets,
 };
 use serde_json::{Map as JsonMap, Value as Json};
 
@@ -181,8 +181,14 @@ fn payload(s: &str) -> Result<kui_core::Value> {
 /// composites hand-written, everything else read by schema kind and applied
 /// through the shared table.
 fn read_props(r: &mut Reader<'_>) -> Result<PropsOut> {
+    read_props_over(r, PropsOut::new())
+}
+
+/// [`read_props`] applied over `out` rather than the schema defaults: what
+/// a composite that keeps its own look reads its admitted rows into (the
+/// stock button over `widgets::button_spec`).
+fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut) -> Result<PropsOut> {
     let n = r.u()?;
-    let mut out = PropsOut::new();
     for _ in 0..n {
         let id = r.u()?;
         match id {
@@ -362,8 +368,12 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
             Ok(())
         }
         OP_BUTTON => {
-            // The same data as kui_core::widgets::button: hover/pressed
-            // colors are declared on the spec, resolved by the core.
+            // Text, key?, click payload?, then a prop list holding only the
+            // rows the stock button admits (`schema::BUTTON_ROWS_JSX`; the
+            // encoder writes no other), read over `widgets::button_spec` so
+            // the look stays the widget's — a `dir` in that list would
+            // rebuild the spec from nothing, which is why the list is
+            // closed at the encoder rather than merged here.
             let label = r.req_str()?;
             let key = r.str_ref()?;
             let msg = match r.str_ref()? {
@@ -371,12 +381,16 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
                 None => kui_core::Value::Null,
             };
             let label_key = key.unwrap_or(label);
-            core.open_keyed(label_key, widgets::button_spec().on_click(msg));
-            core.text_node(
+            let mut base = PropsOut::new();
+            base.spec = widgets::button_spec();
+            let p = read_props_over(r, base)?;
+            widgets::button_with(
+                &mut kui_core::Ui::wrap(core),
+                label_key,
                 label,
-                TextStyle::new(widgets::BUTTON_TEXT).color(Color::WHITE),
+                p.spec.on_click(msg),
+                p.tooltip.as_deref(),
             );
-            core.close();
             Ok(())
         }
         OP_EDIT => {

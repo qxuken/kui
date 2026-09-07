@@ -65,6 +65,66 @@ upgrades remove code from the apps on it is doing the job.
   tweens from resetting when the host's root changed.
 - The stash a plugin kept so the host could learn what it chose: reply.
 
+- **The stock button takes the access rows.** `<button>`, `button { }`
+  and `kui_button` were closed composites: three fields on the wire — text,
+  key, click — and no prop list at all, so `<button description="…">` was
+  dropped without a warning, `tsc` rejected it first, and a Lua or C button
+  could not be disabled. That was an odd place for the seam. Every other
+  element an app builds content from takes the prop list; the only closed
+  ones besides the button were chrome and diagnostics (`titlebar`,
+  `windowButtons`, the latency HUD), where nothing needs a description. And
+  the alpha.8 `description` entry's own example was a hand-rolled
+  `<box role="button">` because the stock one could not say the sentence
+  — the button being the element a reader most needs it on ("what a button
+  will do"). A field report from `kui-node-template` made it concrete: a
+  `reset` button whose action wanted a sentence, and with its context menu
+  open two buttons named `reset` in the tree, and the scaffold left the
+  sentence out rather than give up the composite for it.
+
+  The button now admits exactly the rows a reader hears and nothing that
+  changes its look: `label` (the name, when the text is not it),
+  `description`, `tooltip` (the description plus the float while hovered,
+  as on a box) and `disabled` (inert, and dimmed to half — the core drops
+  the hover and pressed backgrounds of a disabled node, and nothing else
+  would show a sighted user the state a reader is told). The list is one
+  place, `schema::BUTTON_ROWS_JSX` / `_LUA`, and every binding's button is
+  one lowering, `widgets::button_with(ui, key, text, spec, hint)`, which
+  `widgets::button` itself now calls. In JSX the four are props on
+  `<button>` and `ButtonProps` types them; in Lua `label` stays the name
+  *and* the text, and a new `text` key takes the text when the two differ
+  (`button { label = "Stop the run", text = "stop" }`); in C
+  `kui_button_with(ctx, text, spec, payload)` reads the four fields off a
+  `KuiSpec` and ignores the rest, since a zeroed `KuiSpec` is the schema
+  default and not "unset" — a new function, no `KUI_ABI_VERSION` bump.
+
+  Why not the whole prop list: the button's look *is* its spec —
+  `widgets::button_spec`'s padding, colours and radius — and a general
+  props pass over it has a real hazard, `dir` alone rebuilds the spec from
+  nothing (the decoder's `P_DIR` is `NodeSpec::row()`, not a flag on the
+  spec it has). So `ElementDef` gained `jsx_rows` / `lua_rows`: an element
+  that reads only some rows names them, `known_prop` admits those and the
+  element's own, the JS encoder writes only those over the wire, and a row
+  outside the list — `<button radius={4}>` — is an `unknown-prop` warning
+  whose message says which rows the element does read, rather than hunting
+  for a nearer spelling of a name that is spelled right. That closes the
+  other half of the report: the encoder's allow-list was one flat set of
+  every schema row across every element, so a real row on the wrong
+  element passed the check and vanished. It now cannot, on any element
+  that names its rows. The corpus `controls` scene builds both stock
+  buttons through each binding's own button — the clicked one with a
+  `description`, a second one disabled, named past its text, with a
+  `tooltip` whose string reaches the access row while its float never
+  draws — so the four parsers are pinned to one access dump.
+
+  **What you can delete:** the hand-rolled button. A view that wrote
+  `<box role="button" bg hoverBg pressedBg radius pad center onClick>`
+  with a white 15px `<text>` inside it, to get a description, a distinct
+  name or a disabled state onto a button that looked like the stock one,
+  is `<button description="…">` again — seven props and a text node per
+  button. And `AccessNode.description`'s doc, which still said "what the
+  `tooltip` prop sets" a release after `description` began writing that
+  slot too.
+
 ## 0.1.0-alpha.8 (2026-09-07)
 
 **What breaks.** **A press that dismisses a popup no longer reaches the
