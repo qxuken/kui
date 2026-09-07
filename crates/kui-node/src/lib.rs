@@ -1292,6 +1292,25 @@ macro_rules! core_methods {
                 self.$core().animating()
             }
 
+            /// Byte budget for the shaped-text cache: every text a frame
+            /// draws is shaped once and kept, and past this many
+            /// (estimated) bytes the least recently drawn entries go at
+            /// the start of the next frame — never what the last frame
+            /// drew. Default 64 MB; a terminal streaming new lines lowers
+            /// it, a viewer that wants every page it showed kept warm
+            /// raises it.
+            #[napi]
+            pub fn set_text_cache_budget(&mut self, bytes: f64) {
+                self.$core().set_text_cache_budget(bytes.max(0.0) as usize);
+            }
+
+            /// What the shaped-text cache holds, in the estimated bytes
+            /// the budget is charged against.
+            #[napi]
+            pub fn text_cache_bytes(&mut self) -> f64 {
+                self.$core().text_cache_bytes() as f64
+            }
+
             /// Summary of the last frame's display list.
             #[napi(ts_return_type = "FrameStats")]
             pub fn stats(&mut self) -> Json {

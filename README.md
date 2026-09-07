@@ -731,6 +731,9 @@ that prop costs.
 | `list_10k_rows_naive` | a 10k-row list held at its middle, built row by row | ~3.94 ms |
 | `list_10k_rows_virtual` | the same list through `widgets::virtual_column` | ~16.3 µs |
 | `list_100k_rows_virtual` | 100k rows through the same widget | ~16.4 µs |
+| `warm_50x200` (`--bench stream`) | fifty 200-column mono lines, the same every frame — a terminal pane at rest | ~85 µs |
+| `stream_50x200_log` | the same pane with every line new each frame, thirty-word log vocabulary plus numbers | ~25 ms |
+| `stream_50x200_random` | every line new and random printable ASCII, nothing for the shape-run cache to hit | ~64 ms |
 
 What the pairs say. Deriving the access tree costs **~1.35×** the frame it
 follows. Shadows under a faded root are **twice the quads** (20k against 10k)
@@ -750,7 +753,15 @@ grid, so the `any_exit` gate holds — it is declaring exits on *every* node
 that triples the frame. And virtualisation is the one difference worth
 orders of magnitude: 10k rows cost ~3.7 ms built row by row and ~16 µs
 through the widget, with 100k rows costing the same ~16 µs, because the frame
-stops growing with the data.
+stops growing with the data. The two `stream` rows are the shaper's, not
+the tree's: a pane whose fifty lines are all new every frame costs 25–64 ms
+because each line is shaped from scratch, and cosmic-text alone on the same
+fifty lines measures the same — a cell grid that never shapes ASCII is
+backlog C20. What those frames leave behind is bounded: the shaped-text
+cache holds a byte budget (`Core::set_text_cache_budget`, 64 MB by
+default) and evicts the least recently drawn entries past it, never what
+the last frame drew, so the stream that used to park 3.6 GB of shaped lines
+settles at the budget (backlog C16, `tests/text_budget.rs`).
 
 **These numbers went the wrong way once, and this is where that is
 recorded.** The four rows this table used to carry were measured on

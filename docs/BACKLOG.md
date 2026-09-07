@@ -656,7 +656,55 @@ one to four frames of shaping, and that cost is the shaper's, not kui's
 (the cosmic-text-only row is the same number). The memory row is kui's
 own, and it is C16.
 
-### `!` C16 — The shaped-text cache has a clock and no budget
+### `!` C16 — The shaped-text cache has a clock and no budget — **done (2026-09-07)**
+
+Done, as (1), (3) and (4) of the "Do" below; (2) declined for now. The
+cache charges itself an estimate per entry — `ENTRY_BASE_BYTES` (4 KB)
+plus `ENTRY_GLYPH_BYTES` (480) a glyph plus the content — and
+`evict_to_budget` runs at the end of every `begin_frame`: inside the
+budget it is one comparison, past it the entries not drawn by the frame
+that just finished go in (last-used, key) order until the cache is under
+three quarters of the budget, so a stream walks the cache once per
+quarter-budget of new text rather than every frame. The estimate's
+constants were measured first with a counting allocator around a `Core`
+drawing fifty new lines a frame: 7.6 KB per 10-glyph line, 22 KB per 40,
+92 KB per 200, of which cosmic-text's `Buffer` is 284 B/glyph and its
+shape-run cache 118 B/glyph. `DEFAULT_TEXT_CACHE_BYTES` = 64 MB;
+`Core::set_text_cache_budget` / `text_cache_budget` / `text_cache_bytes`
+/ `text_cache_len`, `setTextCacheBudget` / `textCacheBytes` in Node,
+`kui_set_text_cache_budget` / `kui_text_cache_bytes` in C.
+
+What the first test run found: with the entries at the budget the
+process was still nine times over it, and the remainder was the
+shape-run cache — `trim(1)` every thirty frames keeps sixty frames of
+words, because cosmic-text's cache ages only when trimmed. It is now
+`trim(0)` on every eviction pass (words not used since the last one),
+and the 240-frame `trim(2)` stays for the idle case. A line still on
+screen keeps its shaped entry whatever the trim does; a line edited
+afterwards shapes its words again, once. The second thing the test
+found was its own harness: the allocator counts the process and the
+tests ran in parallel, so they hold a mutex now.
+
+`tests/text_budget.rs` pins six things: the default, a 2 MB budget
+against the allocator (the stream that would be ~88 MB settles at ~1.6
+MB live, the estimate never more than one frame past the line), the
+estimate against the allocator (ratio 0.7–1.6 at 200 columns; it lands
+at 1.13), that what the last frame drew is never evicted under a
+one-byte budget, that the least recently drawn goes first, and that the
+clock still empties an idle cache. `benches/stream.rs` is (4)'s frame
+half: `warm_50x200` ~85 µs, `stream_50x200_log` ~25 ms,
+`stream_50x200_random` ~64 ms, and the README's table carries the three
+rows with the sentence that says whose number the streaming ones are.
+The memory assertion is a test rather than a bench because bytes, not
+microseconds, are what pin this.
+
+Declined for now, (2): dropping the `Buffer` from cold entries and
+keeping the templates. The budget bounds the cache without it, and the
+`Buffer` is what re-wrap, measurement and the access tree read; a cold
+entry that loses it would have to reshape on the next read, which is a
+second cache policy to get right. Worth it the day a document viewer
+wants a bigger budget than its `Buffer`s allow; the numbers to argue it
+from are above.
 
 `TextSystem::cache` (`text.rs`) is an `FxHashMap<u64, CachedText>` whose
 only eviction is `EVICT_AFTER_FRAMES = 300` (`text.rs:150`), applied every

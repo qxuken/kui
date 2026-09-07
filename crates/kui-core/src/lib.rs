@@ -77,7 +77,7 @@ pub use spec::{
     Vec2Offset, corner,
 };
 pub use stats::{FrameSample, FrameStats};
-pub use text::{Span, TextMetrics};
+pub use text::{DEFAULT_TEXT_CACHE_BYTES, Span, TextMetrics};
 pub use tree::OriginId;
 pub use ui::Ui;
 pub use value::Value;

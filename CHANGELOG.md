@@ -67,6 +67,32 @@ that asserts on an empty warning list is what notices.
 
 ### Added
 
+- **The shaped-text cache has a byte budget** (backlog C16).
+  `Core::set_text_cache_budget(bytes)` — `setTextCacheBudget` in Node,
+  `kui_set_text_cache_budget` in C — with `DEFAULT_TEXT_CACHE_BYTES`
+  (64 MB) as the default, and `text_cache_bytes()` / `textCacheBytes()`
+  / `kui_text_cache_bytes` reading what the cache holds. Every text a
+  frame draws is shaped once and kept; the cache used to empty only on a
+  300-frame clock, so a view whose text is new every frame — a terminal
+  streaming, a log tailing, a file scrolled through fast — held five
+  seconds of everything it had shown: measured at 3.6 GB resident for
+  fifty new 200-column lines a frame, and 2.8 GB for log-like ones. Now,
+  past the budget, the least recently drawn entries go at the start of
+  the next frame, down to three quarters of it, and cosmic-text's
+  shape-run cache — the words those lines shaped, with no budget of its
+  own — is trimmed with them. **What the last frame drew is never
+  evicted**, whatever the budget says: a screenful that does not fit is
+  kept whole and re-shapes nothing, the way F26's declared editors are
+  never evicted. The clock is unchanged, so an idle cache still empties.
+  The budget is charged an estimate per entry (4 KB plus 480 bytes a
+  glyph, calibrated against a counting allocator: cosmic-text's own
+  `Buffer` is 284 B/glyph of it), and `tests/text_budget.rs` holds a 2 MB
+  budget against the allocator — the same stream settles at ~1.6 MB live
+  — while `benches/stream.rs` is the frame it costs: fifty new log-like
+  lines a frame at ~25 ms, fifty random ones at ~64 ms, and that number
+  is cosmic-text's (the same fifty lines shaped through it alone measure
+  the same), which is C20's entry and not this one's.
+
 - **Slots: an extension fills a place the host declares**
   ([ADR 0014](docs/adr/0014-slots-an-extension-fills-in-place.md)).
   `ui.slot("fs/panel")` — or `slot_with(name, &params)` — is a position

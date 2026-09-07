@@ -500,6 +500,36 @@ impl Core {
         self.text.subpixel()
     }
 
+    /// The byte budget for the shaped-text cache (backlog C16): every
+    /// text a frame draws is shaped once and kept, and past this many
+    /// estimated bytes the least recently drawn entries go, down to three
+    /// quarters of it, at the start of the next frame. What the last
+    /// frame drew is never evicted, so a budget too small for one
+    /// screenful costs re-shaping nothing — it only stops keeping what
+    /// scrolled away. Default `DEFAULT_TEXT_CACHE_BYTES` (64 MB): a
+    /// terminal streaming new lines lowers it, a document viewer that
+    /// wants every page it showed to stay warm raises it. The clock that
+    /// empties an idle cache after 300 frames is unchanged.
+    pub fn set_text_cache_budget(&mut self, bytes: usize) {
+        self.text.set_budget(bytes);
+    }
+
+    pub fn text_cache_budget(&self) -> usize {
+        self.text.budget()
+    }
+
+    /// What the shaped-text cache holds, as the estimate the budget is
+    /// charged against (a fixed floor per entry plus a per-glyph rate,
+    /// calibrated against a counting allocator; see `text.rs`).
+    pub fn text_cache_bytes(&self) -> usize {
+        self.text.bytes()
+    }
+
+    /// How many shaped texts the cache holds.
+    pub fn text_cache_len(&self) -> usize {
+        self.text.len()
+    }
+
     /// The frame clock for transitions: monotonic seconds, any origin.
     /// Drivers set it before every frame; a driver that never does gets
     /// snapping instead of animation.

@@ -149,6 +149,31 @@ pub(crate) fn glyph_kind(slot: &crate::atlas::GlyphSlot) -> QuadKind {
 /// Evict cache entries unused for this many frames.
 const EVICT_AFTER_FRAMES: u64 = 300;
 
+/// The default byte budget for the shaped-text cache (backlog C16). Sized
+/// so a screenful of code never meets it — two panes of 55 highlighted
+/// lines are ~900 short entries, a few megabytes — and a pane streaming
+/// new text meets it within seconds, which is when the clock alone let the
+/// cache reach gigabytes. `Core::set_text_cache_budget` changes it.
+pub const DEFAULT_TEXT_CACHE_BYTES: usize = 64 << 20;
+
+/// What one cache entry costs, estimated: a fixed floor (the `Buffer`, its
+/// line, the attrs list, the entry itself) plus a per-glyph rate that
+/// covers cosmic-text's `ShapeGlyph` and `LayoutGlyph`, our
+/// `GlyphTemplate`, and the entry's share of the shape-run cache. Measured
+/// on 2026-09-07 with a counting allocator around a `Core` drawing 50 new
+/// lines a frame: 7.6 KB per 10-glyph line, 22 KB per 40, 92 KB per 200
+/// (cosmic-text's own `Buffer` is 284 B/glyph of that and the shape-run
+/// cache 118 B/glyph). The estimate lands within ~10% of those, on the
+/// high side, so the budget errs toward evicting.
+const ENTRY_BASE_BYTES: usize = 4096;
+const ENTRY_GLYPH_BYTES: usize = 480;
+
+/// When the cache is over budget it is evicted down to this fraction of it,
+/// not to the line, so a stream that adds a little every frame walks the
+/// cache once per quarter-budget of new text rather than every frame.
+const EVICT_TO_NUMERATOR: usize = 3;
+const EVICT_TO_DENOMINATOR: usize = 4;
+
 struct CachedText {
     buffer: Buffer,
     /// The text itself (spans concatenated, for rich text): what the
@@ -165,6 +190,8 @@ struct CachedText {
     /// report the box width and clip glyphs to it.
     clamp_w: bool,
     last_used: u64,
+    /// What this entry costs the budget (see `ENTRY_BASE_BYTES`).
+    bytes: usize,
     /// Positioned glyph quads relative to the text origin, so steady-state
     /// emission is a memcpy-style walk instead of per-glyph atlas lookups.
     glyphs: Vec<GlyphTemplate>,
@@ -268,6 +295,10 @@ pub struct TextMetrics {
 pub struct TextSystem {
     raster: Raster,
     cache: FxHashMap<u64, CachedText>,
+    /// The sum of the entries' `bytes`, kept exact against inserts and
+    /// removals so a frame inside its budget costs one comparison.
+    bytes: usize,
+    budget: usize,
     frame: Vec<FrameText>,
     /// The previous frame's list, kept the same way and on the same
     /// condition as `Core`'s previous tree: a departing subtree's text
@@ -302,6 +333,8 @@ impl TextSystem {
         Self {
             raster: Raster::new(),
             cache: FxHashMap::default(),
+            bytes: 0,
+            budget: DEFAULT_TEXT_CACHE_BYTES,
             frame: Vec::new(),
             prev_frame: Vec::new(),
             scale: 1.0,
@@ -326,6 +359,70 @@ impl TextSystem {
         changed
     }
 
+    /// The byte budget the cache is evicted to; see
+    /// `Core::set_text_cache_budget`.
+    pub fn budget(&self) -> usize {
+        self.budget
+    }
+
+    /// Sets the budget. Takes effect at the next frame's start, where
+    /// eviction runs; nothing is evicted here.
+    pub fn set_budget(&mut self, bytes: usize) {
+        self.budget = bytes;
+    }
+
+    /// The estimated bytes the cache holds (see `ENTRY_BASE_BYTES`).
+    pub fn bytes(&self) -> usize {
+        self.bytes
+    }
+
+    /// How many shaped texts the cache holds.
+    pub fn len(&self) -> usize {
+        self.cache.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.cache.is_empty()
+    }
+
+    /// Evicts the least recently used entries until the cache is under
+    /// three quarters of its budget. Never an entry the frame that just
+    /// finished drew: what is on screen stays shaped whatever the budget
+    /// says, the way F26's declared state is never evicted. Ordered by
+    /// last use and then by key, so the same history evicts the same
+    /// entries whatever order the map iterated.
+    fn evict_to_budget(&mut self, fs: &mut FontSystem) {
+        if self.bytes <= self.budget {
+            return;
+        }
+        let floor = self.budget / EVICT_TO_DENOMINATOR * EVICT_TO_NUMERATOR;
+        let drawn_last_frame = self.frame_no.saturating_sub(1);
+        let mut order: Vec<(u64, u64)> = self
+            .cache
+            .iter()
+            .filter(|(_, e)| e.last_used < drawn_last_frame)
+            .map(|(k, e)| (e.last_used, *k))
+            .collect();
+        order.sort_unstable();
+        for (_, key) in order {
+            if self.bytes <= floor {
+                break;
+            }
+            if let Some(e) = self.cache.remove(&key) {
+                self.bytes -= e.bytes;
+            }
+        }
+        // The words those entries shaped are still in cosmic-text's
+        // shape-run cache, which has no byte budget of its own and ages
+        // only when trimmed: drop what has not been used since the last
+        // eviction. Measured with the 2 MB budget in `tests/text_budget.rs`,
+        // leaving it on its 240-frame clock held nine times the budget in
+        // words alone. A line still on screen keeps its shaped entry
+        // whatever happens here; only a line edited afterwards shapes its
+        // words again, once.
+        fs.shape_run_cache.trim(0);
+    }
+
     /// Starts a frame. `keep_prev` retains the list just finished so the
     /// next frame can still read its texts — `Core` sets it exactly when it
     /// keeps the previous tree, and the two are read together.
@@ -333,6 +430,7 @@ impl TextSystem {
         // Scale change invalidates every physical-px measurement.
         if (scale - self.scale).abs() > f32::EPSILON {
             self.cache.clear();
+            self.bytes = 0;
         }
         self.scale = scale;
         if keep_prev {
@@ -344,10 +442,30 @@ impl TextSystem {
         self.frame_no += 1;
         if self.frame_no.is_multiple_of(240) {
             let cutoff = self.frame_no.saturating_sub(EVICT_AFTER_FRAMES);
-            self.cache.retain(|_, e| e.last_used >= cutoff);
+            let mut freed = 0usize;
+            self.cache.retain(|_, e| {
+                let keep = e.last_used >= cutoff;
+                if !keep {
+                    freed += e.bytes;
+                }
+                keep
+            });
+            self.bytes -= freed;
             // The shape-run cache makes single-line reshapes ~free while
             // editing; trim it so long sessions don't grow unboundedly.
             fs.shape_run_cache.trim(2);
+        }
+        // The clock above frees what nobody has shown for five seconds;
+        // the budget frees what a stream of new text piles up faster than
+        // that (backlog C16).
+        self.evict_to_budget(fs);
+    }
+
+    /// Inserts a freshly shaped entry, charging it to the budget.
+    fn insert(&mut self, key: u64, entry: CachedText) {
+        self.bytes += entry.bytes;
+        if let Some(old) = self.cache.insert(key, entry) {
+            self.bytes -= old.bytes;
         }
     }
 
@@ -390,7 +508,7 @@ impl TextSystem {
         let key = Self::style_key(content, style, self.scale);
         let frame_no = self.frame_no;
         let scale = self.scale;
-        let entry = self.cache.entry(key).or_insert_with(|| {
+        if !self.cache.contains_key(&key) {
             let mut buffer = new_buffer(fs, style, scale);
             buffer.set_text(
                 content,
@@ -398,9 +516,10 @@ impl TextSystem {
                 Shaping::Advanced,
                 None,
             );
-            CachedText::new(buffer, content.to_string(), style, fs, frame_no)
-        });
-        entry.last_used = frame_no;
+            let entry = CachedText::new(buffer, content.to_string(), style, fs, frame_no);
+            self.insert(key, entry);
+        }
+        self.cache.get_mut(&key).expect("just inserted").last_used = frame_no;
         key
     }
 
@@ -549,7 +668,7 @@ impl TextSystem {
         }
         let frame_no = self.frame_no;
         let scale = self.scale;
-        let entry = self.cache.entry(key).or_insert_with(|| {
+        if !self.cache.contains_key(&key) {
             let mut buffer = new_buffer(fs, base, scale);
             let family = res.family_of(base.family);
             buffer.set_rich_text(
@@ -559,9 +678,10 @@ impl TextSystem {
                 None,
             );
             let content = spans.iter().map(|s| s.text).collect::<String>();
-            CachedText::new(buffer, content, base, fs, frame_no)
-        });
-        entry.last_used = frame_no;
+            let entry = CachedText::new(buffer, content, base, fs, frame_no);
+            self.insert(key, entry);
+        }
+        self.cache.get_mut(&key).expect("just inserted").last_used = frame_no;
         key
     }
 
@@ -715,8 +835,10 @@ impl CachedText {
         buffer.shape_until_scroll(fs, false);
         let max_lines = line_budget(style);
         let (intrinsic, _) = measure_buffer(&buffer, max_lines);
+        let glyphs: usize = buffer.layout_runs().map(|r| r.glyphs.len()).sum();
         Self {
             buffer,
+            bytes: ENTRY_BASE_BYTES + content.len() + ENTRY_GLYPH_BYTES * glyphs,
             content,
             wrap: None,
             intrinsic,

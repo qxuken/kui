@@ -1062,6 +1062,21 @@ export declare class Ctx {
    * drivers that want to know when motion has settled.
    */
   animating(): boolean
+  /**
+   * Byte budget for the shaped-text cache: every text a frame
+   * draws is shaped once and kept, and past this many
+   * (estimated) bytes the least recently drawn entries go at
+   * the start of the next frame — never what the last frame
+   * drew. Default 64 MB; a terminal streaming new lines lowers
+   * it, a viewer that wants every page it showed kept warm
+   * raises it.
+   */
+  setTextCacheBudget(bytes: number): void
+  /**
+   * What the shaped-text cache holds, in the estimated bytes
+   * the budget is charged against.
+   */
+  textCacheBytes(): number
   /** Summary of the last frame's display list. */
   stats(): FrameStats
   /**
@@ -1426,6 +1441,21 @@ export declare class KuiWindow {
    * drivers that want to know when motion has settled.
    */
   animating(): boolean
+  /**
+   * Byte budget for the shaped-text cache: every text a frame
+   * draws is shaped once and kept, and past this many
+   * (estimated) bytes the least recently drawn entries go at
+   * the start of the next frame — never what the last frame
+   * drew. Default 64 MB; a terminal streaming new lines lowers
+   * it, a viewer that wants every page it showed kept warm
+   * raises it.
+   */
+  setTextCacheBudget(bytes: number): void
+  /**
+   * What the shaped-text cache holds, in the estimated bytes
+   * the budget is charged against.
+   */
+  textCacheBytes(): number
   /** Summary of the last frame's display list. */
   stats(): FrameStats
   /**

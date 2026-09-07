@@ -156,6 +156,27 @@ pub extern "C" fn kui_set_subpixel_text(ptr: *mut KuiCtx, on: bool) {
     });
 }
 
+/// Byte budget for the shaped-text cache: past it the least recently drawn
+/// entries are evicted at the start of the next frame, never what the last
+/// frame drew. Default 64 MB (`DEFAULT_TEXT_CACHE_BYTES`).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_text_cache_budget(ptr: *mut KuiCtx, bytes: usize) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_text_cache_budget(bytes);
+        }
+    });
+}
+
+/// What the shaped-text cache holds, in the estimated bytes the budget is
+/// charged against.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_text_cache_bytes(ptr: *mut KuiCtx) -> usize {
+    guard(0, || {
+        unsafe { ctx(ptr) }.map_or(0, |c| c.core().text_cache_bytes())
+    })
+}
+
 /// Drains the warnings the core raised since the last call (silent
 /// misconfigurations it noticed while finishing frames; each once) into
 /// `out`, up to `cap`; returns the count. The strings stay valid until the

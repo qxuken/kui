@@ -1081,6 +1081,15 @@ bool kui_animating(KuiCtx *ctx);
  * instead of alpha masks. Only turn it on if your renderer blends per
  * channel. Flipping it re-rasterizes every glyph. */
 void kui_set_subpixel_text(KuiCtx *ctx, bool on);
+/* Byte budget for the shaped-text cache: every text a frame draws is shaped
+ * once and kept; past this many (estimated) bytes the least recently drawn
+ * entries go at the start of the next frame, never what the last frame
+ * drew. Default 64 MB. A terminal streaming new lines lowers it, a viewer
+ * that wants every page it showed kept warm raises it. */
+void kui_set_text_cache_budget(KuiCtx *ctx, size_t bytes);
+/* What that cache holds, in the estimated bytes the budget is charged
+ * against. */
+size_t kui_text_cache_bytes(KuiCtx *ctx);
 /* Window facts for views (widgets adapt to them). `window` is which window
  * this context draws - KUI_WINDOW_MAIN, or the id a KUI_CMD_OPEN carried -
  * and every KuiEvent it hands out says so. controls_w/h > 0 describe the
