@@ -20,7 +20,7 @@ C13 and C14 — and what comes next; F16–F23 from the two alpha.7 field
 reports all closed the day they were filed (2026-09-07). C15's remainder was
 the last split entry, and it closed on 2026-09-07.
 
-Ordered by area, not by priority. What to do next is under "After alpha.7".
+Ordered by area, not by priority. What to do next is under "After alpha.8".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -107,12 +107,14 @@ for a view. What stays here is the two wishes that were not ours.
 - **`onLayout` firing on every rect change.** That is what the row says
   it does; a first-frame-only hook has no view asking for it yet.
 
-## After alpha.7
+## After alpha.8
 
-Grouped by kind, not urgency. Nothing here blocks the tag. It replaces
-"After alpha.6", which went to
+Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
+alpha.7" until 2026-09-07, when the two items it named to build — ADR
+0012's remainder and ADR 0013 — both landed for alpha.8 and the heading
+moved with the tag; "After alpha.6" before it went to
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md#after-alpha6) whole
-rather than accumulating strikethroughs: every line of it had closed.
+rather than accumulating strikethroughs, because every line of it had closed.
 
 **Build.** ADR 0004 step 1's leftover: the glyph atlas and shape cache are
 still per window because `Core::output` hands out `&mut GlyphAtlas` (see
@@ -195,7 +197,7 @@ release, which no headless assertion reads:
 Seventy-one entries, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim.
 This index is here so an id resolves without opening that file: the open items
-above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.7" and
+above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.8" and
 the hygiene note cite C2, C5(b), P3, R4 and R7, and code comments, ADRs and
 commit messages cite ids of their own. All sixty-three are whole in the
 archive. **C11**, **W2** and **C15** were each split for a while — an entry
@@ -206,11 +208,13 @@ the archive, and none renumbered it.
 
 The archive also holds four sections that are records rather than work: the
 suggested sequence as it stood on 2026-09-05, "After alpha.6" as it stood on
-2026-09-06, and the two release sections —
+2026-09-06, and the three release sections —
 [Release 0.1.0-alpha.6](backlog/closed-2026-09.md#release-010-alpha6-2026-09-05),
 whose R1–R7 are the half-baked items finished before that tag, and
 [Release 0.1.0-alpha.7](backlog/closed-2026-09.md#release-010-alpha7-2026-09-06),
-which is what the pre-tag round ran and what it could not answer.
+which is what the pre-tag round ran and what it could not answer, and
+[Release 0.1.0-alpha.8](backlog/closed-2026-09.md#release-010-alpha8-2026-09-07),
+the round that watched ADR 0012 at its boundary.
 
 **From two field reports (2026-09-06)** — F1–F15, all fifteen. The first
 five are in the order they closed; the ten below them followed in the second

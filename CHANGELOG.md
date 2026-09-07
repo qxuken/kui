@@ -5,7 +5,7 @@ the workaround, the model field or the arithmetic the release made
 unnecessary. The second list is the point of the first — a library whose
 upgrades remove code from the apps on it is doing the job.
 
-## Unreleased
+## 0.1.0-alpha.8 (2026-09-07)
 
 **What breaks.** **A press that dismisses a popup no longer reaches the
 window it landed in.** It reports `{kind:"dismiss", reason:"outside"}` as
@@ -321,6 +321,83 @@ that is the intended trade, and the `### Changed` entry says why
   sixty-four of them, and the mask then answers "maybe" for every row. A
   membership mask wants a field that is sparse, and a departing key never
   is.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), run before this tag on
+2026-09-07. What follows is what executed on what.
+
+**macOS 26.6.2 (arm64), rustc 1.98.0.** `cargo test --workspace` passes:
+**635 tests over 60 suites, 0 failed, 0 ignored**, with no display, no
+installed fonts and no GPU. `cargo fmt --all --check` and `cargo clippy
+--workspace --all-targets -- -D warnings` are clean. The scene corpus runs
+in all four adapters against one reference report: **19 scenes** — the
+`exit` scene two phases longer than alpha.7's — Rust and Lua through `cargo
+test`, C through `examples/c/counter --conformance`, Node through `npm test`
+with `KUI_CONFORMANCE_REQUIRED=1` (**82 Node tests**, 0 failed; three are
+ADR 0013's). The C header still compiles against the generated ABI asserts,
+the C plugin dlopens into a Rust host and routes clicks both ways, and the
+same plugin with `kui_ext_abi` deleted is refused against ABI 7. `npm run
+gen` leaves the three generated files unchanged, `examples/node` builds,
+typechecks against the new loop types and runs headless, and
+`scripts/check-version.sh 0.1.0-alpha.8` passes.
+
+`scripts/ax-audit.swift` against `examples/rust/accessibility.rs` passes
+**106/106 checks**, the same 106 alpha.7 had: nothing in this release
+touched a role, a name or an announcement.
+
+Every host opened a window and drew, each captured with `screencapture -l`
+and looked at: the **twelve** Rust examples (`accessibility`, `connectors`,
+`counter`, `editor`, `gallery`, `modal_editor`, `popup`, `rich_text`,
+`splitmux`, `syntax_view`, `toasts`, and `bulk_exit`, which is new),
+`examples/c/counter`, `c_panel`, `lua_panel`, and `counter-window.mjs` on
+Node.
+
+**ADR 0012 was watched at its boundary, in the frames no headless test
+reads.** `bulk_exit` driven through the macOS AX API with a compiled press
+driver, captured straight after each press: *clear both* removed 600 nodes
+in one frame and **nothing animated** — both grids gone in the first
+capture, the `exit-budget` warning on stderr naming the frame's 600 nodes
+against the store's 512 — where alpha.7 would have slid 512 out and blinked
+88. *clear A* then *clear B* **3 ms apart**: A's first 88 cells gone, its
+remaining 212 sliding down together, every one of B's 300 sliding with
+them, and nothing on stderr, since eviction is the policy and not a warning.
+*clear list* on the thousand-row virtual column with the `exit` on the
+container: the built slice — rows 0–11, the overscan included — slid out as
+one picture, unclipped, as a ghost is.
+
+**The two drag checks on the by-hand list.** `npm run mindmap`, then a
+synthetic drag posted through the HID tap with `screencapture` run *while
+the button was down*: at "move pan −45,−27" the four cards and their three
+connectors had moved together to where the cursor was, and at "end pan
+−90,−55" they sat at the full offset — F15's symptom, still absent. And
+ADR 0009's gesture, run for the first time by hand since W2 built it:
+press on the `popup` example's field, four drag legs down into the menu
+captured as a screen region so the second window is in the shot — the menu
+open and tracking throughout — and a release 76 pt below on the third item,
+which set the field from Aluminium to **Cadmium** without a second click.
+Windows' mixed-DPI case stays unrun; nothing here has a Windows machine.
+
+**The performance guard passed, on a quiet machine this time.**
+`scripts/bench-check.sh` benches HEAD against the previous tag back to
+back on one machine: **none of the four guarded rows is slower than
+alpha.7** — `frame_10k_rects` −9.6%, `frame_10k_rects_with_text_and_hits`
+−6.9%, `frame_1k_typical` −0.1%, `deep_nesting_64_levels` −0.9% — with a
+worst run-to-run spread of 4.9% on a guarded row and no load warning.
+The README's table had been refreshed after alpha.7's tag by the C15
+round, and this run agrees with it within noise, so only the three rows
+ADR 0012 changed were rewritten into it. The
+gains are C15's, landed after alpha.7's tag: the chip, clip and one-exit
+grids are −10 to −13%. Three rows are marked *touched* because the bench
+file changed, and each says why: `drop_1k_rows_declaring_exit` −39.9%
+(270 → 162 µs) is ADR 0012 refusing a 1000-row removal whole and copying
+nothing, so the row now measures the refused frame and the new
+`drop_500_rows_declaring_exit` (~138 µs) measures the admitted one;
+`replay_a_full_depart_store` −14.7% fills the store to exactly the budget
+rather than through a refusal; `drop_1k_rows_plain` −8.8% shares the
+builder and is C15's. The two rows alpha.7 found would not hold still
+still do not: `frame_10k_rects_all_declaring_exit` read ±12.5% between its
+own two runs, and the table keeps the stated ±10% on it.
 
 ## 0.1.0-alpha.7 (2026-09-06)
 
