@@ -478,9 +478,11 @@ static int surface(void) {
     check(kui_measure_text(ui, KUI_STR("measure me measure me"), &body, one.width, &wrapped),
           "kui_measure_text wrapped");
     check(wrapped.lines > 1 && wrapped.height > one.height, "a narrow width wraps");
+    /* bg was appended to KuiSpan (ABI 8): a decorated span measures like a
+     * plain one, since decorations are paint. */
     KuiSpan spans[] = {
-        {KUI_STR("rich "), 0, KUI_SPAN_BOLD},
-        {KUI_STR("measure"), 0x73d98cff, KUI_SPAN_ITALIC},
+        {KUI_STR("rich "), 0, KUI_SPAN_BOLD | KUI_SPAN_UNDERLINE, 0x3b5bd455},
+        {KUI_STR("measure"), 0x73d98cff, KUI_SPAN_ITALIC | KUI_SPAN_STRIKETHROUGH, 0},
     };
     check(kui_measure_rich_text(ui, spans, 2, &body, 0, &rich), "kui_measure_rich_text");
     check(rich.width > 0 && rich.lines == 1, "spans measure as one line");

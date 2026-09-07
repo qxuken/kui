@@ -196,6 +196,13 @@ struct CachedText {
     /// Positioned glyph quads relative to the text origin, so steady-state
     /// emission is a memcpy-style walk instead of per-glyph atlas lookups.
     glyphs: Vec<GlyphTemplate>,
+    /// The decoration rects that go with them (backlog C22): a span's
+    /// background under its glyphs, its underline and strikethrough over
+    /// them, one rect per run of the span per line, so they wrap with it.
+    deco: Vec<DecoTemplate>,
+    /// What each span asked for, by the index its glyphs carry as
+    /// metadata; one entry for plain text.
+    span_deco: Vec<SpanDeco>,
     /// (wrap, atlas epoch) the template cache was built for.
     glyphs_built_for: Option<(Option<u32>, u64)>,
 }
@@ -211,6 +218,41 @@ struct GlyphTemplate {
     color: Option<Color>,
 }
 
+/// One decoration rect relative to the text origin, physical px.
+struct DecoTemplate {
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    /// The rect's colour; `None` is the text's own (an underline in the
+    /// text colour), which a background never is.
+    color: Option<Color>,
+    /// Painted before the glyphs (a background) rather than after (a line).
+    under: bool,
+}
+
+/// The decorations one span (or a plain text's whole content) asked for.
+#[derive(Clone, Copy, Default)]
+struct SpanDeco {
+    underline: bool,
+    strikethrough: bool,
+    bg: Option<Color>,
+}
+
+impl SpanDeco {
+    fn of_style(style: &TextStyle) -> Self {
+        Self {
+            underline: style.underline,
+            strikethrough: style.strikethrough,
+            bg: None,
+        }
+    }
+
+    fn any(&self) -> bool {
+        self.underline || self.strikethrough || self.bg.is_some()
+    }
+}
+
 /// One styled run inside a rich-text paragraph. Spans are shaped and wrapped
 /// together as a single flow; plain data, so every frontend can build them.
 #[derive(Clone, Copy, Debug)]
@@ -219,6 +261,14 @@ pub struct Span<'a> {
     pub color: Option<Color>,
     pub bold: bool,
     pub italic: bool,
+    /// A line under the span, where the face puts its underline (backlog
+    /// C22).
+    pub underline: bool,
+    /// A line through the span, where the face puts its strikeout.
+    pub strikethrough: bool,
+    /// A background behind the span's glyphs, one rect per line it spans,
+    /// so it follows the span across a wrap the way a box cannot.
+    pub bg: Option<Color>,
 }
 
 impl<'a> Span<'a> {
@@ -228,6 +278,9 @@ impl<'a> Span<'a> {
             color: None,
             bold: false,
             italic: false,
+            underline: false,
+            strikethrough: false,
+            bg: None,
         }
     }
 
@@ -243,6 +296,21 @@ impl<'a> Span<'a> {
 
     pub fn italic(mut self) -> Self {
         self.italic = true;
+        self
+    }
+
+    pub fn underline(mut self) -> Self {
+        self.underline = true;
+        self
+    }
+
+    pub fn strikethrough(mut self) -> Self {
+        self.strikethrough = true;
+        self
+    }
+
+    pub fn bg(mut self, c: Color) -> Self {
+        self.bg = Some(c);
         self
     }
 
@@ -555,6 +623,9 @@ impl TextSystem {
             mix(t);
             mix(&v.to_le_bytes());
         }
+        // Paint only, but a decorated text is a different entry: the
+        // decoration rects are built beside the glyph templates.
+        mix(&[style.underline as u8, style.strikethrough as u8]);
         h
     }
 
@@ -581,7 +652,14 @@ impl TextSystem {
                 Shaping::Advanced,
                 None,
             );
-            let entry = CachedText::new(buffer, content.to_string(), style, fs, frame_no);
+            let entry = CachedText::new(
+                buffer,
+                content.to_string(),
+                style,
+                vec![SpanDeco::of_style(style)],
+                fs,
+                frame_no,
+            );
             self.insert(key, entry);
         }
         self.cache.get_mut(&key).expect("just inserted").last_used = frame_no;
@@ -723,8 +801,15 @@ impl TextSystem {
                 }
             };
             mix(s.text.as_bytes());
-            mix(&[s.bold as u8, s.italic as u8, s.color.is_some() as u8]);
-            if let Some(c) = s.color {
+            mix(&[
+                s.bold as u8,
+                s.italic as u8,
+                s.color.is_some() as u8,
+                s.underline as u8,
+                s.strikethrough as u8,
+                s.bg.is_some() as u8,
+            ]);
+            for c in [s.color, s.bg].into_iter().flatten() {
                 mix(&c.r.to_bits().to_le_bytes());
                 mix(&c.g.to_bits().to_le_bytes());
                 mix(&c.b.to_bits().to_le_bytes());
@@ -737,16 +822,29 @@ impl TextSystem {
             let mut buffer = new_buffer(fs, base, scale);
             let family = res.family_of(base.family);
             let features = cosmic_features(&base.features);
+            // Each span's index rides its glyphs as metadata, which is how
+            // the decoration rects find their span after layout.
             buffer.set_rich_text(
-                spans
-                    .iter()
-                    .map(|s| (s.text, s.attrs(family).font_features(features.clone()))),
+                spans.iter().enumerate().map(|(i, s)| {
+                    (
+                        s.text,
+                        s.attrs(family).font_features(features.clone()).metadata(i),
+                    )
+                }),
                 &Attrs::new().family(family).font_features(features.clone()),
                 Shaping::Advanced,
                 None,
             );
             let content = spans.iter().map(|s| s.text).collect::<String>();
-            let entry = CachedText::new(buffer, content, base, fs, frame_no);
+            let decos = spans
+                .iter()
+                .map(|s| SpanDeco {
+                    underline: s.underline || base.underline,
+                    strikethrough: s.strikethrough || base.strikethrough,
+                    bg: s.bg,
+                })
+                .collect();
+            let entry = CachedText::new(buffer, content, base, decos, fs, frame_no);
             self.insert(key, entry);
         }
         self.cache.get_mut(&key).expect("just inserted").last_used = frame_no;
@@ -809,8 +907,13 @@ impl TextSystem {
         let built_for = (entry.wrap.map(f32::to_bits), atlas.epoch);
         if entry.glyphs_built_for != Some(built_for) {
             entry.glyphs.clear();
+            entry.deco.clear();
             let lines = line_cap(entry.max_lines);
+            let decorated = entry.span_deco.iter().any(SpanDeco::any);
             for run in entry.buffer.layout_runs().take(lines) {
+                if decorated {
+                    build_decorations(&run, &entry.span_deco, fs, &mut entry.deco);
+                }
                 for glyph in run.glyphs.iter() {
                     let physical = glyph.physical((0.0, 0.0), 1.0);
                     let Some(slot) = raster_glyph(physical.cache_key, fs, raster, atlas) else {
@@ -833,6 +936,33 @@ impl TextSystem {
             // frame if so by stamping the epoch we actually ended on.
             entry.glyphs_built_for = Some((entry.wrap.map(f32::to_bits), atlas.epoch));
         }
+
+        let inside = |x: f32, y: f32, w: f32, h: f32| {
+            oy + y + h >= clip.rect.y
+                && oy + y <= clip.rect.y + clip.rect.h
+                && ox + x < clip.rect.x + clip.rect.w
+                && ox + x + w > clip.rect.x
+        };
+        let deco_quad = |d: &DecoTemplate| Quad {
+            rect: Rect::new(ox + d.x, oy + d.y, d.w, d.h),
+            color: d.color.unwrap_or(color),
+            border_color: Color::TRANSPARENT,
+            radius: [0.0; 4],
+            border_w: 0.0,
+            blur: 0.0,
+            kind: QuadKind::Solid,
+            uv: [0; 4],
+            clip: clip.rect,
+            clip_radius: clip.radius,
+        };
+        // A span's background goes under its glyphs; its lines go over.
+        out.extend(
+            entry
+                .deco
+                .iter()
+                .filter(|d| d.under && inside(d.x, d.y, d.w, d.h))
+                .map(deco_quad),
+        );
 
         // Glyph templates are in layout order; skip everything above the clip
         // and stop at the first glyph past it (rows below never come back).
@@ -860,6 +990,99 @@ impl TextSystem {
                     clip_radius: clip.radius,
                 }),
         );
+        out.extend(
+            entry
+                .deco
+                .iter()
+                .filter(|d| !d.under && inside(d.x, d.y, d.w, d.h))
+                .map(deco_quad),
+        );
+    }
+}
+
+/// The decoration rects for one laid-out line: consecutive glyphs of one
+/// span (its index is their metadata) become one background rect, one
+/// underline and one strikethrough, as the span asked. Where the lines go
+/// is the face's own recommendation — swash's `underline_offset`,
+/// `strikeout_offset` and `stroke_size`, scaled to the glyph's size — read
+/// from the run's first glyph, so a fallback glyph in the middle of a
+/// span does not move the line.
+fn build_decorations(
+    run: &cosmic_text::LayoutRun<'_>,
+    spans: &[SpanDeco],
+    fs: &mut FontSystem,
+    out: &mut Vec<DecoTemplate>,
+) {
+    let mut i = 0;
+    while i < run.glyphs.len() {
+        let span_no = run.glyphs[i].metadata;
+        let mut j = i + 1;
+        while j < run.glyphs.len() && run.glyphs[j].metadata == span_no {
+            j += 1;
+        }
+        let deco = spans.get(span_no).copied().unwrap_or_default();
+        if deco.any() {
+            let group = &run.glyphs[i..j];
+            let x0 = group.iter().map(|g| g.x).fold(f32::INFINITY, f32::min);
+            let x1 = group
+                .iter()
+                .map(|g| g.x + g.w)
+                .fold(f32::NEG_INFINITY, f32::max);
+            let w = (x1 - x0).max(0.0);
+            if let Some(bg) = deco.bg {
+                out.push(DecoTemplate {
+                    x: x0,
+                    y: run.line_top,
+                    w,
+                    h: run.line_height,
+                    color: Some(bg),
+                    under: true,
+                });
+            }
+            if deco.underline || deco.strikethrough {
+                let first = &group[0];
+                let metrics = fs
+                    .get_font(first.font_id, first.font_weight)
+                    .map(|font| font.as_swash().metrics(&[]).scale(first.font_size));
+                // Without the face (it was unloaded between frames), a
+                // line under the descent and one through the x-height.
+                let (under_off, strike_off, stroke) = match metrics {
+                    Some(m) => (m.underline_offset, m.strikeout_offset, m.stroke_size),
+                    None => (
+                        -0.1 * first.font_size,
+                        0.3 * first.font_size,
+                        0.06 * first.font_size,
+                    ),
+                };
+                let stroke = stroke.max(1.0).round();
+                let baseline = run.line_y.round();
+                if deco.underline {
+                    out.push(DecoTemplate {
+                        x: x0,
+                        y: (baseline - under_off).round(),
+                        w,
+                        h: stroke,
+                        color: first
+                            .color_opt
+                            .map(|c| Color::rgba8(c.r(), c.g(), c.b(), c.a())),
+                        under: false,
+                    });
+                }
+                if deco.strikethrough {
+                    out.push(DecoTemplate {
+                        x: x0,
+                        y: (baseline - strike_off).round(),
+                        w,
+                        h: stroke,
+                        color: first
+                            .color_opt
+                            .map(|c| Color::rgba8(c.r(), c.g(), c.b(), c.a())),
+                        under: false,
+                    });
+                }
+            }
+        }
+        i = j;
     }
 }
 
@@ -1082,6 +1305,7 @@ impl CachedText {
         mut buffer: Buffer,
         content: String,
         style: &TextStyle,
+        span_deco: Vec<SpanDeco>,
         fs: &mut FontSystem,
         frame_no: u64,
     ) -> Self {
@@ -1099,6 +1323,8 @@ impl CachedText {
             clamp_w: style.wrap == TextWrap::None || style.ellipsis,
             last_used: frame_no,
             glyphs: Vec::new(),
+            deco: Vec::new(),
+            span_deco,
             glyphs_built_for: None,
         }
     }

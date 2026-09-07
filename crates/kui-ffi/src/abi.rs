@@ -17,7 +17,9 @@
 //   `KuiSpan`, `KuiPlay`, `KuiAudio`, `KuiWindowConfig`. Appending a field is compatible: a
 //   host that predates it passes the shorter struct, the library reads no
 //   further than the host wrote, and the zeroed tail is the documented
-//   default. `KuiSpec` grew `tooltip` exactly this way.
+//   default. `KuiSpec` grew `tooltip` exactly this way. The exception is
+//   an [in] struct that travels as an *array* — `KuiSpan` — where an
+//   append moves the stride and is a bump (ABI 8).
 // - **[out]** — the host allocates it, the library writes it: `KuiEvent`,
 //   `KuiDrawData`, `KuiTextMetrics`, `KuiScrollGeometry`, `KuiTextHit`,
 //   `KuiCaretRect`, `KuiWindowCommand`. Appending a field
@@ -99,7 +101,15 @@
 /// is the handshake doing its job; `kui_abi_version()` is what turns a
 /// silent empty queue into a message. Every host recompiles anyway — the
 /// header changed — and none of them edits a line.
-pub const KUI_ABI_VERSION: u32 = 7;
+///
+/// ABI 8 appends `bg` to `KuiSpan` (backlog C22). An [in] struct, which
+/// the rule above says not to bump for — except that spans travel as an
+/// array (`kui_rich_text`, `kui_measure_rich_text` take `const KuiSpan *,
+/// size_t`), so the append moved the stride, which is the [out-array]
+/// hazard mirrored: an old binary's element 1 is read at the wrong place
+/// whatever element 0 says. The bump makes that a message. Recompile and
+/// nothing in a host's source changes; a zeroed `bg` is none.
+pub const KUI_ABI_VERSION: u32 = 8;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its

@@ -421,25 +421,38 @@ export function createEncoder(P) {
     return node != null && typeof node === 'object' && node.type === 'span';
   }
 
-  // Flattens <span> nesting into (text, flags, color) triples, inheritance
-  // matching the Rust collect_spans.
-  function collectSpans(node, bold, italic, spanColor, out) {
+  // Flattens <span> nesting into (text, flags, color, bg) quads, inheritance
+  // matching the Rust collect_spans. Flags: 1 bold, 2 italic, 4 has color,
+  // 8 underline, 16 strikethrough, 32 has bg.
+  function collectSpans(node, st, out) {
     if (node == null || typeof node === 'boolean') return;
     if (typeof node === 'string' || typeof node === 'number') {
-      out.push([String(node), (bold ? 1 : 0) | (italic ? 2 : 0) | (spanColor !== undefined ? 4 : 0), spanColor ?? 0]);
+      const flags =
+        (st.bold ? 1 : 0) |
+        (st.italic ? 2 : 0) |
+        (st.color !== undefined ? 4 : 0) |
+        (st.underline ? 8 : 0) |
+        (st.strikethrough ? 16 : 0) |
+        (st.bg !== undefined ? 32 : 0);
+      out.push([String(node), flags, st.color ?? 0, st.bg ?? 0]);
       return;
     }
     if (Array.isArray(node)) {
-      for (const c of node) collectSpans(c, bold, italic, spanColor, out);
+      for (const c of node) collectSpans(c, st, out);
       return;
     }
     if (node.type !== 'span') throw new Error('only strings and <span> may nest inside rich <text>');
     const p = node.props ?? {};
     collectSpans(
       node.children,
-      bold || !!p.bold,
-      italic || !!p.italic,
-      p.color != null ? color(p.color) : spanColor,
+      {
+        bold: st.bold || !!p.bold,
+        italic: st.italic || !!p.italic,
+        color: p.color != null ? color(p.color) : st.color,
+        underline: st.underline || !!p.underline,
+        strikethrough: st.strikethrough || !!p.strikethrough,
+        bg: p.bg != null ? color(p.bg) : st.bg,
+      },
       out,
     );
   }
@@ -476,15 +489,16 @@ export function createEncoder(P) {
       case 'text':
         if (hasSpan(el.children)) {
           const spans = [];
-          collectSpans(el.children, false, false, undefined, spans);
+          collectSpans(el.children, {}, spans);
           f[fi++] = OP.richText;
           props(p, null, false);
-          reserve(8 + spans.length * 5);
+          reserve(8 + spans.length * 6);
           f[fi++] = spans.length;
-          for (const [text, flags, c] of spans) {
+          for (const [text, flags, c, bg] of spans) {
             strRef(text);
             f[fi++] = flags;
             f[fi++] = c;
+            f[fi++] = bg;
           }
         } else {
           f[fi++] = OP.text;

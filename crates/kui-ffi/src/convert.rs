@@ -363,6 +363,12 @@ pub(crate) fn text_style_of(s: &KuiTextStyle) -> TextStyle {
     if let Some(features) = opt_str(s.features) {
         style = style.features(kui_core::FontFeatures::parse(&features));
     }
+    if s.decoration & 1 != 0 {
+        style = style.underline();
+    }
+    if s.decoration & 2 != 0 {
+        style = style.strikethrough();
+    }
     style
 }
 

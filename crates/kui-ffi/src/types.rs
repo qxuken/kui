@@ -704,6 +704,10 @@ pub struct KuiTextStyle {
     /// (a zeroed `KuiStr`) is the font's defaults. Appended in the
     /// compatible way: a host predating it passes the shorter struct.
     pub features: KuiStr,
+    /// `KUI_DECO_UNDERLINE` | `KUI_DECO_STRIKETHROUGH`: lines where the
+    /// face puts them, over every glyph. Paint only. Appended the
+    /// compatible way (backlog C22).
+    pub decoration: u32,
 }
 
 #[repr(C)]
@@ -712,8 +716,13 @@ pub struct KuiSpan {
     pub text: KuiStr,
     /// 0xRRGGBBAA; 0 = inherit the paragraph color
     pub color: u32,
-    /// bit 0 = bold, bit 1 = italic
+    /// `KUI_SPAN_BOLD` | `KUI_SPAN_ITALIC` | `KUI_SPAN_UNDERLINE` |
+    /// `KUI_SPAN_STRIKETHROUGH`
     pub flags: u32,
+    /// 0xRRGGBBAA behind the span's glyphs alone, one rect per line the
+    /// span covers; 0 = none. Its append is ABI 8: spans travel as an
+    /// array, so the stride moved (backlog C22).
+    pub bg: u32,
 }
 
 /// One polled event ([out]). `size` leads it so that `window` — ABI 4's

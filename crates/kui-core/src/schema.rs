@@ -136,6 +136,8 @@ pub const P_KEY_UP: u32 = 81;
 pub const P_VALUE_TEXT: u32 = 82;
 pub const P_DESCRIPTION: u32 = 83;
 pub const P_FEATURES: u32 = 84;
+pub const P_UNDERLINE: u32 = 85;
+pub const P_STRIKETHROUGH: u32 = 86;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -855,6 +857,20 @@ pub const PROPS: &[PropDef] = &[
         doc: "End the last line with an ellipsis when the text is cut off: a single line unless `maxLines` says otherwise.",
     },
     PropDef {
+        name: "underline",
+        id: P_UNDERLINE,
+        kind: Kind::Flag,
+        apply: Apply::StyleFlag(|t| t.underline()),
+        doc: "A line under the text, where the face puts its underline and as thick as it says, in the text colour. Paint only. On a `<span>` it covers the span alone and follows it across a wrap, one rect per line.",
+    },
+    PropDef {
+        name: "strikethrough",
+        id: P_STRIKETHROUGH,
+        kind: Kind::Flag,
+        apply: Apply::StyleFlag(|t| t.strikethrough()),
+        doc: "A line through the text, where the face puts its strikeout. Paint only; on a `<span>` the span alone, per line.",
+    },
+    PropDef {
         name: "features",
         id: P_FEATURES,
         kind: Kind::Str,
@@ -1169,6 +1185,14 @@ pub const C_FIELDS: &[(&str, &str)] = &[
         "features",
         "`KuiTextStyle.features` (a `KuiStr`, the same spelling)",
     ),
+    (
+        "underline",
+        "`KuiTextStyle.decoration` (`KUI_DECO_UNDERLINE`); `KuiSpan.flags` (`KUI_SPAN_UNDERLINE`)",
+    ),
+    (
+        "strikethrough",
+        "`KuiTextStyle.decoration` (`KUI_DECO_STRIKETHROUGH`); `KuiSpan.flags` (`KUI_SPAN_STRIKETHROUGH`)",
+    ),
     ("color", "`KuiTextStyle.color`"),
 ];
 
@@ -1245,14 +1269,14 @@ pub const ELEMENTS: &[ElementDef] = &[
     },
     ElementDef {
         name: "text",
-        jsx_own: &["bold", "italic"],
+        jsx_own: &["bold", "italic", "bg"],
         lua_own: &["value", "spans"],
         jsx_rows: None,
         lua_rows: None,
-        jsx: "`<text>` with `<span bold italic color>` children",
-        lua: "`text(\"s\", {…})`, `text({ \"a\", { \"b\", bold = true } })`",
+        jsx: "`<text>` with `<span bold italic underline strikethrough bg color>` children",
+        lua: "`text(\"s\", {…})`, `text({ \"a\", { \"b\", bold = true, underline = true, bg = 0x.. } })`",
         c: "`kui_text`, `kui_rich_text`",
-        doc: "Plain or rich text; spans shape as one paragraph, so wrapping crosses style boundaries. `wrap`, `maxLines` and `ellipsis` control line breaking.",
+        doc: "Plain or rich text; spans shape as one paragraph, so wrapping crosses style boundaries. `wrap`, `maxLines` and `ellipsis` control line breaking. A span's `bg` is a background behind its glyphs alone, one rect per line it spans, so it follows the span across a wrap the way a box around a run cannot; `underline` and `strikethrough` on a span or on the whole text are lines where the face puts them.",
     },
     ElementDef {
         name: "button",

@@ -352,6 +352,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
                 let text = r.req_str()?;
                 let flags = r.u()?;
                 let color = r.f()?;
+                let bg = r.f()?;
                 let mut s = Span::new(text);
                 if flags & 1 != 0 {
                     s = s.bold();
@@ -361,6 +362,15 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
                 }
                 if flags & 4 != 0 {
                     s = s.color(color_num(color as u32));
+                }
+                if flags & 8 != 0 {
+                    s = s.underline();
+                }
+                if flags & 16 != 0 {
+                    s = s.strikethrough();
+                }
+                if flags & 32 != 0 {
+                    s = s.bg(color_num(bg as u32));
                 }
                 spans.push(s);
             }

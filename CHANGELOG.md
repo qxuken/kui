@@ -27,6 +27,9 @@ field reports).
   that returned something incidental now sends it.
 - `kui::run` and `Launcher::extensions` refuse two extensions of one name —
   give one a namespace with `extension_as`.
+- `KUI_ABI_VERSION` is 8: `KuiSpan` gained `bg`, and spans travel as an
+  array, so the stride moved — a C host recompiles against the new `kui.h`
+  and changes no source (a zeroed `bg` is none).
 - An extension's node keys are derived from the slot's full name, so they all
   move once at the upgrade: its tweens restart and its editors are seeded
   from `initial` again on the first frame after it.
@@ -92,6 +95,30 @@ that asserts on an empty warning list is what notices.
   lines a frame at ~25 ms, fifty random ones at ~64 ms, and that number
   is cosmic-text's (the same fifty lines shaped through it alone measure
   the same), which is C20's entry and not this one's.
+
+- **Underline, strikethrough, and a background per span** (backlog C22).
+  `Span::underline()` / `strikethrough()` / `bg(color)` and
+  `TextStyle::underline()` / `strikethrough()` — `<span underline
+  strikethrough bg>` and `<text underline strikethrough>` in JSX, the same
+  keys on a Lua span table and text options, `KUI_SPAN_UNDERLINE` /
+  `KUI_SPAN_STRIKETHROUGH` / `KuiSpan.bg` and `KuiTextStyle.decoration`
+  in C. Paint, not shape: the decorated text measures like the plain one
+  and is a second cache entry, and the rects are built beside the glyph
+  templates from the layout — one per run of the span per line, so a
+  span's background follows it across a wrap, which is the thing a `bg`
+  box around a run could never do. A background paints under the glyphs
+  and a line over them, where the face puts it: swash's
+  `underline_offset`, `strikeout_offset` and `stroke_size` scaled to the
+  glyph's size, read from the run's first glyph. Each span's index rides
+  its glyphs as cosmic-text metadata, which is how a rect finds its span
+  after layout. `tests/decorations.rs` pins the two lines (spanning the
+  glyphs, the underline below the strikethrough, painted after the
+  glyphs), a span background covering the span alone and painted before
+  them, the wrapped span's two backgrounds and two underlines, and that
+  measurement does not move; the Node, Lua and C tests drive their spans
+  through their own doors. Node's encoder writes four slots per span now
+  (text, flags, colour, bg) with flags 8/16/32 for the three — an
+  internal change, since the encoder is the addon's only door.
 
 - **Font features: ligatures off, tabular figures on** (backlog C23).
   `TextStyle::features(FontFeatures)` — `features` on `<text>` / `<edit>`

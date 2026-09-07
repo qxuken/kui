@@ -857,6 +857,30 @@ test('measureText answers what layout gives the text', () => {
   assert.ok(rich.width > 0 && rich.lines === 1);
 });
 
+// Underline, strikethrough and a background per span (backlog C22): solid
+// quads beside the glyphs, the background under them and the lines over.
+test('a span carries its own background and lines', () => {
+  const ctx = new Ctx();
+  const mono = { size: 14, family: 'mono', lineHeight: 20 };
+  ctx.frame(300, 100, 1, box({}, [
+    text(['let ', el('span', { bg: '#3b5bd455', underline: true }, ['value']), ' = 1;'], mono),
+  ]));
+  const quads = decodeQuads(ctx.quads());
+  const solids = quads.filter((q) => q.kind === 0);
+  assert.equal(solids.length, 2, JSON.stringify(solids));
+  const [bg, line] = solids;
+  const w = ctx.measureText('M', mono).width;
+  assert.ok(Math.abs(bg.x - 4 * w) < 1 && Math.abs(bg.w - 5 * w) < 1.5, JSON.stringify(bg));
+  assert.equal(bg.h, 20, 'the whole line');
+  assert.ok(line.h >= 1 && line.h < 20 && line.y > bg.y, 'a thin line lower down');
+  const firstGlyph = quads.findIndex((q) => q.kind === 1);
+  assert.ok(quads.indexOf(bg) < firstGlyph, 'background under the glyphs');
+  assert.ok(quads.indexOf(line) > firstGlyph, 'line over them');
+  // Whole-text decorations are style rows.
+  ctx.frame(300, 100, 1, box({}, [text('struck', { ...mono, strikethrough: true })]));
+  assert.equal(decodeQuads(ctx.quads()).filter((q) => q.kind === 0).length, 1);
+});
+
 // OpenType features on a text style (backlog C23): one string every
 // binding shares, part of what the text is shaped as. The ligature half runs
 // only where a font with one is installed.

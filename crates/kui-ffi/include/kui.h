@@ -93,8 +93,15 @@ extern "C" {
  * windows - so this is the release where checking kui_abi_version() first
  * is the difference between a message and a mystery. Recompile and nothing
  * in your source changes.
+ *
+ * ABI 8 appends bg to KuiSpan (backlog C22). An [in] struct, but one that
+ * travels as an array - kui_rich_text and kui_measure_rich_text take
+ * `const KuiSpan *spans, size_t span_count` - so the append moved the
+ * stride, and a binary that was not recompiled would hand the library
+ * elements it reads at the wrong places. Recompile and nothing in your
+ * source changes; a zeroed bg is none.
  */
-#define KUI_ABI_VERSION 7u
+#define KUI_ABI_VERSION 8u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -188,7 +195,14 @@ enum { KUI_FONT_SANS = 0, KUI_FONT_SERIF = 1, KUI_FONT_MONO = 2 };
 /* Line breaking (KuiTextStyle.wrap) */
 enum { KUI_WRAP_WORD = 0, KUI_WRAP_GLYPH = 1, KUI_WRAP_NONE = 2 };
 /* Span flags */
-enum { KUI_SPAN_BOLD = 1u << 0, KUI_SPAN_ITALIC = 1u << 1 };
+enum {
+    KUI_SPAN_BOLD = 1u << 0,
+    KUI_SPAN_ITALIC = 1u << 1,
+    KUI_SPAN_UNDERLINE = 1u << 2,     /* a line under the span, where the face puts it */
+    KUI_SPAN_STRIKETHROUGH = 1u << 3, /* a line through it */
+};
+/* KuiTextStyle.decoration: the same two lines over a whole text. */
+enum { KUI_DECO_UNDERLINE = 1u << 0, KUI_DECO_STRIKETHROUGH = 1u << 1 };
 /* Overflow flags */
 enum { KUI_CLIP = 1u << 0, KUI_SCROLL_X = 1u << 1, KUI_SCROLL_Y = 1u << 2 };
 /* Editing keys (kui_input_key) */
@@ -860,6 +874,8 @@ typedef struct KuiTextStyle {
     KuiStr features;   /* OpenType features, "tag=value ..." (bare tag = 1, -tag = 0), e.g.
                           "liga=0 calt=0" to keep a coding font's ligatures apart; zeroed =
                           the font's defaults. Appended the compatible way, like KuiSpec.tooltip. */
+    uint32_t decoration; /* KUI_DECO_* : underline / strikethrough over every glyph, paint only.
+                            Appended the compatible way. */
 } KuiTextStyle;
 
 /* [in] One run of a rich-text paragraph. */
@@ -867,6 +883,9 @@ typedef struct KuiSpan {
     KuiStr text;
     uint32_t color; /* 0: inherit paragraph color */
     uint32_t flags; /* KUI_SPAN_* */
+    uint32_t bg;    /* 0xRRGGBBAA behind the span's glyphs alone, one rect per line it
+                       covers, so it follows the span across a wrap; 0 = none. ABI 8:
+                       spans travel as an array, so this append moved the stride. */
 } KuiSpan;
 
 /* The window an app starts in - the one kui_run opens - which is always

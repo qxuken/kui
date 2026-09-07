@@ -447,12 +447,14 @@ fn asserts() -> String {
         max_lines: u32 => "uint32_t",
         ellipsis: u32 => "uint32_t",
         features: KuiStr => "KuiStr",
+        decoration: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiSpan {
         text: KuiStr => "KuiStr",
         color: u32 => "uint32_t",
         flags: u32 => "uint32_t",
+        bg: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiEvent {

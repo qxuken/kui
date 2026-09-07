@@ -1054,7 +1054,31 @@ wake instead of polling. (3) A test drives `open`, wakes from a thread,
 and pins that a frame was drawn without any OS input — headless cannot
 (the wake is the driver's), so it is a `SMOKE_*` job beside F13's probe.
 
-### `.` C22 — Underline, strikethrough, and a background per span
+### `.` C22 — Underline, strikethrough, and a background per span — **done (2026-09-07)**
+
+Done as the "Do" says, all three at once rather than one on request,
+since the editor and the mux both wanted every one and the mechanism is
+shared. `SpanDeco` per span (underline, strikethrough, bg; plain text
+has one from its style) and `DecoTemplate` rects built beside the glyph
+templates in `emit`: each span's index rides its glyphs as cosmic-text
+`metadata`, `build_decorations` groups consecutive glyphs of one span
+per run, and the rects come out one per line the span covers — the
+background under the glyphs (emitted first), the lines over them
+(emitted last), placed by swash's `underline_offset` /
+`strikeout_offset` / `stroke_size` scaled to the first glyph's size
+through `FontSystem::get_font`. Decorations are mixed into the cache
+key (a decorated text is a second entry) and nothing else about shaping
+or measurement moves, which `decorations_do_not_change_what_the_text_
+measures` pins. Rows: `underline` / `strikethrough` on the style
+(`Kind::Flag`), `bg` / `underline` / `strikethrough` on a span in every
+binding — Node's encoder now writes four slots a span, Lua's span tables
+take the three keys, and C's `KuiSpan` grew `bg`, which is **ABI 8**:
+the entry's "the bits are additive" was wrong for the array a span list
+travels as, since an append moves the stride, so `abi.rs`'s note names
+the exception now. The parity assert caught the one mistake on the way
+(a field appended in a different order in Rust and in the header). A
+curly underline for diagnostics stays a `line` curve, as the entry
+said. Four tests in the core, one each in Node, Lua and the C self-test.
 
 `Span` is `text`, `color`, `bold`, `italic` (`text.rs`, and `<span bold
 italic color>` is the whole JSX row); `TextStyle` has no decoration

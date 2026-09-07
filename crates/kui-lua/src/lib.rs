@@ -931,7 +931,10 @@ struct SpanPart {
     text: String,
     bold: bool,
     italic: bool,
+    underline: bool,
+    strikethrough: bool,
     color: Option<Color>,
+    bg: Option<Color>,
 }
 
 fn span_of(p: &SpanPart) -> Span<'_> {
@@ -942,8 +945,17 @@ fn span_of(p: &SpanPart) -> Span<'_> {
     if p.italic {
         s = s.italic();
     }
+    if p.underline {
+        s = s.underline();
+    }
+    if p.strikethrough {
+        s = s.strikethrough();
+    }
     if let Some(c) = p.color {
         s = s.color(c);
+    }
+    if let Some(c) = p.bg {
+        s = s.bg(c);
     }
     s
 }
@@ -957,7 +969,10 @@ fn collect_spans(spans: &Table) -> mlua::Result<Vec<SpanPart>> {
                 text: s.to_str()?.to_string(),
                 bold: false,
                 italic: false,
+                underline: false,
+                strikethrough: false,
                 color: None,
+                bg: None,
             }),
             mlua::Value::Table(t) => {
                 let text: String = t
@@ -967,11 +982,18 @@ fn collect_spans(spans: &Table) -> mlua::Result<Vec<SpanPart>> {
                     mlua::Value::Nil => None,
                     v => Some(parse_color(&v)?),
                 };
+                let bg = match t.get::<mlua::Value>("bg")? {
+                    mlua::Value::Nil => None,
+                    v => Some(parse_color(&v)?),
+                };
                 out.push(SpanPart {
                     text,
                     bold: t.get::<Option<bool>>("bold")?.unwrap_or(false),
                     italic: t.get::<Option<bool>>("italic")?.unwrap_or(false),
+                    underline: t.get::<Option<bool>>("underline")?.unwrap_or(false),
+                    strikethrough: t.get::<Option<bool>>("strikethrough")?.unwrap_or(false),
                     color,
+                    bg,
                 });
             }
             other => {
@@ -2661,6 +2683,34 @@ mod tests {
         );
         let none: mlua::Value = ext.lua.globals().get("none").unwrap();
         assert!(matches!(none, mlua::Value::Nil), "a node that drew no text");
+    }
+
+    /// A span's `underline`, `strikethrough` and `bg` reach the core
+    /// (backlog C22): the frame carries the solid quads beside the glyphs.
+    #[test]
+    fn spans_carry_their_decorations() {
+        let mut ext = LuaExtension::from_source(
+            "deco",
+            r#"
+                function view(env)
+                  return row { text({ "let ", { "value", bg = 0x3b5bd455, underline = true },
+                                      " = 1;" }, { size = 14, family = "mono" }) }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.set_origin(OriginId(1));
+        ext.view(&Slot::root(), &mut ui).unwrap();
+        ui.finish();
+        let (dl, _) = core.output();
+        let solids = dl
+            .quads
+            .iter()
+            .filter(|q| q.kind == kui_core::QuadKind::Solid)
+            .count();
+        assert_eq!(solids, 2, "a background and an underline");
     }
 
     /// `features = "liga=0"` reaches the shaper through the same schema

@@ -121,6 +121,9 @@ struct SpanStyle {
     color: Option<Color>,
     bold: bool,
     italic: bool,
+    underline: bool,
+    strikethrough: bool,
+    bg: Option<Color>,
 }
 
 struct SpanPart {
@@ -138,6 +141,15 @@ fn span_of(p: &SpanPart) -> Span<'_> {
     }
     if let Some(c) = p.style.color {
         s = s.color(c);
+    }
+    if p.style.underline {
+        s = s.underline();
+    }
+    if p.style.strikethrough {
+        s = s.strikethrough();
+    }
+    if let Some(c) = p.style.bg {
+        s = s.bg(c);
     }
     s
 }
@@ -187,6 +199,12 @@ fn collect_spans(node: Option<&Json>, inherit: SpanStyle, out: &mut Vec<SpanPart
                 },
                 bold: inherit.bold || bool_prop(props, "bold"),
                 italic: inherit.italic || bool_prop(props, "italic"),
+                underline: inherit.underline || bool_prop(props, "underline"),
+                strikethrough: inherit.strikethrough || bool_prop(props, "strikethrough"),
+                bg: match props.get("bg") {
+                    Some(v) => Some(color_of(v)?),
+                    None => inherit.bg,
+                },
             };
             collect_spans(children, style, out)
         }

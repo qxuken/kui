@@ -1567,6 +1567,11 @@ pub struct TextStyle {
     /// OpenType features for the shaper; none by default, which is the
     /// font's own defaults (ligatures on, where it has them).
     pub features: FontFeatures,
+    /// A line under every glyph, where the face puts its underline (backlog
+    /// C22). Paint only: not part of what the text is shaped as.
+    pub underline: bool,
+    /// A line through every glyph, where the face puts its strikeout.
+    pub strikethrough: bool,
 }
 
 impl Default for TextStyle {
@@ -1586,7 +1591,19 @@ impl TextStyle {
             max_lines: 0,
             ellipsis: false,
             features: FontFeatures::new(),
+            underline: false,
+            strikethrough: false,
         }
+    }
+
+    pub fn underline(mut self) -> Self {
+        self.underline = true;
+        self
+    }
+
+    pub fn strikethrough(mut self) -> Self {
+        self.strikethrough = true;
+        self
     }
 
     /// OpenType features for the shaper; see [`FontFeatures`].

@@ -291,8 +291,11 @@ that are hard to reverse and would look arbitrary without their context.
   through a `TextMeasure` trait (stubbed in tests, cosmic-text in production);
   emission reuses positioned glyph templates until wrap width or the atlas
   epoch changes. Renderers receive pre-rasterized atlas quads only. Rich text
-  is `Span` lists (color/bold/italic per run) shaped as one paragraph flow, so
-  wrapping crosses style boundaries and emoji share baselines. Line breaking
+  is `Span` lists (color/bold/italic per run, and underline, strikethrough
+  or a background per span — paint built beside the glyphs, one rect per
+  line the span covers, so a background follows it across a wrap) shaped as
+  one paragraph flow, so wrapping crosses style boundaries and emoji share
+  baselines. Line breaking
   is a style choice: `wrap` (word / glyph / none), `max_lines`, and
   `ellipsis` (a single "…"-terminated line unless `max_lines` says
   otherwise); unwrapped text takes its box's width and clips to it.

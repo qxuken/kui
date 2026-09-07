@@ -271,6 +271,10 @@ export interface GeneratedStyleProps {
   lineHeight?: number;
   /** Lay out at most this many lines (0 = unlimited); with `ellipsis`, a line clamp. */
   maxLines?: number;
+  /** A line through the text, where the face puts its strikeout. Paint only; on a `<span>` the span alone, per line. */
+  strikethrough?: boolean;
+  /** A line under the text, where the face puts its underline and as thick as it says, in the text colour. Paint only. On a `<span>` it covers the span alone and follows it across a wrap, one rect per line. */
+  underline?: boolean;
   /** Line breaking at the node's width: between words (default), anywhere, or never (one line per paragraph, clipped to the node). */
   wrap?: 'word' | 'glyph' | 'none';
 }
@@ -324,6 +328,13 @@ export interface SpanProps extends Keyed {
   italic?: boolean;
   /** Overrides the paragraph color; nested spans inherit. */
   color?: ColorProp;
+  /** A line under the span, where the face puts it; nested spans inherit. */
+  underline?: boolean;
+  /** A line through the span, where the face puts it; nested spans inherit. */
+  strikethrough?: boolean;
+  /** A background behind the span's glyphs alone — one rect per line it
+   *  spans, so it follows the span across a wrap the way a box cannot. */
+  bg?: ColorProp;
   children?: KuiNode;
 }
 

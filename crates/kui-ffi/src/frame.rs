@@ -281,8 +281,17 @@ fn with_spans<R>(
             if s.flags & 2 != 0 {
                 span = span.italic();
             }
+            if s.flags & 4 != 0 {
+                span = span.underline();
+            }
+            if s.flags & 8 != 0 {
+                span = span.strikethrough();
+            }
             if s.color != 0 {
                 span = span.color(Color::hex(s.color));
+            }
+            if s.bg != 0 {
+                span = span.bg(Color::hex(s.bg));
             }
             span
         })
