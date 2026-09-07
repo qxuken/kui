@@ -758,6 +758,24 @@ typedef struct KuiTextMetrics {
 } KuiTextMetrics;
 #define KUI_TEXT_METRICS_INIT ((KuiTextMetrics){ .size = sizeof(KuiTextMetrics) })
 
+/* [out] Where a point landed in the text a keyed node drew (kui_text_hit):
+ * a byte offset into that text - across the node's text runs in order, the
+ * way the access tree reads a `line` - and the visual (wrapped) line. */
+typedef struct KuiTextHit {
+    uint32_t size; /* = sizeof(KuiTextHit) in, bytes filled out */
+    uint32_t line;
+    uint64_t byte;
+} KuiTextHit;
+#define KUI_TEXT_HIT_INIT ((KuiTextHit){ .size = sizeof(KuiTextHit) })
+
+/* [out] A caret rect (kui_caret_rect): logical px in viewport coordinates,
+ * zero wide, one line tall. */
+typedef struct KuiCaretRect {
+    uint32_t size; /* = sizeof(KuiCaretRect) in, bytes filled out */
+    float x, y, w, h;
+} KuiCaretRect;
+#define KUI_CARET_RECT_INIT ((KuiCaretRect){ .size = sizeof(KuiCaretRect) })
+
 /* [out] What the last layout resolved for a scroll container
  * (kui_scroll_geometry): its box, its content size and the clamped offset,
  * logical px in viewport coordinates. */
@@ -1391,6 +1409,18 @@ bool kui_measure_text(KuiCtx *ctx, KuiStr text, const KuiTextStyle *style,
                       float max_w, KuiTextMetrics *out);
 bool kui_measure_rich_text(KuiCtx *ctx, const KuiSpan *spans, size_t span_count,
                            const KuiTextStyle *base, float max_w, KuiTextMetrics *out);
+/* Where a point (logical viewport px, as a click or drag event carries it)
+ * lands in the text the node `key` drew: a byte offset into that text and
+ * the visual line, so a custom editor turns the event into a caret position
+ * with one call instead of measuring prefixes or assuming a cell width. A
+ * node holding several text runs (a `line` row of token runs) answers across
+ * them in order. Answered from the frame that finished - the layout the
+ * pointer was over. False for a key that drew no text. */
+bool kui_text_hit(KuiCtx *ctx, uint64_t key, float x, float y, KuiTextHit *out);
+/* The caret rect for byte offset `byte` in that text: where a caret, a
+ * selection edge or an IME candidate window goes. A byte past the text is
+ * the end. False for a key that drew no text. */
+bool kui_caret_rect(KuiCtx *ctx, uint64_t key, size_t byte, KuiCaretRect *out);
 /* -- Diagnostics ---------------------------------------------------------- */
 /* Drains the warnings the core raised since the last call into out (up to
  * cap; the rest wait), returns the count. Each distinct (code, node) pair

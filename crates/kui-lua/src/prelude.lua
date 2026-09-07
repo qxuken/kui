@@ -14,8 +14,14 @@ function column(t)
 end
 
 -- text("plain", opts) or text({ "plain ", { "bold", bold = true, color = 0x.. } }, opts)
+-- The options are copied, not written into: a style table a script hoists
+-- (`local mono = { size = 14 }`) and hands to several texts is several
+-- nodes, not one table that ends up holding the last string.
 function text(s, opts)
-  local t = opts or {}
+  local t = {}
+  if opts then
+    for k, v in pairs(opts) do t[k] = v end
+  end
   t.type = "text"
   if type(s) == "table" then
     t.spans = s

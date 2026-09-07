@@ -19,8 +19,8 @@
 //   further than the host wrote, and the zeroed tail is the documented
 //   default. `KuiSpec` grew `tooltip` exactly this way.
 // - **[out]** — the host allocates it, the library writes it: `KuiEvent`,
-//   `KuiDrawData`, `KuiTextMetrics`, `KuiScrollGeometry`,
-//   `KuiWindowCommand`. Appending a field
+//   `KuiDrawData`, `KuiTextMetrics`, `KuiScrollGeometry`, `KuiTextHit`,
+//   `KuiCaretRect`, `KuiWindowCommand`. Appending a field
 //   here is memory corruption at a host that has not recompiled — it
 //   reserved the shorter struct and the library writes the longer one — so
 //   each of these leads with `size`, which the host sets to its own

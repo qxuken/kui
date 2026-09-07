@@ -10,7 +10,8 @@
 //! `env.blur()`, `env.focus_next()`, `env.focus_prev()`),
 //! `env.announce(text, politeness)` and scroll calls
 //! (`env.reveal(key)`, `env.scroll_offset(key)`, `env.set_scroll(key, x, y)`,
-//! `env.scroll_geometry(key)`) and window requests
+//! `env.scroll_geometry(key)`), text queries (`env.text_hit(key, x, y)`,
+//! `env.caret_rect(key, byte)`) and window requests
 //! (`env.set_window_size(window, w, h)`, `env.focus_window(window)`); the
 //! root table may set `window_title`. Because the IR is data all the way down, the binding is
 //! just table-to-node conversion — no closures cross the boundary.
@@ -227,7 +228,8 @@ fn slot_table(lua: &Lua, slot: &Slot<'_>) -> mlua::Result<Table> {
 /// `key_arg`), `measure_text(s, opts, max_w)` (see `measure_from_lua`), the
 /// focus verbs `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()`
 /// and the scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
-/// `scroll_geometry(key)` and the window requests `set_window_size(window,
+/// `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
+/// `caret_rect(key, byte)` and the window requests `set_window_size(window,
 /// w, h)` / `focus_window(window)`.
 /// A node named either way a script can: the integer key an event carried,
 /// or the string label its `key` field declared, resolved through the
@@ -428,6 +430,44 @@ fn env_table<'scope, 'env: 'scope>(
     // `offset.y` declares the rows that fit plus two spacers holding the
     // space of the rest. It describes the frame before this one, so a
     // resize slices one frame late; declare a row or two extra at each end.
+    // Where a point (the `x`, `y` a click or drag event carried) lands in
+    // the text a keyed node drew: `{ byte, line }` — the byte offset into
+    // that text, across the node's runs in order, and the visual line — or
+    // nil for a key that drew no text. Answered from the frame that
+    // finished, which is the layout the pointer was over.
+    t.set(
+        "text_hit",
+        scope.create_function(move |lua, (key, x, y): (mlua::Value, f32, f32)| {
+            let mut ui = ui.borrow_mut();
+            let key = key_arg(&mut ui, key)?;
+            let Some(h) = ui.text_hit(key, kui_core::Vec2::new(x, y)) else {
+                return Ok(mlua::Value::Nil);
+            };
+            let r = lua.create_table()?;
+            r.set("byte", h.byte)?;
+            r.set("line", h.line)?;
+            Ok(mlua::Value::Table(r))
+        })?,
+    )?;
+    // The caret rect for a byte offset in that text: `{ x, y, w, h }`,
+    // logical viewport px, zero wide, one line tall; nil for a key that
+    // drew no text. A byte past the text is the end.
+    t.set(
+        "caret_rect",
+        scope.create_function(move |lua, (key, byte): (mlua::Value, usize)| {
+            let mut ui = ui.borrow_mut();
+            let key = key_arg(&mut ui, key)?;
+            let Some(r) = ui.caret_rect(key, byte) else {
+                return Ok(mlua::Value::Nil);
+            };
+            let t = lua.create_table()?;
+            t.set("x", r.x)?;
+            t.set("y", r.y)?;
+            t.set("w", r.w)?;
+            t.set("h", r.h)?;
+            Ok(mlua::Value::Table(t))
+        })?,
+    )?;
     t.set(
         "scroll_geometry",
         scope.create_function(move |lua, key: i64| {
@@ -2400,6 +2440,7 @@ mod tests {
             [
                 "announce",
                 "blur",
+                "caret_rect",
                 "edit_text",
                 "focus_next",
                 "focus_prev",
@@ -2414,6 +2455,7 @@ mod tests {
                 "set_focus",
                 "set_scroll",
                 "set_window_size",
+                "text_hit",
             ],
             "env's queries and verbs changed; update env_table's doc too"
         );
@@ -2545,6 +2587,120 @@ mod tests {
         assert_eq!(ws.len(), 1, "{ws:?}");
         assert_eq!(ws[0].code, kui_core::diag::AMBIGUOUS_KEY);
         assert!(ws[0].message.contains("\"item\""), "{}", ws[0].message);
+    }
+
+    /// A script turns a click into a caret with `env.text_hit` and a caret
+    /// into a rect with `env.caret_rect` (backlog C18), both by the `line`
+    /// row's label and across the runs inside it — answered, mid-build,
+    /// from the frame that finished.
+    #[test]
+    fn scripts_map_points_to_bytes_on_a_line_of_runs() {
+        let mut ext = LuaExtension::from_source(
+            "hit",
+            r#"
+                frames = 0
+                function view(env)
+                  local mono = { size = 14, family = "mono" }
+                  local w = env.measure_text("M", mono, 0).width
+                  frames = frames + 1
+                  -- A label nothing has declared yet is an error by name
+                  -- (F5), so the first frame declares and the next asks.
+                  if frames > 1 then
+                    hit = env.text_hit("line", 7.2 * w, 5)
+                    seam = env.caret_rect("line", 4)
+                    far = env.text_hit("line", 390, 5)
+                    none = env.caret_rect("plain", 0)
+                  end
+                  cell = w
+                  return column {
+                    row { key = "line",
+                      text("let ", mono),
+                      row { bg = 0x3b5bd455, text("value", mono) },
+                      text(" = 1;", mono) },
+                    row { key = "plain", width = 10, height = 10 },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let frame = |core: &mut Core, ext: &mut LuaExtension| {
+            let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+            ui.set_origin(OriginId(1));
+            ext.view(&Slot::root(), &mut ui).unwrap();
+            ui.finish();
+        };
+        frame(&mut core, &mut ext);
+        let hit: mlua::Value = ext.lua.globals().get("hit").unwrap();
+        assert!(
+            matches!(hit, mlua::Value::Nil),
+            "nothing drawn before the first frame"
+        );
+        frame(&mut core, &mut ext);
+        let hit: mlua::Table = ext.lua.globals().get("hit").unwrap();
+        assert_eq!(
+            hit.get::<usize>("byte").unwrap(),
+            7,
+            "the fourth cell of \"value\""
+        );
+        assert_eq!(hit.get::<u32>("line").unwrap(), 0);
+        let cell: f32 = ext.lua.globals().get("cell").unwrap();
+        let seam: mlua::Table = ext.lua.globals().get("seam").unwrap();
+        let x: f32 = seam.get("x").unwrap();
+        assert!((x - 4.0 * cell).abs() < 0.75, "{x} vs {}", 4.0 * cell);
+        assert_eq!(seam.get::<f32>("w").unwrap(), 0.0);
+        let far: mlua::Table = ext.lua.globals().get("far").unwrap();
+        // 14 is also what pins the prelude's `text` copying its options:
+        // the three runs share one `mono` table, and before the copy they
+        // were one table holding the last string, so the line was three
+        // times " = 1;" and 15 long.
+        assert_eq!(
+            far.get::<usize>("byte").unwrap(),
+            14,
+            "the end, across the runs"
+        );
+        let none: mlua::Value = ext.lua.globals().get("none").unwrap();
+        assert!(matches!(none, mlua::Value::Nil), "a node that drew no text");
+    }
+
+    /// `text(s, opts)` copies its options. It used to write `type` and
+    /// `value` into the table it was handed and return it, so a script
+    /// that hoisted a style — `local mono = { size = 14 }` — and passed it
+    /// to three texts built one table three times, showing the last string
+    /// thrice. Found by the text-hit test above (backlog C18).
+    #[test]
+    fn a_style_table_shared_by_three_texts_is_three_texts() {
+        let mut ext = LuaExtension::from_source(
+            "shared",
+            r#"
+                local mono = { size = 14, family = "mono" }
+                function view(env)
+                  return row { text("a", mono), text("bb", mono), text("ccc", mono) }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.set_origin(OriginId(1));
+        ext.view(&Slot::root(), &mut ui).unwrap();
+        ui.finish();
+        let names: Vec<String> = core
+            .access_tree()
+            .nodes
+            .iter()
+            .filter_map(|n| n.value.clone().or_else(|| n.name.clone()))
+            .collect();
+        let joined = names.join("|");
+        assert!(
+            joined.contains("a") && joined.contains("bb") && joined.contains("ccc"),
+            "three different texts, got {joined:?}"
+        );
+        assert_eq!(
+            core.text_cache_len(),
+            3,
+            "three strings shaped, not one three times"
+        );
     }
 
     /// A script virtualizes a 10k-row list with nothing but

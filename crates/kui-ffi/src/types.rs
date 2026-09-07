@@ -1073,6 +1073,69 @@ impl Default for KuiScrollGeometry {
     }
 }
 
+/// [out] Where a point landed in the text a keyed node drew
+/// (`kui_text_hit`): a byte offset into that text, across the node's text
+/// runs in order, and the visual (wrapped) line it is on.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiTextHit {
+    /// [out] reservation; see `KUI_TEXT_HIT_INIT`.
+    pub size: u32,
+    pub line: u32,
+    pub byte: u64,
+}
+
+impl Default for KuiTextHit {
+    fn default() -> Self {
+        Self {
+            size: std::mem::size_of::<Self>() as u32,
+            line: 0,
+            byte: 0,
+        }
+    }
+}
+
+// SAFETY: `repr(C)` with `size: u32` first.
+unsafe impl OutParam for KuiTextHit {
+    const ABI_V1_SIZE: u32 = abi_through!(KuiTextHit, byte, u64);
+    fn size_mut(&mut self) -> &mut u32 {
+        &mut self.size
+    }
+}
+
+/// [out] A caret rect (`kui_caret_rect`): logical px in viewport
+/// coordinates, zero wide, one line tall.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiCaretRect {
+    /// [out] reservation; see `KUI_CARET_RECT_INIT`.
+    pub size: u32,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+impl Default for KuiCaretRect {
+    fn default() -> Self {
+        Self {
+            size: std::mem::size_of::<Self>() as u32,
+            x: 0.0,
+            y: 0.0,
+            w: 0.0,
+            h: 0.0,
+        }
+    }
+}
+
+// SAFETY: `repr(C)` with `size: u32` first.
+unsafe impl OutParam for KuiCaretRect {
+    const ABI_V1_SIZE: u32 = abi_through!(KuiCaretRect, h, f32);
+    fn size_mut(&mut self) -> &mut u32 {
+        &mut self.size
+    }
+}
+
 // SAFETY: `repr(C)` with `size: u32` first.
 unsafe impl OutParam for KuiScrollGeometry {
     const ABI_V1_SIZE: u32 = abi_through!(KuiScrollGeometry, max_offset_y, f32);

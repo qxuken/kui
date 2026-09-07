@@ -371,6 +371,16 @@ export interface AccessTree {
  *  test compares against `'text'` and the two cannot drift. */
 export type CursorShape = NonNullable<GeneratedSpecProps['cursor']>;
 
+/** Where a point landed in the text a keyed node drew (`textHit`): a byte
+ *  offset into that text — across the node's text runs in order, the way
+ *  the access tree reads a `line` — and the visual (wrapped) line, 0-based.
+ *  `byte` is a caret position: between two characters, past the last one
+ *  at the end. */
+export interface TextHit {
+  byte: number;
+  line: number;
+}
+
 /** What text measures (`measureText`): logical px at the scale of the
  *  current or last frame; `lines` after wrapping. The same numbers layout
  *  gives a `<text>` with that content and style. */
@@ -1259,6 +1269,27 @@ export declare class Ctx {
    */
   scrollGeometry(key: string): ScrollGeometry | null
   /**
+   * Where a point lands in the text a keyed node drew: a byte
+   * offset into its text and the visual line, or null for a key
+   * that drew no text. `x`/`y` are the logical viewport px a
+   * `click` or `drag` event carries, so a custom editor turns the
+   * event into a caret position with one call — no prefix
+   * measuring, no cell-width arithmetic. A node holding several
+   * text runs (a `line` row of token runs) answers across them
+   * in order, the way the access tree reads the line. Answered
+   * from the frame that finished: the layout the pointer was
+   * over.
+   */
+  textHit(key: string, x: number, y: number): TextHit | null
+  /**
+   * The caret rect for a byte offset in the text a keyed node
+   * drew: logical viewport px, zero wide, one line tall — where
+   * a caret, a selection edge or an IME candidate window goes.
+   * A byte past the text is the end; null for a key that drew
+   * no text.
+   */
+  caretRect(key: string, byte: number): Rect | null
+  /**
    * Sets that offset the way the wheel would; the next frame's
    * layout clamps it, so `(0, 0)` jumps to the top and a huge `y` to
    * the end without knowing the content height.
@@ -1637,6 +1668,27 @@ export declare class KuiWindow {
    * frame late — render a row or two extra at each end.
    */
   scrollGeometry(key: string): ScrollGeometry | null
+  /**
+   * Where a point lands in the text a keyed node drew: a byte
+   * offset into its text and the visual line, or null for a key
+   * that drew no text. `x`/`y` are the logical viewport px a
+   * `click` or `drag` event carries, so a custom editor turns the
+   * event into a caret position with one call — no prefix
+   * measuring, no cell-width arithmetic. A node holding several
+   * text runs (a `line` row of token runs) answers across them
+   * in order, the way the access tree reads the line. Answered
+   * from the frame that finished: the layout the pointer was
+   * over.
+   */
+  textHit(key: string, x: number, y: number): TextHit | null
+  /**
+   * The caret rect for a byte offset in the text a keyed node
+   * drew: logical viewport px, zero wide, one line tall — where
+   * a caret, a selection edge or an IME candidate window goes.
+   * A byte past the text is the end; null for a key that drew
+   * no text.
+   */
+  caretRect(key: string, byte: number): Rect | null
   /**
    * Sets that offset the way the wheel would; the next frame's
    * layout clamps it, so `(0, 0)` jumps to the top and a huge `y` to

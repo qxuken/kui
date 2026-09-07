@@ -4,7 +4,7 @@
 
 use crate::edit::EditOptions;
 use crate::env::Env;
-use crate::geom::{Size, Vec2};
+use crate::geom::{Rect, Size, Vec2};
 use crate::key::Key;
 use crate::line::Stroke;
 use crate::runtime::Core;
@@ -177,6 +177,19 @@ impl<'a> Ui<'a> {
         max_w: Option<f32>,
     ) -> crate::text::TextMetrics {
         self.core.measure_text(content, style, max_w)
+    }
+
+    /// Where a point lands in the text node `key` drew, as a byte offset
+    /// and a visual line; see `Core::text_hit`. During a build it answers
+    /// from the last frame, which is the layout a click was made against.
+    pub fn text_hit(&self, key: Key, point: Vec2) -> Option<crate::text::TextHit> {
+        self.core.text_hit(key, point)
+    }
+
+    /// The caret rect for a byte offset in the text node `key` drew; see
+    /// `Core::caret_rect`.
+    pub fn caret_rect(&self, key: Key, byte: usize) -> Option<Rect> {
+        self.core.caret_rect(key, byte)
     }
 
     /// `measure_text` for a rich-text paragraph.

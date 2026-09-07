@@ -14,6 +14,7 @@ use crate::atlas::GlyphAtlas;
 use crate::color::Color;
 use crate::display::{Clip, Quad, QuadKind};
 use crate::geom::{Rect, Size, Vec2};
+use crate::key::Key;
 use crate::resources::Resources;
 use crate::spec::{FontFamily, TextStyle, TextWrap};
 use crate::tree::TextId;
@@ -273,6 +274,43 @@ struct FrameText {
     color: Color,
 }
 
+/// How many enclosing keys a place remembers: a text run answers to its
+/// own key and to any of this many ancestors, which is a `line` row, a
+/// selection wrapper around a run, and two to spare.
+const PLACE_ANCESTORS: usize = 4;
+
+/// Where a text node was drawn: what `Core::text_hit` and
+/// `Core::caret_rect` answer from (backlog C18). Recorded at emission, so
+/// a node the frame culled — scrolled out of its clip — has no place and
+/// answers nothing, which is also true of a point nobody can click.
+struct TextPlace {
+    key: Key,
+    /// The keys above it, nearest first, as many as `depth` says.
+    ancestors: [Key; PLACE_ANCESTORS],
+    depth: u8,
+    cache_key: u64,
+    /// The node's origin, logical viewport px.
+    origin: Vec2,
+}
+
+impl TextPlace {
+    fn answers_to(&self, key: Key) -> bool {
+        self.key == key || self.ancestors[..self.depth as usize].contains(&key)
+    }
+}
+
+/// Where a point landed in the text a keyed node drew: a byte offset and
+/// the visual line it is on — the wrapped line, 0-based, not the paragraph.
+/// `byte` is a caret position: between two characters, past the last one
+/// at the end, and cosmic-text's rule for which side of a glyph the point
+/// fell on. For a node holding several text runs the offset runs across
+/// them in tree order, the way the access tree reads a `line`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TextHit {
+    pub byte: usize,
+    pub line: u32,
+}
+
 /// What a piece of text measures, in logical px at the current scale —
 /// the same numbers layout uses for a text node with that content and
 /// style, so a view can size a column to its widest label or pick a tier
@@ -305,6 +343,11 @@ pub struct TextSystem {
     /// nodes carry that frame's `TextId`s, and this is what they index
     /// (see [`Self::prev_frame_text`]).
     prev_frame: Vec<FrameText>,
+    /// Where this frame's text nodes were drawn, and where the last
+    /// frame's were: a query during a build answers from the frame that
+    /// finished, which is the layout a click was made against.
+    places: Vec<TextPlace>,
+    prev_places: Vec<TextPlace>,
     scale: f32,
     frame_no: u64,
 }
@@ -337,6 +380,8 @@ impl TextSystem {
             budget: DEFAULT_TEXT_CACHE_BYTES,
             frame: Vec::new(),
             prev_frame: Vec::new(),
+            places: Vec::new(),
+            prev_places: Vec::new(),
             scale: 1.0,
             frame_no: 0,
         }
@@ -439,6 +484,10 @@ impl TextSystem {
             self.prev_frame.clear();
         }
         self.frame.clear();
+        // Always kept, unlike `prev_frame`: a query while this frame builds
+        // answers from the last one, and this is what it answers from.
+        std::mem::swap(&mut self.places, &mut self.prev_places);
+        self.places.clear();
         self.frame_no += 1;
         if self.frame_no.is_multiple_of(240) {
             let cutoff = self.frame_no.saturating_sub(EVICT_AFTER_FRAMES);
@@ -792,6 +841,191 @@ impl TextSystem {
                     clip_radius: clip.radius,
                 }),
         );
+    }
+}
+
+impl TextSystem {
+    /// Records where a live text node was drawn, for the queries below,
+    /// with the keys above it so a query by a `line` row or a wrapper
+    /// finds the runs inside. Called beside [`Self::emit`] for the frame's
+    /// own nodes and not for ghosts, which take no input.
+    pub(crate) fn place(&mut self, key: Key, ancestors: &[Key], id: TextId, origin: Vec2) {
+        let cache_key = self.frame[id.0 as usize].cache_key;
+        let mut anc = [Key::ROOT; PLACE_ANCESTORS];
+        let depth = ancestors.len().min(PLACE_ANCESTORS);
+        anc[..depth].copy_from_slice(&ancestors[..depth]);
+        self.places.push(TextPlace {
+            key,
+            ancestors: anc,
+            depth: depth as u8,
+            cache_key,
+            origin,
+        });
+    }
+
+    /// The runs `key` names, in tree order, each with its entry and the
+    /// byte offset its content starts at in the concatenation — from the
+    /// frame that finished (`prev`) or the one being emitted.
+    fn runs_of(&self, key: Key, prev: bool) -> Vec<(&TextPlace, &CachedText, usize)> {
+        let list = if prev {
+            &self.prev_places
+        } else {
+            &self.places
+        };
+        let mut base = 0usize;
+        let mut out = Vec::new();
+        for place in list.iter().filter(|p| p.answers_to(key)) {
+            let Some(entry) = self.cache.get(&place.cache_key) else {
+                continue;
+            };
+            out.push((place, entry, base));
+            base += entry.content.len();
+        }
+        out
+    }
+
+    /// The physical origin `emit` drew a place at: what a point is
+    /// measured from and a rect is measured to.
+    fn physical_origin(&self, place: &TextPlace) -> (f32, f32) {
+        (
+            (place.origin.x * self.scale).round(),
+            (place.origin.y * self.scale).round(),
+        )
+    }
+
+    /// A run's laid-out box, physical px in viewport space.
+    fn physical_box(&self, place: &TextPlace, entry: &CachedText) -> Rect {
+        let (ox, oy) = self.physical_origin(place);
+        let (size, _) = measure_buffer(&entry.buffer, entry.max_lines);
+        Rect::new(ox, oy, size.w, size.h)
+    }
+
+    /// Where `point` (logical viewport px) lands in the text `key` drew;
+    /// see `Core::text_hit`. With several runs, the run under the point,
+    /// else the nearest one on the point's line, else the nearest line.
+    pub(crate) fn hit_at(&self, key: Key, point: Vec2, prev: bool) -> Option<TextHit> {
+        let runs = self.runs_of(key, prev);
+        if runs.is_empty() {
+            return None;
+        }
+        let px = point.x * self.scale;
+        let py = point.y * self.scale;
+        // Distance from a run's box: vertical first, so a point on a line
+        // of runs picks among that line, then horizontal.
+        let gap = |r: &Rect| {
+            let dy = (r.y - py).max(py - (r.y + r.h)).max(0.0);
+            let dx = (r.x - px).max(px - (r.x + r.w)).max(0.0);
+            (dy, dx)
+        };
+        let (place, entry, base) = runs
+            .iter()
+            .min_by(|a, b| {
+                let ga = gap(&self.physical_box(a.0, a.1));
+                let gb = gap(&self.physical_box(b.0, b.1));
+                ga.partial_cmp(&gb).unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .copied()?;
+        let (ox, oy) = self.physical_origin(place);
+        let cursor = entry.buffer.hit(px - ox, py - oy)?;
+        let starts = line_starts(&entry.buffer, &entry.content);
+        let byte = starts.get(cursor.line).copied().unwrap_or(0) + cursor.index;
+        let line = visual_line(&entry.buffer, cursor.line, cursor.index).map_or(0, |(l, _)| l);
+        Some(TextHit {
+            byte: base + byte.min(entry.content.len()),
+            line: line as u32,
+        })
+    }
+
+    /// The caret rect for `byte` in the text `key` drew; see
+    /// `Core::caret_rect`. A byte on the seam between two runs is the
+    /// start of the later one, except at the very end.
+    pub(crate) fn caret_at(&self, key: Key, byte: usize, prev: bool) -> Option<Rect> {
+        let runs = self.runs_of(key, prev);
+        let total = runs.last().map(|(_, e, base)| base + e.content.len())?;
+        let byte = byte.min(total);
+        let (place, entry, base) = runs
+            .iter()
+            .find(|(_, e, base)| byte < base + e.content.len())
+            .or_else(|| runs.last())
+            .copied()?;
+        let (ox, oy) = self.physical_origin(place);
+        let byte = (byte - base).min(entry.content.len());
+        let starts = line_starts(&entry.buffer, &entry.content);
+        // The paragraph the byte is in: the last one starting at or
+        // before it, and its offset inside that paragraph's text.
+        let line_i = starts.iter().rposition(|&s| s <= byte).unwrap_or(0);
+        let index = (byte - starts[line_i]).min(entry.buffer.lines[line_i].text().len());
+        let (_, run_no) = visual_line(&entry.buffer, line_i, index)?;
+        let run = entry.buffer.layout_runs().nth(run_no)?;
+        let x = caret_x(&run, index);
+        let scale = self.scale;
+        Some(Rect::new(
+            (ox + x) / scale,
+            (oy + run.line_top) / scale,
+            0.0,
+            run.line_height / scale,
+        ))
+    }
+}
+
+/// The byte offset in `content` at which each of the buffer's paragraphs
+/// starts. cosmic-text splits on every line ending it knows and keeps the
+/// ending out of the paragraph's text, so each start is found by matching
+/// the paragraph back onto the content and skipping the ending after it.
+fn line_starts(buffer: &Buffer, content: &str) -> Vec<usize> {
+    let mut starts = Vec::with_capacity(buffer.lines.len());
+    let mut at = 0usize;
+    for line in &buffer.lines {
+        starts.push(at.min(content.len()));
+        at += line.text().len();
+        let rest = &content[at.min(content.len())..];
+        for ending in ["\r\n", "\n\r", "\n", "\r"] {
+            if rest.starts_with(ending) {
+                at += ending.len();
+                break;
+            }
+        }
+    }
+    starts
+}
+
+/// The visual line (0-based over every wrapped line of the buffer) that
+/// byte `index` of paragraph `line_i` lays out on, and that run's ordinal
+/// in `layout_runs()` (the same number, kept apart for reading): the run
+/// whose glyphs cover the byte, else the paragraph's last run — an index
+/// at the end of the paragraph, or a paragraph with no glyphs.
+fn visual_line(buffer: &Buffer, line_i: usize, index: usize) -> Option<(usize, usize)> {
+    let mut last_of_line = None;
+    for (n, run) in buffer.layout_runs().enumerate() {
+        if run.line_i != line_i {
+            if last_of_line.is_some() {
+                break;
+            }
+            continue;
+        }
+        last_of_line = Some(n);
+        if run.glyphs.iter().any(|g| g.start <= index && index < g.end) {
+            return Some((n, n));
+        }
+    }
+    last_of_line.map(|n| (n, n))
+}
+
+/// Where the caret sits for byte `index` inside `run`, physical px from the
+/// text origin: the leading edge of the glyph covering it — its right edge
+/// in a right-to-left run — and past the last glyph at the run's end.
+fn caret_x(run: &cosmic_text::LayoutRun<'_>, index: usize) -> f32 {
+    if let Some(g) = run
+        .glyphs
+        .iter()
+        .find(|g| g.start <= index && index < g.end)
+    {
+        return if g.level.is_rtl() { g.x + g.w } else { g.x };
+    }
+    match run.glyphs.last() {
+        Some(g) if !g.level.is_rtl() => g.x + g.w,
+        Some(g) => g.x,
+        None => 0.0,
     }
 }
 

@@ -649,6 +649,22 @@ holding the space of the rest, so the content height, the scrollbar and
 opened at their data index (`ui.with_indexed`), so a row keeps its hover,
 focus and edit buffer as the built range slides over it.
 
+Text the app owns: a point on it is a byte offset, and a byte offset is a
+caret rect. `ui.text_hit(key, point)` answers `{byte, line}` for the text
+a keyed node drew — `point` being the logical viewport `x`/`y` a click or
+drag event carries — and `ui.caret_rect(key, byte)` the zero-wide,
+one-line-tall rect where a caret, a selection edge or an IME candidate
+window goes. A node holding several text runs (a `line` row of syntax
+runs, some wrapped in a selection box) answers across them in tree order,
+the way the access tree reads a `line`, so a custom editor turns a click
+into a caret with one call instead of measuring prefixes or assuming a
+cell width. Both answer from the frame that finished — between frames the
+layout the pointer was over, and during a build the last one — and from
+the cache entry that frame already shaped, so a query costs a lookup.
+Node spells them `textHit` / `caretRect`, Lua `env.text_hit` /
+`env.caret_rect`, C `kui_text_hit` / `kui_caret_rect` with `KuiTextHit` /
+`KuiCaretRect` out-structs (backlog C18).
+
 Dragging: `.on_drag(tag)` makes any node a pointer-captured drag source —
 handlers get `{kind="drag", phase, x, y, dx, dy, parent, tag}` events.
 `dx`/`dy` are the displacement from the press point in every phase —

@@ -439,6 +439,16 @@ static void surface_view(void *user, KuiCtx *ui) {
         track.paused = 1;
         kui_audio(ui, KUI_STR("bed"), &track, kui_value_str(KUI_STR("bed")));
 
+        /* A line of text runs a custom editor would draw, for the two text
+         * queries: the row's key answers for every run inside it. */
+        KuiSpec line = {.dir = KUI_ROW};
+        KuiTextStyle hit_mono = {.size = 16, .family = KUI_FONT_MONO};
+        kui_open_keyed(ui, KUI_STR("hitline"), &line, NULL);
+        kui_text(ui, KUI_STR("let "), &hit_mono);
+        kui_text(ui, KUI_STR("value"), &hit_mono);
+        kui_text(ui, KUI_STR(" = 1;"), &hit_mono);
+        kui_close(ui);
+
         kui_latency_graph(ui);
         kui_latency_hud(ui, KUI_END, KUI_START);
     }
@@ -514,6 +524,23 @@ static int surface(void) {
         if (dd.quads[i].kind == KUI_QUAD_IMAGE) images++;
     }
     check(images > 0, "the image node drew");
+
+    /* Text queries against the frame that finished: a point becomes a byte
+     * offset across the row's three runs, and a byte becomes a caret rect. */
+    uint64_t hitline = kui_key_of(ui, KUI_STR("hitline"));
+    KuiTextHit th = KUI_TEXT_HIT_INIT;
+    KuiCaretRect start = KUI_CARET_RECT_INIT, end = KUI_CARET_RECT_INIT;
+    check(hitline && kui_caret_rect(ui, hitline, 0, &start) && start.h > 0 && start.w == 0,
+          "kui_caret_rect at the start");
+    check(kui_text_hit(ui, hitline, start.x + 1, start.y + 1, &th) && th.byte == 0 && th.line == 0,
+          "kui_text_hit at the start");
+    check(kui_caret_rect(ui, hitline, 999, &end) && end.x > start.x, "past the text is the end");
+    check(kui_text_hit(ui, hitline, end.x + 50, start.y + 1, &th) && th.byte == 14,
+          "far right of the line is its end, across the runs");
+    check(kui_text_hit(ui, hitline, (start.x + end.x) / 2, start.y + 1, &th) && th.byte > 0 &&
+              th.byte < 14,
+          "the middle is inside");
+    check(!kui_caret_rect(ui, 12345, 0, &start), "a key that drew no text answers false");
 
     /* Pointer state and scrolling. */
     kui_input_cursor(ui, 400, 300);

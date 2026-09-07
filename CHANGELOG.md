@@ -93,6 +93,33 @@ that asserts on an empty warning list is what notices.
   is cosmic-text's (the same fifty lines shaped through it alone measure
   the same), which is C20's entry and not this one's.
 
+- **A point on text the app owns is a byte offset, and a byte offset is a
+  caret rect** (backlog C18). `Core::text_hit(key, point)` /
+  `ui.text_hit` — `textHit` in Node, `env.text_hit` in Lua, `kui_text_hit`
+  in C — answers `{byte, line}` for the text a keyed node drew, `point`
+  being the logical viewport `x`/`y` a click or drag event carries; and
+  `caret_rect(key, byte)` — `caretRect`, `env.caret_rect`,
+  `kui_caret_rect` — the zero-wide, one-line-tall rect a caret, a
+  selection edge or an IME candidate window goes in, a byte past the text
+  meaning the end. A node holding several text runs answers across them
+  in tree order — a `line` row of syntax runs with a selection box around
+  some of them is one line with one byte offset, the way the access tree
+  already reads it — so a custom editor turns a click into a caret with
+  one call. Before this the only doors were `measure_text` on prefixes
+  (shaping and caching each one, O(n) a query, O(n²) a drag) and a
+  monospace cell-width assumption, which drifts on the first fallback
+  glyph. Answered from the frame that finished — the layout the pointer
+  was over — and from the cache entry it shaped, so a query is a lookup:
+  the text system records where each live text node was drawn, with the
+  keys above it, and swaps that list every frame, so a Rust view
+  resolving a click it stashed in `on_event` gets the frame the click
+  was made against. `KuiTextHit` and `KuiCaretRect` are new `[out]`
+  structs (size-led, no ABI bump). Pinned in all four:
+  `tests/text_hit.rs` (a point either side of a glyph's middle, a wrapped
+  node per visual line, a paragraph break, scale 2, rich text, the line of
+  runs by the row's key and by the wrapper's, and nothing after the node
+  stops being drawn), the Node test, the Lua test and the C self-test.
+
 - **Slots: an extension fills a place the host declares**
   ([ADR 0014](docs/adr/0014-slots-an-extension-fills-in-place.md)).
   `ui.slot("fs/panel")` — or `slot_with(name, &params)` — is a position
@@ -362,6 +389,18 @@ that asserts on an empty warning list is what notices.
   dropped again because it grew without limit, a comment saying the key
   must be stable *for memory reasons* (it is still what keeps the draft).
   Keying an editor per opening is now bounded by the library.
+
+### Fixed
+
+- **Lua's `text(s, opts)` copies its options.** It wrote `type` and
+  `value` into the table it was handed and returned that table, so a
+  script that hoisted a style — `local mono = { size = 14 }` — and passed
+  it to three texts built one table three times, and every text showed
+  the last string. Found by C18's Lua test, whose three runs share one
+  style table and came out as `" = 1;"` three times; the prelude copies
+  now, and `a_style_table_shared_by_three_texts_is_three_texts` pins it.
+  **What you can delete:** the per-call `{ size = 14 }` literal a script
+  spelled out because a shared one misbehaved.
 
 ### What you can delete
 

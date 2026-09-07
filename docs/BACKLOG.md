@@ -786,7 +786,36 @@ sink, so all four bindings pin both routes. Node's `Ctx` grows
 `preedit(text, cursor)` beside `type`, and C's `kui_input_preedit`
 already exists for the stock editor and needs no new door.
 
-### `~` C18 — Nothing maps a point to a byte offset, or an offset to a rect, on text the app owns
+### `~` C18 — Nothing maps a point to a byte offset, or an offset to a rect, on text the app owns — **done (2026-09-07)**
+
+Done, with one change to the shape the "Do" below proposed: the key is
+**the keyed node the text is inside**, not the text node. No binding can
+name a text node — `text` takes no `key` anywhere, and its auto-key is an
+index under its parent that only Rust can spell — and the node a custom
+editor keys is the `line` row, which holds one run per token and a
+selection box around some of them. So `text_hit(key, point)` and
+`caret_rect(key, byte)` answer for every text run inside `key` (its own
+key, or any of four ancestors), byte offsets running across the runs in
+tree order, which is the offset the access tree's `caret` row already
+uses. `TextSystem` records a `TextPlace` per emitted text node — key,
+ancestors, cache key, origin — and swaps the list each frame, so a query
+during a build answers from the frame that finished, which is what lets
+a Rust view resolve a click it stashed in `on_event`; a node the frame
+culled has no place and answers `None`. Rects and points are logical
+viewport px; cosmic-text's `Buffer::hit` and the layout runs answer the
+rest, so a query is a lookup and a run walk. `TextHit { byte, line }` in
+Rust; `textHit` / `caretRect` in Node with a `TextHit` interface;
+`env.text_hit` / `env.caret_rect` in Lua by label or key; `kui_text_hit`
+/ `kui_caret_rect` in C with `KuiTextHit` / `KuiCaretRect` out-structs
+in the parity check. Tests in all four; the Rust one pins seven shapes,
+the line of runs among them. `modal_editor` was not moved onto it: its
+click handling runs in `on_event`, which has no `Ui`, and the example is
+monospace by construction — the entry that moves it is the one that
+gives `on_event` a way to ask the core, which C17 does not need either
+(it derives the IME rect in the core). Found on the way: Lua's
+`text(s, opts)` mutated and returned the options table, so three texts
+sharing a style were one node thrice — fixed in the prelude, pinned, and
+in the CHANGELOG under Fixed.
 
 The stock editor answers clicks and drags from cosmic-text's `hit`
 (`buffer.rs:1144` in cosmic-text 0.19). Text the app owns has no such

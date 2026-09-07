@@ -38,6 +38,7 @@ use crate::session::{
 };
 use crate::spec::{NodeSpec, Sizing, TextStyle};
 use crate::stats::FrameStats;
+use crate::text::TextHit;
 use crate::text::{Span, TextMetrics, TextSystem};
 use crate::tree::{NIL, NodeContent, OriginId, Tree};
 use crate::ui::Ui;
@@ -397,6 +398,28 @@ impl Core {
         let sess = &mut *self.session.state();
         self.text
             .measure_rich(spans, base, &sess.resources, &mut sess.fonts, max_w)
+    }
+
+    /// Where a point lands in the text node `key` drew: a byte offset into
+    /// its content and the visual line, or `None` for a key that is not a
+    /// text node or was not drawn (backlog C18). `point` is logical
+    /// viewport px — the `x`/`y` a click or drag event carries — so a
+    /// custom editor turns the event into a caret position with one call
+    /// instead of measuring prefixes or assuming a cell width. Answered
+    /// from the frame that finished: between frames that is the layout the
+    /// pointer was over, and during a build it is the last one, since the
+    /// node being declared has no layout yet. A wrapped node answers in
+    /// the width it was drawn at.
+    pub fn text_hit(&self, key: Key, point: Vec2) -> Option<TextHit> {
+        self.text.hit_at(key, point, self.building)
+    }
+
+    /// The caret rect for byte `byte` of the text node `key` drew: logical
+    /// viewport px, zero wide, one line tall — where a caret, an IME
+    /// candidate window or a selection edge goes. `byte` past the content
+    /// is the end. Answered from the same frame `text_hit` is.
+    pub fn caret_rect(&self, key: Key, byte: usize) -> Option<Rect> {
+        self.text.caret_at(key, byte, self.building)
     }
 
     // -- Announcements ---------------------------------------------------

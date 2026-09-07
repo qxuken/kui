@@ -211,6 +211,22 @@ fn asserts() -> String {
     });
     abi_out_struct!(o, KuiScrollGeometry);
 
+    abi_struct!(o, KuiTextHit {
+        size: u32 => "uint32_t",
+        line: u32 => "uint32_t",
+        byte: u64 => "uint64_t",
+    });
+    abi_out_struct!(o, KuiTextHit);
+
+    abi_struct!(o, KuiCaretRect {
+        size: u32 => "uint32_t",
+        x: f32 => "float",
+        y: f32 => "float",
+        w: f32 => "float",
+        h: f32 => "float",
+    });
+    abi_out_struct!(o, KuiCaretRect);
+
     abi_struct!(o, KuiStr {
         ptr: *const u8 => "const uint8_t *",
         len: usize => "size_t",

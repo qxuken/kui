@@ -126,6 +126,22 @@ impl Core {
                     &mut self.atlas,
                     &mut self.display.quads,
                 );
+                // The keys above it, nearest first, so a query by the
+                // `line` row (or a wrapper) finds the runs inside it.
+                let mut ancestors = [Key::ROOT; 4];
+                let mut depth = 0;
+                let mut p = self.tree.parent[i];
+                while p != NIL && depth < ancestors.len() {
+                    ancestors[depth] = self.tree.keys[p as usize];
+                    depth += 1;
+                    p = self.tree.parent[p as usize];
+                }
+                self.text.place(
+                    self.tree.keys[i],
+                    &ancestors[..depth],
+                    tid,
+                    self.tree.pos[i],
+                );
             }
             NodeContent::Edit(key) => {
                 let pad = spec.layout.padding;

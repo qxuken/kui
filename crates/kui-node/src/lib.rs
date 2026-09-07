@@ -1606,6 +1606,44 @@ macro_rules! core_methods {
                 ))
             }
 
+            /// Where a point lands in the text a keyed node drew: a byte
+            /// offset into its text and the visual line, or null for a key
+            /// that drew no text. `x`/`y` are the logical viewport px a
+            /// `click` or `drag` event carries, so a custom editor turns the
+            /// event into a caret position with one call — no prefix
+            /// measuring, no cell-width arithmetic. A node holding several
+            /// text runs (a `line` row of token runs) answers across them
+            /// in order, the way the access tree reads the line. Answered
+            /// from the frame that finished: the layout the pointer was
+            /// over.
+            #[napi(ts_return_type = "TextHit | null")]
+            pub fn text_hit(&mut self, key: String, x: f64, y: f64) -> Result<Option<Json>> {
+                let key = resolve_key(self.$core(), &key)?;
+                Ok(self
+                    .$core()
+                    .text_hit(key, Vec2::new(x as f32, y as f32))
+                    .map(|h| {
+                        let mut o = JsonMap::new();
+                        o.insert("byte".into(), Json::from(h.byte as u64));
+                        o.insert("line".into(), Json::from(h.line));
+                        Json::Object(o)
+                    }))
+            }
+
+            /// The caret rect for a byte offset in the text a keyed node
+            /// drew: logical viewport px, zero wide, one line tall — where
+            /// a caret, a selection edge or an IME candidate window goes.
+            /// A byte past the text is the end; null for a key that drew
+            /// no text.
+            #[napi(ts_return_type = "Rect | null")]
+            pub fn caret_rect(&mut self, key: String, byte: f64) -> Result<Option<Json>> {
+                let key = resolve_key(self.$core(), &key)?;
+                Ok(self
+                    .$core()
+                    .caret_rect(key, byte.max(0.0) as usize)
+                    .map(rect_json))
+            }
+
             /// Sets that offset the way the wheel would; the next frame's
             /// layout clamps it, so `(0, 0)` jumps to the top and a huge `y` to
             /// the end without knowing the content height.

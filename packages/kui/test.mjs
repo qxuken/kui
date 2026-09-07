@@ -857,6 +857,31 @@ test('measureText answers what layout gives the text', () => {
   assert.ok(rich.width > 0 && rich.lines === 1);
 });
 
+// A point on the text a keyed node drew is a byte offset, and a byte
+// offset is a caret rect (backlog C18): the `line` row of a custom editor
+// answers across its token runs, so a click becomes a caret with one call.
+test('textHit and caretRect answer across the runs of a keyed line', () => {
+  const ctx = new Ctx();
+  const mono = { size: 14, family: 'mono' };
+  const line = box(
+    { dir: 'row' },
+    [text('let ', mono), box({ bg: '#3b5bd455' }, [text('value', mono)]), text(' = 1;', mono)],
+    'line',
+  );
+  ctx.frame(400, 100, 1, box({}, [line, box({ width: 10, height: 10 }, [], 'plain')]));
+  const w = ctx.measureText('M', mono).width;
+  // "let value = 1;" — a point in the fourth cell of "value" is byte 7.
+  assert.deepEqual(ctx.textHit('line', 7.2 * w, 5), { byte: 7, line: 0 });
+  const seam = ctx.caretRect('line', 4);
+  assert.ok(Math.abs(seam.x - 4 * w) < 0.75, JSON.stringify(seam));
+  assert.equal(seam.w, 0);
+  assert.ok(seam.h > 0);
+  assert.equal(ctx.textHit('line', 390, 5).byte, 14, 'far right is the end, across the runs');
+  assert.equal(ctx.textHit('line', 0, 5).byte, 0);
+  assert.equal(ctx.caretRect('line', 999).x, ctx.caretRect('line', 14).x, 'past the end is the end');
+  assert.equal(ctx.caretRect('plain', 0), null, 'a node that drew no text');
+});
+
 // Layout is data: an onLayout node reports its rect on first sight and
 // again when it changes.
 test('onLayout reports the rect once and again when it changes', () => {

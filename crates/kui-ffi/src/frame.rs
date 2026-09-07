@@ -347,6 +347,68 @@ pub extern "C" fn kui_measure_text(
     })
 }
 
+/// Where a point (logical viewport px, as a click or drag event carries
+/// it) lands in the text the node `key` drew: a byte offset into that text
+/// — across the node's text runs in order, the way the access tree reads a
+/// `line` — and the visual line. False for a key that drew no text, a bad
+/// context or a NULL `out`. Answered from the frame that finished.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_text_hit(
+    ptr: *mut KuiCtx,
+    key: u64,
+    x: f32,
+    y: f32,
+    out: *mut KuiTextHit,
+) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let Some(h) = c.core().text_hit(Key(key), Vec2::new(x, y)) else {
+            return false;
+        };
+        write_out(
+            out,
+            KuiTextHit {
+                line: h.line,
+                byte: h.byte as u64,
+                ..Default::default()
+            },
+        )
+    })
+}
+
+/// The caret rect for byte offset `byte` in the text the node `key` drew:
+/// logical viewport px, zero wide, one line tall. A byte past the text is
+/// the end. False for a key that drew no text, a bad context or a NULL
+/// `out`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_caret_rect(
+    ptr: *mut KuiCtx,
+    key: u64,
+    byte: usize,
+    out: *mut KuiCaretRect,
+) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let Some(r) = c.core().caret_rect(Key(key), byte) else {
+            return false;
+        };
+        write_out(
+            out,
+            KuiCaretRect {
+                x: r.x,
+                y: r.y,
+                w: r.w,
+                h: r.h,
+                ..Default::default()
+            },
+        )
+    })
+}
+
 /// `kui_measure_text` for a rich-text paragraph.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_measure_rich_text(
