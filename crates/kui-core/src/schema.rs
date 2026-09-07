@@ -1017,7 +1017,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`clip`, `scrollX`, `scrollY`",
         lua: "`clip`, `scroll_x`, `scroll_y` (`scroll` = `scroll_y`)",
         c: "`overflow` bits `KUI_CLIP` | `KUI_SCROLL_X` | `KUI_SCROLL_Y`",
-        doc: "Clip children; scroll (implies clip) with retained offsets and live scrollbars. A `radius` on the same node rounds the clip, so a rounded card does not show square corners poking out of it; nesting two rounded clippers keeps only the corners neither of them moved, and hit-testing stays rectangular. Every frontend ORs the same bits and hands them to `NodeSpec::overflow_bits`.",
+        doc: "Clip children; scroll (implies clip) with retained offsets and live scrollbars. A `radius` on the same node rounds the clip, so a rounded card does not show square corners poking out of it; nesting two rounded clippers keeps only the corners neither of them moved, and hit-testing stays rectangular. Every frontend ORs the same bits and hands them to `NodeSpec::overflow_bits`. An offset is kept while the key is declared; an undeclared one is kept until the budget needs the room (1024 undeclared entries, longest-undeclared evicted first).",
     },
     CustomProp {
         name: "float",
@@ -1047,7 +1047,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`key`",
         lua: "`key`",
         c: "`kui_open_keyed` label",
-        doc: "Stable identity for retained state (scroll offsets, editors, transitions; keys are hashes of the path from the root).",
+        doc: "Stable identity for retained state (scroll offsets, editors, transitions; keys are hashes of the path from the root). Retained state outlives the key's absence, under a budget on the states nobody declares (see `<edit>` and the overflow props).",
     },
     CustomProp {
         name: "title",
@@ -1260,7 +1260,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<edit key initial multiline autofocus>`",
         lua: "`edit { key=, initial=, … }`, `input { label= }`",
         c: "`kui_text_edit`, `kui_text_input`",
-        doc: "Retained editor state by key; read it back with `editText(key)` after a `changed` event. `initial` seeds a new editor only — a key declared again keeps the draft the user typed, and `setEditText(key, text)` is what resets one (it leaves the caret at the end). A single-line editor opens with the caret after its seeded text, as a native field does; a multiline one is a document and opens at its top.",
+        doc: "Retained editor state by key; read it back with `editText(key)` after a `changed` event. `initial` seeds a new editor only — a key declared again keeps the draft the user typed, and `setEditText(key, text)` is what resets one (it leaves the caret at the end). A single-line editor opens with the caret after its seeded text, as a native field does; a multiline one is a document and opens at its top. State is kept while the key is declared; an undeclared one is kept until the budget needs the room (256 undeclared editors, longest-undeclared evicted first).",
     },
     ElementDef {
         name: "image",

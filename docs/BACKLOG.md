@@ -177,7 +177,58 @@ correction goes on top. A `~`: the workaround exists and is the latch,
 and the report's three checks are what it takes to know the latch is
 still needed.
 
-### `~` F25 — Editor and scroll state are kept by key forever
+### `~` F25 — Editor and scroll state are kept by key forever — **done (2026-09-07)**
+
+Done: both stores cap the states nobody declares. A declared state is
+never evicted — retention across absence is the promise, so this is a
+ceiling and not a prune — and past the budget the longest-undeclared
+entry goes first, oldest by the frame it was last declared in and by key
+inside a frame, so the same view evicts the same states whatever order
+the map iterated. `EditState` and the scroll `Entry` each carry a
+`last_declared` stamp, written by `declare` / `resolve` (and by
+`set` / `scroll_by`, since an offset written between two frames is
+usually aimed at the key the next frame builds); `Core::begin_frame`
+hands both stores the frame number it just took, and "declared" means
+declared by the frame that just ended. The focused editor and the one
+being drag-selected are skipped by name as well, since the store still
+points at them. Budgets: `MAX_UNDECLARED_EDITS` = 256,
+`MAX_UNDECLARED_SCROLLS` = 1024, both public.
+
+The numbers, measured rather than guessed — a counting global allocator
+wrapped around a `Core` declaring 200 editors at a time, live bytes
+before and after: **3.4 KB** for a fresh empty editor, **4.9 KB** holding
+`"hello"`, **22 KB** holding a 39-character line (the shaped glyphs are
+most of it), and nothing at all freed when the keys stopped being
+declared, which is the finding. 256 of the worst of those is ~5.6 MB and
+~1.2 MB at a short field: a bound an app can afford, and one no ordinary
+view comes near — 256 editors no longer on screen is already an app
+generating keys, which is the idiom this makes safe. A scroll `Entry` is
+56 bytes, 64 with its key in the map (`size_of` at the time of writing),
+so a full 1024 is ~64 KB — four times the count for a fortieth of the
+memory, which is why the two budgets differ.
+
+What it costs a frame that is nowhere near the budget: one length
+comparison per store. A store inside its budget never walks itself,
+which is why this can run every frame rather than every 240th like the
+anim store's cutoff sweep. `scripts/bench-check.sh v0.1.0-alpha.8`
+agrees: the four guarded rows came out +1.5% / −0.8% / +0.2% / −0.1%
+against the tag, worst run-to-run spread on a guarded row 2.6%.
+
+Not done as the entry asked: **the count is not in `FrameStats`**.
+`FrameStats` is the driver's timing ring — a `Vec<FrameSample>` a driver
+pushes into, reached through the Node binding as the latency HUD's
+`{frames, last, avgTotalMs, …}` — and it can see neither store, so a
+count there would have to be pushed by whoever calls `push`, on a type
+about frame *cost*. The counts are `EditStore::len()` and
+`ScrollStore::len()` instead, both `pub` on `pub` fields, and the tests
+are core-only: `crates/kui-core/tests/state_budget.rs` declares budget +
+50 of each, then declares one of them for a hundred frames, and pins
+that the store settles at exactly budget + 1, that the declared one
+survives with the text it was given, that a second wave evicts the first
+wave's leftovers rather than growing, and — the promise, in its own two
+tests — that an editor and a scroll offset nobody declares for 500
+frames come back untouched while the store is inside its budget. One
+sentence went into the `<edit>` row, the overflow row and the `key` row.
 
 Found while checking F24. The idiom the retained-by-key model implies — a
 fresh key per opening (`edit-${id}-${session}`), so `initial` seeds a
@@ -391,7 +442,8 @@ scene pins the change in four bindings with the phase the ADR asked for
 (and the correction it needed: `bulk` had to leave in a frame of its own).
 The next thing to build is what the next field reports asked for, the same
 day: F24–F30 above — F24 and F28 are the two that touch the core, F25 is
-the lifetime question they turned up, F26 is the publish step, and F27,
+the lifetime question they turned up and is **done (2026-09-07)**, F26 is
+the publish step, and F27,
 F29 and F30 are a doc clause, a promise on the windowed loop and a task
 index.
 

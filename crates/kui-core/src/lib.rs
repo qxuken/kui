@@ -55,7 +55,7 @@ pub use cursor::CursorShape;
 pub use depart::DepartStore;
 pub use diag::Warning;
 pub use display::{Clip, DisplayList, NO_CLIP, Quad, QuadKind};
-pub use edit::EditOptions;
+pub use edit::{EditOptions, MAX_UNDECLARED_EDITS};
 pub use enter::Enter;
 pub use env::Env;
 pub use geom::{Edges, Rect, Size, Vec2};
@@ -68,7 +68,7 @@ pub use keyframes::Keyframe;
 pub use line::{LineId, LineStore, Stroke};
 pub use resources::{FontId, ImageId, Resources, SessionId, SoundId};
 pub use runtime::{Core, Extension};
-pub use scroll::ScrollGeometry;
+pub use scroll::{MAX_UNDECLARED_SCROLLS, ScrollGeometry};
 pub use session::{Session, SharedAudio, SharedResources};
 pub use slot::{Extensions, Fill, NAMESPACE_SEPARATOR, ROOT_SLOT, Slot, full_name, split_name};
 pub use spec::{

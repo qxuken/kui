@@ -49,14 +49,73 @@ pub struct ScrollGeometry {
 struct Entry {
     offset: Vec2,
     geom: Option<(Rect, Size, Vec2)>,
+    /// The frame a layout last resolved this key, or an offset was last
+    /// written at it. Only the budget reads it (see
+    /// [`MAX_UNDECLARED_SCROLLS`]).
+    last_declared: u64,
 }
+
+/// How many *undeclared* scroll entries the store keeps before the longest
+/// undeclared one is dropped (backlog F25). An entry a layout resolved in
+/// the frame that just ended is never evicted, however many there are.
+///
+/// Why 1024 where the editors get 256: an entry is a pair of offsets, an
+/// optional geometry and a stamp — 56 bytes, 64 with its key in the map,
+/// so a full budget is ~64 KB against the editors' megabytes. A view with a thousand
+/// scroll containers it no longer declares is already generating keys.
+pub const MAX_UNDECLARED_SCROLLS: usize = 1024;
 
 #[derive(Default)]
 pub struct ScrollStore {
     entries: FxHashMap<Key, Entry>,
+    /// The frame being built, stamped onto every entry touched.
+    frame_no: u64,
 }
 
 impl ScrollStore {
+    /// How many entries are retained — declared and undeclared together.
+    /// What a test watches the budget through (backlog F25).
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Stamps the frame being built and, if the map has grown past the
+    /// budget, drops the longest-undeclared entries
+    /// ([`MAX_UNDECLARED_SCROLLS`]). Same rule as the editors': an entry
+    /// the frame that just ended resolved (or that was written at since)
+    /// is never evicted, so retention across absence still holds — this is
+    /// a ceiling, not a prune. A store inside the budget never walks
+    /// itself.
+    pub(crate) fn begin_frame(&mut self, frame_no: u64) {
+        self.frame_no = frame_no;
+        if self.entries.len() > MAX_UNDECLARED_SCROLLS {
+            self.evict(frame_no.saturating_sub(1));
+        }
+    }
+
+    fn evict(&mut self, declared_at: u64) {
+        let mut undeclared: Vec<(u64, Key)> = self
+            .entries
+            .iter()
+            .filter(|(_, e)| e.last_declared < declared_at)
+            .map(|(k, e)| (e.last_declared, *k))
+            .collect();
+        let Some(excess) = undeclared.len().checked_sub(MAX_UNDECLARED_SCROLLS) else {
+            return;
+        };
+        if excess == 0 {
+            return;
+        }
+        undeclared.sort_unstable();
+        for (_, key) in &undeclared[..excess] {
+            self.entries.remove(key);
+        }
+    }
+
     pub fn offset(&self, key: Key) -> Vec2 {
         self.entries.get(&key).map_or(Vec2::ZERO, |e| e.offset)
     }
@@ -84,13 +143,20 @@ impl ScrollStore {
     /// Adds a delta (positive = scroll content further down/right).
     /// Clamping happens in the next layout pass.
     pub fn scroll_by(&mut self, key: Key, delta: Vec2) {
+        let frame_no = self.frame_no;
         let e = self.entries.entry(key).or_default();
         e.offset.x += delta.x;
         e.offset.y += delta.y;
+        // An offset written between two frames counts as a declaration: it
+        // is usually a `set_scroll` at a key this frame is about to build.
+        e.last_declared = frame_no;
     }
 
     pub fn set(&mut self, key: Key, offset: Vec2) {
-        self.entries.entry(key).or_default().offset = offset;
+        let frame_no = self.frame_no;
+        let e = self.entries.entry(key).or_default();
+        e.offset = offset;
+        e.last_declared = frame_no;
     }
 
     /// What layout calls on a scroll container: records the geometry it
@@ -99,7 +165,9 @@ impl ScrollStore {
     /// `content` because an axis that does not scroll has no travel however
     /// far its content overflows.
     pub fn resolve(&mut self, key: Key, rect: Rect, content: Size, max: Vec2) -> Vec2 {
+        let frame_no = self.frame_no;
         let e = self.entries.entry(key).or_default();
+        e.last_declared = frame_no;
         e.geom = Some((rect, content, Vec2::new(max.x.max(0.0), max.y.max(0.0))));
         e.offset.x = e.offset.x.clamp(0.0, max.x.max(0.0));
         e.offset.y = e.offset.y.clamp(0.0, max.y.max(0.0));
