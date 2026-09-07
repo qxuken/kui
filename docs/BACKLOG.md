@@ -1083,7 +1083,27 @@ underline = true }`, C `KuiSpan.flags` — `kui_rich_text` already takes
 spans; the bits are additive. Parked on the same terms as C13: a view
 that wants it names which of the three it wants first.
 
-### `~` C23 — No way to turn ligatures off, or tabular figures on
+### `~` C23 — No way to turn ligatures off, or tabular figures on — **done (2026-09-07)**
+
+Done as the "Do" says, with two adjustments. `FontFeatures` is a `Copy`
+value on `TextStyle` — eight `(tag, value)` slots and a length, since
+`TextStyle` is `Copy` and is not stored per node (the tree keeps a
+`TextId`; the style lives in the cache key) — with `parse` for the one
+spelling every binding shares (`"liga=0 calt=0 tnum"`; commas or spaces,
+bare tag = 1, `-tag` = 0) and `set(tag, value)` for Rust. Mixed into
+`style_key`, and handed to cosmic-text's `Attrs::font_features` in
+`intern`, `intern_rich` (base and every span) and the stock editor's
+attrs. The schema row is `Kind::Str` with a new `Apply::StyleStr`, so
+Node's encoder, Lua's `parse_props` and `docs/props.md` needed nothing
+of their own; the C field is a `KuiStr` appended to `KuiTextStyle`, and
+per `abi.rs`'s rule an [in] append does **not** bump `KUI_ABI_VERSION`
+(the entry assumed it would; `KuiSpec.tooltip` is the precedent, and
+nothing embeds `KuiTextStyle` by value). The corpus question — a font
+with a ligature to pin against — is answered by skipping instead: the
+Rust and Node tests look for Fira Code, Cascadia Code or JetBrains Mono
+through `add_system_font` and, finding one, pin that `->` is one glyph
+by default and two with `liga`/`calt` off; finding none they say so and
+return, and the cache-key test beside them holds everywhere.
 
 Every text node shapes with `Shaping::Advanced` and default features
 (`text.rs:398`, `text.rs:558`), and nothing in `TextStyle` or the schema

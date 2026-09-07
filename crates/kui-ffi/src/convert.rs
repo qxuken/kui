@@ -360,6 +360,9 @@ pub(crate) fn text_style_of(s: &KuiTextStyle) -> TextStyle {
     if s.ellipsis != 0 {
         style = style.ellipsis();
     }
+    if let Some(features) = opt_str(s.features) {
+        style = style.features(kui_core::FontFeatures::parse(&features));
+    }
     style
 }
 

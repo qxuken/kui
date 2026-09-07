@@ -352,6 +352,16 @@ pub struct TextSystem {
     frame_no: u64,
 }
 
+/// A style's features in cosmic-text's terms. Empty stays empty, which is
+/// the shaper's own defaults.
+pub(crate) fn cosmic_features(f: &crate::spec::FontFeatures) -> cosmic_text::FontFeatures {
+    let mut out = cosmic_text::FontFeatures::new();
+    for (tag, value) in f.iter() {
+        out.set(cosmic_text::FeatureTag::new(tag), value);
+    }
+    out
+}
+
 /// The session's font database, set up the way kui shapes against it.
 pub(crate) fn new_font_system() -> FontSystem {
     let mut font_system = FontSystem::new();
@@ -541,6 +551,10 @@ impl TextSystem {
         };
         mix(&[tag]);
         mix(&font.to_le_bytes());
+        for (t, v) in style.features.iter() {
+            mix(t);
+            mix(&v.to_le_bytes());
+        }
         h
     }
 
@@ -561,7 +575,9 @@ impl TextSystem {
             let mut buffer = new_buffer(fs, style, scale);
             buffer.set_text(
                 content,
-                &Attrs::new().family(res.family_of(style.family)),
+                &Attrs::new()
+                    .family(res.family_of(style.family))
+                    .font_features(cosmic_features(&style.features)),
                 Shaping::Advanced,
                 None,
             );
@@ -720,9 +736,12 @@ impl TextSystem {
         if !self.cache.contains_key(&key) {
             let mut buffer = new_buffer(fs, base, scale);
             let family = res.family_of(base.family);
+            let features = cosmic_features(&base.features);
             buffer.set_rich_text(
-                spans.iter().map(|s| (s.text, s.attrs(family))),
-                &Attrs::new().family(family),
+                spans
+                    .iter()
+                    .map(|s| (s.text, s.attrs(family).font_features(features.clone()))),
+                &Attrs::new().family(family).font_features(features.clone()),
                 Shaping::Advanced,
                 None,
             );

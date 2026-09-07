@@ -135,6 +135,7 @@ pub const P_LIVE: u32 = 80;
 pub const P_KEY_UP: u32 = 81;
 pub const P_VALUE_TEXT: u32 = 82;
 pub const P_DESCRIPTION: u32 = 83;
+pub const P_FEATURES: u32 = 84;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -343,6 +344,7 @@ pub enum Apply {
     StyleEnum(fn(TextStyle, usize) -> TextStyle),
     StyleFlag(fn(TextStyle) -> TextStyle),
     StyleResource(fn(TextStyle, u64) -> TextStyle),
+    StyleStr(fn(TextStyle, &str) -> TextStyle),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -369,7 +371,8 @@ impl PropDef {
             | Apply::StyleColor(_)
             | Apply::StyleEnum(_)
             | Apply::StyleFlag(_)
-            | Apply::StyleResource(_) => Target::Style,
+            | Apply::StyleResource(_)
+            | Apply::StyleStr(_) => Target::Style,
             _ => Target::Spec,
         }
     }
@@ -852,6 +855,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "End the last line with an ellipsis when the text is cut off: a single line unless `maxLines` says otherwise.",
     },
     PropDef {
+        name: "features",
+        id: P_FEATURES,
+        kind: Kind::Str,
+        apply: Apply::StyleStr(|t, s| t.features(crate::spec::FontFeatures::parse(s))),
+        doc: "OpenType features for the shaper, as `tag=value` pairs separated by spaces or commas — a bare `tag` is 1, `-tag` is 0: `\"liga=0 calt=0\"` keeps a coding font from joining `->` and `!=` (what a terminal built on runs needs to hold its grid), `\"tnum\"` lines figures up in a gutter, `\"ss01\"` picks a stylistic set. Unset, the font's own defaults apply. At most 8; part of what the text is shaped as, so two texts differing only here are shaped twice.",
+    },
+    PropDef {
         name: "role",
         id: P_ROLE,
         kind: Kind::Enum(ROLES),
@@ -1155,6 +1165,10 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     ("wrap", "`KuiTextStyle.wrap` (`KUI_WRAP_*`)"),
     ("maxLines", "`KuiTextStyle.max_lines`"),
     ("ellipsis", "`KuiTextStyle.ellipsis`"),
+    (
+        "features",
+        "`KuiTextStyle.features` (a `KuiStr`, the same spelling)",
+    ),
     ("color", "`KuiTextStyle.color`"),
 ];
 
@@ -1880,6 +1894,10 @@ pub fn apply(def: &PropDef, value: Parsed, out: &mut PropsOut) -> Result<(), Str
         (Apply::StyleResource(f), Parsed::Resource(v)) => {
             out.spec = spec;
             out.style = f(style, v);
+        }
+        (Apply::StyleStr(f), Parsed::Str(v)) => {
+            out.spec = spec;
+            out.style = f(style, &v);
         }
         _ => {
             out.spec = spec;

@@ -666,6 +666,11 @@ Node spells them `textHit` / `caretRect`, Lua `env.text_hit` /
 `env.caret_rect`, C `kui_text_hit` / `kui_caret_rect` with `KuiTextHit` /
 `KuiCaretRect` out-structs (backlog C18).
 
+Font features ride the style: `TextStyle::features(FontFeatures::parse("liga=0
+calt=0"))` — `features="liga=0 calt=0"` in JSX and Lua, `KuiTextStyle.features`
+in C — keeps a coding font from joining `->`, and `"tnum"` lines figures up in
+a gutter; unset, the font's own defaults apply (backlog C23).
+
 An editor the app owns hears an IME the way the stock editor does: while
 a composition is under way the focused `onKey` sink gets `{kind:"preedit",
 text, cursor, tag}` to draw inline, the commit arrives as `{kind:"text",

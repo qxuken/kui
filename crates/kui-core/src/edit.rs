@@ -365,7 +365,9 @@ impl Default for EditStore {
 }
 
 fn attrs_for<'a>(style: &TextStyle, res: &'a Resources) -> Attrs<'a> {
-    Attrs::new().family(res.family_of(style.family))
+    Attrs::new()
+        .family(res.family_of(style.family))
+        .font_features(crate::text::cosmic_features(&style.features))
 }
 
 impl EditStore {

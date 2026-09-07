@@ -72,9 +72,9 @@ pub use scroll::{MAX_UNDECLARED_SCROLLS, ScrollGeometry};
 pub use session::{Session, SharedAudio, SharedResources};
 pub use slot::{Extensions, Fill, NAMESPACE_SEPARATOR, ROOT_SLOT, Slot, full_name, split_name};
 pub use spec::{
-    Align, Dir, FLOAT_PRESETS, FloatAnchor, FloatConfig, FontFamily, Min, NodeSpec, OVERFLOW_CLIP,
-    OVERFLOW_SCROLL_X, OVERFLOW_SCROLL_Y, PadShorthand, Shadow, Sizing, TextStyle, TextWrap,
-    Vec2Offset, corner,
+    Align, Dir, FLOAT_PRESETS, FloatAnchor, FloatConfig, FontFamily, FontFeatures, Min, NodeSpec,
+    OVERFLOW_CLIP, OVERFLOW_SCROLL_X, OVERFLOW_SCROLL_Y, PadShorthand, Shadow, Sizing, TextStyle,
+    TextWrap, Vec2Offset, corner,
 };
 pub use stats::{FrameSample, FrameStats};
 pub use text::{DEFAULT_TEXT_CACHE_BYTES, Span, TextHit, TextMetrics};

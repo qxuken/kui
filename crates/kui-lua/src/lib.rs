@@ -2663,6 +2663,29 @@ mod tests {
         assert!(matches!(none, mlua::Value::Nil), "a node that drew no text");
     }
 
+    /// `features = "liga=0"` reaches the shaper through the same schema
+    /// row every binding reads (backlog C23): a text with it and one
+    /// without are shaped twice.
+    #[test]
+    fn features_are_a_text_option() {
+        let mut ext = LuaExtension::from_source(
+            "features",
+            r#"
+                function view(env)
+                  return row { text("fi ->", { size = 16 }),
+                               text("fi ->", { size = 16, features = "liga=0 calt=0" }) }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.set_origin(OriginId(1));
+        ext.view(&Slot::root(), &mut ui).unwrap();
+        ui.finish();
+        assert_eq!(core.text_cache_len(), 2);
+    }
+
     /// `text(s, opts)` copies its options. It used to write `type` and
     /// `value` into the table it was handed and return it, so a script
     /// that hoisted a style — `local mono = { size = 14 }` — and passed it

@@ -86,6 +86,7 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `color` | `color` | `KuiTextStyle.color` | color (`#hex` or `0xRRGGBBAA`) | Text color; default foreground when omitted. |
 | `ellipsis` | `ellipsis` | `KuiTextStyle.ellipsis` | boolean | End the last line with an ellipsis when the text is cut off: a single line unless `maxLines` says otherwise. |
 | `family` | `family` | `KuiTextStyle.family` (`KUI_FONT_*`) | `sans` \\| `serif` \\| `mono` | Font family. |
+| `features` | `features` | `KuiTextStyle.features` (a `KuiStr`, the same spelling) | string | OpenType features for the shaper, as `tag=value` pairs separated by spaces or commas — a bare `tag` is 1, `-tag` is 0: `"liga=0 calt=0"` keeps a coding font from joining `->` and `!=` (what a terminal built on runs needs to hold its grid), `"tnum"` lines figures up in a gutter, `"ss01"` picks a stylistic set. Unset, the font's own defaults apply. At most 8; part of what the text is shaped as, so two texts differing only here are shaped twice. |
 | `font` | `font` | `KuiTextStyle.font` (from `kui_font_add*`) | resource handle | A registered font handle (addFont / addSystemFont); overrides `family`. |
 | `lineHeight` | `line_height` | `KuiTextStyle.line_height` | number | Line height (logical px); default size * 1.35. |
 | `maxLines` | `max_lines` | `KuiTextStyle.max_lines` | number | Lay out at most this many lines (0 = unlimited); with `ellipsis`, a line clamp. |

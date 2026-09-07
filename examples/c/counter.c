@@ -442,7 +442,10 @@ static void surface_view(void *user, KuiCtx *ui) {
         /* A line of text runs a custom editor would draw, for the two text
          * queries: the row's key answers for every run inside it. */
         KuiSpec line = {.dir = KUI_ROW};
-        KuiTextStyle hit_mono = {.size = 16, .family = KUI_FONT_MONO};
+        /* `features` was appended to KuiTextStyle the compatible way; a
+         * zeroed one is the font's defaults, this one turns ligatures off. */
+        KuiTextStyle hit_mono = {.size = 16, .family = KUI_FONT_MONO,
+                                 .features = KUI_STR("liga=0 calt=0")};
         kui_open_keyed(ui, KUI_STR("hitline"), &line, NULL);
         kui_text(ui, KUI_STR("let "), &hit_mono);
         kui_text(ui, KUI_STR("value"), &hit_mono);

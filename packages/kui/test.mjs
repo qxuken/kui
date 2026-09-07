@@ -857,6 +857,26 @@ test('measureText answers what layout gives the text', () => {
   assert.ok(rich.width > 0 && rich.lines === 1);
 });
 
+// OpenType features on a text style (backlog C23): one string every
+// binding shares, part of what the text is shaped as. The ligature half runs
+// only where a font with one is installed.
+test('features reach the shaper and are part of what a text is shaped as', () => {
+  const ctx = new Ctx();
+  ctx.frame(300, 100, 1, box({}, [
+    text('fi ->', { size: 16 }),
+    text('fi ->', { size: 16, features: 'liga=0 calt=0' }),
+    text('fi ->', { size: 16 }),
+  ]));
+  assert.equal(ctx.textCacheBytes() > 0, true);
+  const id = ['Fira Code', 'Cascadia Code', 'JetBrains Mono'].map((n) => ctx.addSystemFont(n)).find(Boolean);
+  if (!id) return; // no ligature font here: the Rust test pins the cache key
+  const glyphs = (features) => {
+    ctx.frame(300, 100, 1, box({}, [text('-> != www', { size: 24, font: id, features })]));
+    return decodeQuads(ctx.quads()).filter((q) => q.kind === 1 || q.kind === 4).length;
+  };
+  assert.ok(glyphs('liga=0 calt=0 dlig=0') > glyphs(undefined), 'the ligatures come apart');
+});
+
 // IME for an editor the app owns (backlog C17): a composition and its
 // commit reach the focused sink as data, the candidate window is anchored
 // at the `line` carrying `caret`, and plain typing is never doubled.

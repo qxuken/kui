@@ -857,6 +857,9 @@ typedef struct KuiTextStyle {
     uint32_t wrap;     /* KUI_WRAP_* ; 0 = between words */
     uint32_t max_lines; /* at most this many lines; 0 = unlimited */
     uint32_t ellipsis; /* non-zero: end the last line with "..." when cut off (one line unless max_lines) */
+    KuiStr features;   /* OpenType features, "tag=value ..." (bare tag = 1, -tag = 0), e.g.
+                          "liga=0 calt=0" to keep a coding font's ligatures apart; zeroed =
+                          the font's defaults. Appended the compatible way, like KuiSpec.tooltip. */
 } KuiTextStyle;
 
 /* [in] One run of a rich-text paragraph. */

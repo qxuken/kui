@@ -698,6 +698,12 @@ pub struct KuiTextStyle {
     /// Non-zero: end the last line with an ellipsis when the text is cut
     /// off (a single line unless `max_lines` says otherwise).
     pub ellipsis: u32,
+    /// OpenType features for the shaper, in the spelling every binding
+    /// shares: `tag=value` pairs separated by spaces or commas, a bare
+    /// tag meaning 1 and `-tag` 0 (`"liga=0 calt=0"`, `"tnum"`). Empty
+    /// (a zeroed `KuiStr`) is the font's defaults. Appended in the
+    /// compatible way: a host predating it passes the shorter struct.
+    pub features: KuiStr,
 }
 
 #[repr(C)]

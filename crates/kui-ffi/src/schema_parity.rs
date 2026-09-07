@@ -271,6 +271,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "wrap" => t.wrap = 1,
             "maxLines" => t.max_lines = F as u32,
             "ellipsis" => t.ellipsis = 1,
+            "features" => t.features = name,
             other => panic!(
                 "schema prop {other:?} has no C counterpart: add a KuiSpec/KuiTextStyle \
                      field (append-only — the struct is ABI), mirror it in include/kui.h, \

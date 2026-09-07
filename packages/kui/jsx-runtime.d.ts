@@ -263,6 +263,8 @@ export interface GeneratedStyleProps {
   ellipsis?: boolean;
   /** Font family. */
   family?: 'sans' | 'serif' | 'mono';
+  /** OpenType features for the shaper, as `tag=value` pairs separated by spaces or commas — a bare `tag` is 1, `-tag` is 0: `"liga=0 calt=0"` keeps a coding font from joining `->` and `!=` (what a terminal built on runs needs to hold its grid), `"tnum"` lines figures up in a gutter, `"ss01"` picks a stylistic set. Unset, the font's own defaults apply. At most 8; part of what the text is shaped as, so two texts differing only here are shaped twice. */
+  features?: string;
   /** A registered font handle (addFont / addSystemFont); overrides `family`. */
   font?: string;
   /** Line height (logical px); default size * 1.35. */

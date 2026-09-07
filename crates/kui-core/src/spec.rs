@@ -1457,6 +1457,101 @@ pub enum TextWrap {
     None,
 }
 
+/// The OpenType features a style asks the shaper for (backlog C23): up to
+/// [`FontFeatures::MAX`] four-letter tags with a value each — `liga` 0 to
+/// keep a coding font from joining `->`, `tnum` 1 for tabular figures in a
+/// gutter, `ss01` 1 for a stylistic set. Plain data and `Copy`, since a
+/// `TextStyle` is; the spelling every binding shares is
+/// [`FontFeatures::parse`]'s.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct FontFeatures {
+    tags: [[u8; 4]; FontFeatures::MAX],
+    values: [u32; FontFeatures::MAX],
+    len: u8,
+}
+
+impl FontFeatures {
+    /// How many features a style can carry. Eight is more than any one
+    /// text asks for and keeps the style small.
+    pub const MAX: usize = 8;
+
+    pub const fn new() -> Self {
+        Self {
+            tags: [[b' '; 4]; Self::MAX],
+            values: [0; Self::MAX],
+            len: 0,
+        }
+    }
+
+    /// Adds or replaces `tag` (four ASCII characters; shorter is padded
+    /// with spaces, longer is cut) with `value`. Past `MAX` the feature is
+    /// dropped rather than the style refused.
+    pub fn set(mut self, tag: &str, value: u32) -> Self {
+        let mut t = [b' '; 4];
+        for (i, b) in tag.bytes().take(4).enumerate() {
+            t[i] = b;
+        }
+        let n = self.len as usize;
+        if let Some(i) = self.tags[..n].iter().position(|x| *x == t) {
+            self.values[i] = value;
+        } else if n < Self::MAX {
+            self.tags[n] = t;
+            self.values[n] = value;
+            self.len += 1;
+        }
+        self
+    }
+
+    /// The spelling every binding shares: tags separated by whitespace or
+    /// commas, each `tag=value`, a bare `tag` meaning 1 and `-tag` meaning
+    /// 0 — `"liga=0 calt=0 tnum"`, `"-liga,-calt"`. Anything else in the
+    /// string is skipped.
+    pub fn parse(s: &str) -> Self {
+        let mut out = Self::new();
+        for item in s.split(|c: char| c.is_whitespace() || c == ',') {
+            if item.is_empty() {
+                continue;
+            }
+            let (tag, value) = if let Some((t, v)) = item.split_once('=') {
+                (t, v.trim().parse::<u32>().unwrap_or(0))
+            } else if let Some(t) = item.strip_prefix('-') {
+                (t, 0)
+            } else if let Some(t) = item.strip_prefix('+') {
+                (t, 1)
+            } else {
+                (item, 1)
+            };
+            let tag = tag.trim();
+            if !tag.is_empty() {
+                out = out.set(tag, value);
+            }
+        }
+        out
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    pub fn len(&self) -> usize {
+        self.len as usize
+    }
+
+    /// Every feature, in the order set, as `(tag, value)`.
+    pub fn iter(&self) -> impl Iterator<Item = (&[u8; 4], u32)> + '_ {
+        let n = self.len as usize;
+        self.tags[..n].iter().zip(self.values[..n].iter().copied())
+    }
+
+    /// What `parse` reads: `tag=value` pairs joined by spaces.
+    pub fn to_string_spelling(&self) -> String {
+        self.iter()
+            .map(|(t, v)| format!("{}={}", String::from_utf8_lossy(t).trim_end(), v))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TextStyle {
     pub size: f32,
@@ -1469,6 +1564,9 @@ pub struct TextStyle {
     /// End the last line with "…" when the text was cut off. Alone it
     /// means a single line (`max_lines` 1); with `max_lines` it clamps.
     pub ellipsis: bool,
+    /// OpenType features for the shaper; none by default, which is the
+    /// font's own defaults (ligatures on, where it has them).
+    pub features: FontFeatures,
 }
 
 impl Default for TextStyle {
@@ -1487,7 +1585,14 @@ impl TextStyle {
             wrap: TextWrap::Word,
             max_lines: 0,
             ellipsis: false,
+            features: FontFeatures::new(),
         }
+    }
+
+    /// OpenType features for the shaper; see [`FontFeatures`].
+    pub fn features(mut self, f: FontFeatures) -> Self {
+        self.features = f;
+        self
     }
 
     pub fn family(mut self, f: FontFamily) -> Self {

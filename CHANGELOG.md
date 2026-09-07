@@ -93,6 +93,26 @@ that asserts on an empty warning list is what notices.
   is cosmic-text's (the same fifty lines shaped through it alone measure
   the same), which is C20's entry and not this one's.
 
+- **Font features: ligatures off, tabular figures on** (backlog C23).
+  `TextStyle::features(FontFeatures)` — `features` on `<text>` / `<edit>`
+  in JSX, `features =` in Lua, `KuiTextStyle.features` in C — takes
+  OpenType features in one spelling every binding shares: `tag=value`
+  pairs separated by spaces or commas, a bare tag meaning 1 and `-tag`
+  0, so `"liga=0 calt=0"` keeps a coding font from joining `->` and `!=`
+  (what a terminal built on text runs needs to hold its grid) and
+  `"tnum"` lines figures up in a gutter. `FontFeatures::parse` is the
+  reader, `set(tag, value)` the builder, eight at most, `Copy` like the
+  style it rides. It is part of what a text is shaped as — in the cache
+  key and on every `Attrs` the core builds, spans and the stock editor
+  included — so two texts differing only here are two entries. The C
+  field is appended to `KuiTextStyle` the way `KuiSpec.tooltip` was: a
+  host predating it passes the shorter struct, no `KUI_ABI_VERSION`
+  bump. Pinned by `tests/font_features.rs` (the spelling round-trips, the
+  cache key splits) and, where a ligature font is installed, that `->`
+  shapes as one glyph by default and two with the features off — the
+  Node test does the same and both skip on a runner without the font;
+  the Lua test and the C self-test drive the row through their own doors.
+
 - **A thread can wake the loop** (backlog C21). The windowed loop parks
   between events (`ControlFlow::Wait`), and nothing outside the main
   thread could reach it: `Launcher::run` kept its event-loop proxy to

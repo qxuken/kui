@@ -446,6 +446,7 @@ fn asserts() -> String {
         wrap: u32 => "uint32_t",
         max_lines: u32 => "uint32_t",
         ellipsis: u32 => "uint32_t",
+        features: KuiStr => "KuiStr",
     });
 
     abi_struct!(o, KuiSpan {
