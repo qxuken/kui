@@ -367,7 +367,50 @@ Promise<void>` — "one more pump has painted" — nearly free, which is what
 the first `frames(400)` was waiting for. Their `smoke.tsx` is the test to
 convert; its three sleeps become three awaits.
 
-### `.` F30 — Three doc shapes the reports paid for
+### `.` F30 — Three doc shapes the reports paid for — done (2026-09-07)
+
+**Outcome: all three, as written.** (1)
+[`docs/howto.md`](howto.md) is the task index: 23 questions in five
+groups — draw and animate, interaction, sound and effects, testing,
+shipping — each two sentences and a link line into a `props.md` row, the
+release entry or the ADR. It is seeded from what the two apps actually
+needed (playing a sound, testing a real window, animating a removal,
+resetting an editor, the settled frame, pinning a version, a connector,
+popup versus modal, effects an app defines, a spoken-only hint, a tab
+bar, shortcuts beside a Tab ring, an announcement, naming a node, reading
+warnings) and it says what is true today rather than what F24, F26 and
+F29 would make true: `setEditText` reaches a declared editor by the hex
+key an event carried, so the reset still runs on the first `onLayout`; a
+window is polled through `animating()` because there is no `settled()`
+yet; and both `^` and `~` float, so an app pins exactly. Every link was
+checked mechanically, file and anchor, in both the repository tree and the
+packed one — and checking turned up two the prose had wrong: `tooltip` is
+a composite row and not a container one, and `editText` / `setEditText` /
+`setScroll` take the hex key only, where `focus` / `isFocused` / `reveal`
+/ `access` also take a label (`resolve_key` versus `parse_key` in
+`kui-node/src/lib.rs`). It is linked from the README's *Reference* section
+above `props.md` and from the package README, and `prepack.mjs` copies it
+into the tarball beside `CHANGELOG.md` — rewriting its two relative
+prefixes on the way, since `docs/howto.md` in the repository and
+`howto.md` at the package root do not agree about where the changelog and
+the ADRs are. `npm pack --dry-run` lists it at 13.8 kB.
+
+(2) The `**What breaks.**` convention starts at alpha.9, which also
+needed the heading: the section was `## Unreleased`, which
+`scripts/set-version.sh` does not rewrite (it matches `## <ver>
+(unreleased)`), so a tag would have failed `check-version.sh`. It is
+`## 0.1.0-alpha.9 (unreleased)` now, opening with five bullets — the two
+`Extension` methods, Lua's `on_event` reply, the refused duplicate
+namespace, the extension keys that move once, and a row the stock button
+does not read — above the three paragraphs that argue them. Nothing older
+was retrofitted.
+
+(3) Both conventions are written down at the top of `CHANGELOG.md`: the
+bullet list is for the reader with a build to fix and the paragraphs for
+the reader deciding whether to upgrade, and a "what you can delete" line
+names the *behaviour* the release removed the need for, not the
+workaround it guesses an app wrote — a workaround that accreted two
+purposes only sheds the one the release addressed.
 
 Neither report found a wrong sentence in the docs this round. What they
 found is that the right sentences are not where a reader stands.
@@ -439,7 +482,9 @@ the lifetime question they turned up, F26 is the publish step (built the
 same day, and unverified until the tag it writes exists), and F27,
 F29 and F30 are a doc clause, a promise on the windowed loop and a task
 index. F27 is **done (2026-09-07)**: the clause landed on `quads()`,
-`access` and the README, and nothing but doc text moved.
+`access` and the README, and nothing but doc text moved. **F30 closed on 2026-09-07**: `docs/howto.md`, the `**What
+breaks.**` bullet list from alpha.9 on, and what a "what you can delete"
+line names — its outcome is written on top of the entry.
 
 **Design, wanting an ADR.** Nothing new since ADR 0014 (above) was built on 2026-09-07; what it leaves open — a slot element for Node, extensions in `kui_run`, an extension offering slots of its own — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
 [`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md),

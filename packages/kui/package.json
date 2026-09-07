@@ -37,6 +37,7 @@
     "native.cjs",
     "prebuilds/",
     "props.md",
+    "howto.md",
     "CHANGELOG.md",
     "docs/adr/"
   ],

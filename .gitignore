@@ -6,5 +6,6 @@
 /examples/node/dist
 /packages/kui/prebuilds
 /packages/kui/props.md
+/packages/kui/howto.md
 /packages/kui/CHANGELOG.md
 /packages/kui/docs/
