@@ -5,42 +5,6 @@ the workaround, the model field or the arithmetic the release made
 unnecessary. The second list is the point of the first — a library whose
 upgrades remove code from the apps on it is doing the job.
 
-## 0.1.0-alpha.9 (unreleased)
-
-### Added
-
-- **`minWidth: "fit"` / `minHeight: "fit"`: a node's own fit size as its
-  floor.** The first view to ask was an i3-style tab bar — every tab
-  `grow`, so the tabs split the bar evenly while they fit, and once they
-  do not, each at its label's width with the bar scrolling — and the
-  numeric half of that already worked: `grow` + `minWidth={80}` +
-  `scrollX` gives 200/200/200 for three tabs in a 600 bar and 80 × 10
-  with 200 to scroll for ten, because the grow pass clamps each share to
-  its min and a scroll axis skips the shrink pass. What could not be
-  said was the floor *as the content*: `grow` contributes nothing to fit
-  and had no floor of its own, so ten grow tabs each around an 80 px
-  label got 60 px apiece, the label cut, nothing to scroll. That is
-  CSS's `flex: 1 0 auto`, and `Sizing` had no word for it. Now `minWidth`
-  and `minHeight` take a number or `"fit"`: the fit pass of that axis
-  measures the node's content once, writes the number into the spec, and
-  every later clamp reads it — so the grow pass, the wrap breaker and the
-  shrink pass need no second form. Both axes, under any sizing (a 50%
-  height floored at its child's is in the corpus scene), one measurement
-  shared with a `fit` sizing when both apply, and no cost on a node that
-  declares neither. In Lua it is `min_width = "fit"`; in C, `.min_w =
-  KUI_MIN_FIT` — a negative in a slot that was already clamped to zero,
-  so `KuiSpec` did not move and neither did the ABI; Rust's
-  `.min_width(Min::Fit)` beside the `f32` it always took. The new `tabs`
-  scene runs the bar both ways in one frame, in four bindings.
-  **Not the default, on purpose.** CSS floors every flex item at its
-  min-content and every CSS author has typed `min-width: 0` to undo it;
-  kui's fit width is the *unwrapped* one — a text node's intrinsic line —
-  so a default floor would stop every paragraph inside a `grow` column
-  from wrapping. A tab bar's labels do not wrap, which is exactly why it
-  is the view that wants the floor and can say so.
-  **What you can delete:** the `measureText` in `view` that sized a
-  `minWidth` to a label plus padding, and the cache in front of it.
-
 ## 0.1.0-alpha.8 (2026-09-07)
 
 **What breaks.** **A press that dismisses a popup no longer reaches the
@@ -75,6 +39,38 @@ that is the intended trade, and the `### Changed` entry says why
 (`docs/adr/0012-the-exit-budget.md`).
 
 ### Added
+
+- **`minWidth: "fit"` / `minHeight: "fit"`: a node's own fit size as its
+  floor.** The first view to ask was an i3-style tab bar — every tab
+  `grow`, so the tabs split the bar evenly while they fit, and once they
+  do not, each at its label's width with the bar scrolling — and the
+  numeric half of that already worked: `grow` + `minWidth={80}` +
+  `scrollX` gives 200/200/200 for three tabs in a 600 bar and 80 × 10
+  with 200 to scroll for ten, because the grow pass clamps each share to
+  its min and a scroll axis skips the shrink pass. What could not be
+  said was the floor *as the content*: `grow` contributes nothing to fit
+  and had no floor of its own, so ten grow tabs each around an 80 px
+  label got 60 px apiece, the label cut, nothing to scroll. That is
+  CSS's `flex: 1 0 auto`, and `Sizing` had no word for it. Now `minWidth`
+  and `minHeight` take a number or `"fit"`: the fit pass of that axis
+  measures the node's content once, writes the number into the spec, and
+  every later clamp reads it — so the grow pass, the wrap breaker and the
+  shrink pass need no second form. Both axes, under any sizing (a 50%
+  height floored at its child's is in the corpus scene), one measurement
+  shared with a `fit` sizing when both apply, and no cost on a node that
+  declares neither. In Lua it is `min_width = "fit"`; in C, `.min_w =
+  KUI_MIN_FIT` — a negative in a slot that was already clamped to zero,
+  so `KuiSpec` did not move and neither did the ABI; Rust's
+  `.min_width(Min::Fit)` beside the `f32` it always took. The new `tabs`
+  scene runs the bar both ways in one frame, in four bindings.
+  **Not the default, on purpose.** CSS floors every flex item at its
+  min-content and every CSS author has typed `min-width: 0` to undo it;
+  kui's fit width is the *unwrapped* one — a text node's intrinsic line —
+  so a default floor would stop every paragraph inside a `grow` column
+  from wrapping. A tab bar's labels do not wrap, which is exactly why it
+  is the view that wants the floor and can say so.
+  **What you can delete:** the `measureText` in `view` that sized a
+  `minWidth` to a label plus padding, and the cache in front of it.
 
 - **Effects as data: `withEffects(model, ...effects)`** (backlog F23, from
   the pomodoro's alpha.7 report; `docs/adr/0013-effects-as-data.md`). The
@@ -363,14 +359,29 @@ that is the intended trade, and the `### Changed` entry says why
 The by-hand round alpha.6 introduced (backlog R4), run before this tag on
 2026-09-07. What follows is what executed on what.
 
+The round was run twice, because the `"fit"` minimums were folded into this
+release after the first one. Everything headless was re-run against the
+folded tree and the numbers below are that second run: the workspace tests,
+fmt and clippy, all four corpus adapters, both C extension loads, the Node
+addon tests, `npm run gen`, the `examples/node` leg, `check-version.sh` and
+`bench-check.sh`. What was **not** re-run is everything needing a logged-in
+GUI session and the Accessibility grant — `ax-audit.swift`, the per-host
+window captures, the ADR 0012 boundary watch and the two drag checks. Those
+results stand from the first run, one commit earlier, and the reason they
+are allowed to is that a `"fit"` minimum is a layout number: it moves no
+role, no name, no announcement and no window, and none of the examples
+those checks drive declares one.
+
 **macOS 26.6.2 (arm64), rustc 1.98.0.** `cargo test --workspace` passes:
-**635 tests over 60 suites, 0 failed, 0 ignored**, with no display, no
+**638 tests over 60 suites, 0 failed, 0 ignored**, with no display, no
 installed fonts and no GPU. `cargo fmt --all --check` and `cargo clippy
 --workspace --all-targets -- -D warnings` are clean. The scene corpus runs
-in all four adapters against one reference report: **19 scenes** — the
-`exit` scene two phases longer than alpha.7's — Rust and Lua through `cargo
-test`, C through `examples/c/counter --conformance`, Node through `npm test`
-with `KUI_CONFORMANCE_REQUIRED=1` (**82 Node tests**, 0 failed; three are
+in all four adapters against one reference report: **20 scenes** — the
+`exit` scene two phases longer than alpha.7's, and `tabs` new for the
+`"fit"` minimums — Rust and Lua through `cargo test`, C through
+`examples/c/counter --conformance` (which also reports the header at 235
+fields and 81 enum members), Node through `npm test` with
+`KUI_CONFORMANCE_REQUIRED=1` (**82 Node tests**, 0 failed; three are
 ADR 0013's). The C header still compiles against the generated ABI asserts,
 the C plugin dlopens into a Rust host and routes clicks both ways, and the
 same plugin with `kui_ext_abi` deleted is refused against ABI 7. `npm run
@@ -415,25 +426,35 @@ which set the field from Aluminium to **Cadmium** without a second click.
 Windows' mixed-DPI case stays unrun; nothing here has a Windows machine.
 
 **The performance guard passed, on a quiet machine this time.**
-`scripts/bench-check.sh` benches HEAD against the previous tag back to
-back on one machine: **none of the four guarded rows is slower than
-alpha.7** — `frame_10k_rects` −9.6%, `frame_10k_rects_with_text_and_hits`
-−6.9%, `frame_1k_typical` −0.1%, `deep_nesting_64_levels` −0.9% — with a
-worst run-to-run spread of 4.9% on a guarded row and no load warning.
-The README's table had been refreshed after alpha.7's tag by the C15
-round, and this run agrees with it within noise, so only the three rows
-ADR 0012 changed were rewritten into it. The
+`scripts/bench-check.sh v0.1.0-alpha.7` benches HEAD against the previous
+tag back to back on one machine: **none of the four guarded rows is slower
+than alpha.7** — `frame_10k_rects` −9.9%, `frame_10k_rects_with_text_and_hits`
+−6.4%, `frame_1k_typical` −3.9%, `deep_nesting_64_levels` −0.3% — with a
+worst run-to-run spread of 6.1% on a guarded row and no load warning. This
+is the run that covers the `"fit"` minimums as well, which is why it is
+this one and not the earlier one in the round: `minWidth: "fit"` adds a
+read to the fit pass, and `frame_1k_typical` and `deep_nesting_64_levels`
+are the rows that would show it. Neither does, because a node declaring
+neither minimum pays nothing.
+The README's table is this run's medians throughout, re-measured when the
+`"fit"` work was folded in: most rows moved a percent or two, and two
+moved more than the guard's tolerance without either being a regression —
+`frame_10k_rects_all_declaring_exit` (2.20 → 2.51 ms) and
+`list_10k_rows_naive` (3.57 → 3.94 ms), both unguarded rows measured
+against alpha.7 at −9.4% and −1.7% in the same run, so the gap is between
+two README measurements and not between two releases. The
 gains are C15's, landed after alpha.7's tag: the chip, clip and one-exit
 grids are −10 to −13%. Three rows are marked *touched* because the bench
-file changed, and each says why: `drop_1k_rows_declaring_exit` −39.9%
-(270 → 162 µs) is ADR 0012 refusing a 1000-row removal whole and copying
+file changed, and each says why: `drop_1k_rows_declaring_exit` −41.2%
+(278 → 163 µs) is ADR 0012 refusing a 1000-row removal whole and copying
 nothing, so the row now measures the refused frame and the new
 `drop_500_rows_declaring_exit` (~138 µs) measures the admitted one;
-`replay_a_full_depart_store` −14.7% fills the store to exactly the budget
-rather than through a refusal; `drop_1k_rows_plain` −8.8% shares the
-builder and is C15's. The two rows alpha.7 found would not hold still
-still do not: `frame_10k_rects_all_declaring_exit` read ±12.5% between its
-own two runs, and the table keeps the stated ±10% on it.
+`replay_a_full_depart_store` −4.7% fills the store to exactly the budget
+rather than through a refusal; `drop_1k_rows_plain` −8.6% shares the
+builder and is C15's. The row alpha.7 found would not hold still held
+still this time: `frame_10k_rects_all_declaring_exit` read ±2.7% between
+its own two runs rather than ±12.5%, and reports −9.4% — but one quiet run
+does not retire a row's history, so the table keeps the stated ±10% on it.
 
 ## 0.1.0-alpha.7 (2026-09-06)
 
@@ -1034,7 +1055,6 @@ into a popup was not run: ADR 0009 settled it and only the arithmetic
   per frame — and the model field that stored them. A node is `focus('its
   label')` now, and the access-tree lookup that found an editor's rect just
   to click it into focus is `focus('note')` too.
-
 
 ## 0.1.0-alpha.6 (2026-09-05)
 

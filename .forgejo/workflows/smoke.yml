@@ -1,0 +1,116 @@
+# Native platform coverage on real hardware, kept out of ci.yml on purpose.
+#
+# What these two jobs buy over the cross-compiled release path is that the
+# platform code is compiled by the platform's own toolchain, linked against
+# the real SDK rather than a downloaded copy of it, and the workspace tests
+# are executed on the machine the code was written for. What they do not buy
+# is behavioural coverage of the platform chrome or the AccessKit bridge:
+# neither windows_nc.rs nor access_bridge.rs has a test to run.
+# `cargo test --workspace` (not `-p kui`) because the platform crates are
+# what differ here, and the corpus and text tests are worth re-running on a
+# second set of system fonts.
+#
+# Its own workflow, not two more jobs in ci.yml, for the reason audit.yml is
+# its own workflow: what it needs has nothing in common with what makes
+# `check` expensive - no container, no cargo cache, no conformance report,
+# no artifacts - and, unlike `check`, it is not on any release path. The
+# split also keeps a queued smoke job out of ci.yml's run status. A job
+# whose `runs-on` label matches no runner does not fail fast in Forgejo, it
+# sits in the queue, and a `ci` run holding a queued job never reports a
+# result even though `check` and `publish` finished long before. Here the
+# same queued job only ever holds up a `smoke` run.
+#
+# Still additive and non-blocking: neither job appears in `publish`'s
+# `needs` in ci.yml, and neither can fail a run (`continue-on-error`), so
+# the cross-compiled release path is exactly what it was.
+#
+# They are gated on a repository variable as well, not on `runs-on` alone,
+# so a run makes no queue entry at all on an instance without the hardware.
+# This instance has only the `docker` runner, so both skip today. To turn
+# one on: register a runner, label it `macos` (or `windows`), install a
+# stable Rust toolchain on it - plus Xcode command line tools, or MSVC build
+# tools for the vendored Lua and the MSVC target - and set the repository
+# variable SMOKE_MACOS (or SMOKE_WINDOWS) to `true`.
+#
+# These run on hosts, not in containers, which is why this workflow sets no
+# CARGO_HOME or RUSTUP_HOME: ci.yml's are paths inside its docker image and
+# had to be pointed back at the runner user's home before cargo was called,
+# and with that workflow's env gone the default (~/.cargo) is already right.
+# The one thing a host runner still needs is that directory's `bin` on PATH.
+# No cache action either: a self-hosted runner keeps its workspace, so
+# target/ persists on its own.
+#
+# The macOS command is known good: `cargo test --workspace` was run on
+# macOS 26.6 / rustc 1.98 on 2026-09-03 and the whole workspace passed with
+# no display, no fonts installed and no GPU touched (the corpus splits its
+# checked-in expectations, which are font-independent, from the per-machine
+# glyph digest, which is why it travels). Neither job itself has been run by
+# Forgejo, because there is no runner to run it.
+#
+# A deeper macOS check than this one exists and is not automatable:
+# scripts/ax-audit.swift walks the real access tree and is a manual
+# pre-release step (see README, "To cut a release"). On Windows there is
+# none.
+name: smoke
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  smoke-macos:
+    if: vars.SMOKE_MACOS == 'true'
+    runs-on: macos
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Point cargo at the runner's toolchain
+        shell: bash
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Versions
+        shell: bash
+        run: |
+          set -eu
+          command -v cargo >/dev/null || {
+            echo "no cargo on this runner: install a stable toolchain (rustup)" >&2
+            exit 1
+          }
+          cargo --version
+          sw_vers
+
+      - name: Test
+        shell: bash
+        run: cargo test --workspace
+
+  smoke-windows:
+    if: vars.SMOKE_WINDOWS == 'true'
+    runs-on: windows
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      # PowerShell rather than bash: 5.1 ships with Windows, git-bash only
+      # arrives with Git for Windows. `$env:USERPROFILE` is already a
+      # native path, which is what cargo.exe wants - a git-bash `$HOME`
+      # (/c/Users/...) would not be.
+      - name: Point cargo at the runner's toolchain
+        shell: powershell
+        run: |
+          "$env:USERPROFILE\.cargo\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Versions
+        shell: powershell
+        run: |
+          cargo --version
+
+      - name: Test
+        shell: powershell
+        run: cargo test --workspace

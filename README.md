@@ -672,27 +672,27 @@ that prop costs.
 
 | bench | what it holds | median |
 |---|---|---|
-| `frame_1k_typical` | 32×32 grid, every 8th cell a label, every 4th clickable — a "typical app" frame | ~110 µs |
-| `frame_10k_rects` | 100×100 plain rects, nothing switched on | ~725 µs |
+| `frame_1k_typical` | 32×32 grid, every 8th cell a label, every 4th clickable — a "typical app" frame | ~112 µs |
+| `frame_10k_rects` | 100×100 plain rects, nothing switched on | ~729 µs |
 | `frame_10k_rects_with_text_and_hits` | the same grid plus 1.2k texts and 2.5k hit regions | ~1.14 ms |
 | `frame_10k_rects_with_access_tree` | that frame with `core.access_tree()` derived after it — what a frame costs while assistive technology is attached | ~1.57 ms |
-| `frame_10k_rects_with_shadows_and_opacity` | the plain grid with only the paint props on: every cell casts a shadow under a faded root | ~797 µs |
-| `frame_10k_rects_square_clip` | the plain grid with every row clipping, so all 10k cells inherit a clip | ~777 µs |
-| `frame_10k_rects_rounded_clip` | the same with a radius on every clipping row, so each cell pays the per-corner intersect | ~803 µs |
-| `frame_10k_segments` | 10k one-segment `line` floats — the same 10k quads as `frame_10k_rects`, so the gap between the two is what a segment costs over a box | ~829 µs |
-| `frame_1k_curves` | 1k curves through eight knots each, re-flattened by chord length every frame — 35 segments a curve | ~271 µs |
-| `frame_10k_rects_all_transitioning` | every cell declares a `transition` — nine retained tween slots each | ~1.79 ms |
-| `frame_10k_rects_all_declaring_exit` | every cell also declares an `exit`, so the whole frame is kept for the next one to diff against | ~2.20 ms |
-| `frame_10k_rects_one_exit` | the same 10k grid with a single cell declaring an `exit` | ~737 µs |
-| `drop_1k_rows_plain` | 1k rows removed from the tree in one frame, no exits declared | ~59.2 µs |
-| `drop_1k_rows_declaring_exit` | the same removal with exits declared — over the 512-node budget, so ADR 0012 refuses it whole: the diff and the count, and no copies | ~162 µs |
+| `frame_10k_rects_with_shadows_and_opacity` | the plain grid with only the paint props on: every cell casts a shadow under a faded root | ~818 µs |
+| `frame_10k_rects_square_clip` | the plain grid with every row clipping, so all 10k cells inherit a clip | ~781 µs |
+| `frame_10k_rects_rounded_clip` | the same with a radius on every clipping row, so each cell pays the per-corner intersect | ~810 µs |
+| `frame_10k_segments` | 10k one-segment `line` floats — the same 10k quads as `frame_10k_rects`, so the gap between the two is what a segment costs over a box | ~760 µs |
+| `frame_1k_curves` | 1k curves through eight knots each, re-flattened by chord length every frame — 35 segments a curve | ~257 µs |
+| `frame_10k_rects_all_transitioning` | every cell declares a `transition` — nine retained tween slots each | ~1.93 ms |
+| `frame_10k_rects_all_declaring_exit` | every cell also declares an `exit`, so the whole frame is kept for the next one to diff against | ~2.51 ms |
+| `frame_10k_rects_one_exit` | the same 10k grid with a single cell declaring an `exit` | ~748 µs |
+| `drop_1k_rows_plain` | 1k rows removed from the tree in one frame, no exits declared | ~59.3 µs |
+| `drop_1k_rows_declaring_exit` | the same removal with exits declared — over the 512-node budget, so ADR 0012 refuses it whole: the diff and the count, and no copies | ~163 µs |
 | `drop_500_rows_declaring_exit` | 500 rows with exits declared, under the budget, so all 500 are copied into the store | ~138 µs |
-| `replay_a_full_depart_store` | replaying a saturated depart store (the 512-node budget) for one frame | ~12.3 µs |
-| `frame_10k_chips_unwrapped` | 10k chips in 100 rows, one line per row | ~648 µs |
-| `frame_10k_chips_wrapped` | the same tree with every row breaking onto several lines | ~822 µs |
-| `deep_nesting_64_levels` | 16 chains nested 64 levels deep | ~79.3 µs |
-| `list_10k_rows_naive` | a 10k-row list held at its middle, built row by row | ~3.57 ms |
-| `list_10k_rows_virtual` | the same list through `widgets::virtual_column` | ~16.2 µs |
+| `replay_a_full_depart_store` | replaying a saturated depart store (the 512-node budget) for one frame | ~13.3 µs |
+| `frame_10k_chips_unwrapped` | 10k chips in 100 rows, one line per row | ~656 µs |
+| `frame_10k_chips_wrapped` | the same tree with every row breaking onto several lines | ~821 µs |
+| `deep_nesting_64_levels` | 16 chains nested 64 levels deep | ~78.7 µs |
+| `list_10k_rows_naive` | a 10k-row list held at its middle, built row by row | ~3.94 ms |
+| `list_10k_rows_virtual` | the same list through `widgets::virtual_column` | ~16.3 µs |
 | `list_100k_rows_virtual` | 100k rows through the same widget | ~16.4 µs |
 
 What the pairs say. Deriving the access tree costs **~1.35×** the frame it
@@ -840,6 +840,11 @@ the platform's acceptance of it. Two optional jobs, `smoke-macos` and
 `smoke-windows`, build and run `cargo test --workspace` natively against the
 real SDK; both are gated on the repository variables `SMOKE_MACOS` /
 `SMOKE_WINDOWS` and skip unless a runner with the matching label is registered.
+They live in their own workflow, [smoke.yml](.forgejo/workflows/smoke.yml),
+for the reason `audit` does: they share nothing with what makes `check`
+expensive and are on no release path — and a job whose runner label matches
+nothing does not fail fast in Forgejo, it queues, which in `ci.yml` would
+leave a run without a result long after `check` and `publish` had finished.
 
 Before tagging, run the macOS accessibility audit by hand:
 

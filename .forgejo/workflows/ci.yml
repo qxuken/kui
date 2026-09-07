@@ -5,9 +5,13 @@
 #           ├── build-windows (x64, via cargo-xwin)  ──┼── publish
 #           └── build-macos   (arm64, x64, via zig)  ──┘
 #
-# Two more jobs, `smoke-macos` and `smoke-windows`, run beside `check` on
-# real hardware. They are opt-in, non-blocking and part of no release path;
-# see the comment above them for what they do and do not buy.
+# Native runs on real hardware are not here either. `smoke-macos` and
+# `smoke-windows` live in .forgejo/workflows/smoke.yml, because they need
+# none of what makes `check` expensive and are on no release path - and
+# because a job whose runner label matches nothing sits in the queue rather
+# than failing fast, which would leave a `ci` run without a result long
+# after `check` and `publish` had finished. See the note at the top of that
+# file for what they do and do not buy.
 #
 # RustSec advisories are not checked here. They live in their own workflow,
 # .forgejo/workflows/audit.yml, because `cargo audit` reads Cargo.lock and
@@ -78,8 +82,8 @@
 #
 # Neither windows_nc.rs nor access_bridge.rs contains a single #[test]:
 # the headless suite pins the data they carry, not the platform's
-# acceptance of it. The optional smoke jobs below narrow the gap - they
-# compile with the platform's own toolchain, link against the real SDK
+# acceptance of it. The optional smoke jobs in smoke.yml narrow the gap -
+# they compile with the platform's own toolchain, link against the real SDK
 # and run the workspace tests there - but they do not close it, because
 # there are no tests to run against those two files. Behavioural coverage
 # of the macOS access tree is scripts/ax-audit.swift, a manual pre-release
@@ -281,98 +285,6 @@ jobs:
             }
             console.log(`examples lockfile matches packages/kui at ${want}`);
           '
-
-  # Native platform coverage: additive, opt-in and non-blocking. Neither
-  # job appears in `publish`'s `needs` and neither can fail a run
-  # (`continue-on-error`), so the cross-compiled release path above is
-  # exactly what it was. What they buy over that path is that the platform
-  # code is compiled by the platform's own toolchain, linked against the
-  # real SDK rather than a downloaded copy of it, and the workspace tests
-  # are executed on the machine the code was written for. What they do not
-  # buy is behavioural coverage of the platform chrome or the AccessKit
-  # bridge: neither windows_nc.rs nor access_bridge.rs has a test to run.
-  # `cargo test --workspace` (not `-p kui`) because the platform crates are
-  # what differ here, and the corpus and text tests are worth re-running on
-  # a second set of system fonts.
-  #
-  # They are gated on a repository variable, not on `runs-on` alone: a job
-  # whose label matches no runner does not fail fast in Forgejo, it sits in
-  # the queue. This instance has only the `docker` runner, so both skip
-  # today. To turn one on: register a runner, label it `macos` (or
-  # `windows`), install a stable Rust toolchain on it - plus Xcode command
-  # line tools, or MSVC build tools for the vendored Lua and the MSVC
-  # target - and set the repository variable SMOKE_MACOS (or SMOKE_WINDOWS)
-  # to `true`.
-  #
-  # These run on hosts, not in containers, so the workflow-level CARGO_HOME
-  # and RUSTUP_HOME - paths inside the docker image - have to be pointed
-  # back at the runner user's home before cargo is called. No cache action:
-  # a self-hosted runner keeps its workspace, so target/ persists on its
-  # own. No `needs: check` either - the point is a platform signal that
-  # arrives independently of the Linux job.
-  #
-  # The macOS command is known good: `cargo test --workspace` was run on
-  # macOS 26.6 / rustc 1.98 on 2026-09-03 and the whole workspace passed
-  # with no display, no fonts installed and no GPU touched (the corpus
-  # splits its checked-in expectations, which are font-independent, from
-  # the per-machine glyph digest, which is why it travels). Neither job
-  # itself has been run by Forgejo, because there is no runner to run it.
-  smoke-macos:
-    if: vars.SMOKE_MACOS == 'true'
-    runs-on: macos
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Point cargo at the runner's toolchain
-        shell: bash
-        run: |
-          set -eu
-          echo "CARGO_HOME=$HOME/.cargo" >> "$GITHUB_ENV"
-          echo "RUSTUP_HOME=$HOME/.rustup" >> "$GITHUB_ENV"
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-
-      - name: Versions
-        shell: bash
-        run: |
-          set -eu
-          command -v cargo >/dev/null || {
-            echo "no cargo on this runner: install a stable toolchain (rustup)" >&2
-            exit 1
-          }
-          cargo --version
-          sw_vers
-
-      - name: Test
-        shell: bash
-        run: cargo test --workspace
-
-  smoke-windows:
-    if: vars.SMOKE_WINDOWS == 'true'
-    runs-on: windows
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-
-      # PowerShell rather than bash: 5.1 ships with Windows, git-bash only
-      # arrives with Git for Windows. `$env:USERPROFILE` is already a
-      # native path, which is what cargo.exe wants - a git-bash `$HOME`
-      # (/c/Users/...) would not be.
-      - name: Point cargo at the runner's toolchain
-        shell: powershell
-        run: |
-          "CARGO_HOME=$env:USERPROFILE\.cargo" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "RUSTUP_HOME=$env:USERPROFILE\.rustup" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "$env:USERPROFILE\.cargo\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-
-      - name: Versions
-        shell: powershell
-        run: |
-          cargo --version
-
-      - name: Test
-        shell: powershell
-        run: cargo test --workspace
 
   # The three cross jobs share one shape: rustup for the target, the linker
   # for the platform, a cache per target, build, collect, upload. zig and
