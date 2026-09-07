@@ -14,7 +14,7 @@ bullet list — one line per break, naming the symbol — and then the paragraph
 that argue each one. The list is for the reader with a build to fix, who
 needs to grep for a name before reading 30 KB of prose; the paragraphs are
 for the reader deciding whether to upgrade. Earlier sections keep the shape
-they shipped with and are not retrofitted (backlog F30, from the alpha.8
+they shipped with and are not retrofitted (backlog F31, from the alpha.8
 field reports).
 
 ## 0.1.0-alpha.9 (unreleased)
@@ -113,7 +113,7 @@ that asserts on an empty warning list is what notices.
   **What you can delete:** the sleeps around a windowed test.
   `await new Promise(r => setTimeout(r, 400))` before reading `win.quads()`
   or `app.accessTree()`, and the helper that wrapped it. The app that
-  reported this (backlog F29) had three, of 400, 300 and 300 ms; they are
+  reported this (backlog F30) had three, of 400, 300 and 300 ms; they are
   three `await`s now, and its `npm run smoke` finishes about a second
   sooner with the same assertions passing.
 - **An `<audio>` one-shot can be told to finish, so a view need not guess
@@ -171,7 +171,7 @@ that asserts on an empty warning list is what notices.
   window is driven: `access(key, action)` is the one synthetic input it
   takes, and `click`, `type` and `key` are refused there. The answer was
   only on the two methods that refuse, which is not where a smoke test
-  reading `win.quads()` looks (backlog F27).
+  reading `win.quads()` looks (backlog F28).
 - **A release is discoverable: every alpha also takes the `latest`
   dist-tag.** The npm registry held one tag, `alpha`, because the publish
   step gave a prerelease its identifier and `latest` only to a plain
@@ -192,7 +192,7 @@ that asserts on an empty warning list is what notices.
   and commits its lockfile.
 
 - **`setEditText` reaches the editor the next frame declares** (backlog
-  F24, from updating `kui-node-template` to alpha.8). `EditStore::set_text`
+  F25, from the mind map's alpha.8 report). `EditStore::set_text`
   was `if let Some(state) = …` over the editors that exist, and the only
   thing that creates one is `text_edit` in the frame builder. So an editor
   a rename opens does not exist until the frame *after* the `update` that
@@ -331,7 +331,7 @@ that asserts on an empty warning list is what notices.
   `core.scroll.len()`) and the constants are public
   (`MAX_UNDECLARED_EDITS`, `MAX_UNDECLARED_SCROLLS`); nothing was added
   to `FrameStats`, which is the driver's timing ring and has no way to
-  see either store. Backlog F25.
+  see either store. Backlog F26.
 
   **What you can delete:** the discipline an app kept in order not to
   generate editor keys — a pool of reused field keys, a "session" suffix

@@ -1911,7 +1911,7 @@ export interface WindowLoop<M, A = AppMsg | CoreMsg, E = never> extends Loop<M, 
    *  because a window's clock is the wall's: `advance` refuses it, so a
    *  test cannot step time forward itself and the driver's pump is the only
    *  thing that can say a frame has happened. The alternative it replaces
-   *  is `setTimeout(400)` and hope (backlog F29). Rejects if the pump
+   *  is `setTimeout(400)` and hope (backlog F30). Rejects if the pump
    *  throws, or if the window closes while it waits. */
   settled(maxMs?: number): Promise<number>;
   /** Resolves after the next pump has painted — the cheap half of

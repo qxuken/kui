@@ -247,7 +247,7 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
     flushEffects();
   }
 
-  // What `settled()` and `frame()` are waiting for (backlog F29). A driver
+  // What `settled()` and `frame()` are waiting for (backlog F30). A driver
   // pumps from a timer the test cannot see into, so instead of guessing a
   // duration the test parks a waiter here and the pump answers it: `step()`
   // drains the list at the end of every turn, and a throw anywhere in the
@@ -394,7 +394,7 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
      *  true, as `runOut` returns its cap. A promise rather than a loop
      *  because a window's clock is the wall's: `advance` cannot move it, so
      *  the driver's pump is the only thing that can say a frame happened
-     *  (backlog F29). */
+     *  (backlog F30). */
     settled(maxMs = 10_000) {
       mustPump('settled');
       must('animating');

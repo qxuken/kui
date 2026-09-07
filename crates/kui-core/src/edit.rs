@@ -74,7 +74,7 @@ pub(crate) struct EditState {
 }
 
 /// How many *undeclared* editors the store keeps before the longest
-/// undeclared one is dropped (backlog F25). A declared editor is never
+/// undeclared one is dropped (backlog F26). A declared editor is never
 /// evicted, however many there are: retention across absence is what the
 /// `<edit>` row promises, so this is a ceiling, not a prune.
 ///
@@ -329,7 +329,7 @@ pub struct EditStore {
     /// with `initial`. An `update` that opens an editor and sets its text
     /// in the same turn runs a frame ahead of the view that declares it,
     /// so without this the call lands on nothing and the app sees the
-    /// editor open with `initial` (backlog F24). What the frame after it
+    /// editor open with `initial` (backlog F25). What the frame after it
     /// does not claim is dropped by `finish_frame`, with a warning.
     pending: FxHashMap<Key, String>,
     pub(crate) focused: Option<Key>,
@@ -404,7 +404,7 @@ impl EditStore {
     }
 
     /// How many states are retained — declared and undeclared together.
-    /// What a test watches the budget through (backlog F25).
+    /// What a test watches the budget through (backlog F26).
     pub fn len(&self) -> usize {
         self.states.len()
     }
@@ -573,7 +573,7 @@ impl EditStore {
             // Nothing has declared this key yet. The call is not wrong —
             // the `update` that opens an editor runs before the view that
             // declares it — so hold the text for the frame that does
-            // (backlog F24) rather than falling through silently.
+            // (backlog F25) rather than falling through silently.
             self.pending.insert(key, text.to_string());
             return;
         };

@@ -258,7 +258,7 @@ impl Core {
         self.diag
             .check(&self.tree, &self.text, &self.edit, self.frame_no);
         // Text set for a key nothing had declared yet was held for this
-        // frame (backlog F24). What it declared has taken its seed; what
+        // frame (backlog F25). What it declared has taken its seed; what
         // is left named an editor no view draws, so drop it and say so.
         // Drained whatever `diag.enabled` says, so the gate changes what
         // is reported and never what is retained.

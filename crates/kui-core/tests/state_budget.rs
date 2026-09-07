@@ -1,4 +1,4 @@
-//! The ceiling on retained editor and scroll state (backlog F25).
+//! The ceiling on retained editor and scroll state (backlog F26).
 //!
 //! Both stores keep state by key across the key's absence — that is what
 //! the `<edit>` row promises and what a tabbed form returning to a field

@@ -124,7 +124,7 @@ fn set_text_before_the_declare_seeds_the_editor() {
     // The `update` that opens a rename field runs a frame ahead of the
     // view that declares it, so `set_edit_text` from it names a key with
     // no editor behind it yet. The text is held for the frame that
-    // declares the key and seeds it there, over `initial` (backlog F24).
+    // declares the key and seeds it there, over `initial` (backlog F25).
     let mut core = Core::new();
     empty_frame(&mut core);
     core.set_edit_text(field_key(), "seeded");

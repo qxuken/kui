@@ -1154,7 +1154,7 @@ const outcome = (p) =>
     new Promise((r) => setImmediate(() => r(['pending']))),
   ]);
 
-test('settled() resolves from inside the pump, with the milliseconds it waited (F29)', async () => {
+test('settled() resolves from inside the pump, with the milliseconds it waited (F30)', async () => {
   const state = { animating: true, events: [] };
   let t = 0;
   const app = createApp(
@@ -1182,7 +1182,7 @@ test('settled() resolves from inside the pump, with the milliseconds it waited (
   assert.equal(await again, 8);
 });
 
-test('settled() gives up at its cap the way runOut returns one (F29)', async () => {
+test('settled() gives up at its cap the way runOut returns one (F30)', async () => {
   const state = { animating: true, events: [] };
   let t = 0;
   const app = createApp(
@@ -1201,7 +1201,7 @@ test('settled() gives up at its cap the way runOut returns one (F29)', async () 
   assert.equal(state.animating, true);
 });
 
-test('frame() is one more pump, and a pump that throws rejects both (F29)', async () => {
+test('frame() is one more pump, and a pump that throws rejects both (F30)', async () => {
   const state = { animating: true, events: [] };
   let t = 0;
   const surface = fakeWindow(state);
@@ -1229,7 +1229,7 @@ test('frame() is one more pump, and a pump that throws rejects both (F29)', asyn
   await assert.rejects(dead[1], /the pump threw/);
 });
 
-test('a loop that holds its own clock is told to use runOut instead (F29)', () => {
+test('a loop that holds its own clock is told to use runOut instead (F30)', () => {
   const app = createApp({ init: 0, update: (m) => m, view: () => box({ pad: 4 }) }, { startTime: 0 });
   app.render();
   // Headless there is nothing to wait for — the test moves time itself —
@@ -1938,7 +1938,7 @@ test('sounds: click/hover props, the audio element, tagged playbacks', () => {
 });
 
 // `finish` is a bit in the `audio` op's flags word, so the encoder is the
-// only thing between `<audio finish>` and the core's release (backlog F28).
+// only thing between `<audio finish>` and the core's release (backlog F29).
 test('an <audio finish> node releases its playback when the view drops it', () => {
   const ctx = new Ctx();
   const snd = ctx.addSound(Buffer.from('RIFF....WAVE'));

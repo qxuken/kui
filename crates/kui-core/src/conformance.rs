@@ -1771,7 +1771,7 @@ fn build_keys(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// names are 1 (`music`), 2 (`chime`) and 3 (`blip`) in every binding.
 /// Phase 1 stops declaring the last two, which is the scene's whole point:
 /// `chime` asked to [`AudioSpec::finish`] and leaves no command behind,
-/// `blip` did not and is stopped (backlog F28).
+/// `blip` did not and is stopped (backlog F29).
 fn build_media(ui: &mut Ui<'_>, f: &Fixtures, phase: u32) {
     ui.with(NodeSpec::column().pad(6.0).gap(4.0), |ui| {
         ui.image(
@@ -2761,7 +2761,7 @@ pub fn write_env(env: WindowEnv, out: &mut String) {
 /// itself, so neither would compare across four runs. A play carries its
 /// `looped` bit because that is the one thing about a playback the report
 /// otherwise could not see, and it is what decides whether a departure
-/// stops the playback or releases it (`AudioSpec::finish`, backlog F28).
+/// stops the playback or releases it (`AudioSpec::finish`, backlog F29).
 /// `master` and `unload` name no playback at all.
 pub fn write_audio_command(cmd: &AudioCommand, out: &mut String) {
     let _ = match *cmd {

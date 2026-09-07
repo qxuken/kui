@@ -117,7 +117,7 @@ caret at the end. It addresses an editor that already exists, by the hex key
 an event carried: called from `update` at the moment a rename opens, before
 any frame has declared that editor, it is a silent no-op today — so the
 reset runs on the editor's first `onLayout`, which is both where the key
-comes from and the first moment the editor is there to take it (backlog F24
+comes from and the first moment the editor is there to take it (backlog F25
 is that gap).
 
 [`edit` element](props.md#elements) ·
@@ -220,7 +220,7 @@ steps until `animating()` is false, and returns the milliseconds it spent —
 a frame that applies a change is frame 0 of its transitions, so a `render()`
 straight after a dispatch is the *start* of the motion. A window runs on the
 wall clock and has no `advance`: pump, `step()`, and poll `win.animating()`
-(backlog F29 wants that as a promise on the windowed loop).
+(backlog F30 wants that as a promise on the windowed loop).
 
 [alpha.8 `runOut` entry](../CHANGELOG.md#010-alpha8-2026-09-07)
 
@@ -277,7 +277,7 @@ measured.
 Write the exact version: `^0.1.0-alpha.7` and `~0.1.0-alpha.7` both admit any
 prerelease of the same `0.1.0` tuple, so without a lockfile both float to the
 newest alpha. The template's `^` is a floor on purpose; an app that wants the
-release it tested pins it exactly and commits its lockfile (backlog F26).
+release it tested pins it exactly and commits its lockfile (backlog F27).
 
 [every release](../CHANGELOG.md)
 
@@ -286,7 +286,7 @@ release it tested pins it exactly and commits its lockfile (backlog F26).
 `npm view @qxuken/kui@alpha version` is the query. The package publishes one
 dist-tag, `alpha`, and no `latest`, so `npm view @qxuken/kui version`, `npm
 view … dist-tags` and `npm outdated` print nothing and exit 0 — silence there
-means "wrong tag", not "no such release" (backlog F26 is the fix). The
+means "wrong tag", not "no such release" (backlog F27 is the fix). The
 repository README's *Releases* section is what the registries and the tags
 are written down in.
 

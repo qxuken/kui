@@ -56,7 +56,7 @@ struct Entry {
 }
 
 /// How many *undeclared* scroll entries the store keeps before the longest
-/// undeclared one is dropped (backlog F25). An entry a layout resolved in
+/// undeclared one is dropped (backlog F26). An entry a layout resolved in
 /// the frame that just ended is never evicted, however many there are.
 ///
 /// Why 1024 where the editors get 256: an entry is a pair of offsets, an
@@ -74,7 +74,7 @@ pub struct ScrollStore {
 
 impl ScrollStore {
     /// How many entries are retained — declared and undeclared together.
-    /// What a test watches the budget through (backlog F25).
+    /// What a test watches the budget through (backlog F26).
     pub fn len(&self) -> usize {
         self.entries.len()
     }

@@ -17,7 +17,7 @@ cpSync(root('CHANGELOG.md'), here('CHANGELOG.md'));
 // a sibling, the changelog is up one and the ADRs are under `adr/`) and at
 // the package root here (so the changelog is a sibling and the ADRs are
 // under `docs/adr/`). One rewrite at copy time, rather than a set of links
-// that resolves in only one of the two (backlog F30).
+// that resolves in only one of the two (backlog F31).
 writeFileSync(
   here('howto.md'),
   readFileSync(root('docs/howto.md'), 'utf8')

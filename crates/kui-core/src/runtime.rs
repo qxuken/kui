@@ -649,7 +649,7 @@ impl Core {
         self.depart.begin_frame();
         // The two stores that keep state by key across a key's absence:
         // they stamp this frame onto what it declares, and cap what it
-        // does not (backlog F25).
+        // does not (backlog F26).
         self.edit.begin_frame(self.frame_no);
         self.scroll.begin_frame(self.frame_no);
         self.tree.push(

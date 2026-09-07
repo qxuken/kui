@@ -3,7 +3,7 @@
 From the architecture review of `93169ed` (2026-09-03), after 0.1.0-alpha.5,
 the six rounds that followed it, and the field reports from two apps built on
 alpha.6, alpha.7 and alpha.8 outside this repo (F1–F15 on 2026-09-06,
-F16–F23 and F24–F30 on 2026-09-07). Every item names the
+F16–F23 and F25–F31 on 2026-09-07). Every item names the
 evidence that produced it, so a task that turns out to be wrong can be argued with rather
 than guessed at.
 
@@ -18,7 +18,7 @@ so an id cited by an open item, a code comment or a commit message can be
 resolved without opening the archive. Nothing was renumbered in any of those
 moves, and nothing ever is. What is left here is three parked headings — C12,
 C13 and C14 — the seven entries from the two alpha.8 field reports,
-F24–F30 (2026-09-07), and what comes next; F16–F23 from the two alpha.7
+F25–F31 (2026-09-07), and what comes next; F16–F23 from the two alpha.7
 field reports all closed the day they were filed (2026-09-07). C15's
 remainder was the last split entry, and it closed on 2026-09-07.
 
@@ -129,12 +129,12 @@ playback's — and when it lets go of it.
 
 Three claims did not survive the check whole, and the entries say so: the
 pomodoro's fix for caret ranges (`~` floats exactly as `^` does), the mind
-map's "there is no shorter way round" (there is none today, and F24 is
+map's "there is no shorter way round" (there is none today, and F25 is
 it), and the pomodoro's "a window has no equivalent" of `runOut` (the
-primitive is there; the promise is not). One entry, F25, is not in either
-report: it fell out of checking F24.
+primitive is there; the promise is not). One entry, F26, is not in either
+report: it fell out of checking F25.
 
-### `~` F24 — `setEditText` before the editor exists does nothing, and alpha.8's deletion list told an app to delete a latch it still needs — **done (2026-09-07)**
+### `~` F25 — `setEditText` before the editor exists does nothing, and alpha.8's deletion list told an app to delete a latch it still needs — **done (2026-09-07)**
 
 Done: a text set for a key nothing has declared is held as a pending seed
 and seeds the editor the next frame declares under that key, over its
@@ -199,7 +199,7 @@ correction goes on top. A `~`: the workaround exists and is the latch,
 and the report's three checks are what it takes to know the latch is
 still needed.
 
-### `~` F25 — Editor and scroll state are kept by key forever — **done (2026-09-07)**
+### `~` F26 — Editor and scroll state are kept by key forever — **done (2026-09-07)**
 
 Done: both stores cap the states nobody declares. A declared state is
 never evicted — retention across absence is the promise, so this is a
@@ -252,10 +252,10 @@ tests — that an editor and a scroll offset nobody declares for 500
 frames come back untouched while the store is inside its budget. One
 sentence went into the `<edit>` row, the overflow row and the `key` row.
 
-Found while checking F24. The idiom the retained-by-key model implies — a
+Found while checking F25. The idiom the retained-by-key model implies — a
 fresh key per opening (`edit-${id}-${session}`), so `initial` seeds a
 fresh editor every time, the way React remounts on a changed key — would
-have answered the mind map without any of F24. It works. It also leaks:
+have answered the mind map without any of F25. It works. It also leaks:
 `EditStore::states` (`edit.rs:309`) is an `FxHashMap<Key, EditState>` that
 only ever grows — `declare` is `entry(key).or_insert_with`, and no path in
 the runtime removes an entry. Each state owns a `cosmic_text::Editor` with
@@ -282,7 +282,7 @@ undeclared one is kept until the budget needs the room". A `~` because
 nothing can free it from outside; a `!` the day an app opens editors under
 generated keys.
 
-### `~` F26 — There is no supported way to learn a release exists, and every range an app writes floats
+### `~` F27 — There is no supported way to learn a release exists, and every range an app writes floats — **built (2026-09-07), unverified until alpha.9 publishes**
 
 **Built 2026-09-07 — unverified on the registry until alpha.9 ships.** Both
 halves of the "Do" below are in the tree. `ci.yml`'s npm publish step follows
@@ -338,7 +338,7 @@ an app pins an exact version and its lockfile is what holds; `npm view
 work, `~` as an outcome — an app "can be running a release it has no way
 to discover it is running".
 
-### `.` F27 — `quads()` on a window does not say how to drive one — done (2026-09-07)
+### `.` F28 — `quads()` on a window does not say how to drive one — done (2026-09-07)
 
 **Done (2026-09-07), as the entry asks — three doc sites, no code.**
 `quads()`'s doc in the `core_methods!` macro
@@ -381,7 +381,7 @@ path. Rebuild the addon before `npm run gen` (the doc lives in the Rust
 source), and the package README's window example gets the same sentence.
 Their `smoke.tsx` is the test that wanted it.
 
-### `~` F28 — An `<audio>` one-shot that must finish has to guess its own length — **done (2026-09-07)**
+### `~` F29 — An `<audio>` one-shot that must finish has to guess its own length — **done (2026-09-07)**
 
 Done, and named `finish` as the entry proposed. `AudioSpec::finish()` /
 `<audio finish/>` / `finish = true` / `KuiAudio.finish` changes what *gone*
@@ -463,7 +463,7 @@ whose command list shows no `stop`. **What the app can delete:**
 `CHIME_MS` and the `now - alarmAt` window; the node is declared for one
 frame and the sound plays whole.
 
-### `~` F29 — A window has no settled frame by name, so a smoke test sleeps — **done (2026-09-07)**
+### `~` F30 — A window has no settled frame by name, so a smoke test sleeps — **done (2026-09-07)**
 
 Done, as written. `WindowLoop` — the loop `runWindowed` builds, and only
 it — has `settled(maxMs = 10_000): Promise<number>` and
@@ -533,7 +533,7 @@ Promise<void>` — "one more pump has painted" — nearly free, which is what
 the first `frames(400)` was waiting for. Their `smoke.tsx` is the test to
 convert; its three sleeps become three awaits.
 
-### `.` F30 — Three doc shapes the reports paid for — done (2026-09-07)
+### `.` F31 — Three doc shapes the reports paid for — done (2026-09-07)
 
 **Outcome: all three, as written.** (1)
 [`docs/howto.md`](howto.md) is the task index: 23 questions in five
@@ -544,8 +544,8 @@ needed (playing a sound, testing a real window, animating a removal,
 resetting an editor, the settled frame, pinning a version, a connector,
 popup versus modal, effects an app defines, a spoken-only hint, a tab
 bar, shortcuts beside a Tab ring, an announcement, naming a node, reading
-warnings) and it says what is true today rather than what F24, F26 and
-F29 would make true: `setEditText` reaches a declared editor by the hex
+warnings) and it says what is true today rather than what F25, F27 and
+F30 would make true: `setEditText` reaches a declared editor by the hex
 key an event carried, so the reset still runs on the first `onLayout`; a
 window is polled through `animating()` because there is no `settled()`
 yet; and both `^` and `~` float, so an app pins exactly. Every link was
@@ -604,7 +604,7 @@ found is that the right sentences are not where a reader stands.
   the library's side, where the workaround has one purpose". **Do:** a
   "what you can delete" line names the *behaviour* the release removed
   the need for, and leaves the app to say which of its lines that was;
-  F24's correction is the first instance.
+  F25's correction is the first instance.
 
 ### Theirs, not ours
 
@@ -642,17 +642,17 @@ together, a new removal outranks ghosts already in flight, the
 `exit-budget` warning names the frame's removal, and the corpus `exit`
 scene pins the change in four bindings with the phase the ADR asked for
 (and the correction it needed: `bulk` had to leave in a frame of its own).
-The next thing to build is what the next field reports asked for, the same
-day: F24–F30 above — F24 and F28 are the two that touch the core, F25 is
-the lifetime question they turned up and is **done (2026-09-07)**, F26 is
-the publish step (built the same day, and unverified until the tag it
-writes exists), and F27,
-F29 and F30 are a doc clause, a promise on the windowed loop and a task
-index. F27 is **done (2026-09-07)**: the clause landed on `quads()`,
-`access` and the README, and nothing but doc text moved. **F30 closed on 2026-09-07**: `docs/howto.md`, the `**What
-breaks.**` bullet list from alpha.9 on, and what a "what you can delete"
-line names — its outcome is written on top of the entry. F29 is **done (2026-09-07)**: `settled` and `frame` on
-`WindowLoop`. F28 is **done (2026-09-07)**: the `audio` element's `finish`.
+The next thing to build was what the next field reports asked for, and
+all seven landed the same day they were filed (2026-09-07), each with its
+outcome written on top of its entry above: F25 (`setEditText` seeds the
+editor the next frame declares, and warns when none does), F26 (a budget
+on undeclared editor and scroll state), F27 (every alpha also takes the
+`latest` dist-tag — built, and unverified until the tag it writes exists),
+F28 (the clause on `quads()` and `access`), F29 (the `audio` element's
+`finish`), F30 (`settled` and `frame` on `WindowLoop`) and F31
+(`docs/howto.md`, the `**What breaks.**` bullet list from alpha.9 on, and
+what a deletion line names). They move to the archive at the next
+archiving round; nothing is queued behind them.
 
 **Design, wanting an ADR.** Nothing new since ADR 0014 (above) was built on 2026-09-07; what it leaves open — a slot element for Node, extensions in `kui_run`, an extension offering slots of its own — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
 [`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md),
@@ -771,7 +771,7 @@ move.
 - `.` **F22** — [Both apps wrote the same "advance until nothing animates" loop](backlog/closed-2026-09.md#-f22--both-apps-wrote-the-same-advance-until-nothing-animates-loop--done-2026-09-07) — done (2026-09-07) — `app.runOut()`
 - `~` **F23** — [Effects an app defines have nowhere to go but a side channel](backlog/closed-2026-09.md#-f23--effects-an-app-defines-have-nowhere-to-go-but-a-side-channel-wants-an-adr--done-2026-09-07) — done (2026-09-07) — ADR 0013, accepted and built; the chime itself needed only `<audio>`
 
-**From updating `kui-node-template` to alpha.8 (2026-09-07)** — F24 and F25, both closed the day they were filed; F25 is still in this file, under its own heading above
+**From updating `kui-node-template` to alpha.8 (2026-09-07)** — F24, closed the day it was filed
 
 - `~` **F24** — [The stock `<button>` cannot take the `description` its own changelog entry is about](backlog/closed-2026-09.md#-f24--the-stock-button-cannot-take-the-description-its-own-changelog-entry-is-about--done-2026-09-07) — done (2026-09-07) — the button admits the access rows in all four bindings, and a row it does not read warns instead of vanishing
 
