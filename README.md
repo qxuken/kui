@@ -295,7 +295,11 @@ that are hard to reverse and would look arbitrary without their context.
   or a background per span — paint built beside the glyphs, one rect per
   line the span covers, so a background follows it across a wrap) shaped as
   one paragraph flow, so wrapping crosses style boundaries and emoji share
-  baselines. Line breaking
+  baselines. A no-wrap
+  line of 4096 bytes or more — a minified bundle, a log line with a blob in
+  it — is shaped in ~1 KB chunks as they come on screen, so it costs the
+  screenful it shows and a keystroke into it costs the chunk it lands in
+  (backlog C19). Line breaking
   is a style choice: `wrap` (word / glyph / none), `max_lines`, and
   `ellipsis` (a single "…"-terminated line unless `max_lines` says
   otherwise); unwrapped text takes its box's width and clips to it.
@@ -780,6 +784,9 @@ that prop costs.
 | `warm_50x200` (`--bench stream`) | fifty 200-column mono lines, the same every frame — a terminal pane at rest | ~85 µs |
 | `stream_50x200_log` | the same pane with every line new each frame, thirty-word log vocabulary plus numbers | ~25 ms |
 | `stream_50x200_random` | every line new and random printable ASCII, nothing for the shape-run cache to hit | ~64 ms |
+| `long_line_100k_first_frame` (`--bench long_line`) | a 100k-character no-wrap line opened in a horizontally scrolling view — shaped in chunks as they show | ~18 ms (was 662 ms whole) |
+| `long_line_100k_scroll` | a viewport's width of scrolling through it per frame | ~160 µs, a few ms when a chunk first shows |
+| `long_line_100k_edit` | one character inserted in the middle, the view held there | ~160 µs (was 102 ms) |
 
 What the pairs say. Deriving the access tree costs **~1.35×** the frame it
 follows. Shadows under a faded root are **twice the quads** (20k against 10k)

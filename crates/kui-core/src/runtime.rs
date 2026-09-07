@@ -548,9 +548,16 @@ impl Core {
         self.text.bytes()
     }
 
-    /// How many shaped texts the cache holds.
+    /// How many shaped texts the cache holds (a long line's chunks each
+    /// count).
     pub fn text_cache_len(&self) -> usize {
         self.text.len()
+    }
+
+    /// How many long lines — no-wrap texts past `LONG_LINE_BYTES`, shaped
+    /// in chunks — are held (backlog C19).
+    pub fn long_lines(&self) -> usize {
+        self.text.long_lines()
     }
 
     /// The frame clock for transitions: monotonic seconds, any origin.

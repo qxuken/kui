@@ -875,7 +875,32 @@ the two callers inside the repo; `modal_editor` moves its click handling
 onto it and drops `col_at`. C19's chunks make both verbs O(log chunks) on
 a long line instead of O(glyphs).
 
-### `~` C19 — A long line is shaped whole, and slicing it from outside costs more than not slicing
+### `~` C19 — A long line is shaped whole, and slicing it from outside costs more than not slicing — **done (2026-09-08)**
+
+Done as the "Do" says, steps 1–4, with 5 (wrapped long lines) left as
+it said. `LongLine` in `text.rs`: a no-wrap text of `LONG_LINE_BYTES`
+(4096) or more with no line breaks is cut by `chunk_ranges` after the
+last whitespace in the second half of each 1 KB window (else at a
+grapheme boundary), each chunk keyed by its own content as an ordinary
+`CachedText` — so the byte budget governs them and an edit's untouched
+chunks hit — and the line holds the ranges, the chunk keys and a prefix
+sum of widths. The first chunk shapes at creation for the line height
+and the mean advance; `ensure_chunk` shapes the rest when `emit` (the
+chunks inside the clip plus one either side), `text_hit` or
+`caret_rect` lands in one, and moves the prefix if the estimate was
+off. `emit` grew a `Resources` parameter for it, and its body became
+`emit_entry`, which a text node and a chunk share. Measured before and
+after on the same 100k characters (`benches/long_line.rs`, and the
+scratch run the entry's numbers came from): first frame 662 ms → ~18
+ms, a keystroke 102 ms → ~160 µs, the cache 47 MB → under 2 MB, a
+viewport of scrolling ~160 µs either way with a few milliseconds on the
+frame a chunk first shows. What the line gives up: the access tree
+carries its value and not its runs (`with_buffer` is `None` for it, the
+way off-screen lines of a document are not walked), `measure_text`
+answers the estimate, and a query into a chunk that never showed answers
+by the mean advance. Six tests in `tests/long_line.rs`; the text element
+row says when a text is chunked. Wrapped long lines stay the follow-up
+the entry named.
 
 A text node with `wrap: none` shapes its whole content on first sight
 (`intern`, `text.rs:383`), keeps a `GlyphTemplate` per glyph, and at

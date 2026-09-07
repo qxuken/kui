@@ -48,6 +48,10 @@ harness = false
 name = "stream"
 harness = false
 
+[[bench]]
+name = "long_line"
+harness = false
+
 # See the note in crates/kui/Cargo.toml: examples live under examples/ at the
 # root, so cargo needs the path.
 [[example]]

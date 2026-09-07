@@ -169,6 +169,21 @@ pub const DEFAULT_TEXT_CACHE_BYTES: usize = 64 << 20;
 const ENTRY_BASE_BYTES: usize = 4096;
 const ENTRY_GLYPH_BYTES: usize = 480;
 
+/// A non-wrapping text at least this long is shaped in chunks (backlog
+/// C19): a minified bundle, a log line with a blob in it, a base64 field.
+/// Shorter text takes the path it always took, so nothing below the line
+/// moves. Bytes, not characters, for the same reason a step line carries
+/// integers: every binding can count them.
+pub const LONG_LINE_BYTES: usize = 4096;
+/// How long a chunk is, at most: cut at the last whitespace in the second
+/// half of the window, else at a grapheme boundary. cosmic-text shapes
+/// per whitespace-delimited word and its shape-run cache keys on words, so
+/// a cut at whitespace loses nothing the whole line kept.
+const CHUNK_BYTES: usize = 1024;
+/// Mixed into a long line's key so it never collides with the entry a
+/// short text of the same content would get.
+const LONG_SALT: u64 = 0x5f5f_6c6f_6e67_5f5f;
+
 /// When the cache is over budget it is evicted down to this fraction of it,
 /// not to the line, so a stream that adds a little every frame walks the
 /// cache once per quarter-budget of new text rather than every frame.
@@ -340,6 +355,116 @@ impl<'a> Span<'a> {
 struct FrameText {
     cache_key: u64,
     color: Color,
+    /// The key names a [`LongLine`] rather than a `CachedText`.
+    long: bool,
+}
+
+/// One chunk of a long line: its byte range in the content, the cache key
+/// its shaped entry has (an ordinary `CachedText`, budgeted like any), and
+/// its width once shaped.
+struct Chunk {
+    start: usize,
+    end: usize,
+    key: u64,
+    width: Option<f32>,
+}
+
+/// A non-wrapping text past [`LONG_LINE_BYTES`], shaped in chunks on demand
+/// (backlog C19). The line itself holds no buffer: its chunks are cache
+/// entries interned when emission, a hit-test or a caret query lands in
+/// them, and `prefix` is where each chunk starts — an estimate from the
+/// first chunk's mean advance until the chunk shapes, exact after. So a
+/// 100k-character line costs the screenful it shows, a keystroke into it
+/// costs the chunk it lands in, and the width the scrollbar sees can move
+/// a little as chunks fill in, exact under monospace.
+struct LongLine {
+    content: String,
+    style: TextStyle,
+    chunks: Vec<Chunk>,
+    /// Physical px from the line's origin to each chunk's start, one more
+    /// than there are chunks: the last is the line's width.
+    prefix: Vec<f32>,
+    /// Physical line height, from the first chunk's buffer.
+    line_h: f32,
+    /// Physical px per byte, from the first chunk: the estimate an
+    /// unshaped chunk's width is.
+    avg: f32,
+    last_used: u64,
+    bytes: usize,
+}
+
+impl LongLine {
+    /// The chunk `x` (physical, from the line's origin) falls in.
+    fn chunk_at(&self, x: f32) -> usize {
+        match self.prefix[1..].partition_point(|&p| p <= x) {
+            i if i >= self.chunks.len() => self.chunks.len().saturating_sub(1),
+            i => i,
+        }
+    }
+
+    /// The chunk byte `byte` falls in (the last for the end).
+    fn chunk_of_byte(&self, byte: usize) -> usize {
+        match self.chunks.partition_point(|c| c.end <= byte) {
+            i if i >= self.chunks.len() => self.chunks.len().saturating_sub(1),
+            i => i,
+        }
+    }
+
+    fn width(&self) -> f32 {
+        self.prefix.last().copied().unwrap_or(0.0)
+    }
+
+    /// Recomputes `prefix` from the chunk widths, estimating the unshaped.
+    fn reprefix(&mut self) {
+        let mut at = 0.0f32;
+        self.prefix.clear();
+        self.prefix.push(0.0);
+        for c in &self.chunks {
+            at += c
+                .width
+                .unwrap_or_else(|| (c.end - c.start) as f32 * self.avg);
+            self.prefix.push(at);
+        }
+    }
+}
+
+/// Where a long line is cut: after the last whitespace in the second half
+/// of each window, else at the last grapheme boundary inside it.
+fn chunk_ranges(content: &str) -> Vec<(usize, usize)> {
+    use unicode_segmentation::UnicodeSegmentation;
+    let mut out = Vec::with_capacity(content.len() / CHUNK_BYTES + 1);
+    let mut start = 0usize;
+    while start < content.len() {
+        let window_end = (start + CHUNK_BYTES).min(content.len());
+        let end = if window_end == content.len() {
+            window_end
+        } else {
+            let window = &content[start..window_end];
+            let half = CHUNK_BYTES / 2;
+            let after_space = window
+                .char_indices()
+                .filter(|(i, c)| *i >= half && c.is_whitespace())
+                .map(|(i, c)| i + c.len_utf8())
+                .next_back();
+            match after_space {
+                Some(i) => start + i,
+                None => {
+                    // The last grapheme boundary at or before the window's end.
+                    let mut cut = 0usize;
+                    for (i, _) in window.grapheme_indices(true) {
+                        if i == 0 {
+                            continue;
+                        }
+                        cut = i;
+                    }
+                    if cut == 0 { window_end } else { start + cut }
+                }
+            }
+        };
+        out.push((start, end));
+        start = end;
+    }
+    out
 }
 
 /// How many enclosing keys a place remembers: a text run answers to its
@@ -357,6 +482,8 @@ struct TextPlace {
     ancestors: [Key; PLACE_ANCESTORS],
     depth: u8,
     cache_key: u64,
+    /// `cache_key` names a [`LongLine`].
+    long: bool,
     /// The node's origin, logical viewport px.
     origin: Vec2,
 }
@@ -401,6 +528,9 @@ pub struct TextMetrics {
 pub struct TextSystem {
     raster: Raster,
     cache: FxHashMap<u64, CachedText>,
+    /// Non-wrapping texts past `LONG_LINE_BYTES`, by their salted key;
+    /// their chunks are in `cache` (backlog C19).
+    long: FxHashMap<u64, LongLine>,
     /// The sum of the entries' `bytes`, kept exact against inserts and
     /// removals so a frame inside its budget costs one comparison.
     bytes: usize,
@@ -454,6 +584,7 @@ impl TextSystem {
         Self {
             raster: Raster::new(),
             cache: FxHashMap::default(),
+            long: FxHashMap::default(),
             bytes: 0,
             budget: DEFAULT_TEXT_CACHE_BYTES,
             frame: Vec::new(),
@@ -499,9 +630,15 @@ impl TextSystem {
         self.bytes
     }
 
-    /// How many shaped texts the cache holds.
+    /// How many shaped texts the cache holds (a long line's chunks each
+    /// count; the line itself does not).
     pub fn len(&self) -> usize {
         self.cache.len()
+    }
+
+    /// How many long lines are held (backlog C19).
+    pub fn long_lines(&self) -> usize {
+        self.long.len()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -553,6 +690,7 @@ impl TextSystem {
         // Scale change invalidates every physical-px measurement.
         if (scale - self.scale).abs() > f32::EPSILON {
             self.cache.clear();
+            self.long.clear();
             self.bytes = 0;
         }
         self.scale = scale;
@@ -574,6 +712,13 @@ impl TextSystem {
                 let keep = e.last_used >= cutoff;
                 if !keep {
                     freed += e.bytes;
+                }
+                keep
+            });
+            self.long.retain(|_, l| {
+                let keep = l.last_used >= cutoff;
+                if !keep {
+                    freed += l.bytes;
                 }
                 keep
             });
@@ -668,15 +813,27 @@ impl TextSystem {
 
     /// The content of one of this frame's texts (spans concatenated).
     pub(crate) fn content(&self, id: TextId) -> &str {
-        let key = self.frame[id.0 as usize].cache_key;
-        self.cache.get(&key).map_or("", |e| e.content.as_str())
+        let FrameText {
+            cache_key, long, ..
+        } = self.frame[id.0 as usize];
+        if long {
+            return self.long.get(&cache_key).map_or("", |l| l.content.as_str());
+        }
+        self.cache
+            .get(&cache_key)
+            .map_or("", |e| e.content.as_str())
     }
 
     /// Reads one of this frame's laid-out buffers (the access tree walks
-    /// its runs).
+    /// its runs). A long line has none: its value is readable through
+    /// [`Self::content`] and its chunks are not walked, the way a tall
+    /// document's off-screen lines are not.
     pub(crate) fn with_buffer<T>(&self, id: TextId, f: impl FnOnce(&Buffer) -> T) -> Option<T> {
-        let key = self.frame.get(id.0 as usize)?.cache_key;
-        self.cache.get(&key).map(|e| f(&e.buffer))
+        let ft = self.frame.get(id.0 as usize)?;
+        if ft.long {
+            return None;
+        }
+        self.cache.get(&ft.cache_key).map(|e| f(&e.buffer))
     }
 
     /// The cache key and colour behind one of the *previous* frame's texts
@@ -698,9 +855,18 @@ impl TextSystem {
     /// long as something still draws it.
     pub(crate) fn readd(&mut self, cache_key: u64, color: Color) -> Option<TextId> {
         let frame_no = self.frame_no;
-        let entry = self.cache.get_mut(&cache_key)?;
-        entry.last_used = frame_no;
-        self.frame.push(FrameText { cache_key, color });
+        let long = if let Some(entry) = self.cache.get_mut(&cache_key) {
+            entry.last_used = frame_no;
+            false
+        } else {
+            self.long.get_mut(&cache_key)?.last_used = frame_no;
+            true
+        };
+        self.frame.push(FrameText {
+            cache_key,
+            color,
+            long,
+        });
         Some(TextId((self.frame.len() - 1) as u32))
     }
 
@@ -712,12 +878,105 @@ impl TextSystem {
         res: &Resources,
         fs: &mut FontSystem,
     ) -> TextId {
-        let key = self.intern(content, style, res, fs);
+        let long = is_long(content, style);
+        let key = if long {
+            self.intern_long(content, style, res, fs)
+        } else {
+            self.intern(content, style, res, fs)
+        };
         self.frame.push(FrameText {
             cache_key: key,
             color: style.color,
+            long,
         });
         TextId((self.frame.len() - 1) as u32)
+    }
+
+    /// Registers (or touches) the long line `content` is, shaping its
+    /// first chunk for the line height and the advance the rest are
+    /// estimated from; see [`LongLine`].
+    fn intern_long(
+        &mut self,
+        content: &str,
+        style: &TextStyle,
+        res: &Resources,
+        fs: &mut FontSystem,
+    ) -> u64 {
+        let key = Self::style_key(content, style, self.scale) ^ LONG_SALT;
+        let frame_no = self.frame_no;
+        if let Some(line) = self.long.get_mut(&key) {
+            line.last_used = frame_no;
+            return key;
+        }
+        let chunks: Vec<Chunk> = chunk_ranges(content)
+            .into_iter()
+            .map(|(start, end)| Chunk {
+                start,
+                end,
+                key: Self::style_key(&content[start..end], style, self.scale),
+                width: None,
+            })
+            .collect();
+        // The first chunk is shaped now: the line's height and the mean
+        // advance the estimates need come from it.
+        let (w0, line_h) = match chunks.first() {
+            Some(c) => {
+                let k = self.intern(&content[c.start..c.end], style, res, fs);
+                let e = &self.cache[&k];
+                (e.intrinsic.w, e.buffer.metrics().line_height)
+            }
+            None => (0.0, style.line_height * self.scale),
+        };
+        let avg = chunks
+            .first()
+            .map_or(0.0, |c| w0 / (c.end - c.start).max(1) as f32);
+        let mut line = LongLine {
+            content: content.to_string(),
+            style: *style,
+            chunks,
+            prefix: Vec::new(),
+            line_h,
+            avg,
+            last_used: frame_no,
+            bytes: 0,
+        };
+        if let Some(c) = line.chunks.first_mut() {
+            c.width = Some(w0);
+        }
+        line.reprefix();
+        line.bytes = ENTRY_BASE_BYTES + line.content.len() + line.chunks.len() * 48;
+        self.bytes += line.bytes;
+        self.long.insert(key, line);
+        key
+    }
+
+    /// Makes sure chunk `i` of the long line `key` is shaped, and moves
+    /// the prefix sums if its width was an estimate. Returns the chunk's
+    /// cache key.
+    fn ensure_chunk(&mut self, key: u64, i: usize, res: &Resources, fs: &mut FontSystem) -> u64 {
+        let (text, style, chunk_key, known) = {
+            let line = &self.long[&key];
+            let c = &line.chunks[i];
+            (
+                line.content[c.start..c.end].to_string(),
+                line.style,
+                c.key,
+                c.width,
+            )
+        };
+        if known.is_some() && self.cache.contains_key(&chunk_key) {
+            self.cache.get_mut(&chunk_key).expect("checked").last_used = self.frame_no;
+            return chunk_key;
+        }
+        let k = self.intern(&text, &style, res, fs);
+        let w = self.cache[&k].intrinsic.w;
+        let line = self.long.get_mut(&key).expect("just read");
+        line.chunks[i].key = k;
+        if line.chunks[i].width != Some(w) {
+            line.chunks[i].width = Some(w);
+            line.reprefix();
+        }
+        k
     }
 
     /// Measures `content` in `style` without adding a node: its unwrapped
@@ -733,6 +992,20 @@ impl TextSystem {
         fs: &mut FontSystem,
         max_w: Option<f32>,
     ) -> TextMetrics {
+        if is_long(content, style) {
+            let key = self.intern_long(content, style, res, fs);
+            let line = &self.long[&key];
+            let scale = self.scale;
+            let mut w = line.width();
+            if let Some(m) = max_w {
+                w = w.min(m * scale);
+            }
+            return TextMetrics {
+                width: w / scale,
+                height: line.line_h / scale,
+                lines: 1,
+            };
+        }
         let key = self.intern(content, style, res, fs);
         self.measure_key(key, fs, max_w)
     }
@@ -781,6 +1054,7 @@ impl TextSystem {
         self.frame.push(FrameText {
             cache_key: key,
             color: base.color,
+            long: false,
         });
         TextId((self.frame.len() - 1) as u32)
     }
@@ -859,6 +1133,9 @@ impl TextSystem {
     }
 
     fn ensure_wrap(&mut self, id: TextId, max_w_logical: f32, fs: &mut FontSystem) {
+        if self.frame[id.0 as usize].long {
+            return;
+        }
         let scale = self.scale;
         let key = self.frame[id.0 as usize].cache_key;
         let entry = self
@@ -878,16 +1155,54 @@ impl TextSystem {
         origin: Vec2,
         node: Size,
         clip: Clip,
+        res: &Resources,
         fs: &mut FontSystem,
         atlas: &mut GlyphAtlas,
         out: &mut Vec<Quad>,
     ) {
-        self.ensure_wrap(id, node.w, fs);
-        let color = self.frame[id.0 as usize].color;
-        let key = self.frame[id.0 as usize].cache_key;
+        let FrameText {
+            cache_key: key,
+            color,
+            long,
+        } = self.frame[id.0 as usize];
         let scale = self.scale;
         let ox = (origin.x * scale).round();
         let oy = (origin.y * scale).round();
+        // A long line owns its box the way a no-wrap line does, and draws
+        // the chunks inside the clip plus one either side, shaping them
+        // now if this is the first time they show (backlog C19).
+        if long {
+            let own = Rect::new(ox, oy, (node.w * scale).ceil(), (node.h * scale).ceil());
+            let clip = clip.intersect(own, crate::display::SQUARE);
+            if clip.rect.w <= 0.0 || clip.rect.h <= 0.0 {
+                return;
+            }
+            let (first, last) = {
+                let line = &self.long[&key];
+                if line.chunks.is_empty() {
+                    return;
+                }
+                let a = line.chunk_at(clip.rect.x - ox).saturating_sub(1);
+                let b =
+                    (line.chunk_at(clip.rect.x + clip.rect.w - ox) + 1).min(line.chunks.len() - 1);
+                (a, b)
+            };
+            for i in first..=last {
+                self.ensure_chunk(key, i, res, fs);
+            }
+            self.long.get_mut(&key).expect("checked").last_used = self.frame_no;
+            for i in first..=last {
+                let (chunk_key, x) = {
+                    let line = &self.long[&key];
+                    (line.chunks[i].key, line.prefix[i])
+                };
+                let raster = &mut self.raster;
+                let entry = self.cache.get_mut(&chunk_key).expect("just ensured");
+                emit_entry(entry, ox + x, oy, color, clip, raster, fs, atlas, out);
+            }
+            return;
+        }
+        self.ensure_wrap(id, node.w, fs);
         let raster = &mut self.raster;
         let entry = self
             .cache
@@ -902,7 +1217,26 @@ impl TextSystem {
         } else {
             clip
         };
+        emit_entry(entry, ox, oy, color, clip, raster, fs, atlas, out);
+    }
+}
 
+/// Emits one cache entry's glyphs and decorations at the physical origin
+/// (`ox`, `oy`): the steady-state template walk, shared by a text node and
+/// by each chunk of a long line.
+#[allow(clippy::too_many_arguments)]
+fn emit_entry(
+    entry: &mut CachedText,
+    ox: f32,
+    oy: f32,
+    color: Color,
+    clip: Clip,
+    raster: &mut Raster,
+    fs: &mut FontSystem,
+    atlas: &mut GlyphAtlas,
+    out: &mut Vec<Quad>,
+) {
+    {
         // Steady state: same wrap, same atlas — reuse positioned templates.
         let built_for = (entry.wrap.map(f32::to_bits), atlas.epoch);
         if entry.glyphs_built_for != Some(built_for) {
@@ -1000,6 +1334,14 @@ impl TextSystem {
     }
 }
 
+/// Whether `content` in `style` is shaped in chunks: a no-wrap text past
+/// `LONG_LINE_BYTES` with no line breaks of its own.
+fn is_long(content: &str, style: &TextStyle) -> bool {
+    style.wrap == TextWrap::None
+        && content.len() >= LONG_LINE_BYTES
+        && !content.contains(['\n', '\r'])
+}
+
 /// The decoration rects for one laid-out line: consecutive glyphs of one
 /// span (its index is their metadata) become one background rect, one
 /// underline and one strikethrough, as the span asked. Where the lines go
@@ -1092,7 +1434,9 @@ impl TextSystem {
     /// finds the runs inside. Called beside [`Self::emit`] for the frame's
     /// own nodes and not for ghosts, which take no input.
     pub(crate) fn place(&mut self, key: Key, ancestors: &[Key], id: TextId, origin: Vec2) {
-        let cache_key = self.frame[id.0 as usize].cache_key;
+        let FrameText {
+            cache_key, long, ..
+        } = self.frame[id.0 as usize];
         let mut anc = [Key::ROOT; PLACE_ANCESTORS];
         let depth = ancestors.len().min(PLACE_ANCESTORS);
         anc[..depth].copy_from_slice(&ancestors[..depth]);
@@ -1101,6 +1445,7 @@ impl TextSystem {
             ancestors: anc,
             depth: depth as u8,
             cache_key,
+            long,
             origin,
         });
     }
@@ -1116,7 +1461,7 @@ impl TextSystem {
         };
         let mut base = 0usize;
         let mut out = Vec::new();
-        for place in list.iter().filter(|p| p.answers_to(key)) {
+        for place in list.iter().filter(|p| p.answers_to(key) && !p.long) {
             let Some(entry) = self.cache.get(&place.cache_key) else {
                 continue;
             };
@@ -1124,6 +1469,85 @@ impl TextSystem {
             base += entry.content.len();
         }
         out
+    }
+
+    /// The long line `key` names, if the place that answers to it is one.
+    /// A long line is queried alone — the node that holds a 100k-character
+    /// line holds nothing else — so it does not join `runs_of`'s
+    /// concatenation.
+    fn long_place(&self, key: Key, prev: bool) -> Option<(&TextPlace, &LongLine)> {
+        let list = if prev {
+            &self.prev_places
+        } else {
+            &self.places
+        };
+        let place = list.iter().rev().find(|p| p.answers_to(key) && p.long)?;
+        let line = self.long.get(&place.cache_key)?;
+        Some((place, line))
+    }
+
+    /// `hit_at` for a long line: the chunk under the point answers through
+    /// its shaped entry, an unshaped one (never on screen) by the mean
+    /// advance.
+    fn long_hit(&self, place: &TextPlace, line: &LongLine, point: Vec2) -> Option<TextHit> {
+        let (ox, oy) = self.physical_origin(place);
+        let px = point.x * self.scale - ox;
+        let py = point.y * self.scale - oy;
+        if line.chunks.is_empty() {
+            return Some(TextHit { byte: 0, line: 0 });
+        }
+        if px >= line.width() {
+            return Some(TextHit {
+                byte: line.content.len(),
+                line: 0,
+            });
+        }
+        let i = line.chunk_at(px.max(0.0));
+        let c = &line.chunks[i];
+        let local = px - line.prefix[i];
+        let byte = match self.cache.get(&c.key) {
+            Some(e) if c.width.is_some() => {
+                let cursor = e.buffer.hit(local, py.clamp(0.0, line.line_h - 0.01))?;
+                c.start + cursor.index.min(c.end - c.start)
+            }
+            _ => {
+                let est = (local / line.avg.max(f32::EPSILON)).round() as usize;
+                let mut b = (c.start + est).min(c.end);
+                while !line.content.is_char_boundary(b) {
+                    b -= 1;
+                }
+                b
+            }
+        };
+        Some(TextHit { byte, line: 0 })
+    }
+
+    /// `caret_at` for a long line, exact in a shaped chunk and by the mean
+    /// advance in one that never showed.
+    fn long_caret(&self, place: &TextPlace, line: &LongLine, byte: usize) -> Option<Rect> {
+        let (ox, oy) = self.physical_origin(place);
+        let scale = self.scale;
+        let byte = byte.min(line.content.len());
+        let x = if line.chunks.is_empty() {
+            0.0
+        } else {
+            let i = line.chunk_of_byte(byte);
+            let c = &line.chunks[i];
+            let local = byte - c.start;
+            match self.cache.get(&c.key) {
+                Some(e) if c.width.is_some() => {
+                    let run = e.buffer.layout_runs().next()?;
+                    line.prefix[i] + caret_x(&run, local.min(c.end - c.start))
+                }
+                _ => line.prefix[i] + local as f32 * line.avg,
+            }
+        };
+        Some(Rect::new(
+            (ox + x) / scale,
+            oy / scale,
+            0.0,
+            line.line_h / scale,
+        ))
     }
 
     /// The physical origin `emit` drew a place at: what a point is
@@ -1146,6 +1570,9 @@ impl TextSystem {
     /// see `Core::text_hit`. With several runs, the run under the point,
     /// else the nearest one on the point's line, else the nearest line.
     pub(crate) fn hit_at(&self, key: Key, point: Vec2, prev: bool) -> Option<TextHit> {
+        if let Some((place, line)) = self.long_place(key, prev) {
+            return self.long_hit(place, line, point);
+        }
         let runs = self.runs_of(key, prev);
         if runs.is_empty() {
             return None;
@@ -1182,6 +1609,9 @@ impl TextSystem {
     /// `Core::caret_rect`. A byte on the seam between two runs is the
     /// start of the later one, except at the very end.
     pub(crate) fn caret_at(&self, key: Key, byte: usize, prev: bool) -> Option<Rect> {
+        if let Some((place, line)) = self.long_place(key, prev) {
+            return self.long_caret(place, line, byte);
+        }
         let runs = self.runs_of(key, prev);
         let total = runs.last().map(|(_, e, base)| base + e.content.len())?;
         let byte = byte.min(total);
@@ -1386,13 +1816,29 @@ fn measure_buffer(buffer: &Buffer, max_lines: usize) -> (Size, u32) {
 impl TextSystem {
     pub(crate) fn intrinsic(&mut self, id: TextId) -> Size {
         let scale = self.scale;
+        if let Some(line) = self.long_of(id) {
+            return Size::new(line.width() / scale, line.line_h / scale);
+        }
         let e = self.entry_mut(id);
         Size::new(e.intrinsic.w / scale, e.intrinsic.h / scale)
     }
 
+    /// The long line behind one of this frame's texts, if it is one.
+    fn long_of(&self, id: TextId) -> Option<&LongLine> {
+        let ft = &self.frame[id.0 as usize];
+        if !ft.long {
+            return None;
+        }
+        self.long.get(&ft.cache_key)
+    }
+
     pub(crate) fn wrapped(&mut self, id: TextId, max_w: f32, fs: &mut FontSystem) -> Size {
-        self.ensure_wrap(id, max_w, fs);
         let scale = self.scale;
+        if let Some(line) = self.long_of(id) {
+            // The box, not the line, is the node's width: emission clips.
+            return Size::new(line.width().min(max_w * scale) / scale, line.line_h / scale);
+        }
+        self.ensure_wrap(id, max_w, fs);
         let e = self.entry_mut(id);
         let (mut m, _) = measure_buffer(&e.buffer, e.max_lines);
         if e.clamp_w {

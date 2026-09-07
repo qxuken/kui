@@ -96,6 +96,38 @@ that asserts on an empty warning list is what notices.
   is cosmic-text's (the same fifty lines shaped through it alone measure
   the same), which is C20's entry and not this one's.
 
+- **A long line is shaped in chunks, on demand** (backlog C19). A plain
+  text with `wrap: none` and no line breaks of its own that is
+  `LONG_LINE_BYTES` (4096) or longer — a minified bundle, a log line with
+  a JSON blob in it, a base64 field — used to be shaped whole on first
+  sight, kept whole, and walked whole at every emission: 662 ms, 47 MB
+  and 102 ms a keystroke for 100k characters, measured. Now it is cut
+  into ~1 KB chunks after the last whitespace in each window (cosmic-text
+  shapes per word and caches per word, so a cut at whitespace loses
+  nothing the whole line kept; a whitespace-free run cuts at a grapheme
+  boundary), each chunk an ordinary cache entry under the byte budget,
+  shaped when emission, a hit-test or a caret query lands in it — the
+  first at once, for the line height and the mean advance the others are
+  estimated by until they shape. So the width the scrollbar sees can move
+  a little as chunks fill in, exact under monospace, which is the
+  tolerance a virtual list's uniform rows already accept. Measured with
+  the new `long_line` bench on the same 100k characters: **first frame
+  ~18 ms** (the screenful, hashing the content, and the chunk cuts),
+  **a keystroke ~160 µs** — the
+  chunk it lands in reshapes, every other chunk hits by its own content
+  — and **a viewport of scrolling ~160 µs**, or a few milliseconds on the
+  frame that brings a new chunk on screen. `text_hit` and `caret_rect`
+  answer through the chunks (exact in a shaped one, by the mean advance
+  in one that never showed); the access tree carries the line's value
+  without its runs, the way a tall document's off-screen lines are not
+  walked; `measure_text` answers the estimate. Rich text and anything that
+  wraps take the path they always took, and so does every text under the
+  line, so nothing else moves — `Core::long_lines()` counts what is held.
+  Pinned by `tests/long_line.rs`: the first frame shapes the screenful
+  and not the line, scrolling shapes what scrolls in, a keystroke
+  reshapes one chunk, the queries answer, a short line is untouched, and
+  measurement matches layout.
+
 - **Underline, strikethrough, and a background per span** (backlog C22).
   `Span::underline()` / `strikethrough()` / `bg(color)` and
   `TextStyle::underline()` / `strikethrough()` — `<span underline
