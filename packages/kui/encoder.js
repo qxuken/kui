@@ -566,6 +566,43 @@ export function createEncoder(P) {
         props(p, el.key, false);
         return;
       }
+      case 'cells': {
+        // rows × cols cells as four entries each — codepoint, fg, bg,
+        // flags — in a Uint32Array or a plain array, row-major; the
+        // stream carries three slots a cell (codepoint | flags << 21, fg,
+        // bg). The style rows ride the props pass; the cursor names a
+        // cell to paint under its glyph.
+        const rows = p.rows | 0;
+        const cols = p.cols | 0;
+        if (!(rows > 0 && cols > 0)) throw new Error('<cells> needs rows and cols');
+        const cells = p.cells;
+        const n = rows * cols;
+        if (cells == null || cells.length !== n * 4) {
+          throw new Error(`<cells> needs a cells array of ${n * 4} entries (four per cell) for ${rows}×${cols}, got ${cells?.length}`);
+        }
+        reserve(12 + n * 3);
+        f[fi++] = OP.cells;
+        f[fi++] = rows;
+        f[fi++] = cols;
+        const cur = Array.isArray(p.cursorAt) && p.cursorAt.length === 2 ? p.cursorAt : null;
+        f[fi++] = cur ? 1 : 0;
+        f[fi++] = cur ? cur[0] | 0 : 0;
+        f[fi++] = cur ? cur[1] | 0 : 0;
+        const shape = p.cursorShape == null ? 0 : ['block', 'bar', 'underline'].indexOf(p.cursorShape);
+        if (shape < 0) throw new Error(`bad cursorShape ${JSON.stringify(p.cursorShape)} for <cells> (block, bar or underline)`);
+        f[fi++] = shape;
+        f[fi++] = p.cursorColor != null ? color(p.cursorColor) : 0xffffffff;
+        f[fi++] = n;
+        for (let i = 0; i < n; i++) {
+          const ch = cells[i * 4] >>> 0;
+          const flags = cells[i * 4 + 3] & 0xff;
+          f[fi++] = (ch & 0x1fffff) + flags * 0x200000;
+          f[fi++] = cells[i * 4 + 1] >>> 0;
+          f[fi++] = cells[i * 4 + 2] >>> 0;
+        }
+        props(p, el.key, false);
+        return;
+      }
       case 'audio': {
         if (typeof p.src !== 'string') throw new Error('<audio> needs a src (an id from addSound)');
         const id = BigInt('0x' + p.src);

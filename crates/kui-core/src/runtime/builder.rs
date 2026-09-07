@@ -434,21 +434,29 @@ impl Core {
     }
 
     /// A cell grid as one leaf node, sized `cols × cell_w` by `rows ×
-    /// cell_h` (backlog C20; see `crate::cells`).
-    pub fn cells(&mut self, grid: &crate::cells::CellGrid<'_>) {
+    /// cell_h` (backlog C20; see `crate::cells`). `spec` is the node's:
+    /// an `on_key` makes it the terminal's sink, an `on_click` / `on_drag`
+    /// carry `cell: {row, col}` on their events.
+    pub fn cells(&mut self, grid: &crate::cells::CellGrid<'_>, spec: NodeSpec) {
+        let key = self.auto_key();
+        self.cells_at(key, grid, spec);
+    }
+
+    /// [`Self::cells`] under a declared key.
+    pub fn cells_keyed(&mut self, label: &str, grid: &crate::cells::CellGrid<'_>, spec: NodeSpec) {
+        let key = self.child_key(label);
+        self.key_labels.push(key, label);
+        self.cells_at(key, grid, spec);
+    }
+
+    fn cells_at(&mut self, key: Key, grid: &crate::cells::CellGrid<'_>, spec: NodeSpec) {
         if self.tree.is_empty() {
             return;
         }
         let cid = self.cells.add(grid);
-        let key = self.auto_key();
         let parent = self.current();
-        self.tree.push(
-            parent,
-            key,
-            self.origin,
-            NodeSpec::default(),
-            NodeContent::Cells(cid),
-        );
+        self.tree
+            .push(parent, key, self.origin, spec, NodeContent::Cells(cid));
     }
 
     /// An editable text node. State (buffer, cursor, selection) is retained

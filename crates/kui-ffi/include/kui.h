@@ -624,6 +624,7 @@ enum {
     KUI_ROLE_TEXT_INPUT, KUI_ROLE_MULTILINE_TEXT_INPUT, KUI_ROLE_SCROLL_VIEW,
     KUI_ROLE_LINE,
     KUI_ROLE_RADIO_GROUP, KUI_ROLE_MENU, KUI_ROLE_MENU_ITEM,
+    KUI_ROLE_TERMINAL, /* derived from kui_cells; its rows are the value */
 };
 
 /* How a composite container arranges its items
@@ -771,6 +772,22 @@ typedef struct KuiTextMetrics {
     uint32_t lines;
 } KuiTextMetrics;
 #define KUI_TEXT_METRICS_INIT ((KuiTextMetrics){ .size = sizeof(KuiTextMetrics) })
+
+/* [in] One cell of a kui_cells grid: a Unicode scalar, colours as
+ * 0xRRGGBBAA (bg 0 = none), KUI_CELL_* bits. Travels as an array, so a
+ * change here is an ABI bump. */
+typedef struct KuiCell {
+    uint32_t ch, fg, bg, flags;
+} KuiCell;
+enum {
+    KUI_CELL_BOLD = 1u << 0,
+    KUI_CELL_ITALIC = 1u << 1,
+    KUI_CELL_UNDERLINE = 1u << 2,
+    KUI_CELL_STRIKETHROUGH = 1u << 3,
+    KUI_CELL_WIDE = 1u << 4, /* the glyph spans this cell and the next, left blank */
+};
+/* kui_cells cursor_shape: 0 = none. */
+enum { KUI_CELL_CURSOR_BLOCK = 1, KUI_CELL_CURSOR_BAR = 2, KUI_CELL_CURSOR_UNDERLINE = 3 };
 
 /* [out] Where a point landed in the text a keyed node drew (kui_text_hit):
  * a byte offset into that text - across the node's text runs in order, the
@@ -1427,6 +1444,21 @@ void kui_close(KuiCtx *ctx);
 void kui_text(KuiCtx *ctx, KuiStr text, const KuiTextStyle *style);
 void kui_rich_text(KuiCtx *ctx, const KuiSpan *spans, size_t span_count,
                    const KuiTextStyle *base);
+/* A terminal's screen as one node: rows x cols cells from `cells` (fewer draw
+ * as blank), each shaped once per character and placed at col x cell_w ever
+ * after, so a screen new every frame costs what a still one costs (~60 us
+ * for 200 x 50). `style` sizes the cells (size, family/font, line_height as
+ * the cell height); `spec` is the node's own - an on_key makes it the
+ * terminal's sink, an on_click / on_drag carry cell: {row, col} on their
+ * events - the payloads taken as kui_open_with takes them; label keys it
+ * (empty = auto). cursor_shape is KUI_CELL_CURSOR_* or
+ * 0 for none, at (cursor_row, cursor_col) in cursor_color. Its access role is
+ * KUI_ROLE_TERMINAL, the rows joined as the value. */
+void kui_cells(KuiCtx *ctx, KuiStr label, uint32_t rows, uint32_t cols,
+               const KuiCell *cells, size_t count, const KuiTextStyle *style,
+               const KuiSpec *spec, KuiValue *on_click, KuiValue *on_drag,
+               KuiValue *on_key, uint32_t cursor_row, uint32_t cursor_col,
+               uint32_t cursor_shape, uint32_t cursor_color);
 uint64_t kui_child_key(KuiCtx *ctx, KuiStr label);
 bool kui_is_hovered(KuiCtx *ctx, uint64_t key);
 bool kui_is_pressed(KuiCtx *ctx, uint64_t key);

@@ -65,6 +65,16 @@ function line(t)
   return t
 end
 
+-- cells { rows=, cols=, lines={"row text", ...}, runs={{row, col, len, fg,
+-- bg, flags}, ...}, cursor_at={row, col}, cursor_shape="block", cursor_color=,
+-- size=, family= }: a terminal's screen as one node (backlog C20). Rows and
+-- columns are 0-based in runs and the cursor; a run's fg or bg of 0 keeps
+-- the default.
+function cells(t)
+  t.type = "cells"
+  return t
+end
+
 -- audio { src = id, loop = true, volume = 0.5, paused = false, tag = {...},
 -- key = "music" }: a playback retained by key while the view declares it
 -- (present = playing, gone = stopped; volume/paused apply live). Draws

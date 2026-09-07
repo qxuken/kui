@@ -16,8 +16,66 @@ impl Core {
         // releases a focus move forces — belongs to this batch, not to the
         // next frame's drain.
         out.append(&mut self.pending);
+        self.attach_cells(&mut out);
         self.stamp(&mut out);
         out
+    }
+
+    /// A click or drag on a cell grid says which cell: `cell: {row, col}`
+    /// joins the payload, from the event's own point for a drag and from
+    /// the cursor for a click, so the app never divides by a cell size it
+    /// did not choose (backlog C20). Only a map payload can carry it.
+    fn attach_cells(&mut self, out: &mut [UiEvent]) {
+        if self.tree.is_empty() || !self.tree.any_text {
+            return;
+        }
+        for ev in out.iter_mut() {
+            let Some(i) = self.tree.keys.iter().position(|k| *k == ev.key) else {
+                continue;
+            };
+            let NodeContent::Cells(id) = self.tree.content[i] else {
+                continue;
+            };
+            let Value::Map(entries) = &ev.payload else {
+                continue;
+            };
+            let field = |name: &str| {
+                entries
+                    .iter()
+                    .find(|(k, _)| k == name)
+                    .and_then(|(_, v)| match v {
+                        Value::Float(f) => Some(*f as f32),
+                        Value::Int(n) => Some(*n as f32),
+                        _ => None,
+                    })
+            };
+            let point = match (field("x"), field("y")) {
+                (Some(x), Some(y)) => Vec2::new(x, y),
+                _ => match self.interaction.cursor() {
+                    Some(p) => p,
+                    None => continue,
+                },
+            };
+            let cell = {
+                let sess = &mut *self.session.state();
+                self.cells.cell_size(id, &sess.resources, &mut sess.fonts)
+            };
+            let (rows, cols) = self.cells.dims(id);
+            let pos = self.tree.pos[i];
+            let col = ((point.x - pos.x) / cell.w.max(f32::EPSILON)).floor();
+            let row = ((point.y - pos.y) / cell.h.max(f32::EPSILON)).floor();
+            let col = (col.max(0.0) as usize).min(cols.saturating_sub(1));
+            let row = (row.max(0.0) as usize).min(rows.saturating_sub(1));
+            if let Value::Map(entries) = &mut ev.payload {
+                entries.push((
+                    "cell".to_string(),
+                    Value::map([
+                        ("row", Value::Int(row as i64)),
+                        ("col", Value::Int(col as i64)),
+                    ]),
+                ));
+            }
+        }
     }
 
     /// One whole key going down: both channels, in the order a window
@@ -527,6 +585,7 @@ impl Core {
                 &self.tree,
                 &crate::access::Sources {
                     text: &self.text,
+                    cells: &self.cells,
                     edit: &self.edit,
                     scroll: &self.scroll,
                     title: self.window_title.as_deref(),

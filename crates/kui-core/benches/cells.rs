@@ -47,18 +47,21 @@ fn screen(salt: u64) -> Vec<Cell> {
 fn frame(core: &mut Core, cells: &[Cell]) -> usize {
     let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
     ui.configure_root(NodeSpec::column().fill().bg(Color::rgb8(0, 0, 0)));
-    ui.cells(&CellGrid {
-        rows: ROWS,
-        cols: COLS,
-        cells,
-        style: mono(),
-        cursor: Some((
-            10,
-            20,
-            kui_core::CellCursor::Block,
-            Color::rgb8(0x6a, 0x8b, 0xff),
-        )),
-    });
+    ui.cells(
+        &CellGrid {
+            rows: ROWS,
+            cols: COLS,
+            cells,
+            style: mono(),
+            cursor: Some((
+                10,
+                20,
+                kui_core::CellCursor::Block,
+                Color::rgb8(0x6a, 0x8b, 0xff),
+            )),
+        },
+        NodeSpec::default(),
+    );
     ui.finish();
     let (dl, _) = core.output();
     dl.quads.len()

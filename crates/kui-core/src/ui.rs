@@ -256,9 +256,14 @@ impl<'a> Ui<'a> {
 
     /// A paragraph of styled spans, shaped and wrapped as one flow.
     /// A cell grid — a terminal's screen — as one node; see
-    /// `crate::cells` (backlog C20).
-    pub fn cells(&mut self, grid: &crate::cells::CellGrid<'_>) {
-        self.core.cells(grid);
+    /// `crate::cells` (backlog C20). The spec is the node's own.
+    pub fn cells(&mut self, grid: &crate::cells::CellGrid<'_>, spec: NodeSpec) {
+        self.core.cells(grid, spec);
+    }
+
+    /// [`Self::cells`] under a declared key.
+    pub fn cells_keyed(&mut self, label: &str, grid: &crate::cells::CellGrid<'_>, spec: NodeSpec) {
+        self.core.cells_keyed(label, grid, spec);
     }
 
     pub fn rich_text(&mut self, spans: &[Span<'_>], base: TextStyle) {

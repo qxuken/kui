@@ -1,7 +1,7 @@
 //! The cell grid (backlog C20): one node, a table walk to draw.
 
 use kui_core::cells::{Cell, CellGrid, flags};
-use kui_core::{CellCursor, Color, Core, NodeSpec, QuadKind, Size, TextStyle};
+use kui_core::{CellCursor, Color, Core, NodeSpec, QuadKind, Size, TextStyle, Vec2};
 
 fn mono() -> TextStyle {
     TextStyle::new(14.0).mono().line_height(20.0)
@@ -16,13 +16,16 @@ fn grid(
 ) -> Vec<(QuadKind, f32, f32, f32, f32)> {
     let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.cells(&CellGrid {
-        rows,
-        cols,
-        cells,
-        style: mono(),
-        cursor,
-    });
+    ui.cells(
+        &CellGrid {
+            rows,
+            cols,
+            cells,
+            style: mono(),
+            cursor,
+        },
+        NodeSpec::default(),
+    );
     ui.finish();
     let (dl, _) = core.output();
     dl.quads
@@ -134,4 +137,72 @@ fn a_new_screen_shapes_nothing_new() {
         quads.iter().filter(|q| q.0 == QuadKind::GlyphMask).count(),
         10
     );
+}
+
+/// The element half (backlog C20): a click or drag on the grid says which
+/// cell, and the access tree reads the screen as a terminal.
+#[test]
+fn a_click_names_its_cell_and_the_screen_is_the_value() {
+    use kui_core::{InputEvent, Key, MouseButton, Role, Value};
+    let mut core = Core::new();
+    let cells: Vec<Cell> = "hello world"
+        .chars()
+        .chain("  bye   ".chars())
+        .map(|c| Cell::new(c, 0xffffffff, 0))
+        .collect();
+    let draw = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill().pad(10.0));
+        ui.cells_keyed(
+            "term",
+            &CellGrid {
+                rows: 2,
+                cols: 11,
+                cells: &cells,
+                style: mono(),
+                cursor: None,
+            },
+            NodeSpec::default()
+                .on_click(Value::map([("kind", Value::str("hit"))]))
+                .on_drag(Value::str("sel")),
+        );
+        ui.finish();
+    };
+    draw(&mut core);
+    let key = Key::ROOT.str("term");
+    let w = core.measure_text("M", &mono(), None).width.round();
+    // A click in the fourth cell of the second row.
+    let events = {
+        core.handle_input(InputEvent::CursorMoved(Vec2::new(
+            10.0 + 3.5 * w,
+            10.0 + 25.0,
+        )));
+        core.handle_input(InputEvent::MouseDown {
+            button: MouseButton::Primary,
+            clicks: 1,
+        });
+        core.handle_input(InputEvent::MouseUp {
+            button: MouseButton::Primary,
+        })
+    };
+    let click = events
+        .iter()
+        .find(|e| matches!(&e.payload, Value::Map(m) if m.iter().any(|(k, v)| k == "kind" && *v == Value::str("hit"))))
+        .expect("the click arrived");
+    let Value::Map(m) = &click.payload else {
+        panic!()
+    };
+    let cell = m.iter().find(|(k, _)| k == "cell").map(|(_, v)| v.clone());
+    assert_eq!(
+        cell,
+        Some(Value::map([("row", Value::Int(1)), ("col", Value::Int(3))])),
+        "{:?}",
+        click.payload
+    );
+    // The access tree: a terminal whose value is the screen, trailing
+    // blanks trimmed, rows joined.
+    let tree = core.access_tree();
+    let node = tree.get(key).expect("in the tree");
+    assert_eq!(node.role, Role::Terminal);
+    assert_eq!(node.value.as_deref(), Some("hello world\n  bye"));
 }

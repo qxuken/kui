@@ -75,6 +75,28 @@ pub enum CursorShape {
     Underline,
 }
 
+impl CursorShape {
+    /// Wire order: the index every binding carries (`block`, `bar`,
+    /// `underline`; C's `KUI_CELL_CURSOR_*` is this plus one).
+    pub const NAMES: &[&str] = &["block", "bar", "underline"];
+
+    pub fn from_index(i: usize) -> Option<Self> {
+        match i {
+            0 => Some(Self::Block),
+            1 => Some(Self::Bar),
+            2 => Some(Self::Underline),
+            _ => None,
+        }
+    }
+
+    pub fn from_name(s: &str) -> Option<Self> {
+        Self::NAMES
+            .iter()
+            .position(|n| *n == s)
+            .and_then(Self::from_index)
+    }
+}
+
 /// A grid to draw: the cells in row-major order (`rows × cols` of them;
 /// fewer draw as blank), the style the glyphs are shaped in (`size`,
 /// `line_height` as the cell height, `family` / `font`), and the cursor.
@@ -201,6 +223,40 @@ impl CellStore {
             );
         }
         key
+    }
+
+    /// One cell's size, logical px.
+    pub(crate) fn cell_size(&mut self, id: CellsId, res: &Resources, fs: &mut FontSystem) -> Size {
+        let style = self.frame[id.0 as usize].style;
+        let key = self.table(&style, res, fs);
+        let t = &self.tables[&key];
+        Size::new(t.cell_w / self.scale, t.cell_h / self.scale)
+    }
+
+    pub(crate) fn dims(&self, id: CellsId) -> (usize, usize) {
+        let e = &self.frame[id.0 as usize];
+        (e.rows, e.cols)
+    }
+
+    /// The grid as text, rows joined by newlines with trailing blanks
+    /// trimmed — what a screen reader reads (backlog C20).
+    pub(crate) fn value(&self, id: CellsId) -> String {
+        let e = &self.frame[id.0 as usize];
+        let mut out = String::with_capacity(e.rows * (e.cols + 1));
+        for r in 0..e.rows {
+            let row = &e.cells[r * e.cols..(r + 1) * e.cols];
+            let end = row
+                .iter()
+                .rposition(|c| c.ch != ' ' && c.ch != '\0')
+                .map_or(0, |i| i + 1);
+            for c in &row[..end] {
+                out.push(if c.ch == '\0' { ' ' } else { c.ch });
+            }
+            if r + 1 < e.rows {
+                out.push('\n');
+            }
+        }
+        out
     }
 
     /// The grid's laid-out size, logical px.

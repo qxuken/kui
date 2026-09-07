@@ -45,6 +45,13 @@ impl Color {
     }
 
     /// 0xRRGGBBAA
+    /// The `0xRRGGBBAA` this colour is, rounded to eight bits a channel:
+    /// what `hex` reads.
+    pub fn to_hex(&self) -> u32 {
+        let ch = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u32;
+        (ch(self.r) << 24) | (ch(self.g) << 16) | (ch(self.b) << 8) | ch(self.a)
+    }
+
     pub fn hex(v: u32) -> Self {
         Self::rgba8((v >> 24) as u8, (v >> 16) as u8, (v >> 8) as u8, v as u8)
     }

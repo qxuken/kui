@@ -160,6 +160,15 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        "cells" => r#"
+            return column { pad = 10,
+              cells { key = "term", rows = 1, cols = 11, size = 13, family = "mono",
+                      line_height = 18, lines = { "hello world" },
+                      runs = { { 0, 0, 11, 0xd6d8e0ff, 0, 0 }, { 0, 0, 3, 0, 0x1a1d27ff, 0 } },
+                      cursor_at = { 0, 3 }, cursor_shape = "block", cursor_color = 0x6a8bffff,
+                      on_click = { kind = "hit" }, label = "term" } }
+        "#
+        .to_string(),
         "keys" => r#"
             local function sink(name, key_up, child)
               return row { key = name, width = 100, height = 24, bg = 0x1b1d27ff,

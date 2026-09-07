@@ -221,7 +221,7 @@ export interface GeneratedSpecProps {
   /** How `keyframes` cycle (CSS `animation-direction`, default normal). Lua: `direction`, since `repeat` is a keyword. */
   repeat?: 'normal' | 'reverse' | 'alternate' | 'alternateReverse';
   /** What the node is to assistive technology. Unset, the core derives one (an `onClick` node is a button, an editor a text input, a scrolling box a scroll view, a plain box nothing); `none` hides the node and its subtree from the access tree. */
-  role?: 'none' | 'button' | 'checkbox' | 'radio' | 'switch' | 'slider' | 'tab' | 'tabList' | 'link' | 'heading' | 'list' | 'listItem' | 'image' | 'dialog' | 'group' | 'textInput' | 'multilineTextInput' | 'line' | 'radioGroup' | 'menu' | 'menuItem';
+  role?: 'none' | 'button' | 'checkbox' | 'radio' | 'switch' | 'slider' | 'tab' | 'tabList' | 'link' | 'heading' | 'list' | 'listItem' | 'image' | 'dialog' | 'group' | 'textInput' | 'multilineTextInput' | 'line' | 'radioGroup' | 'menu' | 'menuItem' | 'terminal';
   /** The current one of a set: which `tab` a `tabList` shows, which `listItem` a list has picked, which `link` is the page you are on. A `tab` always carries the state — its siblings read as "not selected" — while a list row or a link carries it only where it is set, since an ordinary list or navigation bar is not a selection and a reader saying "not selected" on every row of it is noise. */
   selected?: boolean;
   /** On a `line` of a custom editor: the byte offset where the selection's other end sits (the caret is `caret`, possibly on another line). */
@@ -431,5 +431,27 @@ export declare namespace JSX {
      *  still stops). `tag` comes back as a `SoundMsg` when it ends on its
      *  own, a released playback included. Draws nothing and takes no space. */
     audio: Keyed & { src: string; loop?: boolean; volume?: number; paused?: boolean; finish?: boolean; tag?: AppMsg };
+    /** A terminal's screen as one node (backlog C20): `rows × cols` cells,
+     *  four entries each in `cells` — codepoint, fg, bg (`0xRRGGBBAA`, 0 = no
+     *  background), flags (1 bold, 2 italic, 4 underline, 8 strikethrough,
+     *  16 wide) — row-major, in a `Uint32Array` an app keeps and mutates. A
+     *  glyph is shaped once per character and placed at `col × cell_w` ever
+     *  after, so a screen new every frame costs what a still one costs. The
+     *  style rows size the cells (`size`, `family`/`font`, `lineHeight`);
+     *  the node rows apply — `onKey` makes it the terminal's sink, `onClick`
+     *  / `onDrag` events carry `cell: {row, col}`. `cursorAt` is a cell to
+     *  paint under its glyph in `cursorColor`, as a block, bar or underline
+     *  (`cursor` stays the pointer shape).
+     *  Its access role is `terminal`, the rows joined as its value. */
+    cells: Omit<TextProps, 'children'> &
+      GeneratedSpecProps &
+      CustomSpecProps & {
+        rows: number;
+        cols: number;
+        cells: Uint32Array | number[];
+        cursorAt?: [number, number];
+        cursorShape?: 'block' | 'bar' | 'underline';
+        cursorColor?: ColorProp;
+      };
   }
 }

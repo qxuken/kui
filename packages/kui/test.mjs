@@ -857,6 +857,42 @@ test('measureText answers what layout gives the text', () => {
   assert.ok(rich.width > 0 && rich.lines === 1);
 });
 
+// A terminal's screen as one node (backlog C20): four entries a cell in a
+// Uint32Array, a click that names its cell, and the screen as the access
+// tree's value.
+test('cells draws a screen from a Uint32Array and a click names its cell', () => {
+  const ctx = new Ctx();
+  const mono = { size: 14, family: 'mono', lineHeight: 20 };
+  const rows = 2, cols = 11;
+  const grid = new Uint32Array(rows * cols * 4);
+  const put = (r, c, ch, fg = 0xffffffff, bg = 0, flags = 0) => {
+    const i = (r * cols + c) * 4;
+    grid[i] = ch.codePointAt(0); grid[i + 1] = fg; grid[i + 2] = bg; grid[i + 3] = flags;
+  };
+  for (let c = 0; c < cols; c++) put(0, c, 'hello world'[c]);
+  put(1, 2, 'b', 0xff0000ff, 0x0000ffff, 1); put(1, 3, 'y', 0xff0000ff, 0x0000ffff); put(1, 4, 'e');
+  const view = box({ pad: 10 }, [
+    el('cells', { ...mono, rows, cols, cells: grid, cursorAt: [1, 4], cursorShape: 'bar', onClick: { kind: 'hit' } }, [], 'term'),
+  ]);
+  ctx.frame(400, 200, 1, view);
+  assert.deepEqual(ctx.warnings(), []);
+  const quads = decodeQuads(ctx.quads());
+  const glyphs = quads.filter((q) => q.kind === 1);
+  assert.equal(glyphs.length, 13, 'hello world + bye');
+  const solids = quads.filter((q) => q.kind === 0 && q.h === 20);
+  assert.equal(solids.length, 2, 'one blue run and the bar cursor (plus the root)');
+  // The access tree reads the screen.
+  const term = ctx.accessTree().nodes.find((n) => n.role === 'terminal');
+  assert.equal(term.value, 'hello world\n  bye');
+  // A click in the fourth cell of the second row names it.
+  const w = ctx.measureText('M', mono).width;
+  ctx.cursor(10 + 3.5 * Math.round(w), 10 + 25);
+  ctx.mouse(true);
+  ctx.mouse(false);
+  const hit = ctx.pollEvents().map((e) => e.payload).find((p) => p.kind === 'hit');
+  assert.deepEqual(hit, { kind: 'hit', cell: { row: 1, col: 3 } });
+});
+
 // Underline, strikethrough and a background per span (backlog C22): solid
 // quads beside the glyphs, the background under them and the lines over.
 test('a span carries its own background and lines', () => {
@@ -2263,6 +2299,23 @@ const SCENE_TREES = {
         ], 'shell'),
       ]),
     ]),
+  cells: () => {
+    const screen = new Uint32Array(11 * 4);
+    'hello world'.split('').forEach((ch, i) => {
+      screen[i * 4] = ch.codePointAt(0);
+      screen[i * 4 + 1] = 0xd6d8e0ff;
+      screen[i * 4 + 2] = i < 3 ? 0x1a1d27ff : 0;
+    });
+    return root({}, [
+      box({ pad: 10 }, [
+        el('cells', {
+          rows: 1, cols: 11, cells: screen, size: 13, family: 'mono', lineHeight: 18,
+          cursorAt: [0, 3], cursorShape: 'block', cursorColor: '#6a8bff',
+          onClick: { kind: 'hit' }, label: 'term',
+        }, [], 'term'),
+      ]),
+    ]);
+  },
   // docs/adr/0003-modal-surfaces.md: the app behind the dialog is inert,
   // the titlebar is not, and both dismiss gestures reach the dialog. Then
   // the way out (backlog F4): the app declares `open` focused while the

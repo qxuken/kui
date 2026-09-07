@@ -678,7 +678,11 @@ style, cursor })` draws `rows × cols` sixteen-byte cells — a character,
 colours, attribute bits — by looking each glyph up in a table filled by
 shaping that character once, placed at `col × cell_w`, never shaped again;
 so a pane whose every cell changes every frame costs what a still one does
-(~60 µs for 200 × 50, against ~2.2 ms as text nodes). Rust-only for now
+(~60 µs for 200 × 50, against ~2.2 ms as text nodes). `<cells>` in JSX takes
+the cells as a `Uint32Array` of four entries each, Lua's `cells {}` a string
+per row plus colour runs, C's `kui_cells` a `KuiCell` array; a click or drag
+on the grid carries `cell: {row, col}`, an `onKey` makes it the terminal's
+sink, and its access role is `terminal` with the screen as its value
 (backlog C20).
 
 Font features ride the style: `TextStyle::features(FontFeatures::parse("liga=0

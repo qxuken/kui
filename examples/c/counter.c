@@ -452,6 +452,22 @@ static void surface_view(void *user, KuiCtx *ui) {
         kui_text(ui, KUI_STR(" = 1;"), &hit_mono);
         kui_close(ui);
 
+        /* A terminal's screen as one node: cells travel as a KuiCell array. */
+        KuiCell screen[2 * 6] = {0};
+        const char *txt = "hello!";
+        for (int i = 0; i < 6; i++) {
+            screen[i].ch = (uint32_t)txt[i];
+            screen[i].fg = 0xd6d8e0ff;
+            screen[6 + i].ch = (uint32_t)"world."[i];
+            screen[6 + i].fg = 0x73d98cff;
+            screen[6 + i].bg = i < 3 ? 0x1a1d27ff : 0;
+        }
+        screen[0].flags = KUI_CELL_BOLD;
+        KuiTextStyle cell_style = {.size = 13, .family = KUI_FONT_MONO, .line_height = 18};
+        KuiSpec term = {0};
+        kui_cells(ui, KUI_STR("term"), 2, 6, screen, 12, &cell_style, &term, NULL, NULL, NULL,
+                  1, 2, KUI_CELL_CURSOR_BLOCK, 0x6a8bffff);
+
         kui_latency_graph(ui);
         kui_latency_hud(ui, KUI_END, KUI_START);
     }
@@ -547,6 +563,7 @@ static int surface(void) {
           "the middle is inside");
     check(!kui_caret_rect(ui, 12345, 0, &start), "a key that drew no text answers false");
     check(!kui_ime_rect(ui, &start), "nothing with a caret is focused: no candidate window");
+    check(kui_key_of(ui, KUI_STR("term")) != 0, "kui_cells keyed its node");
 
     /* Pointer state and scrolling. */
     kui_input_cursor(ui, 400, 300);
@@ -1003,7 +1020,7 @@ static const char *role_name(uint32_t role) {
         "tabList", "link", "heading", "list", "listItem", "image", "dialog",
         "group", "window", "titleBar", "staticText", "textInput",
         "multilineTextInput", "scrollView", "line",
-        "radioGroup", "menu", "menuItem",
+        "radioGroup", "menu", "menuItem", "terminal",
     };
     return role < sizeof names / sizeof *names ? names[role] : "?";
 }
@@ -1398,6 +1415,29 @@ static void conf_modal_button(KuiCtx *ui, const char *key, const char *kind,
  * hears the press alone, the second sets key_up and hears both halves. An
  * integer tag, so the report's event column shows the phase. Left open, so
  * the third can hold a button (see conf_keys). */
+/* A terminal's screen as one node (backlog C20): the cells travel as a
+ * KuiCell array, and the click on the fourth cell names it. */
+static void conf_cells(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10};
+    kui_open(ui, &outer, NULL);
+    KuiCell screen[11] = {0};
+    const char *txt = "hello world";
+    for (int i = 0; i < 11; i++) {
+        screen[i].ch = (uint32_t)txt[i];
+        screen[i].fg = 0xd6d8e0ff;
+        screen[i].bg = i < 3 ? 0x1a1d27ff : 0;
+    }
+    KuiTextStyle style = {.size = 13, .family = KUI_FONT_MONO, .line_height = 18};
+    KuiValue *hit = kui_value_map();
+    kui_value_map_set(hit, KUI_STR("kind"), kui_value_str(KUI_STR("hit")));
+    KuiSpec term = {.label = KUI_STR("term")};
+    kui_cells(ui, KUI_STR("term"), 1, 11, screen, 11, &style, &term, hit, NULL, NULL, 0, 3,
+              KUI_CELL_CURSOR_BLOCK, 0x6a8bffff);
+    kui_close(ui);
+}
+
 static void conf_keys_sink(KuiCtx *ui, const char *name, uint32_t key_up) {
     KuiSpec spec = {.dir = KUI_ROW, .width = {KUI_FIXED, 100}, .height = {KUI_FIXED, 24},
                     .bg = 0x1b1d27ff, .role = KUI_ROLE_GROUP, .label = KUI_STR(name),
@@ -1760,6 +1800,7 @@ static const ConfScene CONF_SCENES[] = {
     {"chrome-inset", conf_chrome},
     {"controls", conf_controls},
     {"keys", conf_keys},
+    {"cells", conf_cells},
     {"media", conf_media},
     {"lines", conf_lines},
     {"modal", conf_modal},

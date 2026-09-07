@@ -444,6 +444,97 @@ pub extern "C" fn kui_ime_rect(ptr: *mut KuiCtx, out: *mut KuiCaretRect) -> bool
     })
 }
 
+/// A terminal's screen as one node (backlog C20): `rows × cols` cells from
+/// `cells` (fewer draw as blank), shaped once per character and placed at
+/// `col × cell_w` ever after. `style` sizes the cells (`size`, `family` /
+/// `font`, `line_height`); `spec` is the node's own (an `on_key` makes it
+/// the sink, an `on_click` / `on_drag` carry `cell: {row, col}`), the
+/// three payloads taken the way `kui_open_with` takes them; `label`
+/// keys the node (empty = auto). `cursor_shape` is `KUI_CELL_CURSOR_*` or
+/// 0 for none, at (`cursor_row`, `cursor_col`) in `cursor_color`.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub extern "C" fn kui_cells(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    rows: u32,
+    cols: u32,
+    cells: *const KuiCell,
+    count: usize,
+    style: *const KuiTextStyle,
+    spec: *const KuiSpec,
+    on_click: *mut KuiValue,
+    on_drag: *mut KuiValue,
+    on_key: *mut KuiValue,
+    cursor_row: u32,
+    cursor_col: u32,
+    cursor_shape: u32,
+    cursor_color: u32,
+) {
+    guard((), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            for p in [on_click, on_drag, on_key] {
+                drop(take_msg(p));
+            }
+            return;
+        };
+        if rows == 0 || cols == 0 {
+            for p in [on_click, on_drag, on_key] {
+                drop(take_msg(p));
+            }
+            return;
+        }
+        let raw: &[KuiCell] = if cells.is_null() || count == 0 {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(cells, count) }
+        };
+        let cells: Vec<kui_core::Cell> = raw
+            .iter()
+            .map(|k| kui_core::Cell {
+                ch: char::from_u32(k.ch).unwrap_or(' '),
+                fg: k.fg,
+                bg: k.bg,
+                flags: k.flags as u8,
+            })
+            .collect();
+        let style = unsafe { style.as_ref() }
+            .map(text_style_of)
+            .unwrap_or_default();
+        let spec = match unsafe { spec.as_ref() } {
+            Some(s) => spec_of(s, on_click, on_drag, on_key, NONE),
+            None => {
+                for p in [on_click, on_drag, on_key] {
+                    drop(take_msg(p));
+                }
+                kui_core::NodeSpec::default()
+            }
+        };
+        let cursor =
+            kui_core::CellCursor::from_index(cursor_shape.wrapping_sub(1) as usize).map(|shape| {
+                (
+                    cursor_row as usize,
+                    cursor_col as usize,
+                    shape,
+                    color_of(cursor_color),
+                )
+            });
+        let grid = kui_core::CellGrid {
+            rows: rows as usize,
+            cols: cols as usize,
+            cells: &cells,
+            style,
+            cursor,
+        };
+        let label = kstr(label);
+        if label.is_empty() {
+            c.core().cells(&grid, spec);
+        } else {
+            c.core().cells_keyed(&label, &grid, spec);
+        }
+    });
+}
+
 /// `kui_measure_text` for a rich-text paragraph.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_measure_rich_text(

@@ -156,6 +156,7 @@ fn asserts() -> String {
         "KUI_ROLE_TEXT_INPUT", "KUI_ROLE_MULTILINE_TEXT_INPUT",
         "KUI_ROLE_SCROLL_VIEW", "KUI_ROLE_LINE",
         "KUI_ROLE_RADIO_GROUP", "KUI_ROLE_MENU", "KUI_ROLE_MENU_ITEM",
+        "KUI_ROLE_TERMINAL",
     ]);
     abi_enum!(o, kui_core::schema::ORIENTATIONS, 1 => [
         "KUI_ORIENTATION_HORIZONTAL", "KUI_ORIENTATION_VERTICAL",
@@ -210,6 +211,13 @@ fn asserts() -> String {
         max_offset_y: f32 => "float",
     });
     abi_out_struct!(o, KuiScrollGeometry);
+
+    abi_struct!(o, KuiCell {
+        ch: u32 => "uint32_t",
+        fg: u32 => "uint32_t",
+        bg: u32 => "uint32_t",
+        flags: u32 => "uint32_t",
+    });
 
     abi_struct!(o, KuiTextHit {
         size: u32 => "uint32_t",

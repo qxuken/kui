@@ -97,6 +97,10 @@ pub enum Role {
     /// One item of a `menu`. A control, so it is focusable by its role and
     /// an unnamed one is reported.
     MenuItem,
+    /// A cell grid (`crate::cells`): the screen of a terminal, its rows
+    /// joined as the value. Derived from the node, appended at the tail
+    /// like the ADR 0007 three (backlog C20).
+    Terminal,
 }
 
 impl Role {
@@ -121,6 +125,7 @@ impl Role {
             Role::RadioGroup => "radioGroup",
             Role::Menu => "menu",
             Role::MenuItem => "menuItem",
+            Role::Terminal => "terminal",
             Role::Window => "window",
             Role::TitleBar => "titleBar",
             Role::StaticText => "staticText",
@@ -135,7 +140,7 @@ impl Role {
         Role::ALL.iter().copied().find(|r| r.name() == name)
     }
 
-    pub const ALL: [Role; 25] = [
+    pub const ALL: [Role; 26] = [
         Role::None,
         Role::Button,
         Role::Checkbox,
@@ -161,6 +166,7 @@ impl Role {
         Role::RadioGroup,
         Role::Menu,
         Role::MenuItem,
+        Role::Terminal,
     ];
 
     /// A control needs a name; one without is reported as a warning.
@@ -646,8 +652,7 @@ pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
         // not even an `on_click` it ignores — can make it a control
         // (`docs/adr/0010-a-segment-primitive.md`, decision 7).
         NodeContent::Line(_) => return None,
-        // A grid is a group until the terminal role lands (backlog C20).
-        NodeContent::Cells(_) => return Some(Role::Group),
+        NodeContent::Cells(_) => return Some(Role::Terminal),
         NodeContent::Container => {}
     }
     match spec.window {
@@ -809,6 +814,7 @@ fn content_name(tree: &Tree, text: &TextSystem, i: usize) -> Option<String> {
 /// Everything the build reads besides the tree.
 pub(crate) struct Sources<'a> {
     pub text: &'a TextSystem,
+    pub cells: &'a crate::cells::CellStore,
     pub edit: &'a EditStore,
     pub scroll: &'a ScrollStore,
     pub title: Option<&'a str>,
@@ -931,6 +937,9 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
                     | AccessAction::SetTextSelection.bit()
                     | AccessAction::ReplaceSelectedText.bit();
             }
+        } else if let NodeContent::Cells(id) = tree.content[i] {
+            // A terminal's value is its screen, rows joined (backlog C20).
+            node.value = Some(src.cells.value(id));
         }
         // A disclosure names its own state, so it lands wherever it is
         // declared: no role means "shows and hides something".

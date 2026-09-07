@@ -96,9 +96,22 @@ that asserts on an empty warning list is what notices.
   is cosmic-text's (the same fifty lines shaped through it alone measure
   the same), which is C20's entry and not this one's.
 
-- **A cell grid, in Rust, as the prototype backlog C20 gated the element
-  on.** `ui.cells(&CellGrid { rows, cols, cells, style, cursor })` is one
-  node holding a terminal's screen: a `Cell` is a character, `fg` and
+- **A cell grid: a terminal's screen as one node, in every binding**
+  (backlog C20). `ui.cells(&grid, spec)` / `cells_keyed` in Rust,
+  `<cells rows cols cells={Uint32Array} cursorAt cursorShape cursorColor
+  …style rows/>` in JSX (four entries a cell — codepoint, fg, bg, flags —
+  in a `Uint32Array` an app keeps and mutates; the stream carries three
+  slots a cell), `cells { rows=, cols=, lines={…}, runs={{row, col, len,
+  fg, bg, flags}, …}, cursor_at= }` in Lua (a string per row, colour runs
+  over it), and `kui_cells` in C with a `KuiCell` array (a new [in-array]
+  struct, no ABI bump since nothing existing moved). The node's own rows
+  apply: an `onKey` makes it the terminal's sink, and a click or drag on
+  it carries `cell: {row, col}` — from the event's own point for a drag,
+  the cursor for a click — so the app never divides by a cell size it did
+  not choose. Its access role is the new `terminal` (AccessKit's
+  `Terminal`, `KUI_ROLE_TERMINAL` appended at the tail), the rows joined
+  with trailing blanks trimmed as its value. The cursor prop is `cursorAt`
+  / `cursor_at`, since `cursor` is the pointer shape. The grid itself: a `Cell` is a character, `fg` and
   `bg` as `0xRRGGBBAA`, and attribute bits (bold, italic, underline,
   strikethrough, wide) in sixteen bytes; the node lays out at `cols ×
   cell_w` by `rows × cell_h`, the cell width being `M`'s advance snapped
@@ -113,11 +126,13 @@ that asserts on an empty warning list is what notices.
   Measured with `benches/cells.rs` at 200 × 50 cells: **~58 µs warm,
   ~60 µs with every character new each frame**, against ~2.2 ms for the
   same cells as one text node each — the gate was 0.2 ms and flat under
-  streaming, and it clears both by a wide margin. Rust-only and
-  prototype-grade on purpose: the element rows, the bindings' packed
-  transports, the terminal access role and the `cell` field on click and
-  drag payloads are C20's steps 1–4, now unblocked; a departing grid
-  ghosts as its box, and the access tree sees a group. Three tests.
+  streaming, and it clears both by a wide margin. A departing grid ghosts
+  as its box. Four core tests (the grid, the cursor and lines, a new
+  screen shaping nothing new, the click's cell and the terminal's value),
+  one each in Node, Lua and the C self-test, and a `cells` corpus scene
+  every adapter rebuilds from its own transport and reports identically
+  — the same glyphs at `col × cell_w`, the run's one background quad, the
+  cursor, the click, the terminal's value.
 
 - **A long line is shaped in chunks, on demand** (backlog C19). A plain
   text with `wrap: none` and no line breaks of its own that is

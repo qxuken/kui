@@ -971,7 +971,25 @@ and the first frame should not be the whole line's. A `~` because the
 general case has no path today, and the special case (monospace ASCII)
 is the app's to keep getting right.
 
-### `.` C20 — A cell grid inside the core, if it beats per-cell nodes by an order of magnitude — **gate cleared (2026-09-08); the element is the open half**
+### `.` C20 — A cell grid inside the core, if it beats per-cell nodes by an order of magnitude — **done (2026-09-08)**
+
+The element half landed the same day, as steps 1–4 below say, with one
+name changed: the cursor prop is `cursorAt` / `cursor_at`, because
+`cursor` is the pointer-shape row in every binding (the Lua test found
+it: `parse_props` read the table as the enum). JSX carries four entries
+a cell from a `Uint32Array` and the stream three slots (`codepoint |
+flags << 21`, fg, bg); Lua a string per row and `runs` of `{row, col,
+len, fg, bg, flags}`; C a `KuiCell` array through `kui_cells`, a new
+[in-array] struct that bumps nothing since nothing existing moved.
+`attach_cells` in `handle_input` adds `cell: {row, col}` to any map
+payload on a grid node, from the drag's own point or the cursor for a
+click; `Role::Terminal` (AccessKit `Terminal`, `KUI_ROLE_TERMINAL` at
+the tail) is derived from the node with the rows joined as its value.
+Tests in all four, and a `cells` corpus scene rebuilt by every adapter
+from its own transport (a `Uint32Array`, a row string with runs, a
+`KuiCell` array) and reported byte-identically; `docs/props.md` carries
+the element row. Still the app's: `inverse`/`dim`, and a wide cell's
+blank spacer.
 
 The prototype the entry gated on is built and measured, and it clears
 the bar by a wide margin: `crates/kui-core/src/cells.rs`, reached as

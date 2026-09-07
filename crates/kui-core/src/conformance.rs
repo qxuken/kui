@@ -813,6 +813,36 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "cells",
+        doc: "A terminal's screen as one node (backlog C20): one row of \
+              eleven cells, three of them over a background, a block cursor \
+              on the fourth, then a click on that cell. Every binding hands \
+              the cells over in its own shape — a `Uint32Array`, a row string \
+              with colour runs, a `KuiCell` array — and the same screen has \
+              to come out: the same glyphs at `col × cell_w`, one background \
+              quad for the run, the cursor under its glyph, the click's \
+              payload naming the cell, and the row as the terminal's value.",
+        custom: &["key"],
+        elements: &["cells"],
+        build: build_cells,
+        env: NATIVE_CHROME,
+        steps: &[Step::Cursor(38, 19), Step::MouseDown, Step::MouseUp],
+        expect: Expect {
+            solid: 2,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            glyphs_min: 10,
+            access: &["0 window ||", "1 terminal term||hello world"],
+            events: &["hit -"],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+        },
+    },
+    Scene {
         name: "media",
         doc: "The non-text leaves: a registered image (deliberately unnamed, \
               so the diagnostic shows up too), three retained audio \
@@ -1736,6 +1766,30 @@ fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// a map with a `kind`, so the report's event column falls back to the
 /// phase — which is what the scene is about — and Lua, which has no
 /// spelling for a null tag, can declare the same sink.
+fn build_cells(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    use crate::cells::{Cell, CellGrid, CursorShape};
+    let cells: Vec<Cell> = "hello world"
+        .chars()
+        .enumerate()
+        .map(|(i, ch)| Cell::new(ch, 0xd6d8e0ff, if i < 3 { 0x1a1d27ff } else { 0 }))
+        .collect();
+    ui.with(NodeSpec::column().pad(10.0), |ui| {
+        ui.cells_keyed(
+            "term",
+            &CellGrid {
+                rows: 1,
+                cols: 11,
+                cells: &cells,
+                style: TextStyle::new(13.0).mono().line_height(18.0),
+                cursor: Some((0, 3, CursorShape::Block, Color::hex(0x6a8bffff))),
+            },
+            NodeSpec::default()
+                .on_click(Value::map([("kind", Value::str("hit"))]))
+                .label("term"),
+        );
+    });
+}
+
 fn build_keys(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     let sink = |label: &str| {
         NodeSpec::row()
@@ -2365,8 +2419,9 @@ fn observe(core: &Core, cov: &mut Coverage) {
                     cov.elements.insert("box");
                 }
             }
-            // No element yet: Rust-only (backlog C20).
-            NodeContent::Cells(_) => {}
+            NodeContent::Cells(_) => {
+                cov.elements.insert("cells");
+            }
             // `size` is as far as the tree goes: the frame's text list
             // keeps a cache key and a color, not the `TextStyle` it was
             // shaped from, so the font size cannot be read back — only

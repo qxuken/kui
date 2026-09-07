@@ -57,6 +57,7 @@ pub const OP_LATENCY_GRAPH: u32 = 11;
 pub const OP_LATENCY_HUD: u32 = 12;
 pub const OP_AUDIO: u32 = 13;
 pub const OP_LINE: u32 = 14;
+pub const OP_CELLS: u32 = 15;
 
 pub fn protocol_json() -> Json {
     let mut o = JsonMap::new();
@@ -80,6 +81,7 @@ pub fn protocol_json() -> Json {
                 ("latencyHud", OP_LATENCY_HUD),
                 ("audio", OP_AUDIO),
                 ("line", OP_LINE),
+                ("cells", OP_CELLS),
             ]
             .into_iter()
             .map(|(k, v)| (k.to_string(), Json::from(v)))
@@ -467,6 +469,54 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
             match &p.key {
                 Some(label) => core.line_node_keyed(label, &points, stroke, p.spec),
                 None => core.line_node(&points, stroke, p.spec),
+            }
+            Ok(())
+        }
+        OP_CELLS => {
+            // rows, cols, cursor (present, row, col, shape, colour), then
+            // three slots a cell: codepoint | flags << 21, fg, bg.
+            let rows = r.u()? as usize;
+            let cols = r.u()? as usize;
+            let has_cursor = r.u()? == 1;
+            let crow = r.u()? as usize;
+            let ccol = r.u()? as usize;
+            let cshape = r.u()? as usize;
+            let ccolor = r.f()? as u32;
+            let n = r.u()? as usize;
+            if n != rows * cols {
+                return Err(err(format!("<cells> carries {n} cells for {rows}×{cols}")));
+            }
+            let mut cells = Vec::with_capacity(n);
+            for _ in 0..n {
+                let packed = r.f()? as u32;
+                let fg = r.f()? as u32;
+                let bg = r.f()? as u32;
+                cells.push(kui_core::Cell {
+                    ch: char::from_u32(packed & 0x1f_ffff).unwrap_or(' '),
+                    fg,
+                    bg,
+                    flags: (packed >> 21) as u8,
+                });
+            }
+            let p = read_props(r)?;
+            let cursor = has_cursor.then(|| {
+                (
+                    crow,
+                    ccol,
+                    kui_core::CellCursor::from_index(cshape).unwrap_or(kui_core::CellCursor::Block),
+                    color_num(ccolor),
+                )
+            });
+            let grid = kui_core::CellGrid {
+                rows,
+                cols,
+                cells: &cells,
+                style: p.style,
+                cursor,
+            };
+            match &p.key {
+                Some(label) => core.cells_keyed(label, &grid, p.spec),
+                None => core.cells(&grid, p.spec),
             }
             Ok(())
         }

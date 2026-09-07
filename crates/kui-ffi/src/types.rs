@@ -1088,6 +1088,18 @@ impl Default for KuiScrollGeometry {
     }
 }
 
+/// [in] One cell of a `kui_cells` grid: a Unicode scalar, colours as
+/// `0xRRGGBBAA` (a `bg` of 0 is none), `KUI_CELL_*` attribute bits.
+/// Travels as an array, so a change here is an ABI bump (backlog C20).
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct KuiCell {
+    pub ch: u32,
+    pub fg: u32,
+    pub bg: u32,
+    pub flags: u32,
+}
+
 /// [out] Where a point landed in the text a keyed node drew
 /// (`kui_text_hit`): a byte offset into that text, across the node's text
 /// runs in order, and the visual (wrapped) line it is on.

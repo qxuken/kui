@@ -222,6 +222,7 @@ mod imp {
             Role::RadioGroup => AkRole::RadioGroup,
             Role::Menu => AkRole::Menu,
             Role::MenuItem => AkRole::MenuItem,
+            Role::Terminal => AkRole::Terminal,
             Role::Window => AkRole::Window,
             Role::TitleBar => AkRole::TitleBar,
             Role::StaticText => AkRole::Label,

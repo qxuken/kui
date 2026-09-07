@@ -799,6 +799,80 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             }
             Ok(())
         }
+        "cells" => {
+            // A string per row in `lines`, cells past a row's end blank;
+            // `runs` of {row, col, len, fg, bg, flags} colour and attribute
+            // spans over them (0 keeps the default). The style rows size
+            // the cells; the node rows are the node's.
+            let p = parse_props(t, false)?;
+            let rows: usize = t.get::<Option<usize>>("rows")?.unwrap_or(0);
+            let cols: usize = t.get::<Option<usize>>("cols")?.unwrap_or(0);
+            if rows == 0 || cols == 0 {
+                return Err(bad("cells needs rows and cols"));
+            }
+            let default_fg = p.style.color.to_hex();
+            let mut cells = vec![kui_core::Cell::new(' ', default_fg, 0); rows * cols];
+            if let Some(lines) = t.get::<Option<Table>>("lines")? {
+                for (r, line) in lines.sequence_values::<String>().enumerate() {
+                    if r >= rows {
+                        break;
+                    }
+                    for (c, ch) in line?.chars().take(cols).enumerate() {
+                        cells[r * cols + c].ch = ch;
+                    }
+                }
+            }
+            if let Some(runs) = t.get::<Option<Table>>("runs")? {
+                for run in runs.sequence_values::<Table>() {
+                    let run = run?;
+                    let row: usize = run.get(1)?;
+                    let col: usize = run.get(2)?;
+                    let len: usize = run.get(3)?;
+                    let fg: u32 = run.get::<Option<u32>>(4)?.unwrap_or(0);
+                    let bg: u32 = run.get::<Option<u32>>(5)?.unwrap_or(0);
+                    let flags: u8 = run.get::<Option<u8>>(6)?.unwrap_or(0);
+                    if row >= rows {
+                        continue;
+                    }
+                    for c in col..(col + len).min(cols) {
+                        let cell = &mut cells[row * cols + c];
+                        if fg != 0 {
+                            cell.fg = fg;
+                        }
+                        if bg != 0 {
+                            cell.bg = bg;
+                        }
+                        cell.flags |= flags;
+                    }
+                }
+            }
+            let cursor = match t.get::<Option<Table>>("cursor_at")? {
+                Some(cur) => {
+                    let shape = t
+                        .get::<Option<String>>("cursor_shape")?
+                        .and_then(|s| kui_core::CellCursor::from_name(&s))
+                        .unwrap_or(kui_core::CellCursor::Block);
+                    let color = match t.get::<mlua::Value>("cursor_color")? {
+                        mlua::Value::Nil => Color::rgb8(0xff, 0xff, 0xff),
+                        v => parse_color(&v)?,
+                    };
+                    Some((cur.get::<usize>(1)?, cur.get::<usize>(2)?, shape, color))
+                }
+                None => None,
+            };
+            let grid = kui_core::CellGrid {
+                rows,
+                cols,
+                cells: &cells,
+                style: p.style,
+                cursor,
+            };
+            match &p.key {
+                Some(label) => ui.cells_keyed(label, &grid, p.spec),
+                None => ui.cells(&grid, p.spec),
+            }
+            Ok(())
+        }
         "audio" => {
             // Handle from the host (kui_sound_add / Core::add_sound), passed
             // to scripts as a plain integer, like images.
@@ -2683,6 +2757,44 @@ mod tests {
         );
         let none: mlua::Value = ext.lua.globals().get("none").unwrap();
         assert!(matches!(none, mlua::Value::Nil), "a node that drew no text");
+    }
+
+    /// `cells { lines=, runs= }` is a terminal's screen as one node
+    /// (backlog C20): the rows draw, a run colours its span, and the
+    /// access tree reads the screen back.
+    #[test]
+    fn scripts_draw_a_screen_of_cells() {
+        let mut ext = LuaExtension::from_source(
+            "term",
+            r#"
+                function view(env)
+                  return column { cells { key = "term", rows = 2, cols = 11, size = 14, family = "mono",
+                    lines = { "hello world", "  bye" },
+                    runs = { { 1, 2, 3, 0xff0000ff, 0x0000ffff, 1 } },
+                    cursor_at = { 1, 4 }, cursor_shape = "underline" } }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.set_origin(OriginId(1));
+        ext.view(&Slot::root(), &mut ui).unwrap();
+        ui.finish();
+        let (dl, _) = core.output();
+        let glyphs = dl
+            .quads
+            .iter()
+            .filter(|q| q.kind == kui_core::QuadKind::GlyphMask)
+            .count();
+        assert_eq!(glyphs, 13, "hello world + bye");
+        let tree = core.access_tree();
+        let term = tree
+            .nodes
+            .iter()
+            .find(|n| n.role == kui_core::Role::Terminal)
+            .expect("a terminal node");
+        assert_eq!(term.value.as_deref(), Some("hello world\n  bye"));
     }
 
     /// A span's `underline`, `strikethrough` and `bg` reach the core
