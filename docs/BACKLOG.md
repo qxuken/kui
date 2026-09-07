@@ -18,7 +18,8 @@ so an id cited by an open item, a code comment or a commit message can be
 resolved without opening the archive. Nothing was renumbered in any of those
 moves, and nothing ever is. What is left here is three parked headings — C12,
 C13 and C14 — the seven entries from the two alpha.8 field reports,
-F25–F31 (2026-09-07), and what comes next; F16–F23 from the two alpha.7
+F25–F31 (2026-09-07), the eight from the editor-and-mux assessment,
+C16–C23, with W3 filed beside them (2026-09-07), and what comes next; F16–F23 from the two alpha.7
 field reports all closed the day they were filed (2026-09-07). C15's
 remainder was the last split entry, and it closed on 2026-09-07.
 
@@ -618,6 +619,407 @@ found is that the right sentences are not where a reader stands.
 - **`withEffects` for the chime.** Both reports declined it, for the
   reason ADR 0013 gives.
 
+## From the editor-and-mux assessment (2026-09-07)
+
+The question asked of `main` at `51ed27b`: is kui ready to be the backbone
+of a performant editor that opens large files, and of a terminal
+multiplexer? The answer was yes to the editor, provided the app owns the
+document and hands kui the visible lines (the `modal_editor` and
+`syntax_view` shape), and no to the mux, for reasons that are one cache
+policy and a few missing primitives rather than the architecture. Each of
+the eight entries below names the measurement that produced it. Two
+sources: `cargo bench -p kui-core --bench highlight` as it stands in the
+tree, and a scratch program against `kui-core` that is **not** in the repo
+— fifty rows of two hundred columns at 13 px mono, 18 px line height,
+1920×1080 at scale 2, one frame = build + layout + emit, no GPU. C16's "Do"
+adds it as a bench so the numbers stop being a one-off. Apple M3 Pro,
+release, 2026-09-07:
+
+| frame | cost |
+|---|---|
+| `highlight_2x55_warm` — two panes × 55 highlighted code lines, nothing changed | 160 µs |
+| `highlight_2x55_typing` — one line retyped per frame | 228 µs |
+| `highlight_2x55_scrolling` — one line per frame scrolls in | 282 µs |
+| `highlight_2x55_cold` — every run on screen is new (a file opened) | 1.65 ms median; one sample of thirty at 101 ms |
+| `highlight_2x55_warm_rich` — each line one `Span` list instead of ~8 nodes | 81 µs |
+| 50 × 200 terminal, one text node per line, warm | 0.08 ms, 9.9k quads |
+| 50 lines × 10 coloured runs, each under its own `bg` box, warm | 0.18 ms, 10.4k quads |
+| 10k cells as one text node each — the strict grid | 1.8 ms, 10k quads |
+| 50 new log-like lines every frame (thirty-word vocabulary + numbers) | 21 ms |
+| 50 new random-ASCII lines every frame | 63 ms — cosmic-text alone on the same fifty lines: 62.6 ms `Advanced`, 45.8 ms `Basic` |
+| resident memory: at start / after ~135 streaming frames / after 1500 more log-like frames / after 600 random | 6 MB / 747 MB / 2.8 GB / 3.6 GB |
+
+What the table says: a screenful of code costs a fraction of a
+millisecond warm and under two cold, which is the editor's case; a
+terminal pane whose fifty visible lines are *all new every frame* costs
+one to four frames of shaping, and that cost is the shaper's, not kui's
+(the cosmic-text-only row is the same number). The memory row is kui's
+own, and it is C16.
+
+### `!` C16 — The shaped-text cache has a clock and no budget
+
+`TextSystem::cache` (`text.rs`) is an `FxHashMap<u64, CachedText>` whose
+only eviction is `EVICT_AFTER_FRAMES = 300` (`text.rs:150`), applied every
+240th frame in `begin_frame` (`text.rs:346`), and the shape-run cache
+beside it gets `fs.shape_run_cache.trim(2)` on the same schedule
+(`text.rs:350`). Nothing in either policy is a size. A view that shows
+text nobody showed before — a terminal streaming, a log tailing, a file
+scrolled through fast — keeps every line it showed for the last five
+seconds at 60 fps, and a cached 200-column line is ~130 KB: 2.0 GB over
+~15k lines in the streaming run above, and F26's counting allocator got
+the same per-character rate from the other end (22 KB for a 39-character
+editor line, ~560 B/char — the shaped `Buffer` keeps a `ShapeGlyph` and a
+`LayoutGlyph` per glyph, then kui keeps a 40-byte `GlyphTemplate` on
+top). So the resident set is *frames × lines-per-frame × 130 KB* until
+the clock runs, and the clock is what bounds it at ~3.5 GB, which is not
+a bound. Nothing outside the core can shrink it: the constants are
+private and there is no verb.
+
+The frame benches never saw it because every one of them shows the same
+text every frame, and the highlight bench's `cold` row is 900 runs of
+~10 characters — 30 samples of that is 27k short entries and a few tens
+of megabytes. A `!` because the memory ships today under any streaming
+view; the frame-time half of the streaming row is C20's.
+
+**Do:** (1) A byte budget on the cache, LRU by `last_used`, checked at
+the end of every `begin_frame` rather than every 240th — a store inside
+its budget costs one comparison, the way F26's do. Size an entry by what
+it actually holds (glyph count × the measured per-glyph cost, plus the
+content) rather than guessing; default the budget to something a
+screenful of code never meets and a streaming pane meets every second
+(64 MB), and make it a `Core` setter so a terminal can lower it and a
+document viewer raise it. A text *this frame draws* is never evicted,
+whatever the budget — the promise is the same as F26's "declared is
+never evicted". (2) Measure where the 130 KB goes before deciding what
+to keep: the `GlyphTemplate` list is what emission reads and the
+`Buffer` is what re-wrap, measurement and the access tree read; an entry
+that has not been re-wrapped or walked for N frames could drop the
+`Buffer` and keep the templates, which is most of the memory for none of
+the steady-state cost. (3) The shape-run cache is the second store with
+the same absence: trim it on the same budget check, not every 240th
+frame. (4) `benches/stream.rs`: the fifty-lines-all-new frame, log-like
+and random, and a resident-memory assertion through the counting
+allocator F26 used — the number that pins this is bytes, not
+microseconds. The CHANGELOG entry says what an app can delete: nothing,
+and what changes: a text cache that used to hold five seconds of
+everything now holds a budget.
+
+### `~` C17 — IME reaches the stock editor only
+
+`InputEvent::Text` is routed to `self.edit.focused()` and otherwise to the
+focused control's type-ahead (`dispatch.rs:85`); `InputEvent::Preedit`
+goes to the focused stock editor and nowhere else (`dispatch.rs:114`);
+and `ime_rect` — what the driver hands `set_ime_cursor_area` so the OS
+candidate window sits at the caret — is computed from
+`focused_caret_rect`, which finds the node whose content is
+`NodeContent::Edit(key)` (`emit.rs:974-982`). An app-owned editor is an
+`onKey` sink with `line` children carrying `caret` and `selectionAnchor`
+(ADR 0001's custom-editor rows), and to all three of those it does not
+exist: a Japanese or Chinese user composing into `modal_editor` sees no
+preedit, the commit arrives only if the platform also delivered it as a
+key press with `text` (it does not while an IME is active), and the
+candidate window opens at the window's origin. The `key` event's `text`
+is what plain typing rides today, which is why nobody noticed: ASCII
+never composes.
+
+**Do:** (1) Route composition to the focused sink as data: the commit as
+`{kind:"text", text}` and the preedit as `{kind:"preedit", text,
+cursor:[a,b]}` on the sink's `onKey` tag, with `text` null on a preedit
+that ended without a commit. Both channels have to agree the way ADR
+0011 made the press and the character agree: a commit that the platform
+also reports as a key press is delivered once. (2) Derive `ime_rect` for
+a custom editor from the rows it already declares: the `line` node
+carrying `caret` is a text node the cache has shaped, so the caret's
+rect is `Buffer::hit`'s inverse on that entry — which is C18's caret
+verb, and C17 is its first caller inside the core. (3) The corpus
+`controls` scene gets a preedit step against the stock editor (it has
+none today) and a custom-editor scene gets the same step against a
+sink, so all four bindings pin both routes. Node's `Ctx` grows
+`preedit(text, cursor)` beside `type`, and C's `kui_input_preedit`
+already exists for the stock editor and needs no new door.
+
+### `~` C18 — Nothing maps a point to a byte offset, or an offset to a rect, on text the app owns
+
+The stock editor answers clicks and drags from cosmic-text's `hit`
+(`buffer.rs:1144` in cosmic-text 0.19). Text the app owns has no such
+door: `modal_editor.rs:474` computes `col_at` from a monospace cell width
+it measures once, `syntax_view.rs:240` pads runs with NBSP because
+trailing spaces measure unreliably, and both say "no text measurement
+anywhere" as a feature — which it is, until the font falls back for a
+glyph (CJK, an icon, an emoji) and the cell arithmetic drifts from where
+the glyph was painted. `measure_text` (`ui.rs:173`) is the only
+alternative and the wrong shape for it: it measures a *string*, so
+finding the byte under x means measuring prefixes, each of which shapes
+that prefix and caches it (C16 bites again), O(n) per query and O(n²)
+across a drag. A proportional-font editor — a notes app, a chat
+composer, anything not code — has no correct path at all.
+
+**Do:** two verbs on the key of any text node, answered from the cache
+entry the frame already shaped, so they cost a hash lookup and a binary
+search: `text_hit(key, point) -> Option<{line, byte}>` (the point in the
+node's box, as `on_click` and `on_drag` report it) and
+`caret_rect(key, {line, byte}) -> Option<Rect>`. Rich text answers in the
+concatenated content's bytes, which is what the access tree already
+names spans by. Node: `ctx.textHit` / `ctx.caretRect`; Lua: `env.text_hit`
+/ `env.caret_rect`; C: `kui_text_hit` / `kui_caret_rect` with an `[out]`
+struct, no ABI change to what exists. The custom-editor access actions
+(`setTextSelection` carries `{line, offset}`) and C17's `ime_rect` are
+the two callers inside the repo; `modal_editor` moves its click handling
+onto it and drops `col_at`. C19's chunks make both verbs O(log chunks) on
+a long line instead of O(glyphs).
+
+### `~` C19 — A long line is shaped whole, and slicing it from outside costs more than not slicing
+
+A text node with `wrap: none` shapes its whole content on first sight
+(`intern`, `text.rs:383`), keeps a `GlyphTemplate` per glyph, and at
+emission walks every template to find the ones inside the clip
+(`text.rs:649-660`: a `filter` over all of them, the `take_while` only
+stops on rows). For a 100k-character line — a minified bundle, a log
+line with a JSON blob, a base64 field — that is 0.2–0.6 s of shaping the
+first frame at the 2–6 µs/glyph the streaming rows measured, ~65 MB
+resident for the line at the C16 rate, and a 100k-template walk every
+frame after; then the same again the frame after the user types into
+it, because the content hash changed.
+
+**Why slicing it from the app is not the answer.** The obvious move is
+the horizontal `virtual_column`: show characters `[c0, c1)`, place the
+node at the width of the prefix `[0, c0)`, put a spacer after it so the
+`scrollX` content width is the whole line's. The width of the prefix is
+the problem. Under a monospace font with ASCII content it is `c0 ×
+cell_w` and the app can do it today, with `unicode-width` for wide
+characters and its own tab expansion — that is the terminal's grid
+assumption, and a code editor can live with it. Outside that assumption
+the only door is `measure_text(prefix)`, which shapes the prefix whole,
+caches it whole, and does so once per distinct `c0` — the first scroll
+through the line costs more than shaping it once did, and leaves more in
+the cache. So the app-side path works exactly where the arithmetic
+works, and where it does not, nothing does.
+
+**Do — chunked, lazy shaping inside the text node**, so a long line is
+one node the app hands over whole:
+
+1. Content past a threshold (4096 characters, say; shorter text takes
+   the path it takes today, so the corpus and the benches do not move)
+   is split into chunks of ~1024 characters at grapheme boundaries
+   (`unicode-segmentation` is already a dependency), preferring the last
+   whitespace before the cut. cosmic-text already shapes per
+   whitespace-delimited word (`ShapeWord`, `shape.rs:753`) and its
+   shape-run cache keys on words, so a cut at whitespace loses no kerning
+   or ligature the whole-line path would have kept; a cut inside a
+   whitespace-free run loses one kern pair per 1024 characters.
+2. Each chunk is its own cache entry keyed by *its* content and the
+   style — which is what makes a keystroke into the line cost one chunk:
+   every chunk whose text did not change hits. The line's entry holds the
+   chunk keys and a prefix sum of chunk widths.
+3. A chunk is shaped when something needs it: emission for the chunks
+   intersecting the clip plus one of overscan either side, `text_hit` and
+   `caret_rect` (C18) for the chunk the query lands in, found by binary
+   search over the prefix sum. An unshaped chunk contributes an
+   *estimated* width — its character count times the mean advance of the
+   chunks already shaped, or of the style's `M` before any is — corrected
+   when it shapes. The content width the scrollbar sees can therefore
+   move a little as chunks fill in, exact under monospace and the same
+   tolerance `virtual_column`'s uniform rows already accept; the
+   alternative, shaping everything to know the width, is the cost this
+   entry removes.
+4. Emission walks only the shaped chunks inside the clip, so the
+   per-frame cost of a long line is the visible screenful, like a tall
+   document's already is (README's "glyph emission is viewport-culled").
+5. `wrap: word` on a long line is deliberately the follow-up, not this:
+   a wrapped chunk's first row depends on where the previous chunk's last
+   row ended, so wrapping is a one-direction prefix computation (cheap:
+   positions, not glyphs) rather than an independent one. Ship `none`
+   first; it is the case minified files and log lines are.
+
+Memory under C16's budget is the shaped chunks, so a 100k-character line
+the user scrolls through costs what a screenful costs. Pin it with a
+bench: a 100k-character line, first frame, scrolled by a viewport per
+frame, one character inserted per frame — each should be a chunk's cost,
+and the first frame should not be the whole line's. A `~` because the
+general case has no path today, and the special case (monospace ASCII)
+is the app's to keep getting right.
+
+### `.` C20 — A cell grid inside the core, if it beats per-cell nodes by an order of magnitude
+
+The three terminal shapes an app can build today are the streaming
+rows in the table: one text node per line (0.08 ms warm, 21–63 ms when
+every line is new, because a *line* is shaped as words and a terminal's
+words are new every frame), coalesced runs with backgrounds (0.18 ms
+warm, the same streaming cost), and one node per cell (1.8 ms warm,
+flat under streaming, because single characters always hit the cache —
+but 10k nodes of layout every frame, and 10k hit regions). None is what
+a terminal wants: glyphs placed at `col × cell_w` with no shaping at all,
+which is why every terminal emulator keeps a glyph cache keyed by
+character and never calls a shaper for ASCII. Beside the cost, the grid
+drifts under shaped runs — ligature fonts join `->` and `==`, a fallback
+glyph advances at its own width — and a per-cell node is the only shape
+that holds the grid, at the price above.
+
+The core can do this an order of magnitude cheaper than an app can
+through nodes, because the cell is the unit and there is nothing to lay
+out: a `cells` node is one node in the tree with `rows × cols` cells of
+data, and its emission is a table walk.
+
+**Do, gated on a measurement:** prototype the emission alone in a bench
+first — 10k cells, a glyph cache keyed by (grapheme, weight, style,
+font, size), ASCII resolved by charmap lookup straight through the
+`Font::as_swash()` handle the raster already uses and rasterised once
+into the same atlas, a non-ASCII grapheme shaped once through a one-cell
+buffer and cached the same way, wide graphemes taking two cells with a
+spacer after them — and build the element only if that frame comes in
+under 0.2 ms warm and stays there under streaming, against the 1.8 ms
+per-cell-node row. If the prototype cannot get there, the per-cell node
+path is what an app has and this entry closes as measured. If it can:
+
+1. One element, `cells` (`<cells>` / `cells {}` / `kui_cells`), holding
+   `rows`, `cols`, a `CellStyle` (font, size, the cell size derived from
+   the font's advance rounded to physical px so the grid is
+   pixel-aligned) and a flat cell array: grapheme (a `char`, or an index
+   into a per-frame string table for clusters), `fg`, `bg`, attribute
+   bits (bold, italic, underline, strikethrough, inverse, dim, wide,
+   blink is the app's). Node sends it as one packed `Uint32Array` through
+   the encoder, one op; Lua as a string per row plus colour runs; C as
+   a `repr(C)` `KuiCell` array, which is an ABI bump.
+2. Emission: one bg quad per run of equal `bg` in a row, one glyph quad
+   per non-space cell, underline and strikethrough as thin quads from
+   the font's metrics (shared with C22), a cursor as `{row, col, shape}`
+   on the node — block, bar, underline — drawn by the core so the blink
+   clock the stock editor already has can drive it.
+3. Input: the node is one hit region; its `onClick` / `onDrag` payloads
+   gain `cell: {row, col}` so the app never divides by the cell size it
+   did not choose. Selection stays the app's: a `bg` override per cell is
+   already how a terminal draws it. Keys already arrive through `onKey`.
+4. Access: one row, AccessKit's `Role::Terminal` (`accesskit` 0.25 has
+   it), value = the rows joined — a screen reader reads the screen, which
+   is what the platform terminals do.
+5. What it deliberately does not do: ligatures (a cell is a cell), text
+   wrapping, anything a `text` node does. A mux that wants a ligature
+   font uses runs and C23.
+
+A `.`, not a `~`: an app has the per-cell path today and it is correct,
+only slow. The numbers say it is slow by a factor the core can remove and
+the app cannot.
+
+### `~` C21 — Nothing outside the main thread can wake `run`, and `pump` never waits
+
+`Launcher::run` keeps the `EventLoopProxy` it creates for itself
+(`lib.rs:219-224`, `shell.proxy`, private and typed to
+`access_bridge::UserEvent`, which has one variant, AccessKit's), and
+`Launcher::open`'s `PumpRunner::pump` is `pump_app_events(Some(ZERO))`
+(`lib.rs:254`) — it processes what is pending and returns, never
+blocking for the next event. So an app whose data arrives on another
+thread — a PTY reader, a file watcher, an LSP client, a network socket —
+has no way to make the loop draw: under `run` it cannot reach the loop at
+all, and under `open` it can only call `pump` on a timer, paying either
+the timer's latency or its idle CPU. Node does not feel it (libuv is
+the timer, by design, D4); every Rust app that is not a pure
+view-of-input does. The loop is `ControlFlow::Wait` on purpose and this
+keeps it so — the wake is the one event the app owns.
+
+**Do:** (1) `kui::Waker`, `Clone + Send`, wrapping the proxy: `wake()`
+posts `UserEvent::Wake`, whose handling is `request_redraw` on every
+pane — the app's `view` reads its channel on the frame that follows, and
+nothing else changes. `Launcher::run` hands it over through an
+`App::setup(&mut self, waker: Waker)` with a default no-op body, so
+existing apps compile untouched; `PumpRunner::waker()` returns the same.
+(2) `PumpRunner::pump_until(deadline)`: `pump_app_events(Some(timeout))`
+so a host that owns the loop can block on OS events *and* its own
+wake instead of polling. (3) A test drives `open`, wakes from a thread,
+and pins that a frame was drawn without any OS input — headless cannot
+(the wake is the driver's), so it is a `SMOKE_*` job beside F13's probe.
+
+### `.` C22 — Underline, strikethrough, and a background per span
+
+`Span` is `text`, `color`, `bold`, `italic` (`text.rs`, and `<span bold
+italic color>` is the whole JSX row); `TextStyle` has no decoration
+either. An editor's links, diagnostics and search hits, a terminal's
+`SGR 4` / `SGR 9`, and any "highlight this word" all want one of three
+things a text node cannot say: an underline, a strikethrough, or a
+background behind a span rather than behind the node. The workarounds
+exist and cost nodes: a `line` float per underline (positioned by C18's
+`caret_rect`, or by cell arithmetic), a `bg` box per run for a
+background — which is the "coalesced runs" shape the bench measured at
+0.18 ms for 500 runs, fine for a terminal row, wrong for a paragraph
+that wraps (a span's background has to follow the span across the
+break, and a box cannot).
+
+**Do:** three rows on `Span` and two on `TextStyle` — `underline`,
+`strikethrough`, and span `bg` — emitted as rect quads beside the
+glyphs from the run geometry the layout already has, using the face's
+underline offset and thickness (`swash` metrics: `underline_offset`,
+`stroke_size`, `strikeout_offset`) so they sit where the font designer
+put them; the span `bg` is a quad per run of the span per line, which is
+what makes it wrap. Paint-only, so the cache key does not change
+(colour is already excluded from it); the `GlyphTemplate` list grows a
+decoration list beside it. A curly underline for diagnostics is a
+`line` curve today and can stay one. JSX `<span underline>`, Lua `{ "x",
+underline = true }`, C `KuiSpan.flags` — `kui_rich_text` already takes
+spans; the bits are additive. Parked on the same terms as C13: a view
+that wants it names which of the three it wants first.
+
+### `~` C23 — No way to turn ligatures off, or tabular figures on
+
+Every text node shapes with `Shaping::Advanced` and default features
+(`text.rs:398`, `text.rs:558`), and nothing in `TextStyle` or the schema
+reaches `Attrs::font_features` (cosmic-text 0.19 has it, `attrs.rs:377`).
+So a coding font with ligatures joins `->`, `!=` and `www` in every
+node, and there is no way to say otherwise — a terminal built on runs
+(the C20 alternative) sees its grid drift by exactly the ligatures, and
+an editor cannot offer "ligatures: off" as a setting. The other
+direction matters as much: a gutter or a table wants `tnum`, a
+stylistic set (`ss01`) is how several coding fonts spell their
+alternate `0` and `l`, and none is reachable.
+
+**Do:** a `features` row on `TextStyle` — a small list of (tag, value)
+pairs, `{ liga: 0, calt: 0, tnum: 1 }` in JSX and Lua, a fixed-size
+`KuiFontFeature[8]` on `KuiTextStyle` in C (an ABI bump, since the
+struct is by value; ADR 0006's size handshake absorbs it as long as the
+field goes at the end). Mixed into `style_key` (`text.rs:354`) because
+it changes the shape, and into the editor's attrs so a `<edit>` in a
+ligature font matches the text beside it. A corpus scene needs a font
+that has a ligature to pin against, which the bundled test font may
+not; measure the width of `->` with and without and assert they differ
+where the font has the glyph, or skip where it does not.
+
+### `!` W3 — On Windows, animations stop while the window is grabbed
+
+Not from the measurement: reported beside it, on 2026-09-07, as a
+regression — a transition mid-flight freezes for as long as the title
+bar is held, and resumes on release. Not reproduced here (no Windows
+machine, and P8's `SMOKE_WINDOWS` job is still waiting for a runner), so
+the mechanism below is the hypothesis the report fits, not a finding.
+
+Windows moves and resizes a window inside its own modal loop
+(`WM_ENTERSIZEMOVE` … `WM_EXITSIZEMOVE`, run by `DefWindowProc`), and
+for its duration the process's message loop is that one, not winit's.
+kui's animation pacing is `about_to_wait` (`lib.rs:2234`): a pane whose
+core is `animating()` asks for a redraw there, and the loop parks in
+`ControlFlow::WaitUntil` for the caret and audio clocks. Inside the
+modal loop `about_to_wait` runs only when a message reaches winit's
+handler, and the redraw it requests is what `RedrawRequested` answers —
+so whether frames keep coming depends on whether anything ticks in
+there. If winit already arms a timer for the modal loop, the bug is
+kui's (a redraw asked for once and never re-asked); if it does not, the
+subclass `windows_nc.rs` already installs for custom chrome is the
+place to arm one: `SetTimer` on `WM_ENTERSIZEMOVE`, a redraw on each
+`WM_TIMER`, `KillTimer` on exit — and it has to apply under
+`Chrome::Native` too, where the subclass is not installed today. Which
+alpha introduced it is not known here; the driver's pacing moved with
+ADR 0004 step 3 (multi-window) and F15's tween fix, and either could be
+the edge.
+
+**Do:** (1) Reproduce on Windows first, by hand — `toasts` with a panel
+springing open, grab the title bar mid-spring — and read whether
+`RedrawRequested` arrives at all during the hold (a counter in the HUD
+is enough). (2) Fix at the layer the answer names: re-request inside
+`RedrawRequested` while animating if winit ticks, the timer in the
+subclass if it does not. (3) Since the frame clock is the wall's, the
+tween catches up on release rather than replaying, which is right; pin
+it in the same by-hand check. It joins the by-hand round's list under
+"After alpha.8" until the smoke job exists. A `!` because it ships
+today on one platform; the mixed-DPI drag check W2 left for Windows is
+the same session's work.
+
 ## After alpha.8
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -653,6 +1055,16 @@ F28 (the clause on `quads()` and `access`), F29 (the `audio` element's
 (`docs/howto.md`, the `**What breaks.**` bullet list from alpha.9 on, and
 what a deletion line names). They move to the archive at the next
 archiving round; nothing is queued behind them.
+
+**Editor and mux (2026-09-07).** The assessment section above is the
+order of work for each. For an editor that owns its document: C16 (the
+text cache gets a byte budget — the one `!`), then C18 (point ↔ byte
+offset on app-owned text), C17 (IME to the focused sink, whose caret
+rect is C18's verb), then C19 (a long line shaped in chunks). For a
+mux: C16 again, then C20's *prototype* — the element is built only if
+the bench clears the bar the entry sets — then C21 (a waker for the
+loop) and C23 (ligatures off); C22 is parked like C13 until a view names
+what it wants first.
 
 **Design, wanting an ADR.** Nothing new since ADR 0014 (above) was built on 2026-09-07; what it leaves open — a slot element for Node, extensions in `kui_run`, an extension offering slots of its own — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
 [`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md),
@@ -708,6 +1120,9 @@ release, which no headless assertion reads:
   cards and connectors together, not jump into place on release. That is
   ~~F15~~, checked for alpha.7 with `screencapture` inside a synthetic drag
   (`kui-macos-window-quirks` has the recipe); by hand, a slow drag is enough.
+- **Windows: grab the title bar while something animates** (`toasts`,
+  mid-spring) and watch whether it keeps moving — W3, filed 2026-09-07
+  from a report and not reproduced here.
 - The same gesture into a popup: press in the owner, drag into the popup,
   release on an item. ADR 0009's consequences name four `CGEvent` checks and
   W2's archived entry records what each one showed when the driver half was
