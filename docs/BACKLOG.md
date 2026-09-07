@@ -300,7 +300,54 @@ whose command list shows no `stop`. **What the app can delete:**
 `CHIME_MS` and the `now - alarmAt` window; the node is declared for one
 frame and the sound plays whole.
 
-### `~` F29 — A window has no settled frame by name, so a smoke test sleeps
+### `~` F29 — A window has no settled frame by name, so a smoke test sleeps — **done (2026-09-07)**
+
+Done, as written. `WindowLoop` — the loop `runWindowed` builds, and only
+it — has `settled(maxMs = 10_000): Promise<number>` and
+`frame(): Promise<void>`. Both are answered from inside the pump: the
+loop keeps a list of waiters and `step()` drains it at the end of every
+turn, so `frame` resolves on the next pump and `settled` on the first one
+that leaves `animating()` false with no effect unflushed, with `at()`'s
+milliseconds since it was asked. The cap resolves rather than throws,
+`animating()` still true, as `runOut` returns `maxMs`. `step()`'s body is
+wrapped so a throw rejects the waiters before it rethrows, and
+`runWindowed`'s own `catch` rejects them too — a throw out of `win.pump()`
+happens before `step` — through a module-private symbol rather than a
+public method. A window that closes rejects what is still waiting, since
+no further frame will be painted. Headless is untouched and keeps
+`runOut`; `settled` and `frame` on a loop that holds its own clock throw
+and name `runOut`, the way `advance` refuses a wall clock. Four tests in
+`packages/kui/test.mjs` drive the pump by hand — `createApp` over a
+stand-in surface whose `animating()` the test flips, and a clock the test
+holds, which is what `runWindowed` fills with `Date.now` — and cover the
+settle, the cap (56 ms of a 50 ms cap, still animating), `frame`, the
+rejection, and the headless refusal.
+
+Two things the doing found. **The type is `WindowLoop`, not `Loop`:** the
+entry said "the windowed loop (`Loop`, not `App`)", but `App` *extends*
+`Loop`, so a method on `Loop` is a method on `App` too. `WindowLoop` was a
+bare alias for `Loop<M, A, KuiWindow, E>`; it is now an interface
+extending it with these two, which is the mirror of `runOut` living on
+`App` alone. A type-level check (three `@ts-expect-error`s) says each half
+has what it should and not the other's.
+
+**And the app this was filed for cannot use `settled`.** Converting
+`smoke.tsx` (outside this repo, uncommitted): `settled(600)` answered at
+its cap — 608, 609, 610, 610 ms over four runs — every time. The window
+opens at 1040×720, which is the wide tier, and the wide tier draws the
+LCARS cascade, whose two `repeat="alternate"` keyframe legs never stop:
+`animating()` is true for the life of that window. This is the case the
+cap was written for and it reports it honestly, but the wait that fits
+the test is the other one. All three sleeps became `await app.frame()` —
+the first `frames(400)` included, which the entry already predicted
+`frame()` was really waiting for; the geometry it asserts on is identical
+after one pump (333 quads, 72 solid, extends to 1040×720) to what 600 ms
+of pumping gave, over three runs each. `npm run smoke` passes with no
+failures and finishes about a second sooner, and the `frames` helper is
+gone. The comment in its place names `settled` and why that window is the
+one that cannot have it.
+
+The original finding follows.
 
 Pomodoro wish 4: `runOut` gives headless the settled frame; "a window has
 no equivalent, so `smoke.tsx` sleeps 400 ms and hopes" (`frames(400)`,
@@ -393,7 +440,9 @@ The next thing to build is what the next field reports asked for, the same
 day: F24–F30 above — F24 and F28 are the two that touch the core, F25 is
 the lifetime question they turned up, F26 is the publish step, and F27,
 F29 and F30 are a doc clause, a promise on the windowed loop and a task
-index.
+index. Two of the seven are done and keep their entries with the outcome
+on top: F24 (2026-09-07) and F29 (2026-09-07, `settled` and `frame` on
+`WindowLoop`).
 
 **Design, wanting an ADR.** Nothing new since ADR 0014 (above) was built on 2026-09-07; what it leaves open — a slot element for Node, extensions in `kui_run`, an extension offering slots of its own — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
 [`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md),

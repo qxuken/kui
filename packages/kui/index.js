@@ -13,6 +13,13 @@ export { createEncoder };
 // wrapped return from a plain one. `docs/adr/0013-effects-as-data.md`.
 const EFFECTS = Symbol.for('kui.effects');
 
+// The driver's door to the loop's waiters (`settled` / `frame`). A throw
+// from `win.pump()` happens outside `step()`, and an awaited frame that will
+// never be painted has to reject rather than hang, so the pump's `catch`
+// needs a way in. Private to this module — the loop's public shape is what
+// `Loop` in index.d.ts says it is.
+const FAILED = Symbol('kui.failed');
+
 /**
  * What `update` returns when it has effects to hand the loop besides the
  * next model: the model — or `undefined` to keep the current one, as a bare
@@ -240,6 +247,57 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
     flushEffects();
   }
 
+  // What `settled()` and `frame()` are waiting for (backlog F29). A driver
+  // pumps from a timer the test cannot see into, so instead of guessing a
+  // duration the test parks a waiter here and the pump answers it: `step()`
+  // drains the list at the end of every turn, and a throw anywhere in the
+  // pump rejects it. Empty unless something is awaiting.
+  let waiters = [];
+
+  // Nothing left to draw for: no transition, ghost or keyframe in flight,
+  // and no effect the handler has not been handed. The second half matters
+  // because an effect that dispatches is a model change the next turn owes
+  // a frame to — a frame "settled" would otherwise promise had happened.
+  function quiet() {
+    return !surface.animating() && pending.length === 0;
+  }
+
+  // The pump has painted: every `frame` waiter is answered, and a `settled`
+  // one when this frame left nothing moving — or when its cap has passed,
+  // which resolves with `animating()` still true, the way `runOut` returns
+  // `maxMs` headless rather than throwing.
+  function drainWaiters() {
+    if (waiters.length === 0) return;
+    const still = quiet();
+    const t = at();
+    const keep = [];
+    for (const w of waiters) {
+      if (w.frame) w.resolve();
+      else if (still || t - w.started >= w.maxMs) w.resolve(t - w.started);
+      else keep.push(w);
+    }
+    waiters = keep;
+  }
+
+  // A pump that threw, or a window that closed, takes the waiters with it.
+  function failWaiters(err) {
+    const all = waiters;
+    waiters = [];
+    for (const w of all) w.reject(err);
+  }
+
+  // Both promises are answered from inside the driver's pump, so a loop that
+  // holds its own clock has nobody to answer them — it moves time by hand,
+  // and `runOut` is the same wait, synchronous. Refused rather than hung,
+  // the way `advance` refuses a wall clock.
+  function mustPump(name) {
+    if (!clock) {
+      throw new Error(
+        `kui: ${name}() waits on the driver's pump; this loop moves its own clock — app.runOut() / app.advance(ms)`,
+      );
+    }
+  }
+
   // An input call the surface does not take: a real window gets its input
   // from the OS, so it offers only some of them.
   function must(name) {
@@ -281,13 +339,20 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
      *  clock owes, then a frame if either changed the model. The windowed
      *  driver runs one after every `win.pump()`. */
     step() {
-      drainWarnings();
-      let redraw = drainEvents();
-      if (ticksTo(at(), false)) redraw = true;
-      // A tick that returned effects and no model draws nothing, so the
-      // step that owed them is what hands them on.
-      if (redraw) draw();
-      else flushEffects();
+      try {
+        drainWarnings();
+        let redraw = drainEvents();
+        if (ticksTo(at(), false)) redraw = true;
+        // A tick that returned effects and no model draws nothing, so the
+        // step that owed them is what hands them on.
+        if (redraw) draw();
+        else flushEffects();
+      } catch (e) {
+        failWaiters(e);
+        throw e;
+      }
+      // The turn is over, so whatever was waiting for one has its answer.
+      drainWaiters();
     },
     /** Drain events -> update -> re-render until no events remain. */
     settle() {
@@ -322,6 +387,34 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
         elapsed += stepMs;
       }
       return elapsed;
+    },
+    /** The windowed `runOut`: resolves the first time a pump plus its step
+     *  leaves nothing animating and nothing queued, with the wall-clock
+     *  milliseconds it waited — and at `maxMs` with `animating()` still
+     *  true, as `runOut` returns its cap. A promise rather than a loop
+     *  because a window's clock is the wall's: `advance` cannot move it, so
+     *  the driver's pump is the only thing that can say a frame happened
+     *  (backlog F29). */
+    settled(maxMs = 10_000) {
+      mustPump('settled');
+      must('animating');
+      const started = at();
+      return new Promise((resolve, reject) => {
+        waiters.push({ frame: false, started, maxMs, resolve, reject });
+      });
+    },
+    /** One more pump has painted. The cheap half of `settled` — what a test
+     *  that only needs the window to have drawn *something* was buying with
+     *  a `setTimeout`. */
+    frame() {
+      mustPump('frame');
+      return new Promise((resolve, reject) => {
+        waiters.push({ frame: true, resolve, reject });
+      });
+    },
+    /** The driver's door to those waiters; see `FAILED`. */
+    [FAILED](err) {
+      failWaiters(err);
     },
     click(x, y, clicks = 1) {
       const mouse = must('mouse');
@@ -415,10 +508,16 @@ export function runWindowed(config, opts = {}) {
         // `effects()` keeps is for a headless test.
         app.effects();
       } catch (e) {
+        // `step` has already rejected what it was holding; this is for a
+        // throw out of `win.pump()` itself, which happens before it.
+        app[FAILED](e);
         reject(e);
         return;
       }
       if (!alive) {
+        // No further frames will be painted, so an awaited one is told
+        // rather than left waiting for a pump that has stopped.
+        app[FAILED](new Error('kui: the window closed while a frame was awaited'));
         resolve(app.model);
         return;
       }

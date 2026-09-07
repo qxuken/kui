@@ -1855,9 +1855,30 @@ export interface App<M, A = AppMsg | CoreMsg, E = never> extends Loop<M, A, Ctx,
   runOut(maxMs?: number, stepMs?: number): number;
 }
 
-/** The loop `runWindowed` builds, handed to `setup`. It has no `advance`:
- *  a window runs on the wall clock and ticks itself. */
-export type WindowLoop<M, A = AppMsg | CoreMsg, E = never> = Loop<M, A, KuiWindow, E>;
+/** The loop `runWindowed` builds, handed to `setup`. It has no `advance`
+ *  and no `runOut`: a window runs on the wall clock and ticks itself, so
+ *  nothing here can move time — what it has instead is the two waits below,
+ *  answered from inside the driver's pump. */
+export interface WindowLoop<M, A = AppMsg | CoreMsg, E = never> extends Loop<M, A, KuiWindow, E> {
+  /** Resolves the first time a pump — `win.pump()` and the `step()` after
+   *  it — leaves `animating()` false and no effect unflushed, with the
+   *  wall-clock milliseconds it waited. Stops at `maxMs` (default 10 000)
+   *  and resolves anyway with `animating()` still true, which is what
+   *  `runOut` returning its cap says headless.
+   *
+   *  This is `runOut` for a window, and it is a promise rather than a loop
+   *  because a window's clock is the wall's: `advance` refuses it, so a
+   *  test cannot step time forward itself and the driver's pump is the only
+   *  thing that can say a frame has happened. The alternative it replaces
+   *  is `setTimeout(400)` and hope (backlog F29). Rejects if the pump
+   *  throws, or if the window closes while it waits. */
+  settled(maxMs?: number): Promise<number>;
+  /** Resolves after the next pump has painted — the cheap half of
+   *  `settled`, for a test that only needs the window to have drawn, not to
+   *  have stopped moving. A promise for the same reason: the pump runs on a
+   *  timer a test cannot see into. */
+  frame(): Promise<void>;
+}
 
 export declare function createApp<M, A = AppMsg | CoreMsg, E = never>(
   config: AppConfig<M, A, E>,
