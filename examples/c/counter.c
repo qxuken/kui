@@ -1383,6 +1383,9 @@ static void conf_modal(KuiCtx *ui, const Fixtures *f, int phase) {
 /* conformance::EXIT_BULK_ROWS: with its own root that is one node past
  * kui_core::depart::MAX_NODES, so the whole subtree is refused. */
 #define CONF_EXIT_BULK_ROWS 512
+/* conformance::EXIT_ROWS: more one-node subtrees than the budget, dropped
+ * in one frame and refused whole (docs/adr/0012-the-exit-budget.md). */
+#define CONF_EXIT_ROWS 600
 
 /* One of the exit scene's fixed-size slots: dropping the node inside it
  * moves nothing else, so the only geometry that changes between phases is
@@ -1402,10 +1405,11 @@ static void conf_exit_keep(KuiCtx *ui, const char *key, const char *label) {
     kui_close(ui);
 }
 
-/* Exit transitions (docs/adr/0005-the-paint-vocabulary.md). Four subtrees
+/* Exit transitions (docs/adr/0005-the-paint-vocabulary.md). Three subtrees
  * the view stops declaring in phase 1 - one still in flight at the end, one
- * already over, one that comes back in phase 2, and one past the budget -
- * and two that never leave. */
+ * already over, one that comes back in phase 2 - then one past the budget
+ * in phase 3 and 600 one-node rows in phase 4, each frame refused whole
+ * (docs/adr/0012-the-exit-budget.md) - and two that never leave. */
 static void conf_exit(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     KuiSpec outer = {.width = {KUI_GROW, 1}, .height = {KUI_GROW, 1},
@@ -1458,9 +1462,25 @@ static void conf_exit(KuiCtx *ui, const Fixtures *f, int phase) {
 
     conf_exit_keep(ui, "b", "B");
 
+    /* More one-node departures than the budget, each a solid quad half a
+     * pixel wide, in a slot that keeps its size when they go. */
+    KuiSpec slot_rows = {.dir = KUI_ROW, .width = {KUI_FIXED, 300},
+                         .height = {KUI_FIXED, 4}, .bg = 0x101018ff};
+    kui_open_keyed(ui, KUI_STR("slotRows"), &slot_rows, NULL);
+    if (phase < 4) {
+        KuiSpec cell = {.width = {KUI_FIXED, 0.5f}, .height = {KUI_FIXED, 4},
+                        .bg = 0x8a8fa3ff, .transition_ms = 400,
+                        .exit = {.set = KUI_ENTER_OPACITY, .opacity = 0}};
+        for (int i = 0; i < CONF_EXIT_ROWS; i++) {
+            kui_open(ui, &cell, NULL);
+            kui_close(ui);
+        }
+    }
+    kui_close(ui);
+
     /* Last, and sized by children that have no size: dropping it takes only
      * the trailing gap with it. */
-    if (phase == 0) {
+    if (phase < 3) {
         KuiSpec bulk = {.transition_ms = 400,
                         .exit = {.set = KUI_ENTER_OPACITY, .opacity = 0}};
         kui_open_keyed(ui, KUI_STR("bulk"), &bulk, NULL);

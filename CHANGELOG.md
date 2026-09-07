@@ -28,6 +28,16 @@ at its top.
 own stamp before every frame since alpha.7, so it already did nothing; now
 it says so. See `### Changed` — the two alpha.7 field reports are why.
 
+**A frame that removes more than 512 nodes declaring `exit` animates none
+of them.** It used to animate the first 512 and blink the rest — a 1000-row
+list dropped with rows 0–511 sliding out and rows 512–999 vanishing, the
+split set by how many nodes a row's markup happened to contain. Now the
+removal is judged whole: past the budget every departing node vanishes at
+once, as a node with no `exit` does, and the `exit-budget` warning names
+the frame's count. A view that was getting the half-animation loses it;
+that is the intended trade, and the `### Changed` entry says why
+(`docs/adr/0012-the-exit-budget.md`).
+
 ### Added
 
 - **Press the field, drag into the menu, release on an item** — the native
@@ -123,6 +133,48 @@ it says so. See `### Changed` — the two alpha.7 field reports are why.
   control instead of describing it.
 
 ### Changed
+
+- **A frame's removal animates whole or not at all, and a new removal
+  outranks the ghosts already in flight** (ADR 0012, decisions 2, 3 and 6;
+  decision 5 is the entry below). The exit store's budget is 512 nodes and
+  it used to be applied one departing subtree at a time — admit, admit,
+  admit, refuse — so a mass removal over the budget got a third behaviour
+  neither policy produces: the top of the list sliding out and the bottom
+  blinking, with the boundary moving whenever an author added a label to a
+  row. And the store protected its oldest ghosts, so an unrelated
+  dismissal 100 ms behind a big one was truncated to whatever was left.
+  Now `collect_departures` counts the frame's departing roots before it
+  copies any of them and asks the store once (`DepartStore::admit`): a
+  removal that fits an empty store is admitted whole, taking the room it
+  needs from the **oldest** ghosts first — they are furthest through their
+  own fade, and the removal the user just caused is the one they are
+  looking at — and a removal larger than the budget on its own is refused
+  whole, with one `exit-budget` warning for the frame that says how many
+  nodes it removed. A view under the budget cannot tell any of this
+  happened: six toasts and a "clear" are what they were.
+  The corpus `exit` scene pins it in all four bindings: `bulk` (one
+  subtree, a node past the budget) now leaves in a frame of its own, and
+  600 one-node rows leave in the frame after — refused whole, where
+  per-subtree admission kept 512 of them and the solid count would read
+  522. Building the scene found the one thing the ADR's consequences had
+  wrong: `bulk` used to leave with `fade`, and under the new rule that
+  frame of 517 nodes would have refused `fade` too. The departing frame is
+  cheaper as well as different, since a refused removal copies nothing:
+  `drop_1k_rows_declaring_exit` 217 → 157 µs, and its meaning changed with
+  it (it is the refused frame now), so `drop_500_rows_declaring_exit`
+  measures the admitted one at 139 µs. `examples/rust/bulk_exit.rs` is the
+  boundary with buttons on it. Nothing in the IR, the ABI or any binding
+  moves; `props.md`, `index.d.ts`, `kui.h` and the README carry the
+  warning's new sentence.
+  **What you can delete:** the model-side stagger. A view that dropped a
+  big list in batches across several frames to keep each batch under the
+  budget — or capped how many rows could leave with `exit` at once — can
+  drop the whole list in one frame and let the store decide; and a view
+  that wrapped a long list's departure in its own count to avoid the
+  half-animation can stop counting. A long list still wants its `exit` on
+  the list rather than on every row, and a *virtualised* list
+  (`widgets::virtual_column`) is what makes that picture small enough to
+  fit: the ghost is the built slice, not the thousand rows.
 
 - **A seeded single-line editor opens with the caret after its text**
   (backlog F20, from the mind map's report). A rename field seeded with

@@ -508,9 +508,11 @@ typedef struct KuiSpec {
      * dismissed and re-shown never doubles. `set` = 0, or no transition_ms,
      * leaves a removed node vanishing at once as before. Needs a stable key.
      * width/height resize the departing node's own box only: what is inside
-     * it is a picture and is not laid out again. More than 512 nodes
-     * departing at once is refused past the budget (the rest vanish) with an
-     * "exit-budget" warning. */
+     * it is a picture and is not laid out again. The store holds 512 nodes
+     * and a frame's removal is judged whole: one that does not fit takes
+     * the room from the oldest exits still in flight, and one larger than
+     * the budget on its own animates nothing (every node of it vanishes at
+     * once) with an "exit-budget" warning for the frame. */
     KuiEnter exit;
     /* KUI_LIVE_*: when the text inside this node changes, a screen reader
      * reads the change without being asked. A node that declares it is

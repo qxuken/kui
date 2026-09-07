@@ -97,5 +97,9 @@ name = "toasts"
 path = "../../examples/rust/toasts.rs"
 
 [[example]]
+name = "bulk_exit"
+path = "../../examples/rust/bulk_exit.rs"
+
+[[example]]
 name = "connectors"
 path = "../../examples/rust/connectors.rs"

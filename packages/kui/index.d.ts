@@ -463,12 +463,15 @@ export type WarningCode =
    *  which reads as "wrapping is broken"; see `LayoutSpec::wrap` for why a
    *  column cannot have it. */
   | 'wrap-ignored'
-  /** More nodes are departing at once than the exit store will hold (512,
-   *  `depart::MAX_NODES`), so the subtrees past the budget vanished instead of
-   *  animating out. Correct — that is what a node with no `exit` does — and
-   *  invisible from the outside, which is the whole reason it is a line here: a
-   *  list that drops a thousand rows wants `exit` on the list, not on every
-   *  row. */
+  /** One frame removed more nodes declaring `exit` than the exit store will
+   *  hold (512, `depart::MAX_NODES`), so none of that frame's removal animated:
+   *  every departing node of it vanished at once, as a node with no `exit`
+   *  does, rather than some sliding out and the rest blinking
+   *  (`docs/adr/0012-the-exit-budget.md`, decision 2). Correct, and invisible
+   *  from the outside, which is the whole reason it is a line here: a list that
+   *  drops a thousand rows wants `exit` on the list, not on every row. A
+   *  removal that fits the budget but finds earlier exits still in flight
+   *  evicts those, oldest first, and is not this warning. */
   | 'exit-budget'
   /** A prop name nothing claims: not a schema row, not a composite, not one of
    *  the element's own props (see `schema::known_prop`). The binding threw the

@@ -289,40 +289,113 @@ fn a_ghost_escapes_its_ancestors_clip_and_keeps_its_place() {
     );
 }
 
-/// The budget: more nodes departing at once than the store holds means the
-/// ones past it vanish, as a node without an `exit` does — and the core
-/// says so rather than leaving it to look like a bug.
+/// `rows` one-node rows, keyed `ROOT[from + i]`, every one declaring an
+/// `exit` — the list the budget is for.
+fn list(core: &mut Core, now: f64, from: usize, rows: usize) {
+    core.set_time(now);
+    let mut ui = core.frame(Size::new(400.0, 400.0), 1.0);
+    for i in from..from + rows {
+        ui.with_indexed(
+            i as u64,
+            NodeSpec::column()
+                .width(Sizing::Fixed(10.0))
+                .height(Sizing::Fixed(1.0))
+                .bg(Color::WHITE)
+                .transition(100.0)
+                .exit(Enter::default().opacity(0.0)),
+            |_| {},
+        );
+    }
+    ui.finish();
+}
+
+/// The budget, ADR 0012 decision 2: a frame that removes more nodes than
+/// the store holds gets *none* of them animated — every row vanishes at
+/// once, as a node without an `exit` does — rather than the first 512
+/// sliding out and the rest blinking. And the core says so, naming the
+/// frame's count, rather than leaving it to look like a bug.
 #[test]
-fn the_budget_bounds_the_store_and_raises_a_warning() {
+fn a_removal_over_the_budget_animates_nothing_and_says_so() {
     let mut core = Core::new();
-    let build = |core: &mut Core, now: f64, rows: usize| {
+    let rows = kui_core::depart::MAX_NODES + 100;
+    list(&mut core, 0.0, 0, rows);
+    core.take_warnings();
+    list(&mut core, 0.01, 0, 0);
+    assert!(core.depart.is_empty(), "whole or not at all");
+    assert_eq!(core.depart.node_count(), 0);
+    let warnings = core.take_warnings();
+    assert_eq!(
+        warnings.len(),
+        1,
+        "one warning for the frame, not one per row"
+    );
+    assert_eq!(warnings[0].code, "exit-budget");
+    assert!(
+        warnings[0]
+            .message
+            .contains(&format!("removed {rows} nodes")),
+        "the sentence names the frame's removal: {}",
+        warnings[0].message
+    );
+    assert!(!core.animating(), "and nothing is in flight");
+}
+
+/// ADR 0012 decision 3: a removal that fits the budget but not the room
+/// beside exits already in flight takes that room from the oldest ghosts,
+/// and is not a warning. Before this, the store protected the oldest and
+/// refused the newest, so an unrelated dismissal 100 ms behind a big one
+/// got twelve rows of two hundred.
+#[test]
+fn a_new_removal_outranks_the_ghosts_already_in_flight() {
+    let mut core = Core::new();
+    // Two lists side by side: 300 rows keyed 0.., 300 keyed 1000...
+    let both = |core: &mut Core, now: f64, first: usize, second: usize| {
         core.set_time(now);
         let mut ui = core.frame(Size::new(400.0, 400.0), 1.0);
-        for i in 0..rows {
-            ui.with_indexed(
-                i as u64,
-                NodeSpec::column()
-                    .width(Sizing::Fixed(10.0))
-                    .height(Sizing::Fixed(1.0))
-                    .bg(Color::WHITE)
-                    .transition(100.0)
-                    .exit(Enter::default().opacity(0.0)),
-                |_| {},
-            );
+        for (from, rows) in [(0, first), (1000, second)] {
+            for i in from..from + rows {
+                ui.with_indexed(
+                    i as u64,
+                    NodeSpec::column()
+                        .width(Sizing::Fixed(10.0))
+                        .height(Sizing::Fixed(1.0))
+                        .bg(Color::WHITE)
+                        .transition(100.0)
+                        .exit(Enter::default().opacity(0.0)),
+                    |_| {},
+                );
+            }
         }
         ui.finish();
     };
-    let rows = kui_core::depart::MAX_NODES + 100;
-    build(&mut core, 0.0, rows);
+    both(&mut core, 0.0, 300, 300);
     core.take_warnings();
-    build(&mut core, 0.01, 0);
+    // The first list goes: 300 ghosts, in flight.
+    both(&mut core, 0.01, 0, 300);
+    assert_eq!(core.depart.node_count(), 300);
+    // 20 ms later the second goes too: 300 + 300 is over the budget, so
+    // the oldest 88 of the first list's ghosts give way and every row of
+    // the second animates.
+    both(&mut core, 0.03, 0, 0);
     assert_eq!(
         core.depart.node_count(),
         kui_core::depart::MAX_NODES,
-        "the store is bounded"
+        "full, with the new removal whole"
     );
-    let codes: Vec<&str> = core.take_warnings().iter().map(|w| w.code).collect();
-    assert_eq!(codes, vec!["exit-budget"]);
+    let keys: Vec<Key> = core.depart.keys().collect();
+    assert_eq!(keys.len(), kui_core::depart::MAX_NODES);
+    assert_eq!(keys[0], Key::ROOT.index(88), "the oldest 88 went, in order");
+    assert_eq!(
+        keys[212],
+        Key::ROOT.index(1000),
+        "then the whole second list"
+    );
+    assert_eq!(keys[511], Key::ROOT.index(1299));
+    assert!(
+        core.take_warnings().is_empty(),
+        "eviction is the policy, not a warning"
+    );
+    assert!(core.animating());
 }
 
 /// The view the policy was decided against: a toast stack inside a

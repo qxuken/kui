@@ -2038,11 +2038,13 @@ const SCENE_TREES = {
         el('latencyGraph'),
       ]),
     ]),
-  // docs/adr/0005-the-paint-vocabulary.md: four subtrees the view stops
+  // docs/adr/0005-the-paint-vocabulary.md: three subtrees the view stops
   // declaring in phase 1 — `fade` still in flight at the end, `blink`
-  // already over, `flash` back in phase 2 while its own exit runs, and
-  // `bulk` one node past the budget — and two that never leave, so two
-  // Tabs at the end say whether the ring has a place for a ghost.
+  // already over, `flash` back in phase 2 while its own exit runs — then
+  // `bulk`, one node past the budget, in phase 3 and 600 one-node rows in
+  // phase 4, each frame refused whole (docs/adr/0012-the-exit-budget.md);
+  // and two that never leave, so two Tabs say whether the ring has a place
+  // for a ghost.
   exit: (_fx, phase) =>
     root({}, [
       box({ width: 'grow', height: 'grow', pad: 8, gap: 6, bg: '#14161e' }, [
@@ -2067,9 +2069,20 @@ const SCENE_TREES = {
           'flash',
         )),
         keep('b', 'B'),
+        // More one-node departures than the budget, each a solid quad half
+        // a pixel wide, in a slot that keeps its size when they go.
+        box(
+          { dir: 'row', width: 300, height: 4, bg: '#101018' },
+          phase < 4
+            ? Array.from({ length: EXIT_ROWS }, () => box({
+                width: 0.5, height: 4, bg: '#8a8fa3', transition: 400, exit: { opacity: 0 },
+              }))
+            : [],
+          'slotRows',
+        ),
         // Last, and sized by children that have no size: dropping it takes
         // only the trailing gap with it.
-        phase === 0 && box(
+        phase < 3 && box(
           { transition: 400, exit: { opacity: 0 } },
           Array.from({ length: EXIT_BULK_ROWS }, () => box({})),
           'bulk',
@@ -2141,6 +2154,9 @@ SCENE_TREES.drag = () =>
 /** `conformance::EXIT_BULK_ROWS`: with its own root, one node past
  *  `kui_core::depart::MAX_NODES`, so the whole subtree is refused. */
 const EXIT_BULK_ROWS = 512;
+/** `conformance::EXIT_ROWS`: more one-node subtrees than the budget,
+ *  dropped in one frame and refused whole (ADR 0012). */
+const EXIT_ROWS = 600;
 /** A fixed-size box holding at most one departing node, so dropping that
  *  node moves nothing else on the frame the ghost is compared on. */
 const slot = (key, h, child) =>

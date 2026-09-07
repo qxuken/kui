@@ -39,9 +39,16 @@
 //! back (the live node wins immediately, so a toast dismissed and re-shown
 //! does not double), when it has not been replayed for
 //! [`EVICT_AFTER_FRAMES`] frames, and — the part that makes this safe for a
-//! list — when the store is already holding [`MAX_NODES`] nodes. See
+//! list — when a later frame's removal needs the room it is taking. The
+//! store holds at most [`MAX_NODES`] nodes, and the budget is applied to a
+//! frame's removal *whole*: the diff counts what the frame wants to add
+//! before it copies anything ([`DepartStore::admit`]), evicts the oldest
+//! ghosts until the removal fits, and if the removal alone is over the
+//! budget refuses all of it, so a list never gets half its rows sliding
+//! out and the rest blinking away. See
 //! `docs/adr/0005-the-paint-vocabulary.md` for why the budget is over
-//! nodes and what it costs when it bites.
+//! nodes, and `docs/adr/0012-the-exit-budget.md` for why it is judged per
+//! frame and what it costs when it bites.
 
 use crate::anim::Easing;
 use crate::color::Color;
@@ -54,10 +61,29 @@ use crate::tree::{NIL, NodeContent, Tree};
 
 /// The most nodes every departing subtree together may retain. The budget
 /// is over *nodes* rather than subtrees because a node is what a replayed
-/// frame pays for; a view that drops more than this at once gets the first
-/// of them animating out and the rest vanishing at once, which is exactly
-/// the behaviour of a node with no `exit` at all.
+/// frame pays for. A frame whose removal is larger than this gets none of
+/// it animated — every departing node vanishes at once, which is exactly
+/// the behaviour of a node with no `exit` at all — rather than the first
+/// of them sliding out and the rest blinking (ADR 0012, decision 2). The
+/// number is a decision with a curve behind it: with the departing frame
+/// linear (decision 5), 2048 nodes cost 187 µs to depart and 59 µs a frame
+/// to replay, so it could be raised; nothing has asked for more than six
+/// toasts, and this project waits for the view.
 pub const MAX_NODES: usize = 512;
+
+/// Whether a node can depart at all: it declared an `exit`, and a
+/// `transition` with a duration to run it over. The diff counts a frame's
+/// removal by this before the store copies any of it, and
+/// [`DepartStore::depart`] returns early on the same two conditions, so a
+/// subtree counted is a subtree copied.
+#[inline]
+pub(crate) fn can_depart(spec: &NodeSpec) -> bool {
+    spec.anim().exit.is_some()
+        && spec
+            .transition
+            .as_ref()
+            .is_some_and(|t| t.duration_ms > 0.0)
+}
 
 /// Evict a ghost not replayed for this many frames — the same backstop
 /// `AnimStore` keeps, for a driver whose clock stops moving while frames
@@ -201,9 +227,6 @@ pub struct DepartStore {
     frame_no: u64,
     /// Whether a ghost replayed this frame is still mid-flight.
     active: bool,
-    /// A departure the budget refused since the last drain — the view is
-    /// asking for more exits at once than the store will hold.
-    pub(crate) refused: Option<Key>,
     /// A membership mask over the ghosts' `before` keys, so a departure
     /// whose key no ghost sits under — every row of a mass removal — skips
     /// the walk that would hand its place on. Never cleared: a stale bit
@@ -248,7 +271,7 @@ impl DepartStore {
 
     /// The keys of the departing roots — what a caller tests the live tree
     /// against to notice one coming back.
-    pub(crate) fn keys(&self) -> impl Iterator<Item = Key> + '_ {
+    pub fn keys(&self) -> impl Iterator<Item = Key> + '_ {
         self.ghosts.iter().map(|g| g.key)
     }
 
@@ -279,12 +302,44 @@ impl DepartStore {
         }
     }
 
+    /// The budget, applied to a frame's removal whole (ADR 0012, decisions
+    /// 2 and 3): `wanted` is every node the frame's departing subtrees
+    /// would add together, counted before any of them is copied. A removal
+    /// that fits an empty store is admitted — and if the store is holding
+    /// earlier exits it has no room beside, the **oldest** ghosts go first
+    /// until it fits, since they are the ones furthest through their own
+    /// fade and the removal the user just caused is the one they are
+    /// looking at. A removal larger than [`MAX_NODES`] on its own is refused
+    /// whole: `false`, no ghost, and the caller raises `exit-budget` for
+    /// the frame. There is no partial credit either way, so a view never
+    /// gets half its rows animating and the rest blinking, and how a
+    /// removal reads cannot depend on what else the app happened to be
+    /// doing 100 ms earlier.
+    pub(crate) fn admit(&mut self, wanted: usize) -> bool {
+        if wanted > MAX_NODES {
+            return false;
+        }
+        let mut evict = 0;
+        while self.nodes + wanted > MAX_NODES {
+            // Store order is departure order, so the front is the oldest.
+            let g = &self.ghosts[evict];
+            self.nodes -= g.nodes.len();
+            self.held.remove(&g.key);
+            evict += 1;
+        }
+        if evict > 0 {
+            self.ghosts.drain(..evict);
+        }
+        true
+    }
+
     /// Copies `root`'s subtree out of `tree` (which is the *previous*
     /// frame's, the last one that had it) and starts its exit at `now`.
     /// `text` is read for that same frame's list, since the subtree's text
     /// nodes carry its ids.
-    /// Refused, and remembered as refused, when it would put the store
-    /// over [`MAX_NODES`].
+    /// The budget is not checked here: the caller has counted the frame's
+    /// whole removal and had it admitted ([`Self::admit`]) before copying
+    /// any of it, so a subtree that reaches this always fits.
     // The two lists at the end are the frame's per-node side tables, read
     // for the same kept frame `tree` is; a struct for the pair would name
     // one thing that only exists here.
@@ -308,13 +363,6 @@ impl DepartStore {
             return;
         }
         let end = tree.subtree_end(root);
-        let len = end - root;
-        if self.nodes + len > MAX_NODES {
-            // The first refusal of the frame is the one worth naming; the
-            // hundred behind it are the same sentence.
-            self.refused.get_or_insert(tree.keys[root]);
-            return;
-        }
         let key = tree.keys[root];
         // A second departure of the same key (the view showed it, dropped
         // it, showed it and dropped it again inside one exit) replaces the
@@ -362,6 +410,10 @@ impl DepartStore {
                 rect: Rect::from_pos_size(tree.pos[i], tree.size[i]),
             })
             .collect::<Vec<_>>();
+        debug_assert!(
+            self.nodes + nodes.len() <= MAX_NODES,
+            "a departure the frame did not have admitted"
+        );
         self.nodes += nodes.len();
         // A ghost that was painted just under this node loses its place
         // with it, and takes the place this one is taking: the two stay in
@@ -629,6 +681,7 @@ mod tests {
                 .exit(Enter::from(10.0, 0.0))
                 .transition(0.0),
         ] {
+            assert!(!can_depart(&spec), "and the diff never counts it");
             let mut d = DepartStore::default();
             let tree = tree_with(spec, 0);
             d.begin_frame();
@@ -637,15 +690,14 @@ mod tests {
         }
     }
 
-    #[test]
-    fn the_budget_refuses_rather_than_grows() {
-        let mut d = DepartStore::default();
+    /// `count` subtrees of 16 nodes each, keyed `ROOT[i]` from `from`,
+    /// departed one after another at `now` — the way `collect_departures`
+    /// feeds a frame's admitted removal to the store.
+    fn depart_sixteens(d: &mut DepartStore, from: u64, count: u64, now: f64) {
         let text = crate::text::TextSystem::new();
         let lines = crate::line::LineStore::default();
-        // Subtrees of 16 nodes each: 32 fit, the 33rd does not.
-        let tree = tree_with(departing(NodeSpec::column()), 15);
-        d.begin_frame();
-        for i in 0..40u64 {
+        let spec = departing(NodeSpec::column());
+        for i in from..from + count {
             let mut t = Tree::new();
             let root = t.push(
                 NIL,
@@ -658,7 +710,7 @@ mod tests {
                 root,
                 Key::ROOT.index(i),
                 OriginId::HOST,
-                tree.specs[1].clone(),
+                spec.clone(),
                 NodeContent::Container,
             );
             for c in 0..15 {
@@ -670,15 +722,67 @@ mod tests {
                     NodeContent::Container,
                 );
             }
-            d.depart(&t, 1, 0.0, 1.0, IN_FLOW, &text, &lines);
+            d.depart(&t, 1, now, 1.0, IN_FLOW, &text, &lines);
         }
-        assert_eq!(d.node_count(), MAX_NODES);
-        assert_eq!(d.keys().count(), MAX_NODES / 16);
+    }
+
+    /// ADR 0012 decision 2: a removal is judged whole. One larger than the
+    /// budget is refused before anything is copied, and the store is
+    /// exactly what it was.
+    #[test]
+    fn a_removal_over_the_budget_is_refused_whole() {
+        let mut d = DepartStore::default();
+        d.begin_frame();
+        assert!(d.admit(3 * 16));
+        depart_sixteens(&mut d, 0, 3, 0.0);
+        d.begin_frame();
+        assert!(!d.admit(MAX_NODES + 1), "one node past the budget");
+        assert_eq!(d.keys().count(), 3, "and the store was not touched");
+        assert_eq!(d.node_count(), 48);
+        assert!(d.admit(MAX_NODES), "the budget itself fits an empty store");
+    }
+
+    /// ADR 0012 decision 3: a removal that fits the budget but not the
+    /// room beside earlier exits evicts those, oldest first, and exactly
+    /// as many as it needs.
+    #[test]
+    fn a_new_removal_evicts_the_oldest_ghosts_until_it_fits() {
+        let mut d = DepartStore::default();
+        // 20 subtrees of 16 = 320 nodes in flight, keyed ROOT[0..20].
+        d.begin_frame();
+        assert!(d.admit(20 * 16));
+        depart_sixteens(&mut d, 0, 20, 0.0);
+        assert_eq!(d.node_count(), 320);
+        // A frame wants 15 more of 16 = 240: 320 + 240 = 560, so 48 nodes
+        // (three ghosts) have to go, and they are ROOT[0], [1], [2].
+        d.begin_frame();
+        assert!(d.admit(15 * 16));
+        assert_eq!(d.node_count(), 320 - 48, "three evicted, not four, not two");
         assert_eq!(
-            d.refused,
-            Some(Key::ROOT.index(32)),
-            "and it names the first it refused"
+            d.keys().next(),
+            Some(Key::ROOT.index(3)),
+            "the oldest went first"
         );
+        depart_sixteens(&mut d, 100, 15, 0.1);
+        assert_eq!(d.node_count(), 512, "full, with the new removal whole");
+        assert_eq!(d.keys().count(), 17 + 15);
+        assert!(d.held.contains(&Key::ROOT.index(114)));
+        assert!(!d.held.contains(&Key::ROOT.index(2)), "and `held` followed");
+    }
+
+    /// The case decisions 2 and 3 exist to leave alone: a removal that fits
+    /// beside what is in flight evicts nothing.
+    #[test]
+    fn a_removal_that_fits_evicts_nothing() {
+        let mut d = DepartStore::default();
+        d.begin_frame();
+        assert!(d.admit(16));
+        depart_sixteens(&mut d, 0, 1, 0.0);
+        d.begin_frame();
+        assert!(d.admit(MAX_NODES - 16));
+        assert_eq!(d.keys().count(), 1);
+        assert_eq!(d.node_count(), 16);
+        assert!(d.admit(0), "and nothing wanted is always admitted");
     }
 
     #[test]

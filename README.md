@@ -80,6 +80,7 @@ cargo run -p kui --example splitmux       # tmux-style splits, tabs, focus, ⌘-
 cargo run -p kui --example syntax_view    # syntax highlighting as coalesced style runs
 cargo run -p kui --example gallery        # registered images: Fit sizing, kept aspect, rounded corners
 cargo run -p kui --example toasts         # enter/exit: toasts that slide in and back out, a panel that springs open
+cargo run -p kui --example bulk_exit      # the exit budget at its boundary: 600 cells in one frame, and a virtual list that fits
 cargo run -p kui --example connectors     # a mind map whose links are `line` nodes: curves between floats, no boxes
 ```
 
@@ -440,10 +441,14 @@ that are hard to reverse and would look arbitrary without their context.
   per node and needs a `transition`; without both, a removed node vanishes
   at once as it always did, and no more than
   [512 nodes](docs/adr/0005-the-paint-vocabulary.md) may be departing at
-  once — past that they vanish, and an `exit-budget` warning says so, since
-  a list dropping a thousand rows wants `exit` on the list and not on every
-  row. `animating()` stays true while a ghost is in flight, so the driver
-  keeps drawing until it is done and then idles.
+  once. That budget is judged [per frame and whole](docs/adr/0012-the-exit-budget.md):
+  a removal that does not fit beside earlier exits takes the room from the
+  oldest of them, and a removal larger than the budget on its own does not
+  animate at all — every node of it vanishes at once, rather than half a
+  list sliding out and the rest blinking — and an `exit-budget` warning
+  says so, since a list dropping a thousand rows wants `exit` on the list
+  and not on every row. `animating()` stays true while a ghost is in
+  flight, so the driver keeps drawing until it is done and then idles.
 - **Diagnostics are data.** The failures that used to be silent — a
   `Grow(2)` that is the only grow child (or grows across the parent's main
   axis) and so has no weight to split, a `transition` on an auto-keyed child
@@ -897,7 +902,8 @@ Transitions cover sizing, colors, radius, opacity, shadows, position (`slide`,
 `enter`) and departure (`exit`) — a node the view stops declaring is copied out
 of the last frame that had it and replayed frozen, in its place and inert
 until its transition ends. `exit` is opt-in per node, capped at 512 departing nodes at
-once, and a ghost cannot be re-laid-out: `exit`'s `width`/`height` resize the
+once — a frame's removal past that animates whole or not at all (ADR 0012) — and a
+ghost cannot be re-laid-out: `exit`'s `width`/`height` resize the
 departing node's own box and nothing inside it moves.
 
 A `radius` on a node that clips or scrolls rounds the clip too, so a rounded

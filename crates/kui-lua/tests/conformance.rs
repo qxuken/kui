@@ -232,6 +232,18 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
               for _ = 1, {rows} do t[#t + 1] = column {{}} end
               return column(t)
             end
+            -- More one-node departures than the budget, in a slot that
+            -- keeps its size when they go (docs/adr/0012-the-exit-budget.md).
+            local function slot_rows()
+              local t = {{ key = "slotRows", width = 300, height = 4, bg = 0x101018ff }}
+              if phase < 4 then
+                for _ = 1, {cells} do
+                  t[#t + 1] = column {{ width = 0.5, height = 4, bg = 0x8a8fa3ff,
+                                       transition = 400, exit = {{ opacity = 0 }} }}
+                end
+              end
+              return row(t)
+            end
             return column {{ width = {{ grow = 1 }}, height = {{ grow = 1 }},
                             pad = 8, gap = 6, bg = 0x14161eff,
               row {{ key = "a", width = 60, height = 16, bg = 0x22242cff,
@@ -250,10 +262,12 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                   bg = 0xffcc00ff, transition = 400, exit = {{ dx = -20 }} }} or nil }},
               row {{ key = "b", width = 60, height = 16, bg = 0x22242cff,
                     focusable = true, label = "B" }},
-              phase == 0 and bulk() or nil,
+              slot_rows(),
+              phase < 3 and bulk() or nil,
             }}
         "#,
             rows = conformance::EXIT_BULK_ROWS,
+            cells = conformance::EXIT_ROWS,
         ),
         // The declaration comes and goes with the phase, on the root table
         // beside `window_title`; twice in phase 0, disagreeing on the size.

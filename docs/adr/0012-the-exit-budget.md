@@ -5,12 +5,19 @@ date: 2026-09-07
 
 # The exit budget: a frame's removal animates whole or not at all
 
-> **Accepted. Decision 5 is built (2026-09-07); decisions 2, 3 and 6 are
-> not.** The measurements are run and the policy is settled. What is left
-> to build is the per-frame admission of decisions 2 and 3, the warning's
-> new sentence in decision 6, and the corpus phase named in the
-> consequences. Nothing here changes a schema row, an ABI struct or a
-> binding.
+> **Accepted and built (2026-09-07).** Decision 5 landed first, on its
+> own; decisions 2, 3 and 6 followed the same day: `DepartStore::admit`
+> judges a frame's removal whole before anything is copied
+> (`collect_departures` counts the departing roots first), evicts the
+> oldest ghosts until the removal fits, refuses one larger than the budget
+> outright, and the `exit-budget` warning names the frame's count. The
+> corpus `exit` scene gained the phase the consequences ask for — `bulk`
+> leaves in a frame of its own, then 600 one-node rows leave together and
+> are refused whole where per-subtree admission kept 512 — pinned in all
+> four bindings. Nothing here changed a schema row, an ABI struct or a
+> binding, as predicted. The one thing the consequences got wrong is
+> recorded there: the scene's `bulk` was *not* the boundary case that
+> stays as it is, because it left in the same frame as `fade`.
 >
 > **Decision 5 changed shape when it was built**, and the correction is
 > recorded in it: a 64-bit membership mask — the mechanism this ADR first
@@ -350,6 +357,14 @@ same one.
   say, 600 one-node rows would today produce 512 ghosts and after this ADR
   produce none, in all four bindings; that difference is the whole change,
   observable as a solid count, and it belongs in the scene beside `bulk`.
+  **Built, with one correction (2026-09-07).** `bulk` was not left as it
+  was, because it did not leave alone: the scene dropped it in the same
+  frame as `fade`, `blink` and `flash`, and under decision 2 a frame of
+  517 nodes is refused whole — `fade` would have lost its ghost and the
+  scene its subject. `bulk` now leaves in a phase of its own, and the 600
+  rows in the phase after, each refused whole; the expectation carries two
+  `exit-budget` warnings and a solid count that would read 522 under
+  per-subtree admission.
 - On whether C8 was right to ship without a scene: moot, and it was not.
   Backlog B3 built one the same day, and ADR 0005's own superseding note
   concedes the argument — "there is no per-binding behaviour for a scene to

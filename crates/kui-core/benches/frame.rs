@@ -378,22 +378,31 @@ fn frame_10k_rects_one_exit(bencher: divan::Bencher) {
 
 /// The mass removal the budget is for: 1000 rows, every one declaring an
 /// `exit`, dropped in a single frame. What is measured is that frame — the
-/// key diff that notices them all gone, the subtree copies the budget lets
-/// through, and the refusal of the rest.
+/// key diff that notices them all gone, the count of what they come to,
+/// and — since ADR 0012 judges a removal whole and this one is over the
+/// budget — the refusal of the lot: no subtree is copied. Before that ADR
+/// this row also paid for 512 copies, which is why it fell.
 #[divan::bench]
 fn drop_1k_rows_declaring_exit(bencher: divan::Bencher) {
-    bench_drop_1k(bencher, true)
+    bench_drop(bencher, 1000, true)
 }
 
 /// The same pair of frames with no `exit` on the rows: what dropping a
 /// thousand rows costs today, so the bench above reads as a difference.
 #[divan::bench]
 fn drop_1k_rows_plain(bencher: divan::Bencher) {
-    bench_drop_1k(bencher, false)
+    bench_drop(bencher, 1000, false)
 }
 
-fn bench_drop_1k(bencher: divan::Bencher, exits: bool) {
-    const ROWS: usize = 1000;
+/// The removal the budget admits: 500 rows declaring an `exit`, under
+/// the budget, dropped in one frame — the diff, the count, and 500 subtree
+/// copies into the store. The copy cost the 1k row used to carry.
+#[divan::bench]
+fn drop_500_rows_declaring_exit(bencher: divan::Bencher) {
+    bench_drop(bencher, 500, true)
+}
+
+fn bench_drop(bencher: divan::Bencher, rows_n: usize, exits: bool) {
     fn rows(core: &mut Core, n: usize, exits: bool) {
         let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
         ui.configure_root(NodeSpec::column().fill());
@@ -413,11 +422,11 @@ fn bench_drop_1k(bencher: divan::Bencher, exits: bool) {
     }
     let mut core = Core::new();
     core.set_time(0.0);
-    rows(&mut core, ROWS, exits);
+    rows(&mut core, rows_n, exits);
     bencher.bench_local(|| {
         // Back to a full list (the ghosts of the last drop are discarded
         // the moment their keys return), then drop the lot.
-        rows(&mut core, ROWS, exits);
+        rows(&mut core, rows_n, exits);
         rows(&mut core, 0, exits);
         core.depart.node_count()
     });
@@ -446,7 +455,9 @@ fn replay_a_full_depart_store(bencher: divan::Bencher) {
         }
         ui.finish();
     };
-    fill(&mut core, 1000);
+    // Exactly the budget: a removal past it is refused whole (ADR 0012),
+    // so a full store is one that a frame filled precisely.
+    fill(&mut core, kui_core::depart::MAX_NODES);
     fill(&mut core, 0);
     assert_eq!(core.depart.node_count(), kui_core::depart::MAX_NODES);
     bencher.bench_local(|| {

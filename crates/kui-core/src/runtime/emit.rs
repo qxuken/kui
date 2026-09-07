@@ -585,8 +585,7 @@ impl Core {
         }
         let mut candidates: Vec<usize> = Vec::new();
         for i in 0..self.prev_tree.len() {
-            let spec = &self.prev_tree.specs[i];
-            if spec.anim().exit.is_some() && spec.transition.is_some() {
+            if crate::depart::can_depart(&self.prev_tree.specs[i]) {
                 candidates.push(i);
                 let k = self.prev_tree.keys[i];
                 watch.insert(k);
@@ -603,18 +602,49 @@ impl Core {
             }
         }
         self.depart.retire_returned(&live);
-        // The previous frame's paint order, built on the first departure:
-        // a frame with one is a frame that changed shape and paid for a
-        // layout, and the frames that did not never get here.
-        let mut order: Option<PaintOrder> = None;
-        // In tree order, so a departing subtree swallows the exits nested
-        // inside it rather than drawing them a second time on top.
+        // The frame's removal, whole, before any of it is copied: the roots
+        // that actually left, in tree order so a departing subtree swallows
+        // the exits nested inside it rather than drawing them a second time
+        // on top, and how many nodes they come to together.
+        let mut roots: Vec<usize> = Vec::new();
+        let mut wanted = 0usize;
         let mut swallowed_until = 0usize;
         for i in candidates {
             if i < swallowed_until || live.contains(&self.prev_tree.keys[i]) {
                 continue;
             }
             swallowed_until = self.prev_tree.subtree_end(i);
+            wanted += swallowed_until - i;
+            roots.push(i);
+        }
+        if roots.is_empty() {
+            return;
+        }
+        // ADR 0012, decisions 2 and 3: the removal animates whole or not at
+        // all, and takes the room it needs from the oldest ghosts in flight
+        // before it is refused. Refused means every node of it vanishes at
+        // once — what a node with no `exit` does — and one warning for the
+        // frame, keyed by its first departing root, says how much did.
+        if !self.depart.admit(wanted) {
+            self.diag.raise(Warning {
+                code: crate::diag::EXIT_BUDGET,
+                key: self.prev_tree.keys[roots[0]],
+                message: format!(
+                    "this frame removed {wanted} nodes declaring `exit` and the exit store \
+                     holds {}, so none of that removal animated: every departing node \
+                     vanished at once, as a node with no `exit` does; `exit` is per node, \
+                     and a list that drops many rows at once wants it on the list, not on \
+                     every row",
+                    crate::depart::MAX_NODES
+                ),
+            });
+            return;
+        }
+        // The previous frame's paint order, built on the first departure:
+        // a frame with one is a frame that changed shape and paid for a
+        // layout, and the frames that did not never get here.
+        let mut order: Option<PaintOrder> = None;
+        for i in roots {
             let place = order
                 .get_or_insert_with(|| PaintOrder::of(&self.prev_tree, &self.tree))
                 .place(&self.prev_tree, i);
@@ -635,18 +665,6 @@ impl Core {
                 &self.text,
                 &self.lines,
             );
-        }
-        if let Some(key) = self.depart.refused.take() {
-            self.diag.raise(Warning {
-                code: crate::diag::EXIT_BUDGET,
-                key,
-                message: format!(
-                    "more than {} nodes are departing at once, so this subtree was dropped \
-                     instead of animating out; `exit` is per node, and a list that drops \
-                     many rows at once wants it on the list, not on every row",
-                    crate::depart::MAX_NODES
-                ),
-            });
         }
     }
 

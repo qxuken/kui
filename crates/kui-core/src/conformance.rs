@@ -986,8 +986,14 @@ pub const SCENES: &[Scene] = &[
               the access tree does not list it. `blink` ran 50ms and is \
               over, so it is gone by the same frame `fade` is not. `flash` \
               left and came back mid-flight, so the frame holds one picture \
-              of it, not two. `bulk` is one node past the budget and was \
-              refused whole: no ghost, and an `exit-budget` warning.",
+              of it, not two. The budget is judged per frame and whole \
+              (`docs/adr/0012-the-exit-budget.md`): `bulk`, one subtree a \
+              node past it, leaves in a frame of its own and is refused \
+              whole — no ghost, an `exit-budget` warning — and then 600 \
+              one-node rows leave together and are refused the same way, \
+              where admitting subtrees one at a time would have kept 512 \
+              of them. Neither refusal touches `fade`'s ghost, which is \
+              smaller than the room either would have needed.",
         custom: &["key", "size"],
         elements: &["box", "text"],
         build: build_exit,
@@ -1000,7 +1006,8 @@ pub const SCENES: &[Scene] = &[
             Step::Cursor(58, 42),
             Step::MouseDown,
             Step::MouseUp,
-            // The view stops declaring four subtrees at once.
+            // The view stops declaring three subtrees at once: four nodes,
+            // admitted whole.
             Step::Phase(1),
             // 80ms in: `fade` and `flash` are mid-flight, `blink` is over.
             Step::Time(80),
@@ -1014,13 +1021,20 @@ pub const SCENES: &[Scene] = &[
             // The ring is `A`, `B` and nothing between them.
             Step::Tab,
             Step::Tab,
+            // `bulk` leaves alone: 513 nodes in one subtree, refused whole.
+            Step::Phase(3),
+            // The rows leave together: 600 nodes in 600 subtrees, refused
+            // whole — the frame that separates whole-or-nothing admission
+            // from the per-subtree kind, which would keep 512 of them.
+            Step::Phase(4),
         ],
         expect: Expect {
-            // Seven live boxes and the focus ring on `B`, plus exactly one
+            // Eight live boxes and the focus ring on `B`, plus exactly one
             // ghost: `flash`'s was retired by its return and `blink`'s
-            // expired, so a store that kept either would count ten, both
-            // eleven.
-            solid: 9,
+            // expired, so a store that kept either would count eleven,
+            // both twelve — and one that admitted the rows one at a time
+            // would count 522.
+            solid: 10,
             shadows: 0,
             images: 0,
             segments: 0,
@@ -1028,7 +1042,7 @@ pub const SCENES: &[Scene] = &[
             access: &["0 window ||", "1 group A||", "1 group B||"],
             events: &["hit -"],
             announcements: &[],
-            warnings: &["exit-budget"],
+            warnings: &["exit-budget", "exit-budget"],
             commands: &[],
             title: None,
         },
@@ -1810,6 +1824,13 @@ fn build_composite(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// subtree is refused rather than half-retained.
 pub const EXIT_BULK_ROWS: usize = crate::depart::MAX_NODES;
 
+/// How many one-node subtrees `slotRows` holds: more than the budget, each
+/// declaring its own `exit`, dropped in one frame. Under per-subtree
+/// admission the first `MAX_NODES` of them would become ghosts and the
+/// rest blink away; under ADR 0012's decision 2 the frame's removal is
+/// judged whole and none of them do. The difference is a solid count.
+pub const EXIT_ROWS: usize = 600;
+
 /// The `exit` scene. Four departing nodes and two that stay, laid out so
 /// that dropping one moves nothing else: each departing node sits alone in
 /// a fixed-size slot, and `bulk` is last, so the only geometry that changes
@@ -1898,9 +1919,34 @@ fn build_exit(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                 }
             });
             ui.with_keyed("b", keep("B"), |_| {});
+            // More one-node departures than the budget, each a solid quad
+            // half a pixel wide, in a slot that keeps its size when they go.
+            ui.with_keyed(
+                "slotRows",
+                NodeSpec::row()
+                    .width(Sizing::Fixed(300.0))
+                    .height(Sizing::Fixed(4.0))
+                    .bg(Color::hex(0x101018ff)),
+                |ui| {
+                    if phase < 4 {
+                        for i in 0..EXIT_ROWS {
+                            ui.with_indexed(
+                                i as u64,
+                                NodeSpec::column()
+                                    .width(Sizing::Fixed(0.5))
+                                    .height(Sizing::Fixed(4.0))
+                                    .bg(Color::hex(0x8a8fa3ff))
+                                    .transition(400.0)
+                                    .exit(Enter::default().opacity(0.0)),
+                                |_| {},
+                            );
+                        }
+                    }
+                },
+            );
             // Last, and sized by its children, which have no size: dropping
             // it takes only the trailing gap with it.
-            if phase == 0 {
+            if phase < 3 {
                 ui.with_keyed(
                     "bulk",
                     NodeSpec::column()

@@ -148,23 +148,21 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** ADR 0012's decisions 2, 3 and 6 — the one item on this file
-with a written ADR and no code, now that W2's driver half is built. A
-frame's departures have to be admitted or refused together rather than one
-subtree at a time, a new removal has to outrank ghosts already in flight,
-and the `exit-budget` warning has to name the frame's removal rather than
-the subtree; the corpus phase that ADR's consequences describe is what
-would pin the change in four bindings. Decision 5 — guard the unconditional
-`retire` in `depart()` — **landed on 2026-09-07**, being
-behaviour-preserving and measurable on its own, and is what makes the rest
-affordable at whatever budget it is eventually asked to carry.
+**Build next.** Nothing with a written ADR and no code. ADR 0012's
+decisions 2, 3 and 6 — the last such item — **landed on 2026-09-07**, the
+day after decision 5 did: a frame's departures are admitted or refused
+together, a new removal outranks ghosts already in flight, the
+`exit-budget` warning names the frame's removal, and the corpus `exit`
+scene pins the change in four bindings with the phase the ADR asked for
+(and the correction it needed: `bulk` had to leave in a frame of its own).
+The next thing to build is whatever the next field report asks for.
 
 **Design, wanting an ADR.** Effects an app defines (F23 above, draft at
 [`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md)). The
 exit animations' `animating()` policy is
 **done (2026-09-07)**, as
 [`docs/adr/0012-the-exit-budget.md`](adr/0012-the-exit-budget.md) —
-accepted, with decision 5 built and the rest under "Build next" above. It
+accepted and built whole, decision 5 first and the rest a day later. It
 moved the question rather than answering it: `animating()` is measured free
 (a full store owes the driver 12 frames at 0.09% of a budget each) and does
 not change, and the boundary is what was wrong — a 1000-row list gets its
