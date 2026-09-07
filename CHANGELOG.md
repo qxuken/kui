@@ -33,6 +33,13 @@ field reports).
 - `<button>` / `button { }` / `kui_button_with`: a row the stock button does
   not read is an `unknown-prop` warning naming the rows it does, where it used
   to vanish silently — a suite that asserts `warnings` is empty will see it.
+- `setEditText(key, text)` for a key nothing declares by the end of that
+  frame is an `edit-text-without-editor` warning where it was silence — the
+  same kind of suite sees this one.
+- Editor and scroll state kept for keys nothing declares any more has a
+  ceiling (256 editors, 1024 scroll entries; longest-undeclared evicted
+  first). A draft parked in an undeclared editor under thousands of others
+  can be gone when its key returns; a declared one is never evicted.
 
 **An extension is a different shape in all three host languages.** `view`
 receives the `Slot` it is filling (Lua's `view(env)` may keep its one
@@ -225,15 +232,6 @@ that asserts on an empty warning list is what notices.
   `setEditText` would land after the declare. Set the text in the `update`
   that opens the editor; the frame that draws it takes the text with it.
 
-### What you can delete
-
-- The `configure_root(NodeSpec::row())` a host set only so that an
-  extension appended after its view would land beside it, and the
-  comment saying why: declare the slot where the panel goes.
-- A `key` on an extension's root node added to keep its editors and
-  tweens from resetting when the host's root changed.
-- The stash a plugin kept so the host could learn what it chose: reply.
-
 - **The stock button takes the access rows.** `<button>`, `button { }`
   and `kui_button` were closed composites: three fields on the wire — text,
   key, click — and no prop list at all, so `<button description="…">` was
@@ -338,6 +336,15 @@ that asserts on an empty warning list is what notices.
   dropped again because it grew without limit, a comment saying the key
   must be stable *for memory reasons* (it is still what keeps the draft).
   Keying an editor per opening is now bounded by the library.
+
+### What you can delete
+
+- The `configure_root(NodeSpec::row())` a host set only so that an
+  extension appended after its view would land beside it, and the
+  comment saying why: declare the slot where the panel goes.
+- A `key` on an extension's root node added to keep its editors and
+  tweens from resetting when the host's root changed.
+- The stash a plugin kept so the host could learn what it chose: reply.
 
 ## 0.1.0-alpha.8 (2026-09-07)
 
