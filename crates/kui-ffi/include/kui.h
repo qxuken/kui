@@ -804,6 +804,8 @@ typedef struct KuiAudio {
     float volume;
     uint32_t looped;
     uint32_t paused; /* holds the playback; resumes when cleared */
+    uint32_t finish; /* removal releases the playback to play out, rather
+                        than stopping it; a loop still stops */
 } KuiAudio;
 #define KUI_AUDIO_INIT(id) ((KuiAudio){ .src = (id), .volume = 1.0f })
 

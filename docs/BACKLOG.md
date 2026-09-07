@@ -308,7 +308,53 @@ path. Rebuild the addon before `npm run gen` (the doc lives in the Rust
 source), and the package README's window example gets the same sentence.
 Their `smoke.tsx` is the test that wanted it.
 
-### `~` F28 — An `<audio>` one-shot that must finish has to guess its own length
+### `~` F28 — An `<audio>` one-shot that must finish has to guess its own length — **done (2026-09-07)**
+
+Done, and named `finish` as the entry proposed. `AudioSpec::finish()` /
+`<audio finish/>` / `finish = true` / `KuiAudio.finish` changes what *gone*
+means and nothing else: `reconcile`'s departure branch removes the key from
+`mounted` without queueing a `Stop`, so the playback runs to its end on the
+device. The three edges the entry implied are each a test beside
+`stop_cancels_the_ended_event`: a loop is stopped on removal whatever it
+asked (release is meaningless without an end), a changed `src` still
+restarts (a replacement, not a departure), and a `tag` still reports
+`ended` after the release — which a `stop` would have cancelled, and which
+is what makes the flag and the workaround the same mechanism rather than
+two. One corner the entry did not name and the row now does: a playback
+that is `paused` when its node goes has nothing to finish, so pause and
+release do not combine.
+
+On the name. `finish` was kept over the two alternatives worth weighing.
+`release` names the mechanism rather than what the app wants, and the word
+is already spoken for on this surface — a pointer release is in every
+drag's vocabulary. `playOut` is the audio-engineering term and the most
+precise of the three, but it splits into `play_out` in Lua and C, and it
+reads as an instruction where the `audio` element's other props — `loop`,
+`paused` — are states. `finish` sits with those, one word in all four
+spellings, and says what happens to the playback.
+
+Where it went: `schema.rs`'s `audio` row (both spellings, and the doc
+string now names the `ended` workaround as what the flag replaces), the
+encoder's flags word (bit 4, mutation-tested), `binary.rs`'s `OP_AUDIO`,
+the Lua parser, and a field **appended** to `KuiAudio` — `abi.rs:17`'s
+[in] rule holds, a host that predates it writes the shorter struct and
+reads the old behaviour out of the zeroed tail, `KUI_AUDIO_INIT` needs no
+change because a designated initializer zeroes it, and `abi_parity` settled
+the header mirror at build time with no `KUI_ABI_VERSION` bump.
+
+The corpus took more than the entry asked for, and had to: an `audio`
+element builds no tree node and the report had no audio column at all, so
+"the command list shows no `stop`" was not a thing any binding could be
+diffed on. `Output` now carries the drained audio commands and the report
+spells one per line (`audio play 1 1`, `audio stop 3`) — the verb, the
+playback and a play's `looped` bit, with volumes, fades and the sound
+handle left out because none of them compares across four runs. The `media`
+scene declares three playbacks and drops two in a second phase: `chime`
+asked to finish and leaves nothing behind, `blip` did not and is stopped.
+Two things the building corrected: the scene had to declare the dropped
+nodes **last**, because Lua's `sequence_values` stops at the first `nil` and
+the phase guard would otherwise have swallowed the `latency_graph()` after
+it; and the entry's `resources` is the `media` scene.
 
 Pomodoro wish 2 and finding 5. Presence is playback: `<audio key src>`
 present is playing, gone is stopped (`AudioStore::reconcile`,
@@ -532,7 +578,7 @@ index. F27 is **done (2026-09-07)**: the clause landed on `quads()`,
 `access` and the README, and nothing but doc text moved. **F30 closed on 2026-09-07**: `docs/howto.md`, the `**What
 breaks.**` bullet list from alpha.9 on, and what a "what you can delete"
 line names — its outcome is written on top of the entry. F29 is **done (2026-09-07)**: `settled` and `frame` on
-`WindowLoop`.
+`WindowLoop`. F28 is **done (2026-09-07)**: the `audio` element's `finish`.
 
 **Design, wanting an ADR.** Nothing new since ADR 0014 (above) was built on 2026-09-07; what it leaves open — a slot element for Node, extensions in `kui_run`, an extension offering slots of its own — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
 [`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md),

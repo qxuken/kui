@@ -1334,14 +1334,14 @@ pub const ELEMENTS: &[ElementDef] = &[
     },
     ElementDef {
         name: "audio",
-        jsx_own: &["src", "loop", "volume", "paused", "tag"],
-        lua_own: &["src", "loop", "volume", "paused", "tag"],
+        jsx_own: &["src", "loop", "volume", "paused", "finish", "tag"],
+        lua_own: &["src", "loop", "volume", "paused", "finish", "tag"],
         jsx_rows: None,
         lua_rows: None,
-        jsx: "`<audio src={id} loop volume paused tag/>`",
-        lua: "`audio { src=, loop=, volume=, paused=, tag= }`",
+        jsx: "`<audio src={id} loop volume paused finish tag/>`",
+        lua: "`audio { src=, loop=, volume=, paused=, finish=, tag= }`",
         c: "`kui_audio`",
-        doc: "A playback retained by node key: present = playing (once, or looped), gone = stopped; `volume` / `paused` apply live, a changed `src` restarts; a `tag` brings back `{kind:\"sound\", phase:\"ended\", tag}`. Draws nothing.",
+        doc: "A playback retained by node key: present = playing (once, or looped), gone = stopped; `volume` / `paused` apply live, a changed `src` restarts; a `tag` brings back `{kind:\"sound\", phase:\"ended\", tag}`. Draws nothing. `finish` changes what *gone* means: the node's removal releases the playback rather than stopping it, so a one-shot plays to its end and the view need not know the asset's length to declare the node for it (a loop still stops on removal — there is no end to reach — and a paused playback released has nothing to finish). Without it, the way to play a sound whole is to hold the node declared until the `tag`'s `ended` message arrives.",
     },
 ];
 

@@ -412,8 +412,11 @@ export declare namespace JSX {
     latencyHud: Keyed & { at?: [AlignProp, AlignProp] };
     /** A playback retained by node key (id from addSound): present = playing
      *  (once, or looped), gone = stopped; `volume` / `paused` apply live, a
-     *  changed `src` restarts. `tag` comes back as a `SoundMsg` when it ends
-     *  on its own. Draws nothing and takes no space. */
-    audio: Keyed & { src: string; loop?: boolean; volume?: number; paused?: boolean; tag?: AppMsg };
+     *  changed `src` restarts. `finish` changes what gone means — the
+     *  removal releases the playback to play itself out, so a one-shot need
+     *  not stay declared for a length the view would have to guess (a loop
+     *  still stops). `tag` comes back as a `SoundMsg` when it ends on its
+     *  own, a released playback included. Draws nothing and takes no space. */
+    audio: Keyed & { src: string; loop?: boolean; volume?: number; paused?: boolean; finish?: boolean; tag?: AppMsg };
   }
 }

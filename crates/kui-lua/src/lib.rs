@@ -771,6 +771,9 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
                 spec = spec.looped();
             }
             spec = spec.paused(t.get::<Option<bool>>("paused")?.unwrap_or(false));
+            if t.get::<Option<bool>>("finish")?.unwrap_or(false) {
+                spec = spec.finish();
+            }
             if let Some(tag) = t.get::<Option<mlua::Value>>("tag")? {
                 spec.tag = Some(lua_to_value(&tag)?);
             }

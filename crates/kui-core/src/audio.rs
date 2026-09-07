@@ -10,6 +10,8 @@
 //! - the `audio` element (`Core::audio_node`): a playback retained by node
 //!   key — present means playing (once, or looped), gone means stopped,
 //!   `volume` / `paused` changes apply live, like an HTML `<audio autoplay>`;
+//!   `finish` changes what *gone* means, releasing the playback to play
+//!   itself out instead of stopping it ([`AudioSpec::finish`]);
 //! - imperative calls (`Core::play`, `stop`, `set_volume`, `pause`,
 //!   `resume`, `set_master_volume`) for hosts that hold the core.
 //!
@@ -88,6 +90,9 @@ pub struct AudioSpec {
     pub looped: bool,
     /// Holds the playback (resumes when cleared).
     pub paused: bool,
+    /// What the node going away means: `false` stops the playback, `true`
+    /// releases it — it finishes on its own. See [`AudioSpec::finish`].
+    pub finish: bool,
     /// Carried back in the `ended` event; `None` = no event.
     pub tag: Option<Value>,
 }
@@ -99,6 +104,7 @@ impl AudioSpec {
             volume: 1.0,
             looped: false,
             paused: false,
+            finish: false,
             tag: None,
         }
     }
@@ -115,6 +121,20 @@ impl AudioSpec {
 
     pub fn paused(mut self, paused: bool) -> Self {
         self.paused = paused;
+        self
+    }
+
+    /// The node's *removal* releases the playback instead of stopping it:
+    /// it plays to its end, and a `tag` still reports `ended` when it gets
+    /// there. Only removal changes — a `looped` playback still stops (it
+    /// has no end to reach), and a changed `src` still restarts, since that
+    /// is a replacement rather than a departure. A playback that is
+    /// `paused` when its node goes has nothing to finish and the driver
+    /// holds it forever, so a view that pauses should stop rather than
+    /// release. Without this, a one-shot the view wants heard whole has to
+    /// stay declared for the asset's length, which the view does not know.
+    pub fn finish(mut self) -> Self {
+        self.finish = true;
         self
     }
 
@@ -299,7 +319,8 @@ impl AudioStore {
     /// new keys start, missing keys stop, a changed `src`/`looped`
     /// restarts, `volume`/`paused` changes apply live. A one-shot that
     /// finished stays mounted silently until its node goes away — so a
-    /// view re-rendering does not replay it.
+    /// view re-rendering does not replay it. A missing key that asked to
+    /// [`finish`](AudioSpec::finish) is released rather than stopped.
     pub(crate) fn reconcile(&mut self) {
         let declared = std::mem::take(&mut self.declared);
         let mut seen: Vec<Key> = Vec::with_capacity(declared.len());
@@ -371,15 +392,21 @@ impl AudioStore {
             }
             m.spec = spec;
         }
-        let gone: Vec<(Key, PlaybackId)> = self
+        // A departure stops the playback, unless the node asked to be
+        // released — then it is forgotten here and finishes on the device,
+        // keeping its `tagged` entry so `ended` still arrives. A looped one
+        // is stopped whatever it asked: it has no end to run to.
+        let gone: Vec<(Key, PlaybackId, bool)> = self
             .mounted
             .iter()
             .filter(|(k, _)| !seen.contains(k))
-            .map(|(k, m)| (*k, m.playback))
+            .map(|(k, m)| (*k, m.playback, m.spec.finish && !m.spec.looped))
             .collect();
-        for (key, playback) in gone {
+        for (key, playback, release) in gone {
             self.mounted.remove(&key);
-            self.stop(playback, 0.0);
+            if !release {
+                self.stop(playback, 0.0);
+            }
         }
     }
 }
@@ -433,6 +460,75 @@ mod tests {
         );
         a.stop(p, 0.0);
         assert!(a.ended(p).is_none());
+    }
+
+    /// F28: the node's removal releases the playback, so a one-shot the
+    /// view wants heard whole no longer has to stay declared for a length
+    /// the view has to guess at.
+    #[test]
+    fn a_removed_node_that_asked_to_finish_is_not_stopped() {
+        let mut a = AudioStore::default();
+        let s = sound();
+        let k = Key::ROOT.str("chime");
+        a.declare(k, OriginId::HOST, AudioSpec::new(s).finish());
+        a.reconcile();
+        assert!(matches!(
+            a.take_commands().as_slice(),
+            [AudioCommand::Play { .. }]
+        ));
+
+        // Gone: released, not stopped — and the store forgets it, so a
+        // later re-declare of the same key starts a new playback.
+        a.reconcile();
+        assert_eq!(a.take_commands(), vec![]);
+        assert!(a.playback_of(k).is_none());
+    }
+
+    /// Release is meaningless for a loop — there is no end to run to — so
+    /// the flag changes nothing and removal still stops it.
+    #[test]
+    fn a_removed_loop_stops_even_when_it_asked_to_finish() {
+        let mut a = AudioStore::default();
+        let s = sound();
+        let k = Key::ROOT.str("bed");
+        a.declare(k, OriginId::HOST, AudioSpec::new(s).looped().finish());
+        a.reconcile();
+        let p = a.playback_of(k).unwrap();
+        a.take_commands();
+
+        a.reconcile();
+        assert_eq!(
+            a.take_commands(),
+            vec![AudioCommand::Stop {
+                playback: p,
+                fade_ms: 0.0
+            }]
+        );
+    }
+
+    /// The `ended` event is what the release hands the view instead of the
+    /// guessed duration, so it has to survive the node going away — unlike
+    /// a stop, which cancels it (`stop_cancels_the_ended_event`).
+    #[test]
+    fn a_released_playback_still_reports_ended() {
+        let mut a = AudioStore::default();
+        let s = sound();
+        let k = Key::ROOT.str("chime");
+        let spec = {
+            let mut spec = AudioSpec::new(s).finish();
+            spec.tag = Some(Value::str("chime"));
+            spec
+        };
+        a.declare(k, OriginId::HOST, spec);
+        a.reconcile();
+        let p = a.playback_of(k).unwrap();
+        a.take_commands();
+
+        a.reconcile();
+        assert_eq!(a.take_commands(), vec![]);
+        let ev = a.ended(p).expect("a released playback still reports ended");
+        assert_eq!(ev.key, k);
+        assert_eq!(ev.payload.get("tag").and_then(Value::as_str), Some("chime"));
     }
 
     #[test]

@@ -121,7 +121,7 @@ where they make sense); text props apply to `<text>` and `<edit>`.
 | `<windowButtons/>` | `window_buttons()` | `kui_window_buttons` | Just the min/max/close buttons, for fully custom titlebars. |
 | `tooltip="hint"` prop (see composites) | `tooltip("hint")` / `tooltip { … }` nodes, or the prop | `kui_tooltip`, `kui_tooltip_with` | A float hanging below the parent; the node form always draws, the prop form is hover-gated. |
 | `<latencyGraph/>`, `<latencyHud at/>` | `latency_graph()`, `latency_hud { at= }` | `kui_latency_graph`, `kui_latency_hud` | Per-phase frame timing (windowed drivers fill it; headless shows the chrome empty). |
-| `<audio src={id} loop volume paused tag/>` | `audio { src=, loop=, volume=, paused=, tag= }` | `kui_audio` | A playback retained by node key: present = playing (once, or looped), gone = stopped; `volume` / `paused` apply live, a changed `src` restarts; a `tag` brings back `{kind:"sound", phase:"ended", tag}`. Draws nothing. |
+| `<audio src={id} loop volume paused finish tag/>` | `audio { src=, loop=, volume=, paused=, finish=, tag= }` | `kui_audio` | A playback retained by node key: present = playing (once, or looped), gone = stopped; `volume` / `paused` apply live, a changed `src` restarts; a `tag` brings back `{kind:"sound", phase:"ended", tag}`. Draws nothing. `finish` changes what *gone* means: the node's removal releases the playback rather than stopping it, so a one-shot plays to its end and the view need not know the asset's length to declare the node for it (a loop still stops on removal — there is no end to reach — and a paused playback released has nothing to finish). Without it, the way to play a sound whole is to hold the node declared until the `tag`'s `ended` message arrives. |
 
 ## Events
 

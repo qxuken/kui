@@ -1937,6 +1937,36 @@ test('sounds: click/hover props, the audio element, tagged playbacks', () => {
   assert.deepEqual(ctx.audioCommands(), [{ kind: 'unload', sound: snd }]);
 });
 
+// `finish` is a bit in the `audio` op's flags word, so the encoder is the
+// only thing between `<audio finish>` and the core's release (backlog F28).
+test('an <audio finish> node releases its playback when the view drops it', () => {
+  const ctx = new Ctx();
+  const snd = ctx.addSound(Buffer.from('RIFF....WAVE'));
+  const view = (playing) =>
+    box({ pad: 8 }, playing
+      ? [
+          el('audio', { src: snd, finish: true, tag: { kind: 'chime' } }, [], 'chime'),
+          el('audio', { src: snd }, [], 'blip'),
+          el('audio', { src: snd, loop: true, finish: true }, [], 'bed'),
+        ]
+      : []);
+  ctx.frame(320, 240, 1, view(true));
+  const [chime, blip, bed] = ctx.audioCommands().map((c) => c.playback);
+  // Dropping all three: only the two that cannot play themselves out are
+  // stopped — `blip` never asked, and `bed` is a loop with no end to reach.
+  ctx.frame(320, 240, 1, view(false));
+  assert.deepEqual(
+    ctx.audioCommands().map((c) => [c.kind, c.playback]).sort((a, b) => a[1] - b[1]),
+    [['stop', blip], ['stop', bed]],
+  );
+  // The released playback still reports `ended`, which is what the view
+  // waits on instead of a guessed duration.
+  ctx.audioEnded(chime);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [
+    { kind: 'sound', phase: 'ended', playback: chime, tag: { kind: 'chime' } },
+  ]);
+});
+
 // ---------------------------------------------------------------------------
 // The scene corpus (crates/kui-core/src/conformance.rs)
 //
@@ -2220,12 +2250,21 @@ const SCENE_TREES = {
         box({ width: 40, height: 20, bg: '#202030' }),
       ]),
     ]),
-  media: (fx) =>
+  media: (fx, phase) =>
     root({}, [
       box({ pad: 6, gap: 4 }, [
         el('image', { src: fx().image, width: 16, radius: 2 }),
         el('audio', { src: fx().sound, volume: 0.5, loop: true }, [], 'music'),
         el('latencyGraph'),
+        // The two phase 1 drops: `chime` asked to finish, so its removal
+        // releases the playback and no `stop` reaches the driver; `blip`
+        // did not, and is stopped.
+        ...(phase === 0
+          ? [
+              el('audio', { src: fx().sound, finish: true }, [], 'chime'),
+              el('audio', { src: fx().sound }, [], 'blip'),
+            ]
+          : []),
       ]),
     ]),
   // docs/adr/0005-the-paint-vocabulary.md: three subtrees the view stops
@@ -2412,6 +2451,7 @@ function driveScene(env, steps, build) {
   let phase = 0;
   const events = [];
   const commands = [];
+  const audio = [];
   // `ctx` is the third argument because one scene has an imperative half:
   // `live` announces through `ctx.announce`, which is where the other
   // three bindings call `ui.announce` / `env.announce` / `kui_announce`.
@@ -2419,6 +2459,7 @@ function driveScene(env, steps, build) {
     ctx.frame(320, 240, 1, build(fx, phase, ctx));
     events.push(...ctx.pollEvents());
     commands.push(...ctx.windowCommands());
+    audio.push(...ctx.audioCommands());
   };
   frame();
   for (const step of steps) {
@@ -2453,9 +2494,10 @@ function driveScene(env, steps, build) {
     else throw new Error(`unknown conformance step ${step[0]}`);
     events.push(...ctx.pollEvents());
     commands.push(...ctx.windowCommands());
+    audio.push(...ctx.audioCommands());
     frame();
   }
-  return { ctx, events, commands };
+  return { ctx, events, commands, audio };
 }
 
 /** A window command as its `cmd` line (`conformance::write_command`). */
@@ -2472,9 +2514,21 @@ function commandLine(c) {
   ].join(' ');
 }
 
+/** An audio command as its `audio` line (`conformance::write_audio_command`):
+ *  the verb and the playback, plus a play's looped bit. Volumes, fades and
+ *  the sound handle are left out — none of them would compare across four
+ *  bindings. */
+function audioLine(c) {
+  if (c.kind === 'play') return `audio play ${c.playback} ${c.loop ? 1 : 0}`;
+  if (c.kind === 'setVolume') return `audio volume ${c.playback}`;
+  if (c.kind === 'masterVolume') return 'audio master';
+  if (c.kind === 'unload') return 'audio unload';
+  return `audio ${c.kind} ${c.playback}`;
+}
+
 /** Renders a scene block in the report format `conformance::report`
  *  documents: integers, hex and strings only, so the bytes match Rust's. */
-function sceneReport(name, env, steps, { ctx, events, commands }) {
+function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
   const lines = [`scene ${name}`];
   if (env) {
     const { customChrome, maximized, fullscreen, nativeControls } = ctx.env().window;
@@ -2521,6 +2575,7 @@ function sceneReport(name, env, steps, { ctx, events, commands }) {
     lines.push(`event ${p?.kind ?? '-'} ${tag}`);
   }
   for (const c of commands) lines.push(commandLine(c));
+  for (const c of audio) lines.push(audioLine(c));
   for (const a of ctx.announcements()) lines.push(`announce ${a.live} ${a.text}`);
   for (const w of ctx.warnings()) lines.push(`warn ${w.code}`);
   lines.push('end', '');

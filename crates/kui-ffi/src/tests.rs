@@ -347,6 +347,7 @@ mod audio_headless {
             volume: 0.5,
             looped: 1,
             paused: 0,
+            finish: 0,
         };
         let frame = |ctx: *mut KuiCtx| {
             kui_frame_begin(ctx, 200.0, 100.0, 1.0);

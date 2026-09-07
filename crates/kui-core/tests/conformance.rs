@@ -57,6 +57,19 @@ fn commands(out: &Output) -> Vec<String> {
         .collect()
 }
 
+/// The checked-in spelling of an audio command: the report's `audio` line
+/// without its prefix.
+fn audio(out: &Output) -> Vec<String> {
+    out.audio
+        .iter()
+        .map(|c| {
+            let mut line = String::new();
+            conformance::write_audio_command(c, &mut line);
+            line.trim_end().trim_start_matches("audio ").to_string()
+        })
+        .collect()
+}
+
 fn check(scene: &Scene) {
     let out = conformance::run(scene);
     let e = &scene.expect;
@@ -80,6 +93,7 @@ fn check(scene: &Scene) {
     );
     assert_eq!(out.warnings, e.warnings, "{name}: warnings");
     assert_eq!(commands(&out), e.commands, "{name}: window commands");
+    assert_eq!(audio(&out), e.audio, "{name}: audio commands");
     assert_eq!(out.title.as_deref(), e.title, "{name}: window title");
 }
 
