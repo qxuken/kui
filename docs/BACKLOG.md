@@ -134,7 +134,29 @@ it), and the pomodoro's "a window has no equivalent" of `runOut` (the
 primitive is there; the promise is not). One entry, F25, is not in either
 report: it fell out of checking F24.
 
-### `~` F24 — `setEditText` before the editor exists does nothing, and alpha.8's deletion list told an app to delete a latch it still needs
+### `~` F24 — `setEditText` before the editor exists does nothing, and alpha.8's deletion list told an app to delete a latch it still needs — **done (2026-09-07)**
+
+Done: a text set for a key nothing has declared is held as a pending seed
+and seeds the editor the next frame declares under that key, over its
+`initial`; the caret lands at the end, document or not, because a held
+call is that call arriving where it can land and not a second kind of
+`initial`. Held for that one frame only — a seed nobody claims by the end
+of it is dropped (`layout_frame` drains what is left after the build,
+whatever `diag.enabled` says) and raises the new `edit-text-without-editor`
+warning, declared in `diag.rs` like every other code, so `docs/props.md`
+and `index.d.ts`'s `WarningCode` union carry it from the one table. The
+`<edit>` row, `Core::set_edit_text`, `kui_edit_set_text` and Node's
+`setEditText` all say what the call reaches now. Three tests in
+`crates/kui-core/tests/editing.rs` pin it — the seed lands over `initial`
+with the caret at its end, a seeded *document* opens at its end too (which
+`initial` does not), and an unclaimed seed is one warning and no text —
+beside F20's `a_returning_editor_keeps_its_draft`, which stays green:
+`initial` still never reseeds a returning editor. Removing the consume in
+`EditStore::declare` fails two of the three. Declined: keeping the seed
+indefinitely, which would make a typo'd key a field that opens with the
+wrong text at some later frame instead of a warning now. The alpha.9
+CHANGELOG entry carries the correction to alpha.8's deletion line.
+
 
 The mind map deleted its `onLayout` latch on the strength of alpha.8's
 F20 entry — **What you can delete:** "the `onLayout` latch … and the
@@ -749,7 +771,7 @@ move.
 - `.` **F22** — [Both apps wrote the same "advance until nothing animates" loop](backlog/closed-2026-09.md#-f22--both-apps-wrote-the-same-advance-until-nothing-animates-loop--done-2026-09-07) — done (2026-09-07) — `app.runOut()`
 - `~` **F23** — [Effects an app defines have nowhere to go but a side channel](backlog/closed-2026-09.md#-f23--effects-an-app-defines-have-nowhere-to-go-but-a-side-channel-wants-an-adr--done-2026-09-07) — done (2026-09-07) — ADR 0013, accepted and built; the chime itself needed only `<audio>`
 
-**From updating `kui-node-template` to alpha.8 (2026-09-07)** — F24, closed the day it was filed
+**From updating `kui-node-template` to alpha.8 (2026-09-07)** — F24 and F25, both closed the day they were filed; F25 is still in this file, under its own heading above
 
 - `~` **F24** — [The stock `<button>` cannot take the `description` its own changelog entry is about](backlog/closed-2026-09.md#-f24--the-stock-button-cannot-take-the-description-its-own-changelog-entry-is-about--done-2026-09-07) — done (2026-09-07) — the button admits the access rows in all four bindings, and a row it does not read warns instead of vanishing
 

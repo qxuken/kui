@@ -257,6 +257,14 @@ impl Core {
         }
         self.diag
             .check(&self.tree, &self.text, &self.edit, self.frame_no);
+        // Text set for a key nothing had declared yet was held for this
+        // frame (backlog F24). What it declared has taken its seed; what
+        // is left named an editor no view draws, so drop it and say so.
+        // Drained whatever `diag.enabled` says, so the gate changes what
+        // is reported and never what is retained.
+        for key in self.edit.take_unclaimed_seeds() {
+            self.diag.raise(crate::diag::edit_text_without_editor(key));
+        }
         // The declared window set, diffed against the session's: a frame
         // that declared a new name queues its `Open` here.
         self.sync_windows();

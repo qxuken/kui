@@ -762,6 +762,14 @@ impl Core {
         self.edit.text(key)
     }
 
+    /// Replaces an editor's text, leaving the caret at the end.
+    ///
+    /// The key need not have an editor behind it yet: an `update` that
+    /// opens a rename field runs a frame ahead of the view that declares
+    /// it, so the text is held and seeds the editor the next frame
+    /// declares under this key, over its `initial`. Held for that one
+    /// frame — a key nothing declares on it drops its text and raises
+    /// [`crate::diag::EDIT_TEXT_WITHOUT_EDITOR`].
     pub fn set_edit_text(&mut self, key: Key, text: &str) {
         let sess = &mut *self.session.state();
         self.edit

@@ -208,6 +208,18 @@ warnings! {
     /// silent. See `docs/adr/0004-multi-window.md`, decision 9.
     pub const UNKNOWN_WINDOW_KIND: &str = "unknown-window-kind";
 
+    /// A `setEditText` (`Core::set_edit_text`, `kui_edit_set_text`) named a
+    /// key, the text was held for the frame that would declare it, and the
+    /// frame after the call declared no editor under that key — so nothing
+    /// was ever seeded and the text is dropped. The call is meant to run
+    /// from an `update` that also opens the editor, one frame ahead of the
+    /// view that declares it; this is the same call with the view half
+    /// missing, or with a key the view spells differently. Read the key an
+    /// event carried, or the one `keyOf`/`kui_key_of` resolves the label
+    /// to. An editor that already exists takes the text where the call is
+    /// made and never reaches this.
+    pub const EDIT_TEXT_WITHOUT_EDITOR: &str = "edit-text-without-editor";
+
     /// A `FontId` / `ImageId` / `SoundId` registered in one `Session` and used
     /// through a core of another. Handles are unique to the process, so it
     /// cannot resolve to somebody else's resource; it behaves as a removed
@@ -309,6 +321,22 @@ pub fn foreign_resource(f: &Foreign) -> Warning {
             .str(f.kind.name())
             .index(f.raw),
         message: f.message(),
+    }
+}
+
+/// The [`EDIT_TEXT_WITHOUT_EDITOR`] warning for one key. Keyed by the
+/// editor's own key, so a view that never declares it reports once, the
+/// way every node-shaped code does.
+pub fn edit_text_without_editor(key: Key) -> Warning {
+    Warning {
+        code: EDIT_TEXT_WITHOUT_EDITOR,
+        key,
+        message: format!(
+            "`set_edit_text` named key {:#x}, and the frame after it declared no editor under \
+             that key, so the text was dropped; the call is held for one frame — for the view \
+             that draws the editor the same `update` opened — not longer",
+            key.0
+        ),
     }
 }
 
