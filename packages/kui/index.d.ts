@@ -505,6 +505,16 @@ export type WarningCode =
    *  what keeps that from being silent. See `docs/adr/0004-multi-window.md`,
    *  decision 9. */
   | 'unknown-window-kind'
+  /** A `setEditText` (`Core::set_edit_text`, `kui_edit_set_text`) named a key,
+   *  the text was held for the frame that would declare it, and the frame after
+   *  the call declared no editor under that key — so nothing was ever seeded
+   *  and the text is dropped. The call is meant to run from an `update` that
+   *  also opens the editor, one frame ahead of the view that declares it; this
+   *  is the same call with the view half missing, or with a key the view spells
+   *  differently. Read the key an event carried, or the one
+   *  `keyOf`/`kui_key_of` resolves the label to. An editor that already exists
+   *  takes the text where the call is made and never reaches this. */
+  | 'edit-text-without-editor'
   /** A `FontId` / `ImageId` / `SoundId` registered in one `Session` and used
    *  through a core of another. Handles are unique to the process, so it cannot
    *  resolve to somebody else's resource; it behaves as a removed handle does
@@ -1269,6 +1279,18 @@ export declare class Ctx {
    */
   focusWindow(window: number): void
   editText(key: string): string | null
+  /**
+   * Replaces an editor's text, leaving the caret at the end.
+   *
+   * It reaches an editor that does not exist yet: the `update`
+   * that opens a rename field runs a frame ahead of the view
+   * that declares it, so the text is held for the frame that
+   * declares this key and seeds the editor there, over
+   * `initial`. Held for that one frame — a key nothing declares
+   * on it drops its text with an `edit-text-without-editor`
+   * warning, so a key the view spells differently is a line
+   * rather than a field that opens with the wrong text.
+   */
   setEditText(key: string, text: string): void
 }
 
@@ -1619,6 +1641,18 @@ export declare class KuiWindow {
    */
   focusWindow(window: number): void
   editText(key: string): string | null
+  /**
+   * Replaces an editor's text, leaving the caret at the end.
+   *
+   * It reaches an editor that does not exist yet: the `update`
+   * that opens a rename field runs a frame ahead of the view
+   * that declares it, so the text is held for the frame that
+   * declares this key and seeds the editor there, over
+   * `initial`. Held for that one frame — a key nothing declares
+   * on it drops its text with an `edit-text-without-editor`
+   * warning, so a key the view spells differently is a line
+   * rather than a field that opens with the wrong text.
+   */
   setEditText(key: string, text: string): void
 }
 

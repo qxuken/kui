@@ -107,6 +107,76 @@ for a view. What stays here is the two wishes that were not ours.
 - **`onLayout` firing on every rect change.** That is what the row says
   it does; a first-frame-only hook has no view asking for it yet.
 
+## From updating `kui-node-template` to alpha.8 (2026-09-07)
+
+Two entries, both from the same upgrade and both closed the day they were
+filed. F24 is in
+[`backlog/closed-2026-09.md`](backlog/closed-2026-09.md#-f24--the-stock-button-cannot-take-the-description-its-own-changelog-entry-is-about--done-2026-09-07)
+whole; F25 is below, and stays here until the next archiving round because
+what it corrects is a *shipped* "what you can delete" line — the kind of
+mistake worth reading twice.
+
+### `!` F25 — `setEditText` before the editor exists does nothing, and alpha.8's deletion list told an app to delete a latch it still needs — **done (2026-09-07)**
+
+Done: a text set for a key nothing has declared is held as a pending seed
+and seeds the editor the next frame declares under that key, over its
+`initial`; the caret lands at the end, document or not, because a held
+call is that call arriving where it can land and not a second kind of
+`initial`. Held for that one frame only — a seed nobody claims by the end
+of it is dropped and raises the new `edit-text-without-editor` warning,
+declared in `diag.rs` like every other code, so `docs/props.md` and
+`index.d.ts`'s `WarningCode` union carry it from the one table. The
+`<edit>` row, `Core::set_edit_text`, `kui_edit_set_text` and Node's
+`setEditText` all say what the call reaches now. Three tests in
+`crates/kui-core/tests/editing.rs` pin it — the seed lands over `initial`
+with the caret at its end, a seeded *document* opens at its end too (which
+`initial` does not), and an unclaimed seed is one warning and no text —
+beside F20's `a_returning_editor_keeps_its_draft`, which stays green:
+`initial` still never reseeds a returning editor, and `set_edit_text` is
+still what resets one. Removing the consume in `EditStore::declare` fails
+two of the three, so the guard is the thing being tested and not the
+scaffolding around it. The CHANGELOG entry under
+`## 0.1.0-alpha.9 (unreleased)` carries the reasoning and the correction;
+this entry has the evidence.
+
+Evidence: updating `kui-node-template` to alpha.8, the same round that
+filed F24. The template's rename flow sets the field's text from the
+`update` that opens it — the turn that puts the name in the model — and
+the field opened with `initial` instead.
+
+The defect, in one line each: `EditStore::set_text`
+(`crates/kui-core/src/edit.rs`) was `if let Some(s) =
+self.states.get_mut(&key)` and fell through for a key with no state, and
+the only thing that creates state is `declare`, called from `text_edit` in
+`crates/kui-core/src/runtime/builder.rs`. So an editor a rename opens does
+not exist until the frame *after* the `update` that opened it, and
+`set_edit_text` called from that `update` was a no-op — in every binding,
+with no error, no warning and no text. Silence was the whole defect: from
+outside it reads as "`setEditText` is unreliable", which is what the report
+concluded.
+
+The second half is ours and is why this is a `!`. alpha.8's F20 entry told
+apps, under **what you can delete**, to drop the `onLayout` latch whole and
+"write the model's draft with `setEditText` when the editor opens". Half of
+that latch — the half that waited for the editor to exist before calling —
+was still load-bearing, because until this release the call one frame
+earlier reached nothing. An app that took the advice lost its reset and got
+no warning for it. The advice is true as of alpha.9 and was false for the
+release that gave it; the alpha.9 entry says so where a reader upgrading
+will pass it. What generalises: a "what you can delete" line is a claim
+about code that is *deleted and not re-read*, so it needs the same standard
+of proof as the feature it is selling — a test that the deleted thing is
+unnecessary, not an argument that it should be.
+
+Where the seed is dropped: `layout_frame` in
+`crates/kui-core/src/runtime/emit.rs`, right after the diagnostic walk, and
+drained whatever `diag.enabled` says — the gate changes what is reported,
+never what is retained. What was declined: keeping the seed indefinitely.
+It would make a typo'd key a field that opens with the wrong text at some
+arbitrary later frame instead of a warning now, which is the silence this
+entry exists to remove.
+
+
 ## After alpha.8
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -250,7 +320,7 @@ move.
 - `.` **F22** — [Both apps wrote the same "advance until nothing animates" loop](backlog/closed-2026-09.md#-f22--both-apps-wrote-the-same-advance-until-nothing-animates-loop--done-2026-09-07) — done (2026-09-07) — `app.runOut()`
 - `~` **F23** — [Effects an app defines have nowhere to go but a side channel](backlog/closed-2026-09.md#-f23--effects-an-app-defines-have-nowhere-to-go-but-a-side-channel-wants-an-adr--done-2026-09-07) — done (2026-09-07) — ADR 0013, accepted and built; the chime itself needed only `<audio>`
 
-**From updating `kui-node-template` to alpha.8 (2026-09-07)** — F24, closed the day it was filed
+**From updating `kui-node-template` to alpha.8 (2026-09-07)** — F24 and F25, both closed the day they were filed; F25 is still in this file, under its own heading above
 
 - `~` **F24** — [The stock `<button>` cannot take the `description` its own changelog entry is about](backlog/closed-2026-09.md#-f24--the-stock-button-cannot-take-the-description-its-own-changelog-entry-is-about--done-2026-09-07) — done (2026-09-07) — the button admits the access rows in all four bindings, and a row it does not read warns instead of vanishing
 

@@ -1655,6 +1655,16 @@ macro_rules! core_methods {
                 Ok(self.$core().edit_text(parse_key(&key)?))
             }
 
+            /// Replaces an editor's text, leaving the caret at the end.
+            ///
+            /// It reaches an editor that does not exist yet: the `update`
+            /// that opens a rename field runs a frame ahead of the view
+            /// that declares it, so the text is held for the frame that
+            /// declares this key and seeds the editor there, over
+            /// `initial`. Held for that one frame — a key nothing declares
+            /// on it drops its text with an `edit-text-without-editor`
+            /// warning, so a key the view spells differently is a line
+            /// rather than a field that opens with the wrong text.
             #[napi]
             pub fn set_edit_text(&mut self, key: String, text: String) -> Result<()> {
                 self.$core().set_edit_text(parse_key(&key)?, &text);

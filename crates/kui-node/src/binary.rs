@@ -547,7 +547,7 @@ pub fn lower_binary(core: &mut Core, stream: &[f64], strings: &[u8]) -> Result<(
 mod tests {
     use super::*;
     use kui_core::schema::{CUSTOM, PROPS};
-    use kui_core::{Align, Size, Sizing, Value};
+    use kui_core::{Align, Color, Size, Sizing, Value};
 
     /// Decodes one prop list from a hand-built stream.
     fn decode(stream: &[f64], strings: &[u8]) -> PropsOut {

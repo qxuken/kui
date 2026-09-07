@@ -307,6 +307,14 @@ impl EditState {
 
 pub struct EditStore {
     states: FxHashMap<Key, EditState>,
+    /// Text set for a key nothing has declared yet: `set_text` holds it
+    /// here and the next `declare` under that key seeds with it instead of
+    /// with `initial`. An `update` that opens an editor and sets its text
+    /// in the same turn runs a frame ahead of the view that declares it,
+    /// so without this the call lands on nothing and the app sees the
+    /// editor open with `initial` (backlog F24). What the frame after it
+    /// does not claim is dropped by `finish_frame`, with a warning.
+    pending: FxHashMap<Key, String>,
     pub(crate) focused: Option<Key>,
     /// Edit node being drag-selected (with its content origin, logical).
     pub(crate) dragging: Option<(Key, Vec2)>,
@@ -326,6 +334,7 @@ impl Default for EditStore {
     fn default() -> Self {
         Self {
             states: FxHashMap::default(),
+            pending: FxHashMap::default(),
             focused: None,
             dragging: None,
             caret_moved: None,
@@ -374,7 +383,9 @@ impl EditStore {
         self.caret_stamp += 1;
     }
 
-    /// Ensures state exists for `key`, seeding `initial` on first creation.
+    /// Ensures state exists for `key`, seeding `initial` on first creation
+    /// — or, if a `set_text` for this key arrived before anything declared
+    /// it, that text instead (see [`EditStore::pending`]).
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn declare(
         &mut self,
@@ -386,6 +397,16 @@ impl EditStore {
         fs: &mut FontSystem,
         res: &Resources,
     ) {
+        // Only a creation consumes the seed: a key already declared has
+        // no pending text (a `set_text` with state behind it is applied
+        // where it is called), and taking one here would drop it.
+        let seed = if self.states.contains_key(&key) {
+            None
+        } else {
+            self.pending.remove(&key)
+        };
+        let seeded = seed.is_some();
+        let initial = seed.as_deref().unwrap_or(initial);
         let state = self.states.entry(key).or_insert_with(|| {
             let metrics = Metrics::new(opts.style.size * scale, opts.style.line_height * scale);
             let mut buffer = Buffer::new(fs, metrics);
@@ -404,7 +425,11 @@ impl EditStore {
             // editor is a document and opens at its top, as native text
             // views do. Placed, not moved: no `touch_caret`, so nothing
             // scrolls to reveal it before the user has touched it.
-            if !opts.multiline {
+            //
+            // A held `set_text` is not `initial`: it is that call arriving
+            // where it can land, so it leaves the caret where the call
+            // does — at the end, document or not.
+            if seeded || !opts.multiline {
                 let end = editor.with_buffer(|b| {
                     let line = b.lines.len().saturating_sub(1);
                     Cursor::new(line, b.lines.get(line).map_or(0, |l| l.text().len()))
@@ -465,22 +490,42 @@ impl EditStore {
     }
 
     pub fn set_text(&mut self, key: Key, text: &str, fs: &mut FontSystem, res: &Resources) {
-        if let Some(s) = self.states.get_mut(&key) {
-            s.preedit = None;
-            let a = attrs_for(&s.style, res);
-            s.editor
-                .with_buffer_mut(|b| b.set_text(text, &a, Shaping::Advanced, None));
-            s.editor.set_selection(Selection::None);
-            s.editor.action(fs, Action::Motion(Motion::BufferEnd));
-            s.version += 1;
-            s.measured = None;
-            s.wrap = None;
-            // A wholesale replacement invalidates the recorded deltas.
-            s.undo.clear();
-            s.redo.clear();
-            s.coalesce = None;
-            self.touch_caret(key);
+        let Some(s) = self.states.get_mut(&key) else {
+            // Nothing has declared this key yet. The call is not wrong —
+            // the `update` that opens an editor runs before the view that
+            // declares it — so hold the text for the frame that does
+            // (backlog F24) rather than falling through silently.
+            self.pending.insert(key, text.to_string());
+            return;
+        };
+        s.preedit = None;
+        let a = attrs_for(&s.style, res);
+        s.editor
+            .with_buffer_mut(|b| b.set_text(text, &a, Shaping::Advanced, None));
+        s.editor.set_selection(Selection::None);
+        s.editor.action(fs, Action::Motion(Motion::BufferEnd));
+        s.version += 1;
+        s.measured = None;
+        s.wrap = None;
+        // A wholesale replacement invalidates the recorded deltas.
+        s.undo.clear();
+        s.redo.clear();
+        s.coalesce = None;
+        self.touch_caret(key);
+    }
+
+    /// The seeds no frame claimed, dropped: `finish_frame` drains this
+    /// after the build and raises [`crate::diag::EDIT_TEXT_WITHOUT_EDITOR`]
+    /// for each, so a `set_edit_text` on a key the view never declares is
+    /// a line rather than nothing at all. Sorted, so the order two
+    /// unclaimed keys are reported in does not depend on a hash seed.
+    pub(crate) fn take_unclaimed_seeds(&mut self) -> Vec<Key> {
+        if self.pending.is_empty() {
+            return Vec::new();
         }
+        let mut keys: Vec<Key> = self.pending.drain().map(|(k, _)| k).collect();
+        keys.sort_unstable();
+        keys
     }
 
     pub fn version(&self, key: Key) -> u64 {

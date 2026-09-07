@@ -104,6 +104,75 @@ fn a_returning_editor_keeps_its_draft() {
     );
 }
 
+/// A frame declaring no editor at all — the root and nothing else — for
+/// the turn before a rename opens one.
+fn empty_frame(core: &mut Core) {
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().pad(10.0));
+    ui.finish();
+}
+
+/// The key `frame` declares its editor under. Keys are paths, so this one
+/// is spellable before anything declares it — which is the whole point of
+/// setting an editor's text from the `update` that opens it.
+fn field_key() -> Key {
+    Key::ROOT.str("field")
+}
+
+#[test]
+fn set_text_before_the_declare_seeds_the_editor() {
+    // The `update` that opens a rename field runs a frame ahead of the
+    // view that declares it, so `set_edit_text` from it names a key with
+    // no editor behind it yet. The text is held for the frame that
+    // declares the key and seeds it there, over `initial` (backlog F24).
+    let mut core = Core::new();
+    empty_frame(&mut core);
+    core.set_edit_text(field_key(), "seeded");
+    let key = frame(&mut core, "initial", false);
+    assert_eq!(key, field_key(), "the key is spellable before the declare");
+    assert_eq!(core.edit_text(key).unwrap(), "seeded");
+    let codes: Vec<&str> = core.take_warnings().iter().map(|w| w.code).collect();
+    assert!(
+        !codes.contains(&"edit-text-without-editor"),
+        "a claimed seed is not a warning: {codes:?}"
+    );
+    // And the caret is where the call leaves it: at the end, so typing
+    // extends the seeded name instead of prepending to it.
+    core.handle_input(InputEvent::Text("!".into()));
+    assert_eq!(core.edit_text(key).unwrap(), "seeded!");
+}
+
+#[test]
+fn a_seeded_document_opens_at_its_end_not_its_top() {
+    // `initial` on a multiline editor opens at the top, as a text view
+    // does. A held `set_edit_text` is not `initial` — it is that call
+    // arriving where it can land — so it leaves the caret where the call
+    // does, at the end, document or not.
+    let mut core = Core::new();
+    empty_frame(&mut core);
+    core.set_edit_text(field_key(), "first line");
+    let key = frame(&mut core, "ignored", true);
+    core.handle_input(InputEvent::Text("\nsecond line".into()));
+    assert_eq!(core.edit_text(key).unwrap(), "first line\nsecond line");
+}
+
+#[test]
+fn a_seed_nobody_declares_is_dropped_with_a_warning() {
+    // Held for the next frame, not for ever: a key no view draws is the
+    // call with its view half missing, and it says so rather than sitting
+    // in the store waiting to surprise a later frame.
+    let mut core = Core::new();
+    core.set_edit_text(field_key(), "nowhere");
+    empty_frame(&mut core);
+    let warnings = core.take_warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].code, "edit-text-without-editor");
+    assert_eq!(warnings[0].key, field_key());
+    // Dropped, so the frame that does declare the key gets `initial`.
+    let key = frame(&mut core, "initial", false);
+    assert_eq!(core.edit_text(key).unwrap(), "initial");
+}
+
 #[test]
 fn backspace_and_delete() {
     let mut rig = Rig::new("abc", false);

@@ -5,7 +5,7 @@ the workaround, the model field or the arithmetic the release made
 unnecessary. The second list is the point of the first — a library whose
 upgrades remove code from the apps on it is doing the job.
 
-## Unreleased
+## 0.1.0-alpha.9 (unreleased)
 
 ### Added
 
@@ -55,6 +55,40 @@ upgrades remove code from the apps on it is doing the job.
   argument (a `view(env)` script never sees it) and its `on_event`'s
   return value is now read; `kui::run` and `Launcher::extensions` refuse
   two extensions of one name — give one a namespace with `extension_as`.
+
+- **`setEditText` reaches the editor the next frame declares** (backlog
+  F24, from updating `kui-node-template` to alpha.8). `EditStore::set_text`
+  was `if let Some(state) = …` over the editors that exist, and the only
+  thing that creates one is `text_edit` in the frame builder. So an editor
+  a rename opens does not exist until the frame *after* the `update` that
+  opened it, and `setEditText` called from that `update` — the natural
+  place, the turn that puts the name in the model — matched nothing and
+  fell through: no error, no warning, no text. The field opened with
+  `initial` and the app was left concluding that `setEditText` is
+  unreliable. Now the text is held for one frame and seeds the editor the
+  next frame declares under that key, over its `initial`. The caret lands
+  where the call leaves it — at the end, document or not, because a held
+  call is that call arriving where it can land and not a second kind of
+  `initial`. Held for that one frame only: a key nothing declares on it
+  drops its text and raises the new `edit-text-without-editor` warning, so
+  a view that spells the key differently is a line rather than a field
+  that quietly opens with the wrong text. The code is declared in
+  `diag.rs` like every other, so `props.md` and `index.d.ts`'s
+  `WarningCode` carry it; `Core::set_edit_text`, the `<edit>` row,
+  `kui_edit_set_text` and the Node method all say what the call reaches.
+
+  This also corrects alpha.8's F20 entry below. Its "what you can delete"
+  said the `onLayout` latch could go whole and the draft be written "with
+  `setEditText` when the editor opens" — but the half of that latch that
+  waited for the editor to exist before calling was still load-bearing,
+  because until this release the call one frame earlier reached nothing.
+  An app that deleted the latch on that advice lost its reset. The advice
+  is true now, and the release it was written for is the one it was not.
+
+  **What you can delete:** the frame of waiting — the `onLayout` (or
+  first-`changed`, or "is it there yet" re-render) an app kept only so its
+  `setEditText` would land after the declare. Set the text in the `update`
+  that opens the editor; the frame that draws it takes the text with it.
 
 ### What you can delete
 

@@ -1465,6 +1465,11 @@ uint64_t kui_text_edit(KuiCtx *ctx, KuiStr label, KuiStr initial,
                        const KuiTextStyle *style, uint32_t flags, const KuiSpec *spec);
 /* Borrowed view of an editor's text; valid until the next kui_edit_text call. */
 bool kui_edit_text(KuiCtx *ctx, uint64_t key, KuiStr *out);
+/* Replaces an editor's text, caret left at the end. Reaches an editor that
+ * does not exist yet: the text is held for the frame that declares `key`
+ * and seeds it there, over the `initial` that frame passes - held for that
+ * one frame, so a key nothing declares on it drops its text with an
+ * "edit-text-without-editor" warning. */
 void kui_edit_set_text(KuiCtx *ctx, uint64_t key, KuiStr text);
 bool kui_is_focused(KuiCtx *ctx, uint64_t key);
 void kui_frame_finish(KuiCtx *ctx);
