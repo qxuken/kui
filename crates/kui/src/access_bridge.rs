@@ -23,10 +23,13 @@ mod imp {
     use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
     use winit::window::Window;
 
-    /// The runner's event-loop user event: what AccessKit sends back.
+    /// The runner's event-loop user event: what AccessKit sends back, and
+    /// the one an app's own thread sends through a [`crate::Waker`].
     #[derive(Debug)]
     pub enum UserEvent {
         Access(Event),
+        /// Something the app owns changed off the loop's thread: draw.
+        Wake,
     }
 
     impl From<Event> for UserEvent {
@@ -36,10 +39,13 @@ mod imp {
     }
 
     /// Which window the platform is talking about: every adapter is one
-    /// window's, and the shell routes to that window's bridge.
+    /// window's, and the shell routes to that window's bridge. A wake is
+    /// nobody's window.
     pub fn window_of(ev: &UserEvent) -> Option<winit::window::WindowId> {
-        let UserEvent::Access(ev) = ev;
-        Some(ev.window_id)
+        match ev {
+            UserEvent::Access(ev) => Some(ev.window_id),
+            UserEvent::Wake => None,
+        }
     }
 
     pub struct Bridge {
@@ -96,7 +102,9 @@ mod imp {
         /// Folds an AccessKit event in; an action request comes back as
         /// the core's input to dispatch.
         pub fn on_event(&mut self, ev: UserEvent) -> Option<AccessRequest> {
-            let UserEvent::Access(ev) = ev;
+            let UserEvent::Access(ev) = ev else {
+                return None;
+            };
             match ev.window_event {
                 AkWindowEvent::InitialTreeRequested => {
                     self.active = true;
@@ -409,13 +417,18 @@ mod imp {
     use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
     use winit::window::Window;
 
-    /// Without the `accesskit` feature nothing sends user events; the
-    /// type still exists so the event loop has one.
+    /// Without the `accesskit` feature the only user event is the wake an
+    /// app's own thread sends through a [`crate::Waker`].
     #[derive(Debug)]
-    pub enum UserEvent {}
+    pub enum UserEvent {
+        /// Something the app owns changed off the loop's thread: draw.
+        Wake,
+    }
 
     pub fn window_of(ev: &UserEvent) -> Option<winit::window::WindowId> {
-        match *ev {}
+        match ev {
+            UserEvent::Wake => None,
+        }
     }
 
     pub struct Bridge {}
@@ -436,7 +449,9 @@ mod imp {
         }
 
         pub fn on_event(&mut self, ev: UserEvent) -> Option<AccessRequest> {
-            match ev {}
+            match ev {
+                UserEvent::Wake => None,
+            }
         }
 
         pub fn publish(&mut self, _tree: &AccessTree, _scale: f32, _said: &[Announcement]) {}

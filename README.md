@@ -80,6 +80,7 @@ language; [examples/README.md](examples/README.md) is the full map.
 cargo run -p kui --example counter        # pure Rust, Elm-ish flow
 cargo run -p kui --example rich_text      # styled spans in one wrapped paragraph
 cargo run -p kui --example editor         # multiline text editing: caret, selection, clipboard
+cargo run -p kui --example waker          # a thread feeds lines and wakes the parked loop; no input, frames anyway
 cargo run -p kui-lua --example lua_panel  # Rust host + Lua panel sharing one frame
 ./examples/c/build.sh && ./examples/c/counter             # the same app from C
 ./examples/c/counter --headless           # C FFI self-test, no window needed
@@ -673,6 +674,18 @@ OS candidate window is anchored at the `line` carrying `caret` (backlog
 C17). `ctx.preedit` / `ctx.commit` drive it headless in Node,
 `kui_input_preedit` / `kui_input_commit` in C, and `kui_ime_rect` is where a
 C host places the window.
+
+Data from another thread: the windowed loop parks between events, so a
+PTY reader, a file watcher, an LSP client or a socket that changed what
+`view` will show has to say so. `App::setup(waker)` hands the app a
+`kui::Waker` once, before the window opens; it is `Clone + Send`, and
+`waker.wake()` from any thread asks every window for a frame — the path a
+key press takes, minus the event, coalesced by the loop's queue so a
+thread waking a thousand times a frame costs one (backlog C21). A host
+that owns the loop gets the same from `PumpRunner::waker()`, and
+`pump_until(deadline)` parks on OS events, wakes and the deadline together
+instead of polling on a timer. The `waker` example is a thread feeding
+lines every 40 ms; nothing else touches the window, and it draws.
 
 Dragging: `.on_drag(tag)` makes any node a pointer-captured drag source —
 handlers get `{kind="drag", phase, x, y, dx, dy, parent, tag}` events.

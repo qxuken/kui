@@ -37,6 +37,38 @@ pub trait App {
     /// `ui.window_name()` says which (`"main"` for the launcher's).
     fn view(&mut self, ui: &mut Ui<'_>);
     fn on_event(&mut self, _ev: UiEvent) {}
+    /// Called once, before the window opens, with the one thing the loop
+    /// hands out: a [`Waker`] the app can clone into any thread. A PTY
+    /// reader, a file watcher, an LSP client or a socket calls
+    /// [`Waker::wake`] when it has changed what `view` will show, and the
+    /// loop draws; nothing else ever wakes it, since it parks between
+    /// events (backlog C21). The default keeps it: an app with no other
+    /// thread has no use for one.
+    fn setup(&mut self, _waker: Waker) {}
+}
+
+/// A handle into the event loop that any thread may hold: [`wake`] asks
+/// for a frame from wherever the app's data arrived. Cheap to clone, and
+/// harmless after the loop has ended (a wake nobody hears is dropped).
+///
+/// [`wake`]: Waker::wake
+#[derive(Clone)]
+pub struct Waker(EventLoopProxy<access_bridge::UserEvent>);
+
+impl Waker {
+    /// Asks every window for a frame. The loop wakes, `view` runs, and
+    /// the frame is drawn — the same path a key press takes, minus the
+    /// event. Safe from any thread and at any rate: wakes coalesce into
+    /// the loop's next turn rather than queueing frames.
+    pub fn wake(&self) {
+        let _ = self.0.send_event(access_bridge::UserEvent::Wake);
+    }
+}
+
+impl std::fmt::Debug for Waker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Waker")
+    }
 }
 
 /// Who draws the window chrome.
@@ -221,6 +253,7 @@ impl Launcher {
         event_loop.set_control_flow(ControlFlow::Wait);
         let mut shell = self.shell(app);
         shell.proxy = Some(event_loop.create_proxy());
+        shell.app.setup(Waker(event_loop.create_proxy()));
         event_loop.run_app(&mut shell)?;
         Ok(())
     }
@@ -236,6 +269,7 @@ impl Launcher {
         event_loop.set_control_flow(ControlFlow::Wait);
         let mut shell = self.shell(app);
         shell.proxy = Some(event_loop.create_proxy());
+        shell.app.setup(Waker(event_loop.create_proxy()));
         // First pump delivers `resumed`, creating the window + renderer.
         let alive = pump_once(&mut event_loop, &mut shell);
         Ok(PumpRunner {
@@ -275,6 +309,32 @@ impl<A: App> PumpRunner<A> {
         }
         self.alive = pump_once(&mut self.event_loop, &mut self.shell);
         self.alive
+    }
+
+    /// `pump`, but parked until an OS event, a [`Waker::wake`] or
+    /// `deadline` — whichever comes first — so a host that owns the loop
+    /// blocks on all three instead of polling on a timer (backlog C21).
+    /// Returns false once the main window has closed.
+    pub fn pump_until(&mut self, deadline: std::time::Instant) -> bool {
+        use winit::platform::pump_events::{EventLoopExtPumpEvents, PumpStatus};
+        if !self.alive {
+            return false;
+        }
+        let timeout = deadline.saturating_duration_since(std::time::Instant::now());
+        self.alive = match self
+            .event_loop
+            .pump_app_events(Some(timeout), &mut self.shell)
+        {
+            PumpStatus::Continue => !self.shell.exit_requested,
+            PumpStatus::Exit(_) => false,
+        };
+        self.alive
+    }
+
+    /// A [`Waker`] for this loop, to clone into the threads the host's
+    /// data arrives on.
+    pub fn waker(&self) -> Waker {
+        Waker(self.event_loop.create_proxy())
     }
 
     pub fn app_mut(&mut self) -> &mut A {
@@ -2214,6 +2274,15 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
     /// AccessKit's side of the conversation: assistive technology attaching
     /// (send it the tree), detaching, or asking for an action (input).
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: access_bridge::UserEvent) {
+        // A wake is the app saying "what `view` shows has changed": every
+        // window draws, as after any input. Coalesced by the platform's
+        // queue, so a thread waking a thousand times a frame costs one.
+        if matches!(event, access_bridge::UserEvent::Wake) {
+            for pane in &self.panes {
+                pane.window.request_redraw();
+            }
+            return;
+        }
         let Some(i) = access_bridge::window_of(&event).and_then(|w| self.pane_index(w)) else {
             return;
         };

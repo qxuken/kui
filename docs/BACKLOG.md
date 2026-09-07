@@ -1007,7 +1007,26 @@ A `.`, not a `~`: an app has the per-cell path today and it is correct,
 only slow. The numbers say it is slow by a factor the core can remove and
 the app cannot.
 
-### `~` C21 — Nothing outside the main thread can wake `run`, and `pump` never waits
+### `~` C21 — Nothing outside the main thread can wake `run`, and `pump` never waits — **done (2026-09-07)**
+
+Done as (1) and (2); (3) is a by-hand check, not a smoke job yet.
+`access_bridge::UserEvent` grew a `Wake` variant in both of its
+configurations (with `accesskit` and without, where it used to be an
+empty enum), `kui::Waker` wraps the proxy and is `Clone + Send`,
+`App::setup(&mut self, waker)` is called by `run` and `open` before the
+window opens with a default that keeps it, and `user_event(Wake)`
+requests a redraw on every pane before the AccessKit routing that needs
+a window. `PumpRunner::waker()` hands out the same handle and
+`pump_until(deadline)` is `pump_app_events(Some(timeout))`. Verified with
+the `waker` example instead of a test: a thread pushes a line every 40
+ms and wakes, nothing else touches the window, and under
+`KUI_WAKER_LINES=30` it printed `30 lines arrived, 28 frames drawn` and
+closed itself — the two frames short are wakes that coalesced into one
+turn, which is the queue doing what the doc says. The example is in the
+README's list and the examples map; the smoke job that would run it is
+still P8's. What was not needed: an `on_wake` callback — `view` reads the
+app's own channel on the frame the wake produces, and nothing else in
+the loop changed.
 
 `Launcher::run` keeps the `EventLoopProxy` it creates for itself
 (`lib.rs:219-224`, `shell.proxy`, private and typed to

@@ -93,6 +93,24 @@ that asserts on an empty warning list is what notices.
   is cosmic-text's (the same fifty lines shaped through it alone measure
   the same), which is C20's entry and not this one's.
 
+- **A thread can wake the loop** (backlog C21). The windowed loop parks
+  between events (`ControlFlow::Wait`), and nothing outside the main
+  thread could reach it: `Launcher::run` kept its event-loop proxy to
+  itself, and `PumpRunner::pump` never blocked, so a Rust app whose data
+  arrives on another thread — a PTY reader, a file watcher, an LSP client,
+  a socket — either could not redraw or polled on a timer. Now
+  `App::setup(&mut self, waker: Waker)` runs once before the window opens
+  (a default no-op, so nothing changes shape), `kui::Waker` is `Clone +
+  Send`, and `waker.wake()` from any thread asks every window for a frame
+  through the loop's own user-event channel, coalesced by its queue. A
+  host that owns the loop has `PumpRunner::waker()` and
+  `pump_until(deadline)`, which parks on OS events, wakes and the deadline
+  together. Measured with the new `waker` example — a thread pushing a
+  line every 40 ms and nothing else touching the window: 30 lines, 28
+  frames drawn, then the app closed itself (`KUI_WAKER_LINES=30`). Not
+  headless-testable, since the wake is the driver's; it joins the by-hand
+  round. Node needs none of it: libuv is its timer, by design.
+
 - **IME reaches an editor the app owns** (backlog C17). A custom editor —
   an `onKey` sink drawing `line` rows with `caret` — heard nothing of a
   composition: the preedit went to the stock editor only, the commit is

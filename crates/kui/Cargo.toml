@@ -64,6 +64,10 @@ name = "editor"
 path = "../../examples/rust/editor.rs"
 
 [[example]]
+name = "waker"
+path = "../../examples/rust/waker.rs"
+
+[[example]]
 name = "gallery"
 path = "../../examples/rust/gallery.rs"
 
