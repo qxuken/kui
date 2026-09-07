@@ -295,11 +295,14 @@ that are hard to reverse and would look arbitrary without their context.
   or a background per span — paint built beside the glyphs, one rect per
   line the span covers, so a background follows it across a wrap) shaped as
   one paragraph flow, so wrapping crosses style boundaries and emoji share
-  baselines. A no-wrap
+  baselines. A plain
   line of 4096 bytes or more — a minified bundle, a log line with a blob in
   it — is shaped in ~1 KB chunks as they come on screen, so it costs the
-  screenful it shows and a keystroke into it costs the chunk it lands in
-  (backlog C19). Line breaking
+  screenful it shows and a keystroke into it costs the chunk it lands in;
+  wrapped, its chunks stay shaped as they are and the rows are broken from
+  their positions, each chunk's first row starting where the last one's
+  ended, so a 100k-character paragraph costs the rows it shows (backlog
+  C19). Line breaking
   is a style choice: `wrap` (word / glyph / none), `max_lines`, and
   `ellipsis` (a single "…"-terminated line unless `max_lines` says
   otherwise); unwrapped text takes its box's width and clips to it.
@@ -799,6 +802,8 @@ that prop costs.
 | `stream_50x200_random` | every line new and random printable ASCII, nothing for the shape-run cache to hit | ~64 ms |
 | `long_line_100k_first_frame` (`--bench long_line`) | a 100k-character no-wrap line opened in a horizontally scrolling view — shaped in chunks as they show | ~18 ms (was 662 ms whole) |
 | `long_line_100k_scroll` | a viewport's width of scrolling through it per frame | ~160 µs, a few ms when a chunk first shows |
+| `long_line_100k_wrapped_first_frame` | the same line as a `wrap: word` paragraph in a vertically scrolling view — rows broken from the chunks' positions | ~36 ms (a screenful of rows is seventeen times the text) |
+| `long_line_100k_wrapped_scroll` | a viewport's height of scrolling through it per frame | ~180 µs, ~9 ms on a frame that brings a chunk in |
 | `long_line_100k_edit` | one character inserted in the middle, the view held there | ~160 µs (was 102 ms) |
 | `cells_200x50_warm` (`--bench cells`) | a terminal's screen as one `ui.cells` node, unchanged | ~58 µs |
 | `cells_200x50_streaming` | the same grid with every character new each frame | ~60 µs |

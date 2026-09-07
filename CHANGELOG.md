@@ -164,7 +164,30 @@ that asserts on an empty warning list is what notices.
   Pinned by `tests/long_line.rs`: the first frame shapes the screenful
   and not the line, scrolling shapes what scrolls in, a keystroke
   reshapes one chunk, the queries answer, a short line is untouched, and
-  measurement matches layout.
+  measurement matches layout. **The follow-up the entry named landed the
+  next day: a long line wraps.** `wrap: word` or `glyph` on a line past
+  the threshold keeps the chunks exactly as they are — shaped once,
+  unwrapped, keyed by their content — and breaks the rows itself from
+  their glyph positions: each chunk's first row starts where the previous
+  chunk's last row ended, so wrapping is a one-direction prefix
+  computation over positions and never a reshape, at the break
+  opportunities UAX #14 gives (the ones cosmic-text's word wrap takes),
+  a piece wider than a row breaking by glyph, trailing whitespace hanging
+  as it does elsewhere. A chunk that never showed contributes the rows
+  its estimated width makes, corrected when it shapes, so the paragraph's
+  height can move a little as chunks fill in, the same tolerance the
+  width had. Emission draws the chunks whose rows touch the clip, plus
+  one either side, row by row from the unwrapped templates; `text_hit`
+  names the row it landed on in `line`, `caret_rect` the row and the x on
+  it; `measure_text` with a width answers the rows. A line budget stays a
+  property of the whole, so `max_lines` and `ellipsis` keep the whole
+  path however long the text. Measured on the same 100k characters as a
+  paragraph: **first frame ~36 ms** (a screenful of rows is seventeen
+  times the text a single row shows), **a viewport of scrolling ~180
+  µs**, ~9 ms on the frame that brings a chunk in. `tests/long_line.rs`
+  gained the wrapped half: rows and the screenful, glyph wrap filling
+  every row, scrolling down, the queries on rows, and measurement
+  matching layout.
 
 - **Underline, strikethrough, and a background per span** (backlog C22).
   `Span::underline()` / `strikethrough()` / `bg(color)` and

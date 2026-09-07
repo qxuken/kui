@@ -14,6 +14,8 @@ cosmic-text.workspace = true
 swash.workspace = true
 # Word boundaries for the access tree's text runs (already in the tree via cosmic-text).
 unicode-segmentation = "1"
+# Break opportunities for a wrapped long line's rows (already in the tree via cosmic-text).
+unicode-linebreak = "0.1"
 
 [features]
 # The scene corpus (src/conformance.rs): fourteen scene builders, the

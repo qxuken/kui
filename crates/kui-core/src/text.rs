@@ -231,6 +231,9 @@ struct GlyphTemplate {
     kind: QuadKind,
     /// Per-span color override (rich text); falls back to the node color.
     color: Option<Color>,
+    /// The byte the glyph starts at in the entry's content: what puts it
+    /// on a row when a wrapped long line's chunk is drawn.
+    byte: u32,
 }
 
 /// One decoration rect relative to the text origin, physical px.
@@ -367,6 +370,18 @@ struct Chunk {
     end: usize,
     key: u64,
     width: Option<f32>,
+    /// While the line is wrapped and this chunk is shaped: where each of
+    /// its rows starts. Empty otherwise (one row, or an estimate).
+    rows: Vec<RowStart>,
+}
+
+/// Where a row of a wrapped long line's chunk starts, relative to the
+/// chunk: the byte, and the x of that glyph in the chunk's unwrapped run,
+/// which the row's glyphs are shifted back by when drawn.
+#[derive(Clone, Copy, Debug)]
+struct RowStart {
+    byte: u32,
+    x: f32,
 }
 
 /// A non-wrapping text past [`LONG_LINE_BYTES`], shaped in chunks on demand
@@ -379,7 +394,23 @@ struct Chunk {
 /// a little as chunks fill in, exact under monospace.
 struct LongLine {
     content: String,
+    /// The chunks' style: the text's with `wrap` set to `None`, since a
+    /// chunk is always shaped as one run and the line breaks it itself.
     style: TextStyle,
+    /// The text's own line breaking. `None` is one row; `Word` and
+    /// `Glyph` break the chunks into rows once the line does not fit its
+    /// box (C19's step 5): a one-direction prefix computation over glyph
+    /// positions, each chunk's first row starting where the previous
+    /// chunk's last row ended, so it costs positions and not shaping.
+    wrap: TextWrap,
+    /// The physical width the rows are broken to, while they are; `None`
+    /// is one row — the line fits, or its style never wraps.
+    wrap_w: Option<f32>,
+    /// While wrapped: where each chunk begins, the row and the x on it —
+    /// one more than there are chunks, the last being where the text
+    /// ends. The wrapped counterpart of `prefix`, estimated the same way
+    /// for a chunk that never showed.
+    starts: Vec<(u32, f32)>,
     chunks: Vec<Chunk>,
     /// Physical px from the line's origin to each chunk's start, one more
     /// than there are chunks: the last is the line's width.
@@ -412,6 +443,26 @@ impl LongLine {
 
     fn width(&self) -> f32 {
         self.prefix.last().copied().unwrap_or(0.0)
+    }
+
+    /// Rows while wrapped; one otherwise.
+    fn rows(&self) -> u32 {
+        match self.starts.last() {
+            Some(&(r, _)) if self.wrap_w.is_some() => r + 1,
+            _ => 1,
+        }
+    }
+
+    /// The chunks whose rows touch `ra..=rb`, while wrapped: chunk `i`
+    /// spans `starts[i].0..=starts[i + 1].0`.
+    fn chunks_on_rows(&self, ra: u32, rb: u32) -> Option<(usize, usize)> {
+        let n = self.chunks.len();
+        if n == 0 || self.starts.len() != n + 1 {
+            return None;
+        }
+        let first = self.starts[1..].partition_point(|s| s.0 < ra);
+        let last = self.starts[..n].partition_point(|s| s.0 <= rb);
+        (first < last).then_some((first, last - 1))
     }
 
     /// Recomputes `prefix` from the chunk widths, estimating the unshaped.
@@ -908,6 +959,11 @@ impl TextSystem {
             line.last_used = frame_no;
             return key;
         }
+        let wrap = style.wrap;
+        let style = &TextStyle {
+            wrap: TextWrap::None,
+            ..*style
+        };
         let chunks: Vec<Chunk> = chunk_ranges(content)
             .into_iter()
             .map(|(start, end)| Chunk {
@@ -915,6 +971,7 @@ impl TextSystem {
                 end,
                 key: Self::style_key(&content[start..end], style, self.scale),
                 width: None,
+                rows: Vec::new(),
             })
             .collect();
         // The first chunk is shaped now: the line's height and the mean
@@ -933,6 +990,9 @@ impl TextSystem {
         let mut line = LongLine {
             content: content.to_string(),
             style: *style,
+            wrap,
+            wrap_w: None,
+            starts: Vec::new(),
             chunks,
             prefix: Vec::new(),
             line_h,
@@ -951,9 +1011,9 @@ impl TextSystem {
     }
 
     /// Makes sure chunk `i` of the long line `key` is shaped, and moves
-    /// the prefix sums if its width was an estimate. Returns the chunk's
-    /// cache key.
-    fn ensure_chunk(&mut self, key: u64, i: usize, res: &Resources, fs: &mut FontSystem) -> u64 {
+    /// the prefix sums if its width was an estimate. Returns whether it
+    /// shaped now — what tells a wrapped line its rows need breaking.
+    fn ensure_chunk(&mut self, key: u64, i: usize, res: &Resources, fs: &mut FontSystem) -> bool {
         let (text, style, chunk_key, known) = {
             let line = &self.long[&key];
             let c = &line.chunks[i];
@@ -966,7 +1026,7 @@ impl TextSystem {
         };
         if known.is_some() && self.cache.contains_key(&chunk_key) {
             self.cache.get_mut(&chunk_key).expect("checked").last_used = self.frame_no;
-            return chunk_key;
+            return false;
         }
         let k = self.intern(&text, &style, res, fs);
         let w = self.cache[&k].intrinsic.w;
@@ -976,7 +1036,80 @@ impl TextSystem {
             line.chunks[i].width = Some(w);
             line.reprefix();
         }
-        k
+        true
+    }
+
+    /// Breaks the long line `key` into rows at `w` (physical px), or lays
+    /// it as one row for `None`. Positions, not glyphs: each chunk's rows
+    /// start where the previous chunk's last row ended; a shaped chunk
+    /// breaks exactly ([`break_rows`]), one that never showed contributes
+    /// the estimate its width is, corrected when it shapes — the way
+    /// `prefix` is, so the height the scrollbar sees can move a little as
+    /// chunks fill in.
+    fn relayout_long(&mut self, key: u64, w: Option<f32>) {
+        let line = self.long.get_mut(&key).expect("a long line");
+        line.wrap_w = w;
+        line.starts.clear();
+        let Some(w) = w else {
+            for c in &mut line.chunks {
+                c.rows.clear();
+            }
+            return;
+        };
+        let w = w.max(1.0);
+        line.starts.push((0, 0.0));
+        let (mut row, mut x) = (0u32, 0.0f32);
+        for c in &mut line.chunks {
+            let shaped = c.width.and_then(|_| self.cache.get(&c.key));
+            match shaped {
+                Some(e) => {
+                    let text = &line.content[c.start..c.end];
+                    let (rows, end) = break_rows(&e.buffer, text, line.wrap, w, x);
+                    row += rows.len() as u32 - 1;
+                    x = end;
+                    c.rows = rows;
+                }
+                None => {
+                    c.rows.clear();
+                    let est = x + c
+                        .width
+                        .unwrap_or_else(|| (c.end - c.start) as f32 * line.avg);
+                    let added = (est / w).floor();
+                    row += added as u32;
+                    x = est - added * w;
+                }
+            }
+            line.starts.push((row, x));
+        }
+    }
+
+    /// A long line's size at `max_w` (physical px): one row clamped to it,
+    /// or, when the style wraps and the line does not fit, its rows broken
+    /// to it. Returns the physical size and the row count.
+    fn long_size(&mut self, key: u64, max_w: Option<f32>) -> (Size, u32) {
+        let (wrap, width, line_h, cur) = {
+            let l = &self.long[&key];
+            (l.wrap, l.width(), l.line_h, l.wrap_w)
+        };
+        let target = match max_w {
+            Some(w) if wrap != TextWrap::None && width > w + 0.5 => Some(w.max(1.0)),
+            _ => None,
+        };
+        let differs = match (cur, target) {
+            (None, None) => false,
+            (Some(a), Some(b)) => (a - b).abs() > 0.5,
+            _ => true,
+        };
+        if differs {
+            self.relayout_long(key, target);
+        }
+        match target {
+            Some(w) => {
+                let rows = self.long[&key].rows();
+                (Size::new(w, rows as f32 * line_h), rows)
+            }
+            None => (Size::new(max_w.map_or(width, |m| width.min(m)), line_h), 1),
+        }
     }
 
     /// Measures `content` in `style` without adding a node: its unwrapped
@@ -994,16 +1127,20 @@ impl TextSystem {
     ) -> TextMetrics {
         if is_long(content, style) {
             let key = self.intern_long(content, style, res, fs);
-            let line = &self.long[&key];
             let scale = self.scale;
-            let mut w = line.width();
-            if let Some(m) = max_w {
-                w = w.min(m * scale);
-            }
+            // Without a width nothing is broken, and the layout the frame
+            // holds is left as it is.
+            let (size, lines) = match max_w {
+                Some(m) => self.long_size(key, Some(m * scale)),
+                None => {
+                    let line = &self.long[&key];
+                    (Size::new(line.width(), line.line_h), 1)
+                }
+            };
             return TextMetrics {
-                width: w / scale,
-                height: line.line_h / scale,
-                lines: 1,
+                width: size.w / scale,
+                height: size.h / scale,
+                lines,
             };
         }
         let key = self.intern(content, style, res, fs);
@@ -1177,6 +1314,10 @@ impl TextSystem {
             if clip.rect.w <= 0.0 || clip.rect.h <= 0.0 {
                 return;
             }
+            if let Some(w) = self.long[&key].wrap_w {
+                self.emit_long_rows(key, w, ox, oy, color, clip, res, fs, atlas, out);
+                return;
+            }
             let (first, last) = {
                 let line = &self.long[&key];
                 if line.chunks.is_empty() {
@@ -1221,20 +1362,218 @@ impl TextSystem {
     }
 }
 
-/// Emits one cache entry's glyphs and decorations at the physical origin
-/// (`ox`, `oy`): the steady-state template walk, shared by a text node and
-/// by each chunk of a long line.
+impl TextSystem {
+    /// `emit` for a wrapped long line: the chunks whose rows touch the
+    /// clip, plus one either side, each drawn row by row from its
+    /// unwrapped templates (backlog C19, step 5).
+    #[allow(clippy::too_many_arguments)]
+    fn emit_long_rows(
+        &mut self,
+        key: u64,
+        w: f32,
+        ox: f32,
+        oy: f32,
+        color: Color,
+        clip: Clip,
+        res: &Resources,
+        fs: &mut FontSystem,
+        atlas: &mut GlyphAtlas,
+        out: &mut Vec<Quad>,
+    ) {
+        let (first, last) = {
+            let line = &self.long[&key];
+            let ra = ((clip.rect.y - oy) / line.line_h).floor().max(0.0) as u32;
+            let rb = ((clip.rect.y + clip.rect.h - oy) / line.line_h)
+                .floor()
+                .max(0.0) as u32;
+            let Some((a, b)) = line.chunks_on_rows(ra, rb) else {
+                return;
+            };
+            (a.saturating_sub(1), (b + 1).min(line.chunks.len() - 1))
+        };
+        let mut fresh = false;
+        for i in first..=last {
+            fresh |= self.ensure_chunk(key, i, res, fs);
+        }
+        if fresh {
+            // A chunk shaped now moves every row after it.
+            self.relayout_long(key, Some(w));
+        }
+        self.long.get_mut(&key).expect("checked").last_used = self.frame_no;
+        for i in first..=last {
+            let line = &self.long[&key];
+            let (row0, head_x) = line.starts[i];
+            let chunk = &line.chunks[i];
+            if chunk.rows.is_empty() {
+                continue;
+            }
+            let raster = &mut self.raster;
+            let entry = self.cache.get_mut(&chunk.key).expect("just ensured");
+            emit_entry_rows(
+                entry,
+                ox,
+                oy + row0 as f32 * line.line_h,
+                head_x,
+                &chunk.rows,
+                line.line_h,
+                color,
+                clip,
+                raster,
+                fs,
+                atlas,
+                out,
+            );
+        }
+    }
+}
+
+/// `emit_entry` for one chunk of a wrapped long line: the templates are
+/// the chunk's unwrapped run, and each row's glyphs are shifted back by
+/// where the row starts in it and down by the row. `oy` is the chunk's
+/// first row; `head_x` where that row begins.
 #[allow(clippy::too_many_arguments)]
-fn emit_entry(
+fn emit_entry_rows(
     entry: &mut CachedText,
     ox: f32,
     oy: f32,
+    head_x: f32,
+    rows: &[RowStart],
+    line_h: f32,
     color: Color,
     clip: Clip,
     raster: &mut Raster,
     fs: &mut FontSystem,
     atlas: &mut GlyphAtlas,
     out: &mut Vec<Quad>,
+) {
+    build_templates(entry, raster, fs, atlas);
+    let mut r = 0usize;
+    for g in &entry.glyphs {
+        while r + 1 < rows.len() && g.byte >= rows[r + 1].byte {
+            r += 1;
+        }
+        let dx = if r == 0 { head_x } else { 0.0 } - rows[r].x;
+        let x = ox + g.x + dx;
+        let y = oy + g.y + r as f32 * line_h;
+        // Rows only go down: past the clip's bottom nothing comes back.
+        if y > clip.rect.y + clip.rect.h {
+            break;
+        }
+        if y + g.h < clip.rect.y || x >= clip.rect.x + clip.rect.w || x + g.w <= clip.rect.x {
+            continue;
+        }
+        out.push(Quad {
+            rect: Rect::new(x, y, g.w, g.h),
+            color: g.color.unwrap_or(color),
+            border_color: Color::TRANSPARENT,
+            radius: [0.0; 4],
+            border_w: 0.0,
+            blur: 0.0,
+            kind: g.kind,
+            uv: g.uv,
+            clip: clip.rect,
+            clip_radius: clip.radius,
+        });
+    }
+}
+
+/// The rows a chunk's unwrapped run breaks into at width `w` when its
+/// first row starts `head_x` in: greedy, at the break opportunities UAX
+/// #14 gives (what cosmic-text's `WordOrGlyph` takes) or at every glyph
+/// for `Glyph`, a piece wider than a row breaking by glyph, trailing
+/// whitespace hanging past the edge as cosmic-text lets it. Returns the
+/// row starts — the first is the chunk's own — and the x its last row
+/// ends at. Positions are read left to right: a bidi run breaks by its
+/// glyph order.
+fn break_rows(
+    buffer: &Buffer,
+    text: &str,
+    wrap: TextWrap,
+    w: f32,
+    head_x: f32,
+) -> (Vec<RowStart>, f32) {
+    let mut rows = vec![RowStart { byte: 0, x: 0.0 }];
+    let Some(run) = buffer.layout_runs().next() else {
+        return (rows, head_x);
+    };
+    let glyphs = run.glyphs;
+    let blank = |g: &cosmic_text::LayoutGlyph| {
+        text.get(g.start..g.end)
+            .is_some_and(|s| s.chars().all(char::is_whitespace))
+    };
+    let mut pieces: Vec<(usize, usize)> = Vec::new();
+    match wrap {
+        TextWrap::Word => {
+            let mut at = 0usize;
+            for (i, _) in unicode_linebreak::linebreaks(text) {
+                if i > at {
+                    pieces.push((at, i));
+                    at = i;
+                }
+            }
+            if at < text.len() {
+                pieces.push((at, text.len()));
+            }
+        }
+        TextWrap::Glyph | TextWrap::None => {
+            pieces.extend(glyphs.iter().map(|g| (g.start, g.end)));
+        }
+    }
+    let mut row_x0 = 0.0f32;
+    let mut avail = w - head_x;
+    let mut gi = 0usize;
+    for (s, e) in pieces {
+        let g0 = gi;
+        while gi < glyphs.len() && glyphs[gi].start < e {
+            gi += 1;
+        }
+        if g0 == gi {
+            continue;
+        }
+        let piece = &glyphs[g0..gi];
+        let x0 = piece[0].x;
+        let ink_end = piece
+            .iter()
+            .rev()
+            .find(|g| !blank(g))
+            .map_or(x0, |g| g.x + g.w);
+        if ink_end - row_x0 > avail && x0 > row_x0 {
+            rows.push(RowStart {
+                byte: s as u32,
+                x: x0,
+            });
+            row_x0 = x0;
+            avail = w;
+        }
+        if ink_end - row_x0 > avail {
+            // Wider than a row on its own: by glyph.
+            for g in piece {
+                if g.x + g.w - row_x0 > avail && g.x > row_x0 && !blank(g) {
+                    rows.push(RowStart {
+                        byte: g.start as u32,
+                        x: g.x,
+                    });
+                    row_x0 = g.x;
+                    avail = w;
+                }
+            }
+        }
+    }
+    let end = if rows.len() == 1 {
+        head_x + run.line_w
+    } else {
+        run.line_w - row_x0
+    };
+    (rows, end)
+}
+
+/// Builds the entry's positioned templates if the wrap or the atlas moved
+/// since they were: the steady state reuses them.
+fn build_templates(
+    entry: &mut CachedText,
+    raster: &mut Raster,
+    fs: &mut FontSystem,
+    atlas: &mut GlyphAtlas,
 ) {
     {
         // Steady state: same wrap, same atlas — reuse positioned templates.
@@ -1263,6 +1602,7 @@ fn emit_entry(
                         color: glyph
                             .color_opt
                             .map(|c| Color::rgba8(c.r(), c.g(), c.b(), c.a())),
+                        byte: glyph.start as u32,
                     });
                 }
             }
@@ -1270,7 +1610,26 @@ fn emit_entry(
             // frame if so by stamping the epoch we actually ended on.
             entry.glyphs_built_for = Some((entry.wrap.map(f32::to_bits), atlas.epoch));
         }
+    }
+}
 
+/// Emits one cache entry's glyphs and decorations at the physical origin
+/// (`ox`, `oy`): the steady-state template walk, shared by a text node and
+/// by each chunk of a long line.
+#[allow(clippy::too_many_arguments)]
+fn emit_entry(
+    entry: &mut CachedText,
+    ox: f32,
+    oy: f32,
+    color: Color,
+    clip: Clip,
+    raster: &mut Raster,
+    fs: &mut FontSystem,
+    atlas: &mut GlyphAtlas,
+    out: &mut Vec<Quad>,
+) {
+    build_templates(entry, raster, fs, atlas);
+    {
         let inside = |x: f32, y: f32, w: f32, h: f32| {
             oy + y + h >= clip.rect.y
                 && oy + y <= clip.rect.y + clip.rect.h
@@ -1334,11 +1693,15 @@ fn emit_entry(
     }
 }
 
-/// Whether `content` in `style` is shaped in chunks: a no-wrap text past
-/// `LONG_LINE_BYTES` with no line breaks of its own.
+/// Whether `content` in `style` is shaped in chunks: a plain text past
+/// `LONG_LINE_BYTES` with no line breaks of its own, whatever its `wrap`
+/// — a wrapped one breaks its chunks into rows ([`LongLine::starts`]).
+/// `max_lines` and `ellipsis` keep the whole path, since a line budget
+/// is a property of the whole.
 fn is_long(content: &str, style: &TextStyle) -> bool {
-    style.wrap == TextWrap::None
-        && content.len() >= LONG_LINE_BYTES
+    content.len() >= LONG_LINE_BYTES
+        && style.max_lines == 0
+        && !style.ellipsis
         && !content.contains(['\n', '\r'])
 }
 
@@ -1496,6 +1859,9 @@ impl TextSystem {
         if line.chunks.is_empty() {
             return Some(TextHit { byte: 0, line: 0 });
         }
+        if let Some(w) = line.wrap_w {
+            return self.long_hit_wrapped(line, w, px, py);
+        }
         if px >= line.width() {
             return Some(TextHit {
                 byte: line.content.len(),
@@ -1522,12 +1888,89 @@ impl TextSystem {
         Some(TextHit { byte, line: 0 })
     }
 
+    /// `long_hit` while the line is wrapped: the row under the point, the
+    /// chunk on that row the point is over, and the chunk's unwrapped run
+    /// asked at the x the row was shifted from.
+    fn long_hit_wrapped(&self, line: &LongLine, w: f32, px: f32, py: f32) -> Option<TextHit> {
+        let row = ((py / line.line_h).floor().max(0.0) as u32).min(line.rows() - 1);
+        let Some((a, b)) = line.chunks_on_rows(row, row) else {
+            return Some(TextHit {
+                byte: line.content.len(),
+                line: row,
+            });
+        };
+        // The first chunk whose span on this row reaches past the point,
+        // else the last one on it.
+        let i = (a..=b)
+            .find(|&j| {
+                let (r1, end_x) = line.starts[j + 1];
+                px < if r1 == row { end_x } else { w }
+            })
+            .unwrap_or(b);
+        let c = &line.chunks[i];
+        let (row0, head_x) = line.starts[i];
+        let r = (row - row0) as usize;
+        let byte = match self.cache.get(&c.key) {
+            Some(e) if r < c.rows.len() => {
+                let rs = c.rows[r];
+                let local_x = px - if r == 0 { head_x } else { 0.0 } + rs.x;
+                let cursor = e.buffer.hit(local_x, line.line_h / 2.0)?;
+                let lo = rs.byte as usize;
+                let hi = c
+                    .rows
+                    .get(r + 1)
+                    .map_or(c.end - c.start, |n| n.byte as usize);
+                c.start + cursor.index.clamp(lo, hi)
+            }
+            _ => {
+                // The inverse of `long_caret`'s estimate: rows back into
+                // one linear run from the chunk's start.
+                let linear = r as f32 * w + px - head_x;
+                let est = (linear / line.avg.max(f32::EPSILON)).round() as usize;
+                let mut b = (c.start + est).min(c.end);
+                while !line.content.is_char_boundary(b) {
+                    b -= 1;
+                }
+                b
+            }
+        };
+        Some(TextHit { byte, line: row })
+    }
+
     /// `caret_at` for a long line, exact in a shaped chunk and by the mean
     /// advance in one that never showed.
     fn long_caret(&self, place: &TextPlace, line: &LongLine, byte: usize) -> Option<Rect> {
         let (ox, oy) = self.physical_origin(place);
         let scale = self.scale;
         let byte = byte.min(line.content.len());
+        if let Some(w) = line.wrap_w
+            && !line.chunks.is_empty()
+        {
+            let i = line.chunk_of_byte(byte);
+            let c = &line.chunks[i];
+            let local = byte - c.start;
+            let (row0, head_x) = line.starts[i];
+            let (r, x) = match self.cache.get(&c.key) {
+                Some(e) if !c.rows.is_empty() => {
+                    let r = c.rows.partition_point(|rs| rs.byte as usize <= local) - 1;
+                    let run = e.buffer.layout_runs().next()?;
+                    let cx = caret_x(&run, local.min(c.end - c.start));
+                    (r, cx - c.rows[r].x + if r == 0 { head_x } else { 0.0 })
+                }
+                _ => {
+                    let linear = head_x + local as f32 * line.avg;
+                    let r = (linear / w).floor();
+                    (r as usize, linear - r * w)
+                }
+            };
+            let y = (row0 as usize + r) as f32 * line.line_h;
+            return Some(Rect::new(
+                (ox + x) / scale,
+                (oy + y) / scale,
+                0.0,
+                line.line_h / scale,
+            ));
+        }
         let x = if line.chunks.is_empty() {
             0.0
         } else {
@@ -1834,9 +2277,12 @@ impl TextSystem {
 
     pub(crate) fn wrapped(&mut self, id: TextId, max_w: f32, fs: &mut FontSystem) -> Size {
         let scale = self.scale;
-        if let Some(line) = self.long_of(id) {
-            // The box, not the line, is the node's width: emission clips.
-            return Size::new(line.width().min(max_w * scale) / scale, line.line_h / scale);
+        if self.long_of(id).is_some() {
+            // The box, not the line, is the node's width: emission clips a
+            // single row to it, or the rows are broken to it.
+            let key = self.frame[id.0 as usize].cache_key;
+            let (size, _) = self.long_size(key, Some(max_w * scale));
+            return Size::new(size.w / scale, size.h / scale);
         }
         self.ensure_wrap(id, max_w, fs);
         let e = self.entry_mut(id);

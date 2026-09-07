@@ -882,8 +882,8 @@ a long line instead of O(glyphs).
 
 ### `~` C19 — A long line is shaped whole, and slicing it from outside costs more than not slicing — **done (2026-09-08)**
 
-Done as the "Do" says, steps 1–4, with 5 (wrapped long lines) left as
-it said. `LongLine` in `text.rs`: a no-wrap text of `LONG_LINE_BYTES`
+Done as the "Do" says, steps 1–4 on the day and step 5 (wrapped long
+lines) the next, 2026-09-08 — see the end of this outcome. `LongLine` in `text.rs`: a no-wrap text of `LONG_LINE_BYTES`
 (4096) or more with no line breaks is cut by `chunk_ranges` after the
 last whitespace in the second half of each 1 KB window (else at a
 grapheme boundary), each chunk keyed by its own content as an ordinary
@@ -904,8 +904,27 @@ carries its value and not its runs (`with_buffer` is `None` for it, the
 way off-screen lines of a document are not walked), `measure_text`
 answers the estimate, and a query into a chunk that never showed answers
 by the mean advance. Six tests in `tests/long_line.rs`; the text element
-row says when a text is chunked. Wrapped long lines stay the follow-up
-the entry named.
+row says when a text is chunked. **Step 5, wrapped long lines**, built
+as the entry sketched it: the chunks stay shaped unwrapped (the same
+cache entries, keyed by content, so a keystroke still costs one chunk),
+and `relayout_long` breaks rows from their glyph positions in one pass —
+`break_rows` per shaped chunk at UAX #14's opportunities
+(`unicode-linebreak`, already in the tree via cosmic-text) with the
+carry-in x from the previous chunk's last row, an estimate from the mean
+advance for a chunk that never showed — into `LongLine::starts`, the
+wrapped counterpart of `prefix`. `wrap_w` says whether the line is
+broken; it is set by layout's `wrapped` (through `long_size`, which
+also serves `measure_text`) and re-run when emission shapes a chunk,
+since that moves every row after it. Glyph templates carry the byte
+they start at, which is what `emit_entry_rows` puts a glyph on a row
+by. `max_lines`/`ellipsis` keep the whole path (a line budget belongs to
+the whole). `long_line_100k_wrapped_first_frame` ~36 ms — double the
+single row's, because a screenful of rows is seventeen times the text —
+and `_scroll` ~180 µs with ~9 ms on a frame that brings a chunk in. Five
+more tests. What it gives up: rows are read left to right, so a bidi
+long line breaks by glyph order; the paragraph's height moves a little
+as chunks fill in, and layout is a frame behind an emission that shaped
+one (the test frames twice).
 
 A text node with `wrap: none` shapes its whole content on first sight
 (`intern`, `text.rs:383`), keeps a `GlyphTemplate` per glyph, and at

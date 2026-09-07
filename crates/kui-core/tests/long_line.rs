@@ -194,12 +194,203 @@ fn a_short_line_takes_the_path_it_always_took() {
     frame(&mut core, &text, None);
     assert_eq!(core.long_lines(), 0);
     assert_eq!(core.text_cache_len(), 1);
-    // A wrapping style is never chunked, however long.
+    // A line budget is a property of the whole: `max_lines` or `ellipsis`
+    // keeps the whole path, however long the text.
     let mut ui = core.frame(Size::new(VIEW_W, 200.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    ui.text(&line(20_000), TextStyle::new(13.0).mono());
+    ui.text(&line(20_000), TextStyle::new(13.0).mono().max_lines(3));
+    ui.text(&line(20_000), TextStyle::new(13.0).mono().ellipsis());
     ui.finish();
     assert_eq!(core.long_lines(), 0);
+}
+
+// ---- wrapped (C19 step 5) --------------------------------------------
+
+fn wrapped(wrap: TextWrap) -> TextStyle {
+    TextStyle::new(13.0).mono().line_height(LH).wrap(wrap)
+}
+
+/// The line as a paragraph in a vertically scrolling view of `VIEW_W`;
+/// returns the view's key, the text node's, and the glyph quads drawn.
+fn wrapped_frame(
+    core: &mut Core,
+    text: &str,
+    wrap: TextWrap,
+    scroll_y: Option<f32>,
+) -> (Key, Key, usize) {
+    let view = Key::ROOT.str("view");
+    if let Some(y) = scroll_y {
+        core.set_scroll(view, Vec2::new(0.0, y));
+    }
+    let mut ui = core.frame(Size::new(VIEW_W, 200.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().bg(Color::rgb8(0, 0, 0)));
+    ui.with_keyed(
+        "view",
+        NodeSpec::column()
+            .width(Sizing::Fixed(VIEW_W))
+            .height(Sizing::Fixed(100.0))
+            .scroll_y(),
+        |ui| {
+            ui.with_keyed(
+                "row",
+                NodeSpec::column().width(Sizing::Fixed(VIEW_W)),
+                |ui| ui.text(text, wrapped(wrap)),
+            );
+        },
+    );
+    ui.finish();
+    let (dl, _) = core.output();
+    let glyphs = dl
+        .quads
+        .iter()
+        .filter(|q| q.kind == QuadKind::GlyphMask)
+        .count();
+    (view, view.str("row").index(0), glyphs)
+}
+
+#[test]
+fn a_wrapped_long_line_breaks_into_rows_and_shapes_the_screenful() {
+    let mut core = Core::new();
+    let text = line(100_000);
+    let w = cell(&mut core);
+    let (view, _, glyphs) = wrapped_frame(&mut core, &text, TextWrap::Word, None);
+    assert_eq!(core.long_lines(), 1);
+    // A screenful of rows, from a couple of chunks.
+    let per_row = (VIEW_W / w).floor() as usize;
+    let rows_visible = (100.0 / LH).ceil() as usize;
+    assert!(
+        glyphs > (rows_visible - 1) * per_row * 8 / 11 && glyphs <= (rows_visible + 1) * per_row,
+        "{glyphs} glyphs for {rows_visible} rows of {per_row}"
+    );
+    assert!(
+        core.text_cache_len() <= 4,
+        "{} entries shaped",
+        core.text_cache_len()
+    );
+    // The scroll container sees the paragraph's height: eleven-cell words
+    // pack seven to a row of `per_row` cells, the trailing space hanging.
+    let words_per_row = (per_row + 1) / 11;
+    let rows = text.len().div_ceil(words_per_row * 11);
+    let g = core.scroll_geometry(view).unwrap();
+    let expect = rows as f32 * LH;
+    assert!(
+        (g.content.h - expect).abs() < expect * 0.05,
+        "content {} vs ~{} rows",
+        g.content.h,
+        rows
+    );
+    // Every glyph drawn sits inside the box, on a row (a bearing may
+    // hang a pixel or two past the box, as a live row's does).
+    let (dl, _) = core.output();
+    let outside: Vec<_> = dl
+        .quads
+        .iter()
+        .filter(|q| q.kind == QuadKind::GlyphMask)
+        .filter(|q| !(q.rect.x >= -2.0 && q.rect.x + q.rect.w <= VIEW_W + 2.0 && q.rect.y < 100.0))
+        .map(|q| q.rect)
+        .collect();
+    assert!(outside.is_empty(), "{outside:?}");
+}
+
+#[test]
+fn a_glyph_wrapped_long_line_fills_every_row() {
+    let mut core = Core::new();
+    let text = line(100_000);
+    let w = cell(&mut core);
+    let (view, _, _) = wrapped_frame(&mut core, &text, TextWrap::Glyph, None);
+    let per_row = (VIEW_W / w).floor() as usize;
+    let rows = text.len().div_ceil(per_row);
+    let g = core.scroll_geometry(view).unwrap();
+    let expect = rows as f32 * LH;
+    assert!(
+        (g.content.h - expect).abs() < expect * 0.03,
+        "content {} vs ~{} rows",
+        g.content.h,
+        rows
+    );
+}
+
+#[test]
+fn scrolling_down_shapes_what_scrolls_in_and_draws_it_in_the_view() {
+    let mut core = Core::new();
+    let text = line(100_000);
+    wrapped_frame(&mut core, &text, TextWrap::Word, None);
+    let before = core.text_cache_len();
+    let (_, _, glyphs) = wrapped_frame(&mut core, &text, TextWrap::Word, Some(12_000.0));
+    let (_, _, glyphs2) = wrapped_frame(&mut core, &text, TextWrap::Word, Some(12_000.0));
+    assert!(glyphs > 0 && glyphs == glyphs2, "{glyphs} / {glyphs2}");
+    assert!(core.text_cache_len() > before);
+    assert!(
+        core.text_cache_len() < before + 8,
+        "{}",
+        core.text_cache_len()
+    );
+    let (dl, _) = core.output();
+    assert!(
+        dl.quads
+            .iter()
+            .filter(|q| q.kind == QuadKind::GlyphMask)
+            .all(|q| q.rect.y + q.rect.h > 0.0 && q.rect.y < 100.0),
+        "every glyph drawn is inside the view"
+    );
+}
+
+#[test]
+fn the_queries_answer_on_rows() {
+    let mut core = Core::new();
+    let text = line(100_000);
+    let (_, node, _) = wrapped_frame(&mut core, &text, TextWrap::Word, None);
+    // Where byte 50_000 is, by the estimate: far down. Scroll it in.
+    let guess = core.caret_rect(node, 50_000).unwrap();
+    assert!(guess.y > 5_000.0, "{guess:?}");
+    let scroll = guess.y - 20.0;
+    wrapped_frame(&mut core, &text, TextWrap::Word, Some(scroll));
+    wrapped_frame(&mut core, &text, TextWrap::Word, Some(scroll));
+    // Now exact: the caret is on a row inside the view, inside the box,
+    // and the hit test lands back on the byte, naming the row.
+    let r = core.caret_rect(node, 50_000).unwrap();
+    assert!(r.y > -LH && r.y < 100.0, "{r:?}");
+    assert!(r.x >= 0.0 && r.x < VIEW_W, "{r:?}");
+    assert_eq!(r.h, LH);
+    let hit = core
+        .text_hit(node, Vec2::new(r.x + 1.0, r.y + LH / 2.0))
+        .unwrap();
+    assert_eq!(hit.byte, 50_000);
+    assert!(
+        (hit.line as f32 * LH - scroll - r.y).abs() < 0.5,
+        "row {} vs y {}",
+        hit.line,
+        r.y
+    );
+    // The next byte's caret is one cell on, or at the start of the next
+    // row; the end is on the last row.
+    let next = core.caret_rect(node, 50_001).unwrap();
+    assert!(
+        next.y == r.y && next.x > r.x || next.y == r.y + LH && next.x == 0.0,
+        "{next:?}"
+    );
+    let end = core.caret_rect(node, text.len()).unwrap();
+    assert!(end.y > r.y, "{end:?}");
+}
+
+#[test]
+fn measurement_matches_layout_for_a_wrapped_long_line() {
+    let mut core = Core::new();
+    let text = line(100_000);
+    // Two frames: the first frame's emission shapes the overscan chunk
+    // after layout measured, which moves the estimate a little (the
+    // documented tolerance); the second frame's layout has caught up.
+    wrapped_frame(&mut core, &text, TextWrap::Word, None);
+    let (view, _, _) = wrapped_frame(&mut core, &text, TextWrap::Word, None);
+    let g = core.scroll_geometry(view).unwrap();
+    let m = core.measure_text(&text, &wrapped(TextWrap::Word), Some(VIEW_W));
+    assert_eq!(m.width, VIEW_W);
+    assert_eq!(m.height, g.content.h);
+    assert_eq!(m.lines as f32 * LH, m.height);
+    // Without a width it is one row, and a box it fits in keeps it one.
+    let one = core.measure_text(&text, &wrapped(TextWrap::Word), None);
+    assert_eq!(one.lines, 1);
+    assert_eq!(one.height, LH);
 }
 
 #[test]

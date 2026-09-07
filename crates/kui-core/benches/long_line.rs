@@ -99,6 +99,63 @@ fn long_line_100k_edit(bencher: divan::Bencher) {
     });
 }
 
+/// The same line as a paragraph in a vertically scrolling view: `wrap:
+/// word` breaks the chunks into rows (C19's step 5).
+fn wrapped_frame(core: &mut Core, text: &str, scroll_y: f32) -> usize {
+    let view = Key::ROOT.str("view");
+    core.set_scroll(view, Vec2::new(0.0, scroll_y));
+    let mut ui = core.frame(Size::new(1200.0, 400.0), 2.0);
+    ui.configure_root(NodeSpec::column().fill().bg(Color::rgb8(0, 0, 0)));
+    ui.with_keyed(
+        "view",
+        NodeSpec::column()
+            .width(Sizing::Fixed(1100.0))
+            .height(Sizing::Fixed(300.0))
+            .scroll_y(),
+        |ui| {
+            ui.with(NodeSpec::column().width(Sizing::Fixed(1100.0)), |ui| {
+                ui.text(
+                    text,
+                    TextStyle::new(13.0)
+                        .mono()
+                        .line_height(18.0)
+                        .wrap(TextWrap::Word),
+                )
+            });
+        },
+    );
+    ui.finish();
+    let (dl, _) = core.output();
+    dl.quads.len()
+}
+
+/// Opening the paragraph: the rows of the first screenful, and an
+/// estimate of the rest.
+#[divan::bench(sample_count = 20)]
+fn long_line_100k_wrapped_first_frame(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    wrapped_frame(&mut core, &line(N, 0), 0.0);
+    let mut salt = 0u64;
+    bencher.bench_local(|| {
+        salt += 1;
+        let text = line(N, salt);
+        wrapped_frame(&mut core, &text, 0.0)
+    });
+}
+
+/// Scrolling the paragraph: a viewport's height per frame.
+#[divan::bench]
+fn long_line_100k_wrapped_scroll(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    let text = line(N, 0);
+    wrapped_frame(&mut core, &text, 0.0);
+    let mut y = 0.0f32;
+    bencher.bench_local(|| {
+        y = (y + 280.0) % 20_000.0;
+        wrapped_frame(&mut core, &text, y)
+    });
+}
+
 fn main() {
     divan::main();
 }
