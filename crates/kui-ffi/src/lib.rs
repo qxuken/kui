@@ -37,6 +37,7 @@ mod input;
 mod resources;
 mod run;
 mod scrolling;
+mod slots;
 mod types;
 mod value;
 mod widgets;
@@ -50,6 +51,7 @@ pub use input::*;
 pub use resources::*;
 pub use run::*;
 pub use scrolling::*;
+pub use slots::*;
 pub use types::*;
 pub use value::*;
 pub use widgets::*;
@@ -92,6 +94,9 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             open_tooltips: Vec::new(),
             window_commands: VecDeque::new(),
             last_window_name: None,
+            slot_name: None,
+            slot_namespace: None,
+            slot_params: None,
         }))
     })
 }

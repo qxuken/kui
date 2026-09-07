@@ -5,6 +5,66 @@ the workaround, the model field or the arithmetic the release made
 unnecessary. The second list is the point of the first — a library whose
 upgrades remove code from the apps on it is doing the job.
 
+## Unreleased
+
+### Added
+
+- **Slots: an extension fills a place the host declares**
+  ([ADR 0014](docs/adr/0014-slots-an-extension-fills-in-place.md)).
+  `ui.slot("fs/panel")` — or `slot_with(name, &params)` — is a position
+  among the host's own children, filled then and there by the extension
+  the name addresses, as children of the node the host is inside; the
+  tree stays preorder because nothing is appended to a closed node. Slot
+  names are namespaced and **the host decides the namespace**, the way an
+  importer picks an alias: `kui::app(..).extension_as("fs", ext)` loads
+  `ext` as `fs`, `extension(ext)` uses its own name, and an extension
+  lists the slots it fills in its own vocabulary (`slots = { "panel" }` in
+  Lua, `kui_ext_slots` in C, `Extension::slots` in Rust). The same plugin
+  loaded twice is two namespaces, two sets of slots and two sets of
+  params. Parameters are a `Value` declared every frame and never
+  retained — `slot.params` in Lua's `view(env, slot)`, `kui_slot_params`
+  in C, `Slot::params` in Rust — and never part of a key. An extension
+  **replies** as data: what Lua's `on_event` returns, what a C plugin
+  passes to `kui_reply(ev, value)`, what `Extension::on_event` returns;
+  each reaches the host's `on_event` with the extension's origin and the
+  event's window and key. An extension listing no slots fills `ns/root`
+  after the host's view, which is the sequence every extension got
+  before; a host may declare `ui.slot("ns/root")` to move it. Four
+  warnings: `unknown-slot`, `duplicate-slot`, `unbalanced-extension` (an
+  extension that returns with nodes open is closed at the fill's depth,
+  so the rest of the host's view lands where the host put it) and
+  `extension-view-error` (once per slot, in place of the runner's
+  per-frame stderr line). Rust hosts: `Core::frame_with`, `Extensions`,
+  `Fill`, `Slot`. C: `kui_slot`, `kui_slot_name`, `kui_slot_namespace`,
+  `kui_slot_params`, `kui_reply`, `kui_ext_slots` — functions only, so
+  `KUI_ABI_VERSION` stays 7 under ADR 0006's rule. Both panel examples
+  place the panel in a slot, hand it a title and a reply template, and
+  count the replies.
+
+### Changed
+
+- **An extension's keys are stable across what the host builds around
+  it.** They were `root.index(n)` for whatever `n` the host happened to
+  leave at the root, so a host adding a conditional child there rekeyed
+  the whole panel: tweens restarted and an editor keyed under the panel's
+  unkeyed root was handed `initial` again. Under a slot — the reserved
+  `ns/root` included — they are keyed by the slot's full name and nothing
+  else. An existing extension's keys move once, at the upgrade.
+- `Extension::view` takes the `Slot` it is filling; `Extension::on_event`
+  returns `Vec<Value>`; Lua's `view` receives the slot as a second
+  argument (a `view(env)` script never sees it) and its `on_event`'s
+  return value is now read; `kui::run` and `Launcher::extensions` refuse
+  two extensions of one name — give one a namespace with `extension_as`.
+
+### What you can delete
+
+- The `configure_root(NodeSpec::row())` a host set only so that an
+  extension appended after its view would land beside it, and the
+  comment saying why: declare the slot where the panel goes.
+- A `key` on an extension's root node added to keep its editors and
+  tweens from resetting when the host's root changed.
+- The stash a plugin kept so the host could learn what it chose: reply.
+
 ## 0.1.0-alpha.8 (2026-09-07)
 
 **What breaks.** **A press that dismisses a popup no longer reaches the

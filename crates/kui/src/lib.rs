@@ -74,7 +74,7 @@ pub fn app(title: &str) -> Launcher {
         size: (960.0, 640.0),
         min_size: None,
         max_size: None,
-        extensions: Vec::new(),
+        extensions: Extensions::new(),
         text_aa: TextAa::Auto,
         diagnostics: None,
     }
@@ -89,7 +89,7 @@ pub struct Launcher {
     /// for user resizing; `None` leaves that side unbounded.
     min_size: Option<(f64, f64)>,
     max_size: Option<(f64, f64)>,
-    extensions: Vec<Box<dyn Extension>>,
+    extensions: Extensions,
     text_aa: TextAa,
     /// Whether the core's diagnostics run (see `kui_core::diag`); None =
     /// on in debug builds, off in release.
@@ -148,13 +148,38 @@ impl Launcher {
         self
     }
 
-    pub fn extension(mut self, ext: impl Extension + 'static) -> Self {
-        self.extensions.push(Box::new(ext));
+    /// Loads `ext` under its own name as its namespace — `import fs` binds
+    /// `fs`. The slots it fills are declared as `ui.slot("<name>/<slot>")`
+    /// (ADR 0014). Panics when the name is already another extension's
+    /// namespace: two of one name need `extension_as`.
+    pub fn extension(self, ext: impl Extension + 'static) -> Self {
+        let ns = ext.name().to_owned();
+        self.extension_as(ns, ext)
+    }
+
+    /// Loads `ext` under `namespace` — `import fs as left`. The host
+    /// decides the namespace, so the same plugin loaded twice is two
+    /// namespaces, two sets of slots and two sets of params. Panics on a
+    /// namespace already taken, an empty one, or an extension whose slot
+    /// names contain `/`: all three are programming errors at startup.
+    pub fn extension_as(
+        mut self,
+        namespace: impl Into<String>,
+        ext: impl Extension + 'static,
+    ) -> Self {
+        if let Err(e) = self.extensions.push_as(namespace, Box::new(ext)) {
+            panic!("kui: {e}");
+        }
         self
     }
 
+    /// `extension` for each, in order.
     pub fn extensions(mut self, exts: Vec<Box<dyn Extension>>) -> Self {
-        self.extensions.extend(exts);
+        for ext in exts {
+            if let Err(e) = self.extensions.push(ext) {
+                panic!("kui: {e}");
+            }
+        }
         self
     }
 
@@ -733,7 +758,9 @@ struct Shell<A: App> {
     /// and applied to every core after it.
     subpixel: bool,
     app: A,
-    extensions: Vec<Box<dyn Extension>>,
+    /// Each under the namespace the host gave it; their `Fill` is what fills
+    /// the slots a view declares (ADR 0014).
+    extensions: Extensions,
     /// What every window shares: fonts, images, sounds, the audio queue and
     /// the declared window set.
     session: Session,
@@ -1517,8 +1544,21 @@ impl<A: App> Shell<A> {
             if ev.origin == OriginId::HOST {
                 reached_app = true;
                 self.app.on_event(ev);
-            } else if let Some(ext) = self.extensions.get_mut(ev.origin.0 as usize - 1) {
-                ext.on_event(&ev);
+            } else if let Some(ext) = self.extensions.by_origin(ev.origin) {
+                // An extension's replies go to the host (ADR 0014 decision
+                // 6): not routed by origin — a reply is addressed by being
+                // one — and carrying the extension's origin, the window and
+                // the key of the event it answered, so the host knows who
+                // spoke and from where.
+                for payload in ext.on_event(&ev) {
+                    reached_app = true;
+                    self.app.on_event(UiEvent {
+                        origin: ev.origin,
+                        window: ev.window,
+                        key: ev.key,
+                        payload,
+                    });
+                }
             }
         }
         // One app, one model, N windows: a handler that ran in answer to
@@ -1772,19 +1812,12 @@ impl<A: App> Shell<A> {
 
         let t_view = std::time::Instant::now();
         pane.core.set_time(epoch.elapsed().as_secs_f64());
-        let mut ui = pane.core.frame(viewport, scale);
+        // The extensions fill the slots the host's view declares, in place
+        // (`Ui::slot`), and `"root"` after it unless the host placed that
+        // too — `finish` below does the latter and reports slots nobody
+        // declared (ADR 0014). The core numbers their origins.
+        let mut ui = pane.core.frame_with(viewport, scale, extensions);
         app.view(&mut ui);
-        for (i, ext) in extensions.iter_mut().enumerate() {
-            ui.set_origin(OriginId(i as u16 + 1));
-            if let Err(err) = ext.view(&mut ui) {
-                eprintln!("kui: extension '{}' view error: {err}", ext.name());
-                ui.text(
-                    &format!("[{}] {err}", ext.name()),
-                    TextStyle::new(13.0).color(Color::rgb8(0xe8, 0x5d, 0x5d)),
-                );
-            }
-        }
-        ui.set_origin(OriginId::HOST);
         let view_ms = t_view.elapsed().as_secs_f32() * 1e3;
 
         let t_layout = std::time::Instant::now();

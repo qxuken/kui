@@ -511,7 +511,29 @@ export type WarningCode =
    *  looks like the resource never registered. Two `Core::new()`s are two
    *  sessions; windows that share resources are built with `Core::new_in`
    *  against one `Session`. */
-  | 'foreign-resource';
+  | 'foreign-resource'
+  /** An extension names a slot no host declared this frame, so it drew nothing.
+   *  A slot is a position the host declares in its own view by full name,
+   *  `ui.slot("ns/name")` — the namespace the host gave the extension, then the
+   *  name the extension lists; one listing none fills `"ns/root"` after the
+   *  host's view. Declare the slot, or drop the name from the extension's list.
+   *  See `docs/adr/0014-slots-an-extension-fills-in-place.md`, decision 5. */
+  | 'unknown-slot'
+  /** A slot name declared twice in one frame. The second declaration was
+   *  ignored: a fill is keyed by the slot's full name, so two fills of one name
+   *  would share every key. Two places for one extension are two names. See ADR
+   *  0014, decision 5. */
+  | 'duplicate-slot'
+  /** An extension returned from `view` with nodes still open. The core closed
+   *  them at the depth the fill began, so the host's tree is what the host
+   *  declared; outside the guard, the rest of the host's view would have landed
+   *  inside the extension's last open node. The extension has an `open` without
+   *  its `close`. See ADR 0014, decision 5. */
+  | 'unbalanced-extension'
+  /** An extension's `view` returned an error. The message is drawn in red where
+   *  the fill would have been, and reported here once per extension and slot
+   *  rather than once per frame. */
+  | 'extension-view-error';
 // -- end generated --
 
 /** A silent misconfiguration the core noticed while finishing a frame —

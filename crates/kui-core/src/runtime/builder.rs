@@ -176,26 +176,40 @@ impl Core {
         self.stack.last().copied().unwrap_or(0)
     }
 
+    /// The key a child of the current node is derived from: the node's own
+    /// key, except inside a slot fill at the depth the fill began, where it
+    /// is the fill's namespace (`Core::fill`, ADR 0014 decision 4). One
+    /// compare on the auto-key path; `ns_depth` is `usize::MAX` outside a
+    /// fill.
+    #[inline]
+    pub(crate) fn parent_key(&self) -> Key {
+        if self.stack.len() == self.ns_depth {
+            self.ns_key
+        } else {
+            self.tree.keys[self.current() as usize]
+        }
+    }
+
     #[inline]
     pub(crate) fn auto_key(&mut self) -> Key {
-        let parent = self.current() as usize;
+        let parent = self.parent_key();
         let i = self.counters.last().copied().unwrap_or(0);
         if let Some(c) = self.counters.last_mut() {
             *c += 1;
         }
-        self.tree.keys[parent].index(i)
+        parent.index(i)
     }
 
     /// The key a child labeled `label` would get — usable before creating it,
     /// e.g. to check hover state for styling.
     pub fn child_key(&self, label: &str) -> Key {
-        self.tree.keys[self.current() as usize].str(label)
+        self.parent_key().str(label)
     }
 
     /// The key the `i`th child gets from auto-keying — what `open_indexed`
     /// opens with, usable before the node exists.
     pub fn child_key_index(&self, i: u64) -> Key {
-        self.tree.keys[self.current() as usize].index(i)
+        self.parent_key().index(i)
     }
 
     pub fn is_hovered(&self, key: Key) -> bool {

@@ -34,6 +34,7 @@ pub mod runtime;
 pub mod schema;
 pub mod scroll;
 pub mod session;
+pub mod slot;
 pub mod spec;
 pub mod stats;
 pub mod text;
@@ -69,6 +70,7 @@ pub use resources::{FontId, ImageId, Resources, SessionId, SoundId};
 pub use runtime::{Core, Extension};
 pub use scroll::ScrollGeometry;
 pub use session::{Session, SharedAudio, SharedResources};
+pub use slot::{Extensions, Fill, NAMESPACE_SEPARATOR, ROOT_SLOT, Slot, full_name, split_name};
 pub use spec::{
     Align, Dir, FLOAT_PRESETS, FloatAnchor, FloatConfig, FontFamily, Min, NodeSpec, OVERFLOW_CLIP,
     OVERFLOW_SCROLL_X, OVERFLOW_SCROLL_Y, PadShorthand, Shadow, Sizing, TextStyle, TextWrap,

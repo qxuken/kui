@@ -4,9 +4,16 @@
 //! Here the Rust host owns the window and the left side; `examples/c/panel.c`
 //! is a shared library the host `dlopen`s, and it owns the right panel, keeps
 //! its own state and gets its own clicks routed back by origin. The host never
-//! inspects the plugin's UI or its events, and the plugin links against
-//! nothing — it resolves `kui_*` from the host executable at load, the way a
-//! Lua C module resolves `lua_*`.
+//! inspects the plugin's UI, and the plugin links against nothing — it
+//! resolves `kui_*` from the host executable at load, the way a Lua C module
+//! resolves `lua_*`.
+//!
+//! Where the panel goes is a *slot* the host declares in its own view
+//! (`docs/adr/0014-slots-an-extension-fills-in-place.md`): `ui.slot_with`
+//! below is a position among the host's children, filled then and there,
+//! and the parameters it passes are the panel's title and the shape of the
+//! reply the host wants when a todo is toggled. The plugin answers with
+//! `kui_reply`, and the host counts what comes back.
 //!
 //! Run:
 //!   ./examples/c/build.sh                    # builds examples/c/panel.so
@@ -15,25 +22,28 @@
 //!
 //! `--headless` is the whole contract without a display: it builds a frame the
 //! way the runner does, clicks the plugin's list through the access tree the
-//! frame produced, and checks the click reached the plugin and nothing else.
-//! A path argument (before or after the flag) loads a different plugin.
+//! frame produced, and checks that the click reached the plugin and nothing
+//! else — and that the plugin's reply reached the host with the plugin's
+//! origin on it. A path argument (before or after the flag) loads a
+//! different plugin.
 
 use kui::widgets;
 use kui::{
-    Align, App, Color, Core, Extension, InputEvent, NodeSpec, OriginId, Size, Sizing, TextStyle,
-    Ui, UiEvent, Value, Vec2,
+    Align, App, Color, Core, Extension, Extensions, InputEvent, NodeSpec, OriginId, Size, Sizing,
+    TextStyle, Ui, UiEvent, Value, Vec2,
 };
 use kui_ffi::CExtension;
 
 #[derive(Default)]
 struct Host {
     clicks: i64,
+    /// Replies from the panel: one per toggled todo, and who sent it.
+    toggles: i64,
+    last_reply_from: Option<OriginId>,
 }
 
 impl App for Host {
     fn view(&mut self, ui: &mut Ui<'_>) {
-        // Extensions append after the host, so the root row places the C
-        // panel to the right of this column.
         ui.configure_root(NodeSpec::row().fill().pad(16.0).gap(16.0));
 
         ui.with(
@@ -52,16 +62,43 @@ impl App for Host {
                     TextStyle::new(12.0).color(Color::rgb8(0x8a, 0x8f, 0xa3)),
                 );
                 ui.text(&format!("{} clicks", self.clicks), TextStyle::new(40.0));
+                ui.text(
+                    &format!("{} toggles reported by the panel", self.toggles),
+                    TextStyle::new(13.0).color(Color::rgb8(0x8a, 0x8f, 0xa3)),
+                );
                 widgets::button(ui, "click me", Value::map([("kind", "click".into())]));
             },
+        );
+
+        // The panel's place: the second child of the root row, so it lands
+        // to the right of the column above. The params are what the host
+        // wants the plugin to know — its title — and the reply it wants
+        // back when a todo is toggled, as a template the plugin fills in.
+        // The name is `namespace/slot`: `todos` is what this host calls
+        // the plugin (the host decides, like an importer picking an alias;
+        // the plugin calls itself "c panel"), and `panel` is the slot the
+        // plugin lists.
+        ui.slot_with(
+            "todos/panel",
+            &Value::map([
+                ("title", "todos (from the host)".into()),
+                ("on_toggle", Value::map([("kind", "toggled".into())])),
+            ]),
         );
 
         kui::widgets::latency_hud_at(ui, Align::Start, Align::End);
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if ev.payload.get("kind").and_then(Value::as_str) == Some("click") {
-            self.clicks += 1;
+        match ev.payload.get("kind").and_then(Value::as_str) {
+            Some("click") => self.clicks += 1,
+            // A reply the panel made from its own click: the origin says
+            // which extension, the key which of its nodes.
+            Some("toggled") => {
+                self.toggles += 1;
+                self.last_reply_from = Some(ev.origin);
+            }
+            _ => {}
         }
     }
 }
@@ -74,17 +111,16 @@ fn default_plugin() -> String {
 }
 
 /// One frame, built the way the windowed runner builds it: the host's view
-/// first, then each extension under the origin the runner assigned it.
-fn frame(core: &mut Core, host: &mut Host, ext: &mut CExtension) {
-    let mut ui = core.frame(Size::new(900.0, 600.0), 1.0);
+/// with the extensions as the filler, so the slot it declares is filled in
+/// place and `finish` fills `"ns/root"` for any extension that names no
+/// slot.
+fn frame(core: &mut Core, host: &mut Host, exts: &mut Extensions) {
+    let mut ui = core.frame_with(Size::new(900.0, 600.0), 1.0, exts);
     host.view(&mut ui);
-    ui.set_origin(EXT);
-    ext.view(&mut ui).expect("extension view");
-    ui.set_origin(OriginId::HOST);
     ui.finish();
 }
 
-/// The origin the runner would give the first extension.
+/// The origin the runner gives the first extension.
 const EXT: OriginId = OriginId(1);
 
 /// The center of the first node the access tree reports under `origin` whose
@@ -105,13 +141,40 @@ fn click(core: &mut Core, at: Vec2) -> Vec<UiEvent> {
     core.handle_input(InputEvent::mouse_up())
 }
 
+/// What the runner's `route_events` does with an extension's event: hand
+/// it to the extension, and hand each reply to the host with the
+/// extension's origin and the event's window and key.
+fn route(host: &mut Host, exts: &mut Extensions, ev: &UiEvent) -> usize {
+    let ext = exts.by_origin(ev.origin).expect("an extension's event");
+    let replies = ext.on_event(ev);
+    let n = replies.len();
+    for payload in replies {
+        host.on_event(UiEvent {
+            origin: ev.origin,
+            window: ev.window,
+            key: ev.key,
+            payload,
+        });
+    }
+    n
+}
+
 /// No window: builds frames, clicks through them, and checks that the
-/// plugin drew, that its click reached it and not the host, and that the
-/// host's click reached the host and not it.
-fn headless(mut ext: CExtension) -> i32 {
+/// plugin drew in the slot with the host's title, that its click reached it
+/// and not the host, that its reply reached the host, and that the host's
+/// click reached the host and not it.
+fn headless(ext: CExtension) -> i32 {
+    let name = ext.name().to_owned();
+    // Loaded under the namespace this host chose for it, `todos`; its own
+    // name is what it calls itself in logs.
+    let mut exts = Extensions::new();
+    if let Err(e) = exts.push_as("todos", Box::new(ext)) {
+        eprintln!("FAIL: {e}");
+        return 1;
+    }
     let mut host = Host::default();
     let mut core = Core::new();
-    frame(&mut core, &mut host, &mut ext);
+    frame(&mut core, &mut host, &mut exts);
 
     let drawn = core
         .access_tree()
@@ -119,9 +182,24 @@ fn headless(mut ext: CExtension) -> i32 {
         .iter()
         .filter(|n| n.origin == EXT)
         .count();
-    println!("{}: {drawn} nodes in the host's frame", ext.name());
+    println!("{name}: {drawn} nodes in the host's frame");
     if drawn == 0 {
         eprintln!("FAIL: the extension drew nothing");
+        return 1;
+    }
+    // The slot is a named position: `key_of` answers it like a keyed node.
+    if core.key_of("todos/panel").is_none() {
+        eprintln!("FAIL: the slot `todos/panel` was not declared");
+        return 1;
+    }
+    // The title came through the params — it is the host's string, not the
+    // plugin's default.
+    if find(&mut core, EXT, "todos (from the host)").is_none() {
+        eprintln!("FAIL: the panel is not titled by the host's param");
+        return 1;
+    }
+    if let Some(w) = core.take_warnings().first() {
+        eprintln!("FAIL: warning [{}]: {}", w.code, w.message);
         return 1;
     }
 
@@ -135,12 +213,20 @@ fn headless(mut ext: CExtension) -> i32 {
         eprintln!("FAIL: expected one event on origin {EXT:?}, got {evs:?}");
         return 1;
     }
-    // What the runner's route_events does with it, and the reason this
-    // example exists: an event carries the origin of the node that emitted
-    // it, so the host is never offered the plugin's clicks.
-    ext.on_event(&evs[0]);
+    // An event carries the origin of the node that emitted it, so the host
+    // is never offered the plugin's clicks — and what the plugin *replies*
+    // is the one thing that does reach the host.
+    let replies = route(&mut host, &mut exts, &evs[0]);
+    if replies != 1 || host.toggles != 1 || host.last_reply_from != Some(EXT) {
+        eprintln!(
+            "FAIL: expected one `toggled` reply from {EXT:?}, got {replies} replies, {} toggles \
+             from {:?}",
+            host.toggles, host.last_reply_from
+        );
+        return 1;
+    }
 
-    frame(&mut core, &mut host, &mut ext);
+    frame(&mut core, &mut host, &mut exts);
     if find(&mut core, EXT, "[x] wire up wgpu").is_none() {
         eprintln!("FAIL: the toggle did not reach the plugin");
         return 1;
@@ -161,7 +247,7 @@ fn headless(mut ext: CExtension) -> i32 {
         return 1;
     }
     host.on_event(evs[0].clone());
-    frame(&mut core, &mut host, &mut ext);
+    frame(&mut core, &mut host, &mut exts);
     if host.clicks != 1 {
         eprintln!("FAIL: the host missed its own click");
         return 1;
@@ -171,7 +257,9 @@ fn headless(mut ext: CExtension) -> i32 {
         return 1;
     }
 
-    println!("ok: clicks routed by origin, both ways");
+    println!(
+        "ok: clicks routed by origin both ways, the slot filled in place, the reply delivered"
+    );
     0
 }
 
@@ -197,5 +285,9 @@ fn main() {
     if headless_mode {
         std::process::exit(headless(ext));
     }
-    kui::run("kui — c panel", Host::default(), vec![Box::new(ext)]).unwrap();
+    // The same namespace in the window as headless: the host decides it.
+    kui::app("kui — c panel")
+        .extension_as("todos", ext)
+        .run(Host::default())
+        .unwrap();
 }

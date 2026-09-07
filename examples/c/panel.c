@@ -8,6 +8,11 @@
  * its own clicks back - the host never sees them, and this file never sees
  * the host's.
  *
+ * Where it draws is a slot the host declares - "panel", named below in
+ * kui_ext_slots - and the host passes it a title and the shape of the reply
+ * it wants when a todo is toggled. kui_slot_params reads those; kui_reply
+ * sends the reply. (docs/adr/0014-slots-an-extension-fills-in-place.md)
+ *
  * It links against nothing: every kui_* call here is left undefined and
  * resolved from the host executable at load, the way a Lua C module
  * resolves lua_*. See ../../crates/kui-ffi/src/ext.rs for the loader and
@@ -23,11 +28,17 @@
 
 #define MAX_TODOS 32
 #define TODO_LEN 64
+#define KIND_LEN 32
 
 typedef struct Panel {
     char todos[MAX_TODOS][TODO_LEN];
     int done[MAX_TODOS];
     int count;
+    /* The `kind` of the reply the host asked for on a toggle, copied out
+     * of the slot's params each frame (they are borrowed for the view
+     * call, and the reply is made from on_event). Empty = the host wants
+     * no reply. */
+    char toggle_kind[KIND_LEN];
 } Panel;
 
 /* -- small helpers ------------------------------------------------------- */
@@ -53,11 +64,26 @@ static KuiValue *msg(const char *kind) {
     return m;
 }
 
+/* A string field of a borrowed map, or `fallback` when absent. */
+static KuiStr str_of(const KuiValue *map, const char *field, KuiStr fallback) {
+    const KuiValue *v = map ? kui_value_get(map, KUI_STR(field)) : NULL;
+    KuiStr s;
+    return (v && kui_value_as_str(v, &s)) ? s : fallback;
+}
+
 /* -- the extension ------------------------------------------------------- */
 
 uint32_t kui_ext_abi(void) { return KUI_ABI_VERSION; }
 
 const char *kui_ext_name(void) { return "c panel"; }
+
+/* The slot this panel fills. The array outlives every call - the host reads
+ * it once at load and copies the names out. */
+static const KuiStr SLOTS[] = {{(const uint8_t *)"panel", 5}};
+const KuiStr *kui_ext_slots(size_t *count) {
+    *count = sizeof SLOTS / sizeof *SLOTS;
+    return SLOTS;
+}
 
 void *kui_ext_init(void) {
     Panel *p = calloc(1, sizeof *p);
@@ -75,8 +101,19 @@ void kui_ext_view(void *user, KuiCtx *ui) {
     Panel *p = (Panel *)user;
     if (!p) return;
 
-    /* Opened as a child of whatever the host's root is - extensions append
-     * after the host's own view, so this lands to the right of it. */
+    /* What the host passed with the slot: a title, and the template of
+     * the reply it wants on a toggle. Both borrowed for this call. */
+    const KuiValue *params = kui_slot_params(ui);
+    KuiStr title = str_of(params, "title", KUI_STR("c panel"));
+    const KuiValue *on_toggle =
+        params ? kui_value_get(params, KUI_STR("on_toggle")) : NULL;
+    KuiStr kind = str_of(on_toggle, "kind", KUI_STR(""));
+    size_t n = kind.len < KIND_LEN - 1 ? kind.len : KIND_LEN - 1;
+    memcpy(p->toggle_kind, kind.ptr, n);
+    p->toggle_kind[n] = 0;
+
+    /* Opened where the host declared the slot - here, as a child of its
+     * root row, to the right of its own column. */
     KuiSpec panel = {
         .dir = KUI_COLUMN,
         .width = {KUI_FIXED, 300}, .height = {KUI_GROW, 1},
@@ -93,7 +130,7 @@ void kui_ext_view(void *user, KuiCtx *ui) {
         char left[32];
         snprintf(left, sizeof left, " · %d left", remaining);
         KuiSpan head[] = {
-            {KUI_STR("c panel"), 0, 0},
+            {title, 0, 0},
             {KUI_STR(left), 0x8a8fa3ff, 0},
         };
         KuiTextStyle muted = {.size = 12, .color = 0x8a8fa3ff};
@@ -165,8 +202,19 @@ void kui_ext_on_event(void *user, const KuiEvent *ev) {
     if (is(s, "toggle")) {
         const KuiValue *index = kui_value_get(ev->payload, KUI_STR("index"));
         int64_t i = 0;
-        if (index && kui_value_as_int(index, &i) && i >= 0 && i < p->count)
+        if (index && kui_value_as_int(index, &i) && i >= 0 && i < p->count) {
             p->done[i] = !p->done[i];
+            /* The host asked to hear about this: the reply is its own
+             * template with the index filled in. Copied by kui_reply, so
+             * the value is ours to free. */
+            if (p->toggle_kind[0]) {
+                KuiValue *reply = msg(p->toggle_kind);
+                kui_value_map_set(reply, KUI_STR("index"), kui_value_int(i));
+                kui_value_map_set(reply, KUI_STR("done"), kui_value_bool(p->done[i]));
+                kui_reply(ev, reply);
+                kui_value_free(reply);
+            }
+        }
     } else if (is(s, "add")) {
         if (p->count < MAX_TODOS) {
             snprintf(p->todos[p->count], TODO_LEN, "todo #%d", p->count + 1);

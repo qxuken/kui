@@ -8,7 +8,7 @@
 //! differently, is a failing assertion naming the scene.
 
 use kui_core::conformance::{self, Fixtures, Scene};
-use kui_core::{Core, Extension};
+use kui_core::{Core, Extension, Slot};
 use kui_lua::LuaExtension;
 
 /// The corpus in Lua. One arm per scene, in `SCENES` order; an unknown name
@@ -383,7 +383,7 @@ fn every_scene_lowers_identically_from_lua() {
                 .globals()
                 .set("phase", phase)
                 .unwrap_or_else(|e| panic!("{}: {e}", scene.name));
-            ext.view(ui)
+            ext.view(&Slot::root(), ui)
                 .unwrap_or_else(|e| panic!("{}: {e}", scene.name))
         });
         let actual = conformance::report(scene.name, scene.env, scene.steps, &out);

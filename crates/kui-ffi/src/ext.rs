@@ -9,13 +9,14 @@
 //!
 //! # The plugin's side
 //!
-//! Six symbols, two of them required - `kui_ext_abi` and `kui_ext_view` -
-//! and four optional (see `include/kui.h`):
+//! Seven symbols, two of them required - `kui_ext_abi` and `kui_ext_view` -
+//! and five optional (see `include/kui.h`):
 //!
 //! ```c
 //! uint32_t    kui_ext_abi(void);                        /* required: KUI_ABI_VERSION */
 //! const char *kui_ext_name(void);                       /* else: file stem */
 //! void       *kui_ext_init(void);                       /* else: NULL      */
+//! const KuiStr *kui_ext_slots(size_t *count);          /* else: "root"    */
 //! void        kui_ext_view(void *user, KuiCtx *ctx);    /* required        */
 //! void        kui_ext_on_event(void *user, const KuiEvent *ev);
 //! void        kui_ext_free(void *user);
@@ -57,9 +58,10 @@
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::path::Path;
 
-use kui_core::{Extension, Ui, UiEvent};
+use kui_core::{Extension, Slot, Ui, UiEvent, Value};
 
-use crate::{KUI_ABI_VERSION, KuiCtx, KuiEvent, KuiValue};
+use crate::convert::kstr;
+use crate::{KUI_ABI_VERSION, KuiCtx, KuiEvent, KuiStr, KuiValue};
 
 type ViewFn = extern "C" fn(*mut c_void, *mut KuiCtx);
 type EventFn = extern "C" fn(*mut c_void, *const KuiEvent);
@@ -74,6 +76,9 @@ pub struct CExtension {
     view: ViewFn,
     on_event: Option<EventFn>,
     free: Option<extern "C" fn(*mut c_void)>,
+    /// What `kui_ext_slots` returned at load, copied out: the slot names
+    /// this plugin fills (ADR 0014 decision 2). Empty means `"root"`.
+    slots: Vec<String>,
 }
 
 impl CExtension {
@@ -109,6 +114,7 @@ impl CExtension {
             view: placeholder_view,
             on_event: None,
             free: None,
+            slots: Vec::new(),
         };
         let Some(abi) = (unsafe { ext.sym::<extern "C" fn() -> u32>("kui_ext_abi") }) else {
             return Err(format!(
@@ -130,6 +136,20 @@ impl CExtension {
         ext.view = view;
         ext.on_event = unsafe { ext.sym::<EventFn>("kui_ext_on_event") };
         ext.free = unsafe { ext.sym::<extern "C" fn(*mut c_void)>("kui_ext_free") };
+
+        // The slots it fills, read once: the plugin keeps the array alive
+        // for its own lifetime, and the names are copied out so nothing
+        // here reads it again.
+        if let Some(slots) =
+            unsafe { ext.sym::<extern "C" fn(*mut usize) -> *const KuiStr>("kui_ext_slots") }
+        {
+            let mut count = 0usize;
+            let p = slots(&mut count);
+            if !p.is_null() {
+                let names = unsafe { std::slice::from_raw_parts(p, count) };
+                ext.slots = names.iter().map(|s| kstr(*s).into_owned()).collect();
+            }
+        }
 
         ext.name = match unsafe { ext.sym::<extern "C" fn() -> *const c_char>("kui_ext_name") } {
             Some(f) => {
@@ -299,16 +319,30 @@ impl Extension for CExtension {
         &self.name
     }
 
-    fn view(&mut self, ui: &mut Ui<'_>) -> Result<(), String> {
+    fn slots(&self) -> &[String] {
+        &self.slots
+    }
+
+    fn view(&mut self, slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         // Borrows the host's frame for this call only - the plugin builds
         // into the same tree the host just built into, under its own origin.
+        // Which slot, and with what, rides on the context: `kui_slot_name`
+        // and `kui_slot_params` read it back, borrowed for the call like an
+        // event's payload (one clone of the params per fill, the C side's
+        // cost, which is what `on_event`'s payload already pays).
         let mut ctx = KuiCtx::borrowing(ui.core());
+        ctx.slot_name = Some(slot.name.to_owned());
+        ctx.slot_namespace = Some(slot.namespace.to_owned());
+        ctx.slot_params =
+            (!matches!(slot.params, Value::Null)).then(|| KuiValue(slot.params.clone()));
         (self.view)(self.user, &mut ctx);
         Ok(())
     }
 
-    fn on_event(&mut self, ev: &UiEvent) {
-        let Some(cb) = self.on_event else { return };
+    fn on_event(&mut self, ev: &UiEvent) -> Vec<Value> {
+        let Some(cb) = self.on_event else {
+            return Vec::new();
+        };
         // Borrowed for the duration of the callback, like every other
         // payload C sees.
         let payload = KuiValue(ev.payload.clone());
@@ -316,9 +350,13 @@ impl Extension for CExtension {
             origin: ev.origin.0,
             key: ev.key.0,
             payload: &payload,
+            window: ev.window.0,
             ..Default::default()
         };
-        cb(self.user, &out);
+        // Replies (ADR 0014 decision 6): the plugin calls `kui_reply(ev,
+        // value)` during the callback, as often as it likes, and the sink
+        // open around the call collects them for the host.
+        crate::slots::collect_replies(&out, || cb(self.user, &out))
     }
 }
 

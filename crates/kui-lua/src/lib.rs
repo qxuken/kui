@@ -1,6 +1,9 @@
-//! Lua extensions for kui. A script defines `view(env)` returning a plain
+//! Lua extensions for kui. A script defines `view(env, slot)` returning a plain
 //! table tree (built with the injected `row`/`column`/`text`/`button`
-//! prelude) and optionally `on_event(ev)`. `env` carries host facts
+//! prelude) and optionally `on_event(ev)`, whose return value is its replies
+//! to the host; `slot` says which slot the host is filling (`slot.name`,
+//! `slot.namespace`, `slot.params`, `slot.key`; ADR 0014), and a `slots`
+//! global lists the names it fills. `env` carries host facts
 //! (refresh rate, focus, viewport), queries (`env.edit_text(key)`,
 //! `env.is_focused(key)`, `env.is_hovered(key)`, `env.is_pressed(key)`,
 //! `env.measure_text(s, opts, max_w)`), focus verbs (`env.set_focus(key)`,
@@ -64,7 +67,7 @@
 
 use kui_core::schema::{self, Kind, Parsed, PropsOut};
 use kui_core::{
-    Align, Color, EditOptions, Extension, FloatConfig, Key, PadShorthand, Sizing, Span, Ui,
+    Align, Color, EditOptions, Extension, FloatConfig, Key, PadShorthand, Sizing, Slot, Span, Ui,
     UiEvent, Value, WindowConfig, WindowKind, widgets,
 };
 use mlua::{Lua, Table};
@@ -74,6 +77,9 @@ const PRELUDE: &str = include_str!("prelude.lua");
 pub struct LuaExtension {
     lua: Lua,
     name: String,
+    /// The script's `slots` global, read once at load: the slot names it
+    /// fills (ADR 0014 decision 2). Empty — no global — means `"root"`.
+    slots: Vec<String>,
 }
 
 impl LuaExtension {
@@ -82,7 +88,17 @@ impl LuaExtension {
         lua.load(PRELUDE).set_name("kui:prelude").exec()?;
         let name = name.into();
         lua.load(source).set_name(&name).exec()?;
-        Ok(Self { lua, name })
+        let slots = match lua.globals().get::<mlua::Value>("slots")? {
+            mlua::Value::Nil => Vec::new(),
+            mlua::Value::Table(t) => t.sequence_values::<String>().collect::<mlua::Result<_>>()?,
+            other => {
+                return Err(mlua::Error::runtime(format!(
+                    "`slots` must be a list of slot names, not {}",
+                    other.type_name()
+                )));
+            }
+        };
+        Ok(Self { lua, name, slots })
     }
 
     /// The script's own interpreter. A host reaches for this to seed a
@@ -108,12 +124,22 @@ impl Extension for LuaExtension {
         &self.name
     }
 
-    fn view(&mut self, ui: &mut Ui<'_>) -> Result<(), String> {
+    fn slots(&self) -> &[String] {
+        &self.slots
+    }
+
+    fn view(&mut self, slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         let view: mlua::Function = self
             .lua
             .globals()
             .get("view")
             .map_err(|_| "script defines no view()".to_string())?;
+        // Which slot this is, as `view`'s second argument rather than a
+        // field of `env`: `env`'s value keys are pinned to
+        // `schema::ENV_FIELDS` across every binding, and a slot is the
+        // host's fact, not the driver's. A script written as `view(env)`
+        // never sees it.
+        let slot_table = slot_table(&self.lua, slot).map_err(|e| format!("slot: {e}"))?;
         // The env's query functions borrow the frame for the duration of
         // view(); the returned table outlives the scope, the borrow does
         // not. A RefCell because measurement shapes text (a mutable query)
@@ -123,7 +149,7 @@ impl Extension for LuaExtension {
             self.lua
                 .scope(|scope| {
                     let env = env_table(&self.lua, scope, &frame)?;
-                    view.call(env)
+                    view.call((env, slot_table))
                 })
                 .map_err(|e| format!("view(): {e}"))?
         };
@@ -135,9 +161,9 @@ impl Extension for LuaExtension {
         build_node(ui, &root).map_err(|e| format!("view table: {e}"))
     }
 
-    fn on_event(&mut self, ev: &UiEvent) {
+    fn on_event(&mut self, ev: &UiEvent) -> Vec<Value> {
         let Ok(f) = self.lua.globals().get::<mlua::Function>("on_event") else {
-            return;
+            return Vec::new();
         };
         let payload = value_to_lua(&self.lua, &ev.payload).and_then(|p| {
             // Map payloads learn which node emitted them; edit widgets emit
@@ -150,10 +176,43 @@ impl Extension for LuaExtension {
             }
             Ok(p)
         });
-        if let Err(e) = payload.and_then(|p| f.call::<()>(p)) {
-            eprintln!("kui-lua: '{}' on_event error: {e}", self.name);
+        // What `on_event` returns is the script's replies to the host (ADR
+        // 0014 decision 6): nothing, a table (one reply), or a sequence of
+        // tables (several) — the list-or-map reading `lua_to_value` already
+        // makes.
+        match payload.and_then(|p| f.call::<mlua::Value>(p)) {
+            Ok(mlua::Value::Nil) => Vec::new(),
+            Ok(v) => match lua_to_value(&v) {
+                Ok(Value::List(replies)) => replies,
+                Ok(reply) => vec![reply],
+                Err(e) => {
+                    eprintln!("kui-lua: '{}' on_event reply: {e}", self.name);
+                    Vec::new()
+                }
+            },
+            Err(e) => {
+                eprintln!("kui-lua: '{}' on_event error: {e}", self.name);
+                Vec::new()
+            }
         }
     }
+}
+
+/// `view`'s second argument: `{ name = ..., namespace = ..., params = ...,
+/// key = ... }` — the slot in the script's own vocabulary, the namespace
+/// the host loaded the script under (what tells one instance from
+/// another), `params` absent for a slot declared without any
+/// (`Value::Null`), and the slot's key as the integer the events and
+/// `env.set_focus` use.
+fn slot_table(lua: &Lua, slot: &Slot<'_>) -> mlua::Result<Table> {
+    let t = lua.create_table()?;
+    t.set("name", slot.name)?;
+    t.set("namespace", slot.namespace)?;
+    t.set("key", slot.key.0 as i64)?;
+    if !matches!(slot.params, Value::Null) {
+        t.set("params", value_to_lua(lua, slot.params)?)?;
+    }
+    Ok(t)
 }
 
 /// Host facts handed to `view(env)`, the reading `schema::ENV_FIELDS`
@@ -1361,7 +1420,7 @@ mod tests {
     fn frame(core: &mut Core, ext: &mut LuaExtension) -> usize {
         let mut ui = core.frame(Size::new(800.0, 600.0), 1.0);
         ui.set_origin(OriginId(1));
-        ext.view(&mut ui).unwrap();
+        ext.view(&Slot::root(), &mut ui).unwrap();
         ui.finish();
         core.output().0.quads.len()
     }
@@ -1512,7 +1571,7 @@ mod tests {
         let mut core = Core::new();
         let mut ui = core.frame(Size::new(800.0, 600.0), 1.0);
         ui.set_origin(OriginId(1));
-        let err = ext.view(&mut ui).unwrap_err();
+        let err = ext.view(&Slot::root(), &mut ui).unwrap_err();
         assert!(err.contains("sheet"), "{err}");
         assert!(err.contains("popup"), "{err}");
     }
@@ -2035,7 +2094,7 @@ mod tests {
         let mut core = Core::new();
         let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
         ui.set_origin(OriginId(1));
-        ext.view(&mut ui).unwrap();
+        ext.view(&Slot::root(), &mut ui).unwrap();
         ui.finish();
         assert_eq!(
             core.take_window_commands(),
@@ -2086,7 +2145,7 @@ mod tests {
         let frame = |core: &mut Core, ext: &mut LuaExtension| {
             let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
             ui.set_origin(OriginId(1));
-            ext.view(&mut ui).unwrap();
+            ext.view(&Slot::root(), &mut ui).unwrap();
             ui.finish();
         };
 
@@ -2349,7 +2408,7 @@ mod tests {
         ext.lua.globals().set("target", "nope").unwrap();
         cmd(&ext, "set");
         let mut ui = core.frame(Size::new(800.0, 600.0), 1.0);
-        let e = ext.view(&mut ui).unwrap_err().to_string();
+        let e = ext.view(&Slot::root(), &mut ui).unwrap_err().to_string();
         ui.finish();
         assert!(
             e.contains("no node is keyed \"nope\"") && e.contains("integer key"),
@@ -2436,7 +2495,7 @@ mod tests {
         let frame = |core: &mut Core, ext: &mut LuaExtension| {
             let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
             ui.set_origin(OriginId(1));
-            ext.view(&mut ui).unwrap();
+            ext.view(&Slot::root(), &mut ui).unwrap();
             ui.finish();
         };
 
@@ -2462,6 +2521,6 @@ mod tests {
         let mut ext = LuaExtension::from_source("bad", "function view() return 5 end").unwrap();
         let mut core = Core::new();
         let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
-        assert!(ext.view(&mut ui).is_err());
+        assert!(ext.view(&Slot::root(), &mut ui).is_err());
     }
 }

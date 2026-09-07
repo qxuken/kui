@@ -46,8 +46,10 @@ in the workspace lands in one flat `target/debug/examples/`, where two called
 Both directions across the FFI. [`counter.c`](c/counter.c) is C as the host,
 with kui as a plain library; [`panel.c`](c/panel.c) is C as an *extension*,
 a `dlopen`ed plugin owning its share of a frame inside the Rust host
-[`panel.rs`](c/panel.rs). [`build.sh`](c/build.sh) checks `kui.h` against
-the Rust struct layout, then builds both C artifacts.
+[`panel.rs`](c/panel.rs) — in a *slot* the host declares, under the namespace
+the host gave the plugin, with a title passed in and a reply coming back
+(ADR 0014). [`build.sh`](c/build.sh) checks `kui.h` against the Rust struct
+layout, then builds both C artifacts.
 
 ```bash
 ./examples/c/build.sh                    # ABI check, then counter and panel.so
@@ -65,7 +67,7 @@ the language is a detail.
 
 | Example | Run | What it shows |
 |---|---|---|
-| [`panel.rs`](lua/panel.rs) + [`panel.lua`](lua/panel.lua) | `cargo run -p kui-lua --example lua_panel` | Rust host and Lua panel sharing one frame, clicks routed by origin |
+| [`panel.rs`](lua/panel.rs) + [`panel.lua`](lua/panel.lua) | `cargo run -p kui-lua --example lua_panel` | Rust host and Lua panel sharing one frame: the panel fills the slot the host declares as `todos/panel`, reads its title from the params, replies on a toggle; clicks routed by origin |
 | [`bench.rs`](lua/bench.rs) | `cargo run -p kui-lua --example bench --release` | Frontend-lowering shootout: the same ~900-node view from Rust and from Lua |
 
 ## Node — [`node/`](node)

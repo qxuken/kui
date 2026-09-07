@@ -131,35 +131,58 @@ Buffer arguments by ~30%), so the binary stream stays the default.
 A Lua extension in full:
 
 ```lua
-function view(env)
+slots = { "panel" }                       -- what it fills, in its own words
+
+function view(env, slot)                  -- slot = { name, namespace, params, key }
   if note_key then note = env.edit_text(note_key) end   -- read editors back by key
   return column { gap = 8, pad = 16, bg = 0x14161eff,
-    text({ "count: ", { tostring(count), bold = true } }, { size = 20 }),
+    text({ slot.params.title, { " · " .. tostring(count), bold = true } }, { size = 20 }),
     row { tooltip = "adds one", button { label = "bump", on_click = { kind = "bump" } } },
     edit { key = "note", initial = "", width = "grow" },
   }
 end
 
 function on_event(ev)                     -- ev = payload + node_key
-  if ev.kind == "bump" then count = count + 1 end
+  if ev.kind == "bump" then count = count + 1; return { kind = "bumped", count = count } end
   if ev.kind == "changed" then note_key = ev.node_key end
-end
+end                                       -- what it returns is a reply to the host
 ```
 
-The same two functions from C, because the extension contract is the contract
+Where it draws is a **slot** the host declares in its own view
+([ADR 0014](docs/adr/0014-slots-an-extension-fills-in-place.md)): a position
+among the host's children, filled then and there, with parameters in and
+replies out. The host loads the script under a namespace it chooses — the
+way an importer picks an alias — and names the slot by `namespace/slot`:
+
+```rust
+kui::app("counter").extension_as("fs", LuaExtension::from_file("panel.lua")?).run(app)
+// …and in the host's view, wherever the panel should sit:
+ui.slot_with("fs/panel", &Value::map([("title", "notes".into())]));
+```
+
+The same plugin loaded twice under two namespaces is two panels with two
+sets of parameters; an extension that names no slots draws after the host's
+view, where every extension drew before slots existed.
+
+The same functions from C, because the extension contract is the contract
 and the language is a detail — `kui_ffi::CExtension` `dlopen`s a shared
 library and hands it the same share of the frame
 ([examples/c/panel.c](examples/c/panel.c),
 [examples/c/panel.rs](examples/c/panel.rs)):
 
 ```c
+static const KuiStr SLOTS[] = {{(const uint8_t *)"panel", 5}};
+const KuiStr *kui_ext_slots(size_t *n) { *n = 1; return SLOTS; }
 void kui_ext_view(void *user, KuiCtx *ui) {
+    const KuiValue *params = kui_slot_params(ui);   /* what the host passed  */
     KuiSpec panel = {.dir = KUI_COLUMN, .gap = 8, .bg = 0x14161eff};
     kui_open(ui, &panel, NULL);              /* ordinary builder calls, into  */
     kui_button(ui, KUI_STR("bump"), msg());  /* the host's own frame          */
     kui_close(ui);
 }
-void kui_ext_on_event(void *user, const KuiEvent *ev) { /* yours, never the host's */ }
+void kui_ext_on_event(void *user, const KuiEvent *ev) {
+    /* yours, never the host's - and kui_reply(ev, value) is how you answer it */
+}
 ```
 
 The plugin links against nothing: every `kui_*` call is left undefined and
@@ -206,9 +229,11 @@ that are hard to reverse and would look arbitrary without their context.
   previous frame's layout and produces `UiEvent`s tagged with the origin that
   declared them; the runner routes host events to `App::on_event` and
   extension events back into the script — or the shared library — that owns
-  them. An extension is one trait (`name`/`view`/`on_event`) over a borrowed
-  frame, so Lua and C are two implementations of it rather than two
-  mechanisms.
+  them. An extension is one trait (`name`/`slots`/`view`/`on_event`) over a
+  borrowed frame, so Lua and C are two implementations of it rather than
+  two mechanisms; where it draws is a slot the host declares, under a
+  namespace the host decides, with parameters in and replies out
+  ([ADR 0014](docs/adr/0014-slots-an-extension-fills-in-place.md)).
   Full keyboard input is data too: a node declaring `on_key` becomes a
   key sink, and while it holds key focus (`ui.take_key_focus`, or a
   click) every press arrives as `{kind="key", phase="down", code, mods,

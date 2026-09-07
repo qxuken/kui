@@ -1,0 +1,463 @@
+//! Slots (`docs/adr/0014-slots-an-extension-fills-in-place.md`): a host
+//! declares a position in its own view, an extension fills it there and
+//! then under a key namespace the slot fixes, parameters arrive every frame
+//! as data, and the fill is bounded. Slot names are namespaced, and the
+//! host decides the namespace when it loads the extension. The runner's
+//! loop over extensions is `Extensions`' `Fill`, so these drive that with a
+//! stand-in extension rather than a filler of their own.
+
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use kui_core::diag::{DUPLICATE_SLOT, EXTENSION_VIEW_ERROR, UNBALANCED_EXTENSION, UNKNOWN_SLOT};
+use kui_core::{
+    Core, Extension, Extensions, Key, NodeSpec, OriginId, Size, Sizing, Slot, Ui, UiEvent, Value,
+    Warning, split_name,
+};
+
+/// A stand-in extension: opens one keyed, focusable cell (so it is in the
+/// access tree, with its key and parent), records which slot it was asked
+/// to fill and with what, and misbehaves on request.
+#[derive(Default)]
+struct Ext {
+    name: &'static str,
+    slots: Vec<String>,
+    /// Shared with the test, since a boxed extension cannot be read back
+    /// once it is in the runner's list: (namespace, name, params).
+    seen: Rc<RefCell<Vec<(String, String, Value)>>>,
+    leave_open: bool,
+    fail: bool,
+}
+
+fn cell() -> NodeSpec {
+    NodeSpec::column()
+        .width(Sizing::Fixed(40.0))
+        .height(Sizing::Fixed(20.0))
+        .focusable()
+}
+
+impl Extension for Ext {
+    fn name(&self) -> &str {
+        self.name
+    }
+    fn slots(&self) -> &[String] {
+        &self.slots
+    }
+    fn view(&mut self, slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+        self.seen.borrow_mut().push((
+            slot.namespace.to_owned(),
+            slot.name.to_owned(),
+            slot.params.clone(),
+        ));
+        if self.fail {
+            return Err("no view today".into());
+        }
+        if self.leave_open {
+            ui.open(cell());
+            ui.open_keyed("box", cell());
+        } else {
+            ui.with_keyed("box", cell(), |_| {});
+        }
+        Ok(())
+    }
+    fn on_event(&mut self, _ev: &UiEvent) -> Vec<Value> {
+        Vec::new()
+    }
+}
+
+fn ext(name: &'static str, slots: &[&str]) -> Box<dyn Extension> {
+    Box::new(Ext {
+        name,
+        slots: slots.iter().map(|s| (*s).to_owned()).collect(),
+        ..Default::default()
+    })
+}
+
+/// Under their own names as namespaces.
+fn load(exts: Vec<Box<dyn Extension>>) -> Extensions {
+    Extensions::try_from(exts).unwrap()
+}
+
+fn codes(ws: &[Warning]) -> Vec<&'static str> {
+    ws.iter().map(|w| w.code).collect()
+}
+
+/// The access node the extension's cell became: its key and its parent.
+fn cell_of(core: &mut Core, origin: OriginId) -> (Key, Option<Key>) {
+    let tree = core.access_tree();
+    let n = tree
+        .nodes
+        .iter()
+        .find(|n| n.origin == origin)
+        .unwrap_or_else(|| panic!("no node of origin {origin:?} in the access tree"));
+    (n.key, n.parent)
+}
+
+/// A root row of `before` fixed cells, then the slot (or nothing), then one
+/// more cell. Returns the key of the host cell after the slot.
+fn host_frame(
+    core: &mut Core,
+    exts: &mut Extensions,
+    before: usize,
+    slot: Option<(&str, &Value)>,
+) -> Key {
+    let mut ui = core.frame_with(Size::new(600.0, 100.0), 1.0, exts);
+    ui.configure_root(NodeSpec::row().fill());
+    for _ in 0..before {
+        ui.with(cell(), |_| {});
+    }
+    if let Some((name, params)) = slot {
+        ui.slot_with(name, params);
+    }
+    let after = ui.with_keyed("after", cell(), |_| {});
+    ui.finish();
+    after
+}
+
+/// The third context item of the ADR: an extension's keys used to be
+/// `root.index(n)` for whatever `n` the host happened to leave, so a host
+/// adding a child at the root rekeyed the whole panel. Under a slot they
+/// are `slot.…`, whatever the host builds around them.
+#[test]
+fn an_extensions_keys_do_not_move_when_the_host_adds_a_sibling() {
+    let mut core = Core::new();
+    let mut exts = load(vec![ext("panel", &["side"])]);
+    host_frame(&mut core, &mut exts, 1, Some(("panel/side", &Value::Null)));
+    let (one, _) = cell_of(&mut core, OriginId(1));
+    host_frame(&mut core, &mut exts, 3, Some(("panel/side", &Value::Null)));
+    let (three, _) = cell_of(&mut core, OriginId(1));
+    assert_eq!(
+        one, three,
+        "the fill's keys moved with the host's child count"
+    );
+    assert_eq!(one, Key::ROOT.str("panel/side").str("box"));
+    assert!(core.take_warnings().is_empty());
+}
+
+/// The same for the reserved `"root"` slot — the fill every extension got
+/// before slots existed, now keyed under `root.str("ns/root")`.
+#[test]
+fn the_root_fill_is_keyed_by_the_namespace_and_not_by_the_hosts_child_count() {
+    let mut core = Core::new();
+    let mut exts = load(vec![ext("legacy", &[])]);
+    host_frame(&mut core, &mut exts, 1, None);
+    let (one, _) = cell_of(&mut core, OriginId(1));
+    host_frame(&mut core, &mut exts, 4, None);
+    let (four, _) = cell_of(&mut core, OriginId(1));
+    assert_eq!(one, four);
+    assert_eq!(one, Key::ROOT.str("legacy/root").str("box"));
+    assert!(core.take_warnings().is_empty());
+}
+
+/// The host decides the namespace: the same extension loaded twice under
+/// two names is two slots, two key namespaces and two sets of params, and
+/// each instance is told which it is.
+#[test]
+fn one_plugin_loaded_twice_is_two_namespaces() {
+    let mut core = Core::new();
+    let seen = Rc::new(RefCell::new(Vec::new()));
+    let mut exts = Extensions::new();
+    for ns in ["left", "right"] {
+        exts.push_as(
+            ns,
+            Box::new(Ext {
+                name: "fs",
+                slots: vec!["panel".into()],
+                seen: Rc::clone(&seen),
+                ..Default::default()
+            }),
+        )
+        .unwrap();
+    }
+    let l = Value::map([("path", "/".into())]);
+    let r = Value::map([("path", "/tmp".into())]);
+    let mut ui = core.frame_with(Size::new(600.0, 100.0), 1.0, &mut exts);
+    ui.configure_root(NodeSpec::row().fill());
+    ui.slot_with("right/panel", &r);
+    ui.slot_with("left/panel", &l);
+    ui.finish();
+    let (a, _) = cell_of(&mut core, OriginId(1));
+    let (b, _) = cell_of(&mut core, OriginId(2));
+    assert_eq!(a, Key::ROOT.str("left/panel").str("box"));
+    assert_eq!(b, Key::ROOT.str("right/panel").str("box"));
+    assert_eq!(
+        *seen.borrow(),
+        vec![
+            ("right".to_owned(), "panel".to_owned(), r),
+            ("left".to_owned(), "panel".to_owned(), l),
+        ],
+        "filled in the order the host declared them, each told its namespace"
+    );
+    let tree = core.access_tree();
+    let x = |origin: OriginId| {
+        tree.nodes
+            .iter()
+            .find(|n| n.origin == origin)
+            .map(|n| n.rect.x)
+            .unwrap()
+    };
+    assert_eq!(
+        (x(OriginId(2)), x(OriginId(1))),
+        (0.0, 40.0),
+        "right was declared first"
+    );
+    assert!(core.take_warnings().is_empty());
+}
+
+/// Loading refuses what would make a slot name ambiguous: a taken
+/// namespace, an empty one, and a slot name with the separator in it.
+#[test]
+fn loading_refuses_ambiguous_namespaces_and_slot_names() {
+    let mut exts = Extensions::new();
+    exts.push(ext("fs", &["panel"])).unwrap();
+    let err = exts.push(ext("fs", &["panel"])).unwrap_err();
+    assert!(err.contains("`fs` is already"), "{err}");
+    let err = exts.push_as("", ext("other", &[])).unwrap_err();
+    assert!(err.contains("cannot be empty"), "{err}");
+    let err = exts.push_as("git", ext("git", &["side/bar"])).unwrap_err();
+    assert!(err.contains("\"side/bar\""), "{err}");
+    exts.push_as("also-fs", ext("fs", &["panel"])).unwrap();
+    assert_eq!(exts.len(), 2);
+    assert_eq!(exts.namespace_of(OriginId(2)), Some("also-fs"));
+    assert_eq!(split_name("left/fs/panel"), ("left/fs", "panel"));
+    assert_eq!(split_name("root"), ("", "root"));
+}
+
+/// The fill lands where the host declared it: after the host's children
+/// before the slot, before the ones after it, as children of the node the
+/// host was inside — and the slot's full name is what `key_of` answers.
+#[test]
+fn a_fill_is_placed_at_the_slot_and_the_slot_is_named() {
+    let mut core = Core::new();
+    let mut exts = load(vec![ext("panel", &["side"])]);
+    let after = host_frame(&mut core, &mut exts, 2, Some(("panel/side", &Value::Null)));
+    let (key, parent) = cell_of(&mut core, OriginId(1));
+    assert_eq!(
+        parent,
+        Some(Key::ROOT),
+        "a fill is a child of the enclosing node"
+    );
+    assert_eq!(core.key_of("panel/side"), Some(Key::ROOT.str("panel/side")));
+    let tree = core.access_tree();
+    let x_of = |k: Key| tree.nodes.iter().find(|n| n.key == k).unwrap().rect.x;
+    assert_eq!(x_of(key), 80.0, "two host cells of 40 come first");
+    assert_eq!(x_of(after), 120.0, "the host's next child follows the fill");
+    // The host's own keys are what they would be without the fill: the
+    // fill borrowed the counter and gave it back.
+    assert_eq!(after, Key::ROOT.str("after"));
+}
+
+/// Parameters are a `Value` declared every frame: what the host passes
+/// this frame is what the extension reads this frame, `Null` for `slot`,
+/// and none of it is identity.
+#[test]
+fn params_arrive_each_frame_as_declared() {
+    let mut core = Core::new();
+    let seen = Rc::new(RefCell::new(Vec::new()));
+    let mut exts = Extensions::new();
+    exts.push(Box::new(Ext {
+        name: "panel",
+        slots: vec!["side".into()],
+        seen: Rc::clone(&seen),
+        ..Default::default()
+    }))
+    .unwrap();
+    let path = Value::map([("path", "/Users".into())]);
+    host_frame(&mut core, &mut exts, 0, Some(("panel/side", &path)));
+    host_frame(&mut core, &mut exts, 0, Some(("panel/side", &Value::Null)));
+    let tmp = Value::map([("path", "/tmp".into())]);
+    host_frame(&mut core, &mut exts, 0, Some(("panel/side", &tmp)));
+    let side = |v: Value| ("panel".to_owned(), "side".to_owned(), v);
+    assert_eq!(
+        *seen.borrow(),
+        vec![side(path), side(Value::Null), side(tmp)]
+    );
+    let (key, _) = cell_of(&mut core, OriginId(1));
+    assert_eq!(key, Key::ROOT.str("panel/side").str("box"));
+    assert!(core.take_warnings().is_empty());
+}
+
+/// The `"root"` fill is seen as the slot named `"root"` under the
+/// extension's namespace, with no params; a direct `view` call — how a
+/// test drives an extension without a runner — gets `Slot::root()`.
+#[test]
+fn the_root_fill_is_the_slot_named_root() {
+    let mut core = Core::new();
+    let seen = Rc::new(RefCell::new(Vec::new()));
+    let mut exts = Extensions::new();
+    exts.push(Box::new(Ext {
+        name: "legacy",
+        seen: Rc::clone(&seen),
+        ..Default::default()
+    }))
+    .unwrap();
+    host_frame(&mut core, &mut exts, 0, None);
+    assert_eq!(
+        *seen.borrow(),
+        vec![("legacy".to_owned(), "root".to_owned(), Value::Null)]
+    );
+    let root = Slot::root();
+    assert_eq!(
+        (root.name, root.namespace, root.key),
+        ("root", "", Key::ROOT.str("root"))
+    );
+    assert_eq!(root.full_name(), "root");
+    assert_eq!(*root.params, Value::Null);
+}
+
+/// A host that declares `"ns/root"` moves the legacy fill to that
+/// position, and `finish` does not fill it a second time.
+#[test]
+fn declaring_root_moves_the_legacy_fill() {
+    let mut core = Core::new();
+    let mut exts = load(vec![ext("legacy", &[])]);
+    let after = host_frame(&mut core, &mut exts, 1, Some(("legacy/root", &Value::Null)));
+    let tree = core.access_tree();
+    let ext_nodes: Vec<_> = tree
+        .nodes
+        .iter()
+        .filter(|n| n.origin == OriginId(1))
+        .collect();
+    assert_eq!(ext_nodes.len(), 1, "filled once, where declared");
+    assert_eq!(ext_nodes[0].rect.x, 40.0, "after the host's first cell");
+    let after_x = tree.nodes.iter().find(|n| n.key == after).unwrap().rect.x;
+    assert_eq!(after_x, 80.0, "and before its second");
+    assert!(core.take_warnings().is_empty());
+}
+
+/// Decision 5: an extension that returns with nodes open is closed at the
+/// depth the fill began, with a warning once, and the host's next child
+/// is the host's — not the extension's grandchild.
+#[test]
+fn an_unbalanced_extension_is_closed_for_it_and_warned_once() {
+    let mut core = Core::new();
+    let mut exts = load(vec![Box::new(Ext {
+        name: "sloppy",
+        slots: vec!["side".into()],
+        leave_open: true,
+        ..Default::default()
+    })]);
+    let after = host_frame(&mut core, &mut exts, 0, Some(("sloppy/side", &Value::Null)));
+    let tree = core.access_tree();
+    let after_node = tree.nodes.iter().find(|n| n.key == after).unwrap();
+    assert_eq!(
+        after_node.parent,
+        Some(Key::ROOT),
+        "the host's child is the root's"
+    );
+    assert_eq!(after_node.origin, OriginId::HOST);
+    let ws = core.take_warnings();
+    assert_eq!(codes(&ws), [UNBALANCED_EXTENSION]);
+    assert!(
+        ws[0].message.contains("2 nodes still open"),
+        "{}",
+        ws[0].message
+    );
+    assert!(
+        ws[0].message.contains("\"sloppy/side\""),
+        "{}",
+        ws[0].message
+    );
+    // Once: the same misbehaviour next frame is the same (code, key).
+    host_frame(&mut core, &mut exts, 0, Some(("sloppy/side", &Value::Null)));
+    assert!(core.take_warnings().is_empty());
+}
+
+/// A slot nobody declared and a name declared twice each warn once, and
+/// neither draws twice: the unknown fill is skipped, the duplicate ignored.
+/// A declared slot no extension fills is silent — the host may offer more
+/// than a plugin takes.
+#[test]
+fn unknown_and_duplicate_slots_warn_once_and_draw_nothing_extra() {
+    let mut core = Core::new();
+    let mut exts = load(vec![ext("lost", &["nowhere"]), ext("panel", &["side"])]);
+    for _ in 0..2 {
+        let mut ui = core.frame_with(Size::new(600.0, 100.0), 1.0, &mut exts);
+        ui.configure_root(NodeSpec::row().fill());
+        ui.slot("panel/side");
+        ui.slot("panel/side");
+        ui.slot("panel/status");
+        ui.slot("nobody/home");
+        ui.finish();
+    }
+    let ws = core.take_warnings();
+    let mut got = codes(&ws);
+    got.sort_unstable();
+    assert_eq!(got, [DUPLICATE_SLOT, UNKNOWN_SLOT]);
+    let unknown = ws.iter().find(|w| w.code == UNKNOWN_SLOT).unwrap();
+    assert!(
+        unknown.message.contains("`lost` (namespace `lost`)"),
+        "{}",
+        unknown.message
+    );
+    assert!(
+        unknown.message.contains("\"lost/nowhere\""),
+        "{}",
+        unknown.message
+    );
+    let tree = core.access_tree();
+    assert!(
+        tree.nodes.iter().all(|n| n.origin != OriginId(1)),
+        "`lost` drew nothing"
+    );
+    assert_eq!(
+        tree.nodes
+            .iter()
+            .filter(|n| n.origin == OriginId(2))
+            .count(),
+        1,
+        "`panel` filled the first declaration only"
+    );
+}
+
+/// A view that errors leaves its message in the tree where the fill would
+/// have been and is reported once, not once per frame.
+#[test]
+fn a_view_error_is_drawn_in_place_and_warned_once() {
+    let mut core = Core::new();
+    let mut exts = load(vec![Box::new(Ext {
+        name: "broken",
+        slots: vec!["side".into()],
+        fail: true,
+        ..Default::default()
+    })]);
+    for _ in 0..2 {
+        host_frame(&mut core, &mut exts, 0, Some(("broken/side", &Value::Null)));
+    }
+    let ws = core.take_warnings();
+    assert_eq!(codes(&ws), [EXTENSION_VIEW_ERROR]);
+    assert!(ws[0].message.contains("no view today"), "{}", ws[0].message);
+    let tree = core.access_tree();
+    let text = tree
+        .nodes
+        .iter()
+        .find(|n| n.origin == OriginId(1))
+        .and_then(|n| n.name.clone());
+    assert_eq!(text.as_deref(), Some("[broken] no view today"));
+}
+
+/// An extension's own `slot` declares nothing: whether one may offer slots
+/// is a decision for the day one asks, and until then the name is not
+/// taken from the host.
+#[test]
+fn an_extension_cannot_declare_slots() {
+    struct Nested;
+    impl Extension for Nested {
+        fn name(&self) -> &str {
+            "nested"
+        }
+        fn view(&mut self, _slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+            ui.slot("nested/inner");
+            assert!(!ui.slot_declared("nested/inner"));
+            Ok(())
+        }
+        fn on_event(&mut self, _ev: &UiEvent) -> Vec<Value> {
+            Vec::new()
+        }
+    }
+    let mut core = Core::new();
+    let mut exts = load(vec![Box::new(Nested)]);
+    host_frame(&mut core, &mut exts, 0, None);
+    assert_eq!(core.key_of("nested/inner"), None);
+    assert!(core.take_warnings().is_empty());
+}

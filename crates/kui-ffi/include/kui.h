@@ -1197,6 +1197,19 @@ void kui_root(KuiCtx *ctx, const KuiSpec *spec);
 /* on_click may be NULL; consumed when given. Returns the node key. */
 uint64_t kui_open(KuiCtx *ctx, const KuiSpec *spec, KuiValue *on_click);
 uint64_t kui_open_keyed(KuiCtx *ctx, KuiStr label, const KuiSpec *spec, KuiValue *on_click);
+/* A slot: a position among the current node's children that an extension
+ * fills, in place (docs/adr/0014-slots-an-extension-fills-in-place.md).
+ * `name` is the full name, `namespace/slot`: the namespace the host gave
+ * the extension when it loaded it, and the slot in the extension's own
+ * vocabulary ("fs/panel"). `params` may be NULL and is borrowed for the
+ * call - you keep it; it is what the extension reads back with
+ * kui_slot_params, declared every frame and retained by nothing. "ns/root"
+ * is the fill after the view for an extension listing no slots, and
+ * declaring it moves that fill here. Returns false when the name was
+ * already declared this frame (a `duplicate-slot` warning). Under kui_run
+ * nothing fills a slot yet - the C runner takes no extensions - so today it
+ * records the position: kui_key_of answers the slot's key. */
+bool kui_slot(KuiCtx *ctx, KuiStr name, const KuiValue *params);
 /* Draggable container: press-drag emits {kind="drag", phase="start"|"move"|
  * "end", x, y, dx, dy, parent, tag} events. dx/dy are the displacement from
  * the press point in every phase - start is zero, a move is how far the
@@ -1492,14 +1505,25 @@ bool kui_run(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user);
  *                    = the library's file stem.
  *   kui_ext_init     Your state, handed back to every call below. Absent =
  *                    NULL, which is fine for a stateless panel.
- *   kui_ext_view     REQUIRED. Called once per frame with a context
- *                    borrowing the host's frame. Call the kui_open /
- *                    kui_text / kui_close builders on it; the nodes are
- *                    tagged with the origin the host assigned you. It is
- *                    alive for that one call only - store nothing - and the
- *                    input, frame and draw entry points do not apply to it,
- *                    since the host drives those.
+ *   kui_ext_view     REQUIRED. Called once per frame per slot you fill,
+ *                    with a context borrowing the host's frame. Call the
+ *                    kui_open / kui_text / kui_close builders on it; the
+ *                    nodes are tagged with the origin the host assigned you
+ *                    and keyed under the slot. It is alive for that one
+ *                    call only - store nothing - and the input, frame and
+ *                    draw entry points do not apply to it, since the host
+ *                    drives those. kui_slot_name says which slot this is
+ *                    and kui_slot_params what the host passed with it.
+ *   kui_ext_slots    The slots you fill: a pointer to an array of KuiStr
+ *                    you keep alive for as long as you are loaded, and its
+ *                    count through the out-pointer. Read once, at load.
+ *                    Absent, or an empty array = you fill "root", once
+ *                    after the host's view, where every extension drew
+ *                    before slots existed
+ *                    (docs/adr/0014-slots-an-extension-fills-in-place.md).
  *   kui_ext_on_event One event of yours, payload borrowed for the call.
+ *                    Answer the host from inside it with kui_reply, as
+ *                    often as the event deserves.
  *   kui_ext_free     Your state, at unload.
  *
  * You link against nothing: leave every kui_* symbol undefined and let it
@@ -1514,9 +1538,30 @@ typedef void (*KuiExtEventFn)(void *user, const KuiEvent *ev);
 uint32_t kui_ext_abi(void);
 const char *kui_ext_name(void);
 void *kui_ext_init(void);
+const KuiStr *kui_ext_slots(size_t *count);
 void kui_ext_view(void *user, KuiCtx *ctx);
 void kui_ext_on_event(void *user, const KuiEvent *ev);
 void kui_ext_free(void *user);
+
+/* The library's side of the same contract - what an extension calls.
+ * Which slot kui_ext_view is filling, in your own vocabulary (false, out
+ * untouched, on a context that is not an extension's); the namespace the
+ * host loaded you under, which is what makes the slot's full name
+ * (`namespace/name`) and tells one instance of you from another when a
+ * host loads you twice; and the params the host declared the slot with
+ * (NULL when it passed none). All borrowed for the duration of the call,
+ * like an event's payload. */
+bool kui_slot_name(KuiCtx *ctx, KuiStr *out);
+bool kui_slot_namespace(KuiCtx *ctx, KuiStr *out);
+const KuiValue *kui_slot_params(KuiCtx *ctx);
+/* A reply to the host, from inside kui_ext_on_event: `ev` is the event you
+ * were handed, `reply` is copied (you keep ownership; free it as usual)
+ * and reaches the host's on_event with your origin and the event's window
+ * and key. The host authored what it expects - put its template in the
+ * slot's params and fill in the fields. Outside the callback, or with an
+ * event that is not the one in progress, it does nothing and returns
+ * false. */
+bool kui_reply(const KuiEvent *ev, const KuiValue *reply);
 
 #ifdef __cplusplus
 }

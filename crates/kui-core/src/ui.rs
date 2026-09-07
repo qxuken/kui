@@ -8,18 +8,31 @@ use crate::geom::{Size, Vec2};
 use crate::key::Key;
 use crate::line::Stroke;
 use crate::runtime::Core;
+use crate::slot::{Fill, Slot};
 use crate::spec::{NodeSpec, TextStyle};
 use crate::text::Span;
 use crate::tree::OriginId;
+use crate::value::Value;
 use crate::window::{WindowCommand, WindowConfig, WindowId};
 
 pub struct Ui<'a> {
     core: &'a mut Core,
+    /// What fills the slots this frame declares (`Core::frame_with`);
+    /// `None` for a frame begun without one, and inside a fill — an
+    /// extension's `slot` declares and fills nothing.
+    filler: Option<&'a mut dyn Fill>,
 }
 
 impl<'a> Ui<'a> {
     pub(crate) fn new(core: &'a mut Core) -> Self {
-        Self { core }
+        Self { core, filler: None }
+    }
+
+    pub(crate) fn with_filler(core: &'a mut Core, filler: &'a mut dyn Fill) -> Self {
+        Self {
+            core,
+            filler: Some(filler),
+        }
     }
 
     /// Escape hatch to the underlying core (e.g. for FFI view callbacks).
@@ -30,7 +43,46 @@ impl<'a> Ui<'a> {
     /// The inverse escape hatch: wraps a borrowed core mid-frame so foreign
     /// frontends that drive `Core` directly (FFI, Node) can call `widgets::*`.
     pub fn wrap(core: &'a mut Core) -> Self {
-        Self { core }
+        Self { core, filler: None }
+    }
+
+    /// Declares a slot here, with no parameters: whatever fills it draws
+    /// now, as children of the node this view is inside, at this
+    /// position among its siblings. `name` is the full name,
+    /// `namespace/slot` — the namespace the host gave the extension when
+    /// it loaded it, and the slot in the extension's own vocabulary
+    /// (`"fs/panel"`). `"ns/root"` is the fill that follows the host's
+    /// view for an extension listing no slots, and declaring it moves
+    /// that fill here. See
+    /// `docs/adr/0014-slots-an-extension-fills-in-place.md`.
+    pub fn slot(&mut self, name: &str) {
+        self.slot_with(name, &crate::slot::NULL_PARAMS);
+    }
+
+    /// `slot` with parameters the extension reads this frame
+    /// (`Slot::params`); a `Value` because it is the type that already
+    /// crosses to an extension. Nothing is retained — pass what is true
+    /// this frame, every frame.
+    pub fn slot_with(&mut self, name: &str, params: &Value) {
+        let Some(key) = self.core.begin_slot(name) else {
+            return;
+        };
+        if let Some(filler) = self.filler.as_deref_mut() {
+            filler.fill(name, key, params, &mut Ui::new(self.core));
+        }
+    }
+
+    /// Whether the full name `name` was declared this frame so far.
+    pub fn slot_declared(&self, name: &str) -> bool {
+        self.core.slot_declared(name)
+    }
+
+    /// Runs `f` as the fill of `slot` under `origin`: nodes it opens are
+    /// tagged with the origin, keyed under the slot's key, and closed
+    /// for it if it leaves any open. What a `Fill` implementation calls
+    /// per extension; see `Core::fill`.
+    pub fn fill(&mut self, origin: OriginId, slot: &Slot<'_>, f: impl FnOnce(&mut Ui<'_>)) {
+        self.core.fill(slot, origin, f);
     }
 
     pub fn viewport(&self) -> Size {
@@ -402,8 +454,14 @@ impl<'a> Ui<'a> {
         self.core.focus_window(window);
     }
 
-    /// Runs layout and emission; results land in `Core::output()`.
+    /// Runs layout and emission; results land in `Core::output()`. A frame
+    /// begun with a filler lets it finish first: the `"root"` fill, unless
+    /// the view declared it, and the `unknown-slot` check.
     pub fn finish(self) {
-        self.core.finish_frame();
+        let Ui { core, filler } = self;
+        if let Some(filler) = filler {
+            filler.finish(&mut Ui::new(core));
+        }
+        core.finish_frame();
     }
 }

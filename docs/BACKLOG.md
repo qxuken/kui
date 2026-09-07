@@ -124,7 +124,7 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** Nothing with a written ADR and no code. ADR 0012's
+**Build next.** Nothing with a written ADR and no code. Slots, [`docs/adr/0014-slots-an-extension-fills-in-place.md`](adr/0014-slots-an-extension-fills-in-place.md), were proposed, accepted and **built on 2026-09-07** for alpha.9 — an extension fills a place the host declares in its own view, under a namespace the host decides, with `Value` parameters in and replies out; its status block records what the building changed, and the first test it pins was a defect before it: an extension whose root carried no `key` was rekeyed whenever the host added a child at the root. Before it, ADR 0012's
 decisions 2, 3 and 6 — the last such item — **landed on 2026-09-07**, the
 day after decision 5 did: a frame's departures are admitted or refused
 together, a new removal outranks ghosts already in flight, the
@@ -133,7 +133,7 @@ scene pins the change in four bindings with the phase the ADR asked for
 (and the correction it needed: `bulk` had to leave in a frame of its own).
 The next thing to build is whatever the next field report asks for.
 
-**Design, wanting an ADR.** Nothing. Effects an app defines (F23) is
+**Design, wanting an ADR.** Nothing new since ADR 0014 (above) was built on 2026-09-07; what it leaves open — a slot element for Node, extensions in `kui_run`, an extension offering slots of its own — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
 [`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md),
 proposed and then accepted and built on 2026-09-07 — reviewed for alpha.8
 rather than left for a view, and its status block says what outweighed

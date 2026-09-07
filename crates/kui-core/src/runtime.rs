@@ -50,6 +50,7 @@ mod builder;
 mod composites;
 mod dispatch;
 mod emit;
+mod fills;
 mod focus;
 mod resources_api;
 mod scrolling;
@@ -115,6 +116,20 @@ pub struct Core {
     /// keys nothing costs two clears.
     key_labels: LabelIndex,
     key_labels_last: LabelIndex,
+    /// The slots this frame declared (`begin_slot`), by name: what the
+    /// `"root"` fill and the `unknown-slot` check read, and what makes a
+    /// second declaration of one name a `duplicate-slot`. Cleared each
+    /// frame; never compared to the last one, since a slot is a position
+    /// and not a declaration the core diffs.
+    slot_labels: LabelIndex,
+    /// The key namespace of the fill in progress (ADR 0014 decision 4):
+    /// while the node stack is exactly `ns_depth` deep, a child's key is
+    /// derived from `ns_key` instead of from the node it is opened under,
+    /// so an extension's nodes are keyed by the slot and the extension
+    /// rather than by whatever the host built around them. `usize::MAX`
+    /// when no fill is in progress — one compare on the auto-key path.
+    ns_depth: usize,
+    ns_key: Key,
     /// Between `begin_frame` and `finish_frame`: `key_labels` is partial
     /// and `key_labels_last` is the last whole frame, and `key_of` reads
     /// both; outside a build `key_labels` is the whole last frame and is
@@ -299,6 +314,9 @@ impl Core {
             declared_focus_last: Vec::new(),
             key_labels: LabelIndex::default(),
             key_labels_last: LabelIndex::default(),
+            slot_labels: LabelIndex::default(),
+            ns_depth: usize::MAX,
+            ns_key: Key::ROOT,
             building: false,
             declared_windows: Vec::new(),
             declared_windows_last: Vec::new(),
@@ -512,6 +530,21 @@ impl Core {
         Ui::new(self)
     }
 
+    /// `frame` with something to fill the slots the view declares — the
+    /// runner's extension list (`[Box<dyn Extension>]` is a `Fill`), or a
+    /// test's stand-in. `Ui::slot` calls it in place, and `Ui::finish`
+    /// lets it fill `"root"` and report unknown slots before layout. See
+    /// `docs/adr/0014-slots-an-extension-fills-in-place.md`.
+    pub fn frame_with<'a>(
+        &'a mut self,
+        viewport: Size,
+        scale: f32,
+        filler: &'a mut dyn crate::slot::Fill,
+    ) -> Ui<'a> {
+        self.begin_frame(viewport, scale);
+        Ui::with_filler(self, filler)
+    }
+
     /// The session this core draws from. Hand it to `Core::new_in` to open
     /// another window sharing its fonts, images, sounds and glyph atlas.
     pub fn session(&self) -> &Session {
@@ -582,6 +615,9 @@ impl Core {
         // And the labels `key_of` resolves through, the same way.
         std::mem::swap(&mut self.key_labels, &mut self.key_labels_last);
         self.key_labels.clear();
+        // Slots are positions, not declarations to diff: one clear.
+        self.slot_labels.clear();
+        self.ns_depth = usize::MAX;
         self.building = true;
         // And the window declarations, which `finish_frame` diffs the same
         // way (see `declare_window`).
@@ -646,8 +682,23 @@ impl Default for Core {
 /// A frontend that draws into the shared tree each frame — the trait the
 /// runner uses to host Lua (or any other) extensions without knowing what
 /// they are. Origins are assigned by the runner.
+///
+/// Where it draws is a slot the host declared
+/// (`docs/adr/0014-slots-an-extension-fills-in-place.md`): `slots` names
+/// the ones it fills, `view` is called once per frame for each of them
+/// with which one it is, and an extension naming none is called once
+/// after the host's view for the reserved `"root"` slot — the sequence
+/// every extension got before slots existed. `on_event` answers with
+/// replies: values the runner hands to the host's own `on_event`, with
+/// this extension's origin on them.
 pub trait Extension {
     fn name(&self) -> &str;
-    fn view(&mut self, ui: &mut Ui<'_>) -> Result<(), String>;
-    fn on_event(&mut self, ev: &UiEvent);
+    /// The slot names this extension fills; empty means `"root"`.
+    fn slots(&self) -> &[String] {
+        &[]
+    }
+    fn view(&mut self, slot: &crate::slot::Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String>;
+    /// One of this extension's events; the values returned are replies
+    /// to the host (ADR 0014 decision 6), delivered in order.
+    fn on_event(&mut self, ev: &UiEvent) -> Vec<Value>;
 }

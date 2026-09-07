@@ -41,6 +41,13 @@ pub struct KuiCtx {
     /// The name most recently handed out by kui_ctx_window_name; valid
     /// until the next call.
     pub(crate) last_window_name: Option<Rc<str>>,
+    /// Which slot this context is a C extension's fill of, and the params
+    /// the host passed it (ADR 0014): what `kui_slot_name` / `kui_slot_params`
+    /// answer. `None` on every other context - a standalone one, a C host's
+    /// view callback - where they answer false and NULL.
+    pub(crate) slot_name: Option<String>,
+    pub(crate) slot_namespace: Option<String>,
+    pub(crate) slot_params: Option<KuiValue>,
 }
 
 impl KuiCtx {
@@ -69,6 +76,9 @@ impl KuiCtx {
             open_tooltips: Vec::new(),
             window_commands: VecDeque::new(),
             last_window_name: None,
+            slot_name: None,
+            slot_namespace: None,
+            slot_params: None,
         }
     }
 

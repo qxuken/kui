@@ -216,6 +216,85 @@ warnings! {
     /// `Core::new()`s are two sessions; windows that share resources are built
     /// with `Core::new_in` against one `Session`.
     pub const FOREIGN_RESOURCE: &str = "foreign-resource";
+
+    /// An extension names a slot no host declared this frame, so it drew
+    /// nothing. A slot is a position the host declares in its own view by
+    /// full name, `ui.slot("ns/name")` — the namespace the host gave the
+    /// extension, then the name the extension lists; one listing none fills
+    /// `"ns/root"` after the host's view. Declare the slot, or drop the name
+    /// from the extension's list. See
+    /// `docs/adr/0014-slots-an-extension-fills-in-place.md`, decision 5.
+    pub const UNKNOWN_SLOT: &str = "unknown-slot";
+    /// A slot name declared twice in one frame. The second declaration was
+    /// ignored: a fill is keyed by the slot's full name, so two fills of one
+    /// name would share every key. Two places for one extension are two
+    /// names. See ADR 0014, decision 5.
+    pub const DUPLICATE_SLOT: &str = "duplicate-slot";
+    /// An extension returned from `view` with nodes still open. The core
+    /// closed them at the depth the fill began, so the host's tree is what
+    /// the host declared; outside the guard, the rest of the host's view
+    /// would have landed inside the extension's last open node. The
+    /// extension has an `open` without its `close`. See ADR 0014,
+    /// decision 5.
+    pub const UNBALANCED_EXTENSION: &str = "unbalanced-extension";
+    /// An extension's `view` returned an error. The message is drawn in
+    /// red where the fill would have been, and reported here once per
+    /// extension and slot rather than once per frame.
+    pub const EXTENSION_VIEW_ERROR: &str = "extension-view-error";
+}
+
+/// The [`UNKNOWN_SLOT`] warning for one extension and slot. Keyed by the
+/// full name: there is no node, and one line per slot is the useful
+/// count however many frames repeat it.
+pub fn unknown_slot(extension: &str, namespace: &str, slot: &str) -> Warning {
+    let full = crate::slot::full_name(namespace, slot);
+    Warning {
+        code: UNKNOWN_SLOT,
+        key: Key::ROOT.str(UNKNOWN_SLOT).str(&full),
+        message: format!(
+            "extension `{extension}` (namespace `{namespace}`) fills slot {slot:?}, which no view \
+             declared this frame, so it drew nothing; declare `ui.slot({full:?})` where it \
+             should go, or drop the name from the extension's `slots`"
+        ),
+    }
+}
+
+/// The [`DUPLICATE_SLOT`] warning for one name. Keyed by the name: a slot
+/// is not a node, and the conflict is between two declarations of it.
+pub fn duplicate_slot(slot: &str) -> Warning {
+    Warning {
+        code: DUPLICATE_SLOT,
+        key: Key::ROOT.str(DUPLICATE_SLOT).str(slot),
+        message: format!(
+            "slot {slot:?} was declared twice in one frame; the second was ignored, since a \
+             fill is keyed by the slot's name — two places want two names"
+        ),
+    }
+}
+
+/// The [`UNBALANCED_EXTENSION`] warning for one fill. Keyed by the slot,
+/// which names the extension through its namespace, so a plugin that
+/// never closes costs one line.
+pub fn unbalanced_extension(slot: &str, slot_key: Key, open: usize) -> Warning {
+    Warning {
+        code: UNBALANCED_EXTENSION,
+        key: slot_key.str(UNBALANCED_EXTENSION),
+        message: format!(
+            "the extension filling slot {slot:?} returned from view with {open} node{} still \
+             open; they were closed for it — it has an `open` without its `close`",
+            if open == 1 { "" } else { "s" }
+        ),
+    }
+}
+
+/// The [`EXTENSION_VIEW_ERROR`] warning for one extension in one slot.
+/// Keyed by both, so an error that repeats every frame costs one line.
+pub fn extension_view_error(extension: &str, slot: &str, slot_key: Key, err: &str) -> Warning {
+    Warning {
+        code: EXTENSION_VIEW_ERROR,
+        key: slot_key.str(extension).str(EXTENSION_VIEW_ERROR),
+        message: format!("extension `{extension}` failed to build slot {slot:?}: {err}"),
+    }
 }
 
 /// The [`FOREIGN_RESOURCE`] warning for one handle. Keyed by kind and

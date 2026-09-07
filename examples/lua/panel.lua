@@ -1,12 +1,24 @@
 -- A self-contained kui extension: owns its state, describes its UI as data,
 -- and receives its own click events. Loaded by the lua_panel example.
+--
+-- It fills the slot the host names "panel" (docs/adr/0014), reads the title
+-- and the reply template the host passes with it from `slot.params`, and
+-- answers a toggle by returning the host's template from on_event.
+
+slots = { "panel" }
 
 todos = { "ship the layout solver", "wire up wgpu", "write this panel" }
 done = {}
 filter = ""
 filter_key = nil -- set by a "changed" event; read back in view(env)
+title = "lua panel"
+on_toggle = nil -- the host's reply template, kept from view for on_event
 
-function view(env)
+function view(env, slot)
+  local params = slot and slot.params or {}
+  title = params.title or "lua panel"
+  on_toggle = params.on_toggle
+
   if filter_key then
     filter = env.edit_text(filter_key) or ""
   end
@@ -40,7 +52,7 @@ function view(env)
     bg = 0x14161eff,
     radius = 10,
     border = { w = 1, color = 0x2a2d3aff },
-    text({ "lua panel", { " · " .. remaining .. " left", color = "#8a8fa3" } },
+    text({ title, { " · " .. remaining .. " left", color = "#8a8fa3" } },
          { size = 12, color = 0x8a8fa3ff }),
     edit { key = "filter", initial = "", size = 14, width = "grow",
            pad = { l = 8, r = 8, t = 6, b = 6 }, bg = 0x0e1016ff, radius = 6 },
@@ -56,6 +68,13 @@ end
 function on_event(ev)
   if ev.kind == "toggle" then
     done[ev.index] = not done[ev.index]
+    -- The host asked to hear about this: its template, with the index
+    -- filled in, is the reply. Returned rather than sent - a reply is data.
+    if on_toggle then
+      local reply = { index = ev.index, done = done[ev.index] or false }
+      for k, v in pairs(on_toggle) do reply[k] = v end
+      return reply
+    end
   elseif ev.kind == "changed" then
     filter_key = ev.node_key
   elseif ev.kind == "add" then
