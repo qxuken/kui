@@ -67,7 +67,24 @@ pub(crate) struct EditState {
     redo: VecDeque<EditOp>,
     /// What the top undo op can still absorb (typing bursts, delete runs).
     coalesce: Option<Coalesce>,
+    /// The frame this key was last declared in. Only the budget reads it
+    /// (see [`MAX_UNDECLARED_EDITS`]); a state declared every frame never
+    /// looks at it again.
+    last_declared: u64,
 }
+
+/// How many *undeclared* editors the store keeps before the longest
+/// undeclared one is dropped (backlog F25). A declared editor is never
+/// evicted, however many there are: retention across absence is what the
+/// `<edit>` row promises, so this is a ceiling, not a prune.
+///
+/// Why 256: one `EditState` is an `Editor` over a shaped `Buffer`, and a
+/// counting allocator measured a fresh one at 3.4 KB empty, 4.9 KB holding
+/// `"hello"`, and 22 KB holding a 39-character line (the shaped glyphs are
+/// most of it). 256 of the worst of those is ~5.6 MB, and ~1.2 MB at a
+/// short field — a bound an app can afford, and one no ordinary view comes
+/// near: 256 fields no longer on screen is already an app generating keys.
+pub const MAX_UNDECLARED_EDITS: usize = 256;
 
 const UNDO_CAP: usize = 1000;
 /// Max bytes one coalesced op absorbs before a new unit starts.
@@ -320,6 +337,8 @@ pub struct EditStore {
     /// Whether the caret is currently drawn; toggled by the frame driver's
     /// blink timer. Headless drivers never touch it, so the caret is solid.
     blink_visible: bool,
+    /// The frame being built, stamped onto every state `declare` touches.
+    frame_no: u64,
 }
 
 impl Default for EditStore {
@@ -331,6 +350,7 @@ impl Default for EditStore {
             caret_moved: None,
             caret_stamp: 0,
             blink_visible: true,
+            frame_no: 0,
         }
     }
 }
@@ -374,6 +394,62 @@ impl EditStore {
         self.caret_stamp += 1;
     }
 
+    /// How many states are retained — declared and undeclared together.
+    /// What a test watches the budget through (backlog F25).
+    pub fn len(&self) -> usize {
+        self.states.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.states.is_empty()
+    }
+
+    /// Stamps the frame being built and, if the map has grown past the
+    /// budget, drops the longest-undeclared states
+    /// ([`MAX_UNDECLARED_EDITS`]). A state the frame that just ended
+    /// declared is never evicted, and neither is the focused or the
+    /// drag-selected one — the store still points at those.
+    ///
+    /// The length test is what an ordinary frame pays: a store inside the
+    /// budget never walks itself, which is why this can run every frame
+    /// rather than every 240th like the anim store's cutoff sweep.
+    pub(crate) fn begin_frame(&mut self, frame_no: u64) {
+        self.frame_no = frame_no;
+        if self.states.len() > MAX_UNDECLARED_EDITS {
+            self.evict(frame_no.saturating_sub(1));
+        }
+    }
+
+    /// Drops the oldest undeclared states down to the budget. `declared_at`
+    /// is the frame that just ended: a state stamped with it is declared.
+    fn evict(&mut self, declared_at: u64) {
+        let focused = self.focused;
+        let dragging = self.dragging.map(|(k, _)| k);
+        let mut undeclared: Vec<(u64, Key)> = self
+            .states
+            .iter()
+            .filter(|(k, s)| {
+                s.last_declared < declared_at && Some(**k) != focused && Some(**k) != dragging
+            })
+            .map(|(k, s)| (s.last_declared, *k))
+            .collect();
+        let Some(excess) = undeclared.len().checked_sub(MAX_UNDECLARED_EDITS) else {
+            return;
+        };
+        if excess == 0 {
+            return;
+        }
+        // Oldest first, and by key inside a frame so the same view evicts
+        // the same states whatever order the map iterated in.
+        undeclared.sort_unstable();
+        for (_, key) in &undeclared[..excess] {
+            self.states.remove(key);
+            if self.caret_moved == Some(*key) {
+                self.caret_moved = None;
+            }
+        }
+    }
+
     /// Ensures state exists for `key`, seeding `initial` on first creation.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn declare(
@@ -386,6 +462,7 @@ impl EditStore {
         fs: &mut FontSystem,
         res: &Resources,
     ) {
+        let frame_no = self.frame_no;
         let state = self.states.entry(key).or_insert_with(|| {
             let metrics = Metrics::new(opts.style.size * scale, opts.style.line_height * scale);
             let mut buffer = Buffer::new(fs, metrics);
@@ -425,8 +502,10 @@ impl EditStore {
                 undo: VecDeque::new(),
                 redo: VecDeque::new(),
                 coalesce: None,
+                last_declared: frame_no,
             }
         });
+        state.last_declared = frame_no;
         state.origin = origin;
         state.multiline = opts.multiline;
         state.accent = opts.accent;

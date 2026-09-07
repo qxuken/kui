@@ -260,6 +260,51 @@ that asserts on an empty warning list is what notices.
   `tooltip` prop sets" a release after `description` began writing that
   slot too.
 
+- **Retained state has a ceiling: the editors and scroll offsets nobody
+  declares.** `EditStore::states` and `ScrollStore::entries` only ever
+  grew. `declare` is `entry(key).or_insert_with` and no path in the
+  runtime removed an entry, so the idiom the retained-by-key model
+  invites — a fresh key per opening (`edit-${id}-${session}`, the way
+  React remounts on a changed key, which is also the shortest answer to
+  "reopen this editor clean") — leaked one shaped `cosmic_text::Buffer`
+  per opening, and nothing outside the core could drop it:
+  `setEditText(key, "")` shrinks the buffer and keeps the entry. What
+  one costs, measured with a counting allocator around `Core`: 3.4 KB
+  for a fresh empty editor, 4.9 KB holding `"hello"`, 22 KB holding a
+  39-character line, the shaped glyphs being most of it. No shipped app
+  has felt it, because today's cost is bounded by the number of distinct
+  keys an app ever declares — but that bound is the app's discipline,
+  not the library's.
+
+  Pruning on undeclare was not available: "a key declared again keeps
+  the draft the user typed" is what the `<edit>` row promises, a tabbed
+  form that undeclares a field and returns to it relies on it, and a
+  test pins it. So the bound is the exit store's shape instead
+  ([ADR 0012](docs/adr/0012-the-exit-budget.md)): a budget on the
+  *undeclared* states, the longest-undeclared evicted first, and a
+  declared one never evicted however many there are. **256 editors**
+  (~1.2 MB of short fields, ~5.6 MB of the 39-character one) and **1024
+  scroll entries** (an entry is 56 bytes, 64 with its key, so ~64 KB) —
+  sized so no ordinary view meets them: a view with 256 editors it no
+  longer declares is already generating keys, which is the idiom this
+  makes safe. Declared means declared by the frame that just ended, so a
+  key declared every frame never ages, and a scroll offset written
+  between two frames (`setScroll` at a key the next frame will build)
+  counts as a declaration too. A store inside its budget pays one length
+  comparison per frame and never walks itself, which is why this runs
+  every frame rather than every 240th like the anim store's cutoff
+  sweep. Both counts are readable from Rust (`core.edit.len()`,
+  `core.scroll.len()`) and the constants are public
+  (`MAX_UNDECLARED_EDITS`, `MAX_UNDECLARED_SCROLLS`); nothing was added
+  to `FrameStats`, which is the driver's timing ring and has no way to
+  see either store. Backlog F25.
+
+  **What you can delete:** the discipline an app kept in order not to
+  generate editor keys — a pool of reused field keys, a "session" suffix
+  dropped again because it grew without limit, a comment saying the key
+  must be stable *for memory reasons* (it is still what keeps the draft).
+  Keying an editor per opening is now bounded by the library.
+
 ## 0.1.0-alpha.8 (2026-09-07)
 
 **What breaks.** **A press that dismisses a popup no longer reaches the
