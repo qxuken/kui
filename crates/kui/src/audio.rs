@@ -55,7 +55,7 @@ pub fn blip(sample_rate: u32, hz: f32, ms: f32, gain: f32) -> Vec<u8> {
 mod backend {
     use std::collections::HashMap;
     use std::io::Cursor;
-    use std::sync::Arc;
+    use std::sync::{Arc, mpsc};
     use std::time::Duration;
 
     use kira::sound::PlaybackState;
@@ -66,12 +66,27 @@ mod backend {
     use super::*;
 
     pub struct Audio {
-        manager: Option<AudioManager<DefaultBackend>>,
-        /// The device refused to open; commands are dropped after one
-        /// warning.
-        failed: bool,
+        device: Device,
+        /// Commands that arrived while the device was still opening, in
+        /// order, with the registry to decode their sounds from. Applied
+        /// the moment it is open: a click sound plays a few ms late
+        /// rather than the frame stalling for the open.
+        pending: Vec<(AudioCommand, SharedResources)>,
         decoded: HashMap<SoundId, StaticSoundData>,
         playing: HashMap<PlaybackId, StaticSoundHandle>,
+    }
+
+    /// The output device, which takes ~90 ms to open on macOS — six frames
+    /// — so it is opened on its own thread and never on the loop's. Before
+    /// this, the counter's first click stalled for the open (its buttons
+    /// carry a click sound) and every later one flew.
+    enum Device {
+        Closed,
+        Opening(mpsc::Receiver<Result<AudioManager<DefaultBackend>, String>>),
+        Open(Box<AudioManager<DefaultBackend>>),
+        /// The device refused to open; commands are dropped after one
+        /// warning.
+        Failed,
     }
 
     impl Default for Audio {
@@ -83,25 +98,77 @@ mod backend {
     impl Audio {
         pub fn new() -> Self {
             Audio {
-                manager: None,
-                failed: false,
+                device: Device::Closed,
+                pending: Vec::new(),
                 decoded: HashMap::new(),
                 playing: HashMap::new(),
             }
         }
 
-        /// The device, opened on first use.
-        fn manager(&mut self) -> Option<&mut AudioManager<DefaultBackend>> {
-            if self.manager.is_none() && !self.failed {
-                match AudioManager::<DefaultBackend>::new(AudioManagerSettings::default()) {
-                    Ok(m) => self.manager = Some(m),
-                    Err(e) => {
-                        eprintln!("kui: audio device unavailable ({e}); sounds are dropped");
-                        self.failed = true;
-                    }
+        /// Starts opening the device if nothing has yet. Cheap to call
+        /// every frame; the driver calls it once the session holds a
+        /// sound, so the device is open by the time a click asks for one.
+        pub fn warm(&mut self) {
+            if !matches!(self.device, Device::Closed) {
+                return;
+            }
+            let (tx, rx) = mpsc::channel();
+            self.device = Device::Opening(rx);
+            std::thread::Builder::new()
+                .name("kui-audio-open".into())
+                .spawn(move || {
+                    let opened =
+                        AudioManager::<DefaultBackend>::new(AudioManagerSettings::default())
+                            .map_err(|e| e.to_string());
+                    let _ = tx.send(opened);
+                })
+                .expect("spawn the audio-open thread");
+        }
+
+        /// Whether the device is still opening: commands wait.
+        fn opening(&mut self) -> bool {
+            let Device::Opening(rx) = &self.device else {
+                return false;
+            };
+            match rx.try_recv() {
+                Ok(Ok(m)) => self.device = Device::Open(Box::new(m)),
+                Ok(Err(e)) => {
+                    eprintln!("kui: audio device unavailable ({e}); sounds are dropped");
+                    self.device = Device::Failed;
+                }
+                Err(mpsc::TryRecvError::Empty) => return true,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    eprintln!(
+                        "kui: audio device unavailable (the open thread died); sounds are dropped"
+                    );
+                    self.device = Device::Failed;
                 }
             }
-            self.manager.as_mut()
+            false
+        }
+
+        /// The device, once open. Starts the open if nothing has.
+        fn manager(&mut self) -> Option<&mut AudioManager<DefaultBackend>> {
+            self.warm();
+            if self.opening() {
+                return None;
+            }
+            match &mut self.device {
+                Device::Open(m) => Some(m),
+                _ => None,
+            }
+        }
+
+        /// Applies what waited for the device, once it is open. Nothing
+        /// happens while it is still opening, or before anything waited.
+        fn flush_pending(&mut self) {
+            if self.pending.is_empty() || self.opening() {
+                return;
+            }
+            let pending = std::mem::take(&mut self.pending);
+            for (cmd, resources) in pending {
+                self.apply_one(cmd, &resources);
+            }
         }
 
         /// The decoded sound, decoding (and caching) on first use.
@@ -126,9 +193,26 @@ mod backend {
             }
         }
 
-        /// Applies queued commands to the device.
+        /// Applies queued commands to the device. While it is still
+        /// opening they wait, in order, behind whatever waited before.
         pub fn apply(&mut self, cmds: Vec<AudioCommand>, resources: &SharedResources) {
+            if cmds.is_empty() {
+                return;
+            }
+            self.warm();
+            self.flush_pending();
+            if self.opening() {
+                self.pending
+                    .extend(cmds.into_iter().map(|c| (c, resources.clone())));
+                return;
+            }
             for cmd in cmds {
+                self.apply_one(cmd, resources);
+            }
+        }
+
+        fn apply_one(&mut self, cmd: AudioCommand, resources: &SharedResources) {
+            {
                 match cmd {
                     AudioCommand::Play {
                         playback,
@@ -138,7 +222,7 @@ mod backend {
                         fade_in_ms,
                     } => {
                         let Some(mut data) = self.decoded(sound, resources) else {
-                            continue;
+                            return;
                         };
                         data = data.volume(db(volume));
                         if looped {
@@ -148,7 +232,7 @@ mod backend {
                             data = data.fade_in_tween(tween(fade_in_ms));
                         }
                         let Some(m) = self.manager() else {
-                            continue;
+                            return;
                         };
                         match m.play(data) {
                             Ok(h) => {
@@ -194,8 +278,11 @@ mod backend {
         }
 
         /// Playbacks that finished on their own since the last poll
-        /// (stopped ones were already forgotten by `Stop`).
+        /// (stopped ones were already forgotten by `Stop`). Also where a
+        /// command that waited for the device starts, since the driver
+        /// polls while anything is active.
         pub fn poll_ended(&mut self) -> Vec<PlaybackId> {
+            self.flush_pending();
             let ended: Vec<PlaybackId> = self
                 .playing
                 .iter()
@@ -208,9 +295,10 @@ mod backend {
             ended
         }
 
-        /// Whether any playback is live — drivers keep polling while so.
+        /// Whether any playback is live, or waiting on the device to
+        /// open — drivers keep polling while so.
         pub fn active(&self) -> bool {
-            !self.playing.is_empty()
+            !self.playing.is_empty() || !self.pending.is_empty()
         }
     }
 
@@ -245,7 +333,9 @@ mod backend {
 
         /// Through the real device when the machine has one (the blip
         /// plays and reports ended); without one the backend degrades to
-        /// dropping commands, which is the CI case.
+        /// dropping commands, which is the CI case. Either way the first
+        /// command never waits for the device: the open is on a thread,
+        /// and the play that arrived first starts once it is open.
         #[test]
         fn plays_through_a_device_or_degrades_gracefully() {
             use kui_core::{Core, PlayOptions};
@@ -253,15 +343,22 @@ mod backend {
             let s = core.add_sound(super::super::blip(44_100, 660.0, 30.0, 0.1));
             let p = core.play(s, PlayOptions::default());
             let mut audio = Audio::new();
+            let t = std::time::Instant::now();
             audio.apply(core.take_audio_commands(), &core.resources);
-            if !audio.active() {
-                return; // no device: dropped, no panic
-            }
+            assert!(
+                t.elapsed() < Duration::from_millis(20),
+                "the first play does not wait for the device: {:?}",
+                t.elapsed()
+            );
+            assert!(audio.active(), "the play waits for the device");
             let deadline = std::time::Instant::now() + Duration::from_secs(3);
             let mut ended = Vec::new();
-            while ended.is_empty() && std::time::Instant::now() < deadline {
+            while ended.is_empty() && audio.active() && std::time::Instant::now() < deadline {
                 std::thread::sleep(Duration::from_millis(20));
                 ended = audio.poll_ended();
+            }
+            if matches!(audio.device, Device::Failed) {
+                return; // no device: dropped, no panic
             }
             assert_eq!(ended, vec![p], "the 30ms blip reports ended");
             assert!(!audio.active());
@@ -288,6 +385,8 @@ mod backend {
         pub fn new() -> Self {
             Audio
         }
+
+        pub fn warm(&mut self) {}
 
         pub fn apply(&mut self, _cmds: Vec<AudioCommand>, _resources: &SharedResources) {}
 

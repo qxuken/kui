@@ -483,8 +483,9 @@ that are hard to reverse and would look arbitrary without their context.
   they end the frame after the view stops declaring it. The view does not
   keep a dead node around to animate it away: the core copies the departing
   subtree out of the last frame that had it and replays *that*, frozen where
-  layout left it, painted on top of everything and outside every clip
-  (its ancestors may be gone), and **inert** — no clicks, no Tab stop, no
+  layout left it, painted on top of everything and outside every clip its
+  ancestors held (they may be gone; the clips inside the picture stay),
+  and **inert** — no clicks, no Tab stop, no
   access row, because it is a picture of a node rather than a node. The
   ghost is dropped when its transition ends, and immediately if the key
   comes back, so a toast dismissed and re-shown never doubles. It is opt-in

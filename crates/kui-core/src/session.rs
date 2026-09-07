@@ -417,6 +417,11 @@ impl SharedResources {
         self.0.state().resources.add_sound(bytes)
     }
 
+    /// Whether any sound is registered (see [`Resources::has_sounds`]).
+    pub fn has_sounds(&self) -> bool {
+        self.0.state().resources.has_sounds()
+    }
+
     /// The encoded bytes behind a sound handle, if it is live. Cloning the
     /// `Arc` rather than lending it is what lets the registry be shared:
     /// the caller (an audio backend) holds the bytes, not the borrow.

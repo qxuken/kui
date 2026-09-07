@@ -1568,12 +1568,18 @@ impl<A: App> Shell<A> {
         }
     }
 
-    /// Hands the session's queued audio commands to the device.
+    /// Hands the session's queued audio commands to the device. A session
+    /// that holds a sound is going to play one: the device starts opening
+    /// here, on its own thread, so the first play finds it open instead of
+    /// stalling the frame for the ~90 ms the open takes.
     fn apply_audio(&mut self) {
         let core = self.core_mut();
         let cmds = core.take_audio_commands();
+        let resources = core.resources.clone();
+        if resources.has_sounds() {
+            self.audio.warm();
+        }
         if !cmds.is_empty() {
-            let resources = core.resources.clone();
             self.audio.apply(cmds, &resources);
         }
     }

@@ -557,6 +557,31 @@ that asserts on an empty warning list is what notices.
 
 ### Fixed
 
+- **The first click sound stalled the frame for the audio device to
+  open.** Opening the output device takes about 90 ms on macOS — six
+  frames — and the runner did it on the loop's thread the first time a
+  sound played, so the counter's first click (its buttons carry a click
+  sound) lagged and every later one flew. The open now runs on its own
+  thread, started the frame a session first holds a sound rather than
+  the frame one plays, so a click that comes after the first frame finds
+  the device open; a command that arrives while it is still opening waits
+  in order and starts the moment it is, a few ms late rather than the
+  frame being. The driver polls while anything waits, as it does while
+  anything plays. A machine with no device degrades as before: one
+  warning, commands dropped.
+
+- **A departing subtree drew past its own clippers.** A ghost draws
+  outside every clip its ancestors held, since they may be gone — but it
+  also drew outside the clips *inside* the picture, so a `virtual_column`
+  with `exit` on the container showed the two overscan rows it had built
+  past its bottom edge for the frames it slid out (the `bulk_exit`
+  example's *clear list*). A ghost now inherits clips the way a live
+  subtree does, from its own root down: a scroll box or `clip` node in
+  the picture bounds what it held, moved with the picture and rounded by
+  its radius; a float inside it escapes them as a live float would; a
+  node the clip leaves nothing of is culled. The root itself stays
+  unclipped, and `tests/exit.rs` pins both halves.
+
 - **Windows: an animation should keep moving while the title bar is
   held** (backlog W3, unverified). Reported as a regression: a transition
   mid-flight froze for as long as the window was grabbed and resumed on

@@ -19,7 +19,7 @@ use crate::atlas::GlyphAtlas;
 use crate::color::Color;
 use crate::depart::{DepartStore, Ghost, GhostContent, Pass, Place, Playback, Replay};
 use crate::diag::{Diagnostics, Warning};
-use crate::display::{Clip, DisplayList, NO_CLIP, Quad, QuadKind};
+use crate::display::{Clip, DisplayList, Quad, QuadKind};
 use crate::edit::{EditOptions, EditStore};
 use crate::env::Env;
 use crate::geom::{Rect, Size, Vec2};
@@ -205,6 +205,11 @@ pub struct Core {
     /// Per-node inherited opacity while a departing subtree is replayed
     /// (`depart`), reused across ghosts and frames.
     ghost_opacity: Vec<f32>,
+    /// Per-node inherited clip and painted rect while a departing subtree
+    /// is replayed: the clips its own clippers establish, since a ghost
+    /// draws outside every clip its ancestors held (`depart`).
+    ghost_clip: Vec<Clip>,
+    ghost_rect: Vec<Rect>,
     /// A view asked for one more frame (`request_frame`); cleared by
     /// `begin_frame`, reported through `animating`.
     frame_requested: bool,
@@ -353,6 +358,8 @@ impl Core {
             any_layout: false,
             any_exit: false,
             ghost_opacity: Vec::new(),
+            ghost_clip: Vec::new(),
+            ghost_rect: Vec::new(),
             frame_requested: false,
             pending_reveal: None,
             pending_focus_step: None,

@@ -25,7 +25,10 @@
 //!   window for its last few frames. There is no z-index; floats stack in
 //!   tree order, and a picture of a float keeps the place it stacked in.
 //!   Its ancestors may be gone, so there is no clip to inherit and nothing
-//!   to sit inside: it draws outside every clip.
+//!   to sit inside: it draws outside every clip *they* held. The clips
+//!   inside the picture are its own and stay: a scroll box that departs
+//!   still bounds the rows it held, so the overscan a virtual list built
+//!   past its edge does not appear the frame the list leaves.
 //! - **inert.** No hit region, no place in the Tab ring, no access row. It
 //!   is a picture of a node, not a node.
 //! - **self-easing.** Nothing can retarget a ghost — the view has already

@@ -289,6 +289,80 @@ fn a_ghost_escapes_its_ancestors_clip_and_keeps_its_place() {
     );
 }
 
+/// The clips *inside* the picture stay: a departing scroll box still
+/// bounds what it held. The list example's `virtual_column` builds two
+/// rows of overscan past its edge, and they showed the frame the list
+/// left.
+#[test]
+fn a_ghost_keeps_the_clips_its_own_subtree_established() {
+    let mut core = Core::new();
+    let build = |core: &mut Core, now: f64, show: bool| {
+        core.set_time(now);
+        let mut ui = core.frame(VIEW, 1.0);
+        if show {
+            ui.with_keyed(
+                "box",
+                NodeSpec::column()
+                    .width(Sizing::Fixed(50.0))
+                    .height(Sizing::Fixed(20.0))
+                    .clip()
+                    .bg(Color::rgb8(1, 2, 3))
+                    .transition(100.0)
+                    .easing(Easing::Linear)
+                    .exit(Enter::from(200.0, 0.0)),
+                |ui| {
+                    // Taller than the box: its bottom third is clipped.
+                    ui.with(
+                        NodeSpec::column()
+                            .width(Sizing::Fixed(40.0))
+                            .height(Sizing::Fixed(30.0))
+                            .bg(Color::WHITE),
+                        |_| {},
+                    );
+                    // Entirely past the box's edge: never painted.
+                    ui.with(
+                        NodeSpec::column()
+                            .width(Sizing::Fixed(40.0))
+                            .height(Sizing::Fixed(10.0))
+                            .bg(Color::WHITE),
+                        |_| {},
+                    );
+                },
+            );
+        }
+        ui.finish();
+    };
+    build(&mut core, 0.0, true);
+    build(&mut core, 0.0, false);
+    build(&mut core, 0.05, false);
+    let (dl, _) = core.output();
+    let quads: Vec<_> = dl
+        .quads
+        .iter()
+        .filter(|q| q.kind == kui_core::QuadKind::Solid)
+        .collect();
+    assert_eq!(
+        quads.len(),
+        2,
+        "the box and the child it shows; the one past its edge is culled: {:?}",
+        quads.iter().map(|q| q.rect).collect::<Vec<_>>()
+    );
+    let (bx, child) = (quads[0], quads[1]);
+    assert!(
+        bx.clip.w > 1e8,
+        "the box itself is unclipped: {:?}",
+        bx.clip
+    );
+    assert!((bx.rect.x - 100.0).abs() < 1e-3, "halfway: {:?}", bx.rect);
+    assert!(
+        (child.clip.x - 100.0).abs() < 1e-3
+            && (child.clip.w - 50.0).abs() < 1e-3
+            && (child.clip.h - 20.0).abs() < 1e-3,
+        "the child is clipped to the box where it now is: {:?}",
+        child.clip
+    );
+}
+
 /// `rows` one-node rows, keyed `ROOT[from + i]`, every one declaring an
 /// `exit` — the list the budget is for.
 fn list(core: &mut Core, now: f64, from: usize, rows: usize) {

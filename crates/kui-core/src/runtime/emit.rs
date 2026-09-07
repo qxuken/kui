@@ -715,6 +715,11 @@ impl Core {
     fn emit_ghost(&mut self, g: &Ghost, play: &Playback, scale: f32) {
         self.ghost_opacity.clear();
         self.ghost_opacity.resize(g.nodes.len(), 1.0);
+        self.ghost_clip.clear();
+        self.ghost_clip.resize(g.nodes.len(), Clip::NONE);
+        self.ghost_rect.clear();
+        self.ghost_rect
+            .resize(g.nodes.len(), Rect::new(0.0, 0.0, 0.0, 0.0));
         for (i, node) in g.nodes.iter().enumerate() {
             let mut rect = Rect::new(
                 node.rect.x + play.offset.x,
@@ -747,11 +752,34 @@ impl Core {
             };
             let opacity = (inherited * style.opacity).clamp(0.0, 1.0);
             self.ghost_opacity[i] = opacity;
+            // The clip is the subtree's own: a scroll box or `clip` node
+            // inside the picture still bounds what it held (the rows a
+            // virtual list built past its edge stay past it), while the
+            // ancestors outside the picture, which may be gone, clip
+            // nothing. Same rule as the live pass, from the root down.
+            let clip = if node.parent == NIL || node.spec.layout.float.is_some() {
+                Clip::NONE
+            } else {
+                let p = node.parent as usize;
+                let inherited = self.ghost_clip[p];
+                if g.nodes[p].spec.layout.clips() {
+                    inherited.intersect(self.ghost_rect[p], g.nodes[p].spec.style.radius)
+                } else {
+                    inherited
+                }
+            };
+            self.ghost_clip[i] = clip;
+            self.ghost_rect[i] = rect;
+            let visible = rect.intersect(&clip.rect);
+            if visible.w <= 0.0 || visible.h <= 0.0 {
+                continue;
+            }
+            let clip_px = clip.scaled(scale);
             let first_quad = self.display.quads.len();
             if style.shadow.is_visible() {
                 self.display
                     .quads
-                    .push(shadow_quad(&style, rect, Clip::NONE, scale));
+                    .push(shadow_quad(&style, rect, clip, scale));
             }
             if style.bg.is_visible() || (style.border_w > 0.0 && style.border_color.is_visible()) {
                 self.display.quads.push(Quad {
@@ -763,8 +791,8 @@ impl Core {
                     blur: 0.0,
                     kind: QuadKind::Solid,
                     uv: [0; 4],
-                    clip: NO_CLIP.scaled(scale),
-                    clip_radius: crate::display::SQUARE,
+                    clip: clip_px.rect,
+                    clip_radius: clip_px.radius,
                 });
             }
             match node.content {
@@ -779,7 +807,7 @@ impl Core {
                             tid,
                             Vec2::new(rect.x, rect.y),
                             Size::new(rect.w, rect.h),
-                            Clip::NONE.scaled(scale),
+                            clip_px,
                             &sess.resources,
                             &mut sess.fonts,
                             &mut self.atlas,
@@ -800,7 +828,7 @@ impl Core {
                         key,
                         origin,
                         false,
-                        Clip::NONE.scaled(scale),
+                        clip_px,
                         &mut sess.fonts,
                         &mut self.text,
                         &mut self.atlas,
@@ -826,8 +854,8 @@ impl Core {
                             blur: 0.0,
                             kind: QuadKind::Image,
                             uv: [slot.x, slot.y, slot.w, slot.h],
-                            clip: NO_CLIP.scaled(scale),
-                            clip_radius: crate::display::SQUARE,
+                            clip: clip_px.rect,
+                            clip_radius: clip_px.radius,
                         });
                     }
                 }
@@ -841,7 +869,7 @@ impl Core {
                         points,
                         width,
                         style.bg,
-                        Clip::NONE.scaled(scale),
+                        clip_px,
                         scale,
                     );
                 }

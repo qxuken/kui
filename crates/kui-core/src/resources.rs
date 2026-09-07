@@ -369,6 +369,12 @@ impl Resources {
         entry
     }
 
+    /// Whether any sound is registered: what tells an audio backend it
+    /// will be asked to play something, before it is.
+    pub fn has_sounds(&self) -> bool {
+        !self.sounds.is_empty()
+    }
+
     /// The encoded bytes behind a sound handle, if it is live here.
     pub fn sound(&self, id: SoundId) -> Option<&Arc<[u8]>> {
         let entry = self.sounds.get(id);
