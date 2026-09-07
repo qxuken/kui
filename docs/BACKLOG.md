@@ -158,7 +158,10 @@ have the API behind it, and AccessKit's whole event surface is a tree diff.
 it). `required` / `invalid` and heading `level` (ADR 0001 follow-ups).
 Per-button `on_click` and middle-button routing (C2 left them "reach the
 core and route nowhere"). Physical key positions beyond what `60ca137`
-carried.
+carried. One did ask, on 2026-09-07: an i3-style tab bar wanted `grow`
+tabs floored at their labels, and `minWidth: "fit"` / `minHeight: "fit"`
+landed the same day for alpha.9 (the CHANGELOG entry says why it is not
+the default — a fit width is the unwrapped one).
 
 **Parked on their own terms.** C12 (column wrapping), C13 (`space-between`
 and baseline), C14 (aspect ratio), C5(b) (core-side virtualisation), rounded

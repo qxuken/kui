@@ -31,7 +31,7 @@ use serde_json::{Map as JsonMap, Value as Json};
 
 use crate::schema::{
     self, Kind, P_BORDER, P_DIR, P_FLOAT, P_KEY, P_KEY_FOCUS, P_OVERFLOW, P_PAD, P_SIZE, P_TITLE,
-    P_TOOLTIP, P_WINDOWS, Parsed, PropsOut, align_idx, color_num, sizing_num,
+    P_TOOLTIP, P_WINDOWS, Parsed, PropsOut, align_idx, color_num, min_num, sizing_num,
 };
 use crate::{Result, err, value_of};
 
@@ -289,6 +289,10 @@ fn read_props(r: &mut Reader<'_>) -> Result<PropsOut> {
                     Kind::Sizing => {
                         let (m, v) = (r.u()?, r.f()?);
                         Parsed::Sizing(sizing_num(m, v))
+                    }
+                    Kind::Min => {
+                        let (m, v) = (r.u()?, r.f()?);
+                        Parsed::Min(min_num(m, v))
                     }
                     Kind::Msg | Kind::Tag => Parsed::Msg(payload(r.req_str()?)?),
                     Kind::Str => Parsed::Str(r.req_str()?.to_string()),
@@ -568,6 +572,10 @@ mod tests {
                 Kind::Sizing => {
                     stream.extend([3.0, 0.5]);
                     Parsed::Sizing(Sizing::Percent(0.5))
+                }
+                Kind::Min => {
+                    stream.extend([1.0, 0.0]);
+                    Parsed::Min(kui_core::Min::FIT)
                 }
                 Kind::Msg | Kind::Tag => {
                     stream.extend([0.0, 1.0]);

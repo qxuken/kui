@@ -1046,6 +1046,48 @@ static void conf_wrap(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* An i3-style tab bar twice: grow tabs with KUI_MIN_FIT as their floor,
+ * in a bar with room (two split it evenly) and in one without (four sit at
+ * their labels' widths and the bar scrolls x). Mirrors conformance::TAB_*. */
+static void conf_tabs(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    static const float roomy[2][2] = {{30, 12}, {50, 8}};
+    static const float crowded[4] = {60, 70, 80, 90};
+    KuiSpec outer = {.pad_l = 4, .pad_r = 4, .pad_t = 4, .pad_b = 4, .gap = 4};
+    kui_open(ui, &outer, NULL);
+    KuiSpec bar = {.dir = KUI_ROW, .width = {KUI_FIXED, 200},
+                   .height = {KUI_FIXED, 20}, .bg = 0x101018ff};
+    kui_open_keyed(ui, KUI_STR("roomy"), &bar, NULL);
+    for (int i = 0; i < 2; i++) {
+        KuiSpec tab = {.width = {KUI_GROW, 1}, .min_w = KUI_MIN_FIT,
+                       .height = {KUI_PERCENT, 0.5f}, .min_h = KUI_MIN_FIT,
+                       .bg = 0x30344aff};
+        kui_open(ui, &tab, NULL);
+        KuiSpec label = {.width = {KUI_FIXED, roomy[i][0]},
+                         .height = {KUI_FIXED, roomy[i][1]},
+                         .bg = 0x3b5bd4ff};
+        kui_open(ui, &label, NULL);
+        kui_close(ui);
+        kui_close(ui);
+    }
+    kui_close(ui);
+    bar.overflow = KUI_SCROLL_X;
+    kui_open_keyed(ui, KUI_STR("crowded"), &bar, NULL);
+    for (int i = 0; i < 4; i++) {
+        KuiSpec tab = {.width = {KUI_GROW, 1}, .min_w = KUI_MIN_FIT,
+                       .height = {KUI_GROW, 1}, .bg = 0x30344aff};
+        kui_open(ui, &tab, NULL);
+        KuiSpec label = {.width = {KUI_FIXED, crowded[i]},
+                         .height = {KUI_FIXED, 12}, .bg = 0x3b5bd4ff};
+        kui_open(ui, &label, NULL);
+        kui_close(ui);
+        kui_close(ui);
+    }
+    kui_close(ui);
+    kui_close(ui);
+}
+
 static void conf_overflow(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
@@ -1645,6 +1687,7 @@ static const ConfScene CONF_SCENES[] = {
     {"layout", conf_layout},
     {"sizing", conf_sizing},
     {"wrap", conf_wrap},
+    {"tabs", conf_tabs},
     {"overflow", conf_overflow},
     {"float", conf_float},
     {"tooltip", conf_tooltip},

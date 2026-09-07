@@ -1,4 +1,5 @@
 use super::*;
+use kui_core::Min;
 use kui_core::schema::{Kind, PROPS, Parsed, PropsOut, Target, apply};
 
 fn zeroed_spec() -> KuiSpec {
@@ -143,6 +144,9 @@ fn every_schema_prop_has_a_c_counterpart() {
             Kind::Flag => Parsed::Flag,
             Kind::Enum(_) => Parsed::Enum(1),
             Kind::Sizing => Parsed::Sizing(Sizing::Percent(0.5)),
+            // The form a number cannot stand in for: the C side is the
+            // KUI_MIN_FIT sentinel.
+            Kind::Min => Parsed::Min(Min::FIT),
             Kind::Msg | Kind::Tag => Parsed::Msg(Value::Int(7)),
             Kind::Str => Parsed::Str("name".into()),
             Kind::Resource => Parsed::Resource(7),
@@ -173,9 +177,9 @@ fn every_schema_prop_has_a_c_counterpart() {
         match def.name {
             "width" => s.width = pct,
             "height" => s.height = pct,
-            "minWidth" => s.min_w = F,
+            "minWidth" => s.min_w = KUI_MIN_FIT,
             "maxWidth" => s.max_w = F,
-            "minHeight" => s.min_h = F,
+            "minHeight" => s.min_h = KUI_MIN_FIT,
             "maxHeight" => s.max_h = F,
             "gap" => s.gap = F,
             "crossGap" => s.cross_gap = F,

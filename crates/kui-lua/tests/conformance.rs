@@ -58,6 +58,40 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         "#
             )
         }
+        "tabs" => {
+            let roomy = conformance::TAB_ROOMY
+                .iter()
+                .map(|(w, h)| {
+                    format!(
+                        "column {{ width = {{ grow = 1 }}, min_width = \"fit\", height = {{ pct = 50 }}, min_height = \"fit\", bg = 0x30344aff,
+                  column {{ width = {w}, height = {h}, bg = 0x3b5bd4ff }} }},"
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n                ");
+            let crowded = conformance::TAB_CROWDED
+                .iter()
+                .map(|w| {
+                    format!(
+                        "column {{ width = {{ grow = 1 }}, min_width = \"fit\", height = {{ grow = 1 }}, bg = 0x30344aff,
+                  column {{ width = {w}, height = 12, bg = 0x3b5bd4ff }} }},"
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n                ");
+            format!(
+                r#"
+            return column {{ pad = 4, gap = 4,
+              row {{ key = "roomy", width = 200, height = 20, bg = 0x101018ff,
+                {roomy}
+              }},
+              row {{ key = "crowded", width = 200, height = 20, scroll_x = true, bg = 0x101018ff,
+                {crowded}
+              }},
+            }}
+        "#
+            )
+        }
         "overflow" => {
             let items = conformance::ITEM_KEYS
                 .iter()

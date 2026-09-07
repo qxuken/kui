@@ -21,6 +21,7 @@ const TS_BY_KIND = {
   color: 'ColorProp',
   flag: 'boolean',
   sizing: 'SizingProp',
+  min: 'MinProp',
   msg: 'AppMsg',
   // A tag may be null: the behaviour without a tag on its events.
   tag: 'AppMsg | null',
@@ -68,6 +69,7 @@ const TYPE_DOC = {
   color: 'color (`#hex` or `0xRRGGBBAA`)',
   flag: 'boolean',
   sizing: 'sizing (`number` \\| `"fit"` \\| `"grow"` \\| `"N%"`)',
+  min: 'minimum (`number` \\| `"fit"`)',
   msg: 'message (any plain data)',
   tag: 'tag (a message merged into the event under `tag`, or `null` for none)',
   str: 'string',

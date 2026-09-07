@@ -62,6 +62,11 @@ export type SizingProp =
   | { grow: number }
   | { percent: number };
 
+/** A lower clamp: logical px, or "fit" for the node's own fit size on that
+ *  axis — what lets a `grow` child keep a content floor (a tab never
+ *  narrower than its label). */
+export type MinProp = number | 'fit';
+
 /** 0xRRGGBBAA number, or "#rgb" / "#rrggbb" / "#rrggbbaa". */
 export type ColorProp = number | string;
 
@@ -181,10 +186,10 @@ export interface GeneratedSpecProps {
   maxHeight?: number;
   /** Upper width clamp; grow+maxWidth is the responsive-width pattern. */
   maxWidth?: number;
-  /** Lower height clamp (logical px). */
-  minHeight?: number;
-  /** Lower width clamp (logical px). */
-  minWidth?: number;
+  /** Lower height clamp: logical px, or "fit" for the node's own fit height (see `minWidth`). */
+  minHeight?: MinProp;
+  /** Lower width clamp: logical px, or "fit" for the node's own fit width. "fit" under `width="grow"` is a content floor — CSS's `flex: 1 0 auto` — which is what an i3-style tab bar is: tabs that split the bar evenly while they fit and sit at their label's width, scrolling, once they do not. Opt-in, because a fit width is the unwrapped one: a paragraph in a grow column would stop wrapping under it. */
+  minWidth?: MinProp;
   /** Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside emits {kind:"dismiss", reason:"escape"|"outside", tag} on it — the app stops declaring the node. The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float. The access tree is not pruned to the modal: it keeps every node of the frame and marks the one in effect `modal` (`docs/adr/0003-modal-surfaces.md`, decision 7), which is what assistive technology acts on. */
   modal?: AppMsg | null;
   /** Message emitted when clicked (data, not a callback). */

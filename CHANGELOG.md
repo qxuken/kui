@@ -5,6 +5,42 @@ the workaround, the model field or the arithmetic the release made
 unnecessary. The second list is the point of the first — a library whose
 upgrades remove code from the apps on it is doing the job.
 
+## 0.1.0-alpha.9 (unreleased)
+
+### Added
+
+- **`minWidth: "fit"` / `minHeight: "fit"`: a node's own fit size as its
+  floor.** The first view to ask was an i3-style tab bar — every tab
+  `grow`, so the tabs split the bar evenly while they fit, and once they
+  do not, each at its label's width with the bar scrolling — and the
+  numeric half of that already worked: `grow` + `minWidth={80}` +
+  `scrollX` gives 200/200/200 for three tabs in a 600 bar and 80 × 10
+  with 200 to scroll for ten, because the grow pass clamps each share to
+  its min and a scroll axis skips the shrink pass. What could not be
+  said was the floor *as the content*: `grow` contributes nothing to fit
+  and had no floor of its own, so ten grow tabs each around an 80 px
+  label got 60 px apiece, the label cut, nothing to scroll. That is
+  CSS's `flex: 1 0 auto`, and `Sizing` had no word for it. Now `minWidth`
+  and `minHeight` take a number or `"fit"`: the fit pass of that axis
+  measures the node's content once, writes the number into the spec, and
+  every later clamp reads it — so the grow pass, the wrap breaker and the
+  shrink pass need no second form. Both axes, under any sizing (a 50%
+  height floored at its child's is in the corpus scene), one measurement
+  shared with a `fit` sizing when both apply, and no cost on a node that
+  declares neither. In Lua it is `min_width = "fit"`; in C, `.min_w =
+  KUI_MIN_FIT` — a negative in a slot that was already clamped to zero,
+  so `KuiSpec` did not move and neither did the ABI; Rust's
+  `.min_width(Min::Fit)` beside the `f32` it always took. The new `tabs`
+  scene runs the bar both ways in one frame, in four bindings.
+  **Not the default, on purpose.** CSS floors every flex item at its
+  min-content and every CSS author has typed `min-width: 0` to undo it;
+  kui's fit width is the *unwrapped* one — a text node's intrinsic line —
+  so a default floor would stop every paragraph inside a `grow` column
+  from wrapping. A tab bar's labels do not wrap, which is exactly why it
+  is the view that wants the floor and can say so.
+  **What you can delete:** the `measureText` in `view` that sized a
+  `minWidth` to a label plus padding, and the cache in front of it.
+
 ## 0.1.0-alpha.8 (2026-09-07)
 
 **What breaks.** **A press that dismisses a popup no longer reaches the

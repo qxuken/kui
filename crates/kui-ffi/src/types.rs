@@ -98,6 +98,8 @@ pub struct KuiSizing {
 }
 
 /// Which of a `KuiKeyframe`'s fields are set (its `set` bits).
+/// `KuiSpec.min_w` / `min_h` as the node's own fit size (`KUI_MIN_FIT`).
+pub const KUI_MIN_FIT: f32 = -1.0;
 pub const KUI_KF_AT: u32 = 1 << 0;
 pub const KUI_KF_WIDTH: u32 = 1 << 1;
 pub const KUI_KF_HEIGHT: u32 = 1 << 2;
@@ -161,7 +163,8 @@ pub struct KuiEnter {
 pub struct KuiSpec {
     pub width: KuiSizing,
     pub height: KuiSizing,
-    /// Clamps applied after sizing resolves; 0 for max means unconstrained.
+    /// Clamps applied after sizing resolves; 0 for max means unconstrained,
+    /// and a negative min (`KUI_MIN_FIT`) is the node's own fit size.
     pub min_w: f32,
     pub max_w: f32,
     pub min_h: f32,

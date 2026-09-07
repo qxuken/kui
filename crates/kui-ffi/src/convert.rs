@@ -3,6 +3,7 @@
 //! return a default) and `ctx` (null-check the opaque pointer).
 
 use super::*;
+use kui_core::Min;
 
 // ---------------------------------------------------------------------------
 // Conversion helpers
@@ -108,6 +109,11 @@ pub(crate) fn opt_str<'a>(s: KuiStr) -> Option<std::borrow::Cow<'a, str>> {
     (!s.ptr.is_null() && s.len > 0).then(|| kstr(s))
 }
 
+/// `KuiSpec.min_w` / `min_h`: a negative (`KUI_MIN_FIT`) is the fit floor.
+fn min_of(v: f32) -> Min {
+    if v < 0.0 { Min::FIT } else { Min::px(v) }
+}
+
 pub(crate) fn spec_of(
     s: &KuiSpec,
     on_click: *mut KuiValue,
@@ -123,13 +129,13 @@ pub(crate) fn spec_of(
     spec = spec
         .width(sizing_of(s.width))
         .height(sizing_of(s.height))
-        .min_width(s.min_w.max(0.0))
+        .min_width(min_of(s.min_w))
         .max_width(if s.max_w > 0.0 {
             s.max_w
         } else {
             f32::INFINITY
         })
-        .min_height(s.min_h.max(0.0))
+        .min_height(min_of(s.min_h))
         .max_height(if s.max_h > 0.0 {
             s.max_h
         } else {

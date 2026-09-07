@@ -57,6 +57,7 @@ const SAMPLE = {
   color: '#3b5bd4',
   flag: true,
   sizing: '50%',
+  min: 'fit',
   msg: { kind: 'm', n: 1, list: [1, 'two', null] },
   tag: { kind: 't' },
   str: 'group-a',
@@ -1792,6 +1793,9 @@ const CONFORMANCE =
  *  what leaves the tree below it identical to the reference's. */
 /** `conformance::WRAP_BOXES`, as (width, height). */
 const WRAP_BOXES = [[30, 12], [40, 16], [50, 20], [20, 24]];
+/** `conformance::TAB_ROOMY` as (width, height) and `TAB_CROWDED` as widths. */
+const TAB_ROOMY = [[30, 12], [50, 8]];
+const TAB_CROWDED = [60, 70, 80, 90];
 
 // `chrome` and `chrome-inset` are one tree driven under two envs, so the
 // second is defined off the first below rather than restated.
@@ -1840,6 +1844,29 @@ const SCENE_TREES = {
         { dir: 'row', wrapChildren: true, pad: 4, gap: 6, crossGap: 10, width: 100, bg: '#101018' },
         WRAP_BOXES.map(([w, h]) => box({ width: w, height: h, bg: '#30344a' })),
       ),
+    ]),
+  tabs: () =>
+    root({}, [
+      box({ pad: 4, gap: 4 }, [
+        box(
+          { dir: 'row', width: 200, height: 20, bg: '#101018' },
+          TAB_ROOMY.map(([w, h]) =>
+            box({ width: 'grow', minWidth: 'fit', height: '50%', minHeight: 'fit', bg: '#30344a' }, [
+              box({ width: w, height: h, bg: '#3b5bd4' }),
+            ]),
+          ),
+          'roomy',
+        ),
+        box(
+          { dir: 'row', width: 200, height: 20, scrollX: true, bg: '#101018' },
+          TAB_CROWDED.map((w) =>
+            box({ width: 'grow', minWidth: 'fit', height: 'grow', bg: '#30344a' }, [
+              box({ width: w, height: 12, bg: '#3b5bd4' }),
+            ]),
+          ),
+          'crowded',
+        ),
+      ]),
     ]),
   overflow: () =>
     root({}, [

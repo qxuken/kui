@@ -114,6 +114,11 @@ fn parse_json(kind: &Kind, v: &Json) -> Result<Option<Parsed>> {
             Parsed::Enum(enum_index(names, s).map_err(err)?)
         }
         Kind::Sizing => Parsed::Sizing(sizing_of(v)?),
+        Kind::Min => Parsed::Min(match v {
+            Json::Number(n) => kui_core::Min::px(n.as_f64().unwrap_or(0.0) as f32),
+            Json::String(s) => kui_core::schema::min_str(s).map_err(err)?,
+            _ => return Err(err("bad min (number | \"fit\")")),
+        }),
         Kind::Msg | Kind::Tag => Parsed::Msg(value_of(v)),
         Kind::Str => Parsed::Str(
             v.as_str()
@@ -228,6 +233,7 @@ pub fn protocol_props() -> Json {
             Kind::Flag => ("flag", None),
             Kind::Enum(names) => ("enum", Some(names)),
             Kind::Sizing => ("sizing", None),
+            Kind::Min => ("min", None),
             Kind::Msg => ("msg", None),
             Kind::Tag => ("tag", None),
             Kind::Str => ("str", None),

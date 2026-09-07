@@ -136,6 +136,20 @@ export function createEncoder(P) {
     }
   }
 
+  // Writes (mode, value) for a min prop: a number, or "fit" for the node's
+  // own fit size on that axis.
+  function min(v) {
+    if (typeof v === 'number') {
+      f[fi++] = 0;
+      f[fi++] = v;
+    } else if (v === 'fit') {
+      f[fi++] = 1;
+      f[fi++] = 0;
+    } else {
+      throw new Error(`bad min ${JSON.stringify(v)} (number | "fit")`);
+    }
+  }
+
   function alignOf(v) {
     const a = ALIGN[v];
     if (a === undefined) throw new Error(`align must be ${P.align.join(' | ')}`);
@@ -329,6 +343,9 @@ export function createEncoder(P) {
             }
             case 'sizing':
               sizing(v);
+              break;
+            case 'min':
+              min(v);
               break;
             case 'msg':
             case 'tag':

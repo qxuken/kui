@@ -70,7 +70,7 @@ pub use runtime::{Core, Extension};
 pub use scroll::ScrollGeometry;
 pub use session::{Session, SharedAudio, SharedResources};
 pub use spec::{
-    Align, Dir, FLOAT_PRESETS, FloatAnchor, FloatConfig, FontFamily, NodeSpec, OVERFLOW_CLIP,
+    Align, Dir, FLOAT_PRESETS, FloatAnchor, FloatConfig, FontFamily, Min, NodeSpec, OVERFLOW_CLIP,
     OVERFLOW_SCROLL_X, OVERFLOW_SCROLL_Y, PadShorthand, Shadow, Sizing, TextStyle, TextWrap,
     Vec2Offset, corner,
 };

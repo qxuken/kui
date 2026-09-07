@@ -965,6 +965,10 @@ fn parse_value(kind: &Kind, v: &mlua::Value) -> mlua::Result<Option<Parsed>> {
             Parsed::Enum(schema::enum_index(names, &s.to_str()?).map_err(bad)?)
         }
         Kind::Sizing => Parsed::Sizing(parse_sizing(v)?),
+        Kind::Min => Parsed::Min(match v {
+            mlua::Value::String(s) => schema::min_str(&s.to_str()?).map_err(bad)?,
+            v => kui_core::Min::px(number(v).ok_or_else(|| bad("expected a number or \"fit\""))?),
+        }),
         Kind::Msg | Kind::Tag => Parsed::Msg(lua_to_value(v)?),
         Kind::Str => {
             let mlua::Value::String(s) = v else {
@@ -1250,6 +1254,22 @@ mod tests {
         assert_eq!(p.spec, expected);
         assert_eq!(p.key.as_deref(), Some("panel"));
         assert!(p.key_focus);
+    }
+
+    /// A min is a number or `"fit"`, per axis, and nothing else: the
+    /// sizing words a min cannot be are refused by name.
+    #[test]
+    fn a_min_is_a_number_or_fit() {
+        let lua = Lua::new();
+        let t = eval_table(&lua, r#"{ min_width = "fit", min_height = 3 }"#);
+        let p = parse_props(&t, false).unwrap();
+        let expected = NodeSpec::column()
+            .min_width(kui_core::Min::FIT)
+            .min_height(3.0);
+        assert_eq!(p.spec, expected);
+        let t = eval_table(&lua, r#"{ min_width = "grow" }"#);
+        let err = parse_props(&t, false).unwrap_err().to_string();
+        assert!(err.contains("bad min"), "{err}");
     }
 
     /// The shapes the core decides on, spelled the Lua way: the pad family

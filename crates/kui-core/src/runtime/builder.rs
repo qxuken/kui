@@ -578,9 +578,9 @@ impl Core {
         });
         spec.layout.width = Sizing::Fixed(rect.w);
         spec.layout.height = Sizing::Fixed(rect.h);
-        spec.layout.min_w = 0.0;
+        spec.layout.min_w = crate::spec::Min::px(0.0);
         spec.layout.max_w = f32::INFINITY;
-        spec.layout.min_h = 0.0;
+        spec.layout.min_h = crate::spec::Min::px(0.0);
         spec.layout.max_h = f32::INFINITY;
         spec.layout.clip = false;
         spec.layout.scroll_x = false;

@@ -159,6 +159,10 @@ typedef struct KuiStr {
 
 /* Sizing tags */
 enum { KUI_FIT = 0, KUI_GROW = 1, KUI_FIXED = 2, KUI_PERCENT = 3 };
+/* KuiSpec.min_w / min_h: the node's own fit size as its floor (`minWidth:
+ * "fit"` elsewhere) - a grow child that never goes below its content. Any
+ * negative min means this; the name is the one to write. */
+#define KUI_MIN_FIT (-1.0f)
 /* Directions */
 enum { KUI_COLUMN = 0, KUI_ROW = 1 };
 /* Alignment */
@@ -311,7 +315,8 @@ typedef struct KuiEnter {
  * `tooltip` was appended that way, and did not bump KUI_ABI_VERSION. */
 typedef struct KuiSpec {
     KuiSizing width, height;
-    float min_w, max_w, min_h, max_h; /* clamps; max 0 = unconstrained */
+    float min_w, max_w, min_h, max_h; /* clamps; max 0 = unconstrained,
+                                         min KUI_MIN_FIT = the fit size */
     uint32_t dir;
     float pad_l, pad_r, pad_t, pad_b;
     float gap;

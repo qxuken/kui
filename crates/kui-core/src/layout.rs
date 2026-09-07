@@ -15,7 +15,7 @@
 
 use crate::geom::{Rect, Size, Vec2};
 use crate::scroll::ScrollStore;
-use crate::spec::{Align, Dir, FloatAnchor, Sizing};
+use crate::spec::{Align, Dir, FloatAnchor, Min, Sizing};
 use crate::tree::{NIL, NodeContent, Tree};
 
 /// Gated on the tree-level flag first: on a frame with no floats this is
@@ -233,55 +233,112 @@ pub fn compute(
     positions(tree, scroll, viewport);
 }
 
+/// The fit width of `i`, a non-text node: what its content wants on its
+/// own. Read for a `Fit` width, and for a `Min::FIT` floor under any other
+/// sizing — a `Grow` tab that must never be narrower than its label.
+#[inline(always)]
+fn fit_width(tree: &Tree, i: usize, text: &mut dyn TextMeasure) -> f32 {
+    let spec = &tree.specs[i].layout;
+    match tree.content[i] {
+        NodeContent::Edit(key) => text.edit_intrinsic(key).w + spec.padding.x(),
+        // Image pixels as logical px (1:1 at scale 1).
+        NodeContent::Image(id) => text.image_size(id).w,
+        _ => {
+            let mut w = 0.0f32;
+            let mut n = 0u32;
+            for c in tree.children(i as u32) {
+                if is_float(tree, c) {
+                    continue;
+                }
+                let cw = tree.size[c as usize].w;
+                if spec.dir == Dir::Row {
+                    w += cw;
+                } else {
+                    w = w.max(cw);
+                }
+                n += 1;
+            }
+            if spec.dir == Dir::Row && n > 1 {
+                w += spec.gap * (n - 1) as f32;
+            }
+            w + spec.padding.x()
+        }
+    }
+}
+
 fn fit_widths(tree: &mut Tree, text: &mut dyn TextMeasure) {
     for i in (0..tree.len()).rev() {
         if let NodeContent::Text(tid) = tree.content[i] {
             tree.size[i].w = text.intrinsic(tid).w;
             continue;
         }
-        let spec = tree.specs[i].layout;
-        if let NodeContent::Edit(key) = tree.content[i] {
-            tree.size[i].w = spec.clamp_w(match spec.width {
-                Sizing::Fixed(px) => px,
-                Sizing::Grow(_) | Sizing::Percent(_) => 0.0,
-                Sizing::Fit => text.edit_intrinsic(key).w + spec.padding.x(),
-            });
-            continue;
+        let width = tree.specs[i].layout.width;
+        let min_fit = tree.specs[i].layout.min_w.is_fit();
+        // Measured once for both uses: the Fit sizing, and the Fit floor.
+        let fit = if min_fit || width == Sizing::Fit {
+            fit_width(tree, i, text)
+        } else {
+            0.0
+        };
+        // A `Min::FIT` floor resolves here, once, to the number every later
+        // clamp on this axis reads — written back into the spec so
+        // `set_axis_clamped` in the grow pass and `break_lines` need no
+        // second form.
+        if min_fit {
+            tree.specs[i].layout.min_w = Min::px(fit);
         }
-        if let NodeContent::Image(id) = tree.content[i] {
-            tree.size[i].w = spec.clamp_w(match spec.width {
-                Sizing::Fixed(px) => px,
-                Sizing::Grow(_) | Sizing::Percent(_) => 0.0,
-                // Image pixels as logical px (1:1 at scale 1).
-                Sizing::Fit => text.image_size(id).w,
-            });
-            continue;
-        }
-        tree.size[i].w = spec.clamp_w(match spec.width {
+        tree.size[i].w = tree.specs[i].layout.clamp_w(match width {
             Sizing::Fixed(px) => px,
-            // Resolved against the parent later; contributes nothing to fit.
+            // Resolved against the parent later; contributes nothing to fit
+            // beyond its own floor.
             Sizing::Grow(_) | Sizing::Percent(_) => 0.0,
-            Sizing::Fit => {
-                let mut w = 0.0f32;
-                let mut n = 0u32;
-                for c in tree.children(i as u32) {
-                    if is_float(tree, c) {
-                        continue;
-                    }
-                    let cw = tree.size[c as usize].w;
-                    if spec.dir == Dir::Row {
-                        w += cw;
-                    } else {
-                        w = w.max(cw);
-                    }
-                    n += 1;
-                }
-                if spec.dir == Dir::Row && n > 1 {
-                    w += spec.gap * (n - 1) as f32;
-                }
-                w + spec.padding.x()
-            }
+            Sizing::Fit => fit,
         });
+    }
+}
+
+/// The fit height of `i`, a non-text node, against its final width:
+/// `fit_width`'s mirror, read for a `Fit` height and for a `Min::FIT`
+/// floor. An editor's is its wrapped extent, which the caller has already
+/// measured (emission and input must share one line layout, whatever the
+/// sizing) and passes in as `edit`.
+#[inline(always)]
+fn fit_height(tree: &Tree, i: usize, text: &mut dyn TextMeasure, edit: Size) -> f32 {
+    let spec = &tree.specs[i].layout;
+    match tree.content[i] {
+        NodeContent::Edit(_) => edit.h + spec.padding.y(),
+        // Width is final by now: a Fit height preserves the aspect.
+        NodeContent::Image(id) => {
+            let intrinsic = text.image_size(id);
+            if intrinsic.w > 0.0 {
+                intrinsic.h * tree.size[i].w / intrinsic.w
+            } else {
+                0.0
+            }
+        }
+        // A wrapping row is as tall as its lines stacked: the lines were
+        // chosen in pass 2, against a width that is already final.
+        _ if wraps(tree, i as u32) => wrap_measure(tree, i as u32).1 + spec.padding.y(),
+        _ => {
+            let mut h = 0.0f32;
+            let mut n = 0u32;
+            for c in tree.children(i as u32) {
+                if is_float(tree, c) {
+                    continue;
+                }
+                let ch = tree.size[c as usize].h;
+                if spec.dir == Dir::Column {
+                    h += ch;
+                } else {
+                    h = h.max(ch);
+                }
+                n += 1;
+            }
+            if spec.dir == Dir::Column && n > 1 {
+                h += spec.gap * (n - 1) as f32;
+            }
+            h + spec.padding.y()
+        }
     }
 }
 
@@ -295,62 +352,30 @@ fn fit_heights(tree: &mut Tree, text: &mut dyn TextMeasure) {
             tree.size[i] = wrapped;
             continue;
         }
-        let spec = tree.specs[i].layout;
-        if let NodeContent::Edit(key) = tree.content[i] {
-            // Always wrap to the final content width so emission and input
-            // hit the same line layout, whatever the height sizing is.
-            let inner = text.edit_wrapped(key, (tree.size[i].w - spec.padding.x()).max(0.0));
-            tree.size[i].h = spec.clamp_h(match spec.height {
-                Sizing::Fixed(px) => px,
-                Sizing::Grow(_) | Sizing::Percent(_) => 0.0,
-                Sizing::Fit => inner.h + spec.padding.y(),
-            });
-            continue;
+        // Always wrap an editor to the final content width so emission and
+        // input hit the same line layout, whatever the height sizing is.
+        let edit = if let NodeContent::Edit(key) = tree.content[i] {
+            let inner = (tree.size[i].w - tree.specs[i].layout.padding.x()).max(0.0);
+            text.edit_wrapped(key, inner)
+        } else {
+            Size::default()
+        };
+        let height = tree.specs[i].layout.height;
+        let min_fit = tree.specs[i].layout.min_h.is_fit();
+        // Same resolution as `fit_widths`: measured once, the floor written
+        // back as a number.
+        let fit = if min_fit || height == Sizing::Fit {
+            fit_height(tree, i, text, edit)
+        } else {
+            0.0
+        };
+        if min_fit {
+            tree.specs[i].layout.min_h = Min::px(fit);
         }
-        if let NodeContent::Image(id) = tree.content[i] {
-            tree.size[i].h = spec.clamp_h(match spec.height {
-                Sizing::Fixed(px) => px,
-                Sizing::Grow(_) | Sizing::Percent(_) => 0.0,
-                // Width is final by now: a Fit height preserves the aspect.
-                Sizing::Fit => {
-                    let intrinsic = text.image_size(id);
-                    if intrinsic.w > 0.0 {
-                        intrinsic.h * tree.size[i].w / intrinsic.w
-                    } else {
-                        0.0
-                    }
-                }
-            });
-            continue;
-        }
-        tree.size[i].h = spec.clamp_h(match spec.height {
+        tree.size[i].h = tree.specs[i].layout.clamp_h(match height {
             Sizing::Fixed(px) => px,
             Sizing::Grow(_) | Sizing::Percent(_) => 0.0,
-            // A wrapping row is as tall as its lines stacked: the lines
-            // were chosen in pass 2, against a width that is already final.
-            Sizing::Fit if wraps(tree, i as u32) => {
-                wrap_measure(tree, i as u32).1 + spec.padding.y()
-            }
-            Sizing::Fit => {
-                let mut h = 0.0f32;
-                let mut n = 0u32;
-                for c in tree.children(i as u32) {
-                    if is_float(tree, c) {
-                        continue;
-                    }
-                    let ch = tree.size[c as usize].h;
-                    if spec.dir == Dir::Column {
-                        h += ch;
-                    } else {
-                        h = h.max(ch);
-                    }
-                    n += 1;
-                }
-                if spec.dir == Dir::Column && n > 1 {
-                    h += spec.gap * (n - 1) as f32;
-                }
-                h + spec.padding.y()
-            }
+            Sizing::Fit => fit,
         });
     }
 }
@@ -613,10 +638,11 @@ fn shrink_axis(tree: &mut Tree, i: u32, axis: AxisSel, mut deficit: f32, only_li
         {
             return None;
         }
+        // Resolved to a number by the fit pass of this axis, which ran.
         let spec = tree.specs[c as usize].layout;
         Some(match axis {
-            AxisSel::Width => spec.min_w,
-            AxisSel::Height => spec.min_h,
+            AxisSel::Width => spec.min_w.resolved(),
+            AxisSel::Height => spec.min_h.resolved(),
         })
     };
 
@@ -1340,6 +1366,106 @@ mod tests {
         for c in [1u32, 3u32] {
             assert_eq!(t.size(c).h, 80.0);
         }
+    }
+
+    /// An i3-style tab bar: every tab `grow` with a `min_width`, on a row
+    /// that scrolls x. With room the tabs split the bar evenly; past it
+    /// each sits at its min and the bar scrolls by the overflow — the
+    /// clamp in `distribute_run` and the shrink pass a scroll axis skips
+    /// are what make one declaration cover both regimes.
+    #[test]
+    fn grow_tabs_split_evenly_then_scroll_at_their_min() {
+        let bar = || NodeSpec::row().width(px(600.0)).height(px(30.0)).scroll_x();
+        let tab = || {
+            NodeSpec::column()
+                .width(Sizing::Grow(1.0))
+                .min_width(80.0)
+                .height(px(30.0))
+        };
+        // Three tabs: 200 each, nothing to scroll.
+        let mut t = T::new(bar());
+        let tabs: Vec<u32> = (0..3).map(|_| t.node(0, tab())).collect();
+        t.run(1000.0, 1000.0);
+        for (k, &c) in tabs.iter().enumerate() {
+            assert_eq!(t.size(c).w, 200.0);
+            assert_eq!(t.pos(c).x, 200.0 * k as f32);
+        }
+        assert_eq!(t.tree.scroll_max[0].x, 0.0);
+        // Ten tabs: 800 of min in a 600 bar, every tab at 80, 200 to scroll.
+        let mut t = T::new(bar());
+        let tabs: Vec<u32> = (0..10).map(|_| t.node(0, tab())).collect();
+        t.run(1000.0, 1000.0);
+        for (k, &c) in tabs.iter().enumerate() {
+            assert_eq!(t.size(c).w, 80.0);
+            assert_eq!(t.pos(c).x, 80.0 * k as f32);
+        }
+        assert_eq!(t.tree.scroll_max[0].x, 200.0);
+        // Same bar without scroll_x: the mins still hold (grow is not
+        // shrinkable), so the row overflows and clips instead.
+        let mut t = T::new(NodeSpec::row().width(px(600.0)).height(px(30.0)));
+        let tabs: Vec<u32> = (0..10).map(|_| t.node(0, tab())).collect();
+        t.run(1000.0, 1000.0);
+        for &c in &tabs {
+            assert_eq!(t.size(c).w, 80.0);
+        }
+        // The floor as the tab's own content: `Min::FIT` under `Grow`.
+        // Ten tabs each around an 80 px label split a 600 bar as the
+        // numeric min did — the label is the min — and the fit resolves
+        // to a number the spec keeps.
+        let mut t = T::new(bar());
+        let tabs: Vec<u32> = (0..10)
+            .map(|_| {
+                let c = t.node(0, tab().min_width(Min::FIT));
+                t.text(c, 8);
+                c
+            })
+            .collect();
+        t.run(1000.0, 1000.0);
+        for (k, &c) in tabs.iter().enumerate() {
+            assert_eq!(t.size(c).w, 80.0);
+            assert_eq!(t.pos(c).x, 80.0 * k as f32);
+            assert_eq!(t.tree.specs[c as usize].layout.min_w, Min::px(80.0));
+        }
+        assert_eq!(t.tree.scroll_max[0].x, 200.0);
+        // And with room, the same tabs split it: 3 × 200, the floor idle.
+        let mut t = T::new(bar());
+        let tabs: Vec<u32> = (0..3)
+            .map(|_| {
+                let c = t.node(0, tab().min_width(Min::FIT));
+                t.text(c, 8);
+                c
+            })
+            .collect();
+        t.run(1000.0, 1000.0);
+        for &c in &tabs {
+            assert_eq!(t.size(c).w, 200.0);
+        }
+    }
+
+    /// `Min::FIT` on the cross axis and under a percent: a 50%-tall cell
+    /// in a 20-tall row floors at its 16-tall child, and a fit floor with
+    /// nothing inside is no floor.
+    #[test]
+    fn min_fit_floors_a_percent_height_at_its_content() {
+        let mut t = T::new(NodeSpec::row().width(px(100.0)).height(px(20.0)));
+        let a = t.node(
+            0,
+            NodeSpec::column()
+                .width(px(10.0))
+                .height(Sizing::Percent(0.5))
+                .min_height(Min::FIT),
+        );
+        t.node(a, NodeSpec::column().width(px(10.0)).height(px(16.0)));
+        let b = t.node(
+            0,
+            NodeSpec::column()
+                .width(px(10.0))
+                .height(Sizing::Percent(0.5))
+                .min_height(Min::FIT),
+        );
+        t.run(1000.0, 1000.0);
+        assert_eq!(t.size(a).h, 16.0);
+        assert_eq!(t.size(b).h, 10.0);
     }
 
     #[test]

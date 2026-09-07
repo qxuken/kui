@@ -59,7 +59,7 @@ use crate::line::Stroke;
 use crate::resources::{ImageId, SoundId};
 use crate::runtime::Core;
 use crate::spec::{
-    Align, Dir, FloatAnchor, FloatConfig, NodeSpec, PadShorthand, Sizing, TextStyle,
+    Align, Dir, FloatAnchor, FloatConfig, Min, NodeSpec, PadShorthand, Sizing, TextStyle,
 };
 use crate::text::Span;
 use crate::tree::{NodeContent, Tree};
@@ -142,6 +142,15 @@ pub const SOUND_BYTES: &[u8] = b"RIFF....WAVE";
 /// The `wrap` scene's boxes, as (width, height). Shared so every adapter
 /// writes the same four and a typo cannot pass as a wrapping difference.
 pub const WRAP_BOXES: &[(f32, f32)] = &[(30.0, 12.0), (40.0, 16.0), (50.0, 20.0), (20.0, 24.0)];
+
+/// The `tabs` scene's roomy bar: each tab's stand-in label as (width,
+/// height). Two tabs in a 200-wide bar split it 100/100, so neither fit
+/// floor binds; the 12-tall label lifts a 50%-of-20 tab to 12, the 8-tall
+/// one does not.
+pub const TAB_ROOMY: &[(f32, f32)] = &[(30.0, 12.0), (50.0, 8.0)];
+/// The crowded bar's label widths: 300 of fit floor in the same 200-wide
+/// bar, so every tab sits at its label and the bar scrolls by 100.
+pub const TAB_CROWDED: &[f32] = &[60.0, 70.0, 80.0, 90.0];
 
 /// Handles a scene's builder needs, registered before the first frame.
 #[derive(Clone, Copy)]
@@ -483,6 +492,34 @@ pub const SCENES: &[Scene] = &[
             segments: 0,
             glyphs_min: 0,
             access: &["0 window ||"],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            title: None,
+        },
+    },
+    Scene {
+        name: "tabs",
+        doc: "An i3-style tab bar twice: `grow` tabs with a `minWidth` of \
+              \"fit\", in a bar with room (two tabs split it evenly, the \
+              floor idle) and in one without (four tabs sit at their \
+              labels' widths and the bar scrolls x, scrolled once). The \
+              roomy tabs also carry a 50% height under a fit floor, so \
+              both axes and the floor's binding and idle cases are in one \
+              frame. All geometry, no text: the labels are fixed boxes.",
+        custom: &["overflow", "key"],
+        elements: &["box"],
+        build: build_tabs,
+        env: NATIVE_CHROME,
+        steps: &[Step::Cursor(100, 38), Step::Scroll(-40, 0)],
+        expect: Expect {
+            solid: 15,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            glyphs_min: 0,
+            access: &["0 window ||", "1 scrollView ||"],
             events: &[],
             announcements: &[],
             warnings: &[],
@@ -1367,6 +1404,46 @@ fn build_wrap(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             }
         },
     );
+}
+
+fn build_tabs(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    let bar = || {
+        NodeSpec::row()
+            .width(Sizing::Fixed(200.0))
+            .height(Sizing::Fixed(20.0))
+            .bg(Color::hex(0x101018ff))
+    };
+    let tab = || {
+        NodeSpec::column()
+            .width(Sizing::Grow(1.0))
+            .min_width(Min::FIT)
+            .bg(Color::hex(0x30344aff))
+    };
+    let label = |w: f32, h: f32| {
+        NodeSpec::column()
+            .width(Sizing::Fixed(w))
+            .height(Sizing::Fixed(h))
+            .bg(Color::hex(0x3b5bd4ff))
+    };
+    ui.with(NodeSpec::column().pad(4.0).gap(4.0), |ui| {
+        ui.with_keyed("roomy", bar(), |ui| {
+            for (w, h) in TAB_ROOMY {
+                ui.with(
+                    tab().height(Sizing::Percent(0.5)).min_height(Min::FIT),
+                    |ui| {
+                        ui.with(label(*w, *h), |_| {});
+                    },
+                );
+            }
+        });
+        ui.with_keyed("crowded", bar().scroll_x(), |ui| {
+            for w in TAB_CROWDED {
+                ui.with(tab().height(Sizing::Grow(1.0)), |ui| {
+                    ui.with(label(*w, 12.0), |_| {});
+                });
+            }
+        });
+    });
 }
 
 fn build_overflow(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {

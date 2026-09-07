@@ -24,6 +24,50 @@ pub enum Sizing {
     Percent(f32),
 }
 
+/// A lower clamp on one axis: a number of logical px, or the node's own
+/// fit size on that axis (`minWidth: "fit"`, [`Min::FIT`]). `FIT` is what
+/// lets a `Grow` child keep a content floor — CSS's `flex: 1 0 auto`: the
+/// tabs of an i3-style bar split the bar evenly while they fit and sit at
+/// their label's width, scrolling, once they do not. Layout resolves it
+/// to a number in the fit pass of its axis (`layout::fit_widths` /
+/// `fit_heights`), so every later clamp reads one; until then it clamps
+/// like no floor at all.
+///
+/// One `f32`, with `FIT` as a negative — the form `KuiSpec.min_w` takes
+/// too (`KUI_MIN_FIT`) — rather than an enum with a tag: `LayoutSpec` is
+/// copied per node per frame, and a tagged pair for two axes is eight
+/// bytes on every node for a floor almost none declares (C15). A negative
+/// floor never meant anything, so the slot was free.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Min(f32);
+
+impl Min {
+    /// The node's own fit size on this axis.
+    pub const FIT: Min = Min(-1.0);
+
+    /// A floor of `v` logical px; a negative is no floor.
+    pub fn px(v: f32) -> Min {
+        Min(v.max(0.0))
+    }
+
+    /// Whether this is the unresolved fit floor.
+    pub fn is_fit(self) -> bool {
+        self.0 < 0.0
+    }
+
+    /// The clamp as a number: the px it holds, or 0 for a `FIT` layout has
+    /// not resolved yet (nothing to floor at).
+    pub fn resolved(self) -> f32 {
+        self.0.max(0.0)
+    }
+}
+
+impl From<f32> for Min {
+    fn from(v: f32) -> Self {
+        Min::px(v)
+    }
+}
+
 impl Sizing {
     /// The animatable number inside: a grow factor, a px size, a fraction.
     /// None for `Fit`, which has nothing to ease.
@@ -283,9 +327,10 @@ pub struct LayoutSpec {
     pub height: Sizing,
     /// Clamps applied after `width`/`height` resolve (Fit, Grow, Percent and
     /// Fixed alike), so "grow but at most N" and "fit but at least N" work.
-    pub min_w: f32,
+    /// A min may also be [`Min::FIT`]: "grow but never below my content".
+    pub min_w: Min,
     pub max_w: f32,
-    pub min_h: f32,
+    pub min_h: Min,
     pub max_h: f32,
     pub dir: Dir,
     pub padding: Edges,
@@ -319,9 +364,9 @@ impl Default for LayoutSpec {
         Self {
             width: Sizing::Fit,
             height: Sizing::Fit,
-            min_w: 0.0,
+            min_w: Min::px(0.0),
             max_w: f32::INFINITY,
-            min_h: 0.0,
+            min_h: Min::px(0.0),
             max_h: f32::INFINITY,
             dir: Dir::Column,
             padding: Edges::default(),
@@ -347,11 +392,13 @@ impl LayoutSpec {
 
 impl LayoutSpec {
     pub(crate) fn clamp_w(&self, w: f32) -> f32 {
-        w.clamp(self.min_w, self.max_w.max(self.min_w))
+        let min = self.min_w.resolved();
+        w.clamp(min, self.max_w.max(min))
     }
 
     pub(crate) fn clamp_h(&self, h: f32) -> f32 {
-        h.clamp(self.min_h, self.max_h.max(self.min_h))
+        let min = self.min_h.resolved();
+        h.clamp(min, self.max_h.max(min))
     }
 }
 
@@ -866,8 +913,9 @@ impl NodeSpec {
         self.width(Sizing::Grow(1.0)).height(Sizing::Grow(1.0))
     }
 
-    pub fn min_width(mut self, v: f32) -> Self {
-        self.layout.min_w = v;
+    /// A number of px, or [`Min::FIT`] for the node's own fit width.
+    pub fn min_width(mut self, v: impl Into<Min>) -> Self {
+        self.layout.min_w = v.into();
         self
     }
 
@@ -876,8 +924,9 @@ impl NodeSpec {
         self
     }
 
-    pub fn min_height(mut self, v: f32) -> Self {
-        self.layout.min_h = v;
+    /// A number of px, or [`Min::FIT`] for the node's own fit height.
+    pub fn min_height(mut self, v: impl Into<Min>) -> Self {
+        self.layout.min_h = v.into();
         self
     }
 

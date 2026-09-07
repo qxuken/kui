@@ -47,7 +47,7 @@ use crate::color::Color;
 use crate::cursor::CursorShape;
 use crate::enter::Enter;
 use crate::keyframes::Keyframe;
-use crate::spec::{Align, FontFamily, NodeSpec, PadShorthand, Sizing, TextStyle, TextWrap};
+use crate::spec::{Align, FontFamily, Min, NodeSpec, PadShorthand, Sizing, TextStyle, TextWrap};
 use crate::value::Value;
 use crate::window::{WindowButton, WindowConfig};
 
@@ -298,6 +298,9 @@ pub enum Kind {
     /// A sizing: number | "fit" | "grow" | "N%" | {grow} | {percent}.
     /// Binary: 2 slots (mode, value).
     Sizing,
+    /// A lower clamp: number | "fit" (the node's own fit size on that axis).
+    /// Binary: 2 slots (mode, value), a sizing's first two modes.
+    Min,
     /// An arbitrary message payload (a `Value`). Binary: strref to JSON.
     Msg,
     /// A message merged into the core's own event under `tag` (`onDrag`,
@@ -329,6 +332,7 @@ pub enum Apply {
     SpecFlag(fn(NodeSpec) -> NodeSpec),
     SpecEnum(fn(NodeSpec, usize) -> NodeSpec),
     SpecSizing(fn(NodeSpec, Sizing) -> NodeSpec),
+    SpecMin(fn(NodeSpec, Min) -> NodeSpec),
     SpecMsg(fn(NodeSpec, Value) -> NodeSpec),
     SpecStr(fn(NodeSpec, &str) -> NodeSpec),
     SpecKeyframes(fn(NodeSpec, Vec<Keyframe>) -> NodeSpec),
@@ -393,6 +397,14 @@ pub fn align_idx(i: usize) -> Align {
     }
 }
 
+/// Binary min decode: (mode, value) → Min, the first two sizing modes.
+pub fn min_num(mode: u32, value: f64) -> Min {
+    match mode {
+        1 => Min::FIT,
+        _ => Min::px(value as f32),
+    }
+}
+
 /// Binary sizing decode: (mode, value) → Sizing.
 pub fn sizing_num(mode: u32, value: f64) -> Sizing {
     match mode {
@@ -421,9 +433,14 @@ pub const PROPS: &[PropDef] = &[
     PropDef {
         name: "minWidth",
         id: P_MIN_W,
-        kind: Kind::F32,
-        apply: Apply::SpecF32(|s, v| s.min_width(v)),
-        doc: "Lower width clamp (logical px).",
+        kind: Kind::Min,
+        apply: Apply::SpecMin(|s, v| s.min_width(v)),
+        doc: "Lower width clamp: logical px, or \"fit\" for the node's own fit width. \
+              \"fit\" under `width=\"grow\"` is a content floor — CSS's `flex: 1 0 auto` — \
+              which is what an i3-style tab bar is: tabs that split the bar evenly \
+              while they fit and sit at their label's width, scrolling, once they do \
+              not. Opt-in, because a fit width is the unwrapped one: a paragraph in a \
+              grow column would stop wrapping under it.",
     },
     PropDef {
         name: "maxWidth",
@@ -435,9 +452,9 @@ pub const PROPS: &[PropDef] = &[
     PropDef {
         name: "minHeight",
         id: P_MIN_H,
-        kind: Kind::F32,
-        apply: Apply::SpecF32(|s, v| s.min_height(v)),
-        doc: "Lower height clamp (logical px).",
+        kind: Kind::Min,
+        apply: Apply::SpecMin(|s, v| s.min_height(v)),
+        doc: "Lower height clamp: logical px, or \"fit\" for the node's own fit height (see `minWidth`).",
     },
     PropDef {
         name: "maxHeight",
@@ -1666,6 +1683,7 @@ pub enum Parsed {
     Flag,
     Enum(usize),
     Sizing(Sizing),
+    Min(Min),
     Msg(Value),
     Str(String),
     Resource(u64),
@@ -1745,6 +1763,7 @@ pub fn apply(def: &PropDef, value: Parsed, out: &mut PropsOut) -> Result<(), Str
         (Apply::SpecFlag(f), Parsed::Flag) => out.spec = f(spec),
         (Apply::SpecEnum(f), Parsed::Enum(v)) => out.spec = f(spec, v),
         (Apply::SpecSizing(f), Parsed::Sizing(v)) => out.spec = f(spec, v),
+        (Apply::SpecMin(f), Parsed::Min(v)) => out.spec = f(spec, v),
         (Apply::SpecMsg(f), Parsed::Msg(v)) => out.spec = f(spec, v),
         (Apply::SpecStr(f), Parsed::Str(v)) => out.spec = f(spec, &v),
         (Apply::SpecKeyframes(f), Parsed::Keyframes(v)) => out.spec = f(spec, v),
@@ -1817,6 +1836,14 @@ pub fn color_hex_str(s: &str) -> Result<Color, String> {
 }
 
 /// The string forms of a sizing: "fit" | "grow" | "N%".
+/// The string form of a min: only `"fit"`. A number arrives as a number.
+pub fn min_str(s: &str) -> Result<Min, String> {
+    match s {
+        "fit" => Ok(Min::FIT),
+        _ => Err(format!("bad min {s:?} (number | \"fit\")")),
+    }
+}
+
 pub fn sizing_str(s: &str) -> Result<Sizing, String> {
     match s {
         "fit" => Ok(Sizing::Fit),
@@ -2026,6 +2053,7 @@ mod tests {
                 Kind::Flag => Parsed::Flag,
                 Kind::Enum(_) => Parsed::Enum(1),
                 Kind::Sizing => Parsed::Sizing(Sizing::Percent(0.5)),
+                Kind::Min => Parsed::Min(Min::FIT),
                 Kind::Msg | Kind::Tag => Parsed::Msg(Value::Int(1)),
                 Kind::Str => Parsed::Str("name".into()),
                 Kind::Resource => Parsed::Resource(7),
