@@ -897,6 +897,16 @@ expensive and are on no release path — and a job whose runner label matches
 nothing does not fail fast in Forgejo, it queues, which in `ci.yml` would
 leave a run without a result long after `check` and `publish` had finished.
 
+Pushing the tag does not check the commit twice. The push to main and the push
+of the tag that names it share a concurrency group keyed by the commit, and
+only the tag run may cancel — so it takes over a `check` already running for
+that commit, and in the other order (the tag handled first) the main run is
+stood down by ci.yml's `gate` job instead of running a second one. With a
+single runner that is the difference between one `check` and two before
+anything is published. It needs Forgejo v14 or newer for the `concurrency`
+block; the trade is that a run on main is no longer cancelled when a newer
+commit is pushed to main, since the group is the commit rather than the branch.
+
 Before tagging, run the macOS accessibility audit by hand:
 
 ```bash
