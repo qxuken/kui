@@ -436,7 +436,9 @@ The next thing to build is what the next field reports asked for, the same
 day: F24–F30 above — F24 and F28 are the two that touch the core, F25 is
 the lifetime question they turned up, F26 is the publish step, and F27,
 F29 and F30 are a doc clause, a promise on the windowed loop and a task
-index.
+index. **F30 closed on 2026-09-07**: `docs/howto.md`, the `**What
+breaks.**` bullet list from alpha.9 on, and what a "what you can delete"
+line names — its outcome is written on top of the entry.
 
 **Design, wanting an ADR.** Nothing new since ADR 0014 (above) was built on 2026-09-07; what it leaves open — a slot element for Node, extensions in `kui_run`, an extension offering slots of its own — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
 [`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md),
