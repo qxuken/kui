@@ -1060,7 +1060,9 @@ export declare class Ctx {
    * by `decodeQuads`. Copied into the Buffer. A window answers
    * with what its last pump drew, so a smoke test can read the
    * frame the shipping driver painted and not only a headless
-   * one's (backlog F19).
+   * one's (backlog F19). Drive that window with `access(key,
+   * action)` — `click`, `type` and `key` are refused there,
+   * because the OS is what drives a real window.
    */
   quads(): Buffer
   /**
@@ -1410,7 +1412,9 @@ export declare class KuiWindow {
    * by `decodeQuads`. Copied into the Buffer. A window answers
    * with what its last pump drew, so a smoke test can read the
    * frame the shipping driver painted and not only a headless
-   * one's (backlog F19).
+   * one's (backlog F19). Drive that window with `access(key,
+   * action)` — `click`, `type` and `key` are refused there,
+   * because the OS is what drives a real window.
    */
   quads(): Buffer
   /**
@@ -1832,7 +1836,10 @@ export interface Loop<M, A, S, E = never> {
   /** Drives the app the way a screen reader would — `access(key, 'click')`
    *  activates a node, `access(key, 'setValue', text)` types into an
    *  editor — and settles the events that follow through `update`. Works
-   *  against a real window too. */
+   *  against a real window too, and there it is not only the screen
+   *  reader's path but the only synthetic input a window takes: a smoke
+   *  test that reads `win.quads()` presses with this, because `click`,
+   *  `type` and `key` are refused on a surface the OS drives. */
   access(key: string, action: AccessAction, value?: string | AccessArg): void;
 }
 

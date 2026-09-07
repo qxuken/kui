@@ -243,7 +243,29 @@ an app pins an exact version and its lockfile is what holds; `npm view
 work, `~` as an outcome — an app "can be running a release it has no way
 to discover it is running".
 
-### `.` F27 — `quads()` on a window does not say how to drive one
+### `.` F27 — `quads()` on a window does not say how to drive one — done (2026-09-07)
+
+**Done (2026-09-07), as the entry asks — three doc sites, no code.**
+`quads()`'s doc in the `core_methods!` macro
+(`kui-node/src/lib.rs`) gained the clause, so it renders onto both `Ctx`
+and `KuiWindow` in `index.d.ts` from the one source: drive that window
+with `access(key, action)`, and `click`, `type` and `key` are refused
+there because the OS is what drives a real window. `access`'s own doc, in
+the hand-written `Loop` interface, no longer stops at "Works against a
+real window too" — it says that against a window it is not only the
+screen reader's path but the *only* synthetic input one takes, and names
+`win.quads()` as the test that wants it. The README's window example says
+the same where it shows `runWindowed`, in the paragraph on what actually
+differs between the two drivers. So all three of the places a person
+lands — the generated method doc, the method they would find next, and
+the page they read before writing either — now point at `access`, and the
+app's "worked out that `click` would not do" is a sentence instead.
+
+Rebuilt the addon before `npm run gen` (the doc lives in the Rust source,
+and the type defs are appended to, so `target/napi-type-defs` was cleared
+first — `gen` re-runs the build itself when it finds none). `npm test` in
+`packages/kui`: 82 pass, 0 fail. The generated region grew only these
+lines, on the two classes; the member count is unchanged at 126.
 
 Pomodoro wish 3 and finding 4. `win.quads()` landed (F19) so a smoke test
 could read the frame the shipping driver painted; the first thing that
@@ -393,7 +415,8 @@ The next thing to build is what the next field reports asked for, the same
 day: F24–F30 above — F24 and F28 are the two that touch the core, F25 is
 the lifetime question they turned up, F26 is the publish step, and F27,
 F29 and F30 are a doc clause, a promise on the windowed loop and a task
-index.
+index. F27 is **done (2026-09-07)**: the clause landed on `quads()`,
+`access` and the README, and nothing but doc text moved.
 
 **Design, wanting an ADR.** Nothing new since ADR 0014 (above) was built on 2026-09-07; what it leaves open — a slot element for Node, extensions in `kui_run`, an extension offering slots of its own — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
 [`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md),

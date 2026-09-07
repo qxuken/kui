@@ -69,7 +69,11 @@ const final = await runWindowed({ init, update, view }, { title: 'counter' }); /
 Both drivers run one loop over one surface, so what differs between them is
 only what really differs: `runWindowed` pumps the OS and resolves with the
 final model, `createApp` is synchronous. Everything else — the clock, the
-diagnostics gate, the test affordances — is the same code either way.
+diagnostics gate, the test affordances — is the same code either way. To
+drive the window one of these opens — a smoke test reading `win.quads()`,
+say — press with `access(key, 'click')`: against a real window that is not
+only the screen reader's path but the only synthetic input it takes, since
+`click`, `type` and `key` are refused on a surface the OS drives.
 
 That loop takes a clock — `tick: { every: 250, msg: (now) => ({ kind: 'tick',
 now }) }` — and re-renders on a tick only when `update` returns a new model,

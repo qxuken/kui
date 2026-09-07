@@ -55,6 +55,11 @@ upgrades remove code from the apps on it is doing the job.
   argument (a `view(env)` script never sees it) and its `on_event`'s
   return value is now read; `kui::run` and `Launcher::extensions` refuse
   two extensions of one name — give one a namespace with `extension_as`.
+- `quads()`, `access()` and the README's window example now say how a real
+  window is driven: `access(key, action)` is the one synthetic input it
+  takes, and `click`, `type` and `key` are refused there. The answer was
+  only on the two methods that refuse, which is not where a smoke test
+  reading `win.quads()` looks (backlog F27).
 
 ### What you can delete
 

@@ -1303,7 +1303,9 @@ macro_rules! core_methods {
             /// by `decodeQuads`. Copied into the Buffer. A window answers
             /// with what its last pump drew, so a smoke test can read the
             /// frame the shipping driver painted and not only a headless
-            /// one's (backlog F19).
+            /// one's (backlog F19). Drive that window with `access(key,
+            /// action)` — `click`, `type` and `key` are refused there,
+            /// because the OS is what drives a real window.
             #[napi]
             pub fn quads(&mut self) -> Buffer {
                 let (dl, _) = self.$core().output();
