@@ -1415,6 +1415,44 @@ static void conf_modal_button(KuiCtx *ui, const char *key, const char *kind,
  * hears the press alone, the second sets key_up and hears both halves. An
  * integer tag, so the report's event column shows the phase. Left open, so
  * the third can hold a button (see conf_keys). */
+/* UTF-8 for one scalar value, for the steps that may carry any. */
+static size_t conf_utf8(uint32_t c, uint8_t out[4]) {
+    if (c < 0x80) { out[0] = (uint8_t)c; return 1; }
+    if (c < 0x800) { out[0] = 0xc0 | (c >> 6); out[1] = 0x80 | (c & 0x3f); return 2; }
+    if (c < 0x10000) {
+        out[0] = 0xe0 | (c >> 12); out[1] = 0x80 | ((c >> 6) & 0x3f); out[2] = 0x80 | (c & 0x3f);
+        return 3;
+    }
+    out[0] = 0xf0 | (c >> 18); out[1] = 0x80 | ((c >> 12) & 0x3f);
+    out[2] = 0x80 | ((c >> 6) & 0x3f); out[3] = 0x80 | (c & 0x3f);
+    return 4;
+}
+
+/* An IME against both kinds of editor (backlog C17): the custom one is a
+ * sink holding a line with a caret, the stock one kui_text_edit. */
+static void conf_ime(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10, .gap = 6};
+    kui_open(ui, &outer, NULL);
+    KuiValue *ed = kui_value_map();
+    kui_value_map_set(ed, KUI_STR("kind"), kui_value_str(KUI_STR("ed")));
+    KuiSpec buf = {.width = {KUI_FIXED, 200}, .height = {KUI_FIXED, 24}, .bg = 0x1b1d27ff,
+                   .role = KUI_ROLE_MULTILINE_TEXT_INPUT, .label = KUI_STR("Buffer")};
+    kui_open_with(ui, KUI_STR("buffer"), &buf, NULL, NULL, ed, NULL);
+    KuiSpec l0 = {.dir = KUI_ROW, .height = {KUI_FIXED, 20}, .role = KUI_ROLE_LINE,
+                  .value_set = KUI_VALUE_CARET, .caret = 1};
+    kui_open_keyed(ui, KUI_STR("l0"), &l0, NULL);
+    KuiTextStyle mono = {.size = 13, .family = KUI_FONT_MONO};
+    kui_text(ui, KUI_STR("ab"), &mono);
+    kui_close(ui);
+    kui_close(ui);
+    KuiTextStyle s13 = {.size = 13};
+    KuiSpec note = {.width = {KUI_FIXED, 200}, .label = KUI_STR("Note")};
+    kui_text_edit(ui, KUI_STR("note"), KUI_STR(""), &s13, 0, &note);
+    kui_close(ui);
+}
+
 /* A terminal's screen as one node (backlog C20): the cells travel as a
  * KuiCell array, and the click on the fourth cell names it. */
 static void conf_cells(KuiCtx *ui, const Fixtures *f, int phase) {
@@ -1800,6 +1838,7 @@ static const ConfScene CONF_SCENES[] = {
     {"chrome-inset", conf_chrome},
     {"controls", conf_controls},
     {"keys", conf_keys},
+    {"ime", conf_ime},
     {"cells", conf_cells},
     {"media", conf_media},
     {"lines", conf_lines},
@@ -1930,6 +1969,19 @@ static void conf_apply(KuiCtx *ctx, const ConfStep *s) {
         uint8_t c = (uint8_t)s->a;
         KuiStr none = {0};
         kui_input_key_up(ctx, (KuiStr){&c, 1}, none, 0);
+    }
+    /* An IME composing one character (any scalar value, so encoded) with
+     * its caret at the end, or 0 for the composition ending; and committing
+     * one. */
+    else if (strcmp(s->kind, "preedit") == 0) {
+        uint8_t b[4];
+        size_t n = s->a ? conf_utf8((uint32_t)s->a, b) : 0;
+        kui_input_preedit(ctx, (KuiStr){b, n}, n ? 0 : UINT32_MAX, n ? (uint32_t)n : UINT32_MAX);
+    }
+    else if (strcmp(s->kind, "commit") == 0) {
+        uint8_t b[4];
+        size_t n = conf_utf8((uint32_t)s->a, b);
+        kui_input_commit(ctx, (KuiStr){b, n});
     }
     else {
         fprintf(stderr, "conformance: unknown step '%s'\n", s->kind);

@@ -2299,6 +2299,15 @@ const SCENE_TREES = {
         ], 'shell'),
       ]),
     ]),
+  ime: () =>
+    root({}, [
+      box({ pad: 10, gap: 6 }, [
+        box({ width: 200, height: 24, bg: '#1b1d27', onKey: { kind: 'ed' }, role: 'multilineTextInput', label: 'Buffer' }, [
+          box({ dir: 'row', height: 20, role: 'line', caret: 1 }, [text('ab', { size: 13, family: 'mono' })], 'l0'),
+        ], 'buffer'),
+        el('edit', { initial: '', width: 200, size: 13, label: 'Note' }, [], 'note'),
+      ]),
+    ]),
   cells: () => {
     const screen = new Uint32Array(11 * 4);
     'hello world'.split('').forEach((ch, i) => {
@@ -2661,6 +2670,12 @@ function driveScene(env, steps, build) {
     // The same spelling for a raw key on an `onKey` sink, down and up.
     else if (step[0] === 'keydown') ctx.keyDown(String.fromCodePoint(step[1]));
     else if (step[0] === 'keyup') ctx.keyUp(String.fromCodePoint(step[1]));
+    // An IME composing one character (its caret at the end, as a byte
+    // range) or ending its composition (0), and committing one.
+    else if (step[0] === 'preedit') {
+      const s = step[1] ? String.fromCodePoint(step[1]) : '';
+      ctx.preedit(s, s ? [0, Buffer.byteLength(s)] : null);
+    } else if (step[0] === 'commit') ctx.commit(String.fromCodePoint(step[1]));
     else throw new Error(`unknown conformance step ${step[0]}`);
     events.push(...ctx.pollEvents());
     commands.push(...ctx.windowCommands());

@@ -160,6 +160,15 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        "ime" => r#"
+            return column { pad = 10, gap = 6,
+              column { key = "buffer", width = 200, height = 24, bg = 0x1b1d27ff,
+                       on_key = { kind = "ed" }, role = "multilineTextInput", label = "Buffer",
+                       row { key = "l0", height = 20, role = "line", caret = 1,
+                             text("ab", { size = 13, family = "mono" }) } },
+              edit { key = "note", initial = "", size = 13, width = 200, label = "Note" } }
+        "#
+        .to_string(),
         "cells" => r#"
             return column { pad = 10,
               cells { key = "term", rows = 1, cols = 11, size = 13, family = "mono",

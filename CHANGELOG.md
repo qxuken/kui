@@ -252,7 +252,11 @@ that asserts on an empty warning list is what notices.
   editor or not. `TextMsg` and `PreeditMsg` join `CoreMsg`; the two rows
   are in the events table. `tests/ime.rs` pins the sink route, the
   once-only typing, the moving anchor and the stock editor's unchanged
-  path; the Node test drives all of it headless.
+  path; the Node test drives all of it headless. The conformance corpus
+  gained `preedit <codepoint>` and `commit <codepoint>` steps (`preedit
+  0` ends a composition) and an `ime` scene that composes into a custom
+  editor and a stock one in turn, so every binding's adapter — Rust,
+  Node, C, Lua — pins the same two routes.
 
 - **A point on text the app owns is a byte offset, and a byte offset is a
   caret rect** (backlog C18). `Core::text_hit(key, point)` /

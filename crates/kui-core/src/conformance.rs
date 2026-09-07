@@ -225,6 +225,16 @@ pub enum Step {
     /// no modifiers, no repeat.
     KeyDown(u32),
     KeyUp(u32),
+    /// An IME composing one character (its Unicode scalar value, the caret
+    /// at its end) on whatever holds focus — a stock editor shows it
+    /// inline, an `on_key` sink hears `{kind="preedit"}` (backlog C17).
+    /// Zero is the composition ending without a commit: empty text, no
+    /// cursor.
+    Preedit(u32),
+    /// The IME committing one character: `InputEvent::Commit`, which a
+    /// stock editor takes as typed text and a sink hears as
+    /// `{kind="text"}`.
+    Commit(u32),
     /// Not an input: the view is a function of a phase, and this is the
     /// view changing its mind. Every scene but `exit` builds the same tree
     /// for every phase; a departing node is one the later phases stop
@@ -280,6 +290,12 @@ impl Step {
             }
             Step::KeyUp(c) => {
                 let _ = writeln!(out, "step keyup {c}");
+            }
+            Step::Preedit(c) => {
+                let _ = writeln!(out, "step preedit {c}");
+            }
+            Step::Commit(c) => {
+                let _ = writeln!(out, "step commit {c}");
             }
             Step::Phase(n) => {
                 let _ = writeln!(out, "step phase {n}");
@@ -341,6 +357,19 @@ impl Step {
                 KeyCode::Char(char::from_u32(c).expect("a printable step character")),
                 KeyMods::default(),
             )),
+            Step::Preedit(0) => InputEvent::Preedit(String::new(), None),
+            Step::Preedit(c) => {
+                let s = char::from_u32(c)
+                    .expect("a printable step character")
+                    .to_string();
+                let len = s.len();
+                InputEvent::Preedit(s, Some((0, len)))
+            }
+            Step::Commit(c) => InputEvent::Commit(
+                char::from_u32(c)
+                    .expect("a printable step character")
+                    .to_string(),
+            ),
         })
     }
 }
@@ -805,6 +834,52 @@ pub const SCENES: &[Scene] = &[
             events: &[
                 "key down", "key up", "go -", "key down", "key down", "key up",
             ],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+        },
+    },
+    Scene {
+        name: "ime",
+        doc: "An IME against both kinds of editor (backlog C17). A custom \
+              editor — an `on_key` sink drawing a `line` with a caret — is \
+              clicked into focus, composed into, committed to, and left with \
+              the composition ended: it hears preedit, text and preedit as \
+              data on its tag. Then the stock editor takes the same two \
+              steps itself and reports a change. The commit is its own \
+              input, since a sink already hears typing as the key's text.",
+        custom: &["key", "size"],
+        elements: &["box", "text", "edit"],
+        build: build_ime,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Cursor(60, 22),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::Preedit('x' as u32),
+            Step::Commit('y' as u32),
+            Step::Preedit(0),
+            Step::Cursor(60, 48),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::Preedit('x' as u32),
+            Step::Commit('y' as u32),
+        ],
+        expect: Expect {
+            // The sink's background and the stock editor's caret.
+            solid: 2,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            glyphs_min: 3,
+            access: &[
+                "0 window ||",
+                "1 multilineTextInput Buffer||ab",
+                "1 textInput Note||y",
+            ],
+            events: &["preedit ed", "text ed", "preedit ed", "changed -"],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -1766,6 +1841,40 @@ fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// a map with a `kind`, so the report's event column falls back to the
 /// phase — which is what the scene is about — and Lua, which has no
 /// spelling for a null tag, can declare the same sink.
+fn build_ime(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    ui.with(NodeSpec::column().pad(10.0).gap(6.0), |ui| {
+        ui.with_keyed(
+            "buffer",
+            NodeSpec::column()
+                .width(Sizing::Fixed(200.0))
+                .height(Sizing::Fixed(24.0))
+                .bg(Color::hex(0x1b1d27ff))
+                .on_key(Value::map([("kind", Value::str("ed"))]))
+                .role(Role::MultilineTextInput)
+                .label("Buffer"),
+            |ui| {
+                ui.with_keyed(
+                    "l0",
+                    NodeSpec::row()
+                        .height(Sizing::Fixed(20.0))
+                        .role(Role::Line)
+                        .caret(1),
+                    |ui| ui.text("ab", TextStyle::new(13.0).mono()),
+                );
+            },
+        );
+        ui.text_edit(
+            "note",
+            "",
+            &EditOptions {
+                style: TextStyle::new(13.0),
+                ..Default::default()
+            },
+            NodeSpec::column().width(Sizing::Fixed(200.0)).label("Note"),
+        );
+    });
+}
+
 fn build_cells(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     use crate::cells::{Cell, CellGrid, CursorShape};
     let cells: Vec<Cell> = "hello world"

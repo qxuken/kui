@@ -754,8 +754,7 @@ everything now holds a budget.
 
 ### `~` C17 — IME reaches the stock editor only — **done (2026-09-07)**
 
-Done as (1) and (2); (3)'s corpus half was not built, and the tests went
-elsewhere. (1) needed one thing the "Do" did not name: a commit has to be
+Done as (1), (2), and (3) — the corpus half a day later. (1) needed one thing the "Do" did not name: a commit has to be
 its own input. Every driver sends `InputEvent::Text` beside a key press
 (the winit one at three sites: typing, paste, and `Ime::Commit`), and a
 sink already hears the press as a `key` event with `text`, so routing
@@ -778,11 +777,17 @@ editor either, which this closes on the way. Two `EventDef` rows
 them. Tests: `tests/ime.rs` (the sink route with tag and cursor, typing
 reaching a sink once while the `Text` channel reaches none, the anchor
 following the caret and vanishing on blur, the stock editor's commit
-still a `changed`) and a Node test driving the same headless. Not the
-corpus: a step line carries integers only, so a preedit step would be
-one codepoint with the cursor at its end — enough to pin the route in
-four adapters, and a round of its own; the Lua adapter has no input to
-drive it with. Left for the day a Lua host wants IME.
+still a `changed`) and a Node test driving the same headless. (3)'s
+corpus half followed on 2026-09-08: `Step::Preedit(u32)` and
+`Step::Commit(u32)` — a step line carries integers only, so a step is
+one codepoint with the cursor at its end, and `preedit 0` ends the
+composition — and the `ime` scene, a keyed custom editor (an `onKey`
+sink over a `line` with `caret`) beside a stock `text_edit`, clicked in
+turn and given the same preedit-then-commit. The report pins that the
+sink hears `preedit ed` and `text ed` while the stock editor's commit
+stays a `changed` and its value reads back `y` — one scene, four
+adapters (Rust, Node, C, Lua; the Lua adapter drives its steps from the
+Rust `Step`, so it needed no input door of its own).
 
 `InputEvent::Text` is routed to `self.edit.focused()` and otherwise to the
 focused control's type-ahead (`dispatch.rs:85`); `InputEvent::Preedit`
