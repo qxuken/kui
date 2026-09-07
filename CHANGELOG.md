@@ -538,6 +538,21 @@ that asserts on an empty warning list is what notices.
 
 ### Fixed
 
+- **Windows: an animation should keep moving while the title bar is
+  held** (backlog W3, unverified). Reported as a regression: a transition
+  mid-flight froze for as long as the window was grabbed and resumed on
+  release. Windows moves and resizes a window inside its own modal loop,
+  where the runner's `about_to_wait` — which asks an animating pane for
+  its next frame — does not run; winit's Windows backend only marks the
+  loop (`WM_ENTERSIZEMOVE` sets a flag) and arms no timer. The modal loop
+  does dispatch `WM_PAINT`, so on Windows an animating pane now asks for
+  its next frame from `RedrawRequested` as well, which keeps the chain
+  alive through the hold; vsync paces it as before, and nothing changes
+  on the other platforms. Built against the report and `cargo check`ed
+  for the target, not run: no Windows machine here, and the smoke job
+  that would (P8) is still waiting for a runner, so it stays on the
+  by-hand round — `toasts`, grab the title bar mid-spring.
+
 - **`npm run gen` describes the addon it just built, not the one before.**
   The generator loaded the addon first — for the prop, element, event and
   warning tables `docs/props.md` and the TS unions are written from — and

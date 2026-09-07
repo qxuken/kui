@@ -1205,7 +1205,21 @@ that has a ligature to pin against, which the bundled test font may
 not; measure the width of `->` with and without and assert they differ
 where the font has the glyph, or skip where it does not.
 
-### `!` W3 — On Windows, animations stop while the window is grabbed
+### `!` W3 — On Windows, animations stop while the window is grabbed — **built blind (2026-09-08), unverified**
+
+Built as the hypothesis's second branch, since reading winit 0.30's
+Windows backend answered the first: `WM_ENTERSIZEMOVE` only sets
+`MARKER_IN_SIZE_MOVE` and arms no timer, so nothing ticks `about_to_wait`
+inside the modal loop and the redraw it would have asked for never comes.
+The modal loop does dispatch `WM_PAINT`, so the runner now re-requests a
+redraw from `RedrawRequested` on Windows while the pane's core is
+`animating()` — the chain sustains itself through the hold, vsync-paced
+as before, and the other platforms are untouched. Not the subclass
+timer: this needs no subclass, so it holds under `Chrome::Native` too.
+`cargo check -p kui --target x86_64-pc-windows-msvc` passes; nothing
+ran. (1) and (3) of the "Do" are still the by-hand round's, and the
+entry stays open until a Windows machine watches `toasts` mid-spring
+with the title bar held.
 
 Not from the measurement: reported beside it, on 2026-09-07, as a
 regression — a transition mid-flight freezes for as long as the title
@@ -1280,15 +1294,16 @@ F28 (the clause on `quads()` and `access`), F29 (the `audio` element's
 what a deletion line names). They move to the archive at the next
 archiving round; nothing is queued behind them.
 
-**Editor and mux (2026-09-07).** The assessment section above is the
-order of work for each. For an editor that owns its document: C16 (the
-text cache gets a byte budget — the one `!`), then C18 (point ↔ byte
-offset on app-owned text), C17 (IME to the focused sink, whose caret
-rect is C18's verb), then C19 (a long line shaped in chunks). For a
-mux: C16 again, then C20's *prototype* — the element is built only if
-the bench clears the bar the entry sets — then C21 (a waker for the
-loop) and C23 (ligatures off); C22 is parked like C13 until a view names
-what it wants first.
+**Editor and mux (2026-09-07, built 2026-09-07/08).** The assessment
+section above was the order of work, and it was followed: C16, C18,
+C17, C19 for the editor and C21, C23, C22 for the mux all landed with
+their outcomes written on top; C20's prototype cleared its gate by ~37×
+and the element — rows, transports, the terminal role, `cell` on the
+payloads — is what stays open there; W3 is built blind against winit's
+source and waits for a Windows machine. What the round found beside the
+entries: Lua's `text()` mutated a shared options table, `npm run gen`
+described the previous build, and the C parity assert caught a field
+appended in two orders.
 
 **Design, wanting an ADR.** Nothing new since ADR 0014 (above) was built on 2026-09-07; what it leaves open — a slot element for Node, extensions in `kui_run`, an extension offering slots of its own — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
 [`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md),

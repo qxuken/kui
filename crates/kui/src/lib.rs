@@ -2263,6 +2263,20 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                         p.window.request_redraw();
                     }
                 }
+                // Windows moves and resizes a window inside its own modal
+                // loop, where `about_to_wait` — the pacing that asks for
+                // the next frame of an animation — does not run, so a
+                // transition froze while the title bar was held (backlog
+                // W3). The modal loop does dispatch WM_PAINT, so an
+                // animating pane asks for its next frame from here as
+                // well; vsync paces it as before. Unverified on the
+                // platform: filed from a report, not a reproduction.
+                #[cfg(target_os = "windows")]
+                if let Some(p) = self.panes.get(i)
+                    && p.core.animating()
+                {
+                    p.window.request_redraw();
+                }
             }
             _ => {}
         }
