@@ -1,15 +1,35 @@
 ---
-status: proposed
+status: accepted
 date: 2026-09-07
 ---
 
 # Effects as data: what `update` returns besides the model
 
-> **Proposed, not accepted, nothing built.** This is backlog F23, from the
-> pomodoro's alpha.7 report (wish 3). The report's concrete case turned out
-> to need no new API — the first section says why — so what this ADR
-> decides is narrower than what was asked, and it waits for a view that
-> needs the narrow thing before anything is built.
+> **Accepted and built (2026-09-07), for alpha.8.** This is backlog F23,
+> from the pomodoro's alpha.7 report (wish 3). The report's concrete case
+> turned out to need no new API — the first section says why — so what
+> this ADR decides is narrower than what was asked. It was proposed with
+> *do nothing* as the live option and reviewed the same day for the
+> release; what changed the answer is the price and the audience. The
+> whole of it is one brand check, two queues and a flush in `createLoop`,
+> additive and opt-in — a plain return means what it meant, and an app
+> with no handler and no `withEffects` cannot tell it is there — and both
+> alpha.7 reports asked for the shape in so many words even though their
+> concrete case was covered. Shipping it in the alpha those reports are
+> answered by costs less than a third report that asks again; the risk it
+> carries is an API shape no view has exercised, which is what the two
+> tests and the README's example are for until one does.
+>
+> **Two things were decided in the building that the draft had not said.**
+> `init` may return `withEffects` too — Elm's `init` returns a `Cmd` for the
+> same reason `update` does, and the file an app opens at start has
+> nowhere else to go (decision 1). And a tick that returns effects without
+> a model draws nothing, so the frame that would have handed them on never
+> comes; the loop's `step` hands them on itself in that case, which keeps
+> decision 3's order — `update`, then whatever drawing there was, then
+> effects — without a frame the tick did not ask for. `runWindowed` drains
+> `app.effects()` every pump, as ADR 0008's rule for the core's channels
+> requires, so a window with no handler does not accumulate (decision 4).
 
 An app has one loop: `update(model, msg, event, surface)` returns the
 next model, `view(model, window, surface)` returns a tree, and everything
@@ -90,13 +110,15 @@ data it emits. This ADR extends that sentence to the app's own effects.
 
 ## Decision
 
-The decisions are written so that a view can argue with them; none is
-built.
+The decisions are written so that a view can argue with them; all six are
+built, in `packages/kui/index.js`, and the two notes in the status block
+say where the building changed them.
 
 1. **`update` may return `withEffects(model, ...effects)`**, a branded
    value the loop unwraps. A plain return is a model with no effects, as
-   today; `undefined` keeps the model, as today. Nothing existing
-   changes meaning.
+   today; `undefined` keeps the model, as today; `withEffects(undefined,
+   ...)` keeps the model and still queues the effects. Nothing existing
+   changes meaning. `init` may return one too.
 
 2. **An effect is the app's own value.** kui does not define an effect
    vocabulary; an effect is whatever `E` the app declares
@@ -153,20 +175,23 @@ built.
   reason: a one-shot spelled as a declaration must vary its key to fire
   twice, and the failure mode is silence.
 - **Do nothing** — the chime is covered, and no other effect has been
-  asked for. This is the live option, and it is why the status is
-  *proposed*. The ADR exists so the next report that hits home 1, 2 or 3
-  above has a design to point at instead of a wish.
+  asked for. This was the live option while the status was *proposed*,
+  and the status block says what outweighed it: the price of building
+  against the price of being asked a third time.
 
 ## Consequences
 
-- If accepted: `createLoop` grows the brand check, the `effects` option,
-  the queue and the drain; `index.d.ts` grows `withEffects`, an `E`
-  parameter on `AppConfig` / `App`, and `effects()` on `App`; the README's
-  testing section gains one assertion. No crate changes. The Rust `App`
+- Built: `createLoop` has the brand check (`apply`), the `effects` option,
+  the two queues and the flush; `index.d.ts` has `withEffects`,
+  `WithEffects`, `EffectHandler`, an `E` parameter (defaulting to `never`)
+  on `LoopConfig` / `Loop` / `AppConfig` / `App` / `WindowedConfig` /
+  `WindowLoop`, and `effects()` on the loop; the READMEs carry the shape
+  and the testing section its assertion. No crate changes. The Rust `App`
   trait is a separate decision and can follow the same shape or not.
-- The pomodoro's chime is *not* the motivating view for building it —
-  its fix is the `<audio>` line above. Building waits for an app whose
-  effect kui does not own, and that app's report should say which of
-  homes 1–3 it was living in.
+- The pomodoro's chime is *not* the motivating view — its fix is the
+  `<audio>` line above, and that stays the answer for any effect kui owns.
+  The first app whose effect kui does not own should say in its report
+  which of homes 1–3 it had been living in, and whether the handler's
+  `dispatch` was enough for the result to come back.
 - What this ADR does not touch: the core, the IR, any binding's schema,
   the C ABI, and the meaning of any existing return from `update`.

@@ -16,8 +16,8 @@ half was built. The index at the bottom of this file names every one of them,
 so an id cited by an open item, a code comment or a commit message can be
 resolved without opening the archive. Nothing was renumbered in any of those
 moves, and nothing ever is. What is left here is three parked headings — C12,
-C13 and C14 — F23 from the two alpha.7 field reports (F16–F22 closed the
-day they were filed, 2026-09-07), and what comes next. C15's remainder was
+C13 and C14 — and what comes next; F16–F23 from the two alpha.7 field
+reports all closed the day they were filed (2026-09-07). C15's remainder was
 the last split entry, and it closed on 2026-09-07.
 
 Ordered by area, not by priority. What to do next is under "After alpha.7".
@@ -90,36 +90,10 @@ against `main` at `980bca4` before it became an entry, and two of the
 wishes did not survive the check — they are under "Theirs, not ours" at the
 end. The theme of both reports is the same sentence: none of what surprised
 them was a type error or a failed access-tree assertion, every one was only
-visible in the pixels. **F16–F22 closed the same day** and are in
+visible in the pixels. **All eight, F16–F23, closed the same day** and are in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md#from-two-alpha7-field-reports-2026-09-07)
-whole; F23 is what stays.
-
-### `~` F23 — Effects an app defines have nowhere to go but a side channel (wants an ADR)
-
-Evidence: pomodoro wish 3. The chime "costs a model field (`alarmCount`)
-plus a module global (`chimed`) purely so the driver can notice a counter
-move and call `win.play`"; the report asks for an Elm-style `[model,
-effects]` return "or just letting `update` push a command the driver
-drains".
-
-Half of the premise is wrong, and the entry has to say so before it asks
-for anything. `update(model, msg, event, surface)` already has the surface
-as its fourth argument, `<audio key src>` is a declarative one-shot
-playback (present = playing once), and `audioCommands()` is the headless
-assertion point the report says is missing — the pomodoro's own
-`headless.tsx:115` uses it. The chime needs no new API: an `<audio
-key={`chime-${m.alarmCount}`} src={chime}/>` in the view deletes `chimed`
-and the wrapper in `main.tsx`, and the model field stays as the thing that
-keys it.
-
-What survives is real: an effect **kui knows nothing about** — a file
-write, a request, a clipboard — has no place a headless test can read it
-from, and putting it in `update` makes `update` impure. That is Elm's
-`Cmd`, and it is an ADR: the return shape (a branded `withEffects(model,
-…)` rather than a tuple, since a model may be an array), when effects run
-relative to the next draw, whether their results re-enter as messages, and
-what the headless loop exposes. `docs/adr/0013-effects-as-data.md` is the
-draft; nothing is built until it is accepted.
+whole — F23 as ADR 0013, accepted and built for alpha.8 rather than left
+for a view. What stays here is the two wishes that were not ours.
 
 ### Theirs, not ours
 
@@ -157,9 +131,11 @@ scene pins the change in four bindings with the phase the ADR asked for
 (and the correction it needed: `bulk` had to leave in a frame of its own).
 The next thing to build is whatever the next field report asks for.
 
-**Design, wanting an ADR.** Effects an app defines (F23 above, draft at
-[`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md)). The
-exit animations' `animating()` policy is
+**Design, wanting an ADR.** Nothing. Effects an app defines (F23) is
+[`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md),
+proposed and then accepted and built on 2026-09-07 — reviewed for alpha.8
+rather than left for a view, and its status block says what outweighed
+*do nothing*. The exit animations' `animating()` policy is
 **done (2026-09-07)**, as
 [`docs/adr/0012-the-exit-budget.md`](adr/0012-the-exit-budget.md) —
 accepted and built whole, decision 5 first and the rest a day later. It
@@ -190,7 +166,7 @@ saying it until one does.
 **Hygiene.** Archiving is done three times over: the forty-six of
 2026-09-06, the ten field-report entries that followed them before the tag —
 so all of F1–F15 sit together — and W2 whole on 2026-09-07, once its driver
-half was built. This file is four open headings and this section.
+half was built. This file is three open headings and this section.
 Still open, both waiting on something outside the repo: enable `SMOKE_MACOS`
 / `SMOKE_WINDOWS` the day a runner exists (P8) — which has two jobs waiting
 for it now, F13's launch probe beside the AX audit, sharing the one
@@ -216,7 +192,7 @@ release, which no headless assertion reads:
 
 ## Closed — index
 
-Seventy entries, all in
+Seventy-one entries, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim.
 This index is here so an id resolves without opening that file: the open items
 above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.7" and
@@ -256,7 +232,7 @@ move.
 - `~` **F12** — [There is no line](backlog/closed-2026-09.md#-f12--there-is-no-line--done-2026-09-06) — done (2026-09-06) — ADR 0010, accepted and built
 - `~` **F13** — [VoiceOver says "node is not responding" at every windowed Node launch](backlog/closed-2026-09.md#-f13--voiceover-says-node-is-not-responding-at-every-windowed-node-launch--diagnosed-not-nodes-and-not-the-trees-2026-09-06) — diagnosed, not Node's and not the tree's (2026-09-06) — the only F entry closed without a fix; it leaves `scripts/ax-launch-probe.swift` behind
 
-**From two alpha.7 field reports (2026-09-07)** — F16–F22, all closed the day they were filed; F23 is open above
+**From two alpha.7 field reports (2026-09-07)** — F16–F23, all closed the day they were filed
 
 - `!` **F16** — [`ctx.setTime` under `createApp` is overwritten by a clock that never moves](backlog/closed-2026-09.md#-f16--ctxsettime-under-createapp-is-overwritten-by-a-clock-that-never-moves--done-2026-09-07) — done (2026-09-07) — it throws now, the mirror of `advance()` on a wall clock
 - `!` **F17** — [The published `Quad` type stops at kind 4 and has no `ends`](backlog/closed-2026-09.md#-f17--the-published-quad-type-stops-at-kind-4-and-has-no-ends--done-2026-09-07) — done (2026-09-07)
@@ -265,6 +241,7 @@ move.
 - `~` **F20** — [An `<edit>` seeded with `initial` opens with the caret at 0, and nothing declares otherwise](backlog/closed-2026-09.md#-f20--an-edit-seeded-with-initial-opens-with-the-caret-at-0-and-nothing-declares-otherwise--done-2026-09-07) — done (2026-09-07) — single-line fields open at their end, documents at their top
 - `.` **F21** — [A curve's quad count is a constant nobody published](backlog/closed-2026-09.md#-f21--a-curves-quad-count-is-a-constant-nobody-published--done-2026-09-07) — done (2026-09-07)
 - `.` **F22** — [Both apps wrote the same "advance until nothing animates" loop](backlog/closed-2026-09.md#-f22--both-apps-wrote-the-same-advance-until-nothing-animates-loop--done-2026-09-07) — done (2026-09-07) — `app.runOut()`
+- `~` **F23** — [Effects an app defines have nowhere to go but a side channel](backlog/closed-2026-09.md#-f23--effects-an-app-defines-have-nowhere-to-go-but-a-side-channel-wants-an-adr--done-2026-09-07) — done (2026-09-07) — ADR 0013, accepted and built; the chime itself needed only `<audio>`
 
 **From building C11 step 4 (2026-09-06)** — W1
 

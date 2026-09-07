@@ -55,7 +55,12 @@ are one loop over an injected surface, so `tick` runs headless too and
 the span and moves the frame clock with them, which is how a countdown or a
 mid-flight transition gets stepped through in a test — and `app.runOut()`
 advances until nothing animates, for a test that wants the settled frame
-rather than the first one. Rust tests drive `Core` the same way
+rather than the first one. An effect the app defines and kui knows nothing
+about — a file write, a request, the clipboard — is data on the same
+terms: `update` returns it beside the model with `withEffects(model,
+...effects)`, the loop performs it after the frame through the `effects`
+handler the app registered, and `app.effects()` is where a test reads it
+back ([ADR 0013](docs/adr/0013-effects-as-data.md)). Rust tests drive `Core` the same way
 ([crates/kui-core/tests](crates/kui-core/tests)), and C runs the same API
 headless (`./examples/c/counter --headless`) — as does a C *extension* inside
 a Rust host (`cargo run -p kui-ffi --example c_panel -- --headless`, which

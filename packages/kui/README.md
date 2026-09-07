@@ -78,6 +78,27 @@ ways; see **A clock** below. A window fires the ticks off its own timer; a
 test moves the hands itself with `app.advance(ms)`, so an app with a clock
 still runs headless.
 
+An effect the app defines and kui knows nothing about — a file write, a
+request, the clipboard — is data on the same terms as everything else the
+loop handles ([ADR 0013](../../docs/adr/0013-effects-as-data.md)).
+`update` returns it beside the model:
+
+```ts
+case 'save': return withEffects({ ...model, dirty: false }, { kind: 'write', path: model.path, text: model.text });
+```
+
+and the app says once, in the options, what performing one means —
+`effects: (effect, dispatch, surface) => { … }` — which the loop calls
+after the frame, so an effect that dispatches its result
+(`dispatch({ kind: 'saved' })`) lands in the next turn, and one that reads
+the surface sees the frame its cause produced. `update` stays pure, the
+same handler serves `createApp` and `runWindowed`, and headless
+`app.effects()` drains what `update` returned whether or not a handler
+ran, so a test asserts the effect the way it asserts an audio command.
+`withEffects(undefined, …)` keeps the model, and a function `init` may
+return one too. kui's own effects stay where they are: a sound is
+`surface.play` or an `<audio>` node, a window is `windows`.
+
 ## Testing
 
 `createApp` runs the same app headless, and everything a frame produces
@@ -105,6 +126,11 @@ asserts on what the core produced:
   (`app.ctx.animating()` says when it has settled). `startTime` in the
   options pins where that clock starts, so assertions on `tick.msg(now)`
   are exact.
+- **Effects**: `app.effects()` drains what `update` returned with
+  `withEffects` since the last drain — the file write or request the app
+  asked for, as a value — whether or not an `effects` handler was
+  registered; with one, the handler already ran after the frame and its
+  `dispatch` has already gone through `update`.
 - **Either surface**: `settle`, `access`, `accessTree`, `dispatch`, `render`
   and `step` are the loop's, not the headless driver's, so they work against
   a real window too — `runWindowed`'s `setup(win, app)` hands you the same

@@ -6,6 +6,29 @@ import { createEncoder } from './encoder.js';
 export const { Ctx, KuiWindow, quadStride, protocol } = native;
 export { createEncoder };
 
+// The brand on what `update` (or a function `init`) returns to hand the loop
+// effects beside the model. A Symbol rather than a shape, because the model
+// is untyped by the loop — an array model *is* a tuple, and `{ model,
+// effects }` is a model with two keys — so nothing but a brand tells a
+// wrapped return from a plain one. `docs/adr/0013-effects-as-data.md`.
+const EFFECTS = Symbol.for('kui.effects');
+
+/**
+ * What `update` returns when it has effects to hand the loop besides the
+ * next model: the model — or `undefined` to keep the current one, as a bare
+ * `undefined` does — and the effects, which are the app's own values (kui
+ * defines no effect vocabulary; its own effects stay where they are — a
+ * sound is `surface.play` or an `<audio>` node, a window is `windows`).
+ * The loop unwraps it, sets the model, queues the effects, and after the
+ * next frame hands each one to the `effects` handler the app was created
+ * with, as `effects(effect, dispatch, surface)`; headless, `app.effects()`
+ * drains them for a test whether or not a handler ran. `init` may return
+ * one too, for the effect an app starts with.
+ */
+export function withEffects(model, ...effects) {
+  return { [EFFECTS]: true, model, effects };
+}
+
 // A frame crosses the boundary one way: JS encodes the tree into one
 // Float64Array + string table and the addon lowers it zero-copy. One encoder
 // serves every context — its buffers are consumed synchronously.
@@ -96,6 +119,45 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
   const { show, open } = transport(surface, opts);
   let model;
 
+  // ADR 0013: what `update` returned besides the model. `pending` is what
+  // the handler has not been handed yet, flushed after the next frame — so
+  // an effect that dispatches synchronously lands in the next turn rather
+  // than inside the frame that caused it, and one that reads the surface
+  // sees the frame its cause produced. `unread` is the same effects kept
+  // for `app.effects()`, the assertion point a headless test has whether or
+  // not a handler ran; a real driver drains it every frame, as it drains
+  // the core's own channels (ADR 0008, decision 6).
+  const handler = typeof opts.effects === 'function' ? opts.effects : null;
+  let pending = [];
+  let unread = [];
+  // Reads what `update` (or `init`) returned: a branded `withEffects` queues
+  // its effects and sets the model unless that model is `undefined`, which
+  // keeps the current one; anything else but `undefined` is the model.
+  // Returns whether the model changed, which is what a tick redraws on.
+  function apply(next) {
+    if (next === undefined) return false;
+    if (next !== null && typeof next === 'object' && next[EFFECTS] === true) {
+      for (const e of next.effects) {
+        pending.push(e);
+        unread.push(e);
+      }
+      if (next.model === undefined) return false;
+      model = next.model;
+      return true;
+    }
+    model = next;
+    return true;
+  }
+  // Hands the handler what `update` returned since the last flush. With no
+  // handler the queue for it is simply dropped — `unread` still has them.
+  function flushEffects() {
+    if (pending.length === 0) return;
+    const batch = pending;
+    pending = [];
+    if (!handler) return;
+    for (const e of batch) handler(e, (msg) => app.dispatch(msg), surface);
+  }
+
   let now = clock ? clock() : (opts.startTime ?? Date.now());
   const at = () => (clock ? clock() : now);
   // The frame clock behind `transition` is set here and before every frame,
@@ -135,9 +197,7 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
       nextTick += every;
       if (!catchUp && nextTick <= t) nextTick = t + every;
       const msg = typeof tick.msg === 'function' ? tick.msg(t) : tick.msg;
-      const next = update(model, msg, { origin: 0, key: '', payload: msg }, surface);
-      if (next !== undefined) {
-        model = next;
+      if (apply(update(model, msg, { origin: 0, key: '', payload: msg }, surface))) {
         redraw = true;
       }
       if (!catchUp) break;
@@ -177,6 +237,7 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
       show(name === 'main' ? withWindows(tree, declared) : tree, name);
     }
     drainWarnings();
+    flushEffects();
   }
 
   // An input call the surface does not take: a real window gets its input
@@ -202,8 +263,15 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
       return model;
     },
     dispatch(msg, event) {
-      const next = update(model, msg, event, surface);
-      if (next !== undefined) model = next;
+      apply(update(model, msg, event, surface));
+    },
+    /** What `update` (and `init`) returned besides the model since the
+     *  last drain — every effect, whether or not a handler ran. Headless
+     *  this is the assertion point; a window drains it every frame. */
+    effects() {
+      const out = unread;
+      unread = [];
+      return out;
     },
     render() {
       draw();
@@ -216,7 +284,10 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
       drainWarnings();
       let redraw = drainEvents();
       if (ticksTo(at(), false)) redraw = true;
+      // A tick that returned effects and no model draws nothing, so the
+      // step that owed them is what hands them on.
       if (redraw) draw();
+      else flushEffects();
     },
     /** Drain events -> update -> re-render until no events remain. */
     settle() {
@@ -310,7 +381,9 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
   // can be built against the real window size and the fonts just registered
   // rather than against constants corrected on the first `resize`.
   opts.setup?.(surface, app);
-  model = typeof init === 'function' ? init(surface) : init;
+  // `init` may return `withEffects` too: the effect an app starts with — a
+  // file to open, a request to send — has nowhere else to go.
+  apply(typeof init === 'function' ? init(surface) : init);
   return app;
 }
 
@@ -337,6 +410,10 @@ export function runWindowed(config, opts = {}) {
       try {
         alive = win.pump();
         app.step();
+        // A real driver drains every channel every frame, the app's
+        // effects included: the handler had them at the frame, and what
+        // `effects()` keeps is for a headless test.
+        app.effects();
       } catch (e) {
         reject(e);
         return;

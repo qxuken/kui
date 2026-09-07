@@ -1624,17 +1624,52 @@ export interface KuiWindow {
  *  fourth argument `update` gets: the headless `Ctx` under `createApp`, the
  *  `KuiWindow` under `runWindowed`. `M` is the model, `A` every message
  *  `update` can see. */
-export interface LoopConfig<M, A, S> {
+/** What `update` (or a function `init`) returns to hand the loop effects
+ *  beside the model — built by `withEffects`, never by hand: the brand is
+ *  what tells it from a model that happens to be an array or to have a
+ *  `model` key. `docs/adr/0013-effects-as-data.md`. */
+export interface WithEffects<M, E> {
+  readonly [EFFECTS]: true;
+  /** The next model, or `undefined` to keep the current one. */
+  model: M | undefined;
+  effects: E[];
+}
+declare const EFFECTS: unique symbol;
+
+/** `withEffects(model, ...effects)`: the next model — or `undefined` to
+ *  keep the current one, as a bare `undefined` return does — and the
+ *  effects `update` wants performed. An effect is the app's own value (`E`
+ *  on `createApp` / `runWindowed`); kui defines no vocabulary for them,
+ *  and its own effects stay where they are — a sound is `surface.play` or
+ *  an `<audio>` node, a window is `windows`. The loop sets the model,
+ *  queues the effects, and after the next frame hands each to the
+ *  `effects` handler; headless, `app.effects()` drains them for a test
+ *  whether or not a handler ran. */
+export declare function withEffects<M, E>(model: M | undefined, ...effects: E[]): WithEffects<M, E>;
+
+/** The one place an app's effects are performed: `createApp` /
+ *  `runWindowed`'s `effects` option. Runs after the frame that followed
+ *  the `update` which returned the effect, with `dispatch` for whatever
+ *  the effect has to say back (a "done", a "failed", a result) — which
+ *  goes through `update` on the next turn, not inside this one — and the
+ *  surface, which shows the frame the effect's cause produced. A
+ *  promise-shaped effect is the handler's business. */
+export type EffectHandler<E, A, S> = (effect: E, dispatch: (msg: A) => void, surface: S) => void;
+
+export interface LoopConfig<M, A, S, E = never> {
   /** The first model, or a function that builds it. The function form is
    *  handed the surface — after `setup` has run, so the fonts and images it
    *  registered are there to measure against — which is how a first model
    *  gets the real `size()` and its own `measureText` numbers instead of
-   *  constants it corrects on the first `resize`. */
-  init: M | ((surface: S) => M);
+   *  constants it corrects on the first `resize`. It may return
+   *  `withEffects` too, for the effect an app starts with. */
+  init: M | ((surface: S) => M | WithEffects<M, E>);
   /** Returns the next model; returning undefined keeps the current one.
-   *  `surface` is the thing being driven — for `editText`, `focus`,
-   *  `play`, `scrollGeometry` and the rest. */
-  update: (model: M, msg: A, event: UiEvent<A>, surface: S) => M | undefined | void;
+   *  `withEffects(model, ...effects)` returns it with the effects the loop
+   *  should perform after the frame (see `EffectHandler`). `surface` is the
+   *  thing being driven — for `editText`, `focus`, `play`,
+   *  `scrollGeometry` and the rest. */
+  update: (model: M, msg: A, event: UiEvent<A>, surface: S) => M | WithEffects<M, E> | undefined | void;
   /** The tree for one window. Called once per open window per frame with
    *  its name — `'main'` for the one the app starts in, else a name
    *  `windows` declared — so a single-window app ignores the argument. The
@@ -1663,12 +1698,12 @@ export interface LoopConfig<M, A, S> {
 }
 
 /** `runWindowed`'s config: `update` also gets the window. */
-export type WindowedConfig<M, A = AppMsg | CoreMsg> = LoopConfig<M, A, KuiWindow>;
+export type WindowedConfig<M, A = AppMsg | CoreMsg, E = never> = LoopConfig<M, A, KuiWindow, E>;
 
 /** Opens the main window and runs the Elm loop; resolves with the final
  *  model when that window closes. `config.windows` opens more. */
-export declare function runWindowed<M, A = AppMsg | CoreMsg>(
-  config: WindowedConfig<M, A>,
+export declare function runWindowed<M, A = AppMsg | CoreMsg, E = never>(
+  config: WindowedConfig<M, A, E>,
   opts?: WindowOptions & {
     title?: string;
     pumpMs?: number;
@@ -1676,7 +1711,11 @@ export declare function runWindowed<M, A = AppMsg | CoreMsg>(
      *  register images, fonts and other resources here. `app` is the loop
      *  itself, so a test can hold on to it and drive a real window with the
      *  same helpers `createApp` gives (`settle`, `access`, ...). */
-    setup?: (win: KuiWindow, app: WindowLoop<M, A>) => void;
+    setup?: (win: KuiWindow, app: WindowLoop<M, A, E>) => void;
+    /** Performs the effects `update` returns with `withEffects`, after each
+     *  frame. The same handler a headless `createApp` takes, so an effect
+     *  a test asserted on is the effect the window performs. */
+    effects?: EffectHandler<E, A, KuiWindow>;
   },
 ): Promise<M>;
 
@@ -1715,12 +1754,12 @@ export declare function decodeQuads(buffer: Buffer): Quad[];
  *  with the app's own union (`type Msg = MyMsg | CoreMsg`) and `A` is
  *  inferred from it; leave it and `A` is the registered `AppMsg` plus the
  *  core's messages. */
-export type AppConfig<M, A = AppMsg | CoreMsg> = LoopConfig<M, A, Ctx>;
+export type AppConfig<M, A = AppMsg | CoreMsg, E = never> = LoopConfig<M, A, Ctx, E>;
 
 /** The loop both drivers run, over the surface it was handed. Everything
  *  here is written once and works against either — which is what lets the
  *  test helpers drive a real window when you want to watch one. */
-export interface Loop<M, A, S> {
+export interface Loop<M, A, S, E = never> {
   /** The surface this loop drives. */
   readonly surface: S;
   readonly model: M;
@@ -1729,6 +1768,11 @@ export interface Loop<M, A, S> {
    *  empty, or that a specific code showed up. */
   readonly warnings: Warning[];
   dispatch(msg: A, event?: UiEvent<A>): void;
+  /** What `update` (and `init`) returned besides the model since the last
+   *  drain — every effect, whether or not an `effects` handler ran, the
+   *  way `audioCommands()` answers without a device. Headless this is the
+   *  assertion point; a window drains it every frame. */
+  effects(): E[];
   /** Renders the current model and hands back the frame's display-list
    *  summary. */
   render(): FrameStats;
@@ -1769,7 +1813,7 @@ export interface Loop<M, A, S> {
   access(key: string, action: AccessAction, value?: string | AccessArg): void;
 }
 
-export interface App<M, A = AppMsg | CoreMsg> extends Loop<M, A, Ctx> {
+export interface App<M, A = AppMsg | CoreMsg, E = never> extends Loop<M, A, Ctx, E> {
   /** The surface, under the name headless tests reach for. */
   ctx: Ctx;
   /** Moves the loop's own clock `ms` forward: every tick inside the span
@@ -1790,10 +1834,10 @@ export interface App<M, A = AppMsg | CoreMsg> extends Loop<M, A, Ctx> {
 
 /** The loop `runWindowed` builds, handed to `setup`. It has no `advance`:
  *  a window runs on the wall clock and ticks itself. */
-export type WindowLoop<M, A = AppMsg | CoreMsg> = Loop<M, A, KuiWindow>;
+export type WindowLoop<M, A = AppMsg | CoreMsg, E = never> = Loop<M, A, KuiWindow, E>;
 
-export declare function createApp<M, A = AppMsg | CoreMsg>(
-  config: AppConfig<M, A>,
+export declare function createApp<M, A = AppMsg | CoreMsg, E = never>(
+  config: AppConfig<M, A, E>,
   opts?: {
     width?: number;
     height?: number;
@@ -1817,6 +1861,10 @@ export declare function createApp<M, A = AppMsg | CoreMsg>(
     clock?: () => number;
     /** Runs before `init` and the first frame — register images and fonts
      *  here so `init` can name their ids. */
-    setup?: (ctx: Ctx, app: App<M, A>) => void;
+    setup?: (ctx: Ctx, app: App<M, A, E>) => void;
+    /** Performs the effects `update` returns with `withEffects`, after each
+     *  frame (see `EffectHandler`). Optional: without one the effects still
+     *  reach `app.effects()`, which is what a test reads. */
+    effects?: EffectHandler<E, A, Ctx>;
   },
-): App<M, A>;
+): App<M, A, E>;

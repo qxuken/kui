@@ -40,6 +40,42 @@ that is the intended trade, and the `### Changed` entry says why
 
 ### Added
 
+- **Effects as data: `withEffects(model, ...effects)`** (backlog F23, from
+  the pomodoro's alpha.7 report; `docs/adr/0013-effects-as-data.md`). The
+  report's chime "costs a model field plus a module global purely so the
+  driver can notice a counter move and call `win.play`", and asked for an
+  Elm-style `[model, effects]` return. Half of that premise was wrong and
+  the entry says so: `update` already has the surface as its fourth
+  argument, `<audio key src>` is a declarative one-shot, and
+  `audioCommands()` is the headless drain the report said was missing —
+  the chime is one `<audio key={\`chime-${m.alarmCount}\`}/>` in the view
+  and no API. What survives is every effect kui does *not* own — a file
+  write, a request, the clipboard — which had three homes and each was
+  wrong in a way a test can feel: done in `update` (impure, and nothing
+  records it), recorded in the model for a driver to diff (a field that is
+  not state, and a shadow of it), or keyed off a message in the driver
+  (duplicated or absent headless). Now `update` — and a function `init` —
+  may return `withEffects(model, ...effects)`: a branded value, because
+  the model is untyped by the loop and an array model *is* a tuple, so a
+  tuple could not be told from one. An effect is the app's own value (`E`
+  on `createApp` / `runWindowed`, default `never`); kui defines no
+  vocabulary for it, and kui's own effects stay where they are. The loop
+  sets the model, queues the effects, and after the next frame hands each
+  to the `effects(effect, dispatch, surface)` handler the app was created
+  with — after the frame, so an effect that dispatches its result lands in
+  the next turn and one that reads the surface sees the frame its cause
+  produced. Headless, `app.effects()` drains them for a test whether or
+  not a handler ran, the way `audioCommands()` answers without a device;
+  a window drains them every pump. Node only; nothing in the core, the IR
+  or any binding moves.
+  **What you can delete:** the counter-and-shadow. A model field that
+  exists only so the driver can notice it move, the module-level `let`
+  that remembers the last value it acted on, and the `update` wrapper in
+  the windowed entry point that performed the effect on the way past —
+  for an effect kui does not own, the effect is the return value now, and
+  the test reads it from `app.effects()`. (For the chime specifically:
+  the `<audio>` line, and none of this.)
+
 - **Press the field, drag into the menu, release on an item** — the native
   select gesture, in one gesture with no second click
   (`docs/adr/0009-press-drag-release-into-a-popup.md`, backlog W2). It could

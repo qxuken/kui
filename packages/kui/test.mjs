@@ -13,7 +13,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Ctx, KuiWindow, createApp, createEncoder, decodeQuads, protocol, quadStride } from './index.js';
+import { Ctx, KuiWindow, createApp, createEncoder, decodeQuads, protocol, quadStride, withEffects } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
@@ -3055,4 +3055,105 @@ test('a native library that is not there is reported as missing, not as broken',
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /not found for/);
   assert.doesNotMatch(r.stderr, /not loadable/);
+});
+
+// ---------------------------------------------------------------------------
+// Effects as data (docs/adr/0013-effects-as-data.md, backlog F23)
+
+test('update may return withEffects: the model lands, the effects queue, and effects() drains them (ADR 0013)', () => {
+  const app = createApp(
+    {
+      init: { n: 0 },
+      update: (m, msg) => {
+        if (msg === 'save') return withEffects({ n: m.n + 1 }, { kind: 'write', path: 'a.txt' });
+        if (msg === 'ping') return withEffects(undefined, { kind: 'beep' });
+        return m;
+      },
+      view: (m) => box({ pad: 0 }, [text(`n=${m.n}`, { size: 12 })]),
+    },
+    { width: 320, height: 240 },
+  );
+  app.render();
+  assert.deepEqual(app.effects(), [], 'nothing until update says so');
+  app.dispatch('save');
+  assert.equal(app.model.n, 1, 'the model landed');
+  assert.deepEqual(app.effects(), [{ kind: 'write', path: 'a.txt' }], 'and the effect is readable');
+  assert.deepEqual(app.effects(), [], 'a drain is a drain');
+  app.dispatch('ping');
+  assert.equal(app.model.n, 1, 'withEffects(undefined, …) keeps the model');
+  assert.deepEqual(app.effects(), [{ kind: 'beep' }], 'and still queues the effect');
+  // The reason for the brand: an array model is a tuple already, so a
+  // plain return of one has to be the model and nothing else.
+  const list = createApp(
+    { init: [1], update: (m, msg) => [...m, msg], view: () => box({ pad: 0 }) },
+    { width: 320, height: 240 },
+  );
+  list.dispatch(2);
+  assert.deepEqual(list.model, [1, 2]);
+  assert.deepEqual(list.effects(), []);
+});
+
+test('an effects handler runs after the frame, its dispatch lands in the next turn, and init may return effects (ADR 0013)', () => {
+  const log = [];
+  const app = createApp(
+    {
+      // The effect an app starts with: Elm's init returns a Cmd too.
+      init: () => withEffects({ n: 0, loaded: false }, { kind: 'load' }),
+      update: (m, msg) => {
+        if (msg === 'save') return withEffects({ ...m, n: m.n + 1 }, { kind: 'write' });
+        if (msg === 'loaded') return { ...m, loaded: true };
+        return m;
+      },
+      view: (m) => {
+        log.push(`draw n=${m.n} loaded=${m.loaded}`);
+        return box({ pad: 0 });
+      },
+    },
+    {
+      width: 320,
+      height: 240,
+      effects: (effect, dispatch, surface) => {
+        log.push(`effect ${effect.kind}`);
+        assert.equal(typeof surface.quads, 'function', "the surface is the loop's");
+        if (effect.kind === 'load') dispatch('loaded');
+      },
+    },
+  );
+  assert.deepEqual(log, [], 'nothing runs before the first frame');
+  app.render();
+  assert.deepEqual(log, ['draw n=0 loaded=false', 'effect load'], 'after the frame, not before it');
+  assert.equal(app.model.loaded, true, 'the dispatch went through update…');
+  app.render();
+  assert.equal(log.at(-1), 'draw n=0 loaded=true', '…and reached the screen on the next frame');
+  assert.deepEqual(app.effects(), [{ kind: 'load' }], 'the drain has it whether or not a handler ran');
+  app.dispatch('save');
+  assert.ok(!log.includes('effect write'), 'queued until a frame');
+  app.render();
+  assert.equal(log.at(-1), 'effect write');
+  assert.deepEqual(app.effects(), [{ kind: 'write' }]);
+});
+
+test('a tick that returns effects and no model hands them on without a frame (ADR 0013)', () => {
+  const seen = [];
+  let draws = 0;
+  let t = 0;
+  const app = createApp(
+    {
+      init: {},
+      update: (m, msg) => (msg === 'tick' ? withEffects(undefined, { kind: 'poll' }) : m),
+      view: () => {
+        draws += 1;
+        return box({ pad: 0 });
+      },
+      tick: { every: 100, msg: 'tick' },
+    },
+    { width: 320, height: 240, clock: () => t, effects: (e) => seen.push(e.kind) },
+  );
+  app.render();
+  const before = draws;
+  t = 100;
+  app.step();
+  assert.equal(draws, before, 'a tick without a model draws nothing, as before');
+  assert.deepEqual(seen, ['poll'], 'but the step that owed the effect handed it on');
+  assert.deepEqual(app.effects(), [{ kind: 'poll' }]);
 });
