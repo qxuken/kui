@@ -571,7 +571,13 @@ jobs:
 
       # Prereleases get their identifier as the dist-tag (0.1.0-alpha.1 ->
       # `alpha`, installed with `npm i @qxuken/kui@alpha`); plain versions become
-      # `latest`.
+      # `latest`. A prerelease also takes `latest` when it sorts highest among
+      # the versions the registry already holds, because a registry without a
+      # `latest` answers nothing: `npm view @qxuken/kui version` prints an
+      # empty line and exits 0, `npm outdated` omits the package, and a bare
+      # `npm install @qxuken/kui` has no version to resolve. The guard is what
+      # keeps a future stable release's `latest` from being taken back by an
+      # alpha published after it.
       - name: npm publish
         run: |
           set -eu
@@ -581,3 +587,25 @@ jobs:
           printf '%s:_authToken=%s\n' "${NPM_REGISTRY#https:}" "$PACKAGES_TOKEN" > "$HOME/.npmrc"
           cd packages/kui
           npm publish --registry "$NPM_REGISTRY" --tag "$tag"
+          if [ "$tag" != latest ]; then
+            # Asked through the tag just written, because a plain `npm view`
+            # defaults to `latest` - the tag whose absence this is fixing - and
+            # against a package without one it prints nothing and succeeds. The
+            # sort is npm's own semver, resolved out of npm's bundled copy so
+            # nothing has to be installed for it.
+            versions=$(npm view "@qxuken/kui@$tag" versions --json --registry "$NPM_REGISTRY")
+            highest=$(VERSIONS="$versions" node -e '
+              const root = require("node:child_process")
+                .execFileSync("npm", ["root", "-g"], { encoding: "utf8" }).trim();
+              const semver = require(require.resolve("semver", { paths: [root + "/npm/node_modules"] }));
+              const listed = JSON.parse(process.env.VERSIONS);
+              const all = (Array.isArray(listed) ? listed : [listed]).filter((v) => semver.valid(v));
+              if (all.length === 0) throw new Error("no published versions to compare against");
+              process.stdout.write(all.sort(semver.rcompare)[0]);
+            ')
+            if [ "$highest" = "$ver" ]; then
+              npm dist-tag add "@qxuken/kui@$ver" latest --registry "$NPM_REGISTRY"
+            else
+              echo "latest left alone: $highest sorts above the $ver just published"
+            fi
+          fi

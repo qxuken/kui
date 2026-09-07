@@ -5,7 +5,7 @@ the workaround, the model field or the arithmetic the release made
 unnecessary. The second list is the point of the first — a library whose
 upgrades remove code from the apps on it is doing the job.
 
-## Unreleased
+## 0.1.0-alpha.9 (unreleased)
 
 ### Added
 
@@ -60,6 +60,24 @@ upgrades remove code from the apps on it is doing the job.
   takes, and `click`, `type` and `key` are refused there. The answer was
   only on the two methods that refuse, which is not where a smoke test
   reading `win.quads()` looks (backlog F27).
+- **A release is discoverable: every alpha also takes the `latest`
+  dist-tag.** The npm registry held one tag, `alpha`, because the publish
+  step gave a prerelease its identifier and `latest` only to a plain
+  version — which has never existed. `npm view` defaults to `latest`, and
+  against a package without one it prints nothing and exits 0, so `npm
+  view @qxuken/kui version` answered nothing, `npm outdated` omitted the
+  package and a bare `npm install @qxuken/kui` had no version to resolve:
+  an app could be running a release it had no way to learn it was running.
+  The publish step now follows the tagged publish with `npm dist-tag add
+  @qxuken/kui@<ver> latest`, guarded on that version sorting highest among
+  the ones the registry already holds (npm's own semver does the sort), so
+  a stable release, once there is one, keeps `latest` to itself. The tag
+  itself appears with the first publish that runs the new step. Both
+  READMEs also say what a range does and does not do: `^0.1.0-alpha.8` and
+  `~0.1.0-alpha.8` admit every later alpha of the same `0.1.0` — that is
+  npm's semver, not a difference between the two spellings — so a range is
+  a floor, and an app that wants the version it tested writes it exactly
+  and commits its lockfile.
 
 ### What you can delete
 
