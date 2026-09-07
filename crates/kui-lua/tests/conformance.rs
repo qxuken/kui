@@ -247,12 +247,17 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        // The two playbacks phase 1 drops are declared in the reference's
+        // order, so the ids match: `chime` (2) asks to finish and its
+        // removal queues nothing, `blip` (3) is stopped.
         "media" => format!(
             r#"
             return column {{ pad = 6, gap = 4,
               image {{ id = {img}, width = 16, radius = 2 }},
               audio {{ key = "music", src = {snd}, volume = 0.5, loop = true }},
               latency_graph(),
+              phase == 0 and audio {{ key = "chime", src = {snd}, finish = true }} or nil,
+              phase == 0 and audio {{ key = "blip", src = {snd} }} or nil,
             }}
         "#,
             img = f.image.to_ffi(),

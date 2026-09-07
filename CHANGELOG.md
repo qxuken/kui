@@ -5,7 +5,7 @@ the workaround, the model field or the arithmetic the release made
 unnecessary. The second list is the point of the first — a library whose
 upgrades remove code from the apps on it is doing the job.
 
-## Unreleased
+## 0.1.0-alpha.9 (unreleased)
 
 ### Added
 
@@ -40,6 +40,43 @@ upgrades remove code from the apps on it is doing the job.
   `KUI_ABI_VERSION` stays 7 under ADR 0006's rule. Both panel examples
   place the panel in a slot, hand it a title and a reply template, and
   count the replies.
+
+- **An `<audio>` one-shot can be told to finish, so a view need not guess
+  the asset's length.** Presence was the whole of playback: a declared
+  `audio` node plays, a removed one stops. That is right for a bed of
+  music and wrong for a chime — the view decides how long the node stays
+  declared, and only the file knows how long the sound is, so an app
+  played its alarm behind `m.now - m.alarmAt < CHIME_MS` with
+  `CHIME_MS = 6_000` "picked by guessing at the asset's length": too short
+  cut the sound off, too long replayed it on an unrelated re-declare, and
+  nothing checked either way. `finish` changes what *gone* means and
+  nothing else — `<audio src={id} finish/>`, `audio { finish = true }`,
+  `KuiAudio.finish`, `AudioSpec::finish()`. The node's removal **releases**
+  the playback instead of stopping it: no `stop` reaches the driver and the
+  sound plays itself out. Declaring the node for one frame is now enough to
+  hear a sound whole. Three edges, each pinned: a `looped` playback is
+  still stopped on removal, since release is meaningless where there is no
+  end to reach; a changed `src` still restarts, because that is a
+  replacement rather than a departure; and a `tag` still reports
+  `{kind:"sound", phase:"ended"}` after the release, which a `stop` would
+  have cancelled. (A playback that is `paused` when its node goes has
+  nothing to finish, so pause and release do not combine — stop it
+  instead.) `KuiAudio` grew the field at its end, where a C host that
+  predates it writes nothing and reads the old behaviour out of the zeroed
+  tail, so `KUI_ABI_VERSION` stays 7. The corpus `media` scene declares
+  three playbacks and drops two of them in a second phase, and the report
+  gained an `audio` line per command, so all four bindings are diffed on a
+  command list that shows a `stop` for the plain removal and nothing at all
+  for the released one.
+
+  **What you can delete:** the guessed duration and the window around it —
+  a `CHIME_MS` constant and the `now - alarmAt` comparison gating the
+  `<audio>` node, plus whatever kept `now` fresh for it. Declare the node
+  when the sound should start and stop declaring it on the next frame. If
+  the view needs to know when the sound is over — to re-arm, or to clear a
+  flag — that is what a `tag` and its `ended` message have always been, and
+  it survives the release; it is a real message rather than a constant that
+  was right on one machine.
 
 ### Changed
 

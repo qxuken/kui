@@ -1289,7 +1289,6 @@ static void conf_controls(KuiCtx *ui, const Fixtures *f, int phase) {
 }
 
 static void conf_media(KuiCtx *ui, const Fixtures *f, int phase) {
-    (void)phase;
     KuiSpec outer = {.pad_l = 6, .pad_r = 6, .pad_t = 6, .pad_b = 6, .gap = 4};
     kui_open(ui, &outer, NULL);
     KuiSpec img = {.width = {KUI_FIXED, 16}, .radius = 2};
@@ -1297,6 +1296,15 @@ static void conf_media(KuiCtx *ui, const Fixtures *f, int phase) {
     KuiAudio music = {.src = f->sound, .volume = 0.5f, .looped = 1};
     kui_audio(ui, KUI_STR("music"), &music, NULL);
     kui_latency_graph(ui);
+    /* The two phase 1 drops: `chime` asked to finish, so its removal
+     * releases the playback and queues no stop; `blip` did not. */
+    if (phase == 0) {
+        KuiAudio chime = KUI_AUDIO_INIT(f->sound);
+        chime.finish = 1;
+        kui_audio(ui, KUI_STR("chime"), &chime, NULL);
+        KuiAudio blip = KUI_AUDIO_INIT(f->sound);
+        kui_audio(ui, KUI_STR("blip"), &blip, NULL);
+    }
     kui_close(ui);
 }
 
@@ -1766,6 +1774,44 @@ static void conf_drain_cmds(KuiCtx *ctx, Rep *cmds) {
     }
 }
 
+/* Drains the audio commands into `audio`, one line each, the way
+ * conformance::write_audio_command spells them: the verb and the playback,
+ * plus a play's looped bit. Volumes, fades and the sound handle are left
+ * out because they would not compare across four bindings. The queue is
+ * drained a batch at a time, which is what a host driving its own device
+ * does; 32 is far more than any corpus scene queues in one frame. */
+static void conf_drain_audio(KuiCtx *ctx, Rep *audio) {
+    KuiAudioCommand cmds[32];
+    size_t n;
+    while ((n = kui_take_audio_commands(ctx, cmds, 32)) > 0) {
+        for (size_t i = 0; i < n; i++) {
+            KuiAudioCommand c = cmds[i];
+            switch (c.kind) {
+            case KUI_AUDIO_PLAY:
+                repf(audio, "audio play %llu %u\n", (unsigned long long)c.playback,
+                     c.looped ? 1u : 0u);
+                break;
+            case KUI_AUDIO_STOP:
+                repf(audio, "audio stop %llu\n", (unsigned long long)c.playback);
+                break;
+            case KUI_AUDIO_SET_VOLUME:
+                repf(audio, "audio volume %llu\n", (unsigned long long)c.playback);
+                break;
+            case KUI_AUDIO_PAUSE:
+                repf(audio, "audio pause %llu\n", (unsigned long long)c.playback);
+                break;
+            case KUI_AUDIO_RESUME:
+                repf(audio, "audio resume %llu\n", (unsigned long long)c.playback);
+                break;
+            case KUI_AUDIO_MASTER_VOLUME: repf(audio, "audio master\n"); break;
+            case KUI_AUDIO_UNLOAD: repf(audio, "audio unload\n"); break;
+            default: repf(audio, "audio ? %llu\n", (unsigned long long)c.playback); break;
+            }
+        }
+        if (n < 32) break;
+    }
+}
+
 static void conf_apply(KuiCtx *ctx, const ConfStep *s) {
     if (strcmp(s->kind, "cursor") == 0) kui_input_cursor(ctx, (float)s->a, (float)s->b);
     else if (strcmp(s->kind, "cursorleft") == 0) kui_input_cursor_left(ctx);
@@ -1861,9 +1907,10 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
     }
     Fixtures f = conf_fixtures(ctx);
 
-    Rep events, cmds;
+    Rep events, cmds, audio;
     rep_init(&events);
     rep_init(&cmds);
+    rep_init(&audio);
     int phase = 0;
     for (int i = 0; i <= nsteps; i++) {
         if (i > 0) {
@@ -1879,6 +1926,7 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
                 kui_window_closed(ctx, (uint32_t)s->a);
                 conf_drain(ctx, &events);
                 conf_drain_cmds(ctx, &cmds);
+                conf_drain_audio(ctx, &audio);
             } else if (strcmp(s->kind, "windowdismissed") == 0) {
                 kui_window_dismissed(ctx, (uint32_t)s->a, (uint32_t)s->b);
                 conf_drain(ctx, &events);
@@ -1886,6 +1934,7 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
                 conf_apply(ctx, s);
                 conf_drain(ctx, &events);
                 conf_drain_cmds(ctx, &cmds);
+                conf_drain_audio(ctx, &audio);
             }
         }
         kui_frame_begin(ctx, 320, 240, 1);
@@ -1893,6 +1942,7 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
         kui_frame_finish(ctx);
         conf_drain(ctx, &events);
         conf_drain_cmds(ctx, &cmds);
+        conf_drain_audio(ctx, &audio);
     }
 
     repf(out, "scene %s\n", scene->name);
@@ -1976,6 +2026,8 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
     rep_free(&events);
     repf(out, "%s", cmds.buf);
     rep_free(&cmds);
+    repf(out, "%s", audio.buf);
+    rep_free(&audio);
 
     KuiAnnouncement said[16];
     size_t na = kui_take_announcements(ctx, said, 16);

@@ -188,8 +188,10 @@ pub extern "C" fn kui_set_master_volume(ptr: *mut KuiCtx, volume: f32, tween_ms:
 
 /// An audio node: a playback retained by key while the frame declares it
 /// (present = playing, gone = stopped; volume/paused apply live, a changed
-/// src restarts). Empty label = a key from the tree position. `tag`
-/// (nullable, consumed) rides the `ended` event. Returns the node key.
+/// src restarts). `finish` changes what gone means — the playback is
+/// released to play itself out rather than stopped, except for a loop.
+/// Empty label = a key from the tree position. `tag` (nullable, consumed)
+/// rides the `ended` event, and survives a release. Returns the node key.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_audio(
     ptr: *mut KuiCtx,
@@ -207,6 +209,9 @@ pub extern "C" fn kui_audio(
             .paused(a.paused != 0);
         if a.looped != 0 {
             s = s.looped();
+        }
+        if a.finish != 0 {
+            s = s.finish();
         }
         s.tag = tag;
         let core = c.core();

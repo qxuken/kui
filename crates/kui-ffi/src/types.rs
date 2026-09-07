@@ -655,6 +655,11 @@ pub struct KuiAudio {
     pub volume: f32,
     pub looped: u32,
     pub paused: u32,
+    /// Removal releases the playback instead of stopping it: it plays to
+    /// its end. Appended after `paused`, which a host that predates it
+    /// simply does not write — the zeroed tail is the old behaviour, so
+    /// this is the compatible append `abi.rs` describes for an [in] struct.
+    pub finish: u32,
 }
 
 /// One audio command for a host that drives its own device

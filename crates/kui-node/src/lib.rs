@@ -1970,6 +1970,7 @@ fn audio_spec_of(
     volume: Option<f64>,
     looped: bool,
     paused: bool,
+    finish: bool,
     tag: Option<Value>,
 ) -> AudioSpec {
     let mut spec = AudioSpec::new(src).paused(paused);
@@ -1978,6 +1979,9 @@ fn audio_spec_of(
     }
     if looped {
         spec = spec.looped();
+    }
+    if finish {
+        spec = spec.finish();
     }
     spec.tag = tag;
     spec

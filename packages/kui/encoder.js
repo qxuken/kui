@@ -559,7 +559,8 @@ export function createEncoder(P) {
         strRef(el.key == null ? null : String(el.key));
         f[fi++] = Number(id >> 32n);
         f[fi++] = Number(id & 0xffffffffn);
-        f[fi++] = (p.loop ? 1 : 0) | (p.paused ? 2 : 0);
+        // 4 is `finish`: removal releases the playback instead of stopping it.
+        f[fi++] = (p.loop ? 1 : 0) | (p.paused ? 2 : 0) | (p.finish ? 4 : 0);
         f[fi++] = typeof p.volume === 'number' ? p.volume : -1;
         strRef(p.tag !== undefined ? JSON.stringify(p.tag) : null);
         return;

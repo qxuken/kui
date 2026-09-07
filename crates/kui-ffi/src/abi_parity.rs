@@ -409,6 +409,7 @@ fn asserts() -> String {
         volume: f32 => "float",
         looped: u32 => "uint32_t",
         paused: u32 => "uint32_t",
+        finish: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAudioCommand {

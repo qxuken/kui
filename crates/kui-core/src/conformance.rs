@@ -47,7 +47,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write as _;
 
 use crate::access::{AccessTree, Role};
-use crate::audio::AudioSpec;
+use crate::audio::{AudioCommand, AudioSpec};
 use crate::color::Color;
 use crate::display::{Quad, QuadKind};
 use crate::edit::EditOptions;
@@ -375,6 +375,10 @@ pub struct Expect {
     /// the `cmd ` prefix: `drag 0`, `open 1 0 0 0 400 300 1 0 0 0 0`,
     /// `close 1`.
     pub commands: &'static [&'static str],
+    /// Audio commands in order, as [`write_audio_command`] spells them
+    /// without the `audio ` prefix: `play 1 1`, `stop 2`. Empty for every
+    /// scene that declares no playback — which is all of them but `media`.
+    pub audio: &'static [&'static str],
     pub title: Option<&'static str>,
 }
 
@@ -441,6 +445,7 @@ pub const SCENES: &[Scene] = &[
             announcements: &[],
             warnings: &[],
             commands: &[],
+            audio: &[],
             title: None,
         },
     },
@@ -471,6 +476,7 @@ pub const SCENES: &[Scene] = &[
             announcements: &[],
             warnings: &[],
             commands: &[],
+            audio: &[],
             title: None,
         },
     },
@@ -496,6 +502,7 @@ pub const SCENES: &[Scene] = &[
             announcements: &[],
             warnings: &[],
             commands: &[],
+            audio: &[],
             title: None,
         },
     },
@@ -524,6 +531,7 @@ pub const SCENES: &[Scene] = &[
             announcements: &[],
             warnings: &[],
             commands: &[],
+            audio: &[],
             title: None,
         },
     },
@@ -548,6 +556,7 @@ pub const SCENES: &[Scene] = &[
             announcements: &[],
             warnings: &[],
             commands: &[],
+            audio: &[],
             title: None,
         },
     },
@@ -575,6 +584,7 @@ pub const SCENES: &[Scene] = &[
             announcements: &[],
             warnings: &[],
             commands: &[],
+            audio: &[],
             title: None,
         },
     },
@@ -606,6 +616,7 @@ pub const SCENES: &[Scene] = &[
             announcements: &[],
             warnings: &[],
             commands: &[],
+            audio: &[],
             title: None,
         },
     },
@@ -650,6 +661,7 @@ pub const SCENES: &[Scene] = &[
             announcements: &[],
             warnings: &[],
             commands: &[],
+            audio: &[],
             title: Some("kui conformance"),
         },
     },
@@ -687,6 +699,7 @@ pub const SCENES: &[Scene] = &[
             announcements: &[],
             warnings: &[],
             commands: &[],
+            audio: &[],
             title: Some("kui conformance"),
         },
     },
@@ -735,6 +748,7 @@ pub const SCENES: &[Scene] = &[
             announcements: &[],
             warnings: &[],
             commands: &[],
+            audio: &[],
             title: None,
         },
     },
@@ -794,19 +808,26 @@ pub const SCENES: &[Scene] = &[
             announcements: &[],
             warnings: &[],
             commands: &[],
+            audio: &[],
             title: None,
         },
     },
     Scene {
         name: "media",
         doc: "The non-text leaves: a registered image (deliberately unnamed, \
-              so the diagnostic shows up too), a retained audio playback \
-              that draws nothing, and the latency graph's empty chrome.",
+              so the diagnostic shows up too), three retained audio \
+              playbacks that draw nothing, and the latency graph's empty \
+              chrome. Phase 1 drops two of the playbacks, which is what \
+              `finish` is about: a removal releases the one that asked for \
+              it — no `stop` reaches the driver and the sound plays itself \
+              out — and stops the one that did not. The looped playback \
+              stays declared throughout, since a loop is stopped on removal \
+              whatever it asked for and this scene keeps one frame.",
         custom: &["size"],
         elements: &["image", "audio", "latencyGraph"],
         build: build_media,
         env: NATIVE_CHROME,
-        steps: &[],
+        steps: &[Step::Phase(1)],
         expect: Expect {
             solid: 2,
             shadows: 0,
@@ -818,6 +839,10 @@ pub const SCENES: &[Scene] = &[
             announcements: &[],
             warnings: &["image-without-label"],
             commands: &[],
+            // `chime` (2) asked to finish and its removal says nothing;
+            // `blip` (3) did not and is stopped. `music` (1) is the loop,
+            // still declared, so it has no departure to describe.
+            audio: &["play 1 1", "play 2 0", "play 3 0", "stop 3"],
             title: None,
         },
     },
@@ -846,6 +871,7 @@ pub const SCENES: &[Scene] = &[
             announcements: &[],
             warnings: &["line-ignores-input"],
             commands: &[],
+            audio: &[],
             title: None,
         },
     },
@@ -929,6 +955,7 @@ pub const SCENES: &[Scene] = &[
             // The titlebar press: chrome stays live under a modal, and a
             // live drag strip asks the driver to move the window.
             commands: &["drag 0"],
+            audio: &[],
             title: None,
         },
     },
@@ -1012,6 +1039,7 @@ pub const SCENES: &[Scene] = &[
             announcements: &[],
             warnings: &[],
             commands: &[],
+            audio: &[],
             title: None,
         },
     },
@@ -1089,6 +1117,7 @@ pub const SCENES: &[Scene] = &[
             announcements: &[],
             warnings: &["exit-budget", "exit-budget"],
             commands: &[],
+            audio: &[],
             title: None,
         },
     },
@@ -1144,6 +1173,7 @@ pub const SCENES: &[Scene] = &[
                 "open 2 0 0 0 400 300 1 0 0 0 0",
                 "close 2",
             ],
+            audio: &[],
             title: None,
         },
     },
@@ -1197,6 +1227,7 @@ pub const SCENES: &[Scene] = &[
             announcements: &[],
             warnings: &[],
             commands: &["open 1 0 0 1 160 320 0 12 40 160 24", "close 1"],
+            audio: &[],
             title: None,
         },
     },
@@ -1233,6 +1264,7 @@ pub const SCENES: &[Scene] = &[
             announcements: &["assertive Saved"],
             warnings: &["live-region-without-name"],
             commands: &[],
+            audio: &[],
             title: None,
         },
     },
@@ -1276,6 +1308,7 @@ pub const SCENES: &[Scene] = &[
             announcements: &[],
             warnings: &[],
             commands: &[],
+            audio: &[],
             title: None,
         },
     },
@@ -1734,7 +1767,12 @@ fn build_keys(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     });
 }
 
-fn build_media(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
+/// The three playbacks are declared in this order, so the ids the report
+/// names are 1 (`music`), 2 (`chime`) and 3 (`blip`) in every binding.
+/// Phase 1 stops declaring the last two, which is the scene's whole point:
+/// `chime` asked to [`AudioSpec::finish`] and leaves no command behind,
+/// `blip` did not and is stopped (backlog F28).
+fn build_media(ui: &mut Ui<'_>, f: &Fixtures, phase: u32) {
     ui.with(NodeSpec::column().pad(6.0).gap(4.0), |ui| {
         ui.image(
             f.image,
@@ -1742,6 +1780,13 @@ fn build_media(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
         );
         ui.audio_keyed("music", AudioSpec::new(f.sound).volume(0.5).looped());
         widgets::latency_graph(ui);
+        // Last, and in this order: an `audio` element draws nothing, so a
+        // Lua table can end on the two the phase drops without a nil in
+        // the middle of its sequence.
+        if phase == 0 {
+            ui.audio_keyed("chime", AudioSpec::new(f.sound).finish());
+            ui.audio_keyed("blip", AudioSpec::new(f.sound));
+        }
     });
 }
 
@@ -2367,6 +2412,11 @@ pub struct Output {
     /// Every window command the replay drained, in order — what a frame
     /// driver would have applied to real windows.
     pub commands: Vec<WindowCommand>,
+    /// Every audio command the replay drained, in order — what a frame
+    /// driver would have applied to a real device. In the report because
+    /// an `audio` element builds no tree node: the commands are the only
+    /// thing a playback leaves behind for a binding to be diffed on.
+    pub audio: Vec<AudioCommand>,
     pub title: Option<String>,
     /// The `CUSTOM` / `ELEMENTS` rows the frames actually exercised (see
     /// [`Coverage`]). Not part of the [`report`]: it is derived from the
@@ -2576,12 +2626,14 @@ pub fn drive(
     core.env.window = env;
     let mut events = Vec::new();
     let mut commands = Vec::new();
+    let mut audio = Vec::new();
     let mut coverage = Coverage::default();
     let mut phase = 0u32;
     let mut frame = |core: &mut Core,
                      phase: u32,
                      events: &mut Vec<(String, String)>,
                      commands: &mut Vec<WindowCommand>,
+                     audio: &mut Vec<AudioCommand>,
                      coverage: &mut Coverage| {
         let mut ui = core.frame(VIEWPORT, SCALE);
         build(&mut ui, phase);
@@ -2593,8 +2645,16 @@ pub fn drive(
                 .map(|e| event_row(&e.payload)),
         );
         commands.extend(core.take_window_commands());
+        audio.extend(core.take_audio_commands());
     };
-    frame(core, phase, &mut events, &mut commands, &mut coverage);
+    frame(
+        core,
+        phase,
+        &mut events,
+        &mut commands,
+        &mut audio,
+        &mut coverage,
+    );
     for step in steps {
         match *step {
             Step::Phase(n) => phase = n,
@@ -2607,6 +2667,7 @@ pub fn drive(
                         .map(|e| event_row(&e.payload)),
                 );
                 commands.extend(core.take_window_commands());
+                audio.extend(core.take_audio_commands());
             }
             Step::WindowDismissed(id, reason) => {
                 core.dismiss_window(WindowId(id), DISMISS_REASONS[reason as usize]);
@@ -2620,9 +2681,17 @@ pub fn drive(
                 let evs = core.handle_input(step.event().expect("an input step"));
                 events.extend(evs.iter().map(|e| event_row(&e.payload)));
                 commands.extend(core.take_window_commands());
+                audio.extend(core.take_audio_commands());
             }
         }
-        frame(core, phase, &mut events, &mut commands, &mut coverage);
+        frame(
+            core,
+            phase,
+            &mut events,
+            &mut commands,
+            &mut audio,
+            &mut coverage,
+        );
     }
 
     let title = core.window_title().map(str::to_string);
@@ -2651,6 +2720,7 @@ pub fn drive(
         announcements,
         warnings,
         commands,
+        audio,
         title,
         coverage,
     }
@@ -2682,6 +2752,29 @@ pub fn write_env(env: WindowEnv, out: &mut String) {
         "env {} {} {} {} {}",
         env.custom_chrome as u8, env.maximized as u8, env.fullscreen as u8, r.w as i32, r.h as i32,
     );
+}
+
+/// The `audio` line for one audio command: the verb, and the playback it
+/// names — `audio play 1 0`, `audio stop 1`. What a driver would send a
+/// device, minus everything that cannot travel: volumes and fades are
+/// floats, and a `sound` is a process-unique handle a binding mints for
+/// itself, so neither would compare across four runs. A play carries its
+/// `looped` bit because that is the one thing about a playback the report
+/// otherwise could not see, and it is what decides whether a departure
+/// stops the playback or releases it (`AudioSpec::finish`, backlog F28).
+/// `master` and `unload` name no playback at all.
+pub fn write_audio_command(cmd: &AudioCommand, out: &mut String) {
+    let _ = match *cmd {
+        AudioCommand::Play {
+            playback, looped, ..
+        } => writeln!(out, "audio play {} {}", playback.0, looped as u8),
+        AudioCommand::Stop { playback, .. } => writeln!(out, "audio stop {}", playback.0),
+        AudioCommand::SetVolume { playback, .. } => writeln!(out, "audio volume {}", playback.0),
+        AudioCommand::Pause { playback, .. } => writeln!(out, "audio pause {}", playback.0),
+        AudioCommand::Resume { playback, .. } => writeln!(out, "audio resume {}", playback.0),
+        AudioCommand::MasterVolume { .. } => writeln!(out, "audio master"),
+        AudioCommand::Unload { .. } => writeln!(out, "audio unload"),
+    };
 }
 
 /// The `cmd` line for one window command: the verb, the window, and what
@@ -2796,6 +2889,9 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
     }
     for c in &out.commands {
         write_command(c, &mut s);
+    }
+    for c in &out.audio {
+        write_audio_command(c, &mut s);
     }
     for w in &out.warnings {
         let _ = writeln!(s, "warn {w}");

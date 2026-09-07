@@ -413,8 +413,8 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
             core.image_node(ImageId::from_ffi((hi << 32) | lo), p.spec);
             Ok(())
         }
-        // key?, src (hi, lo), flags (1 loop | 2 paused), volume (-1 =
-        // absent), tag JSON? — a retained playback keyed by node.
+        // key?, src (hi, lo), flags (1 loop | 2 paused | 4 finish), volume
+        // (-1 = absent), tag JSON? — a retained playback keyed by node.
         OP_AUDIO => {
             let key = r.str_ref()?;
             let (hi, lo) = (r.f()? as u64, r.f()? as u64);
@@ -429,6 +429,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
                 (volume >= 0.0).then_some(volume),
                 flags & 1 != 0,
                 flags & 2 != 0,
+                flags & 4 != 0,
                 tag,
             );
             match key {
@@ -547,7 +548,7 @@ pub fn lower_binary(core: &mut Core, stream: &[f64], strings: &[u8]) -> Result<(
 mod tests {
     use super::*;
     use kui_core::schema::{CUSTOM, PROPS};
-    use kui_core::{Align, Size, Sizing, Value};
+    use kui_core::{Align, Color, Size, Sizing, Value};
 
     /// Decodes one prop list from a hand-built stream.
     fn decode(stream: &[f64], strings: &[u8]) -> PropsOut {
