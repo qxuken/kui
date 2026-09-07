@@ -1,8 +1,9 @@
 # Backlog
 
 From the architecture review of `93169ed` (2026-09-03), after 0.1.0-alpha.5,
-the six rounds that followed it, and two field reports from apps built on
-alpha.6 outside this repo (F1–F15, 2026-09-06). Every item names the
+the six rounds that followed it, and the field reports from two apps built on
+alpha.6, alpha.7 and alpha.8 outside this repo (F1–F15 on 2026-09-06,
+F16–F23 and F24–F30 on 2026-09-07). Every item names the
 evidence that produced it, so a task that turns out to be wrong can be argued with rather
 than guessed at.
 
@@ -16,9 +17,10 @@ half was built. The index at the bottom of this file names every one of them,
 so an id cited by an open item, a code comment or a commit message can be
 resolved without opening the archive. Nothing was renumbered in any of those
 moves, and nothing ever is. What is left here is three parked headings — C12,
-C13 and C14 — and what comes next; F16–F23 from the two alpha.7 field
-reports all closed the day they were filed (2026-09-07). C15's remainder was
-the last split entry, and it closed on 2026-09-07.
+C13 and C14 — the seven entries from the two alpha.8 field reports,
+F24–F30 (2026-09-07), and what comes next; F16–F23 from the two alpha.7
+field reports all closed the day they were filed (2026-09-07). C15's
+remainder was the last split entry, and it closed on 2026-09-07.
 
 Ordered by area, not by priority. What to do next is under "After alpha.8".
 
@@ -107,6 +109,262 @@ for a view. What stays here is the two wishes that were not ours.
 - **`onLayout` firing on every rect change.** That is what the row says
   it does; a first-frame-only hook has no view asking for it yet.
 
+## From two alpha.8 field reports (2026-09-07)
+
+Both apps upgraded to alpha.8 the day it was tagged and reported again:
+the mind map's `FINDINGS.md` (an `alpha.7 → alpha.8` section on top of the
+alpha.7 one) and the LCARS pomodoro's `docs/findings.md` — a review of
+the release's DX rather than of the app — beside its upgrade notes,
+`docs/kui-alpha-8.md`, whose "Wishes for the next alpha" are numbered 1–4.
+Each claim below was checked against `main` at `19ead84` (the alpha.8 tag)
+before it became an entry, and every command the pomodoro ran was run
+again from its own directory. Both reports agree on the release: "the
+bare version bump broke nothing", `setTime` throwing is "the single best
+thing in the release", and the changelog in the tarball made the reports
+"materially cheaper to write". What they found is smaller than last
+round's and further from the core: two of the seven entries are the
+package's distribution, two are doc sentences, and the two that touch the
+core are about state the core keeps by key — an editor's and a
+playback's — and when it lets go of it.
+
+Three claims did not survive the check whole, and the entries say so: the
+pomodoro's fix for caret ranges (`~` floats exactly as `^` does), the mind
+map's "there is no shorter way round" (there is none today, and F24 is
+it), and the pomodoro's "a window has no equivalent" of `runOut` (the
+primitive is there; the promise is not). One entry, F25, is not in either
+report: it fell out of checking F24.
+
+### `~` F24 — `setEditText` before the editor exists does nothing, and alpha.8's deletion list told an app to delete a latch it still needs
+
+The mind map deleted its `onLayout` latch on the strength of alpha.8's
+F20 entry — **What you can delete:** "the `onLayout` latch … and the
+`initial`-does-not-reset surprise on reopen — write the model's draft with
+`setEditText` when the editor opens" — and three checks went red: a
+reopened rename showed the abandoned draft, with the caret at its end.
+The report's reading is right. The suggested replacement *is* the latch
+minus the caret as its reason, and the line under `### Changed`
+("`initial` seeds a new editor only … `setEditText` is what resets one")
+is the accurate one. The app then tried the shorter path — reset from
+`beginEdit`, in `update`, where the model already knows the text — and
+found `setEditText` a silent no-op there: "seed, type, close, reopen, and
+the abandoned draft is still there."
+
+The repo's line: `EditStore::set_text` (`edit.rs:468`) is `if let Some(s)
+= self.states.get_mut(&key)` and nothing else. An undeclared key falls
+through with no warning, in every binding, and the editor a rename opens
+does not exist until the frame after `beginEdit` builds it
+(`builder.rs:447` is the only `declare`). So the reset an app wants to
+make at the moment it decides to open an editor has no door: `initial`
+will not (by design, and a test pins it), `setEditText` cannot yet, and
+`onLayout` is the first moment it can — which is the latch.
+
+**Do:** four things, smallest first. (1) The `<edit>` row and
+`setEditText`'s doc say the call reaches a declared editor only. (2)
+`set_edit_text` on a key with no state raises a warning —
+`unknown-editor`, say, beside `duplicate-key` — the shape F16 chose: a
+silent no-op under an unchanged signature is the failure mode both
+reports rank worst. (3) Make the call from `update` mean something: a
+text set for an undeclared key is *pending* and seeds the editor the next
+frame declares under that key, beating `initial`; a pending seed nobody
+declares by the end of that frame is dropped with the warning from (2).
+That is the door the report reached for first, it needs no latch and no
+`onLayout`, and it keeps `initial`'s meaning intact. Mutation-test it the
+way the corpus was: the F20 test that pins "a returning editor keeps its
+draft until `set_edit_text` resets it" must still pass, and a new one
+sets the text before the declare. (4) alpha.9's entry corrects the
+alpha.8 deletion line — the changelog is shipped and stays; the
+correction goes on top. A `~`: the workaround exists and is the latch,
+and the report's three checks are what it takes to know the latch is
+still needed.
+
+### `~` F25 — Editor and scroll state are kept by key forever
+
+Found while checking F24. The idiom the retained-by-key model implies — a
+fresh key per opening (`edit-${id}-${session}`), so `initial` seeds a
+fresh editor every time, the way React remounts on a changed key — would
+have answered the mind map without any of F24. It works. It also leaks:
+`EditStore::states` (`edit.rs:309`) is an `FxHashMap<Key, EditState>` that
+only ever grows — `declare` is `entry(key).or_insert_with`, and no path in
+the runtime removes an entry. Each state owns a `cosmic_text::Editor` with
+a shaped `Buffer`. `ScrollStore::entries` (`scroll.rs:56`) has the same
+shape and the same absence. The anim store is the one that does it right:
+`AnimStore` retains tweens by `last_used >= cutoff` (`anim.rs:282`).
+
+Today's cost is bounded by the number of distinct keys an app ever
+declares — the mind map's `edit-<id>` is one per node ever renamed, the
+pomodoro has none — so no shipped app has felt it. The idiom that would
+make it unbounded is the one the docs point at, and nothing outside the
+core can drop a state: `setEditText(key, "")` shrinks the buffer and keeps
+the entry.
+
+**Do:** decide the lifetime, once, for both stores. Retention across
+absence is a documented promise (a tabbed form that undeclares a field and
+returns to it expects its draft; the F20 test pins it), so prune-on-
+undeclare is the wrong fix. The right one is the exit store's: a budget on
+*undeclared* states, the longest-undeclared evicted first, sized so no
+ordinary view meets it (256 editors and 1024 scroll entries would be
+generous), and a count in `stats()` so a test can see it. A declared state
+is never evicted. One sentence in both rows: "kept while declared; an
+undeclared one is kept until the budget needs the room". A `~` because
+nothing can free it from outside; a `!` the day an app opens editors under
+generated keys.
+
+### `~` F26 — There is no supported way to learn a release exists, and every range an app writes floats
+
+The pomodoro's headline, verified here from the app's own directory with
+the scope routed to Forgejo: `npm view @qxuken/kui version` prints nothing
+and exits 0, so does `dist-tags`, `npm outdated` lists `@types/node` and
+not kui, and only `npm view @qxuken/kui@alpha version` answers
+`0.1.0-alpha.8`. The registry has one dist-tag, `alpha`
+(`{"alpha":"0.1.0-alpha.8"}`), because the publish step
+(`ci.yml:577-583`) gives a prerelease its identifier as the tag and
+`latest` only to a plain version — which there has never been. `npm view`
+defaults to `latest`, and against a package without one it says nothing
+and succeeds. "I found out alpha.8 existed because I was told."
+
+The second half: `"^0.1.0-alpha.7"` installs alpha.8 in a clean directory,
+so `package.json` "is decoration" without a lockfile. True — and the
+report's fix is not. `~0.1.0-alpha.7` satisfies `0.1.0-alpha.8` too
+(checked against npm's own `semver`: both ranges admit any prerelease of
+the same `0.1.0` tuple). Only an exact version pins an alpha. The
+template's `^0.1.0-alpha.8` floats the same way, which is what a floor is
+for and what its README says ("pins the minimum"); an *app* that wants
+the version it tested is a different case and nothing tells it so.
+
+**Do:** (1) `ci.yml`: after `npm publish --tag alpha`, `npm dist-tag add
+@qxuken/kui@$ver latest` — an alpha under `latest` is what every 0.x does,
+and it is what makes `npm view`, `npm outdated` and a bare `npm install
+@qxuken/kui` mean something. Guard it against a future stable: add
+`latest` only when the version being published sorts highest among the
+registry's versions. (2) Both READMEs: `latest` and `alpha` both point at
+the newest alpha; `^` and `~` both float across the alphas of one tuple;
+an app pins an exact version and its lockfile is what holds; `npm view
+@qxuken/kui@alpha version` is the query if `latest` is ever absent. `.` as
+work, `~` as an outcome — an app "can be running a release it has no way
+to discover it is running".
+
+### `.` F27 — `quads()` on a window does not say how to drive one
+
+Pomodoro wish 3 and finding 4. `win.quads()` landed (F19) so a smoke test
+could read the frame the shipping driver painted; the first thing that
+test reaches for is `app.click(x, y)`, and a window refuses it. Both
+halves are documented on their own methods — `click`'s says "a window is
+driven by the OS and says so rather than pretending", `access`'s says
+"Works against a real window too" — and neither is reachable from
+`quads()`'s doc (`index.d.ts:1034`, generated from the `core_methods!`
+macro in `kui-node/src/lib.rs`), "which is the one a person reads when
+they sit down to write this exact test". The app found `access` "by
+working out that `click` would not do", and it reads as an accessibility
+helper rather than as the one synthetic input a window takes.
+
+**Do:** one clause on `quads()` — "drive a window with `access(key,
+action)`; `click`, `type` and `key` are refused there" — and one on
+`access` saying it is the way into a window, not only a screen reader's
+path. Rebuild the addon before `npm run gen` (the doc lives in the Rust
+source), and the package README's window example gets the same sentence.
+Their `smoke.tsx` is the test that wanted it.
+
+### `~` F28 — An `<audio>` one-shot that must finish has to guess its own length
+
+Pomodoro wish 2 and finding 5. Presence is playback: `<audio key src>`
+present is playing, gone is stopped (`AudioStore::reconcile`,
+`audio.rs:374-383` — every mounted key not declared this frame is
+`stop`ped at once). Correct and small, and the report says so. What it
+forces on a one-shot: the view decides how long the node stays declared,
+and it does not know how long the asset is, so the chime became `m.now -
+m.alarmAt < CHIME_MS` with `CHIME_MS = 6_000` "picked by guessing at the
+asset's length" — too short cuts the sound, too long replays it on an
+unrelated re-declare, and nothing checks it.
+
+Checked: the core does already know when a playback ends. A `tag` brings
+`{kind:"sound", phase:"ended"}` back (`audio.rs:283`), the Rust runner
+reports it from the device (`kui/src/lib.rs:1503`), and headless
+`ctx.audioEnded(playback)` stands in for the device. So the constant has
+a replacement today — keep the node declared until the `ended` message
+clears a model flag — which is real state rather than a guess, and the
+row should say so. It is still a model field and a message arm for "play
+this once, whole", which is the cost the report is describing.
+
+**Do:** a prop on the `audio` element that changes only what *gone*
+means: the node's removal releases the playback instead of stopping it,
+and it finishes on its own — a looped one still stops, since release is
+meaningless for it, and `ended` still fires for a tagged one. Not
+`oneShot`: the row already uses "one-shot" for a non-looped playback, so
+the flag needs a word for the *release* — `finish` (`<audio src finish/>`,
+`finish = true`, `KuiAudio.finish`) is the candidate; the build can pick a
+better one. Rows: `schema.rs:1286`'s `jsx_own`/`lua_own`, `AudioSpec`, the
+encoder's `audio` op, a field appended to `KuiAudio` (host-allocated and
+read by pointer, so no ABI bump per `abi.rs:17`), `props.md`, and the
+corpus `resources` scene's audio phase gains a node removed with the flag
+whose command list shows no `stop`. **What the app can delete:**
+`CHIME_MS` and the `now - alarmAt` window; the node is declared for one
+frame and the sound plays whole.
+
+### `~` F29 — A window has no settled frame by name, so a smoke test sleeps
+
+Pomodoro wish 4: `runOut` gives headless the settled frame; "a window has
+no equivalent, so `smoke.tsx` sleeps 400 ms and hopes" (`frames(400)`,
+then two `frames(300)` — wall-clock `setTimeout`s around each `access`
+press). Half true. `animating()` is in the shared surface, so a window
+already answers it after every pump — the primitive is there, and a test
+could poll it. What is missing is the thing that ties it to the driver:
+`runWindowed`'s pump (`index.js:410-431`) is a `setTimeout` loop the test
+cannot see into, so the only way to know a frame has been painted, let
+alone a settled one, is to guess a duration.
+
+**Do:** on the windowed loop (`Loop`, not `App`), `settled(maxMs =
+10_000): Promise<number>` — resolves from inside the pump the first time
+a `win.pump()` + `app.step()` leaves `animating()` false and nothing
+queued, with the wall-clock milliseconds it took, and resolves at the cap
+with `animating()` still true, as `runOut` does. Not `advance`: the
+window's clock is the wall's and a test cannot move it, which is why this
+is a promise and `runOut` is a loop. The same hook gives `frame():
+Promise<void>` — "one more pump has painted" — nearly free, which is what
+the first `frames(400)` was waiting for. Their `smoke.tsx` is the test to
+convert; its three sleeps become three awaits.
+
+### `.` F30 — Three doc shapes the reports paid for
+
+Neither report found a wrong sentence in the docs this round. What they
+found is that the right sentences are not where a reader stands.
+
+- **A task index beside `props.md`.** The pomodoro filed an alpha.7 wish
+  for a feature that had shipped in alpha.7 — `<audio key src>` and
+  `audioCommands()` were in its own `node_modules`, at
+  `jsx-runtime.d.ts:399` and `props.md:123` — and F23's entry answered
+  it. Its diagnosis is the right one: `props.md` is a 200-row table sorted
+  by name, and nothing is organised by the question a developer arrives
+  with. **Do:** a `docs/howto.md` — "play a sound when the model changes",
+  "test a real window", "animate a removal", "reset an editor", "the
+  settled frame", "pin a version" — each two sentences and a link into
+  `props.md`, the changelog entry or the ADR. The changelog's "what you
+  can delete" framing is the model; twenty entries would cover both apps.
+- **`What breaks` as a checklist.** 3 050 lines, ~30 KB for alpha.8
+  alone; "as a document it is worth reading start to finish. As the thing
+  you consult at 4 p.m. with a build to fix, it is dense". The `**What
+  breaks.**` opener is four paragraphs of argument. **Do:** keep them, and
+  put one bullet per break with the symbol names above them, so a reader
+  can grep — from alpha.9's entry on, not retrofitted.
+- **A deletion line names a symptom, not a workaround.** The mind map's
+  lesson, twice now: "a workaround that accreted two purposes only sheds
+  the one the release addressed", and the deletion list "is written from
+  the library's side, where the workaround has one purpose". **Do:** a
+  "what you can delete" line names the *behaviour* the release removed
+  the need for, and leaves the app to say which of its lines that was;
+  F24's correction is the first instance.
+
+### Theirs, not ours
+
+- **Per-surface resource handles** (pomodoro wish 1, carried from its
+  wish 5). Same answer as last round: `init(surface)` and `view(_, _,
+  surface)` reach the surface; the module globals are the app's, and its
+  own notes say "our half of this is below".
+- **The mind map's `preview.svg` is gitignored**, so the tool it built to
+  catch paint regressions has no baseline. The report says it is the
+  app's work, and it is.
+- **`withEffects` for the chime.** Both reports declined it, for the
+  reason ADR 0013 gives.
+
 ## After alpha.8
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -131,7 +389,11 @@ together, a new removal outranks ghosts already in flight, the
 `exit-budget` warning names the frame's removal, and the corpus `exit`
 scene pins the change in four bindings with the phase the ADR asked for
 (and the correction it needed: `bulk` had to leave in a frame of its own).
-The next thing to build is whatever the next field report asks for.
+The next thing to build is what the next field reports asked for, the same
+day: F24–F30 above — F24 and F28 are the two that touch the core, F25 is
+the lifetime question they turned up, F26 is the publish step, and F27,
+F29 and F30 are a doc clause, a promise on the windowed loop and a task
+index.
 
 **Design, wanting an ADR.** Nothing new since ADR 0014 (above) was built on 2026-09-07; what it leaves open — a slot element for Node, extensions in `kui_run`, an extension offering slots of its own — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
 [`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md),
