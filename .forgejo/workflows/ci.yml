@@ -150,10 +150,10 @@ jobs:
   # group above). Everything else - a pull request, a push to main with no
   # tag on it, the tag run itself - runs.
   #
-  # It costs a container start on every run, which is the price of not
-  # having `check` decide for itself: the decision has to be made before the
-  # expensive steps, and a step-level guard would have to be repeated on
-  # every step below it. No checkout: one `ls-remote` answers it, and the
+  # It costs a container start on every run - three seconds, measured
+  # 2026-09-07 - which is the price of not having `check` decide for itself:
+  # the decision has to be made before the expensive steps, and a step-level
+  # guard would have to be repeated on every step below it. No checkout: one `ls-remote` answers it, and the
   # question is about the remote's tags rather than the workspace's. If the
   # lookup cannot be made at all the answer is yes, check - a run that
   # checks twice is better than a commit that is never checked.

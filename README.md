@@ -866,7 +866,8 @@ way, and without one a range reinstalls as whatever is newest.
 To cut a release: `scripts/set-version.sh 0.1.0-alpha.2` (workspace version,
 the `kui-*` dependency requirements, package.json and the changelog's open
 `(unreleased)` heading move together — registries refuse a version that already
-exists), commit, `git tag v0.1.0-alpha.2`, push the tag. That next
+exists), commit, `git tag v0.1.0-alpha.2`, then push the branch and the tag
+in one go: `git push --atomic origin main v0.1.0-alpha.2`. That next
 `## <version> (unreleased)` heading is opened by hand; the script only dates
 the open one, and a tag whose top heading is missing, stale or still says
 unreleased fails the release. [ci.yml](.forgejo/workflows/ci.yml) then runs
@@ -906,6 +907,18 @@ single runner that is the difference between one `check` and two before
 anything is published. It needs Forgejo v14 or newer for the `concurrency`
 block; the trade is that a run on main is no longer cancelled when a newer
 commit is pushed to main, since the group is the commit rather than the branch.
+
+The two refs go in one `--atomic` push for the same reason. Either order ends
+with one `check`, but pushing main first and the tag a minute later means the
+run the tag cancels has spent that minute compiling; sent together, the loser
+is cancelled — or stood down by `gate`, which answers in about three seconds —
+before it has done any work. Not `--follow-tags`: it pushes annotated tags
+only, and the tags here are lightweight, so it would push main and silently
+leave the tag behind. Name both refs.
+
+What that looks like afterwards: the tag's run is the one that checks, builds
+and publishes, and the run for the same commit on main ends as **cancelled**,
+or as a three-second `gate` with `check` skipped. Both are the success case.
 
 Before tagging, run the macOS accessibility audit by hand:
 
