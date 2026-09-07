@@ -837,6 +837,20 @@ npm install @qxuken/kui@alpha    # prereleases publish under their identifier as
 npm create @qxuken/kui-node my-app   # or scaffold an app from the template
 ```
 
+Every release so far is a prerelease, so `latest` and `alpha` point at the same
+thing — the newest alpha — and `npm install @qxuken/kui`, `npm view @qxuken/kui
+version` and `npm outdated` all answer with it. `npm view @qxuken/kui@alpha
+version` is the query that answers even if `latest` is ever missing, which it is
+on a package published before this was arranged: `npm view` defaults to `latest`
+and against a package without one prints nothing and exits 0.
+
+A range does not pin a prerelease. Both `^0.1.0-alpha.8` and `~0.1.0-alpha.8`
+admit every later alpha of the same `0.1.0` — that is npm's own semver, not a
+quirk of the two spellings — so a range is a floor, not a choice. An app that
+wants the version it tested writes that version exactly (`"@qxuken/kui":
+"0.1.0-alpha.8"`) and commits its lockfile; the lockfile is what holds either
+way, and without one a range reinstalls as whatever is newest.
+
 To cut a release: `scripts/set-version.sh 0.1.0-alpha.2` (workspace version,
 the `kui-*` dependency requirements, package.json and the changelog's open
 `(unreleased)` heading move together — registries refuse a version that already

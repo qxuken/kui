@@ -211,6 +211,28 @@ generated keys.
 
 ### `~` F26 — There is no supported way to learn a release exists, and every range an app writes floats
 
+**Built 2026-09-07 — unverified on the registry until alpha.9 ships.** Both
+halves of the "Do" below are in the tree. `ci.yml`'s npm publish step follows
+`npm publish --tag "$tag"` with `npm dist-tag add "@qxuken/kui@$ver" latest`
+whenever the tag is not already `latest`, guarded on `$ver` sorting highest
+among the versions the registry already holds: the list comes from `npm view
+"@qxuken/kui@$tag" versions --json` (asked through the tag just written,
+because a plain `npm view` defaults to the `latest` whose absence is the bug
+and then prints nothing and exits 0), and the sort is npm's own bundled
+`semver`, resolved through `npm root -g` so nothing has to be installed for
+it. Checked here against the live registry: it picks `0.1.0-alpha.8` out of
+the seven published versions, orders `alpha.10` above `alpha.9`, and picks
+`0.1.0` over an `alpha.10` published after it — which is the guard doing its
+job. The step is `bash -n` clean and the file still parses as YAML. Both
+READMEs and the template's now say that `latest` and `alpha` point at the
+same newest alpha, that `^` and `~` float alike across the alphas of one
+tuple so an app pins an exact version and leans on its lockfile, and that
+`npm view @qxuken/kui@alpha version` is the query if `latest` is ever absent.
+**What is not verified:** the tag itself. `latest` exists on the registry only
+after a publish runs the new step, so `npm view @qxuken/kui version` keeps
+printing nothing until alpha.9 goes out; this entry stays open until it
+answers.
+
 The pomodoro's headline, verified here from the app's own directory with
 the scope routed to Forgejo: `npm view @qxuken/kui version` prints nothing
 and exits 0, so does `dist-tags`, `npm outdated` lists `@types/node` and
@@ -391,7 +413,8 @@ scene pins the change in four bindings with the phase the ADR asked for
 (and the correction it needed: `bulk` had to leave in a frame of its own).
 The next thing to build is what the next field reports asked for, the same
 day: F24–F30 above — F24 and F28 are the two that touch the core, F25 is
-the lifetime question they turned up, F26 is the publish step, and F27,
+the lifetime question they turned up, F26 is the publish step (built the
+same day, and unverified until the tag it writes exists), and F27,
 F29 and F30 are a doc clause, a promise on the windowed loop and a task
 index.
 

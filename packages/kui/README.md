@@ -15,6 +15,13 @@ npm install @qxuken/kui@alpha
 
 Or start from the template: `npm create @qxuken/kui-node my-app`.
 
+Every release so far is a prerelease, so `latest` and `alpha` point at the same
+newest alpha and a bare `npm install @qxuken/kui` gets it; `npm view
+@qxuken/kui@alpha version` is the query that still answers if `latest` is ever
+absent. Ranges do not pin a prerelease — `^0.1.0-alpha.8` and `~0.1.0-alpha.8`
+both admit every later alpha of the same `0.1.0` — so an app that wants the
+version it tested writes that version exactly and commits its lockfile.
+
 The tarball bundles the native addon for linux-x64, linux-arm64, darwin-arm64,
 darwin-x64 and win32-x64 under `prebuilds/`; `native.cjs` picks the one matching
 `process.platform`-`process.arch`. On any other platform build it from the
