@@ -192,6 +192,14 @@ resolved from the host executable at load, the way a Lua C module resolves
 
 ## Reference
 
+[docs/howto.md](docs/howto.md) is the task index: about twenty questions a
+developer actually arrives with — "how do I animate a removal", "how do I
+test the real window", "how do I reset an editor" — each answered in two
+sentences that point at the row, the release entry or the ADR with the rest.
+Start there when you know what you want and not what it is called; the two
+field reports that asked for it had both filed wishes for features already
+sitting in their own `node_modules`.
+
 [docs/props.md](docs/props.md) is the cross-binding reference: every prop
 with its JSX, Lua and C name, the composites, the elements, the event
 payload shapes and the resource APIs. It is generated from the schema

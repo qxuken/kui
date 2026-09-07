@@ -158,7 +158,10 @@ package as [props.md](props.md) (`docs/props.md` in the repository), and so
 do [CHANGELOG.md](CHANGELOG.md) — every release lists what it adds and,
 separately, what you can delete — and the ADRs under `docs/adr/`, which
 is where a doc comment pointing at `docs/adr/0003-modal-surfaces.md`
-resolves from inside `node_modules`.
+resolves from inside `node_modules`. [howto.md](howto.md) ships with them:
+about twenty questions — playing a sound, animating a removal, resetting an
+editor, driving a real window in a test — answered in two sentences each and
+pointing into the other three.
 
 - **Hover and pressed colors** are props, not queries: `hoverBg`,
   `pressedBg`, and `hoverGroup="name"` to light connected pieces together.

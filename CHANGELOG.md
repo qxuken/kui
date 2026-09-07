@@ -3,9 +3,60 @@
 Every release lists what it adds and, separately, **what you can delete**:
 the workaround, the model field or the arithmetic the release made
 unnecessary. The second list is the point of the first — a library whose
-upgrades remove code from the apps on it is doing the job.
+upgrades remove code from the apps on it is doing the job. A "what you can
+delete" line names the *behaviour* the release removed the need for, not the
+workaround it guesses an app wrote — a workaround that accreted two purposes
+only sheds the one the release addressed, and only the app's own tests know
+which of its lines that was.
 
-## Unreleased
+From 0.1.0-alpha.9 on, a release section opens with **What breaks.** as a
+bullet list — one line per break, naming the symbol — and then the paragraphs
+that argue each one. The list is for the reader with a build to fix, who
+needs to grep for a name before reading 30 KB of prose; the paragraphs are
+for the reader deciding whether to upgrade. Earlier sections keep the shape
+they shipped with and are not retrofitted (backlog F30, from the alpha.8
+field reports).
+
+## 0.1.0-alpha.9 (unreleased)
+
+**What breaks.**
+
+- `Extension::view` takes the `Slot` it is filling, and `Extension::on_event`
+  returns `Vec<Value>` — every Rust extension's two methods change shape.
+- Lua's `on_event` return value is now read as a reply to the host; a script
+  that returned something incidental now sends it.
+- `kui::run` and `Launcher::extensions` refuse two extensions of one name —
+  give one a namespace with `extension_as`.
+- An extension's node keys are derived from the slot's full name, so they all
+  move once at the upgrade: its tweens restart and its editors are seeded
+  from `initial` again on the first frame after it.
+- `<button>` / `button { }` / `kui_button_with`: a row the stock button does
+  not read is an `unknown-prop` warning naming the rows it does, where it used
+  to vanish silently — a suite that asserts `warnings` is empty will see it.
+
+**An extension is a different shape in all three host languages.** `view`
+receives the `Slot` it is filling (Lua's `view(env)` may keep its one
+argument; Rust's cannot), `on_event` returns replies rather than nothing, and
+an extension names the slots it fills. Two extensions of one name both
+loaded before and both drew after the host's view; loading refuses the second
+now, because a namespace is what a slot name addresses. See `### Changed`
+below.
+
+**An extension's keys move once.** They were `root.index(n)` for whatever `n`
+the host happened to leave at its root — which is the defect the slot work
+closed, since a host adding a conditional child there rekeyed the whole panel
+— and they are the slot's full name now. Everything retained per key crosses
+the upgrade once: a tween restarts, a scroll offset returns to zero, an editor
+that was holding a draft is seeded from `initial` again.
+
+**A prop the stock button does not read now warns.** `<button>` grew the four
+access rows (`label`, `description`, `tooltip`, `disabled`) and, with them, a
+declared row list; anything outside that list — `<button radius={4}>` — is
+dropped with an `unknown-prop` warning that names the rows the button does
+read. It was dropped in silence before, on any element, because the encoder's
+allow-list was one flat set of every schema row: a real row on the wrong
+element passed the check and vanished. Nothing renders differently; a test
+that asserts on an empty warning list is what notices.
 
 ### Added
 
