@@ -55,7 +55,11 @@ are one loop over an injected surface, so `tick` runs headless too and
 the span and moves the frame clock with them, which is how a countdown or a
 mid-flight transition gets stepped through in a test — and `app.runOut()`
 advances until nothing animates, for a test that wants the settled frame
-rather than the first one. An effect the app defines and kui knows nothing
+rather than the first one. A test against a *real* window awaits the same
+two frames instead of sleeping for them, since its clock is the wall's and
+nothing can move it: `await app.frame()` is the next painted frame and
+`await app.settled()` the next still one, both answered from inside the
+driver's pump. An effect the app defines and kui knows nothing
 about — a file write, a request, the clipboard — is data on the same
 terms: `update` returns it beside the model with `withEffects(model,
 ...effects)`, the loop performs it after the frame through the `effects`

@@ -92,6 +92,31 @@ that asserts on an empty warning list is what notices.
   place the panel in a slot, hand it a title and a reply template, and
   count the replies.
 
+- **A window says when it has painted, and when it has stopped moving.**
+  The loop `runWindowed` builds (`WindowLoop`) gains two promises:
+  `await app.frame()` resolves after the next pump has painted, and
+  `await app.settled(maxMs = 10_000)` resolves the first time a pump —
+  `win.pump()` and the `step()` after it — leaves `animating()` false with
+  no effect unflushed, with the wall-clock milliseconds it waited. It is
+  `runOut` for a window, and it is a promise rather than a loop for the
+  reason `advance` refuses a wall clock: a window's clock is the wall's, so
+  a test cannot step time forward itself and the driver's pump is the only
+  thing that can say a frame happened. Both are answered from inside that
+  pump — a list of waiters it drains at the end of every turn — so a throw
+  in the pump rejects them instead of hanging, as does the window closing.
+  A cap resolves rather than throws, with `animating()` still true, exactly
+  as `runOut` returns `maxMs`: a window whose view holds a `repeat`
+  keyframe never settles, and the number says so. Headless is unchanged and
+  keeps `runOut`; asking a loop that holds its own clock for either promise
+  is refused by name, since nothing would ever answer it.
+
+  **What you can delete:** the sleeps around a windowed test.
+  `await new Promise(r => setTimeout(r, 400))` before reading `win.quads()`
+  or `app.accessTree()`, and the helper that wrapped it. The app that
+  reported this (backlog F29) had three, of 400, 300 and 300 ms; they are
+  three `await`s now, and its `npm run smoke` finishes about a second
+  sooner with the same assertions passing.
+
 ### Changed
 
 - **An extension's keys are stable across what the host builds around

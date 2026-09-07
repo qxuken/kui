@@ -1128,6 +1128,118 @@ test('runOut advances until nothing animates and says how long it took (F22)', (
   assert.equal(looping.ctx.animating(), true);
 });
 
+// The windowed half of the same question, which cannot be a loop: a window
+// runs on the wall clock, so a test has no `advance` to run a transition out
+// with and the driver's pump is the only thing that can say a frame
+// happened. These drive that pump by hand — `createApp` over a stand-in
+// surface and a clock the test holds, which is what `runWindowed` fills with
+// `Date.now` — and check what the waiters are answered with.
+/** A stand-in for the window: it shows a view and polls; its `animating()`
+ *  is the test's to flip. */
+function fakeWindow(state) {
+  return {
+    setView() {},
+    pollEvents: () => state.events.splice(0),
+    warnings: () => [],
+    setDiagnostics() {},
+    stats: () => ({}),
+    animating: () => state.animating,
+  };
+}
+/** 'done' if `p` has settled by the end of this turn of the event loop,
+ *  'pending' if it has not. */
+const outcome = (p) =>
+  Promise.race([
+    p.then((v) => ['done', v]),
+    new Promise((r) => setImmediate(() => r(['pending']))),
+  ]);
+
+test('settled() resolves from inside the pump, with the milliseconds it waited (F29)', async () => {
+  const state = { animating: true, events: [] };
+  let t = 0;
+  const app = createApp(
+    { init: 0, update: (m) => m, view: () => box({ pad: 4 }) },
+    { surface: fakeWindow(state), clock: () => t },
+  );
+  app.render();
+  const pump = (ms) => {
+    t += ms;
+    app.step();
+  };
+  const p = app.settled();
+  // Three pumps of motion answer nothing: the promise is for the frame that
+  // leaves nothing moving, not for the next one.
+  for (let i = 0; i < 3; i++) pump(16);
+  assert.deepEqual(await outcome(p), ['pending'], 'still animating');
+  state.animating = false;
+  pump(16);
+  assert.deepEqual(await outcome(p), ['done', 64], 'the fourth pump settled it, 64 ms in');
+  // Asked again on a still window it is the next pump, not this instant —
+  // the answer always comes from a frame that really happened.
+  const again = app.settled();
+  assert.deepEqual(await outcome(again), ['pending']);
+  pump(8);
+  assert.equal(await again, 8);
+});
+
+test('settled() gives up at its cap the way runOut returns one (F29)', async () => {
+  const state = { animating: true, events: [] };
+  let t = 0;
+  const app = createApp(
+    { init: 0, update: (m) => m, view: () => box({ pad: 4 }) },
+    { surface: fakeWindow(state), clock: () => t },
+  );
+  app.render();
+  const capped = app.settled(50);
+  t += 16;
+  app.step();
+  assert.deepEqual(await outcome(capped), ['pending'], 'inside the cap');
+  t += 40;
+  app.step();
+  // Resolved, not rejected, and with the truth: nothing settled.
+  assert.equal(await capped, 56);
+  assert.equal(state.animating, true);
+});
+
+test('frame() is one more pump, and a pump that throws rejects both (F29)', async () => {
+  const state = { animating: true, events: [] };
+  let t = 0;
+  const surface = fakeWindow(state);
+  const app = createApp(
+    { init: 0, update: (m) => m, view: () => box({ pad: 4 }) },
+    { surface, clock: () => t },
+  );
+  app.render();
+  // `frame` does not care what is moving: the next pump answers it.
+  const f = app.frame();
+  assert.deepEqual(await outcome(f), ['pending'], 'nothing has pumped yet');
+  t += 8;
+  app.step();
+  assert.deepEqual(await outcome(f), ['done', undefined]);
+  // A throw inside the turn takes the waiters with it: an awaited frame that
+  // will never be painted is a hang, and `runWindowed` rejects its own
+  // promise with the same error.
+  const boom = new Error('the pump threw');
+  surface.pollEvents = () => {
+    throw boom;
+  };
+  const dead = [app.settled(), app.frame()];
+  assert.throws(() => app.step(), /the pump threw/);
+  await assert.rejects(dead[0], /the pump threw/);
+  await assert.rejects(dead[1], /the pump threw/);
+});
+
+test('a loop that holds its own clock is told to use runOut instead (F29)', () => {
+  const app = createApp({ init: 0, update: (m) => m, view: () => box({ pad: 4 }) }, { startTime: 0 });
+  app.render();
+  // Headless there is nothing to wait for — the test moves time itself —
+  // so the wait that would never be answered is refused, as `advance`
+  // refuses a wall clock.
+  assert.throws(() => app.settled(), /runOut/);
+  assert.throws(() => app.frame(), /runOut/);
+  assert.equal(app.runOut(), 0);
+});
+
 test('render and an event-driven frame share the clock advance moves (F1)', () => {
   // The mind map's repro (`playground/kui/mind-maps/repro/transition-advance.tsx`):
   // the loop used to set the frame clock only inside `advance`, so a frame
