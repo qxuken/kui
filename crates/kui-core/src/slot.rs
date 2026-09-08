@@ -28,7 +28,30 @@
 //! The core owns the two things the ADR makes it own: the key namespace
 //! of a fill (decision 4; see `Core::fill`) and the bound on it (decision
 //! 5).
+//!
+//! ## An extension may host extensions of its own
+//!
+//! The ADR left one question open — "whether one may offer slots is a
+//! decision for the day one asks" — and the day was a Lua view wanting a
+//! native panel inside it. The answer is yes, and it is the same
+//! mechanism one level down rather than a second one:
+//!
+//! * [`Fill::add`] loads an extension while a frame is being built, which
+//!   is when a guest knows it wants one. It lands in the *same* list under
+//!   a namespace of its own, so the frame has one namespace map and one
+//!   origin per extension however deep the loading went. `todos/panel`
+//!   means one thing to everybody.
+//! * A guest's `ui.slot(…)` declares a slot like anyone's, filled from
+//!   that one list. What it may *not* do is fill itself: the extension
+//!   doing the filling is out of the list while it fills, so a cycle is
+//!   the `recursive-slot` warning and an empty position rather than a
+//!   hang.
+//! * Replies go to whoever declared the slot ([`Extensions::route`]) —
+//!   decision 6 read as it is written, since the thing an extension is
+//!   answering is the slot it was put in. For every extension a host
+//!   declared itself, that is the host, exactly as before.
 
+use crate::input::UiEvent;
 use crate::key::Key;
 use crate::runtime::Extension;
 use crate::tree::OriginId;
@@ -65,6 +88,12 @@ pub const NAMESPACE_SEPARATOR: char = '/';
 
 /// `Value::Null` with a `'static` address, for a slot with no params.
 pub static NULL_PARAMS: Value = Value::Null;
+
+/// How many times a reply may be answered by another reply before the
+/// rest go to the host instead ([`Extensions::route`]). Nesting is a few
+/// levels deep in anything sane; this is the bound that keeps two
+/// extensions answering each other from being an infinite loop.
+pub const MAX_REPLY_HOPS: usize = 16;
 
 impl Slot<'_> {
     /// The `"root"` slot as a test drives an extension without a runner:
@@ -119,6 +148,43 @@ pub trait Fill {
     /// declare, and warn about every slot an extension names that
     /// nothing declared this frame.
     fn finish(&mut self, ui: &mut Ui<'_>);
+    /// Loads `ext` under `namespace`, mid-frame, and answers with the
+    /// origin it got — what a guest that hosts guests of its own calls
+    /// (`env.add_extension` in Lua). It joins the same list as everyone
+    /// else, so `namespace` has to be free of the host's names too.
+    ///
+    /// The default refuses: a `Fill` that is not a list of extensions has
+    /// nowhere to put one.
+    fn add(&mut self, namespace: &str, ext: Box<dyn Extension>) -> Result<OriginId, String> {
+        let _ = ext;
+        Err(format!(
+            "cannot load `{namespace}`: this frame was begun with something other than an \
+             extension list to fill its slots"
+        ))
+    }
+}
+
+/// One loaded extension: its namespace, itself, and the answers of its
+/// that are read while it is busy.
+struct Entry {
+    namespace: String,
+    /// `None` for exactly as long as this extension is filling a slot:
+    /// `fill_one` takes it out so the list is free to fill the slots the
+    /// extension itself declares, and puts it back after. A slot of its
+    /// own that it declares while filling therefore finds nobody, which
+    /// is the cycle warning rather than a borrow panic.
+    ext: Option<Box<dyn Extension>>,
+    /// `Extension::name` and `Extension::slots` as they answered at load.
+    /// Copied because both are read while `ext` is taken — and because
+    /// every binding already reads `slots` once, at load, so there was
+    /// never a second answer to miss.
+    name: String,
+    slots: Vec<String>,
+    /// The origin that declared the slot this extension last filled:
+    /// `OriginId::HOST` for one in the host's own view, another
+    /// extension's when that extension declared it. Where its replies go
+    /// (ADR 0014 decision 6; see `route`).
+    asked_by: OriginId,
 }
 
 /// The runner's extensions, each under the namespace the host gave it.
@@ -127,7 +193,7 @@ pub trait Fill {
 /// origin indexes back into.
 #[derive(Default)]
 pub struct Extensions {
-    list: Vec<(String, Box<dyn Extension>)>,
+    list: Vec<Entry>,
 }
 
 impl Extensions {
@@ -152,17 +218,22 @@ impl Extensions {
         namespace: impl Into<String>,
         ext: Box<dyn Extension>,
     ) -> Result<(), String> {
-        let namespace = namespace.into();
+        self.insert(namespace.into(), ext).map(|_| ())
+    }
+
+    /// `push_as` answering with the origin the extension got, which is
+    /// what [`Fill::add`] hands back to a guest that loaded one.
+    fn insert(&mut self, namespace: String, ext: Box<dyn Extension>) -> Result<OriginId, String> {
         if namespace.is_empty() {
             return Err(format!(
                 "extension `{}` needs a namespace; it cannot be empty",
                 ext.name()
             ));
         }
-        if let Some((_, taken)) = self.list.iter().find(|(ns, _)| *ns == namespace) {
+        if let Some(taken) = self.list.iter().find(|e| e.namespace == namespace) {
             return Err(format!(
                 "namespace `{namespace}` is already `{}`'s; give `{}` another with `push_as`",
-                taken.name(),
+                taken.name,
                 ext.name()
             ));
         }
@@ -178,8 +249,15 @@ impl Extensions {
                 NAMESPACE_SEPARATOR
             ));
         }
-        self.list.push((namespace, ext));
-        Ok(())
+        let origin = OriginId(self.list.len() as u16 + 1);
+        self.list.push(Entry {
+            namespace,
+            name: ext.name().to_owned(),
+            slots: ext.slots().to_vec(),
+            ext: Some(ext),
+            asked_by: OriginId::HOST,
+        });
+        Ok(origin)
     }
 
     pub fn len(&self) -> usize {
@@ -190,51 +268,111 @@ impl Extensions {
         self.list.is_empty()
     }
 
-    /// The extension an event's origin names, if any.
+    /// The extension an event's origin names, if any. `None` while that
+    /// extension is drawing — nothing routes events mid-frame — and for
+    /// an origin no extension has.
     pub fn by_origin(&mut self, origin: OriginId) -> Option<&mut (dyn Extension + 'static)> {
         let i = (origin.0 as usize).checked_sub(1)?;
-        self.list.get_mut(i).map(|(_, e)| e.as_mut())
+        self.list.get_mut(i)?.ext.as_deref_mut()
     }
 
     /// The namespace the host gave the extension at `origin`.
     pub fn namespace_of(&self, origin: OriginId) -> Option<&str> {
         let i = (origin.0 as usize).checked_sub(1)?;
-        self.list.get(i).map(|(ns, _)| ns.as_str())
+        self.list.get(i).map(|e| e.namespace.as_str())
+    }
+
+    /// Who declared the slot the extension at `origin` last filled, and
+    /// so where its replies go: `OriginId::HOST` unless another extension
+    /// declared it.
+    pub fn asked_by(&self, origin: OriginId) -> OriginId {
+        let Some(i) = (origin.0 as usize).checked_sub(1) else {
+            return OriginId::HOST;
+        };
+        self.list.get(i).map_or(OriginId::HOST, |e| e.asked_by)
     }
 
     /// Every (namespace, extension), in origin order.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &dyn Extension)> {
-        self.list.iter().map(|(ns, e)| (ns.as_str(), &**e))
+        self.list
+            .iter()
+            .filter_map(|e| Some((e.namespace.as_str(), &**e.ext.as_ref()?)))
     }
 
-    /// Every (namespace, full slot name) an extension expects the host to
-    /// declare — `ns/root` for one listing no slots.
-    fn expected(&self) -> Vec<(usize, String, String)> {
-        let mut out = Vec::new();
-        for (i, (ns, ext)) in self.list.iter().enumerate() {
-            if ext.slots().is_empty() {
-                out.push((i, ns.clone(), ROOT_SLOT.to_owned()));
-            } else {
-                for s in ext.slots() {
-                    out.push((i, ns.clone(), s.clone()));
+    /// Delivers `events` to the extensions they came from and hands
+    /// `to_host` everything addressed to the host: the host's own events,
+    /// and the replies of every extension whose slot the host declared.
+    ///
+    /// A reply from an extension a *guest* placed goes to that guest
+    /// instead, as one more event — its `origin` still the replier's, so
+    /// the receiver knows who spoke — and whatever the guest answers
+    /// travels the same way, up to [`MAX_REPLY_HOPS`] levels. This is the
+    /// loop all four hosts route with; one that grew its own would
+    /// disagree with the others about who hears a nested plugin.
+    pub fn route(
+        &mut self,
+        events: impl IntoIterator<Item = UiEvent>,
+        mut to_host: impl FnMut(UiEvent),
+    ) {
+        let mut queue: std::collections::VecDeque<(OriginId, usize, UiEvent)> =
+            events.into_iter().map(|ev| (ev.origin, 0, ev)).collect();
+        while let Some((to, depth, ev)) = queue.pop_front() {
+            if to == OriginId::HOST {
+                to_host(ev);
+                continue;
+            }
+            let Some(ext) = self.by_origin(to) else {
+                // An origin nothing answers to: the host asked for the
+                // frame that made it, so it still hears about it.
+                to_host(ev);
+                continue;
+            };
+            let replies = ext.on_event(&ev);
+            if replies.is_empty() {
+                continue;
+            }
+            let up = self.asked_by(to);
+            for payload in replies {
+                let reply = UiEvent {
+                    origin: to,
+                    window: ev.window,
+                    key: ev.key,
+                    payload,
+                };
+                if up == OriginId::HOST || depth + 1 >= MAX_REPLY_HOPS {
+                    to_host(reply);
+                } else {
+                    queue.push_back((up, depth + 1, reply));
                 }
             }
         }
-        out
     }
 
     /// Fills `name` of the extension at `i` as its origin, at the cursor.
+    ///
+    /// The extension comes *out* of the list for the duration, so the
+    /// list itself stays free to fill the slots this extension declares
+    /// while it draws — and so the one slot it cannot fill is its own,
+    /// which would be the cycle.
     fn fill_one(&mut self, i: usize, name: &str, key: Key, params: &Value, ui: &mut Ui<'_>) {
-        let (ns, ext) = &mut self.list[i];
+        let ns = self.list[i].namespace.clone();
+        let ext_name = self.list[i].name.clone();
+        let Some(mut ext) = self.list[i].ext.take() else {
+            let full = full_name(&ns, name);
+            ui.core()
+                .warn(crate::diag::recursive_slot(&ext_name, &full, key));
+            return;
+        };
+        // Who put it here, and so where its replies go.
+        self.list[i].asked_by = ui.origin();
         let slot = Slot {
             name,
-            namespace: ns,
+            namespace: &ns,
             params,
             key,
         };
         let origin = OriginId(i as u16 + 1);
-        let ext_name = ext.name().to_owned();
-        ui.fill(origin, &slot, |ui| {
+        ui.fill_within(origin, &slot, self, |ui| {
             if let Err(err) = ext.view(&slot, ui) {
                 ui.core().warn(crate::diag::extension_view_error(
                     &ext_name,
@@ -249,6 +387,7 @@ impl Extensions {
                 );
             }
         });
+        self.list[i].ext = Some(ext);
     }
 }
 
@@ -275,14 +414,13 @@ impl TryFrom<Vec<Box<dyn Extension>>> for Extensions {
 impl Fill for Extensions {
     fn fill(&mut self, full_name: &str, key: Key, params: &Value, ui: &mut Ui<'_>) {
         let (ns, name) = split_name(full_name);
-        let Some(i) = self.list.iter().position(|(n, _)| n == ns) else {
+        let Some(i) = self.list.iter().position(|e| e.namespace == ns) else {
             return;
         };
-        let slots = self.list[i].1.slots();
         let wants = if name == ROOT_SLOT {
-            slots.is_empty()
+            self.list[i].slots.is_empty()
         } else {
-            slots.iter().any(|s| s == name)
+            self.list[i].slots.iter().any(|s| s == name)
         };
         if wants {
             self.fill_one(i, name, key, params, ui);
@@ -290,23 +428,38 @@ impl Fill for Extensions {
     }
 
     fn finish(&mut self, ui: &mut Ui<'_>) {
-        for (i, ns, name) in self.expected() {
-            let full = full_name(&ns, &name);
-            if ui.slot_declared(&full) {
-                continue;
-            }
-            if name == ROOT_SLOT {
+        // By index rather than over a snapshot: a root fill here may load
+        // an extension of its own, which joins the end of the list, and
+        // the frame it arrived on is the frame it should draw on.
+        let mut i = 0;
+        while i < self.list.len() {
+            let ns = self.list[i].namespace.clone();
+            if self.list[i].slots.is_empty() {
                 // The fill every extension got before slots existed: after
                 // the host's view, in list order.
-                if let Some(key) = ui.core().begin_slot(&full) {
-                    self.fill_one(i, &name, key, &NULL_PARAMS, ui);
+                let full = full_name(&ns, ROOT_SLOT);
+                if !ui.slot_declared(&full)
+                    && let Some(key) = ui.core().begin_slot(&full)
+                {
+                    self.fill_one(i, ROOT_SLOT, key, &NULL_PARAMS, ui);
                 }
             } else {
-                let ext_name = self.list[i].1.name().to_owned();
-                ui.core()
-                    .warn(crate::diag::unknown_slot(&ext_name, &ns, &name));
+                for name in self.list[i].slots.clone() {
+                    let full = full_name(&ns, &name);
+                    if ui.slot_declared(&full) {
+                        continue;
+                    }
+                    let ext_name = self.list[i].name.clone();
+                    ui.core()
+                        .warn(crate::diag::unknown_slot(&ext_name, &ns, &name));
+                }
             }
+            i += 1;
         }
+    }
+
+    fn add(&mut self, namespace: &str, ext: Box<dyn Extension>) -> Result<OriginId, String> {
+        self.insert(namespace.to_owned(), ext)
     }
 }
 
@@ -317,6 +470,9 @@ impl<F: Fill + ?Sized> Fill for &mut F {
     fn finish(&mut self, ui: &mut Ui<'_>) {
         F::finish(&mut **self, ui);
     }
+    fn add(&mut self, namespace: &str, ext: Box<dyn Extension>) -> Result<OriginId, String> {
+        F::add(&mut **self, namespace, ext)
+    }
 }
 
 impl<F: Fill + ?Sized> Fill for Box<F> {
@@ -325,5 +481,8 @@ impl<F: Fill + ?Sized> Fill for Box<F> {
     }
     fn finish(&mut self, ui: &mut Ui<'_>) {
         F::finish(&mut **self, ui);
+    }
+    fn add(&mut self, namespace: &str, ext: Box<dyn Extension>) -> Result<OriginId, String> {
+        F::add(&mut **self, namespace, ext)
     }
 }

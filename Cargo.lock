@@ -1541,6 +1541,7 @@ version = "0.1.0-alpha.9"
 dependencies = [
  "kui",
  "kui-core",
+ "kui-ffi",
  "mlua",
 ]
 

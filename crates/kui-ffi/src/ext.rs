@@ -383,7 +383,14 @@ impl Extension for CExtension {
         // and `kui_slot_params` read it back, borrowed for the call like an
         // event's payload (one clone of the params per fill, the C side's
         // cost, which is what `on_event`'s payload already pays).
-        let mut ctx = KuiCtx::borrowing(ui.core());
+        // `borrowing_in` rather than `borrowing`, for the same reason the
+        // runner's host callback uses it: a plugin's `kui_slot` reaches
+        // the frame's filler through this pointer, so a plugin may declare
+        // the slot of an extension the host loaded, exactly as a Lua
+        // script's `fill` does (`kui_core::slot`). It cannot load one
+        // itself — a plugin's context has no list of its own — so what it
+        // declares is a name somebody above it already knows.
+        let mut ctx = KuiCtx::borrowing_in(ui);
         ctx.slot_name = Some(slot.name.to_owned());
         ctx.slot_namespace = Some(slot.namespace.to_owned());
         ctx.slot_params =

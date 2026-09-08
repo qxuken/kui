@@ -2116,9 +2116,12 @@ core_methods!(
 /// and about what (ADR 0014 decision 6).
 ///
 /// This is `Shell::route_events` in the Rust runner and `KuiCtx::absorb`
-/// in the C one, for the same reason: a reply is addressed by being one,
-/// not routed by origin. With no extensions loaded it is the `extend` it
-/// replaced, which is every Node app that has not asked for one.
+/// in the C one — all three the same `Extensions::route`, for the same
+/// reason: a reply is addressed by being one, not routed by origin. A
+/// reply from a plugin *another extension* placed goes to that extension
+/// first and arrives here as whatever it answered. With no extensions
+/// loaded it is the `extend` it replaced, which is every Node app that
+/// has not asked for one.
 fn absorb(
     extensions: &mut kui_core::Extensions,
     events: impl IntoIterator<Item = UiEvent>,
@@ -2128,24 +2131,7 @@ fn absorb(
         out.extend(events);
         return;
     }
-    for ev in events {
-        if ev.origin == kui_core::OriginId::HOST {
-            out.push(ev);
-            continue;
-        }
-        let Some(ext) = extensions.by_origin(ev.origin) else {
-            out.push(ev);
-            continue;
-        };
-        for payload in ext.on_event(&ev) {
-            out.push(UiEvent {
-                origin: ev.origin,
-                window: ev.window,
-                key: ev.key,
-                payload,
-            });
-        }
-    }
+    extensions.route(events, |ev| out.push(ev));
 }
 
 /// Loads a C extension from `path` under `namespace` (empty = the

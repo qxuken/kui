@@ -645,6 +645,13 @@ impl Core {
         self.scale
     }
 
+    /// The origin nodes opened right now are tagged with: `OriginId::HOST`
+    /// in the host's own view, the filling extension's inside a fill (see
+    /// `Core::fill`).
+    pub fn origin(&self) -> OriginId {
+        self.origin
+    }
+
     /// The finished frame's draw data: display list plus the glyph atlas the
     /// renderer mirrors (mutable so it can clear the dirty flag).
     pub fn output(&mut self) -> (&DisplayList, &mut GlyphAtlas) {

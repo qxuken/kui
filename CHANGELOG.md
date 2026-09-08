@@ -64,6 +64,17 @@ field reports).
   exactly sixteen hex digits. A short hex string (`editText('ff')`) used
   to parse as a key and now resolves as a label, which throws when no node
   declared it.
+- An extension's own `ui.slot(…)` / `kui_slot` used to declare nothing; it
+  now declares a slot like anyone's, filled from the frame's one extension
+  list. Nothing could have depended on the old silence except a test
+  asserting it, but the name an extension declares is now taken frame-wide,
+  so a host declaring the same name sees `duplicate-slot`.
+- An extension's replies go to whoever declared its slot rather than always
+  to the host. For every extension a host loaded and placed itself — which
+  is every extension before this release — that is the host, unchanged.
+- `kui-lua` depends on `kui-ffi` (without its `runner` feature), for
+  `CExtension` alone: `env.add_extension` needs something to open a shared
+  library with, and that loader is the C API's.
 
 ### Added
 
@@ -97,12 +108,59 @@ field reports).
   **The mechanism is C shared libraries and only that.** A plugin is a
   `.so` / `.dylib` / `.dll` exporting the seven `kui_ext_*` entry points
   `kui.h` describes, and the *same binary* loads into a Rust, C or Node
-  host. There is no script-loads-script path: a Lua extension is loaded by
-  a Rust host or not at all, and nothing loads a Node one.
+  host. There is no script-loads-script path: a Lua *extension* is loaded by
+  a Rust host or not at all, and nothing loads a Node one. (A Lua script may
+  load a C plugin — see the next entry, added after this one.)
 
   `slot` is a protocol op rather than a schema element, like `richText`: it
   is a host-side placement call in every binding that has one, not a
   drawable node. The binary frame version is 5.
+
+- **A Lua script can load a C extension and place it**, which makes an
+  extension something that can host extensions — the question ADR 0014
+  left open ("whether one may offer slots is a decision for the day one
+  asks") answered in [its amendment](docs/adr/0014-slots-an-extension-fills-in-place.md).
+  `env.add_extension(namespace, path)` opens a plugin and
+  `fill { name = "ns/slot", params = … }` is the position it draws in,
+  among the script's own children:
+
+  ```lua
+  function view(env, slot)
+    env.add_extension("todos", "examples/c/panel-dll.dll")
+    return column {
+      text("the script"),
+      fill { name = "todos/panel", params = { title = "todos", on_toggle = { kind = "toggled" } } },
+    }
+  end
+  function on_event(ev)
+    if ev.from == "todos" then ... end   -- a reply from the plugin it loaded
+  end
+  ```
+
+  It is the same mechanism one level down, not a second one. The plugin
+  joins the frame's **one** extension list under a namespace of its own, so
+  `todos/panel` means one thing to everybody and a name the host already
+  took is refused; keys nest, so moving the script moves the plugin; and
+  **replies go to whoever declared the slot** rather than always to the
+  host, which is ADR 0014's decision 6 read as written. What a script
+  answers is what the host hears. The one thing refused is an extension
+  filling its own slot, since it is out of the list while it draws: that is
+  the new `recursive-slot` warning and an empty position, not a hang.
+
+  `fill` and not `slot` because `slot` is `view`'s second argument and would
+  shadow the constructor in the one function that needs it. A reply from a
+  plugin the script loaded arrives with `from` naming the namespace; the
+  script's own events have none. C plugins can declare a slot from
+  `kui_ext_view` too, but cannot load one — a plugin's context has no list.
+  Nothing here is a new capability in the security sense: `Lua::new` has
+  `package`, so a script could always `package.loadlib`; what it could not
+  do is put what it loaded in its own tree.
+
+  [`examples/lua/panel.lua`](examples/lua/panel.lua) is the example, and it
+  is now three languages deep — a Rust host, the Lua panel, and
+  [`examples/c/panel.c`](examples/c/panel.c) inside it once
+  `examples/c/build.ps1` has run. Without the plugin the example is exactly
+  what it was.
 
 - **A C host can load a C extension** (ADR 0014's other half, which was
   Rust's alone). `kui_ctx_add_extension(ctx, namespace, path)` loads a

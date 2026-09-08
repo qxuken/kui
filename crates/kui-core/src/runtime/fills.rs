@@ -10,12 +10,17 @@ use crate::slot::Slot;
 impl Core {
     /// Declares a slot under its full name at the cursor and returns its
     /// key — `parent.str(name)`, recorded for `key_of` — or `None` when it
-    /// cannot be declared: outside a frame, inside another fill (an
-    /// extension's `slot` declares nothing; whether one may offer slots
-    /// is a decision for the day one asks), or a second time in one
+    /// cannot be declared: outside a frame, or a second time in one
     /// frame, which is the `duplicate-slot` warning.
+    ///
+    /// An extension may declare one too, and its key nests under the slot
+    /// the extension is itself filling, like any of its nodes. Names stay
+    /// frame-wide because namespaces are: there is one extension called
+    /// `todos` however deep the thing that loaded it sat, so `todos/panel`
+    /// is one slot and declaring it twice is the same warning wherever
+    /// the two declarations came from.
     pub fn begin_slot(&mut self, name: &str) -> Option<Key> {
-        if self.tree.is_empty() || self.ns_depth != usize::MAX {
+        if self.tree.is_empty() {
             return None;
         }
         if self.slot_declared(name) {
@@ -43,6 +48,20 @@ impl Core {
     /// namespace are what they were when `f` returns, so the host's next
     /// child is keyed as if the fill had not happened.
     pub fn fill(&mut self, slot: &Slot<'_>, origin: OriginId, f: impl FnOnce(&mut Ui<'_>)) {
+        self.fill_within(slot, origin, None, f);
+    }
+
+    /// `fill`, with `filler` answering the slots the fill itself declares
+    /// — what `Extensions::fill_one` hands in, so an extension can host
+    /// extensions of its own (see `crate::slot`). `None` is plain `fill`:
+    /// nothing answers, so a slot declared inside draws nothing.
+    pub fn fill_within(
+        &mut self,
+        slot: &Slot<'_>,
+        origin: OriginId,
+        filler: Option<&mut dyn crate::slot::Fill>,
+        f: impl FnOnce(&mut Ui<'_>),
+    ) {
         if self.tree.is_empty() {
             return;
         }
@@ -57,7 +76,10 @@ impl Core {
         self.ns_depth = depth;
         self.ns_key = slot.key;
 
-        f(&mut Ui::new(self));
+        match filler {
+            Some(filler) => f(&mut Ui::with_filler(self, filler)),
+            None => f(&mut Ui::new(self)),
+        }
 
         if self.stack.len() > depth {
             let open = self.stack.len() - depth;

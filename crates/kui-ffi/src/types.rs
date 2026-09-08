@@ -9,7 +9,9 @@ use super::*;
 /// `run`, because the widgets take one whether or not this build has a
 /// windowed runner.
 pub(crate) type ViewFn = extern "C" fn(user: *mut c_void, ctx: *mut KuiCtx);
-/// A C callback that receives one event: `kui_run`'s.
+/// A C callback that receives one event: `kui_run`'s, and only its — so
+/// unlike `ViewFn` it is not here in a build without the runner.
+#[cfg(feature = "runner")]
 pub(crate) type EventFn = extern "C" fn(user: *mut c_void, ev: *const KuiEvent);
 
 // ---------------------------------------------------------------------------
@@ -140,36 +142,20 @@ impl KuiCtx {
     /// its place, carrying its origin, window and key, so the host learns
     /// who answered and about what (ADR 0014 decision 6).
     ///
-    /// This is `Shell::route_events` in the Rust runner, and it is the
-    /// same shape for the same reason: a reply is addressed by being one,
-    /// not routed by origin, so it goes to the host however it was made.
-    /// A context with no extensions cannot produce a foreign origin, so
-    /// the whole thing collapses to the `extend` it replaced.
+    /// This is `Shell::route_events` in the Rust runner, and it is
+    /// literally the same walk (`Extensions::route`) for the same reason:
+    /// a reply is addressed by being one, not routed by origin. A reply
+    /// from a plugin *another extension* placed goes to that extension
+    /// first and reaches this queue as whatever it answered. A context
+    /// with no extensions cannot produce a foreign origin, so the whole
+    /// thing collapses to the `extend` it replaced.
     pub(crate) fn absorb(&mut self, events: impl IntoIterator<Item = UiEvent>) {
         if self.extensions.is_empty() {
             self.events.extend(events);
             return;
         }
-        for ev in events {
-            if ev.origin == kui_core::OriginId::HOST {
-                self.events.push(ev);
-                continue;
-            }
-            let Some(ext) = self.extensions.by_origin(ev.origin) else {
-                // An origin nothing answers to: the host asked for the
-                // frame that made it, so it still hears about it.
-                self.events.push(ev);
-                continue;
-            };
-            for payload in ext.on_event(&ev) {
-                self.events.push(UiEvent {
-                    origin: ev.origin,
-                    window: ev.window,
-                    key: ev.key,
-                    payload,
-                });
-            }
-        }
+        let out = &mut self.events;
+        self.extensions.route(events, |ev| out.push(ev));
     }
 
     /// Records a just-opened node's hover hint for `kui_close`.

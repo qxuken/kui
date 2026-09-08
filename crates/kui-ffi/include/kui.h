@@ -1376,7 +1376,15 @@ uint64_t kui_open_keyed(KuiCtx *ctx, KuiStr label, const KuiSpec *spec, KuiValue
  * Whatever fills it is loaded with kui_ctx_add_extension (a headless
  * context) or named to kui_run_with (a window). With nothing loaded this
  * still records the position and kui_key_of still answers the slot's key,
- * so a host can declare its layout before it has a plugin to put in it. */
+ * so a host can declare its layout before it has a plugin to put in it.
+ *
+ * An extension may call this from its own kui_ext_view too: the slot is
+ * declared inside its fill and keyed there, which is how a guest puts a
+ * plugin in the middle of its own tree. What a plugin cannot do is load
+ * the thing that fills it - its context has no list of its own - so the
+ * name has to be one the host above it already loaded. Its own slot is
+ * the one name that finds nobody, since a plugin is out of the list while
+ * it draws: that warns (`recursive-slot`) and draws nothing. */
 bool kui_slot(KuiCtx *ctx, KuiStr name, const KuiValue *params);
 
 /* -- Extensions: loading one from C (ADR 0014) --------------------------- */

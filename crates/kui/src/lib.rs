@@ -1700,27 +1700,20 @@ impl<A: App> Shell<A> {
 
     fn route_events(&mut self, events: Vec<UiEvent>) {
         let mut reached_app = false;
-        for ev in events {
-            if ev.origin == OriginId::HOST {
-                reached_app = true;
-                self.app.on_event(ev);
-            } else if let Some(ext) = self.extensions.by_origin(ev.origin) {
-                // An extension's replies go to the host (ADR 0014 decision
-                // 6): not routed by origin — a reply is addressed by being
-                // one — and carrying the extension's origin, the window and
-                // the key of the event it answered, so the host knows who
-                // spoke and from where.
-                for payload in ext.on_event(&ev) {
-                    reached_app = true;
-                    self.app.on_event(UiEvent {
-                        origin: ev.origin,
-                        window: ev.window,
-                        key: ev.key,
-                        payload,
-                    });
-                }
-            }
-        }
+        // An extension's replies go to whoever declared its slot (ADR 0014
+        // decision 6): not routed by origin — a reply is addressed by being
+        // one — and carrying the extension's origin, the window and the key
+        // of the event it answered, so the receiver knows who spoke and
+        // from where. For every extension this host placed itself, the
+        // receiver is this host; for one a guest placed, it is the guest,
+        // and `route` is the walk up.
+        let Shell {
+            extensions, app, ..
+        } = self;
+        extensions.route(events, |ev| {
+            reached_app = true;
+            app.on_event(ev);
+        });
         // One app, one model, N windows: a handler that ran in answer to
         // input in *this* window can change what *another* window declares
         // — choosing an item in a popup is the app closing the popup, and

@@ -18,7 +18,7 @@ so an id cited by an open item, a code comment or a commit message can be
 resolved without opening the archive. Nothing was renumbered in any of those
 moves, and nothing ever is. What is left here is three parked headings — C12,
 C13 and C14 — W3 from the editor-and-mux assessment (2026-09-07), now run and
-rebuilt on a real Windows machine; W4–W11 from the first Windows round
+rebuilt on a real Windows machine; W4–W12 from the first Windows round
 (2026-09-08), which is what running it found; and F36,
 which fell out of building the four entries the two alpha.9 field reports
 and the bake-off produced (F32–F35, filed and built 2026-09-08); and what
@@ -509,9 +509,10 @@ does, a window's runner already had.
 **Only C extensions**, which is the decision this was scoped by: a plugin
 is a shared library exporting the seven `kui_ext_*`, and the same binary
 loads into a Rust, C or Node host. No script-loads-script path — a Lua
-extension is loaded by a Rust host or not at all. That is why `kui-node`
-takes `kui-ffi` with `default-features = false`: it wants `CExtension` and
-not a second windowed runner (W10).
+extension is loaded by a Rust host or not at all, though a Lua script may
+load a *C* plugin (W12). That is why `kui-node` takes `kui-ffi` with
+`default-features = false`: it wants `CExtension` and not a second
+windowed runner (W10).
 
 `slot` is a **protocol op, not a schema element** — like `richText` and
 `windowButtons`, which are also ops with no `ELEMENTS` row. It is a
@@ -527,6 +528,50 @@ from `node.exe` failed with error 126), and the two-copies case works
 across this boundary too — the addon has its own statically linked library,
 `panel-dll.dll` imports another from `kui_ffi.dll`, and the reply still
 crosses. That is ABI 10 doing its job in a third host.
+
+### `~` W12 — A Lua view could not put a native panel inside it — **done (2026-09-08)**
+
+W11 stopped at "no script-loads-script path", and that still holds: nothing
+loads a Lua extension but a Rust host. What it also stopped at, wrongly, was
+a Lua script loading a **C** plugin — which is not cross-scripting at all,
+and is the case an app written mostly in Lua actually has.
+
+The blocker was one line in the core: `begin_slot` refused inside a fill,
+because ADR 0014 decision 5 said "whether one may offer slots is a decision
+for the day one asks". This was the day. The
+[amendment](adr/0014-slots-an-extension-fills-in-place.md) is the argument;
+in short:
+
+- `Ui`'s filler is handed down into a fill (`Core::fill_within`), so a
+  guest's `ui.slot(…)` is a slot like the host's, keyed where the guest is
+  drawing — decision 4 applied twice.
+- `Fill::add` / `Ui::add_extension` loads mid-frame into the **same** list,
+  so there is one namespace map and one origin per extension however deep
+  the loading went. Nothing in the routing had to learn about levels.
+- Replies go to whoever declared the slot, not always to the host. The walk
+  is `Extensions::route`, which all four hosts now call rather than each
+  keeping a copy of the loop — the copies had already started to drift in
+  their comments.
+- An extension is out of the list while it fills, so its own slot finds
+  nobody: `recursive-slot`, an empty position, no hang. That is also what
+  makes re-entering the list sound.
+
+Lua gets `env.add_extension(namespace, path)`, `env.extension_namespaces()`
+and `fill { name = "ns/slot", params = … }` — `fill` and not `slot` because
+`slot` is `view`'s second argument and would shadow the constructor in the
+one function that needs it. A reply from a plugin the script loaded arrives
+with `from` naming the namespace. C plugins can declare a slot now too
+(their context carries the host's `Ui`, which also retired a dead
+`borrowing_in`), but cannot load one.
+
+Worth saying because it looks like a capability: it is not. `Lua::new` has
+`package`, so a script could always `package.loadlib` anything on disk.
+What it could not do was put what it loaded in its own tree.
+
+[`examples/lua/panel.lua`](../examples/lua/panel.lua) is three languages
+deep now — Rust host, Lua panel, C panel inside it — and degrades to what it
+was when `examples/c` has not been built.
+
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
 Both apps upgraded to alpha.9 the day it was tagged and reported again:
@@ -1085,7 +1130,7 @@ list drawing past its own box — are fixed under alpha.9's `### Fixed`.
 **Windows (2026-09-08).** The platform ran for the first time and the round
 is a script: `scripts/smoke-windows.ps1`, in `smoke-windows` beside the
 `cargo test` step, with the C round from `examples/c/build.ps1` beside it.
-W4, W5, W6 and W8–W11 are fixed and W3 is rebuilt; W7 is the one
+W4, W5, W6 and W8–W12 are fixed and W3 is rebuilt; W7 is the one
 open thing it found and wants a decision, not a patch. What it still does
 not cover is P8's two follow-ups, unchanged: `windows_nc.rs` has no test
 that runs anywhere, and neither does `access_bridge.rs`. The next Windows
@@ -1093,7 +1138,7 @@ session's list, in order: run the round under `Chrome::Custom` (the
 subclass is uncovered by everything above), run it on the integrated
 adapter to see what a second GPU changes, and settle W7.
 
-**Design, wanting an ADR.** A **painter** — the iced-shaped hatch that ADR 0015 (above) names and does not build: a Rust trait or a C extension's function pointers over the shared `Gpu` and the frame's encoder, under the `PainterId` that has been reserved in `resources.rs` since the first commit, placed by a marker quad the renderer splits around as it splits around a fragment. The first thing in a frame that would not be data, so it waits for a view a fragment cannot serve: a 3D viewport, a simulation, a backdrop a copy cannot make. Otherwise nothing new since ADR 0014 was built on 2026-09-07; what it leaves open — a slot element for Node, extensions in `kui_run`, an extension offering slots of its own — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
+**Design, wanting an ADR.** A **painter** — the iced-shaped hatch that ADR 0015 (above) names and does not build: a Rust trait or a C extension's function pointers over the shared `Gpu` and the frame's encoder, under the `PainterId` that has been reserved in `resources.rs` since the first commit, placed by a marker quad the renderer splits around as it splits around a fragment. The first thing in a frame that would not be data, so it waits for a view a fragment cannot serve: a 3D viewport, a simulation, a backdrop a copy cannot make. Otherwise nothing new since ADR 0014 was built on 2026-09-07 and amended on 2026-09-08; of what it left open, a slot for Node (W11), extensions in `kui_run` (W9) and an extension offering slots of its own (W12) are built, and what is left — replies from `view`, name-plus-kind — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
 [`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md),
 proposed and then accepted and built on 2026-09-07 — reviewed for alpha.8
 rather than left for a view, and its status block says what outweighed

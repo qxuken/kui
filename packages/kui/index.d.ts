@@ -617,6 +617,12 @@ export type WarningCode =
    *  the fill would have been, and reported here once per extension and slot
    *  rather than once per frame. */
   | 'extension-view-error'
+  /** An extension declared one of its *own* slots while it was drawing, so
+   *  filling it would have meant calling it inside itself. The slot is left
+   *  empty. An extension may host extensions (`Fill::add`), and may declare
+   *  their slots — what it cannot do is be its own guest. See ADR 0014,
+   *  decision 5. */
+  | 'recursive-slot'
   /** The device refused a play: its voices are all held, or the sound did not
    *  decode. A released playback (`finish`) holds one of the device's 128
    *  voices until its file ends, so a view that releases faster than its sounds

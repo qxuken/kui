@@ -77,12 +77,57 @@ impl<'a> Ui<'a> {
         self.core.slot_declared(name)
     }
 
+    /// Loads `ext` under `namespace` into the list filling this frame's
+    /// slots, and answers with the origin it got. This is how an
+    /// extension hosts an extension of its own: the guest asks mid-frame,
+    /// when it knows what it wants, and the plugin lands in the same list
+    /// as the host's own — one namespace map, one origin per extension,
+    /// however deep the loading went (`crate::slot`).
+    ///
+    /// Fails when the namespace is taken or empty, exactly as
+    /// `Extensions::push_as` does, and when this frame was begun without
+    /// a filler (`Core::frame`) or with one that is not a list.
+    pub fn add_extension(
+        &mut self,
+        namespace: &str,
+        ext: Box<dyn crate::runtime::Extension>,
+    ) -> Result<OriginId, String> {
+        match self.filler.as_deref_mut() {
+            Some(filler) => filler.add(namespace, ext),
+            None => Err(format!(
+                "cannot load `{namespace}`: this frame declares no slots to fill"
+            )),
+        }
+    }
+
     /// Runs `f` as the fill of `slot` under `origin`: nodes it opens are
     /// tagged with the origin, keyed under the slot's key, and closed
     /// for it if it leaves any open. What a `Fill` implementation calls
     /// per extension; see `Core::fill`.
     pub fn fill(&mut self, origin: OriginId, slot: &Slot<'_>, f: impl FnOnce(&mut Ui<'_>)) {
         self.core.fill(slot, origin, f);
+    }
+
+    /// `fill`, with `filler` answering the slots the fill declares — an
+    /// extension hosting extensions of its own. `Extensions::fill_one`
+    /// passes itself, which is what makes one namespace map do for every
+    /// level; see `crate::slot`.
+    pub fn fill_within(
+        &mut self,
+        origin: OriginId,
+        slot: &Slot<'_>,
+        filler: &mut dyn Fill,
+        f: impl FnOnce(&mut Ui<'_>),
+    ) {
+        self.core.fill_within(slot, origin, Some(filler), f);
+    }
+
+    /// The origin the nodes opened right now are tagged with:
+    /// `OriginId::HOST` in the host's own view, the filling extension's
+    /// inside a fill. What records who declared a slot, and so where the
+    /// replies of whatever fills it go.
+    pub fn origin(&self) -> OriginId {
+        self.core.origin()
     }
 
     pub fn viewport(&self) -> Size {

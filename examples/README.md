@@ -94,9 +94,15 @@ host with Lua inside it. [`panel.lua`](lua/panel.lua) is deliberately the same
 panel as [`c/panel.c`](c/panel.c): the extension contract is the contract and
 the language is a detail.
 
+A script can also be a host: `env.add_extension(namespace, path)` opens a C
+plugin and `fill { name = "ns/slot" }` is where it draws, so `panel.lua` puts
+`panel.c` inside itself when one is built (ADR 0014's amendment). The
+mechanism is C shared libraries and only that — a script does not load
+another script, because a host that wants two scripts loads two.
+
 | Example | Run | What it shows |
 |---|---|---|
-| [`panel.rs`](lua/panel.rs) + [`panel.lua`](lua/panel.lua) | `cargo run -p kui-lua --example lua_panel` | Rust host and Lua panel sharing one frame: the panel fills the slot the host declares as `todos/panel`, reads its title from the params, replies on a toggle; clicks routed by origin |
+| [`panel.rs`](lua/panel.rs) + [`panel.lua`](lua/panel.lua) | `cargo run -p kui-lua --example lua_panel` | Rust host and Lua panel sharing one frame: the panel fills the slot the host declares as `todos/panel`, reads its title from the params, replies on a toggle; clicks routed by origin. And, once `c/build.ps1` has run, three languages deep — `panel.lua` loads `c/panel.c` itself with `env.add_extension` and places it with `fill` |
 | [`bench.rs`](lua/bench.rs) | `cargo run -p kui-lua --example bench --release` | Frontend-lowering shootout: the same ~900-node view from Rust and from Lua |
 
 ## Node — [`node/`](node)

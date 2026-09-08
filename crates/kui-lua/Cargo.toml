@@ -10,6 +10,12 @@ publish = ["forgejo"]
 [dependencies]
 kui-core.workspace = true
 mlua.workspace = true
+# For `CExtension` alone: a script that places a native panel needs
+# something to open the `.so`/`.dylib`/`.dll` with, and that loader is the
+# C API's. `default-features = false` in the workspace manifest, so this is
+# the library without its windowed runner — a Lua extension has no window
+# of its own and would not use one (see the note in kui-ffi/Cargo.toml).
+kui-ffi.workspace = true
 
 [dev-dependencies]
 kui.workspace = true

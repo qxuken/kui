@@ -133,3 +133,19 @@ function latency_hud(t)
   t.type = "latency_hud"
   return t
 end
+
+-- fill { name = "todos/panel", params = { ... } }: the position a plugin
+-- this script loaded draws in -- a place among its siblings, not a box
+-- around anything, and keyed inside this script's own fill (ADR 0014).
+-- It draws nothing itself. `name` is the full "namespace/slot" -- the
+-- namespace given to env.add_extension and the slot in the plugin's own
+-- vocabulary. Draws an empty position when nothing answers to the name.
+--
+-- Named `fill` and not `slot` because `slot` is view's second argument,
+-- and a script that took it would shadow the constructor in the one
+-- function that needs it. A fill is what the core calls this anyway: the
+-- thing an extension draws.
+function fill(t)
+  t.type = "fill"
+  return t
+end

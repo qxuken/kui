@@ -25,9 +25,13 @@ use super::*;
 /// node — which is what this did for every host before extensions could be
 /// loaded from C at all.
 ///
-/// A C extension calling this from its own view declares nothing: an
-/// A C extension calling this from its own view declares nothing: an
-/// extension does not host extensions.
+/// A C extension may call this from its own view too, and the slot is
+/// declared inside its fill and keyed there. What it cannot do is load
+/// the thing that fills it: a plugin's context has no list of its own, so
+/// the name it declares has to be one the host above it already loaded
+/// (`kui_core::slot`, and `env.add_extension` in Lua for the side that
+/// can load). Its own slot is the one name that finds nobody, since it is
+/// out of the list while it draws — that warns and draws nothing.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_slot(ptr: *mut KuiCtx, name: KuiStr, params: *const KuiValue) -> bool {
     guard(false, || {

@@ -63,6 +63,19 @@
 //! to, what a preset attaches to and what a hint implies are decided in
 //! `kui_core::spec`, which this module hands its extracted scalars to.
 //!
+//! ## A script may host a plugin of its own
+//!
+//! `env.add_extension(namespace, path)` loads a C extension — a `.so` /
+//! `.dylib` / `.dll` exporting the `kui_ext_*` entry points
+//! `crates/kui-ffi/include/kui.h` describes, the same plugin a Rust, C or
+//! Node host loads — and `fill { name = "ns/slot", params = ... }` is the
+//! position it draws in, among the script's own children. The script is
+//! a host to it exactly as its host is a host to the script: it declares
+//! where, it passes params every frame, and the plugin's replies come
+//! back to `on_event` with `from` naming the namespace
+//! (`kui_core::slot`). It is C libraries and only that; a script does not
+//! load another script, because a host that wants two scripts loads two.
+//!
 //! Events arrive as their payload table plus `node_key` (the emitting
 //! node's key as an integer), which is what `env.edit_text` takes.
 
@@ -81,6 +94,19 @@ pub struct LuaExtension {
     /// The script's `slots` global, read once at load: the slot names it
     /// fills (ADR 0014 decision 2). Empty — no global — means `"root"`.
     slots: Vec<String>,
+    /// The C extensions this script loaded (`env.add_extension`), in the
+    /// order it asked for them. A `RefCell` because the loading happens
+    /// inside `view`, where the script's own interpreter holds a shared
+    /// borrow of everything else here.
+    loaded: std::cell::RefCell<Vec<Loaded>>,
+}
+
+/// One plugin a script loaded: the namespace it chose, where it came
+/// from, and the origin the frame's list gave it.
+struct Loaded {
+    namespace: String,
+    path: std::path::PathBuf,
+    origin: kui_core::OriginId,
 }
 
 impl LuaExtension {
@@ -99,7 +125,22 @@ impl LuaExtension {
                 )));
             }
         };
-        Ok(Self { lua, name, slots })
+        Ok(Self {
+            lua,
+            name,
+            slots,
+            loaded: Default::default(),
+        })
+    }
+
+    /// The namespace a reply's origin names, for a plugin this script
+    /// loaded: what `on_event` puts on the event as `from`.
+    fn loaded_as(&self, origin: kui_core::OriginId) -> Option<String> {
+        self.loaded
+            .borrow()
+            .iter()
+            .find(|l| l.origin == origin)
+            .map(|l| l.namespace.clone())
     }
 
     /// The script's own interpreter. A host reaches for this to seed a
@@ -149,7 +190,7 @@ impl Extension for LuaExtension {
             let frame = std::cell::RefCell::new(&mut *ui);
             self.lua
                 .scope(|scope| {
-                    let env = env_table(&self.lua, scope, &frame)?;
+                    let env = env_table(&self.lua, scope, &frame, &self.loaded)?;
                     view.call((env, slot_table))
                 })
                 .map_err(|e| format!("view(): {e}"))?
@@ -174,6 +215,16 @@ impl Extension for LuaExtension {
                 && !t.contains_key("node_key")?
             {
                 t.set("node_key", ev.key.0 as i64)?;
+                // And, when this is a reply from a plugin the script
+                // loaded, who is answering: the namespace it chose in
+                // `env.add_extension`. Absent for the script's own nodes,
+                // which is what tells the two apart. `node_key` on a reply
+                // is the key of the node *inside the plugin* whose event it
+                // answers, which is the plugin's business and not this
+                // script's — `from` is the useful half.
+                if let Some(ns) = self.loaded_as(ev.origin) {
+                    t.set("from", ns)?;
+                }
             }
             Ok(p)
         });
@@ -234,8 +285,10 @@ fn slot_table(lua: &Lua, slot: &Slot<'_>) -> mlua::Result<Table> {
 /// focus verbs `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()`
 /// and the scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
 /// `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
-/// `caret_rect(key, byte)` and the window requests `set_window_size(window,
-/// w, h)` / `focus_window(window)`.
+/// `caret_rect(key, byte)`, the window requests `set_window_size(window,
+/// w, h)` / `focus_window(window)`, and the two calls of a script that
+/// hosts a plugin of its own: `add_extension(namespace, path)` and
+/// `extension_namespaces()`.
 /// A node named either way a script can: the integer key an event carried,
 /// or the string label its `key` field declared, resolved through the
 /// frame so far and then the last finished one (`Ui::key_of`). A string no
@@ -265,6 +318,7 @@ fn env_table<'scope, 'env: 'scope>(
     lua: &Lua,
     scope: &'scope mlua::Scope<'scope, 'env>,
     ui: &'env std::cell::RefCell<&'env mut Ui<'_>>,
+    loaded: &'env std::cell::RefCell<Vec<Loaded>>,
 ) -> mlua::Result<Table> {
     let (env, vp, focus, focus_visible) = {
         let ui = ui.borrow();
@@ -584,6 +638,68 @@ fn env_table<'scope, 'env: 'scope>(
             },
         )?,
     )?;
+    // `env.add_extension(namespace, path)` → true, or nil and a message:
+    // the script hosting an extension of its own (ADR 0014, and
+    // `kui_core::slot`). The mechanism is C shared libraries and only
+    // that — a `.so` / `.dylib` / `.dll` exporting the seven `kui_ext_*`
+    // entry points `crates/kui-ffi/include/kui.h` describes — which is
+    // the same plugin a Rust, C or Node host loads, and is why a script
+    // can place one at all: the contract between a host and an extension
+    // is C, so the script is just another host.
+    //
+    // Called from `view`, because that is where a script knows what it
+    // wants, and idempotent by (namespace, path) so the honest spelling
+    // is to call it every frame. The namespace joins the frame's *one*
+    // map, so it can collide with the host's; a taken one is the error.
+    // Nothing here is a new capability: `Lua::new` has `package`, so a
+    // script could already `package.loadlib` anything on the disk. What
+    // this adds is a plugin that draws in the script's own tree.
+    t.set(
+        "add_extension",
+        scope.create_function(move |_, (namespace, path): (String, String)| {
+            let path = std::path::PathBuf::from(path);
+            if let Some(prev) = loaded.borrow().iter().find(|l| l.namespace == namespace) {
+                return Ok(if prev.path == path {
+                    // The every-frame call, already answered.
+                    (Some(true), None)
+                } else {
+                    (
+                        None,
+                        Some(format!(
+                            "`{namespace}` is already {} in this script; a second plugin needs a \
+                             second namespace",
+                            prev.path.display()
+                        )),
+                    )
+                });
+            }
+            // SAFETY: no more so than the host loading it would be. The
+            // library's code runs in this process on this frame; a script
+            // naming one is trusting it as the host trusts the script.
+            let ext = match unsafe { kui_ffi::CExtension::open(&path) } {
+                Ok(ext) => ext,
+                Err(e) => return Ok((None, Some(e))),
+            };
+            let origin = match ui.borrow_mut().add_extension(&namespace, Box::new(ext)) {
+                Ok(origin) => origin,
+                Err(e) => return Ok((None, Some(e))),
+            };
+            loaded.borrow_mut().push(Loaded {
+                namespace,
+                path,
+                origin,
+            });
+            Ok((Some(true), None))
+        })?,
+    )?;
+    // The namespaces this script loaded, in the order it asked for them —
+    // what it can name in a `fill`, and what a reply's `from` will say.
+    t.set(
+        "extension_namespaces",
+        scope.create_function(move |lua, ()| {
+            lua.create_sequence_from(loaded.borrow().iter().map(|l| l.namespace.clone()))
+        })?,
+    )?;
     Ok(t)
 }
 
@@ -765,8 +881,49 @@ fn check_props(ui: &mut Ui<'_>, t: &Table, element: &str) -> mlua::Result<()> {
     Ok(())
 }
 
+/// `fill { name = "todos/panel", params = {...} }`: a position an
+/// extension fills, in place (ADR 0014). Not a node and so not a schema
+/// element — it draws nothing itself and takes none of the props a box
+/// takes, which is why it is checked here rather than by `check_props`.
+/// `name` is the full `namespace/slot`: the namespace this script loaded
+/// the plugin under (`env.add_extension`) and the slot in the plugin's own
+/// vocabulary. `params` is whatever the plugin should read this frame —
+/// plain data, declared every frame, retained by nobody, exactly like an
+/// `on_click` payload.
+fn build_fill(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
+    let name: String = t
+        .get::<Option<String>>("name")?
+        .filter(|n| !n.is_empty())
+        .ok_or_else(|| bad("fill needs a name (\"namespace/slot\")"))?;
+    if !name.contains(kui_core::NAMESPACE_SEPARATOR) {
+        return Err(bad(format!(
+            "bad slot name {name:?} (a full \"namespace/slot\")"
+        )));
+    }
+    for pair in t.pairs::<mlua::Value, mlua::Value>() {
+        let (k, _) = pair?;
+        let mlua::Value::String(k) = k else { continue };
+        let k = k.to_str()?;
+        if !matches!(k.as_ref(), "type" | "name" | "params") {
+            return Err(bad(format!(
+                "fill takes name and params, not {:?} — it is a position, not a box",
+                k.as_ref()
+            )));
+        }
+    }
+    let params = match t.get::<mlua::Value>("params")? {
+        mlua::Value::Nil => Value::Null,
+        v => lua_to_value(&v)?,
+    };
+    ui.slot_with(&name, &params);
+    Ok(())
+}
+
 fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     let ty: String = t.get("type")?;
+    if ty == "fill" {
+        return build_fill(ui, t);
+    }
     check_props(ui, t, element_of(&ty))?;
     match ty.as_str() {
         "row" | "column" => {
@@ -2686,10 +2843,12 @@ mod tests {
         assert_eq!(
             sorted("calls"),
             [
+                "add_extension",
                 "announce",
                 "blur",
                 "caret_rect",
                 "edit_text",
+                "extension_namespaces",
                 "focus_next",
                 "focus_prev",
                 "focus_window",

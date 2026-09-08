@@ -302,6 +302,12 @@ warnings! {
     /// red where the fill would have been, and reported here once per
     /// extension and slot rather than once per frame.
     pub const EXTENSION_VIEW_ERROR: &str = "extension-view-error";
+    /// An extension declared one of its *own* slots while it was drawing,
+    /// so filling it would have meant calling it inside itself. The slot
+    /// is left empty. An extension may host extensions (`Fill::add`), and
+    /// may declare their slots — what it cannot do is be its own guest.
+    /// See ADR 0014, decision 5.
+    pub const RECURSIVE_SLOT: &str = "recursive-slot";
 
     /// The device refused a play: its voices are all held, or the sound
     /// did not decode. A released playback (`finish`) holds one of the
@@ -367,6 +373,21 @@ pub fn extension_view_error(extension: &str, slot: &str, slot_key: Key, err: &st
         code: EXTENSION_VIEW_ERROR,
         key: slot_key.str(extension).str(EXTENSION_VIEW_ERROR),
         message: format!("extension `{extension}` failed to build slot {slot:?}: {err}"),
+    }
+}
+
+/// The [`RECURSIVE_SLOT`] warning for one fill. Keyed by the slot, the
+/// same way `unbalanced-extension` is: the conflict is a name, and one
+/// line per name is the useful count however many frames repeat it.
+pub fn recursive_slot(extension: &str, slot: &str, slot_key: Key) -> Warning {
+    Warning {
+        code: RECURSIVE_SLOT,
+        key: slot_key.str(RECURSIVE_SLOT),
+        message: format!(
+            "extension `{extension}` declared slot {slot:?} while it was drawing, which is its \
+             own; it was left empty, since filling it would mean calling `{extension}` inside \
+             itself. An extension may declare the slots of extensions it loaded — not its own"
+        ),
     }
 }
 

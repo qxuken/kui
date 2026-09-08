@@ -5,6 +5,14 @@ date: 2026-09-07
 
 # Slots: an extension fills a place the host declares, with parameters in and replies out
 
+> **Amended 2026-09-08.** The open question below — "an extension cannot
+> declare slots for other extensions, which is a decision for the day one
+> asks" — is answered: an extension may load extensions and declare their
+> slots, replies go to whoever declared the slot rather than always to the
+> host, and the one thing refused is an extension filling its own slot. See
+> [Amendment: an extension hosts extensions of its own](#amendment-an-extension-hosts-extensions-of-its-own-2026-09-08)
+> at the end of this document.
+>
 > **Accepted and built (2026-09-07), for alpha.9.** Proposed and accepted
 > the same day; what follows is the draft as accepted, and this block is
 > what the building changed in it. **Slot names are namespaced, and the
@@ -315,3 +323,60 @@ there, not appended to a node that has closed.
 - **Not done here.** Name plus kind and multiple instances of one
   extension; a slot element for Node; extension loading in `kui_run`;
   an extension declaring slots of its own; replies from `view`.
+
+## Amendment: an extension hosts extensions of its own (2026-09-08)
+
+The "not done here" list ends with *an extension declaring slots of its
+own*, and the core said the same thing where it refused one: "whether one
+may offer slots is a decision for the day one asks". A Lua view wanting a
+native panel inside it is the day. The answer is **yes, and it is this
+mechanism one level down rather than a second one**.
+
+What changed, and what did not:
+
+1. **A guest declares slots.** `Ui`'s filler is no longer `None` inside a
+   fill: `Core::fill_within` hands it down, so `ui.slot(…)` from an
+   extension is a slot like the host's, declared where the extension is
+   drawing and keyed there — move the guest and its guest moves with it,
+   which is decision 4 applied twice. `Core::begin_slot` no longer refuses
+   inside a fill.
+2. **A guest loads.** `Fill::add` / `Ui::add_extension` puts an extension
+   in the list *while a frame is being built*, which is when a guest
+   knows it wants one. It joins the **same** list under a namespace of its
+   own, so there is one namespace map and one origin per extension however
+   deep the loading went: `todos/panel` means one thing to everybody, a
+   namespace the host has taken is refused the way `push_as` refuses it,
+   and nothing in the routing had to learn about levels.
+3. **Replies go to whoever declared the slot.** Decision 6 read as it is
+   written — the thing an extension answers is the slot it was put in. For
+   every extension a host placed that is the host, unchanged; for one a
+   guest placed it is the guest, and what the guest answers travels on up.
+   The walk is `Extensions::route`, which all four hosts now call instead
+   of each keeping its own copy of the loop, with `MAX_REPLY_HOPS` as the
+   bound on two extensions answering each other.
+4. **One thing is refused, and it is the cycle.** An extension is *out* of
+   the list while it fills (the entry is `None`), so its own slot is the
+   one name that finds nobody: an empty position and a **`recursive-slot`**
+   warning rather than a view calling itself. This is also what makes
+   re-entering the list sound at all.
+5. **Loading is C shared libraries, and only that.** `env.add_extension`
+   in Lua opens a `.so` / `.dylib` / `.dll` exporting the `kui_ext_*` entry
+   points — the same plugin a Rust, C or Node host loads. A script does not
+   load another script: a host that wants two scripts loads two, and
+   "scripting inside scripting" buys nothing that costs nothing.
+
+Per binding: Lua gets `env.add_extension(namespace, path)`,
+`env.extension_namespaces()`, and `fill { name = "ns/slot", params = … }`
+in the tree — named `fill` and not `slot` because `slot` is `view`'s second
+argument and would shadow the constructor in the one function that needs
+it. A reply from a plugin the script loaded arrives at `on_event` with
+`from` naming the namespace; the script's own events have no `from`, which
+is what tells them apart. C plugins can declare a slot from `kui_ext_view`
+(their context now carries the host's `Ui`, the way the runner's own view
+callback does) but cannot load one — a plugin's context has no list —
+so the name has to be one the host above it already loaded.
+
+This is not a new capability in the security sense, and the Lua side is
+where that is worth saying: `Lua::new` has `package`, so a script could
+already `package.loadlib` anything on the disk. What it could not do is
+put what it loaded in its own tree.

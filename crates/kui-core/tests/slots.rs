@@ -9,7 +9,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use kui_core::diag::{DUPLICATE_SLOT, EXTENSION_VIEW_ERROR, UNBALANCED_EXTENSION, UNKNOWN_SLOT};
+use kui_core::diag::{
+    DUPLICATE_SLOT, EXTENSION_VIEW_ERROR, RECURSIVE_SLOT, UNBALANCED_EXTENSION, UNKNOWN_SLOT,
+};
 use kui_core::{
     Core, Extension, Extensions, Key, NodeSpec, OriginId, Size, Sizing, Slot, Ui, UiEvent, Value,
     Warning, split_name,
@@ -25,6 +27,10 @@ struct Ext {
     /// Shared with the test, since a boxed extension cannot be read back
     /// once it is in the runner's list: (namespace, name, params).
     seen: Rc<RefCell<Vec<(String, String, Value)>>>,
+    /// The payloads that reached `on_event`, shared the same way.
+    heard: Rc<RefCell<Vec<Value>>>,
+    /// What it replies with when it hears anything.
+    reply: Option<Value>,
     leave_open: bool,
     fail: bool,
 }
@@ -60,8 +66,9 @@ impl Extension for Ext {
         }
         Ok(())
     }
-    fn on_event(&mut self, _ev: &UiEvent) -> Vec<Value> {
-        Vec::new()
+    fn on_event(&mut self, ev: &UiEvent) -> Vec<Value> {
+        self.heard.borrow_mut().push(ev.payload.clone());
+        self.reply.clone().into_iter().collect()
     }
 }
 
@@ -80,6 +87,14 @@ fn load(exts: Vec<Box<dyn Extension>>) -> Extensions {
 
 fn codes(ws: &[Warning]) -> Vec<&'static str> {
     ws.iter().map(|w| w.code).collect()
+}
+
+/// A payload's `kind`, which is all the routing tests care about.
+fn kind_of(v: &Value) -> String {
+    match v.get("kind") {
+        Some(Value::Str(s)) => s.to_string(),
+        other => panic!("no kind in {other:?}"),
+    }
 }
 
 /// The access node the extension's cell became: its key and its parent.
@@ -436,28 +451,157 @@ fn a_view_error_is_drawn_in_place_and_warned_once() {
     assert_eq!(text.as_deref(), Some("[broken] no view today"));
 }
 
-/// An extension's own `slot` declares nothing: whether one may offer slots
-/// is a decision for the day one asks, and until then the name is not
-/// taken from the host.
-#[test]
-fn an_extension_cannot_declare_slots() {
-    struct Nested;
-    impl Extension for Nested {
-        fn name(&self) -> &str {
-            "nested"
-        }
-        fn view(&mut self, _slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
-            ui.slot("nested/inner");
-            assert!(!ui.slot_declared("nested/inner"));
-            Ok(())
-        }
-        fn on_event(&mut self, _ev: &UiEvent) -> Vec<Value> {
-            Vec::new()
-        }
+/// An extension that hosts one of its own: it loads `inner` on the frame
+/// it first draws and declares that plugin's slot in the middle of its own
+/// view — the Lua-view-with-a-native-panel case, as the smallest thing
+/// that is it.
+struct Loader {
+    /// Handed over on the first `view`; `None` after, the way a script
+    /// loads once and draws every frame.
+    inner: Option<Box<dyn Extension>>,
+    /// The full name it declares, its guest's or (for the cycle) its own.
+    declares: &'static str,
+    heard: Rc<RefCell<Vec<Value>>>,
+    reply: Option<Value>,
+    slots: Vec<String>,
+}
+
+impl Extension for Loader {
+    fn name(&self) -> &str {
+        "loader"
     }
+    fn slots(&self) -> &[String] {
+        &self.slots
+    }
+    fn view(&mut self, _slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+        if let Some(inner) = self.inner.take() {
+            ui.add_extension("inner", inner)?;
+        }
+        ui.with_keyed("mine", cell(), |_| {});
+        ui.slot(self.declares);
+        Ok(())
+    }
+    fn on_event(&mut self, ev: &UiEvent) -> Vec<Value> {
+        self.heard.borrow_mut().push(ev.payload.clone());
+        self.reply.clone().into_iter().collect()
+    }
+}
+
+fn loader(declares: &'static str, inner: Option<Box<dyn Extension>>) -> Loader {
+    Loader {
+        inner,
+        declares,
+        heard: Rc::default(),
+        reply: None,
+        slots: Vec::new(),
+    }
+}
+
+/// The ADR left one question open — "whether one may offer slots is a
+/// decision for the day one asks". The answer: an extension may load
+/// extensions and declare their slots, and what it declares is a slot
+/// like any other. Keys nest, so the guest's guest is keyed inside the
+/// fill that placed it and moves with it.
+#[test]
+fn an_extension_hosts_an_extension_of_its_own() {
+    let inner = Ext {
+        name: "inner",
+        slots: vec!["panel".into()],
+        ..Default::default()
+    };
     let mut core = Core::new();
-    let mut exts = load(vec![Box::new(Nested)]);
+    let mut exts = Extensions::new();
+    exts.push_as(
+        "outer",
+        Box::new(loader("inner/panel", Some(Box::new(inner)))),
+    )
+    .unwrap();
     host_frame(&mut core, &mut exts, 0, None);
-    assert_eq!(core.key_of("nested/inner"), None);
+
+    // Both slots are named, and the inner one is keyed inside the outer
+    // fill rather than off the host's root.
+    let outer = core.key_of("outer/root").expect("the outer root fill");
+    let panel = core
+        .key_of("inner/panel")
+        .expect("the slot the guest declared");
+    assert_eq!(panel, outer.str("inner/panel"));
+    // Two extensions, two origins, and the guest's guest drew.
+    assert_eq!(exts.len(), 2);
+    assert_eq!(cell_of(&mut core, OriginId(2)).0, panel.str("box"));
     assert!(core.take_warnings().is_empty());
+}
+
+/// Decision 6 read as it is written: a reply answers the slot, so it goes
+/// to whoever declared it. For everything a host placed that is the host,
+/// as before; for a plugin a guest placed it is the guest, and what the
+/// guest answers travels on up.
+#[test]
+fn a_nested_extensions_replies_reach_whoever_placed_it() {
+    let inner = Ext {
+        name: "inner",
+        slots: vec!["panel".into()],
+        reply: Some(Value::map([("kind", "toggled".into())])),
+        ..Default::default()
+    };
+    let mut outer = loader("inner/panel", Some(Box::new(inner)));
+    outer.reply = Some(Value::map([("kind", "summarised".into())]));
+    let outer_heard = outer.heard.clone();
+
+    let mut core = Core::new();
+    let mut exts = Extensions::new();
+    exts.push_as("outer", Box::new(outer)).unwrap();
+    host_frame(&mut core, &mut exts, 0, None);
+
+    let mut to_host = Vec::new();
+    exts.route(
+        [UiEvent {
+            origin: OriginId(2),
+            window: kui_core::WindowId::MAIN,
+            key: Key::ROOT,
+            payload: Value::map([("kind", "click".into())]),
+        }],
+        |ev| to_host.push(ev),
+    );
+
+    // The click reached the panel; its reply reached the extension that
+    // placed the panel, and not the host.
+    assert_eq!(
+        outer_heard.borrow().iter().map(kind_of).collect::<Vec<_>>(),
+        ["toggled"]
+    );
+    // The host heard only what the placer said about it, with the
+    // placer's origin on it.
+    assert_eq!(
+        to_host
+            .iter()
+            .map(|e| kind_of(&e.payload))
+            .collect::<Vec<_>>(),
+        ["summarised"]
+    );
+    assert_eq!(to_host[0].origin, OriginId(1));
+}
+
+/// The one thing nesting cannot do. An extension is out of the list while
+/// it draws, so a slot of its own that it declares finds nobody: an empty
+/// position and one warning, rather than a view calling itself.
+#[test]
+fn an_extension_cannot_fill_its_own_slot() {
+    let mut outer = loader("self/status", None);
+    outer.slots = vec!["panel".into(), "status".into()];
+    let mut core = Core::new();
+    let mut exts = Extensions::new();
+    exts.push_as("self", Box::new(outer)).unwrap();
+    host_frame(&mut core, &mut exts, 0, Some(("self/panel", &Value::Null)));
+
+    assert_eq!(codes(&core.take_warnings()), [RECURSIVE_SLOT]);
+    // It drew once, in the slot the host declared, and the position it
+    // asked to fill twice is empty.
+    let tree = core.access_tree();
+    assert_eq!(
+        tree.nodes
+            .iter()
+            .filter(|n| n.origin == OriginId(1))
+            .count(),
+        1
+    );
 }
