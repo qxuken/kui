@@ -43,11 +43,6 @@ typedef struct Panel {
 
 /* -- small helpers ------------------------------------------------------- */
 
-static bool is(KuiStr s, const char *lit) {
-    size_t n = strlen(lit);
-    return s.len == n && memcmp(s.ptr, lit, n) == 0;
-}
-
 /* Substring test against a borrowed KuiStr, which is not NUL-terminated. */
 static bool contains(const char *hay, KuiStr needle) {
     if (needle.len == 0) return true;
@@ -199,7 +194,7 @@ void kui_ext_on_event(void *user, const KuiEvent *ev) {
     KuiStr s;
     if (!kind || !kui_value_as_str(kind, &s)) return;
 
-    if (is(s, "toggle")) {
+    if (kui_str_eq(s, "toggle")) {
         const KuiValue *index = kui_value_get(ev->payload, KUI_STR("index"));
         int64_t i = 0;
         if (index && kui_value_as_int(index, &i) && i >= 0 && i < p->count) {
@@ -215,13 +210,13 @@ void kui_ext_on_event(void *user, const KuiEvent *ev) {
                 kui_value_free(reply);
             }
         }
-    } else if (is(s, "add")) {
+    } else if (kui_str_eq(s, "add")) {
         if (p->count < MAX_TODOS) {
             snprintf(p->todos[p->count], TODO_LEN, "todo #%d", p->count + 1);
             p->done[p->count] = 0;
             p->count++;
         }
-    } else if (is(s, "clear")) {
+    } else if (kui_str_eq(s, "clear")) {
         int kept = 0;
         for (int i = 0; i < p->count; i++) {
             if (p->done[i]) continue;

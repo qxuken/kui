@@ -13,10 +13,10 @@
  * point of ADR 0014's contract being C in the first place.
  *
  * Run:
- *   ./examples/c/build.sh            # or pwsh examples/c/build.ps1
- *   ./examples/c/host --headless     # no window: a frame, a click, asserts
- *   ./examples/c/host                # a window
- *   ./examples/c/host --headless path/to/plugin
+ *   ./examples/c/build.sh --run           # or pwsh examples/c/build.ps1 -Run
+ *   ./target/debug/host --headless        # no window: a frame, a click, asserts
+ *   ./target/debug/host                   # a window
+ *   ./target/debug/host --headless path/to/plugin
  *
  * --headless is the contract without a display, and it is what CI runs: it
  * builds a frame the way the runner does, finds a row the plugin drew,
@@ -35,24 +35,34 @@
 #define NS "todos"
 #define PANEL_SLOT NS "/panel"
 
-/* Which panel to load when none is named.
+/* Which panel to load when none is named: the one the build script leaves
+ * beside this executable, in target/<profile>/. The profile is a define
+ * rather than a guess, so a --release host looks in target/release; the
+ * two-step stringify is how a macro's *text* becomes a string literal.
  *
- * On the unixes it is the one build.sh makes, and there is one: a plugin
- * there leaves every kui_* undefined and takes it from whatever executable
- * loaded it, so panel.so loads into this host and into panel.rs's equally.
+ * On the unixes there is one plugin and this is it: it leaves every kui_*
+ * undefined and takes them from whatever executable loaded it, so panel.so
+ * loads into this host and into panel.rs's equally.
  *
  * On Windows there are two, and the difference is the whole lesson of
- * build.ps1. A DLL must name the module each import comes from:
- * examples/c/panel.dll names `c_panel.exe` and will not load here at all
- * (LoadLibraryW cannot find that module from this process), while
- * panel-dll.dll names `kui_ffi.dll` and loads into any host that ships it -
- * this one included. Try `host.exe --headless examples/c/panel.dll` to
- * watch the first one be refused; it is not a bug in either file. */
+ * build.ps1. A DLL must name the module each import comes from. panel.dll
+ * - this one - names `kui_ffi.dll` and so loads into any host that ships
+ * it, which is the shape a plugin you hand to somebody wants.
+ * panel-host.dll names `c_panel.exe` and loads into that host and nothing
+ * else; try `host.exe --headless target/debug/panel-host.dll` to watch it
+ * be refused here. That is not a bug in either file. */
+#ifndef KUI_PROFILE_DIR
+#define KUI_PROFILE_DIR debug
+#endif
+#define KUI_STRINGIFY_(x) #x
+#define KUI_STRINGIFY(x) KUI_STRINGIFY_(x)
+#define PLUGIN_DIR "target/" KUI_STRINGIFY(KUI_PROFILE_DIR) "/"
+
 #if defined(_WIN32)
-#define DEFAULT_PLUGIN "examples/c/panel-dll.dll"
+#define DEFAULT_PLUGIN PLUGIN_DIR "panel.dll"
 #define BUILD_HINT "pwsh examples/c/build.ps1"
 #else
-#define DEFAULT_PLUGIN "examples/c/panel.so"
+#define DEFAULT_PLUGIN PLUGIN_DIR "panel.so"
 #define BUILD_HINT "./examples/c/build.sh"
 #endif
 
@@ -66,11 +76,6 @@ static KuiValue *msg(const char *kind) {
     KuiValue *m = kui_value_map();
     kui_value_map_set(m, KUI_STR("kind"), kui_value_str(KUI_STR(kind)));
     return m;
-}
-
-static bool is(KuiStr s, const char *lit) {
-    size_t n = strlen(lit);
-    return s.len == n && memcmp(s.ptr, lit, n) == 0;
 }
 
 static void view(void *user, KuiCtx *ui) {
@@ -131,9 +136,9 @@ static void on_event(void *user, const KuiEvent *ev) {
     /* Our own nodes come back with origin 0. A reply carries the origin of
      * the extension that made it, which is what tells the two apart - and
      * kui_ctx_extension_namespace turns that number back into `todos`. */
-    if (is(s, "count") && ev->origin == 0) {
+    if (kui_str_eq(s, "count") && ev->origin == 0) {
         h->clicks++;
-    } else if (is(s, "toggled")) {
+    } else if (kui_str_eq(s, "toggled")) {
         h->toggles++;
         h->reply_from = ev->origin;
     }

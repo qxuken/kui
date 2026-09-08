@@ -418,6 +418,14 @@ have no Windows spelling. All three artifacts build and run now —
 [`examples/c/build.ps1`](../examples/c/build.ps1), which is `build.sh`'s
 round in the same order with the same checks.
 
+Both scripts write into `target/<profile>/` rather than beside their sources,
+which is what makes the "no rpath" problem disappear: a host built there is
+already beside the `kui_ffi.dll` it loads, and so is a plugin beside the DLL
+*it* imports. That replaced two `Copy-Item`s and eight `.gitignore` lines.
+Both also take `--run` / `-Run`, and the round they print when they do not
+run it is the round they run when they do — which is the whole of what CI
+invokes, so a failure there reproduces with one line.
+
 What actually differed, and it is worth separating Windows' constraints from
 kui's mistakes:
 
@@ -565,7 +573,7 @@ than here: a plugin's own directory was not searched for the DLLs it
 imports (`LOAD_WITH_ALTERED_SEARCH_PATH`, which is why loading the C panel
 from `node.exe` failed with error 126), and the two-copies case works
 across this boundary too — the addon has its own statically linked library,
-`panel-dll.dll` imports another from `kui_ffi.dll`, and the reply still
+`panel.dll` imports another from `kui_ffi.dll`, and the reply still
 crosses. That is ABI 10 doing its job in a third host.
 
 ### `~` W12 — A Lua view could not put a native panel inside it — **done (2026-09-08)**

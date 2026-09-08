@@ -172,6 +172,15 @@ typedef struct KuiStr {
 
 #define KUI_STR(s) ((KuiStr){(const uint8_t *)(s), strlen(s)})
 
+/* Whether a borrowed string is `lit`. Every string this API hands back is a
+ * (ptr, len) pair into memory the library owns, NUL-terminated by nothing,
+ * so `strcmp` is wrong on it and every C host writes this on its first day
+ * - reading an event's `kind`, a slot's name. Here once instead. */
+static inline bool kui_str_eq(KuiStr s, const char *lit) {
+    size_t n = strlen(lit);
+    return s.len == n && memcmp(s.ptr, lit, n) == 0;
+}
+
 /* Sizing tags */
 enum { KUI_FIT = 0, KUI_GROW = 1, KUI_FIXED = 2, KUI_PERCENT = 3 };
 /* KuiSpec.min_w / min_h: the node's own fit size as its floor (`minWidth:
@@ -1859,7 +1868,7 @@ bool kui_run_with(KuiCtx *ctx, KuiStr title, KuiViewFn view, KuiEventFn on_event
  *      plugin shape (a Python extension imports from python313.dll, not
  *      from python.exe). Prefer this one: it is the plugin you can compile
  *      once and hand to somebody. examples/c/host.c loads a plugin built
- *      this way, and examples/c/build.ps1 builds it as panel-dll.dll.
+ *      this way, and examples/c/build.ps1 builds it as target/<profile>/panel.dll.
  *
  *   2. link against the *host's* import library - the .lib link.exe writes
  *      beside an executable that exports something. kui-ffi's build.rs makes

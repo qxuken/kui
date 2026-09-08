@@ -34,6 +34,13 @@
 # succeeded, so an example that opens a window and never paints runs out
 # the timeout rather than passing quietly.
 #
+# The runner honours that variable in a dev build, and in any build asking
+# for `--features smoke`, which is what this script passes when it is not
+# smoking dev: an app you ship should not close its own window because
+# something in the environment it was launched from set a variable its
+# author never asked about. `-NoBuild` on a release target/ built without
+# the feature is therefore 14 timeouts, not 14 passes.
+#
 # What it does not cover: anything needing a human. The chrome behaviours
 # in windows_nc.rs (snap layouts, caption menus, resize borders) and the
 # UIA bridge in access_bridge.rs still have no automated check on any
@@ -82,13 +89,17 @@ if ($Only.Count -gt 0) {
     $examples = $Only
 }
 
-$profile = if ($Dev) { 'dev' } else { 'release' }
+$cargoProfile = if ($Dev) { 'dev' } else { 'release' }
 # Where cargo puts the `dev` profile is `debug`; the one mapping.
 $profileDir = if ($Dev) { 'debug' } else { 'release' }
+# `KUI_SMOKE_FRAMES` is honoured unasked only where debug assertions are on,
+# so that a shipped app cannot be closed by a stray variable in the
+# environment it was launched from. A release round asks for it by name.
+$features = if ($Dev) { @() } else { @('--features', 'smoke') }
 
 if (-not $NoBuild) {
     Write-Host "building $profileDir examples..." -ForegroundColor Cyan
-    & cargo build --profile $profile -p kui --examples
+    & cargo build --profile $cargoProfile -p kui --examples @features
     if ($LASTEXITCODE -ne 0) { throw "build failed" }
 }
 

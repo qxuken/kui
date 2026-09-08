@@ -14,15 +14,18 @@
 
 slots = { "panel" }
 
--- The two Windows shapes and the two unix ones, tried in order. Only
--- `panel-dll.dll` can load here: it names kui_ffi.dll as the module its
--- imports come from, so it goes into any host that ships that DLL, where
--- `panel.dll` names c_panel.exe and loads into that and nothing else. On
--- the unixes a plugin leaves its kui_* undefined and takes them from the
--- executable that loaded it, and this example's host does not export them
--- -- so there the message below is the expected outcome, not a fault.
+-- Where the build scripts leave it, dev before release. On Windows this is
+-- the shape that names kui_ffi.dll as the module its imports come from, so
+-- it goes into any host that ships that DLL; `panel-host.dll` beside it
+-- names c_panel.exe and loads into that and nothing else. On the unixes a
+-- plugin leaves its kui_* undefined and takes them from the executable that
+-- loaded it, and this example's host does not export them -- so there the
+-- message below is the expected outcome, not a fault.
 -- examples/c/build.ps1's header comment is the long version.
-plugin_paths = { "examples/c/panel-dll.dll", "examples/c/panel.so", "examples/c/panel.dylib" }
+plugin_paths = {
+  "target/debug/panel.dll", "target/debug/panel.so",
+  "target/release/panel.dll", "target/release/panel.so",
+}
 plugin_ns = nil -- the namespace it went in under, once it is in
 plugin_why = nil -- or why it is not
 plugin_tried = false

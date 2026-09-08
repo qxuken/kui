@@ -54,33 +54,41 @@ is in: [`panel.rs`](c/panel.rs) is a Rust one loading the same file.
 [`build.sh`](c/build.sh) checks `kui.h` against the Rust struct layout, then
 builds all of it; [`build.ps1`](c/build.ps1) is the same round on Windows.
 
+Everything lands in `target/<profile>/`, beside the library the hosts link
+and the `c_panel` a plugin is loaded by — so nothing is copied and nothing is
+written into the source tree. Pass `--run` (`-Run`) and the script runs the
+round it otherwise prints, which is what CI does.
+
 ```bash
-./examples/c/build.sh                    # ABI check, then the three C artifacts
-./examples/c/counter                     # the counter app, C as the host
-./examples/c/counter --headless          # FFI self-test, no window needed
-./examples/c/host                        # a C host with the C panel inside it
-./examples/c/host --headless             # the slot, the click, the reply
+./examples/c/build.sh                    # ABI check, then the C artifacts
+./examples/c/build.sh --run              # and run the round it prints
+./target/debug/counter                   # the counter app, C as the host
+./target/debug/counter --headless        # FFI self-test, no window needed
+./target/debug/host                      # a C host with the C panel inside it
+./target/debug/host --headless           # the slot, the click, the reply
 cargo run -p kui-ffi --example c_panel   # the same panel in a Rust host
 ```
 
 ```powershell
-pwsh examples/c/build.ps1                # ABI check, then counter.exe, host.exe, panel*.dll
-./examples/c/counter.exe --headless
-./examples/c/host.exe --headless
+pwsh examples/c/build.ps1 -Run           # ABI check, the artifacts, the round
+./target/debug/counter.exe --headless
+./target/debug/host.exe --headless
 cargo run -p kui-ffi --example c_panel -- --headless
 ```
 
 Windows asks for three things the unixes do not, and the plugin half is where
 they show. An MSVC-ABI compiler, because that is what the Rust target links
-with. `kui_ffi.dll` beside each host executable, because there is no rpath.
-And an import library at each link: a DLL may not leave a symbol undefined,
-so a plugin names the module its `kui_*` come from. Which module is a choice,
-and `build.ps1` builds both — `panel-dll.dll` imports `kui_ffi.dll` and loads
-into any host shipping it (the shape a plugin you hand to somebody wants, and
-what `host.exe` loads), `panel.dll` imports the Rust host's own executable and
-loads into that host alone. `crates/kui-ffi/build.rs` makes the second
-possible by exporting the host's `kui_*`, and `kui.h` marks the plugin's seven
-entry points `KUI_EXT_EXPORT`, so `panel.c` is the same source everywhere.
+with. `kui_ffi.dll` beside each host executable, because there is no rpath —
+which is what building into `target/<profile>/` is for. And an import library
+at each link: a DLL may not leave a symbol undefined, so a plugin names the
+module its `kui_*` come from. Which module is a choice, and `build.ps1` builds
+both from one compile of `panel.c` — `panel.dll` imports `kui_ffi.dll` and
+loads into any host shipping it (the shape a plugin you hand to somebody
+wants, and what both hosts load by default), `panel-host.dll` imports the Rust
+host's own executable and loads into that host alone.
+`crates/kui-ffi/build.rs` makes the second possible by exporting the host's
+`kui_*`, and `kui.h` marks the plugin's seven entry points `KUI_EXT_EXPORT`,
+so `panel.c` is the same source everywhere.
 
 Two copies of the library in one process — a statically linked host and a
 plugin importing `kui_ffi.dll` — is fine as of ABI 10, and was not before it:

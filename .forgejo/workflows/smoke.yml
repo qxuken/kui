@@ -156,27 +156,12 @@ jobs:
       #
       # Needs a C compiler (VS Build Tools for `cl`, or LLVM for `clang-cl`);
       # the script says so and fails if it finds neither.
+      # `-Run` rather than a list of commands here: the script owns the
+      # round, prints it when it is not running it, and runs exactly what it
+      # printed - so reproducing a CI failure locally is the line above, and
+      # the two cannot drift. It covers C as the host, C on both sides
+      # through kui_ctx_add_extension, both Windows plugin shapes, and the
+      # kui_ext_abi-less mutant that has to be refused for the right reason.
       - name: Build and run the C examples
         shell: powershell
-        run: |
-          pwsh -NoProfile -File examples/c/build.ps1
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          ./examples/c/counter.exe --headless
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          # The binaries build.ps1 just made, run directly: a `cargo run`
-          # each would only re-fingerprint the workspace to agree.
-          ./target/debug/examples/c_panel.exe --headless
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          # The mutant with kui_ext_abi deleted must be refused, not loaded.
-          ./target/debug/examples/c_panel.exe --headless target/panel-noabi.dll
-          if ($LASTEXITCODE -eq 0) { throw "a plugin with no kui_ext_abi was loaded" }
-          # C on both sides, through kui_ctx_add_extension (ADR 0014's C
-          # half). Its plugin is the one that imports kui_ffi.dll, so this
-          # also covers the shape a plugin ships in.
-          ./examples/c/host.exe --headless
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          # And the two-copies case ABI 10 exists for: a Rust host with its
-          # own statically linked library, loading a plugin that imports
-          # another copy from kui_ffi.dll. The reply has to cross anyway.
-          ./target/debug/examples/c_panel.exe --headless examples/c/panel-dll.dll
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+        run: pwsh -NoProfile -File examples/c/build.ps1 -Run

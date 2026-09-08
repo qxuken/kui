@@ -3849,10 +3849,16 @@ test('addExtension reports why a library is not a plugin, and keeps nothing', ()
 // runs only where examples/c/build.sh (or build.ps1) has been run. The C
 // half of the same check is examples/c/host.c's --headless, which CI runs.
 test('a C extension fills the slot the view declares, and its reply comes back', (t) => {
-  const ext = process.platform === 'win32' ? 'panel-dll.dll' : 'panel.so';
-  const plugin = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'examples', 'c', ext);
-  if (!existsSync(plugin)) {
-    t.skip(`build examples/c first (${plugin} is not there)`);
+  // Where both build scripts leave it, whichever profile was built: on
+  // Windows this is the shape that imports kui_ffi.dll rather than a host
+  // executable, which is the only one an addon can load.
+  const name = process.platform === 'win32' ? 'panel.dll' : 'panel.so';
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+  const plugin = ['debug', 'release']
+    .map((p) => join(root, 'target', p, name))
+    .find(existsSync);
+  if (!plugin) {
+    t.skip(`build examples/c first (no target/*/${name})`);
     return;
   }
   const ctx = new Ctx();

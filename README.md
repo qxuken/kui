@@ -66,7 +66,7 @@ terms: `update` returns it beside the model with `withEffects(model,
 handler the app registered, and `app.effects()` is where a test reads it
 back ([ADR 0013](docs/adr/0013-effects-as-data.md)). Rust tests drive `Core` the same way
 ([crates/kui-core/tests](crates/kui-core/tests)), and C runs the same API
-headless (`./examples/c/counter --headless`) — as does a C *extension* inside
+headless (`./target/debug/counter --headless`) — as does a C *extension* inside
 a Rust host (`cargo run -p kui-ffi --example c_panel -- --headless`, which
 clicks the plugin's list and checks the click reached the plugin and not the
 host).
@@ -80,10 +80,10 @@ language; [examples/README.md](examples/README.md) is the full map.
 cargo run -p kui --example counter        # pure Rust, Elm-ish flow
 cargo run -p kui --example rich_text      # styled spans in one wrapped paragraph
 cargo run -p kui --example editor         # multiline text editing: caret, selection, clipboard
-./examples/c/build.sh && ./examples/c/counter             # the same app from C (Windows: pwsh examples/c/build.ps1)
+./examples/c/build.sh && ./target/debug/counter          # the same app from C (Windows: pwsh examples/c/build.ps1)
 cargo run -p kui-lua --example lua_panel  # Rust host + Lua panel sharing one frame
-./examples/c/build.sh && ./examples/c/counter             # the same app from C
-./examples/c/counter --headless           # C FFI self-test, no window needed
+./examples/c/build.sh && ./target/debug/counter          # the same app from C
+./target/debug/counter --headless         # C FFI self-test, no window needed
 cargo run -p kui-ffi --example c_panel    # C the other way round: a Rust host + a dlopened C panel
 cargo run -p kui --example modal_editor   # helix-flavored modal editing; the app owns the keymap
 cargo run -p kui --example splitmux       # tmux-style splits, tabs, focus, ⌘-drag pane moves; the pane tree is data
@@ -1002,8 +1002,10 @@ leave a run without a result long after `check` and `publish` had finished.
 repo that opens a window: [scripts/smoke-windows.ps1](scripts/smoke-windows.ps1)
 runs every windowed example on the runner's own GPU for 120 frames apiece and
 fails on a crash or a hang. `KUI_SMOKE_FRAMES=n` is what makes an example
-self-terminating, and it works anywhere — `KUI_SMOKE_FRAMES=120 cargo run -p
-kui --example fragments` is the same check by hand. Run it on Windows before a
+self-terminating, and any dev build honours it — `KUI_SMOKE_FRAMES=120 cargo
+run -p kui --example fragments` is the same check by hand. A release build
+ignores it unless built with `--features smoke`, so that an app you ship does
+not close its own window over a variable its author never asked about. Run it on Windows before a
 tag: the first round found three crashes and a dead feature that the headless
 suite passes straight through (backlog W3–W6).
 

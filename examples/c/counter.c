@@ -134,28 +134,23 @@ static float payload_num(const KuiEvent *ev, const char *key) {
     return v && kui_value_as_int(v, &n) ? (float)n : 0.0f;
 }
 
-static bool is(KuiStr s, const char *lit) {
-    size_t n = strlen(lit);
-    return s.len == n && memcmp(s.ptr, lit, n) == 0;
-}
-
 static void apply_event(AppState *state, const KuiEvent *ev) {
     if (!ev->payload) return;
     const KuiValue *kind = kui_value_get(ev->payload, KUI_STR("kind"));
     KuiStr s;
     if (!kind || !kui_value_as_str(kind, &s)) return;
-    if (is(s, "inc")) state->count++;
-    if (is(s, "dec")) state->count--;
+    if (kui_str_eq(s, "inc")) state->count++;
+    if (kui_str_eq(s, "dec")) state->count--;
     /* The secondary press: open the menu where it landed. */
-    if (is(s, "contextmenu")) {
+    if (kui_str_eq(s, "contextmenu")) {
         state->menu_open = 1;
         state->menu_x = payload_num(ev, "x");
         state->menu_y = payload_num(ev, "y");
     }
     /* Escape, or a press outside the menu: stop declaring it. */
-    if (is(s, "dismiss")) state->menu_open = 0;
-    if (is(s, "add10")) { state->count += 10; state->menu_open = 0; }
-    if (is(s, "reset")) { state->count = 0; state->menu_open = 0; }
+    if (kui_str_eq(s, "dismiss")) state->menu_open = 0;
+    if (kui_str_eq(s, "add10")) { state->count += 10; state->menu_open = 0; }
+    if (kui_str_eq(s, "reset")) { state->count = 0; state->menu_open = 0; }
 }
 
 static void on_event(void *user, const KuiEvent *ev) {
@@ -946,7 +941,7 @@ static int surface(void) {
  * to be the same bytes.
  *
  *     cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt
- *     ./examples/c/counter --conformance target/conformance.txt
+ *     ./target/debug/counter --conformance target/conformance.txt
  *
  * The report format is documented on `conformance::report`; it carries no
  * formatted floats (quad geometry travels as one FNV-1a digest) precisely

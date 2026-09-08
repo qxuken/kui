@@ -46,6 +46,20 @@ field reports).
   than `()`. Nothing to fix unless a caller bound the result. `Ui::slot_with`
   likewise now answers whether the slot was declared (false for a
   duplicate), so the C context can be the same code as the Rust runner.
+- **The C examples build into `target/<profile>/`**, not beside their
+  sources: `./target/debug/counter` where alpha.9 had `./examples/c/counter`,
+  and `target/debug/panel.so` (`panel.dll`) for the plugin. It is where the
+  library they link already is, which is what a Windows host needs and what
+  ELF needed an rpath for; the source tree stays clean and `.gitignore` names
+  no artifact. On Windows the two plugin shapes swapped names to match what
+  each is for: `panel.dll` is the portable one that imports `kui_ffi.dll`
+  (the shape you hand to somebody, and both hosts' default), and
+  `panel-host.dll` the one that imports the Rust host's executable.
+- `KUI_SMOKE_FRAMES` is honoured by a dev build, and by a release build only
+  with `--features smoke` — an app you ship should not close its own window
+  because the environment it was launched from had a variable set. Nothing
+  changes for `cargo run`; `scripts/smoke-windows.ps1` passes the feature
+  when it is not smoking dev.
 - `Extensions::push_as("", ext)` loads under the extension's own name
   rather than refusing: the "empty means the plugin's own" rule every host
   had was spelling for itself is the core's, once, and a Lua
@@ -145,7 +159,7 @@ field reports).
 
   ```lua
   function view(env, slot)
-    env.add_extension("todos", "examples/c/panel-dll.dll")
+    env.add_extension("todos", "target/debug/panel.dll")
     return column {
       text("the script"),
       fill { name = "todos/panel", params = { title = "todos", on_toggle = { kind = "toggled" } } },
@@ -466,7 +480,9 @@ GPU without rebuilding a node.
   checks: `kui.h` against the Rust layout, `counter.exe` (C as the host),
   `panel.dll` (C as an extension) and the `kui_ext_abi`-deleted mutant the
   host must refuse. It finds `cl` or `clang-cl`, importing the VS environment
-  through vswhere if neither is on PATH.
+  through vswhere if neither is on PATH. Both scripts take `--run` / `-Run`,
+  which runs the round they otherwise print — so what CI invokes is one line
+  and a local repro is the same line.
 
   Two things had to change for the plugin half, because a DLL may not leave a
   symbol undefined. `kui-ffi`'s build script now hands link.exe a `/DEF:`

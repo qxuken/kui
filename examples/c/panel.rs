@@ -16,7 +16,7 @@
 //! `kui_reply`, and the host counts what comes back.
 //!
 //! Run:
-//!   ./examples/c/build.sh                    # builds examples/c/panel.so
+//!   ./examples/c/build.sh                    # target/debug/panel.so
 //!   pwsh examples/c/build.ps1                # or panel.dll, on Windows
 //!   cargo run -p kui-ffi --example c_panel   # a window
 //!   cargo run -p kui-ffi --example c_panel -- --headless
@@ -104,16 +104,26 @@ impl App for Host {
     }
 }
 
-/// Where `examples/c/build.sh` — or `build.ps1` — leaves the plugin.
+/// Where `examples/c/build.sh` — or `build.ps1` — leaves the plugin:
+/// `target/<profile>/`, which is one directory above this example's own
+/// binary. Read off the executable rather than `CARGO_MANIFEST_DIR` so
+/// that a release build finds the release plugin, and because the manifest
+/// directory is a fact about where this was *compiled*.
+///
 /// Overridden by argv[1], which is the more honest reading of what this
 /// example does: it loads a library chosen at runtime, not one it was built
 /// with. `.so` on both unixes, because that is what `build.sh` names it and
 /// `dlopen` does not care; `.dll` on Windows, because `LoadLibraryW` does.
 fn default_plugin() -> String {
-    format!(
-        "{}/../../examples/c/panel.{PLUGIN_EXT}",
-        env!("CARGO_MANIFEST_DIR")
-    )
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe
+        .parent()
+        .and_then(|examples| examples.parent())
+        .unwrap_or(std::path::Path::new("target/debug"))
+        .to_path_buf();
+    dir.join(format!("panel.{PLUGIN_EXT}"))
+        .display()
+        .to_string()
 }
 
 /// What the plugin is called on this platform, and what builds it.
@@ -123,9 +133,9 @@ const PLUGIN_EXT: &str = if cfg!(target_os = "windows") {
     "so"
 };
 const BUILD_HINT: &str = if cfg!(target_os = "windows") {
-    "pwsh examples/c/build.ps1"
+    "pwsh examples/c/build.ps1 -Run"
 } else {
-    "./examples/c/build.sh"
+    "./examples/c/build.sh --run"
 };
 
 /// One frame, built the way the windowed runner builds it: the host's view

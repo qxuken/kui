@@ -265,9 +265,7 @@ impl Launcher {
             system: system_env::query(),
             clipboard: arboard::Clipboard::new().ok(),
             audio: audio::Audio::new(),
-            smoke_frames: std::env::var("KUI_SMOKE_FRAMES")
-                .ok()
-                .and_then(|s| s.parse().ok()),
+            smoke_frames: Self::smoke_frames(),
             frames_drawn: 0,
             exit_requested: false,
             primary_down: None,
@@ -275,6 +273,27 @@ impl Launcher {
             swallowed_press: None,
             proxy: None,
         }
+    }
+
+    /// `KUI_SMOKE_FRAMES=n`, in a build that honours it.
+    ///
+    /// A development aid, gated the way `shell` gates the diagnostics: an app you
+    /// ship should not close its own window because something in the
+    /// environment it was launched from happened to set a variable, and
+    /// the app's author never asked for that behaviour. Live in a dev
+    /// build, which is where it is used by hand (`KUI_SMOKE_FRAMES=120
+    /// cargo run --example fragments`), and in a release build that asks
+    /// for it with `--features smoke` — which is what
+    /// `scripts/smoke-windows.ps1` passes when it is not smoking dev, and
+    /// the whole reason this is a feature rather than `debug_assertions`
+    /// alone: the round is worth running against what actually ships.
+    fn smoke_frames() -> Option<u32> {
+        if !(cfg!(debug_assertions) || cfg!(feature = "smoke")) {
+            return None;
+        }
+        std::env::var("KUI_SMOKE_FRAMES")
+            .ok()
+            .and_then(|s| s.parse().ok())
     }
 
     pub fn run<A: App>(self, app: A) -> Result<(), Box<dyn std::error::Error>> {

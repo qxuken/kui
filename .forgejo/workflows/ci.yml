@@ -300,40 +300,34 @@ jobs:
       # feature: it rebuilds the scenes through the public C API alone and
       # reads the reference as a file, so libkui_ffi here is built exactly
       # as it ships, with the corpus compiled out.
-      - name: C example (header ABI check + FFI self-test + conformance)
+      # `--run` rather than a list of commands here: the script owns the
+      # round, prints it when it is not running it, and runs exactly what it
+      # printed - so reproducing a failure locally is the line above, and
+      # the two cannot drift. What it covers:
+      #
+      #  * C as the host, headless: the FFI self-test.
+      #  * The other direction, and the one with a linker requirement rather
+      #    than only an API: a Rust host dlopens target/debug/panel.so and
+      #    the plugin resolves every kui_* back out of the host executable.
+      #    That works only while build.rs keeps passing --export-dynamic,
+      #    which has no compile error to announce it going missing - the
+      #    host builds either way and the plugin just stops loading.
+      #  * C on both sides, through kui_ctx_add_extension (ADR 0014's C
+      #    half).
+      #  * The load the loader must refuse: the same plugin with its
+      #    kui_ext_abi deleted, which is what a plugin built against a
+      #    pre-ADR-0006 header looks like. It used to load unchecked
+      #    (backlog S1). The unit test in ext.rs pins the message against
+      #    the platform's libc; this drives the real mutant through the real
+      #    host and requires the exit *and* the message, so a loader that
+      #    went back to "absent = unchecked" fails rather than printing ok.
+      #
+      # The conformance replay is separate because it is the one thing in
+      # the round that needs a report built by another step.
+      - name: C example (header ABI check + FFI self-test + the C round)
         run: |
-          ./examples/c/build.sh
-          ./examples/c/counter --headless
-          ./examples/c/counter --conformance target/conformance.txt
-
-      # The other direction, and the one with a linker requirement rather
-      # than only an API: a Rust host dlopens examples/c/panel.so (built by
-      # build.sh above) and the plugin resolves every kui_* symbol back out
-      # of the host executable. That works only while build.rs keeps passing
-      # --export-dynamic, which has no compile error to announce it going
-      # missing - the host builds either way and the plugin just stops
-      # loading - so this step is the check. --headless is a real drive: it
-      # clicks the plugin's list through the access tree and exits 1 unless
-      # the click reached the plugin and the host's reached the host.
-      - name: C extension (dlopen + origin routing)
-        run: cargo run -p kui-ffi --example c_panel -- --headless
-
-      # And the load the loader must refuse: the same plugin with its
-      # kui_ext_abi deleted (build.sh builds it as target/panel-noabi.so),
-      # which is what a plugin built against a pre-ADR-0006 header looks
-      # like. It used to load unchecked (backlog S1). The unit test in
-      # ext.rs pins the message against the platform's libc; this drives the
-      # real mutant through the real host and requires the exit and the
-      # message, so a loader that went back to "absent = unchecked" fails
-      # here rather than printing ok.
-      - name: C extension without kui_ext_abi is refused
-        run: |
-          if out=$(cargo run -p kui-ffi --example c_panel -- --headless target/panel-noabi.so 2>&1); then
-            echo "$out"
-            echo "FAIL: a plugin with no kui_ext_abi loaded" >&2
-            exit 1
-          fi
-          echo "$out" | grep -F 'plugin declares no ABI; this build is'
+          ./examples/c/build.sh --run
+          ./target/debug/counter --conformance target/conformance.txt
 
       # npm test covers both the encoder tests and the Node adapter over
       # the corpus, which needs KUI_CONFORMANCE to run (it skips without

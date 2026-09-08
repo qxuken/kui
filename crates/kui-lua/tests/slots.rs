@@ -371,18 +371,23 @@ fn add_extension_answers_with_what_went_wrong() {
 /// Not a shortcut: on the unixes a plugin leaves every `kui_*` undefined
 /// and takes them from the executable that loaded it, and a `cargo test`
 /// binary does not export them — which is why `examples/c/build.sh` builds
-/// hosts rather than test binaries. Windows has the other plugin shape,
-/// `panel-dll.dll`, which names `kui_ffi.dll` as the module its imports
-/// come from and so loads into anything, this test included. That also
-/// puts *two* copies of the library in one process (this binary links the
-/// rlib), which is the case ABI 10's reply sink exists for.
+/// hosts rather than test binaries. Windows has the plugin shape that
+/// imports `kui_ffi.dll` rather than a host, `panel.dll`, and so loads
+/// into anything — this test included. That also puts *two* copies of the
+/// library in one process (this binary links the rlib), which is the case
+/// ABI 10's reply sink exists for.
 #[test]
 #[cfg(windows)]
 fn a_script_loads_a_c_plugin_and_places_it() {
     use kui_core::{InputEvent, Vec2};
 
-    let plugin =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/c/panel-dll.dll");
+    // `target/<profile>/`, where build.ps1 leaves it — read off this test
+    // binary, which cargo puts one level below in `deps/`, so a release
+    // test looks for a release plugin rather than a stale debug one.
+    let plugin = std::env::current_exe()
+        .ok()
+        .and_then(|exe| Some(exe.parent()?.parent()?.join("panel.dll")))
+        .expect("a test binary has a directory");
     if !plugin.exists() {
         eprintln!(
             "skipped: build examples/c first ({} is not there)",

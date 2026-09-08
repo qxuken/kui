@@ -32,6 +32,11 @@ audio = ["dep:kira"]
 # is off by default does not get tested); off for kiosk builds, where the
 # core still derives the tree for anyone who asks and nothing reaches the OS.
 accesskit = ["dep:accesskit", "dep:accesskit_winit"]
+# Honour `KUI_SMOKE_FRAMES` in a build with debug assertions off. The hook
+# is always live in a dev build, which is where it is used by hand; this is
+# for `scripts/smoke-windows.ps1 -Release`, the only reason to want a
+# shipping build that closes its own window. See `Launcher::smoke_frames`.
+smoke = []
 
 # Same version winit pins, so the tree compiles it once. Dwm and
 # Globalization are the accent colour and the locale (`mod system_env`).
