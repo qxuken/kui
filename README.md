@@ -231,6 +231,7 @@ that are hard to reverse and would look arbitrary without their context.
   simple prop is one row (+ `npm run gen`); the composites (`pad`, `border`,
   overflow, `float`) keep per-binding shapes on purpose. Elements are the
   same set everywhere too: containers, text and rich spans, editors, images,
+  fragments (a box a WGSL function paints),
   lines (segments, polylines and curves), buttons, titlebar (plain or with
   custom content), window buttons, latency graph/HUD, and tooltips — Lua
   reaches them through the prelude (`edit`, `line`, `tooltip`,
@@ -553,7 +554,21 @@ that are hard to reverse and would look arbitrary without their context.
   Outer shadows only, one per node, and the shape is not knocked out of the
   middle, so a translucent background shows its own shadow through itself.
   Both are decided in [ADR 0005](docs/adr/0005-the-paint-vocabulary.md),
-  which also says why there are no gradients.
+  which also says why there are no gradient *props*.
+- **A fragment is a box a WGSL function paints.** What ADR 0005 declined to
+  build one prop at a time — gradients, rings, noise, shimmer — an app
+  writes as one function instead
+  ([ADR 0015](docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md)):
+  `add_fragment(wgsl)` validates the source and hands back a handle, and
+  `<fragment src params animate>` draws a box with it. The app writes
+  `fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32>`
+  and nothing else — kui owns the vertex stage, the node's rounded box, the
+  inherited clip, the group opacity and the blend, so a fragment cannot
+  look unlike a kui node. It lays out, takes input and holds children,
+  which paint over it. Sixteen positional floats go in, the frame clock and
+  the node's size come with them, and `animate` asks for a frame every
+  frame. What it cannot do — multi-pass, geometry, compute, reading what is
+  behind it — is the `painter` the ADR names and does not build.
 - **Fonts are registered resources.** Beyond the generic sans / serif /
   mono families, `Core::load_fonts_dir("fonts")` / `load_font_file(path)` /
   `add_font_data(bytes)` load TTF/OTF/TTC files into the font database and
@@ -1056,9 +1071,13 @@ belongs to.
 per node ([ADR 0005](docs/adr/0005-the-paint-vocabulary.md)), and one stroke
 primitive: a round-capped segment, which the `line` element emits one of per
 straight piece of a segment, a polyline or a curve flattened in the core
-([ADR 0010](docs/adr/0010-a-segment-primitive.md)). There are **no
-gradients** (a stop list, a type, a geometry and an interpolation space are
-not a paint prop's worth of work — use an image or stack solids), no inset or
+([ADR 0010](docs/adr/0010-a-segment-primitive.md)), and one escape hatch:
+the `fragment` element, a box a registered WGSL function paints
+([ADR 0015](docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md)),
+which is where gradients, rings, noise and shimmer live. There are **no
+gradient props** (a stop list, a type, a geometry and an interpolation space
+are not a paint prop's worth of work — write a fragment, or use an image),
+no inset or
 multiple shadows, and the single shadow is not knocked out of the middle of
 the shape, so a translucent background shows it through. There are **no
 paths, fills, dashes or arrowheads**: a line is segments and nothing else, a
@@ -1068,6 +1087,11 @@ shape-aware hit test is the same unbuilt change rounded hit-testing below
 waits on, and a `line` that declares one warns. Opacity is a per-quad
 alpha multiply rather than an offscreen composite, so overlapping pieces of one
 faded subtree show their seams. There is no z-index: floats stack in tree order.
+A fragment is one draw call of its own, so a hundred of them is about 0.7% of
+a 120 Hz frame and ten thousand is the wrong tool; it cannot read what is
+behind it (no backdrop blur), sample anything but its own parameters, run a
+second pass, or hit-test per pixel — its edge is its box, like everything
+else here.
 Transitions cover sizing, colors, radius, opacity, shadows, position (`slide`,
 `enter`) and departure (`exit`) — a node the view stops declaring is copied out
 of the last frame that had it and replayed frozen, in its place and inert

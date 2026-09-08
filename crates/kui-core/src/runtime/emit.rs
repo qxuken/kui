@@ -222,6 +222,19 @@ impl Core {
                     });
                 }
             }
+            NodeContent::Fragment(id) => {
+                let draw = self.fragments.get(id);
+                push_fragment(
+                    &mut self.display.quads,
+                    &mut self.display.fragments,
+                    &mut self.display.fragment_sources,
+                    &self.session.state().resources,
+                    draw,
+                    rect.scaled(scale),
+                    spec.style.radius.map(|r| r * scale),
+                    clip_px,
+                );
+            }
             NodeContent::Line(id) => {
                 let (run, points) = self.lines.run(id);
                 push_segments(
@@ -328,6 +341,7 @@ impl Core {
         let mut scroll_regions: Vec<ScrollRegion> = Vec::new();
         self.display.viewport = Size::new(self.viewport.w * scale, self.viewport.h * scale);
         self.display.scale = scale;
+        self.display.time = self.anim.time().unwrap_or(0.0) as f32;
 
         // configure_root can also introduce a clipper, or a fade.
         let root_clips = !self.tree.is_empty() && self.tree.specs[0].layout.clips();
@@ -703,6 +717,7 @@ impl Core {
                 place,
                 &self.text,
                 &self.lines,
+                &self.fragments,
             );
         }
     }
@@ -858,6 +873,21 @@ impl Core {
                             clip_radius: clip_px.radius,
                         });
                     }
+                }
+                GhostContent::Fragment(draw) => {
+                    // The picture is frozen at departure — the parameters
+                    // are the ones the node last declared — while the box
+                    // eases and the group opacity fades it.
+                    push_fragment(
+                        &mut self.display.quads,
+                        &mut self.display.fragments,
+                        &mut self.display.fragment_sources,
+                        &self.session.state().resources,
+                        draw,
+                        rect.scaled(scale),
+                        style.radius.map(|r| r * scale),
+                        clip_px,
+                    );
                 }
                 GhostContent::Line { first, len, width } => {
                     // The points are the ghost's own copy; the colour is
@@ -1265,4 +1295,46 @@ fn scrollbar_quad(bar: Rect, scale: f32, clip: Clip, active: bool) -> Quad {
         clip: clip.rect,
         clip_radius: clip.radius,
     }
+}
+
+/// One `fragment` node's quad, live or ghost.
+///
+/// The handle is resolved first: a removed or foreign one draws nothing,
+/// which is the documented fallback for every resource kind, and the
+/// lookup is what records the `foreign-resource` warning. The quad carries
+/// the node's own rect, radii and clip — a fragment rounds and clips like
+/// a solid — and an opaque white `color`, whose alpha the group-opacity
+/// pass then multiplies into; the shader reads that alpha and nothing else
+/// of the colour, because a fragment returns its own.
+#[allow(clippy::too_many_arguments)]
+fn push_fragment(
+    quads: &mut Vec<Quad>,
+    fragments: &mut Vec<crate::display::FragmentDraw>,
+    sources: &mut Vec<std::sync::Arc<str>>,
+    resources: &crate::resources::Resources,
+    draw: crate::display::FragmentDraw,
+    rect: Rect,
+    radius: [f32; 4],
+    clip: Clip,
+) {
+    let Some(source) = resources.fragment(draw.id) else {
+        return;
+    };
+    let index = fragments.len() as u32;
+    fragments.push(draw);
+    sources.push(source.clone());
+    quads.push(Quad {
+        rect,
+        // `rgb` is unused on this kind; `a` is the group opacity, which
+        // the fade pass multiplies in after the node's quads are pushed.
+        color: Color::WHITE,
+        border_color: Color::TRANSPARENT,
+        radius,
+        border_w: 0.0,
+        blur: 0.0,
+        kind: QuadKind::Fragment,
+        uv: [index, 0, 0, 0],
+        clip: clip.rect,
+        clip_radius: clip.radius,
+    });
 }

@@ -30,11 +30,27 @@ struct Instance {
     clip_radii: [f32; 4],
 }
 
+/// The frame's own numbers, at group 0 binding 0 for both pipelines.
+/// `kui_core::fragment::PRELUDE` declares the same bytes as `KuiGlobals`
+/// so an app's fragment can read `time` and `scale`; the padding is what
+/// makes the struct a multiple of sixteen, which a uniform must be.
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Globals {
     viewport: [f32; 2],
     atlas_size: [f32; 2],
+    time: f32,
+    scale: f32,
+    _pad: [f32; 2],
+}
+
+/// One fragment's parameters as the shader takes them, padded out to the
+/// device's dynamic-offset alignment so a frame's draws can share one
+/// buffer and pick their slot by offset.
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct FragmentParams {
+    params: [f32; 16],
 }
 
 fn instance_of(q: &Quad) -> Instance {
@@ -46,6 +62,7 @@ fn instance_of(q: &Quad) -> Instance {
         QuadKind::GlyphSubpixel => 4.0,
         QuadKind::Shadow => 5.0,
         QuadKind::Segment => 6.0,
+        QuadKind::Fragment => 7.0,
     };
     // `uv` is atlas texels on every kind but one; a segment carries its
     // endpoints there as f32 bits, and the shader wants them as floats.
@@ -93,6 +110,14 @@ struct GpuInner {
     device: wgpu::Device,
     queue: wgpu::Queue,
     dual_source: bool,
+    /// One pipeline per registered fragment per surface format, built the
+    /// first time a frame draws it and shared by every window on this
+    /// device — the cost the ADR measured at about 0.2 ms, paid once. A
+    /// `Mutex` because `Gpu` is a shared handle and building is rare;
+    /// nothing here is touched on a frame that draws no new fragment.
+    fragment_pipelines: std::sync::Mutex<
+        std::collections::HashMap<(u64, wgpu::TextureFormat), wgpu::RenderPipeline>,
+    >,
 }
 
 impl Gpu {
@@ -132,6 +157,7 @@ impl Gpu {
             device,
             queue,
             dual_source,
+            fragment_pipelines: Default::default(),
         }));
         Ok((gpu, surface))
     }
@@ -166,6 +192,102 @@ impl Gpu {
     pub fn dual_source(&self) -> bool {
         self.0.dual_source
     }
+
+    /// The pipeline for one registered fragment, built on first sight and
+    /// then shared by every window on this device. `source` is the app's
+    /// WGSL, which the core already validated; it is wrapped in the same
+    /// prelude and epilogue here, from `kui_core::fragment::module_source`,
+    /// so what compiles is what was validated.
+    ///
+    /// The source is not validated again here: `Core::add_fragment` parsed
+    /// and validated this exact module text with the same naga this wgpu
+    /// carries, and refused a handle for anything that failed. A module
+    /// that still does not compile is a kui bug, and reaches wgpu's own
+    /// error handler like any other.
+    fn fragment_pipeline(
+        &self,
+        id: u64,
+        source: &str,
+        format: wgpu::TextureFormat,
+        layouts: &FragmentLayouts,
+    ) -> wgpu::RenderPipeline {
+        let mut cache = self
+            .0
+            .fragment_pipelines
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(p) = cache.get(&(id, format)) {
+            return p.clone();
+        }
+        let device = &self.0.device;
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("kui.fragment"),
+            source: wgpu::ShaderSource::Wgsl(kui_core::fragment::module_source(source).into()),
+        });
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("kui.fragment"),
+            layout: Some(&layouts.pipeline),
+            vertex: wgpu::VertexState {
+                module: &layouts.vertex,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[Some(instance_buffer_layout(&INSTANCE_ATTRS))],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &module,
+                entry_point: Some(kui_core::fragment::ENTRY_POINT),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    // A fragment returns premultiplied colour, always over.
+                    blend: Some(wgpu::BlendState {
+                        color: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::One,
+                            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                        alpha: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::One,
+                            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                    }),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        cache.insert((id, format), pipeline.clone());
+        pipeline
+    }
+}
+
+/// What building a fragment pipeline needs besides its own source: kui's
+/// vertex stage, and the layout that puts the globals at group 0 and the
+/// parameters at group 1.
+struct FragmentLayouts {
+    vertex: wgpu::ShaderModule,
+    pipeline: wgpu::PipelineLayout,
+}
+
+/// The instance attributes both pipelines read; one array so the vertex
+/// layout cannot differ between them.
+const INSTANCE_ATTRS: [wgpu::VertexAttribute; 9] = wgpu::vertex_attr_array![
+    0 => Float32x2, 1 => Float32x2, 2 => Float32x4,
+    3 => Float32x4, 4 => Float32x4, 5 => Float32x4,
+    6 => Float32x4, 7 => Float32x4, 8 => Float32x4,
+];
+
+fn instance_buffer_layout(attrs: &[wgpu::VertexAttribute]) -> wgpu::VertexBufferLayout<'_> {
+    wgpu::VertexBufferLayout {
+        array_stride: std::mem::size_of::<Instance>() as u64,
+        step_mode: wgpu::VertexStepMode::Instance,
+        attributes: attrs,
+    }
 }
 
 impl std::fmt::Debug for Gpu {
@@ -191,6 +313,20 @@ pub struct Renderer {
     instance_buf: wgpu::Buffer,
     instance_cap: usize,
     instances: Vec<Instance>,
+    /// What a fragment pipeline is built against: kui's vertex stage and
+    /// the two-group layout. Built once per renderer, handed to the
+    /// device's shared cache.
+    fragment_layouts: FragmentLayouts,
+    /// One slot per fragment this frame, each padded to the device's
+    /// dynamic-offset alignment.
+    fragment_params_buf: wgpu::Buffer,
+    fragment_params_cap: usize,
+    fragment_bind: wgpu::BindGroup,
+    fragment_bind_layout: wgpu::BindGroupLayout,
+    /// The alignment slots are padded to; `dynamic_offset` steps by it.
+    uniform_align: u32,
+    /// Scratch for one frame's padded parameter slots.
+    fragment_bytes: Vec<u8>,
     pub clear_color: wgpu::Color,
 }
 
@@ -339,11 +475,7 @@ impl Renderer {
             immediate_size: 0,
         });
 
-        let instance_attrs = wgpu::vertex_attr_array![
-            0 => Float32x2, 1 => Float32x2, 2 => Float32x4,
-            3 => Float32x4, 4 => Float32x4, 5 => Float32x4,
-            6 => Float32x4, 7 => Float32x4, 8 => Float32x4,
-        ];
+        let instance_attrs = INSTANCE_ATTRS;
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("kui.quads"),
             layout: Some(&pipeline_layout),
@@ -351,11 +483,7 @@ impl Renderer {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<Instance>() as u64,
-                    step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &instance_attrs,
-                })],
+                buffers: &[Some(instance_buffer_layout(&instance_attrs))],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -388,6 +516,43 @@ impl Renderer {
         let instance_cap = 4096;
         let instance_buf = create_instance_buffer(device, instance_cap);
 
+        // Fragments: one uniform slot per draw, picked by dynamic offset,
+        // and the layout their pipelines are built against. All of it is
+        // built whether or not a frame ever draws one — a bind group
+        // layout and an empty buffer, not a pipeline, which is the part
+        // that costs and is built on first sight.
+        let fragment_bind_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("kui.fragment.params"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: true,
+                        min_binding_size: std::num::NonZeroU64::new(std::mem::size_of::<
+                            FragmentParams,
+                        >()
+                            as u64),
+                    },
+                    count: None,
+                }],
+            });
+        let fragment_layouts = FragmentLayouts {
+            vertex: shader,
+            pipeline: device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("kui.fragment"),
+                bind_group_layouts: &[Some(&bind_layout), Some(&fragment_bind_layout)],
+                immediate_size: 0,
+            }),
+        };
+        let uniform_align = gpu.adapter().limits().min_uniform_buffer_offset_alignment;
+        let fragment_params_cap = 16;
+        let fragment_params_buf =
+            create_fragment_params_buffer(device, fragment_params_cap, uniform_align);
+        let fragment_bind =
+            create_fragment_bind_group(device, &fragment_bind_layout, &fragment_params_buf);
+
         Ok(Self {
             gpu,
             surface,
@@ -402,6 +567,13 @@ impl Renderer {
             instance_buf,
             instance_cap,
             instances: Vec::new(),
+            fragment_layouts,
+            fragment_params_buf,
+            fragment_params_cap,
+            fragment_bind,
+            fragment_bind_layout,
+            uniform_align,
+            fragment_bytes: Vec::new(),
             clear_color: wgpu::Color {
                 r: 0.06,
                 g: 0.065,
@@ -485,10 +657,56 @@ impl Renderer {
         let globals = Globals {
             viewport: [dl.viewport.w.max(1.0), dl.viewport.h.max(1.0)],
             atlas_size: [self.atlas_size as f32, self.atlas_size as f32],
+            time: dl.time,
+            scale: dl.scale,
+            _pad: [0.0; 2],
         };
         self.gpu
             .queue()
             .write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(&globals));
+
+        // Each fragment's parameters into its own slot, and its pipeline
+        // built if this device has not seen the handle before. Both are
+        // skipped whole on a frame that draws no fragment.
+        let mut fragment_pipelines: Vec<wgpu::RenderPipeline> = Vec::new();
+        if !dl.fragments.is_empty() {
+            let align = self.uniform_align as usize;
+            if dl.fragments.len() > self.fragment_params_cap {
+                self.fragment_params_cap = dl.fragments.len().next_power_of_two();
+                self.fragment_params_buf = create_fragment_params_buffer(
+                    self.gpu.device(),
+                    self.fragment_params_cap,
+                    self.uniform_align,
+                );
+                self.fragment_bind = create_fragment_bind_group(
+                    self.gpu.device(),
+                    &self.fragment_bind_layout,
+                    &self.fragment_params_buf,
+                );
+            }
+            self.fragment_bytes.clear();
+            self.fragment_bytes.resize(dl.fragments.len() * align, 0);
+            for (i, draw) in dl.fragments.iter().enumerate() {
+                let slot = FragmentParams {
+                    params: draw.params,
+                };
+                let at = i * align;
+                self.fragment_bytes[at..at + std::mem::size_of::<FragmentParams>()]
+                    .copy_from_slice(bytemuck::bytes_of(&slot));
+            }
+            self.gpu
+                .queue()
+                .write_buffer(&self.fragment_params_buf, 0, &self.fragment_bytes);
+            fragment_pipelines.reserve(dl.fragments.len());
+            for (draw, source) in dl.fragments.iter().zip(&dl.fragment_sources) {
+                fragment_pipelines.push(self.gpu.fragment_pipeline(
+                    draw.id.to_ffi(),
+                    source,
+                    self.config.format,
+                    &self.fragment_layouts,
+                ));
+            }
+        }
 
         // Acquiring the swapchain image is where vsync backpressure blocks;
         // report it separately so latency graphs show pacing vs work.
@@ -530,10 +748,61 @@ impl Renderer {
                 multiview_mask: None,
             });
             if !self.instances.is_empty() {
-                pass.set_pipeline(&self.pipeline);
-                pass.set_bind_group(0, &self.bind_group, &[]);
                 pass.set_vertex_buffer(0, self.instance_buf.slice(..));
-                pass.draw(0..6, 0..self.instances.len() as u32);
+                if fragment_pipelines.is_empty() {
+                    // The whole frame in one instanced draw, as it has
+                    // always been. Nothing below runs.
+                    pass.set_pipeline(&self.pipeline);
+                    pass.set_bind_group(0, &self.bind_group, &[]);
+                    pass.draw(0..6, 0..self.instances.len() as u32);
+                } else {
+                    // A fragment interrupts the run: draw what came
+                    // before with the über-pipeline, then that one quad
+                    // with its own, then carry on
+                    // (`docs/adr/0015-…`, decision 5). Consecutive
+                    // fragment quads of the same handle still take one
+                    // pipeline set each, which is the 0.6 us the ADR
+                    // measured; runs of ordinary quads are unbroken.
+                    let mut run_start = 0u32;
+                    let mut on_quads = false;
+                    for (i, q) in dl.quads.iter().enumerate() {
+                        if q.kind != QuadKind::Fragment {
+                            continue;
+                        }
+                        let i = i as u32;
+                        if i > run_start {
+                            if !on_quads {
+                                pass.set_pipeline(&self.pipeline);
+                                pass.set_bind_group(0, &self.bind_group, &[]);
+                                on_quads = true;
+                            }
+                            pass.draw(0..6, run_start..i);
+                        }
+                        // `uv[0]` is the index into the side list, which
+                        // is also this fragment's parameter slot.
+                        let slot = q.uv[0] as usize;
+                        if let Some(pipeline) = fragment_pipelines.get(slot) {
+                            pass.set_pipeline(pipeline);
+                            pass.set_bind_group(0, &self.bind_group, &[]);
+                            pass.set_bind_group(
+                                1,
+                                &self.fragment_bind,
+                                &[slot as u32 * self.uniform_align],
+                            );
+                            on_quads = false;
+                            pass.draw(0..6, i..i + 1);
+                        }
+                        run_start = i + 1;
+                    }
+                    let end = self.instances.len() as u32;
+                    if end > run_start {
+                        if !on_quads {
+                            pass.set_pipeline(&self.pipeline);
+                            pass.set_bind_group(0, &self.bind_group, &[]);
+                        }
+                        pass.draw(0..6, run_start..end);
+                    }
+                }
             }
         }
         self.gpu.queue().submit([encoder.finish()]);
@@ -631,9 +900,78 @@ fn create_instance_buffer(device: &wgpu::Device, cap: usize) -> wgpu::Buffer {
     })
 }
 
+fn create_fragment_params_buffer(device: &wgpu::Device, cap: usize, align: u32) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("kui.fragment.params"),
+        size: (cap.max(1) * align as usize) as u64,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    })
+}
+
+fn create_fragment_bind_group(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    buf: &wgpu::Buffer,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("kui.fragment.params"),
+        layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                buffer: buf,
+                offset: 0,
+                size: std::num::NonZeroU64::new(std::mem::size_of::<FragmentParams>() as u64),
+            }),
+        }],
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The globals are one buffer read by two pipelines whose modules
+    /// declare it separately: this crate's `shader.wgsl` for quads, and
+    /// `kui_core::fragment::PRELUDE` for every fragment. If the two
+    /// declarations drift, a fragment reads the wrong bytes and there is
+    /// nothing to catch it at runtime — the buffer is the right size and
+    /// the numbers are just wrong. So: same field names, same order, and
+    /// the size the Rust struct actually is.
+    #[test]
+    fn globals_layout_matches() {
+        let fields = ["viewport", "atlas_size", "time", "scale", "_pad"];
+        let of = |src: &str, name: &str| {
+            let start = src
+                .find(name)
+                .unwrap_or_else(|| panic!("{name} is not declared in\n{src}"));
+            let body = &src[start..];
+            let end = body.find('}').expect("a closing brace");
+            body[..end].to_string()
+        };
+        let quads = of(include_str!("shader.wgsl"), "struct Globals {");
+        let frags = of(kui_core::fragment::PRELUDE, "struct KuiGlobals {");
+        let read = |body: &str| -> Vec<String> {
+            body.lines()
+                .filter_map(|l| l.split_once(':'))
+                .map(|(name, ty)| format!("{}: {}", name.trim(), ty.trim().trim_end_matches(',')))
+                .collect()
+        };
+        let (a, b) = (read(&quads), read(&frags));
+        assert_eq!(a, b, "shader.wgsl and the fragment prelude disagree");
+        assert_eq!(
+            a.len(),
+            fields.len(),
+            "a field was added to the globals without this test being told"
+        );
+        for (row, want) in a.iter().zip(fields) {
+            assert!(row.starts_with(want), "expected {want}, got {row}");
+        }
+        // vec2 + vec2 + f32 + f32 + vec2 = 32 bytes, and a uniform's size
+        // must be a multiple of sixteen, which is what `_pad` is for.
+        assert_eq!(std::mem::size_of::<Globals>(), 32);
+    }
 
     /// Both preprocessed variants of the shader must parse and validate
     /// (pipeline creation would otherwise fail at runtime, in a window).

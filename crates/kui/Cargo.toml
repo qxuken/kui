@@ -68,6 +68,10 @@ name = "waker"
 path = "../../examples/rust/waker.rs"
 
 [[example]]
+name = "fragments"
+path = "../../examples/rust/fragments.rs"
+
+[[example]]
 name = "gallery"
 path = "../../examples/rust/gallery.rs"
 

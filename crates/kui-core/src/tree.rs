@@ -34,6 +34,11 @@ pub enum NodeContent {
     Line(crate::line::LineId),
     /// A cell grid (see `crate::cells`): a terminal's screen as one node.
     Cells(crate::cells::CellsId),
+    /// A box a registered WGSL function paints (see `crate::fragment` and
+    /// `docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
+    /// The handle and the sixteen parameters live in the frame's
+    /// `FragmentList`; the node carries only where.
+    Fragment(crate::fragment::FragmentDrawId),
 }
 
 impl Tree {

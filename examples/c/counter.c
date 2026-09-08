@@ -1037,7 +1037,30 @@ static const char *ACTION_NAMES[] = {
 typedef struct Fixtures {
     uint64_t image;
     uint64_t sound;
+    uint64_t fragment;
 } Fixtures;
+
+/* conformance::FRAGMENT_WGSL, character for character. */
+static const char *CONF_FRAGMENT_WGSL =
+    "fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {\n"
+    "    let t = clamp(in.local.y / max(in.size.y, 1.0), 0.0, 1.0);\n"
+    "    let base = mix(params[0], params[1], t);\n"
+    "    let d = kui_sd_rounded_box(in.local - in.size * 0.5, in.size * 0.5, vec4<f32>(params[2].x));\n"
+    "    let ring = 1.0 - smoothstep(-KUI_AA, KUI_AA, abs(d) - params[2].y);\n"
+    "    return vec4<f32>(mix(base.rgb, params[3].rgb, ring), base.a);\n"
+    "}";
+
+/* conformance::FRAGMENT_PARAMS and FRAGMENT_PARAMS_LONG. */
+static const float CONF_FRAGMENT_PARAMS[16] = {
+    0.85f, 0.30f, 0.25f, 1.0f,
+    0.20f, 0.45f, 0.90f, 1.0f,
+    10.0f, 2.0f, 0.0f, 0.0f,
+    1.0f, 1.0f, 1.0f, 1.0f,
+};
+static const float CONF_FRAGMENT_PARAMS_LONG[18] = {
+    0.1f, 0.2f, 0.3f, 1.0f, 0.4f, 0.5f, 0.6f, 1.0f, 4.0f,
+    1.0f, 0.0f, 0.0f, 0.9f, 0.9f, 0.2f, 1.0f, 7.0f, 8.0f,
+};
 
 static Fixtures conf_fixtures(KuiCtx *ctx) {
     uint8_t rgba[4 * 4 * 4];
@@ -1045,6 +1068,7 @@ static Fixtures conf_fixtures(KuiCtx *ctx) {
     Fixtures f;
     f.image = kui_image_add(ctx, 4, 4, rgba);
     f.sound = kui_sound_add(ctx, (const uint8_t *)"RIFF....WAVE", 12);
+    f.fragment = kui_fragment_add(ctx, KUI_STR(CONF_FRAGMENT_WGSL));
     return f;
 }
 
@@ -1370,6 +1394,36 @@ static void conf_media(KuiCtx *ui, const Fixtures *f, int phase) {
 /* docs/adr/0010-a-segment-primitive.md: three strokes and a box in a 200x120
  * canvas; the elbow's on_click is the one a line ignores. The curve is keyed
  * through kui_polyline's label; the other two are auto-keyed. */
+/* docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md: four
+ * fragments - plain, keyed with a child painted over it, a dead handle that
+ * draws nothing, and one with eighteen params so the warning fires. */
+static void conf_fragments(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)phase;
+    KuiSpec canvas = {.width = {KUI_FIXED, 200}, .height = {KUI_FIXED, 120},
+                      .gap = 4, .bg = 0x14161eff};
+    kui_open(ui, &canvas, NULL);
+
+    KuiSpec plain = {.width = {KUI_FIXED, 80}, .height = {KUI_FIXED, 40}};
+    kui_fragment(ui, f->fragment, CONF_FRAGMENT_PARAMS, 16, &plain);
+
+    KuiSpec card = {.width = {KUI_FIXED, 80}, .height = {KUI_FIXED, 40},
+                    .pad_l = 6, .pad_r = 6, .pad_t = 6, .pad_b = 6,
+                    .radius = 8, .opacity_set = 1, .opacity = 0.5f};
+    kui_fragment_open(ui, KUI_STR("card"), f->fragment, CONF_FRAGMENT_PARAMS, 16, &card);
+    KuiSpec child = {.width = {KUI_FIXED, 20}, .height = {KUI_FIXED, 10}, .bg = 0x202030ff};
+    kui_open(ui, &child, NULL);
+    kui_close(ui);
+    kui_close(ui);
+
+    KuiSpec dead = {.width = {KUI_FIXED, 20}, .height = {KUI_FIXED, 10}};
+    kui_fragment(ui, 0, CONF_FRAGMENT_PARAMS, 16, &dead);
+
+    KuiSpec longp = {.width = {KUI_FIXED, 30}, .height = {KUI_FIXED, 12}};
+    kui_fragment(ui, f->fragment, CONF_FRAGMENT_PARAMS_LONG, 18, &longp);
+
+    kui_close(ui);
+}
+
 static void conf_lines(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
@@ -1842,6 +1896,7 @@ static const ConfScene CONF_SCENES[] = {
     {"cells", conf_cells},
     {"media", conf_media},
     {"lines", conf_lines},
+    {"fragments", conf_fragments},
     {"modal", conf_modal},
     {"composite", conf_composite},
     {"exit", conf_exit},
@@ -2099,12 +2154,23 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
     kui_draw_data(ctx, &dd);
     repf(out, "quads %zu %016llx\n", dd.quad_count,
          (unsigned long long)quad_digest(dd.quads, dd.quad_count));
-    size_t kinds[7] = {0};
+    size_t kinds[8] = {0};
     for (size_t i = 0; i < dd.quad_count; i++) {
-        if (dd.quads[i].kind < 7) kinds[dd.quads[i].kind]++;
+        if (dd.quads[i].kind < 8) kinds[dd.quads[i].kind]++;
     }
-    repf(out, "kinds %zu %zu %zu %zu %zu %zu %zu\n", kinds[0], kinds[1], kinds[2],
-         kinds[3], kinds[4], kinds[5], kinds[6]);
+    repf(out, "kinds %zu %zu %zu %zu %zu %zu %zu %zu\n", kinds[0], kinds[1], kinds[2],
+         kinds[3], kinds[4], kinds[5], kinds[6], kinds[7]);
+    /* A fragment's parameters ride a side list, not the quad, so the digest
+     * cannot reach them; the report carries them as bits, like the core's. */
+    for (size_t i = 0; i < dd.fragment_count; i++) {
+        repf(out, "fragment %zu", i);
+        for (int j = 0; j < 16; j++) {
+            uint32_t bits;
+            memcpy(&bits, &dd.fragments[i].params[j], sizeof bits);
+            repf(out, " %08x", bits);
+        }
+        repf(out, "\n");
+    }
 
     KuiAccessNode nodes[128];
     size_t total = kui_access_tree(ctx, nodes, 128);

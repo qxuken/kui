@@ -114,6 +114,10 @@ pub(crate) enum GhostContent {
         len: u32,
         width: f32,
     },
+    /// A fragment, by value: the handle and the parameters the node last
+    /// declared. The ghost re-declares them every frame it draws, so the
+    /// picture is frozen at departure while the box eases.
+    Fragment(crate::display::FragmentDraw),
 }
 
 pub(crate) struct GhostNode {
@@ -356,6 +360,7 @@ impl DepartStore {
         place: Place,
         text: &crate::text::TextSystem,
         lines: &crate::line::LineStore,
+        fragments: &crate::fragment::FragmentList,
     ) {
         let spec = &tree.specs[root];
         let (Some(t), Some(exit)) = (spec.transition, spec.anim().exit) else {
@@ -402,6 +407,17 @@ impl DepartStore {
                     // A departing grid is its box: the cells are the
                     // frame's and go with it.
                     NodeContent::Cells(_) => GhostContent::Container,
+                    // A departing fragment keeps painting. Its draw is
+                    // sixteen floats and a handle, fixed-size and `Copy`,
+                    // so the ghost owns a copy outright rather than
+                    // indexing a list that has to outlive the frame —
+                    // which is what the fixed sixteen buys. The copy comes
+                    // from the previous frame's list, because that is the
+                    // tree this ghost is being cut out of.
+                    NodeContent::Fragment(id) => match fragments.prev_get(id) {
+                        Some(draw) => GhostContent::Fragment(draw),
+                        None => GhostContent::Container,
+                    },
                     NodeContent::Line(id) => {
                         let (run, pts) = lines.prev_run(id);
                         let first = points.len() as u32;
@@ -620,9 +636,10 @@ mod tests {
         let mut d = DepartStore::default();
         let text = crate::text::TextSystem::new();
         let lines = crate::line::LineStore::default();
+        let fragments = crate::fragment::FragmentList::default();
         let tree = tree_with(departing(NodeSpec::column()), 2);
         d.begin_frame();
-        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines);
+        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments);
         assert_eq!(d.node_count(), 3, "the subtree, not just its root");
 
         let mut seen = Vec::new();
@@ -644,9 +661,10 @@ mod tests {
         let mut d = DepartStore::default();
         let text = crate::text::TextSystem::new();
         let lines = crate::line::LineStore::default();
+        let fragments = crate::fragment::FragmentList::default();
         let tree = tree_with(departing(NodeSpec::column()), 0);
         d.begin_frame();
-        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines);
+        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments);
         assert_eq!(d.keys().collect::<Vec<_>>(), vec![Key::ROOT.str("x")]);
         d.retire(Key::ROOT.str("x"));
         assert!(d.is_empty());
@@ -664,13 +682,14 @@ mod tests {
         let mut d = DepartStore::default();
         let text = crate::text::TextSystem::new();
         let lines = crate::line::LineStore::default();
+        let fragments = crate::fragment::FragmentList::default();
         let tree = tree_with(departing(NodeSpec::column()), 2);
         d.begin_frame();
-        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines);
+        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments);
         assert_eq!(d.keys().count(), 1);
         assert_eq!(d.node_count(), 3);
 
-        d.depart(&tree, 1, 0.05, 1.0, IN_FLOW, &text, &lines);
+        d.depart(&tree, 1, 0.05, 1.0, IN_FLOW, &text, &lines, &fragments);
         assert_eq!(d.keys().count(), 1, "one picture of one node, not two");
         assert_eq!(d.node_count(), 3, "and the budget charged once for it");
     }
@@ -679,6 +698,7 @@ mod tests {
     fn a_node_without_both_halves_never_departs() {
         let text = crate::text::TextSystem::new();
         let lines = crate::line::LineStore::default();
+        let fragments = crate::fragment::FragmentList::default();
         for spec in [
             NodeSpec::column(),
             NodeSpec::column().transition(100.0),
@@ -691,7 +711,7 @@ mod tests {
             let mut d = DepartStore::default();
             let tree = tree_with(spec, 0);
             d.begin_frame();
-            d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines);
+            d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments);
             assert!(d.is_empty());
         }
     }
@@ -702,6 +722,7 @@ mod tests {
     fn depart_sixteens(d: &mut DepartStore, from: u64, count: u64, now: f64) {
         let text = crate::text::TextSystem::new();
         let lines = crate::line::LineStore::default();
+        let fragments = crate::fragment::FragmentList::default();
         let spec = departing(NodeSpec::column());
         for i in from..from + count {
             let mut t = Tree::new();
@@ -728,7 +749,7 @@ mod tests {
                     NodeContent::Container,
                 );
             }
-            d.depart(&t, 1, now, 1.0, IN_FLOW, &text, &lines);
+            d.depart(&t, 1, now, 1.0, IN_FLOW, &text, &lines, &fragments);
         }
     }
 
@@ -796,9 +817,10 @@ mod tests {
         let mut d = DepartStore::default();
         let text = crate::text::TextSystem::new();
         let lines = crate::line::LineStore::default();
+        let fragments = crate::fragment::FragmentList::default();
         let tree = tree_with(departing(NodeSpec::column()), 0);
         d.begin_frame();
-        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines);
+        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments);
         // Frames without a replay: the sweep runs on the 240th.
         for _ in 0..480 {
             d.begin_frame();
@@ -812,13 +834,14 @@ mod tests {
         let mut d = DepartStore::default();
         let text = crate::text::TextSystem::new();
         let lines = crate::line::LineStore::default();
+        let fragments = crate::fragment::FragmentList::default();
         let spec = NodeSpec::column()
             .transition(100.0)
             .easing(Easing::Spring)
             .exit(Enter::from(100.0, 0.0));
         let tree = tree_with(spec, 0);
         d.begin_frame();
-        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines);
+        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments);
         let mut x = 0.0;
         d.replay(0.05, |_, p| x = p.offset.x);
         let expect = Easing::EaseOut.apply(0.5) * 100.0;
@@ -830,6 +853,7 @@ mod tests {
         let mut d = DepartStore::default();
         let text = crate::text::TextSystem::new();
         let lines = crate::line::LineStore::default();
+        let fragments = crate::fragment::FragmentList::default();
         let spec = NodeSpec::column()
             .bg(Color::hex(0xff0000ff))
             .radius(10.0)
@@ -844,7 +868,7 @@ mod tests {
         let mut tree = tree_with(spec, 0);
         tree.size[1] = crate::geom::Size::new(40.0, 20.0);
         d.begin_frame();
-        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines);
+        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments);
         d.replay(0.05, |_, p| {
             assert!((p.opacity - 0.5).abs() < 1e-4, "halfway faded");
             assert!((p.bg.unwrap().a - 0.5).abs() < 1e-4, "halfway transparent");

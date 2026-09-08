@@ -152,18 +152,53 @@ pub const TAB_ROOMY: &[(f32, f32)] = &[(30.0, 12.0), (50.0, 8.0)];
 /// bar, so every tab sits at its label and the bar scrolls by 100.
 pub const TAB_CROWDED: &[f32] = &[60.0, 70.0, 80.0, 90.0];
 
+/// The corpus's fragment source, registered as a fixture and mirrored
+/// character for character by every adapter. A vertical gradient between
+/// two params, plus a ring from a third, so the scene exercises both the
+/// parameter block and the prelude's `kui_sd_rounded_box`.
+pub const FRAGMENT_WGSL: &str = "\
+fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {
+    let t = clamp(in.local.y / max(in.size.y, 1.0), 0.0, 1.0);
+    let base = mix(params[0], params[1], t);
+    let d = kui_sd_rounded_box(in.local - in.size * 0.5, in.size * 0.5, vec4<f32>(params[2].x));
+    let ring = 1.0 - smoothstep(-KUI_AA, KUI_AA, abs(d) - params[2].y);
+    return vec4<f32>(mix(base.rgb, params[3].rgb, ring), base.a);
+}";
+
+/// The `fragments` scene's parameters, mirrored by every adapter: two
+/// gradient stops, a corner radius and a ring width, and a ring colour.
+pub const FRAGMENT_PARAMS: [f32; 16] = [
+    0.85, 0.30, 0.25, 1.0, // params[0]: the top of the gradient
+    0.20, 0.45, 0.90, 1.0, // params[1]: the bottom
+    10.0, 2.0, 0.0, 0.0, // params[2]: the ring's radius and width
+    1.0, 1.0, 1.0, 1.0, // params[3]: the ring's colour
+];
+
+/// Eighteen numbers, so the last two are dropped with a warning.
+pub const FRAGMENT_PARAMS_LONG: [f32; 18] = [
+    0.1, 0.2, 0.3, 1.0, 0.4, 0.5, 0.6, 1.0, 4.0, 1.0, 0.0, 0.0, 0.9, 0.9, 0.2, 1.0, 7.0, 8.0,
+];
+
 /// Handles a scene's builder needs, registered before the first frame.
 #[derive(Clone, Copy)]
 pub struct Fixtures {
     pub image: ImageId,
     pub sound: SoundId,
+    pub fragment: crate::resources::FragmentId,
 }
 
 /// Registers the corpus fixtures on a fresh core, in this order.
 pub fn fixtures(core: &mut Core) -> Fixtures {
     let image = core.resources.add_image(IMAGE_W, IMAGE_H, image_pixels());
     let sound = core.add_sound(SOUND_BYTES.to_vec());
-    Fixtures { image, sound }
+    let fragment = core
+        .add_fragment(FRAGMENT_WGSL)
+        .expect("the corpus fragment must compile");
+    Fixtures {
+        image,
+        sound,
+        fragment,
+    }
 }
 
 /// The arrow keys [`Step::Arrow`] indexes, in the order a step line
@@ -387,6 +422,10 @@ pub struct Expect {
     /// Exact segment-quad count: one per straight piece of every `line`,
     /// so a curve's flattening is pinned too.
     pub segments: usize,
+    /// Exact fragment-quad count: one per `fragment` node that resolved
+    /// its handle. A node whose handle is dead emits none, which is how
+    /// the scene pins that too.
+    pub fragments: usize,
     /// Glyph quads are one per rendered glyph — a lower bound keeps a font
     /// that maps a run differently from failing the build.
     pub glyphs_min: usize,
@@ -463,6 +502,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 1,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 7,
             access: &[
                 "0 window ||",
@@ -499,6 +539,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 0,
             access: &["0 window ||"],
             events: &[],
@@ -525,6 +566,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 0,
             access: &["0 window ||"],
             events: &[],
@@ -554,6 +596,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 0,
             access: &["0 window ||", "1 scrollView ||"],
             events: &[],
@@ -579,6 +622,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 0,
             access: &["0 window ||", "1 scrollView ||"],
             events: &[],
@@ -607,6 +651,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 0,
             access: &["0 window ||"],
             events: &[],
@@ -633,6 +678,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 10,
             access: &[
                 "0 window ||",
@@ -671,6 +717,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 3,
             access: &[
                 "0 window kui conformance||",
@@ -717,6 +764,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 3,
             access: &[
                 "0 window kui conformance||",
@@ -765,6 +813,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 11,
             access: &[
                 "0 window ||",
@@ -823,6 +872,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 0,
             access: &[
                 "0 window ||",
@@ -873,6 +923,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 3,
             access: &[
                 "0 window ||",
@@ -907,6 +958,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 10,
             access: &["0 window ||", "1 terminal term||hello world"],
             events: &["hit -"],
@@ -938,6 +990,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 1,
             segments: 0,
+            fragments: 0,
             glyphs_min: 20,
             access: &["0 window ||", "1 image ||"],
             events: &[],
@@ -970,11 +1023,36 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 34,
+            fragments: 0,
             glyphs_min: 0,
             access: &["0 window ||"],
             events: &[],
             announcements: &[],
             warnings: &["line-ignores-input"],
+            commands: &[],
+            audio: &[],
+            title: None,
+        },
+    },
+    Scene {
+        name: "fragments",
+        doc: "A box a registered WGSL function paints               (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`):               a plain gradient, a rounded and faded one with a child painted               over it, one whose handle is dead — which draws nothing, the               documented fallback for every resource — and one that declares               eighteen params, so the truncation warning is pinned. The               parameters ride a side list, not the quad, so the report               carries them as bits on their own lines.",
+        custom: &["key"],
+        elements: &["box", "fragment"],
+        build: build_fragments,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            solid: 2,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            fragments: 3,
+            glyphs_min: 0,
+            access: &["0 window ||"],
+            events: &[],
+            announcements: &[],
+            warnings: &["fragment-params-truncated"],
             commands: &[],
             audio: &[],
             title: None,
@@ -1046,6 +1124,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 3,
             access: &[
                 "0 window ||",
@@ -1126,6 +1205,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 20,
             access: &[
                 "0 window ||",
@@ -1216,6 +1296,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 3,
             access: &["0 window ||", "1 group A||", "1 group B||"],
             events: &["hit -"],
@@ -1263,6 +1344,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 6,
             access: &["0 window ||", "1 staticText closed||"],
             events: &[
@@ -1318,6 +1400,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 6,
             access: &["0 window ||", "1 staticText closed||"],
             events: &[
@@ -1363,6 +1446,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 8,
             access: &["0 window ||", "1 group 3 results||", "1 group ||"],
             events: &[],
@@ -1402,6 +1486,7 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
+            fragments: 0,
             glyphs_min: 0,
             access: &["0 window ||"],
             events: &[
@@ -2010,6 +2095,65 @@ fn build_lines(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// while the modal is up. The titlebar is the one platform-dependent
 /// height in the tree (34 logical px, 32 on Windows), so the two points
 /// above it and below it are chosen to land the same way on either.
+/// The `fragments` scene. Sizes are fixed and there is no text, so the
+/// digest is geometry alone and holds on every machine.
+fn build_fragments(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
+    ui.with(
+        NodeSpec::column()
+            .width(Sizing::Fixed(200.0))
+            .height(Sizing::Fixed(120.0))
+            .gap(4.0)
+            .bg(Color::hex(0x14161eff)),
+        |ui| {
+            ui.fragment(
+                f.fragment,
+                &FRAGMENT_PARAMS,
+                NodeSpec::column()
+                    .width(Sizing::Fixed(80.0))
+                    .height(Sizing::Fixed(40.0)),
+            );
+            // Rounded, faded, and holding a child that paints over it —
+            // the child's own solid is the one the fade multiplies too.
+            ui.fragment_with_keyed(
+                "card",
+                f.fragment,
+                &FRAGMENT_PARAMS,
+                NodeSpec::column()
+                    .width(Sizing::Fixed(80.0))
+                    .height(Sizing::Fixed(40.0))
+                    .pad(6.0)
+                    .radius(8.0)
+                    .opacity(0.5),
+                |ui| {
+                    ui.with(
+                        NodeSpec::column()
+                            .width(Sizing::Fixed(20.0))
+                            .height(Sizing::Fixed(10.0))
+                            .bg(Color::hex(0x202030ff)),
+                        |_| {},
+                    );
+                },
+            );
+            // A handle that is live in no session: draws nothing.
+            ui.fragment(
+                crate::resources::FragmentId::from_ffi(0),
+                &FRAGMENT_PARAMS,
+                NodeSpec::column()
+                    .width(Sizing::Fixed(20.0))
+                    .height(Sizing::Fixed(10.0)),
+            );
+            // Eighteen params: the last two are dropped, with a warning.
+            ui.fragment(
+                f.fragment,
+                &FRAGMENT_PARAMS_LONG,
+                NodeSpec::column()
+                    .width(Sizing::Fixed(30.0))
+                    .height(Sizing::Fixed(12.0)),
+            );
+        },
+    );
+}
+
 fn build_modal(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
     let button = |kind: &str, label: &str| {
         NodeSpec::row()
@@ -2549,6 +2693,9 @@ fn observe(core: &Core, cov: &mut Coverage) {
             NodeContent::Line(_) => {
                 cov.elements.insert("line");
             }
+            NodeContent::Fragment(_) => {
+                cov.elements.insert("fragment");
+            }
         }
 
         if i > 0 && is_label_keyed(t, i) {
@@ -2566,7 +2713,12 @@ pub struct Output {
     pub quad_count: usize,
     pub quad_digest: u64,
     /// Per [`QuadKind`], in its discriminant order.
-    pub kinds: [usize; 7],
+    pub kinds: [usize; 8],
+    /// Every `FragmentDraw` the frame emitted, in the order the quads
+    /// index them. The parameters are not on the quad, so the digest
+    /// cannot reach them; the report carries them instead, as bits, so no
+    /// adapter has to agree on how a float prints.
+    pub fragments: Vec<[f32; 16]>,
     pub nodes: Vec<NodeRow>,
     pub events: Vec<(String, String)>,
     /// Everything `announce` queued over the whole scene, in order —
@@ -2864,8 +3016,10 @@ pub fn drive(
     let announcements = core.take_announcements();
     let warnings = core.take_warnings().into_iter().map(|w| w.code).collect();
     let nodes = rows(core.access_tree());
-    let quads = &core.output().0.quads;
-    let mut kinds = [0usize; 7];
+    let dl = core.output().0;
+    let fragment_params: Vec<[f32; 16]> = dl.fragments.iter().map(|f| f.params).collect();
+    let quads = &dl.quads;
+    let mut kinds = [0usize; 8];
     for q in quads.iter() {
         kinds[match q.kind {
             QuadKind::Solid => 0,
@@ -2875,12 +3029,14 @@ pub fn drive(
             QuadKind::GlyphSubpixel => 4,
             QuadKind::Shadow => 5,
             QuadKind::Segment => 6,
+            QuadKind::Fragment => 7,
         }] += 1;
     }
     Output {
         quad_count: quads.len(),
         quad_digest: quad_digest(quads),
         kinds,
+        fragments: fragment_params,
         nodes,
         events,
         announcements,
@@ -3013,15 +3169,23 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
     let _ = writeln!(s, "quads {} {:016x}", out.quad_count, out.quad_digest);
     let _ = writeln!(
         s,
-        "kinds {} {} {} {} {} {} {}",
+        "kinds {} {} {} {} {} {} {} {}",
         out.kinds[0],
         out.kinds[1],
         out.kinds[2],
         out.kinds[3],
         out.kinds[4],
         out.kinds[5],
-        out.kinds[6]
+        out.kinds[6],
+        out.kinds[7]
     );
+    for (i, params) in out.fragments.iter().enumerate() {
+        let _ = write!(s, "fragment {i}");
+        for v in params {
+            let _ = write!(s, " {:08x}", v.to_bits());
+        }
+        let _ = writeln!(s);
+    }
     for n in &out.nodes {
         let _ = writeln!(
             s,

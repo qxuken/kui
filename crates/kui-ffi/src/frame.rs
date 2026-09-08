@@ -105,6 +105,73 @@ pub extern "C" fn kui_image(ptr: *mut KuiCtx, id: u64, spec: *const KuiSpec) {
     });
 }
 
+/// A box the registered WGSL `id` paints; see `Core::fragment_node`. It
+/// has no intrinsic size, so `spec` must give it one. `params` may be null
+/// when `count` is 0; more than sixteen are dropped with a warning.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_fragment(
+    ptr: *mut KuiCtx,
+    id: u64,
+    params: *const f32,
+    count: usize,
+    spec: *const KuiSpec,
+) {
+    guard((), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
+        let p = fragment_params(params, count);
+        let spec = fragment_spec(spec);
+        c.core()
+            .fragment_node(kui_core::FragmentId::from_ffi(id), p, spec);
+    });
+}
+
+/// `kui_fragment` as a parent: its children paint over it. Balance with
+/// `kui_close`. An empty `label` is the unkeyed form.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_fragment_open(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    id: u64,
+    params: *const f32,
+    count: usize,
+    spec: *const KuiSpec,
+) {
+    guard((), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
+        let p = fragment_params(params, count);
+        let spec = fragment_spec(spec);
+        let id = kui_core::FragmentId::from_ffi(id);
+        match opt_str(label) {
+            Some(label) => c.core().open_fragment_keyed(&label, id, p, spec),
+            None => c.core().open_fragment(id, p, spec),
+        };
+        // `kui_close` pops one tooltip slot per open node.
+        c.open_tooltips.push(None);
+    });
+}
+
+/// The `params` slice behind a possibly-null pointer.
+fn fragment_params<'a>(params: *const f32, count: usize) -> &'a [f32] {
+    if params.is_null() || count == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(params, count) }
+    }
+}
+
+/// A fragment's spec: the whole box vocabulary, or a bare column when the
+/// host passed NULL.
+fn fragment_spec(spec: *const KuiSpec) -> kui_core::NodeSpec {
+    match unsafe { spec.as_ref() } {
+        Some(s) => spec_of(s, NONE, NONE, NONE, NONE),
+        None => kui_core::NodeSpec::column(),
+    }
+}
+
 /// A round-capped stroke from (x0, y0) to (x1, y1); see `Core::line_node`.
 /// `spec` may be NULL. `width <= 0` is 1; `color` 0 is the default
 /// foreground, like a text style's.
@@ -617,6 +684,23 @@ pub extern "C" fn kui_draw_data(ptr: *mut KuiCtx, out: *mut KuiDrawData) -> bool
         if !out_accepts(out) {
             return false;
         }
+        // The fragment draws are transcribed rather than cast: the core's
+        // `FragmentDraw` holds a `FragmentId`, which is a slotmap key, and
+        // `KuiFragmentDraw` holds the `u64` a host can pass back. Kept on
+        // the context so the pointer outlives this call.
+        let fragments: Vec<KuiFragmentDraw> = {
+            let (dl, _) = c.core().output();
+            dl.fragments
+                .iter()
+                .map(|f| KuiFragmentDraw {
+                    fragment: f.id.to_ffi(),
+                    params: f.params,
+                })
+                .collect()
+        };
+        c.fragment_draws = fragments;
+        let fragment_draws = c.fragment_draws.as_ptr();
+        let fragment_count = c.fragment_draws.len();
         let (dl, atlas) = c.core().output();
         let data = KuiDrawData {
             quads: dl.quads.as_ptr().cast(),
@@ -628,6 +712,9 @@ pub extern "C" fn kui_draw_data(ptr: *mut KuiCtx, out: *mut KuiDrawData) -> bool
             atlas_size: atlas.size,
             atlas_dirty: atlas.dirty,
             atlas_epoch: atlas.epoch,
+            fragments: fragment_draws,
+            fragment_count,
+            time: dl.time,
             ..Default::default()
         };
         atlas.dirty = false;

@@ -101,7 +101,7 @@ extern "C" {
  * elements it reads at the wrong places. Recompile and nothing in your
  * source changes; a zeroed bg is none.
  */
-#define KUI_ABI_VERSION 8u
+#define KUI_ABI_VERSION 9u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -187,9 +187,18 @@ enum { KUI_START = 0, KUI_CENTER = 1, KUI_END = 2 };
  * quad is the bounding box padded past the edge ramp. A renderer evaluates
  * the capsule SDF against the fragment position. Ignores radius,
  * border_color and blur. (docs/adr/0010-a-segment-primitive.md) */
+/* KUI_QUAD_FRAGMENT: a box a registered WGSL function paints. `uv[0]` is an
+ * index into KuiDrawData.fragments, which carries the handle and the
+ * sixteen parameters; the other three words are zero. rect, radius, clip
+ * and clip_radius are the node's and mean what they always do. `color.a`
+ * is the group opacity and the rest of `color` is unused, because the
+ * fragment returns its own colour; border_color, border_w and blur are
+ * zero. Get the WGSL with kui_fragment_source, which wraps the app's
+ * function in the prelude and epilogue the core validated it against.
+ * (docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md) */
 enum { KUI_QUAD_SOLID = 0, KUI_QUAD_GLYPH_MASK = 1, KUI_QUAD_GLYPH_COLOR = 2,
        KUI_QUAD_IMAGE = 3, KUI_QUAD_GLYPH_SUBPIXEL = 4, KUI_QUAD_SHADOW = 5,
-       KUI_QUAD_SEGMENT = 6 };
+       KUI_QUAD_SEGMENT = 6, KUI_QUAD_FRAGMENT = 7 };
 /* Font families (KuiTextStyle.family) */
 enum { KUI_FONT_SANS = 0, KUI_FONT_SERIF = 1, KUI_FONT_MONO = 2 };
 /* Line breaking (KuiTextStyle.wrap) */
@@ -571,6 +580,10 @@ typedef struct KuiSpec {
      * control - since a plain box is elided and takes its description with
      * it. Borrowed while the node opens. */
     KuiStr description;
+    /* Non-zero: ask for another frame after this one, every frame this node
+     * is declared. What a kui_fragment reading `time` needs; opt-in,
+     * because it takes the loop off input-driven. One node is enough. */
+    uint32_t animate;
 } KuiSpec;
 
 /* Disclosure state (KuiSpec.expanded): the schema index plus one, so zero
@@ -1006,6 +1019,15 @@ typedef struct KuiQuad {
     float clip_radius[4];
 } KuiQuad;
 
+/* [out-array] One KUI_QUAD_FRAGMENT's draw, addressed by that quad's uv[0].
+ * `params` is what the node declared, zero-padded to sixteen; the shader
+ * reads them as four vec4<f32>. `fragment` is the handle, for
+ * kui_fragment_source and for keying a pipeline cache. */
+typedef struct KuiFragmentDraw {
+    uint64_t fragment;
+    float params[16];
+} KuiFragmentDraw;
+
 /* [out] Everything a renderer needs for the finished frame. */
 typedef struct KuiDrawData {
     uint32_t size;                /* = sizeof(KuiDrawData) in, bytes filled out */
@@ -1017,6 +1039,12 @@ typedef struct KuiDrawData {
     uint32_t atlas_size;
     bool atlas_dirty;             /* re-upload when set or epoch changed */
     uint64_t atlas_epoch;
+    /* One per KUI_QUAD_FRAGMENT quad, indexed by its uv[0]; NULL and 0 on a
+     * frame that draws none. Added in ABI 9. */
+    const KuiFragmentDraw *fragments;
+    size_t fragment_count;
+    /* The frame clock in seconds, for a fragment's `time`. */
+    float time;
 } KuiDrawData;
 #define KUI_DRAW_DATA_INIT ((KuiDrawData){ .size = sizeof(KuiDrawData) })
 
@@ -1392,6 +1420,25 @@ void kui_font_remove(KuiCtx *ctx, uint64_t id);
  * failure. Handles are stable until kui_image_remove. */
 uint64_t kui_image_add(KuiCtx *ctx, uint32_t w, uint32_t h, const uint8_t *rgba);
 void kui_image_remove(KuiCtx *ctx, uint64_t id);
+/* -- Fragments ------------------------------------------------------------ */
+/* Registers a WGSL fragment function for kui_fragment; returns a handle, 0
+ * when the source does not compile (with a "fragment-rejected" warning
+ * carrying the compiler's message in the app's own line numbers). The app
+ * writes one function:
+ *
+ *   fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32>
+ *
+ * and the core wraps it in the prelude and epilogue that give it the node's
+ * rounded box, the inherited clip, the group opacity and the blend.
+ * Idempotent by source: the same text gets the same handle without being
+ * validated twice. (docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md) */
+uint64_t kui_fragment_add(KuiCtx *ctx, KuiStr wgsl);
+void kui_fragment_remove(KuiCtx *ctx, uint64_t id);
+/* The whole WGSL module behind a handle - the app's source between the
+ * core's prelude and epilogue - which is what a renderer compiles. Writes
+ * a borrowed pointer valid until the next call; false when the handle is
+ * not live here. */
+bool kui_fragment_source(KuiCtx *ctx, uint64_t id, KuiStr *out);
 /* -- Sounds --------------------------------------------------------------- */
 /* Registers a sound from its encoded file bytes (wav/ogg/mp3/flac, copied);
  * returns a handle for KuiSpec.click_sound / hover_sound, kui_audio and
@@ -1422,6 +1469,19 @@ void kui_audio_ended(KuiCtx *ctx, uint64_t playback);
 /* An image node. Fit sizing = the image's pixel size as logical px; a Fit
  * height against a resolved width keeps the aspect; radius rounds corners. */
 void kui_image(KuiCtx *ctx, uint64_t id, const KuiSpec *spec);
+/* A box the registered WGSL `id` paints (kui_fragment_add). An ordinary node
+ * otherwise: it lays out, rounds, clips, fades and takes input like a box.
+ * It has NO intrinsic size, so spec must give it one. `params` is up to
+ * sixteen floats, zero-padded; more are dropped with a
+ * "fragment-params-truncated" warning. `params` may be NULL when count is 0,
+ * and spec may be NULL.
+ * (docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md) */
+void kui_fragment(KuiCtx *ctx, uint64_t id, const float *params, size_t count,
+                  const KuiSpec *spec);
+/* kui_fragment as a parent: its children paint over it. Balance with
+ * kui_close. An empty label is the unkeyed form. */
+void kui_fragment_open(KuiCtx *ctx, KuiStr label, uint64_t id,
+                       const float *params, size_t count, const KuiSpec *spec);
 /* A round-capped stroke from (x0, y0) to (x1, y1), in the parent's box space
  * (docs/adr/0010-a-segment-primitive.md). Never in layout: the node is a float
  * sized to the stroke's bounding box, so spec's sizing, padding and alignment

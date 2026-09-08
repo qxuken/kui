@@ -60,7 +60,7 @@ export function createEncoder(P) {
   function checkProps(type, p) {
     const element = ELEMENT_OF[type] ?? type;
     const own = OWN.get(element);
-    if (own === undefined) return; // fragment, or an element that already threw
+    if (own === undefined) return; // a JSX <>…</>, or an element that already threw
     const rows = ROWS.get(element) ?? KNOWN;
     for (const k in p) {
       if (rows.has(k) || own.has(k)) continue;
@@ -474,7 +474,17 @@ export function createEncoder(P) {
     element(node);
   }
 
+  // A JSX <>…</> that reached here as an object rather than being spliced
+  // by jsx(): splice it now. Keyed on the runtime's own sentinel, which is
+  // a symbol — the kui element named `fragment` is a different thing and is
+  // handled in the switch below.
+  const JSX_FRAGMENT = Symbol.for('kui.jsx.fragment');
+
   function element(el) {
+    if (el.type === JSX_FRAGMENT) {
+      children(el.children);
+      return;
+    }
     const p = el.props ?? {};
     checkProps(el.type, p);
     reserve(96);
@@ -536,6 +546,29 @@ export function createEncoder(P) {
         f[fi++] = Number(id >> 32n);
         f[fi++] = Number(id & 0xffffffffn);
         props(p, null, false);
+        return;
+      }
+      case 'fragment': {
+        // A box the registered WGSL `src` paints. An open node, so its
+        // children paint over it and it closes like any parent
+        // (docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md).
+        if (typeof p.src !== 'string') throw new Error('<fragment> needs a src (an id from addFragment)');
+        const params = p.params ?? [];
+        if (!Array.isArray(params)) throw new Error('<fragment> params must be an array of numbers');
+        for (const n of params) {
+          if (typeof n !== 'number' || !Number.isFinite(n)) throw new Error(`<fragment> bad param ${JSON.stringify(n)}`);
+        }
+        const id = BigInt('0x' + p.src);
+        reserve(4 + params.length);
+        f[fi++] = OP.fragment;
+        f[fi++] = Number(id >> 32n);
+        f[fi++] = Number(id & 0xffffffffn);
+        f[fi++] = params.length;
+        for (const n of params) f[fi++] = n;
+        props(p, el.key, false);
+        children(el.children);
+        reserve(4);
+        f[fi++] = OP.close;
         return;
       }
       case 'line': {
@@ -642,9 +675,7 @@ export function createEncoder(P) {
         f[fi++] = alignOf(at[1]);
         return;
       }
-      case 'fragment':
-        children(el.children);
-        return;
+
       case undefined:
         throw new Error('element without a type — did it come from kui/jsx-runtime?');
       default:

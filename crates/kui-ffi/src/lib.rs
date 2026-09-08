@@ -88,6 +88,8 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             events: Vec::new(),
             last_payload: None,
             last_edit_text: None,
+            fragment_source: String::new(),
+            fragment_draws: Vec::new(),
             last_warnings: Vec::new(),
             last_access: Default::default(),
             last_announcements: Vec::new(),

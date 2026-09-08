@@ -78,6 +78,12 @@ fn check(scene: &Scene) {
     assert_eq!(out.kinds[5], e.shadows, "{name}: shadow quads");
     assert_eq!(out.kinds[3], e.images, "{name}: image quads");
     assert_eq!(out.kinds[6], e.segments, "{name}: segment quads");
+    assert_eq!(out.kinds[7], e.fragments, "{name}: fragment quads");
+    assert_eq!(
+        out.fragments.len(),
+        e.fragments,
+        "{name}: a fragment draw for every fragment quad"
+    );
     let glyphs = out.kinds[1] + out.kinds[2] + out.kinds[4];
     assert!(
         glyphs >= e.glyphs_min,

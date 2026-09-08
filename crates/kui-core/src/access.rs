@@ -653,6 +653,12 @@ pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
         // (`docs/adr/0010-a-segment-primitive.md`, decision 7).
         NodeContent::Line(_) => return None,
         NodeContent::Cells(_) => return Some(Role::Terminal),
+        // A fragment is paint. On its own it is decoration and is elided
+        // like plain structure, but unlike a line it does take input, so
+        // the derivation below still reaches it: a fragment with an
+        // `on_click` is a button, and one that means something says so
+        // with its own `role` and `label`.
+        NodeContent::Fragment(_) => {}
         NodeContent::Container => {}
     }
     match spec.window {

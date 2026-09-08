@@ -11,3 +11,12 @@ publish = ["forgejo"]
 kui-core.workspace = true
 wgpu.workspace = true
 bytemuck.workspace = true
+
+[dev-dependencies]
+pollster.workspace = true
+
+# Not a divan bench: it drives a GPU and prints a table. See its module doc
+# and `docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`.
+[[bench]]
+name = "split"
+harness = false

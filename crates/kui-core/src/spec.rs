@@ -486,6 +486,10 @@ pub struct NodeSpec {
     /// `on_key` / `window` are always hover-tracked; clicks on a merely
     /// hoverable node emit nothing.
     pub hoverable: bool,
+    /// Ask the driver for another frame after this one, every frame this
+    /// node is declared (`animate`). What a `fragment` reading `time`
+    /// needs; opt-in, because it takes the loop off input-driven.
+    pub animate: bool,
     /// Window-chrome role (drag handle / window button). A chrome node's
     /// interactions become `WindowCommand`s for the frame driver instead of
     /// `UiEvent`s; `on_click` is ignored on such nodes.
@@ -1143,6 +1147,13 @@ impl NodeSpec {
         self
     }
 
+    /// Ask for another frame after this one, for as long as this node is
+    /// declared. See the `animate` prop.
+    pub fn animate(mut self) -> Self {
+        self.animate = true;
+        self
+    }
+
     pub fn on_click(mut self, payload: impl Into<Value>) -> Self {
         self.events_mut().on_click = Some(payload.into());
         self
@@ -1670,6 +1681,7 @@ impl PartialEq for NodeSpec {
         self.layout == other.layout
             && self.style == other.style
             && self.hoverable == other.hoverable
+            && self.animate == other.animate
             && self.window == other.window
             && self.transition == other.transition
             && self.slide == other.slide

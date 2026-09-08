@@ -202,6 +202,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "center" => (s.main_align, s.cross_align) = (1, 1),
             "bg" => s.bg = C,
             "hoverable" => s.hoverable = 1,
+            "animate" => s.animate = 1,
             "window" => s.window_role = 2, // KUI_WINDOW_* = schema index + 1
             "transition" => s.transition_ms = F,
             "easing" => s.easing = 1,
@@ -355,6 +356,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         float_dy: -8.0,
         float_fit: 1,
         hoverable: 1,
+        animate: 1,
         window_role: 1,
         transition_ms: 150.0,
         easing: 3,
@@ -456,6 +458,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
                 .fit(),
         )
         .hoverable()
+        .animate()
         .window_drag()
         .transition(150.0)
         .easing(kui_core::Easing::EaseInOut)

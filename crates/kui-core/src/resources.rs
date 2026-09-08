@@ -38,6 +38,21 @@ new_key_type! {
     /// driver's audio backend decodes. Played through `Core::play`, an
     /// `audio` node, or `NodeSpec::click_sound` / `hover_sound`.
     pub struct SoundId;
+    /// A registered WGSL fragment function (`Core::add_fragment`), drawn
+    /// by a `fragment` node
+    /// (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
+    pub struct FragmentId;
+}
+
+impl FragmentId {
+    /// The handle as a plain integer for C/Lua/JS (generation check intact).
+    pub fn to_ffi(self) -> u64 {
+        self.data().as_ffi()
+    }
+
+    pub fn from_ffi(raw: u64) -> Self {
+        Self::from(slotmap::KeyData::from_ffi(raw))
+    }
 }
 
 impl SoundId {
@@ -95,6 +110,7 @@ pub enum ResourceKind {
     Image,
     Font,
     Sound,
+    Fragment,
 }
 
 impl ResourceKind {
@@ -103,6 +119,7 @@ impl ResourceKind {
             Self::Image => "image",
             Self::Font => "font",
             Self::Sound => "sound",
+            Self::Fragment => "fragment",
         }
     }
 
@@ -112,6 +129,7 @@ impl ResourceKind {
             Self::Image => "draws nothing",
             Self::Font => "shapes as sans-serif",
             Self::Sound => "plays nothing",
+            Self::Fragment => "draws nothing",
         }
     }
 }
@@ -166,6 +184,7 @@ struct Mint {
     images: SlotMap<ImageId, SessionId>,
     fonts: SlotMap<FontId, SessionId>,
     sounds: SlotMap<SoundId, SessionId>,
+    fragments: SlotMap<FragmentId, SessionId>,
 }
 
 static MINT: LazyLock<Mutex<Mint>> = LazyLock::new(Mutex::default);
@@ -198,6 +217,14 @@ pub struct SoundEntry {
     pub bytes: Arc<[u8]>,
 }
 
+/// A registered fragment: the app's WGSL as it was given, which is what a
+/// backend compiles (around the core's prelude and epilogue — see
+/// `crate::fragment`) and what a C host reads back to compile itself.
+pub struct FragmentEntry {
+    /// The app's source, without the prelude or the epilogue.
+    pub source: Arc<str>,
+}
+
 /// One session's registry. The maps are secondary to the process-wide
 /// [`Mint`] (see the module doc), so a lookup that misses is a handle this
 /// session never registered or has since removed — never somebody else's
@@ -207,6 +234,7 @@ pub struct Resources {
     pub(crate) images: SparseSecondaryMap<ImageId, ImageEntry>,
     pub(crate) fonts: SparseSecondaryMap<FontId, FontEntry>,
     pub(crate) sounds: SparseSecondaryMap<SoundId, SoundEntry>,
+    pub(crate) fragments: SparseSecondaryMap<FragmentId, FragmentEntry>,
     /// Handles of other sessions this registry was asked for since the
     /// last drain, each once. A `RefCell` because the resolves that find
     /// them (`family_of` under a shaping closure, `image` under the
@@ -223,6 +251,7 @@ impl Resources {
             images: SparseSecondaryMap::new(),
             fonts: SparseSecondaryMap::new(),
             sounds: SparseSecondaryMap::new(),
+            fragments: SparseSecondaryMap::new(),
             foreign: RefCell::new(Vec::new()),
         }
     }
@@ -248,6 +277,7 @@ impl Resources {
                 ResourceKind::Image => m.images.get(ImageId::from_ffi(raw)).copied(),
                 ResourceKind::Font => m.fonts.get(FontId::from_ffi(raw)).copied(),
                 ResourceKind::Sound => m.sounds.get(SoundId::from_ffi(raw)).copied(),
+                ResourceKind::Fragment => m.fragments.get(FragmentId::from_ffi(raw)).copied(),
             }
         };
         let Some(owner) = owner else {
@@ -346,6 +376,53 @@ impl Resources {
         entry
     }
 
+    /// The handle an identical source already has, if any. What makes a
+    /// view that calls `add_fragment` every frame cost a comparison
+    /// instead of a validation (55-73 us) and a pipeline build.
+    pub(crate) fn find_fragment(&self, source: &str) -> Option<FragmentId> {
+        self.fragments
+            .iter()
+            .find(|(_, f)| &*f.source == source)
+            .map(|(id, _)| id)
+    }
+
+    /// Registers validated WGSL, or hands back the handle an identical
+    /// source already has.
+    pub(crate) fn add_fragment(&mut self, source: &str) -> FragmentId {
+        if let Some(id) = self.find_fragment(source) {
+            return id;
+        }
+        let id = mint().fragments.insert(self.session);
+        self.fragments.insert(
+            id,
+            FragmentEntry {
+                source: Arc::from(source),
+            },
+        );
+        id
+    }
+
+    pub(crate) fn remove_fragment(&mut self, id: FragmentId) -> Option<FragmentEntry> {
+        let entry = self.fragments.remove(id);
+        match entry {
+            Some(_) => {
+                mint().fragments.remove(id);
+            }
+            None => self.note_miss(ResourceKind::Fragment, id.to_ffi()),
+        }
+        entry
+    }
+
+    /// The WGSL behind a fragment handle, if it is live here. A miss is
+    /// what makes the node draw nothing, and records a foreign handle.
+    pub fn fragment(&self, id: FragmentId) -> Option<&Arc<str>> {
+        let entry = self.fragments.get(id);
+        if entry.is_none() {
+            self.note_miss(ResourceKind::Fragment, id.to_ffi());
+        }
+        entry.map(|f| &f.source)
+    }
+
     /// Registers a sound from its encoded file bytes.
     pub fn add_sound(&mut self, bytes: Vec<u8>) -> SoundId {
         let id = mint().sounds.insert(self.session);
@@ -396,6 +473,9 @@ impl Drop for Resources {
         }
         for (id, _) in self.fonts.iter() {
             m.fonts.remove(id);
+        }
+        for (id, _) in self.fragments.iter() {
+            m.fragments.remove(id);
         }
         for (id, _) in self.sounds.iter() {
             m.sounds.remove(id);

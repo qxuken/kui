@@ -4,9 +4,15 @@
 // before compiling — WGSL has no preprocessor and `enable` is all-or-nothing.
 //DUAL:enable dual_source_blending;
 
+// Must stay byte for byte what `kui_core::fragment::PRELUDE` declares as
+// `KuiGlobals`, because a fragment pipeline binds this same buffer at
+// group 0; `globals_layout_matches` in lib.rs is the test.
 struct Globals {
     viewport: vec2<f32>,
     atlas_size: vec2<f32>,
+    time: f32,
+    scale: f32,
+    _pad: vec2<f32>,
 };
 
 @group(0) @binding(0) var<uniform> globals: Globals;

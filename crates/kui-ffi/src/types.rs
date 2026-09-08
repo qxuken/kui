@@ -21,6 +21,12 @@ pub struct KuiCtx {
     pub(crate) last_payload: Option<Box<KuiValue>>,
     /// Text most recently handed out by kui_edit_text; freed on the next call.
     pub(crate) last_edit_text: Option<String>,
+    /// The WGSL module most recently handed out by `kui_fragment_source`;
+    /// valid until the next call, like every other borrowed string here.
+    pub(crate) fragment_source: String,
+    /// This frame's fragment draws, in `KuiFragmentDraw` form, so
+    /// `kui_draw_data` can hand out a pointer that outlives the call.
+    pub(crate) fragment_draws: Vec<KuiFragmentDraw>,
     /// Warnings most recently handed out by kui_take_warnings; their strings
     /// stay valid until the next call.
     pub(crate) last_warnings: Vec<kui_core::Warning>,
@@ -70,6 +76,8 @@ impl KuiCtx {
             events: Vec::new(),
             last_payload: None,
             last_edit_text: None,
+            fragment_source: String::new(),
+            fragment_draws: Vec::new(),
             last_warnings: Vec::new(),
             last_access: Default::default(),
             last_announcements: Vec::new(),
@@ -405,6 +413,11 @@ pub struct KuiSpec {
     /// a control — since a plain box is elided and takes its description
     /// with it. Borrowed while the node opens.
     pub description: KuiStr,
+    /// Non-zero: ask for another frame after this one, every frame this
+    /// node is declared (`animate`). What a `kui_fragment` reading `time`
+    /// needs. Opt-in, because it takes the loop off input-driven; one node
+    /// asking is enough for the window.
+    pub animate: u32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -1003,6 +1016,17 @@ pub struct KuiQuad {
     pub clip_radius: [f32; 4],
 }
 
+/// One `KUI_QUAD_FRAGMENT`'s draw, addressed by that quad's `uv[0]`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiFragmentDraw {
+    /// The registered handle, for `kui_fragment_source` and for keying a
+    /// renderer's pipeline cache.
+    pub fragment: u64,
+    /// What the node declared, zero-padded to sixteen.
+    pub params: [f32; 16],
+}
+
 #[repr(C)]
 pub struct KuiDrawData {
     /// [out] reservation; see `KUI_DRAW_DATA_INIT`.
@@ -1018,6 +1042,12 @@ pub struct KuiDrawData {
     /// Re-upload the atlas texture when either of these changes/sets.
     pub atlas_dirty: bool,
     pub atlas_epoch: u64,
+    /// One per `KUI_QUAD_FRAGMENT` quad, indexed by its `uv[0]`; null and
+    /// zero on a frame that draws none. Added in ABI 9.
+    pub fragments: *const KuiFragmentDraw,
+    pub fragment_count: usize,
+    /// The frame clock in seconds, for a fragment's `time`.
+    pub time: f32,
 }
 
 impl Default for KuiDrawData {
@@ -1033,6 +1063,9 @@ impl Default for KuiDrawData {
             atlas_size: 0,
             atlas_dirty: false,
             atlas_epoch: 0,
+            fragments: std::ptr::null(),
+            fragment_count: 0,
+            time: 0.0,
         }
     }
 }

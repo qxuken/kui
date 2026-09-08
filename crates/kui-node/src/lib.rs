@@ -1163,6 +1163,25 @@ macro_rules! core_methods {
                 Ok(())
             }
 
+            // -- Resources: fragments -------------------------------------
+
+            /// Registers a WGSL fragment function; returns its id for
+            /// `<fragment src={id}>`. Throws when the source does not
+            /// compile, with the compiler's message in the app's own line
+            /// numbers. Idempotent by source, so the same text gets the
+            /// same id without being validated twice.
+            #[napi]
+            pub fn add_fragment(&mut self, wgsl: String) -> Result<String> {
+                add_fragment_impl(self.$core(), &wgsl)
+            }
+
+            #[napi]
+            pub fn remove_fragment(&mut self, id: String) -> Result<()> {
+                self.$core()
+                    .remove_fragment(kui_core::FragmentId::from_ffi(parse_u64(&id)?));
+                Ok(())
+            }
+
             // -- Resources: fonts -----------------------------------------
 
             /// Registers a font from file bytes (TTF/OTF/TTC); returns its id
@@ -1375,6 +1394,27 @@ macro_rules! core_methods {
                     )
                 };
                 Buffer::from(bytes.to_vec())
+            }
+
+            /// This frame's fragment draws, in the order their quads index
+            /// them by `uv[0]`: seventeen doubles each, the handle as two
+            /// 32-bit halves and then the sixteen parameters. The
+            /// parameters ride a side list rather than the quad, so
+            /// `quads()` alone cannot show them and a corpus adapter
+            /// needs this to compare them
+            /// (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
+            /// Empty on a frame that draws no fragment.
+            #[napi]
+            pub fn fragment_draws(&mut self) -> Vec<f64> {
+                let (dl, _) = self.$core().output();
+                let mut out = Vec::with_capacity(dl.fragments.len() * 18);
+                for f in &dl.fragments {
+                    let raw = f.id.to_ffi();
+                    out.push((raw >> 32) as f64);
+                    out.push((raw & 0xffff_ffff) as f64);
+                    out.extend(f.params.iter().map(|v| *v as f64));
+                }
+                out
             }
 
             // -- Environment -----------------------------------------------
@@ -2191,6 +2231,25 @@ fn add_font_impl(core: &mut Core, data: &[u8]) -> Result<String> {
     core.add_font_data(data.to_vec())
         .map(font_str)
         .ok_or_else(|| err("no usable font face in the data (expected TTF/OTF/TTC bytes)"))
+}
+
+/// `addFragment`: validate, then mint. The warning the core raises is not
+/// enough on its own here — a JS caller expects a thrown error with the
+/// message, not a handle of 0 and a diagnostic it has to go looking for —
+/// so the message is read back out of the warning the core just raised.
+fn add_fragment_impl(core: &mut Core, wgsl: &str) -> Result<String> {
+    match core.add_fragment(wgsl) {
+        Some(id) => Ok(format!("{:016x}", id.to_ffi())),
+        None => {
+            let why = core
+                .take_warnings()
+                .into_iter()
+                .find(|w| w.code == kui_core::diag::FRAGMENT_REJECTED)
+                .map(|w| w.message)
+                .unwrap_or_else(|| "the fragment source does not compile".into());
+            Err(err(why))
+        }
+    }
 }
 
 fn add_image_impl(core: &mut Core, width: u32, height: u32, rgba: &[u8]) -> Result<String> {

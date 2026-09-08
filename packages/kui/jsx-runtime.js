@@ -4,7 +4,14 @@
 // components are called immediately (stateless, Elm-style); Fragments splice
 // into their parent's children.
 
-export const Fragment = 'fragment';
+// A symbol, not the string 'fragment', because `<fragment>` is a real kui
+// element now (a box a WGSL function paints,
+// docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md) and the
+// two would be the same `type`. jsx-runtime.d.ts has always declared this
+// as a `unique symbol`, so no typed caller could have depended on the
+// string. `Symbol.for` rather than `Symbol()` so two copies of this module
+// still agree.
+export const Fragment = Symbol.for('kui.jsx.fragment');
 
 function flatten(child, out) {
   if (child == null || child === false || child === true) return;

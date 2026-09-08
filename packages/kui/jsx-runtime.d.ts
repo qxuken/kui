@@ -124,6 +124,8 @@ interface Keyed {
 
 // -- generated from the addon's prop schema; edit schema.rs, then `npm run gen` --
 export interface GeneratedSpecProps {
+  /** Ask for another frame after this one, every frame this node is declared. What a `fragment` that reads `time` needs, and what anything driving itself off the clock rather than off input needs. Opt-in like `exit`, and for the same reason: it takes the loop off input-driven and onto the display's cadence for as long as it is declared, so a still node must not carry it. One node asking is enough for the whole window. */
+  animate?: boolean;
   /** Background fill. */
   bg?: ColorProp;
   /** On a `line` of a custom editor (a `textInput` / `multilineTextInput` role drawn by the app): the caret's byte offset into that line's text. */
@@ -390,6 +392,17 @@ export declare namespace JSX {
     /** A registered image (id from addImage). Fit sizing = pixel size as
      *  logical px; Fit height against a resolved width keeps the aspect. */
     image: Omit<BoxProps, 'children'> & { src: string };
+    /** A box a registered WGSL function paints
+     *  (docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md):
+     *  gradients, rings, noise, shimmer — anything the paint vocabulary has
+     *  no prop for. An ordinary node otherwise: it lays out, rounds, clips,
+     *  fades, takes input and holds children, which paint over it. It has
+     *  **no intrinsic size**, so give it a `width`/`height` or `fill`.
+     *  `src` is an id from `addFragment`; `params` is up to sixteen numbers
+     *  the shader reads as four `vec4<f32>`, and more are dropped with a
+     *  warning; `animate` asks for a frame every frame, which a fragment
+     *  reading `time` needs and a still one must not declare. */
+    fragment: BoxProps & { src: string; params?: number[] };
     /** A round-capped stroke (docs/adr/0010-a-segment-primitive.md): one
      *  segment from `from` to `to`, a polyline through `points`, or a smooth
      *  curve through them with `curve`. Points are in the parent's box space

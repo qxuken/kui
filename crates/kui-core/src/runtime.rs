@@ -158,6 +158,7 @@ pub struct Core {
     /// The frame's strokes, indexed by the `line` nodes' `LineId`s; the
     /// previous frame's kept alongside on the same terms as `prev_tree`.
     pub(crate) lines: crate::line::LineStore,
+    pub(crate) fragments: crate::fragment::FragmentList,
     pub(crate) display: DisplayList,
     pub(crate) viewport: Size,
     pub(crate) scale: f32,
@@ -335,6 +336,7 @@ impl Core {
             tree: Tree::new(),
             prev_tree: Tree::new(),
             lines: Default::default(),
+            fragments: Default::default(),
             display: DisplayList::default(),
             viewport: Size::ZERO,
             scale: 1.0,
@@ -714,6 +716,7 @@ impl Core {
         // And the strokes, for the same reason: a kept frame's `line`
         // nodes index that frame's list.
         self.lines.begin_frame(keep_prev);
+        self.fragments.begin_frame(keep_prev);
         self.cells.begin_frame(scale);
         self.sync_font_names();
         self.anim.begin_frame();

@@ -194,7 +194,7 @@ fn asserts() -> String {
     abi_enum!(o, kui_core::QuadKind::ALL, 0 => [
         "KUI_QUAD_SOLID", "KUI_QUAD_GLYPH_MASK", "KUI_QUAD_GLYPH_COLOR",
         "KUI_QUAD_IMAGE", "KUI_QUAD_GLYPH_SUBPIXEL", "KUI_QUAD_SHADOW",
-        "KUI_QUAD_SEGMENT",
+        "KUI_QUAD_SEGMENT", "KUI_QUAD_FRAGMENT",
     ]);
 
     abi_struct!(o, KuiScrollGeometry {
@@ -348,6 +348,7 @@ fn asserts() -> String {
         key_up: u32 => "uint32_t",
         value_text: KuiStr => "KuiStr",
         description: KuiStr => "KuiStr",
+        animate: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -545,8 +546,15 @@ fn asserts() -> String {
         atlas_size: u32 => "uint32_t",
         atlas_dirty: bool => "bool",
         atlas_epoch: u64 => "uint64_t",
+        fragments: *const KuiFragmentDraw => "const KuiFragmentDraw *",
+        fragment_count: usize => "size_t",
+        time: f32 => "float",
     });
     abi_out_struct!(o, KuiDrawData);
+    abi_struct!(o, KuiFragmentDraw {
+        fragment: u64 => "uint64_t",
+        params: [f32; 16] => "float *",
+    });
 
     o
 }

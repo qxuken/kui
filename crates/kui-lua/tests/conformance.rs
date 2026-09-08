@@ -13,6 +13,17 @@ use kui_lua::LuaExtension;
 
 /// The corpus in Lua. One arm per scene, in `SCENES` order; an unknown name
 /// panics rather than skipping, so a new scene cannot land without one.
+/// A float list as Lua source. `{:?}` on an f32 prints `1.0` for a whole
+/// number and the shortest round-tripping form otherwise, which is what
+/// Lua's number literal takes, so the bits reaching the core are the ones
+/// the Rust scene declared — and the corpus compares them as bits.
+fn lua_numbers(v: &[f32]) -> String {
+    v.iter()
+        .map(|n| format!("{n:?}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 fn lua_source(scene: &Scene, f: &Fixtures) -> String {
     let body = match scene.name {
         "layout" => r#"
@@ -251,6 +262,25 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        // docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md:
+        // four fragments, one of them with a dead handle and one with too
+        // many params. The handle is the fixture's, as an integer.
+        "fragments" => format!(
+            r#"
+            return column {{ width = 200, height = 120, gap = 4, bg = 0x14161eff,
+              fragment {{ id = {frag}, params = {{{p}}}, width = 80, height = 40 }},
+              fragment {{ key = "card", id = {frag}, params = {{{p}}},
+                         width = 80, height = 40, pad = 6, radius = 8, opacity = 0.5,
+                column {{ width = 20, height = 10, bg = 0x202030ff }},
+              }},
+              fragment {{ id = 0, params = {{{p}}}, width = 20, height = 10 }},
+              fragment {{ id = {frag}, params = {{{pl}}}, width = 30, height = 12 }},
+            }}
+        "#,
+            frag = f.fragment.to_ffi(),
+            p = lua_numbers(&kui_core::conformance::FRAGMENT_PARAMS),
+            pl = lua_numbers(&kui_core::conformance::FRAGMENT_PARAMS_LONG),
+        ),
         // docs/adr/0010-a-segment-primitive.md: three strokes and a box in
         // a 200×120 canvas; the elbow's on_click is the one a line ignores.
         "lines" => r#"

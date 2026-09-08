@@ -55,6 +55,19 @@ function image(t)
   return t
 end
 
+-- fragment { id = handle, params = {0.1, 0.2, ...}, animate = true, ... }: a
+-- box the registered WGSL `id` paints (the host registers it with
+-- Core::add_fragment and passes the handle in as a plain integer). An
+-- ordinary node otherwise -- it lays out, rounds, clips, fades, takes input
+-- and may hold children, which paint over it -- but it has no intrinsic
+-- size, so give it a width and height or `fill`. `params` is up to sixteen
+-- numbers the shader reads as four vec4<f32>; `animate` asks for a frame
+-- every frame, which a fragment reading `time` needs.
+function fragment(t)
+  t.type = "fragment"
+  return t
+end
+
 -- line { from = {x, y}, to = {x, y}, width = 2, color = 0x7f9cf5ff } or
 -- line { points = {{x, y}, ...}, curve = true, ... }: a round-capped stroke
 -- in the parent's box space, never in layout (it floats, sized to its own

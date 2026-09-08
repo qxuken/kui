@@ -192,6 +192,9 @@ pub(crate) fn spec_of(
     if s.hoverable != 0 {
         spec = spec.hoverable();
     }
+    if s.animate != 0 {
+        spec = spec.animate();
+    }
     match s.window_role {
         1 => spec = spec.window_drag(),
         2 => spec = spec.window_button(WindowButton::Close),

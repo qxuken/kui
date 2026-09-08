@@ -762,6 +762,32 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             ui.image(kui_core::ImageId::from_ffi(id as u64), spec);
             Ok(())
         }
+        "fragment" => {
+            // Handle from the host (kui_fragment_add / Core::add_fragment),
+            // passed to scripts as a plain integer, like an image's.
+            let id: i64 = t.get("id")?;
+            let params: Vec<f32> = match t.get::<Option<Table>>("params")? {
+                Some(list) => list.sequence_values::<f32>().collect::<mlua::Result<_>>()?,
+                None => Vec::new(),
+            };
+            let p = parse_props(t, false)?;
+            let id = kui_core::FragmentId::from_ffi(id as u64);
+            let key = match &p.key {
+                Some(label) => ui.core().open_fragment_keyed(label, id, &params, p.spec),
+                None => ui.core().open_fragment(id, &params, p.spec),
+            };
+            if p.key_focus {
+                ui.take_key_focus(key);
+            }
+            build_children(ui, t)?;
+            if let Some(hint) = &p.tooltip
+                && ui.is_hovered(key)
+            {
+                widgets::tooltip(ui, hint);
+            }
+            ui.close();
+            Ok(())
+        }
         "line" => {
             // `from`/`to` or `points`, each point a `{x, y}` pair. `width`
             // parses as a sizing row too, harmlessly: the core overrides a

@@ -458,6 +458,17 @@ export type WarningCode =
    *  (`docs/adr/0010-a-segment-primitive.md`, decisions 7 and 8). Put the
    *  interaction on the nodes the line connects. */
   | 'line-ignores-input'
+  /** `Core::add_fragment` was given WGSL that does not compile, so no handle
+   *  was minted and nothing will draw. The message carries naga's own error
+   *  with the line numbers moved into the app's source
+   *  (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`, decision
+   *  1). The source is rejected here rather than at the first frame that shows
+   *  it, so a headless test sees it too. */
+  | 'fragment-rejected'
+  /** A `fragment` node declared more than sixteen `params`. The shader takes
+   *  four `vec4<f32>` and no more, so the extra numbers were dropped; pass
+   *  fewer, or pack what the fragment needs into the sixteen it has. */
+  | 'fragment-params-truncated'
   /** The frame's modal surface is not in a float, and content painted after it
    *  is drawn on top of it: everything the user can see over the modal is
    *  inert, which looks like inert-behind is broken. A modal that has to cover
@@ -1041,6 +1052,15 @@ export declare class Ctx {
   addImage(width: number, height: number, rgba: Buffer): string
   removeImage(id: string): void
   /**
+   * Registers a WGSL fragment function; returns its id for
+   * `<fragment src={id}>`. Throws when the source does not
+   * compile, with the compiler's message in the app's own line
+   * numbers. Idempotent by source, so the same text gets the
+   * same id without being validated twice.
+   */
+  addFragment(wgsl: string): string
+  removeFragment(id: string): void
+  /**
    * Registers a font from file bytes (TTF/OTF/TTC); returns its id
    * for the `font` prop on `<text>` / `<edit>`. Throws when the
    * data holds no usable face.
@@ -1143,6 +1163,17 @@ export declare class Ctx {
    * because the OS is what drives a real window.
    */
   quads(): Buffer
+  /**
+   * This frame's fragment draws, in the order their quads index
+   * them by `uv[0]`: seventeen doubles each, the handle as two
+   * 32-bit halves and then the sixteen parameters. The
+   * parameters ride a side list rather than the quad, so
+   * `quads()` alone cannot show them and a corpus adapter
+   * needs this to compare them
+   * (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
+   * Empty on a frame that draws no fragment.
+   */
+  fragmentDraws(): Array<number>
   /**
    * Host facts the frame driver pushed in: what the window and the
    * display are doing, as of now (see `Env`). This is the same
@@ -1449,6 +1480,15 @@ export declare class KuiWindow {
   addImage(width: number, height: number, rgba: Buffer): string
   removeImage(id: string): void
   /**
+   * Registers a WGSL fragment function; returns its id for
+   * `<fragment src={id}>`. Throws when the source does not
+   * compile, with the compiler's message in the app's own line
+   * numbers. Idempotent by source, so the same text gets the
+   * same id without being validated twice.
+   */
+  addFragment(wgsl: string): string
+  removeFragment(id: string): void
+  /**
    * Registers a font from file bytes (TTF/OTF/TTC); returns its id
    * for the `font` prop on `<text>` / `<edit>`. Throws when the
    * data holds no usable face.
@@ -1551,6 +1591,17 @@ export declare class KuiWindow {
    * because the OS is what drives a real window.
    */
   quads(): Buffer
+  /**
+   * This frame's fragment draws, in the order their quads index
+   * them by `uv[0]`: seventeen doubles each, the handle as two
+   * 32-bit halves and then the sixteen parameters. The
+   * parameters ride a side list rather than the quad, so
+   * `quads()` alone cannot show them and a corpus adapter
+   * needs this to compare them
+   * (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
+   * Empty on a frame that draws no fragment.
+   */
+  fragmentDraws(): Array<number>
   /**
    * Host facts the frame driver pushed in: what the window and the
    * display are doing, as of now (see `Env`). This is the same

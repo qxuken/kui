@@ -357,7 +357,15 @@ impl Core {
     }
 
     #[inline]
-    fn open_with_key(&mut self, key: Key, mut spec: NodeSpec) {
+    fn open_with_key(&mut self, key: Key, spec: NodeSpec) {
+        self.open_content(key, spec, NodeContent::Container);
+    }
+
+    /// `open_with_key` for a node that is a box in every way but what it
+    /// paints: the caller supplies the content and closes the node. Every
+    /// `any_*` flag below is a box's, and a `fragment` earns all of them
+    /// because it clips, floats, fades and animates like one.
+    fn open_content(&mut self, key: Key, mut spec: NodeSpec, content: NodeContent) {
         if self.tree.is_empty() {
             return;
         }
@@ -372,6 +380,11 @@ impl Core {
         }
         if spec.layout.float.is_some() {
             self.any_float = true;
+        }
+        if spec.animate {
+            // One node asking is the whole window asking; the flag is
+            // cleared when the frame is taken, like any other request.
+            self.frame_requested = true;
         }
         // Each boxed group is tested once, not once per flag it can set: a
         // node declaring no events and no animation reaches `Tree::push`
@@ -398,9 +411,7 @@ impl Core {
             }
         }
         let parent = self.current();
-        let idx = self
-            .tree
-            .push(parent, key, self.origin, spec, NodeContent::Container);
+        let idx = self.tree.push(parent, key, self.origin, spec, content);
         self.stack.push(idx);
         self.counters.push(0);
     }
@@ -528,6 +539,106 @@ impl Core {
         let parent = self.current();
         self.tree
             .push(parent, key, self.origin, spec, NodeContent::Image(id));
+    }
+
+    /// A box a registered WGSL function paints
+    /// (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
+    ///
+    /// An ordinary node in every other respect: it lays out where it is
+    /// declared, sizes from `spec`, rounds by `radius`, clips, fades with
+    /// its subtree's opacity, takes input like any box, and may hold
+    /// children — which paint over it, so a gradient card is a `fragment`
+    /// with a title and buttons inside it.
+    ///
+    /// It has **no intrinsic size**: unlike an image there is nothing to
+    /// measure, so a fragment with no `width` / `height` / `fill` is zero
+    /// by zero and draws nothing. Size it.
+    ///
+    /// `params` is up to sixteen numbers, positional, zero-padded, read by
+    /// the shader as four `vec4<f32>`; more than sixteen are dropped with
+    /// a `fragment-params-truncated` warning. A handle that is not live in
+    /// this session draws nothing, as every resource kind does.
+    pub fn fragment_node(
+        &mut self,
+        id: crate::resources::FragmentId,
+        params: &[f32],
+        spec: NodeSpec,
+    ) -> Key {
+        let key = self.open_fragment(id, params, spec);
+        self.close();
+        key
+    }
+
+    /// Opens a fragment as a parent: its children paint over it, which is
+    /// what a gradient card with a title and buttons in it is. Balance it
+    /// with [`Self::close`], or use `Ui::fragment_with`.
+    pub fn open_fragment(
+        &mut self,
+        id: crate::resources::FragmentId,
+        params: &[f32],
+        spec: NodeSpec,
+    ) -> Key {
+        if self.tree.is_empty() {
+            return Key::ROOT;
+        }
+        let key = self.auto_key();
+        self.fragment_with_key(key, id, params, spec);
+        key
+    }
+
+    /// [`Self::fragment_node`] under a label key, for a fragment that
+    /// transitions or exits and needs a stable identity across frames.
+    pub fn fragment_node_keyed(
+        &mut self,
+        label: &str,
+        id: crate::resources::FragmentId,
+        params: &[f32],
+        spec: NodeSpec,
+    ) -> Key {
+        let key = self.open_fragment_keyed(label, id, params, spec);
+        self.close();
+        key
+    }
+
+    /// [`Self::open_fragment`] under a label key.
+    pub fn open_fragment_keyed(
+        &mut self,
+        label: &str,
+        id: crate::resources::FragmentId,
+        params: &[f32],
+        spec: NodeSpec,
+    ) -> Key {
+        if self.tree.is_empty() {
+            return Key::ROOT;
+        }
+        let key = self.child_key(label);
+        self.fragment_with_key(key, id, params, spec);
+        self.key_labels.push(key, label);
+        key
+    }
+
+    fn fragment_with_key(
+        &mut self,
+        key: Key,
+        id: crate::resources::FragmentId,
+        params: &[f32],
+        spec: NodeSpec,
+    ) {
+        let (params, dropped) = crate::fragment::params_of(params);
+        if dropped > 0 {
+            self.diag.raise(Warning {
+                code: crate::diag::FRAGMENT_PARAMS_TRUNCATED,
+                key,
+                message: format!(
+                    "a fragment takes sixteen params and {} were declared, so the last {dropped}                      were dropped; pack what the shader needs into the sixteen it has",
+                    params.len() + dropped
+                ),
+            });
+        }
+        let draw = self
+            .fragments
+            .push(crate::display::FragmentDraw { id, params });
+        self.open_content(key, spec, NodeContent::Fragment(draw));
     }
 
     /// A stroke through `points` in the parent's box space: one round-capped

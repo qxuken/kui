@@ -109,7 +109,7 @@
 /// hazard mirrored: an old binary's element 1 is read at the wrong place
 /// whatever element 0 says. The bump makes that a message. Recompile and
 /// nothing in a host's source changes; a zeroed `bg` is none.
-pub const KUI_ABI_VERSION: u32 = 8;
+pub const KUI_ABI_VERSION: u32 = 9;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its

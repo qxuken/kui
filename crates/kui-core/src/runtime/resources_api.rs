@@ -21,6 +21,59 @@ impl Core {
         }
     }
 
+    // -- Fragments ------------------------------------------------------
+
+    /// Registers a WGSL fragment function for a `fragment` node
+    /// (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
+    /// The app writes one function:
+    ///
+    /// ```wgsl
+    /// fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32>
+    /// ```
+    ///
+    /// and the core wraps it in the prelude and epilogue that give it the
+    /// node's rounded box, the inherited clip, the group opacity and the
+    /// blend (see `crate::fragment`). `None` when the source does not
+    /// compile, with a `fragment-rejected` warning carrying naga's message
+    /// in the app's own line numbers — so a bad shader is a warning at
+    /// registration, in a headless test included, and never a blank box in
+    /// a window.
+    ///
+    /// Idempotent by source: the same text gets the same handle without
+    /// validating again, so a view may call this every frame. Registering
+    /// at startup is still the advice, because the *backend* builds a
+    /// pipeline the first time it sees a handle.
+    pub fn add_fragment(&mut self, wgsl: &str) -> Option<crate::resources::FragmentId> {
+        if let Some(id) = self.session.state().resources.find_fragment(wgsl) {
+            return Some(id);
+        }
+        if let Err(message) = crate::fragment::validate(wgsl) {
+            self.warn(crate::diag::Warning {
+                code: crate::diag::FRAGMENT_REJECTED,
+                key: crate::key::Key::ROOT,
+                message: format!("fragment source rejected: {message}"),
+            });
+            return None;
+        }
+        Some(self.session.state().resources.add_fragment(wgsl))
+    }
+
+    /// Forgets a registered fragment. Nodes still naming it draw nothing.
+    pub fn remove_fragment(&mut self, id: crate::resources::FragmentId) {
+        self.session.state().resources.remove_fragment(id);
+    }
+
+    /// The whole WGSL module behind a fragment handle — the app's source
+    /// between the core's prelude and epilogue — which is what a backend
+    /// compiles. A host rendering the display list itself asks for this
+    /// rather than assembling its own, so what it compiles is what the
+    /// core validated.
+    pub fn fragment_module_source(&self, id: crate::resources::FragmentId) -> Option<String> {
+        let sess = self.session.state();
+        let app = sess.resources.fragment(id)?;
+        Some(crate::fragment::module_source(app))
+    }
+
     // -- Fonts ----------------------------------------------------------
 
     /// Registers a font from its file bytes (TTF/OTF/TTC); `None` when the

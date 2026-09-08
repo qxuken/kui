@@ -58,6 +58,7 @@ pub const OP_LATENCY_HUD: u32 = 12;
 pub const OP_AUDIO: u32 = 13;
 pub const OP_LINE: u32 = 14;
 pub const OP_CELLS: u32 = 15;
+pub const OP_FRAGMENT: u32 = 16;
 
 pub fn protocol_json() -> Json {
     let mut o = JsonMap::new();
@@ -82,6 +83,7 @@ pub fn protocol_json() -> Json {
                 ("audio", OP_AUDIO),
                 ("line", OP_LINE),
                 ("cells", OP_CELLS),
+                ("fragment", OP_FRAGMENT),
             ]
             .into_iter()
             .map(|(k, v)| (k.to_string(), Json::from(v)))
@@ -470,6 +472,34 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
                 Some(label) => core.line_node_keyed(label, &points, stroke, p.spec),
                 None => core.line_node(&points, stroke, p.spec),
             }
+            Ok(())
+        }
+        // src (hi, lo), param count, the params, then props. An open node:
+        // the encoder emits OP_CLOSE for it like any other parent, so a
+        // fragment's children paint over it.
+        OP_FRAGMENT => {
+            let (hi, lo) = (r.f()? as u64, r.f()? as u64);
+            let n = r.u()? as usize;
+            let mut params = Vec::with_capacity(n);
+            for _ in 0..n {
+                params.push(r.f()? as f32);
+            }
+            let p = read_props(r)?;
+            let id = kui_core::FragmentId::from_ffi((hi << 32) | lo);
+            let key = match &p.key {
+                Some(label) => core.open_fragment_keyed(label, id, &params, p.spec),
+                None => core.open_fragment(id, &params, p.spec),
+            };
+            if p.key_focus {
+                core.set_key_focus(Some(key));
+            }
+            decode_until_close(r, core)?;
+            if let Some(hint) = &p.tooltip
+                && core.is_hovered(key)
+            {
+                widgets::tooltip(&mut kui_core::Ui::wrap(core), hint);
+            }
+            core.close();
             Ok(())
         }
         OP_CELLS => {

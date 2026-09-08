@@ -275,6 +275,60 @@ impl<'a> Ui<'a> {
         self.core.image_node(id, spec);
     }
 
+    /// A box a registered WGSL function paints; see `Core::fragment_node`
+    /// for what it is, and `Core::add_fragment` for where the handle comes
+    /// from. It has no intrinsic size, so give it one.
+    pub fn fragment(
+        &mut self,
+        id: crate::resources::FragmentId,
+        params: &[f32],
+        spec: NodeSpec,
+    ) -> Key {
+        self.core.fragment_node(id, params, spec)
+    }
+
+    /// A fragment holding children, which paint over it: a gradient card
+    /// with a title and buttons on top of it.
+    pub fn fragment_with(
+        &mut self,
+        id: crate::resources::FragmentId,
+        params: &[f32],
+        spec: NodeSpec,
+        f: impl FnOnce(&mut Ui<'_>),
+    ) -> Key {
+        let key = self.core.open_fragment(id, params, spec);
+        f(self);
+        self.core.close();
+        key
+    }
+
+    /// [`Self::fragment`] under a label key, for one that transitions or
+    /// exits and needs a stable identity across frames.
+    pub fn fragment_keyed(
+        &mut self,
+        label: &str,
+        id: crate::resources::FragmentId,
+        params: &[f32],
+        spec: NodeSpec,
+    ) -> Key {
+        self.core.fragment_node_keyed(label, id, params, spec)
+    }
+
+    /// [`Self::fragment_with`] under a label key.
+    pub fn fragment_with_keyed(
+        &mut self,
+        label: &str,
+        id: crate::resources::FragmentId,
+        params: &[f32],
+        spec: NodeSpec,
+        f: impl FnOnce(&mut Ui<'_>),
+    ) -> Key {
+        let key = self.core.open_fragment_keyed(label, id, params, spec);
+        f(self);
+        self.core.close();
+        key
+    }
+
     /// A round-capped segment from `from` to `to`, in the parent's box
     /// space; see `Core::line_node` for what it is and is not.
     pub fn line(&mut self, from: Vec2, to: Vec2, stroke: Stroke, spec: NodeSpec) {

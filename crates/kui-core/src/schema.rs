@@ -138,6 +138,7 @@ pub const P_DESCRIPTION: u32 = 83;
 pub const P_FEATURES: u32 = 84;
 pub const P_UNDERLINE: u32 = 85;
 pub const P_STRIKETHROUGH: u32 = 86;
+pub const P_ANIMATE: u32 = 87;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -605,6 +606,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Flag,
         apply: Apply::SpecFlag(|s| s.hoverable()),
         doc: "Hover-track without a click payload (for isHovered-driven styling).",
+    },
+    PropDef {
+        name: "animate",
+        id: P_ANIMATE,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.animate()),
+        doc: "Ask for another frame after this one, every frame this node is declared. What a `fragment` that reads `time` needs, and what anything driving itself off the clock rather than off input needs. Opt-in like `exit`, and for the same reason: it takes the loop off input-driven and onto the display's cadence for as long as it is declared, so a still node must not carry it. One node asking is enough for the whole window.",
     },
     PropDef {
         name: "focusable",
@@ -1314,6 +1322,17 @@ pub const ELEMENTS: &[ElementDef] = &[
         doc: "A registered RGBA image; `fit` takes the pixel size, a fit height against a resolved width keeps the aspect, radius rounds it.",
     },
     ElementDef {
+        name: "fragment",
+        jsx_own: &["src", "params", "animate"],
+        lua_own: &["id", "params", "animate"],
+        jsx_rows: None,
+        lua_rows: None,
+        jsx: "`<fragment src={id} params={[…]} animate>`",
+        lua: "`fragment { id=, params={…}, animate= }`",
+        c: "`kui_fragment`",
+        doc: "A box a registered WGSL function paints (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`): gradients, rings, noise, shimmer — anything the paint vocabulary has no prop for. An ordinary node otherwise — it lays out, rounds, clips, fades, takes input and holds children, which paint over it — but with **no intrinsic size**, so give it a `width`/`height` or `fill` or it is zero by zero. `src` is a handle from `add_fragment`, which validates the source and warns rather than minting one that cannot compile. `params` is up to sixteen numbers the shader reads as four `vec4<f32>`; more are dropped with a warning. `animate` asks for a frame every frame, which is what a fragment that reads `time` needs and what a still one must not declare.",
+    },
+    ElementDef {
         name: "cells",
         jsx_own: &[
             "rows",
@@ -1510,6 +1529,12 @@ pub const RESOURCES: &[ResourceDef] = &[
         node: "`ctx.addImage(w, h, rgba)` → id for `<image src>`",
         lua: "the host registers; `image { id }`",
         c: "`kui_image_add` → `kui_image`",
+    },
+    ResourceDef {
+        what: "fragment (WGSL)",
+        node: "`ctx.addFragment(src)` → id for `<fragment src>`",
+        lua: "the host registers; `fragment { id }`",
+        c: "`kui_fragment_add` → `kui_fragment`",
     },
     ResourceDef {
         what: "font from bytes",

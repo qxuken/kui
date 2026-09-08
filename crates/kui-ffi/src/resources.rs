@@ -48,6 +48,59 @@ pub extern "C" fn kui_font_add_system(ptr: *mut KuiCtx, name: KuiStr) -> u64 {
     })
 }
 
+/// Registers a WGSL fragment function; 0 when it does not compile, with a
+/// `fragment-rejected` warning carrying the message. Idempotent by source.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_fragment_add(ptr: *mut KuiCtx, wgsl: KuiStr) -> u64 {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        c.core()
+            .add_fragment(&kstr(wgsl))
+            .map_or(0, |id| id.to_ffi())
+    })
+}
+
+/// Forgets a registered fragment; nodes still naming it draw nothing.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_fragment_remove(ptr: *mut KuiCtx, id: u64) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().remove_fragment(kui_core::FragmentId::from_ffi(id));
+        }
+    })
+}
+
+/// The whole WGSL module behind a handle — the app's source between the
+/// core's prelude and epilogue — for a host that compiles it itself. The
+/// string is borrowed and valid until the next call; false when the handle
+/// is not live in this session.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_fragment_source(ptr: *mut KuiCtx, id: u64, out: *mut KuiStr) -> bool {
+    guard(false, || {
+        let (Some(c), false) = (unsafe { ctx(ptr) }, out.is_null()) else {
+            return false;
+        };
+        let Some(src) = c
+            .core()
+            .fragment_module_source(kui_core::FragmentId::from_ffi(id))
+        else {
+            return false;
+        };
+        // Kept on the context so the pointer outlives this call, the way
+        // every other borrowed string this header hands out is.
+        c.fragment_source = src;
+        unsafe {
+            *out = KuiStr {
+                ptr: c.fragment_source.as_ptr(),
+                len: c.fragment_source.len(),
+            }
+        };
+        true
+    })
+}
+
 /// Registers a font file by path (memory-mapped); 0 when it cannot be read
 /// or holds no usable face.
 #[unsafe(no_mangle)]

@@ -17,6 +17,72 @@ for the reader deciding whether to upgrade. Earlier sections keep the shape
 they shipped with and are not retrofitted (backlog F31, from the alpha.8
 field reports).
 
+## Unreleased
+
+**What breaks.**
+
+- `KUI_ABI_VERSION` is 9: `KuiDrawData` gained `fragments`, `fragment_count`
+  and `time`. It is an [out] struct, so the append bumps by ADR 0006's rule
+  — but its leading `size` means an un-recompiled host keeps the prefix it
+  knows and only has to bump the constant it checks against.
+- `Fragment` from `@qxuken/kui/jsx-runtime` is a `Symbol` rather than the
+  string `'fragment'`, because `<fragment>` is now a real element and the
+  two would be the same `type`. `jsx-runtime.d.ts` has always declared it a
+  `unique symbol`, so no typed caller could have depended on the string;
+  a JS caller comparing `type === 'fragment'` must compare against
+  `Fragment` (or `Symbol.for('kui.jsx.fragment')`).
+- `Ui::fragment` and `Core::fragment_node` return the node's `Key` rather
+  than `()`. Nothing to fix unless a caller bound the result.
+
+### Added
+
+- **A `fragment` element: a box a WGSL function paints**
+  ([ADR 0015](docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md)).
+  `add_fragment(wgsl)` validates one function and returns a handle;
+  `<fragment src params animate>` — `fragment { id=, params=, animate= }`,
+  `kui_fragment`, `ui.fragment` — draws a box with it. The app writes
+
+  ```wgsl
+  fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32>
+  ```
+
+  and reads `in.local`, `in.size`, `in.time`, `in.scale` and sixteen
+  positional `params`. kui owns the vertex stage, the node's rounded box,
+  the inherited clip (rounded when an ancestor rounds it), the group
+  opacity and the blend, so a fragment cannot look unlike a kui node and an
+  app cannot get any of them wrong. It lays out, sizes from its spec,
+  clips, fades, takes input and **holds children, which paint over it** —
+  a gradient card is a `fragment` with a title and a button inside it.
+  A source that does not compile is refused at registration with a
+  `fragment-rejected` warning carrying the compiler's message *in the app's
+  own line numbers*, so a bad shader is a warning a headless test sees and
+  never a blank box in a window. Registration is idempotent by source.
+
+  The renderer splits its single instanced draw around each fragment quad.
+  Measured, worst case, on an M3 Pro: **about 0.6 µs of CPU per fragment
+  and nothing the GPU can see**, so a hundred fragment boxes is 0.7% of a
+  120 Hz frame and what a fragment actually costs is its own fill.
+  `crates/kui-wgpu/benches/split.rs` is that measurement, and it reads a
+  pixel back before reporting so it cannot measure a pipeline that draws
+  nothing.
+
+- **`animate`**, a plain prop on any node: ask for another frame after this
+  one, every frame the node is declared. What a fragment reading `time`
+  needs, and what anything driven by the clock rather than by input needs.
+  Opt-in like `exit`, for the same reason — it takes the loop off
+  input-driven — and one node asking is enough for the window.
+
+- **`examples/rust/fragments.rs`**: a gradient, a progress ring drawn from
+  the prelude's own distance field, a shimmer that reads `time`, and a card
+  with a button on a wash.
+
+**What you can delete:** the image you were shipping to fake a gradient, and
+the stack of solids you were laying over each other to fake a ramp. Both are
+what ADR 0005 pointed at when it declined gradient props, and a fragment is
+five lines instead of either. Also the CPU-side animation you were running to
+make a shimmer or a spinner move: `animate` plus `in.time` moves it on the
+GPU without rebuilding a node.
+
 ## 0.1.0-alpha.9 (2026-09-08)
 
 **What breaks.**

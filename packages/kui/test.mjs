@@ -2418,6 +2418,23 @@ const SCENE_TREES = {
       ]),
     ]);
   },
+  // docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md: four
+  // fragments — plain, keyed with a child over it, a dead handle that draws
+  // nothing, and one with eighteen params so the truncation warning fires.
+  fragments: (fx) =>
+    root({}, [
+      box({ width: 200, height: 120, gap: 4, bg: '#14161e' }, [
+        el('fragment', { src: fx().fragment, params: FRAGMENT_PARAMS, width: 80, height: 40 }),
+        el(
+          'fragment',
+          { src: fx().fragment, params: FRAGMENT_PARAMS, width: 80, height: 40, pad: 6, radius: 8, opacity: 0.5 },
+          [box({ width: 20, height: 10, bg: '#202030' })],
+          'card',
+        ),
+        el('fragment', { src: '0000000000000000', params: FRAGMENT_PARAMS, width: 20, height: 10 }),
+        el('fragment', { src: fx().fragment, params: FRAGMENT_PARAMS_LONG, width: 30, height: 12 }),
+      ]),
+    ]),
   // docs/adr/0010-a-segment-primitive.md: three strokes and a box; the
   // elbow's onClick is the one a line ignores.
   lines: () =>
@@ -2580,6 +2597,25 @@ const root = (props, children) => box({ width: 'grow', height: 'grow', ...props 
 /** The corpus fixtures, byte-identical to `conformance::image_pixels` /
  *  `SOUND_BYTES` so the handles and the atlas come out the same. */
 const addFixtureImage = (ctx) => ctx.addImage(4, 4, Buffer.alloc(4 * 4 * 4, 0xff));
+/** `conformance::FRAGMENT_PARAMS` and `FRAGMENT_PARAMS_LONG`. */
+const FRAGMENT_PARAMS = [
+  0.85, 0.30, 0.25, 1.0,
+  0.20, 0.45, 0.90, 1.0,
+  10.0, 2.0, 0.0, 0.0,
+  1.0, 1.0, 1.0, 1.0,
+];
+const FRAGMENT_PARAMS_LONG = [
+  0.1, 0.2, 0.3, 1.0, 0.4, 0.5, 0.6, 1.0, 4.0, 1.0, 0.0, 0.0, 0.9, 0.9, 0.2, 1.0, 7.0, 8.0,
+];
+/** `conformance::FRAGMENT_WGSL`, character for character. */
+const FIXTURE_WGSL = `fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {
+    let t = clamp(in.local.y / max(in.size.y, 1.0), 0.0, 1.0);
+    let base = mix(params[0], params[1], t);
+    let d = kui_sd_rounded_box(in.local - in.size * 0.5, in.size * 0.5, vec4<f32>(params[2].x));
+    let ring = 1.0 - smoothstep(-KUI_AA, KUI_AA, abs(d) - params[2].y);
+    return vec4<f32>(mix(base.rgb, params[3].rgb, ring), base.a);
+}`;
+const addFixtureFragment = (ctx) => ctx.addFragment(FIXTURE_WGSL);
 const addFixtureSound = (ctx) => ctx.addSound(Buffer.from('RIFF....WAVE'));
 
 const FNV_OFFSET = 0xcbf29ce484222325n;
@@ -2626,7 +2662,11 @@ function driveScene(env, steps, build) {
   // so the handles stay what `conformance::fixtures` hands out.
   let registered = null;
   const fx = () =>
-    (registered ??= { image: addFixtureImage(ctx), sound: addFixtureSound(ctx) });
+    (registered ??= {
+      image: addFixtureImage(ctx),
+      sound: addFixtureSound(ctx),
+      fragment: addFixtureFragment(ctx),
+    });
   let phase = 0;
   const events = [];
   const commands = [];
@@ -2726,9 +2766,20 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
   const stride = quadStride();
   const count = quads.byteLength / stride;
   lines.push(`quads ${count} ${quadDigest(quads)}`);
-  const kinds = [0, 0, 0, 0, 0, 0, 0];
+  const kinds = [0, 0, 0, 0, 0, 0, 0, 0];
   for (let off = 0; off < quads.byteLength; off += stride) kinds[quads.readUInt32LE(off + KIND_WORD * 4)]++;
   lines.push(`kinds ${kinds.join(' ')}`);
+  // A fragment's parameters ride a side list, not the quad, so the digest
+  // cannot reach them; the report carries them as bits, like the core's.
+  const draws = ctx.fragmentDraws();
+  const f32 = new DataView(new ArrayBuffer(4));
+  for (let i = 0; i * 18 < draws.length; i++) {
+    const params = draws.slice(i * 18 + 2, i * 18 + 18).map((v) => {
+      f32.setFloat32(0, v, true);
+      return f32.getUint32(0, true).toString(16).padStart(8, '0');
+    });
+    lines.push(`fragment ${i} ${params.join(' ')}`);
+  }
   const depth = new Map();
   for (const n of ctx.accessTree().nodes) {
     const d = n.parent === null ? 0 : depth.get(n.parent) + 1;

@@ -235,6 +235,25 @@ whether or not a handler ran.
 [ADR 0013](adr/0013-effects-as-data.md) ·
 [alpha.8](../CHANGELOG.md#010-alpha8-2026-09-07)
 
+### How do I draw a gradient, a ring, or anything the paint props cannot?
+
+Write a fragment. `add_fragment(wgsl)` validates one WGSL function and hands
+back a handle; `<fragment src={id} params={[…]} animate>` is a box that
+function paints. The app writes only
+
+```wgsl
+fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32>
+```
+
+and reads `in.local`, `in.size`, `in.time` and up to sixteen `params`. kui
+owns the rest — the node's rounded box, the clip, the group opacity, the
+blend — so it lays out, clips, fades, takes input and holds children like
+any box. `animate` is what a fragment reading `time` needs. It has no
+intrinsic size, so give it one.
+
+[ADR 0015](adr/0015-a-fragment-element-and-the-painter-it-is-not.md) ·
+`cargo run --example fragments`
+
 ### How do I let an extension draw inside my view?
 
 Declare the place: `ui.slot("fs/panel")` is a position among the host's own

@@ -120,6 +120,18 @@ warnings! {
     /// (`docs/adr/0010-a-segment-primitive.md`, decisions 7 and 8). Put the
     /// interaction on the nodes the line connects.
     pub const LINE_IGNORES_INPUT: &str = "line-ignores-input";
+    /// `Core::add_fragment` was given WGSL that does not compile, so no
+    /// handle was minted and nothing will draw. The message carries naga's
+    /// own error with the line numbers moved into the app's source
+    /// (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`,
+    /// decision 1). The source is rejected here rather than at the first
+    /// frame that shows it, so a headless test sees it too.
+    pub const FRAGMENT_REJECTED: &str = "fragment-rejected";
+    /// A `fragment` node declared more than sixteen `params`. The shader
+    /// takes four `vec4<f32>` and no more, so the extra numbers were
+    /// dropped; pass fewer, or pack what the fragment needs into the
+    /// sixteen it has.
+    pub const FRAGMENT_PARAMS_TRUNCATED: &str = "fragment-params-truncated";
     /// The frame's modal surface is not in a float, and content painted after
     /// it is drawn on top of it: everything the user can see over the modal is
     /// inert, which looks like inert-behind is broken. A modal that has to

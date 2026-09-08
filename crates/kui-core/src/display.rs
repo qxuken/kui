@@ -38,12 +38,26 @@ pub enum QuadKind {
     /// evaluates an SDF capsule against the fragment's position. Ignores
     /// `radius`, `border_color` and `blur`.
     Segment,
+    /// A box a host-registered WGSL function paints
+    /// (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
+    /// `uv[0]` indexes [`DisplayList::fragments`], which carries the
+    /// handle and the sixteen parameters; the other three words of `uv`
+    /// are zero. `rect`, `radius`, `clip` and `clip_radius` are the
+    /// node's and mean what they mean everywhere else — the backend
+    /// rounds and clips a fragment exactly as it rounds and clips a
+    /// solid. `color` carries the group opacity in its alpha and nothing
+    /// else (`rgb` is zero), because a fragment returns its own colour
+    /// and a faded subtree still has to fade it. `border_color`,
+    /// `border_w` and `blur` are zero and ignored. A backend that cannot
+    /// draw one — anything predating this kind — draws nothing, which is
+    /// what a missing handle does too.
+    Fragment,
 }
 
 impl QuadKind {
     /// Every kind, in discriminant order — what the conformance report's
     /// `kinds` line counts and the C header's `KUI_QUAD_*` mirror.
-    pub const ALL: [QuadKind; 7] = [
+    pub const ALL: [QuadKind; 8] = [
         QuadKind::Solid,
         QuadKind::GlyphMask,
         QuadKind::GlyphColor,
@@ -51,6 +65,7 @@ impl QuadKind {
         QuadKind::GlyphSubpixel,
         QuadKind::Shadow,
         QuadKind::Segment,
+        QuadKind::Fragment,
     ];
 }
 
@@ -202,16 +217,48 @@ fn surviving(rect: Rect, src: Rect, radius: f32, i: usize) -> f32 {
     }
 }
 
+/// What a [`QuadKind::Fragment`] quad points at: which registered WGSL
+/// paints it, and the sixteen numbers that frame passes it.
+///
+/// It rides beside the quads rather than on them because `Quad` is copied
+/// twice per node on a 10,000-node frame and 68 more bytes on it would be
+/// paid by every quad of every frame, for a kind almost none of them are
+/// (C15, and ADR 0010's reasoning for putting a segment's endpoints in
+/// `uv`). A frame that draws no fragment leaves the vector empty.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FragmentDraw {
+    pub id: crate::resources::FragmentId,
+    /// Positional, app-defined; the view's `params` zero-padded to
+    /// sixteen. The shader reads them as four `vec4<f32>`.
+    pub params: [f32; 16],
+}
+
 #[derive(Default)]
 pub struct DisplayList {
     pub quads: Vec<Quad>,
+    /// One entry per [`QuadKind::Fragment`] quad, indexed by its `uv[0]`.
+    /// Empty on a frame that draws none.
+    pub fragments: Vec<FragmentDraw>,
+    /// The WGSL behind each entry of [`Self::fragments`], at the same
+    /// index: what a backend compiles the first time it meets a handle.
+    /// It rides here rather than on `FragmentDraw` so that struct stays
+    /// `Copy` and digestible; an `Arc` clone per fragment quad is a
+    /// refcount bump, and a frame with no fragment has neither vector.
+    pub fragment_sources: Vec<std::sync::Arc<str>>,
     /// Physical pixels.
     pub viewport: Size,
     pub scale: f32,
+    /// The frame clock in seconds — the same one transitions read, as the
+    /// driver last set it. A backend hands it to a fragment as
+    /// `FragmentIn::time`; nothing else reads it. Zero when the driver
+    /// never set a clock, which is what a headless frame looks like.
+    pub time: f32,
 }
 
 impl DisplayList {
     pub fn clear(&mut self) {
         self.quads.clear();
+        self.fragments.clear();
+        self.fragment_sources.clear();
     }
 }
