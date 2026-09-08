@@ -144,3 +144,23 @@ jobs:
       - name: Smoke the examples in a window
         shell: powershell
         run: pwsh -NoProfile -File scripts/smoke-windows.ps1
+
+      # The C story, both directions, on the platform where it differs most:
+      # an MSVC-ABI compiler, an import library at each link, and no rpath.
+      # It was dead here until 2026-09-08 - `CExtension::open` refused every
+      # path there has ever been (backlog W6) - so it is worth a runner.
+      #
+      # Needs a C compiler (VS Build Tools for `cl`, or LLVM for `clang-cl`);
+      # the script says so and fails if it finds neither.
+      - name: Build and run the C examples
+        shell: powershell
+        run: |
+          pwsh -NoProfile -File examples/c/build.ps1
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          ./examples/c/counter.exe --headless
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          cargo run -p kui-ffi --example c_panel -- --headless
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          # The mutant with kui_ext_abi deleted must be refused, not loaded.
+          cargo run -p kui-ffi --example c_panel -- --headless target/panel-noabi.dll
+          if ($LASTEXITCODE -eq 0) { throw "a plugin with no kui_ext_abi was loaded" }

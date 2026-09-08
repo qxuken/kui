@@ -282,6 +282,29 @@ GPU without rebuilding a node.
 
 ### Fixed
 
+- **The C examples build and run on Windows** (backlog W8), from
+  `examples/c/build.ps1` — `build.sh`'s round in the same order with the same
+  checks: `kui.h` against the Rust layout, `counter.exe` (C as the host),
+  `panel.dll` (C as an extension) and the `kui_ext_abi`-deleted mutant the
+  host must refuse. It finds `cl` or `clang-cl`, importing the VS environment
+  through vswhere if neither is on PATH.
+
+  Two things had to change for the plugin half, because a DLL may not leave a
+  symbol undefined. `kui-ffi`'s build script now hands link.exe a `/DEF:`
+  naming all 135 `kui_*`, so the host exports them and link.exe writes the
+  `c_panel.lib` a plugin links against — the list is read from the crate's
+  own `pub extern "C" fn kui_*` set, so it cannot go stale. And `kui.h` puts
+  a new `KUI_EXT_EXPORT` on the seven `kui_ext_*` declarations
+  (`__declspec(dllexport)` on Windows, empty everywhere else), so a plugin
+  that includes the header and defines them the ordinary way is exported
+  without saying so: `panel.c` is unchanged and builds on every platform.
+
+  One limit is Windows' and stays: an import library names the module it
+  imports from, so a plugin built against a host's `.lib` loads into that
+  host and no other, where the same `panel.so` loads into either. A host of
+  your own exports `kui_*` the same way and ships the `.lib` its plugins
+  link to; `kui.h` says so beside the contract.
+
 - **Windows: `fragment` drew one box per frame and crashed on the second**
   (backlog W4). `kui-wgpu` read `min_uniform_buffer_offset_alignment` from
   the *adapter*, which reports 64 on DX12, while the device is opened with

@@ -18,7 +18,7 @@ so an id cited by an open item, a code comment or a commit message can be
 resolved without opening the archive. Nothing was renumbered in any of those
 moves, and nothing ever is. What is left here is three parked headings — C12,
 C13 and C14 — W3 from the editor-and-mux assessment (2026-09-07), now run and
-rebuilt on a real Windows machine; W4–W7 from the first Windows round
+rebuilt on a real Windows machine; W4–W8 from the first Windows round
 (2026-09-08), which is what running it found; and F36,
 which fell out of building the four entries the two alpha.9 field reports
 and the bake-off produced (F32–F35, filed and built 2026-09-08); and what
@@ -264,8 +264,9 @@ kui ran on a Windows machine for the first time. Windows 11 Pro 26200,
 rustc 1.96 / MSVC, an RTX 5080 driving a 3840×2160 display at 239 Hz with
 the desktop at 150%, and an idle AMD integrated adapter beside it. The
 round was: `cargo test --workspace`, then every windowed example opened for
-real. Four defects, none of which any headless test in the repo could have
-seen, and two of them crashes on the first frame.
+real, then the C examples built and run in both directions. Five defects,
+none of which any headless test in the repo could have seen, and two of them
+crashes on the first frame.
 
 The round is a script now — [`scripts/smoke-windows.ps1`](../scripts/smoke-windows.ps1),
 wired into `smoke-windows` in [`.forgejo/workflows/smoke.yml`](../.forgejo/workflows/smoke.yml)
@@ -275,13 +276,15 @@ presented n frames, which turns every example into a self-terminating check
 with an exit code — a wgpu validation panic is a failure with its stderr,
 a window that never paints runs out the timeout instead of passing quietly.
 14 examples, 120 frames each, about 1.5 s apiece; it was checked against
-the bug it was written for by putting W4 back and watching it fail.
+the bug it was written for by putting W4 back and watching it fail. The C
+half is [`examples/c/build.ps1`](../examples/c/build.ps1), a step of its
+own in the same job.
 
 This is what P8 said it could not offer ("On Windows there is no equivalent
 tool and no plan for one"): it is not the tree-walking audit
 `scripts/ax-audit.swift` is on macOS, and it judges that drawing did not
 fail rather than what was drawn — but it needs no permission grant and no
-human, and it found four things in one afternoon. P8's two follow-ups are
+human, and it found five things in one afternoon. P8's two follow-ups are
 untouched: `windows_nc.rs` and `access_bridge.rs` still have no test.
 
 ### `!` W4 — Every `fragment` past the first crashed the app on DX12 — **done (2026-09-08)**
@@ -365,6 +368,56 @@ step together, rather than to place glyphs at fractional offsets (which
 softens moving text and costs the one-raster-per-glyph cache). Either way
 it changes what the conformance corpus reports, so it wants a decision
 before a patch.
+
+### `~` W8 — The C examples had never been built on Windows, and the plugin half could not be — **done (2026-09-08)**
+
+W6 fixed the loader; this is everything else the round found when the C side
+was actually built. `build.sh` is bash and assumes `cc`, `-shared -fPIC`,
+`-rpath` and a plugin that links against nothing, and three of those four
+have no Windows spelling. All three artifacts build and run now —
+`counter.exe` (C as the host), `panel.dll` (C as an extension) and the
+`kui_ext_abi`-deleted mutant the host must refuse — from
+[`examples/c/build.ps1`](../examples/c/build.ps1), which is `build.sh`'s
+round in the same order with the same checks.
+
+What actually differed, and it is worth separating Windows' constraints from
+kui's mistakes:
+
+**Windows', unavoidable.** The compiler has to be MSVC-ABI (`cl` or
+`clang-cl`), because that is what `x86_64-pc-windows-msvc` links; the MinGW
+`gcc` on PATH would compile and then not link. `kui_ffi.dll` has to sit
+beside `counter.exe`, because there is no rpath. And a DLL may not have an
+unresolved import, so the plugin cannot "link against nothing" the way the
+header describes: it names the module each `kui_*` comes from in its own
+import table, and takes that name from an import library.
+
+**Ours, and fixed.** `crates/kui-ffi/build.rs` said Windows needed nothing
+here — "Windows resolves a plugin's imports through an import library rather
+than the executable, so there is nothing to ask for" — which is half of it.
+There is no import library unless the host *exports* something, and a Rust
+bin exports nothing. It now hands link.exe a `/DEF:` naming all 135 `kui_*`,
+generated from the crate's own `pub extern "C" fn kui_*` set rather than
+kept as a list that would go stale, and link.exe writes the `c_panel.lib`
+the plugin links against. (`/DEF:` rather than 135 `/EXPORT:` link args:
+rustc quotes each one, and a quoted `@response-file` is not expanded either.)
+
+Second: a DLL exports nothing unless it says so, so the plugin's own seven
+entry points were invisible and the host refused it as declaring no ABI —
+the same message as the mutant, for a different reason. `kui.h` now puts
+`KUI_EXT_EXPORT` (`__declspec(dllexport)`, empty elsewhere) on the seven
+declarations rather than leaving it to the plugin author, so `panel.c` is
+unchanged and the same source builds everywhere.
+
+The one thing that does not carry over, and it is Windows' rather than
+kui's: an import library names the module it imports from, so a plugin built
+against `c_panel.lib` loads into `c_panel.exe` and no other host, where the
+same `panel.so` would have loaded into either. A host of its own exports
+`kui_*` the same way and ships the `.lib` its plugins link to. `kui.h` says
+so where it describes the contract.
+
+`~` because that last paragraph is a real limit on the C extension story on
+Windows and not a defect to fix. The round is in CI: `smoke-windows` builds
+and runs all three, and requires the mutant's refusal.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -923,7 +976,8 @@ list drawing past its own box — are fixed under alpha.9's `### Fixed`.
 
 **Windows (2026-09-08).** The platform ran for the first time and the round
 is a script: `scripts/smoke-windows.ps1`, in `smoke-windows` beside the
-`cargo test` step. W4, W5 and W6 are fixed and W3 is rebuilt; W7 is the one
+`cargo test` step, with the C round from `examples/c/build.ps1` beside it.
+W4, W5, W6 and W8 are fixed and W3 is rebuilt; W7 is the one
 open thing it found and wants a decision, not a patch. What it still does
 not cover is P8's two follow-ups, unchanged: `windows_nc.rs` has no test
 that runs anywhere, and neither does `access_bridge.rs`. The next Windows

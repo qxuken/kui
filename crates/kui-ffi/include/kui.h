@@ -1770,16 +1770,44 @@ bool kui_run(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user);
  * does for this crate's examples: link with -rdynamic / --export-dynamic, so
  * that the kui_* symbols in its binary are also in the dynamic symbol table
  * the loader reads. examples/c/build.sh builds your side.
+ *
+ * ON WINDOWS BOTH HALVES OF THAT ARE DIFFERENT, and neither is optional.
+ * A DLL may not have an unresolved import: your plugin names the module each
+ * kui_* comes from in its own import table, and it takes that name from an
+ * import library at link time. So you link against the *host's* import
+ * library - the .lib link.exe writes beside an executable that exports
+ * something - rather than against nothing. kui-ffi's build.rs makes
+ * target/debug/examples/c_panel.lib for the example host by handing link.exe
+ * a /DEF: naming all 135 kui_*; a host of your own exports them the same way
+ * and ships the .lib it gets. One consequence is Windows' and not kui's: an
+ * import library names the module it imports from, so a plugin built against
+ * one host's .lib loads into that host and no other, where the same ELF
+ * plugin would have loaded into either. examples/c/build.ps1 is the Windows
+ * side of examples/c/build.sh and does all of this.
+ *
+ * The other difference is below: a DLL exports nothing unless it says so,
+ * which is what KUI_EXT_EXPORT on these seven declarations is for. It is on
+ * the declarations rather than left to you, so a plugin that includes this
+ * header and defines them the ordinary way is already exported and your
+ * source stays the source that builds everywhere.
  */
 typedef void (*KuiExtViewFn)(void *user, KuiCtx *ctx);
 typedef void (*KuiExtEventFn)(void *user, const KuiEvent *ev);
-uint32_t kui_ext_abi(void);
-const char *kui_ext_name(void);
-void *kui_ext_init(void);
-const KuiStr *kui_ext_slots(size_t *count);
-void kui_ext_view(void *user, KuiCtx *ctx);
-void kui_ext_on_event(void *user, const KuiEvent *ev);
-void kui_ext_free(void *user);
+
+#if defined(_WIN32)
+#define KUI_EXT_EXPORT __declspec(dllexport)
+#else
+/* ELF and Mach-O export every non-static definition already. */
+#define KUI_EXT_EXPORT
+#endif
+
+KUI_EXT_EXPORT uint32_t kui_ext_abi(void);
+KUI_EXT_EXPORT const char *kui_ext_name(void);
+KUI_EXT_EXPORT void *kui_ext_init(void);
+KUI_EXT_EXPORT const KuiStr *kui_ext_slots(size_t *count);
+KUI_EXT_EXPORT void kui_ext_view(void *user, KuiCtx *ctx);
+KUI_EXT_EXPORT void kui_ext_on_event(void *user, const KuiEvent *ev);
+KUI_EXT_EXPORT void kui_ext_free(void *user);
 
 /* The library's side of the same contract - what an extension calls.
  * Which slot kui_ext_view is filling, in your own vocabulary (false, out

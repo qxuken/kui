@@ -17,6 +17,7 @@
 //!
 //! Run:
 //!   ./examples/c/build.sh                    # builds examples/c/panel.so
+//!   pwsh examples/c/build.ps1                # or panel.dll, on Windows
 //!   cargo run -p kui-ffi --example c_panel   # a window
 //!   cargo run -p kui-ffi --example c_panel -- --headless
 //!
@@ -103,11 +104,21 @@ impl App for Host {
     }
 }
 
-/// Where `examples/c/build.sh` leaves the plugin. Overridden by argv[1], which
-/// is the more honest reading of what this example does: it loads a library
-/// chosen at runtime, not one it was built with.
+/// Where `examples/c/build.sh` — or `build.ps1` — leaves the plugin.
+/// Overridden by argv[1], which is the more honest reading of what this
+/// example does: it loads a library chosen at runtime, not one it was built
+/// with. `.so` on both unixes, because that is what `build.sh` names it and
+/// `dlopen` does not care; `.dll` on Windows, because `LoadLibraryW` does.
 fn default_plugin() -> String {
-    format!("{}/../../examples/c/panel.so", env!("CARGO_MANIFEST_DIR"))
+    let ext = if cfg!(target_os = "windows") {
+        "dll"
+    } else {
+        "so"
+    };
+    format!(
+        "{}/../../examples/c/panel.{ext}",
+        env!("CARGO_MANIFEST_DIR")
+    )
 }
 
 /// One frame, built the way the windowed runner builds it: the host's view
@@ -278,7 +289,14 @@ fn main() {
         Ok(ext) => ext,
         Err(err) => {
             eprintln!("kui: {err}");
-            eprintln!("build it first: ./examples/c/build.sh");
+            eprintln!(
+                "build it first: {}",
+                if cfg!(target_os = "windows") {
+                    "pwsh examples/c/build.ps1"
+                } else {
+                    "./examples/c/build.sh"
+                }
+            );
             std::process::exit(1);
         }
     };

@@ -80,7 +80,7 @@ language; [examples/README.md](examples/README.md) is the full map.
 cargo run -p kui --example counter        # pure Rust, Elm-ish flow
 cargo run -p kui --example rich_text      # styled spans in one wrapped paragraph
 cargo run -p kui --example editor         # multiline text editing: caret, selection, clipboard
-cargo run -p kui --example waker          # a thread feeds lines and wakes the parked loop; no input, frames anyway
+./examples/c/build.sh && ./examples/c/counter             # the same app from C (Windows: pwsh examples/c/build.ps1)
 cargo run -p kui-lua --example lua_panel  # Rust host + Lua panel sharing one frame
 ./examples/c/build.sh && ./examples/c/counter             # the same app from C
 ./examples/c/counter --headless           # C FFI self-test, no window needed

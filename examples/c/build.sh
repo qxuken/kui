@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Builds libkui_ffi and the C counter example against it, after checking that
 # include/kui.h still describes the structs Rust actually lays out.
+#
+# Windows is examples/c/build.ps1: same three artifacts and the same checks,
+# but an MSVC-ABI compiler, an import library at each link, and no rpath. Its
+# header says which of those are Windows' and which are kui's.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
