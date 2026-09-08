@@ -434,6 +434,38 @@ its own bug report.
 
 ### `.` F33 — `howto.md` contradicts the release that shipped it, and nothing checks a "today" sentence
 
+**Done (2026-09-08), and the check found a fourth site the entry missed.**
+All four parts of the "Do" below are in the tree. The guard —
+`crates/kui-core/tests/docs.rs`, one `#[test]` the workspace run already
+executes — was written first and run against the stale page, which is how
+the fourth turned up: it named F25, F30 **and F27 twice**, the second in
+"How do I pin the version I tested?", where the sentence was right and only
+the citation was stale. That one now points at alpha.9's `### Changed`
+instead. The three answers say what alpha.9 shipped: "find out a release
+happened" is `npm view @qxuken/kui version` and `npm outdated` with `@alpha`
+as the fallback and why silence is not "no such release"; "reset an editor's
+text" is F25's held seed, over `initial`, for one frame, with
+`edit-text-without-editor` when nothing declares the key (the label spelling
+is F32's line to add, so this touched one sentence and its links); "settled
+frame" is `await app.settled(maxMs = 10_000)` and `await app.frame()`, and
+says the cap resolves with `animating()` still true rather than throwing.
+"How do I use one font in every headless core of a suite?" is under *Test
+it*: `setup` registers against that surface, `init(surface)` reads the id
+into the model, `addSystemFont` is idempotent per family
+(`runtime/resources_api.rs:91`) so the same `setup` is right for every core,
+and the module global is what raises `foreign-resource` — the pomodoro's
+wish 1, answered where the app will read it rather than in a fourth backlog
+entry.
+
+The test itself parses rather than matches: an id is uppercase letters,
+digits, an optional lowercase suffix and an optional `(x)`, so a cited
+`C5(b)` and a closed `C5` are different strings and the parked half of a
+split entry stays citable. It asserts the closed index parsed as more than
+twenty entries, since a section that moved would otherwise make the whole
+check vacuous. Both halves were mutation-tested: the citation half fails
+with the three ids and their sentences before the fix, and misspelling one
+`props.md#` anchor fails the second with both links that carry it.
+
 Both reports found it independently. The pomodoro (wish 2): "How do I
 find out a release happened?" says the package "publishes one dist-tag,
 `alpha`, and no `latest`" — in the tarball of the release whose own

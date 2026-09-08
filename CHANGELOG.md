@@ -139,6 +139,28 @@ GPU without rebuilding a node.
   so a later `setEditText` would have something to name. Set the text by
   the editor's own `key` prop from the `update` that opens it.
 
+### Fixed
+
+- **`howto.md` no longer describes the tree it was written against**
+  (backlog F33, from both alpha.9 field reports, which found it
+  independently). Three of its answers were written in the alpha.8
+  worktree that built the page and shipped unchanged in the release that
+  closed what they called open: "find out a release happened" said the
+  package publishes no `latest` in the tarball whose own `### Changed`
+  added one, "reset an editor's text" called `setEditText` before the
+  declare "a silent no-op today", and "get the settled frame" said a
+  windowed loop can only be polled. All three say what alpha.9 shipped,
+  and the version-pinning answer cites that release rather than the
+  backlog entry it closed. A new *Test it* answer — "How do I use one
+  font in every headless core of a suite?" — retires a wish that has been
+  on four reports and answered in a backlog entry no app reads: register
+  in `setup`, read the id in `init(surface)`, never a module global.
+  A `#[test]` in `kui-core/tests/docs.rs` is what keeps the page honest:
+  a backlog id cited as an open gap that the "Closed — index" lists fails
+  the workspace test run, as does a `props.md#anchor` no heading answers.
+  Prose in `howto.md` cites a backlog id only for work that has not
+  shipped.
+
 ## 0.1.0-alpha.9 (2026-09-08)
 
 **What breaks.**

@@ -294,10 +294,16 @@ Headless, `app.runOut(maxMs?, stepMs?)` draws once, then advances in frame
 steps until `animating()` is false, and returns the milliseconds it spent —
 a frame that applies a change is frame 0 of its transitions, so a `render()`
 straight after a dispatch is the *start* of the motion. A window runs on the
-wall clock and has no `advance`: pump, `step()`, and poll `win.animating()`
-(backlog F30 wants that as a promise on the windowed loop).
+wall clock and cannot be advanced, so the loop `runWindowed` builds answers
+the same question with two promises its own pump resolves: `await
+app.settled(maxMs = 10_000)` is `runOut` for a window, and `await
+app.frame()` is the next painted frame. The cap resolves rather than throws,
+with `animating()` still true and the milliseconds it waited — a view
+holding a `repeat` keyframe never settles, and that number is how a test
+says so.
 
-[alpha.8 `runOut` entry](../CHANGELOG.md#010-alpha8-2026-09-07)
+[alpha.8 `runOut` entry](../CHANGELOG.md#010-alpha8-2026-09-07) ·
+[alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08)
 
 ### How do I move time in a test?
 
@@ -334,6 +340,25 @@ prop an element does not read.
 
 [Warnings table](props.md#warnings)
 
+### How do I use one font in every headless core of a suite?
+
+Register it in `setup` and read its id in `init(surface)` into the model, and
+every core in the file gets the same treatment without a global: `setup` runs
+against that surface before the first frame, `init` is handed that surface
+after it, and `addSystemFont` is idempotent per family, so one `setup` shared
+by every core registers `"Antonio"` once per session and hands back that
+session's id — whether the family came from `loadFontsDir` or was already
+installed. What does not work is a module variable set once and read by every
+view: a font id belongs to the session that registered it, and a core from
+another one shapes it as sans and raises `foreign-resource`. A helper that
+re-points that global at each core before rendering it is the shape this
+answer replaces — it leaves the cores rendered earlier holding an id from a
+session they are not in.
+
+[Resources](props.md#resources) ·
+[`foreign-resource`](props.md#warnings) ·
+[alpha.7](../CHANGELOG.md#010-alpha7-2026-09-06)
+
 ### How do I size something to its text before the frame exists?
 
 `measureText(content, style, maxWidth)` on the surface returns what layout
@@ -351,19 +376,23 @@ measured.
 
 Write the exact version: `^0.1.0-alpha.7` and `~0.1.0-alpha.7` both admit any
 prerelease of the same `0.1.0` tuple, so without a lockfile both float to the
-newest alpha. The template's `^` is a floor on purpose; an app that wants the
-release it tested pins it exactly and commits its lockfile (backlog F27).
+newest alpha — that is npm's semver, not a difference between the two
+spellings. The template's `^` is a floor on purpose; an app that wants the
+release it tested pins it exactly and commits its lockfile.
 
+[alpha.9 `### Changed`](../CHANGELOG.md#010-alpha9-2026-09-08) ·
 [every release](../CHANGELOG.md)
 
 ### How do I find out a release happened?
 
-`npm view @qxuken/kui@alpha version` is the query. The package publishes one
-dist-tag, `alpha`, and no `latest`, so `npm view @qxuken/kui version`, `npm
-view … dist-tags` and `npm outdated` print nothing and exit 0 — silence there
-means "wrong tag", not "no such release" (backlog F27 is the fix). The
-repository README's *Releases* section is what the registries and the tags
-are written down in.
+`npm view @qxuken/kui version` is the query, and `npm outdated` inside your
+app is the same answer against what you have installed: every alpha takes the
+`latest` dist-tag as well as `alpha`, so the default-tag commands every other
+package answers work here too. `npm view @qxuken/kui@alpha version` is the
+fallback if `latest` is ever missing — a package without one prints nothing
+and exits 0, which reads like "no such release" and is not. The repository
+README's *Releases* section is what the registries and the tags are written
+down in.
 
 [every release](../CHANGELOG.md)
 
