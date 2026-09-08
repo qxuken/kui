@@ -9,9 +9,10 @@
 //! `onClick` carries a message value, never a closure.
 
 use kui_core::{
-    AudioCommand, AudioSpec, Color, Core, EditKey, FontId, FrameSample, FrameStats, ImageId,
-    InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, MouseButton, PlayOptions, PlaybackId, Rect,
-    Size, SoundId, Span, UiEvent, Value, Vec2,
+    Appearance, AudioCommand, AudioSpec, Color, Core, EditKey, FontId, FrameSample, FrameStats,
+    ImageId, InputEvent, Key, KeyCode, KeyMods, KeyPress, Locale, Mods, MotionPref, MouseButton,
+    PlayOptions, PlaybackId, Rect, Size, SoundId, Span, SystemEnv, UiEvent, Value, Vec2,
+    schema::color_hex_str,
 };
 use napi::bindgen_prelude::{Buffer, Float64Array, Uint8Array};
 use napi_derive::napi;
@@ -309,6 +310,81 @@ fn native_controls(v: &Json) -> Result<Option<Rect>> {
     Ok((w > 0.0 && h > 0.0).then(|| Rect::new(x, y, w, h)))
 }
 
+/// `setEnv`'s `system`: the four OS settings, each with an explicit "the
+/// host cannot tell" — `"unknown"` for the two enums, `null` for the two
+/// values. Applied field by field, so a host that learns one of them says
+/// only that one.
+fn system_env(sys: &mut SystemEnv, o: &JsonMap<String, Json>) -> Result<()> {
+    let name = |key: &str, v: &Json| -> Result<String> {
+        v.as_str()
+            .map(str::to_string)
+            .ok_or_else(|| err(format!("setEnv(): system.{key} must be a string")))
+    };
+    for (key, v) in o {
+        match key.as_str() {
+            "appearance" => {
+                sys.appearance = Appearance::parse(&name(key, v)?).ok_or_else(|| {
+                    err(format!(
+                        "setEnv(): system.appearance is one of {:?}",
+                        kui_core::schema::APPEARANCES
+                    ))
+                })?
+            }
+            "motion" => {
+                sys.motion = MotionPref::parse(&name(key, v)?).ok_or_else(|| {
+                    err(format!(
+                        "setEnv(): system.motion is one of {:?}",
+                        kui_core::schema::MOTIONS
+                    ))
+                })?
+            }
+            // A colour the way a prop takes one — `0xRRGGBBAA` or
+            // `"#rrggbb"` — so what `env()` hands back and what a view
+            // paints with are the same value. Null is "cannot tell", and so
+            // is a fully transparent colour whichever way it was spelled:
+            // an accent nobody can see is not an accent, and zero is what a
+            // C host passes for "I was not told".
+            "accent" => {
+                sys.accent = match v {
+                    Json::Null => None,
+                    Json::String(s) => Some(
+                        color_hex_str(s)
+                            .map_err(|e| err(format!("setEnv(): system.accent: {e}")))?,
+                    ),
+                    _ => v
+                        .as_u64()
+                        .and_then(|n| u32::try_from(n).ok())
+                        .map(Color::hex)
+                        .ok_or_else(|| {
+                            err("setEnv(): system.accent must be 0xRRGGBBAA, \"#rrggbb\" or null")
+                        })
+                        .map(Some)?,
+                }
+                .filter(|c| c.is_visible())
+            }
+            // A tag that does not fit is not a tag: say so rather than
+            // storing a truncated one, since a test that silently lost its
+            // locale would read as the host not knowing.
+            "locale" => {
+                sys.locale = match v {
+                    Json::Null => None,
+                    _ => {
+                        let tag = name(key, v)?;
+                        Some(Locale::new(&tag).ok_or_else(|| {
+                            err(format!(
+                                "setEnv(): system.locale must be an ASCII BCP-47 tag of at most {} bytes, or null",
+                                Locale::CAP
+                            ))
+                        })?)
+                    }
+                }
+            }
+            _ => return Err(err(format!("setEnv(): unknown system key {key:?}"))),
+        }
+    }
+    Ok(())
+}
+
 fn edit_key_of(name: &str) -> Result<EditKey> {
     Ok(match name {
         "left" => EditKey::Left,
@@ -405,7 +481,7 @@ impl Ctx {
             .as_object()
             .ok_or_else(|| err("setEnv() takes an object"))?;
         for name in o.keys() {
-            if !matches!(name.as_str(), "refreshHz" | "focused" | "window") {
+            if !matches!(name.as_str(), "refreshHz" | "focused" | "system" | "window") {
                 return Err(err(format!("setEnv(): unknown key {name:?}")));
             }
         }
@@ -427,6 +503,12 @@ impl Ctx {
             self.core.env.focused = f
                 .as_bool()
                 .ok_or_else(|| err("setEnv(): focused must be a boolean"))?;
+        }
+        if let Some(s) = o.get("system") {
+            let s = s
+                .as_object()
+                .ok_or_else(|| err("setEnv(): system must be an object"))?;
+            system_env(&mut self.core.env.system, s)?;
         }
         let Some(w) = o.get("window") else {
             return Ok(());
@@ -883,6 +965,25 @@ fn env_json(core: &mut Core) -> Json {
         win.native_controls.map_or(Json::Null, rect_json),
     );
 
+    // What the user set in the OS. The two enums always have a key —
+    // "unknown" is one of their readings, not the absence of one — and the
+    // two values are null when the host cannot tell, the shape `refreshHz`
+    // already uses. `accent` comes back as the `0xRRGGBBAA` number a prop
+    // takes, so a view paints with it without converting.
+    let sys = env.system;
+    let mut sy = JsonMap::new();
+    sy.insert("appearance".into(), Json::from(sys.appearance.name()));
+    sy.insert(
+        "accent".into(),
+        sys.accent.map_or(Json::Null, |c| Json::from(c.to_hex())),
+    );
+    sy.insert("motion".into(), Json::from(sys.motion.name()));
+    sy.insert(
+        "locale".into(),
+        sys.locale
+            .map_or(Json::Null, |l| Json::from(l.as_str().to_string())),
+    );
+
     let mut o = JsonMap::new();
     o.insert(
         "refreshHz".into(),
@@ -894,6 +995,7 @@ fn env_json(core: &mut Core) -> Json {
         Json::from(env.frame_budget_ms() as f64),
     );
     o.insert("focused".into(), Json::Bool(env.focused));
+    o.insert("system".into(), Json::Object(sy));
     o.insert("viewport".into(), Json::Object(vp));
     o.insert("window".into(), Json::Object(w));
     Json::Object(o)

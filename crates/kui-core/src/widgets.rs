@@ -466,6 +466,10 @@ fn window_button(ui: &mut Ui<'_>, button: WindowButton, maximized: bool) {
 /// The standard button's spec: hover and pressed backgrounds are declared
 /// on the node and resolved by the core, so every binding's button is this
 /// same data. Add the label as a child.
+///
+/// The three colours are hand-picked rather than derived from the first, so
+/// that the stock button paints exactly what it has always painted; the
+/// derivation for any *other* base is [`button_palette`].
 pub fn button_spec() -> NodeSpec {
     NodeSpec::row()
         .pad_xy(14.0, 8.0)
@@ -474,6 +478,37 @@ pub fn button_spec() -> NodeSpec {
         .pressed_bg(Color::rgb8(0x2f, 0x54, 0xc4))
         .radius(6.0)
         .center()
+}
+
+/// A button's three backgrounds from one base colour: the base, a hover a
+/// step toward white, a pressed a step toward black. The steps are the
+/// distances the stock button's own trio sits at, so an accent-painted
+/// button reads as the same control in a different colour.
+///
+/// Public because "a button in *this* colour" is the same question with a
+/// different answer, and the arithmetic should not be re-guessed per app.
+pub fn button_palette(base: Color) -> (Color, Color, Color) {
+    (
+        base,
+        base.mix(Color::WHITE, 0.09),
+        base.mix(Color::BLACK, 0.10),
+    )
+}
+
+/// Black or white, whichever a reader can see on `bg`.
+///
+/// The split is at `Color::luminance` 0.4 rather than at the midpoint:
+/// white text needs a darker background than black text needs a light one,
+/// and the accents that land near the line (macOS's yellow at 0.72, its
+/// orange at 0.44) come out the way the platform paints them. It is the
+/// stock button's answer, not a general contrast checker — a palette that
+/// cares should say what its label colour is.
+pub fn readable_on(bg: Color) -> Color {
+    if bg.luminance() > 0.4 {
+        Color::BLACK
+    } else {
+        Color::WHITE
+    }
 }
 
 pub const BUTTON_TEXT: f32 = 15.0;
@@ -502,15 +537,30 @@ pub fn button(ui: &mut Ui<'_>, text: &str, payload: impl Into<Value>) {
 /// This is what `<button>`, `button { }` and `kui_button_with` lower to,
 /// so a binding cannot end up with a button of its own.
 pub fn button_with(ui: &mut Ui<'_>, key: &str, text: &str, spec: NodeSpec, hint: Option<&str>) {
+    // `accent` asks for the whole palette, not just the background the
+    // core would substitute for any node: a button whose hover and pressed
+    // shades stayed the stock blue would flash blue under a yellow accent.
+    // A host that cannot tell what the accent is leaves the stock trio,
+    // which is what makes this safe to declare unconditionally.
+    let spec = match ui.env().system.accent.filter(|_| spec.accent) {
+        Some(accent) => {
+            let (bg, hover, pressed) = button_palette(accent);
+            spec.bg(bg).hover_bg(hover).pressed_bg(pressed)
+        }
+        None => spec,
+    };
     let spec = if spec.disabled {
         let o = spec.style.opacity * BUTTON_DISABLED_OPACITY;
         spec.opacity(o)
     } else {
         spec
     };
+    // Whatever the background ended up being: white on the stock blue as
+    // it has always been, black on an accent light enough to need it.
+    let label = readable_on(spec.style.bg);
     let node = ui.child_key(key);
     ui.with_keyed(key, spec, |ui| {
-        ui.text(text, TextStyle::new(BUTTON_TEXT).color(Color::WHITE));
+        ui.text(text, TextStyle::new(BUTTON_TEXT).color(label));
         if let Some(hint) = hint
             && ui.is_hovered(node)
         {

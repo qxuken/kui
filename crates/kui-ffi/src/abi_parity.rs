@@ -167,6 +167,14 @@ fn asserts() -> String {
         "KUI_CURSOR_EW_RESIZE", "KUI_CURSOR_NS_RESIZE",
         "KUI_CURSOR_NWSE_RESIZE", "KUI_CURSOR_NESW_RESIZE",
     ]);
+    // Base 0: "unknown" is a member here, not the absence of one, so a
+    // zeroed call means what it says.
+    abi_enum!(o, kui_core::schema::APPEARANCES, 0 => [
+        "KUI_APPEARANCE_UNKNOWN", "KUI_APPEARANCE_LIGHT", "KUI_APPEARANCE_DARK",
+    ]);
+    abi_enum!(o, kui_core::schema::MOTIONS, 0 => [
+        "KUI_MOTION_UNKNOWN", "KUI_MOTION_FULL", "KUI_MOTION_REDUCED",
+    ]);
     abi_enum!(o, kui_core::schema::EXPANDED, 1 => [
         "KUI_EXPANDED_COLLAPSED", "KUI_EXPANDED_EXPANDED",
     ]);
@@ -349,6 +357,7 @@ fn asserts() -> String {
         value_text: KuiStr => "KuiStr",
         description: KuiStr => "KuiStr",
         animate: u32 => "uint32_t",
+        accent: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {

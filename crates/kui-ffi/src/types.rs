@@ -418,6 +418,11 @@ pub struct KuiSpec {
     /// needs. Opt-in, because it takes the loop off input-driven; one node
     /// asking is enough for the window.
     pub animate: u32,
+    /// Non-zero: paint this node's background in the OS accent colour
+    /// (`kui_env_set_system`), keeping `bg` where the host never said what
+    /// it is. On `kui_button_with` it takes the hover and pressed shades
+    /// and the label colour with it.
+    pub accent: u32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a

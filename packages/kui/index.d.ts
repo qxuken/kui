@@ -748,9 +748,35 @@ export interface Env {
   /** Whether the *window* has the keyboard at all. Not to be confused with
    *  `focused()`, which is the focused *node*'s key. */
   focused: boolean;
+  /** What the user set in the OS. */
+  system: SystemEnv;
   /** The viewport the current or last frame was begun with. */
   viewport: WindowSize;
   window: WindowEnv;
+}
+
+/** The OS settings on `Env` — appearance, accent, motion, locale — as the
+ *  host reported them. Every one of them can be "the host cannot tell", and
+ *  that is the default: a `KuiWindow` asks the OS for all four on macOS and
+ *  Windows (and for the locale from `LANG` elsewhere), a headless `Ctx`
+ *  knows only what `setEnv` told it. Treat an unknown as "use my own
+ *  default" rather than as an answer. Nothing in kui acts on these; a view
+ *  that honours them does so where it picks a colour or declares an
+ *  animation. */
+export interface SystemEnv {
+  /** The OS light/dark setting. `'unknown'` where the platform has no
+   *  answer (X11, Wayland without an override) or nobody pushed one. */
+  appearance: 'unknown' | 'light' | 'dark';
+  /** The OS accent colour as `0xRRGGBBAA` — pass it straight back as a
+   *  `bg` or `color` — or null when the host cannot tell. */
+  accent: number | null;
+  /** Whether the user asked for reduced motion. `'reduced'` is the
+   *  request, `'full'` is its absence, `'unknown'` is nobody having asked
+   *  the OS — so test for `=== 'reduced'`, not for truthiness. */
+  motion: 'unknown' | 'full' | 'reduced';
+  /** The UI language as a BCP-47 tag (`'en-US'`), unparsed, or null when
+   *  the host cannot tell. */
+  locale: string | null;
 }
 
 /** The window chrome facts on `Env`. A view that draws its own titlebar
@@ -790,6 +816,18 @@ export interface EnvInput {
    *  same. */
   refreshHz?: number | null;
   focused?: boolean;
+  /** What the user set in the OS, as a real host would have pushed it.
+   *  `'unknown'`, and null for the two values, are the readings a host that
+   *  cannot tell reports — they are settings, not absences, so a test can
+   *  declare them. `accent` also takes the `'#rrggbb'` spelling a prop
+   *  takes; a `locale` that is not an ASCII tag of at most 31 bytes throws
+   *  rather than being stored truncated. */
+  system?: {
+    appearance?: 'unknown' | 'light' | 'dark';
+    accent?: number | string | null;
+    motion?: 'unknown' | 'full' | 'reduced';
+    locale?: string | null;
+  };
   window?: {
     /** Which window a headless `Ctx` is standing in for; every `UiEvent` it
      *  hands out carries it. Real windows get theirs from their runner. */

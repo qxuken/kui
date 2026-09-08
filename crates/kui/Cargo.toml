@@ -33,14 +33,38 @@ audio = ["dep:kira"]
 # core still derives the tree for anyone who asks and nothing reaches the OS.
 accesskit = ["dep:accesskit", "dep:accesskit_winit"]
 
-# Same version winit pins, so the tree compiles it once.
+# Same version winit pins, so the tree compiles it once. Dwm and
+# Globalization are the accent colour and the locale (`mod system_env`).
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.52", features = [
     "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
+] }
+
+# The OS settings winit has no call for: the accent colour, reduce motion
+# and the language list (`mod system_env`). Same versions arboard already
+# pulls in, so this adds features to crates the tree compiles anyway rather
+# than crates; the feature lists are the four classes we call and nothing
+# else.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "objc2-core-foundation",
+    "NSAccessibility",
+    "NSColor",
+    "NSColorSpace",
+    "NSWorkspace",
+] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSArray",
+    "NSLocale",
+    "NSString",
 ] }
 
 # Every example in the repo lives under examples/ at the root, one directory

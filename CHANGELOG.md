@@ -33,6 +33,16 @@ field reports).
   `Fragment` (or `Symbol.for('kui.jsx.fragment')`).
 - `Ui::fragment` and `Core::fragment_node` return the node's `Key` rather
   than `()`. Nothing to fix unless a caller bound the result.
+- `widgets::button_with` now colours its label by the luminance of the spec's
+  background instead of always white. The stock button and every accent are
+  unchanged (white, as before); a caller that passed `button_spec().bg(...)`
+  with a *light* colour of its own gets a black label where it used to get an
+  illegible white one.
+- `Env` gained `system` (a `SystemEnv`), so a Rust host that builds one as a
+  struct literal has a field to add; `..Default::default()`, which is how
+  every example writes it, is unaffected. No ABI break — the four facts
+  arrive through a new `kui_env_set_system`, and a C host that never calls
+  it reads them as unknown.
 - `setEditText`'s first argument is a name, not only a key: anything that
   is not sixteen hex digits is read as the label an editor's `key` prop
   declares. A call that used to throw `bad id "…"` now holds the text for
@@ -81,6 +91,77 @@ field reports).
   needs, and what anything driven by the clock rather than by input needs.
   Opt-in like `exit`, for the same reason — it takes the loop off
   input-driven — and one node asking is enough for the window.
+
+- **What the user set in the OS, as a reading: `env.system`.** Four facts
+  a view has had no way to ask for — `appearance` (light/dark), `accent`
+  (the OS highlight colour as `0xRRGGBBAA`), `motion` (the reduce-motion
+  setting) and `locale` (a BCP-47 tag) — under `env.system` in Node and
+  Lua, `ui.env().system` in Rust, `kui_env_set_system` in C.
+
+  **Every one of them can be unknown, and unknown is the default.** The two
+  enums spell it (`"unknown"`, `KUI_APPEARANCE_UNKNOWN`) rather than
+  leaving it to a null, because "nobody asked the OS" is a third answer and
+  not a missing second one: a `reduceMotion` boolean would have had to
+  invent a `false` for it, and a view branching on that false would animate
+  for a user who asked it not to. `motion` is `"reduced"` / `"full"` /
+  `"unknown"` for the same reason — test `=== "reduced"`, not for
+  truthiness. The two values are `null` in Node and an absent key in Lua,
+  which is the shape `refreshHz` already had.
+
+  **The Rust runner asks the OS itself.** The appearance comes from winit,
+  which answers on macOS and Windows and returns nothing on X11 and on
+  Wayland without an override; it is read when a window is created and
+  thereafter from `WindowEvent::ThemeChanged`, which carries the new theme
+  and also requests a redraw, so an input-driven app repaints. The other three
+  are `kui`'s own `system_env`: on macOS `NSColor.controlAccentColor`,
+  `NSWorkspace.accessibilityDisplayShouldReduceMotion` and
+  `NSLocale.preferredLanguages`; on Windows `DwmGetColorizationColor`,
+  `SPI_GETCLIENTAREAANIMATION` and `GetUserDefaultLocaleName`; elsewhere the
+  locale from `LC_ALL` / `LC_MESSAGES` / `LANG` (`en_US.UTF-8` → `en-US`;
+  `C` and `POSIX` name no language and answer unknown) and nothing else
+  until a desktop-portal query lands. It costs 6.5 µs measured, so it runs
+  on the main thread at startup and again whenever the user has plainly
+  been elsewhere — the app taking focus back, or the theme changing —
+  rather than on a thread that would have to hop back to AppKit's anyway.
+  The macOS half adds no crates: `objc2-app-kit` and `objc2-foundation` are
+  the versions `arboard` already pulls in.
+
+  A host that owns its own window — the C, Node and Lua drivers — pushes
+  what it can ask the OS for itself, which is why the setter exists
+  separately from `kui_env_set`: these change when the user opens a settings
+  app, not when a window moves.
+
+  **The core acts on none of it.** A dark appearance repaints nothing and a
+  reduced motion shortens no animation, because only the view knows which
+  of its colours is the background and which of its animations carries
+  meaning rather than decoration. The reading is the feature; the policy is
+  the app's.
+
+  The `locale` is carried inline (31 ASCII bytes) so `Env` stays `Copy` and
+  a view reading `ui.env()` every frame allocates nothing; a tag that does
+  not fit reads back as unknown rather than as a truncated one, and kui
+  never parses it.
+
+  **`accent`, the one prop the environment paints.** A row on any node:
+  the background comes from `env.system.accent` where the host knows it and
+  stays the declared `bg` where it does not. On the stock button it does the
+  whole job — `<button accent>` (`button { accent = true }`,
+  `KuiSpec.accent`) takes the OS colour, derives its hover and pressed
+  shades from it, and picks a black or white label by luminance, so a yellow
+  accent is a readable button and not a white-on-yellow one. Opt-in, because
+  a prop whose colour depends on the machine is the point here and a
+  surprise anywhere else; a host that was never told what the accent is
+  paints exactly the button it painted before. The arithmetic is public and
+  on `Color`: `mix` (straight sRGB, alpha kept) and `luminance` (WCAG), with
+  `widgets::button_palette` and `widgets::readable_on` as the stock button's
+  answers built from them.
+
+  **What you can delete:** the model field a host was threading its own
+  appearance answer through to reach the view — a driver that asks the OS
+  now has somewhere to put the answer that every binding already reads, and
+  a windowed Rust app can delete the question too. And the hand-picked
+  hover and pressed shades beside any colour you were theming a button
+  with: `Color::mix` is what picked the stock ones.
 
 - **`examples/rust/fragments.rs`**: a gradient, a progress ring drawn from
   the prelude's own distance field, a shimmer that reads `time`, and a card

@@ -137,6 +137,9 @@ pub extern "C" fn kui_button_with(
                 node = node.description(d.as_ref());
             }
             node = node.disabled(s.disabled != 0);
+            if s.accent != 0 {
+                node = node.accent();
+            }
         }
         kui_core::widgets::button_with(
             &mut kui_core::Ui::wrap(c.core()),

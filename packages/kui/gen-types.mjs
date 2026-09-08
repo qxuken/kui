@@ -177,8 +177,8 @@ ${tableOf(['code', 'meaning'], warnings.map((w) => [`\`${w.code}\``, oneLine(w.d
 
 The host facts a view reads: \`ui.env()\` in Rust, \`view(env)\` in Lua,
 \`ctx.env()\` / \`win.env()\` in Node. C is the host, so it *writes* them
-(\`kui_env_set\`, \`kui_env_set_window\`) and has no reading; its column
-names the argument. A real window's runner refreshes every fact each frame;
+(\`kui_env_set\`, \`kui_env_set_system\`, \`kui_env_set_window\`) and has no
+reading; its column names the argument. A real window's runner refreshes every fact each frame;
 headless, \`ctx.setEnv\` in Node and the two C setters are the writers, and
 the conformance corpus drives its two chrome scenes through them. The
 \`from\` column says which Rust struct holds the fact, or that it is derived
@@ -188,6 +188,22 @@ height at the window origin in Lua and C (the shape C's two numbers can
 express, and where the macOS traffic lights sit), and \`frame_budget_ms\` is
 derived from \`refresh_hz\` but part of the reading everywhere, so no view
 restates the 120 Hz fallback.
+
+The \`system.*\` rows are what the *user* set, and every one of them can
+also be unknown — which is the default, and what a driver reports for a
+fact its platform gives it no way to ask. The Rust runner asks the OS for
+all four on macOS and Windows (the appearance through winit, the accent,
+motion and locale through AppKit / Win32) and re-asks when the app takes
+focus back or the theme changes; on X11 and Wayland it answers the locale
+from \`LANG\` and leaves the rest unknown. Every other driver owns its own
+window, so it pushes what it knows through its env setter.
+Unknown is a reading, not a missing value: the two enums
+spell it \`"unknown"\` and always have a key, the two values are \`null\` in
+Node and an absent key in Lua, and C reads zero as it does everywhere
+else. Nothing in the core acts on any of it — a dark appearance repaints
+nothing and a reduced motion shortens nothing, because only the view knows
+which of its colours is the background and which of its animations carries
+meaning.
 
 ${tableOf(
   ['field', 'from', 'Node', 'Lua', 'C', 'description'],

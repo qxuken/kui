@@ -584,6 +584,14 @@ typedef struct KuiSpec {
      * is declared. What a kui_fragment reading `time` needs; opt-in,
      * because it takes the loop off input-driven. One node is enough. */
     uint32_t animate;
+    /* Non-zero: paint this node's background in the OS accent colour the
+     * host pushed through kui_env_set_system, keeping `bg` where it never
+     * said what the accent is. On kui_button_with it takes the hover and
+     * pressed shades and the label colour with it, so <button accent> is
+     * one field rather than a palette. Appended after ABI 9 the compatible
+     * way (an [in] struct, not one that travels as an array), so a host
+     * that predates it passes the shorter struct and reads as zero. */
+    uint32_t accent;
 } KuiSpec;
 
 /* Disclosure state (KuiSpec.expanded): the schema index plus one, so zero
@@ -1147,16 +1155,20 @@ void kui_input_modifiers(KuiCtx *ctx, uint32_t mods);
 bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
 
 /* -- Host environment ---------------------------------------------------- */
-/* These two setters are the whole of C's `env`: the fields of kui_core's
- * Env and WindowEnv, one argument each, in the order docs/props.md's Env
- * table lists them (schema::ENV_FIELDS, the one statement of the shape
- * every binding's reading is pinned to). A C host is the frame driver, so
- * it writes the facts and has no reading of them back - Rust's ui.env(),
- * Lua's view(env) and Node's ctx.env() are the readers - except the window
- * id, which kui_ctx_window answers. The two facts Lua and Node derive or
- * carry beside these (the frame budget, the viewport) are the host's own
- * numbers here. kui-ffi's tests hold these prototypes to the table:
+/* These three setters are the whole of C's `env`: the fields of kui_core's
+ * Env, SystemEnv and WindowEnv, one argument each, in the order
+ * docs/props.md's Env table lists them (schema::ENV_FIELDS, the one
+ * statement of the shape every binding's reading is pinned to). A C host is
+ * the frame driver, so it writes the facts and has no reading of them back
+ * - Rust's ui.env(), Lua's view(env) and Node's ctx.env() are the readers -
+ * except the window id, which kui_ctx_window answers. The two facts Lua and
+ * Node derive or carry beside these (the frame budget, the viewport) are
+ * the host's own numbers here. kui-ffi's tests hold these prototypes to the
+ * table:
  *   kui_env_set         refresh_hz, focused          (Env)
+ *   kui_env_set_system  appearance, accent, motion, locale  (SystemEnv:
+ *                       what the user set in the OS, all four with an
+ *                       "I cannot tell" reading that is the default)
  *   kui_env_set_window  window, custom_chrome, maximized, fullscreen,
  *                       controls_w, controls_h       (WindowEnv; the
  *                       controls rect flattened to its extent at the
@@ -1165,6 +1177,40 @@ bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
 /* Host facts for views to read (refresh_hz <= 0 = unknown). Survives across
  * frames; set on change or every frame, either works. */
 void kui_env_set(KuiCtx *ctx, float refresh_hz, bool focused);
+/* The OS light/dark setting, as kui_env_set_system takes it and Node and
+ * Lua read back as "unknown"/"light"/"dark". Zero is unknown - a host that
+ * never calls the setter reports that it cannot tell, rather than a guess a
+ * view would paint. */
+enum {
+    KUI_APPEARANCE_UNKNOWN = 0,
+    KUI_APPEARANCE_LIGHT = 1,
+    KUI_APPEARANCE_DARK = 2,
+};
+/* The OS reduce-motion setting, zero unknown for the same reason.
+ * KUI_MOTION_REDUCED is "the user asked for less animation"; nothing in the
+ * core acts on it, since only a view knows which of its animations carries
+ * meaning and which is decoration. */
+enum {
+    KUI_MOTION_UNKNOWN = 0,
+    KUI_MOTION_FULL = 1,
+    KUI_MOTION_REDUCED = 2,
+};
+/* What the user set in the OS, for views to read: a KUI_APPEARANCE_*, the
+ * accent colour as 0xRRGGBBAA (0 = cannot tell, since a fully transparent
+ * accent is not a colour anyone was given), a KUI_MOTION_*, and the UI
+ * language as a BCP-47 tag ("en-US"; empty = cannot tell). The tag is
+ * copied, so the KuiStr need not outlive the call; one longer than 31 bytes
+ * or not ASCII is not a tag and reads back as unknown rather than as a
+ * truncated one. kui does not parse it.
+ *
+ * Separate from kui_env_set because these change when the user opens a
+ * settings app, not when a window moves: push them at startup and from the
+ * OS's change notification. Adding a setter rather than arguments is also
+ * what keeps this off KUI_ABI_VERSION - a host that never calls it is
+ * unaffected, and one that does fails to link against an older library,
+ * which is loud. */
+void kui_env_set_system(KuiCtx *ctx, uint32_t appearance, uint32_t accent,
+                        uint32_t motion, KuiStr locale);
 /* The frame clock for transitions (monotonic seconds, any origin). Set before
  * each kui_frame_begin; never setting it makes transitions snap. */
 void kui_set_time(KuiCtx *ctx, double now_secs);

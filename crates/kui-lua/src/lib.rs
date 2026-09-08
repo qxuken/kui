@@ -220,7 +220,10 @@ fn slot_table(lua: &Lua, slot: &Slot<'_>) -> mlua::Result<Table> {
 /// documents and `the_env_table_is_the_documented_env_shape` pins to it key
 /// for key: `refresh_hz` (nil if unknown),
 /// `frame_budget_ms`, `focused` (the *window*'s keyboard focus, a bool),
-/// `focus` (the focused *node*'s key), `focus_visible`,
+/// `system` (what the user set in the OS: `appearance` and `motion` as
+/// strings, always there because "unknown" is one of their readings, and
+/// `accent` (0xRRGGBBAA) / `locale` (a BCP-47 tag) only when the host can
+/// tell), `focus` (the focused *node*'s key), `focus_visible`,
 /// `viewport_w`/`viewport_h` (logical px), `window` chrome facts, the
 /// queries `edit_text(key)`, `is_focused(key)`, `is_hovered(key)`,
 /// `is_pressed(key)` (keys are the integers events carry; `is_focused`,
@@ -279,6 +282,22 @@ fn env_table<'scope, 'env: 'scope>(
     // on that name because `focused` is the window fact here, and has been
     // since env existed; see the module doc.
     t.set("focused", env.focused)?;
+    // What the user set in the OS. The two enums are always there —
+    // "unknown" is one of their readings — and the two values follow Lua's
+    // rule for a fact the host cannot tell, which is `refresh_hz`'s: no
+    // key rather than a nil-shaped one.
+    let sys = env.system;
+    let st = lua.create_table()?;
+    st.set("appearance", sys.appearance.name())?;
+    if let Some(accent) = sys.accent {
+        // 0xRRGGBBAA, the number a prop takes.
+        st.set("accent", accent.to_hex())?;
+    }
+    st.set("motion", sys.motion.name())?;
+    if let Some(locale) = sys.locale {
+        st.set("locale", locale.as_str())?;
+    }
+    t.set("system", st)?;
     if let Some(k) = focus {
         t.set("focus", k.0 as i64)?;
     }
@@ -1034,7 +1053,7 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             if let Some(hint) = t.get::<Option<String>>("tooltip")? {
                 out.apply_tooltip(&hint);
             }
-            for name in ["description", "disabled"] {
+            for name in ["description", "disabled", "accent"] {
                 let v = t.get::<mlua::Value>(name)?;
                 if v.is_nil() {
                     continue;
@@ -2007,6 +2026,43 @@ mod tests {
         assert!(!hover.message.contains("did you mean"));
     }
 
+    /// The one paint row the stock button takes: `accent` is a question
+    /// put to the OS, not a colour, so a script that declares it gets the
+    /// stock blue on a host that was never told what the accent is and
+    /// the OS colour on one that was.
+    #[test]
+    fn an_accent_button_takes_the_colour_the_host_pushed() {
+        let mut ext = LuaExtension::from_source(
+            "accent",
+            r#"
+                function view(env)
+                  return column { pad = 10,
+                    button { label = "go", on_click = "go", accent = true },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut bg = |core: &mut Core| {
+            frame(core, &mut ext);
+            core.output().0.quads[0].color
+        };
+        let mut core = Core::new();
+        assert_eq!(
+            bg(&mut core),
+            kui_core::Color::rgb8(0x3b, 0x5b, 0xd4),
+            "no accent pushed, the stock button"
+        );
+        assert!(
+            core.take_warnings().is_empty(),
+            "and a row the button reads"
+        );
+
+        let accent = kui_core::Color::hex(0x007affff);
+        core.env.system.accent = Some(accent);
+        assert_eq!(bg(&mut core), accent);
+    }
+
     /// are schema rows, so a script declares semantics like any other
     /// prop; the access tree shows them (and numbers a tab list itself),
     /// and an assistive request on a script's button emits its message.
@@ -2601,9 +2657,12 @@ mod tests {
         )
         .unwrap();
         let mut core = Core::new();
-        // Every key that only appears when set: a rate, a controls rect,
-        // and a focused node (which the ring has to see a frame first).
+        // Every key that only appears when set: a rate, an accent, a
+        // locale, a controls rect, and a focused node (which the ring has
+        // to see a frame first).
         core.env.refresh_hz = Some(60.0);
+        core.env.system.accent = Some(kui_core::Color::hex(0x3b82f6ff));
+        core.env.system.locale = kui_core::Locale::new("en-US");
         core.env.window.native_controls = Some(Rect::new(0.0, 0.0, 78.0, 28.0));
         frame(&mut core, &mut ext);
         core.set_focus(Some(Key::ROOT.str("root").str("a")));

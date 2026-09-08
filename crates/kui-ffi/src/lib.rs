@@ -65,9 +65,10 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 
 use kui_core::{
-    Align, Color, Core, DismissReason, Edges, EditKey, EditOptions, Enter, FloatConfig, InputEvent,
-    Key, Keyframe, Mods, MouseButton, NodeSpec, Rect, Size, Sizing, Span, TextStyle, UiEvent,
-    Value, Vec2, WindowButton, WindowCommand, WindowConfig, WindowId, WindowKind,
+    Align, Appearance, Color, Core, DismissReason, Edges, EditKey, EditOptions, Enter, FloatConfig,
+    InputEvent, Key, Keyframe, Locale, Mods, MotionPref, MouseButton, NodeSpec, Rect, Size, Sizing,
+    Span, TextStyle, UiEvent, Value, Vec2, WindowButton, WindowCommand, WindowConfig, WindowId,
+    WindowKind,
 };
 
 // ---------------------------------------------------------------------------
@@ -121,6 +122,38 @@ pub extern "C" fn kui_env_set(ptr: *mut KuiCtx, refresh_hz: f32, focused: bool) 
         if let Some(c) = unsafe { ctx(ptr) } {
             c.core().env.refresh_hz = (refresh_hz > 0.0).then_some(refresh_hz);
             c.core().env.focused = focused;
+        }
+    });
+}
+
+/// What the OS is set to, for views to read: `appearance` is a
+/// `KUI_APPEARANCE_*`, `motion` a `KUI_MOTION_*` (0 = unknown in both, so a
+/// host that never calls this reports honestly), `accent` the accent colour
+/// as `0xRRGGBBAA` (0 = unknown), `locale` a BCP-47 tag (empty = unknown).
+/// A tag longer than 31 bytes or not ASCII is not a tag, and reads back as
+/// unknown rather than as a truncated one.
+///
+/// Separate from `kui_env_set` because these change when the user opens a
+/// settings app, not when a window moves: push them at startup and on the
+/// OS's change notification. Survives across frames either way.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_env_set_system(
+    ptr: *mut KuiCtx,
+    appearance: u32,
+    accent: u32,
+    motion: u32,
+    locale: KuiStr,
+) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            let sys = &mut c.core().env.system;
+            // An out-of-range code is ignored rather than folded onto a
+            // real setting: a host built against a newer header says
+            // something this build has no name for.
+            sys.appearance = Appearance::from_code(appearance).unwrap_or_default();
+            sys.motion = MotionPref::from_code(motion).unwrap_or_default();
+            sys.accent = (accent != 0).then(|| Color::hex(accent));
+            sys.locale = opt_str(locale).and_then(|tag| Locale::new(&tag));
         }
     });
 }

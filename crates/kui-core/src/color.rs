@@ -64,4 +64,73 @@ impl Color {
     pub fn is_visible(&self) -> bool {
         self.a > 0.0
     }
+
+    /// This colour moved `t` of the way toward `other`, per channel, with
+    /// `self`'s alpha kept — `mix(WHITE, 0.1)` is "a little lighter" and
+    /// `mix(BLACK, 0.1)` "a little darker", which is how a palette is
+    /// built from one colour (`widgets::button_palette`).
+    ///
+    /// Straight sRGB, not a perceptual space: it is the interpolation the
+    /// animation slots already do channel by channel, and the one a view
+    /// gets if it lerps two colours itself. `t` outside 0..=1 extrapolates
+    /// rather than clamping, so a caller can overshoot on purpose.
+    pub fn mix(self, other: Color, t: f32) -> Color {
+        Color {
+            r: self.r + (other.r - self.r) * t,
+            g: self.g + (other.g - self.g) * t,
+            b: self.b + (other.b - self.b) * t,
+            a: self.a,
+        }
+    }
+
+    /// WCAG relative luminance, 0 (black) to 1 (white): the number a
+    /// contrast decision is made from — "is this background light enough
+    /// to want dark text" — rather than the average of the channels, which
+    /// would call a saturated blue and a saturated green equally bright.
+    /// Alpha is not in it; a translucent colour's luminance is the
+    /// luminance of what it would be over nothing.
+    pub fn luminance(self) -> f32 {
+        let ch = |c: f32| {
+            let c = c.clamp(0.0, 1.0);
+            if c <= 0.03928 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * ch(self.r) + 0.7152 * ch(self.g) + 0.0722 * ch(self.b)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A mix keeps its own alpha, lands on each end at 0 and 1, and is
+    /// the arithmetic a palette is built with.
+    #[test]
+    fn a_mix_walks_between_two_colors() {
+        let a = Color::rgba(0.2, 0.4, 0.6, 0.5);
+        assert_eq!(a.mix(Color::WHITE, 0.0), a);
+        let end = a.mix(Color::WHITE, 1.0);
+        assert_eq!((end.r, end.g, end.b), (1.0, 1.0, 1.0));
+        assert_eq!(end.a, 0.5, "the alpha is this colour's, not the other's");
+        let half = a.mix(Color::BLACK, 0.5);
+        assert!((half.r - 0.1).abs() < 1e-6 && (half.b - 0.3).abs() < 1e-6);
+    }
+
+    /// The number a contrast decision is made from: white is 1, black 0,
+    /// and green outweighs blue at the same channel value — which is the
+    /// whole reason it is not the average of the three.
+    #[test]
+    fn luminance_is_weighted_the_way_eyes_are() {
+        assert!((Color::WHITE.luminance() - 1.0).abs() < 1e-4);
+        assert!(Color::BLACK.luminance().abs() < 1e-6);
+        let green = Color::rgb8(0, 255, 0).luminance();
+        let blue = Color::rgb8(0, 0, 255).luminance();
+        assert!(green > blue * 5.0, "{green} vs {blue}");
+        // The two accents the stock button's split was checked against.
+        assert!(Color::hex(0x007affff).luminance() < 0.4, "macOS blue");
+        assert!(Color::hex(0xffc409ff).luminance() > 0.4, "macOS yellow");
+    }
 }

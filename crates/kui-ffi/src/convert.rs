@@ -192,6 +192,9 @@ pub(crate) fn spec_of(
     if s.hoverable != 0 {
         spec = spec.hoverable();
     }
+    if s.accent != 0 {
+        spec = spec.accent();
+    }
     if s.animate != 0 {
         spec = spec.animate();
     }

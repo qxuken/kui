@@ -104,7 +104,7 @@ fn the_env_setters_take_exactly_the_documented_fields() {
             .map(|a| a.split_whitespace().last().unwrap().to_string())
             .collect()
     };
-    for setter in ["kui_env_set", "kui_env_set_window"] {
+    for setter in ["kui_env_set", "kui_env_set_system", "kui_env_set_window"] {
         let documented: Vec<String> = ENV_FIELDS
             .iter()
             .filter_map(|f| f.c.strip_prefix(&format!("`{setter}(")))
@@ -119,7 +119,9 @@ fn the_env_setters_take_exactly_the_documented_fields() {
     }
     for f in ENV_FIELDS.iter().filter(|f| !f.from.contains('(')) {
         assert!(
-            f.c.starts_with("`kui_env_set(") || f.c.starts_with("`kui_env_set_window("),
+            f.c.starts_with("`kui_env_set(")
+                || f.c.starts_with("`kui_env_set_system(")
+                || f.c.starts_with("`kui_env_set_window("),
             "{}: a stored env fact C cannot write",
             f.name
         );
@@ -203,6 +205,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "bg" => s.bg = C,
             "hoverable" => s.hoverable = 1,
             "animate" => s.animate = 1,
+            "accent" => s.accent = 1,
             "window" => s.window_role = 2, // KUI_WINDOW_* = schema index + 1
             "transition" => s.transition_ms = F,
             "easing" => s.easing = 1,
@@ -357,6 +360,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         float_fit: 1,
         hoverable: 1,
         animate: 1,
+        accent: 1,
         window_role: 1,
         transition_ms: 150.0,
         easing: 3,
@@ -459,6 +463,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         )
         .hoverable()
         .animate()
+        .accent()
         .window_drag()
         .transition(150.0)
         .easing(kui_core::Easing::EaseInOut)

@@ -60,7 +60,7 @@ pub use diag::Warning;
 pub use display::{Clip, DisplayList, FragmentDraw, NO_CLIP, Quad, QuadKind};
 pub use edit::{EditOptions, MAX_UNDECLARED_EDITS};
 pub use enter::Enter;
-pub use env::Env;
+pub use env::{Appearance, Env, Locale, MotionPref, SystemEnv};
 pub use fragment::{FragmentDrawId, FragmentList};
 pub use geom::{Edges, Rect, Size, Vec2};
 pub use input::ScrollAxis;

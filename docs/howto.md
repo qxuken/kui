@@ -102,6 +102,31 @@ alpha.7.
 [`slide` row](props.md#container-props) ·
 [alpha.7](../CHANGELOG.md#010-alpha7-2026-09-06)
 
+### How do I follow the OS's dark mode, accent or reduce-motion setting?
+
+Read `env.system`: `appearance` (`"light"` / `"dark"` / `"unknown"`),
+`accent` (`0xRRGGBBAA`, or null), `motion` (`"reduced"` when the user asked
+for less animation) and `locale` (a BCP-47 tag). The Rust runner asks the
+OS for all four on macOS and Windows, and re-asks when the app takes focus
+back; on X11 and Wayland it answers the locale from `LANG` and the rest
+read `"unknown"` — as they do in any driver that owns its own window until
+it pushes what it knows. So branch on the setting you got and keep your own
+default for the unknown, which is a reading and not a missing value. The core acts on
+none of it: nothing repaints because the appearance changed and no animation
+shortens itself, because only the view knows which of its colours is the
+background.
+
+A stock button follows the accent on its own: `<button accent>` takes the
+OS colour, derives its hover and pressed shades from it, and picks a black
+or white label by its luminance — falling back to the stock blue where the
+host has no accent to report. Any other node can carry `accent` too, which
+substitutes its `bg` and nothing else; `Color::mix` and `Color::luminance`
+are there for a palette of your own.
+
+[`system.*` rows](props.md#env) ·
+[`accent` row](props.md#container-props) ·
+[alpha.10](../CHANGELOG.md#010-alpha10-unreleased)
+
 ## Interaction, focus and reading
 
 ### How do I open a popup, and when is a modal enough?

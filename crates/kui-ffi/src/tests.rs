@@ -952,3 +952,70 @@ mod queries_headless {
         len: 0,
     };
 }
+
+/// C is the only binding that writes the env and never reads it back, so
+/// the readings the other three hand their views come from these calls
+/// and nothing else checks them. Every fact, its "cannot tell" spelling,
+/// and the two ways a host can be wrong. The header's names for the codes
+/// are pinned to these same list positions by `abi_parity`.
+#[cfg(test)]
+mod env_headless {
+    use super::*;
+
+    fn ks(s: &str) -> KuiStr {
+        KuiStr {
+            ptr: s.as_ptr(),
+            len: s.len(),
+        }
+    }
+
+    fn system(ctx: *mut KuiCtx) -> kui_core::SystemEnv {
+        unsafe { ctx.as_mut() }.unwrap().core().env.system
+    }
+
+    #[test]
+    fn the_system_setter_writes_every_fact_and_its_unknown() {
+        let ctx = kui_ctx_new();
+        // A host that never calls it says so, rather than "light".
+        assert_eq!(system(ctx), kui_core::SystemEnv::default());
+
+        kui_env_set_system(
+            ctx,
+            Appearance::Dark.code(),
+            0x3b82f6ff,
+            MotionPref::Reduced.code(),
+            ks("pt-BR"),
+        );
+        let sys = system(ctx);
+        assert_eq!(sys.appearance, Appearance::Dark);
+        assert_eq!(sys.accent.map(|c| c.to_hex()), Some(0x3b82f6ff));
+        assert_eq!(sys.motion, MotionPref::Reduced);
+        assert_eq!(
+            sys.locale.map(|l| l.as_str().to_string()).as_deref(),
+            Some("pt-BR")
+        );
+
+        // The zeroed call is the whole "I cannot tell" reading — what a
+        // host that has stopped knowing pushes, and what a host that
+        // zero-initializes its arguments says by accident and truthfully.
+        kui_env_set_system(ctx, 0, 0, 0, ks(""));
+        assert_eq!(system(ctx), kui_core::SystemEnv::default());
+
+        // A code this build has no name for is ignored rather than folded
+        // onto a real setting, and a tag that is not one is not stored
+        // half-written.
+        kui_env_set_system(ctx, 99, 0, 99, ks(&"x".repeat(64)));
+        let sys = system(ctx);
+        assert_eq!(sys.appearance, Appearance::Unknown);
+        assert_eq!(sys.motion, MotionPref::Unknown);
+        assert_eq!(sys.locale, None);
+
+        kui_ctx_free(ctx);
+    }
+
+    /// A null context is a no-op, like every other entry point.
+    #[test]
+    fn a_null_context_is_survivable() {
+        kui_env_set_system(std::ptr::null_mut(), 1, 0, 1, ks("en"));
+    }
+}

@@ -139,6 +139,7 @@ pub const P_FEATURES: u32 = 84;
 pub const P_UNDERLINE: u32 = 85;
 pub const P_STRIKETHROUGH: u32 = 86;
 pub const P_ANIMATE: u32 = 87;
+pub const P_ACCENT: u32 = 88;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -214,6 +215,17 @@ pub const ROLES: &[&str] = &[
 /// declared — so unlike [`ROLES`] this is not a prop's enum, only a list
 /// the C header restates.
 pub const ORIENTATIONS: &[&str] = &["horizontal", "vertical"];
+
+/// The OS light/dark setting (`crate::env::Appearance::name` spellings, in
+/// `Appearance::ALL` order — an `env.rs` test pins the two together). Like
+/// [`ORIENTATIONS`] this is not a prop's enum: it is a fact a host pushes
+/// and every binding spells the same way. Index 0 is `unknown`, so a
+/// zeroed C call reports what it actually knows.
+pub const APPEARANCES: &[&str] = &["unknown", "light", "dark"];
+
+/// The OS reduce-motion setting (`crate::env::MotionPref::name` spellings, in
+/// `MotionPref::ALL` order), `unknown` first for the same reason.
+pub const MOTIONS: &[&str] = &["unknown", "full", "reduced"];
 
 /// The roles no view can declare, because the core derives them itself
 /// ([`crate::access::derived_role`]), with what derives each one. Every
@@ -613,6 +625,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Flag,
         apply: Apply::SpecFlag(|s| s.animate()),
         doc: "Ask for another frame after this one, every frame this node is declared. What a `fragment` that reads `time` needs, and what anything driving itself off the clock rather than off input needs. Opt-in like `exit`, and for the same reason: it takes the loop off input-driven and onto the display's cadence for as long as it is declared, so a still node must not carry it. One node asking is enough for the whole window.",
+    },
+    PropDef {
+        name: "accent",
+        id: P_ACCENT,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.accent()),
+        doc: "Paint this node's background in the OS accent colour — `env.system.accent` — keeping the declared `bg` on a host that cannot tell what it is. The one prop whose paint depends on the environment, which is why it is opt-in: the same tree is a different colour on two machines, and that is the point here and a surprise anywhere else. On the stock button it does the whole job — the hover and pressed shades are derived from the accent, and the label goes black or white by its luminance, so a yellow accent is still readable — which is what `<button accent>` is for.",
     },
     PropDef {
         name: "focusable",
@@ -1245,9 +1264,10 @@ pub struct ElementDef {
 }
 
 /// The rows the stock button reads (`ElementDef::jsx_rows` / `lua_rows`):
-/// the click, the identity, and the access rows — what a button *is*
-/// and what a reader says of it, never what it looks like. The two lists
-/// are the same rows in each spelling, index for index.
+/// the click, the identity, the access rows — what a button *is* and what
+/// a reader says of it — and the one paint row it takes, `accent`, which
+/// is not a colour but a question put to the OS. The two lists are the
+/// same rows in each spelling, index for index.
 pub const BUTTON_ROWS_JSX: &[&str] = &[
     "onClick",
     "key",
@@ -1255,6 +1275,7 @@ pub const BUTTON_ROWS_JSX: &[&str] = &[
     "description",
     "tooltip",
     "disabled",
+    "accent",
 ];
 pub const BUTTON_ROWS_LUA: &[&str] = &[
     "on_click",
@@ -1263,6 +1284,7 @@ pub const BUTTON_ROWS_LUA: &[&str] = &[
     "description",
     "tooltip",
     "disabled",
+    "accent",
 ];
 
 pub const ELEMENTS: &[ElementDef] = &[
@@ -1294,10 +1316,10 @@ pub const ELEMENTS: &[ElementDef] = &[
         lua_own: &["text"],
         jsx_rows: Some(BUTTON_ROWS_JSX),
         lua_rows: Some(BUTTON_ROWS_LUA),
-        jsx: "`<button onClick label description tooltip disabled>`",
-        lua: "`button { label=, on_click=, text=, description=, tooltip=, disabled= }`",
+        jsx: "`<button onClick label description tooltip disabled accent>`",
+        lua: "`button { label=, on_click=, text=, description=, tooltip=, disabled=, accent= }`",
         c: "`kui_button`, `kui_button_with`",
-        doc: "The stock button: `widgets::button_spec()` with hover/pressed colors declared on the node, keyed by its text (`key` overrides). Its look is its spec, so the layout and paint rows are closed — declared, they are dropped with an `unknown-prop` warning naming the rows it does read — and those are the access rows: `label` when the text is not the name, `description`, `tooltip`, and `disabled` (inert, and dimmed to half). In Lua `label` is the name and the text both unless `text` says otherwise; in C the rows ride a `KuiSpec` whose other fields `kui_button_with` ignores. A button that needs any other row is a box with `role=\"button\"` and the same rows spelled out.",
+        doc: "The stock button: `widgets::button_spec()` with hover/pressed colors declared on the node, keyed by its text (`key` overrides). Its look is its spec, so the layout and paint rows are closed — declared, they are dropped with an `unknown-prop` warning naming the rows it does read — and those are the access rows: `label` when the text is not the name, `description`, `tooltip`, and `disabled` (inert, and dimmed to half). The one paint row it takes is `accent`, which is a question and not a colour: with it the three backgrounds come off `env.system.accent` and the label goes black or white by its luminance, so a yellow accent is still readable, and on a host that never said what the accent is the stock blue stands. In Lua `label` is the name and the text both unless `text` says otherwise; in C the rows ride a `KuiSpec` whose other fields `kui_button_with` ignores. A button that needs any other row is a box with `role=\"button\"` and the same rows spelled out.",
     },
     ElementDef {
         name: "edit",
@@ -1631,6 +1653,38 @@ pub const ENV_FIELDS: &[EnvField] = &[
         lua: &["focused"],
         c: "`kui_env_set(focused)`",
         doc: "Whether the *window* has the keyboard at all. Not the focused node — that is the `focus` row.",
+    },
+    EnvField {
+        name: "system.appearance",
+        from: "`SystemEnv::appearance`",
+        node: &["system.appearance"],
+        lua: &["system.appearance"],
+        c: "`kui_env_set_system(appearance)`",
+        doc: "The OS light/dark setting: `\"light\"`, `\"dark\"`, or `\"unknown\"` when the host has no way to ask (`KUI_APPEARANCE_*` in C, where unknown is 0). Unknown is a real answer and the default — a view picks its own palette for it rather than being handed a guess. The core acts on none of this: nothing repaints because the setting changed, because only the view knows which of its colours is the background.",
+    },
+    EnvField {
+        name: "system.accent",
+        from: "`SystemEnv::accent`",
+        node: &["system.accent"],
+        lua: &["system.accent"],
+        c: "`kui_env_set_system(accent)`",
+        doc: "The OS accent/highlight colour as `0xRRGGBBAA`, ready to pass straight back as a `bg` or `color`. \"The host cannot tell\" is `null` in Node, an absent key in Lua, and 0 in C — a fully transparent accent is not a colour anyone was given, the way a refresh rate of zero is not a rate. Node's `setEnv` also takes the `\"#rrggbb\"` spelling a prop takes.",
+    },
+    EnvField {
+        name: "system.motion",
+        from: "`SystemEnv::motion`",
+        node: &["system.motion"],
+        lua: &["system.motion"],
+        c: "`kui_env_set_system(motion)`",
+        doc: "The OS reduce-motion setting: `\"reduced\"` when the user asked for less animation, `\"full\"` when they did not, `\"unknown\"` when nobody asked the OS (`KUI_MOTION_*` in C, unknown 0). Spelled as what the user wants rather than as a `reduceMotion` boolean, because the third reading has no place in a boolean. Nothing in the core shortens an animation for it — a view that honours it does so where it declares one.",
+    },
+    EnvField {
+        name: "system.locale",
+        from: "`SystemEnv::locale`",
+        node: &["system.locale"],
+        lua: &["system.locale"],
+        c: "`kui_env_set_system(locale)`",
+        doc: "The UI language as a BCP-47 tag (`\"en\"`, `\"en-US\"`, `\"zh-Hant-HK\"`), for whatever the view formats dates and numbers with; kui does not parse it. Carried inline (31 ASCII bytes, `Locale`) so the reading stays `Copy`, and anything that does not fit reads back as unknown: `null` in Node, an absent key in Lua, an empty `KuiStr` in C.",
     },
     EnvField {
         name: "window.id",
@@ -2072,13 +2126,20 @@ mod tests {
     /// claim a field that does not exist.
     #[test]
     fn env_fields_restate_env_and_window_env_exactly() {
-        use crate::env::Env;
+        use crate::env::{Env, SystemEnv};
         use crate::window::WindowEnv;
         let Env {
             refresh_hz: _,
             focused: _,
+            system,
             window,
         } = Env::default();
+        let SystemEnv {
+            appearance: _,
+            accent: _,
+            motion: _,
+            locale: _,
+        } = system;
         let WindowEnv {
             id: _,
             custom_chrome: _,
@@ -2089,6 +2150,10 @@ mod tests {
         let stored = [
             "refresh_hz",
             "focused",
+            "system.appearance",
+            "system.accent",
+            "system.motion",
+            "system.locale",
             "window.id",
             "window.custom_chrome",
             "window.maximized",
@@ -2101,8 +2166,10 @@ mod tests {
             .iter()
             .filter(|f| !f.from.contains('('))
             .map(|f| {
-                let (strukt, field) = match f.name.strip_prefix("window.") {
-                    Some(field) => ("WindowEnv", field),
+                let (strukt, field) = match f.name.split_once('.') {
+                    Some(("window", field)) => ("WindowEnv", field),
+                    Some(("system", field)) => ("SystemEnv", field),
+                    Some((group, _)) => panic!("{}: no struct holds a {group} fact", f.name),
                     None => ("Env", f.name),
                 };
                 assert_eq!(f.from, format!("`{strukt}::{field}`"), "{}", f.name);

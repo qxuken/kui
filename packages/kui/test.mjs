@@ -3376,6 +3376,14 @@ test('env() reports the defaults a headless Ctx starts with', () => {
   // 120 Hz is the fallback the budget is computed at when it cannot.
   assert.ok(Math.abs(env.frameBudgetMs - 1000 / 120) < 1e-3);
   assert.equal(env.focused, true, 'the window, not a node');
+  // Nobody asked the OS anything, and the reading says exactly that
+  // rather than "light, unreduced, English".
+  assert.deepEqual(env.system, {
+    appearance: 'unknown',
+    accent: null,
+    motion: 'unknown',
+    locale: null,
+  });
   assert.deepEqual(env.viewport, { width: 320, height: 240, scale: 2 });
   assert.deepEqual(env.window, {
     id: 0,
@@ -3394,7 +3402,11 @@ test('env() reports the defaults a headless Ctx starts with', () => {
 test('env() is the documented env shape, key for key', () => {
   const ctx = new Ctx();
   // Every fact that is sometimes null, present.
-  ctx.setEnv({ refreshHz: 60, window: { nativeControls: { w: 78, h: 28 } } });
+  ctx.setEnv({
+    refreshHz: 60,
+    system: { accent: 0x3b82f6ff, locale: 'en-US' },
+    window: { nativeControls: { w: 78, h: 28 } },
+  });
   ctx.frame(320, 240, 1, box({}, []));
   const documented = protocol().env.flatMap((f) => f.node);
   const actual = [];
@@ -3441,6 +3453,93 @@ test('setEnv writes the facts a window would push, and env() reads them back', (
   assert.equal(ctx.env().window.nativeControls, null, 'and a zero-sized rect is no rect');
 });
 
+// `accent` is the one paint row the stock button takes, and the one prop
+// whose colour the environment decides: with no accent pushed it is exactly
+// the stock button, and with one it is that colour, its shades, and a label
+// that stays readable on it.
+test('<button accent> follows the OS accent, and the stock blue until there is one', () => {
+  const view = (extra = {}) => el('button', { onClick: 'go', ...extra }, ['go']);
+  // The button's own quad is the solid one, its label a glyph quad;
+  // `decodeQuads` gives both colours as floats.
+  const paint = (ctx) => {
+    const qs = decodeQuads(ctx.quads());
+    return { bg: qs.find((q) => q.kind === 0).color, label: qs.find((q) => q.kind !== 0).color };
+  };
+  const hex = (n) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].map((c) => c / 255);
+  const near = (got, want, what) =>
+    assert.ok(
+      got.every((c, i) => Math.abs(c - want[i]) < 1 / 255),
+      `${what}: ${got} is not ${want}`,
+    );
+
+  // Nobody told this host anything: byte for byte the stock button.
+  const unknown = new Ctx();
+  unknown.frame(320, 240, 1, view({ accent: true }));
+  const plain = new Ctx();
+  plain.frame(320, 240, 1, view());
+  assert.deepEqual(unknown.quads(), plain.quads(), 'no accent, no change');
+  assert.deepEqual(unknown.warnings(), [], 'and it is a row the button reads');
+
+  // A host that knows: the accent paints the button, and the label stays
+  // readable on it — white on this one, black on a light one, which is the
+  // reason the row exists rather than a `bg` the app sets itself.
+  const dark = new Ctx();
+  dark.setEnv({ system: { accent: 0x007affff } });
+  dark.frame(320, 240, 1, view({ accent: true }));
+  near(paint(dark).bg, hex(0x007affff), 'the accent');
+  near(paint(dark).label, [1, 1, 1, 1], 'white on blue');
+
+  const light = new Ctx();
+  light.setEnv({ system: { accent: '#ffc409' } });
+  light.frame(320, 240, 1, view({ accent: true }));
+  near(paint(light).bg, hex(0xffc409ff), 'the accent, however it was spelled');
+  near(paint(light).label, [0, 0, 0, 1], 'white on yellow is not a button');
+
+  // And a button that did not ask is the stock one whatever the OS says.
+  const other = new Ctx();
+  other.setEnv({ system: { accent: 0x007affff } });
+  other.frame(320, 240, 1, view());
+  assert.deepEqual(other.quads(), plain.quads());
+});
+
+// The OS settings a host pushes: two enums whose third reading is "nobody
+// asked", and two values that are null until someone did. A view reads them
+// and decides; nothing in the core acts on any of it.
+test('setEnv carries the OS settings, each with an unknown of its own', () => {
+  const ctx = new Ctx();
+  ctx.setEnv({ system: { appearance: 'dark', accent: 0x3b82f6ff, motion: 'reduced', locale: 'pt-BR' } });
+  assert.deepEqual(ctx.env().system, {
+    appearance: 'dark',
+    accent: 0x3b82f6ff,
+    motion: 'reduced',
+    locale: 'pt-BR',
+  });
+
+  // Only what you pass moves, here as everywhere in setEnv.
+  ctx.setEnv({ system: { appearance: 'light' } });
+  assert.equal(ctx.env().system.appearance, 'light');
+  assert.equal(ctx.env().system.motion, 'reduced', 'the rest kept what it had');
+
+  // The accent takes the spelling a prop takes, and comes back as the
+  // number a prop takes — so a view paints with it unconverted.
+  ctx.setEnv({ system: { accent: '#3b82f6' } });
+  assert.equal(ctx.env().system.accent, 0x3b82f6ff);
+
+  // Every "the host cannot tell" is writable, because a host can stop
+  // knowing: a window dragged to a screen whose settings it cannot read.
+  ctx.setEnv({ system: { appearance: 'unknown', accent: null, motion: 'unknown', locale: null } });
+  assert.deepEqual(ctx.env().system, {
+    appearance: 'unknown',
+    accent: null,
+    motion: 'unknown',
+    locale: null,
+  });
+  ctx.setEnv({ system: { accent: 0 } });
+  assert.equal(ctx.env().system.accent, null, 'a transparent accent is no accent');
+  ctx.setEnv({ system: { accent: '#00000000' } });
+  assert.equal(ctx.env().system.accent, null, 'however it was spelled');
+});
+
 // ADR 0004's `window` on the event: the id the driver declared, carried out
 // of the core on everything it produces. `origin` is the other half and is a
 // different question — which frontend drew the node — so a plain app event
@@ -3482,6 +3581,14 @@ test('setEnv rejects a key or a type it does not know', () => {
   assert.throws(() => ctx.setEnv({ window: { maximized: 'yes' } }), /window.maximized must be a boolean/);
   assert.throws(() => ctx.setEnv({ window: { nativeControls: { w: 'wide', h: 20 } } }), /nativeControls.w must be a number/);
   assert.throws(() => ctx.setEnv({ window: { id: -1 } }), /window.id must be a u32/);
+  assert.throws(() => ctx.setEnv({ system: { dark: true } }), /unknown system key "dark"/);
+  assert.throws(() => ctx.setEnv({ system: { appearance: 'Dark' } }), /system.appearance is one of/);
+  assert.throws(() => ctx.setEnv({ system: { motion: 'none' } }), /system.motion is one of/);
+  assert.throws(() => ctx.setEnv({ system: { accent: 'blue' } }), /bad color/);
+  // A tag that does not fit is not stored truncated: a test that lost half
+  // its locale would read as a host that could not tell.
+  assert.throws(() => ctx.setEnv({ system: { locale: 'x'.repeat(32) } }), /system.locale must be an ASCII BCP-47 tag/);
+  assert.throws(() => ctx.setEnv({ system: { locale: 'ру-RU' } }), /system.locale must be an ASCII BCP-47 tag/);
   assert.throws(() => ctx.setEnv(null), /takes an object/);
 });
 

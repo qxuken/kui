@@ -2,12 +2,19 @@
 //! inbound mirror of events-as-data. The core never touches a window; the
 //! driver (runner, FFI host) reports what it knows and views read it.
 //!
-//! The reading a view gets — this struct, [`WindowEnv`], the derived
-//! budget and the frame facts beside them, under each binding's spelling —
-//! is written down once in `schema::ENV_FIELDS` and every binding is pinned
-//! to that table; a field added here fails `schema`'s tests until it has a
-//! row.
+//! The reading a view gets — this struct, [`SystemEnv`], [`WindowEnv`], the
+//! derived budget and the frame facts beside them, under each binding's
+//! spelling — is written down once in `schema::ENV_FIELDS` and every
+//! binding is pinned to that table; a field added here fails `schema`'s
+//! tests until it has a row.
+//!
+//! Every fact under [`SystemEnv`] can also be *unknown*, and unknown is the
+//! default. A driver that cannot ask the OS says so rather than guessing,
+//! because the guess a view would make from a wrong answer (paint the dark
+//! palette, skip the animation) is worse than the one it makes from a
+//! missing one.
 
+use crate::color::Color;
 use crate::window::WindowEnv;
 
 /// What the host knows about the display/window. Defaults are safe for
@@ -18,6 +25,8 @@ pub struct Env {
     pub refresh_hz: Option<f32>,
     /// Whether the window has keyboard focus.
     pub focused: bool,
+    /// What the OS is set to: appearance, accent, motion, locale.
+    pub system: SystemEnv,
     /// Window chrome facts (custom chrome, maximized, native control rect).
     pub window: WindowEnv,
 }
@@ -27,6 +36,7 @@ impl Default for Env {
         Self {
             refresh_hz: None,
             focused: true,
+            system: SystemEnv::default(),
             window: WindowEnv::default(),
         }
     }
@@ -44,6 +54,181 @@ impl Env {
             .filter(|hz| *hz > 0.0)
             .unwrap_or(Self::DEFAULT_HZ);
         1000.0 / hz
+    }
+}
+
+/// The user's OS settings, as the host reports them. Not window facts and
+/// not display facts: things the person chose once, in a settings app, that
+/// a view is expected to honour — and that the core itself never acts on.
+/// Reduced motion does not shorten an animation, a dark appearance does not
+/// repaint anything: the view decides, because only it knows which of its
+/// colours is the background and which of its animations carries meaning.
+///
+/// Each field defaults to "the host cannot tell", which is what a headless
+/// core reports and what any driver reports for a fact its platform gives
+/// it no way to ask. The `kui` runner asks the OS for all four on macOS and
+/// Windows (the appearance through winit, the rest in its `system_env`);
+/// elsewhere it answers what it can and leaves the rest unknown.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SystemEnv {
+    /// Light or dark, when the host can tell.
+    pub appearance: Appearance,
+    /// The OS accent/highlight colour, `None` when the host can't tell.
+    pub accent: Option<Color>,
+    /// Whether the user asked for reduced motion.
+    pub motion: MotionPref,
+    /// The UI language as a BCP-47 tag, `None` when the host can't tell.
+    pub locale: Option<Locale>,
+}
+
+/// The OS light/dark setting. `Unknown` is a real answer — a host with no
+/// way to ask says it, and a view that has one palette per appearance picks
+/// its own default for it rather than being handed a guess.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Appearance {
+    #[default]
+    Unknown,
+    Light,
+    Dark,
+}
+
+impl Appearance {
+    /// Wire order: the index is the code C passes and the position in
+    /// `schema::APPEARANCES`, so `unknown` is 0 and a zeroed C host means
+    /// what it says.
+    pub const ALL: &'static [Appearance] =
+        &[Appearance::Unknown, Appearance::Light, Appearance::Dark];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Appearance::Unknown => "unknown",
+            Appearance::Light => "light",
+            Appearance::Dark => "dark",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|a| a.name() == name)
+    }
+
+    /// The code a C host passes; `unknown` is 0.
+    pub fn code(self) -> u32 {
+        Self::ALL.iter().position(|a| *a == self).unwrap() as u32
+    }
+
+    /// A code past the end is `None` — ignored rather than folded onto a
+    /// real appearance, the way an unknown role code is.
+    pub fn from_code(code: u32) -> Option<Self> {
+        Self::ALL.get(code as usize).copied()
+    }
+}
+
+/// The OS reduce-motion setting: `Reduced` is "the user asked for less
+/// animation", `Full` is "the user did not", `Unknown` is "nobody asked the
+/// OS". Spelled as what the user wants rather than as a `reduce_motion`
+/// boolean because the third reading has no place in a boolean, and a
+/// missing answer is not the same as a "no".
+///
+/// `Pref` because `edit` already means cosmic-text's caret `Motion` by that
+/// name, and a crate with two of them would be one letter of ambiguity in
+/// every use. The field is `system.motion` and every binding spells it
+/// `motion`; only Rust sees the longer type name.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MotionPref {
+    #[default]
+    Unknown,
+    Full,
+    Reduced,
+}
+
+impl MotionPref {
+    /// Wire order, as [`Appearance::ALL`].
+    pub const ALL: &'static [MotionPref] =
+        &[MotionPref::Unknown, MotionPref::Full, MotionPref::Reduced];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            MotionPref::Unknown => "unknown",
+            MotionPref::Full => "full",
+            MotionPref::Reduced => "reduced",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|m| m.name() == name)
+    }
+
+    /// The code a C host passes; `unknown` is 0.
+    pub fn code(self) -> u32 {
+        Self::ALL.iter().position(|m| *m == self).unwrap() as u32
+    }
+
+    pub fn from_code(code: u32) -> Option<Self> {
+        Self::ALL.get(code as usize).copied()
+    }
+
+    /// Whether a view should skip or shorten decorative motion. `Unknown`
+    /// answers `false`: a host that cannot tell gets the animations it
+    /// would have had before this field existed.
+    pub fn is_reduced(self) -> bool {
+        self == MotionPref::Reduced
+    }
+}
+
+/// A language tag as the host reports it — `"en"`, `"en-US"`,
+/// `"zh-Hans-CN"`. Carried inline rather than as a `String` so [`Env`]
+/// stays `Copy`: a view reads `ui.env()` every frame, and a tag that
+/// allocated would allocate on every one of them.
+///
+/// The core does not parse it. It is passed through to the view, which
+/// hands it to whatever formats dates and numbers — kui has no opinion
+/// about what is a language and what is a region.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Locale {
+    /// ASCII, zero-padded past `len` so the derived `Eq` compares tags and
+    /// not whatever was in the tail.
+    bytes: [u8; Locale::CAP],
+    len: u8,
+}
+
+impl Locale {
+    /// Longest tag that fits. RFC 5646 allows longer in principle; 31
+    /// holds every tag anyone ships, including the script-and-region ones
+    /// (`zh-Hant-HK`) and a private-use suffix.
+    pub const CAP: usize = 31;
+
+    /// `None` for a tag that is empty, longer than [`Locale::CAP`], or not
+    /// ASCII — the three things a well-formed language tag is not. A host
+    /// that hands one of those over reads back "the host cannot tell",
+    /// which is true: what it said was not a tag.
+    pub fn new(tag: &str) -> Option<Self> {
+        if tag.is_empty() || tag.len() > Self::CAP || !tag.is_ascii() {
+            return None;
+        }
+        let mut bytes = [0u8; Self::CAP];
+        bytes[..tag.len()].copy_from_slice(tag.as_bytes());
+        Some(Self {
+            bytes,
+            len: tag.len() as u8,
+        })
+    }
+
+    pub fn as_str(&self) -> &str {
+        // ASCII by construction in `new`, the only constructor.
+        std::str::from_utf8(&self.bytes[..self.len as usize]).unwrap_or("")
+    }
+}
+
+impl std::fmt::Display for Locale {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::fmt::Debug for Locale {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The tag, not 31 bytes of padding.
+        write!(f, "Locale({:?})", self.as_str())
     }
 }
 
@@ -68,5 +253,72 @@ mod tests {
             ..Default::default()
         };
         assert!((bogus.frame_budget_ms() - 8.333).abs() < 1e-2);
+    }
+
+    /// Nobody asked the OS anything, and the reading says exactly that
+    /// rather than "light, unreduced, English".
+    #[test]
+    fn the_system_facts_default_to_unknown() {
+        let s = Env::default().system;
+        assert_eq!(s.appearance, Appearance::Unknown);
+        assert_eq!(s.accent, None);
+        assert_eq!(s.motion, MotionPref::Unknown);
+        assert_eq!(s.locale, None);
+        assert!(!s.motion.is_reduced(), "unknown is not a request to reduce");
+    }
+
+    /// The schema's name lists are the wire order: an index means the same
+    /// setting in every binding, so the two cannot drift. Zero is
+    /// `unknown` in both, which is what makes a zeroed C call honest.
+    #[test]
+    fn schema_names_are_all_in_order() {
+        let appearances: Vec<&str> = Appearance::ALL.iter().map(|a| a.name()).collect();
+        assert_eq!(appearances, crate::schema::APPEARANCES);
+        let motions: Vec<&str> = MotionPref::ALL.iter().map(|m| m.name()).collect();
+        assert_eq!(motions, crate::schema::MOTIONS);
+        assert_eq!(Appearance::default().code(), 0);
+        assert_eq!(MotionPref::default().code(), 0);
+    }
+
+    #[test]
+    fn codes_and_names_round_trip_and_reject_the_rest() {
+        for a in Appearance::ALL {
+            assert_eq!(Appearance::from_code(a.code()), Some(*a));
+            assert_eq!(Appearance::parse(a.name()), Some(*a));
+        }
+        for m in MotionPref::ALL {
+            assert_eq!(MotionPref::from_code(m.code()), Some(*m));
+            assert_eq!(MotionPref::parse(m.name()), Some(*m));
+        }
+        assert_eq!(Appearance::from_code(3), None);
+        assert_eq!(MotionPref::from_code(3), None);
+        assert_eq!(Appearance::parse("Dark"), None, "spelling is exact");
+    }
+
+    /// A tag is carried whole and compares as a tag; the three things that
+    /// are not a tag read back as "the host cannot tell".
+    #[test]
+    fn a_locale_is_the_tag_it_was_given() {
+        let tag = Locale::new("en-US").unwrap();
+        assert_eq!(tag.as_str(), "en-US");
+        assert_eq!(tag.to_string(), "en-US");
+        assert_eq!(Locale::new("zh-Hant-HK").unwrap().as_str(), "zh-Hant-HK");
+        // Two tags of different lengths cannot compare equal through the
+        // padding, and one built twice is the same tag.
+        assert_eq!(Locale::new("en"), Locale::new("en"));
+        assert_ne!(Locale::new("en"), Locale::new("en-US"));
+
+        assert_eq!(Locale::new(""), None);
+        assert_eq!(Locale::new(&"x".repeat(Locale::CAP + 1)), None);
+        assert_eq!(Locale::new("ру-RU"), None, "a tag is ASCII");
+        assert!(Locale::new(&"x".repeat(Locale::CAP)).is_some(), "CAP fits");
+    }
+
+    /// `Env` is `Copy` and small enough to read every frame — the reason
+    /// a locale is an inline tag and not a `String`.
+    #[test]
+    fn env_is_copy() {
+        fn takes_copy<T: Copy>(_: T) {}
+        takes_copy(Env::default());
     }
 }

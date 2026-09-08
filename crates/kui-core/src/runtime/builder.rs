@@ -369,6 +369,15 @@ impl Core {
         if self.tree.is_empty() {
             return;
         }
+        // The one paint the environment decides (`accent`): the OS colour
+        // where the host reported one, the declared `bg` where it did not.
+        // Before the hover resolution below, so a node that declares both
+        // still hovers to what it declared.
+        if spec.accent
+            && let Some(accent) = self.env.system.accent
+        {
+            spec.style.bg = accent;
+        }
         self.resolve_hover_style(key, &mut spec);
         self.ease_spec(key, &mut spec);
         if spec.layout.clips() {

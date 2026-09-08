@@ -490,6 +490,15 @@ pub struct NodeSpec {
     /// node is declared (`animate`). What a `fragment` reading `time`
     /// needs; opt-in, because it takes the loop off input-driven.
     pub animate: bool,
+    /// Paint this node's background in the OS accent colour when the host
+    /// reported one (`env.system.accent`), keeping the declared `bg` when
+    /// it did not. The one prop whose paint depends on the environment, and
+    /// opt-in for exactly that reason: the same tree is a different colour
+    /// on two machines, which is the point here and a surprise anywhere
+    /// else. The stock button reads it further — see `widgets::button_with`,
+    /// which derives its hover and pressed shades and a readable label
+    /// colour from the same accent.
+    pub accent: bool,
     /// Window-chrome role (drag handle / window button). A chrome node's
     /// interactions become `WindowCommand`s for the frame driver instead of
     /// `UiEvent`s; `on_click` is ignored on such nodes.
@@ -1154,6 +1163,13 @@ impl NodeSpec {
         self
     }
 
+    /// Background from the OS accent colour where the host knows it; see
+    /// the field.
+    pub fn accent(mut self) -> Self {
+        self.accent = true;
+        self
+    }
+
     pub fn on_click(mut self, payload: impl Into<Value>) -> Self {
         self.events_mut().on_click = Some(payload.into());
         self
@@ -1682,6 +1698,7 @@ impl PartialEq for NodeSpec {
             && self.style == other.style
             && self.hoverable == other.hoverable
             && self.animate == other.animate
+            && self.accent == other.accent
             && self.window == other.window
             && self.transition == other.transition
             && self.slide == other.slide

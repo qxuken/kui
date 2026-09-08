@@ -20,6 +20,9 @@ mod access_bridge;
 pub mod audio;
 /// ADR 0009's arithmetic: where a pointer in one window is in another.
 mod retarget;
+/// The OS settings winit has no call for, asked once and re-asked when the
+/// user has evidently been in a settings app.
+mod system_env;
 #[cfg(target_os = "windows")]
 mod windows_nc;
 
@@ -238,6 +241,7 @@ impl Launcher {
             panes: Vec::new(),
             gpu: None,
             epoch: std::time::Instant::now(),
+            system: system_env::query(),
             clipboard: arboard::Clipboard::new().ok(),
             audio: audio::Audio::new(),
             exit_requested: false,
@@ -385,6 +389,25 @@ pub fn run<A: App>(
     app(title).extensions(extensions).run(application)
 }
 
+/// A window's OS light/dark setting, as `env.system.appearance`.
+///
+/// winit answers on macOS and Windows and returns `None` on X11 and on
+/// Wayland without an override — and `None` is `Unknown`, which is the
+/// reading saying nobody could tell rather than a guessed `Light`.
+fn appearance_of(window: &Window) -> Appearance {
+    theme_appearance(window.theme())
+}
+
+/// The same, from the theme `WindowEvent::ThemeChanged` carries — the
+/// event says what it changed to, so nothing has to ask again.
+fn theme_appearance(theme: Option<winit::window::Theme>) -> Appearance {
+    match theme {
+        Some(winit::window::Theme::Light) => Appearance::Light,
+        Some(winit::window::Theme::Dark) => Appearance::Dark,
+        None => Appearance::Unknown,
+    }
+}
+
 /// Clamps a requested inner size into `min`/`max` (logical px), the way the
 /// OS clamps a resize once the window exists — so a host reading
 /// `PumpRunner::window_size` before the first frame sees the real size.
@@ -516,6 +539,11 @@ struct Pane {
     /// applied. `core.env.focused`, which is what a view reads, is derived
     /// from every pane's copy of this and is not always the same answer.
     os_focused: bool,
+    /// The OS light/dark setting for *this* window, read once when it was
+    /// created and thereafter from `WindowEvent::ThemeChanged`, which
+    /// carries the new theme. Per-window because it is: winit reports a
+    /// theme per surface, and an app may override one.
+    appearance: Appearance,
     core: Core,
     window: Arc<Window>,
     renderer: kui_wgpu::Renderer,
@@ -833,6 +861,12 @@ struct Shell<A: App> {
     gpu: Option<kui_wgpu::Gpu>,
     /// Origin of the frame clock handed to the cores for transitions.
     epoch: std::time::Instant,
+    /// What the OS was asked for at startup — the accent colour, the
+    /// reduce-motion setting and the language (`mod system_env`) — pushed
+    /// into every pane's env each frame and re-asked when the user has
+    /// evidently been somewhere else. The appearance is not here: it is
+    /// per-window and comes off the window itself.
+    system: system_env::Queried,
     clipboard: Option<arboard::Clipboard>,
     /// The audio device the core's audio commands drive; see `audio`.
     audio: audio::Audio,
@@ -1468,6 +1502,7 @@ impl<A: App> Shell<A> {
         window.set_visible(true);
         window.set_ime_allowed(true);
         window.request_redraw();
+        let appearance = appearance_of(&window);
         self.panes.push(Pane {
             id,
             kind: config.kind,
@@ -1488,6 +1523,7 @@ impl<A: App> Shell<A> {
             resize_edge: None,
             cursor_icon: CursorIcon::Default,
             os_focused: false,
+            appearance,
             handed_back: false,
             first_frame: Some((FIRST_FRAME_RETRIES, std::time::Instant::now())),
             access,
@@ -1875,6 +1911,7 @@ impl<A: App> Shell<A> {
             panes,
             chrome,
             epoch,
+            system,
             ..
         } = self;
         let pane = &mut panes[i];
@@ -1889,6 +1926,20 @@ impl<A: App> Shell<A> {
             .current_monitor()
             .and_then(|m| m.refresh_rate_millihertz())
             .map(|mhz| mhz as f32 / 1000.0);
+        // All four settings are event-driven rather than re-asked here:
+        // the appearance arrives on `ThemeChanged` (and is read once when
+        // the window is created), the other three were asked of the OS in
+        // `mod system_env`. Unlike the refresh rate above there is nothing
+        // for a per-frame read to self-correct against — a window does not
+        // drift into another appearance the way it drifts onto another
+        // monitor — and taking focus back re-asks both, which covers a
+        // change the platform did not report.
+        pane.core.env.system = SystemEnv {
+            appearance: pane.appearance,
+            accent: system.accent,
+            motion: system.motion,
+            locale: system.locale,
+        };
         pane.core.env.window = WindowEnv {
             id: pane.id,
             custom_chrome: *chrome != Chrome::Native,
@@ -2093,7 +2144,29 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
             // every window's copy at the end of the batch (`settle_focus`),
             // because focus *moving* is two events and neither alone is the
             // answer.
-            WindowEvent::Focused(focused) => self.panes[i].os_focused = focused,
+            WindowEvent::Focused(focused) => {
+                self.panes[i].os_focused = focused;
+                // Coming back to the app is the cheap, reliable sign that
+                // the user may have been in a settings app: the accent and
+                // the reduce-motion setting have no event to subscribe to
+                // here, and re-asking costs microseconds against something
+                // that happens when a human switches windows.
+                if focused {
+                    self.system = system_env::query();
+                    // And the window's own setting, in case the platform
+                    // changed it without an event while we were away.
+                    self.panes[i].appearance = appearance_of(&self.panes[i].window);
+                }
+            }
+            // The theme changing is the other one, and the only one that
+            // arrives while the app is in front. The next frame reads the
+            // appearance off the window anyway; the redraw is what makes
+            // there *be* a next frame in an app that only draws on input.
+            WindowEvent::ThemeChanged(theme) => {
+                self.panes[i].appearance = theme_appearance(Some(theme));
+                self.system = system_env::query();
+                self.panes[i].window.request_redraw();
+            }
             // The four keyboard events go to `key_target`, which is this
             // pane unless it is lending its keyboard to a non-activating
             // popup. The modifier mirror follows them, or the popup would
