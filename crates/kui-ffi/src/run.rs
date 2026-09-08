@@ -5,9 +5,6 @@ use super::*;
 // ---------------------------------------------------------------------------
 // Windowed runner (winit + wgpu) via C callbacks
 
-pub(crate) type ViewFn = extern "C" fn(user: *mut c_void, ctx: *mut KuiCtx);
-pub(crate) type EventFn = extern "C" fn(user: *mut c_void, ev: *const KuiEvent);
-
 struct CApp {
     user: *mut c_void,
     view: ViewFn,

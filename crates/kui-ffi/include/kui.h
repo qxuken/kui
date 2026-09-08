@@ -1762,6 +1762,17 @@ bool kui_value_as_str(const KuiValue *v, KuiStr *out);            /* borrowed */
 void kui_value_free(KuiValue *v);
 
 /* -- Windowed runner (winit + wgpu), blocks until the window closes ------ */
+/* These two are the library's `runner` feature, on by default and the only
+ * thing in it. They are also the only two of the 135 entry points that need
+ * the GUI runtime - winit, wgpu, kira, accesskit - and it is most of the
+ * library's size: the release cdylib is 12.3 MB with them and 5.1 MB
+ * without (x86_64-pc-windows-msvc). A host that already has a window and
+ * draws the display list itself builds
+ *
+ *     cargo build -p kui-ffi --no-default-features --release
+ *
+ * and these two are simply absent - a link error naming them, not a stub
+ * that fails at run time. Everything else in this header is always there. */
 typedef void (*KuiEventFn)(void *user, const KuiEvent *ev);
 bool kui_run(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user);
 /* kui_run with extensions (ADR 0014). `paths` and `namespaces` are

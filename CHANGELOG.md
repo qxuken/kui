@@ -66,6 +66,19 @@ field reports).
 
 ### Added
 
+- **`kui-ffi` has a `runner` feature**, on by default, holding the only two
+  entry points that need the GUI runtime — `kui_run` and `kui_run_with`.
+  They are 2 of 135 and more than half the weight: the release cdylib is
+  **12.3 MB with them and 5.1 MB without** (x86_64-pc-windows-msvc). A host
+  that already owns a window and draws the display list itself builds
+  `--no-default-features` and ships less than half.
+
+  Not a crate split, because there is nothing to split along: the other 133
+  functions are one surface — build, lay out, hit-test, read the access
+  tree, take the draw data — and a plugin links against none of it anyway.
+  It imports from the host or from `kui_ffi.dll`, and `panel.dll` is 147 KB
+  either way.
+
 - **A C host can load a C extension** (ADR 0014's other half, which was
   Rust's alone). `kui_ctx_add_extension(ctx, namespace, path)` loads a
   plugin into a context, `kui_run_with` does the same for a window, and

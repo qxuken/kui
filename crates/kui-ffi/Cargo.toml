@@ -11,9 +11,30 @@ publish = ["forgejo"]
 name = "kui_ffi"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
+# The windowed runner is the only thing in this crate that needs `kui`, and
+# `kui` is the whole GUI runtime: winit, wgpu, kira, accesskit, arboard. Two
+# of the 135 exported functions use it (`kui_run`, `kui_run_with`) and they
+# cost more than everything else together — the release cdylib is 12.3 MB
+# with them and 5.1 MB without, measured on x86_64-pc-windows-msvc.
+#
+# So it is a feature, on by default because `kui_run` is the batteries-
+# included path every C example takes. A host that drives its own loop and
+# renders the display list itself — which is what the C API is *for* if you
+# already have a window — turns it off and ships less than half:
+#
+#     cargo build -p kui-ffi --no-default-features --release
+#
+# Nothing else is behind a flag. The builder, layout, text, access, input
+# and draw-data surface is what a plugin calls and what a host embeds, and
+# splitting *that* saves nothing: a plugin links against none of it (it
+# imports, and panel.dll is 147 KB), so there is no ext-only build to make.
+[features]
+default = ["runner"]
+runner = ["dep:kui"]
+
 [dependencies]
 kui-core.workspace = true
-kui.workspace = true
+kui = { workspace = true, optional = true }
 
 # See the note in crates/kui/Cargo.toml: examples live under examples/ at the
 # root, so cargo needs the path. This host and the plugin it dlopens are the
@@ -24,3 +45,5 @@ kui.workspace = true
 [[example]]
 name = "c_panel"
 path = "../../examples/c/panel.rs"
+# The Rust host is a `kui` app, so it needs what `kui` needs.
+required-features = ["runner"]

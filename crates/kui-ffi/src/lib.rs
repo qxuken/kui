@@ -35,6 +35,7 @@ mod focus;
 mod frame;
 mod input;
 mod resources;
+#[cfg(feature = "runner")]
 mod run;
 mod scrolling;
 mod slots;
@@ -49,6 +50,7 @@ pub use focus::*;
 pub use frame::*;
 pub use input::*;
 pub use resources::*;
+#[cfg(feature = "runner")]
 pub use run::*;
 pub use scrolling::*;
 pub use slots::*;

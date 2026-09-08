@@ -4,6 +4,14 @@
 
 use super::*;
 
+/// A C callback that builds into a context: `kui_run`'s view, and the body
+/// of a `kui_titlebar_with` / `kui_tooltip_with`. Here rather than in
+/// `run`, because the widgets take one whether or not this build has a
+/// windowed runner.
+pub(crate) type ViewFn = extern "C" fn(user: *mut c_void, ctx: *mut KuiCtx);
+/// A C callback that receives one event: `kui_run`'s.
+pub(crate) type EventFn = extern "C" fn(user: *mut c_void, ev: *const KuiEvent);
+
 // ---------------------------------------------------------------------------
 // Opaque + repr(C) types
 

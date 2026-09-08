@@ -18,7 +18,7 @@ so an id cited by an open item, a code comment or a commit message can be
 resolved without opening the archive. Nothing was renumbered in any of those
 moves, and nothing ever is. What is left here is three parked headings — C12,
 C13 and C14 — W3 from the editor-and-mux assessment (2026-09-07), now run and
-rebuilt on a real Windows machine; W4–W9 from the first Windows round
+rebuilt on a real Windows machine; W4–W10 from the first Windows round
 (2026-09-08), which is what running it found; and F36,
 which fell out of building the four entries the two alpha.9 field reports
 and the bake-off produced (F32–F35, filed and built 2026-09-08); and what
@@ -464,6 +464,33 @@ it, along with the two-copies case above.
 built against a *host's* import library still loads into that host alone.
 That is Windows' rule about import libraries and not something kui can fix —
 what changed is that you no longer have to build one that way.
+
+### `.` W10 — Half the C library is two functions nobody headless needs — **done (2026-09-08)**
+
+Asked as "should we split into ffi-host and ffi-ext to reduce the .dll?".
+Measured first, and the answer was a different split.
+
+The release cdylib is **12.3 MB**. `kui_run` and `kui_run_with` are 2 of the
+135 exported functions and the only two that touch `kui` — winit, wgpu,
+kira, accesskit, arboard. With them gone it is **5.1 MB**. Everything else,
+the other 133, is `kui-core`: build, lay out, shape text, hit-test, the
+access tree, the draw data.
+
+So the lever is the runner, and it is a feature now (`default = ["runner"]`).
+A host that owns its window and draws the display list itself — which is what
+the C API is for if you already have a renderer — takes
+`--no-default-features` and ships less than half. Both configurations build
+and pass the crate's 37 tests.
+
+**Host/ext was not the lever.** A plugin links against none of the library:
+it imports, from the host or from `kui_ffi.dll`, and `panel.dll` is 147 KB
+either way. There is no ext-only build to make smaller. What an "ext" crate
+*could* buy on Windows is a small forwarding stub — 135 thunks resolving the
+host's `kui_*` through `GetProcAddress`, so a plugin could be host-agnostic
+without the host shipping a 5 MB DLL purely for symbol resolution. Not built:
+it is Windows-only machinery for a case nobody has yet, and the two shapes
+that exist (import the host's .lib, or import `kui_ffi.dll`) already cover
+shipping a plugin. Filed here so the option is on the record.
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
 Both apps upgraded to alpha.9 the day it was tagged and reported again:
@@ -1022,7 +1049,7 @@ list drawing past its own box — are fixed under alpha.9's `### Fixed`.
 **Windows (2026-09-08).** The platform ran for the first time and the round
 is a script: `scripts/smoke-windows.ps1`, in `smoke-windows` beside the
 `cargo test` step, with the C round from `examples/c/build.ps1` beside it.
-W4, W5, W6, W8 and W9 are fixed and W3 is rebuilt; W7 is the one
+W4, W5, W6 and W8–W10 are fixed and W3 is rebuilt; W7 is the one
 open thing it found and wants a decision, not a patch. What it still does
 not cover is P8's two follow-ups, unchanged: `windows_nc.rs` has no test
 that runs anywhere, and neither does `access_bridge.rs`. The next Windows

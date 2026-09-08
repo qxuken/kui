@@ -88,6 +88,14 @@ fn export_def(manifest_dir: &str) -> Option<String> {
         if path.extension().is_none_or(|e| e != "rs") {
             continue;
         }
+        // `run.rs` is behind the `runner` feature, so a build without it
+        // has no `kui_run` to export and /EXPORT: of a missing symbol is a
+        // link error. The scan follows the same switch.
+        if path.file_name().is_some_and(|f| f == "run.rs")
+            && std::env::var_os("CARGO_FEATURE_RUNNER").is_none()
+        {
+            continue;
+        }
         let text = std::fs::read_to_string(&path).ok()?;
         for (_, rest) in text
             .match_indices("pub extern \"C\" fn kui_")
