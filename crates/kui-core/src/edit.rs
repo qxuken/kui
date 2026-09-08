@@ -322,6 +322,15 @@ impl EditState {
     }
 }
 
+/// A held `set_edit_text` the frame after it did not claim, in whichever
+/// spelling the call used — the two name the same mistake and raise the
+/// same code, but a warning that says "key" for a call that said "label"
+/// sends its reader looking in the wrong place.
+pub(crate) enum Unclaimed {
+    Key(Key),
+    Label(String),
+}
+
 pub struct EditStore {
     states: FxHashMap<Key, EditState>,
     /// Text set for a key nothing has declared yet: `set_text` holds it
@@ -332,6 +341,15 @@ pub struct EditStore {
     /// editor open with `initial` (backlog F25). What the frame after it
     /// does not claim is dropped by `finish_frame`, with a warning.
     pending: FxHashMap<Key, String>,
+    /// The same seed named by label instead of by key, for the app that
+    /// has no key to give: the hex key comes from an event the node
+    /// fired, and an editor a rename is opening for the first time has
+    /// fired none (backlog F32). Held until `text_edit` declares an
+    /// editor under the label and claims it — which is also where a
+    /// *retained* editor is reached, since a key kept off screen (F20,
+    /// F26) has a state `declare` would not reseed and a label
+    /// `Core::key_of` cannot resolve while it goes undeclared.
+    pending_labels: FxHashMap<String, String>,
     pub(crate) focused: Option<Key>,
     /// Edit node being drag-selected (with its content origin, logical).
     pub(crate) dragging: Option<(Key, Vec2)>,
@@ -354,6 +372,7 @@ impl Default for EditStore {
         Self {
             states: FxHashMap::default(),
             pending: FxHashMap::default(),
+            pending_labels: FxHashMap::default(),
             focused: None,
             dragging: None,
             caret_moved: None,
@@ -595,18 +614,62 @@ impl EditStore {
         self.touch_caret(key);
     }
 
+    /// Holds `text` for the next editor declared under `label`, for a
+    /// `set_edit_text` by a name nothing has declared yet (backlog F32).
+    /// The key path is [`EditStore::pending`]; this one is claimed by
+    /// [`EditStore::claim_label`] from inside the build, where the label
+    /// and the key it resolves to are both in hand.
+    pub(crate) fn hold_label(&mut self, label: &str, text: &str) {
+        self.pending_labels
+            .insert(label.to_string(), text.to_string());
+    }
+
+    /// A declaring editor takes the seed held for its label, if there is
+    /// one. Two shapes, and the second is the one a seed by key cannot
+    /// have: a *new* editor takes it as `declare` takes a pending key,
+    /// over `initial`; an editor that already has a state — retained
+    /// while its key was off screen — takes it as `set_text`, since
+    /// `declare` reseeds nothing that exists and the draft would
+    /// otherwise come back over the model's text.
+    pub(crate) fn claim_label(
+        &mut self,
+        key: Key,
+        label: &str,
+        fs: &mut FontSystem,
+        res: &Resources,
+    ) {
+        if self.pending_labels.is_empty() {
+            return;
+        }
+        let Some(text) = self.pending_labels.remove(label) else {
+            return;
+        };
+        if self.states.contains_key(&key) {
+            self.set_text(key, &text, fs, res);
+        } else {
+            self.pending.insert(key, text);
+        }
+    }
+
     /// The seeds no frame claimed, dropped: `finish_frame` drains this
     /// after the build and raises [`crate::diag::EDIT_TEXT_WITHOUT_EDITOR`]
-    /// for each, so a `set_edit_text` on a key the view never declares is
-    /// a line rather than nothing at all. Sorted, so the order two
-    /// unclaimed keys are reported in does not depend on a hash seed.
-    pub(crate) fn take_unclaimed_seeds(&mut self) -> Vec<Key> {
-        if self.pending.is_empty() {
-            return Vec::new();
+    /// for each, so a `set_edit_text` on a key — or a label — the view
+    /// never declares is a line rather than nothing at all. Sorted within
+    /// each spelling, so the order two unclaimed seeds are reported in
+    /// does not depend on a hash seed.
+    pub(crate) fn take_unclaimed_seeds(&mut self) -> Vec<Unclaimed> {
+        let mut out: Vec<Unclaimed> = Vec::new();
+        if !self.pending.is_empty() {
+            let mut keys: Vec<Key> = self.pending.drain().map(|(k, _)| k).collect();
+            keys.sort_unstable();
+            out.extend(keys.into_iter().map(Unclaimed::Key));
         }
-        let mut keys: Vec<Key> = self.pending.drain().map(|(k, _)| k).collect();
-        keys.sort_unstable();
-        keys
+        if !self.pending_labels.is_empty() {
+            let mut labels: Vec<String> = self.pending_labels.drain().map(|(l, _)| l).collect();
+            labels.sort_unstable();
+            out.extend(labels.into_iter().map(Unclaimed::Label));
+        }
+        out
     }
 
     pub fn version(&self, key: Key) -> u64 {

@@ -147,16 +147,21 @@ anchored at the `line` carrying `caret` for you.
 ### How do I reset an editor's text?
 
 `initial` seeds a *new* editor only — a key declared again keeps the draft
-the user typed — and `setEditText(key, text)` is what resets one, leaving the
-caret at the end. It addresses an editor that already exists, by the hex key
-an event carried: called from `update` at the moment a rename opens, before
-any frame has declared that editor, it is a silent no-op today — so the
-reset runs on the editor's first `onLayout`, which is both where the key
-comes from and the first moment the editor is there to take it (backlog F25
-is that gap).
+the user typed — and `setEditText(name, text)` is what resets one, leaving
+the caret at the end. Name it by the label the editor's own `key` prop
+declares, `setEditText('edit-n13', text)`, and it can be called from the
+`update` that *opens* the editor: no frame has declared it yet, so the text
+is held and the frame that draws it takes it, over `initial`. That is the
+spelling to reach for, because the other one — the 16-digit hex key — comes
+from an event the editor has not fired. It reaches an editor that is coming
+back too: one retained while its key was off screen takes the text over the
+draft left in it, so a second rename opens on the model's text and not on an
+abandoned edit. A name nothing declares by the end of that frame drops its
+text with an `edit-text-without-editor` warning.
 
 [`edit` element](props.md#elements) ·
-[alpha.8 `### Changed`](../CHANGELOG.md#010-alpha8-2026-09-07)
+[`edit-text-without-editor`](props.md#warnings) ·
+[alpha.10](../CHANGELOG.md#010-alpha10-unreleased)
 
 ### How do I say which control a dialog opens focused?
 
@@ -195,18 +200,24 @@ is the other half.
 
 ### How do I name a node from outside the view?
 
-`focus`, `isFocused`, `reveal` and `access` take either the label a `key`
-prop declared in the last frame or the 16-digit hex key an event carried, so
-a node that has never been interacted with can still be named; the editor
-and scroll verbs (`editText`, `setEditText`, `setScroll`, `scrollOffset`)
-take that hex key only, which is the one an `onLayout` or `changed` event
-hands you. A label declared by two nodes under different parents raises
-`ambiguous-key` and picks the first in tree order: labels are unique among
-siblings, not across a tree.
+Every verb that takes a node takes either spelling: the label a `key` prop
+declared, or the 16-digit hex key an event carried. `focus`, `isFocused`,
+`reveal`, `access`, `editText`, `setEditText`, `setScroll`, `scrollOffset`,
+`scrollGeometry`, `textHit` and `caretRect` all resolve a label through the
+frame being built so far and then the last finished one, so a node the user
+has never touched can be named. `keyOf(label)` (Node) and `kui_key_of` (C) hand
+back that hex key when one is wanted to hold on to, and null / 0 when no
+recent frame declared the label; a Lua script passes the label itself and
+needs neither. One verb goes further:
+`setEditText` accepts a label *no* frame has declared, and holds the text for
+the frame that does — that is how the `update` opening an editor names it.
+A label declared by two nodes under different parents raises `ambiguous-key`
+and picks the first in tree order: labels are unique among siblings, not
+across a tree.
 
 [`key` row](props.md#composite-props-hand-written-per-binding) ·
 [`ambiguous-key`](props.md#warnings) ·
-[alpha.7](../CHANGELOG.md#010-alpha7-2026-09-06)
+[alpha.10](../CHANGELOG.md#010-alpha10-unreleased)
 
 ## Sound and effects
 

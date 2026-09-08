@@ -403,3 +403,23 @@ pub extern "C" fn kui_edit_set_text(ptr: *mut KuiCtx, key: u64, text: KuiStr) {
         }
     });
 }
+
+/// The same call by the label the view declares (`kui_edit`'s `label`),
+/// for the host that has no key to give: a key comes from an event the
+/// node fired, and an editor being opened for the first time has fired
+/// none (backlog F32). A label some frame declared is applied at once; one
+/// nothing has declared is held for the next frame that declares an editor
+/// under it, seeding a new editor over its `initial` and replacing a
+/// retained one's draft. Held for that one frame — a label nothing
+/// declares on it drops its text and raises `edit-text-without-editor`
+/// (`kui_take_warnings`).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_edit_set_text_label(ptr: *mut KuiCtx, label: KuiStr, text: KuiStr) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            let label = kstr(label).into_owned();
+            let text = kstr(text).into_owned();
+            c.core().set_edit_text_by_label(&label, &text);
+        }
+    });
+}

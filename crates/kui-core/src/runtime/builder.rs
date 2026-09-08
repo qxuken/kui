@@ -495,6 +495,12 @@ impl Core {
             let origin = self.origin;
             let scale = self.scale;
             let sess = &mut *self.session.state();
+            // A `set_edit_text` by label, held for the frame that would
+            // declare the name (backlog F32): claimed here, where the
+            // label and its key are both in hand, and before `declare`,
+            // which is what turns it into this key's seed.
+            self.edit
+                .claim_label(key, label, &mut sess.fonts, &sess.resources);
             self.edit.declare(
                 key,
                 initial,

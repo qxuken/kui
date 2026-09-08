@@ -1634,6 +1634,59 @@ test('selection, disclosure and set position reach the access tree', () => {
   assert.equal(byName('Save').posInSet, null);
 });
 
+test('setEditText names an editor by the label the view declares (F32)', () => {
+  // The mind map's sequence. A rename opens from `update`, which fills the
+  // field with the model's text in the same turn — and has no key to name
+  // it with, since the hex key comes from an event an editor being opened
+  // has not fired. The name is the one the view's `key` prop declares, and
+  // the frame that declares the editor takes the text.
+  const app = createApp(
+    {
+      init: { editing: null, names: { n13: 'Ideas' } },
+      update: (m, msg) => {
+        if (msg?.kind === 'rename') {
+          app.ctx.setEditText(`edit-${msg.id}`, m.names[msg.id]);
+          return { ...m, editing: msg.id };
+        }
+        if (msg === 'cancel') return { ...m, editing: null };
+      },
+      view: (m) =>
+        box({ pad: 4 }, [
+          m.editing
+            ? el('edit', { initial: '', label: 'Node text', width: 200 }, [], `edit-${m.editing}`)
+            : box({ onClick: { kind: 'rename', id: 'n13' }, width: 50, height: 20 }, [], 'row'),
+        ]),
+    },
+    { warnings: false },
+  );
+  app.render();
+  app.dispatch({ kind: 'rename', id: 'n13' });
+  app.render();
+  assert.equal(app.ctx.editText('edit-n13'), 'Ideas', 'the frame that opened it took the text');
+  assert.deepEqual(app.warnings.filter((w) => w.code === 'edit-text-without-editor'), []);
+  // The label reads back as a key too, which is what the diagnostic names.
+  assert.match(app.ctx.keyOf('edit-n13'), /^[0-9a-f]{16}$/);
+  assert.equal(app.ctx.keyOf('edit-n99'), null);
+
+  // A second open, over an abandoned draft: the editor's state is retained
+  // while its key is off screen, so the frame that brings it back has to
+  // take the model's text and not what was typed into it.
+  app.ctx.setEditText('edit-n13', 'Ideas and more');
+  app.dispatch('cancel');
+  app.render();
+  assert.equal(app.ctx.keyOf('edit-n13'), null, 'a closed editor is in no frame to resolve');
+  app.dispatch({ kind: 'rename', id: 'n13' });
+  app.render();
+  assert.equal(app.ctx.editText('edit-n13'), 'Ideas', 'the draft did not come back');
+
+  // A label nothing declares is a line, not a silent drop.
+  app.ctx.setEditText('edit-n99', 'nowhere');
+  app.render();
+  const ws = app.warnings.filter((w) => w.code === 'edit-text-without-editor');
+  assert.equal(ws.length, 1);
+  assert.match(ws[0].message, /edit-n99/);
+});
+
 test('editors expose runs and take selection requests; custom editors get them as messages', () => {
   const app = createApp(
     {

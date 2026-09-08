@@ -225,7 +225,9 @@ fn slot_table(lua: &Lua, slot: &Slot<'_>) -> mlua::Result<Table> {
 /// queries `edit_text(key)`, `is_focused(key)`, `is_hovered(key)`,
 /// `is_pressed(key)` (keys are the integers events carry; `is_focused`,
 /// `set_focus` and `reveal` also take a declared `key` string, see
-/// `key_arg`), `measure_text(s, opts, max_w)` (see `measure_from_lua`), the
+/// `key_arg`), the editor verb `set_edit_text(key_or_label, text)` (whose
+/// label spelling reaches an editor this view is about to declare),
+/// `measure_text(s, opts, max_w)` (see `measure_from_lua`), the
 /// focus verbs `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()`
 /// and the scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
 /// `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
@@ -301,6 +303,30 @@ fn env_table<'scope, 'env: 'scope>(
     t.set(
         "edit_text",
         scope.create_function(move |_, key: i64| Ok(ui.borrow().edit_text(Key(key as u64))))?,
+    )?;
+    // Replaces an editor's text, caret at the end. Named by the label its
+    // `key` field declares as well as by the integer key, and the label is
+    // the spelling an `update` that opens the field can use: the key comes
+    // from an event the editor has not fired yet (backlog F32). A label no
+    // frame has declared is held for the next frame that declares it —
+    // seeding a new editor over `initial`, replacing a retained one's draft
+    // — and dropped with an `edit-text-without-editor` warning if that
+    // frame declares nothing under it.
+    t.set(
+        "set_edit_text",
+        scope.create_function(move |_, (key, text): (mlua::Value, String)| {
+            let mut ui = ui.borrow_mut();
+            match key {
+                mlua::Value::String(label) => {
+                    ui.set_edit_text_by_label(&label.to_str()?, &text);
+                }
+                other => {
+                    let key = key_arg(&mut ui, other)?;
+                    ui.set_edit_text(key, &text);
+                }
+            }
+            Ok(())
+        })?,
     )?;
     // Takes a label too (`key_arg`): a view styles the row it declares by
     // the name it gives it, without an event having told it the key.
@@ -2169,6 +2195,47 @@ mod tests {
         assert_eq!(seen.as_deref(), Some("hi!"));
     }
 
+    /// `env.set_edit_text` by the label the view declares: the spelling a
+    /// script that is *opening* the editor can use, since the key comes
+    /// from an event the editor has not fired (backlog F32). The frame
+    /// that declares the field takes the held text over its `initial`.
+    #[test]
+    fn set_edit_text_by_label_seeds_the_editor_the_next_frame_declares() {
+        let mut ext = LuaExtension::from_source(
+            "edit",
+            r#"
+                frames = 0
+                function view(env)
+                  frames = frames + 1
+                  if frames == 1 then return column {} end
+                  if frames == 2 then
+                    env.set_edit_text("note", "from the model")
+                  end
+                  return column {
+                    edit { key = "note", initial = "ignored", width = 200 },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        // A frame with no editor in it, then the one that opens the field:
+        // `env` lives inside `view`, so the call is made from the frame
+        // that declares the editor and its tree is what claims the text.
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        let key = core.key_of("note").expect("the view declared the editor");
+        assert_eq!(core.edit_text(key).as_deref(), Some("from the model"));
+        let codes: Vec<&str> = core.take_warnings().iter().map(|w| w.code).collect();
+        assert!(!codes.contains(&"edit-text-without-editor"), "{codes:?}");
+        // And it is the seed, not a per-frame reset: the next frame's
+        // typing is kept.
+        core.set_focus(Some(key));
+        core.handle_input(InputEvent::Text("!".into()));
+        frame(&mut core, &mut ext);
+        assert_eq!(core.edit_text(key).as_deref(), Some("from the model!"));
+    }
+
     /// A script that owns its keyboard and asks for releases (`key_up`)
     /// sees both halves of a key on one `{kind="key"}` payload: a held key
     /// is `phase="down"` then `"up"`, and focus leaving while it is held
@@ -2574,6 +2641,7 @@ mod tests {
                 "reveal",
                 "scroll_geometry",
                 "scroll_offset",
+                "set_edit_text",
                 "set_focus",
                 "set_scroll",
                 "set_window_size",

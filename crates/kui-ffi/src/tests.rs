@@ -644,6 +644,65 @@ mod queries_headless {
         kui_ctx_free(ctx);
     }
 
+    /// `kui_edit_set_text_label` names the editor the *next* frame will
+    /// declare, which is the only name a host opening one for the first
+    /// time has: `kui_key_of` answers 0 for it, and no event has carried
+    /// its key. The frame that declares it takes the text over its
+    /// `initial`; a label no frame declares is a warning, not a hold.
+    #[test]
+    fn an_editor_is_seeded_by_the_label_the_next_frame_declares() {
+        let ctx = kui_ctx_new();
+        let empty = |ctx: *mut KuiCtx| {
+            kui_frame_begin(ctx, 400.0, 200.0, 1.0);
+            kui_frame_finish(ctx);
+        };
+        let with_editor = |ctx: *mut KuiCtx| -> u64 {
+            kui_frame_begin(ctx, 400.0, 200.0, 1.0);
+            let mut spec = unsafe { std::mem::zeroed::<KuiSpec>() };
+            spec.width = KuiSizing {
+                tag: 2,
+                value: 300.0,
+            };
+            spec.label = ks("Name");
+            let key = kui_text_edit(ctx, ks("name"), ks("initial"), std::ptr::null(), 0, &spec);
+            kui_frame_finish(ctx);
+            key
+        };
+        let read = |ctx: *mut KuiCtx, key: u64| -> String {
+            let mut text = KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            };
+            assert!(kui_edit_text(ctx, key, &mut text));
+            kstr(text).into_owned()
+        };
+
+        empty(ctx);
+        assert_eq!(kui_key_of(ctx, ks("name")), 0, "nothing declared it yet");
+        kui_edit_set_text_label(ctx, ks("name"), ks("from the model"));
+        let key = with_editor(ctx);
+        assert_eq!(read(ctx, key), "from the model");
+
+        // A label the last frame declared resolves, so this lands now.
+        kui_edit_set_text_label(ctx, ks("name"), ks("renamed"));
+        assert_eq!(read(ctx, key), "renamed");
+
+        // And one no frame declares is dropped, with a line saying so.
+        kui_set_diagnostics(ctx, true);
+        kui_edit_set_text_label(ctx, ks("nmae"), ks("nowhere"));
+        empty(ctx);
+        let mut warnings = [unsafe { std::mem::zeroed::<KuiWarning>() }; 4];
+        let n = kui_take_warnings(ctx, warnings.as_mut_ptr(), warnings.len());
+        assert_eq!(n, 1);
+        assert_eq!(kstr(warnings[0].code).as_ref(), "edit-text-without-editor");
+        assert!(
+            kstr(warnings[0].message).contains("nmae"),
+            "the label is in the message: {}",
+            kstr(warnings[0].message)
+        );
+        kui_ctx_free(ctx);
+    }
+
     /// `kui_button_with` reads the rows the stock button admits off the
     /// spec — label, description, tooltip, disabled — and nothing else:
     /// a width on the same spec changes no quad, since the look is

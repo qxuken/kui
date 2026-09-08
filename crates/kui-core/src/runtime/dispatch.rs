@@ -907,6 +907,28 @@ impl Core {
             .set_text(key, text, &mut sess.fonts, &sess.resources);
     }
 
+    /// The same call by the name the view declares — an editor's `key`
+    /// prop / `label` — for the app that has no key to give: the hex key
+    /// comes from an event the node fired, and an editor a rename opens
+    /// for the first time has fired none (backlog F32).
+    ///
+    /// A label some frame declared resolves now ([`Core::key_of`]) and
+    /// this is [`Core::set_edit_text`] on that key. One nothing has
+    /// declared — a first open, or a second one, since an editor closed
+    /// in between was in no recent frame — is held for the next frame
+    /// that declares an editor under it, and seeds it there. An editor
+    /// retained while its key was off screen takes the text over its
+    /// draft, which is what a `set_edit_text` by key cannot say.
+    ///
+    /// Held for that one frame: a label nothing declares on it drops its
+    /// text and raises [`crate::diag::EDIT_TEXT_WITHOUT_EDITOR`].
+    pub fn set_edit_text_by_label(&mut self, label: &str, text: &str) {
+        match self.key_of(label) {
+            Some(key) => self.set_edit_text(key, text),
+            None => self.edit.hold_label(label, text),
+        }
+    }
+
     /// The pointer shape for wherever the pointer is now, derived from the
     /// frame's hit regions (see [`crate::cursor`]). Per-frame output like
     /// the window commands, but a query rather than a drain: it is a state,

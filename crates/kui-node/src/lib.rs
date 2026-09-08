@@ -1615,6 +1615,20 @@ macro_rules! core_methods {
                 Ok(())
             }
 
+            /// The hex key of the node a label names — the label a `key`
+            /// prop declared, resolved through the frame being built so
+            /// far and then the last finished one — or null when no node
+            /// declared it. The door for holding a key across frames;
+            /// every call that takes a key takes the label too, so this
+            /// is for caching one, or for checking that a name reached
+            /// the view. Two nodes on one label under different parents
+            /// resolve to the first in tree order and raise
+            /// `ambiguous-key`.
+            #[napi]
+            pub fn key_of(&mut self, label: String) -> Option<String> {
+                self.$core().key_of(&label).map(key_str)
+            }
+
             #[napi]
             pub fn blur(&mut self) {
                 self.$core().set_focus(None);
@@ -1665,7 +1679,8 @@ macro_rules! core_methods {
             /// that never scrolled.
             #[napi(ts_return_type = "ScrollOffset")]
             pub fn scroll_offset(&mut self, key: String) -> Result<Json> {
-                Ok(offset_json(self.$core().scroll_offset(parse_key(&key)?)))
+                let key = resolve_key(self.$core(), &key)?;
+                Ok(offset_json(self.$core().scroll_offset(key)))
             }
 
             /// Everything the last layout resolved for the scroll container
@@ -1681,9 +1696,8 @@ macro_rules! core_methods {
             /// frame late — render a row or two extra at each end.
             #[napi(ts_return_type = "ScrollGeometry | null")]
             pub fn scroll_geometry(&mut self, key: String) -> Result<Option<Json>> {
-                Ok(geometry_json(
-                    self.$core().scroll_geometry(parse_key(&key)?),
-                ))
+                let key = resolve_key(self.$core(), &key)?;
+                Ok(geometry_json(self.$core().scroll_geometry(key)))
             }
 
             /// Where a point lands in the text a keyed node drew: a byte
@@ -1739,8 +1753,8 @@ macro_rules! core_methods {
             /// the end without knowing the content height.
             #[napi]
             pub fn set_scroll(&mut self, key: String, x: f64, y: f64) -> Result<()> {
-                self.$core()
-                    .set_scroll(parse_key(&key)?, Vec2::new(x as f32, y as f32));
+                let key = resolve_key(self.$core(), &key)?;
+                self.$core().set_scroll(key, Vec2::new(x as f32, y as f32));
                 self.$redraw();
                 Ok(())
             }
@@ -1801,7 +1815,8 @@ macro_rules! core_methods {
 
             #[napi]
             pub fn edit_text(&mut self, key: String) -> Result<Option<String>> {
-                Ok(self.$core().edit_text(parse_key(&key)?))
+                let key = resolve_key(self.$core(), &key)?;
+                Ok(self.$core().edit_text(key))
             }
 
             /// Replaces an editor's text, leaving the caret at the end.
@@ -1809,14 +1824,23 @@ macro_rules! core_methods {
             /// It reaches an editor that does not exist yet: the `update`
             /// that opens a rename field runs a frame ahead of the view
             /// that declares it, so the text is held for the frame that
-            /// declares this key and seeds the editor there, over
-            /// `initial`. Held for that one frame — a key nothing declares
-            /// on it drops its text with an `edit-text-without-editor`
-            /// warning, so a key the view spells differently is a line
-            /// rather than a field that opens with the wrong text.
+            /// declares this name and seeds the editor there, over
+            /// `initial`. Name it by the label its `key` prop declares —
+            /// the spelling that needs nothing to exist yet, since the
+            /// hex key comes from an event the editor has not fired.
+            /// Either spelling works, as for `focus`; a label the last
+            /// frame declared lands at once, and one it did not is held.
+            /// Held for that one frame — a name nothing declares on it
+            /// drops its text with an `edit-text-without-editor` warning,
+            /// so a name the view spells differently is a line rather
+            /// than a field that opens with the wrong text.
             #[napi]
             pub fn set_edit_text(&mut self, key: String, text: String) -> Result<()> {
-                self.$core().set_edit_text(parse_key(&key)?, &text);
+                let core = self.$core();
+                match hex_key(&key) {
+                    Some(k) => core.set_edit_text(k, &text),
+                    None => core.set_edit_text_by_label(&key, &text),
+                }
                 self.$redraw();
                 Ok(())
             }

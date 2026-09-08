@@ -221,15 +221,18 @@ warnings! {
     pub const UNKNOWN_WINDOW_KIND: &str = "unknown-window-kind";
 
     /// A `setEditText` (`Core::set_edit_text`, `kui_edit_set_text`) named a
-    /// key, the text was held for the frame that would declare it, and the
-    /// frame after the call declared no editor under that key — so nothing
-    /// was ever seeded and the text is dropped. The call is meant to run
-    /// from an `update` that also opens the editor, one frame ahead of the
-    /// view that declares it; this is the same call with the view half
-    /// missing, or with a key the view spells differently. Read the key an
-    /// event carried, or the one `keyOf`/`kui_key_of` resolves the label
-    /// to. An editor that already exists takes the text where the call is
-    /// made and never reaches this.
+    /// key or a label, the text was held for the frame that would declare
+    /// it, and the frame after the call declared no editor under that name
+    /// — so nothing was ever seeded and the text is dropped. The call is
+    /// meant to run from an `update` that also opens the editor, one frame
+    /// ahead of the view that declares it; this is the same call with the
+    /// view half missing, or with a name the view spells differently. Pass
+    /// the label the editor's `key` prop declares — the spelling that
+    /// needs nothing to exist yet — or the hex key an event carried.
+    /// `keyOf`/`kui_key_of` turns a label into that key, but only for an
+    /// editor some frame declared (Lua's verbs take the label itself). An editor that already
+    /// exists takes the text where the call is made and never reaches
+    /// this.
     pub const EDIT_TEXT_WITHOUT_EDITOR: &str = "edit-text-without-editor";
 
     /// A `FontId` / `ImageId` / `SoundId` registered in one `Session` and used
@@ -333,6 +336,23 @@ pub fn foreign_resource(f: &Foreign) -> Warning {
             .str(f.kind.name())
             .index(f.raw),
         message: f.message(),
+    }
+}
+
+/// The [`EDIT_TEXT_WITHOUT_EDITOR`] warning for one label. Keyed by
+/// `Key::ROOT.str(label)` — not a node's key, since no node took the
+/// name, but one key per label all the same, so two unclaimed labels in
+/// a frame are two lines under the once-per-(code, key) dedup.
+pub fn edit_text_without_editor_label(label: &str) -> Warning {
+    Warning {
+        code: EDIT_TEXT_WITHOUT_EDITOR,
+        key: Key::ROOT.str(label),
+        message: format!(
+            "`set_edit_text` named label {label:?}, and the frame after it declared no editor \
+             under that name, so the text was dropped; the label is the one an editor's `key` \
+             prop declares, and the call is held for one frame — for the view that draws the \
+             editor the same `update` opened — not longer"
+        ),
     }
 }
 

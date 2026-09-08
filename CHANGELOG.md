@@ -17,7 +17,7 @@ for the reader deciding whether to upgrade. Earlier sections keep the shape
 they shipped with and are not retrofitted (backlog F31, from the alpha.8
 field reports).
 
-## Unreleased
+## 0.1.0-alpha.10 (unreleased)
 
 **What breaks.**
 
@@ -33,6 +33,16 @@ field reports).
   `Fragment` (or `Symbol.for('kui.jsx.fragment')`).
 - `Ui::fragment` and `Core::fragment_node` return the node's `Key` rather
   than `()`. Nothing to fix unless a caller bound the result.
+- `setEditText`'s first argument is a name, not only a key: anything that
+  is not sixteen hex digits is read as the label an editor's `key` prop
+  declares. A call that used to throw `bad id "…"` now holds the text for
+  a frame and, if nothing declares that name, warns instead — a suite
+  asserting on the throw sees a warning.
+- `editText`, `setScroll`, `scrollOffset` and `scrollGeometry` take a
+  declared label too, and with it `focus`'s stricter reading of a key:
+  exactly sixteen hex digits. A short hex string (`editText('ff')`) used
+  to parse as a key and now resolves as a label, which throws when no node
+  declared it.
 
 ### Added
 
@@ -82,6 +92,52 @@ what ADR 0005 pointed at when it declined gradient props, and a fragment is
 five lines instead of either. Also the CPU-side animation you were running to
 make a shimmer or a spinner move: `animate` plus `in.time` moves it on the
 GPU without rebuilding a node.
+
+### Changed
+
+- **`setEditText` can be given the name the view declares** (backlog F32,
+  from the mind map's alpha.9 report). alpha.9 made the call reach the
+  editor the *next* frame declares; what it could not reach was the
+  *name*. The key is sixteen hex digits, those come from an event the node
+  fired, and an editor a rename is opening for the first time has fired
+  none — so the one call the release told apps to make was the one call
+  they could not spell, and `keyOf`, which the new warning named as the way
+  out, existed in Rust and C but not in Node. It would not have helped:
+  `keyOf` resolves through the frame being built and then the last
+  finished one, and an editor that is closed was in neither — not on a
+  first open, and not on a second one either.
+
+  So the name defers the way the text already did. `setEditText('note',
+  text)` — Node, either spelling, the way `focus` takes either;
+  `Core::set_edit_text_by_label`; Lua's new `env.set_edit_text(key_or_label,
+  text)`, which the binding had no form of at all; C's appended
+  `kui_edit_set_text_label` (no ABI bump). A label some frame declared
+  resolves at once. One nothing has declared is held for the frame that
+  declares an editor under it, and that frame's editor takes the text over
+  its `initial`. An editor that was retained while its key sat off screen
+  — the second open, the abandoned draft — takes it as a `setEditText`
+  rather than as a seed, so the model's text wins over what the user typed
+  and walked away from, which is the case a seed by key could not express.
+  A name nothing declares still drops its text with an
+  `edit-text-without-editor` warning, now naming the label it was given.
+  Node also gains `keyOf(label)` (the hex key, or null), so the sentence
+  that warning has been printing is true in every binding, and `editText`,
+  `setScroll`, `scrollOffset` and `scrollGeometry` take a label like the
+  focus verbs.
+
+  This corrects alpha.9's F25 entry below, the way that entry corrected
+  alpha.8's F20. Its "what you can delete" — "Set the text in the `update`
+  that opens the editor; the frame that draws it takes the text with it" —
+  was true of the holding and false of the naming: the `update` that opens
+  an editor had no key for it, so the latch that waited for one was still
+  load-bearing, and an app that deleted it on that advice got `bad id`.
+  The advice is true now, with the label the view declares in place of the
+  key it cannot have.
+
+  **What you can delete:** the frame of waiting, for real this time — the
+  `onLayout` latch, the `editReady` flag, the per-node key cache kept only
+  so a later `setEditText` would have something to name. Set the text by
+  the editor's own `key` prop from the `update` that opens it.
 
 ## 0.1.0-alpha.9 (2026-09-08)
 

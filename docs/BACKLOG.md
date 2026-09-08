@@ -281,7 +281,69 @@ recent frame. The app's per-node key cache is what makes its second
 opens work, and the fix below has to seed a retained editor as well as a
 new one.
 
-### `~` F32 — `setEditText` reaches the editor the next frame declares, but only by a key the app cannot have yet
+### `~` F32 — `setEditText` reaches the editor the next frame declares, but only by a key the app cannot have yet — **done (2026-09-08)**
+
+Built as the "Do" spells it, with one thing the entry did not say and one
+door left where it was.
+
+The name defers the way alpha.9's text already did.
+`Core::set_edit_text_by_label(label, text)` resolves through `key_of` when
+some frame declared the label and is `set_edit_text` on that key; when
+nothing has, the text waits in `EditStore::pending_labels` and
+`text_edit` claims it by the label it already holds, one line before
+`declare`. The claim is the fork the entry named: a key with no state
+hands the text to `declare` as its seed, over `initial`; a key that has
+one — the editor retained while it was off screen — takes `set_text`,
+which is the abandoned-draft case a seed by key cannot express, since
+`declare` reseeds nothing that exists. `take_unclaimed_seeds` returns an
+`Unclaimed::Key` or `Unclaimed::Label` (sorted within each spelling), and
+a label's warning is keyed `Key::ROOT.str(label)` with the label in the
+message, so a reader is not sent looking for a hex key they never wrote.
+
+The doors: Node's `setEditText` reads sixteen hex digits as a key and
+anything else as a label, the way `focus` does, and `editText`,
+`setScroll`, `scrollOffset` and `scrollGeometry` moved from `parse_key` to
+`resolve_key` (`textHit` and `caretRect` were already there — the entry
+read an older line). `keyOf(label)` is on the shared `core_methods!`
+macro, so both `Ctx` and `KuiWindow` have it and `index.d.ts` generated
+it: the sentence the `edit-text-without-editor` doc has been printing is
+true in Node now. Lua gains `env.set_edit_text(key_or_label, text)`, which
+it had no form of at all — and, because `env` only exists inside `view`, a
+Lua script's call is *always* mid-build, which is exactly where the label
+path wants it: the same view's tree claims the text. C gains
+`kui_edit_set_text_label`, appended, `KUI_ABI_VERSION` unmoved (C23's
+precedent; the parity assert checks struct field order and a function is
+not one).
+
+The one door left alone: **Lua gets no `env.key_of`.** Its verbs take the
+label itself through `key_arg`, so a script never needs the hex key, and
+the diagnostic's sentence says so rather than naming a verb that is not
+there. Node and C are where a key is worth holding on to.
+
+**Tests.** `kui-core/tests/editing.rs` has the three the entry asked for
+plus one for the resolving case: a label set before any declare seeds the
+new editor with the caret at the end; a draft abandoned, undeclared for a
+frame, then set by label from the "update" comes back showing the model's
+text (and `key_of` is asserted `None` there, which is what makes the case
+what it is); an unclaimed label warns with the label in the message; a
+label the last frame declared lands at once. Mutation: with the
+`set_text`-on-existing branch removed from `claim_label`, exactly
+`set_text_by_label_resets_a_returning_editor` fails. `packages/kui/test.mjs`
+runs the report's sequence — `setEditText('edit-n13', …)` from the
+`update` that opens the field, render, `editText('edit-n13')` reads it
+back — and then its second open over a draft, `keyOf` both ways, and the
+unclaimed-label warning. Lua and C get one test each; the C one turns
+diagnostics on first, since an FFI context starts with them off.
+
+Docs: alpha.10's CHANGELOG entry corrects alpha.9's F25 "what you can
+delete" the way alpha.9 corrected alpha.8's F20 — the advice was true of
+the holding and false of the naming — and `howto.md`'s "How do I reset an
+editor's text?" and "How do I name a node from outside the view?" are
+rewritten around the label spelling. The rest of that page is F33's.
+
+---
+
+The finding as it was filed:
 
 The mind map deleted its `onLayout` latch on the strength of alpha.9's
 F25 entry — **What you can delete:** "the frame of waiting … Set the text

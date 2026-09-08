@@ -174,6 +174,95 @@ fn a_seed_nobody_declares_is_dropped_with_a_warning() {
 }
 
 #[test]
+fn set_text_by_label_before_the_declare_seeds_the_editor() {
+    // The key an `update` would need comes from an event the node fired,
+    // and an editor being opened for the first time has fired none — so
+    // the name the view itself declares is the only one the call can use
+    // (backlog F32). Held for the frame that declares it, like the key.
+    let mut core = Core::new();
+    empty_frame(&mut core);
+    core.set_edit_text_by_label("field", "seeded");
+    let key = frame(&mut core, "initial", false);
+    assert_eq!(core.edit_text(key).unwrap(), "seeded");
+    let codes: Vec<&str> = core.take_warnings().iter().map(|w| w.code).collect();
+    assert!(
+        !codes.contains(&"edit-text-without-editor"),
+        "a claimed seed is not a warning: {codes:?}"
+    );
+    // The caret is where the call leaves it, as it is for a seed by key.
+    core.handle_input(InputEvent::Text("!".into()));
+    assert_eq!(core.edit_text(key).unwrap(), "seeded!");
+}
+
+#[test]
+fn set_text_by_label_resets_a_returning_editor() {
+    // The case a seed by key cannot reach. A draft is abandoned, the view
+    // stops declaring the editor, and its state is retained under a key
+    // that is off screen (backlog F20, F26) — which is also why `key_of`
+    // will not resolve the label: no recent frame declared it. The
+    // `update` that reopens the field sets the model's text by label, and
+    // the editor that comes back has to show that and not the draft, so
+    // the claim reaches an existing state with `set_text` where a new one
+    // takes a seed.
+    let mut core = Core::new();
+    let key = frame(&mut core, "name", false);
+    core.handle_input(InputEvent::Text(" edited".into()));
+    assert_eq!(core.edit_text(key).unwrap(), "name edited");
+    empty_frame(&mut core);
+    assert_eq!(
+        core.key_of("field"),
+        None,
+        "an editor closed for a frame is in no frame `key_of` reads"
+    );
+    core.set_edit_text_by_label("field", "name");
+    let key = frame(&mut core, "name", false);
+    assert_eq!(
+        core.edit_text(key).unwrap(),
+        "name",
+        "the reopened editor shows the model's text, not the abandoned draft"
+    );
+    let codes: Vec<&str> = core.take_warnings().iter().map(|w| w.code).collect();
+    assert!(!codes.contains(&"edit-text-without-editor"), "{codes:?}");
+}
+
+#[test]
+fn a_label_nobody_declares_is_dropped_with_a_warning() {
+    // The key path's rule, in the other spelling: held for the next
+    // frame, not for ever, and the line says which name went unclaimed so
+    // its reader looks at the right half of the call.
+    let mut core = Core::new();
+    core.set_edit_text_by_label("filed", "nowhere");
+    empty_frame(&mut core);
+    let warnings = core.take_warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].code, "edit-text-without-editor");
+    assert_eq!(warnings[0].key, Key::ROOT.str("filed"));
+    assert!(
+        warnings[0].message.contains("\"filed\""),
+        "the label is in the message: {}",
+        warnings[0].message
+    );
+    // Dropped, so the frame that declares the right label gets `initial`.
+    let key = frame(&mut core, "initial", false);
+    assert_eq!(core.edit_text(key).unwrap(), "initial");
+}
+
+#[test]
+fn set_text_by_a_declared_label_lands_at_once() {
+    // A label the last frame declared resolves now, so this is
+    // `set_edit_text` on that key with nothing held and nothing deferred.
+    let mut core = Core::new();
+    let key = frame(&mut core, "name", false);
+    core.set_edit_text_by_label("field", "renamed");
+    assert_eq!(core.edit_text(key).unwrap(), "renamed");
+    let codes: Vec<&str> = core.take_warnings().iter().map(|w| w.code).collect();
+    assert!(
+        !codes.contains(&"edit-text-without-editor"),
+        "nothing was held: {codes:?}"
+    );
+}
+
+#[test]
 fn backspace_and_delete() {
     let mut rig = Rig::new("abc", false);
     rig.press(EditKey::End, Mods::default());

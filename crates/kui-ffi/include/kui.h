@@ -1640,6 +1640,13 @@ bool kui_edit_text(KuiCtx *ctx, uint64_t key, KuiStr *out);
  * one frame, so a key nothing declares on it drops its text with an
  * "edit-text-without-editor" warning. */
 void kui_edit_set_text(KuiCtx *ctx, uint64_t key, KuiStr text);
+/* The same by the label kui_text_edit / kui_text_input declares, for the
+ * host that has no key: a key comes from an event the node fired, and an
+ * editor opening for the first time has fired none. A declared label is
+ * applied at once; one no frame has declared is held for the frame that
+ * declares it, seeding a new editor over `initial` and replacing a
+ * retained one's draft. Appended the compatible way, so no ABI bump. */
+void kui_edit_set_text_label(KuiCtx *ctx, KuiStr label, KuiStr text);
 bool kui_is_focused(KuiCtx *ctx, uint64_t key);
 void kui_frame_finish(KuiCtx *ctx);
 /* Pointers valid until the next kui_frame_begin on this context. False -

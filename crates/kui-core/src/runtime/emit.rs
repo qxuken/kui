@@ -306,8 +306,13 @@ impl Core {
         // is left named an editor no view draws, so drop it and say so.
         // Drained whatever `diag.enabled` says, so the gate changes what
         // is reported and never what is retained.
-        for key in self.edit.take_unclaimed_seeds() {
-            self.diag.raise(crate::diag::edit_text_without_editor(key));
+        for seed in self.edit.take_unclaimed_seeds() {
+            self.diag.raise(match seed {
+                crate::edit::Unclaimed::Key(key) => crate::diag::edit_text_without_editor(key),
+                crate::edit::Unclaimed::Label(label) => {
+                    crate::diag::edit_text_without_editor_label(&label)
+                }
+            });
         }
         // The declared window set, diffed against the session's: a frame
         // that declared a new name queues its `Open` here.

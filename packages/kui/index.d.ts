@@ -554,15 +554,18 @@ export type WarningCode =
    *  what keeps that from being silent. See `docs/adr/0004-multi-window.md`,
    *  decision 9. */
   | 'unknown-window-kind'
-  /** A `setEditText` (`Core::set_edit_text`, `kui_edit_set_text`) named a key,
-   *  the text was held for the frame that would declare it, and the frame after
-   *  the call declared no editor under that key — so nothing was ever seeded
-   *  and the text is dropped. The call is meant to run from an `update` that
-   *  also opens the editor, one frame ahead of the view that declares it; this
-   *  is the same call with the view half missing, or with a key the view spells
-   *  differently. Read the key an event carried, or the one
-   *  `keyOf`/`kui_key_of` resolves the label to. An editor that already exists
-   *  takes the text where the call is made and never reaches this. */
+  /** A `setEditText` (`Core::set_edit_text`, `kui_edit_set_text`) named a key
+   *  or a label, the text was held for the frame that would declare it, and the
+   *  frame after the call declared no editor under that name — so nothing was
+   *  ever seeded and the text is dropped. The call is meant to run from an
+   *  `update` that also opens the editor, one frame ahead of the view that
+   *  declares it; this is the same call with the view half missing, or with a
+   *  name the view spells differently. Pass the label the editor's `key` prop
+   *  declares — the spelling that needs nothing to exist yet — or the hex key
+   *  an event carried. `keyOf`/`kui_key_of` turns a label into that key, but
+   *  only for an editor some frame declared (Lua's verbs take the label
+   *  itself). An editor that already exists takes the text where the call is
+   *  made and never reaches this. */
   | 'edit-text-without-editor'
   /** A `FontId` / `ImageId` / `SoundId` registered in one `Session` and used
    *  through a core of another. Handles are unique to the process, so it cannot
@@ -1298,6 +1301,18 @@ export declare class Ctx {
    * throws.
    */
   focus(key: string): void
+  /**
+   * The hex key of the node a label names — the label a `key`
+   * prop declared, resolved through the frame being built so
+   * far and then the last finished one — or null when no node
+   * declared it. The door for holding a key across frames;
+   * every call that takes a key takes the label too, so this
+   * is for caching one, or for checking that a name reached
+   * the view. Two nodes on one label under different parents
+   * resolve to the first in tree order and raise
+   * `ambiguous-key`.
+   */
+  keyOf(label: string): string | null
   blur(): void
   /**
    * What Tab does, as a call — for an `onKey` sink that binds Tab
@@ -1415,11 +1430,16 @@ export declare class Ctx {
    * It reaches an editor that does not exist yet: the `update`
    * that opens a rename field runs a frame ahead of the view
    * that declares it, so the text is held for the frame that
-   * declares this key and seeds the editor there, over
-   * `initial`. Held for that one frame — a key nothing declares
-   * on it drops its text with an `edit-text-without-editor`
-   * warning, so a key the view spells differently is a line
-   * rather than a field that opens with the wrong text.
+   * declares this name and seeds the editor there, over
+   * `initial`. Name it by the label its `key` prop declares —
+   * the spelling that needs nothing to exist yet, since the
+   * hex key comes from an event the editor has not fired.
+   * Either spelling works, as for `focus`; a label the last
+   * frame declared lands at once, and one it did not is held.
+   * Held for that one frame — a name nothing declares on it
+   * drops its text with an `edit-text-without-editor` warning,
+   * so a name the view spells differently is a line rather
+   * than a field that opens with the wrong text.
    */
   setEditText(key: string, text: string): void
 }
@@ -1726,6 +1746,18 @@ export declare class KuiWindow {
    * throws.
    */
   focus(key: string): void
+  /**
+   * The hex key of the node a label names — the label a `key`
+   * prop declared, resolved through the frame being built so
+   * far and then the last finished one — or null when no node
+   * declared it. The door for holding a key across frames;
+   * every call that takes a key takes the label too, so this
+   * is for caching one, or for checking that a name reached
+   * the view. Two nodes on one label under different parents
+   * resolve to the first in tree order and raise
+   * `ambiguous-key`.
+   */
+  keyOf(label: string): string | null
   blur(): void
   /**
    * What Tab does, as a call — for an `onKey` sink that binds Tab
@@ -1843,11 +1875,16 @@ export declare class KuiWindow {
    * It reaches an editor that does not exist yet: the `update`
    * that opens a rename field runs a frame ahead of the view
    * that declares it, so the text is held for the frame that
-   * declares this key and seeds the editor there, over
-   * `initial`. Held for that one frame — a key nothing declares
-   * on it drops its text with an `edit-text-without-editor`
-   * warning, so a key the view spells differently is a line
-   * rather than a field that opens with the wrong text.
+   * declares this name and seeds the editor there, over
+   * `initial`. Name it by the label its `key` prop declares —
+   * the spelling that needs nothing to exist yet, since the
+   * hex key comes from an event the editor has not fired.
+   * Either spelling works, as for `focus`; a label the last
+   * frame declared lands at once, and one it did not is held.
+   * Held for that one frame — a name nothing declares on it
+   * drops its text with an `edit-text-without-editor` warning,
+   * so a name the view spells differently is a line rather
+   * than a field that opens with the wrong text.
    */
   setEditText(key: string, text: string): void
 }

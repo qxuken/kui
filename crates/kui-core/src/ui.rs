@@ -452,6 +452,18 @@ impl<'a> Ui<'a> {
         self.core.edit_text(key)
     }
 
+    /// Replaces an editor's text, caret at the end (`Core::set_edit_text`).
+    pub fn set_edit_text(&mut self, key: Key, text: &str) {
+        self.core.set_edit_text(key, text);
+    }
+
+    /// The same by the label the view declares, for a caller with no key
+    /// yet — an `update` opening a field the editor has not fired an
+    /// event from (`Core::set_edit_text_by_label`, backlog F32).
+    pub fn set_edit_text_by_label(&mut self, label: &str, text: &str) {
+        self.core.set_edit_text_by_label(label, text);
+    }
+
     /// Says something once, with no node behind it (`Core::announce`).
     /// Takes effect at once, unlike `focus_next`: the queue is not made of
     /// a finished tree.
