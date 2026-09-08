@@ -398,8 +398,8 @@ impl Renderer {
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
-            width: width.max(1),
-            height: height.max(1),
+            width: width.clamp(1, device.limits().max_texture_dimension_2d),
+            height: height.clamp(1, device.limits().max_texture_dimension_2d),
             present_mode: wgpu::PresentMode::AutoVsync,
             alpha_mode: caps.alpha_modes[0],
             color_space: wgpu::SurfaceColorSpace::Auto,
@@ -546,7 +546,13 @@ impl Renderer {
                 immediate_size: 0,
             }),
         };
-        let uniform_align = gpu.adapter().limits().min_uniform_buffer_offset_alignment;
+        // The *device's* limit, not the adapter's: the device is opened with
+        // `Limits::default()`, whose `min_uniform_buffer_offset_alignment` is
+        // 256, and validation holds a dynamic offset to what the device asked
+        // for rather than to what the hardware could have done. An adapter
+        // reporting the smaller 64 — which DX12 does — then gave 64-byte slots
+        // and a validation error on the frame's second fragment.
+        let uniform_align = device.limits().min_uniform_buffer_offset_alignment;
         let fragment_params_cap = 16;
         let fragment_params_buf =
             create_fragment_params_buffer(device, fragment_params_cap, uniform_align);
@@ -591,9 +597,19 @@ impl Renderer {
         self.gpu.dual_source()
     }
 
+    /// Reconfigures the swapchain for a new window size.
+    ///
+    /// Both bounds are the platform's, not ours. `max(1)` because a
+    /// minimized window reports zero and a zero-sized surface is a
+    /// validation error; `min(max_texture_dimension_2d)` because Windows
+    /// hands out a nonsense size mid-resize — a 2600x1500 move on Windows
+    /// 11 arrived as 2578x32711 — and configuring a surface larger than
+    /// the device can hold panics inside wgpu, taking the app with it. A
+    /// clamped frame is one wrong picture; the next real size fixes it.
     pub fn resize(&mut self, width: u32, height: u32) {
-        self.config.width = width.max(1);
-        self.config.height = height.max(1);
+        let max = self.gpu.device().limits().max_texture_dimension_2d;
+        self.config.width = width.clamp(1, max);
+        self.config.height = height.clamp(1, max);
         self.surface.configure(self.gpu.device(), &self.config);
     }
 

@@ -56,6 +56,22 @@ field reports).
 
 ### Added
 
+- **A Windows smoke round that opens a real window**, and
+  `KUI_SMOKE_FRAMES=n` to make it possible: the runner quits once the main
+  window has presented n frames, so every example is a self-terminating
+  check with an exit code. `scripts/smoke-windows.ps1` runs all 14 windowed
+  examples for 120 frames each (~1.5 s apiece), fails on a non-zero exit or
+  a hang, and prints the stderr and any `kui: warning` lines; it is wired
+  into `smoke-windows` in `.forgejo/workflows/smoke.yml` after the
+  `cargo test` step.
+
+  It covers the layer `cargo test --workspace` cannot: surfaces, swapchains,
+  pipelines and everything wgpu validates about them, on the platform's own
+  GPU. The first time it ran it found three crashes and a dead feature — all
+  four under `### Fixed` below, all four invisible to every headless test in
+  the repo. It does not judge what was drawn, only that drawing it did not
+  fail; the conformance corpus is still what checks the pixels.
+
 - **A `fragment` element: a box a WGSL function paints**
   ([ADR 0015](docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md)).
   `add_fragment(wgsl)` validates one function and returns a handle;
@@ -266,6 +282,54 @@ GPU without rebuilding a node.
 
 ### Fixed
 
+- **Windows: `fragment` drew one box per frame and crashed on the second**
+  (backlog W4). `kui-wgpu` read `min_uniform_buffer_offset_alignment` from
+  the *adapter*, which reports 64 on DX12, while the device is opened with
+  `Limits::default()` and its 256 — and wgpu validates a dynamic offset
+  against what the device asked for, not against what the hardware could
+  have done. The frame's second fragment then sat at an offset validation
+  refused, and the app panicked on its first paint. It is read from the
+  device now. macOS never saw it because Metal's adapter reports 256 and
+  the two agreed; the corpus never saw it because one fragment in a frame
+  needs no second offset. **What you can delete:** nothing — but an app
+  that shipped one fragment per view to keep `fragments` from crashing on
+  Windows can stop.
+
+- **Windows: a resize could hand the swapchain a size that panicked wgpu**
+  (backlog W5). Moving a window arrived at `Surface::configure` as
+  2578×32711 — Windows hands out a nonsense size mid-resize — and a surface
+  larger than the device's `max_texture_dimension_2d` panics inside wgpu,
+  taking the app with it. Both ends are clamped now (`clamp(1, max)`, where
+  only the `1` was there before, for the minimized window that reports
+  zero). One frame at the wrong size, and the next real one fixes it.
+
+- **Windows: no C extension could load, ever** (backlog W6). `path_arg`
+  encoded the path as UTF-16 and packed the code units into a `CString`'s
+  bytes; every ASCII character puts a zero byte in its pair, so
+  `CString::new` refused every path there has ever been and
+  `CExtension::open` returned `path contains a NUL` before it opened
+  anything. ADR 0014's C-extension half has been dead on Windows for as
+  long as it has existed. The path is now the platform's own type all the
+  way through — `Vec<u16>` for `LoadLibraryW`, `CString` for `dlopen` —
+  with nothing smuggled through the other. An interior NUL is still
+  refused, which is what the old comment wanted.
+
+- **Windows: dragging a window whose app is animating no longer lurches,
+  and holding its title bar no longer freezes the animation** (backlog W3,
+  reported twice and now measured on the platform). Windows runs a window
+  move inside its own modal loop, where `about_to_wait` — kui's animation
+  pacing — never runs, so a transition held still for 2 s drew 0 frames.
+  alpha.9 answered that by asking for the next frame from `RedrawRequested`,
+  which cures the freeze and costs the drag: every answer blocks on vsync
+  *inside* the modal loop with the coalesced `WM_MOUSEMOVE` waiting behind
+  it, so a dragged window followed the pointer in 18 px steps 8 ms apart
+  where a still one manages 5 px steps 2 ms apart, with stalls to 38 ms and
+  jumps to 86 px. It is a timer now (`SetTimer` with a `TIMERPROC`, armed
+  while the pane animates): `WM_TIMER` is dispatched wherever the loop is
+  running, and like `WM_PAINT` it loses to real input. Measured on the same
+  rig, the drag is back to the static window's numbers and a held title bar
+  animates at ~64 fps, which is Windows' timer granularity. No subclass, so
+  it holds under `Chrome::Native`; the other platforms are untouched.
 - **`howto.md` no longer describes the tree it was written against**
   (backlog F33, from both alpha.9 field reports, which found it
   independently). Three of its answers were written in the alpha.8

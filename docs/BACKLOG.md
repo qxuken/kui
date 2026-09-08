@@ -17,7 +17,9 @@ half was built. The index at the bottom of this file names every one of them,
 so an id cited by an open item, a code comment or a commit message can be
 resolved without opening the archive. Nothing was renumbered in any of those
 moves, and nothing ever is. What is left here is three parked headings — C12,
-C13 and C14 — W3 from the editor-and-mux assessment (2026-09-07), and F36,
+C13 and C14 — W3 from the editor-and-mux assessment (2026-09-07), now run and
+rebuilt on a real Windows machine; W4–W7 from the first Windows round
+(2026-09-08), which is what running it found; and F36,
 which fell out of building the four entries the two alpha.9 field reports
 and the bake-off produced (F32–F35, filed and built 2026-09-08); and what
 comes next; F16–F23 from the two alpha.7 field
@@ -195,61 +197,174 @@ own, and it is C16.
 **All eight, C16–C23, were built between 2026-09-07 and 2026-09-08** and
 moved whole, with this table, to
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md#from-the-editor-and-mux-assessment-2026-09-07)
-on 2026-09-08, cutting alpha.9. What stays here is W3, built blind against
-winit's source and waiting for a Windows machine.
+on 2026-09-08, cutting alpha.9. What stays here is W3, which the first
+Windows round below finally ran, reproduced and rebuilt against.
 
-### `!` W3 — On Windows, animations stop while the window is grabbed — **built blind (2026-09-08), unverified**
+### `~` W3 — On Windows, animations stop while the window is grabbed — **verified, rebuilt and measured on the platform (2026-09-08)**
 
-Built as the hypothesis's second branch, since reading winit 0.30's
-Windows backend answered the first: `WM_ENTERSIZEMOVE` only sets
-`MARKER_IN_SIZE_MOVE` and arms no timer, so nothing ticks `about_to_wait`
-inside the modal loop and the redraw it would have asked for never comes.
-The modal loop does dispatch `WM_PAINT`, so the runner now re-requests a
-redraw from `RedrawRequested` on Windows while the pane's core is
-`animating()` — the chain sustains itself through the hold, vsync-paced
-as before, and the other platforms are untouched. Not the subclass
-timer: this needs no subclass, so it holds under `Chrome::Native` too.
-`cargo check -p kui --target x86_64-pc-windows-msvc` passes; nothing
-ran. (1) and (3) of the "Do" are still the by-hand round's, and the
-entry stays open until a Windows machine watches `toasts` mid-spring
-with the title bar held.
+Reproduced, and the blind fix was half right. Windows 11 26200, winit
+0.30.13, a 3840×2160 / 239 Hz display, `Chrome::Native`, release profile,
+`fragments` (whose shimmer animates every frame). Frames counted from the
+runner itself; the window's own position sampled against the pointer
+through a title-bar drag driven by `mouse_event` relative moves at 500 Hz,
+which is the injected path a real mouse takes — a `SetCursorPos` warp is
+not, and shows none of this.
 
-Not from the measurement: reported beside it, on 2026-09-07, as a
-regression — a transition mid-flight freezes for as long as the title
-bar is held, and resumes on release. Not reproduced here (no Windows
-machine, and P8's `SMOKE_WINDOWS` job is still waiting for a runner), so
-the mechanism below is the hypothesis the report fits, not a finding.
+**The reported bug is real.** With the re-request branch off, a title bar
+held perfectly still for 2 s drew **0 frames**. The modal loop dispatches
+`WM_PAINT` only when something invalidates the window, and a window that is
+not moving never does.
 
-Windows moves and resizes a window inside its own modal loop
-(`WM_ENTERSIZEMOVE` … `WM_EXITSIZEMOVE`, run by `DefWindowProc`), and
-for its duration the process's message loop is that one, not winit's.
-kui's animation pacing is `about_to_wait` (`lib.rs:2234`): a pane whose
-core is `animating()` asks for a redraw there, and the loop parks in
-`ControlFlow::WaitUntil` for the caret and audio clocks. Inside the
-modal loop `about_to_wait` runs only when a message reaches winit's
-handler, and the redraw it requests is what `RedrawRequested` answers —
-so whether frames keep coming depends on whether anything ticks in
-there. If winit already arms a timer for the modal loop, the bug is
-kui's (a redraw asked for once and never re-asked); if it does not, the
-subclass `windows_nc.rs` already installs for custom chrome is the
-place to arm one: `SetTimer` on `WM_ENTERSIZEMOVE`, a redraw on each
-`WM_TIMER`, `KillTimer` on exit — and it has to apply under
-`Chrome::Native` too, where the subclass is not installed today. Which
-alpha introduced it is not known here; the driver's pacing moved with
-ADR 0004 step 3 (multi-window) and F15's tween fix, and either could be
-the edge.
+**The blind fix cures it and costs the drag**, which is the second half of
+the report and was not in the entry: asking for the next frame from
+`RedrawRequested` means a `WM_PAINT` is always pending, and *each answer
+blocks on vsync inside the modal loop*, with the coalesced `WM_MOUSEMOVE`
+behind it waiting that long. Same drag, three builds:
 
-**Do:** (1) Reproduce on Windows first, by hand — `toasts` with a panel
-springing open, grab the title bar mid-spring — and read whether
-`RedrawRequested` arrives at all during the hold (a counter in the HUD
-is enough). (2) Fix at the layer the answer names: re-request inside
-`RedrawRequested` while animating if winit ticks, the timer in the
-subclass if it does not. (3) Since the frame clock is the wall's, the
-tween catches up on release rather than replaying, which is right; pin
-it in the same by-hand check. It joins the by-hand round's list under
-"After alpha.8" until the smoke job exists. A `!` because it ships
-today on one platform; the mixed-DPI drag check W2 left for Windows is
-the same session's work.
+| | window moves in 2.5 s | ms between moves p50 / p99 / max | px per move p50 / max |
+|---|---|---|---|
+| nothing animating (`counter`) | 996 | 2.05 / 4.32 / 14.5 | 5 / 14 |
+| animating, re-request (the blind fix) | 291 | 8.06 / 18.9 / 38.1 | 18 / 86 |
+| animating, re-request off | 983 | 2.04 / 4.21 / 17.4 | 5 / 14 |
+
+Four times fewer position updates, three and a half times the step, stalls
+to 38 ms and jumps to 86 px — a window that lags the pointer and moves in
+lurches, which is exactly how it was reported the second time. It only
+happens while something is alive, because that is the only time the branch
+fires.
+
+**Built instead: a timer** — the alternative this entry named, and without
+the subclass it assumed. `crates/kui/src/windows_anim.rs` arms
+`SetTimer(hwnd, …, 10 ms, Some(tick))` while the pane animates and kills it
+when it settles; the `TIMERPROC` is called by `DispatchMessage` wherever the
+loop is running, the modal one included, and does one
+`RedrawWindow(RDW_INTERNALPAINT)`. `WM_TIMER` is a generated message like
+`WM_PAINT`, so real input outranks it, and the pace is the timer's rather
+than vsync's. No subclass, so it holds under `Chrome::Native`; outside the
+modal loop it is redundant with `about_to_wait`'s own request and coalesces
+into the same paint.
+
+Measured on the same rig: the 2 s hold now draws **129 frames** (~64 fps —
+Windows' timer granularity is 15.6 ms without `timeBeginPeriod`, which is
+a process-wide change not worth making for this), and the drag is back to
+**1056 moves, 2.02 ms p50, 5 px steps, 12.8 ms worst** — the static
+window's numbers. Frames continue at a full 240 fps through the drag, from
+the platform's own invalidation.
+
+(3) of the old "Do" holds as written: the frame clock is the wall's, so the
+tween catches up on release rather than replaying.
+
+`~` rather than `!` now: what ships is a hold that animates at 64 fps
+instead of the refresh rate. Raising it needs a higher timer resolution,
+which is a decision about the whole process, not about this.
+
+## From the first Windows round (2026-09-08)
+
+kui ran on a Windows machine for the first time. Windows 11 Pro 26200,
+rustc 1.96 / MSVC, an RTX 5080 driving a 3840×2160 display at 239 Hz with
+the desktop at 150%, and an idle AMD integrated adapter beside it. The
+round was: `cargo test --workspace`, then every windowed example opened for
+real. Four defects, none of which any headless test in the repo could have
+seen, and two of them crashes on the first frame.
+
+The round is a script now — [`scripts/smoke-windows.ps1`](../scripts/smoke-windows.ps1),
+wired into `smoke-windows` in [`.forgejo/workflows/smoke.yml`](../.forgejo/workflows/smoke.yml)
+after the `cargo test` step. It leans on `KUI_SMOKE_FRAMES=n`, new in
+`crates/kui/src/lib.rs`: the runner quits once the main window has
+presented n frames, which turns every example into a self-terminating check
+with an exit code — a wgpu validation panic is a failure with its stderr,
+a window that never paints runs out the timeout instead of passing quietly.
+14 examples, 120 frames each, about 1.5 s apiece; it was checked against
+the bug it was written for by putting W4 back and watching it fail.
+
+This is what P8 said it could not offer ("On Windows there is no equivalent
+tool and no plan for one"): it is not the tree-walking audit
+`scripts/ax-audit.swift` is on macOS, and it judges that drawing did not
+fail rather than what was drawn — but it needs no permission grant and no
+human, and it found four things in one afternoon. P8's two follow-ups are
+untouched: `windows_nc.rs` and `access_bridge.rs` still have no test.
+
+### `!` W4 — Every `fragment` past the first crashed the app on DX12 — **done (2026-09-08)**
+
+`fragments` panicked on its first paint, from
+`Renderer::render` → wgpu validation:
+
+    Dynamic binding index 0 (targeting BindGroup with 'kui.fragment.params'
+    label 1, binding 0) with value 64, does not respect device's requested
+    `min_uniform_buffer_offset_alignment` limit: 256
+
+`uniform_align` was read from the **adapter**, which reports 64 on DX12,
+while the device is opened with `Limits::default()` and its 256 — and
+validation holds a dynamic offset to what the device asked for, not to what
+the hardware could have done. So the slots were packed 64 bytes apart and
+the frame's second fragment sat at an offset validation refused. One
+fragment in a frame never hit it, which is why the corpus and the split
+bench pass everywhere.
+
+macOS never saw it because Metal's adapter reports 256 and the two agreed —
+the exact shape of bug a second platform exists to find. Fixed by reading
+the limit from the device (`crates/kui-wgpu/src/lib.rs`), which is the only
+number validation ever compares against.
+
+### `!` W5 — A resize handed the surface a size no device can hold — **done (2026-09-08)**
+
+Moving a window to 2600×1500 arrived at `Surface::configure` as
+**2578×32711**, and a surface larger than `max_texture_dimension_2d` panics
+inside wgpu, taking the app with it. Windows hands out a nonsense size
+mid-resize; kui passed it straight through, having clamped only the bottom
+(`max(1)`, for the minimized window that reports zero).
+
+`Renderer::resize` and the initial configure now `clamp(1, max)` against the
+device's `max_texture_dimension_2d`. A clamped frame is one wrong picture
+and the next real size fixes it, which is the right trade against a panic.
+
+### `!` W6 — No C extension could ever load on Windows — **done (2026-09-08)**
+
+`cargo test --workspace` on the platform failed one test, and the failure
+was the whole feature:
+
+    left:  "kernel32.dll: path contains a NUL"
+    right: "kernel32.dll: plugin declares no ABI; this build is 9"
+
+`sys::path_arg` encoded the path as UTF-16 and packed the code units into a
+`CString`'s bytes for `load` to unpack. Every ASCII character puts a zero
+byte in its pair, so `CString::new` refused **every path there has ever
+been** and `CExtension::open` returned that error before it opened
+anything. ADR 0014's C-extension half was dead on Windows for as long as it
+has existed, and only a native test run could say so — the cross-compiled
+CI path builds this file and never calls it.
+
+`PathArg` is now the platform's own type (`CString` on unix, `Vec<u16>` on
+Windows) instead of one type smuggling the other, so there is nothing left
+to pack or unpack. The interior-NUL refusal the old comment wanted is kept,
+where it belongs: `LoadLibraryW` would stop at one and open something the
+caller did not name.
+
+### `.` W7 — Text inside a moving box steps a whole pixel while the box does not
+
+Found while looking for W3 and reported here because it is real, not
+because it is what was reported: it is *not* the jitter the round set out
+to chase. During a slide the node's own quad moves with sub-pixel precision
+while its glyphs are placed at whole physical pixels, so the text wobbles
+±0.5 px inside its own background, every frame, for the length of the
+animation. Measured headless at scale 1.5 over a 260 ms `enter` — the gap
+between the card's left edge and its first glyph swings between 21.52 and
+22.49 px while the card's own x reads 525.0, 500.87, 477.51, …
+
+Deliberate, and not obviously wrong: `build_templates` positions a run's
+glyphs once and `emit` places the whole run at
+`(origin * scale).round()`, which is what keeps text crisp and the atlas to
+one raster per glyph. The cost is only visible while something moves, and
+it is worse the lower the scale factor — 1 physical px is 0.67 logical at
+150% and a whole one at 100%, against half on a 2× Mac, which is why it has
+not come up before.
+
+**Do:** nothing yet. If it is worth fixing, the cheap answer is to quantize
+an animated displacement to whole physical pixels so the box and its text
+step together, rather than to place glyphs at fractional offsets (which
+softens moving text and costs the one-raster-per-glyph cache). Either way
+it changes what the conformance corpus reports, so it wants a decision
+before a patch.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -797,13 +912,24 @@ section above was the order of work, and it was followed: C16, C18,
 C17, C19 for the editor and C21, C23, C22 for the mux all landed with
 their outcomes written on top, then C20's element in every binding, the
 corpus `ime` scene and C19's wrapped long lines the next day — all eight
-are in the archive. W3 is built blind against winit's source and waits
-for a Windows machine. What the round found beside the entries: Lua's
+are in the archive. W3 was built blind against winit's source; the first
+Windows round (2026-09-08) ran it, found it half right, and rebuilt it as
+a timer — see the entry. What the round found beside the entries: Lua's
 `text()` mutated a shared options table, `npm run gen` described the
 previous build, the C parity assert caught a field appended in two
 orders, and two things the examples showed once run — the counter's
 first click waiting 92 ms for the audio device to open, and a departing
 list drawing past its own box — are fixed under alpha.9's `### Fixed`.
+
+**Windows (2026-09-08).** The platform ran for the first time and the round
+is a script: `scripts/smoke-windows.ps1`, in `smoke-windows` beside the
+`cargo test` step. W4, W5 and W6 are fixed and W3 is rebuilt; W7 is the one
+open thing it found and wants a decision, not a patch. What it still does
+not cover is P8's two follow-ups, unchanged: `windows_nc.rs` has no test
+that runs anywhere, and neither does `access_bridge.rs`. The next Windows
+session's list, in order: run the round under `Chrome::Custom` (the
+subclass is uncovered by everything above), run it on the integrated
+adapter to see what a second GPU changes, and settle W7.
 
 **Design, wanting an ADR.** A **painter** — the iced-shaped hatch that ADR 0015 (above) names and does not build: a Rust trait or a C extension's function pointers over the shared `Gpu` and the frame's encoder, under the `PainterId` that has been reserved in `resources.rs` since the first commit, placed by a marker quad the renderer splits around as it splits around a fragment. The first thing in a frame that would not be data, so it waits for a view a fragment cannot serve: a 3D viewport, a simulation, a backdrop a copy cannot make. Otherwise nothing new since ADR 0014 was built on 2026-09-07; what it leaves open — a slot element for Node, extensions in `kui_run`, an extension offering slots of its own — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
 [`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md),

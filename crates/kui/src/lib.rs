@@ -24,6 +24,8 @@ mod retarget;
 /// user has evidently been in a settings app.
 mod system_env;
 #[cfg(target_os = "windows")]
+mod windows_anim;
+#[cfg(target_os = "windows")]
 mod windows_nc;
 
 use winit::application::ApplicationHandler;
@@ -244,6 +246,10 @@ impl Launcher {
             system: system_env::query(),
             clipboard: arboard::Clipboard::new().ok(),
             audio: audio::Audio::new(),
+            smoke_frames: std::env::var("KUI_SMOKE_FRAMES")
+                .ok()
+                .and_then(|s| s.parse().ok()),
+            frames_drawn: 0,
             exit_requested: false,
             primary_down: None,
             armed: Vec::new(),
@@ -573,6 +579,10 @@ struct Pane {
     first_frame: Option<(u32, std::time::Instant)>,
     /// The platform accessibility bridge.
     access: Option<access_bridge::Bridge>,
+    /// Windows: the timer that keeps an animation running while the modal
+    /// move/resize loop owns the message pump (`mod windows_anim`).
+    #[cfg(target_os = "windows")]
+    anim_timer: Option<windows_anim::AnimTimer>,
     /// Windows: answers WM_NCHITTEST from the frame's chrome regions, which
     /// enables snap layouts + native caption behavior over drawn controls.
     #[cfg(target_os = "windows")]
@@ -870,6 +880,18 @@ struct Shell<A: App> {
     clipboard: Option<arboard::Clipboard>,
     /// The audio device the core's audio commands drive; see `audio`.
     audio: audio::Audio,
+    /// `KUI_SMOKE_FRAMES=n`: quit after the main window has presented `n`
+    /// frames, so an example is a self-terminating check — a real window
+    /// on a real GPU, driven by the real loop, that exits 0 when it drew
+    /// and non-zero when it did not. It is what `scripts/smoke-windows.ps1`
+    /// runs; the wgpu validation error that made `fragments` panic on
+    /// first paint (an alignment the adapter and the device disagreed
+    /// about) is exactly the class of bug no headless test can see.
+    /// `None` — unset, or unparseable — is the ordinary endless run.
+    smoke_frames: Option<u32>,
+    /// Main-window frames presented so far, counted only while
+    /// `smoke_frames` is set.
+    frames_drawn: u32,
     /// Set by `WindowCommand::Close` on the main window; honored at the end
     /// of the event.
     exit_requested: bool,
@@ -1499,6 +1521,8 @@ impl<A: App> Shell<A> {
         let nc = (self.chrome != Chrome::Native)
             .then(|| windows_nc::NcHitTest::install(&window, true))
             .flatten();
+        #[cfg(target_os = "windows")]
+        let anim_timer = windows_anim::AnimTimer::new(&window);
         window.set_visible(true);
         window.set_ime_allowed(true);
         window.request_redraw();
@@ -1527,6 +1551,8 @@ impl<A: App> Shell<A> {
             handed_back: false,
             first_frame: Some((FIRST_FRAME_RETRIES, std::time::Instant::now())),
             access,
+            #[cfg(target_os = "windows")]
+            anim_timer,
             #[cfg(target_os = "windows")]
             nc,
         });
@@ -2342,6 +2368,25 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
             }
             WindowEvent::RedrawRequested => {
                 self.redraw(i);
+                // KUI_SMOKE_FRAMES: count what the main window actually
+                // landed and quit at the target. `first_frame` is `None`
+                // only once a present succeeded, so a window that never
+                // draws never counts and the run fails on the caller's
+                // timeout rather than passing quietly. Asking for the next
+                // one keeps an app that paints only on input painting, so
+                // every example reaches the count at the same speed.
+                if let Some(n) = self.smoke_frames
+                    && let Some(p) = self.panes.get(i)
+                    && p.id == WindowId::MAIN
+                    && p.first_frame.is_none()
+                {
+                    self.frames_drawn += 1;
+                    if self.frames_drawn >= n {
+                        self.exit_requested = true;
+                    } else {
+                        self.panes[i].window.request_redraw();
+                    }
+                }
                 self.panes[i].publish_access();
                 // Views can declare windows and window commands too
                 // (ui.window, ui.window_command); apply them the same frame
@@ -2367,16 +2412,17 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 // Windows moves and resizes a window inside its own modal
                 // loop, where `about_to_wait` — the pacing that asks for
                 // the next frame of an animation — does not run, so a
-                // transition froze while the title bar was held (backlog
-                // W3). The modal loop does dispatch WM_PAINT, so an
-                // animating pane asks for its next frame from here as
-                // well; vsync paces it as before. Unverified on the
-                // platform: filed from a report, not a reproduction.
+                // transition froze for as long as the title bar was held
+                // (backlog W3). The pane's own timer is what answers that,
+                // and this is where it learns whether there is anything to
+                // animate; `mod windows_anim` is why it is a timer and not
+                // a redraw asked for from right here.
                 #[cfg(target_os = "windows")]
-                if let Some(p) = self.panes.get(i)
-                    && p.core.animating()
-                {
-                    p.window.request_redraw();
+                if let Some(p) = self.panes.get_mut(i) {
+                    let animating = p.core.animating();
+                    if let Some(t) = &mut p.anim_timer {
+                        t.set(animating);
+                    }
                 }
             }
             _ => {}

@@ -221,9 +221,13 @@ mod sys {
     #[cfg(not(target_vendor = "apple"))]
     const RTLD_LOCAL: i32 = 0;
 
+    /// What [`path_arg`] produces and [`load`] takes: the platform's own
+    /// spelling of a path, since the two do not agree on one.
+    pub type PathArg = CString;
+
     /// # Safety
     /// Runs the library's initializers.
-    pub unsafe fn load(path: &CStr) -> *mut c_void {
+    pub unsafe fn load(path: &PathArg) -> *mut c_void {
         // Clear any stale error first: dlerror() is only meaningful right
         // after a failed dl* call, and a previous one's message lingers.
         unsafe { dlerror() };
@@ -251,16 +255,16 @@ mod sys {
         }
     }
 
-    /// Windows wants UTF-16 and this wants bytes; the conversion lives with
-    /// the platform that needs it.
-    pub fn path_arg(path: &std::path::Path) -> Option<CString> {
+    /// The path as `dlopen` wants it. A path with an interior NUL cannot be
+    /// spelled and is refused here rather than truncated.
+    pub fn path_arg(path: &std::path::Path) -> Option<PathArg> {
         CString::new(path.as_os_str().as_encoded_bytes()).ok()
     }
 }
 
 #[cfg(windows)]
 mod sys {
-    use super::{CStr, CString, c_char, c_void};
+    use super::{CStr, c_char, c_void};
 
     #[link(name = "kernel32")]
     unsafe extern "system" {
@@ -270,17 +274,22 @@ mod sys {
         fn GetLastError() -> u32;
     }
 
+    /// What [`path_arg`] produces and [`load`] takes: `LoadLibraryW`'s own
+    /// UTF-16, NUL-terminated.
+    ///
+    /// It used to be a `CString` with the code units packed into its bytes,
+    /// which could never have worked: every ASCII character puts a zero
+    /// byte in its pair, so `CString::new` refused every path there has
+    /// ever been and no plugin could load on Windows at all. Found by
+    /// running the workspace tests on Windows for the first time on
+    /// 2026-09-08 — `ext.rs`'s own test says so now on the platform, and
+    /// said "path contains a NUL" for `kernel32.dll`.
+    pub type PathArg = Vec<u16>;
+
     /// # Safety
     /// Runs the library's initializers.
-    pub unsafe fn load(path: &CStr) -> *mut c_void {
-        // `path_arg` packed UTF-16 into the CString's bytes; unpack it.
-        let bytes = path.to_bytes();
-        let mut wide: Vec<u16> = bytes
-            .chunks_exact(2)
-            .map(|c| u16::from_le_bytes([c[0], c[1]]))
-            .collect();
-        wide.push(0);
-        unsafe { LoadLibraryW(wide.as_ptr()) }
+    pub unsafe fn load(path: &PathArg) -> *mut c_void {
+        unsafe { LoadLibraryW(path.as_ptr()) }
     }
 
     /// # Safety
@@ -301,16 +310,17 @@ mod sys {
         })
     }
 
-    /// UTF-16 code units, little-endian, in a NUL-free byte string - a path
-    /// with an interior NUL would not survive, which is what we want.
-    pub fn path_arg(path: &std::path::Path) -> Option<CString> {
+    /// The path as `LoadLibraryW` wants it: UTF-16 with a terminator. A
+    /// path with an interior NUL is refused, since `LoadLibraryW` would
+    /// stop there and open something the caller did not name.
+    pub fn path_arg(path: &std::path::Path) -> Option<PathArg> {
         use std::os::windows::ffi::OsStrExt;
-        let bytes: Vec<u8> = path
-            .as_os_str()
-            .encode_wide()
-            .flat_map(u16::to_le_bytes)
-            .collect();
-        CString::new(bytes).ok()
+        let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
+        if wide.contains(&0) {
+            return None;
+        }
+        wide.push(0);
+        Some(wide)
     }
 }
 

@@ -998,6 +998,15 @@ expensive and are on no release path — and a job whose runner label matches
 nothing does not fail fast in Forgejo, it queues, which in `ci.yml` would
 leave a run without a result long after `check` and `publish` had finished.
 
+`smoke-windows` does one thing more, and it is the only automated check in the
+repo that opens a window: [scripts/smoke-windows.ps1](scripts/smoke-windows.ps1)
+runs every windowed example on the runner's own GPU for 120 frames apiece and
+fails on a crash or a hang. `KUI_SMOKE_FRAMES=n` is what makes an example
+self-terminating, and it works anywhere — `KUI_SMOKE_FRAMES=120 cargo run -p
+kui --example fragments` is the same check by hand. Run it on Windows before a
+tag: the first round found three crashes and a dead feature that the headless
+suite passes straight through (backlog W3–W6).
+
 Pushing the tag does not check the commit twice. The push to main and the push
 of the tag that names it share a concurrency group keyed by the commit, and
 only the tag run may cancel — so it takes over a `check` already running for
