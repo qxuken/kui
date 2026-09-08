@@ -17,13 +17,15 @@ half was built. The index at the bottom of this file names every one of them,
 so an id cited by an open item, a code comment or a commit message can be
 resolved without opening the archive. Nothing was renumbered in any of those
 moves, and nothing ever is. What is left here is three parked headings — C12,
-C13 and C14 — the seven entries from the two alpha.8 field reports,
-F25–F31 (2026-09-07), the eight from the editor-and-mux assessment,
-C16–C23, with W3 filed beside them (2026-09-07), and what comes next; F16–F23 from the two alpha.7
-field reports all closed the day they were filed (2026-09-07). C15's
+C13 and C14 — W3 from the editor-and-mux assessment (2026-09-07), the four
+entries from the two alpha.9 field reports and the bake-off, F32–F35
+(2026-09-08), and what comes next; F16–F23 from the two alpha.7 field
+reports all closed the day they were filed (2026-09-07), F25–F31 from the
+alpha.8 ones by the day after (F27 last, on 2026-09-08), and C16–C23 landed
+whole for alpha.9. C15's
 remainder was the last split entry, and it closed on 2026-09-07.
 
-Ordered by area, not by priority. What to do next is under "After alpha.8".
+Ordered by area, not by priority. What to do next is under "After alpha.9".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -136,64 +138,9 @@ primitive is there; the promise is not). One entry, F26, is not in either
 report: it fell out of checking F25. **Six of the seven, F25, F26 and
 F28–F31, closed the day they were filed** and moved whole to
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md#from-two-alpha8-field-reports-2026-09-07)
-on 2026-09-08, cutting alpha.9. What stays here is F27, built and waiting
-for the first publish that runs it, and the three claims that were not ours.
-
-### `~` F27 — There is no supported way to learn a release exists, and every range an app writes floats — **built (2026-09-07), unverified until alpha.9 publishes**
-
-**Built 2026-09-07 — unverified on the registry until alpha.9 ships.** Both
-halves of the "Do" below are in the tree. `ci.yml`'s npm publish step follows
-`npm publish --tag "$tag"` with `npm dist-tag add "@qxuken/kui@$ver" latest`
-whenever the tag is not already `latest`, guarded on `$ver` sorting highest
-among the versions the registry already holds: the list comes from `npm view
-"@qxuken/kui@$tag" versions --json` (asked through the tag just written,
-because a plain `npm view` defaults to the `latest` whose absence is the bug
-and then prints nothing and exits 0), and the sort is npm's own bundled
-`semver`, resolved through `npm root -g` so nothing has to be installed for
-it. Checked here against the live registry: it picks `0.1.0-alpha.8` out of
-the seven published versions, orders `alpha.10` above `alpha.9`, and picks
-`0.1.0` over an `alpha.10` published after it — which is the guard doing its
-job. The step is `bash -n` clean and the file still parses as YAML. Both
-READMEs and the template's now say that `latest` and `alpha` point at the
-same newest alpha, that `^` and `~` float alike across the alphas of one
-tuple so an app pins an exact version and leans on its lockfile, and that
-`npm view @qxuken/kui@alpha version` is the query if `latest` is ever absent.
-**What is not verified:** the tag itself. `latest` exists on the registry only
-after a publish runs the new step, so `npm view @qxuken/kui version` keeps
-printing nothing until alpha.9 goes out; this entry stays open until it
-answers.
-
-The pomodoro's headline, verified here from the app's own directory with
-the scope routed to Forgejo: `npm view @qxuken/kui version` prints nothing
-and exits 0, so does `dist-tags`, `npm outdated` lists `@types/node` and
-not kui, and only `npm view @qxuken/kui@alpha version` answers
-`0.1.0-alpha.8`. The registry has one dist-tag, `alpha`
-(`{"alpha":"0.1.0-alpha.8"}`), because the publish step
-(`ci.yml:577-583`) gives a prerelease its identifier as the tag and
-`latest` only to a plain version — which there has never been. `npm view`
-defaults to `latest`, and against a package without one it says nothing
-and succeeds. "I found out alpha.8 existed because I was told."
-
-The second half: `"^0.1.0-alpha.7"` installs alpha.8 in a clean directory,
-so `package.json` "is decoration" without a lockfile. True — and the
-report's fix is not. `~0.1.0-alpha.7` satisfies `0.1.0-alpha.8` too
-(checked against npm's own `semver`: both ranges admit any prerelease of
-the same `0.1.0` tuple). Only an exact version pins an alpha. The
-template's `^0.1.0-alpha.8` floats the same way, which is what a floor is
-for and what its README says ("pins the minimum"); an *app* that wants
-the version it tested is a different case and nothing tells it so.
-
-**Do:** (1) `ci.yml`: after `npm publish --tag alpha`, `npm dist-tag add
-@qxuken/kui@$ver latest` — an alpha under `latest` is what every 0.x does,
-and it is what makes `npm view`, `npm outdated` and a bare `npm install
-@qxuken/kui` mean something. Guard it against a future stable: add
-`latest` only when the version being published sorts highest among the
-registry's versions. (2) Both READMEs: `latest` and `alpha` both point at
-the newest alpha; `^` and `~` both float across the alphas of one tuple;
-an app pins an exact version and its lockfile is what holds; `npm view
-@qxuken/kui@alpha version` is the query if `latest` is ever absent. `.` as
-work, `~` as an outcome — an app "can be running a release it has no way
-to discover it is running".
+on 2026-09-08, cutting alpha.9; **F27 followed the same day**, once that
+release's publish ran the step it built and the registry answered `latest`.
+What stays here is the three claims that were not ours.
 
 ### Theirs, not ours
 
@@ -303,6 +250,310 @@ it in the same by-hand check. It joins the by-hand round's list under
 today on one platform; the mixed-DPI drag check W2 left for Windows is
 the same session's work.
 
+## From two alpha.9 field reports and a bake-off (2026-09-08)
+
+Both apps upgraded to alpha.9 the day it was tagged and reported again:
+the mind map's `FINDINGS.md` (an `alpha.8 → alpha.9` section on top of the
+alpha.8 one) and the LCARS pomodoro's `docs/kui-alpha-9.md`, whose "Wishes
+for the next alpha" are numbered 1–4. Beside them, a measured comparison
+of kui, iced 0.14 and gpui 0.2.2 — one counter and two stress apps per
+framework, same machine, same day — whose kui-facing claims are checked
+under "From the bake-off" below. Each claim was checked against `main` at
+`e6d96ac` (the alpha.9 tag) before it became an entry, and the mind map's
+probe commands were re-read against the Node binding's source rather than
+re-run.
+
+The two reports agree on the release: "a drop-in with nothing to change"
+(mind map), "the bare version bump broke nothing" (pomodoro), and both
+found a release the way F27 said they would — `npm view @qxuken/kui
+version` answers `0.1.0-alpha.9`, which closes F27 above. What they found
+is one gap in the core's key space, two documents that contradict the
+release they shipped in, and two audio edges that `finish` made
+askable. **The pomodoro's five ranked asks from alpha.8 all landed**, and
+its own notes say three were cheap; the one that was not, `finish`,
+"arrived better than what was asked for".
+
+One claim bent under the check, in the direction the report did not
+expect: the mind map says a first open is the case `setEditText` cannot
+reach. It is worse than that — a *second* open cannot either, because
+`key_of` resolves through the last frame and a closed editor was in no
+recent frame. The app's per-node key cache is what makes its second
+opens work, and the fix below has to seed a retained editor as well as a
+new one.
+
+### `~` F32 — `setEditText` reaches the editor the next frame declares, but only by a key the app cannot have yet
+
+The mind map deleted its `onLayout` latch on the strength of alpha.9's
+F25 entry — **What you can delete:** "the frame of waiting … Set the text
+in the `update` that opens the editor; the frame that draws it takes the
+text with it" — and hit `Error: bad id "edit-n13"`. The held seed works
+exactly as F25 built it (their standalone probe: "seeds a closed editor
+by its key, reopens it, and the seeded text is there, with no warnings").
+It is the *name* that cannot be given: `setEditText` takes the 16-digit
+hex key and nothing else, the hex key comes from an event the node fired,
+and an editor being opened for the first time has fired none. The
+`edit-text-without-editor` warning then says to use "the one
+`keyOf`/`kui_key_of` resolves the label to", and Node has no `keyOf`. So
+the latch stays, "no longer because the call is a no-op, which is fixed,
+but because it is where the key comes from, which is not."
+
+The repo's lines, each as the report read them:
+
+- `crates/kui-node/src/lib.rs:1778` — `set_edit_text` goes through
+  `parse_key` (hex or `bad id`), while `focus` / `isFocused` / `reveal` /
+  `access` go through `resolve_key` (`:240`), which tries the hex form and
+  then `Core::key_of`. `editText`, `setScroll`, `scrollOffset`,
+  `scrollGeometry`, `textHit` and `caretRect` are hex-only too, and
+  `howto.md`'s "name a node from outside the view" says so as if it were
+  a rule rather than an omission.
+- `crates/kui-core/src/diag.rs:218` — the warning's doc names `keyOf`.
+  `index.d.ts:553` carries it, generated; `packages/kui/index.js` has no
+  such method (the Node door built for F5 is `resolve_key` *inside* the
+  focus verbs, never a method of its own). Lua has `ui.key_of` behind
+  `key_arg` (`kui-lua/src/lib.rs:240`) and C has `kui_key_of`
+  (`kui.h:1335`), so the sentence is true in two bindings of three.
+- `crates/kui-lua/src/lib.rs:302` — Lua has `edit_text(key)` and **no
+  `set_edit_text` at all**; the `<edit>` row's doc (`schema.rs:1303`)
+  promises one in every binding.
+- `crates/kui-core/src/runtime/builder.rs:328` — `key_of` resolves
+  through `key_labels` (this frame so far) and then `key_labels_last`.
+  Outside a build that is the last finished frame. An editor a rename
+  opens was in neither frame — not on a first open, and not on a second
+  one either, since a closed editor is undeclared for every frame in
+  between. Only an editor that is *currently* declared resolves by label.
+- `crates/kui-core/src/edit.rs:334` — `EditStore::pending` is keyed by
+  `Key`; `declare` (`:468`) consumes a seed only on creation, which is
+  right for a seed by key (an existing state takes `set_text` where it is
+  called) and wrong for a seed by label, because a retained-but-undeclared
+  editor (F20, F26: state is kept while its key is off screen) has a state
+  and no resolvable label — the mind map's abandoned-draft case exactly.
+- `crates/kui-core/src/runtime/builder.rs:475` — `text_edit` has the
+  `label` in hand when it calls `edit.declare`, and pushes it into
+  `key_labels` two lines later. The seam is already there.
+
+**Do:** the report's own sentence — "deferring the name to the same frame
+is the whole remaining distance" — and one more case. (1)
+`Core::set_edit_text_by_label(label, text)`: if `key_of(label)` resolves
+now (the editor is declared), apply as `set_edit_text` does; otherwise
+hold in `EditStore::pending_labels: FxHashMap<String, String>`. In
+`text_edit`, before `declare`: `pending_labels.remove(label)` — if the
+key already has a state (a returning editor), call `set_text` on it; if
+not, hand it to `declare` as the seed. `take_unclaimed_seeds` drains the
+labels too; the warning's key for a label is `Key::ROOT.str(label)` so
+two unclaimed labels in one frame are two warnings under the
+once-per-(code, key) dedup, and the message says which spelling. (2)
+Node: `setEditText` takes both spellings the way `focus` does — hex
+through `parse_key`, anything else through the label path — and
+`editText`, `setScroll`, `scrollOffset`, `scrollGeometry`, `textHit` and
+`caretRect` move from `parse_key` to `resolve_key`, since they read state
+that exists and last-frame resolution is right for them. (3) `keyOf(label)`
+on Node's shared `core_methods` macro (hex string or null), so the
+diagnostic's sentence is true in Node; Lua `env.set_edit_text(key_or_label,
+text)` through `key_arg` plus the pending path; C
+`kui_edit_set_text_label(ctx, KuiStr, KuiStr)` appended — no ABI bump, as
+C23's append. (4) Tests, and the mind map's three red checks are the
+spec: in `kui-core/tests/editing.rs`, set by label before any declare
+seeds the new editor with the caret at the end; abandon a draft, stop
+declaring, set by label from the "update", declare again — the editor
+shows the model's text, not the draft (the case F25 could not reach and
+`declare`'s creation-only consume would miss); an unclaimed label warns
+with the label in the message. In `packages/kui/test.mjs`, the report's
+sequence verbatim: `setEditText('edit-n13', text)` in the update that
+opens it, render, `editText('edit-n13')` reads it back. Mutation: drop
+the `set_text`-on-existing branch in `text_edit` and the second test must
+fail. (5) alpha.10's CHANGELOG corrects alpha.9's F25 deletion line the
+way alpha.9 corrected alpha.8's F20 line: "set the text in the `update`
+that opens the editor" was true only with a key the app could not have,
+and is true now with the label the view declares. (6) The
+`edit-text-without-editor` doc, the `<edit>` row and `howto.md`'s "How do
+I reset an editor's text?" say the label spelling first. A `~`: the
+workaround is the latch, and this is the third release it has survived
+its own bug report.
+
+### `.` F33 — `howto.md` contradicts the release that shipped it, and nothing checks a "today" sentence
+
+Both reports found it independently. The pomodoro (wish 2): "How do I
+find out a release happened?" says the package "publishes one dist-tag,
+`alpha`, and no `latest`" — in the tarball of the release whose own
+`### Changed` says every alpha now takes `latest`. The mind map: "How do
+I reset an editor's text?" says `setEditText` before the declare "is a
+silent no-op today … backlog F25 is that gap" — in the release that closed
+F25. Checked: `docs/howto.md:325-336` (F27, and today the registry
+answers `{"alpha":"0.1.0-alpha.9","latest":"0.1.0-alpha.9"}`), `:148-156`
+(F25), and a third neither report reached, `:268` — "backlog F30 wants
+that as a promise on the windowed loop", where F30 shipped `settled()`
+and `frame()` in the same release. Three of the five backlog ids the page
+cites are closed. The cause is the round's shape: F27, F30 and F31 were
+built in parallel worktrees the same day, F31 wrote the page against the
+alpha.8 tree it was given, and the merge kept both sides — the CHANGELOG
+and BACKLOG conflicts were resolved by hand, and this page had no
+conflict to resolve because nothing else touched it.
+
+The pomodoro asks for "a CI check that the shipped docs do not contradict
+each other on a claim the registry can answer". The registry claim
+itself is the wrong thing to check — a phrase match is brittle and the
+registry is not reachable from every CI job. What every stale sentence
+here hangs on is a backlog id cited as open: "backlog F25 is that gap",
+"F27 is the fix", "F30 wants". That is mechanical.
+
+There is also a fourth ask hiding here. The pomodoro's wish 1 —
+per-surface resource handles — is on its fourth report, and the answer
+has been "theirs" three times (`init(surface)` runs before the first
+frame and puts the id in the model; `addSystemFont` is idempotent per
+family). Every declined answer lived in a backlog entry the app never
+reads. A `howto.md` answer is the cheapest way to retire a wish that is
+already answered, and it is what the page is for.
+
+**Do:** (1) Rewrite the three answers: "find out a release happened" is
+`npm view @qxuken/kui version` and `npm outdated`, with `@alpha` as the
+fallback if `latest` is ever absent; "reset an editor's text" says what
+F25 built (and F32, when it lands: the label spelling); "settled frame"
+says `await app.settled(maxMs)` and `await app.frame()` on the window
+loop and what the cap means (resolves with `animating()` still true
+rather than throwing). (2) Add "How do I use one font in every headless
+core of a suite?" under *Test it*: register in `setup`, read the id in
+`init(surface)` into the model, and never hold it in a module global —
+the pomodoro's `useFont` is the shape to describe. (3) The guard: a
+`#[test]` in `crates/kui-core/tests/docs.rs` (the workspace test CI
+already runs) that reads `docs/howto.md` and `docs/BACKLOG.md` via
+`CARGO_MANIFEST_DIR`, collects every `backlog ([A-Z]+\d+[a-z]?(\(b\))?)`
+the page cites, collects every `**ID**` the "## Closed — index" section
+lists, and asserts the two are disjoint — a closed id in a "today"
+sentence is exactly the drift both reports hit. A second assertion in the
+same test: every `props.md#anchor` the page links resolves to a heading
+`gen` writes, so a renamed section fails here rather than in a reader's
+browser. Mutation-test it by leaving one of the three stale citations in
+place first. (4) Prose in `howto.md` cites a backlog id only for an open
+gap, and the entry's "Do" for any future doc-shaped item says so. A `.`:
+a wrong sentence a reader can disprove in one command.
+
+### `.` F34 — A one-shot cut off without `finish` is silent (pomodoro wish 3)
+
+"Presence-as-playback now has the right primitive and still no way to
+notice you did not reach for it. A non-`loop` node removed while its
+playback is still running is almost always a truncated sound, and the
+core knows both facts at that instant." Half true. The core knows the
+node went (`AudioStore::reconcile`, `kui-core/src/audio.rs:396-410`,
+stops the playback unless `finish`) and knows it was not looped; it does
+**not** know whether the playback was still running. `ended` is the
+driver's word (`Core::audio_ended`), an untagged one-shot leaves no
+`tagged` entry to have heard it, and a headless `Ctx` has no driver, so
+`ended` never arrives there at all. A core-side `truncated-playback`
+would fire on every one-shot removal in every headless suite — the
+pomodoro's included, whose own assertion point for this is the `stop`
+command `audioCommands()` hands back (its notes: "checked by deleting
+`finish` and re-running: `FAIL … (got stop)`"). The driver, on the other
+hand, knows exactly: `Audio::apply_one` receives `Stop { playback }` and
+holds the handle whose `state()` is not `Stopped`
+(`crates/kui/src/audio.rs:244-248`).
+
+**Do:** raise it from the side that knows. (1) `AudioStore` keeps a
+`stopped: FxHashMap<PlaybackId, (Key, Why)>` written where `reconcile`
+stops a non-looped, non-`finish` playback — `Why::Removed` or
+`Why::Restarted` (a changed `src` is a truncation of the old playback
+too, and the message should say which). (2) `Audio::apply` returns the
+playbacks it stopped while they were still playing; the runner's
+`apply_audio` (`kui/src/lib.rs:1575`) hands each to
+`Core::audio_truncated(playback)`, which looks the key up, raises
+`diag::TRUNCATED_PLAYBACK` on it ("removed while 0.9 s remained" is not
+knowable — kira reports position, so "removed at 0.5 s" is), and drops
+the entry; a `Stop` that landed after the end drops the entry silently.
+The driver stays key-blind, as `audio_ended` is. (3) The warning's doc
+says the headless shape plainly: a `Ctx` never raises it because nothing
+plays; a suite asserts on `audioCommands()` seeing a `stop` for the node,
+which is the same fact from the other end. (4) The `finish` doc and the
+"play a sound when the model changes" howto answer name the warning as
+the reason to reach for `finish`. (5) Tests at the core boundary —
+`audio_truncated` on a recorded stop raises once with the key; on an
+unknown playback raises nothing; on a `finish` release nothing was
+recorded — since `StaticSoundHandle` cannot be built without a device.
+A `.`: a wrong constant is a truncated sound and today nothing says so;
+the pomodoro's six-second `CHIME_MS` is the cost it names.
+
+### `.` F35 — A released playback holds a voice, and a refused play is a stderr line the view never hears (pomodoro wish 4)
+
+"`finish` means the driver holds a playback the view has forgotten.
+Nothing says whether those are bounded, the way alpha.9 bounded
+undeclared editors at 256 — and the app that declares a one-shot per
+keystroke is the one that will find out." The bound exists and is
+kira's: `Audio::warm` opens the device with `AudioManagerSettings::default()`
+(`kui/src/audio.rs:121`), whose main track holds **128** concurrent sounds
+(kira 0.12.4, `track/main/builder.rs:26`), released or not; `playing`
+(`:76`) keeps a released handle until `poll_ended` sees it stopped. Past
+128, `m.play` fails with `SoundLimitReached` and `apply_one` does
+`eprintln!("kui: play failed: …")` (`:241`) — and that is the real gap:
+the playback is never inserted, so it never ends, so a `tag`ged node
+waiting for `ended` (the pattern `howto.md` recommends) waits forever, and
+a `finish` node is released to nothing. A one-shot per keystroke with a
+1.4 s file needs ninety keystrokes a second to reach it; a loop reaches
+it at once.
+
+**Do:** (1) The sentence, in the `audio` row (`schema.rs`), the `finish`
+doc (`kui-core/src/audio.rs:127`) and the howto answer: a released
+playback holds one of the device's 128 voices until its file ends, and
+the 129th play is refused. (2) Route the refusal instead of printing it:
+`Core::audio_refused(playback)` reports `ended` for a tagged node (so a
+waiting view is unstuck, with `phase: "refused"` rather than `"ended"`
+so it can tell) and raises `diag::PLAYBACK_REFUSED` on the key; the
+driver calls it where the `eprintln!` is, and a decode failure
+(`decoded()` returning `None`) goes the same way. (3) Not a kui budget on
+top of kira's — 128 is the device's number and the app that needs
+another sets it; note `MainTrackBuilder::sound_capacity` as where a
+setting would go, and leave it until a view asks. (4) Tests at the core
+boundary, as F34: a refused tagged playback is one `sound` event and one
+warning; an untagged one is the warning alone. A `.`: reachable only by
+a loop today, but the failure it hides is a hang in the view.
+
+### From the bake-off
+
+The comparison's kui numbers are its own and stand as reported: on the
+animated grid kui holds 120 fps at 1.3× less CPU than iced and 2.5× less
+than gpui, warm text is a wash with iced, cold text buys 41% CPU against
+iced's 82% with a resident-set rise to 183 MB that is the 64 MB text
+budget plus the atlas behind it (C16), and idle is 100 MB at 0% CPU.
+Four kui-facing claims were checked against the tree:
+
+- "kui links an audio engine, a clipboard and AccessKit into the default
+  runner whether or not you use them" — two-thirds wrong.
+  `crates/kui/Cargo.toml` has `audio` and `accesskit` as default features
+  a build turns off; only `arboard` is unconditional. A `clipboard`
+  feature is a two-line change, and nobody has asked — under "Rows, when
+  a view asks".
+- "the middle mouse button routes nowhere" — true and already parked
+  (C2, same paragraph).
+- "no gradients" — ADR 0005 declined them with the reasoning written
+  down; "no z-index" and "one shadow" are the same ADR's paint vocabulary.
+- "`Value::as_str` can fail at runtime where iced's `match` cannot" —
+  true, and the price of the one contract Lua, C and JSX share; the
+  comparison says as much.
+
+Its one recommendation — "publish kui to crates.io, even as an alpha" —
+is a decision, not an entry, and it has a fact attached: **the name
+`kui` is taken on crates.io** (`XuShaohua`, "WebGL charts", one version,
+0.1.0, published 2023-04-04, no repository, 1,629 downloads);
+`kui-core`, `kui-ffi`, `kui-lua`, `kui-node` and `kui-wgpu` are free. So
+the runner crate would publish under another name, or the name would
+have to be asked for from its owner — crates.io does not reassign a name
+without one. Under "Distribution" in *After alpha.9*.
+
+### Theirs, not ours
+
+- **Per-surface resource handles** (pomodoro wish 1, fourth report).
+  Same answer, delivered where the app reads: a `howto.md` answer under
+  F33 rather than a fourth backlog paragraph.
+- **The stock `<button>` paints its own look.** The mind map converted
+  its toolbar and got "a row of seven primary-blue buttons across a dark
+  toolbar", and the report reads the line right: `ButtonProps`' doc says
+  a button that needs any other row is a `<box role="button">` with the
+  rows spelled out. The deletion line's condition was a button that
+  looked like the stock one; theirs never did. Nothing to change.
+- **`preview.svg` is gitignored**, third report running. Theirs, and
+  their notes say so.
+- **`justFinished` depends on the tick's liveness** (pomodoro, "What to
+  watch"). A model-side sound lifetime that holds while the clock moves
+  is the app's design and its headless assertions guard it.
+
+
 ## After alpha.9
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -337,9 +588,16 @@ on undeclared editor and scroll state), F27 (every alpha also takes the
 F28 (the clause on `quads()` and `access`), F29 (the `audio` element's
 `finish`), F30 (`settled` and `frame` on `WindowLoop`) and F31
 (`docs/howto.md`, the `**What breaks.**` bullet list from alpha.9 on, and
-what a deletion line names). Six of them are in the archive as of
-2026-09-08; F27 waits for alpha.9's publish, the first to run the
-`latest` step it built.
+what a deletion line names). All seven are in the archive as of
+2026-09-08; F27 last, once alpha.9's publish ran the `latest` step it
+built and the registry answered.
+
+The alpha.9 reports came the same day the tag did, and with a bake-off
+against iced and gpui beside them; the section above this one holds
+what survived the check as F32–F35. Build F32 first — it is the third
+release the mind map's latch has outlived, and the fix is the report's
+own sentence — then F33's page and guard, then F34 and F35 together,
+since both are one `Core::audio_*` door each and the same driver seam.
 
 **Editor and mux (2026-09-07, built 2026-09-07/08).** The assessment
 section above was the order of work, and it was followed: C16, C18,
@@ -378,11 +636,24 @@ have the API behind it, and AccessKit's whole event surface is a tree diff.
 **Rows, when a view asks.** A configurable focus-ring colour (README names
 it). `required` / `invalid` and heading `level` (ADR 0001 follow-ups).
 Per-button `on_click` and middle-button routing (C2 left them "reach the
-core and route nowhere"). Physical key positions beyond what `60ca137`
+core and route nowhere"; the bake-off noticed the same). A `clipboard`
+feature beside `audio` and `accesskit`, so a build that wants no `arboard`
+can say so — the bake-off's idle figure counted it, and nobody has asked. Physical key positions beyond what `60ca137`
 carried. One did ask, on 2026-09-07: an i3-style tab bar wanted `grow`
 tabs floored at their labels, and `minWidth: "fit"` / `minHeight: "fit"`
 landed the same day for alpha.9 (the CHANGELOG entry says why it is not
 the default — a fit width is the unwrapped one).
+
+**Distribution.** The bake-off's one recommendation is to publish to
+crates.io, "even as an alpha", because "distribution is the one [risk]
+that time makes worse". A decision, not an entry, and it has a fact
+attached (checked 2026-09-08): the name `kui` is held there by another
+crate ("WebGL charts", one 0.1.0 from 2023-04-04, no repository), while
+`kui-core`, `kui-ffi`, `kui-lua`, `kui-node` and `kui-wgpu` are free.
+Publishing means asking the owner for the name or shipping the runner
+under another — crates.io does not reassign a name without its owner —
+and the npm side has no such problem. Nothing in the tree blocks it: the
+`publish = ["forgejo"]` lines are the only registry-specific thing.
 
 **Parked on their own terms.** C12 (column wrapping), C13 (`space-between`
 and baseline), C14 (aspect ratio), C5(b) (core-side virtualisation), rounded
@@ -393,7 +664,8 @@ saying it until one does.
 2026-09-06, the ten field-report entries that followed them before the tag —
 so all of F1–F15 sit together — W2 whole on 2026-09-07, once its driver
 half was built, and the fourteen of alpha.9's round on 2026-09-08. This
-file is three parked entries, F27 and W3, and this section.
+file is three parked entries, W3, F32–F35 from the alpha.9 reports, and
+this section.
 Still open, both waiting on something outside the repo: enable `SMOKE_MACOS`
 / `SMOKE_WINDOWS` the day a runner exists (P8) — which has two jobs waiting
 for it now, F13's launch probe beside the AX audit, sharing the one
@@ -422,7 +694,7 @@ release, which no headless assertion reads:
 
 ## Closed — index
 
-Eighty-five entries, all in
+Eighty-six entries, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim.
 This index is here so an id resolves without opening that file: the open items
 above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.8" and
@@ -553,10 +825,11 @@ move.
 - `.` **S7** — [`env` reaches three bindings through three restatements and nothing pins them](backlog/closed-2026-09.md#-s7--env-reaches-three-bindings-through-three-restatements-and-nothing-pins-them--done-2026-09-05) — done (2026-09-05)
 - `.` **S8** — [ABI bumps per merge, and the header knows it](backlog/closed-2026-09.md#-s8--abi-bumps-per-merge-and-the-header-knows-it--done-2026-09-06) — done (2026-09-06)
 
-**From two alpha.8 field reports (2026-09-07)** — F25, F26 and F28–F31, closed the day they were filed; F27 stays above until a publish runs it
+**From two alpha.8 field reports (2026-09-07)** — F25–F31; six closed the day they were filed, and F27 on 2026-09-08, when alpha.9's publish ran the step it built
 
 - `~` **F25** — [`setEditText` before the editor exists does nothing, and alpha.8's deletion list told an app to delete a latch it still needs](backlog/closed-2026-09.md#-f25--setedittext-before-the-editor-exists-does-nothing-and-alpha8s-deletion-list-told-an-app-to-delete-a-latch-it-still-needs--done-2026-09-07) — done (2026-09-07) — `setEditText` seeds the editor the next frame declares, and warns when none does
 - `~` **F26** — [Editor and scroll state are kept by key forever](backlog/closed-2026-09.md#-f26--editor-and-scroll-state-are-kept-by-key-forever--done-2026-09-07) — done (2026-09-07) — a ceiling on undeclared editor and scroll state, longest-undeclared evicted first
+- `~` **F27** — [There is no supported way to learn a release exists, and every range an app writes floats](backlog/closed-2026-09.md#-f27--there-is-no-supported-way-to-learn-a-release-exists-and-every-range-an-app-writes-floats--done-2026-09-08) — done (2026-09-08) — every alpha also takes `latest`; verified on the registry the day alpha.9 published
 - `.` **F28** — [`quads()` on a window does not say how to drive one](backlog/closed-2026-09.md#-f28--quads-on-a-window-does-not-say-how-to-drive-one--done-2026-09-07) — done (2026-09-07) — `quads()` says how to drive the window it reads
 - `~` **F29** — [An `<audio>` one-shot that must finish has to guess its own length](backlog/closed-2026-09.md#-f29--an-audio-one-shot-that-must-finish-has-to-guess-its-own-length--done-2026-09-07) — done (2026-09-07) — the `audio` element's `finish`, so a one-shot need not guess its length
 - `~` **F30** — [A window has no settled frame by name, so a smoke test sleeps](backlog/closed-2026-09.md#-f30--a-window-has-no-settled-frame-by-name-so-a-smoke-test-sleeps--done-2026-09-07) — done (2026-09-07) — `settled` and `frame` on `WindowLoop`
