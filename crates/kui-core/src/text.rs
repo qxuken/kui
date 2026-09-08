@@ -1303,8 +1303,8 @@ impl TextSystem {
             long,
         } = self.frame[id.0 as usize];
         let scale = self.scale;
-        let ox = (origin.x * scale).round();
-        let oy = (origin.y * scale).round();
+        let ox = crate::geom::snap_px(origin.x * scale);
+        let oy = crate::geom::snap_px(origin.y * scale);
         // A long line owns its box the way a no-wrap line does, and draws
         // the chunks inside the clip plus one either side, shaping them
         // now if this is the first time they show (backlog C19).
@@ -1997,8 +1997,8 @@ impl TextSystem {
     /// measured from and a rect is measured to.
     fn physical_origin(&self, place: &TextPlace) -> (f32, f32) {
         (
-            (place.origin.x * self.scale).round(),
-            (place.origin.y * self.scale).round(),
+            crate::geom::snap_px(place.origin.x * self.scale),
+            crate::geom::snap_px(place.origin.y * self.scale),
         )
     }
 

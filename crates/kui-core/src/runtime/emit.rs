@@ -185,8 +185,8 @@ impl Core {
                 }
                 let focused = self.edit.focused() == Some(key);
                 let origin_phys = Vec2::new(
-                    (content_origin.x * scale).round(),
-                    (content_origin.y * scale).round(),
+                    crate::geom::snap_px(content_origin.x * scale),
+                    crate::geom::snap_px(content_origin.y * scale),
                 );
                 let sess = &mut *self.session.state();
                 self.edit.emit(
@@ -285,6 +285,7 @@ impl Core {
                 &mut measure,
                 &mut self.scroll,
                 self.viewport,
+                self.scale,
             );
         }
         self.scroll_caret_into_view();
@@ -733,6 +734,9 @@ impl Core {
     /// border, its content) and none of the parts a node has — no hit
     /// region, no scroll region, no access row.
     fn emit_ghost(&mut self, g: &Ghost, play: &Playback, scale: f32) {
+        // Whole physical pixels, for the reason a slide's is: a ghost is
+        // mostly text, and it moves for its whole life.
+        let offset = play.offset.snapped(scale);
         self.ghost_opacity.clear();
         self.ghost_opacity.resize(g.nodes.len(), 1.0);
         self.ghost_clip.clear();
@@ -742,8 +746,8 @@ impl Core {
             .resize(g.nodes.len(), Rect::new(0.0, 0.0, 0.0, 0.0));
         for (i, node) in g.nodes.iter().enumerate() {
             let mut rect = Rect::new(
-                node.rect.x + play.offset.x,
-                node.rect.y + play.offset.y,
+                node.rect.x + offset.x,
+                node.rect.y + offset.y,
                 node.rect.w,
                 node.rect.h,
             );
@@ -838,8 +842,8 @@ impl Core {
                 GhostContent::Edit(key) => {
                     let pad = node.spec.layout.padding;
                     let origin = Vec2::new(
-                        ((rect.x + pad.l) * scale).round(),
-                        ((rect.y + pad.t) * scale).round(),
+                        crate::geom::snap_px((rect.x + pad.l) * scale),
+                        crate::geom::snap_px((rect.y + pad.t) * scale),
                     );
                     // Never focused: the departing subtree gave the
                     // keyboard up the frame it stopped being declared.
@@ -944,7 +948,11 @@ impl Core {
                 t,
                 spec.slide,
             );
-            let d = Vec2::new(v[0] - target.x, v[1] - target.y);
+            // Whole physical pixels, so the text inside moves with its box
+            // rather than wobbling in it (`Vec2::snapped`). Rounding here
+            // and not at the end means the last frame lands exactly on the
+            // layout position, as it did before.
+            let d = Vec2::new(v[0] - target.x, v[1] - target.y).snapped(self.scale);
             if d.x == 0.0 && d.y == 0.0 {
                 continue;
             }

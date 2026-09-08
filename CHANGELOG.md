@@ -75,6 +75,17 @@ field reports).
 - `kui-lua` depends on `kui-ffi` (without its `runner` feature), for
   `CExtension` alone: `env.add_extension` needs something to open a shared
   library with, and that loader is the C API's.
+- `layout::compute` and `layout::positions` take the scale factor as a last
+  argument, so a scroll offset can be snapped to whole physical pixels. Only
+  a caller driving the solver directly — which is the crate's own tests and
+  nothing else that ships — has anything to pass.
+- **Anything moving now moves by whole physical pixels**: a `slide`, an
+  `enter`/`exit` offset, a scroll. What a view declares is unchanged and
+  where a *still* node sits is unchanged; the last frame of an animation
+  still lands exactly on the layout position. What differs is the frames in
+  between, which snap to the pixel grid instead of passing through it — at
+  100% that is the same number the animation had, at 150% it is a third of a
+  logical pixel of stepping, traded for text that stops wobbling (below).
 
 ### Added
 
@@ -404,6 +415,42 @@ GPU without rebuilding a node.
   the editor's own `key` prop from the `update` that opens it.
 
 ### Fixed
+
+- **Text no longer wobbles inside a box that is moving** (backlog W7). A
+  glyph run is placed at whole physical pixels — that is what keeps one
+  raster per glyph and text crisp — and its background was placed wherever
+  the arithmetic landed, so during a slide the two moved by different
+  amounts and the text swung ±0.5 px inside its own card, every frame, for
+  the length of the animation. Measured at 150% over a 260 ms `enter`, the
+  gap between a card's left edge and its first glyph swung between 21.52 and
+  22.49 px.
+
+  Every displacement that moves a *subtree* is now rounded to whole physical
+  pixels — a `slide`, an `enter` or `exit` offset, a scroll — so the box and
+  the text step together. Three things it deliberately does not do. It does
+  not round *positions*: a card laid out at a fractional x stays there, and
+  keeps the gap it had, because rounding the position would move every still
+  node the moment it stopped animating. It does not place glyphs at
+  fractional offsets, which is the other way to make the two agree and costs
+  both sharpness and the one-raster-per-glyph atlas. And it does not touch
+  the retained scroll offset, which stays exact — a 0.3 px trackpad notch is
+  not lost, it accumulates, and a virtual list reading `scroll_offset` sees
+  what it always did; only what the children are *moved* by is whole.
+
+  The visible cost is at the low scale factors, which is where the bug was
+  worst: one physical pixel is 0.67 logical at 150% and a whole one at 100%,
+  against half on a 2× display. A slide steps in those units now instead of
+  gliding through them. That is the trade the backlog entry named, taken in
+  that direction because a wobble inside a moving card reads as broken and a
+  third of a pixel of stepping does not.
+
+  Underneath, the placement rounding is `floor(v + 0.5)` rather than
+  `round`, which breaks a .5 tie *away from zero* and so would have jumped a
+  pixel where a moving run crossed the origin — the same wobble surviving at
+  one line on the screen. It carries a thousandth-of-a-pixel bias with it,
+  because at 150% every other whole logical pixel is a half physical one, so
+  exact ties are ordinary rather than a corner, and float noise either side
+  of one would otherwise pick a different pixel each frame.
 
 - **The C examples build and run on Windows** (backlog W8), from
   `examples/c/build.ps1` — `build.sh`'s round in the same order with the same

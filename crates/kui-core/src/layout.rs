@@ -226,6 +226,8 @@ pub fn compute(
     text: &mut dyn TextMeasure,
     scroll: &mut ScrollStore,
     viewport: Size,
+    // Physical pixels per logical one: `positions` snaps a scroll offset to them.
+    scale: f32,
 ) {
     if tree.is_empty() {
         return;
@@ -234,7 +236,7 @@ pub fn compute(
     grow_widths(tree, viewport);
     fit_heights(tree, text);
     grow_heights(tree, viewport);
-    positions(tree, scroll, viewport);
+    positions(tree, scroll, viewport, scale);
 }
 
 /// The fit width of `i`, a non-text node: what its content wants on its
@@ -810,7 +812,7 @@ fn place_float(
     tree.pos[c as usize] = Vec2::new(x, y);
 }
 
-pub(crate) fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Size) {
+pub(crate) fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Size, scale: f32) {
     for i in 0..tree.len() {
         if tree.parent[i] == NIL {
             tree.pos[i] = Vec2::ZERO;
@@ -889,12 +891,18 @@ pub(crate) fn positions(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Siz
             // The one place the container's resolved box and its content
             // size exist together; the store keeps a copy, since the tree
             // holding them is cleared before the next view reads it.
-            offset = scroll.resolve(
-                tree.keys[i],
-                Rect::from_pos_size(origin, size),
-                Size::new(content_w, content_h),
-                max,
-            );
+            // The retained offset stays exact — a wheel notch of 0.3 px is
+            // not lost, it accumulates — and what the children are *moved*
+            // by is whole physical pixels, so a row's text does not wobble
+            // inside the row while the list scrolls (`Vec2::snapped`).
+            offset = scroll
+                .resolve(
+                    tree.keys[i],
+                    Rect::from_pos_size(origin, size),
+                    Size::new(content_w, content_h),
+                    max,
+                )
+                .snapped(scale);
         }
         let (main_scroll, cross_scroll) = match spec.dir {
             Dir::Row => (offset.x, offset.y),
@@ -1025,6 +1033,7 @@ mod tests {
                 &mut StubText,
                 &mut scroll,
                 Size::new(vw, vh),
+                1.0,
             );
         }
 

@@ -291,8 +291,8 @@ impl CellStore {
         let scale = self.scale;
         let style = self.frame[id.0 as usize].style;
         let key = self.table(&style, res, fs);
-        let ox = (origin.x * scale).round();
-        let oy = (origin.y * scale).round();
+        let ox = crate::geom::snap_px(origin.x * scale);
+        let oy = crate::geom::snap_px(origin.y * scale);
         let entry = &self.frame[id.0 as usize];
         let table = self.tables.get_mut(&key).expect("just built");
         if table.epoch != atlas.epoch {

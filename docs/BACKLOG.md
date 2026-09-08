@@ -343,7 +343,44 @@ to pack or unpack. The interior-NUL refusal the old comment wanted is kept,
 where it belongs: `LoadLibraryW` would stop at one and open something the
 caller did not name.
 
-### `.` W7 — Text inside a moving box steps a whole pixel while the box does not
+### `.` W7 — Text inside a moving box steps a whole pixel while the box does not — **done (2026-09-09)**
+
+The decision this entry asked for, taken in the direction it named: a
+displacement that moves a *subtree* is rounded to whole physical pixels
+(`Vec2::snapped`), so the box and the text step together. It is the whole
+class, not the slide the entry measured — `ease_positions` for a `slide` and
+an `enter`, `emit_ghost` for an `exit`, and `layout::positions` for a scroll,
+which turned out to have the same wobble and to be the commoner way to see
+it: a row's background moved by a fractional offset while its text snapped.
+
+Three limits are deliberate. **Positions are not rounded, offsets are** — a
+card laid out at a fractional x stays there and keeps the gap it had, where
+rounding the position would move every still node the moment it stopped
+animating. **Glyphs are still placed whole**, so the atlas is still one
+raster per glyph. And the **retained scroll offset stays exact**: a 0.3 px
+notch accumulates rather than being lost, and a virtual list reading
+`scroll_offset` sees what it always did.
+
+What it cost is what the entry predicted: a slide steps in units of 0.67
+logical px at 150% and a whole one at 100%. The corpus moved by one line —
+`scene exit`'s quad digest, `c140d03` to `6724565` — and one only, because
+that scene is the sole place in it where something is mid-displacement when
+the report is taken; the two scrolling scenes clamp to whole offsets and did
+not change. Measured by dumping the corpus either side of the patch, which
+is the check this entry said it wanted.
+
+One thing the fix found that the entry did not name. `(v * scale).round()`
+breaks a .5 tie *away from zero*, so it is not translation-invariant across
+the origin: a run of text at exactly x.5 jumped a pixel as it crossed, which
+is this same wobble surviving at one line on the screen. Placement is
+`floor(v + 0.5)` now (`geom::snap_px`), with a thousandth-of-a-pixel bias,
+because at 150% every other whole logical pixel *is* a half physical one —
+exact ties are ordinary here, and the divide-and-multiply a snapped offset
+makes the trip through lands a hair either side of one. `crates/kui-core/tests/pixel_snap.rs` measures the
+entry's own quantity, the gap between a card's left edge and its first
+glyph, across a slide, a fractional-target slide, a scroll and an exit.
+
+The original finding follows.
 
 Found while looking for W3 and reported here because it is real, not
 because it is what was reported: it is *not* the jitter the round set out
@@ -367,7 +404,8 @@ an animated displacement to whole physical pixels so the box and its text
 step together, rather than to place glyphs at fractional offsets (which
 softens moving text and costs the one-raster-per-glyph cache). Either way
 it changes what the conformance corpus reports, so it wants a decision
-before a patch.
+before a patch. *(Taken, 2026-09-09: the cheap answer, widened to scrolling
+— see the top of this entry.)*
 
 ### `~` W8 — The C examples had never been built on Windows, and the plugin half could not be — **done (2026-09-08)**
 
@@ -1130,13 +1168,14 @@ list drawing past its own box — are fixed under alpha.9's `### Fixed`.
 **Windows (2026-09-08).** The platform ran for the first time and the round
 is a script: `scripts/smoke-windows.ps1`, in `smoke-windows` beside the
 `cargo test` step, with the C round from `examples/c/build.ps1` beside it.
-W4, W5, W6 and W8–W12 are fixed and W3 is rebuilt; W7 is the one
-open thing it found and wants a decision, not a patch. What it still does
-not cover is P8's two follow-ups, unchanged: `windows_nc.rs` has no test
-that runs anywhere, and neither does `access_bridge.rs`. The next Windows
-session's list, in order: run the round under `Chrome::Custom` (the
-subclass is uncovered by everything above), run it on the integrated
-adapter to see what a second GPU changes, and settle W7.
+W4–W12 are all fixed now and W3 is rebuilt; W7 was the one that wanted a
+decision rather than a patch, and it was settled on 2026-09-09 — a
+displacement moves a subtree by whole physical pixels, scrolling included.
+What the round still does not cover is P8's two follow-ups, unchanged:
+`windows_nc.rs` has no test that runs anywhere, and neither does
+`access_bridge.rs`. The next Windows session's list, in order: run the round
+under `Chrome::Custom` (the subclass is uncovered by everything above), and
+run it on the integrated adapter to see what a second GPU changes.
 
 **Design, wanting an ADR.** A **painter** — the iced-shaped hatch that ADR 0015 (above) names and does not build: a Rust trait or a C extension's function pointers over the shared `Gpu` and the frame's encoder, under the `PainterId` that has been reserved in `resources.rs` since the first commit, placed by a marker quad the renderer splits around as it splits around a fragment. The first thing in a frame that would not be data, so it waits for a view a fragment cannot serve: a 3D viewport, a simulation, a backdrop a copy cannot make. Otherwise nothing new since ADR 0014 was built on 2026-09-07 and amended on 2026-09-08; of what it left open, a slot for Node (W11), extensions in `kui_run` (W9) and an extension offering slots of its own (W12) are built, and what is left — replies from `view`, name-plus-kind — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
 [`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md),
