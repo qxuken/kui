@@ -247,6 +247,28 @@ fn a_label_nobody_declares_is_dropped_with_a_warning() {
     assert_eq!(core.edit_text(key).unwrap(), "initial");
 }
 
+/// Why the label warning is keyed `Key::ROOT.str(label)` and not one
+/// constant: the dedup is once per (code, key), so a constant key would
+/// report the first unclaimed name in a frame and swallow the rest — and
+/// two names spelt wrong is exactly the frame where a reader needs both.
+#[test]
+fn two_unclaimed_labels_in_one_frame_are_two_warnings() {
+    let mut core = Core::new();
+    core.set_edit_text_by_label("filed", "one");
+    core.set_edit_text_by_label("feild", "two");
+    empty_frame(&mut core);
+    let mut named: Vec<String> = core
+        .take_warnings()
+        .into_iter()
+        .filter(|w| w.code == "edit-text-without-editor")
+        .map(|w| w.message)
+        .collect();
+    named.sort();
+    assert_eq!(named.len(), 2, "{named:?}");
+    assert!(named[0].contains("\"feild\""), "{named:?}");
+    assert!(named[1].contains("\"filed\""), "{named:?}");
+}
+
 #[test]
 fn set_text_by_a_declared_label_lands_at_once() {
     // A label the last frame declared resolves now, so this is

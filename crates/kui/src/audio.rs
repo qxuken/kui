@@ -27,7 +27,7 @@ pub type Truncated = (PlaybackId, f64);
 /// only it can know. `truncated` is the stops that landed on a sound still
 /// playing, `refused` the plays it would not take; the core turns each into
 /// a warning on the node that asked, since the driver is key-blind.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Answered {
     pub truncated: Vec<Truncated>,
     pub refused: Vec<PlaybackId>,
@@ -231,11 +231,7 @@ mod backend {
         /// inside `flush_pending`, which runs from the poll as well as from
         /// here — so a command that waited for the device reports on the
         /// apply that flushes it, a later one than the apply that queued it.
-        pub fn apply(
-            &mut self,
-            cmds: Vec<AudioCommand>,
-            resources: &SharedResources,
-        ) -> Answered {
+        pub fn apply(&mut self, cmds: Vec<AudioCommand>, resources: &SharedResources) -> Answered {
             if !cmds.is_empty() {
                 self.warm();
                 self.flush_pending();
@@ -352,9 +348,14 @@ mod backend {
         }
 
         /// Whether any playback is live, or waiting on the device to
-        /// open — drivers keep polling while so.
+        /// open — drivers keep polling while so. Both answer buffers count:
+        /// a `flush_pending` from the poll can fill either, and the core
+        /// only hears them on the next `apply`.
         pub fn active(&self) -> bool {
-            !self.playing.is_empty() || !self.pending.is_empty() || !self.refused.is_empty()
+            !self.playing.is_empty()
+                || !self.pending.is_empty()
+                || !self.refused.is_empty()
+                || !self.truncated.is_empty()
         }
     }
 
@@ -400,11 +401,10 @@ mod backend {
             let p = core.play(s, PlayOptions::default());
             let mut audio = Audio::new();
             let t = std::time::Instant::now();
+            let answered = audio.apply(core.take_audio_commands(), &core.resources);
             assert!(
-                audio
-                    .apply(core.take_audio_commands(), &core.resources)
-                    .is_empty(),
-                "a play truncates nothing"
+                answered.truncated.is_empty() && answered.refused.is_empty(),
+                "a play truncates nothing and is not refused: {answered:?}"
             );
             assert!(
                 t.elapsed() < Duration::from_millis(20),
@@ -452,7 +452,9 @@ mod backend {
             }
 
             core.stop(p, 0.0);
-            let cut = audio.apply(core.take_audio_commands(), &core.resources);
+            let cut = audio
+                .apply(core.take_audio_commands(), &core.resources)
+                .truncated;
             assert_eq!(cut.len(), 1, "the 2s blip was still playing: {cut:?}");
             assert_eq!(cut[0].0, p);
             assert!(
@@ -463,6 +465,7 @@ mod backend {
             assert!(
                 audio
                     .apply(core.take_audio_commands(), &core.resources)
+                    .truncated
                     .is_empty(),
                 "reported once"
             );

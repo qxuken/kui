@@ -398,6 +398,10 @@ pub fn edit_text_without_editor_label(label: &str) -> Warning {
              under that name, so the text was dropped; the label is the one an editor's `key` \
              prop declares, and the call is held for one frame — for the view that draws the \
              editor the same `update` opened — not longer"
+        ),
+    }
+}
+
 /// The [`PLAYBACK_REFUSED`] warning for one playback. Keyed by the node
 /// that asked for the sound — the tagged node, the `audio` element, or
 /// the origin's root for an imperative `play` — so a view that keeps
@@ -408,7 +412,11 @@ pub fn playback_refused(key: crate::key::Key, playback: crate::audio::PlaybackId
         code: PLAYBACK_REFUSED,
         key,
         message: format!(
-            "the audio device refused playback {} — its voices are all held, or the sound did              not decode; a released (`finish`) playback holds one of the device's 128 voices              until its file ends, so releasing faster than the sounds finish reaches the limit.              The playback never started and will never report `ended`; a tagged one is told so              with `phase: \"refused\"`",
+            "the audio device refused playback {} — its voices are all held, or the sound did \
+             not decode; a released (`finish`) playback holds one of the device's 128 voices \
+             until its file ends, so releasing faster than the sounds finish reaches the limit. \
+             The playback never started and will never report `ended`; a tagged one is told so \
+             with `phase: \"refused\"`",
             playback.0
         ),
     }

@@ -44,19 +44,102 @@ fn id_at(bytes: &[u8], at: usize) -> Option<&str> {
     std::str::from_utf8(&bytes[at..i]).ok()
 }
 
-/// Every backlog id `howto.md` cites, with the line it cites it on. The
-/// spelling the page uses is `backlog F25` / `backlog C5(b)`.
-fn cited(page: &str) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    for line in page.lines() {
-        let bytes = line.as_bytes();
-        for (at, _) in line.match_indices("backlog ") {
-            if let Some(id) = id_at(bytes, at + "backlog ".len()) {
-                out.push((id.to_string(), line.trim().to_string()));
+/// The page with every run of whitespace collapsed to one space. A hard
+/// wrap is not a boundary in prose, and the line-by-line reading this
+/// replaces was one word of rewrap away from missing every citation on the
+/// page: `…take it (backlog\nF25 is that gap)` cited F25 and parsed as
+/// nothing.
+fn flattened(page: &str) -> String {
+    let mut out = String::with_capacity(page.len());
+    let mut gap = false;
+    for ch in page.chars() {
+        if ch.is_whitespace() {
+            gap = true;
+        } else {
+            if gap && !out.is_empty() {
+                out.push(' ');
             }
+            gap = false;
+            out.push(ch);
         }
     }
     out
+}
+
+/// Enough of the sentence around `at` to find it by eye in the page.
+fn context(flat: &str, at: usize) -> String {
+    let start = flat[..at].rfind(". ").map_or(0, |i| i + 2);
+    let end = flat[at..]
+        .find(". ")
+        .map_or(flat.len(), |i| at + i + 1)
+        .min(start + 240);
+    flat[start..end.max(at)].trim().to_string()
+}
+
+/// Every backlog id `howto.md` cites, with the sentence it cites it in.
+/// The spellings the page has used: `backlog F25`, `backlog entry F27`,
+/// `backlog F27/F30`, `backlog C5(b)` — and any of them wrapped anywhere,
+/// which is why this reads the flattened page rather than its lines.
+fn cited(page: &str) -> Vec<(String, String)> {
+    let flat = flattened(page);
+    let lower = flat.to_ascii_lowercase();
+    let bytes = flat.as_bytes();
+    let mut out = Vec::new();
+    for (at, _) in lower.match_indices("backlog ") {
+        let mut i = at + "backlog ".len();
+        for word in ["entry ", "entries ", "item ", "items "] {
+            if lower[i..].starts_with(word) {
+                i += word.len();
+            }
+        }
+        // A run of ids: `F27/F30`, `F25 and F26`, `F25, F26`.
+        while let Some(id) = id_at(bytes, i) {
+            out.push((id.to_string(), context(&flat, at)));
+            i += id.len();
+            let rest = &lower[i..];
+            i += match () {
+                _ if rest.starts_with('/') || rest.starts_with('-') => 1,
+                _ if rest.starts_with(", ") => 2,
+                _ if rest.starts_with(" and ") => 5,
+                _ => break,
+            };
+        }
+    }
+    out
+}
+
+/// The extractor is the half of this file that can fail open — a page that
+/// cites nothing and a parser that finds nothing look the same from the
+/// assertion. So it is pinned here, on the spellings the page has actually
+/// used and on the wrap that defeated the first version of it.
+#[test]
+fn a_citation_is_found_however_the_page_wraps() {
+    let found = |s: &str| -> Vec<String> { cited(s).into_iter().map(|(id, _)| id).collect() };
+    assert_eq!(
+        found("the first moment it is there (backlog F25 is that gap)"),
+        ["F25"]
+    );
+    assert_eq!(
+        found("the first moment it is\nthere (backlog F25 is that gap)"),
+        ["F25"]
+    );
+    assert_eq!(
+        found("the first moment it is there (backlog\nF25 is that gap)"),
+        ["F25"]
+    );
+    assert_eq!(
+        found("silence there means \"wrong tag\" (backlog F27 is the fix)"),
+        ["F27"]
+    );
+    assert_eq!(found("Backlog entry F30 wants that as a promise"), ["F30"]);
+    assert_eq!(found("backlog F27/F30 both want it"), ["F27", "F30"]);
+    assert_eq!(found("backlog F25 and F26 are one round"), ["F25", "F26"]);
+    assert_eq!(found("wait for backlog C5(b) to land"), ["C5(b)"]);
+    assert!(found("the word backlog on its own cites nothing").is_empty());
+    assert!(
+        !cited("(backlog F25 is that gap)")[0].1.is_empty(),
+        "a finding reports the sentence it was found in"
+    );
 }
 
 /// Every id the "## Closed — index" section lists as `**ID**`.

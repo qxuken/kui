@@ -1275,12 +1275,17 @@ export declare class Ctx {
    */
   access(key: string, action: AccessAction, value?: string | AccessArg): void
   /**
-   * Hover state as of the last frame (keys come from events, e.g.
-   * an `onHover` enter). For plain hover styling prefer the
+   * Hover state as of the last frame. `key` is either spelling,
+   * as for `focus`: the label a `key` prop declared, or the hex
+   * key an event carried. For plain hover styling prefer the
    * `hoverBg` / `pressedBg` props — the core resolves those without
    * a round trip.
    */
   isHovered(key: string): boolean
+  /**
+   * Press state as of the last frame; `key` is either spelling,
+   * as for `isHovered`.
+   */
   isPressed(key: string): boolean
   /**
    * The pointer shape for where the pointer is now, in the `cursor`
@@ -1720,12 +1725,17 @@ export declare class KuiWindow {
    */
   access(key: string, action: AccessAction, value?: string | AccessArg): void
   /**
-   * Hover state as of the last frame (keys come from events, e.g.
-   * an `onHover` enter). For plain hover styling prefer the
+   * Hover state as of the last frame. `key` is either spelling,
+   * as for `focus`: the label a `key` prop declared, or the hex
+   * key an event carried. For plain hover styling prefer the
    * `hoverBg` / `pressedBg` props — the core resolves those without
    * a round trip.
    */
   isHovered(key: string): boolean
+  /**
+   * Press state as of the last frame; `key` is either spelling,
+   * as for `isHovered`.
+   */
   isPressed(key: string): boolean
   /**
    * The pointer shape for where the pointer is now, in the `cursor`

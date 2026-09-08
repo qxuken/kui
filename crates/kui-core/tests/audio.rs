@@ -361,6 +361,45 @@ fn a_playback_that_ended_first_is_not_a_truncation() {
     assert!(truncated(&mut core).is_empty());
 }
 
+/// F34 and F35 compose: a play the device refused leaves its `audio` node
+/// mounted, so the frame that stops declaring it queues a `Stop` like any
+/// other — and that stop must not be reported as a truncation, because the
+/// device never held the playback it names. The driver is what settles it
+/// (it answers `audio_truncated` only for handles it found still playing),
+/// so the core's half is that a refusal does not disturb the record a
+/// removal writes.
+#[test]
+fn a_refused_playback_that_is_later_removed_is_not_also_a_truncation() {
+    let mut core = Core::new();
+    let s = sound(&mut core);
+
+    frame(&mut core, NodeSpec::column(), Some(AudioSpec::new(s)));
+    let playback = match core.take_audio_commands().as_slice() {
+        [AudioCommand::Play { playback, .. }] => *playback,
+        other => panic!("{other:?}"),
+    };
+
+    // The device would not take it. The node stays mounted, so the view
+    // does not re-declare and be refused again a line per frame.
+    core.audio_refused(playback);
+    core.take_warnings();
+
+    // The view drops the node. A `Stop` is queued for a playback that
+    // never started, and the driver never answers for it.
+    frame(&mut core, NodeSpec::column(), None);
+    assert!(
+        matches!(
+            core.take_audio_commands().as_slice(),
+            [AudioCommand::Stop { .. }]
+        ),
+        "the removal still stops what it declared"
+    );
+    assert!(
+        truncated(&mut core).is_empty(),
+        "nothing is truncated until a driver says a handle was still playing"
+    );
+}
+
 #[test]
 fn removing_a_sound_unloads_it() {
     let mut core = Core::new();

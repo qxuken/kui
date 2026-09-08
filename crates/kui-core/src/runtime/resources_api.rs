@@ -323,6 +323,8 @@ impl Core {
             self.diag
                 .raise(crate::diag::truncated_playback(key, why, at));
         }
+    }
+
     /// The driver refused a play: the device's voices are all held, or
     /// the sound failed to decode. The playback never started, so it can
     /// never report `ended` — a tagged one gets

@@ -203,12 +203,12 @@ is the other half.
 Every verb that takes a node takes either spelling: the label a `key` prop
 declared, or the 16-digit hex key an event carried. `focus`, `isFocused`,
 `reveal`, `access`, `editText`, `setEditText`, `setScroll`, `scrollOffset`,
-`scrollGeometry`, `textHit` and `caretRect` all resolve a label through the
-frame being built so far and then the last finished one, so a node the user
-has never touched can be named. `keyOf(label)` (Node) and `kui_key_of` (C) hand
-back that hex key when one is wanted to hold on to, and null / 0 when no
-recent frame declared the label; a Lua script passes the label itself and
-needs neither. One verb goes further:
+`scrollGeometry`, `textHit`, `caretRect`, `isHovered` and `isPressed` all
+resolve a label through the frame being built so far and then the last
+finished one, so a node the user has never touched can be named. `keyOf(label)`
+(Node) and `kui_key_of` (C) hand back that hex key when one is wanted to hold
+on to, and null / 0 when no recent frame declared the label; Lua's focus,
+scroll and editor verbs take the label itself, so a script needs neither. One verb goes further:
 `setEditText` accepts a label *no* frame has declared, and holds the text for
 the frame that does — that is how the `update` opening an editor names it.
 A label declared by two nodes under different parents raises `ambiguous-key`
@@ -249,7 +249,8 @@ releasing it, and release short sounds.
 [`audio` element](props.md#elements) ·
 [sound resources](props.md#resources) ·
 [`sound` event](props.md#events) ·
-[`truncated-playback` / `playback-refused`](props.md#warnings)
+[`truncated-playback`](props.md#warnings) ·
+[`playback-refused`](props.md#warnings)
 
 ### How do I do the thing my app defines — a file write, a request?
 

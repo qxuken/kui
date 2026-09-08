@@ -1532,18 +1532,23 @@ macro_rules! core_methods {
 
             // -- Hover / press ---------------------------------------------
 
-            /// Hover state as of the last frame (keys come from events, e.g.
-            /// an `onHover` enter). For plain hover styling prefer the
+            /// Hover state as of the last frame. `key` is either spelling,
+            /// as for `focus`: the label a `key` prop declared, or the hex
+            /// key an event carried. For plain hover styling prefer the
             /// `hoverBg` / `pressedBg` props — the core resolves those without
             /// a round trip.
             #[napi]
             pub fn is_hovered(&mut self, key: String) -> Result<bool> {
-                Ok(self.$core().is_hovered(parse_key(&key)?))
+                let key = resolve_key(self.$core(), &key)?;
+                Ok(self.$core().is_hovered(key))
             }
 
+            /// Press state as of the last frame; `key` is either spelling,
+            /// as for `isHovered`.
             #[napi]
             pub fn is_pressed(&mut self, key: String) -> Result<bool> {
-                Ok(self.$core().is_pressed(parse_key(&key)?))
+                let key = resolve_key(self.$core(), &key)?;
+                Ok(self.$core().is_pressed(key))
             }
 
             // -- Pointer ----------------------------------------------------
