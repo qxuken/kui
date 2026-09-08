@@ -109,10 +109,15 @@ Write-Host "compiler: $cc" -ForegroundColor Cyan
 
 # Shared flags. `/D_CRT_SECURE_NO_WARNINGS` because counter.c reads a corpus
 # file with fopen/sscanf, which the CRT deprecates and no other platform does.
+# `/utf-8` because the sources are UTF-8 and carry a few characters that say
+# so (panel.c's " · %d left"), and cl reads a BOM-less file in the machine's
+# ANSI code page unless told - which turns that literal into mojibake on
+# Windows and nowhere else. gcc and clang assume UTF-8 already, so this is
+# the flag that makes build.sh and this script compile the same bytes.
 # `KUI_PROFILE_DIR` is what host.c builds its default plugin path out of, so
 # a -Release host looks beside itself rather than in target/debug.
 $cflags = @(
-    '/nologo', '/D_CRT_SECURE_NO_WARNINGS', "/DKUI_PROFILE_DIR=$profileDir",
+    '/nologo', '/utf-8', '/D_CRT_SECURE_NO_WARNINGS', "/DKUI_PROFILE_DIR=$profileDir",
     '/I', 'crates/kui-ffi/include', '/std:c11', '/W3'
 )
 
@@ -193,7 +198,7 @@ Build-C target/panel.obj "$bin/panel-host.dll" $hostLib -Dll
 $noabi = 'target/panel-noabi.c'
 (Get-Content examples/c/panel.c) |
     Where-Object { $_ -notmatch '^uint32_t kui_ext_abi\(void\)' } |
-    Set-Content -Path $noabi -Encoding ASCII
+    Set-Content -Path $noabi -Encoding utf8NoBOM
 if (Select-String -Path $noabi -Pattern 'kui_ext_abi' -Quiet) {
     throw "panel-noabi.c still defines kui_ext_abi; the mutation missed"
 }

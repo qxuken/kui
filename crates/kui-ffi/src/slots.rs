@@ -207,6 +207,14 @@ pub extern "C" fn kui_reply(ev: *const KuiEvent, reply: *const KuiValue) -> bool
 /// first frame — origins are positions in this list, so a plugin added
 /// between frames renumbers the ones after it.
 ///
+/// It has to be a context of your own, so this refuses one that borrows
+/// somebody else's frame — a plugin's `kui_ext_view`, or a view callback
+/// under `kui_run_with`. Such a context fills its slots from the list one
+/// level up (`host_ui`) and dies at the end of the call, so a plugin
+/// loaded into it would be unloaded again having drawn nothing. Saying so
+/// is the point: the alternative is that this answers true and the
+/// `kui_slot` after it quietly draws an empty node.
+///
 /// # Safety
 /// The library's entry points run in this process on this thread, on the
 /// frame this context owns. Loading one is trusting it exactly as much as
@@ -218,6 +226,16 @@ pub extern "C" fn kui_ctx_add_extension(ptr: *mut KuiCtx, namespace: KuiStr, pat
             return false;
         };
         c.last_ext_error.clear();
+        if !c.host_ui.is_null() {
+            // A borrowed frame: this context's list is not the one filling
+            // its slots, so anything put in it would be loaded, never
+            // asked to draw, and unloaded when the call returns.
+            c.last_ext_error = "cannot load an extension into a context that borrows a frame: \
+                                its slots are filled from the list one level up. Load into a \
+                                context of your own, before `kui_run_with`"
+                .to_owned();
+            return false;
+        }
         // SAFETY: the caller's, and the doc comment says so. An empty
         // namespace is the extension's own name — `push_as`'s rule, not
         // one repeated here.
@@ -413,5 +431,32 @@ mod tests {
         );
         kui_frame_finish(ctx);
         kui_ctx_free(ctx);
+    }
+
+    /// A context that borrows a frame refuses a plugin instead of taking
+    /// one into a list nothing fills. The path is the one a script would
+    /// take (`examples/lua/panel.lua` loads from its view), so the answer
+    /// has to be a reason and not a quiet `true`.
+    #[test]
+    fn a_borrowed_frame_will_not_take_an_extension() {
+        let mut core = kui_core::Core::new();
+        let mut ui = core.frame(kui_core::Size::new(200.0, 100.0), 1.0);
+        let mut borrowed = KuiCtx::borrowing_in(&mut ui);
+        let ctx: *mut KuiCtx = &mut borrowed;
+
+        // The library itself is beside the point: this is refused before
+        // anything is opened, so even one that would load is.
+        let lib = crate::ext::tests::a_library_with_no_kui_symbols();
+        assert!(!kui_ctx_add_extension(ctx, ks("libc"), ks(lib)));
+        assert_eq!(kui_ctx_extension_count(ctx), 0);
+
+        let mut out = ks("");
+        assert!(kui_ctx_extension_error(ctx, &mut out));
+        let msg =
+            std::str::from_utf8(unsafe { std::slice::from_raw_parts(out.ptr, out.len) }).unwrap();
+        assert!(
+            msg.contains("borrows a frame"),
+            "the reason should name the borrowed frame, got {msg:?}"
+        );
     }
 }

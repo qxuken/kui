@@ -1412,6 +1412,12 @@ bool kui_slot(KuiCtx *ctx, KuiStr name, const KuiValue *params);
  * plugin's own kui_ext_free. Load before the first frame: origins are
  * positions in the list, so one added later renumbers what follows it.
  *
+ * It must be a context of your own. One that borrows a frame - the ctx a
+ * kui_run_with view callback is handed, or a plugin's kui_ext_view - fills
+ * its slots from the list one level up and is gone at the end of the call,
+ * so this refuses it and says so rather than loading a plugin that would
+ * never be asked to draw.
+ *
  * The plugin's code runs in your process, on your thread, on your frame.
  * Loading it is trusting it exactly as much as linking it would be. */
 bool kui_ctx_add_extension(KuiCtx *ctx, KuiStr namespace_, KuiStr path);

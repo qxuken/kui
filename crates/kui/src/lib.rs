@@ -389,6 +389,24 @@ impl<A: App> PumpRunner<A> {
         &mut self.shell.app
     }
 
+    /// Delivers `events` the way this runner's own loop does
+    /// (`Shell::route_events`, ADR 0014 decision 6): an extension's event
+    /// to the extension, and what it replies to `to_app` carrying its
+    /// origin. A host that drives the core directly — `core_mut().press`,
+    /// an access action, a drained `take_pending_events` — produces events
+    /// the loop never saw, and pushing those at the app would hand it a
+    /// plugin's clicks and leave the plugin deaf to them.
+    pub fn route_events(
+        &mut self,
+        events: impl IntoIterator<Item = UiEvent>,
+        mut to_app: impl FnMut(&mut A, UiEvent),
+    ) {
+        let Shell {
+            extensions, app, ..
+        } = &mut self.shell;
+        extensions.route(events, |ev| to_app(app, ev));
+    }
+
     /// The main window's core. Every window of the app shares its session,
     /// so resources registered through it draw in all of them, and
     /// `Core::windows` on it lists them.

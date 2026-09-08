@@ -2070,11 +2070,16 @@ impl KuiWindow {
         &mut self.runner.app_mut().events
     }
 
-    /// The runner has already routed these: `Shell::route_events` gave an
-    /// extension's event to the extension and queued its replies before
-    /// `TreeApp::on_event` ever saw them. Nothing left to do but keep them.
+    /// Through the runner's own list, for the same reason a headless
+    /// `Ctx` routes through its own: what arrives here is what *this*
+    /// driver asked the core for — a `press`, an access action, the
+    /// pending events `pollEvents` drains — and the loop never saw those,
+    /// so nobody has routed them yet. (Whatever `TreeApp::on_event`
+    /// queued during a `pump` was routed on the way in and is already in
+    /// `events_mut`; it does not pass through here.)
     fn take_events(&mut self, events: Vec<UiEvent>) {
-        self.events_mut().extend(events);
+        self.runner
+            .route_events(events, |app, ev| app.events.push(ev));
     }
 
     fn request_redraw(&mut self) {
