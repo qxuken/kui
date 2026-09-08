@@ -17,7 +17,7 @@ for the reader deciding whether to upgrade. Earlier sections keep the shape
 they shipped with and are not retrofitted (backlog F31, from the alpha.8
 field reports).
 
-## 0.1.0-alpha.9 (unreleased)
+## 0.1.0-alpha.9 (2026-09-08)
 
 **What breaks.**
 
@@ -43,6 +43,15 @@ field reports).
   ceiling (256 editors, 1024 scroll entries; longest-undeclared evicted
   first). A draft parked in an undeclared editor under thousands of others
   can be gone when its key returns; a declared one is never evicted.
+- `InputEvent` has a new variant, `Commit(String)`, and `Role` a new
+  `Terminal` — a Rust `match` on either without a wildcard stops compiling.
+  C's `KUI_ROLE_TERMINAL` is appended, so no existing value moved.
+- A plain text of 4096 bytes or more with no line breaks is shaped in
+  chunks whatever its `wrap` — alpha.8 chunked `wrap: none` only. A long
+  wrapped paragraph now breaks its rows from its chunks' positions rather
+  than through cosmic-text, so a row can end one break opportunity from
+  where it did, and its height is an estimate until its chunks show;
+  `maxLines` and `ellipsis` keep the whole-text path.
 
 **An extension is a different shape in all three host languages.** `view`
 receives the `Slot` it is filling (Lua's `view(env)` may keep its one
@@ -603,7 +612,9 @@ that asserts on an empty warning list is what notices.
   the picture bounds what it held, moved with the picture and rounded by
   its radius; a float inside it escapes them as a live float would; a
   node the clip leaves nothing of is culled. The root itself stays
-  unclipped, and `tests/exit.rs` pins both halves.
+  unclipped, and `tests/exit.rs` pins both halves. It costs a ghost what a
+  clip costs a live node: `replay_a_full_depart_store` reads 15.8 µs
+  against alpha.8's 13.3 — about 5 ns a ghost node.
 
 - **Windows: an animation should keep moving while the title bar is
   held** (backlog W3, unverified). Reported as a regression: a transition
@@ -648,6 +659,82 @@ that asserts on an empty warning list is what notices.
 - A `key` on an extension's root node added to keep its editors and
   tweens from resetting when the host's root changed.
 - The stash a plugin kept so the host could learn what it chose: reply.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), run before this tag on
+2026-09-08 on the branch that carried the editor-and-mux work. What
+follows is what executed on what.
+
+**macOS 26.6.2 (arm64), rustc 1.98.0.** `cargo test --workspace` passes:
+**710 tests over 69 suites, 0 failed, 0 ignored**, with no display, no
+installed fonts and no GPU. `cargo fmt --all --check` and `cargo clippy
+--workspace --all-targets -- -D warnings` are clean. The scene corpus runs
+in all four adapters against one reference report: **22 scenes** — `cells`
+and `ime` new, the second driving a composition into an app-owned editor
+and a stock one in turn — Rust and Lua through `cargo test`, C through
+`examples/c/counter --conformance` (the header at 251 fields and 82 enum
+members, matched against the Rust side by the parity assert), Node
+through `npm test` with `KUI_CONFORMANCE_REQUIRED=1` (**93 Node tests**,
+0 failed). The C plugin dlopens into a Rust host, routes clicks both ways,
+fills the slot it is given and delivers its reply; the same plugin with
+`kui_ext_abi` deleted is refused against ABI 8. `npm run gen` leaves the
+three generated files unchanged, `examples/node` installs, typechecks,
+builds and runs headless, and `scripts/check-version.sh 0.1.0-alpha.9`
+passes.
+
+`scripts/ax-audit.swift` against `examples/rust/accessibility.rs` passes
+**106/106 checks**, the same 106 alpha.8 had. The one new role,
+`Terminal`, is derived from a `cells` node, which that example does not
+draw; the corpus `cells` scene is what reads it back.
+
+Every host opened a window and drew, each captured with `screencapture -l`
+and looked at: the **thirteen** Rust examples (`accessibility`,
+`bulk_exit`, `connectors`, `counter`, `editor`, `gallery`, `modal_editor`,
+`popup`, `rich_text`, `splitmux`, `syntax_view`, `toasts`, and `waker`,
+which is new and reports its 42 lines drawn over 43 frames with no input),
+`examples/c/counter`, `c_panel`, `lua_panel`, and `counter-window.mjs` on
+Node — seventeen windows, eighteen with the mind map below.
+
+**The two drag checks on the by-hand list.** `npm run mindmap`, then a
+synthetic drag posted through the HID tap with `screencapture` run *while
+the button was down*: at "move pan −45,−27" the four cards and their
+connectors had moved together to where the cursor was, and at "end pan
+−90,−55" they sat at the full offset — F15's symptom, still absent. ADR
+0009's gesture: press on the `popup` example's field, four legs down into
+the menu captured as a screen region so the second window is in the shot
+— the menu open throughout and *Beryllium* highlighted under the cursor
+on the third leg — and a release 76 pt below on the third item, which set
+the field to **Cadmium** without a second click. Windows' mixed-DPI case
+and W3 (an animation under a held title bar) stay unrun: nothing here has
+a Windows machine, which is why W3 ships marked blind.
+
+**Two of this release's fixes were watched where they show.** The ghost
+clip: `bulk_exit`'s *clear list* pressed through the AX API and captured
+straight after, the list's picture sliding out with rows 0–8 inside its
+box and nothing below it, where the report's capture had rows 9–11
+hanging under the panel. The counter's first click: the audio device
+takes **92 ms** to open on this machine, measured, and the device test
+now asserts that the first play returns in under 20 ms — the open is on
+its own thread — and that the queued blip still plays and reports ended.
+
+**The performance guard passed; the table was not refreshed from it.**
+`scripts/bench-check.sh` benches HEAD against `v0.1.0-alpha.8` back to
+back on one machine: **none of the four guarded rows is slower** —
+`deep_nesting_64_levels` +3.4%, `frame_10k_rects` −1.9%,
+`frame_10k_rects_with_text_and_hits` −0.3%, `frame_1k_typical` +0.3% —
+with a worst run-to-run spread of 2.5% on a guarded row. The run
+overlapped the window round (the captures and the AX audit ran beside
+it), and the noisy rows show it: `frame_10k_rects_all_transitioning`
+read 2.34 ms for alpha.8's own commit where the README records 1.93 for
+it, its two runs ±12% apart. So this is a run that says "no regression"
+and not one to take absolute numbers from — alpha.7's rule — and the
+README's table keeps alpha.8's medians for the rows both releases have.
+Two unguarded rows moved: `replay_a_full_depart_store` +19.9% (13.2 →
+15.8 µs) is the ghost clip, real and explained under `### Fixed`;
+`list_10k_rows_naive` +14.1% at ±9.5% spread is unreadable at that size.
+The rows this release added — the `stream`, `long_line` and `cells`
+benches — carry the numbers their entries measured when they landed.
 
 ## 0.1.0-alpha.8 (2026-09-07)
 

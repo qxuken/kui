@@ -66,6 +66,29 @@ styles do not interrupt them — spans shape as one paragraph.
 
 [`wrap` / `maxLines` / `ellipsis` rows](props.md#text-props)
 
+### How do I show a 100k-character line, or a paragraph that long?
+
+Hand it over as one `text` node. A plain text of 4096 bytes or more with no
+line breaks is shaped in ~1 KB chunks as they come on screen, so it costs
+the screenful it shows and a keystroke into it costs the chunk it lands in;
+under `wrap: word` the rows are broken from the chunks' positions, so a
+paragraph costs the rows it shows. Its size is an estimate until the chunks
+shape (exact under monospace), so a scrollbar can move a little as they do.
+
+[`text` row](props.md#elements) ·
+[alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08)
+
+### How do I draw a terminal's screen?
+
+`cells`: rows × cols of `{ch, fg, bg, flags}` and a cursor, one node — a
+200×50 screen costs ~60 µs a frame with every character new, against ~2 ms
+as a text node per cell. A click or drag on it carries `cell: {row, col}`
+in its payload, and the node reads as a `terminal` with the rows joined as
+its value. Inverse, dim and a wide cell's blank spacer are the app's.
+
+[`cells` row](props.md#elements) ·
+[alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08)
+
 ### How do I pan a canvas with a drag?
 
 `onDrag` events carry `dx`/`dy` measured **from the press point** in every
@@ -108,6 +131,18 @@ not leak to the app behind it.
 [ADR 0011](adr/0011-keys-bubble-to-the-enclosing-sink.md) ·
 [`onKey` / `keyUp` rows](props.md#container-props) ·
 [alpha.7](../CHANGELOG.md#010-alpha7-2026-09-06)
+
+### How do I get an IME into an editor I own?
+
+An `onKey` sink drawing `line` rows with `caret` hears a composition as
+data: `{kind:"preedit", text, cursor, tag}` while it is composed (an empty
+`text` is the composition ending) and `{kind:"text", text, tag}` on the
+commit. Plain typing is not a commit — the `key` event already carries what
+the press would insert — so nothing arrives twice. The candidate window is
+anchored at the `line` carrying `caret` for you.
+
+[`text` and `preedit` events](props.md#events) ·
+[alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08)
 
 ### How do I reset an editor's text?
 
@@ -209,7 +244,17 @@ extension is loaded under (`extension_as("fs", ext)`), so the same plugin
 loaded twice is two namespaces and two sets of slots.
 
 [ADR 0014](adr/0014-slots-an-extension-fills-in-place.md) ·
-[alpha.9](../CHANGELOG.md)
+[alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08)
+
+### How do I redraw when a thread has new data?
+
+Take the `Waker` the loop hands `App::setup` and clone it into the thread —
+a PTY reader, a file watcher, a socket — and call `wake()` when what `view`
+will show has changed; the loop draws, and nothing else ever wakes it. A
+host that owns the loop blocks on the same three things with
+`pump_until(deadline)`: an OS event, a wake, or the deadline.
+
+[alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08)
 
 ## Test it
 
