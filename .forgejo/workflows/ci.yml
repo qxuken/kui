@@ -62,8 +62,10 @@
 # The docker jobs use the stock node image rather than the rust one:
 # actions/checkout, cache and the artifact actions are JavaScript actions and
 # the runner execs `node` inside the job container to run them, so the image
-# has to ship Node. Rust comes from rustup; the only other system addition is
-# a font (the text tests measure real glyphs) and, for a cross leg, a linker.
+# has to ship Node. Rust comes from rustup; the only other system additions are
+# a font (the text tests measure real glyphs), zstd (actions/cache falls back
+# to single-core gzip without it - see `Install system deps` in `check`) and,
+# for a cross leg, a linker.
 #
 # Release prerequisites:
 #   * a repository secret PACKAGES_TOKEN: a personal access token with
@@ -217,8 +219,19 @@ jobs:
           apt-get update
           # ALSA headers: the runner crate's audio backend (kira/cpal) links
           # libasound on Linux.
+          #
+          # zstd is for actions/cache, which probes for it and silently
+          # falls back to gzip when it is missing - which is what
+          # node:24-bookworm ships. gzip gets one core and no more; zstdmt
+          # gets every core and writes a slightly smaller file. Run 249
+          # (2026-09-08) spent 24m33s gzipping this job's target dir, which
+          # is what this line is here to stop. The compression method is
+          # part of a cache entry's identity, so the first run after this
+          # lands misses every existing entry and builds cold - and that
+          # miss is also what resets the dir the prune step below then
+          # keeps bounded.
           apt-get install -y --no-install-recommends fonts-dejavu-core ca-certificates curl \
-            pkg-config libasound2-dev
+            pkg-config libasound2-dev zstd
           curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal \
             --default-toolchain stable -c rustfmt -c clippy
           echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
@@ -226,8 +239,23 @@ jobs:
           node --version
           npm --version
 
-      - name: Cache cargo
-        uses: actions/cache@v4
+      # Restore and save are separate steps here, unlike the build legs
+      # below, because this job's cache is the one that got out of hand and
+      # only one half of it is expensive. Run 249 (2026-09-08): restore
+      # 8m26s, the checks themselves 4m58s, save 26m30s - 41 minutes to
+      # check a commit, 33 of them moving a 9 GB tarball around. The build
+      # legs cache the same paths and pay 12s and 76s for 712 MB, which is
+      # what a cache this size is supposed to cost; the difference is not
+      # the runner, it is the 9 GB.
+      #
+      # A pull request gets nothing back for the save half: it restores
+      # what the last push to main left, and its next push restores exactly
+      # that again. So a pull request reads the cache and stops there, and
+      # a push - main, or the tag that names the same commit - is what
+      # writes one back.
+      - name: Restore cargo cache
+        id: cargo-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             /usr/local/cargo/registry/index
@@ -381,6 +409,41 @@ jobs:
             console.log(`examples lockfile matches packages/kui at ${want}`);
           '
 
+      # Everything above this line is a check; everything below is the
+      # cache write, and it runs on a push only (see the restore step).
+      #
+      # The prune is what keeps the entry from growing without limit. The
+      # cache is restored through `restore-keys`, so the target dir a run
+      # starts from was built for some older Cargo.lock, and cargo removes
+      # nothing an older build left behind. Every commit changes every
+      # workspace crate, so every commit leaves another set of kui-* rlibs,
+      # test executables, cdylibs and one 400 MB libkui_ffi.a beside the
+      # last commit's, and the next run carries both forward. That is how
+      # run 249 came to restore 9.0 GB and save 10.1 GB of a dir that holds
+      # about 3 GB of anything anyone needs. Only the workspace's own
+      # artifacts go - the dependency builds, which are the reason the
+      # cache exists, stay - and none of it is a loss even when current,
+      # because the steps above recompile the workspace from source on
+      # every run regardless.
+      - name: Prune the target dir
+        if: github.event_name == 'push' && steps.cargo-cache.outputs.cache-hit != 'true'
+        run: scripts/prune-target.sh
+
+      # `cache-hit` is the exact key, not the `restore-keys` prefix: when
+      # Cargo.lock has not moved, the entry under this key is already the
+      # one that would be written, and actions/cache/save refuses to
+      # overwrite it anyway.
+      - name: Save cargo cache
+        if: github.event_name == 'push' && steps.cargo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /usr/local/cargo/registry/index
+            /usr/local/cargo/registry/cache
+            /usr/local/cargo/git/db
+            target
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
+
   # The three cross jobs share one shape: rustup for the target, the linker
   # for the platform, a cache per target, build, collect, upload. zig and
   # cargo-zigbuild come as pip wheels (x64 and arm64 Linux), which keeps the
@@ -410,7 +473,7 @@ jobs:
           set -eu
           apt-get update
           apt-get install -y --no-install-recommends ca-certificates curl python3-pip \
-            pkg-config libasound2-dev
+            pkg-config libasound2-dev zstd
           curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal \
             --default-toolchain stable -t "${{ matrix.target }}"
           echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
@@ -478,7 +541,7 @@ jobs:
         run: |
           set -eu
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates curl clang lld llvm
+          apt-get install -y --no-install-recommends ca-certificates curl clang lld llvm zstd
           curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal \
             --default-toolchain stable -t "${{ matrix.target }}"
           echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
@@ -551,7 +614,7 @@ jobs:
         run: |
           set -eu
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates curl python3-pip xz-utils
+          apt-get install -y --no-install-recommends ca-certificates curl python3-pip xz-utils zstd
           curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal \
             --default-toolchain stable -t "${{ matrix.target }}"
           echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
@@ -618,7 +681,7 @@ jobs:
           # ALSA headers: the runner crate's audio backend (kira/cpal) links
           # libasound on Linux.
           apt-get install -y --no-install-recommends fonts-dejavu-core ca-certificates curl \
-            pkg-config libasound2-dev
+            pkg-config libasound2-dev zstd
           curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
           echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
           test -n "$PACKAGES_TOKEN" || { echo "PACKAGES_TOKEN secret is not set" >&2; exit 1; }
