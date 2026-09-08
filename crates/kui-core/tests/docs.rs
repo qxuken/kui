@@ -186,7 +186,7 @@ fn anchor(heading: &str) -> String {
 /// and cites as an open gap what that release closed. And a `props.md` link
 /// that no longer lands should fail here rather than in a reader's browser.
 #[test]
-fn howto_cites_no_closed_entry_and_every_props_anchor_lands() {
+fn howto_cites_no_closed_entry_and_every_anchor_lands() {
     let page = read("howto.md");
     let closed = closed(&read("BACKLOG.md"));
     assert!(
@@ -212,28 +212,43 @@ fn howto_cites_no_closed_entry_and_every_props_anchor_lands() {
             .join("\n")
     );
 
-    let props = read("props.md");
-    let headings: Vec<String> = props
-        .lines()
-        .filter_map(|l| l.strip_prefix('#'))
-        .map(|l| anchor(l.trim_start_matches('#')))
-        .collect();
+    // Both pages this one links into by anchor. `CHANGELOG.md` is here for
+    // a drift the release round produces rather than the author: the open
+    // section is `## <ver> (unreleased)` while it is being written and
+    // `scripts/set-version.sh` dates the heading at the bump, so every
+    // `#010-alphaN-unreleased` link stops landing between the last commit
+    // and the tag — the F33 class again, through a link this time. The
+    // script rewrites those links now; this is what says so if it ever
+    // stops.
     let mut missing = Vec::new();
-    for line in page.lines() {
-        for (at, _) in line.match_indices("props.md#") {
-            let rest = &line[at + "props.md#".len()..];
-            let end = rest
-                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
-                .unwrap_or(rest.len());
-            let want = &rest[..end];
-            if !headings.iter().any(|h| h == want) {
-                missing.push(format!("  props.md#{want} — {}", line.trim()));
+    for doc in ["props.md", "CHANGELOG.md"] {
+        let target = if doc == "CHANGELOG.md" {
+            read("../CHANGELOG.md")
+        } else {
+            read(doc)
+        };
+        let headings: Vec<String> = target
+            .lines()
+            .filter_map(|l| l.strip_prefix('#'))
+            .map(|l| anchor(l.trim_start_matches('#')))
+            .collect();
+        let needle = format!("{doc}#");
+        for line in page.lines() {
+            for (at, _) in line.match_indices(&needle) {
+                let rest = &line[at + needle.len()..];
+                let end = rest
+                    .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
+                    .unwrap_or(rest.len());
+                let want = &rest[..end];
+                if !headings.iter().any(|h| h == want) {
+                    missing.push(format!("  {doc}#{want} — {}", line.trim()));
+                }
             }
         }
     }
     assert!(
         missing.is_empty(),
-        "howto.md links anchors props.md has no heading for:\n{}",
+        "howto.md links anchors the target page has no heading for:\n{}",
         missing.join("\n")
     );
 }

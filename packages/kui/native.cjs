@@ -21,7 +21,30 @@
 // overrides a newer artifact is that newer artifact being unusable.
 'use strict';
 const { existsSync, statSync } = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
+
+// The addon is what provides `kui_*` to a C extension loaded later
+// (`ctx.addExtension`, ADR 0014): a plugin leaves the whole API undefined and
+// the dynamic linker resolves it against what is already in the process. On
+// glibc "already in the process" means the global scope, and Node's default
+// for an addon is RTLD_LOCAL, so every `kui_*` the plugin imports is
+// unresolvable however plainly the addon exports it — `undefined symbol:
+// kui_slot_params`, which is what CI on Linux found. This is the same fact
+// `crates/kui-ffi/build.rs` passes `--export-dynamic` for, one loader down:
+// being in the image is not the problem, being reachable from the plugin is.
+//
+// Only RTLD_GLOBAL is added; RTLD_LAZY is Node's own default and staying with
+// it keeps the change to one bit. Darwin resolves such a plugin either way
+// and Windows ignores the flags, so both are unaffected — and the constants
+// are read defensively, because a platform that offers none should load the
+// addon the way it always did rather than throw here.
+const DLOPEN_FLAGS = (() => {
+  const c = os.constants.dlopen;
+  return c && c.RTLD_LAZY !== undefined && c.RTLD_GLOBAL !== undefined
+    ? c.RTLD_LAZY | c.RTLD_GLOBAL
+    : undefined;
+})();
 
 const names = {
   darwin: 'libkui_node.dylib',
@@ -61,7 +84,8 @@ const skipped = [];
 for (const p of found) {
   const mod = { exports: {} };
   try {
-    process.dlopen(mod, p);
+    if (DLOPEN_FLAGS === undefined) process.dlopen(mod, p);
+    else process.dlopen(mod, p, DLOPEN_FLAGS);
   } catch (err) {
     skipped.push(diagnose(p, err));
     continue;

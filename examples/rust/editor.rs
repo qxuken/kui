@@ -62,7 +62,12 @@ impl App for Editor {
                         autofocus: true,
                         ..Default::default()
                     },
-                    NodeSpec::column().width(Sizing::Grow(1.0)).pad(20.0),
+                    // Nothing inside an editor names it, so `control-without-name`
+                    // is right to ask: a screen reader would say "text input".
+                    NodeSpec::column()
+                        .width(Sizing::Grow(1.0))
+                        .pad(20.0)
+                        .label("document"),
                 );
                 self.key = Some(key);
                 // Recount only when the document actually changed — pulling

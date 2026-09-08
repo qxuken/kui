@@ -77,7 +77,8 @@ impl App for Gallery {
             NodeSpec::column()
                 .width(Sizing::Grow(1.0))
                 .max_width(720.0)
-                .radius(12.0),
+                .radius(12.0)
+                .label("a generated sky gradient"),
         );
 
         ui.text(
@@ -91,13 +92,19 @@ impl App for Gallery {
                 .bg(Color::rgb8(0x14, 0x16, 0x1e))
                 .radius(10.0),
             |ui| {
-                ui.image(checker_id, NodeSpec::column().radius(8.0));
+                ui.image(
+                    checker_id,
+                    NodeSpec::column()
+                        .radius(8.0)
+                        .label("a checkerboard, at its intrinsic size"),
+                );
                 ui.image(
                     checker_id,
                     NodeSpec::column()
                         .width(Sizing::Fixed(48.0))
                         .height(Sizing::Fixed(96.0))
-                        .radius(8.0),
+                        .radius(8.0)
+                        .label("the same checkerboard, stretched to 48x96"),
                 );
                 ui.text("same image, intrinsic and stretched", muted);
             },

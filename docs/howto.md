@@ -125,7 +125,7 @@ are there for a palette of your own.
 
 [`system.*` rows](props.md#env) ·
 [`accent` row](props.md#container-props) ·
-[alpha.10](../CHANGELOG.md#010-alpha10-unreleased)
+[alpha.10](../CHANGELOG.md#010-alpha10-2026-09-09)
 
 ## Interaction, focus and reading
 
@@ -186,7 +186,7 @@ text with an `edit-text-without-editor` warning.
 
 [`edit` element](props.md#elements) ·
 [`edit-text-without-editor`](props.md#warnings) ·
-[alpha.10](../CHANGELOG.md#010-alpha10-unreleased)
+[alpha.10](../CHANGELOG.md#010-alpha10-2026-09-09)
 
 ### How do I say which control a dialog opens focused?
 
@@ -242,7 +242,7 @@ across a tree.
 
 [`key` row](props.md#composite-props-hand-written-per-binding) ·
 [`ambiguous-key`](props.md#warnings) ·
-[alpha.10](../CHANGELOG.md#010-alpha10-unreleased)
+[alpha.10](../CHANGELOG.md#010-alpha10-2026-09-09)
 
 ## Sound and effects
 

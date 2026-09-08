@@ -96,8 +96,11 @@ function view(env, slot)
     border = { w = 1, color = 0x2a2d3aff },
     text({ title, { " · " .. remaining .. " left", color = "#8a8fa3" } },
          { size = 12, color = 0x8a8fa3ff }),
-    edit { key = "filter", initial = "", size = 14, width = "grow",
-           pad = { l = 8, r = 8, t = 6, b = 6 }, bg = 0x0e1016ff, radius = 6 },
+    -- `label` because nothing else names it: an edit with no text inside it
+    -- and no label is what `control-without-name` is for.
+    edit { key = "filter", label = "filter todos", initial = "", size = 14,
+           width = "grow", pad = { l = 8, r = 8, t = 6, b = 6 },
+           bg = 0x0e1016ff, radius = 6 },
     column { height = "grow", scroll = true, table.unpack(items) },
     row {
       gap = 8,
@@ -129,7 +132,10 @@ function view(env, slot)
       radius = 10,
       border = { w = 1, color = 0x2a2d3aff },
       text("no native panel loaded", { size = 12, color = 0x8a8fa3ff }),
-      text(plugin_why or "build examples/c first", { size = 11, color = 0x5c6174ff, wrap = true }),
+      -- `wrap` is the text one: "word" / "glyph" / "none". The boolean is
+      -- `wrap_children`, on a row, and passing it here is a runtime error
+      -- that takes the whole view with it.
+      text(plugin_why or "build examples/c first", { size = 11, color = 0x5c6174ff, wrap = "word" }),
     }
   end
 

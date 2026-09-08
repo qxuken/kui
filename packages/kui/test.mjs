@@ -10,7 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { constants as osConstants, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Ctx, KuiWindow, createApp, createEncoder, decodeQuads, protocol, quadStride, withEffects } from './index.js';
@@ -3696,6 +3696,35 @@ test('a native library that is not there is reported as missing, not as broken',
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /not found for/);
   assert.doesNotMatch(r.stderr, /not loadable/);
+});
+
+test('the addon is loaded RTLD_GLOBAL, so a C extension can resolve `kui_*` against it', () => {
+  // A plugin leaves the whole API undefined and the dynamic linker resolves
+  // it against what the process has already loaded — but only what is in the
+  // *global* scope. glibc's dlopen defaults to RTLD_LOCAL, so on Linux the
+  // addon provided nothing and `ctx.addExtension` failed with `undefined
+  // symbol: kui_slot_params`; Darwin defaults to RTLD_GLOBAL, which is why
+  // the round trip above passed here and only CI saw it.
+  //
+  // Asserted through the flags native.cjs asks for rather than through a
+  // load, because the load this governs succeeds on this platform either
+  // way: a revert would go green on macOS and red only on Linux.
+  const r = spawnSync(
+    process.execPath,
+    [
+      '-e',
+      `const real = process.dlopen.bind(process);
+       process.dlopen = (m, f, flags) => { console.log('FLAGS', flags); return real(m, f, flags); };
+       require('./native.cjs');`,
+    ],
+    { cwd: HERE, encoding: 'utf8' },
+  );
+  assert.equal(r.status, 0, `the resolver failed: ${r.stderr}`);
+  const flags = Number(r.stdout.match(/FLAGS (\d+)/)?.[1]);
+  assert.ok(Number.isFinite(flags), `no dlopen flags recorded: ${r.stdout}${r.stderr}`);
+  const { RTLD_GLOBAL, RTLD_LAZY } = osConstants.dlopen;
+  assert.equal(flags & RTLD_GLOBAL, RTLD_GLOBAL, 'RTLD_GLOBAL, or a plugin resolves nothing on glibc');
+  assert.equal(flags & RTLD_LAZY, RTLD_LAZY, "RTLD_LAZY, which is Node's own default");
 });
 
 // ---------------------------------------------------------------------------

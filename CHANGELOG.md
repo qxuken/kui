@@ -17,7 +17,7 @@ for the reader deciding whether to upgrade. Earlier sections keep the shape
 they shipped with and are not retrofitted (backlog F31, from the alpha.8
 field reports).
 
-## 0.1.0-alpha.10 (unreleased)
+## 0.1.0-alpha.10 (2026-09-09)
 
 **What breaks.**
 
@@ -205,6 +205,10 @@ field reports).
   `kui_ctx_extension_namespace` turns an event's `origin` back into the name
   you gave it. A plugin's events reach the plugin and its replies reach the
   host, exactly as under the Rust runner; a context unloads what it loaded.
+  A context that borrows a frame — a plugin's own `kui_ext_view`, or a view
+  callback under `kui_run_with` — refuses the call rather than answering it,
+  which is what the header has always said and what the code now does too
+  (below).
 
   [`examples/c/host.c`](examples/c/host.c) is the example, and it loads the
   *same plugin binary* the Rust host does: an extension does not know what
@@ -389,6 +393,16 @@ GPU without rebuilding a node.
   **What you can delete:** Any timeout an app kept behind a `finish`ed one-shot's `ended` message to
   cover the case where the message never arrived. The refusal that used to
   drop the message now sends one.
+- **`PumpRunner::route_events`**, for a host that drives the core itself.
+  A driver that calls `core_mut().press`, answers an access action, or
+  drains `take_pending_events` produces events its loop never saw, so
+  nothing has given an extension's event to the extension yet. Handing
+  those straight to the app delivers a plugin's clicks to the host and
+  leaves the plugin deaf to them; this delivers them the way the runner's
+  own loop does (`Extensions::route`, ADR 0014 decision 6), calling back
+  with what should reach the app. It exists because the extension list and
+  the app have to be borrowed at once, which only this crate can do — and
+  it is what the Node window driver's own bug was fixed with, below.
 
 ### Changed
 
@@ -577,6 +591,160 @@ GPU without rebuilding a node.
   the workspace test run, as does a `props.md#anchor` no heading answers.
   Prose in `howto.md` cites a backlog id only for work that has not
   shipped.
+- **Linux: a C extension could not load into a Node host at all**, which is
+  half of what this release added (the other half, `kui_ctx_add_extension`
+  from C, was fine). A plugin leaves the whole `kui_*` API undefined and the
+  dynamic linker resolves it against what the process has already loaded —
+  but only against what is in the *global* scope, and Node loads an addon
+  with glibc's default, `RTLD_LOCAL`. So the addon carried all 138 symbols
+  and offered none of them: `ctx.addExtension` failed with `undefined
+  symbol: kui_slot_params`. `native.cjs` asks for `RTLD_GLOBAL` now
+  (`RTLD_LAZY` stays Node's default, so it is one bit). This is the same
+  fact `crates/kui-ffi/build.rs` passes `--export-dynamic` for, one loader
+  down: being in the image was never the problem, being reachable from the
+  plugin is. macOS and Windows are unchanged — Darwin's `dlopen` defaults to
+  `RTLD_GLOBAL`, which is exactly why the round trip passed here and only
+  CI saw it, and Windows resolves through the import table instead. A test
+  reads the flags rather than the load, because on this platform the load
+  it governs succeeds either way.
+- **An event a Node window's own driver injects reaches the plugin that
+  owns it.** `KuiWindow` gained the `extensions` window option in this
+  release, and its `take_events` assumed the runner had already routed
+  what it was handed. That is true of what comes back out of
+  `TreeApp::on_event` — `Shell::route_events` gave an extension its event
+  and queued the replies on the way in — and false of everything this
+  driver asks the core for itself: a `press`, an access action, the
+  pending events `pollEvents` drains. Those never pass the loop, so an
+  event whose `origin` was a plugin went straight to JS and the plugin
+  never heard its own click. They go through `Extensions::route` now, the
+  same one the other three hosts use, reached through a new
+  `PumpRunner::route_events` (below) because the list and the app have to
+  be borrowed at once.
+- **`kui_ctx_add_extension` says no instead of a silent yes.** On a
+  context that borrows a frame — a plugin's `kui_ext_view`, or a view
+  callback under `kui_run_with` — it loaded the library into a list
+  `kui_slot` never consults on such a context, answered true, and
+  unloaded it again when the call returned; the `kui_slot` after it drew
+  an empty node and said nothing. The header and three doc comments
+  already promised a plugin cannot host a guest of its own, so the code
+  says so too: the call is refused, with the reason readable through
+  `kui_ctx_extension_error`. Refused rather than forwarded to
+  `Ui::add_extension`, which would have worked — letting C nest a host
+  the way Lua does is a feature to decide on, not a bug to fix here.
+- **Windows: `panel.c`'s ` · %d left` compiled as mojibake**, and had
+  since `build.ps1` was written. `cl` reads a source with no BOM in the
+  machine's ANSI code page unless told otherwise; `/utf-8` joins the flags
+  both scripts share, so the two compile the same bytes. It surfaced
+  through the mutant the round builds to check a host refuses a plugin
+  with no `kui_ext_abi`: that file was written `-Encoding ASCII`, which
+  turned the same `·` into `?`, so the file whose whole claim is
+  "`panel.c` with one line deleted" differed by more than that — on
+  Windows and only there. It is `utf8NoBOM` now.
+### What you can delete
+
+Beside the lines under the entries above:
+
+- The `kui_ffi.dll` copied next to a C example on Windows, and the second
+  copy beside the plugin. Both are built into `target/<profile>/` now,
+  which is where the library they link already is; on ELF the rpath that
+  did the same job goes with them.
+- A host's own loop giving an injected event to its extensions before
+  handing it to the app — `PumpRunner::route_events` is that loop, and it
+  is the one the runner uses.
+- The AppKit or Win32 query an app made for the four things the OS knows
+  about the user: appearance, accent, reduced motion, locale. `env.system`
+  carries them, with an explicit unknown for a host that never answers.
+- The whole-pixel rounding a view did to its own `slide` offsets to stop
+  text swimming inside a moving card. Every displacement that moves a
+  subtree is snapped in the core now, scrolling included.
+- On Linux, whatever a Node app did instead of loading a C extension —
+  there was no working shape to write, so this is more "you can now" than
+  "you can delete".
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), run before this tag on
+2026-09-09 on `main`. What follows is what executed on what.
+
+**macOS 26.6.2 (arm64), rustc 1.98.0, Node 26.8.1.** `cargo test
+--workspace` passes: **766 tests over 71 suites, 0 failed, 0 ignored**, with
+no display, no installed fonts and no GPU. `cargo fmt --all --check` and
+`cargo clippy --workspace --all-targets -- -D warnings` are clean. The scene
+corpus runs in all four adapters against one reference report: **23 scenes**
+— `fragment` new — Rust and Lua through `cargo test`, C through
+`examples/c/counter --conformance` (the header at **259 fields and 89 enum
+members**, matched against the Rust side by the parity assert), Node through
+`npm test` with `KUI_CONFORMANCE_REQUIRED=1` (**100 Node tests**, 0 failed,
+0 skipped). The C plugin dlopens into a Rust host and into Node, routes
+clicks both ways, fills the slot it is given and delivers its reply; the same
+plugin with `kui_ext_abi` deleted is refused against **ABI 10**. `npm run
+gen` leaves the three generated files unchanged, `examples/node` installs,
+typechecks, builds and runs headless, and `scripts/check-version.sh
+0.1.0-alpha.10` passes — after the script that writes the version was taught
+about `kui-ffi`, which was added to the workspace after its list of names was
+written and so would have shipped one requirement at alpha.9.
+
+**Linux (glibc), in `node:24-bookworm`.** The one platform check that is not
+macOS's, and it is here because CI found a defect no test on this machine
+could: a C extension in a Node host. The plugin leaves **18 `kui_*` symbols
+undefined**, and with the addon loaded `RTLD_LOCAL` — glibc's default —
+none of them resolve. Both halves pass there now: the round trip through
+`ctx.addExtension`, and the flags check that guards it. macOS cannot fail
+this one, which is why the test reads the flags rather than the load.
+
+`scripts/ax-audit.swift` against `examples/rust/accessibility.rs` passes
+**106/106 checks**, three times over, the same 106 alpha.9 had. Compile it
+once with `swiftc -O` before running it: interpreted, each attribute read
+waits on the app's run loop and the menu-focus checks fail on timing alone
+(104/106 and 99/106 on two such runs here, 106/106 on every compiled one).
+
+Every host opened a window, presented **120 frames** under `KUI_SMOKE_FRAMES`
+and exited 0: the **fourteen** Rust examples (`accessibility`, `bulk_exit`,
+`connectors`, `counter`, `editor`, `fragments` — new, and the one that draws
+what ADR 0015 added — `gallery`, `modal_editor`, `popup`, `rich_text`,
+`splitmux`, `syntax_view`, `toasts`, `waker`), `examples/c/counter`,
+`c_panel`, `lua_panel`, and `counter-window.mjs` on Node — seventeen windows
+over five hosts, eighteen with the mind map below.
+
+**The round reads the warnings now, not just the exit code**, which is what
+found the last four things in this release. `KUI_SMOKE_FRAMES` judges that
+drawing did not fail, not what was said while it drew, and
+`examples/lua/panel.lua` was drawing nothing at all down one branch while
+exiting 0. Every example is clean of warnings as of this tag.
+
+**The drag check on the by-hand list.** `npm run mindmap`, then a synthetic
+drag posted through the HID tap with `screencapture` run *while the button
+was down*: at "move pan −90,−55" all four cards and their connectors had
+moved together by exactly that offset — 180 physical px at 2× — with each
+label square in its own card. That is F15 still absent, and it is also W7's
+claim under the gesture that would show it worst.
+
+**What this round did not run**, and alpha.9 did: ADR 0009's press-drag-release
+into a popup. Nothing on this platform's popup or retarget path changed in
+this release — W3 and W5 are Windows' window code — so it is the alpha.9
+result that stands, not a fresh one. Windows' own round is
+`scripts/smoke-windows.ps1` and ran on the platform for W3–W12; its mixed-DPI
+popup case is still unrun.
+
+**The benchmark table below the README's is not refreshed**, for the third
+release running and for alpha.7's reason. `scripts/bench-check.sh
+v0.1.0-alpha.9` reports **all four guarded rows clean** — `frame_10k_rects`
+−1.6%, `frame_10k_rects_with_text_and_hits` −0.6%, `frame_1k_typical` +2.8%
+and `deep_nesting_64_levels` −1.1% — but the first run of the four could not
+resolve the last of them (±58.5% against itself, which the script reads as
+"unreadable" rather than as either answer) and it took a second run of that
+row alone, on a quieter machine, to land at ±4.0%. A guarded row is a
+*difference* measured back to back and survives that; the README's absolute
+medians do not, so they stay at alpha.8's numbers.
+
+The one unguarded row that read slow, `frame_10k_rects_with_access_tree` at
++4.5% against its own ±3.0%, does not reproduce: alone it came back −7.3% at
+±9.8%, and the *base* side — alpha.9's code, unchanged between the two runs —
+measured 1.63 ms and then 1.71 ms, a 4.9% swing on identical code. The row
+cannot resolve a difference that size here, which is the same verdict
+`deep_nesting_64_levels` got with the label on it. Nothing in this release
+regressed a bench.
+
 
 ## 0.1.0-alpha.9 (2026-09-08)
 
@@ -1211,6 +1379,19 @@ that asserts on an empty warning list is what notices.
   now, and `a_style_table_shared_by_three_texts_is_three_texts` pins it.
   **What you can delete:** the per-call `{ size = 14 }` literal a script
   spelled out because a shared one misbehaved.
+- **`examples/lua/panel.lua` drew nothing when the C plugin was not built.**
+  Its fallback branch passed `wrap = true`, and `wrap` is the text one
+  (`"word"` / `"glyph"` / `"none"`) — the boolean is `wrap_children`, on a
+  row. Lua reported it the way it should, as a runtime error from the
+  extension's `view`, but an error there takes the whole panel with it:
+  `extension-view-error`, then `unbalanced-extension` for the two nodes the
+  failed call left open. Nothing caught it because the branch only runs
+  before `examples/c/build.sh` has been run, and because a warning is not a
+  non-zero exit — `KUI_SMOKE_FRAMES` judges that drawing did not fail, not
+  what was said while it drew. The pre-tag round reads the warnings now, and
+  every example is clean of them: three more that were not (`gallery`'s three
+  unlabelled images, `editor`'s unnamed document field, and this panel's
+  filter box) have the `label` the library was asking for.
 
 ### What you can delete
 

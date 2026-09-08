@@ -7,28 +7,30 @@ F16–F23 and F25–F31 on 2026-09-07). Every item names the
 evidence that produced it, so a task that turns out to be wrong can be argued with rather
 than guessed at.
 
-**This file is the open list.** The sixty-three closed entries — each with its
+**This file is the open list.** The hundred closed entries — each with its
 outcome written on top of the original finding, and the tables, profiles and
 evidence it argued from — are in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md); forty-six moved there
 on 2026-09-06, the remaining ten field-report entries followed the same day
-before the alpha.7 tag, and W2 went whole on 2026-09-07 when ADR 0009's driver
-half was built. The index at the bottom of this file names every one of them,
-so an id cited by an open item, a code comment or a commit message can be
-resolved without opening the archive. Nothing was renumbered in any of those
-moves, and nothing ever is. What is left here is three parked headings — C12,
-C13 and C14 — W3 from the editor-and-mux assessment (2026-09-07), now run and
-rebuilt on a real Windows machine; W4–W12 from the first Windows round
-(2026-09-08), which is what running it found; and F36,
-which fell out of building the four entries the two alpha.9 field reports
-and the bake-off produced (F32–F35, filed and built 2026-09-08); and what
-comes next; F16–F23 from the two alpha.7 field
-reports all closed the day they were filed (2026-09-07), F25–F31 from the
-alpha.8 ones by the day after (F27 last, on 2026-09-08), and C16–C23 landed
-whole for alpha.9. C15's
-remainder was the last split entry, and it closed on 2026-09-07.
+before the alpha.7 tag, W2 went whole on 2026-09-07 when ADR 0009's driver
+half was built, fourteen more cut alpha.9 on 2026-09-08, and the fourteen of
+this round — W3, W4–W12 and F32–F35 — went before the alpha.10 tag. The index
+at the bottom of this file names every one of them, so an id cited by an open
+item, a code comment or a commit message can be resolved without opening the
+archive. Nothing was renumbered in any of those moves, and nothing ever is.
 
-Ordered by area, not by priority. What to do next is under "After alpha.9".
+What is left here is four entries and a plan: three parked headings — C12,
+C13 and C14, each waiting for a view that wants it — and F36, which fell out
+of building the last two of the four entries the two alpha.9 field reports and
+the bake-off produced, and which is filed rather than built on purpose (the
+only host driving its own audio device today is the runner). Everything else
+that has been filed has shipped: F16–F23 from the two alpha.7 field reports
+closed the day they were filed (2026-09-07), F25–F31 from the alpha.8 ones by
+the day after (F27 last, on 2026-09-08), C16–C23 landed whole for alpha.9, and
+W3–W12 and F32–F35 for alpha.10. C15's remainder was the last split entry, and
+it closed on 2026-09-07.
+
+Ordered by area, not by priority. What to do next is under "After alpha.10".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -197,66 +199,9 @@ own, and it is C16.
 **All eight, C16–C23, were built between 2026-09-07 and 2026-09-08** and
 moved whole, with this table, to
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md#from-the-editor-and-mux-assessment-2026-09-07)
-on 2026-09-08, cutting alpha.9. What stays here is W3, which the first
-Windows round below finally ran, reproduced and rebuilt against.
-
-### `~` W3 — On Windows, animations stop while the window is grabbed — **verified, rebuilt and measured on the platform (2026-09-08)**
-
-Reproduced, and the blind fix was half right. Windows 11 26200, winit
-0.30.13, a 3840×2160 / 239 Hz display, `Chrome::Native`, release profile,
-`fragments` (whose shimmer animates every frame). Frames counted from the
-runner itself; the window's own position sampled against the pointer
-through a title-bar drag driven by `mouse_event` relative moves at 500 Hz,
-which is the injected path a real mouse takes — a `SetCursorPos` warp is
-not, and shows none of this.
-
-**The reported bug is real.** With the re-request branch off, a title bar
-held perfectly still for 2 s drew **0 frames**. The modal loop dispatches
-`WM_PAINT` only when something invalidates the window, and a window that is
-not moving never does.
-
-**The blind fix cures it and costs the drag**, which is the second half of
-the report and was not in the entry: asking for the next frame from
-`RedrawRequested` means a `WM_PAINT` is always pending, and *each answer
-blocks on vsync inside the modal loop*, with the coalesced `WM_MOUSEMOVE`
-behind it waiting that long. Same drag, three builds:
-
-| | window moves in 2.5 s | ms between moves p50 / p99 / max | px per move p50 / max |
-|---|---|---|---|
-| nothing animating (`counter`) | 996 | 2.05 / 4.32 / 14.5 | 5 / 14 |
-| animating, re-request (the blind fix) | 291 | 8.06 / 18.9 / 38.1 | 18 / 86 |
-| animating, re-request off | 983 | 2.04 / 4.21 / 17.4 | 5 / 14 |
-
-Four times fewer position updates, three and a half times the step, stalls
-to 38 ms and jumps to 86 px — a window that lags the pointer and moves in
-lurches, which is exactly how it was reported the second time. It only
-happens while something is alive, because that is the only time the branch
-fires.
-
-**Built instead: a timer** — the alternative this entry named, and without
-the subclass it assumed. `crates/kui/src/windows_anim.rs` arms
-`SetTimer(hwnd, …, 10 ms, Some(tick))` while the pane animates and kills it
-when it settles; the `TIMERPROC` is called by `DispatchMessage` wherever the
-loop is running, the modal one included, and does one
-`RedrawWindow(RDW_INTERNALPAINT)`. `WM_TIMER` is a generated message like
-`WM_PAINT`, so real input outranks it, and the pace is the timer's rather
-than vsync's. No subclass, so it holds under `Chrome::Native`; outside the
-modal loop it is redundant with `about_to_wait`'s own request and coalesces
-into the same paint.
-
-Measured on the same rig: the 2 s hold now draws **129 frames** (~64 fps —
-Windows' timer granularity is 15.6 ms without `timeBeginPeriod`, which is
-a process-wide change not worth making for this), and the drag is back to
-**1056 moves, 2.02 ms p50, 5 px steps, 12.8 ms worst** — the static
-window's numbers. Frames continue at a full 240 fps through the drag, from
-the platform's own invalidation.
-
-(3) of the old "Do" holds as written: the frame clock is the wall's, so the
-tween catches up on release rather than replaying.
-
-`~` rather than `!` now: what ships is a hold that animates at 64 fps
-instead of the refresh rate. Raising it needs a higher timer resolution,
-which is a decision about the whole process, not about this.
+on 2026-09-08, cutting alpha.9. **W3 followed them on 2026-09-09**, once
+the first Windows round below had run it, found it half right and rebuilt
+it as a timer; nothing from this assessment is open.
 
 ## From the first Windows round (2026-09-08)
 
@@ -287,337 +232,13 @@ fail rather than what was drawn — but it needs no permission grant and no
 human, and it found six things in one afternoon. P8's two follow-ups are
 untouched: `windows_nc.rs` and `access_bridge.rs` still have no test.
 
-### `!` W4 — Every `fragment` past the first crashed the app on DX12 — **done (2026-09-08)**
-
-`fragments` panicked on its first paint, from
-`Renderer::render` → wgpu validation:
-
-    Dynamic binding index 0 (targeting BindGroup with 'kui.fragment.params'
-    label 1, binding 0) with value 64, does not respect device's requested
-    `min_uniform_buffer_offset_alignment` limit: 256
-
-`uniform_align` was read from the **adapter**, which reports 64 on DX12,
-while the device is opened with `Limits::default()` and its 256 — and
-validation holds a dynamic offset to what the device asked for, not to what
-the hardware could have done. So the slots were packed 64 bytes apart and
-the frame's second fragment sat at an offset validation refused. One
-fragment in a frame never hit it, which is why the corpus and the split
-bench pass everywhere.
-
-macOS never saw it because Metal's adapter reports 256 and the two agreed —
-the exact shape of bug a second platform exists to find. Fixed by reading
-the limit from the device (`crates/kui-wgpu/src/lib.rs`), which is the only
-number validation ever compares against.
-
-### `!` W5 — A resize handed the surface a size no device can hold — **done (2026-09-08)**
-
-Moving a window to 2600×1500 arrived at `Surface::configure` as
-**2578×32711**, and a surface larger than `max_texture_dimension_2d` panics
-inside wgpu, taking the app with it. Windows hands out a nonsense size
-mid-resize; kui passed it straight through, having clamped only the bottom
-(`max(1)`, for the minimized window that reports zero).
-
-`Renderer::resize` and the initial configure now `clamp(1, max)` against the
-device's `max_texture_dimension_2d`. A clamped frame is one wrong picture
-and the next real size fixes it, which is the right trade against a panic.
-
-### `!` W6 — No C extension could ever load on Windows — **done (2026-09-08)**
-
-`cargo test --workspace` on the platform failed one test, and the failure
-was the whole feature:
-
-    left:  "kernel32.dll: path contains a NUL"
-    right: "kernel32.dll: plugin declares no ABI; this build is 9"
-
-`sys::path_arg` encoded the path as UTF-16 and packed the code units into a
-`CString`'s bytes for `load` to unpack. Every ASCII character puts a zero
-byte in its pair, so `CString::new` refused **every path there has ever
-been** and `CExtension::open` returned that error before it opened
-anything. ADR 0014's C-extension half was dead on Windows for as long as it
-has existed, and only a native test run could say so — the cross-compiled
-CI path builds this file and never calls it.
-
-`PathArg` is now the platform's own type (`CString` on unix, `Vec<u16>` on
-Windows) instead of one type smuggling the other, so there is nothing left
-to pack or unpack. The interior-NUL refusal the old comment wanted is kept,
-where it belongs: `LoadLibraryW` would stop at one and open something the
-caller did not name.
-
-### `.` W7 — Text inside a moving box steps a whole pixel while the box does not — **done (2026-09-09)**
-
-The decision this entry asked for, taken in the direction it named: a
-displacement that moves a *subtree* is rounded to whole physical pixels
-(`Vec2::snapped`), so the box and the text step together. It is the whole
-class, not the slide the entry measured — `ease_positions` for a `slide` and
-an `enter`, `emit_ghost` for an `exit`, and `layout::positions` for a scroll,
-which turned out to have the same wobble and to be the commoner way to see
-it: a row's background moved by a fractional offset while its text snapped.
-
-Three limits are deliberate. **Positions are not rounded, offsets are** — a
-card laid out at a fractional x stays there and keeps the gap it had, where
-rounding the position would move every still node the moment it stopped
-animating. **Glyphs are still placed whole**, so the atlas is still one
-raster per glyph. And the **retained scroll offset stays exact**: a 0.3 px
-notch accumulates rather than being lost, and a virtual list reading
-`scroll_offset` sees what it always did.
-
-What it cost is what the entry predicted: a slide steps in units of 0.67
-logical px at 150% and a whole one at 100%. The corpus moved by one line —
-`scene exit`'s quad digest, `c140d03` to `6724565` — and one only, because
-that scene is the sole place in it where something is mid-displacement when
-the report is taken; the two scrolling scenes clamp to whole offsets and did
-not change. Measured by dumping the corpus either side of the patch, which
-is the check this entry said it wanted.
-
-One thing the fix found that the entry did not name. `(v * scale).round()`
-breaks a .5 tie *away from zero*, so it is not translation-invariant across
-the origin: a run of text at exactly x.5 jumped a pixel as it crossed, which
-is this same wobble surviving at one line on the screen. Placement is
-`floor(v + 0.5)` now (`geom::snap_px`), with a thousandth-of-a-pixel bias,
-because at 150% every other whole logical pixel *is* a half physical one —
-exact ties are ordinary here, and the divide-and-multiply a snapped offset
-makes the trip through lands a hair either side of one. `crates/kui-core/tests/pixel_snap.rs` measures the
-entry's own quantity, the gap between a card's left edge and its first
-glyph, across a slide, a fractional-target slide, a scroll and an exit.
-
-The original finding follows.
-
-Found while looking for W3 and reported here because it is real, not
-because it is what was reported: it is *not* the jitter the round set out
-to chase. During a slide the node's own quad moves with sub-pixel precision
-while its glyphs are placed at whole physical pixels, so the text wobbles
-±0.5 px inside its own background, every frame, for the length of the
-animation. Measured headless at scale 1.5 over a 260 ms `enter` — the gap
-between the card's left edge and its first glyph swings between 21.52 and
-22.49 px while the card's own x reads 525.0, 500.87, 477.51, …
-
-Deliberate, and not obviously wrong: `build_templates` positions a run's
-glyphs once and `emit` places the whole run at
-`(origin * scale).round()`, which is what keeps text crisp and the atlas to
-one raster per glyph. The cost is only visible while something moves, and
-it is worse the lower the scale factor — 1 physical px is 0.67 logical at
-150% and a whole one at 100%, against half on a 2× Mac, which is why it has
-not come up before.
-
-**Do:** nothing yet. If it is worth fixing, the cheap answer is to quantize
-an animated displacement to whole physical pixels so the box and its text
-step together, rather than to place glyphs at fractional offsets (which
-softens moving text and costs the one-raster-per-glyph cache). Either way
-it changes what the conformance corpus reports, so it wants a decision
-before a patch. *(Taken, 2026-09-09: the cheap answer, widened to scrolling
-— see the top of this entry.)*
-
-### `~` W8 — The C examples had never been built on Windows, and the plugin half could not be — **done (2026-09-08)**
-
-W6 fixed the loader; this is everything else the round found when the C side
-was actually built. `build.sh` is bash and assumes `cc`, `-shared -fPIC`,
-`-rpath` and a plugin that links against nothing, and three of those four
-have no Windows spelling. All three artifacts build and run now —
-`counter.exe` (C as the host), `panel.dll` (C as an extension) and the
-`kui_ext_abi`-deleted mutant the host must refuse — from
-[`examples/c/build.ps1`](../examples/c/build.ps1), which is `build.sh`'s
-round in the same order with the same checks.
-
-Both scripts write into `target/<profile>/` rather than beside their sources,
-which is what makes the "no rpath" problem disappear: a host built there is
-already beside the `kui_ffi.dll` it loads, and so is a plugin beside the DLL
-*it* imports. That replaced two `Copy-Item`s and eight `.gitignore` lines.
-Both also take `--run` / `-Run`, and the round they print when they do not
-run it is the round they run when they do — which is the whole of what CI
-invokes, so a failure there reproduces with one line.
-
-What actually differed, and it is worth separating Windows' constraints from
-kui's mistakes:
-
-**Windows', unavoidable.** The compiler has to be MSVC-ABI (`cl` or
-`clang-cl`), because that is what `x86_64-pc-windows-msvc` links; the MinGW
-`gcc` on PATH would compile and then not link. `kui_ffi.dll` has to sit
-beside `counter.exe`, because there is no rpath. And a DLL may not have an
-unresolved import, so the plugin cannot "link against nothing" the way the
-header describes: it names the module each `kui_*` comes from in its own
-import table, and takes that name from an import library.
-
-**Ours, and fixed.** `crates/kui-ffi/build.rs` said Windows needed nothing
-here — "Windows resolves a plugin's imports through an import library rather
-than the executable, so there is nothing to ask for" — which is half of it.
-There is no import library unless the host *exports* something, and a Rust
-bin exports nothing. It now hands link.exe a `/DEF:` naming all 135 `kui_*`,
-generated from the crate's own `pub extern "C" fn kui_*` set rather than
-kept as a list that would go stale, and link.exe writes the `c_panel.lib`
-the plugin links against. (`/DEF:` rather than 135 `/EXPORT:` link args:
-rustc quotes each one, and a quoted `@response-file` is not expanded either.)
-
-Second: a DLL exports nothing unless it says so, so the plugin's own seven
-entry points were invisible and the host refused it as declaring no ABI —
-the same message as the mutant, for a different reason. `kui.h` now puts
-`KUI_EXT_EXPORT` (`__declspec(dllexport)`, empty elsewhere) on the seven
-declarations rather than leaving it to the plugin author, so `panel.c` is
-unchanged and the same source builds everywhere.
-
-The one thing that does not carry over, and it is Windows' rather than
-kui's: an import library names the module it imports from, so a plugin built
-against `c_panel.lib` loads into `c_panel.exe` and no other host, where the
-same `panel.so` would have loaded into either. A host of its own exports
-`kui_*` the same way and ships the `.lib` its plugins link to. `kui.h` says
-so where it describes the contract.
-
-`~` because that last paragraph is a real limit on the C extension story on
-Windows and not a defect to fix. The round is in CI: `smoke-windows` builds
-and runs all three, and requires the mutant's refusal.
-
-### `~` W9 — A precompiled plugin could not be handed to anyone, and C could not host one — **done (2026-09-08)**
-
-Two halves of one question, asked after W8: *can I compile a `.dll` and give
-it to users?* Yes, and the shape it has to have was not available.
-
-**The plugin half.** On Windows a plugin links against an import library and
-so names the module its `kui_*` come from. Against the host's, it loads into
-that host and nothing else — which is fine for an app shipping its own SDK
-and useless for a plugin you hand to somebody. The shape that travels is the
-one every Windows plugin ecosystem uses: import from the *library's* DLL, not
-from the executable (a Python extension imports from `python313.dll`). That
-did not work, and the reason was one line: `kui_reply`'s sink was a
-`thread_local`, so a plugin calling `kui_ffi.dll`'s copy pushed replies into
-a list the host's copy never read, in silence.
-
-The sink rides on the event now (`KuiEvent.reply_sink`, ABI 10) as a function
-pointer into whichever copy opened it. Only that two-field header has to
-agree across copies; the list stays where it was made. Everything else that
-crosses already travelled through a pointer the host handed over, so two
-copies were always fine for it.
-
-Measured on the platform, which is the only place it could be: a Rust host
-with its own statically linked library, loading a plugin whose import table
-reads `kui_ffi.dll` — `dumpbin /imports` on both says so — delivers the
-reply. The old design could not have.
-
-**The host half.** ADR 0014's loader was `kui_ffi::CExtension`, which is
-Rust, so a C host could declare a slot with `kui_slot` and had nothing to
-put in it. Now `kui_ctx_add_extension(ctx, namespace, path)` loads one into
-a context, and `kui_run_with(ctx, …)` opens a window with what a context
-loaded — one loader, one error channel; `kui_slot` fills from either;
-`kui_ctx_extension_error` says why a refusal was one, and
-`kui_ctx_extension_namespace` turns an event's origin back into the name the
-host chose. Events reach the plugin and replies reach the host, through the
-same `route_events` shape the Rust runner uses.
-
-[`examples/c/host.c`](../examples/c/host.c) is the example and the test: it
-loads the *same plugin binary* `panel.rs` does, and its `--headless` asserts
-the slot filled, the click reached the plugin and not the host, and the reply
-came back under the plugin's origin. Both build scripts build it and CI runs
-it, along with the two-copies case above.
-
-`~` because the first half is a limit narrowed rather than removed: a plugin
-built against a *host's* import library still loads into that host alone.
-That is Windows' rule about import libraries and not something kui can fix —
-what changed is that you no longer have to build one that way.
-
-### `.` W10 — Half the C library is two functions nobody headless needs — **done (2026-09-08)**
-
-Asked as "should we split into ffi-host and ffi-ext to reduce the .dll?".
-Measured first, and the answer was a different split.
-
-The release cdylib is **12.3 MB**. `kui_run` and `kui_run_with` are 2 of the
-135 exported functions and the only two that touch `kui` — winit, wgpu,
-kira, accesskit, arboard. With them gone it is **5.1 MB**. Everything else,
-the other 133, is `kui-core`: build, lay out, shape text, hit-test, the
-access tree, the draw data.
-
-So the lever is the runner, and it is a feature now (`default = ["runner"]`).
-A host that owns its window and draws the display list itself — which is what
-the C API is for if you already have a renderer — takes
-`--no-default-features` and ships less than half. Both configurations build
-and pass the crate's 37 tests.
-
-**Host/ext was not the lever.** A plugin links against none of the library:
-it imports, from the host or from `kui_ffi.dll`, and `panel.dll` is 147 KB
-either way. There is no ext-only build to make smaller. What an "ext" crate
-*could* buy on Windows is a small forwarding stub — 135 thunks resolving the
-host's `kui_*` through `GetProcAddress`, so a plugin could be host-agnostic
-without the host shipping a 5 MB DLL purely for symbol resolution. Not built:
-it is Windows-only machinery for a case nobody has yet, and the two shapes
-that exist (import the host's .lib, or import `kui_ffi.dll`) already cover
-shipping a plugin. Filed here so the option is on the record.
-
-### `~` W11 — Node could not host an extension, and had no way to place one — **done (2026-09-08)**
-
-The other binding that is a host. After W9 gave C a loader, Node still had
-neither half: `CExtension` is Rust, and `slot` was not in the tree
-vocabulary at all, so a Node view could not have said *where* a plugin
-draws even if it could load one.
-
-Both are there now. `<slot name="ns/panel" params={…}/>` is the JSX
-spelling of `ui.slot` / `kui_slot`; `ctx.addExtension(ns, path)` loads into
-a headless context and a window's `extensions: [{path, namespace?}]` into
-a windowed one. Events reach the plugin and replies reach the app with the
-plugin's origin — a headless `Ctx` routes them the way `Shell::route_events`
-does, a window's runner already had.
-
-**Only C extensions**, which is the decision this was scoped by: a plugin
-is a shared library exporting the seven `kui_ext_*`, and the same binary
-loads into a Rust, C or Node host. No script-loads-script path — a Lua
-extension is loaded by a Rust host or not at all, though a Lua script may
-load a *C* plugin (W12). That is why `kui-node` takes `kui-ffi` with
-`default-features = false`: it wants `CExtension` and not a second
-windowed runner (W10).
-
-`slot` is a **protocol op, not a schema element** — like `richText` and
-`windowButtons`, which are also ops with no `ELEMENTS` row. It is a
-host-side placement call in every binding that has one, not a drawable
-node, and the corpus contract stays intact: every `ELEMENTS` row must be
-exercised by a scene in all four adapters, and a scene with a plugin in it
-would need a loadable extension per adapter to run at all.
-
-Two things the round found on the way, both in the entries above rather
-than here: a plugin's own directory was not searched for the DLLs it
-imports (`LOAD_WITH_ALTERED_SEARCH_PATH`, which is why loading the C panel
-from `node.exe` failed with error 126), and the two-copies case works
-across this boundary too — the addon has its own statically linked library,
-`panel.dll` imports another from `kui_ffi.dll`, and the reply still
-crosses. That is ABI 10 doing its job in a third host.
-
-### `~` W12 — A Lua view could not put a native panel inside it — **done (2026-09-08)**
-
-W11 stopped at "no script-loads-script path", and that still holds: nothing
-loads a Lua extension but a Rust host. What it also stopped at, wrongly, was
-a Lua script loading a **C** plugin — which is not cross-scripting at all,
-and is the case an app written mostly in Lua actually has.
-
-The blocker was one line in the core: `begin_slot` refused inside a fill,
-because ADR 0014 decision 5 said "whether one may offer slots is a decision
-for the day one asks". This was the day. The
-[amendment](adr/0014-slots-an-extension-fills-in-place.md) is the argument;
-in short:
-
-- `Ui`'s filler is handed down into a fill (`Core::fill_within`), so a
-  guest's `ui.slot(…)` is a slot like the host's, keyed where the guest is
-  drawing — decision 4 applied twice.
-- `Fill::add` / `Ui::add_extension` loads mid-frame into the **same** list,
-  so there is one namespace map and one origin per extension however deep
-  the loading went. Nothing in the routing had to learn about levels.
-- Replies go to whoever declared the slot, not always to the host. The walk
-  is `Extensions::route`, which all four hosts now call rather than each
-  keeping a copy of the loop — the copies had already started to drift in
-  their comments.
-- An extension is out of the list while it fills, so its own slot finds
-  nobody: `recursive-slot`, an empty position, no hang. That is also what
-  makes re-entering the list sound.
-
-Lua gets `env.add_extension(namespace, path)`, `env.extension_namespaces()`
-and `fill { name = "ns/slot", params = … }` — `fill` and not `slot` because
-`slot` is `view`'s second argument and would shadow the constructor in the
-one function that needs it. A reply from a plugin the script loaded arrives
-with `from` naming the namespace. C plugins can declare a slot now too
-(their context carries the host's `Ui`, which also retired a dead
-`borrowing_in`), but cannot load one.
-
-Worth saying because it looks like a capability: it is not. `Lua::new` has
-`package`, so a script could always `package.loadlib` anything on disk.
-What it could not do was put what it loaded in its own tree.
-
-[`examples/lua/panel.lua`](../examples/lua/panel.lua) is three languages
-deep now — Rust host, Lua panel, C panel inside it — and degrades to what it
-was when `examples/c` has not been built.
+**All nine, W4–W12, were built between 2026-09-08 and 2026-09-09** and
+moved whole to
+[`backlog/closed-2026-09.md`](backlog/closed-2026-09.md#from-the-first-windows-round-2026-09-08)
+before the alpha.10 tag, W7 last — the one that wanted a decision rather
+than a patch, settled as: a displacement moves a subtree by whole physical
+pixels, scrolling included. Nothing from the round is open; what it did
+not cover is in "After alpha.10" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -650,391 +271,10 @@ recent frame. The app's per-node key cache is what makes its second
 opens work, and the fix below has to seed a retained editor as well as a
 new one.
 
-### `~` F32 — `setEditText` reaches the editor the next frame declares, but only by a key the app cannot have yet — **done (2026-09-08)**
-
-Built as the "Do" spells it, with one thing the entry did not say and one
-door left where it was.
-
-The name defers the way alpha.9's text already did.
-`Core::set_edit_text_by_label(label, text)` resolves through `key_of` when
-some frame declared the label and is `set_edit_text` on that key; when
-nothing has, the text waits in `EditStore::pending_labels` and
-`text_edit` claims it by the label it already holds, one line before
-`declare`. The claim is the fork the entry named: a key with no state
-hands the text to `declare` as its seed, over `initial`; a key that has
-one — the editor retained while it was off screen — takes `set_text`,
-which is the abandoned-draft case a seed by key cannot express, since
-`declare` reseeds nothing that exists. `take_unclaimed_seeds` returns an
-`Unclaimed::Key` or `Unclaimed::Label` (sorted within each spelling), and
-a label's warning is keyed `Key::ROOT.str(label)` with the label in the
-message, so a reader is not sent looking for a hex key they never wrote.
-
-The doors: Node's `setEditText` reads sixteen hex digits as a key and
-anything else as a label, the way `focus` does, and `editText`,
-`setScroll`, `scrollOffset` and `scrollGeometry` moved from `parse_key` to
-`resolve_key` (`textHit` and `caretRect` were already there — the entry
-read an older line). `keyOf(label)` is on the shared `core_methods!`
-macro, so both `Ctx` and `KuiWindow` have it and `index.d.ts` generated
-it: the sentence the `edit-text-without-editor` doc has been printing is
-true in Node now. Lua gains `env.set_edit_text(key_or_label, text)`, which
-it had no form of at all — and, because `env` only exists inside `view`, a
-Lua script's call is *always* mid-build, which is exactly where the label
-path wants it: the same view's tree claims the text. C gains
-`kui_edit_set_text_label`, appended, `KUI_ABI_VERSION` unmoved (C23's
-precedent; the parity assert checks struct field order and a function is
-not one).
-
-The one door left alone: **Lua gets no `env.key_of`.** Its verbs take the
-label itself through `key_arg`, so a script never needs the hex key, and
-the diagnostic's sentence says so rather than naming a verb that is not
-there. Node and C are where a key is worth holding on to.
-
-**Tests.** `kui-core/tests/editing.rs` has the three the entry asked for
-plus one for the resolving case: a label set before any declare seeds the
-new editor with the caret at the end; a draft abandoned, undeclared for a
-frame, then set by label from the "update" comes back showing the model's
-text (and `key_of` is asserted `None` there, which is what makes the case
-what it is); an unclaimed label warns with the label in the message; a
-label the last frame declared lands at once. Mutation: with the
-`set_text`-on-existing branch removed from `claim_label`, exactly
-`set_text_by_label_resets_a_returning_editor` fails. `packages/kui/test.mjs`
-runs the report's sequence — `setEditText('edit-n13', …)` from the
-`update` that opens the field, render, `editText('edit-n13')` reads it
-back — and then its second open over a draft, `keyOf` both ways, and the
-unclaimed-label warning. Lua and C get one test each; the C one turns
-diagnostics on first, since an FFI context starts with them off.
-
-Docs: alpha.10's CHANGELOG entry corrects alpha.9's F25 "what you can
-delete" the way alpha.9 corrected alpha.8's F20 — the advice was true of
-the holding and false of the naming — and `howto.md`'s "How do I reset an
-editor's text?" and "How do I name a node from outside the view?" are
-rewritten around the label spelling. The rest of that page is F33's.
-
----
-
-The finding as it was filed:
-
-The mind map deleted its `onLayout` latch on the strength of alpha.9's
-F25 entry — **What you can delete:** "the frame of waiting … Set the text
-in the `update` that opens the editor; the frame that draws it takes the
-text with it" — and hit `Error: bad id "edit-n13"`. The held seed works
-exactly as F25 built it (their standalone probe: "seeds a closed editor
-by its key, reopens it, and the seeded text is there, with no warnings").
-It is the *name* that cannot be given: `setEditText` takes the 16-digit
-hex key and nothing else, the hex key comes from an event the node fired,
-and an editor being opened for the first time has fired none. The
-`edit-text-without-editor` warning then says to use "the one
-`keyOf`/`kui_key_of` resolves the label to", and Node has no `keyOf`. So
-the latch stays, "no longer because the call is a no-op, which is fixed,
-but because it is where the key comes from, which is not."
-
-The repo's lines, each as the report read them:
-
-- `crates/kui-node/src/lib.rs:1778` — `set_edit_text` goes through
-  `parse_key` (hex or `bad id`), while `focus` / `isFocused` / `reveal` /
-  `access` go through `resolve_key` (`:240`), which tries the hex form and
-  then `Core::key_of`. `editText`, `setScroll`, `scrollOffset`,
-  `scrollGeometry`, `textHit` and `caretRect` are hex-only too, and
-  `howto.md`'s "name a node from outside the view" says so as if it were
-  a rule rather than an omission.
-- `crates/kui-core/src/diag.rs:218` — the warning's doc names `keyOf`.
-  `index.d.ts:553` carries it, generated; `packages/kui/index.js` has no
-  such method (the Node door built for F5 is `resolve_key` *inside* the
-  focus verbs, never a method of its own). Lua has `ui.key_of` behind
-  `key_arg` (`kui-lua/src/lib.rs:240`) and C has `kui_key_of`
-  (`kui.h:1335`), so the sentence is true in two bindings of three.
-- `crates/kui-lua/src/lib.rs:302` — Lua has `edit_text(key)` and **no
-  `set_edit_text` at all**; the `<edit>` row's doc (`schema.rs:1303`)
-  promises one in every binding.
-- `crates/kui-core/src/runtime/builder.rs:328` — `key_of` resolves
-  through `key_labels` (this frame so far) and then `key_labels_last`.
-  Outside a build that is the last finished frame. An editor a rename
-  opens was in neither frame — not on a first open, and not on a second
-  one either, since a closed editor is undeclared for every frame in
-  between. Only an editor that is *currently* declared resolves by label.
-- `crates/kui-core/src/edit.rs:334` — `EditStore::pending` is keyed by
-  `Key`; `declare` (`:468`) consumes a seed only on creation, which is
-  right for a seed by key (an existing state takes `set_text` where it is
-  called) and wrong for a seed by label, because a retained-but-undeclared
-  editor (F20, F26: state is kept while its key is off screen) has a state
-  and no resolvable label — the mind map's abandoned-draft case exactly.
-- `crates/kui-core/src/runtime/builder.rs:475` — `text_edit` has the
-  `label` in hand when it calls `edit.declare`, and pushes it into
-  `key_labels` two lines later. The seam is already there.
-
-**Do:** the report's own sentence — "deferring the name to the same frame
-is the whole remaining distance" — and one more case. (1)
-`Core::set_edit_text_by_label(label, text)`: if `key_of(label)` resolves
-now (the editor is declared), apply as `set_edit_text` does; otherwise
-hold in `EditStore::pending_labels: FxHashMap<String, String>`. In
-`text_edit`, before `declare`: `pending_labels.remove(label)` — if the
-key already has a state (a returning editor), call `set_text` on it; if
-not, hand it to `declare` as the seed. `take_unclaimed_seeds` drains the
-labels too; the warning's key for a label is `Key::ROOT.str(label)` so
-two unclaimed labels in one frame are two warnings under the
-once-per-(code, key) dedup, and the message says which spelling. (2)
-Node: `setEditText` takes both spellings the way `focus` does — hex
-through `parse_key`, anything else through the label path — and
-`editText`, `setScroll`, `scrollOffset`, `scrollGeometry`, `textHit` and
-`caretRect` move from `parse_key` to `resolve_key`, since they read state
-that exists and last-frame resolution is right for them. (3) `keyOf(label)`
-on Node's shared `core_methods` macro (hex string or null), so the
-diagnostic's sentence is true in Node; Lua `env.set_edit_text(key_or_label,
-text)` through `key_arg` plus the pending path; C
-`kui_edit_set_text_label(ctx, KuiStr, KuiStr)` appended — no ABI bump, as
-C23's append. (4) Tests, and the mind map's three red checks are the
-spec: in `kui-core/tests/editing.rs`, set by label before any declare
-seeds the new editor with the caret at the end; abandon a draft, stop
-declaring, set by label from the "update", declare again — the editor
-shows the model's text, not the draft (the case F25 could not reach and
-`declare`'s creation-only consume would miss); an unclaimed label warns
-with the label in the message. In `packages/kui/test.mjs`, the report's
-sequence verbatim: `setEditText('edit-n13', text)` in the update that
-opens it, render, `editText('edit-n13')` reads it back. Mutation: drop
-the `set_text`-on-existing branch in `text_edit` and the second test must
-fail. (5) alpha.10's CHANGELOG corrects alpha.9's F25 deletion line the
-way alpha.9 corrected alpha.8's F20 line: "set the text in the `update`
-that opens the editor" was true only with a key the app could not have,
-and is true now with the label the view declares. (6) The
-`edit-text-without-editor` doc, the `<edit>` row and `howto.md`'s "How do
-I reset an editor's text?" say the label spelling first. A `~`: the
-workaround is the latch, and this is the third release it has survived
-its own bug report.
-
-### `.` F33 — `howto.md` contradicts the release that shipped it, and nothing checks a "today" sentence
-
-**Done (2026-09-08), and the check found a fourth site the entry missed.**
-All four parts of the "Do" below are in the tree. The guard —
-`crates/kui-core/tests/docs.rs`, one `#[test]` the workspace run already
-executes — was written first and run against the stale page, which is how
-the fourth turned up: it named F25, F30 **and F27 twice**, the second in
-"How do I pin the version I tested?", where the sentence was right and only
-the citation was stale. That one now points at alpha.9's `### Changed`
-instead. The three answers say what alpha.9 shipped: "find out a release
-happened" is `npm view @qxuken/kui version` and `npm outdated` with `@alpha`
-as the fallback and why silence is not "no such release"; "reset an editor's
-text" is F25's held seed, over `initial`, for one frame, with
-`edit-text-without-editor` when nothing declares the key (the label spelling
-is F32's line to add, so this touched one sentence and its links); "settled
-frame" is `await app.settled(maxMs = 10_000)` and `await app.frame()`, and
-says the cap resolves with `animating()` still true rather than throwing.
-"How do I use one font in every headless core of a suite?" is under *Test
-it*: `setup` registers against that surface, `init(surface)` reads the id
-into the model, `addSystemFont` is idempotent per family
-(`runtime/resources_api.rs:91`) so the same `setup` is right for every core,
-and the module global is what raises `foreign-resource` — the pomodoro's
-wish 1, answered where the app will read it rather than in a fourth backlog
-entry.
-
-The test itself parses rather than matches: an id is uppercase letters,
-digits, an optional lowercase suffix and an optional `(x)`, so a cited
-`C5(b)` and a closed `C5` are different strings and the parked half of a
-split entry stays citable. It asserts the closed index parsed as more than
-twenty entries, since a section that moved would otherwise make the whole
-check vacuous. Both halves were mutation-tested: the citation half fails
-with the three ids and their sentences before the fix, and misspelling one
-`props.md#` anchor fails the second with both links that carry it.
-
-Both reports found it independently. The pomodoro (wish 2): "How do I
-find out a release happened?" says the package "publishes one dist-tag,
-`alpha`, and no `latest`" — in the tarball of the release whose own
-`### Changed` says every alpha now takes `latest`. The mind map: "How do
-I reset an editor's text?" says `setEditText` before the declare "is a
-silent no-op today … backlog F25 is that gap" — in the release that closed
-F25. Checked: `docs/howto.md:325-336` (F27, and today the registry
-answers `{"alpha":"0.1.0-alpha.9","latest":"0.1.0-alpha.9"}`), `:148-156`
-(F25), and a third neither report reached, `:268` — "backlog F30 wants
-that as a promise on the windowed loop", where F30 shipped `settled()`
-and `frame()` in the same release. Three of the five backlog ids the page
-cites are closed. The cause is the round's shape: F27, F30 and F31 were
-built in parallel worktrees the same day, F31 wrote the page against the
-alpha.8 tree it was given, and the merge kept both sides — the CHANGELOG
-and BACKLOG conflicts were resolved by hand, and this page had no
-conflict to resolve because nothing else touched it.
-
-The pomodoro asks for "a CI check that the shipped docs do not contradict
-each other on a claim the registry can answer". The registry claim
-itself is the wrong thing to check — a phrase match is brittle and the
-registry is not reachable from every CI job. What every stale sentence
-here hangs on is a backlog id cited as open: "backlog F25 is that gap",
-"F27 is the fix", "F30 wants". That is mechanical.
-
-There is also a fourth ask hiding here. The pomodoro's wish 1 —
-per-surface resource handles — is on its fourth report, and the answer
-has been "theirs" three times (`init(surface)` runs before the first
-frame and puts the id in the model; `addSystemFont` is idempotent per
-family). Every declined answer lived in a backlog entry the app never
-reads. A `howto.md` answer is the cheapest way to retire a wish that is
-already answered, and it is what the page is for.
-
-**Do:** (1) Rewrite the three answers: "find out a release happened" is
-`npm view @qxuken/kui version` and `npm outdated`, with `@alpha` as the
-fallback if `latest` is ever absent; "reset an editor's text" says what
-F25 built (and F32, when it lands: the label spelling); "settled frame"
-says `await app.settled(maxMs)` and `await app.frame()` on the window
-loop and what the cap means (resolves with `animating()` still true
-rather than throwing). (2) Add "How do I use one font in every headless
-core of a suite?" under *Test it*: register in `setup`, read the id in
-`init(surface)` into the model, and never hold it in a module global —
-the pomodoro's `useFont` is the shape to describe. (3) The guard: a
-`#[test]` in `crates/kui-core/tests/docs.rs` (the workspace test CI
-already runs) that reads `docs/howto.md` and `docs/BACKLOG.md` via
-`CARGO_MANIFEST_DIR`, collects every `backlog ([A-Z]+\d+[a-z]?(\(b\))?)`
-the page cites, collects every `**ID**` the "## Closed — index" section
-lists, and asserts the two are disjoint — a closed id in a "today"
-sentence is exactly the drift both reports hit. A second assertion in the
-same test: every `props.md#anchor` the page links resolves to a heading
-`gen` writes, so a renamed section fails here rather than in a reader's
-browser. Mutation-test it by leaving one of the three stale citations in
-place first. (4) Prose in `howto.md` cites a backlog id only for an open
-gap, and the entry's "Do" for any future doc-shaped item says so. A `.`:
-a wrong sentence a reader can disprove in one command.
-
-### `.` F34 — A one-shot cut off without `finish` is silent (pomodoro wish 3) — **built (2026-09-08)**
-
-**Built 2026-09-08 (alpha.10).** `truncated-playback`, raised from the
-driver's end. `AudioStore` keeps a bounded `stopped` map — written where
-`reconcile` stops a non-looped, non-`finish` playback, `Why::Removed` for a
-departure and `Why::Restarted` for a changed `src` — and nothing there is a
-warning until something answers for it: `audio_ended` drops the entry (it
-reached its end, so the stop cut nothing off), and the oldest entry makes
-room at 256, which is what keeps a headless suite from growing one. `Audio::apply`
-returns the playbacks a `Stop` found with a `state()` other than `Stopped`,
-paired with `position()`; the runner's `apply_audio` hands each to
-`Core::audio_truncated(playback, at)`, which looks the key up, raises the
-warning on it and drops the entry. The driver stays key-blind. A stop that
-landed after the sound ended, an imperative `Core::stop`, a loop and a
-`finish` release are all silent, and a `Ctx` never raises it at all — the
-headless assertion point stays `audioCommands()` holding a `stop` for the
-node, which the code's doc, the `finish` doc and the howto answer all say.
-Verified through the real device too: a 2 s blip stopped mid-play comes back
-as one truncation with a position inside the sound
-(`crates/kui/src/audio.rs`, degrading to quiet where CI has no device).
-
-The original finding:
-
-"Presence-as-playback now has the right primitive and still no way to
-notice you did not reach for it. A non-`loop` node removed while its
-playback is still running is almost always a truncated sound, and the
-core knows both facts at that instant." Half true. The core knows the
-node went (`AudioStore::reconcile`, `kui-core/src/audio.rs:396-410`,
-stops the playback unless `finish`) and knows it was not looped; it does
-**not** know whether the playback was still running. `ended` is the
-driver's word (`Core::audio_ended`), an untagged one-shot leaves no
-`tagged` entry to have heard it, and a headless `Ctx` has no driver, so
-`ended` never arrives there at all. A core-side `truncated-playback`
-would fire on every one-shot removal in every headless suite — the
-pomodoro's included, whose own assertion point for this is the `stop`
-command `audioCommands()` hands back (its notes: "checked by deleting
-`finish` and re-running: `FAIL … (got stop)`"). The driver, on the other
-hand, knows exactly: `Audio::apply_one` receives `Stop { playback }` and
-holds the handle whose `state()` is not `Stopped`
-(`crates/kui/src/audio.rs:244-248`).
-
-**Do:** raise it from the side that knows. (1) `AudioStore` keeps a
-`stopped: FxHashMap<PlaybackId, (Key, Why)>` written where `reconcile`
-stops a non-looped, non-`finish` playback — `Why::Removed` or
-`Why::Restarted` (a changed `src` is a truncation of the old playback
-too, and the message should say which). (2) `Audio::apply` returns the
-playbacks it stopped while they were still playing; the runner's
-`apply_audio` (`kui/src/lib.rs:1575`) hands each to
-`Core::audio_truncated(playback)`, which looks the key up, raises
-`diag::TRUNCATED_PLAYBACK` on it ("removed while 0.9 s remained" is not
-knowable — kira reports position, so "removed at 0.5 s" is), and drops
-the entry; a `Stop` that landed after the end drops the entry silently.
-The driver stays key-blind, as `audio_ended` is. (3) The warning's doc
-says the headless shape plainly: a `Ctx` never raises it because nothing
-plays; a suite asserts on `audioCommands()` seeing a `stop` for the node,
-which is the same fact from the other end. (4) The `finish` doc and the
-"play a sound when the model changes" howto answer name the warning as
-the reason to reach for `finish`. (5) Tests at the core boundary —
-`audio_truncated` on a recorded stop raises once with the key; on an
-unknown playback raises nothing; on a `finish` release nothing was
-recorded — since `StaticSoundHandle` cannot be built without a device.
-A `.`: a wrong constant is a truncated sound and today nothing says so;
-the pomodoro's six-second `CHIME_MS` is the cost it names.
-
-### `.` F35 — A released playback holds a voice, and a refused play is a stderr line the view never hears (pomodoro wish 4)
-
-**Done (2026-09-08), as the entry asks — the sentence in three places, the
-refusal routed, no budget.** `AudioSpec::finish`, the `audio` element's
-schema row and `howto.md`'s "How do I play a sound when the model changes?"
-now all say what a release costs: one of the device's 128 voices until the
-file ends, released or not, and the 129th play refused. 128 stayed kira's
-number — `MainTrackBuilder::sound_capacity` is named in the `finish` doc as
-where a setting would go, and nothing was built on top of it.
-
-The refusal is data now. `Audio::apply` returns the plays the device would
-not take, the way `poll_ended` returns the ones that finished; the
-`eprintln!("kui: play failed")` is gone and a decode failure takes the same
-exit. The runner's `apply_audio` folds them into `Core::audio_refused`,
-which reports `{kind:"sound", phase:"refused", playback, tag}` for a tagged
-playback — so a view waiting on `ended` is unstuck, and can tell the two
-apart — and raises `diag::PLAYBACK_REFUSED` on the node that asked either
-way, so an untagged refusal is not silent. The event is what `ended` is,
-pending on the origin, and the routing the two share is one
-`route_playback_events`.
-
-Three details worth naming. The warning's key is the node that asked: the
-tagged node's, else the mounted `audio` element's, else the origin root an
-imperative `play` starts from — so the dedup makes a view that keeps asking
-past the limit one line rather than one per refusal. Refusals are buffered
-on the driver rather than returned inline, because `flush_pending` runs from
-the poll as well as from `apply`, and `active()` counts a buffered one so
-the loop comes back around to drain it. And the `audio` node's mount is left
-alone on a refusal: unmounting it would have the next frame re-declare,
-replay and be refused again, one line per frame.
-
-Four tests beside the F29 ones in `kui-core/src/audio.rs`: a refused tagged
-playback is one `refused` event and one warning, and can never `end`
-afterwards; an untagged one is the warning alone, on the root; a refused
-*released* playback still reports, on the key its node declared; and an
-untagged `audio` node warns on its own key rather than the root.
-`cargo test --workspace` green (69 binaries), `cargo fmt`, `cargo clippy
---workspace --all-targets` clean, `npm test` 92 pass / 1 skipped. The addon
-was rebuilt before `npm run gen` with `target/napi-type-defs` cleared —
-`props.md` and `index.d.ts`'s `WarningCode` carry the new code, member count
-unchanged at 138 — and the hand-written `SoundMsg` in `index.d.ts` took the
-new phase, since only the union is generated.
-
-One adjacent case was left as found, not fixed: a device that fails to
-*open* drops every command through `apply_one`'s `manager()` guard, which is
-the same forever-wait for a tagged node. It is already announced loudly and
-once ("audio device unavailable … sounds are dropped"), and it is a
-different failure from the device refusing a play, so it stays out of this
-entry rather than being widened into silently.
-
-"`finish` means the driver holds a playback the view has forgotten.
-Nothing says whether those are bounded, the way alpha.9 bounded
-undeclared editors at 256 — and the app that declares a one-shot per
-keystroke is the one that will find out." The bound exists and is
-kira's: `Audio::warm` opens the device with `AudioManagerSettings::default()`
-(`kui/src/audio.rs:121`), whose main track holds **128** concurrent sounds
-(kira 0.12.4, `track/main/builder.rs:26`), released or not; `playing`
-(`:76`) keeps a released handle until `poll_ended` sees it stopped. Past
-128, `m.play` fails with `SoundLimitReached` and `apply_one` does
-`eprintln!("kui: play failed: …")` (`:241`) — and that is the real gap:
-the playback is never inserted, so it never ends, so a `tag`ged node
-waiting for `ended` (the pattern `howto.md` recommends) waits forever, and
-a `finish` node is released to nothing. A one-shot per keystroke with a
-1.4 s file needs ninety keystrokes a second to reach it; a loop reaches
-it at once.
-
-**Do:** (1) The sentence, in the `audio` row (`schema.rs`), the `finish`
-doc (`kui-core/src/audio.rs:127`) and the howto answer: a released
-playback holds one of the device's 128 voices until its file ends, and
-the 129th play is refused. (2) Route the refusal instead of printing it:
-`Core::audio_refused(playback)` reports `ended` for a tagged node (so a
-waiting view is unstuck, with `phase: "refused"` rather than `"ended"`
-so it can tell) and raises `diag::PLAYBACK_REFUSED` on the key; the
-driver calls it where the `eprintln!` is, and a decode failure
-(`decoded()` returning `None`) goes the same way. (3) Not a kui budget on
-top of kira's — 128 is the device's number and the app that needs
-another sets it; note `MainTrackBuilder::sound_capacity` as where a
-setting would go, and leave it until a view asks. (4) Tests at the core
-boundary, as F34: a refused tagged playback is one `sound` event and one
-warning; an untagged one is the warning alone. A `.`: reachable only by
-a loop today, but the failure it hides is a hang in the view.
+**All four, F32–F35, were built on 2026-09-08** and moved whole to
+[`backlog/closed-2026-09.md`](backlog/closed-2026-09.md#from-two-alpha9-field-reports-and-a-bake-off-2026-09-08)
+before the alpha.10 tag. What stays here is F36, which fell out of
+building the last two of them and is in neither report.
 
 ### `.` F36 — A host driving its own audio device can report an end and nothing else
 
@@ -1115,13 +355,14 @@ without one. Under "Distribution" in *After alpha.9*.
   is the app's design and its headless assertions guard it.
 
 
-## After alpha.9
+## After alpha.10
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
-alpha.8" until 2026-09-08, when the editor-and-mux round it described had
-landed whole for alpha.9 and the heading moved with the tag; "After
-alpha.7" before that, until ADR 0012's remainder and ADR 0013 landed for
-alpha.8; "After alpha.6" before it went to
+alpha.9" until 2026-09-09, when the first Windows round it described had
+landed whole for alpha.10 and the heading moved with the tag; "After
+alpha.8" before that, until the editor-and-mux round landed for alpha.9;
+"After alpha.7" before that, until ADR 0012's remainder and ADR 0013 landed
+for alpha.8; "After alpha.6" before it went to
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md#after-alpha6) whole
 rather than accumulating strikethroughs, because every line of it had closed.
 
@@ -1133,7 +374,9 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** Nothing with a written ADR and no code. The `fragment` element, [`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`](adr/0015-a-fragment-element-and-the-painter-it-is-not.md), was proposed, measured twice, accepted and **built on 2026-09-08** — a box a registered WGSL function paints, in four bindings with a corpus scene, plus `animate` as a plain row and ABI 9. Its two measurement sections are why it was accepted (naga costs a cold build of `kui-core` alone; the draw-call split costs about 0.6 µs of CPU a fragment and nothing the GPU can see) and its amendment is what the building changed — including a collision the design could not have seen, that JSX's own `Fragment` sentinel was the string `'fragment'`. Before it, slots, [`docs/adr/0014-slots-an-extension-fills-in-place.md`](adr/0014-slots-an-extension-fills-in-place.md), were proposed, accepted and **built on 2026-09-07** for alpha.9 — an extension fills a place the host declares in its own view, under a namespace the host decides, with `Value` parameters in and replies out; its status block records what the building changed, and the first test it pins was a defect before it: an extension whose root carried no `key` was rekeyed whenever the host added a child at the root. Before it, ADR 0012's
+**Build next.** Nothing with a written ADR and no code, and nothing filed
+that is not either parked or deliberately unbuilt: after alpha.10 the open
+list is C12, C13, C14 and F36. The `fragment` element, [`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`](adr/0015-a-fragment-element-and-the-painter-it-is-not.md), was proposed, measured twice, accepted and **built on 2026-09-08** — a box a registered WGSL function paints, in four bindings with a corpus scene, plus `animate` as a plain row and ABI 9. Its two measurement sections are why it was accepted (naga costs a cold build of `kui-core` alone; the draw-call split costs about 0.6 µs of CPU a fragment and nothing the GPU can see) and its amendment is what the building changed — including a collision the design could not have seen, that JSX's own `Fragment` sentinel was the string `'fragment'`. Before it, slots, [`docs/adr/0014-slots-an-extension-fills-in-place.md`](adr/0014-slots-an-extension-fills-in-place.md), were proposed, accepted and **built on 2026-09-07** for alpha.9 — an extension fills a place the host declares in its own view, under a namespace the host decides, with `Value` parameters in and replies out; its status block records what the building changed, and the first test it pins was a defect before it: an extension whose root carried no `key` was rekeyed whenever the host added a child at the root. Before it, ADR 0012's
 decisions 2, 3 and 6 — the last such item — **landed on 2026-09-07**, the
 day after decision 5 did: a frame's departures are admitted or refused
 together, a new removal outranks ghosts already in flight, the
@@ -1154,11 +397,13 @@ what a deletion line names). All seven are in the archive as of
 built and the registry answered.
 
 The alpha.9 reports came the same day the tag did, and with a bake-off
-against iced and gpui beside them; the section above this one holds
-what survived the check as F32–F35. Build F32 first — it is the third
-release the mind map's latch has outlived, and the fix is the report's
-own sentence — then F33's page and guard, then F34 and F35 together,
-since both are one `Core::audio_*` door each and the same driver seam.
+against iced and gpui beside them; F32–F35 are what survived the check,
+and all four were built on 2026-09-08 in the order this paragraph asked
+for — F32 first, then F33's page and guard, then F34 and F35 together as
+one `Core::audio_*` door each on the same driver seam. F36 fell out of the
+last two and is filed rather than built, for the reason its entry gives.
+The alpha.10 reports have not been written yet; when they are, this is
+where what survives the check goes.
 
 **Editor and mux (2026-09-07, built 2026-09-07/08).** The assessment
 section above was the order of work, and it was followed: C16, C18,
@@ -1174,17 +419,33 @@ orders, and two things the examples showed once run — the counter's
 first click waiting 92 ms for the audio device to open, and a departing
 list drawing past its own box — are fixed under alpha.9's `### Fixed`.
 
-**Windows (2026-09-08).** The platform ran for the first time and the round
-is a script: `scripts/smoke-windows.ps1`, in `smoke-windows` beside the
-`cargo test` step, with the C round from `examples/c/build.ps1` beside it.
-W4–W12 are all fixed now and W3 is rebuilt; W7 was the one that wanted a
-decision rather than a patch, and it was settled on 2026-09-09 — a
-displacement moves a subtree by whole physical pixels, scrolling included.
+**Windows (2026-09-08), and what a second platform is worth.** The platform
+ran for the first time and the round is a script: `scripts/smoke-windows.ps1`,
+in `smoke-windows` beside the `cargo test` step, with the C round from
+`examples/c/build.ps1` beside it. W3–W12 all shipped in alpha.10 and are in
+the archive; W7 was the one that wanted a decision rather than a patch, and
+it was settled on 2026-09-09 — a displacement moves a subtree by whole
+physical pixels, scrolling included.
+
+The lesson is worth more than the entries. Nine of the ten defects the round
+found were invisible to every headless test in this repo, and two were
+crashes on the first frame; the tenth kind arrived the same week from the
+other direction, on **Linux**, where CI caught a C extension that could not
+load into a Node host at all (glibc's `dlopen` defaults to `RTLD_LOCAL`, so
+the addon offered none of its `kui_*` to a plugin — fixed in `native.cjs`
+before the tag, and under alpha.10's `### Fixed`). Both are the same shape:
+a loader or a driver behaving differently per platform, under an API whose
+tests all pass on the machine the work was done on. Three platforms build
+here; only one of them is developed on.
+
 What the round still does not cover is P8's two follow-ups, unchanged:
 `windows_nc.rs` has no test that runs anywhere, and neither does
 `access_bridge.rs`. The next Windows session's list, in order: run the round
 under `Chrome::Custom` (the subclass is uncovered by everything above), and
-run it on the integrated adapter to see what a second GPU changes.
+run it on the integrated adapter to see what a second GPU changes. The Linux
+equivalent is smaller and worth naming: the C round (`examples/c/build.sh`)
+runs in `check`, and the plugin half of it now has a Node host in the same
+job — that is what caught this one.
 
 **Design, wanting an ADR.** A **painter** — the iced-shaped hatch that ADR 0015 (above) names and does not build: a Rust trait or a C extension's function pointers over the shared `Gpu` and the frame's encoder, under the `PainterId` that has been reserved in `resources.rs` since the first commit, placed by a marker quad the renderer splits around as it splits around a fragment. The first thing in a frame that would not be data, so it waits for a view a fragment cannot serve: a 3D viewport, a simulation, a backdrop a copy cannot make. Otherwise nothing new since ADR 0014 was built on 2026-09-07 and amended on 2026-09-08; of what it left open, a slot for Node (W11), extensions in `kui_run` (W9) and an extension offering slots of its own (W12) are built, and what is left — replies from `view`, name-plus-kind — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
 [`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md),
@@ -1234,12 +495,13 @@ and baseline), C14 (aspect ratio), C5(b) (core-side virtualisation), rounded
 clip nesting. Each says "wait for a view that wants it", and each should keep
 saying it until one does.
 
-**Hygiene.** Archiving is done four times over: the forty-six of
+**Hygiene.** Archiving is done five times over: the forty-six of
 2026-09-06, the ten field-report entries that followed them before the tag —
 so all of F1–F15 sit together — W2 whole on 2026-09-07, once its driver
-half was built, and the fourteen of alpha.9's round on 2026-09-08. This
-file is three parked entries, W3, F32–F35 from the alpha.9 reports, and
-this section.
+half was built, the fourteen of alpha.9's round on 2026-09-08, and the
+fourteen of this one (W3, W4–W12, F32–F35) before the alpha.10 tag. This
+file is now three parked entries, F36, and this section — the shortest it
+has been since it was written.
 Still open, both waiting on something outside the repo: enable `SMOKE_MACOS`
 / `SMOKE_WINDOWS` the day a runner exists (P8) — which has two jobs waiting
 for it now, F13's launch probe beside the AX audit, sharing the one
@@ -1268,12 +530,12 @@ release, which no headless assertion reads:
 
 ## Closed — index
 
-Eighty-six entries, all in
+A hundred entries, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim.
 This index is here so an id resolves without opening that file: the open items
-above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.8" and
+above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.10" and
 the hygiene note cite C2, C5(b), P3, R4 and R7, and code comments, ADRs and
-commit messages cite ids of their own. All sixty-three are whole in the
+commit messages cite ids of their own. All hundred are whole in the
 archive. **C11**, **W2** and **C15** were each split for a while — an entry
 appearing there in full and here trimmed to what was still open — until their
 remainders landed: C11's last step on 2026-09-06, ADR 0009's driver half on
@@ -1408,6 +670,26 @@ move.
 - `~` **F29** — [An `<audio>` one-shot that must finish has to guess its own length](backlog/closed-2026-09.md#-f29--an-audio-one-shot-that-must-finish-has-to-guess-its-own-length--done-2026-09-07) — done (2026-09-07) — the `audio` element's `finish`, so a one-shot need not guess its length
 - `~` **F30** — [A window has no settled frame by name, so a smoke test sleeps](backlog/closed-2026-09.md#-f30--a-window-has-no-settled-frame-by-name-so-a-smoke-test-sleeps--done-2026-09-07) — done (2026-09-07) — `settled` and `frame` on `WindowLoop`
 - `.` **F31** — [Three doc shapes the reports paid for](backlog/closed-2026-09.md#-f31--three-doc-shapes-the-reports-paid-for--done-2026-09-07) — done (2026-09-07) — `docs/howto.md`, the `**What breaks.**` list, and what a deletion line names
+
+**From the first Windows round (2026-09-08)** — W3 and W4–W12, all ten built between 2026-09-08 and 2026-09-09 and shipped in alpha.10; nine of them were invisible to every headless test in this repo
+
+- `~` **W3** — [On Windows, animations stop while the window is grabbed](backlog/closed-2026-09.md#-w3--on-windows-animations-stop-while-the-window-is-grabbed--verified-rebuilt-and-measured-on-the-platform-2026-09-08) — verified, rebuilt and measured on the platform (2026-09-08) — the alpha.9 build was blind and half right; the Windows round rebuilt it as a `SetTimer`, which a modal loop dispatches
+- `!` **W4** — [Every `fragment` past the first crashed the app on DX12](backlog/closed-2026-09.md#-w4--every-fragment-past-the-first-crashed-the-app-on-dx12--done-2026-09-08) — done (2026-09-08) — the alignment came from the adapter and the device asked for its own
+- `!` **W5** — [A resize handed the surface a size no device can hold](backlog/closed-2026-09.md#-w5--a-resize-handed-the-surface-a-size-no-device-can-hold--done-2026-09-08) — done (2026-09-08)
+- `!` **W6** — [No C extension could ever load on Windows](backlog/closed-2026-09.md#-w6--no-c-extension-could-ever-load-on-windows--done-2026-09-08) — done (2026-09-08) — ADR 0014's C half had been dead on Windows for as long as it existed
+- `.` **W7** — [Text inside a moving box steps a whole pixel while the box does not](backlog/closed-2026-09.md#-w7--text-inside-a-moving-box-steps-a-whole-pixel-while-the-box-does-not--done-2026-09-09) — done (2026-09-09) — the one that wanted a decision: a displacement moves a subtree by whole physical pixels, scrolling included
+- `~` **W8** — [The C examples had never been built on Windows, and the plugin half could not be](backlog/closed-2026-09.md#-w8--the-c-examples-had-never-been-built-on-windows-and-the-plugin-half-could-not-be--done-2026-09-08) — done (2026-09-08) — `build.ps1`, and a `/DEF:` naming every `kui_*` so link.exe writes the import library
+- `~` **W9** — [A precompiled plugin could not be handed to anyone, and C could not host one](backlog/closed-2026-09.md#-w9--a-precompiled-plugin-could-not-be-handed-to-anyone-and-c-could-not-host-one--done-2026-09-08) — done (2026-09-08) — one plugin binary, two hosts, either language
+- `.` **W10** — [Half the C library is two functions nobody headless needs](backlog/closed-2026-09.md#-w10--half-the-c-library-is-two-functions-nobody-headless-needs--done-2026-09-08) — done (2026-09-08)
+- `~` **W11** — [Node could not host an extension, and had no way to place one](backlog/closed-2026-09.md#-w11--node-could-not-host-an-extension-and-had-no-way-to-place-one--done-2026-09-08) — done (2026-09-08) — and it is what found the Linux loader bug in `native.cjs`
+- `~` **W12** — [A Lua view could not put a native panel inside it](backlog/closed-2026-09.md#-w12--a-lua-view-could-not-put-a-native-panel-inside-it--done-2026-09-08) — done (2026-09-08)
+
+**From two alpha.9 field reports and a bake-off (2026-09-08)** — F32–F35, all four built the day they were filed; F36 stays open above, filed rather than built
+
+- `~` **F32** — [`setEditText` reaches the editor the next frame declares, but only by a key the app cannot have yet](backlog/closed-2026-09.md#-f32--setedittext-reaches-the-editor-the-next-frame-declares-but-only-by-a-key-the-app-cannot-have-yet--done-2026-09-08) — done (2026-09-08) — the label the view declares, in four bindings; it corrects alpha.9's F25 entry
+- `.` **F33** — [`howto.md` contradicts the release that shipped it, and nothing checks a "today" sentence](backlog/closed-2026-09.md#-f33--howtomd-contradicts-the-release-that-shipped-it-and-nothing-checks-a-today-sentence--done-2026-09-08) — done (2026-09-08) — and the guard that keeps the page honest is a workspace test
+- `.` **F34** — [A one-shot cut off without `finish` is silent (pomodoro wish 3)](backlog/closed-2026-09.md#-f34--a-one-shot-cut-off-without-finish-is-silent-pomodoro-wish-3--built-2026-09-08) — built (2026-09-08)
+- `.` **F35** — [A released playback holds a voice, and a refused play is a stderr line the view never hears (pomodoro wish 4)](backlog/closed-2026-09.md#-f35--a-released-playback-holds-a-voice-and-a-refused-play-is-a-stderr-line-the-view-never-hears-pomodoro-wish-4--done-2026-09-08) — done (2026-09-08) — the refusal is an event and a warning; F36 is the asymmetry it left
 
 **From the editor-and-mux assessment (2026-09-07)** — C16–C23, all eight built between 2026-09-07 and 2026-09-08; W3 stays above, built blind
 
