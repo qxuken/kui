@@ -17,9 +17,10 @@ half was built. The index at the bottom of this file names every one of them,
 so an id cited by an open item, a code comment or a commit message can be
 resolved without opening the archive. Nothing was renumbered in any of those
 moves, and nothing ever is. What is left here is three parked headings — C12,
-C13 and C14 — W3 from the editor-and-mux assessment (2026-09-07), the four
-entries from the two alpha.9 field reports and the bake-off, F32–F35
-(2026-09-08), and what comes next; F16–F23 from the two alpha.7 field
+C13 and C14 — W3 from the editor-and-mux assessment (2026-09-07), and F36,
+which fell out of building the four entries the two alpha.9 field reports
+and the bake-off produced (F32–F35, filed and built 2026-09-08); and what
+comes next; F16–F23 from the two alpha.7 field
 reports all closed the day they were filed (2026-09-07), F25–F31 from the
 alpha.8 ones by the day after (F27 last, on 2026-09-08), and C16–C23 landed
 whole for alpha.9. C15's
@@ -666,6 +667,35 @@ setting would go, and leave it until a view asks. (4) Tests at the core
 boundary, as F34: a refused tagged playback is one `sound` event and one
 warning; an untagged one is the warning alone. A `.`: reachable only by
 a loop today, but the failure it hides is a hang in the view.
+
+### `.` F36 — A host driving its own audio device can report an end and nothing else
+
+Found reviewing F34 and F35 together, and in neither report. A host that
+drains `take_audio_commands` and drives a device itself — which is the
+whole point of audio being data — can answer `kui_audio_ended` (C,
+`kui-ffi/src/resources.rs:359`) or `audioEnded` (Node,
+`kui-node/src/lib.rs:730`) when a playback finishes. There is no
+`kui_audio_truncated` / `kui_audio_refused` and no Node equivalent, so the
+two new codes are raised only by the Rust runner's own kira backend.
+
+Both codes nonetheless ship to a Node audience: `truncated-playback` and
+`playback-refused` are in `docs/props.md`'s warnings table and in
+`index.d.ts`'s `WarningCode` union, because both are generated from
+`diag.rs` and that is the right thing for one table to do. So a Node reader
+is told about two warnings their binding cannot produce, and a C host that
+finds a stop landed on a live handle has nowhere to say so.
+
+Not urgent: the only host driving its own device today is the runner, and
+the codes are correct for it. It is an asymmetry in a door that already
+exists, and the fix is the same shape as the door — two appended C
+functions (no ABI bump, as C23) and two `#[napi]` methods, each calling the
+`Core` method the runner calls.
+
+**Do:** `kui_audio_truncated(ctx, playback, at)` and
+`kui_audio_refused(ctx, playback)` beside `kui_audio_ended`; `audioTruncated`
+/ `audioRefused` on Node's shared `core_methods!` macro beside `audioEnded`;
+one test each driving the warning through the binding, the way
+`crates/kui-ffi/src/tests.rs` drives `kui_audio_ended` today.
 
 ### From the bake-off
 
