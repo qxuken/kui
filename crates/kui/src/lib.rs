@@ -1579,8 +1579,16 @@ impl<A: App> Shell<A> {
         if resources.has_sounds() {
             self.audio.warm();
         }
-        if !cmds.is_empty() {
-            self.audio.apply(cmds, &resources);
+        // A `Stop` the device found still playing is a one-shot cut off,
+        // which only a device can tell; the core turns the ones it queued
+        // for a departing `audio` node into `truncated-playback`.
+        let truncated = self.audio.apply(cmds, &resources);
+        if truncated.is_empty() {
+            return;
+        }
+        let core = self.core_mut();
+        for (playback, at) in truncated {
+            core.audio_truncated(playback, at);
         }
     }
 

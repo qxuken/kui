@@ -18,7 +18,10 @@
 //! A playback started with a tag comes back as
 //! `{kind="sound", phase="ended", playback, tag}` on the origin that started
 //! it once the driver reports it finished (`Core::audio_ended`) — not when
-//! something stopped it.
+//! something stopped it. The other direction is
+//! [`crate::diag::TRUNCATED_PLAYBACK`]: the driver reports a stop that
+//! landed on a sound still playing (`Core::audio_truncated`) and the core
+//! names the node it cut off.
 
 use rustc_hash::FxHashMap;
 
@@ -133,6 +136,13 @@ impl AudioSpec {
     /// holds it forever, so a view that pauses should stop rather than
     /// release. Without this, a one-shot the view wants heard whole has to
     /// stay declared for the asset's length, which the view does not know.
+    ///
+    /// This is also what
+    /// [`truncated-playback`](crate::diag::TRUNCATED_PLAYBACK) asks for: a
+    /// one-shot removed mid-sound raises that warning, and the answer to
+    /// it is either this flag or a node kept declared until the `ended`
+    /// event. A node that means to cut the sound off says so by stopping
+    /// what it started (`Core::stop`), which is not reported.
     pub fn finish(mut self) -> Self {
         self.finish = true;
         self
@@ -195,6 +205,33 @@ struct Mounted {
     spec: AudioSpec,
 }
 
+/// Why a one-shot playback was cut off — what
+/// [`diag::TRUNCATED_PLAYBACK`](crate::diag::TRUNCATED_PLAYBACK) reports
+/// once the driver confirms the sound was still running.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Why {
+    /// The node declaring it went away without [`AudioSpec::finish`].
+    Removed,
+    /// The node changed its `src`, which replaces the playback.
+    Restarted,
+}
+
+impl Why {
+    /// The verb for the message ("removed at 0.5 s").
+    pub(crate) fn verb(self) -> &'static str {
+        match self {
+            Why::Removed => "removed",
+            Why::Restarted => "restarted",
+        }
+    }
+}
+
+/// Stops the driver has not answered for yet are remembered so a
+/// truncation can name its node; a headless core has no driver to answer,
+/// so the map is capped and the oldest entry — the lowest [`PlaybackId`],
+/// which they are issued in — makes room for a newer one.
+const MAX_STOPPED: usize = 256;
+
 /// Playback bookkeeping on `Core`: the command queue, the tagged playbacks
 /// awaiting their `ended` event, and the `audio` nodes' retained playbacks
 /// (reconciled against what the frame declared in `finish_frame`).
@@ -206,6 +243,13 @@ pub struct AudioStore {
     mounted: FxHashMap<Key, Mounted>,
     /// `audio` nodes declared this frame, in tree order.
     declared: Vec<(Key, OriginId, AudioSpec)>,
+    /// One-shots `reconcile` stopped, awaiting the driver's word on
+    /// whether they were still playing (`Core::audio_truncated`). The
+    /// core cannot know that itself: `ended` is the driver's too, an
+    /// untagged one-shot leaves no `tagged` entry to have heard it, and a
+    /// headless `Ctx` has no driver at all — so nothing here is a warning
+    /// until something answers for it.
+    stopped: FxHashMap<PlaybackId, (Key, Why)>,
 }
 
 impl AudioStore {
@@ -240,6 +284,27 @@ impl AudioStore {
     pub(crate) fn stop(&mut self, playback: PlaybackId, fade_ms: f32) {
         self.tagged.remove(&playback);
         self.commands.push(AudioCommand::Stop { playback, fade_ms });
+    }
+
+    /// Remembers a stop that may have cut a sound off, so the driver's
+    /// answer has a node to land on. Bounded: at the cap the oldest
+    /// unanswered stop is dropped.
+    fn record_stop(&mut self, playback: PlaybackId, key: Key, why: Why) {
+        if self.stopped.len() >= MAX_STOPPED
+            && let Some(oldest) = self.stopped.keys().min().copied()
+        {
+            self.stopped.remove(&oldest);
+        }
+        self.stopped.insert(playback, (key, why));
+    }
+
+    /// The driver reports it stopped `playback` while the sound was still
+    /// running. Returns the node it was declared on and why it was cut,
+    /// once — a stop that landed after the sound ended, or one of a
+    /// playback nothing recorded (an imperative `stop`, a loop, a
+    /// `finish` release), answers nothing.
+    pub(crate) fn truncated(&mut self, playback: PlaybackId) -> Option<(Key, Why)> {
+        self.stopped.remove(&playback)
     }
 
     pub(crate) fn set_volume(&mut self, playback: PlaybackId, volume: f32, tween_ms: f32) {
@@ -301,6 +366,9 @@ impl AudioStore {
     /// The driver reported a playback finished on its own. Returns the
     /// `ended` event when the playback asked for one.
     pub(crate) fn ended(&mut self, playback: PlaybackId) -> Option<UiEvent> {
+        // It reached its end, so a stop queued for it in the same breath
+        // cut nothing off.
+        self.stopped.remove(&playback);
         let t = self.tagged.remove(&playback)?;
         Some(UiEvent {
             origin: t.origin,
@@ -321,6 +389,8 @@ impl AudioStore {
     /// finished stays mounted silently until its node goes away — so a
     /// view re-rendering does not replay it. A missing key that asked to
     /// [`finish`](AudioSpec::finish) is released rather than stopped.
+    /// Every other stop of a one-shot is remembered (see `truncated`) in
+    /// case the driver says the sound was still running.
     pub(crate) fn reconcile(&mut self) {
         let declared = std::mem::take(&mut self.declared);
         let mut seen: Vec<Key> = Vec::with_capacity(declared.len());
@@ -336,6 +406,12 @@ impl AudioStore {
             if restart {
                 if let Some(old) = self.mounted.remove(&key) {
                     self.stop(old.playback, 0.0);
+                    // A replaced one-shot is cut off exactly as a removed
+                    // one is; `finish` does not release it (it is not a
+                    // departure), so it is also the opt-out here.
+                    if !old.spec.looped && !old.spec.finish {
+                        self.record_stop(old.playback, key, Why::Restarted);
+                    }
                 }
                 let opts = PlayOptions {
                     volume: spec.volume,
@@ -396,16 +472,23 @@ impl AudioStore {
         // released — then it is forgotten here and finishes on the device,
         // keeping its `tagged` entry so `ended` still arrives. A looped one
         // is stopped whatever it asked: it has no end to run to.
-        let gone: Vec<(Key, PlaybackId, bool)> = self
+        let gone: Vec<(Key, PlaybackId, bool, bool)> = self
             .mounted
             .iter()
             .filter(|(k, _)| !seen.contains(k))
-            .map(|(k, m)| (*k, m.playback, m.spec.finish && !m.spec.looped))
+            .map(|(k, m)| (*k, m.playback, m.spec.finish, m.spec.looped))
             .collect();
-        for (key, playback, release) in gone {
+        for (key, playback, finish, looped) in gone {
             self.mounted.remove(&key);
-            if !release {
-                self.stop(playback, 0.0);
+            if finish && !looped {
+                continue;
+            }
+            self.stop(playback, 0.0);
+            // A one-shot that did not ask to be released is the case
+            // `truncated-playback` is about — if it was still running,
+            // which only the driver can say.
+            if !looped && !finish {
+                self.record_stop(playback, key, Why::Removed);
             }
         }
     }

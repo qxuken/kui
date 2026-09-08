@@ -93,6 +93,25 @@ five lines instead of either. Also the CPU-side animation you were running to
 make a shimmer or a spinner move: `animate` plus `in.time` moves it on the
 GPU without rebuilding a node.
 
+**A one-shot cut off says so.** An `audio` node whose sound is still playing
+when the node goes away — or when its `src` changes — is a truncated sound,
+and it was silent: the view guessed a duration, the guess was short, and
+nothing said which. `truncated-playback` names the node and where in the
+sound it was cut ("removed 0.50s into its sound"). It is raised from the only
+place that can know: the core queues the `stop` as data and remembers which
+stops could have cut a one-shot off, the driver applies it and answers
+`Core::audio_truncated` for the handles it found still playing. `finish` is
+both the fix and the opt-out — a released playback is never stopped — and so
+is keeping the node declared until its `ended` event; a `looped` playback and
+an imperative `Core::stop` are never reported. A headless `Ctx` never raises
+it, because nothing there plays: the same fact from that end is
+`audioCommands()` holding a `stop` for the node, which is where a suite
+asserts. (Backlog F34, from the alpha.9 field reports.)
+
+*What you can delete:* the duration constant a view kept only to hold an
+`audio` node declared for a sound's length — `finish`, or the `ended` event,
+replaces the arithmetic, and the warning now finds the ones that were wrong.
+
 ### Changed
 
 - **`setEditText` can be given the name the view declares** (backlog F32,

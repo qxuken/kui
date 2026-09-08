@@ -521,7 +521,28 @@ place first. (4) Prose in `howto.md` cites a backlog id only for an open
 gap, and the entry's "Do" for any future doc-shaped item says so. A `.`:
 a wrong sentence a reader can disprove in one command.
 
-### `.` F34 — A one-shot cut off without `finish` is silent (pomodoro wish 3)
+### `.` F34 — A one-shot cut off without `finish` is silent (pomodoro wish 3) — **built (2026-09-08)**
+
+**Built 2026-09-08 (alpha.10).** `truncated-playback`, raised from the
+driver's end. `AudioStore` keeps a bounded `stopped` map — written where
+`reconcile` stops a non-looped, non-`finish` playback, `Why::Removed` for a
+departure and `Why::Restarted` for a changed `src` — and nothing there is a
+warning until something answers for it: `audio_ended` drops the entry (it
+reached its end, so the stop cut nothing off), and the oldest entry makes
+room at 256, which is what keeps a headless suite from growing one. `Audio::apply`
+returns the playbacks a `Stop` found with a `state()` other than `Stopped`,
+paired with `position()`; the runner's `apply_audio` hands each to
+`Core::audio_truncated(playback, at)`, which looks the key up, raises the
+warning on it and drops the entry. The driver stays key-blind. A stop that
+landed after the sound ended, an imperative `Core::stop`, a loop and a
+`finish` release are all silent, and a `Ctx` never raises it at all — the
+headless assertion point stays `audioCommands()` holding a `stop` for the
+node, which the code's doc, the `finish` doc and the howto answer all say.
+Verified through the real device too: a 2 s blip stopped mid-play comes back
+as one truncation with a position inside the sound
+(`crates/kui/src/audio.rs`, degrading to quiet where CI has no device).
+
+The original finding:
 
 "Presence-as-playback now has the right primitive and still no way to
 notice you did not reach for it. A non-`loop` node removed while its

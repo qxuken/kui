@@ -32,6 +32,15 @@
 //! shaping closure, in the emitter, in the driver's audio backend — so the
 //! session's registry keeps the hits and `take_warnings` raises them,
 //! keyed by kind and handle.
+//!
+//! One code comes from further out still. [`TRUNCATED_PLAYBACK`] is about
+//! a sound that was still playing when the core stopped it, and whether it
+//! was is the one thing the core cannot see: it queues the `stop` as data
+//! and a device applies it. So the core remembers which stops could have
+//! cut a one-shot off, the driver answers `crate::Core::audio_truncated`
+//! for the ones its handle found still running, and the warning lands on
+//! the node from there. A headless core never hears an answer and so never
+//! raises it — which is right, since nothing played.
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -235,6 +244,27 @@ warnings! {
     /// this.
     pub const EDIT_TEXT_WITHOUT_EDITOR: &str = "edit-text-without-editor";
 
+    /// A one-shot `audio` node went away — or changed its `src` — while
+    /// the sound it started was still playing, so the user heard it cut
+    /// off. Almost always a duration guessed short: the view keeps the
+    /// node declared for a constant it picked, and the asset is longer.
+    /// Ask for the sound instead of the guess —
+    /// `finish` (`AudioSpec::finish`, `finish` in JSX and Lua) releases the
+    /// playback on removal so it plays itself out, and a `tag` reports
+    /// `{kind:"sound", phase:"ended"}` when it gets there. A view that
+    /// means to cut the sound off says so by stopping what it started
+    /// (`Core::stop`), which is not reported, and a `looped` playback
+    /// never is: it has no end to be short of.
+    ///
+    /// Only a driver with a real device raises it, because only a device
+    /// knows the sound was still running: the core queues the `stop` and
+    /// the driver answers `Core::audio_truncated` for the ones its handle
+    /// found still playing. A headless `Ctx` therefore never raises it —
+    /// nothing plays — and the assertion point there is the other end of
+    /// the same fact: `audioCommands()` holding a `stop` for the node,
+    /// where the suite expected none.
+    pub const TRUNCATED_PLAYBACK: &str = "truncated-playback";
+
     /// A `FontId` / `ImageId` / `SoundId` registered in one `Session` and used
     /// through a core of another. Handles are unique to the process, so it
     /// cannot resolve to somebody else's resource; it behaves as a removed
@@ -368,6 +398,25 @@ pub fn edit_text_without_editor(key: Key) -> Warning {
              that key, so the text was dropped; the call is held for one frame — for the view \
              that draws the editor the same `update` opened — not longer",
             key.0
+        ),
+    }
+}
+
+/// The [`TRUNCATED_PLAYBACK`] warning for one cut-off playback. Keyed by
+/// the `audio` node, so a view that truncates the same chime every time it
+/// runs costs one line; `at` is where the playback was, in seconds, which
+/// is the half of "how much was lost" a device can actually report.
+pub fn truncated_playback(key: Key, why: crate::audio::Why, at: f64) -> Warning {
+    Warning {
+        code: TRUNCATED_PLAYBACK,
+        key,
+        message: format!(
+            "the `audio` node at key {:#x} was {} {:.2}s into its sound, cutting it off; keep \
+             the node declared until its `ended` event, or add `finish` so the playback is \
+             released to play itself out",
+            key.0,
+            why.verb(),
+            at
         ),
     }
 }

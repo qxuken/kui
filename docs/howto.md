@@ -230,9 +230,18 @@ when the event does. Give it a `tag` and the playback's own end arrives as
 `{kind:"sound", phase:"ended"}` — which is what to keep the node declared
 until, rather than a guessed duration.
 
+Guess it short and the sound is cut off mid-chime, which is what
+`truncated-playback` is for: a windowed run warns when a one-shot's node goes
+away while the device is still playing it. Either keep the node declared
+until the `ended` event, or add `finish` — the removal then *releases* the
+playback to play itself out, and a `tag` still reports when it gets there.
+Headless there is no device and so no warning; the same fact from the test's
+end is `audioCommands()` holding a `stop` for the node.
+
 [`audio` element](props.md#elements) ·
 [sound resources](props.md#resources) ·
-[`sound` event](props.md#events)
+[`sound` event](props.md#events) ·
+[`truncated-playback`](props.md#warnings)
 
 ### How do I do the thing my app defines — a file write, a request?
 

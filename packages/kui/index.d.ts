@@ -567,6 +567,23 @@ export type WarningCode =
    *  itself). An editor that already exists takes the text where the call is
    *  made and never reaches this. */
   | 'edit-text-without-editor'
+  /** A one-shot `audio` node went away — or changed its `src` — while the sound
+   *  it started was still playing, so the user heard it cut off. Almost always
+   *  a duration guessed short: the view keeps the node declared for a constant
+   *  it picked, and the asset is longer. Ask for the sound instead of the guess
+   *  — `finish` (`AudioSpec::finish`, `finish` in JSX and Lua) releases the
+   *  playback on removal so it plays itself out, and a `tag` reports
+   *  `{kind:"sound", phase:"ended"}` when it gets there. A view that means to
+   *  cut the sound off says so by stopping what it started (`Core::stop`),
+   *  which is not reported, and a `looped` playback never is: it has no end to
+   *  be short of. Only a driver with a real device raises it, because only a
+   *  device knows the sound was still running: the core queues the `stop` and
+   *  the driver answers `Core::audio_truncated` for the ones its handle found
+   *  still playing. A headless `Ctx` therefore never raises it — nothing plays
+   *  — and the assertion point there is the other end of the same fact:
+   *  `audioCommands()` holding a `stop` for the node, where the suite expected
+   *  none. */
+  | 'truncated-playback'
   /** A `FontId` / `ImageId` / `SoundId` registered in one `Session` and used
    *  through a core of another. Handles are unique to the process, so it cannot
    *  resolve to somebody else's resource; it behaves as a removed handle does

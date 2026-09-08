@@ -51,7 +51,7 @@ pub use access::{
     Orientation, Role, ScrollState, TextPos,
 };
 pub use anim::{Easing, Repeat, Transition};
-pub use audio::{AudioCommand, AudioSpec, AudioStore, PlayOptions, PlaybackId};
+pub use audio::{AudioCommand, AudioSpec, AudioStore, PlayOptions, PlaybackId, Why};
 pub use cells::{Cell, CellGrid, CellStore, CellsId, CursorShape as CellCursor};
 pub use color::Color;
 pub use cursor::CursorShape;

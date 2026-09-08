@@ -309,6 +309,22 @@ impl Core {
         }
     }
 
+    /// The driver reports it stopped a playback that was still running,
+    /// `at` seconds into the sound. When that stop was a one-shot `audio`
+    /// node going away (or changing its `src`) without
+    /// [`finish`](crate::audio::AudioSpec::finish), the node is named in a
+    /// [`TRUNCATED_PLAYBACK`](crate::diag::TRUNCATED_PLAYBACK) warning;
+    /// anything else — a stop that landed after the sound ended, an
+    /// imperative [`Self::stop`], a loop, a released playback — reports
+    /// nothing. The driver stays key-blind, as [`Self::audio_ended`] is.
+    pub fn audio_truncated(&mut self, playback: crate::audio::PlaybackId, at: f64) {
+        let cut = self.session.state().audio.truncated(playback);
+        if let Some((key, why)) = cut {
+            self.diag
+                .raise(crate::diag::truncated_playback(key, why, at));
+        }
+    }
+
     /// Re-reads the session's font family names into the mirror
     /// `font_family` lends from, when a registration has moved since.
     pub(crate) fn sync_font_names(&mut self) {

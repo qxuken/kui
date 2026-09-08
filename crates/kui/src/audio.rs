@@ -2,7 +2,9 @@
 //! commands as data (`Core::take_audio_commands`); the shell hands them
 //! here after every input dispatch and every frame, and polls finished
 //! playbacks back into the core (`Core::audio_ended`) so tagged ones become
-//! `sound` events.
+//! `sound` events. It answers the other way too: a `Stop` whose handle was
+//! still playing goes back as `Core::audio_truncated`, since whether a
+//! sound was still running is the one thing the core cannot see.
 //!
 //! Backed by kira (cpal underneath) behind the `audio` cargo feature. The
 //! device opens lazily on the first play, so an app that never plays
@@ -13,6 +15,11 @@
 use kui_core::{AudioCommand, PlaybackId, SharedResources};
 
 pub use backend::Audio;
+
+/// A `Stop` that landed on a sound still playing, and how far into the
+/// sound (seconds) it was — what `Core::audio_truncated` turns into a
+/// `truncated-playback` warning on the node.
+pub type Truncated = (PlaybackId, f64);
 
 /// Encodes mono float samples (−1..1) as a 16-bit PCM WAV file — enough to
 /// hand a synthesized blip to `Core::add_sound` without shipping assets.
@@ -74,6 +81,9 @@ mod backend {
         pending: Vec<(AudioCommand, SharedResources)>,
         decoded: HashMap<SoundId, StaticSoundData>,
         playing: HashMap<PlaybackId, StaticSoundHandle>,
+        /// Stops applied to a handle that was still playing, drained by
+        /// `apply` — including the ones a `flush_pending` produced.
+        truncated: Vec<Truncated>,
     }
 
     /// The output device, which takes ~90 ms to open on macOS — six frames
@@ -102,6 +112,7 @@ mod backend {
                 pending: Vec::new(),
                 decoded: HashMap::new(),
                 playing: HashMap::new(),
+                truncated: Vec::new(),
             }
         }
 
@@ -195,20 +206,30 @@ mod backend {
 
         /// Applies queued commands to the device. While it is still
         /// opening they wait, in order, behind whatever waited before.
-        pub fn apply(&mut self, cmds: Vec<AudioCommand>, resources: &SharedResources) {
+        ///
+        /// Returns the playbacks a `Stop` cut off while they were still
+        /// playing (see [`Truncated`]) — commands that waited for the
+        /// device report theirs on the apply that flushes them, which is a
+        /// later one than the apply that queued them.
+        pub fn apply(
+            &mut self,
+            cmds: Vec<AudioCommand>,
+            resources: &SharedResources,
+        ) -> Vec<Truncated> {
             if cmds.is_empty() {
-                return;
+                return std::mem::take(&mut self.truncated);
             }
             self.warm();
             self.flush_pending();
             if self.opening() {
                 self.pending
                     .extend(cmds.into_iter().map(|c| (c, resources.clone())));
-                return;
+                return std::mem::take(&mut self.truncated);
             }
             for cmd in cmds {
                 self.apply_one(cmd, resources);
             }
+            std::mem::take(&mut self.truncated)
         }
 
         fn apply_one(&mut self, cmd: AudioCommand, resources: &SharedResources) {
@@ -243,6 +264,11 @@ mod backend {
                     }
                     AudioCommand::Stop { playback, fade_ms } => {
                         if let Some(mut h) = self.playing.remove(&playback) {
+                            // Whether the sound was still running is what
+                            // the core is missing; ask before stopping.
+                            if h.state() != PlaybackState::Stopped {
+                                self.truncated.push((playback, h.position()));
+                            }
                             h.stop(tween(fade_ms));
                         }
                     }
@@ -344,7 +370,12 @@ mod backend {
             let p = core.play(s, PlayOptions::default());
             let mut audio = Audio::new();
             let t = std::time::Instant::now();
-            audio.apply(core.take_audio_commands(), &core.resources);
+            assert!(
+                audio
+                    .apply(core.take_audio_commands(), &core.resources)
+                    .is_empty(),
+                "a play truncates nothing"
+            );
             assert!(
                 t.elapsed() < Duration::from_millis(20),
                 "the first play does not wait for the device: {:?}",
@@ -362,6 +393,49 @@ mod backend {
             }
             assert_eq!(ended, vec![p], "the 30ms blip reports ended");
             assert!(!audio.active());
+        }
+
+        /// F34: a `Stop` that lands on a handle still playing comes back
+        /// as a truncation, with where the sound was — the fact the core
+        /// cannot see. Through the real device when the machine has one;
+        /// without one nothing ever plays, so nothing is truncated, and
+        /// the assertion is that it stays quiet rather than guessing.
+        #[test]
+        fn a_stop_on_a_playing_sound_comes_back_as_a_truncation() {
+            use kui_core::{Core, PlayOptions};
+            let mut core = Core::new();
+            // Two seconds: long enough that the stop below lands inside it
+            // whatever the machine is doing.
+            let s = core.add_sound(super::super::blip(44_100, 220.0, 2_000.0, 0.05));
+            let p = core.play(s, PlayOptions::default());
+            let mut audio = Audio::new();
+            audio.apply(core.take_audio_commands(), &core.resources);
+            // Wait for the device to open and the sound to be running.
+            let deadline = std::time::Instant::now() + Duration::from_secs(3);
+            while audio.playing.is_empty() && audio.active() && std::time::Instant::now() < deadline
+            {
+                std::thread::sleep(Duration::from_millis(20));
+                audio.poll_ended();
+            }
+            if matches!(audio.device, Device::Failed) || audio.playing.is_empty() {
+                return; // no device: nothing played, so nothing was cut off
+            }
+
+            core.stop(p, 0.0);
+            let cut = audio.apply(core.take_audio_commands(), &core.resources);
+            assert_eq!(cut.len(), 1, "the 2s blip was still playing: {cut:?}");
+            assert_eq!(cut[0].0, p);
+            assert!(
+                cut[0].1 >= 0.0 && cut[0].1 < 2.0,
+                "cut inside the sound: {}s",
+                cut[0].1
+            );
+            assert!(
+                audio
+                    .apply(core.take_audio_commands(), &core.resources)
+                    .is_empty(),
+                "reported once"
+            );
         }
 
         #[test]
@@ -388,7 +462,13 @@ mod backend {
 
         pub fn warm(&mut self) {}
 
-        pub fn apply(&mut self, _cmds: Vec<AudioCommand>, _resources: &SharedResources) {}
+        pub fn apply(
+            &mut self,
+            _cmds: Vec<AudioCommand>,
+            _resources: &SharedResources,
+        ) -> Vec<Truncated> {
+            Vec::new()
+        }
 
         pub fn poll_ended(&mut self) -> Vec<PlaybackId> {
             Vec::new()
