@@ -1426,7 +1426,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<audio src={id} loop volume paused finish tag/>`",
         lua: "`audio { src=, loop=, volume=, paused=, finish=, tag= }`",
         c: "`kui_audio`",
-        doc: "A playback retained by node key: present = playing (once, or looped), gone = stopped; `volume` / `paused` apply live, a changed `src` restarts; a `tag` brings back `{kind:\"sound\", phase:\"ended\", tag}`. Draws nothing. `finish` changes what *gone* means: the node's removal releases the playback rather than stopping it, so a one-shot plays to its end and the view need not know the asset's length to declare the node for it (a loop still stops on removal — there is no end to reach — and a paused playback released has nothing to finish). Without it, the way to play a sound whole is to hold the node declared until the `tag`'s `ended` message arrives.",
+        doc: "A playback retained by node key: present = playing (once, or looped), gone = stopped; `volume` / `paused` apply live, a changed `src` restarts; a `tag` brings back `{kind:\"sound\", phase:\"ended\", tag}`. Draws nothing. `finish` changes what *gone* means: the node's removal releases the playback rather than stopping it, so a one-shot plays to its end and the view need not know the asset's length to declare the node for it (a loop still stops on removal — there is no end to reach — and a paused playback released has nothing to finish). Without it, the way to play a sound whole is to hold the node declared until the `tag`'s `ended` message arrives. A released playback is not free: it holds one of the device's 128 voices until its file ends, and the 129th play is refused — reported as a `playback-refused` warning and, for a `tag`, `phase: \"refused\"` rather than a wait that never returns.",
     },
 ];
 
@@ -1500,8 +1500,8 @@ pub const EVENTS: &[EventDef] = &[
     },
     EventDef {
         kind: "sound",
-        payload: "`{ kind: \"sound\", phase: \"ended\", playback, tag }`",
-        doc: "A tagged playback (`play(id, { tag })` or `<audio tag>`) finished on its own — never when something stopped it.",
+        payload: "`{ kind: \"sound\", phase: \"ended\" | \"refused\", playback, tag }`",
+        doc: "A tagged playback (`play(id, { tag })` or `<audio tag>`) finished on its own — never when something stopped it. `phase: \"refused\"` instead when the device would not take the play at all (its 128 voices are all held, or the sound did not decode): that playback never starts and so never ends, so this is what arrives in place of the `ended` a view would otherwise wait forever for.",
     },
     EventDef {
         kind: "dismiss",

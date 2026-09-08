@@ -587,6 +587,54 @@ the pomodoro's six-second `CHIME_MS` is the cost it names.
 
 ### `.` F35 — A released playback holds a voice, and a refused play is a stderr line the view never hears (pomodoro wish 4)
 
+**Done (2026-09-08), as the entry asks — the sentence in three places, the
+refusal routed, no budget.** `AudioSpec::finish`, the `audio` element's
+schema row and `howto.md`'s "How do I play a sound when the model changes?"
+now all say what a release costs: one of the device's 128 voices until the
+file ends, released or not, and the 129th play refused. 128 stayed kira's
+number — `MainTrackBuilder::sound_capacity` is named in the `finish` doc as
+where a setting would go, and nothing was built on top of it.
+
+The refusal is data now. `Audio::apply` returns the plays the device would
+not take, the way `poll_ended` returns the ones that finished; the
+`eprintln!("kui: play failed")` is gone and a decode failure takes the same
+exit. The runner's `apply_audio` folds them into `Core::audio_refused`,
+which reports `{kind:"sound", phase:"refused", playback, tag}` for a tagged
+playback — so a view waiting on `ended` is unstuck, and can tell the two
+apart — and raises `diag::PLAYBACK_REFUSED` on the node that asked either
+way, so an untagged refusal is not silent. The event is what `ended` is,
+pending on the origin, and the routing the two share is one
+`route_playback_events`.
+
+Three details worth naming. The warning's key is the node that asked: the
+tagged node's, else the mounted `audio` element's, else the origin root an
+imperative `play` starts from — so the dedup makes a view that keeps asking
+past the limit one line rather than one per refusal. Refusals are buffered
+on the driver rather than returned inline, because `flush_pending` runs from
+the poll as well as from `apply`, and `active()` counts a buffered one so
+the loop comes back around to drain it. And the `audio` node's mount is left
+alone on a refusal: unmounting it would have the next frame re-declare,
+replay and be refused again, one line per frame.
+
+Four tests beside the F29 ones in `kui-core/src/audio.rs`: a refused tagged
+playback is one `refused` event and one warning, and can never `end`
+afterwards; an untagged one is the warning alone, on the root; a refused
+*released* playback still reports, on the key its node declared; and an
+untagged `audio` node warns on its own key rather than the root.
+`cargo test --workspace` green (69 binaries), `cargo fmt`, `cargo clippy
+--workspace --all-targets` clean, `npm test` 92 pass / 1 skipped. The addon
+was rebuilt before `npm run gen` with `target/napi-type-defs` cleared —
+`props.md` and `index.d.ts`'s `WarningCode` carry the new code, member count
+unchanged at 138 — and the hand-written `SoundMsg` in `index.d.ts` took the
+new phase, since only the union is generated.
+
+One adjacent case was left as found, not fixed: a device that fails to
+*open* drops every command through `apply_one`'s `manager()` guard, which is
+the same forever-wait for a tagged node. It is already announced loudly and
+once ("audio device unavailable … sounds are dropped"), and it is a
+different failure from the device refusing a play, so it stays out of this
+entry rather than being widened into silently.
+
 "`finish` means the driver holds a playback the view has forgotten.
 Nothing says whether those are bounded, the way alpha.9 bounded
 undeclared editors at 256 — and the app that declares a one-shot per

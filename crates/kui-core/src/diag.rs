@@ -17,7 +17,7 @@
 //! development builds only, a standalone C context starts with them off —
 //! through [`crate::Core::set_diagnostics`].
 //!
-//! Five codes do not come from the tree walk. A prop name no table claims
+//! Several codes do not come from the tree walk. A prop name no table claims
 //! ([`UNKNOWN_PROP`]) is gone by the time the frame is a tree, so the
 //! binding that dropped it raises it through [`crate::Core::warn`], behind
 //! the same gate and the same dedup — and a window kind no build has
@@ -33,14 +33,18 @@
 //! session's registry keeps the hits and `take_warnings` raises them,
 //! keyed by kind and handle.
 //!
-//! One code comes from further out still. [`TRUNCATED_PLAYBACK`] is about
-//! a sound that was still playing when the core stopped it, and whether it
-//! was is the one thing the core cannot see: it queues the `stop` as data
-//! and a device applies it. So the core remembers which stops could have
-//! cut a one-shot off, the driver answers `crate::Core::audio_truncated`
-//! for the ones its handle found still running, and the warning lands on
-//! the node from there. A headless core never hears an answer and so never
-//! raises it — which is right, since nothing played.
+//! Two codes come from further out still, and both are about a sound.
+//! [`TRUNCATED_PLAYBACK`] is about a sound that was still playing when the
+//! core stopped it, and whether it was is the one thing the core cannot
+//! see: it queues the `stop` as data and a device applies it. So the core
+//! remembers which stops could have cut a one-shot off, the driver answers
+//! `crate::Core::audio_truncated` for the ones its handle found still
+//! running, and the warning lands on the node from there.
+//! [`PLAYBACK_REFUSED`] is the one the core cannot see at all: only the
+//! driver knows the device said no, so it reports the playback back
+//! (`Core::audio_refused`) and the core keys the warning on the node that
+//! asked for the sound. A headless core never hears either answer and so
+//! never raises either — which is right, since nothing played.
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -298,6 +302,18 @@ warnings! {
     /// red where the fill would have been, and reported here once per
     /// extension and slot rather than once per frame.
     pub const EXTENSION_VIEW_ERROR: &str = "extension-view-error";
+
+    /// The device refused a play: its voices are all held, or the sound
+    /// did not decode. A released playback (`finish`) holds one of the
+    /// device's 128 voices until its file ends, so a view that releases
+    /// faster than its sounds finish reaches the limit and the 129th play
+    /// is refused. The refusal is not left silent because the playback
+    /// never starts and so never ends: a `tag`ged node waiting for
+    /// `ended` would wait forever. It gets
+    /// `{kind:"sound", phase:"refused"}` instead, and this line says why.
+    /// Stop what the view no longer needs rather than releasing it, or
+    /// release shorter sounds.
+    pub const PLAYBACK_REFUSED: &str = "playback-refused";
 }
 
 /// The [`UNKNOWN_SLOT`] warning for one extension and slot. Keyed by the
@@ -382,6 +398,18 @@ pub fn edit_text_without_editor_label(label: &str) -> Warning {
              under that name, so the text was dropped; the label is the one an editor's `key` \
              prop declares, and the call is held for one frame — for the view that draws the \
              editor the same `update` opened — not longer"
+/// The [`PLAYBACK_REFUSED`] warning for one playback. Keyed by the node
+/// that asked for the sound — the tagged node, the `audio` element, or
+/// the origin's root for an imperative `play` — so a view that keeps
+/// asking past the device's limit costs one line rather than one per
+/// refusal, which is the whole point of the dedup.
+pub fn playback_refused(key: crate::key::Key, playback: crate::audio::PlaybackId) -> Warning {
+    Warning {
+        code: PLAYBACK_REFUSED,
+        key,
+        message: format!(
+            "the audio device refused playback {} — its voices are all held, or the sound did              not decode; a released (`finish`) playback holds one of the device's 128 voices              until its file ends, so releasing faster than the sounds finish reaches the limit.              The playback never started and will never report `ended`; a tagged one is told so              with `phase: \"refused\"`",
+            playback.0
         ),
     }
 }

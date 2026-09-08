@@ -238,10 +238,18 @@ playback to play itself out, and a `tag` still reports when it gets there.
 Headless there is no device and so no warning; the same fact from the test's
 end is `audioCommands()` holding a `stop` for the node.
 
+`finish` plays a one-shot out after its node goes, and a released playback
+is not free: it holds one of the device's 128 voices until its file ends,
+released or not, and the 129th play is refused. A refused play never starts
+and so never ends — it arrives as `{kind:"sound", phase:"refused"}` on a
+`tag`, and as a `playback-refused` warning either way, so nothing waits on
+an `ended` that cannot come. Stop what the view no longer needs instead of
+releasing it, and release short sounds.
+
 [`audio` element](props.md#elements) ·
 [sound resources](props.md#resources) ·
 [`sound` event](props.md#events) ·
-[`truncated-playback`](props.md#warnings)
+[`truncated-playback` / `playback-refused`](props.md#warnings)
 
 ### How do I do the thing my app defines — a file write, a request?
 

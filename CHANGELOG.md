@@ -112,6 +112,30 @@ asserts. (Backlog F34, from the alpha.9 field reports.)
 `audio` node declared for a sound's length — `finish`, or the `ended` event,
 replaces the arithmetic, and the warning now finds the ones that were wrong.
 
+- **A refused play is data, not a stderr line.** The audio device holds 128
+  concurrent sounds — kira's number, from `AudioManagerSettings::default()` —
+  and a playback released by `finish` holds one of them until its file ends,
+  released or not. Past that the device refuses the play, and it used to
+  refuse it into `eprintln!`: the playback was never started, so it never
+  ended, so a `tag`ged node waiting for `{kind:"sound", phase:"ended"}` — the
+  pattern `howto.md` recommends — waited forever, and a `finish` node was
+  released to nothing. The refusal now comes back through the same seam the
+  end does (`Core::audio_refused`, from the driver): a tagged playback gets
+  `{kind:"sound", phase:"refused", playback, tag}` so the view is unstuck and
+  can tell a refusal from an end, and a `playback-refused` warning is raised
+  on the node that asked either way, so an untagged one is not silent. A
+  sound that fails to decode takes the same path, for the same reason. What
+  costs a voice is now written where the cost is paid: the `audio` row, the
+  `finish` doc and the howto answer.
+
+  There is no kui budget on top of kira's — 128 is the device's number, and
+  `MainTrackBuilder::sound_capacity` is where a setting would go if a view
+  asks for one.
+
+  **What you can delete:** Any timeout an app kept behind a `finish`ed one-shot's `ended` message to
+  cover the case where the message never arrived. The refusal that used to
+  drop the message now sends one.
+
 ### Changed
 
 - **`setEditText` can be given the name the view declares** (backlog F32,

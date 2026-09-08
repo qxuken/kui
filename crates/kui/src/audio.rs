@@ -4,7 +4,9 @@
 //! playbacks back into the core (`Core::audio_ended`) so tagged ones become
 //! `sound` events. It answers the other way too: a `Stop` whose handle was
 //! still playing goes back as `Core::audio_truncated`, since whether a
-//! sound was still running is the one thing the core cannot see.
+//! sound was still running is the one thing the core cannot see, and a play
+//! the device refuses goes back as `Core::audio_refused`: it never starts
+//! and so never ends, so the view has to hear about it or wait forever.
 //!
 //! Backed by kira (cpal underneath) behind the `audio` cargo feature. The
 //! device opens lazily on the first play, so an app that never plays
@@ -20,6 +22,16 @@ pub use backend::Audio;
 /// sound (seconds) it was — what `Core::audio_truncated` turns into a
 /// `truncated-playback` warning on the node.
 pub type Truncated = (PlaybackId, f64);
+
+/// What the device answered back on an [`Audio::apply`] — the two things
+/// only it can know. `truncated` is the stops that landed on a sound still
+/// playing, `refused` the plays it would not take; the core turns each into
+/// a warning on the node that asked, since the driver is key-blind.
+#[derive(Default)]
+pub struct Answered {
+    pub truncated: Vec<Truncated>,
+    pub refused: Vec<PlaybackId>,
+}
 
 /// Encodes mono float samples (−1..1) as a 16-bit PCM WAV file — enough to
 /// hand a synthesized blip to `Core::add_sound` without shipping assets.
@@ -84,6 +96,11 @@ mod backend {
         /// Stops applied to a handle that was still playing, drained by
         /// `apply` — including the ones a `flush_pending` produced.
         truncated: Vec<Truncated>,
+        /// Plays the device would not take, since the last drain. Buffered
+        /// rather than returned inline because a refusal can happen inside
+        /// `flush_pending`, which runs from the poll as well as from
+        /// `apply`; [`Audio::apply`] is where the driver collects them.
+        refused: Vec<PlaybackId>,
     }
 
     /// The output device, which takes ~90 ms to open on macOS — six frames
@@ -113,6 +130,7 @@ mod backend {
                 decoded: HashMap::new(),
                 playing: HashMap::new(),
                 truncated: Vec::new(),
+                refused: Vec::new(),
             }
         }
 
@@ -206,30 +224,34 @@ mod backend {
 
         /// Applies queued commands to the device. While it is still
         /// opening they wait, in order, behind whatever waited before.
-        ///
-        /// Returns the playbacks a `Stop` cut off while they were still
-        /// playing (see [`Truncated`]) — commands that waited for the
-        /// device report theirs on the apply that flushes them, which is a
-        /// later one than the apply that queued them.
+        /// Returns what the device answered back: the stops that landed on
+        /// a sound still playing and the plays it would not take, the way
+        /// [`Self::poll_ended`] returns the ones that finished. Both are
+        /// buffered rather than produced inline, because either can happen
+        /// inside `flush_pending`, which runs from the poll as well as from
+        /// here — so a command that waited for the device reports on the
+        /// apply that flushes it, a later one than the apply that queued it.
         pub fn apply(
             &mut self,
             cmds: Vec<AudioCommand>,
             resources: &SharedResources,
-        ) -> Vec<Truncated> {
-            if cmds.is_empty() {
-                return std::mem::take(&mut self.truncated);
+        ) -> Answered {
+            if !cmds.is_empty() {
+                self.warm();
+                self.flush_pending();
+                if self.opening() {
+                    self.pending
+                        .extend(cmds.into_iter().map(|c| (c, resources.clone())));
+                } else {
+                    for cmd in cmds {
+                        self.apply_one(cmd, resources);
+                    }
+                }
             }
-            self.warm();
-            self.flush_pending();
-            if self.opening() {
-                self.pending
-                    .extend(cmds.into_iter().map(|c| (c, resources.clone())));
-                return std::mem::take(&mut self.truncated);
+            Answered {
+                truncated: std::mem::take(&mut self.truncated),
+                refused: std::mem::take(&mut self.refused),
             }
-            for cmd in cmds {
-                self.apply_one(cmd, resources);
-            }
-            std::mem::take(&mut self.truncated)
         }
 
         fn apply_one(&mut self, cmd: AudioCommand, resources: &SharedResources) {
@@ -243,6 +265,10 @@ mod backend {
                         fade_in_ms,
                     } => {
                         let Some(mut data) = self.decoded(sound, resources) else {
+                            // Nothing to play and nothing that will ever
+                            // end: the core has to hear so a tagged node
+                            // stops waiting.
+                            self.refused.push(playback);
                             return;
                         };
                         data = data.volume(db(volume));
@@ -259,7 +285,11 @@ mod backend {
                             Ok(h) => {
                                 self.playing.insert(playback, h);
                             }
-                            Err(e) => eprintln!("kui: play failed: {e}"),
+                            // The device's voices are all held (128, with
+                            // released playbacks among them). Routed rather
+                            // than printed: a stderr line is not something
+                            // the view waiting on this sound can hear.
+                            Err(_) => self.refused.push(playback),
                         }
                     }
                     AudioCommand::Stop { playback, fade_ms } => {
@@ -324,7 +354,7 @@ mod backend {
         /// Whether any playback is live, or waiting on the device to
         /// open — drivers keep polling while so.
         pub fn active(&self) -> bool {
-            !self.playing.is_empty() || !self.pending.is_empty()
+            !self.playing.is_empty() || !self.pending.is_empty() || !self.refused.is_empty()
         }
     }
 
@@ -466,8 +496,8 @@ mod backend {
             &mut self,
             _cmds: Vec<AudioCommand>,
             _resources: &SharedResources,
-        ) -> Vec<Truncated> {
-            Vec::new()
+        ) -> Answered {
+            Answered::default()
         }
 
         pub fn poll_ended(&mut self) -> Vec<PlaybackId> {

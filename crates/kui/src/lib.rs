@@ -1579,17 +1579,24 @@ impl<A: App> Shell<A> {
         if resources.has_sounds() {
             self.audio.warm();
         }
-        // A `Stop` the device found still playing is a one-shot cut off,
-        // which only a device can tell; the core turns the ones it queued
-        // for a departing `audio` node into `truncated-playback`.
-        let truncated = self.audio.apply(cmds, &resources);
-        if truncated.is_empty() {
+        // Two things only the device knows come back here. A `Stop` it found
+        // still playing is a one-shot cut off, which the core turns into
+        // `truncated-playback` on the node that went away; a refused play
+        // never starts and so never ends, so the core turns that into a
+        // `refused` event and a warning, or a tagged node waits on an
+        // `ended` that cannot come.
+        let answered = self.audio.apply(cmds, &resources);
+        if answered.truncated.is_empty() && answered.refused.is_empty() {
             return;
         }
         let core = self.core_mut();
-        for (playback, at) in truncated {
+        for (playback, at) in answered.truncated {
             core.audio_truncated(playback, at);
         }
+        for playback in answered.refused {
+            core.audio_refused(playback);
+        }
+        self.route_playback_events();
     }
 
     /// Folds playbacks that finished on their own back into the core, and
@@ -1603,12 +1610,19 @@ impl<A: App> Shell<A> {
         for playback in ended {
             core.audio_ended(playback);
         }
-        let pending = core.take_pending_events();
-        if !pending.is_empty() {
-            self.route_events(pending);
-            for p in &self.panes {
-                p.window.request_redraw();
-            }
+        self.route_playback_events();
+    }
+
+    /// Routes whatever the audio fold-back queued (`ended`, `refused`) and
+    /// redraws for what handling it changed.
+    fn route_playback_events(&mut self) {
+        let pending = self.core_mut().take_pending_events();
+        if pending.is_empty() {
+            return;
+        }
+        self.route_events(pending);
+        for p in &self.panes {
+            p.window.request_redraw();
         }
     }
 

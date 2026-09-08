@@ -323,6 +323,20 @@ impl Core {
             self.diag
                 .raise(crate::diag::truncated_playback(key, why, at));
         }
+    /// The driver refused a play: the device's voices are all held, or
+    /// the sound failed to decode. The playback never started, so it can
+    /// never report `ended` — a tagged one gets
+    /// `{kind="sound", phase="refused", playback, tag}` instead, pending
+    /// like an `ended` is, so a view waiting on the sound is unstuck and
+    /// can tell the two apart. [`crate::diag::PLAYBACK_REFUSED`] is raised
+    /// on the node that asked either way, behind the usual diagnostics
+    /// gate, so an untagged refusal is not silent.
+    pub fn audio_refused(&mut self, playback: crate::audio::PlaybackId) {
+        let (event, warning) = self.session.state().audio.refused(playback);
+        if let Some(ev) = event {
+            self.pending.push(ev);
+        }
+        self.warn(warning);
     }
 
     /// Re-reads the session's font family names into the mirror

@@ -226,10 +226,13 @@ export type EditMsg = { kind: 'changed' } | { kind: 'submit' };
 
 /** A tagged playback (`play(id, { tag })` or `<audio tag>`) finished on its
  *  own — never when something stopped it. On an `<audio>` node's key, or the
- *  root for `play`. */
+ *  root for `play`. `'refused'` is the device declining to start it at all
+ *  (its 128 voices are all held, or the sound did not decode): that playback
+ *  never starts and so never ends, so this arrives in place of the `'ended'`
+ *  a view would otherwise wait forever for. */
 export type SoundMsg<T = AppMsg> = {
   kind: 'sound';
-  phase: 'ended';
+  phase: 'ended' | 'refused';
   playback: number;
   tag: T;
 };
@@ -613,7 +616,17 @@ export type WarningCode =
   /** An extension's `view` returned an error. The message is drawn in red where
    *  the fill would have been, and reported here once per extension and slot
    *  rather than once per frame. */
-  | 'extension-view-error';
+  | 'extension-view-error'
+  /** The device refused a play: its voices are all held, or the sound did not
+   *  decode. A released playback (`finish`) holds one of the device's 128
+   *  voices until its file ends, so a view that releases faster than its sounds
+   *  finish reaches the limit and the 129th play is refused. The refusal is not
+   *  left silent because the playback never starts and so never ends: a
+   *  `tag`ged node waiting for `ended` would wait forever. It gets
+   *  `{kind:"sound", phase:"refused"}` instead, and this line says why. Stop
+   *  what the view no longer needs rather than releasing it, or release shorter
+   *  sounds. */
+  | 'playback-refused';
 // -- end generated --
 
 /** A silent misconfiguration the core noticed while finishing a frame —

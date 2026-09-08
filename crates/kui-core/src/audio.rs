@@ -21,7 +21,10 @@
 //! something stopped it. The other direction is
 //! [`crate::diag::TRUNCATED_PLAYBACK`]: the driver reports a stop that
 //! landed on a sound still playing (`Core::audio_truncated`) and the core
-//! names the node it cut off.
+//! names the node it cut off. A play the device refused — its voices all
+//! held, or the sound undecodable — comes back as `phase="refused"`
+//! (`Core::audio_refused`), because that playback never starts and so
+//! never ends: without it a view waiting on `ended` waits forever.
 
 use rustc_hash::FxHashMap;
 
@@ -143,6 +146,17 @@ impl AudioSpec {
     /// it is either this flag or a node kept declared until the `ended`
     /// event. A node that means to cut the sound off says so by stopping
     /// what it started (`Core::stop`), which is not reported.
+    ///
+    /// A released playback is not free: it holds one of the device's 128
+    /// voices until its file ends, released or not, and the 129th play is
+    /// refused — reported as [`crate::diag::PLAYBACK_REFUSED`] and, for a
+    /// tagged node, `{kind:"sound", phase:"refused"}` so nothing waits on
+    /// an `ended` that cannot come. 128 is kira's number, not a kui budget
+    /// on top of it (`MainTrackBuilder::sound_capacity` is where a setting
+    /// would go); a view that releases a one-shot per keystroke of a 1.4 s
+    /// file would need ninety keystrokes a second to reach it, and a loop
+    /// reaches it at once — which is why a loop is stopped rather than
+    /// released.
     pub fn finish(mut self) -> Self {
         self.finish = true;
         self
@@ -383,6 +397,51 @@ impl AudioStore {
         })
     }
 
+    /// The driver refused a play — the device's voices are all held, or
+    /// the sound did not decode. The playback never started, so it will
+    /// never reach [`Self::ended`]: a tagged one is handed the same event
+    /// with `phase: "refused"` instead, which unsticks a view waiting on
+    /// the sound and still tells it the sound was not heard. The warning
+    /// comes back whether or not anything was waiting — an untagged
+    /// refusal is silent otherwise.
+    ///
+    /// The `audio` node's mount is left alone: unmounting it would have
+    /// the next frame re-declare, replay and be refused again, one line
+    /// per frame, where leaving it mounted costs one.
+    pub(crate) fn refused(
+        &mut self,
+        playback: PlaybackId,
+    ) -> (Option<UiEvent>, crate::diag::Warning) {
+        let warning = crate::diag::playback_refused(self.key_of(playback), playback);
+        let event = self.tagged.remove(&playback).map(|t| UiEvent {
+            origin: t.origin,
+            window: WindowId::MAIN,
+            key: t.key,
+            payload: Value::map([
+                ("kind", Value::str("sound")),
+                ("phase", Value::str("refused")),
+                ("playback", Value::Int(playback.0 as i64)),
+                ("tag", t.tag),
+            ]),
+        });
+        (event, warning)
+    }
+
+    /// The node a warning about a playback hangs on: the node that asked
+    /// for the sound when one did — a tagged playback's, or the `audio`
+    /// element that mounted it — and the root otherwise, which is where an
+    /// imperative `play` and a `click_sound` start from anyway.
+    fn key_of(&self, playback: PlaybackId) -> Key {
+        if let Some(t) = self.tagged.get(&playback) {
+            return t.key;
+        }
+        self.mounted
+            .iter()
+            .find(|(_, m)| m.playback == playback)
+            .map(|(k, _)| *k)
+            .unwrap_or(Key::ROOT)
+    }
+
     /// Diffs this frame's `audio` nodes against the retained playbacks:
     /// new keys start, missing keys stop, a changed `src`/`looped`
     /// restarts, `volume`/`paused` changes apply live. A one-shot that
@@ -612,6 +671,107 @@ mod tests {
         let ev = a.ended(p).expect("a released playback still reports ended");
         assert_eq!(ev.key, k);
         assert_eq!(ev.payload.get("tag").and_then(Value::as_str), Some("chime"));
+    }
+
+    /// F35: the device refuses a play past its 128 voices, and the
+    /// playback that never starts never ends — so a tagged node waiting
+    /// for `ended` would wait forever. It hears `refused` instead, on the
+    /// key it declared, and can tell the two phases apart.
+    #[test]
+    fn a_refused_tagged_playback_reports_refused_and_warns() {
+        let mut a = AudioStore::default();
+        let s = sound();
+        let k = Key::ROOT.str("chime");
+        let p = a.play(
+            OriginId::HOST,
+            k,
+            s,
+            PlayOptions::default().tag(Value::str("chime")),
+        );
+        let (event, warning) = a.refused(p);
+        let ev = event.expect("a tagged playback hears the refusal");
+        assert_eq!(ev.key, k);
+        assert_eq!(
+            ev.payload.get("kind").and_then(Value::as_str),
+            Some("sound")
+        );
+        assert_eq!(
+            ev.payload.get("phase").and_then(Value::as_str),
+            Some("refused"),
+            "told apart from the `ended` that will never come"
+        );
+        assert_eq!(ev.payload.get("tag").and_then(Value::as_str), Some("chime"));
+        assert_eq!(
+            ev.payload.get("playback").and_then(Value::as_int),
+            Some(p.0 as i64)
+        );
+        assert_eq!(warning.code, crate::diag::PLAYBACK_REFUSED);
+        assert_eq!(warning.key, k);
+
+        // Reported once: the refusal is consumed like an end.
+        assert!(a.refused(p).0.is_none());
+        assert!(a.ended(p).is_none(), "and it can never end afterwards");
+    }
+
+    /// An untagged play — a `click_sound`, a bare `Core::play` — has no
+    /// view waiting on it, so the warning is the whole report.
+    #[test]
+    fn a_refused_untagged_playback_is_the_warning_alone() {
+        let mut a = AudioStore::default();
+        let s = sound();
+        let p = a.play(OriginId::HOST, Key::ROOT, s, PlayOptions::default());
+        let (event, warning) = a.refused(p);
+        assert!(event.is_none(), "nothing asked to hear about this one");
+        assert_eq!(warning.code, crate::diag::PLAYBACK_REFUSED);
+        assert_eq!(warning.key, Key::ROOT);
+    }
+
+    /// An `audio` node's playback survives the node — that is what
+    /// `finish` means — so a refusal after the release still has the tag
+    /// to report on, and the key the node declared it under.
+    #[test]
+    fn a_refused_released_playback_still_reports() {
+        let mut a = AudioStore::default();
+        let s = sound();
+        let k = Key::ROOT.str("chime");
+        let spec = {
+            let mut spec = AudioSpec::new(s).finish();
+            spec.tag = Some(Value::str("chime"));
+            spec
+        };
+        a.declare(k, OriginId::HOST, spec);
+        a.reconcile();
+        let p = a.playback_of(k).unwrap();
+        a.take_commands();
+
+        // Gone: released, and the store forgets the mount.
+        a.reconcile();
+        assert!(a.playback_of(k).is_none());
+
+        let (event, warning) = a.refused(p);
+        let ev = event.expect("a released playback still hears the refusal");
+        assert_eq!(ev.key, k);
+        assert_eq!(
+            ev.payload.get("phase").and_then(Value::as_str),
+            Some("refused")
+        );
+        assert_eq!(warning.key, k);
+    }
+
+    /// A mounted `audio` node without a tag hangs its warning on the node
+    /// rather than the root, so the line names the element that asked.
+    #[test]
+    fn an_untagged_audio_node_warns_on_its_own_key() {
+        let mut a = AudioStore::default();
+        let s = sound();
+        let k = Key::ROOT.str("bed");
+        a.declare(k, OriginId::HOST, AudioSpec::new(s).looped());
+        a.reconcile();
+        let p = a.playback_of(k).unwrap();
+
+        let (event, warning) = a.refused(p);
+        assert!(event.is_none());
+        assert_eq!(warning.key, k);
     }
 
     #[test]
