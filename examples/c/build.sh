@@ -72,3 +72,15 @@ cc "$noabi" \
     -Wall -Wextra -o target/panel-noabi.so
 
 echo "built target/panel-noabi.so (kui_ext_abi deleted; must be refused)"
+
+# C on both sides: a C host that loads the same panel.so, through
+# kui_ctx_add_extension / kui_run_with (ADR 0014's C half, ABI 10). It links
+# kui_ffi like counter.c does - a host is a host - and the plugin it loads is
+# the same file panel.rs loads, byte for byte.
+cc examples/c/host.c \
+    -I crates/kui-ffi/include \
+    -L target/debug -lkui_ffi \
+    -Wl,-rpath,"$(pwd)/target/debug" \
+    -Wall -Wextra -o examples/c/host
+
+echo "built examples/c/host"

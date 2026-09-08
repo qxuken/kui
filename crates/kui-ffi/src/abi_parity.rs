@@ -481,6 +481,7 @@ fn asserts() -> String {
         key: u64 => "uint64_t",
         payload: *const KuiValue => "const KuiValue *",
         window: u32 => "uint32_t",
+        reply_sink: *mut KuiReplySink => "KuiReplySink *",
     });
     abi_out_struct!(o, KuiEvent);
 

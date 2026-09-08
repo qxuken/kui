@@ -54,6 +54,28 @@ pub struct KuiCtx {
     pub(crate) slot_name: Option<String>,
     pub(crate) slot_namespace: Option<String>,
     pub(crate) slot_params: Option<KuiValue>,
+    /// The extensions this context hosts, in origin order (ADR 0014).
+    /// `kui_ctx_add_extension` fills it, `kui_slot` fills *them* in place,
+    /// `kui_frame_finish` lets them take `ns/root` and warn about slots
+    /// nobody declared, and an event whose origin names one is delivered to
+    /// it rather than queued for the host. Empty on a borrowing context: an
+    /// extension does not host extensions, and the windowed runner owns the
+    /// list for a host under `kui_run_with`.
+    pub(crate) extensions: kui_core::Extensions,
+    /// Why the last `kui_ctx_add_extension` said false. Valid until the
+    /// next call, like every other borrowed string here.
+    pub(crate) last_ext_error: String,
+    /// Set only for the length of a `kui_run_with` view callback: the
+    /// runner's own `Ui`, erased to a pointer because `KuiCtx` is what C
+    /// holds and has no lifetime to carry one.
+    ///
+    /// It exists because under the windowed runner the extension list is
+    /// the *runner's*, not this context's — `kui::Launcher` owns it, and
+    /// the `Ui` it built the frame with is what knows how to fill a slot.
+    /// So `kui_slot` hands the declaration to that `Ui` when this is set,
+    /// and fills from `extensions` when it is not. Null on every other
+    /// context: a standalone one, and an extension's own.
+    pub(crate) host_ui: *mut c_void,
 }
 
 impl KuiCtx {
@@ -87,6 +109,58 @@ impl KuiCtx {
             slot_name: None,
             slot_namespace: None,
             slot_params: None,
+            extensions: Default::default(),
+            last_ext_error: String::new(),
+            host_ui: std::ptr::null_mut(),
+        }
+    }
+
+    /// [`Self::borrowing`] for the windowed runner's view callback, which
+    /// has a whole `Ui` rather than a bare `Core`: same context, plus the
+    /// pointer `kui_slot` needs to reach the runner's extensions. Valid
+    /// for the callback and not one instruction longer, like the borrow
+    /// itself.
+    pub(crate) fn borrowing_in(ui: &mut kui_core::Ui<'_>) -> Self {
+        let ui: *mut kui_core::Ui<'_> = ui;
+        let mut this = Self::borrowing(unsafe { (*ui).core() });
+        this.host_ui = ui.cast::<c_void>();
+        this
+    }
+    /// Takes a batch of events the core just produced: the host's own are
+    /// queued for `kui_poll_event`, and one whose origin names a loaded
+    /// extension is delivered to it here instead — its replies queued in
+    /// its place, carrying its origin, window and key, so the host learns
+    /// who answered and about what (ADR 0014 decision 6).
+    ///
+    /// This is `Shell::route_events` in the Rust runner, and it is the
+    /// same shape for the same reason: a reply is addressed by being one,
+    /// not routed by origin, so it goes to the host however it was made.
+    /// A context with no extensions cannot produce a foreign origin, so
+    /// the whole thing collapses to the `extend` it replaced.
+    pub(crate) fn absorb(&mut self, events: impl IntoIterator<Item = UiEvent>) {
+        if self.extensions.is_empty() {
+            self.events.extend(events);
+            return;
+        }
+        for ev in events {
+            if ev.origin == kui_core::OriginId::HOST {
+                self.events.push(ev);
+                continue;
+            }
+            let Some(ext) = self.extensions.by_origin(ev.origin) else {
+                // An origin nothing answers to: the host asked for the
+                // frame that made it, so it still hears about it.
+                self.events.push(ev);
+                continue;
+            };
+            for payload in ext.on_event(&ev) {
+                self.events.push(UiEvent {
+                    origin: ev.origin,
+                    window: ev.window,
+                    key: ev.key,
+                    payload,
+                });
+            }
         }
     }
 
@@ -743,6 +817,33 @@ pub struct KuiSpan {
     pub bg: u32,
 }
 
+/// Where a `kui_reply` from inside `kui_ext_on_event` sends what it is
+/// given: an opaque handle the library hands the plugin on the event, and
+/// takes back when the callback returns.
+///
+/// It is a struct with a function pointer rather than a `Vec` the plugin
+/// pushes into, and that is the whole point. A plugin may be linked against
+/// a *different copy of this library* than its host — on Windows it has to
+/// be, because a DLL cannot leave `kui_reply` undefined and resolve it from
+/// the executable the way ELF does — and then the `kui_reply` it calls is
+/// not the one the host is collecting from. A process-global sink (which is
+/// what this was until ABI 10: a `thread_local` keyed by the event) has one
+/// per copy, so every reply landed in a list nobody read and the host saw
+/// silence. A function pointer *into the host's copy*, carried on the event,
+/// has none of that: the plugin's `kui_reply` forwards, the host's code does
+/// the work, and only this two-field header has to have the same layout on
+/// both sides.
+///
+/// `push` is cleared when the callback returns, so a plugin that stored the
+/// event and calls later gets `false` rather than a reply nobody asked for —
+/// best-effort, not a guarantee, since the event itself is only alive for
+/// the call (like its payload, and like the `KuiCtx` a view is handed).
+#[repr(C)]
+pub struct KuiReplySink {
+    /// Called with the sink and the value; false if the sink is closed.
+    pub(crate) push: Option<unsafe extern "C" fn(*mut KuiReplySink, *const KuiValue) -> bool>,
+}
+
 /// One polled event ([out]). `size` leads it so that `window` — ABI 4's
 /// append, and anything after it — reaches a host that has not recompiled
 /// as a shorter write rather than as a longer one.
@@ -764,6 +865,16 @@ pub struct KuiEvent {
     /// layout still passes [`out_accepts`] and still gets every byte it
     /// knows about — [`write_out`] simply stops before this one.
     pub window: u32,
+    /// Where `kui_reply` sends a reply to this event, or NULL when there is
+    /// nowhere to send one — every event a host polls with
+    /// `kui_poll_event`, and any event outside a plugin's
+    /// `kui_ext_on_event`. See [`KuiReplySink`].
+    ///
+    /// **Appended in ABI 10**, after `window`, so a host that reserved the
+    /// older layout still passes [`out_accepts`] and still gets every byte
+    /// it knows about. A host has no use for it: it is the library's own
+    /// channel to a plugin, and the plugin passes the event straight back.
+    pub reply_sink: *mut KuiReplySink,
 }
 
 impl Default for KuiEvent {
@@ -774,6 +885,7 @@ impl Default for KuiEvent {
             key: 0,
             payload: std::ptr::null(),
             window: 0,
+            reply_sink: std::ptr::null_mut(),
         }
     }
 }

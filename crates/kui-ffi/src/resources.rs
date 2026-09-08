@@ -361,7 +361,7 @@ pub extern "C" fn kui_audio_ended(ptr: *mut KuiCtx, playback: u64) {
         if let Some(c) = unsafe { ctx(ptr) } {
             c.core().audio_ended(kui_core::PlaybackId(playback));
             let pending = c.core().take_pending_events();
-            c.events.extend(pending);
+            c.absorb(pending);
         }
     });
 }

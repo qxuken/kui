@@ -101,7 +101,7 @@ extern "C" {
  * elements it reads at the wrong places. Recompile and nothing in your
  * source changes; a zeroed bg is none.
  */
-#define KUI_ABI_VERSION 9u
+#define KUI_ABI_VERSION 10u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -156,6 +156,14 @@ uint32_t kui_abi_version(void);
 
 typedef struct KuiCtx KuiCtx;
 typedef struct KuiValue KuiValue;
+/* Where a reply goes, carried on the event an extension's kui_ext_on_event
+ * is handed and passed straight back to kui_reply. Opaque on purpose: it is
+ * a function pointer into the copy of the library that opened it, which is
+ * how a reply reaches the host even when the plugin was linked against a
+ * different copy - the case Windows forces, since a DLL may not leave
+ * kui_reply undefined and take it from the executable the way ELF does.
+ * Never allocate, dereference or store one. */
+typedef struct KuiReplySink KuiReplySink;
 
 typedef struct KuiStr {
     const uint8_t *ptr;
@@ -1002,6 +1010,12 @@ typedef struct KuiEvent {
     uint64_t key;
     const KuiValue *payload; /* borrowed; may be NULL */
     uint32_t window;         /* which window it came from: the KuiCtx's kui_env_set_window id */
+    /* Where kui_reply sends a reply to this event (ABI 10). NULL on every
+     * event you polled yourself; set only on the one an extension's
+     * kui_ext_on_event is handed, and only for that call. Not yours to
+     * read or write - pass the event back to kui_reply and it is used for
+     * you. See KuiReplySink. */
+    KuiReplySink *reply_sink;
 } KuiEvent;
 #define KUI_EVENT_INIT ((KuiEvent){ .size = sizeof(KuiEvent) })
 
@@ -1357,10 +1371,43 @@ uint64_t kui_open_keyed(KuiCtx *ctx, KuiStr label, const KuiSpec *spec, KuiValue
  * kui_slot_params, declared every frame and retained by nothing. "ns/root"
  * is the fill after the view for an extension listing no slots, and
  * declaring it moves that fill here. Returns false when the name was
- * already declared this frame (a `duplicate-slot` warning). Under kui_run
- * nothing fills a slot yet - the C runner takes no extensions - so today it
- * records the position: kui_key_of answers the slot's key. */
+ * already declared this frame (a `duplicate-slot` warning).
+ *
+ * Whatever fills it is loaded with kui_ctx_add_extension (a headless
+ * context) or named to kui_run_with (a window). With nothing loaded this
+ * still records the position and kui_key_of still answers the slot's key,
+ * so a host can declare its layout before it has a plugin to put in it. */
 bool kui_slot(KuiCtx *ctx, KuiStr name, const KuiValue *params);
+
+/* -- Extensions: loading one from C (ADR 0014) --------------------------- */
+
+/* Load the shared library at `path` as an extension of this context, under
+ * `namespace` - the word that fronts every slot name it fills
+ * ("namespace/panel"). An empty `namespace` takes the plugin's own
+ * kui_ext_name.
+ *
+ * False on any refusal, with the reason readable until the next call
+ * through kui_ctx_extension_error: the library will not load, it declares
+ * no kui_ext_abi or one this build does not implement, it has no
+ * kui_ext_view, or the namespace is empty or already another extension's.
+ *
+ * The context owns it from here and unloads it in kui_ctx_free, after the
+ * plugin's own kui_ext_free. Load before the first frame: origins are
+ * positions in the list, so one added later renumbers what follows it.
+ *
+ * The plugin's code runs in your process, on your thread, on your frame.
+ * Loading it is trusting it exactly as much as linking it would be. */
+bool kui_ctx_add_extension(KuiCtx *ctx, KuiStr namespace_, KuiStr path);
+/* Why the last kui_ctx_add_extension said false; false (out untouched)
+ * when it succeeded or none has run. Borrowed until the next call. */
+bool kui_ctx_extension_error(KuiCtx *ctx, KuiStr *out);
+/* How many are loaded. Their origins are 1..=n in the order added; an
+ * event's origin of 0 is your own nodes. */
+uint32_t kui_ctx_extension_count(KuiCtx *ctx);
+/* The namespace the extension at `origin` was loaded under - what turns an
+ * event's origin back into the name you chose. False (out untouched) for 0
+ * or an origin nothing is loaded at. Borrowed until the next call. */
+bool kui_ctx_extension_namespace(KuiCtx *ctx, uint16_t origin, KuiStr *out);
 /* Draggable container: press-drag emits {kind="drag", phase="start"|"move"|
  * "end", x, y, dx, dy, parent, tag} events. dx/dy are the displacement from
  * the press point in every phase - start is zero, a move is how far the
@@ -1717,6 +1764,22 @@ void kui_value_free(KuiValue *v);
 /* -- Windowed runner (winit + wgpu), blocks until the window closes ------ */
 typedef void (*KuiEventFn)(void *user, const KuiEvent *ev);
 bool kui_run(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user);
+/* kui_run with extensions (ADR 0014). `paths` and `namespaces` are
+ * parallel arrays of `count` entries: the library to load, and the word
+ * that fronts every slot name it fills. `namespaces` may be NULL, and any
+ * entry in it may be empty, to take each plugin's own kui_ext_name.
+ *
+ * False without opening a window if one will not load or two want the same
+ * namespace, with the reason on stderr - there is no context to hang it on
+ * yet, and a window drawn silently without the panel you asked for would be
+ * worse. To inspect a failure first, load into a standalone context with
+ * kui_ctx_add_extension and read kui_ctx_extension_error.
+ *
+ * Your view declares slots with kui_slot exactly as it would headless, and
+ * what a plugin's nodes produce reaches your on_event as replies carrying
+ * that plugin's origin. Same trust as kui_ctx_add_extension. */
+bool kui_run_with(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user,
+                  const KuiStr *paths, const KuiStr *namespaces, size_t count);
 
 /* -- Extension ABI: C as the guest rather than the host ------------------
  *
@@ -1764,32 +1827,46 @@ bool kui_run(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user);
  *                    often as the event deserves.
  *   kui_ext_free     Your state, at unload.
  *
- * You link against nothing: leave every kui_* symbol undefined and let it
- * resolve from the host executable at load, the way a Lua C module resolves
- * lua_*. That asks one thing of the *host*, which crates/kui-ffi/build.rs
- * does for this crate's examples: link with -rdynamic / --export-dynamic, so
- * that the kui_* symbols in its binary are also in the dynamic symbol table
- * the loader reads. examples/c/build.sh builds your side.
+ * On ELF and Mach-O you link against nothing: leave every kui_* symbol
+ * undefined and let it resolve from the host executable at load, the way a
+ * Lua C module resolves lua_*. That asks one thing of the *host*, which
+ * crates/kui-ffi/build.rs does for this crate's examples: link with
+ * -rdynamic / --export-dynamic, so that the kui_* symbols in its binary are
+ * also in the dynamic symbol table the loader reads. examples/c/build.sh
+ * builds your side.
  *
- * ON WINDOWS BOTH HALVES OF THAT ARE DIFFERENT, and neither is optional.
+ * ON WINDOWS THAT IS NOT AVAILABLE, and you pick one of two shapes instead.
  * A DLL may not have an unresolved import: your plugin names the module each
- * kui_* comes from in its own import table, and it takes that name from an
- * import library at link time. So you link against the *host's* import
- * library - the .lib link.exe writes beside an executable that exports
- * something - rather than against nothing. kui-ffi's build.rs makes
- * target/debug/examples/c_panel.lib for the example host by handing link.exe
- * a /DEF: naming all 135 kui_*; a host of your own exports them the same way
- * and ships the .lib it gets. One consequence is Windows' and not kui's: an
- * import library names the module it imports from, so a plugin built against
- * one host's .lib loads into that host and no other, where the same ELF
- * plugin would have loaded into either. examples/c/build.ps1 is the Windows
- * side of examples/c/build.sh and does all of this.
+ * kui_* comes from in its own import table, and takes that name from an
+ * import library at link time. So either -
  *
- * The other difference is below: a DLL exports nothing unless it says so,
- * which is what KUI_EXT_EXPORT on these seven declarations is for. It is on
- * the declarations rather than left to you, so a plugin that includes this
- * header and defines them the ordinary way is already exported and your
- * source stays the source that builds everywhere.
+ *   1. link against kui_ffi.dll.lib. Your plugin imports from kui_ffi.dll
+ *      and loads into ANY host that ships it, which is the ordinary Windows
+ *      plugin shape (a Python extension imports from python313.dll, not
+ *      from python.exe). Prefer this one: it is the plugin you can compile
+ *      once and hand to somebody. examples/c/host.c loads a plugin built
+ *      this way, and examples/c/build.ps1 builds it as panel-dll.dll.
+ *
+ *   2. link against the *host's* import library - the .lib link.exe writes
+ *      beside an executable that exports something. kui-ffi's build.rs makes
+ *      target/debug/examples/c_panel.lib for the example Rust host by
+ *      handing link.exe a /DEF: naming all 135 kui_*; a host of your own
+ *      exports them the same way and ships the .lib it gets. The plugin then
+ *      loads into that host and no other, because an import library names
+ *      the module it imports from. Use it when the host statically links
+ *      kui-ffi and ships no DLL, which every Rust host does by default.
+ *
+ * Shape 1 puts two copies of this library in one process, and that is fine:
+ * everything crossing the boundary does so through a pointer the host hands
+ * over, and the one thing that used to live in a static - kui_reply's sink -
+ * rides on the event as of ABI 10 (see KuiReplySink). It was not fine
+ * before ABI 10: every reply landed in the copy nobody was reading.
+ *
+ * The other Windows difference is below: a DLL exports nothing unless it
+ * says so, which is what KUI_EXT_EXPORT on these seven declarations is for.
+ * It is on the declarations rather than left to you, so a plugin that
+ * includes this header and defines them the ordinary way is already
+ * exported and your source stays the source that builds everywhere.
  */
 typedef void (*KuiExtViewFn)(void *user, KuiCtx *ctx);
 typedef void (*KuiExtEventFn)(void *user, const KuiEvent *ev);

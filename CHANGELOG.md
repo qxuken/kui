@@ -21,10 +21,20 @@ field reports).
 
 **What breaks.**
 
-- `KUI_ABI_VERSION` is 9: `KuiDrawData` gained `fragments`, `fragment_count`
-  and `time`. It is an [out] struct, so the append bumps by ADR 0006's rule
-  — but its leading `size` means an un-recompiled host keeps the prefix it
-  knows and only has to bump the constant it checks against.
+- `KUI_ABI_VERSION` is 10, over two appends. `KuiDrawData` gained
+  `fragments`, `fragment_count` and `time` (ABI 9), and `KuiEvent` gained
+  `reply_sink` (ABI 10). Both are [out] structs whose leading `size` means
+  an un-recompiled host keeps the prefix it knows and only has to bump the
+  constant it checks against.
+- `kui_reply` reads its sink off the event rather than from a `thread_local`.
+  Nothing in a host's or a plugin's *source* changes — recompile both. What
+  the bump is really for is a plugin **binary** built against ABI 9: it must
+  not be handed an ABI 10 event, and the version check is what refuses it.
+  The reason it matters is Windows: a plugin there links against an import
+  library, so it may be calling a *different copy* of this library than its
+  host, and one `thread_local` per copy meant every `kui_reply` landed where
+  nobody read it. A plugin that imports `kui_ffi.dll` now loads into any host
+  shipping that DLL, which is the shape a precompiled plugin wants.
 - `Fragment` from `@qxuken/kui/jsx-runtime` is a `Symbol` rather than the
   string `'fragment'`, because `<fragment>` is now a real element and the
   two would be the same `type`. `jsx-runtime.d.ts` has always declared it a
@@ -55,6 +65,23 @@ field reports).
   declared it.
 
 ### Added
+
+- **A C host can load a C extension** (ADR 0014's other half, which was
+  Rust's alone). `kui_ctx_add_extension(ctx, namespace, path)` loads a
+  plugin into a context, `kui_run_with` does the same for a window, and
+  `kui_slot` fills in place from either — the same call a host already made
+  to declare the position. `kui_ctx_extension_error` says why a load was
+  refused, `kui_ctx_extension_count` how many are loaded, and
+  `kui_ctx_extension_namespace` turns an event's `origin` back into the name
+  you gave it. A plugin's events reach the plugin and its replies reach the
+  host, exactly as under the Rust runner; a context unloads what it loaded.
+
+  [`examples/c/host.c`](examples/c/host.c) is the example, and it loads the
+  *same plugin binary* the Rust host does: an extension does not know what
+  language its host is written in, which is the point of ADR 0014's contract
+  being C. Its `--headless` asserts the whole round trip — the slot filled,
+  the click reached the plugin and not the host, the reply came back under
+  the plugin's origin — and the build scripts run it.
 
 - **A Windows smoke round that opens a real window**, and
   `KUI_SMOKE_FRAMES=n` to make it possible: the runner quits once the main

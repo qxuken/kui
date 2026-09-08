@@ -109,7 +109,24 @@
 /// hazard mirrored: an old binary's element 1 is read at the wrong place
 /// whatever element 0 says. The bump makes that a message. Recompile and
 /// nothing in a host's source changes; a zeroed `bg` is none.
-pub const KUI_ABI_VERSION: u32 = 9;
+///
+/// ABI 9 appends `fragments`, `fragment_count` and `time` to
+/// `KuiDrawData` for ADR 0015's `fragment` element.
+///
+/// ABI 10 appends `reply_sink` to `KuiEvent`. Another [out] append, and by
+/// the rule above one that would not need a bump — a host reserving the
+/// older layout keeps polling correctly and never sees the field, which is
+/// right, because the field is not for a host. The bump is for the other
+/// side: `kui_reply` used to find its sink in a `thread_local`, which is
+/// one sink *per copy of this library in the process*, and a plugin does
+/// not always share the host's copy — on Windows it cannot, since a DLL
+/// may not leave `kui_reply` undefined and resolve it from the executable
+/// the way ELF does. Every reply then landed in a list nobody read. The
+/// sink now travels on the event as a function pointer into the copy that
+/// opened it. A plugin's source does not change; a plugin *binary* built
+/// against ABI 9 must not be handed an ABI 10 event, and the version is
+/// what says so.
+pub const KUI_ABI_VERSION: u32 = 10;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its

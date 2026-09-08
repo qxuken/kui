@@ -100,6 +100,9 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             slot_name: None,
             slot_namespace: None,
             slot_params: None,
+            extensions: Default::default(),
+            last_ext_error: String::new(),
+            host_ui: std::ptr::null_mut(),
         }))
     })
 }

@@ -189,7 +189,7 @@ pub extern "C" fn kui_window_dismissed(ptr: *mut KuiCtx, id: u32, reason: u32) {
             };
             c.core().dismiss_window(WindowId(id), reason);
             let evs = c.core().take_pending_events();
-            c.events.extend(evs);
+            c.absorb(evs);
         }
     });
 }
@@ -206,7 +206,7 @@ pub extern "C" fn kui_window_closed(ptr: *mut KuiCtx, id: u32) {
         if let Some(c) = unsafe { ctx(ptr) } {
             c.core().window_closed(WindowId(id));
             let evs = c.core().take_pending_events();
-            c.events.extend(evs);
+            c.absorb(evs);
         }
     });
 }

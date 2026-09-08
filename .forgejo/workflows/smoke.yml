@@ -164,3 +164,13 @@ jobs:
           # The mutant with kui_ext_abi deleted must be refused, not loaded.
           cargo run -p kui-ffi --example c_panel -- --headless target/panel-noabi.dll
           if ($LASTEXITCODE -eq 0) { throw "a plugin with no kui_ext_abi was loaded" }
+          # C on both sides, through kui_ctx_add_extension (ADR 0014's C
+          # half). Its plugin is the one that imports kui_ffi.dll, so this
+          # also covers the shape a plugin ships in.
+          ./examples/c/host.exe --headless
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          # And the two-copies case ABI 10 exists for: a Rust host with its
+          # own statically linked library, loading a plugin that imports
+          # another copy from kui_ffi.dll. The reply has to cross anyway.
+          cargo run -p kui-ffi --example c_panel -- --headless examples/c/panel-dll.dll
+          if ($LASTEXITCODE -ne 0) { exit 1 }

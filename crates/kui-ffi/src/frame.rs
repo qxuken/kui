@@ -656,17 +656,25 @@ pub extern "C" fn kui_is_pressed(ptr: *mut KuiCtx, key: u64) -> bool {
 pub extern "C" fn kui_frame_finish(ptr: *mut KuiCtx) {
     guard((), || {
         if let Some(c) = unsafe { ctx(ptr) } {
+            // The extensions get the last word before layout, exactly as
+            // they do under `Ui::finish`: every `ns/root` the host did not
+            // declare is filled here, and a slot an extension names that
+            // nothing declared this frame becomes an `unknown-slot`
+            // warning. Skipped whole when none are loaded.
+            if !c.extensions.is_empty() {
+                let core: &mut Core = unsafe { &mut *c.core };
+                kui_core::Fill::finish(&mut c.extensions, &mut kui_core::Ui::wrap(core));
+            }
             c.core().finish_frame();
             // Raised by the frame itself, not by input: the resize a
             // changed viewport produced at kui_frame_begin, and hover
             // enter/leave from this frame changing what sits under a
             // still cursor.
             let pending = c.core().take_pending_events();
-            c.events.extend(pending);
+            c.absorb(pending);
         }
     });
 }
-
 /// Draw data for the finished frame. Pointers are valid until the next
 /// `kui_frame_begin` on this context. `KuiQuad` is layout-compatible with the
 /// core quad (asserted below), so this is a cast, not a copy.

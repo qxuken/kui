@@ -8,7 +8,7 @@ pub(crate) fn push_input(ptr: *mut KuiCtx, ev: InputEvent) {
     guard((), || {
         if let Some(c) = unsafe { ctx(ptr) } {
             let evs = c.core().handle_input(ev);
-            c.events.extend(evs);
+            c.absorb(evs);
         }
     })
 }
@@ -241,7 +241,7 @@ pub extern "C" fn kui_input_press(
         };
         if let Some(c) = unsafe { ctx(ptr) } {
             let evs = c.core().press(kui_core::KeyPress { repeat, ..kp });
-            c.events.extend(evs);
+            c.absorb(evs);
         }
     });
 }
@@ -267,7 +267,7 @@ pub extern "C" fn kui_input_release(ptr: *mut KuiCtx, code: KuiStr, physical: Ku
         };
         if let Some(c) = unsafe { ctx(ptr) } {
             let evs = c.core().release(kp);
-            c.events.extend(evs);
+            c.absorb(evs);
         }
     });
 }
@@ -298,7 +298,7 @@ pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
         // Also whatever a call between frames left pending — the synthetic
         // key releases `kui_focus` / `kui_release_held_keys` force.
         let pending = c.core().take_pending_events();
-        c.events.extend(pending);
+        c.absorb(pending);
         // Refuse before popping: a reservation this library cannot write
         // into must leave the queue where it was, not swallow an event.
         if c.events.is_empty() || !out_accepts(out) {

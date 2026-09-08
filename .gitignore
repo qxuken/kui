@@ -1,14 +1,21 @@
 /target
 /examples/c/counter
 /examples/c/panel.so
-# The same three from examples/c/build.ps1, plus what Windows links and loads
-# alongside them: an import library per DLL, and the kui_ffi.dll the counter
-# needs beside it because there is no rpath.
+# The same artifacts from examples/c/build.ps1, plus what Windows links and
+# loads alongside them: an import library per DLL, and the kui_ffi.dll the
+# hosts need beside them because there is no rpath. `panel-dll` is the
+# second plugin shape - the one that imports kui_ffi.dll rather than a
+# host, and so loads into any of them.
 /examples/c/counter.exe
 /examples/c/panel.dll
 /examples/c/panel.lib
 /examples/c/panel.exp
 /examples/c/kui_ffi.dll
+/examples/c/host
+/examples/c/host.exe
+/examples/c/panel-dll.dll
+/examples/c/panel-dll.lib
+/examples/c/panel-dll.exp
 .DS_Store
 /examples/node/node_modules
 /examples/node/dist

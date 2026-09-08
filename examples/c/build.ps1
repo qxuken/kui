@@ -1,12 +1,20 @@
-# The Windows half of build.sh: libkui_ffi and the C counter against it, then
-# the C panel as a plugin for the Rust host — after checking that
-# include/kui.h still describes the structs Rust actually lays out.
+# The Windows half of build.sh: libkui_ffi and the C examples against it,
+# after checking that include/kui.h still describes the structs Rust
+# actually lays out.
 #
 #   pwsh examples/c/build.ps1
 #   pwsh examples/c/build.ps1 -Release
 #
-# Same three artifacts and the same checks as build.sh, in the same order.
-# What differs is Windows', not kui's, and it is worth reading once:
+# Everything build.sh builds and, because Windows has two plugin shapes
+# rather than one, a second copy of the panel:
+#
+#   counter.exe       C as the host, kui as a plain library
+#   host.exe          C as the host of a C *extension* (ADR 0014's C half)
+#   panel.dll         the panel, importing from the Rust host c_panel.exe
+#   panel-dll.dll     the same panel, importing from kui_ffi.dll
+#   panel-noabi.dll   the panel with kui_ext_abi deleted; must be refused
+#
+# What differs from build.sh is Windows', not kui's, and is worth reading:
 #
 #  * The compiler must be MSVC-ABI, because that is the ABI the Rust
 #    x86_64-pc-windows-msvc target links with. `cl` or `clang-cl`, whichever
@@ -18,17 +26,18 @@
 #    (kui_ffi.dll.lib) and needs the DLL beside it at run time, since Windows
 #    has no rpath. The script copies it there.
 #
-#  * The plugin links against the *host executable's* import library, not
-#    against nothing. A DLL may not have an unresolved import: it names the
-#    module each kui_* comes from in its own import table and takes that name
-#    from a .lib. crates/kui-ffi/build.rs is what makes the host export its
-#    135 kui_* so link.exe writes that c_panel.lib; on ELF the plugin leaves
-#    them undefined and the host only has to be linked --export-dynamic.
-#
-#    The consequence is Windows' too: an import library names the module it
-#    imports from, so panel.dll loads into c_panel.exe and no other host,
-#    where the same panel.so would have loaded into either. A host of your
-#    own exports kui_* the same way and ships the .lib its plugins link to.
+#  * A plugin links against an import library rather than against nothing. A
+#    DLL may not have an unresolved import: it names the module each kui_*
+#    comes from in its own import table and takes that name from a .lib.
+#    Which .lib is the choice, and both are built here because both are
+#    real. panel-dll.dll takes kui_ffi.dll's, and so loads into any host
+#    shipping that DLL - the shape a plugin you hand to somebody wants, and
+#    the one host.exe loads. panel.dll takes the *Rust host's*, which
+#    crates/kui-ffi/build.rs arranges by handing link.exe a /DEF: naming all
+#    135 kui_* so that link.exe writes c_panel.lib; that plugin loads into
+#    c_panel.exe and no other, because an import library names the module it
+#    imports from. On ELF neither choice exists or is needed: the plugin
+#    leaves them undefined and the host is linked --export-dynamic.
 #
 #  * The plugin's own seven entry points need __declspec(dllexport), which
 #    kui.h puts on their declarations as KUI_EXT_EXPORT, so panel.c is the
@@ -164,6 +173,37 @@ Invoke-Cc ($cflags + @(
     )) 'panel.dll'
 Write-Host "built examples/c/panel.dll" -ForegroundColor Green
 
+
+# --- the host: C on both sides ---------------------------------------------
+
+# A C host that loads the same panel, through kui_ctx_add_extension /
+# kui_run_with (ADR 0014's C half, ABI 10). It links kui_ffi.dll like
+# counter.exe does - a host is a host - so the plugin it loads must import
+# from kui_ffi.dll too rather than from an executable. That is the *other*
+# Windows plugin shape, and the one that travels: a plugin built this way
+# loads into any host shipping this DLL, where panel.dll above loads into
+# c_panel.exe and nothing else. Both are built here because both are real.
+Invoke-Cc ($cflags + @(
+        'examples/c/host.c',
+        '/Fe:examples/c/host.exe',
+        '/Fo:target/host.obj',
+        '/link', "target/$profileDir/kui_ffi.dll.lib"
+    )) 'host'
+Write-Host "built examples/c/host.exe" -ForegroundColor Green
+
+Invoke-Cc ($cflags + @(
+        'examples/c/panel.c', '/LD',
+        '/Fe:examples/c/panel-dll.dll',
+        '/Fo:target/panel-dll.obj',
+        '/link', "target/$profileDir/kui_ffi.dll.lib"
+    )) 'panel-dll.dll'
+Write-Host "built examples/c/panel-dll.dll (imports kui_ffi.dll, not a host)" -ForegroundColor Green
+
+# The Rust host has its own statically linked copy of the library, so loading
+# panel-dll.dll into it puts *two* copies in one process - which is the case
+# ABI 10's reply sink exists for, and worth having a copy of the DLL beside
+# it so the check in build.ps1's "next" list can be run.
+Copy-Item "target/$profileDir/kui_ffi.dll" "target/$profileDir/examples/" -Force
 # The same plugin with its kui_ext_abi deleted: a plugin built against a
 # header from before ADR 0006 gave plugins a version, which is the one the
 # host must refuse and used to load unchecked (backlog S1). Produced from
@@ -189,6 +229,11 @@ Write-Host "built target/panel-noabi.dll (kui_ext_abi deleted; must be refused)"
 Write-Host ""
 Write-Host "next:" -ForegroundColor Cyan
 Write-Host "  ./examples/c/counter.exe --headless"
+Write-Host "  ./examples/c/host.exe --headless             # C on both sides"
+Write-Host "  ./examples/c/host.exe --headless examples/c/panel-dll.dll"
 Write-Host "  ./examples/c/counter.exe"
 Write-Host "  cargo run -p kui-ffi --example c_panel -- --headless"
 Write-Host "  cargo run -p kui-ffi --example c_panel"
+Write-Host "  ./target/$profileDir/examples/c_panel.exe --headless examples/c/panel-dll.dll"
+Write-Host "      # ^ a host with its own copy of the library and a plugin with"
+Write-Host "      #   another: what ABI 10's reply sink is for"

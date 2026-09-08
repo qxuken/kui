@@ -18,7 +18,7 @@ so an id cited by an open item, a code comment or a commit message can be
 resolved without opening the archive. Nothing was renumbered in any of those
 moves, and nothing ever is. What is left here is three parked headings — C12,
 C13 and C14 — W3 from the editor-and-mux assessment (2026-09-07), now run and
-rebuilt on a real Windows machine; W4–W8 from the first Windows round
+rebuilt on a real Windows machine; W4–W9 from the first Windows round
 (2026-09-08), which is what running it found; and F36,
 which fell out of building the four entries the two alpha.9 field reports
 and the bake-off produced (F32–F35, filed and built 2026-09-08); and what
@@ -264,7 +264,7 @@ kui ran on a Windows machine for the first time. Windows 11 Pro 26200,
 rustc 1.96 / MSVC, an RTX 5080 driving a 3840×2160 display at 239 Hz with
 the desktop at 150%, and an idle AMD integrated adapter beside it. The
 round was: `cargo test --workspace`, then every windowed example opened for
-real, then the C examples built and run in both directions. Five defects,
+real, then the C examples built and run in every direction. Six defects,
 none of which any headless test in the repo could have seen, and two of them
 crashes on the first frame.
 
@@ -284,7 +284,7 @@ This is what P8 said it could not offer ("On Windows there is no equivalent
 tool and no plan for one"): it is not the tree-walking audit
 `scripts/ax-audit.swift` is on macOS, and it judges that drawing did not
 fail rather than what was drawn — but it needs no permission grant and no
-human, and it found five things in one afternoon. P8's two follow-ups are
+human, and it found six things in one afternoon. P8's two follow-ups are
 untouched: `windows_nc.rs` and `access_bridge.rs` still have no test.
 
 ### `!` W4 — Every `fragment` past the first crashed the app on DX12 — **done (2026-09-08)**
@@ -419,6 +419,51 @@ so where it describes the contract.
 Windows and not a defect to fix. The round is in CI: `smoke-windows` builds
 and runs all three, and requires the mutant's refusal.
 
+### `~` W9 — A precompiled plugin could not be handed to anyone, and C could not host one — **done (2026-09-08)**
+
+Two halves of one question, asked after W8: *can I compile a `.dll` and give
+it to users?* Yes, and the shape it has to have was not available.
+
+**The plugin half.** On Windows a plugin links against an import library and
+so names the module its `kui_*` come from. Against the host's, it loads into
+that host and nothing else — which is fine for an app shipping its own SDK
+and useless for a plugin you hand to somebody. The shape that travels is the
+one every Windows plugin ecosystem uses: import from the *library's* DLL, not
+from the executable (a Python extension imports from `python313.dll`). That
+did not work, and the reason was one line: `kui_reply`'s sink was a
+`thread_local`, so a plugin calling `kui_ffi.dll`'s copy pushed replies into
+a list the host's copy never read, in silence.
+
+The sink rides on the event now (`KuiEvent.reply_sink`, ABI 10) as a function
+pointer into whichever copy opened it. Only that two-field header has to
+agree across copies; the list stays where it was made. Everything else that
+crosses already travelled through a pointer the host handed over, so two
+copies were always fine for it.
+
+Measured on the platform, which is the only place it could be: a Rust host
+with its own statically linked library, loading a plugin whose import table
+reads `kui_ffi.dll` — `dumpbin /imports` on both says so — delivers the
+reply. The old design could not have.
+
+**The host half.** ADR 0014's loader was `kui_ffi::CExtension`, which is
+Rust, so a C host could declare a slot with `kui_slot` and had nothing to
+put in it. Now `kui_ctx_add_extension(ctx, namespace, path)` loads one into
+a context and `kui_run_with` into a window; `kui_slot` fills from either;
+`kui_ctx_extension_error` says why a refusal was one, and
+`kui_ctx_extension_namespace` turns an event's origin back into the name the
+host chose. Events reach the plugin and replies reach the host, through the
+same `route_events` shape the Rust runner uses.
+
+[`examples/c/host.c`](../examples/c/host.c) is the example and the test: it
+loads the *same plugin binary* `panel.rs` does, and its `--headless` asserts
+the slot filled, the click reached the plugin and not the host, and the reply
+came back under the plugin's origin. Both build scripts build it and CI runs
+it, along with the two-copies case above.
+
+`~` because the first half is a limit narrowed rather than removed: a plugin
+built against a *host's* import library still loads into that host alone.
+That is Windows' rule about import libraries and not something kui can fix —
+what changed is that you no longer have to build one that way.
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
 Both apps upgraded to alpha.9 the day it was tagged and reported again:
@@ -977,7 +1022,7 @@ list drawing past its own box — are fixed under alpha.9's `### Fixed`.
 **Windows (2026-09-08).** The platform ran for the first time and the round
 is a script: `scripts/smoke-windows.ps1`, in `smoke-windows` beside the
 `cargo test` step, with the C round from `examples/c/build.ps1` beside it.
-W4, W5, W6 and W8 are fixed and W3 is rebuilt; W7 is the one
+W4, W5, W6, W8 and W9 are fixed and W3 is rebuilt; W7 is the one
 open thing it found and wants a decision, not a patch. What it still does
 not cover is P8's two follow-ups, unchanged: `windows_nc.rs` has no test
 that runs anywhere, and neither does `access_bridge.rs`. The next Windows

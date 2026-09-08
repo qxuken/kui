@@ -199,15 +199,25 @@ impl Launcher {
     /// namespaces, two sets of slots and two sets of params. Panics on a
     /// namespace already taken, an empty one, or an extension whose slot
     /// names contain `/`: all three are programming errors at startup.
-    pub fn extension_as(
+    pub fn extension_as(self, namespace: impl Into<String>, ext: impl Extension + 'static) -> Self {
+        match self.try_extension_as(namespace, ext) {
+            Ok(this) => this,
+            Err(e) => panic!("kui: {e}"),
+        }
+    }
+
+    /// `extension_as` for a caller that has to report the refusal rather
+    /// than die of it — a plugin path that came from outside the program,
+    /// which is every `kui_run_with` in the C API. The launcher is consumed
+    /// either way: a host that cannot load the extension it was told to
+    /// load has nothing useful left to run.
+    pub fn try_extension_as(
         mut self,
         namespace: impl Into<String>,
         ext: impl Extension + 'static,
-    ) -> Self {
-        if let Err(e) = self.extensions.push_as(namespace, Box::new(ext)) {
-            panic!("kui: {e}");
-        }
-        self
+    ) -> Result<Self, String> {
+        self.extensions.push_as(namespace, Box::new(ext))?;
+        Ok(self)
     }
 
     /// `extension` for each, in order.

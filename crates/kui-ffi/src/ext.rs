@@ -39,21 +39,35 @@
 //!
 //! # Where the `kui_*` symbols come from
 //!
-//! The plugin links against nothing. It leaves the whole API undefined and
-//! resolves it from the host executable at `dlopen` time, exactly as a Lua C
-//! module resolves `lua_*` from the interpreter that loaded it. That costs
-//! the host one linker flag - `--export-dynamic`, without which its symbols
-//! are in the binary but not in the dynamic symbol table the loader reads -
-//! and this crate's `build.rs` passes it for the examples here. A host
-//! outside this crate passes its own; `examples/c/build.sh` builds the
-//! plugin side.
+//! On ELF and Mach-O the plugin links against nothing. It leaves the whole
+//! API undefined and resolves it from the host executable at `dlopen` time,
+//! exactly as a Lua C module resolves `lua_*` from the interpreter that
+//! loaded it. That costs the host one linker flag - `--export-dynamic`,
+//! without which its symbols are in the binary but not in the dynamic
+//! symbol table the loader reads - and this crate's `build.rs` passes it
+//! for the examples here. A host outside this crate passes its own;
+//! `examples/c/build.sh` builds the plugin side.
 //!
-//! Windows works differently, and the difference is in the linking rather
-//! than here: an .exe exports nothing without an import library, so a plugin
-//! there links `kui_ffi.dll` and the host has to be built against that same
-//! DLL instead of the static library - otherwise each ends up with its own
-//! copy of the library and the `KuiCtx` one hands the other means nothing.
-//! The loader below is the same either way.
+//! Windows cannot work that way: a DLL may not leave an import unresolved,
+//! so the plugin names the module each `kui_*` comes from and takes that
+//! name from an import library. Two shapes, and both are fine:
+//!
+//! * against the **host's** import library, which is what `build.rs` makes
+//!   for the examples here by exporting the host's `kui_*`. One copy of the
+//!   library in the process, as on ELF, and the plugin loads into that host
+//!   and no other.
+//! * against **`kui_ffi.dll`**, which is the ordinary Windows plugin shape
+//!   (a Python extension imports from `python313.dll`, not from
+//!   `python.exe`) and gives a plugin binary that loads into any host
+//!   shipping that DLL.
+//!
+//! The second used to be broken, and the fix is what ABI 10 is: two copies
+//! of this library in one process is fine for everything that travels
+//! through a pointer the host hands over - a `KuiCtx` is a `KuiCtx` - and
+//! was fine for nothing that lived in a `static`. `kui_reply` was the only
+//! such thing, and its sink now rides on the event as a function pointer
+//! into whichever copy opened it (see [`crate::KuiReplySink`]). The loader
+//! below is the same either way.
 
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::path::Path;
@@ -356,7 +370,7 @@ impl Extension for CExtension {
         // Borrowed for the duration of the callback, like every other
         // payload C sees.
         let payload = KuiValue(ev.payload.clone());
-        let out = KuiEvent {
+        let mut out = KuiEvent {
             origin: ev.origin.0,
             key: ev.key.0,
             payload: &payload,
@@ -366,7 +380,7 @@ impl Extension for CExtension {
         // Replies (ADR 0014 decision 6): the plugin calls `kui_reply(ev,
         // value)` during the callback, as often as it likes, and the sink
         // open around the call collects them for the host.
-        crate::slots::collect_replies(&out, || cb(self.user, &out))
+        crate::slots::collect_replies(&mut out, |ev| cb(self.user, ev))
     }
 }
 
@@ -381,7 +395,7 @@ impl Drop for CExtension {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// A shared library that loads on every target this crate builds for
@@ -391,7 +405,7 @@ mod tests {
     /// refuse - reached without a C compiler in the test. The real mutant,
     /// `examples/c/panel.c` with its `kui_ext_abi` line deleted, is built by
     /// `examples/c/build.sh` and driven through `c_panel --headless` in CI.
-    fn a_library_with_no_kui_symbols() -> &'static str {
+    pub(crate) fn a_library_with_no_kui_symbols() -> &'static str {
         if cfg!(target_vendor = "apple") {
             // Not a file on disk since the dyld shared cache, but dlopen by
             // this path resolves it from the cache.

@@ -44,38 +44,48 @@ in the workspace lands in one flat `target/debug/examples/`, where two called
 
 ## C — [`c/`](c)
 
-Both directions across the FFI. [`counter.c`](c/counter.c) is C as the host,
-with kui as a plain library; [`panel.c`](c/panel.c) is C as an *extension*,
-a `dlopen`ed plugin owning its share of a frame inside the Rust host
-[`panel.rs`](c/panel.rs) — in a *slot* the host declares, under the namespace
-the host gave the plugin, with a title passed in and a reply coming back
-(ADR 0014). [`build.sh`](c/build.sh) checks `kui.h` against the Rust struct
-layout, then builds both C artifacts;
-[`build.ps1`](c/build.ps1) is the same round on Windows.
+All three directions across the FFI. [`counter.c`](c/counter.c) is C as the
+host with kui as a plain library; [`panel.c`](c/panel.c) is C as an
+*extension*, a `dlopen`ed plugin owning its share of a frame; and
+[`host.c`](c/host.c) is a C host loading that same plugin — in a *slot* the
+host declares, under the namespace the host gave it, with a title passed in
+and a reply coming back (ADR 0014). The plugin does not know which host it
+is in: [`panel.rs`](c/panel.rs) is a Rust one loading the same file.
+[`build.sh`](c/build.sh) checks `kui.h` against the Rust struct layout, then
+builds all of it; [`build.ps1`](c/build.ps1) is the same round on Windows.
 
 ```bash
-./examples/c/build.sh                    # ABI check, then counter and panel.so
+./examples/c/build.sh                    # ABI check, then the three C artifacts
 ./examples/c/counter                     # the counter app, C as the host
 ./examples/c/counter --headless          # FFI self-test, no window needed
-cargo run -p kui-ffi --example c_panel   # the Rust host, dlopening panel.so
+./examples/c/host                        # a C host with the C panel inside it
+./examples/c/host --headless             # the slot, the click, the reply
+cargo run -p kui-ffi --example c_panel   # the same panel in a Rust host
 ```
 
 ```powershell
-pwsh examples/c/build.ps1                # ABI check, then counter.exe and panel.dll
+pwsh examples/c/build.ps1                # ABI check, then counter.exe, host.exe, panel*.dll
 ./examples/c/counter.exe --headless
+./examples/c/host.exe --headless
 cargo run -p kui-ffi --example c_panel -- --headless
 ```
 
 Windows asks for three things the unixes do not, and the plugin half is where
 they show. An MSVC-ABI compiler, because that is what the Rust target links
-with. `kui_ffi.dll` beside `counter.exe`, because there is no rpath. And an
-import library at each link: a DLL may not leave a symbol undefined, so the
-plugin links against the *host executable's* `.lib` rather than against
-nothing — which means a plugin built for one host loads into that host and no
-other, where the same `panel.so` would have loaded into either.
-`crates/kui-ffi/build.rs` makes the host export its `kui_*` so that `.lib`
-exists, and `kui.h` marks the plugin's own seven entry points
-`KUI_EXT_EXPORT`, so `panel.c` is the same source everywhere.
+with. `kui_ffi.dll` beside each host executable, because there is no rpath.
+And an import library at each link: a DLL may not leave a symbol undefined,
+so a plugin names the module its `kui_*` come from. Which module is a choice,
+and `build.ps1` builds both — `panel-dll.dll` imports `kui_ffi.dll` and loads
+into any host shipping it (the shape a plugin you hand to somebody wants, and
+what `host.exe` loads), `panel.dll` imports the Rust host's own executable and
+loads into that host alone. `crates/kui-ffi/build.rs` makes the second
+possible by exporting the host's `kui_*`, and `kui.h` marks the plugin's seven
+entry points `KUI_EXT_EXPORT`, so `panel.c` is the same source everywhere.
+
+Two copies of the library in one process — a statically linked host and a
+plugin importing `kui_ffi.dll` — is fine as of ABI 10, and was not before it:
+`kui_reply`'s sink used to be a `thread_local`, one per copy, so every reply
+landed where nobody was reading. It rides on the event now.
 
 ## Lua — [`lua/`](lua)
 
