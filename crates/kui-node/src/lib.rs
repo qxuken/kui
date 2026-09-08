@@ -8,6 +8,8 @@
 //! Event payloads are plain JSON both ways, which is exactly the Elm shape:
 //! `onClick` carries a message value, never a closure.
 
+use kui_ffi::CExtension;
+
 use kui_core::{
     Appearance, AudioCommand, AudioSpec, Color, Core, EditKey, FontId, FrameSample, FrameStats,
     ImageId, InputEvent, Key, KeyCode, KeyMods, KeyPress, Locale, Mods, MotionPref, MouseButton,
@@ -414,6 +416,10 @@ fn edit_key_of(name: &str) -> Result<EditKey> {
 pub struct Ctx {
     core: Core,
     events: Vec<UiEvent>,
+    /// The extensions this context hosts, in origin order (ADR 0014):
+    /// what `addExtension` loads, what a `<slot>` fills from, and what an
+    /// event whose origin is not the host's is delivered to.
+    extensions: kui_core::Extensions,
 }
 
 #[napi]
@@ -424,6 +430,7 @@ impl Ctx {
         Ctx {
             core: Core::new(),
             events: Vec::new(),
+            extensions: Default::default(),
         }
     }
 
@@ -441,14 +448,55 @@ impl Ctx {
         strings: Uint8Array,
     ) -> Result<()> {
         let scale = if scale > 0.0 { scale } else { 1.0 };
-        self.core
-            .begin_frame(Size::new(width as f32, height as f32), scale as f32);
-        let result = binary::lower_binary(&mut self.core, &stream, &strings);
-        self.core.finish_frame();
-        self.events.extend(self.core.take_pending_events());
+        // `frame_with`, not `frame`: the extension list is what fills a
+        // `<slot>` the view declares, and `Ui::finish` is what lets each
+        // extension take the `ns/root` the view did not declare and warn
+        // about a slot nothing did (ADR 0014). Two disjoint fields, so the
+        // core can be borrowed for the frame and the list for the filling.
+        let mut ui = self.core.frame_with(
+            Size::new(width as f32, height as f32),
+            scale as f32,
+            &mut self.extensions,
+        );
+        let result = binary::lower_binary(&mut ui, &stream, &strings);
+        ui.finish();
+        let pending = self.core.take_pending_events();
+        absorb(&mut self.extensions, pending, &mut self.events);
         result
     }
 
+    /// Loads a C extension: a shared library exporting the seven
+    /// `kui_ext_*` entry points `crates/kui-ffi/include/kui.h` describes
+    /// (ADR 0014). `namespace` is the word that fronts every slot name it
+    /// fills — `<slot name="todos/panel"/>` for `addExtension('todos', …)`
+    /// — and an empty one takes the plugin's own `kui_ext_name`. Throws
+    /// with the reason if the library will not load, declares no
+    /// `kui_ext_abi` or one this build does not implement, has no
+    /// `kui_ext_view`, or wants a namespace another extension has.
+    ///
+    /// Load before the first frame: origins are positions in the list, so
+    /// one added later renumbers the ones after it. The context owns it and
+    /// unloads it when the context goes.
+    ///
+    /// **A plugin runs in this process**, on this thread, on this app's
+    /// frame — loading one is trusting it as much as linking it would be.
+    /// Only C shared libraries: there is no script-loads-script path here,
+    /// and a Lua extension is loaded by a Rust host or not at all.
+    #[napi]
+    pub fn add_extension(&mut self, namespace: String, path: String) -> Result<()> {
+        load_extension(&mut self.extensions, namespace, path)
+    }
+
+    /// The namespaces of the loaded extensions, in origin order: index `i`
+    /// is origin `i + 1`, and origin 0 is the app's own nodes. What turns
+    /// the `origin` on an event into the name this app gave the plugin.
+    #[napi]
+    pub fn extension_namespaces(&self) -> Vec<String> {
+        self.extensions
+            .iter()
+            .map(|(ns, _)| ns.to_string())
+            .collect()
+    }
     /// The frame clock for `transition` props: monotonic seconds, any
     /// origin. Set before each frame; never setting it makes transitions
     /// snap. A bare `Ctx` is the only place to call it: `createApp`'s loop
@@ -539,7 +587,8 @@ impl Ctx {
     // -- Input (logical coordinates) ------------------------------------
 
     fn input(&mut self, ev: InputEvent) {
-        self.events.extend(self.core.handle_input(ev));
+        let evs = self.core.handle_input(ev);
+        self.take_events(evs);
     }
 
     #[napi]
@@ -701,7 +750,7 @@ impl Ctx {
             repeat: repeat.unwrap_or(false),
             ..kp
         });
-        self.events.extend(evs);
+        self.take_events(evs);
         Ok(())
     }
 
@@ -719,7 +768,7 @@ impl Ctx {
     ) -> Result<()> {
         let kp = self.key_press(&code, mods.as_ref(), physical.as_deref())?;
         let evs = self.core.release(kp);
-        self.events.extend(evs);
+        self.take_events(evs);
         Ok(())
     }
 
@@ -811,7 +860,8 @@ impl Ctx {
     #[napi]
     pub fn audio_ended(&mut self, playback: f64) {
         self.core.audio_ended(PlaybackId(playback as u64));
-        self.events.extend(self.core.take_pending_events());
+        let pending = self.core.take_pending_events();
+        self.take_events(pending);
     }
 
     // -- Windows (headless) -----------------------------------------------
@@ -836,7 +886,8 @@ impl Ctx {
     #[napi]
     pub fn window_closed(&mut self, id: u32) {
         self.core.window_closed(kui_core::WindowId(id));
-        self.events.extend(self.core.take_pending_events());
+        let pending = self.core.take_pending_events();
+        self.take_events(pending);
     }
 
     /// A custom driver reports that window `id` was asked to go away: a
@@ -852,7 +903,8 @@ impl Ctx {
             _ => kui_core::DismissReason::Outside,
         };
         self.core.dismiss_window(kui_core::WindowId(id), reason);
-        self.events.extend(self.core.take_pending_events());
+        let pending = self.core.take_pending_events();
+        self.take_events(pending);
     }
 
     // -- Queries ---------------------------------------------------------
@@ -1070,7 +1122,7 @@ impl kui::App for TreeApp {
         let Some((stream, strings)) = self.trees.get(&*name) else {
             return;
         };
-        if let Err(e) = binary::lower_binary(ui.core(), stream, strings) {
+        if let Err(e) = binary::lower_binary(ui, stream, strings) {
             self.error = Some(e.reason.to_string());
         }
     }
@@ -1127,6 +1179,39 @@ impl KuiWindow {
                 max_w.unwrap_or(UNBOUNDED_SIZE),
                 max_h.unwrap_or(UNBOUNDED_SIZE),
             );
+        }
+        // Extensions, before the window opens: `extensions: [{path,
+        // namespace?}]`. Origins are positions in the list, and the runner
+        // owns it — so the routing a headless `Ctx` does for itself is the
+        // runner's here, and `TreeApp::on_event` only ever sees what came
+        // back out of it. C shared libraries only (ADR 0014); see
+        // `Ctx::addExtension`.
+        for e in o
+            .get("extensions")
+            .and_then(Json::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+        {
+            let (path, ns) = match e {
+                Json::String(p) => (p.as_str(), ""),
+                Json::Object(m) => (
+                    m.get("path").and_then(Json::as_str).unwrap_or(""),
+                    m.get("namespace").and_then(Json::as_str).unwrap_or(""),
+                ),
+                _ => ("", ""),
+            };
+            if path.is_empty() {
+                return Err(err("each `extensions` entry needs a `path`"));
+            }
+            // SAFETY: the caller's; the option is documented as loading
+            // code into this process.
+            let ext = unsafe { kui_ffi::CExtension::open(path) }.map_err(err)?;
+            let ns = if ns.is_empty() {
+                kui_core::Extension::name(&ext).to_owned()
+            } else {
+                ns.to_owned()
+            };
+            launcher = launcher.try_extension_as(ns, ext).map_err(err)?;
         }
         launcher = match o.get("chrome").and_then(Json::as_str) {
             Some("custom") => launcher.custom_titlebar(),
@@ -1244,6 +1329,7 @@ macro_rules! core_methods {
         $ty:ident,
         core = $core:ident,
         events = $events:ident,
+        take = $take:ident,
         redraw = $redraw:ident,
         audio = $audio:ident $(,)?
     ) => {
@@ -1439,7 +1525,7 @@ macro_rules! core_methods {
                 // draining here means both classes hand them over at the
                 // same moment rather than a pump apart.
                 let pending = self.$core().take_pending_events();
-                self.$events().extend(pending);
+                self.$take(pending);
                 events_json(std::mem::take(self.$events()))
             }
 
@@ -1627,7 +1713,7 @@ macro_rules! core_methods {
                 let key = resolve_key(self.$core(), &key)?;
                 let req = access_request(key, &action, value)?;
                 let events = self.$core().handle_input(InputEvent::Access(req));
-                self.$events().extend(events);
+                self.$take(events);
                 self.$redraw();
                 Ok(())
             }
@@ -1964,6 +2050,14 @@ impl Ctx {
         &mut self.events
     }
 
+    /// Where events the core just produced go. A headless context is its
+    /// own runner, so it routes them the way `Shell::route_events` does:
+    /// an extension's event to the extension, its replies to the queue the
+    /// app polls. See [`absorb`].
+    fn take_events(&mut self, events: Vec<UiEvent>) {
+        absorb(&mut self.extensions, events, &mut self.events);
+    }
+
     /// Nothing to invalidate: a headless `Ctx` shows whatever the next
     /// `frame` submits.
     fn no_redraw(&mut self) {}
@@ -1981,6 +2075,13 @@ impl KuiWindow {
         &mut self.runner.app_mut().events
     }
 
+    /// The runner has already routed these: `Shell::route_events` gave an
+    /// extension's event to the extension and queued its replies before
+    /// `TreeApp::on_event` ever saw them. Nothing left to do but keep them.
+    fn take_events(&mut self, events: Vec<UiEvent>) {
+        self.events_mut().extend(events);
+    }
+
     fn request_redraw(&mut self) {
         self.runner.request_redraw();
     }
@@ -1994,6 +2095,7 @@ core_methods!(
     Ctx,
     core = core_mut,
     events = events_mut,
+    take = take_events,
     redraw = no_redraw,
     audio = no_flush,
 );
@@ -2002,10 +2104,73 @@ core_methods!(
     KuiWindow,
     core = core_mut,
     events = events_mut,
+    take = take_events,
     redraw = request_redraw,
     audio = flush_audio,
 );
 
+/// Takes a batch of events the core just produced: the host's own are
+/// queued for `pollEvents`, and one whose origin names a loaded extension
+/// is delivered to it here instead — its replies queued in its place,
+/// carrying its origin, window and key, so the host learns who answered
+/// and about what (ADR 0014 decision 6).
+///
+/// This is `Shell::route_events` in the Rust runner and `KuiCtx::absorb`
+/// in the C one, for the same reason: a reply is addressed by being one,
+/// not routed by origin. With no extensions loaded it is the `extend` it
+/// replaced, which is every Node app that has not asked for one.
+fn absorb(
+    extensions: &mut kui_core::Extensions,
+    events: impl IntoIterator<Item = UiEvent>,
+    out: &mut Vec<UiEvent>,
+) {
+    if extensions.is_empty() {
+        out.extend(events);
+        return;
+    }
+    for ev in events {
+        if ev.origin == kui_core::OriginId::HOST {
+            out.push(ev);
+            continue;
+        }
+        let Some(ext) = extensions.by_origin(ev.origin) else {
+            out.push(ev);
+            continue;
+        };
+        for payload in ext.on_event(&ev) {
+            out.push(UiEvent {
+                origin: ev.origin,
+                window: ev.window,
+                key: ev.key,
+                payload,
+            });
+        }
+    }
+}
+
+/// Loads a C extension from `path` under `namespace` (empty = the
+/// extension's own `kui_ext_name`), the way `kui_ctx_add_extension` does
+/// for a C host. The mechanism is C shared libraries and only that: a
+/// plugin is a `.so` / `.dylib` / `.dll` exporting the seven `kui_ext_*`
+/// entry points `crates/kui-ffi/include/kui.h` describes.
+///
+/// # Safety
+/// The library's code runs in this process, on this thread, on this app's
+/// frame. Loading one is trusting it as much as linking it would be.
+fn load_extension(
+    extensions: &mut kui_core::Extensions,
+    namespace: String,
+    path: String,
+) -> Result<()> {
+    // SAFETY: the caller's, and `addExtension`'s doc comment says so.
+    let ext = unsafe { CExtension::open(&path) }.map_err(err)?;
+    let r = if namespace.is_empty() {
+        extensions.push(Box::new(ext))
+    } else {
+        extensions.push_as(namespace, Box::new(ext))
+    };
+    r.map_err(err)
+}
 /// `measureText(content, style, maxWidth)` → `{width, height, lines}`.
 fn measure_text_impl(
     core: &mut Core,

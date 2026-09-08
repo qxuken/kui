@@ -18,7 +18,7 @@ so an id cited by an open item, a code comment or a commit message can be
 resolved without opening the archive. Nothing was renumbered in any of those
 moves, and nothing ever is. What is left here is three parked headings — C12,
 C13 and C14 — W3 from the editor-and-mux assessment (2026-09-07), now run and
-rebuilt on a real Windows machine; W4–W10 from the first Windows round
+rebuilt on a real Windows machine; W4–W11 from the first Windows round
 (2026-09-08), which is what running it found; and F36,
 which fell out of building the four entries the two alpha.9 field reports
 and the bake-off produced (F32–F35, filed and built 2026-09-08); and what
@@ -491,6 +491,42 @@ without the host shipping a 5 MB DLL purely for symbol resolution. Not built:
 it is Windows-only machinery for a case nobody has yet, and the two shapes
 that exist (import the host's .lib, or import `kui_ffi.dll`) already cover
 shipping a plugin. Filed here so the option is on the record.
+
+### `~` W11 — Node could not host an extension, and had no way to place one — **done (2026-09-08)**
+
+The other binding that is a host. After W9 gave C a loader, Node still had
+neither half: `CExtension` is Rust, and `slot` was not in the tree
+vocabulary at all, so a Node view could not have said *where* a plugin
+draws even if it could load one.
+
+Both are there now. `<slot name="ns/panel" params={…}/>` is the JSX
+spelling of `ui.slot` / `kui_slot`; `ctx.addExtension(ns, path)` loads into
+a headless context and a window's `extensions: [{path, namespace?}]` into
+a windowed one. Events reach the plugin and replies reach the app with the
+plugin's origin — a headless `Ctx` routes them the way `Shell::route_events`
+does, a window's runner already had.
+
+**Only C extensions**, which is the decision this was scoped by: a plugin
+is a shared library exporting the seven `kui_ext_*`, and the same binary
+loads into a Rust, C or Node host. No script-loads-script path — a Lua
+extension is loaded by a Rust host or not at all. That is why `kui-node`
+takes `kui-ffi` with `default-features = false`: it wants `CExtension` and
+not a second windowed runner (W10).
+
+`slot` is a **protocol op, not a schema element** — like `richText` and
+`windowButtons`, which are also ops with no `ELEMENTS` row. It is a
+host-side placement call in every binding that has one, not a drawable
+node, and the corpus contract stays intact: every `ELEMENTS` row must be
+exercised by a scene in all four adapters, and a scene with a plugin in it
+would need a loadable extension per adapter to run at all.
+
+Two things the round found on the way, both in the entries above rather
+than here: a plugin's own directory was not searched for the DLLs it
+imports (`LOAD_WITH_ALTERED_SEARCH_PATH`, which is why loading the C panel
+from `node.exe` failed with error 126), and the two-copies case works
+across this boundary too — the addon has its own statically linked library,
+`panel-dll.dll` imports another from `kui_ffi.dll`, and the reply still
+crosses. That is ABI 10 doing its job in a third host.
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
 Both apps upgraded to alpha.9 the day it was tagged and reported again:
@@ -1049,7 +1085,7 @@ list drawing past its own box — are fixed under alpha.9's `### Fixed`.
 **Windows (2026-09-08).** The platform ran for the first time and the round
 is a script: `scripts/smoke-windows.ps1`, in `smoke-windows` beside the
 `cargo test` step, with the C round from `examples/c/build.ps1` beside it.
-W4, W5, W6 and W8–W10 are fixed and W3 is rebuilt; W7 is the one
+W4, W5, W6 and W8–W11 are fixed and W3 is rebuilt; W7 is the one
 open thing it found and wants a decision, not a patch. What it still does
 not cover is P8's two follow-ups, unchanged: `windows_nc.rs` has no test
 that runs anywhere, and neither does `access_bridge.rs`. The next Windows

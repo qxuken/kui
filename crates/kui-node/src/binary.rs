@@ -24,8 +24,8 @@
 //!   in the table.
 
 use kui_core::{
-    Align, Core, EditOptions, FloatConfig, ImageId, NodeSpec, PadShorthand, Rect, Size, Span,
-    TextStyle, WindowConfig, WindowKind, widgets,
+    Align, EditOptions, FloatConfig, ImageId, NodeSpec, PadShorthand, Rect, Size, Span, TextStyle,
+    WindowConfig, WindowKind, widgets,
 };
 use serde_json::{Map as JsonMap, Value as Json};
 
@@ -39,8 +39,12 @@ use crate::{Result, err, value_of};
 /// v3: float configs carry a has-offset flag so bare presets keep their gap;
 /// v4: the pad shorthand rides the wire unresolved and each float offset
 /// carries its own flag, so the encoder decides neither what `padX` falls
-/// back to nor whether a lone `dx` flattens the preset's `dy`).
-pub const VERSION: u32 = 4;
+/// back to nor whether a lone `dx` flattens the preset's `dy`; v5: `slot`,
+/// which is a new op rather than a new prop and so an encoder that has
+/// never heard of it writes a stream this addon still reads - the bump is
+/// for the other direction, an encoder that emits one to an addon without
+/// the op).
+pub const VERSION: u32 = 5;
 
 pub const OP_END: u32 = 0;
 pub const OP_ROOT: u32 = 1;
@@ -59,6 +63,7 @@ pub const OP_AUDIO: u32 = 13;
 pub const OP_LINE: u32 = 14;
 pub const OP_CELLS: u32 = 15;
 pub const OP_FRAGMENT: u32 = 16;
+pub const OP_SLOT: u32 = 17;
 
 pub fn protocol_json() -> Json {
     let mut o = JsonMap::new();
@@ -84,6 +89,7 @@ pub fn protocol_json() -> Json {
                 ("line", OP_LINE),
                 ("cells", OP_CELLS),
                 ("fragment", OP_FRAGMENT),
+                ("slot", OP_SLOT),
             ]
             .into_iter()
             .map(|(k, v)| (k.to_string(), Json::from(v)))
@@ -322,30 +328,30 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut) -> Result<PropsOut> {
     Ok(out)
 }
 
-fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
+fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<()> {
     match op {
         OP_OPEN => {
             let p = read_props(r)?;
             let node_key = match &p.key {
-                Some(label) => core.open_keyed(label, p.spec),
-                None => core.open(p.spec),
+                Some(label) => ui.core().open_keyed(label, p.spec),
+                None => ui.core().open(p.spec),
             };
             if p.key_focus {
-                core.set_key_focus(Some(node_key));
+                ui.core().set_key_focus(Some(node_key));
             }
-            decode_until_close(r, core)?;
+            decode_until_close(r, ui)?;
             if let Some(hint) = &p.tooltip
-                && core.is_hovered(node_key)
+                && ui.core().is_hovered(node_key)
             {
-                widgets::tooltip(&mut kui_core::Ui::wrap(core), hint);
+                widgets::tooltip(&mut kui_core::Ui::wrap(ui.core()), hint);
             }
-            core.close();
+            ui.core().close();
             Ok(())
         }
         OP_TEXT => {
             let content = r.req_str()?;
             let p = read_props(r)?;
-            core.text_node(content, p.style);
+            ui.core().text_node(content, p.style);
             Ok(())
         }
         OP_RICH_TEXT => {
@@ -378,7 +384,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
                 }
                 spans.push(s);
             }
-            core.rich_text_node(&spans, p.style);
+            ui.core().rich_text_node(&spans, p.style);
             Ok(())
         }
         OP_BUTTON => {
@@ -399,7 +405,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
             base.spec = widgets::button_spec();
             let p = read_props_over(r, base)?;
             widgets::button_with(
-                &mut kui_core::Ui::wrap(core),
+                &mut kui_core::Ui::wrap(ui.core()),
                 label_key,
                 label,
                 p.spec.on_click(msg),
@@ -418,13 +424,14 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
                 autofocus: flags & 2 != 0,
                 ..Default::default()
             };
-            core.text_edit(label, initial, &opts, p.spec);
+            ui.core().text_edit(label, initial, &opts, p.spec);
             Ok(())
         }
         OP_IMAGE => {
             let (hi, lo) = (r.f()? as u64, r.f()? as u64);
             let p = read_props(r)?;
-            core.image_node(ImageId::from_ffi((hi << 32) | lo), p.spec);
+            ui.core()
+                .image_node(ImageId::from_ffi((hi << 32) | lo), p.spec);
             Ok(())
         }
         // key?, src (hi, lo), flags (1 loop | 2 paused | 4 finish), volume
@@ -447,9 +454,28 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
                 tag,
             );
             match key {
-                Some(label) => core.audio_node_keyed(label, spec),
-                None => core.audio_node(spec),
+                Some(label) => ui.core().audio_node_keyed(label, spec),
+                None => ui.core().audio_node(spec),
             };
+            Ok(())
+        }
+        // `<slot name params>`: a position among the current node's
+        // children that an extension fills, in place and now
+        // (`docs/adr/0014-slots-an-extension-fills-in-place.md`). `name` is
+        // the full `namespace/slot` — the namespace the host loaded the
+        // extension under (`addExtension`), and the slot in the extension's
+        // own vocabulary. Through `Ui::slot_with` rather than
+        // `Core::begin_slot`, because the `Ui` is what carries the filler:
+        // the runner's list for a window, the context's for a headless one.
+        // With nothing loaded it still places the node, so a view can
+        // declare its layout before it has a plugin to put in it.
+        OP_SLOT => {
+            let name = r.req_str()?.to_owned();
+            let params = match r.str_ref()? {
+                Some(s) => payload(s)?,
+                None => kui_core::Value::Null,
+            };
+            ui.slot_with(&name, &params);
             Ok(())
         }
         // n, then n (x, y) pairs, width, flags (1 curve), then the prop
@@ -469,8 +495,8 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
             let mut stroke = kui_core::Stroke::new(width, p.style.color);
             stroke.curve = flags & 1 != 0;
             match &p.key {
-                Some(label) => core.line_node_keyed(label, &points, stroke, p.spec),
-                None => core.line_node(&points, stroke, p.spec),
+                Some(label) => ui.core().line_node_keyed(label, &points, stroke, p.spec),
+                None => ui.core().line_node(&points, stroke, p.spec),
             }
             Ok(())
         }
@@ -487,19 +513,19 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
             let p = read_props(r)?;
             let id = kui_core::FragmentId::from_ffi((hi << 32) | lo);
             let key = match &p.key {
-                Some(label) => core.open_fragment_keyed(label, id, &params, p.spec),
-                None => core.open_fragment(id, &params, p.spec),
+                Some(label) => ui.core().open_fragment_keyed(label, id, &params, p.spec),
+                None => ui.core().open_fragment(id, &params, p.spec),
             };
             if p.key_focus {
-                core.set_key_focus(Some(key));
+                ui.core().set_key_focus(Some(key));
             }
-            decode_until_close(r, core)?;
+            decode_until_close(r, ui)?;
             if let Some(hint) = &p.tooltip
-                && core.is_hovered(key)
+                && ui.core().is_hovered(key)
             {
-                widgets::tooltip(&mut kui_core::Ui::wrap(core), hint);
+                widgets::tooltip(&mut kui_core::Ui::wrap(ui.core()), hint);
             }
-            core.close();
+            ui.core().close();
             Ok(())
         }
         OP_CELLS => {
@@ -545,40 +571,42 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
                 cursor,
             };
             match &p.key {
-                Some(label) => core.cells_keyed(label, &grid, p.spec),
-                None => core.cells(&grid, p.spec),
+                Some(label) => ui.core().cells_keyed(label, &grid, p.spec),
+                None => ui.core().cells(&grid, p.spec),
             }
             Ok(())
         }
         OP_TITLEBAR => {
             let title = r.str_ref()?.map(str::to_string);
             let has_children = r.u()? == 1;
-            let mut ui = kui_core::Ui::wrap(core);
             if has_children {
                 // titlebar_with opens and closes its own container, so the
-                // children loop must only consume up to the CLOSE op.
+                // children loop must only consume up to the CLOSE op. The
+                // widget is handed this `ui` rather than a fresh wrap of
+                // its core, so the filler survives into the children and a
+                // `<slot>` inside a titlebar fills like one anywhere else.
                 let mut result = Ok(());
-                widgets::titlebar_with(&mut ui, |ui| {
-                    result = decode_until_close(r, ui.core());
+                widgets::titlebar_with(ui, |ui| {
+                    result = decode_until_close(r, ui);
                 });
                 result
             } else {
-                widgets::titlebar(&mut ui, title.as_deref().unwrap_or(""));
+                widgets::titlebar(ui, title.as_deref().unwrap_or(""));
                 Ok(())
             }
         }
         OP_WINDOW_BUTTONS => {
-            widgets::window_buttons(&mut kui_core::Ui::wrap(core));
+            widgets::window_buttons(&mut kui_core::Ui::wrap(ui.core()));
             Ok(())
         }
         OP_LATENCY_GRAPH => {
-            widgets::latency_graph(&mut kui_core::Ui::wrap(core));
+            widgets::latency_graph(&mut kui_core::Ui::wrap(ui.core()));
             Ok(())
         }
         OP_LATENCY_HUD => {
             let (x, y) = (r.u()?, r.u()?);
             widgets::latency_hud_at(
-                &mut kui_core::Ui::wrap(core),
+                &mut kui_core::Ui::wrap(ui.core()),
                 align_idx(x as usize),
                 align_idx(y as usize),
             );
@@ -590,17 +618,17 @@ fn decode_op(op: u32, r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
 
 /// Runs ops until the matching CLOSE, which it consumes but does not act on —
 /// the caller owns closing (or not, for widgets that close themselves).
-fn decode_until_close(r: &mut Reader<'_>, core: &mut Core) -> Result<()> {
+fn decode_until_close(r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<()> {
     loop {
         match r.u()? {
             OP_CLOSE => return Ok(()),
-            op => decode_op(op, r, core)?,
+            op => decode_op(op, r, ui)?,
         }
     }
 }
 
 /// Lowers a whole encoded frame (the binary analogue of `lower_root`).
-pub fn lower_binary(core: &mut Core, stream: &[f64], strings: &[u8]) -> Result<()> {
+pub fn lower_binary(ui: &mut kui_core::Ui<'_>, stream: &[f64], strings: &[u8]) -> Result<()> {
     let mut r = Reader {
         s: stream,
         i: 0,
@@ -617,19 +645,20 @@ pub fn lower_binary(core: &mut Core, stream: &[f64], strings: &[u8]) -> Result<(
     }
     let p = read_props(&mut r)?;
     if let Some(t) = &p.title {
-        core.set_window_title(t);
+        ui.core().set_window_title(t);
     }
     for (name, cfg) in &p.windows {
-        core.declare_window(name, *cfg);
+        ui.core().declare_window(name, *cfg);
     }
-    core.configure_root(p.spec);
+    ui.core().configure_root(p.spec);
     if p.key_focus {
-        core.set_key_focus(Some(core.root_key()));
+        let root = ui.core().root_key();
+        ui.core().set_key_focus(Some(root));
     }
     loop {
         match r.u()? {
             OP_END => return Ok(()),
-            op => decode_op(op, &mut r, core)?,
+            op => decode_op(op, &mut r, ui)?,
         }
     }
 }
@@ -877,7 +906,7 @@ mod tests {
     /// A whole frame lowers headlessly, and the version/root guards hold.
     #[test]
     fn lower_binary_smoke_and_guards() {
-        let mut core = Core::new();
+        let mut core = kui_core::Core::new();
         core.begin_frame(Size::new(200.0, 100.0), 1.0);
         let v = VERSION as f64;
         // root {bg}, text "hi" {}, open {} close, end
@@ -896,13 +925,25 @@ mod tests {
             OP_CLOSE as f64,
             OP_END as f64,
         ];
-        lower_binary(&mut core, &stream, b"hi").unwrap();
+        // No filler: `Ui::wrap` is the frame without one, which is what a
+        // view with no extensions loaded gets and what every op but
+        // `OP_SLOT` cares about.
+        lower_binary(&mut kui_core::Ui::wrap(&mut core), &stream, b"hi").unwrap();
         core.finish_frame();
         assert!(!core.output().0.quads.is_empty(), "root bg draws a quad");
 
         let stale = [v + 1.0, OP_ROOT as f64, 0.0, OP_END as f64];
-        assert!(lower_binary(&mut core, &stale, b"").is_err());
-        assert!(lower_binary(&mut core, &[v, OP_END as f64], b"").is_err());
-        assert!(lower_binary(&mut core, &[v, OP_ROOT as f64], b"").is_err());
+        assert!(lower_binary(&mut kui_core::Ui::wrap(&mut core), &stale, b"").is_err());
+        assert!(
+            lower_binary(&mut kui_core::Ui::wrap(&mut core), &[v, OP_END as f64], b"").is_err()
+        );
+        assert!(
+            lower_binary(
+                &mut kui_core::Ui::wrap(&mut core),
+                &[v, OP_ROOT as f64],
+                b""
+            )
+            .is_err()
+        );
     }
 }

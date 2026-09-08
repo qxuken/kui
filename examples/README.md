@@ -118,6 +118,12 @@ npm run bench    # the JSX/Node side of lua/bench.rs
 | [`counter-window.tsx`](node/counter-window.tsx) | The same app in a real window, with images, sounds and an editor |
 | [`mindmap.tsx`](node/mindmap.tsx) | A canvas of floats and `line` connectors, all easing, panned by an `onDrag` root |
 
+An extension is a C shared library either way, and the same binary loads
+into a Rust, C or Node host: `<slot name="ns/panel" params={…}/>` places it
+and `ctx.addExtension(ns, path)` (or a window's `extensions` option) loads
+it. There is no script-loads-script path — a Lua extension is loaded by a
+Rust host or not at all.
+
 `mindmap.tsx` is the one to open when a gesture works in a test and not on
 screen. It moves every tween's target on every frame, which is what backlog
 F15 turned out to be — the map panned in the model and stood still in the

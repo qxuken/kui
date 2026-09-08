@@ -951,6 +951,32 @@ export declare class Ctx {
    */
   frameBinary(width: number, height: number, scale: number, stream: Float64Array, strings: Uint8Array): void
   /**
+   * Loads a C extension: a shared library exporting the seven
+   * `kui_ext_*` entry points `crates/kui-ffi/include/kui.h` describes
+   * (ADR 0014). `namespace` is the word that fronts every slot name it
+   * fills — `<slot name="todos/panel"/>` for `addExtension('todos', …)`
+   * — and an empty one takes the plugin's own `kui_ext_name`. Throws
+   * with the reason if the library will not load, declares no
+   * `kui_ext_abi` or one this build does not implement, has no
+   * `kui_ext_view`, or wants a namespace another extension has.
+   *
+   * Load before the first frame: origins are positions in the list, so
+   * one added later renumbers the ones after it. The context owns it and
+   * unloads it when the context goes.
+   *
+   * **A plugin runs in this process**, on this thread, on this app's
+   * frame — loading one is trusting it as much as linking it would be.
+   * Only C shared libraries: there is no script-loads-script path here,
+   * and a Lua extension is loaded by a Rust host or not at all.
+   */
+  addExtension(namespace: string, path: string): void
+  /**
+   * The namespaces of the loaded extensions, in origin order: index `i`
+   * is origin `i + 1`, and origin 0 is the app's own nodes. What turns
+   * the `origin` on an event into the name this app gave the plugin.
+   */
+  extensionNamespaces(): Array<string>
+  /**
    * The frame clock for `transition` props: monotonic seconds, any
    * origin. Set before each frame; never setting it makes transitions
    * snap. A bare `Ctx` is the only place to call it: `createApp`'s loop

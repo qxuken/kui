@@ -282,7 +282,7 @@ mod sys {
 
     #[link(name = "kernel32")]
     unsafe extern "system" {
-        fn LoadLibraryW(path: *const u16) -> *mut c_void;
+        fn LoadLibraryExW(path: *const u16, file: *mut c_void, flags: u32) -> *mut c_void;
         fn GetProcAddress(handle: *mut c_void, name: *const c_char) -> *mut c_void;
         fn FreeLibrary(handle: *mut c_void) -> i32;
         fn GetLastError() -> u32;
@@ -300,10 +300,28 @@ mod sys {
     /// said "path contains a NUL" for `kernel32.dll`.
     pub type PathArg = Vec<u16>;
 
+    /// `LOAD_WITH_ALTERED_SEARCH_PATH`: search the *plugin's* own directory
+    /// for the DLLs it imports, before the process directory and PATH.
+    ///
+    /// Without it a plugin is looked up from `node.exe`'s directory or the
+    /// host exe's, which is not where a plugin's siblings live — and on
+    /// Windows a plugin does import something, since a DLL may not leave a
+    /// symbol undefined. A panel next to the `kui_ffi.dll` it was linked
+    /// against failed to load with error 126 until this flag, which is how
+    /// it was found. It only applies to an absolute path, which is why
+    /// [`CExtension::open`] makes one.
+    const LOAD_WITH_ALTERED_SEARCH_PATH: u32 = 0x8;
+
     /// # Safety
     /// Runs the library's initializers.
     pub unsafe fn load(path: &PathArg) -> *mut c_void {
-        unsafe { LoadLibraryW(path.as_ptr()) }
+        unsafe {
+            LoadLibraryExW(
+                path.as_ptr(),
+                std::ptr::null_mut(),
+                LOAD_WITH_ALTERED_SEARCH_PATH,
+            )
+        }
     }
 
     /// # Safety
@@ -324,11 +342,22 @@ mod sys {
         })
     }
 
-    /// The path as `LoadLibraryW` wants it: UTF-16 with a terminator. A
-    /// path with an interior NUL is refused, since `LoadLibraryW` would
+    /// The path as `LoadLibraryW` wants it: UTF-16 with a terminator, and
+    /// absolute, because [`LOAD_WITH_ALTERED_SEARCH_PATH`] is ignored for a
+    /// relative one and that flag is what lets a plugin find the DLLs it
+    /// was linked beside. A path that does not resolve keeps its spelling —
+    /// a bare `kernel32.dll` is a name for the loader to search, not a file
+    /// in the working directory, and canonicalizing it would be wrong.
+    /// Only here: on unix a bare `libc.so.6` is a name for `dlopen` to
+    /// search too, and resolving it against the working directory first
+    /// could load a different library than the one meant.
+    ///
+    /// A path with an interior NUL is refused, since `LoadLibraryW` would
     /// stop there and open something the caller did not name.
     pub fn path_arg(path: &std::path::Path) -> Option<PathArg> {
         use std::os::windows::ffi::OsStrExt;
+        let abs = std::fs::canonicalize(path);
+        let path = abs.as_deref().unwrap_or(path);
         let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
         if wide.contains(&0) {
             return None;

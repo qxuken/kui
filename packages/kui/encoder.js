@@ -516,6 +516,30 @@ export function createEncoder(P) {
           props(p, null, false);
         }
         return;
+      case 'slot': {
+        // A position an extension fills, in place (ADR 0014). `name` is the
+        // full `namespace/slot`: the namespace the host loaded the plugin
+        // under (`addExtension`, or a window's `extensions` option) and the
+        // slot in the plugin's own vocabulary. `params` is whatever the
+        // plugin should read this frame — plain data, declared every frame,
+        // retained by nobody, exactly like `onClick`'s payload.
+        if (typeof p.name !== 'string' || p.name === '') {
+          throw new Error('<slot> needs a name ("namespace/slot")');
+        }
+        if (!p.name.includes('/')) {
+          throw new Error(`bad slot name ${JSON.stringify(p.name)} (a full "namespace/slot")`);
+        }
+        for (const k of Object.keys(p)) {
+          if (k !== 'name' && k !== 'params' && k !== 'children') {
+            throw new Error(`<slot> takes name and params, not ${JSON.stringify(k)} — it is a position, not a box`);
+          }
+        }
+        reserve(6);
+        f[fi++] = OP.slot;
+        strRef(p.name);
+        strRef(p.params != null ? JSON.stringify(p.params) : null);
+        return;
+      }
       case 'span':
         throw new Error('<span> only works inside <text>');
       case 'button':

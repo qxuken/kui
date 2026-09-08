@@ -405,6 +405,23 @@ export declare namespace JSX {
      *  warning; `animate` asks for a frame every frame, which a fragment
      *  reading `time` needs and a still one must not declare. */
     fragment: BoxProps & { src: string; params?: number[] };
+    /** A position an extension fills, in place
+     *  (docs/adr/0014-slots-an-extension-fills-in-place.md): whatever was
+     *  loaded under the name's namespace draws here, as a child of this
+     *  node, at this position among its siblings.
+     *
+     *  `name` is the full `namespace/slot` — the namespace you loaded the
+     *  plugin under (`ctx.addExtension('todos', path)`, or a window's
+     *  `extensions` option) and the slot in the plugin's own vocabulary.
+     *  `params` is whatever the plugin should read this frame: plain data,
+     *  declared every frame, retained by nobody, like `onClick`'s payload.
+     *  `"ns/root"` is the fill that follows the view for a plugin naming no
+     *  slots, and declaring it moves that fill here.
+     *
+     *  A position, not a box: it takes no other props, and with nothing
+     *  loaded under that namespace it places an empty node so a view can
+     *  declare its layout before it has a plugin to put in it. */
+    slot: { name: string; params?: unknown };
     /** A round-capped stroke (docs/adr/0010-a-segment-primitive.md): one
      *  segment from `from` to `to`, a polyline through `points`, or a smooth
      *  curve through them with `curve`. Points are in the parent's box space

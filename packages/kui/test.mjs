@@ -3798,3 +3798,101 @@ test('a tick that returns effects and no model hands them on without a frame (AD
   assert.deepEqual(seen, ['poll'], 'but the step that owed the effect handed it on');
   assert.deepEqual(app.effects(), [{ kind: 'poll' }]);
 });
+
+// -- Extensions (ADR 0014) --------------------------------------------------
+//
+// The mechanism is C shared libraries and only that: a plugin is a .so /
+// .dylib / .dll exporting the seven kui_ext_* entry points kui.h describes.
+// There is no script-loads-script path — a Lua extension is loaded by a Rust
+// host or not at all.
+
+test('a slot places its node with nothing loaded, and rejects what it is not', () => {
+  const ctx = new Ctx();
+  assert.deepEqual(ctx.extensionNamespaces(), []);
+
+  // A slot with no extension behind it still places a node, so a view can
+  // declare its layout before it has a plugin to put in it.
+  const enc = createEncoder(protocol());
+  const tree = box({ pad: 0 }, [el('slot', { name: 'todos/panel' })]);
+  const { stream, strings } = enc.encode(tree);
+  ctx.frameBinary(320, 240, 1, stream, strings);
+  assert.equal(ctx.warnings().length, 0, 'an unfilled slot is not a warning');
+
+  // A position, not a box.
+  assert.throws(() => enc.encode(box({}, [el('slot', {})])), /needs a name/);
+  assert.throws(
+    () => enc.encode(box({}, [el('slot', { name: 'panel' })])),
+    /a full "namespace\/slot"/,
+  );
+  assert.throws(
+    () => enc.encode(box({}, [el('slot', { name: 'todos/panel', bg: '#fff' })])),
+    /takes name and params/,
+  );
+});
+
+test('addExtension reports why a library is not a plugin, and keeps nothing', () => {
+  const ctx = new Ctx();
+  // The platform's own C runtime: loads, and declares no kui_ext_abi, which
+  // is the plugin built against a header from before the symbol existed.
+  const libc =
+    process.platform === 'win32'
+      ? 'kernel32.dll'
+      : process.platform === 'darwin'
+        ? '/usr/lib/libSystem.B.dylib'
+        : 'libc.so.6';
+  assert.throws(() => ctx.addExtension('libc', libc), /declares no ABI/);
+  assert.throws(() => ctx.addExtension('nope', 'no/such/library'), /./);
+  assert.deepEqual(ctx.extensionNamespaces(), [], 'a refusal keeps nothing');
+});
+
+// The whole round trip needs a real plugin, which needs a C compiler, so it
+// runs only where examples/c/build.sh (or build.ps1) has been run. The C
+// half of the same check is examples/c/host.c's --headless, which CI runs.
+test('a C extension fills the slot the view declares, and its reply comes back', (t) => {
+  const ext = process.platform === 'win32' ? 'panel-dll.dll' : 'panel.so';
+  const plugin = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'examples', 'c', ext);
+  if (!existsSync(plugin)) {
+    t.skip(`build examples/c first (${plugin} is not there)`);
+    return;
+  }
+  const ctx = new Ctx();
+  ctx.addExtension('todos', plugin);
+  assert.deepEqual(ctx.extensionNamespaces(), ['todos']);
+
+  const enc = createEncoder(protocol());
+  const draw = () => {
+    // The root fills, or the panel's own grow has nothing to grow into
+    // and its list collapses to nothing - which is what the first run of
+    // this test found.
+    const tree = box({ width: 'grow', height: 'grow', pad: 0 }, [
+      el('slot', {
+        name: 'todos/panel',
+        params: { title: 'todos, from Node', on_toggle: { kind: 'toggled' } },
+      }),
+    ]);
+    const { stream, strings } = enc.encode(tree);
+    ctx.frameBinary(900, 600, 1, stream, strings);
+  };
+  draw();
+
+  // A row the plugin drew, found the way panel.rs and host.c find it: by
+  // origin and name, off the access tree the frame published.
+  const row = ctx
+    .accessTree()
+    .nodes.find((n) => n.origin === 1 && typeof n.name === 'string' && n.name.startsWith('[ '));
+  assert.ok(row, 'the plugin drew no rows — did the slot fill?');
+
+  ctx.cursor(row.rect.x + row.rect.w / 2, row.rect.y + row.rect.h / 2);
+  ctx.mouse(true);
+  ctx.mouse(false);
+  draw();
+
+  const events = ctx.pollEvents();
+  const replies = events.filter((e) => e.payload?.kind === 'toggled');
+  assert.equal(replies.length, 1, 'the plugin replied once');
+  assert.equal(replies[0].origin, 1, 'and the reply carries the plugin’s origin');
+  assert.ok(
+    !events.some((e) => e.payload?.kind === 'toggle'),
+    'the plugin’s own event stayed with the plugin',
+  );
+});

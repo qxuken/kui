@@ -21,7 +21,8 @@ field reports).
 
 **What breaks.**
 
-- `KUI_ABI_VERSION` is 10, over two appends. `KuiDrawData` gained
+- `KUI_ABI_VERSION` is 10, over two appends, and the Node binary frame is
+  version 5 (`slot`). `KuiDrawData` gained
   `fragments`, `fragment_count` and `time` (ABI 9), and `KuiEvent` gained
   `reply_sink` (ABI 10). Both are [out] structs whose leading `size` means
   an un-recompiled host keeps the prefix it knows and only has to bump the
@@ -78,6 +79,30 @@ field reports).
   tree, take the draw data — and a plugin links against none of it anyway.
   It imports from the host or from `kui_ffi.dll`, and `panel.dll` is 147 KB
   either way.
+
+- **A Node host can load a C extension too**, and place it. `<slot
+  name="todos/panel" params={…}/>` is a position an extension fills, in
+  place — the JSX spelling of what Rust calls `ui.slot` and C calls
+  `kui_slot`. `ctx.addExtension(namespace, path)` loads one into a headless
+  context; a window takes `extensions: [{path, namespace?}]` in its options.
+  `ctx.extensionNamespaces()` turns an event's `origin` back into the name
+  you gave the plugin.
+
+  A plugin's events reach the plugin and its replies reach the app, carrying
+  that plugin's origin, exactly as under the Rust runner — a headless `Ctx`
+  routes them itself, a window's runner already did. With nothing loaded a
+  `<slot>` still places an empty node, so a view can declare its layout
+  before it has a plugin to put in it.
+
+  **The mechanism is C shared libraries and only that.** A plugin is a
+  `.so` / `.dylib` / `.dll` exporting the seven `kui_ext_*` entry points
+  `kui.h` describes, and the *same binary* loads into a Rust, C or Node
+  host. There is no script-loads-script path: a Lua extension is loaded by
+  a Rust host or not at all, and nothing loads a Node one.
+
+  `slot` is a protocol op rather than a schema element, like `richText`: it
+  is a host-side placement call in every binding that has one, not a
+  drawable node. The binary frame version is 5.
 
 - **A C host can load a C extension** (ADR 0014's other half, which was
   Rust's alone). `kui_ctx_add_extension(ctx, namespace, path)` loads a
@@ -365,6 +390,16 @@ GPU without rebuilding a node.
   taking the app with it. Both ends are clamped now (`clamp(1, max)`, where
   only the `1` was there before, for the minimized window that reports
   zero). One frame at the wrong size, and the next real one fixes it.
+
+- **Windows: a plugin's own directory is searched for what it imports.**
+  `CExtension::open` uses `LoadLibraryExW` with
+  `LOAD_WITH_ALTERED_SEARCH_PATH` against an absolute path, so a panel next
+  to the `kui_ffi.dll` it was linked against loads. Without it the search
+  starts from the *process* directory — `node.exe`'s, for a Node host — and
+  a plugin whose sibling DLL is right there fails with error 126. Found
+  loading the C panel from Node. Unix is untouched: a bare `libc.so.6` is a
+  name for `dlopen` to search, and resolving it against the working
+  directory could load a different library than the one meant.
 
 - **Windows: no C extension could load, ever** (backlog W6). `path_arg`
   encoded the path as UTF-16 and packed the code units into a `CString`'s
