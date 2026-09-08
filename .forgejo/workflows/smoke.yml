@@ -141,9 +141,13 @@ jobs:
       # open a window and an adapter to open it on. A headless runner fails
       # this step and passes the one above it, which is the honest split and
       # a reason the job stays `continue-on-error`.
+      #
+      # `-Dev`: the profile the test step just built the examples in, so
+      # this is a fingerprint check and not a second compile of the whole
+      # GUI stack. Nothing the round looks for depends on optimisation.
       - name: Smoke the examples in a window
         shell: powershell
-        run: pwsh -NoProfile -File scripts/smoke-windows.ps1
+        run: pwsh -NoProfile -File scripts/smoke-windows.ps1 -Dev
 
       # The C story, both directions, on the platform where it differs most:
       # an MSVC-ABI compiler, an import library at each link, and no rpath.
@@ -159,10 +163,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit 1 }
           ./examples/c/counter.exe --headless
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          cargo run -p kui-ffi --example c_panel -- --headless
+          # The binaries build.ps1 just made, run directly: a `cargo run`
+          # each would only re-fingerprint the workspace to agree.
+          ./target/debug/examples/c_panel.exe --headless
           if ($LASTEXITCODE -ne 0) { exit 1 }
           # The mutant with kui_ext_abi deleted must be refused, not loaded.
-          cargo run -p kui-ffi --example c_panel -- --headless target/panel-noabi.dll
+          ./target/debug/examples/c_panel.exe --headless target/panel-noabi.dll
           if ($LASTEXITCODE -eq 0) { throw "a plugin with no kui_ext_abi was loaded" }
           # C on both sides, through kui_ctx_add_extension (ADR 0014's C
           # half). Its plugin is the one that imports kui_ffi.dll, so this
@@ -172,5 +178,5 @@ jobs:
           # And the two-copies case ABI 10 exists for: a Rust host with its
           # own statically linked library, loading a plugin that imports
           # another copy from kui_ffi.dll. The reply has to cross anyway.
-          cargo run -p kui-ffi --example c_panel -- --headless examples/c/panel-dll.dll
+          ./target/debug/examples/c_panel.exe --headless examples/c/panel-dll.dll
           if ($LASTEXITCODE -ne 0) { exit 1 }

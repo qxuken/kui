@@ -1373,8 +1373,8 @@ uint64_t kui_open_keyed(KuiCtx *ctx, KuiStr label, const KuiSpec *spec, KuiValue
  * declaring it moves that fill here. Returns false when the name was
  * already declared this frame (a `duplicate-slot` warning).
  *
- * Whatever fills it is loaded with kui_ctx_add_extension (a headless
- * context) or named to kui_run_with (a window). With nothing loaded this
+ * Whatever fills it is loaded with kui_ctx_add_extension, into a context
+ * you build frames on yourself or hand to kui_run_with. With nothing loaded this
  * still records the position and kui_key_of still answers the slot's key,
  * so a host can declare its layout before it has a plugin to put in it.
  *
@@ -1783,22 +1783,17 @@ void kui_value_free(KuiValue *v);
  * that fails at run time. Everything else in this header is always there. */
 typedef void (*KuiEventFn)(void *user, const KuiEvent *ev);
 bool kui_run(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user);
-/* kui_run with extensions (ADR 0014). `paths` and `namespaces` are
- * parallel arrays of `count` entries: the library to load, and the word
- * that fronts every slot name it fills. `namespaces` may be NULL, and any
- * entry in it may be empty, to take each plugin's own kui_ext_name.
- *
- * False without opening a window if one will not load or two want the same
- * namespace, with the reason on stderr - there is no context to hang it on
- * yet, and a window drawn silently without the panel you asked for would be
- * worse. To inspect a failure first, load into a standalone context with
- * kui_ctx_add_extension and read kui_ctx_extension_error.
+/* kui_run with the extensions `ctx` loaded (ADR 0014): make a context,
+ * kui_ctx_add_extension each plugin into it - kui_ctx_extension_error says
+ * why one was refused, before any window opens - and hand it here. The
+ * window takes them; the context is left with none and is still yours to
+ * free. NULL is kui_run.
  *
  * Your view declares slots with kui_slot exactly as it would headless, and
  * what a plugin's nodes produce reaches your on_event as replies carrying
- * that plugin's origin. Same trust as kui_ctx_add_extension. */
-bool kui_run_with(KuiStr title, KuiViewFn view, KuiEventFn on_event, void *user,
-                  const KuiStr *paths, const KuiStr *namespaces, size_t count);
+ * that plugin's origin. */
+bool kui_run_with(KuiCtx *ctx, KuiStr title, KuiViewFn view, KuiEventFn on_event,
+                  void *user);
 
 /* -- Extension ABI: C as the guest rather than the host ------------------
  *

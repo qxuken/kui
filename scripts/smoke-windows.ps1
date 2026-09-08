@@ -64,15 +64,14 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 
-# Every windowed example in crates/kui. The four that are not here are not
-# skipped for being awkward: `conformance-dump` writes a report and exits,
-# `bench` measures, and the two `panel` examples are hosts for an extension
-# built by examples/c/build.sh, which is its own round.
-$examples = @(
-    'accessibility', 'bulk_exit', 'connectors', 'counter', 'editor',
-    'fragments', 'gallery', 'modal_editor', 'popup', 'rich_text',
-    'splitmux', 'syntax_view', 'toasts', 'waker'
-)
+# Every example in crates/kui, read from its manifest so a new one is
+# smoked the day it is added. All of them open a window; the ones that do
+# not (`conformance-dump`, `bench`) and the two `panel` hosts for an
+# extension built by examples/c/build.sh are other crates' examples.
+$examples = @(((cargo metadata --format-version 1 --no-deps | ConvertFrom-Json).packages |
+    Where-Object name -eq 'kui').targets |
+    Where-Object { $_.kind -contains 'example' } |
+    ForEach-Object name | Sort-Object)
 # `pwsh -File` hands parameters over as plain strings, so `-Only a,b` arrives
 # as one element rather than two; split it back rather than making the
 # documented spelling depend on how the script was invoked.
@@ -83,15 +82,13 @@ if ($Only.Count -gt 0) {
     $examples = $Only
 }
 
+$profile = if ($Dev) { 'dev' } else { 'release' }
+# Where cargo puts the `dev` profile is `debug`; the one mapping.
 $profileDir = if ($Dev) { 'debug' } else { 'release' }
-# Two literal calls rather than splatting an array into a native command:
-# `& cargo build @profileArg ...` passes a bare `-` when the array holds one
-# element, which cargo rejects.
 
 if (-not $NoBuild) {
     Write-Host "building $profileDir examples..." -ForegroundColor Cyan
-    if ($Dev) { & cargo build -p kui --examples }
-    else { & cargo build --release -p kui --examples }
+    & cargo build --profile $profile -p kui --examples
     if ($LASTEXITCODE -ne 0) { throw "build failed" }
 }
 
@@ -100,6 +97,7 @@ Write-Host ("smoke: {0} examples, {1} frames each, {2} profile" -f $examples.Cou
 Write-Host ""
 
 $failed = @()
+$env:KUI_SMOKE_FRAMES = "$Frames"
 foreach ($name in $examples) {
     $exe = Join-Path "target/$profileDir/examples" "$name.exe"
     if (-not (Test-Path $exe)) {
@@ -108,18 +106,16 @@ foreach ($name in $examples) {
         continue
     }
     $err = New-TemporaryFile
-    $out = New-TemporaryFile
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    $env:KUI_SMOKE_FRAMES = "$Frames"
+    # stdout is nobody's: what an example prints is not what is judged.
     $p = Start-Process -FilePath $exe -PassThru -NoNewWindow `
-        -RedirectStandardError $err -RedirectStandardOutput $out
+        -RedirectStandardError $err -RedirectStandardOutput NUL
     $done = $p.WaitForExit($TimeoutSec * 1000)
     if (-not $done) {
         try { $p.Kill($true) } catch {}
         $p.WaitForExit(5000) | Out-Null
     }
     $sw.Stop()
-    Remove-Item Env:\KUI_SMOKE_FRAMES -ErrorAction SilentlyContinue
 
     $stderr = (Get-Content $err -Raw)
     if ($null -eq $stderr) { $stderr = '' }
@@ -142,8 +138,9 @@ foreach ($name in $examples) {
         Write-Host ("  {0,-14} ok       {1:N2}s{2}" -f $name, $sw.Elapsed.TotalSeconds, $note) -ForegroundColor Green
         $warnings | ForEach-Object { Write-Host "                 $_" -ForegroundColor Yellow }
     }
-    Remove-Item $err, $out -ErrorAction SilentlyContinue
+    Remove-Item $err -ErrorAction SilentlyContinue
 }
+Remove-Item Env:\KUI_SMOKE_FRAMES -ErrorAction SilentlyContinue
 
 Write-Host ""
 if ($failed.Count -gt 0) {

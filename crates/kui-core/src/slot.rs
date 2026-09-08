@@ -202,17 +202,21 @@ impl Extensions {
     }
 
     /// Adds `ext` under its own name as the namespace — `import fs` binds
-    /// `fs`. Fails as `push_as` does.
+    /// `fs`. `push_as` with an empty namespace, which means the same.
     pub fn push(&mut self, ext: Box<dyn Extension>) -> Result<(), String> {
-        let ns = ext.name().to_owned();
-        self.push_as(ns, ext)
+        self.push_as(String::new(), ext)
     }
 
-    /// Adds `ext` under `namespace` — `import fs as left`. Fails when the
-    /// namespace is empty or already taken (two extensions cannot share
-    /// one, since slot names would collide), or when a slot the extension
-    /// lists contains the separator (a slot name is the extension's own
-    /// word; the host adds the namespace).
+    /// Adds `ext` under `namespace` — `import fs as left`. An empty
+    /// namespace means the extension's own name: the rule is here, once,
+    /// so that a host taking the namespace from outside the program (a C
+    /// argument, a Node option, a Lua call) passes it through rather than
+    /// substituting `name()` first — three of them did, and a fourth did
+    /// not. Fails when that name is empty too, when the namespace is
+    /// already taken (two extensions cannot share one, since slot names
+    /// would collide), or when a slot the extension lists contains the
+    /// separator (a slot name is the extension's own word; the host adds
+    /// the namespace).
     pub fn push_as(
         &mut self,
         namespace: impl Into<String>,
@@ -224,11 +228,16 @@ impl Extensions {
     /// `push_as` answering with the origin the extension got, which is
     /// what [`Fill::add`] hands back to a guest that loaded one.
     fn insert(&mut self, namespace: String, ext: Box<dyn Extension>) -> Result<OriginId, String> {
+        let namespace = if namespace.is_empty() {
+            ext.name().to_owned()
+        } else {
+            namespace
+        };
         if namespace.is_empty() {
-            return Err(format!(
-                "extension `{}` needs a namespace; it cannot be empty",
-                ext.name()
-            ));
+            return Err(
+                "extension needs a namespace: it names itself nothing and none was given"
+                    .to_owned(),
+            );
         }
         if let Some(taken) = self.list.iter().find(|e| e.namespace == namespace) {
             return Err(format!(
@@ -314,6 +323,13 @@ impl Extensions {
         events: impl IntoIterator<Item = UiEvent>,
         mut to_host: impl FnMut(UiEvent),
     ) {
+        // Nobody to deliver to: every event is the host's, and the walk
+        // below would only queue them up to say so. This is every host
+        // that loaded nothing, so it is the common case.
+        if self.list.is_empty() {
+            events.into_iter().for_each(to_host);
+            return;
+        }
         let mut queue: std::collections::VecDeque<(OriginId, usize, UiEvent)> =
             events.into_iter().map(|ev| (ev.origin, 0, ev)).collect();
         while let Some((to, depth, ev)) = queue.pop_front() {

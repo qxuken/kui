@@ -110,16 +110,23 @@ impl App for Host {
 /// with. `.so` on both unixes, because that is what `build.sh` names it and
 /// `dlopen` does not care; `.dll` on Windows, because `LoadLibraryW` does.
 fn default_plugin() -> String {
-    let ext = if cfg!(target_os = "windows") {
-        "dll"
-    } else {
-        "so"
-    };
     format!(
-        "{}/../../examples/c/panel.{ext}",
+        "{}/../../examples/c/panel.{PLUGIN_EXT}",
         env!("CARGO_MANIFEST_DIR")
     )
 }
+
+/// What the plugin is called on this platform, and what builds it.
+const PLUGIN_EXT: &str = if cfg!(target_os = "windows") {
+    "dll"
+} else {
+    "so"
+};
+const BUILD_HINT: &str = if cfg!(target_os = "windows") {
+    "pwsh examples/c/build.ps1"
+} else {
+    "./examples/c/build.sh"
+};
 
 /// One frame, built the way the windowed runner builds it: the host's view
 /// with the extensions as the filler, so the slot it declares is filled in
@@ -150,24 +157,6 @@ fn click(core: &mut Core, at: Vec2) -> Vec<UiEvent> {
     core.handle_input(InputEvent::CursorMoved(at));
     core.handle_input(InputEvent::mouse_down(1));
     core.handle_input(InputEvent::mouse_up())
-}
-
-/// What the runner's `route_events` does with an extension's event: hand
-/// it to the extension, and hand each reply to the host with the
-/// extension's origin and the event's window and key.
-fn route(host: &mut Host, exts: &mut Extensions, ev: &UiEvent) -> usize {
-    let ext = exts.by_origin(ev.origin).expect("an extension's event");
-    let replies = ext.on_event(ev);
-    let n = replies.len();
-    for payload in replies {
-        host.on_event(UiEvent {
-            origin: ev.origin,
-            window: ev.window,
-            key: ev.key,
-            payload,
-        });
-    }
-    n
 }
 
 /// No window: builds frames, clicks through them, and checks that the
@@ -226,12 +215,12 @@ fn headless(ext: CExtension) -> i32 {
     }
     // An event carries the origin of the node that emitted it, so the host
     // is never offered the plugin's clicks — and what the plugin *replies*
-    // is the one thing that does reach the host.
-    let replies = route(&mut host, &mut exts, &evs[0]);
-    if replies != 1 || host.toggles != 1 || host.last_reply_from != Some(EXT) {
+    // is the one thing that does reach the host. `Extensions::route` is
+    // the walk the runner takes, and the same one.
+    exts.route(evs, |ev| host.on_event(ev));
+    if host.toggles != 1 || host.last_reply_from != Some(EXT) {
         eprintln!(
-            "FAIL: expected one `toggled` reply from {EXT:?}, got {replies} replies, {} toggles \
-             from {:?}",
+            "FAIL: expected one `toggled` reply from {EXT:?}, got {} toggles from {:?}",
             host.toggles, host.last_reply_from
         );
         return 1;
@@ -289,14 +278,7 @@ fn main() {
         Ok(ext) => ext,
         Err(err) => {
             eprintln!("kui: {err}");
-            eprintln!(
-                "build it first: {}",
-                if cfg!(target_os = "windows") {
-                    "pwsh examples/c/build.ps1"
-                } else {
-                    "./examples/c/build.sh"
-                }
-            );
+            eprintln!("build it first: {BUILD_HINT}");
             std::process::exit(1);
         }
     };

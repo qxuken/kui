@@ -220,20 +220,24 @@ fn one_plugin_loaded_twice_is_two_namespaces() {
 }
 
 /// Loading refuses what would make a slot name ambiguous: a taken
-/// namespace, an empty one, and a slot name with the separator in it.
+/// namespace, none at all, and a slot name with the separator in it. An
+/// empty namespace is not "none" — it is the extension's own name, so
+/// every host spells "the plugin's own" the same way.
 #[test]
 fn loading_refuses_ambiguous_namespaces_and_slot_names() {
     let mut exts = Extensions::new();
     exts.push(ext("fs", &["panel"])).unwrap();
     let err = exts.push(ext("fs", &["panel"])).unwrap_err();
     assert!(err.contains("`fs` is already"), "{err}");
-    let err = exts.push_as("", ext("other", &[])).unwrap_err();
-    assert!(err.contains("cannot be empty"), "{err}");
+    let err = exts.push_as("", ext("", &[])).unwrap_err();
+    assert!(err.contains("names itself nothing"), "{err}");
     let err = exts.push_as("git", ext("git", &["side/bar"])).unwrap_err();
     assert!(err.contains("\"side/bar\""), "{err}");
+    exts.push_as("", ext("other", &[])).unwrap();
     exts.push_as("also-fs", ext("fs", &["panel"])).unwrap();
-    assert_eq!(exts.len(), 2);
-    assert_eq!(exts.namespace_of(OriginId(2)), Some("also-fs"));
+    assert_eq!(exts.len(), 3);
+    assert_eq!(exts.namespace_of(OriginId(2)), Some("other"));
+    assert_eq!(exts.namespace_of(OriginId(3)), Some("also-fs"));
     assert_eq!(split_name("left/fs/panel"), ("left/fs", "panel"));
     assert_eq!(split_name("root"), ("", "root"));
 }

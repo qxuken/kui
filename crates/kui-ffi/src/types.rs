@@ -68,9 +68,10 @@ pub struct KuiCtx {
     /// `kui_ctx_add_extension` fills it, `kui_slot` fills *them* in place,
     /// `kui_frame_finish` lets them take `ns/root` and warn about slots
     /// nobody declared, and an event whose origin names one is delivered to
-    /// it rather than queued for the host. Empty on a borrowing context: an
-    /// extension does not host extensions, and the windowed runner owns the
-    /// list for a host under `kui_run_with`.
+    /// it rather than queued for the host. `kui_run_with` moves it into
+    /// the window's runner. Empty on a borrowing context: an extension
+    /// does not host extensions, and a host's under the runner is the
+    /// runner's.
     pub(crate) extensions: kui_core::Extensions,
     /// Why the last `kui_ctx_add_extension` said false. Valid until the
     /// next call, like every other borrowed string here.
@@ -131,29 +132,19 @@ impl KuiCtx {
     /// for the callback and not one instruction longer, like the borrow
     /// itself.
     pub(crate) fn borrowing_in(ui: &mut kui_core::Ui<'_>) -> Self {
-        let ui: *mut kui_core::Ui<'_> = ui;
-        let mut this = Self::borrowing(unsafe { (*ui).core() });
-        this.host_ui = ui.cast::<c_void>();
+        // `borrowing` keeps the core as a raw pointer, so the borrow of
+        // `ui` it takes ends when it returns and the `Ui` can be kept too.
+        let mut this = Self::borrowing(ui.core());
+        this.host_ui = std::ptr::from_mut(ui).cast();
         this
     }
+
     /// Takes a batch of events the core just produced: the host's own are
     /// queued for `kui_poll_event`, and one whose origin names a loaded
-    /// extension is delivered to it here instead — its replies queued in
-    /// its place, carrying its origin, window and key, so the host learns
-    /// who answered and about what (ADR 0014 decision 6).
-    ///
-    /// This is `Shell::route_events` in the Rust runner, and it is
-    /// literally the same walk (`Extensions::route`) for the same reason:
-    /// a reply is addressed by being one, not routed by origin. A reply
-    /// from a plugin *another extension* placed goes to that extension
-    /// first and reaches this queue as whatever it answered. A context
-    /// with no extensions cannot produce a foreign origin, so the whole
-    /// thing collapses to the `extend` it replaced.
+    /// extension is delivered to it instead, its replies queued in its
+    /// place (ADR 0014 decision 6). `Extensions::route` is the walk, the
+    /// same one the Rust runner's `route_events` takes.
     pub(crate) fn absorb(&mut self, events: impl IntoIterator<Item = UiEvent>) {
-        if self.extensions.is_empty() {
-            self.events.extend(events);
-            return;
-        }
         let out = &mut self.events;
         self.extensions.route(events, |ev| out.push(ev));
     }

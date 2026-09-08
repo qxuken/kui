@@ -21,6 +21,8 @@
 //! `examples/c/build.ps1` then links the plugin against. `/DEF:` is how they
 //! are named — one `/EXPORT:` link arg each would do the same, but 135 of
 //! them do not survive rustc's quoting, and a response file is quoted too.
+//! (rustc's own spelling of this is `-Z export-executable-symbols`; it is
+//! unstable, and this file goes the day it is not.)
 //!
 //! The list is read out of this crate's own sources rather than kept here:
 //! the exports are exactly the `pub extern "C" fn kui_*` set, and a list
@@ -88,24 +90,19 @@ fn export_def(manifest_dir: &str) -> Option<String> {
         if path.extension().is_none_or(|e| e != "rs") {
             continue;
         }
-        // `run.rs` is behind the `runner` feature, so a build without it
-        // has no `kui_run` to export and /EXPORT: of a missing symbol is a
-        // link error. The scan follows the same switch.
-        if path.file_name().is_some_and(|f| f == "run.rs")
-            && std::env::var_os("CARGO_FEATURE_RUNNER").is_none()
-        {
-            continue;
-        }
+        // Every file, whatever feature it sits behind: `run.rs` is only
+        // compiled with `runner`, but so is the example this flag is for
+        // (`required-features`), so a build without the feature has no
+        // host to link and nothing reads the list.
         let text = std::fs::read_to_string(&path).ok()?;
-        for (_, rest) in text
-            .match_indices("pub extern \"C\" fn kui_")
-            .map(|(i, _)| (i, &text[i + "pub extern \"C\" fn ".len()..]))
-        {
+        for rest in text.split("pub extern \"C\" fn ").skip(1) {
             let name: String = rest
                 .chars()
                 .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
                 .collect();
-            names.push(name);
+            if name.starts_with("kui_") {
+                names.push(name);
+            }
         }
     }
     if names.is_empty() {

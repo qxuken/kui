@@ -50,13 +50,9 @@
  * watch the first one be refused; it is not a bug in either file. */
 #if defined(_WIN32)
 #define DEFAULT_PLUGIN "examples/c/panel-dll.dll"
-#else
-#define DEFAULT_PLUGIN "examples/c/panel.so"
-#endif
-
-#if defined(_WIN32)
 #define BUILD_HINT "pwsh examples/c/build.ps1"
 #else
+#define DEFAULT_PLUGIN "examples/c/panel.so"
 #define BUILD_HINT "./examples/c/build.sh"
 #endif
 
@@ -175,11 +171,13 @@ static void frame(KuiCtx *ctx, Host *host) {
     kui_frame_finish(ctx);
 }
 
-static int headless(const char *plugin) {
-    Host host = {0};
+/* A context with the panel loaded under NS, or NULL with the reason
+ * printed. Both ways of running start here: --headless builds frames on the
+ * context itself, and a window takes its extensions through kui_run_with -
+ * one loader, and one place a refusal is explained. */
+static KuiCtx *load(const char *plugin) {
     KuiCtx *ctx = kui_ctx_new();
-    if (!ctx) return 1;
-
+    if (!ctx) return NULL;
     KuiStr path = {(const uint8_t *)plugin, strlen(plugin)};
     if (!kui_ctx_add_extension(ctx, KUI_STR(NS), path)) {
         KuiStr err = {0};
@@ -187,8 +185,15 @@ static int headless(const char *plugin) {
             fprintf(stderr, "kui: %.*s\n", (int)err.len, (const char *)err.ptr);
         fprintf(stderr, "build it first: %s\n", BUILD_HINT);
         kui_ctx_free(ctx);
-        return 1;
+        return NULL;
     }
+    return ctx;
+}
+
+static int headless(const char *plugin) {
+    Host host = {0};
+    KuiCtx *ctx = load(plugin);
+    if (!ctx) return 1;
     printf("loaded %u extension(s)\n", kui_ctx_extension_count(ctx));
 
     frame(ctx, &host);
@@ -246,13 +251,11 @@ int main(int argc, char **argv) {
     }
     if (no_window) return headless(plugin);
 
+    KuiCtx *ctx = load(plugin);
+    if (!ctx) return 1;
     Host host = {0};
-    KuiStr paths[] = {{(const uint8_t *)plugin, strlen(plugin)}};
-    KuiStr namespaces[] = {KUI_STR(NS)};
-    if (!kui_run_with(KUI_STR("kui - a C host and a C panel"), view, on_event,
-                      &host, paths, namespaces, 1)) {
-        fprintf(stderr, "build it first: %s\n", BUILD_HINT);
-        return 1;
-    }
-    return 0;
+    bool ok = kui_run_with(ctx, KUI_STR("kui - a C host and a C panel"), view,
+                           on_event, &host);
+    kui_ctx_free(ctx);
+    return ok ? 0 : 1;
 }

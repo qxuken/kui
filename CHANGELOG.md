@@ -43,7 +43,15 @@ field reports).
   a JS caller comparing `type === 'fragment'` must compare against
   `Fragment` (or `Symbol.for('kui.jsx.fragment')`).
 - `Ui::fragment` and `Core::fragment_node` return the node's `Key` rather
-  than `()`. Nothing to fix unless a caller bound the result.
+  than `()`. Nothing to fix unless a caller bound the result. `Ui::slot_with`
+  likewise now answers whether the slot was declared (false for a
+  duplicate), so the C context can be the same code as the Rust runner.
+- `Extensions::push_as("", ext)` loads under the extension's own name
+  rather than refusing: the "empty means the plugin's own" rule every host
+  had was spelling for itself is the core's, once, and a Lua
+  `env.add_extension("", path)` — the one host that did not — now agrees
+  with the others. The refusal that is left is an extension that names
+  itself nothing.
 - `widgets::button_with` now colours its label by the luminance of the spec's
   background instead of always white. The stock button and every accent are
   unchanged (white, as before); a caller that passed `button_spec().bg(...)`
@@ -175,7 +183,8 @@ field reports).
 
 - **A C host can load a C extension** (ADR 0014's other half, which was
   Rust's alone). `kui_ctx_add_extension(ctx, namespace, path)` loads a
-  plugin into a context, `kui_run_with` does the same for a window, and
+  plugin into a context, `kui_run_with(ctx, …)` opens a window with what a
+  context loaded (so a refusal is read the one way, before any window), and
   `kui_slot` fills in place from either — the same call a host already made
   to declare the position. `kui_ctx_extension_error` says why a load was
   refused, `kui_ctx_extension_count` how many are loaded, and

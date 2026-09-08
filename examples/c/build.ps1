@@ -54,6 +54,8 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..' '..')
 
+$profile = if ($Release) { 'release' } else { 'dev' }
+# Where cargo puts the `dev` profile is `debug`; the one mapping.
 $profileDir = if ($Release) { 'release' } else { 'debug' }
 
 # --- a compiler -------------------------------------------------------------
@@ -74,17 +76,14 @@ function Import-VsDevEnv {
     return $true
 }
 
-$cc = $null
-foreach ($candidate in 'cl', 'clang-cl') {
-    if (Get-Command $candidate -ErrorAction SilentlyContinue) { $cc = $candidate; break }
-}
-if (-not $cc) {
-    if (Import-VsDevEnv -and (Get-Command cl -ErrorAction SilentlyContinue)) {
-        $cc = 'cl'
-    } elseif (Get-Command clang-cl -ErrorAction SilentlyContinue) {
-        $cc = 'clang-cl'
+function Find-Cc {
+    foreach ($c in 'cl', 'clang-cl') {
+        if (Get-Command $c -ErrorAction SilentlyContinue) { return $c }
     }
 }
+
+$cc = Find-Cc
+if (-not $cc -and (Import-VsDevEnv)) { $cc = Find-Cc }
 if (-not $cc) {
     throw "no MSVC-ABI C compiler: install the VS Build Tools (cl) or LLVM (clang-cl). A MinGW gcc will not do - it links a different ABI than the Rust msvc target."
 }
@@ -99,17 +98,32 @@ $cflags = @(
 
 function Invoke-Cc {
     param([string[]]$Arguments, [string]$What)
-    $output = & $cc @Arguments 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        $output | ForEach-Object { Write-Host $_ -ForegroundColor DarkGray }
-        throw "$What failed"
-    }
+    & $cc @Arguments
+    if ($LASTEXITCODE -ne 0) { throw "$What failed" }
 }
 
-# --- the library ------------------------------------------------------------
+# One C source into one exe or DLL, linked against one import library. The
+# object goes to target/ under the source's own name.
+function Build-C {
+    param([string]$Src, [string]$Out, [string]$Lib, [switch]$Dll)
+    $shape = if ($Dll) { @('/LD') } else { @() }
+    Invoke-Cc ($cflags + @($Src) + $shape + @("/Fe:$Out", '/Fo:target/', '/link', $Lib)) $Out
+    Write-Host "built $Out" -ForegroundColor Green
+}
 
-if ($Release) { & cargo build --release -p kui-ffi } else { & cargo build -p kui-ffi }
+# --- the library, and the Rust host ------------------------------------------
+
+# One build for both: the cdylib the C hosts link, and c_panel.exe, whose
+# link is what writes the import library panel.dll is linked against
+# (see the header).
+& cargo build --profile $profile -p kui-ffi --lib --example c_panel
 if ($LASTEXITCODE -ne 0) { throw "cargo build -p kui-ffi failed" }
+
+$ffiLib = "target/$profileDir/kui_ffi.dll.lib"
+$hostLib = "target/$profileDir/examples/c_panel.lib"
+if (-not (Test-Path $hostLib)) {
+    throw "$hostLib missing: the host exported no kui_*, so link.exe wrote no import library. crates/kui-ffi/build.rs is what asks for them."
+}
 
 # --- kui.h against the Rust layout -----------------------------------------
 
@@ -138,41 +152,13 @@ Write-Host "kui.h matches Rust ($fields fields, $enums enum members)" -Foregroun
 
 # --- the counter: C as the host --------------------------------------------
 
-Invoke-Cc ($cflags + @(
-        'examples/c/counter.c',
-        '/Fe:examples/c/counter.exe',
-        '/Fo:target/counter.obj',
-        '/link', "target/$profileDir/kui_ffi.dll.lib"
-    )) 'counter'
-
+Build-C examples/c/counter.c examples/c/counter.exe $ffiLib
 # No rpath on Windows: the loader looks beside the exe, then on PATH.
 Copy-Item "target/$profileDir/kui_ffi.dll" examples/c/ -Force
-Write-Host "built examples/c/counter.exe (with kui_ffi.dll beside it)" -ForegroundColor Green
 
 # --- the panel: C as an extension ------------------------------------------
 
-# The host first, because linking the plugin needs the import library that
-# building the host produces (see the header comment).
-if ($Release) {
-    & cargo build --release -p kui-ffi --example c_panel
-} else {
-    & cargo build -p kui-ffi --example c_panel
-}
-if ($LASTEXITCODE -ne 0) { throw "cargo build --example c_panel failed" }
-
-$hostLib = "target/$profileDir/examples/c_panel.lib"
-if (-not (Test-Path $hostLib)) {
-    throw "$hostLib missing: the host exported no kui_*, so link.exe wrote no import library. crates/kui-ffi/build.rs is what asks for them."
-}
-
-Invoke-Cc ($cflags + @(
-        'examples/c/panel.c', '/LD',
-        '/Fe:examples/c/panel.dll',
-        '/Fo:target/panel.obj',
-        '/link', $hostLib
-    )) 'panel.dll'
-Write-Host "built examples/c/panel.dll" -ForegroundColor Green
-
+Build-C examples/c/panel.c examples/c/panel.dll $hostLib -Dll
 
 # --- the host: C on both sides ---------------------------------------------
 
@@ -183,27 +169,15 @@ Write-Host "built examples/c/panel.dll" -ForegroundColor Green
 # Windows plugin shape, and the one that travels: a plugin built this way
 # loads into any host shipping this DLL, where panel.dll above loads into
 # c_panel.exe and nothing else. Both are built here because both are real.
-Invoke-Cc ($cflags + @(
-        'examples/c/host.c',
-        '/Fe:examples/c/host.exe',
-        '/Fo:target/host.obj',
-        '/link', "target/$profileDir/kui_ffi.dll.lib"
-    )) 'host'
-Write-Host "built examples/c/host.exe" -ForegroundColor Green
-
-Invoke-Cc ($cflags + @(
-        'examples/c/panel.c', '/LD',
-        '/Fe:examples/c/panel-dll.dll',
-        '/Fo:target/panel-dll.obj',
-        '/link', "target/$profileDir/kui_ffi.dll.lib"
-    )) 'panel-dll.dll'
-Write-Host "built examples/c/panel-dll.dll (imports kui_ffi.dll, not a host)" -ForegroundColor Green
+Build-C examples/c/host.c examples/c/host.exe $ffiLib
+Build-C examples/c/panel.c examples/c/panel-dll.dll $ffiLib -Dll
 
 # The Rust host has its own statically linked copy of the library, so loading
 # panel-dll.dll into it puts *two* copies in one process - which is the case
 # ABI 10's reply sink exists for, and worth having a copy of the DLL beside
-# it so the check in build.ps1's "next" list can be run.
+# it so the check in the "next" list can be run.
 Copy-Item "target/$profileDir/kui_ffi.dll" "target/$profileDir/examples/" -Force
+
 # The same plugin with its kui_ext_abi deleted: a plugin built against a
 # header from before ADR 0006 gave plugins a version, which is the one the
 # host must refuse and used to load unchecked (backlog S1). Produced from
@@ -218,13 +192,7 @@ $noabi = 'target/panel-noabi.c'
 if (Select-String -Path $noabi -Pattern 'kui_ext_abi' -Quiet) {
     throw "panel-noabi.c still defines kui_ext_abi; the mutation missed"
 }
-Invoke-Cc ($cflags + @(
-        $noabi, '/LD',
-        '/Fe:target/panel-noabi.dll',
-        '/Fo:target/panel-noabi.obj',
-        '/link', $hostLib
-    )) 'panel-noabi.dll'
-Write-Host "built target/panel-noabi.dll (kui_ext_abi deleted; must be refused)" -ForegroundColor Green
+Build-C $noabi target/panel-noabi.dll $hostLib -Dll
 
 Write-Host ""
 Write-Host "next:" -ForegroundColor Cyan
@@ -232,8 +200,9 @@ Write-Host "  ./examples/c/counter.exe --headless"
 Write-Host "  ./examples/c/host.exe --headless             # C on both sides"
 Write-Host "  ./examples/c/host.exe --headless examples/c/panel-dll.dll"
 Write-Host "  ./examples/c/counter.exe"
-Write-Host "  cargo run -p kui-ffi --example c_panel -- --headless"
-Write-Host "  cargo run -p kui-ffi --example c_panel"
+Write-Host "  ./target/$profileDir/examples/c_panel.exe --headless"
+Write-Host "  ./target/$profileDir/examples/c_panel.exe"
+Write-Host "  ./target/$profileDir/examples/c_panel.exe --headless target/panel-noabi.dll   # must be refused"
 Write-Host "  ./target/$profileDir/examples/c_panel.exe --headless examples/c/panel-dll.dll"
 Write-Host "      # ^ a host with its own copy of the library and a plugin with"
 Write-Host "      #   another: what ABI 10's reply sink is for"

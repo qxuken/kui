@@ -343,7 +343,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             if let Some(hint) = &p.tooltip
                 && ui.core().is_hovered(node_key)
             {
-                widgets::tooltip(&mut kui_core::Ui::wrap(ui.core()), hint);
+                widgets::tooltip(ui, hint);
             }
             ui.core().close();
             Ok(())
@@ -405,7 +405,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             base.spec = widgets::button_spec();
             let p = read_props_over(r, base)?;
             widgets::button_with(
-                &mut kui_core::Ui::wrap(ui.core()),
+                ui,
                 label_key,
                 label,
                 p.spec.on_click(msg),
@@ -470,12 +470,12 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
         // With nothing loaded it still places the node, so a view can
         // declare its layout before it has a plugin to put in it.
         OP_SLOT => {
-            let name = r.req_str()?.to_owned();
+            let name = r.req_str()?;
             let params = match r.str_ref()? {
                 Some(s) => payload(s)?,
                 None => kui_core::Value::Null,
             };
-            ui.slot_with(&name, &params);
+            ui.slot_with(name, &params);
             Ok(())
         }
         // n, then n (x, y) pairs, width, flags (1 curve), then the prop
@@ -523,7 +523,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             if let Some(hint) = &p.tooltip
                 && ui.core().is_hovered(key)
             {
-                widgets::tooltip(&mut kui_core::Ui::wrap(ui.core()), hint);
+                widgets::tooltip(ui, hint);
             }
             ui.core().close();
             Ok(())
@@ -596,20 +596,16 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             }
         }
         OP_WINDOW_BUTTONS => {
-            widgets::window_buttons(&mut kui_core::Ui::wrap(ui.core()));
+            widgets::window_buttons(ui);
             Ok(())
         }
         OP_LATENCY_GRAPH => {
-            widgets::latency_graph(&mut kui_core::Ui::wrap(ui.core()));
+            widgets::latency_graph(ui);
             Ok(())
         }
         OP_LATENCY_HUD => {
             let (x, y) = (r.u()?, r.u()?);
-            widgets::latency_hud_at(
-                &mut kui_core::Ui::wrap(ui.core()),
-                align_idx(x as usize),
-                align_idx(y as usize),
-            );
+            widgets::latency_hud_at(ui, align_idx(x as usize), align_idx(y as usize));
             Ok(())
         }
         other => Err(err(format!("unknown opcode {other}"))),

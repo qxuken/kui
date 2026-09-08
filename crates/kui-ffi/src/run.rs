@@ -46,87 +46,41 @@ pub extern "C" fn kui_run(
     on_event: EventFn,
     user: *mut c_void,
 ) -> bool {
-    guard(false, || {
-        let title = kstr(title).into_owned();
-        let app = CApp {
-            user,
-            view,
-            on_event: Some(on_event),
-        };
-        kui::run(&title, app, vec![]).is_ok()
-    })
+    kui_run_with(std::ptr::null_mut(), title, view, on_event, user)
 }
 
-/// `kui_run` with extensions loaded into the window's own core
-/// (ADR 0014). `paths` and `namespaces` are parallel arrays of `count`
-/// entries: the shared library to load, and the word that fronts every
-/// slot name it fills. `namespaces` may be NULL, and any entry in it may
-/// be empty, to take each extension's own `kui_ext_name`.
+/// `kui_run` with the extensions `ctx` loaded (ADR 0014): the window's
+/// runner takes them, so the context is left with none and is still the
+/// caller's to free. A NULL context is `kui_run`.
 ///
-/// Returns false without opening a window if any of them will not load or
-/// two want one namespace — the reason goes to stderr, because there is no
-/// context to hang it on and a window drawn silently without the panel the
-/// host asked for would be worse. `kui_ctx_add_extension` on a standalone
-/// context is how to inspect a failure before committing to a window.
+/// There is no loader here, on purpose. `kui_ctx_add_extension` is the
+/// loader, with `kui_ctx_extension_error` for the reason a plugin was
+/// refused; a second one taking paths would need a second error channel,
+/// and the first version of this function had exactly that (stderr, and
+/// a note advising to load into a context first to find out why).
 ///
 /// The host's view declares slots with `kui_slot` exactly as it would
 /// headless, and what an extension's nodes produce reaches the host as
 /// replies carrying that extension's origin.
-///
-/// # Safety
-/// Every library named runs in this process. Loading one is trusting it
-/// exactly as much as linking it would be.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_run_with(
+    ptr: *mut KuiCtx,
     title: KuiStr,
     view: ViewFn,
     on_event: EventFn,
     user: *mut c_void,
-    paths: *const KuiStr,
-    namespaces: *const KuiStr,
-    count: usize,
 ) -> bool {
     guard(false, || {
-        if count > 0 && paths.is_null() {
-            eprintln!("kui: kui_run_with: {count} extensions asked for and no paths");
-            return false;
-        }
-        let mut launcher = kui::app(&kstr(title));
-        for i in 0..count {
-            let path = kstr(unsafe { *paths.add(i) }).into_owned();
-            // SAFETY: the caller's, and the doc comment says so.
-            let ext = match unsafe { crate::CExtension::open(&path) } {
-                Ok(ext) => ext,
-                Err(err) => {
-                    eprintln!("kui: {err}");
-                    return false;
-                }
-            };
-            let ns = match unsafe { namespaces.as_ref() } {
-                Some(_) => kstr(unsafe { *namespaces.add(i) }).into_owned(),
-                None => String::new(),
-            };
-            let ns = if ns.is_empty() {
-                kui_core::Extension::name(&ext).to_owned()
-            } else {
-                ns
-            };
-            // The refusing form, not `extension_as`: these paths came from
-            // outside the program, so a collision is a message and not a
-            // panic.
-            launcher = match launcher.try_extension_as(ns, ext) {
-                Ok(l) => l,
-                Err(err) => {
-                    eprintln!("kui: {err}");
-                    return false;
-                }
-            };
-        }
+        let extensions = unsafe { ctx(ptr) }
+            .map_or_else(Default::default, |c| std::mem::take(&mut c.extensions));
         let app = CApp {
             user,
             view,
             on_event: Some(on_event),
         };
-        launcher.run(app).is_ok()
+        kui::app(&kstr(title))
+            .with_extensions(extensions)
+            .run(app)
+            .is_ok()
     })
 }

@@ -486,7 +486,8 @@ reply. The old design could not have.
 **The host half.** ADR 0014's loader was `kui_ffi::CExtension`, which is
 Rust, so a C host could declare a slot with `kui_slot` and had nothing to
 put in it. Now `kui_ctx_add_extension(ctx, namespace, path)` loads one into
-a context and `kui_run_with` into a window; `kui_slot` fills from either;
+a context, and `kui_run_with(ctx, …)` opens a window with what a context
+loaded — one loader, one error channel; `kui_slot` fills from either;
 `kui_ctx_extension_error` says why a refusal was one, and
 `kui_ctx_extension_namespace` turns an event's origin back into the name the
 host chose. Events reach the plugin and replies reach the host, through the

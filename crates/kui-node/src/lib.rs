@@ -1206,11 +1206,6 @@ impl KuiWindow {
             // SAFETY: the caller's; the option is documented as loading
             // code into this process.
             let ext = unsafe { kui_ffi::CExtension::open(path) }.map_err(err)?;
-            let ns = if ns.is_empty() {
-                kui_core::Extension::name(&ext).to_owned()
-            } else {
-                ns.to_owned()
-            };
             launcher = launcher.try_extension_as(ns, ext).map_err(err)?;
         }
         launcher = match o.get("chrome").and_then(Json::as_str) {
@@ -2119,18 +2114,12 @@ core_methods!(
 /// in the C one — all three the same `Extensions::route`, for the same
 /// reason: a reply is addressed by being one, not routed by origin. A
 /// reply from a plugin *another extension* placed goes to that extension
-/// first and arrives here as whatever it answered. With no extensions
-/// loaded it is the `extend` it replaced, which is every Node app that
-/// has not asked for one.
+/// first and arrives here as whatever it answered.
 fn absorb(
     extensions: &mut kui_core::Extensions,
     events: impl IntoIterator<Item = UiEvent>,
     out: &mut Vec<UiEvent>,
 ) {
-    if extensions.is_empty() {
-        out.extend(events);
-        return;
-    }
     extensions.route(events, |ev| out.push(ev));
 }
 
@@ -2150,12 +2139,7 @@ fn load_extension(
 ) -> Result<()> {
     // SAFETY: the caller's, and `addExtension`'s doc comment says so.
     let ext = unsafe { CExtension::open(&path) }.map_err(err)?;
-    let r = if namespace.is_empty() {
-        extensions.push(Box::new(ext))
-    } else {
-        extensions.push_as(namespace, Box::new(ext))
-    };
-    r.map_err(err)
+    extensions.push_as(namespace, Box::new(ext)).map_err(err)
 }
 /// `measureText(content, style, maxWidth)` → `{width, height, lines}`.
 fn measure_text_impl(

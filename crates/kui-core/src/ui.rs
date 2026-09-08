@@ -28,7 +28,11 @@ impl<'a> Ui<'a> {
         Self { core, filler: None }
     }
 
-    pub(crate) fn with_filler(core: &'a mut Core, filler: &'a mut dyn Fill) -> Self {
+    /// [`Self::wrap`] with something to fill the slots the frame declares
+    /// — for a frontend that drives `Core` directly and keeps an
+    /// extension list of its own (the C context, a headless Node one), so
+    /// its `slot` and `finish` are this type's rather than a copy of them.
+    pub fn with_filler(core: &'a mut Core, filler: &'a mut dyn Fill) -> Self {
         Self {
             core,
             filler: Some(filler),
@@ -63,13 +67,19 @@ impl<'a> Ui<'a> {
     /// (`Slot::params`); a `Value` because it is the type that already
     /// crosses to an extension. Nothing is retained — pass what is true
     /// this frame, every frame.
-    pub fn slot_with(&mut self, name: &str, params: &Value) {
+    ///
+    /// Whether the slot was declared: false for a name this frame already
+    /// declared (which warns, `duplicate-slot`) or outside a frame. True
+    /// whether or not anything filled it — a host with nothing loaded
+    /// still gets a placed, empty node to lay out around.
+    pub fn slot_with(&mut self, name: &str, params: &Value) -> bool {
         let Some(key) = self.core.begin_slot(name) else {
-            return;
+            return false;
         };
         if let Some(filler) = self.filler.as_deref_mut() {
             filler.fill(name, key, params, &mut Ui::new(self.core));
         }
+        true
     }
 
     /// Whether the full name `name` was declared this frame so far.
@@ -84,7 +94,8 @@ impl<'a> Ui<'a> {
     /// as the host's own — one namespace map, one origin per extension,
     /// however deep the loading went (`crate::slot`).
     ///
-    /// Fails when the namespace is taken or empty, exactly as
+    /// Fails when the namespace is taken, or empty with an extension that
+    /// names itself nothing, exactly as
     /// `Extensions::push_as` does, and when this frame was begun without
     /// a filler (`Core::frame`) or with one that is not a list.
     pub fn add_extension(

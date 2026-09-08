@@ -208,7 +208,7 @@ impl Launcher {
 
     /// `extension_as` for a caller that has to report the refusal rather
     /// than die of it — a plugin path that came from outside the program,
-    /// which is every `kui_run_with` in the C API. The launcher is consumed
+    /// which is Node's `extensions` option. The launcher is consumed
     /// either way: a host that cannot load the extension it was told to
     /// load has nothing useful left to run.
     pub fn try_extension_as(
@@ -218,6 +218,15 @@ impl Launcher {
     ) -> Result<Self, String> {
         self.extensions.push_as(namespace, Box::new(ext))?;
         Ok(self)
+    }
+
+    /// A list already loaded, replacing any `extension` calls before it —
+    /// what a C host built into a context with `kui_ctx_add_extension`
+    /// and hands to `kui_run_with`, so that the one loader and its error
+    /// channel serve the window too.
+    pub fn with_extensions(mut self, extensions: Extensions) -> Self {
+        self.extensions = extensions;
+        self
     }
 
     /// `extension` for each, in order.

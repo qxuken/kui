@@ -656,16 +656,13 @@ pub extern "C" fn kui_is_pressed(ptr: *mut KuiCtx, key: u64) -> bool {
 pub extern "C" fn kui_frame_finish(ptr: *mut KuiCtx) {
     guard((), || {
         if let Some(c) = unsafe { ctx(ptr) } {
-            // The extensions get the last word before layout, exactly as
-            // they do under `Ui::finish`: every `ns/root` the host did not
-            // declare is filled here, and a slot an extension names that
-            // nothing declared this frame becomes an `unknown-slot`
-            // warning. Skipped whole when none are loaded.
-            if !c.extensions.is_empty() {
-                let core: &mut Core = unsafe { &mut *c.core };
-                kui_core::Fill::finish(&mut c.extensions, &mut kui_core::Ui::wrap(core));
-            }
-            c.core().finish_frame();
+            // `Ui::finish`, which is the Rust runner's: the extensions get
+            // the last word before layout — every `ns/root` the host did
+            // not declare, and the `unknown-slot` warning — and then the
+            // frame finishes. The core is behind a raw pointer on the
+            // context so the `Ui` can borrow it and the list at once.
+            let core: &mut Core = unsafe { &mut *c.core };
+            kui_core::Ui::with_filler(core, &mut c.extensions).finish();
             // Raised by the frame itself, not by input: the resize a
             // changed viewport produced at kui_frame_begin, and hover
             // enter/leave from this frame changing what sits under a

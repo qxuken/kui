@@ -38,43 +38,22 @@ pub extern "C" fn kui_slot(ptr: *mut KuiCtx, name: KuiStr, params: *const KuiVal
         let Some(c) = (unsafe { ctx(ptr) }) else {
             return false;
         };
-        let name = kstr(name).into_owned();
+        let name = kstr(name);
         let params = unsafe { params.as_ref() }.map_or(&kui_core::Value::Null, |v| &v.0);
-        // Under the windowed runner the filler is the runner's, reached
-        // through the `Ui` it built the frame with: hand the whole
-        // declaration to it, since `Ui::slot_with` is `begin_slot` and the
-        // fill together. `slot_declared` first, because `slot_with`
-        // swallows the duplicate this returns false for (and warns).
-        if !c.host_ui.is_null() {
-            let ui = unsafe { &mut *c.host_ui.cast::<kui_core::Ui<'static>>() };
-            if ui.slot_declared(&name) {
-                // Declare it anyway, so the duplicate warns exactly as it
-                // would from Rust, and say so.
-                ui.slot_with(&name, params);
-                return false;
-            }
-            ui.slot_with(&name, params);
-            return true;
-        }
-        let Some(key) = c.core().begin_slot(&name) else {
-            return false;
+        // `Ui::slot_with` is `begin_slot` and the fill together, so the
+        // one question is which `Ui`: under `kui_run_with` the runner's
+        // own, which carries its extension list and which `borrowing_in`
+        // kept a pointer to; otherwise one made here around the context's
+        // core and *its* list. The core is behind a raw pointer on the
+        // context so that both can be borrowed at once.
+        let mut local;
+        let ui: &mut kui_core::Ui<'_> = if c.host_ui.is_null() {
+            local = kui_core::Ui::with_filler(unsafe { &mut *c.core }, &mut c.extensions);
+            &mut local
+        } else {
+            unsafe { &mut *c.host_ui.cast() }
         };
-        if c.extensions.is_empty() {
-            return true;
-        }
-        // The core is behind a raw pointer on the context, so filling can
-        // borrow it and the extension list at once — which `Ui::wrap` is
-        // the door for: the C API builds through `Core` and has no `Ui` of
-        // its own to hand an extension.
-        let core: &mut Core = unsafe { &mut *c.core };
-        kui_core::Fill::fill(
-            &mut c.extensions,
-            &name,
-            key,
-            params,
-            &mut kui_core::Ui::wrap(core),
-        );
-        true
+        ui.slot_with(&name, params)
     })
 }
 
@@ -239,28 +218,15 @@ pub extern "C" fn kui_ctx_add_extension(ptr: *mut KuiCtx, namespace: KuiStr, pat
             return false;
         };
         c.last_ext_error.clear();
-        let path = kstr(path).into_owned();
-        // SAFETY: the caller's, and the doc comment says so.
-        let ext = match unsafe { crate::CExtension::open(&path) } {
-            Ok(ext) => ext,
-            Err(err) => {
-                c.last_ext_error = err;
-                return false;
-            }
-        };
-        let ns = kstr(namespace).into_owned();
-        let result = if ns.is_empty() {
-            c.extensions.push(Box::new(ext))
-        } else {
-            c.extensions.push_as(ns, Box::new(ext))
-        };
-        match result {
-            Ok(()) => true,
-            Err(err) => {
-                c.last_ext_error = err;
-                false
-            }
+        // SAFETY: the caller's, and the doc comment says so. An empty
+        // namespace is the extension's own name — `push_as`'s rule, not
+        // one repeated here.
+        let loaded = unsafe { crate::CExtension::open(&*kstr(path)) }
+            .and_then(|ext| c.extensions.push_as(kstr(namespace), Box::new(ext)));
+        if let Err(err) = loaded {
+            c.last_ext_error = err;
         }
+        c.last_ext_error.is_empty()
     })
 }
 
