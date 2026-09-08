@@ -200,6 +200,7 @@ impl App for Demo {
                 },
             );
         });
+        widgets::latency_hud(ui);
     }
 
     fn on_event(&mut self, ev: UiEvent) {
