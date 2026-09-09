@@ -542,7 +542,16 @@ impl Core {
             return;
         };
         let (key, origin) = (region.key, region.origin);
-        let tag = region.force_click.clone();
+        // Read off the tree rather than carried on the region: a force
+        // click is one event in a session, and a tag on `HitRegion` is a
+        // clone on every region of every frame (C15's rule — a node pays
+        // for props it does not declare).
+        let tag = self
+            .tree
+            .keys
+            .iter()
+            .position(|k| *k == key)
+            .and_then(|i| self.tree.specs[i].events().on_force_click.clone());
         let editor = region.edit_origin.map(|origin| (key, origin));
         let scope = region.select_scope;
         // Text first: the word under the pointer, selected, and looked up.

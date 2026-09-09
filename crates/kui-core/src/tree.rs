@@ -151,7 +151,10 @@ impl Tree {
             content,
             NodeContent::Text(_) | NodeContent::Edit(_) | NodeContent::Cells(_)
         );
-        self.any_selectable |= spec.interact().selectable;
+        // Through the box rather than through `interact()`: a node that
+        // declares no interaction group is answered by one null check
+        // instead of a read through the empty static (C15).
+        self.any_selectable |= spec.interact.as_deref().is_some_and(|i| i.selectable);
         self.keys.push(key);
         self.origins.push(origin);
         self.specs.push(spec);

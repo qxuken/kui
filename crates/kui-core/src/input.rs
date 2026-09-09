@@ -596,8 +596,6 @@ pub struct HitRegion {
     /// The sink declared `key_up`: releases reach it too. Without it a
     /// release is dropped at routing, and the sink hears presses only.
     pub key_up: bool,
-    /// Force-click tag when the node declared `on_force_click`.
-    pub force_click: Option<Value>,
     /// Context-menu tag when the node declared `on_context_menu`: a
     /// secondary-button press emits `{kind="contextmenu", x, y, tag}` on
     /// it. Like a click, the topmost region under the pointer is the one
@@ -1147,7 +1145,6 @@ mod tests {
             key_sink: None,
             key_up: false,
             context_menu: None,
-            force_click: None,
             focusable: true,
             window: None,
             hover: None,
