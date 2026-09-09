@@ -2126,10 +2126,14 @@ impl<A: App> Shell<A> {
             return;
         }
 
-        // Clipboard + select-all shortcuts (edit widgets only — a key
-        // sink gets the raw chord and brings its own bindings).
+        // Clipboard + select-all shortcuts (edit widgets and selection
+        // scopes — a key sink gets the raw chord and brings its own
+        // bindings). A window with a selection in a `selectable` node
+        // copies it with the same Cmd-C an editor does: there is one
+        // selection per window and `copy_selection` answers for whichever
+        // it is (ADR 0017).
         let pane = &mut self.panes[i];
-        if pane.core.edit.focused().is_some()
+        if (pane.core.edit.focused().is_some() || pane.core.selection().is_some())
             && pane.primary()
             && let WinitKey::Character(c) = &event.logical_key
         {
@@ -2154,6 +2158,15 @@ impl<A: App> Shell<A> {
                 "v" => {
                     if let Some(text) = self.clipboard.as_mut().and_then(|cb| cb.get_text().ok()) {
                         self.dispatch(event_loop, i, InputEvent::Text(text));
+                    }
+                    return;
+                }
+                // Select All inside a selection scope stays in that
+                // scope; with none, it is the editor's as before.
+                "a" if pane.core.selection().is_some() => {
+                    if let Some(scope) = pane.core.selection().map(|s| s.scope) {
+                        pane.core.select_all_in(scope);
+                        pane.window.request_redraw();
                     }
                     return;
                 }

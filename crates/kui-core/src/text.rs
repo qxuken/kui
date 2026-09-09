@@ -190,7 +190,7 @@ const LONG_SALT: u64 = 0x5f5f_6c6f_6e67_5f5f;
 const EVICT_TO_NUMERATOR: usize = 3;
 const EVICT_TO_DENOMINATOR: usize = 4;
 
-struct CachedText {
+pub(crate) struct CachedText {
     buffer: Buffer,
     /// The text itself (spans concatenated, for rich text): what the
     /// access tree names a control by.
@@ -392,7 +392,7 @@ struct RowStart {
 /// 100k-character line costs the screenful it shows, a keystroke into it
 /// costs the chunk it lands in, and the width the scrollbar sees can move
 /// a little as chunks fill in, exact under monospace.
-struct LongLine {
+pub(crate) struct LongLine {
     content: String,
     /// The chunks' style: the text's with `wrap` set to `None`, since a
     /// chunk is always shaped as one run and the line breaks it itself.
@@ -527,8 +527,8 @@ const PLACE_ANCESTORS: usize = 4;
 /// `Core::caret_rect` answer from (backlog C18). Recorded at emission, so
 /// a node the frame culled — scrolled out of its clip — has no place and
 /// answers nothing, which is also true of a point nobody can click.
-struct TextPlace {
-    key: Key,
+pub(crate) struct TextPlace {
+    pub(crate) key: Key,
     /// The keys above it, nearest first, as many as `depth` says.
     ancestors: [Key; PLACE_ANCESTORS],
     depth: u8,
@@ -537,11 +537,59 @@ struct TextPlace {
     long: bool,
     /// The node's origin, logical viewport px.
     origin: Vec2,
+    /// The innermost `selectable` node above this run, when there is one
+    /// (ADR 0017). What `scope_runs` gathers by, and the reason a place
+    /// is recorded for a run that was never drawn — see `drawn`.
+    scope: Option<Key>,
+    /// Whether the run was painted. False for a run inside a selection
+    /// scope that the frame culled: emission skips a node clipped
+    /// entirely away, but a selection reaching past the viewport needs
+    /// that node's content and its place in the order, so a scoped run
+    /// records where it *would* have been. Hit tests and the public
+    /// `text_hit` / `caret_rect` queries ignore these, because a point
+    /// nobody can click still answers nothing.
+    drawn: bool,
 }
 
 impl TextPlace {
     fn answers_to(&self, key: Key) -> bool {
         self.key == key || self.ancestors[..self.depth as usize].contains(&key)
+    }
+}
+
+/// One run inside a selection scope: where it was placed, its text, and
+/// the byte offset its content starts at in the scope's concatenation.
+/// The bases count content only — a separator between two runs is a
+/// decision the *copy* makes (see `TextSystem::scope_slice`), so an
+/// offset means the same thing whoever asks for it.
+pub(crate) struct ScopeRun<'a> {
+    pub place: &'a TextPlace,
+    pub text: ScopeText<'a>,
+    pub base: usize,
+}
+
+/// A scoped run's text, whichever way it was shaped. A long line
+/// (backlog C19) joins the concatenation like any other run: being long
+/// is how it was shaped, not something a reader dragging across it
+/// should be able to feel (ADR 0017 decides this).
+pub(crate) enum ScopeText<'a> {
+    Run(&'a CachedText),
+    Long(&'a LongLine),
+}
+
+impl<'a> ScopeText<'a> {
+    pub(crate) fn content(&self) -> &'a str {
+        match *self {
+            ScopeText::Run(e) => &e.content,
+            ScopeText::Long(l) => &l.content,
+        }
+    }
+}
+
+impl ScopeRun<'_> {
+    /// The half-open byte range this run occupies in the concatenation.
+    fn span(&self) -> (usize, usize) {
+        (self.base, self.base + self.text.content().len())
     }
 }
 
@@ -1286,6 +1334,7 @@ impl TextSystem {
     /// Emits positioned glyph quads for a laid-out text node.
     /// `origin` and `node` are logical; output quads are physical px.
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn emit(
         &mut self,
         id: TextId,
@@ -1298,6 +1347,11 @@ impl TextSystem {
         fs: &mut FontSystem,
         atlas: &mut GlyphAtlas,
         out: &mut Vec<Quad>,
+        // `sel`: the bytes of this run the window's selection covers and
+        // the colour to paint them under (ADR 0017). Resolved by the
+        // caller, the only place that knows this run's ordinal in its
+        // scope.
+        sel: Option<((usize, usize), Color)>,
     ) {
         let FrameText {
             cache_key: key,
@@ -1317,6 +1371,10 @@ impl TextSystem {
                 return;
             }
             let clip_id = crate::display::intern_clip(clips, clip);
+            if let Some(((from, to), tint)) = sel {
+                let rects = self.long_highlight(&self.long[&key], from, to);
+                push_highlight(&rects, ox, oy, tint, clip_id, out);
+            }
             if let Some(w) = self.long[&key].wrap_w {
                 self.emit_long_rows(key, w, ox, oy, color, clip, clip_id, res, fs, atlas, out);
                 return;
@@ -1373,7 +1431,36 @@ impl TextSystem {
         } else {
             (clip, clip_id)
         };
+        if let Some(((from, to), tint)) = sel {
+            let rects = Self::run_highlight(entry, from, to);
+            push_highlight(&rects, ox, oy, tint, clip_id, out);
+        }
         emit_entry(entry, ox, oy, color, clip, clip_id, raster, fs, atlas, out);
+    }
+}
+
+/// Pushes selection rects as quads at a run's origin — before its glyphs,
+/// so the text stays on top of its own highlight.
+fn push_highlight(
+    rects: &[Rect],
+    ox: f32,
+    oy: f32,
+    tint: Color,
+    clip: ClipId,
+    out: &mut Vec<Quad>,
+) {
+    for r in rects {
+        out.push(Quad {
+            rect: Rect::new(ox + r.x, oy + r.y, r.w, r.h),
+            color: tint,
+            border_color: Color::TRANSPARENT,
+            radius: [0.0; 4],
+            border_w: 0.0,
+            blur: 0.0,
+            kind: QuadKind::Solid,
+            uv: [0; 4],
+            clip,
+        });
     }
 }
 
@@ -1812,7 +1899,15 @@ impl TextSystem {
     /// with the keys above it so a query by a `line` row or a wrapper
     /// finds the runs inside. Called beside [`Self::emit`] for the frame's
     /// own nodes and not for ghosts, which take no input.
-    pub(crate) fn place(&mut self, key: Key, ancestors: &[Key], id: TextId, origin: Vec2) {
+    pub(crate) fn place(
+        &mut self,
+        key: Key,
+        ancestors: &[Key],
+        id: TextId,
+        origin: Vec2,
+        scope: Option<Key>,
+        drawn: bool,
+    ) {
         let FrameText {
             cache_key, long, ..
         } = self.frame[id.0 as usize];
@@ -1826,6 +1921,8 @@ impl TextSystem {
             cache_key,
             long,
             origin,
+            scope,
+            drawn,
         });
     }
 
@@ -1840,12 +1937,187 @@ impl TextSystem {
         };
         let mut base = 0usize;
         let mut out = Vec::new();
-        for place in list.iter().filter(|p| p.answers_to(key) && !p.long) {
+        for place in list
+            .iter()
+            .filter(|p| p.drawn && p.answers_to(key) && !p.long)
+        {
             let Some(entry) = self.cache.get(&place.cache_key) else {
                 continue;
             };
             out.push((place, entry, base));
             base += entry.content.len();
+        }
+        out
+    }
+
+    /// How many bytes of content this frame's text `id` holds — what a
+    /// selection range over it is measured against.
+    pub(crate) fn content_len(&self, id: TextId) -> usize {
+        let FrameText {
+            cache_key, long, ..
+        } = self.frame[id.0 as usize];
+        if long {
+            self.long.get(&cache_key).map_or(0, |l| l.content.len())
+        } else {
+            self.cache.get(&cache_key).map_or(0, |e| e.content.len())
+        }
+    }
+
+    /// Every run inside the selection scope `scope`, in emission order —
+    /// which is tree order, which is reading order — each with the byte
+    /// offset its content starts at in the scope's concatenation.
+    ///
+    /// Undrawn runs are included: a scoped run the frame culled recorded
+    /// a place precisely so a selection can reach past the viewport, and
+    /// leaving it out here would renumber everything after it the moment
+    /// it scrolled away (ADR 0017, tier 2).
+    pub(crate) fn scope_runs(&self, scope: Key, prev: bool) -> Vec<ScopeRun<'_>> {
+        let list = if prev {
+            &self.prev_places
+        } else {
+            &self.places
+        };
+        let mut base = 0usize;
+        let mut out = Vec::new();
+        for place in list.iter().filter(|p| p.scope == Some(scope)) {
+            let text = if place.long {
+                match self.long.get(&place.cache_key) {
+                    Some(l) => ScopeText::Long(l),
+                    None => continue,
+                }
+            } else {
+                match self.cache.get(&place.cache_key) {
+                    Some(e) => ScopeText::Run(e),
+                    None => continue,
+                }
+            };
+            let len = text.content().len();
+            out.push(ScopeRun { place, text, base });
+            base += len;
+        }
+        out
+    }
+
+    /// Where `point` (logical viewport px) lands in a selection scope, as
+    /// the address a selection endpoint is made of: the node whose run it
+    /// landed in and the byte offset inside *that node's* text. Nearest
+    /// drawn run wins, vertically first, exactly as [`Self::hit_at`]
+    /// resolves a point inside one node — an undrawn run is not under any
+    /// pointer, so it is not a candidate.
+    pub(crate) fn scope_hit(&self, scope: Key, point: Vec2, prev: bool) -> Option<(Key, usize)> {
+        let runs = self.scope_runs(scope, prev);
+        let px = point.x * self.scale;
+        let py = point.y * self.scale;
+        let gap = |r: &Rect| {
+            let dy = (r.y - py).max(py - (r.y + r.h)).max(0.0);
+            let dx = (r.x - px).max(px - (r.x + r.w)).max(0.0);
+            (dy, dx)
+        };
+        let run = runs.iter().filter(|r| r.place.drawn).min_by(|a, b| {
+            let ga = gap(&self.scope_box(a));
+            let gb = gap(&self.scope_box(b));
+            ga.partial_cmp(&gb).unwrap_or(std::cmp::Ordering::Equal)
+        })?;
+        let byte = self.hit_in_run(run, point)?;
+        Some((run.place.key, byte))
+    }
+
+    /// A scoped run's laid-out box, physical px in viewport space.
+    fn scope_box(&self, run: &ScopeRun<'_>) -> Rect {
+        let (ox, oy) = self.physical_origin(run.place);
+        match run.text {
+            ScopeText::Run(e) => self.physical_box(run.place, e),
+            ScopeText::Long(l) => Rect::new(ox, oy, l.width(), l.line_h * l.rows() as f32),
+        }
+    }
+
+    /// Where `point` lands inside one scoped run, as a byte offset into
+    /// that run's own content.
+    fn hit_in_run(&self, run: &ScopeRun<'_>, point: Vec2) -> Option<usize> {
+        match run.text {
+            ScopeText::Long(l) => Some(self.long_hit(run.place, l, point)?.byte),
+            ScopeText::Run(e) => {
+                let (ox, oy) = self.physical_origin(run.place);
+                let cursor = e
+                    .buffer
+                    .hit(point.x * self.scale - ox, point.y * self.scale - oy)?;
+                let starts = line_starts(&e.buffer, &e.content);
+                let byte = starts.get(cursor.line).copied().unwrap_or(0) + cursor.index;
+                Some(byte.min(e.content.len()))
+            }
+        }
+    }
+
+    /// The word around `byte` in one node's own text, as a byte range in
+    /// that node — what a double click (and a force click) selects.
+    /// Words are runs of alphanumerics and underscores; anything else is
+    /// selected as the run of like characters around it, so a double
+    /// click in whitespace takes the whitespace and one in `->` takes
+    /// both arrows. `None` when the node holds no text at all.
+    pub(crate) fn word_at(
+        &self,
+        scope: Key,
+        node: Key,
+        byte: usize,
+        prev: bool,
+    ) -> Option<(usize, usize)> {
+        let run = self
+            .scope_runs(scope, prev)
+            .into_iter()
+            .find(|r| r.place.key == node)?;
+        let content = run.text.content();
+        Some(word_range(content, byte))
+    }
+
+    /// A selection endpoint's address — the node and a byte inside its
+    /// text — as an offset in the scope's concatenation, which is what
+    /// orders two endpoints against each other. `None` when that node is
+    /// not (or no longer) in the scope: an address the frame cannot
+    /// resolve resolves to nothing rather than to whatever took its place.
+    pub(crate) fn scope_offset(
+        &self,
+        scope: Key,
+        node: Key,
+        byte: usize,
+        prev: bool,
+    ) -> Option<usize> {
+        let run = self
+            .scope_runs(scope, prev)
+            .into_iter()
+            .find(|r| r.place.key == node)?;
+        Some(run.base + byte.min(run.text.content().len()))
+    }
+
+    /// The scope's text between two offsets in its concatenation, with a
+    /// newline between two runs that were laid out on different lines and
+    /// nothing between two that share one — the join rule ADR 0017 leaves
+    /// open, in its first form. The exact length is known before a byte
+    /// is copied, so this reserves once and grows never.
+    pub(crate) fn scope_slice(&self, scope: Key, from: usize, to: usize, prev: bool) -> String {
+        let (from, to) = (from.min(to), from.max(to));
+        let runs = self.scope_runs(scope, prev);
+        let mut out = String::new();
+        let mut reserved = false;
+        let mut prev_run: Option<&ScopeRun<'_>> = None;
+        for run in &runs {
+            let (start, end) = run.span();
+            if end <= from || start >= to {
+                continue;
+            }
+            if !reserved {
+                out.reserve(to - from + runs.len());
+                reserved = true;
+            }
+            if let Some(p) = prev_run
+                && (p.place.origin.y - run.place.origin.y).abs() > f32::EPSILON
+            {
+                out.push('\n');
+            }
+            let content = run.text.content();
+            let lo = from.saturating_sub(start).min(content.len());
+            let hi = (to - start).min(content.len());
+            out.push_str(&content[floor_boundary(content, lo)..floor_boundary(content, hi)]);
+            prev_run = Some(run);
         }
         out
     }
@@ -1860,7 +2132,10 @@ impl TextSystem {
         } else {
             &self.places
         };
-        let place = list.iter().rev().find(|p| p.answers_to(key) && p.long)?;
+        let place = list
+            .iter()
+            .rev()
+            .find(|p| p.drawn && p.answers_to(key) && p.long)?;
         let line = self.long.get(&place.cache_key)?;
         Some((place, line))
     }
@@ -1958,6 +2233,20 @@ impl TextSystem {
     fn long_caret(&self, place: &TextPlace, line: &LongLine, byte: usize) -> Option<Rect> {
         let (ox, oy) = self.physical_origin(place);
         let scale = self.scale;
+        let (x, y) = self.long_caret_local(line, byte)?;
+        Some(Rect::new(
+            (ox + x) / scale,
+            (oy + y) / scale,
+            0.0,
+            line.line_h / scale,
+        ))
+    }
+
+    /// The caret for `byte`, in physical px from the long line's own
+    /// origin: its x on its row, and that row's top. What `long_caret`
+    /// places in the viewport and what a selection highlight measures
+    /// between (ADR 0017).
+    fn long_caret_local(&self, line: &LongLine, byte: usize) -> Option<(f32, f32)> {
         let byte = byte.min(line.content.len());
         if let Some(w) = line.wrap_w
             && !line.chunks.is_empty()
@@ -1980,12 +2269,7 @@ impl TextSystem {
                 }
             };
             let y = (row0 as usize + r) as f32 * line.line_h;
-            return Some(Rect::new(
-                (ox + x) / scale,
-                (oy + y) / scale,
-                0.0,
-                line.line_h / scale,
-            ));
+            return Some((x, y));
         }
         let x = if line.chunks.is_empty() {
             0.0
@@ -2001,12 +2285,68 @@ impl TextSystem {
                 _ => line.prefix[i] + local as f32 * line.avg,
             }
         };
-        Some(Rect::new(
-            (ox + x) / scale,
-            oy / scale,
-            0.0,
-            line.line_h / scale,
-        ))
+        Some((x, 0.0))
+    }
+
+    /// Selection rects for the byte range `from..to` of a long line, in
+    /// physical px from the line's origin. One rect per row it covers:
+    /// the first from the start caret to the row's end, whole rows
+    /// between, and the last from the row's start to the end caret — the
+    /// shape any selection over wrapped text has.
+    fn long_highlight(&self, line: &LongLine, from: usize, to: usize) -> Vec<Rect> {
+        let Some((x0, y0)) = self.long_caret_local(line, from) else {
+            return Vec::new();
+        };
+        let Some((x1, y1)) = self.long_caret_local(line, to) else {
+            return Vec::new();
+        };
+        let h = line.line_h;
+        if (y1 - y0).abs() < f32::EPSILON {
+            return vec![Rect::new(x0, y0, (x1 - x0).max(0.0), h)];
+        }
+        // Several rows: only a wrapped line has any, so it has a width.
+        let w = line.wrap_w.unwrap_or_else(|| line.width());
+        let mut out = vec![Rect::new(x0, y0, (w - x0).max(0.0), h)];
+        let mut y = y0 + h;
+        while y < y1 - h / 2.0 {
+            out.push(Rect::new(0.0, y, w, h));
+            y += h;
+        }
+        out.push(Rect::new(0.0, y1, x1.max(0.0), h));
+        out
+    }
+
+    /// Selection rects for the byte range `from..to` of an ordinary
+    /// shaped run, in physical px from the run's origin — cosmic-text's
+    /// own `highlight`, which is what the editor paints with
+    /// (`crates/kui-core/src/edit.rs`), so a selection over a label and
+    /// one over a field are the same shape.
+    fn run_highlight(entry: &CachedText, from: usize, to: usize) -> Vec<Rect> {
+        let starts = line_starts(&entry.buffer, &entry.content);
+        let cursor = |byte: usize| {
+            let li = starts.iter().rposition(|&s| s <= byte).unwrap_or(0);
+            let index = (byte - starts[li]).min(entry.buffer.lines[li].text().len());
+            cosmic_text::Cursor::new(li, index)
+        };
+        let (a, b) = (cursor(from), cursor(to));
+        let mut out = Vec::new();
+        for run in entry.buffer.layout_runs() {
+            if run.line_i < a.line || run.line_i > b.line {
+                continue;
+            }
+            let h = entry.buffer.metrics().line_height;
+            let mut any = false;
+            for (x, w) in run.highlight(a, b) {
+                any = true;
+                out.push(Rect::new(x, run.line_top, w.max(2.0), h));
+            }
+            // A selected newline on an empty line keeps the highlight
+            // continuous, the way the editor's does.
+            if !any && run.glyphs.is_empty() && b.line > run.line_i {
+                out.push(Rect::new(0.0, run.line_top, 2.0, h));
+            }
+        }
+        out
     }
 
     /// The physical origin `emit` drew a place at: what a point is
@@ -2103,6 +2443,70 @@ impl TextSystem {
 /// starts. cosmic-text splits on every line ending it knows and keeps the
 /// ending out of the paragraph's text, so each start is found by matching
 /// the paragraph back onto the content and skipping the ending after it.
+/// The word around `byte`: the run of like characters it sits in, where
+/// "like" is one of three classes — word characters (alphanumeric or
+/// `_`), whitespace, and everything else. At the very end of the text the
+/// word before it, so a double click past the last character selects the
+/// last word rather than nothing.
+fn word_range(content: &str, byte: usize) -> (usize, usize) {
+    if content.is_empty() {
+        return (0, 0);
+    }
+    #[derive(PartialEq)]
+    enum Class {
+        Word,
+        Space,
+        Other,
+    }
+    let class = |c: char| {
+        if c.is_alphanumeric() || c == '_' {
+            Class::Word
+        } else if c.is_whitespace() {
+            Class::Space
+        } else {
+            Class::Other
+        }
+    };
+    // Past the end (or on the boundary after the last character), the
+    // word being pointed at is the one just passed, so step back into it.
+    let at = floor_boundary(content, byte.min(content.len()));
+    let at = if at >= content.len() {
+        content.char_indices().next_back().map_or(0, |(i, _)| i)
+    } else {
+        at
+    };
+    let Some(here) = content[at..].chars().next().map(&class) else {
+        return (at, at);
+    };
+    let mut start = at;
+    for (i, c) in content[..at].char_indices().rev() {
+        if class(c) != here {
+            break;
+        }
+        start = i;
+    }
+    let mut end = at;
+    for (i, c) in content[at..].char_indices() {
+        if class(c) != here {
+            break;
+        }
+        end = at + i + c.len_utf8();
+    }
+    (start, end)
+}
+
+/// The nearest char boundary at or below `i`, so a slice taken from a/// The nearest char boundary at or below `i`, so a slice taken from a
+/// selection never splits a character. A selection's ends come from
+/// shaping and are boundaries already; this is for the arithmetic around
+/// them (a clamp, a saturating subtraction) that has no such guarantee.
+fn floor_boundary(s: &str, i: usize) -> usize {
+    let mut i = i.min(s.len());
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
 fn line_starts(buffer: &Buffer, content: &str) -> Vec<usize> {
     let mut starts = Vec::with_capacity(buffer.lines.len());
     let mut at = 0usize;

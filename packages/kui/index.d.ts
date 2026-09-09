@@ -466,6 +466,12 @@ export type WarningCode =
    *  tree. Give the node meant a label nothing else declares, or pass the hex
    *  key an event carried. Two nodes with the *same* key are `duplicate-key`. */
   | 'ambiguous-key'
+  /** A `selectable` node inside another `selectable` node. Selection scopes do
+   *  not nest: the innermost one owns every run under it, so the outer scope
+   *  selects only the text outside the inner one — and a drag that crosses the
+   *  boundary stops there, which reads as a selection that will not extend.
+   *  Declare the scope once, on the container whose text should select as one. */
+  | 'nested-selection-scope'
   /** An image with no `label`: assistive technology has nothing to say for it.
    *  Decorative images take `role="none"`. */
   | 'image-without-label'

@@ -35,6 +35,37 @@ field reports).
 
 ### Added
 
+- **`selectable` — text outside an editor can be selected, and the
+  selection reaches past the viewport** (`docs/adr/0017-selection-as-a-scope.md`,
+  step 1). A node that declares it becomes a *selection scope*: the text of
+  every node inside it is one run, in tree order, and a press-drag across
+  three labels selects them as three lines of one text. A double press takes
+  the word under it, a triple the whole run, and `kui_copy_text` /
+  `Core::copy_selection` reads whichever selection the window has — a
+  scope's or the focused editor's, never both, because starting either
+  clears the other.
+
+  The part that is not obvious: **a run the frame built but never drew is
+  still part of the selection.** A label scrolled out of its scroller keeps
+  its place in the order and its content reachable, so a drag that runs off
+  the bottom of a list copies what the reader dragged over rather than what
+  happened to be on screen. Hit-testing is unchanged — an off-screen run is
+  under no pointer, and `textHit` still answers `null` for a point nobody
+  can click. What the core never built (a virtualised list's unbuilt rows, a
+  terminal's scrollback) it does not pretend to know; that is the next step
+  of the ADR.
+
+  A long line (the chunked path past 4096 bytes) joins the concatenation
+  like any other run: being long is how it was shaped, not something a
+  reader dragging across it should be able to feel.
+
+  Scopes do not nest — the innermost owns the text under it, and the outer
+  one is reported as `nested-selection-scope`. A control inside a scope
+  still claims its own press, so a button in a selectable card is a button
+  first. C hosts get a `selectable` field appended to `KuiSpec`, which the
+  size handshake absorbs: no version moves, and a host that predates it
+  reads zero.
+
 - **`virtualColumn` / `virtual_column`, and `index`, so a long list is one
   call in every binding** (backlog C25). A JSX or Lua view that sliced a
   10,000-row list by `scrollGeometry` had three things a Rust one never

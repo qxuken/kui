@@ -1076,6 +1076,22 @@ impl EditStore {
         true
     }
 
+    /// Drops the selection of one editor, leaving the caret where the
+    /// selection's live end was. What a selection started elsewhere in
+    /// the window calls, so no window ever shows two selections
+    /// (`docs/adr/0017-selection-as-a-scope.md`).
+    pub(crate) fn collapse_selection(&mut self, key: Key) -> bool {
+        let Some(s) = self.states.get_mut(&key) else {
+            return false;
+        };
+        if matches!(s.editor.selection(), Selection::None) {
+            return false;
+        }
+        s.editor.set_selection(Selection::None);
+        self.caret_stamp += 1;
+        true
+    }
+
     /// The active composition text, if any (for tests and hosts).
     pub fn preedit(&self, key: Key) -> Option<&str> {
         self.states

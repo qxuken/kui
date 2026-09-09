@@ -987,6 +987,41 @@ test('a composition and its commit reach the focused sink, anchored at its caret
   assert.equal(ctx.imeRect(), null);
 });
 
+// A `selectable` container makes the text under it one selection
+// (ADR 0017): three labels select as three lines of one text, and a run
+// the frame built but never drew is part of it.
+test('selectable scopes one selection over the runs inside them', () => {
+  const ctx = new Ctx();
+  const style = { size: 14 };
+  const card = box({ selectable: true, dir: 'column' }, [
+    text('one', style),
+    text('two', style),
+    text('three', style),
+  ], 'card');
+  ctx.frame(400, 200, 1, box({}, [card, box({ width: 10, height: 10 }, [], 'plain')]));
+  assert.equal(ctx.selectionText(), null, 'nothing is selected until something selects it');
+  assert.equal(ctx.selectAllIn('card'), true);
+  assert.equal(ctx.selectionText(), 'one\ntwo\nthree');
+  assert.equal(ctx.selectAllIn('plain'), false, 'a node that drew no text is not a scope');
+  assert.equal(ctx.clearSelection(), true);
+  assert.equal(ctx.selectionText(), null);
+});
+
+test('a selection reaches the runs a scroller clipped away', () => {
+  const ctx = new Ctx();
+  const style = { size: 14 };
+  const rows = [];
+  for (let i = 0; i < 6; i++) rows.push(text(`row ${i}`, style));
+  const list = box({ selectable: true, dir: 'column', height: 40, scrollY: true }, rows, 'list');
+  ctx.frame(400, 200, 1, box({}, [list]));
+  assert.equal(ctx.selectAllIn('list'), true);
+  assert.equal(
+    ctx.selectionText(),
+    'row 0\nrow 1\nrow 2\nrow 3\nrow 4\nrow 5',
+    'tier 2: what was built but not drawn still copies',
+  );
+});
+
 // A point on the text a keyed node drew is a byte offset, and a byte
 // offset is a caret rect (backlog C18): the `line` row of a custom editor
 // answers across its token runs, so a click becomes a caret with one call.

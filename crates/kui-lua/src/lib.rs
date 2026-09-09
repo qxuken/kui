@@ -334,7 +334,10 @@ fn key_query(ui: &mut Ui<'_>, v: mlua::Value) -> mlua::Result<Option<Key>> {
 /// focus verbs `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()`
 /// and the scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
 /// `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
-/// `caret_rect(key, byte)`, the window requests `set_window_size(window,
+/// `caret_rect(key, byte)`, the selection calls `selection_text()` /
+/// `select_all_in(key)` / `clear_selection()` (ADR 0017 — one selection
+/// per window, a `selectable` scope's or the focused editor's), the
+/// window requests `set_window_size(window,
 /// w, h)` / `focus_window(window)`, and the two calls of a script that
 /// hosts a plugin of its own: `add_extension(namespace, path)` and
 /// `extension_namespaces()`.
@@ -590,6 +593,40 @@ fn env_table<'scope, 'env: 'scope>(
             r.set("byte", h.byte)?;
             r.set("line", h.line)?;
             Ok(mlua::Value::Table(r))
+        })?,
+    )?;
+    // The window's selected text: what a `selectable` scope holds, or the
+    // focused `edit`'s selection — one per window, so there is no choice
+    // to make. Nil with no selection, `""` when one exists and covers
+    // nothing (docs/adr/0017-selection-as-a-scope.md).
+    t.set(
+        "selection_text",
+        scope.create_function(move |_, ()| {
+            let ui = ui.borrow();
+            Ok(ui.selection_text())
+        })?,
+    )?;
+    // Selects every run inside the scope a keyed node declared, first
+    // byte to last — Select All, scoped. False for a node that drew no
+    // text or is not a scope. Runs the frame built but never drew are
+    // part of it.
+    t.set(
+        "select_all_in",
+        scope.create_function(move |_, key: mlua::Value| {
+            let mut ui = ui.borrow_mut();
+            let Some(key) = key_query(&mut ui, key)? else {
+                return Ok(false);
+            };
+            Ok(ui.select_all_in(key))
+        })?,
+    )?;
+    // Drops the window's selection, whichever it is; true when there was
+    // one to drop.
+    t.set(
+        "clear_selection",
+        scope.create_function(move |_, ()| {
+            let mut ui = ui.borrow_mut();
+            Ok(ui.clear_selection())
         })?,
     )?;
     // The caret rect for a byte offset in that text: `{ x, y, w, h }`,
@@ -2908,6 +2945,7 @@ mod tests {
                 "announce",
                 "blur",
                 "caret_rect",
+                "clear_selection",
                 "edit_text",
                 "extension_namespaces",
                 "focus_next",
@@ -2920,6 +2958,8 @@ mod tests {
                 "reveal",
                 "scroll_geometry",
                 "scroll_offset",
+                "select_all_in",
+                "selection_text",
                 "set_edit_text",
                 "set_focus",
                 "set_scroll",
@@ -3056,6 +3096,54 @@ mod tests {
         assert_eq!(ws.len(), 1, "{ws:?}");
         assert_eq!(ws[0].code, kui_core::diag::AMBIGUOUS_KEY);
         assert!(ws[0].message.contains("\"item\""), "{}", ws[0].message);
+    }
+
+    /// A `selectable` container scopes one selection over the runs inside
+    /// it, and a script reads it back by the scope's label (ADR 0017).
+    #[test]
+    fn scripts_select_and_read_a_scope() {
+        let mut ext = LuaExtension::from_source(
+            "sel",
+            r#"
+                frames = 0
+                function view(env)
+                  frames = frames + 1
+                  if frames > 1 then
+                    before = env.selection_text()
+                    took = env.select_all_in("card")
+                    text_out = env.selection_text()
+                    not_a_scope = env.select_all_in("plain")
+                  end
+                  return column {
+                    column { key = "card", selectable = true,
+                      text("one", { size = 14 }),
+                      text("two", { size = 14 }) },
+                    row { key = "plain", width = 10, height = 10 },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let frame = |core: &mut Core, ext: &mut LuaExtension| {
+            let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+            ui.set_origin(OriginId(1));
+            ext.view(&Slot::root(), &mut ui).unwrap();
+            ui.finish();
+        };
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        let g = ext.lua.globals();
+        assert!(matches!(
+            g.get::<mlua::Value>("before").unwrap(),
+            mlua::Value::Nil
+        ));
+        assert!(g.get::<bool>("took").unwrap());
+        assert_eq!(g.get::<String>("text_out").unwrap(), "one\ntwo");
+        assert!(
+            !g.get::<bool>("not_a_scope").unwrap(),
+            "a node that drew no text is not a scope"
+        );
     }
 
     /// A script turns a click into a caret with `env.text_hit` and a caret

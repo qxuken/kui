@@ -358,6 +358,7 @@ fn asserts() -> String {
         description: KuiStr => "KuiStr",
         animate: u32 => "uint32_t",
         accent: u32 => "uint32_t",
+        selectable: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {

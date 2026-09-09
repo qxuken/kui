@@ -569,6 +569,13 @@ pub struct HitRegion {
     pub parent_rect: Rect,
     /// Content-box origin of an editable text node; None for plain hits.
     pub edit_origin: Option<Vec2>,
+    /// The selection scope this node is inside, when it is inside one
+    /// (`docs/adr/0017-selection-as-a-scope.md`): a press here starts a
+    /// drag-select over the scope's text. A region that also carries a
+    /// click payload is a control first — a press on a button inside a
+    /// selectable card clicks it — so this is read only where nothing
+    /// else claims the press.
+    pub select_scope: Option<Key>,
     /// Key-sink tag when the node declared `on_key`: clicking it takes
     /// key focus, and key presses then arrive on it carrying this tag.
     pub key_sink: Option<Value>,
@@ -1080,6 +1087,9 @@ impl Interaction {
             // grab is the gesture that starts on the press.
             _ if region.drag.is_some() => CursorShape::Grab,
             _ if region.payload.is_some() || region.focusable => CursorShape::Pointer,
+            // Selectable text says so the way every other text does: the
+            // I-beam is what tells a reader the words can be taken.
+            _ if region.select_scope.is_some() => CursorShape::Text,
             // Hover-only regions (a tooltip badge, a modal's backdrop) and
             // disabled nodes, whose payloads the frame already stripped.
             _ => CursorShape::Default,
@@ -1113,6 +1123,7 @@ mod tests {
             drag: None,
             parent_rect: Rect::new(0.0, 0.0, 0.0, 0.0),
             edit_origin: None,
+            select_scope: None,
             key_sink: None,
             key_up: false,
             context_menu: None,

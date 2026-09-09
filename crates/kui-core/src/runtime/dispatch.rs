@@ -347,10 +347,17 @@ impl Core {
                 // Click-to-focus / caret placement / start drag-selection,
                 // against the previous frame's layout.
                 if let Some(p) = self.interaction.cursor() {
-                    let hit = self
-                        .interaction
-                        .hit_at(p)
-                        .map(|h| (h.key, h.edit_origin, h.focusable));
+                    let hit = self.interaction.hit_at(p).map(|h| {
+                        // A region that does something with a press
+                        // claims it: a button inside a selectable
+                        // card is a button first (ADR 0017).
+                        let claimed = h.payload.is_some()
+                            || h.drag.is_some()
+                            || h.key_sink.is_some()
+                            || h.window.is_some();
+                        let scope = h.select_scope.filter(|_| !claimed);
+                        (h.key, h.edit_origin, h.focusable, scope)
+                    });
                     // While a modal is up, a press outside it never
                     // touches focus: one that finds no region asks the
                     // modal to go away (a modal is hit-tracked, so its own
@@ -358,7 +365,9 @@ impl Core {
                     // only live thing out there — window chrome — is the
                     // platform's business, not the app's.
                     if let Some(key) = self.modal()
-                        && !hit.as_ref().is_some_and(|(k, _, _)| self.within_modal(*k))
+                        && !hit
+                            .as_ref()
+                            .is_some_and(|(k, _, _, _)| self.within_modal(*k))
                     {
                         if hit.is_none() {
                             self.dismiss(key, "outside", &mut out);
@@ -371,16 +380,41 @@ impl Core {
                     // key sink the press landed inside) or drops it; either
                     // way it is pointer focus, not shown.
                     if primary {
+                        // A press anywhere ends the last selection; the
+                        // arms below start whichever new one it begins.
+                        // One selection per window (ADR 0017).
+                        self.clear_selection();
                         match hit {
-                            Some((key, Some(origin), true)) => {
+                            Some((key, Some(origin), true, _)) => {
                                 self.set_focus(Some(key));
                                 let local = Vec2::new(p.x - origin.x, p.y - origin.y);
                                 self.edit_with_fonts(|edit, fs| edit.click(key, local, clicks, fs));
                                 self.edit.dragging = Some((key, origin));
                             }
+                            // Inside a selection scope, with nothing else
+                            // claiming the press: start a drag-select.
+                            // One click places both ends together, two
+                            // take the word, three the whole run.
+                            Some((key, _, focusable, Some(scope))) => {
+                                let target = self.press_focus(key, focusable);
+                                self.set_focus(target);
+                                match clicks {
+                                    0 | 1 => {
+                                        if self.begin_selection(scope, p) {
+                                            self.select_dragging = Some(scope);
+                                        }
+                                    }
+                                    2 => {
+                                        self.select_word_at(scope, p);
+                                    }
+                                    _ => {
+                                        self.select_run_at(scope, p);
+                                    }
+                                }
+                            }
                             // Everything else: a plain node, and a
                             // disabled editor (no caret to place).
-                            Some((key, _, focusable)) => {
+                            Some((key, _, focusable, None)) => {
                                 let target = self.press_focus(key, focusable);
                                 self.set_focus(target);
                             }
@@ -411,12 +445,16 @@ impl Core {
                     let local = Vec2::new(p.x - origin.x, p.y - origin.y);
                     self.edit_with_fonts(|edit, fs| edit.drag(key, local, fs));
                 }
+                if self.select_dragging.is_some() {
+                    self.extend_selection(p);
+                }
                 self.interaction
                     .handle(InputEvent::CursorMoved(p), &mut out);
             }
             InputEvent::MouseUp { button } => {
                 if button == MouseButton::Primary {
                     self.edit.dragging = None;
+                    self.select_dragging = None;
                     self.interaction.scrollbar_drag = None;
                 }
                 self.interaction
@@ -905,8 +943,15 @@ impl Core {
         });
     }
 
-    /// Selected text of the focused editor (for clipboard integration).
+    /// The window's selected text, for clipboard integration: the
+    /// selection in a `selectable` scope when there is one, else the
+    /// focused editor's. Only one of the two exists at a time — starting
+    /// either clears the other (`docs/adr/0017-selection-as-a-scope.md`)
+    /// — so this asks in that order rather than merging them.
     pub fn copy_selection(&self) -> Option<String> {
+        if self.selection.is_some() {
+            return self.selection_text();
+        }
         self.edit.copy_selection(self.edit.focused()?)
     }
 

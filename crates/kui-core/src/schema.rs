@@ -141,6 +141,7 @@ pub const P_STRIKETHROUGH: u32 = 86;
 pub const P_ANIMATE: u32 = 87;
 pub const P_ACCENT: u32 = 88;
 pub const P_INDEX: u32 = 89;
+pub const P_SELECTABLE: u32 = 90;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -633,6 +634,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Flag,
         apply: Apply::SpecFlag(|s| s.accent()),
         doc: "Paint this node's background in the OS accent colour — `env.system.accent` — keeping the declared `bg` on a host that cannot tell what it is. The one prop whose paint depends on the environment, which is why it is opt-in: the same tree is a different colour on two machines, and that is the point here and a surprise anywhere else. On the stock button it does the whole job — the hover and pressed shades are derived from the accent, and the label goes black or white by its luminance, so a yellow accent is still readable — which is what `<button accent>` is for.",
+    },
+    PropDef {
+        name: "selectable",
+        id: P_SELECTABLE,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.selectable()),
+        doc: "Makes this node a selection scope: the text of every node inside it is one selectable run, in tree order, and a press-drag across them selects the lot (`docs/adr/0017-selection-as-a-scope.md`). Declared on the container and not on each label, because what a reader selects is a paragraph or a card rather than one run of it — three labels in a column under one `selectable` select as three lines of one text. The selection is the window's: starting one anywhere clears the last, an editor's included. Scopes do not nest; an outer one around an inner one is warned about (`nested-selection-scope`) and the innermost owns the text. Text scrolled out of view inside the scope is still part of it — selection and copy reach it, hit-testing does not.",
     },
     PropDef {
         name: "focusable",

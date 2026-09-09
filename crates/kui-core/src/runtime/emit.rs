@@ -96,6 +96,7 @@ impl Core {
                 context_menu: spec.events().on_context_menu.clone().filter(|_| live),
                 focusable: crate::access::focusable(&self.tree, i),
                 edit_origin: None,
+                select_scope: self.scope_of(i).filter(|_| live),
                 window: spec.window,
                 hover: spec.events().on_hover.clone(),
                 group: spec.interact().hover_group,
@@ -116,6 +117,7 @@ impl Core {
         }
         match self.tree.content[i] {
             NodeContent::Text(tid) => {
+                let sel = self.sel_range(i, tid);
                 let sess = &mut *self.session.state();
                 self.text.emit(
                     tid,
@@ -128,22 +130,18 @@ impl Core {
                     &mut sess.fonts,
                     &mut self.atlas,
                     &mut self.display.quads,
+                    sel,
                 );
                 // The keys above it, nearest first, so a query by the
                 // `line` row (or a wrapper) finds the runs inside it.
-                let mut ancestors = [Key::ROOT; 4];
-                let mut depth = 0;
-                let mut p = self.tree.parent[i];
-                while p != NIL && depth < ancestors.len() {
-                    ancestors[depth] = self.tree.keys[p as usize];
-                    depth += 1;
-                    p = self.tree.parent[p as usize];
-                }
+                let (ancestors, depth) = self.text_ancestors(i);
                 self.text.place(
                     self.tree.keys[i],
                     &ancestors[..depth],
                     tid,
                     self.tree.pos[i],
+                    self.scope_of(i),
+                    true,
                 );
             }
             NodeContent::Cells(cid) => {
@@ -187,6 +185,10 @@ impl Core {
                             content_origin.x - offset / scale,
                             content_origin.y,
                         )),
+                        // An editor is its own selection scope: a press
+                        // in it places a caret and drags a selection
+                        // through the editor's own path, not the scope's.
+                        select_scope: None,
                         key_sink: None,
                         key_up: false,
                         context_menu: None,
@@ -377,6 +379,78 @@ impl Core {
     /// The frame's second half: the laid-out tree into the display list,
     /// in paint order — in-flow content, then floating subtrees, each with
     /// the departed subtrees that were painted among them, then the
+    /// Numbers the text nodes of the selection's scope in tree order and
+    /// resolves the two ends against those ordinals. Run once per frame,
+    /// after the scope map and before emission, because a run's range has
+    /// to be known when the run is drawn and its *offset* cannot be —
+    /// the runs after it have not been placed yet, and an end may be one
+    /// of them (ADR 0017, decision 2).
+    fn resolve_selection(&mut self) {
+        self.sel_ords.clear();
+        self.sel_ends = None;
+        let Some(sel) = self.selection else { return };
+        self.sel_ords.resize(self.tree.len(), u32::MAX);
+        let (mut anchor, mut focus) = (None, None);
+        let mut ord = 0u32;
+        for i in 0..self.tree.len() {
+            if self.scopes.get(i).copied().flatten() != Some(sel.scope)
+                || !matches!(self.tree.content[i], NodeContent::Text(_))
+            {
+                continue;
+            }
+            self.sel_ords[i] = ord;
+            let key = self.tree.keys[i];
+            if key == sel.anchor.node {
+                anchor = Some((ord, sel.anchor.byte));
+            }
+            if key == sel.focus.node {
+                focus = Some((ord, sel.focus.byte));
+            }
+            ord += 1;
+        }
+        // One end the frame no longer builds paints nothing at all,
+        // rather than a selection that reaches to whatever is there now.
+        if let (Some(a), Some(f)) = (anchor, focus) {
+            self.sel_ends = Some(crate::select::Ends::ordered(a, f));
+        }
+    }
+
+    /// The bytes of node `i`'s text the selection covers, with the colour
+    /// to paint under them. `None` on every node of every frame that has
+    /// no selection.
+    fn sel_range(&self, i: usize, tid: crate::tree::TextId) -> Option<((usize, usize), Color)> {
+        let ends = self.sel_ends?;
+        let ord = self.sel_ords.get(i).copied()?;
+        if ord == u32::MAX {
+            return None;
+        }
+        let range = ends.range_in(ord, self.text.content_len(tid))?;
+        Some((range, crate::select::TINT))
+    }
+
+    /// The innermost selection scope node `i` is inside, if any. Empty on
+    /// every frame that declares no `selectable` at all, where the map is
+    /// not even sized.
+    #[inline]
+    fn scope_of(&self, i: usize) -> Option<Key> {
+        self.scopes.get(i).copied().flatten()
+    }
+
+    /// The keys above node `i`, nearest first, as many as a `TextPlace`
+    /// remembers — what lets a query by a `line` row or a wrapper find
+    /// the runs inside it.
+    fn text_ancestors(&self, i: usize) -> ([Key; 4], usize) {
+        let mut ancestors = [Key::ROOT; 4];
+        let mut depth = 0;
+        let mut p = self.tree.parent[i];
+        while p != NIL && depth < ancestors.len() {
+            ancestors[depth] = self.tree.keys[p as usize];
+            depth += 1;
+            p = self.tree.parent[p as usize];
+        }
+        (ancestors, depth)
+    }
+
     /// scrollbars and the focus ring on top — and the hit and scroll
     /// regions the next input is tested against.
     fn emit_frame(&mut self) {
@@ -417,6 +491,36 @@ impl Core {
         if any_float {
             self.in_float.resize(self.tree.len(), false);
         }
+        // The innermost `selectable` above each node (ADR 0017). Parents
+        // precede their children in the tree array, so one forward pass
+        // inherits it; a node declaring `selectable` inside another scope
+        // takes the text under it and is warned about, because two scopes
+        // over one run would each think they own it.
+        self.scopes.clear();
+        if self.tree.any_selectable {
+            self.scopes.resize(self.tree.len(), None);
+            for i in 0..self.tree.len() {
+                let parent = self.tree.parent[i];
+                // A floating subtree escapes the scope it floats out of,
+                // the way it escapes the clip: a popover over a card is
+                // not part of the card's paragraph, and a float is
+                // emitted in a later pass than its tree position, which
+                // would put its runs out of reading order anyway.
+                let outer = if parent == NIL || self.tree.specs[i].layout.float.is_some() {
+                    None
+                } else {
+                    self.scopes[parent as usize]
+                };
+                // An inner scope takes the text under it; the nesting
+                // itself is reported by `diag`, over the finished tree.
+                self.scopes[i] = if self.tree.specs[i].interact().selectable {
+                    Some(self.tree.keys[i])
+                } else {
+                    outer
+                };
+            }
+        }
+        self.resolve_selection();
 
         // Exits: what the previous frame declared and this one does not is
         // copied out of the tree the previous frame left behind, and every
@@ -504,6 +608,24 @@ impl Core {
             // arc is drawn and clipped rather than culled.
             let visible = rect.intersect(&clip.rect);
             if visible.w <= 0.0 || visible.h <= 0.0 {
+                // Culled — but a text run inside a selection scope keeps
+                // its place in the order and its content reachable, so a
+                // selection can run past the edge of a scroller (ADR
+                // 0017, tier 2). Marked undrawn: no hit region, no
+                // `text_hit`, nothing a pointer can find.
+                if let Some(scope) = self.scope_of(i)
+                    && let NodeContent::Text(tid) = self.tree.content[i]
+                {
+                    let (anc, depth) = self.text_ancestors(i);
+                    self.text.place(
+                        self.tree.keys[i],
+                        &anc[..depth],
+                        tid,
+                        self.tree.pos[i],
+                        Some(scope),
+                        false,
+                    );
+                }
                 continue;
             }
             let paint = Paint {
@@ -894,6 +1016,10 @@ impl Core {
                             &mut sess.fonts,
                             &mut self.atlas,
                             &mut self.display.quads,
+                            // A departing subtree takes no input and
+                            // holds no selection; it records no place
+                            // either, so there is nothing to resolve.
+                            None,
                         );
                     }
                 }

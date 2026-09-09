@@ -35,6 +35,7 @@ pub mod resources;
 pub mod runtime;
 pub mod schema;
 pub mod scroll;
+pub mod select;
 pub mod session;
 pub mod slot;
 pub mod spec;
@@ -73,6 +74,7 @@ pub use line::{LineId, LineStore, Stroke};
 pub use resources::{FontId, FragmentId, ImageId, Resources, SessionId, SoundId};
 pub use runtime::{Core, Extension};
 pub use scroll::{MAX_UNDECLARED_SCROLLS, ScrollGeometry};
+pub use select::{Endpoint, Selection};
 pub use session::{Session, SharedAudio, SharedResources};
 pub use slot::{Extensions, Fill, NAMESPACE_SEPARATOR, ROOT_SLOT, Slot, full_name, split_name};
 pub use spec::{

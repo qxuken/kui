@@ -115,6 +115,13 @@ warnings! {
     /// pass the hex key an event carried. Two nodes with the *same* key are
     /// `duplicate-key`.
     pub const AMBIGUOUS_KEY: &str = "ambiguous-key";
+    /// A `selectable` node inside another `selectable` node. Selection
+    /// scopes do not nest: the innermost one owns every run under it, so
+    /// the outer scope selects only the text outside the inner one — and
+    /// a drag that crosses the boundary stops there, which reads as a
+    /// selection that will not extend. Declare the scope once, on the
+    /// container whose text should select as one.
+    pub const NESTED_SELECTION_SCOPE: &str = "nested-selection-scope";
     /// An image with no `label`: assistive technology has nothing to say
     /// for it. Decorative images take `role="none"`.
     pub const IMAGE_WITHOUT_LABEL: &str = "image-without-label";
@@ -677,6 +684,7 @@ impl Diagnostics {
         self.check_auto_keyed_transitions(tree);
         self.check_duplicate_keys(tree);
         self.check_modal(tree);
+        self.check_selection_scopes(tree);
         self.check_composites(tree);
         self.check_access(tree, text, edit);
         self.check_live_regions(tree, text);
@@ -686,6 +694,31 @@ impl Diagnostics {
     /// preorder with floating subtrees last, so anything after the modal's
     /// subtree — or any float outside it — draws over it; a modal that is
     /// itself inside a float is already on top of both.
+    /// A selection scope inside another one (ADR 0017). Cheap to skip:
+    /// the tree says whether any node declared one at all.
+    fn check_selection_scopes(&mut self, tree: &Tree) {
+        if !tree.any_selectable {
+            return;
+        }
+        // Parents precede children, so one forward pass carries the
+        // nearest enclosing scope down without a stack.
+        self.scratch.clear();
+        self.scratch.resize(tree.len(), 0);
+        for i in 0..tree.len() {
+            let inside = match tree.parent[i] {
+                NIL => 0,
+                p => self.scratch[p as usize],
+            };
+            let here = tree.specs[i].interact().selectable;
+            if here && inside == 1 {
+                self.warn(NESTED_SELECTION_SCOPE, tree.keys[i], || {
+                    "a `selectable` node inside another one: selection scopes do not nest, so the inner one owns the text under it and the outer selects only what is outside it".to_string()
+                });
+            }
+            self.scratch[i] = u64::from(here || inside == 1);
+        }
+    }
+
     fn check_modal(&mut self, tree: &Tree) {
         let Some(i) = (0..tree.len())
             .rev()

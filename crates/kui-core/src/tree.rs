@@ -94,6 +94,11 @@ pub struct Tree {
     pub any_wrap: bool,
     /// Whether any node is text (a `Text` or `Edit` content).
     pub any_text: bool,
+    /// Whether any node declares `selectable` (ADR 0017). False on every
+    /// frame of an app that never asks for one, which is what keeps the
+    /// scope walk and the off-screen places of tier 2 off those frames
+    /// entirely.
+    pub any_selectable: bool,
 }
 
 impl Tree {
@@ -126,6 +131,7 @@ impl Tree {
         self.any_float = false;
         self.any_wrap = false;
         self.any_text = false;
+        self.any_selectable = false;
     }
 
     #[inline]
@@ -145,6 +151,7 @@ impl Tree {
             content,
             NodeContent::Text(_) | NodeContent::Edit(_) | NodeContent::Cells(_)
         );
+        self.any_selectable |= spec.interact().selectable;
         self.keys.push(key);
         self.origins.push(origin);
         self.specs.push(spec);

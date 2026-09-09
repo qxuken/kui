@@ -1,6 +1,11 @@
 //! Rich text: styled spans shaped and wrapped as one paragraph flow —
 //! bold/italic/colored runs and emoji share lines and wrap mid-sentence.
 //!
+//! The card is also `selectable` (ADR 0017), so a drag across it selects
+//! the heading, both paragraphs and the footer as one run of text —
+//! double-click takes a word, triple a line, Cmd/Ctrl-C copies. The
+//! footer reads back what is selected, which is `Ui::selection_text`.
+//!
 //! Run: cargo run -p kui --example rich_text
 
 use kui::{Align, App, Color, NodeSpec, Sizing, Span, TextStyle, Ui};
@@ -54,7 +59,10 @@ impl App for RichText {
                 .gap(18.0)
                 .bg(Color::rgb8(0x16, 0x18, 0x20))
                 .radius(12.0)
-                .border(1.0, Color::rgb8(0x2a, 0x2d, 0x3a)),
+                .border(1.0, Color::rgb8(0x2a, 0x2d, 0x3a))
+                // One row on the container, and every run inside it —
+                // plain text and rich paragraphs alike — selects as one.
+                .selectable(),
             |ui| {
                 ui.text("Rich text in kui", TextStyle::new(28.0));
                 ui.text(
@@ -105,10 +113,16 @@ impl App for RichText {
                         .width(Sizing::Grow(1.0))
                         .main_align(Align::End),
                     |ui| {
-                        ui.text(
-                            "resize the window to watch it rewrap",
-                            TextStyle::new(12.0).color(MUTED),
-                        );
+                        // What the pointer has selected, live. An empty
+                        // selection (a plain click) reads as none.
+                        let selected = ui
+                            .selection_text()
+                            .filter(|t| !t.is_empty())
+                            .map(|t| format!("{} characters selected", t.chars().count()))
+                            .unwrap_or_else(|| {
+                                "drag across the text to select it, or resize to rewrap".into()
+                            });
+                        ui.text(&selected, TextStyle::new(12.0).color(MUTED));
                     },
                 );
 

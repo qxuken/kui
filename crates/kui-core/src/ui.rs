@@ -242,6 +242,23 @@ impl<'a> Ui<'a> {
         self.core.text_hit(key, point)
     }
 
+    /// The window's selected text — a `selectable` scope's, or the
+    /// focused editor's; see `Core::copy_selection`.
+    pub fn selection_text(&self) -> Option<String> {
+        self.core.copy_selection()
+    }
+
+    /// Selects everything in the scope `key` declared; see
+    /// `Core::select_all_in`.
+    pub fn select_all_in(&mut self, key: Key) -> bool {
+        self.core.select_all_in(key)
+    }
+
+    /// Drops the window's selection; see `Core::clear_selection`.
+    pub fn clear_selection(&mut self) -> bool {
+        self.core.clear_selection()
+    }
+
     /// The caret rect for a byte offset in the text node `key` drew; see
     /// `Core::caret_rect`.
     pub fn caret_rect(&self, key: Key, byte: usize) -> Option<Rect> {

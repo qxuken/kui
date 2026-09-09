@@ -482,6 +482,13 @@ pub struct KuiSpec {
     /// it is. On `kui_button_with` it takes the hover and pressed shades
     /// and the label colour with it.
     pub accent: u32,
+    /// Non-zero: this node is a selection scope — the text of every node
+    /// inside it selects as one run, and a press-drag across them takes
+    /// the lot (`docs/adr/0017-selection-as-a-scope.md`). Declared on the
+    /// container, not on each label. Appended after ABI 11 the way
+    /// `accent` was: an [in] struct that never travels as an array, so
+    /// the size handshake absorbs it and no version moves.
+    pub selectable: u32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a

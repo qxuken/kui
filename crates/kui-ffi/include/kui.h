@@ -653,6 +653,20 @@ typedef struct KuiSpec {
      * way (an [in] struct, not one that travels as an array), so a host
      * that predates it passes the shorter struct and reads as zero. */
     uint32_t accent;
+    /* Non-zero: this node is a selection scope. The text of every node
+     * inside it is one selectable run, in tree order, and a press-drag
+     * across them selects the lot - three labels in a column under one
+     * `selectable` select as three lines of one text
+     * (docs/adr/0017-selection-as-a-scope.md). Declared on the container
+     * and not on each label. The selection is the window's: starting one
+     * anywhere clears the last, an editor's included, and kui_copy_text
+     * reads whichever exists. Text scrolled out of view inside the scope
+     * is still part of it - selection and copy reach it, hit-testing does
+     * not. Appended after ABI 11 the compatible way (an [in] struct, not
+     * one that travels as an array), so a host that predates it passes
+     * the shorter struct and reads as zero: not a selection scope, which
+     * is what every node was before this. */
+    uint32_t selectable;
 } KuiSpec;
 
 /* Disclosure state (KuiSpec.expanded): the schema index plus one, so zero

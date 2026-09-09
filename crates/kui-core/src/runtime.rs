@@ -55,6 +55,7 @@ mod fills;
 mod focus;
 mod resources_api;
 mod scrolling;
+mod select_api;
 mod windows;
 
 /// Wheel line-delta to logical px.
@@ -187,6 +188,25 @@ pub struct Core {
     /// Per-node "inside a floating subtree" marker (only filled when needed).
     in_float: Vec<bool>,
     any_float: bool,
+    /// The window's text selection outside an editor, and what the
+    /// frame resolved it to: `sel_ords` numbers the text nodes of the
+    /// selection's scope in emission order (`u32::MAX` for a node
+    /// outside it), and `sel_ends` is the pair of ends in reading order,
+    /// `None` when this frame builds neither end. See
+    /// `docs/adr/0017-selection-as-a-scope.md`.
+    selection: Option<crate::select::Selection>,
+    /// The scope a press is currently dragging a selection through, if
+    /// any: set on the press inside a scope, cleared on release. The
+    /// counterpart of `EditStore::dragging` for text nobody is editing.
+    select_dragging: Option<Key>,
+    sel_ords: Vec<u32>,
+    sel_ends: Option<crate::select::Ends>,
+    /// Per-node innermost enclosing selection scope — the key of the
+    /// nearest ancestor (or the node itself) declaring `selectable`, and
+    /// `None` outside every scope. Filled only on a frame that declares
+    /// one at all (`Tree::any_selectable`), which is what keeps ADR 0017
+    /// off the frames of apps that never select anything.
+    scopes: Vec<Option<Key>>,
     /// Whether any node this frame declared `modal`.
     any_modal: bool,
     /// The frame's modal scope: the tree range `[i, subtree_end(i))` of the
@@ -372,6 +392,11 @@ impl Core {
             opacity: Vec::new(),
             any_opacity: false,
             in_float: Vec::new(),
+            selection: None,
+            select_dragging: None,
+            sel_ords: Vec::new(),
+            sel_ends: None,
+            scopes: Vec::new(),
             any_float: false,
             any_modal: false,
             modal: None,

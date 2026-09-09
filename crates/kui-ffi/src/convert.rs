@@ -198,6 +198,9 @@ pub(crate) fn spec_of(
     if s.animate != 0 {
         spec = spec.animate();
     }
+    if s.selectable != 0 {
+        spec = spec.selectable();
+    }
     match s.window_role {
         1 => spec = spec.window_drag(),
         2 => spec = spec.window_button(WindowButton::Close),

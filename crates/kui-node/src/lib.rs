@@ -2040,6 +2040,39 @@ macro_rules! core_methods {
                     }))
             }
 
+            /// The window's selected text: what a `selectable` scope has
+            /// selected, or the focused `<edit>`'s selection, whichever
+            /// the window holds — starting either clears the other, so
+            /// there is never a choice to make. Null with no selection,
+            /// `""` when a selection exists but covers nothing (a press
+            /// that placed both ends together). See
+            /// `docs/adr/0017-selection-as-a-scope.md`.
+            #[napi]
+            pub fn selection_text(&mut self) -> Result<Option<String>> {
+                Ok(self.$core().copy_selection())
+            }
+
+            /// Selects every run inside the selection scope a keyed node
+            /// declared (`selectable`), first byte to last — Select All,
+            /// scoped. False when that node drew no text, or is not a
+            /// scope. Text the frame built but never drew is included:
+            /// the selection is over the scope's text, not over what fits
+            /// on screen.
+            #[napi]
+            pub fn select_all_in(&mut self, key: String) -> Result<bool> {
+                let Some(key) = resolve_query(self.$core(), &key) else {
+                    return Ok(false);
+                };
+                Ok(self.$core().select_all_in(key))
+            }
+
+            /// Drops the window's selection, whichever it is. True when
+            /// there was one to drop.
+            #[napi]
+            pub fn clear_selection(&mut self) -> Result<bool> {
+                Ok(self.$core().clear_selection())
+            }
+
             /// The caret rect for a byte offset in the text a keyed node
             /// drew: logical viewport px, zero wide, one line tall — where
             /// a caret, a selection edge or an IME candidate window goes.

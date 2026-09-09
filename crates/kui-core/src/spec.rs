@@ -777,6 +777,17 @@ pub struct InteractSpec {
     /// Declaring one replaces the ring the core draws by default. Pressed
     /// wins over focus wins over hover; eases with `transition`.
     pub focus_bg: Option<Color>,
+    /// Makes this node a *selection scope*: the text of every node inside
+    /// it is one selectable run of text, in tree order, and a press-drag
+    /// inside it selects across all of them (see
+    /// `docs/adr/0017-selection-as-a-scope.md`). Declared on the container
+    /// rather than on each label, because what a reader selects is a
+    /// paragraph or a card, not one run of it.
+    ///
+    /// Scopes do not nest: the innermost one containing a run owns it, and
+    /// an outer one is warned about (`nested-selection-scope`). An `edit`
+    /// is already its own scope and ignores this.
+    pub selectable: bool,
 }
 
 impl InteractSpec {
@@ -789,6 +800,7 @@ impl InteractSpec {
         click_sound: None,
         hover_sound: None,
         focus_bg: None,
+        selectable: false,
     };
 }
 
@@ -882,6 +894,9 @@ impl NodeSpec {
                     || i.hover_group.is_some()
                     || i.click_sound.is_some()
                     || i.hover_sound.is_some()
+                    // A selection scope has to be found under the pointer:
+                    // the press that starts a drag-select lands on it.
+                    || i.selectable
             })
     }
 
@@ -1178,6 +1193,13 @@ impl NodeSpec {
     /// Background while hovered (see the `hover_bg` field).
     pub fn hover_bg(mut self, c: Color) -> Self {
         self.interact_mut().hover_bg = Some(c);
+        self
+    }
+
+    /// Makes this node a selection scope (see the `selectable` field):
+    /// the text inside it becomes one selectable run.
+    pub fn selectable(mut self) -> Self {
+        self.interact_mut().selectable = true;
         self
     }
 
