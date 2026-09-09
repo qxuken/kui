@@ -60,7 +60,9 @@ extern "C" {
  * because the check above is equality: you compare your header's number
  * with the library you loaded, and never reason about the distance between
  * two. The entries below are kept so a host crossing several bumps at once
- * can read what each of them changed.
+ * can read what each of them changed. The same log lives beside the
+ * constant it describes, in crates/kui-ffi/src/abi.rs; a bump writes an
+ * entry in both, and this is the copy a C host reads.
  *
  * ABI 4 was the first bump to append to an [out] struct: KuiEvent gained
  * `window`. If you set `size` (KUI_EVENT_INIT does) you need no source
@@ -84,15 +86,15 @@ extern "C" {
  *
  * ABI 7 is the popup (ADR 0004 step 4): KuiWindowConfig gains the four
  * anchor_* floats a popup is placed against, and KuiWindowCommand appends
- * owner. This is the one growth `size` cannot absorb, and it is worth
- * knowing why: KuiWindowCommand embeds a KuiWindowConfig by value, so
- * appending inside the config moves everything after it and lifts the
- * floor kui_take_window_command will accept past the whole size of the
- * ABI-6 struct. A binary that was not recompiled is refused rather than
- * short-written - its drain loop sees an empty queue instead of its
- * windows - so this is the release where checking kui_abi_version() first
- * is the difference between a message and a mystery. Recompile and nothing
- * in your source changes.
+ * owner. This is the first growth `size` cannot absorb (ABI 11 is the
+ * second), and it is worth knowing why: KuiWindowCommand embeds a
+ * KuiWindowConfig by value, so appending inside the config moves
+ * everything after it and lifts the floor kui_take_window_command will
+ * accept past the whole size of the ABI-6 struct. A binary that was not
+ * recompiled is refused rather than short-written - its drain loop sees
+ * an empty queue instead of its windows - so this is the release where
+ * checking kui_abi_version() first is the difference between a message
+ * and a mystery. Recompile and nothing in your source changes.
  *
  * ABI 8 appends bg to KuiSpan (backlog C22). An [in] struct, but one that
  * travels as an array - kui_rich_text and kui_measure_rich_text take
@@ -100,6 +102,48 @@ extern "C" {
  * stride, and a binary that was not recompiled would hand the library
  * elements it reads at the wrong places. Recompile and nothing in your
  * source changes; a zeroed bg is none.
+ *
+ * ABI 9 appends fragments, fragment_count and time to KuiDrawData, for
+ * the fragment element (ADR 0015). KuiDrawData leads with `size`, so this
+ * is the compatible kind of append: set it (as KUI_DRAW_DATA_INIT does)
+ * and the library writes the prefix your build reserved and stops, so a
+ * host that reserved through atlas_epoch keeps drawing frames and never
+ * sees the three new fields. It has nothing to miss either, unless it
+ * asked - only kui_fragment_add and kui_fragment produce a
+ * KUI_QUAD_FRAGMENT quad, and a plugin that calls them on your context is
+ * one whose kui_ext_abi the host already matched against this same
+ * number. The version bumps for the host that skipped the check.
+ *
+ * ABI 10 appends reply_sink to KuiEvent, and it is the one entry here
+ * that does not bump for the host's sake: another size-led [out] append,
+ * so a host reserving the ABI-9 layout keeps polling correctly and simply
+ * never sees the field - which is right, because the field is not for a
+ * host to read. The bump is for the other side of an extension. kui_reply
+ * used to find its sink in a thread_local, which is one sink per copy of
+ * this library in the process, and a plugin does not always share the
+ * host's copy - on Windows it cannot, since a DLL may not leave kui_reply
+ * undefined and resolve it from the executable the way ELF does, and
+ * every reply then landed in a list nobody read. The sink now travels on
+ * the event as a pointer into the copy that opened it. No plugin's source
+ * changes; a plugin binary built against ABI 9 must not be handed an
+ * ABI 10 event, and kui_ext_abi is where that is refused.
+ *
+ * ABI 11 takes the clip off KuiQuad and puts it behind an index into the
+ * new KuiDrawData.clips. This is the second growth `size` cannot absorb
+ * (ABI 7 was the first), for the other reason: KuiQuad is [lib], an array
+ * you stride with your own sizeof, so KuiDrawData's handshake says
+ * nothing about its elements. The struct got 28 bytes shorter and every
+ * field after `kind` moved, which a binary that was not recompiled reads
+ * as garbage from quad 1 onward whatever quad 0 looked like - read-only
+ * garbage, so it draws nonsense rather than corrupting anything, and
+ * nothing refuses the frame the way an [out] reservation too small to
+ * write is refused. kui_abi_version() is the whole of the warning here.
+ * The break buys its keep: the clip was a rect and four radii carried on
+ * a struct written once per quad and then walked again by the fade pass,
+ * by the backend's upload and by the previous frame `depart` keeps, for a
+ * value nearly every quad of a frame shares. Your source changes in one
+ * place - read dd.clips[q.clip] where you read q.clip and q.clip_radius;
+ * entry zero clips nothing, so there is no null case.
  */
 #define KUI_ABI_VERSION 11u
 uint32_t kui_abi_version(void);

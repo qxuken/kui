@@ -67,6 +67,10 @@
 /// is normal and costs a host nothing, because the check is equality — no
 /// one reasons about the distance between two of these.
 ///
+/// **The same log is mirrored in the `-- ABI version --` block of
+/// `include/kui.h`**, which is the copy a C host actually reads — it has
+/// the header, not this file. A bump writes an entry in both.
+///
 /// ABI 4 was the first bump that appended to an [out] struct
 /// (`KuiEvent.window`). Hosts that set `size` need no source change for it;
 /// the bump is for the ones that skipped `kui_abi_version()` and would
@@ -126,6 +130,7 @@
 /// opened it. A plugin's source does not change; a plugin *binary* built
 /// against ABI 9 must not be handed an ABI 10 event, and the version is
 /// what says so.
+///
 /// ABI 11 takes the clip off `KuiQuad` and puts it behind an index into a
 /// new `KuiDrawData::clips`. This is the second bump the size handshake
 /// cannot absorb (ABI 7 was the first): `KuiQuad` travels as an array, so
