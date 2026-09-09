@@ -832,6 +832,147 @@ pub(crate) struct Sources<'a> {
     pub scale: f32,
 }
 
+/// A hash of every input [`build`] reads, taken by the same walk with
+/// nothing built. `None` means "cannot answer, rebuild" — see the custom
+/// editor note below.
+///
+/// **The invariant this rests on**: everything `build` reads must be mixed
+/// in here. Miss one and a frame that changed only that thing serves the
+/// previous frame's tree, which is a bug with no symptom in the core, no
+/// failing test, and a wrong reading on somebody's screen. Two things hold
+/// it. The walk is deliberately the *same* walk — the same skip rules
+/// calling the same [`semantic`], [`focusable`] and
+/// [`composite::orientation`](crate::composite::orientation) — so what can
+/// drift is only the fields `build` reads directly out of the spec and the
+/// sources; and `runtime::dispatch`'s tests mutate each of those in turn
+/// and assert the tree moved.
+///
+/// It is worth taking because the walk is the cheap quarter of `build`:
+/// **105 µs against 480 µs** over a 10,000-node frame on an M3 Pro, because
+/// three quarters of that function is constructing `AccessNode`s and
+/// pushing them, which is exactly what a cache hit skips (ADR 0016,
+/// decision 3).
+///
+/// A custom editor (`is_custom_editor`) answers `None` rather than a hash:
+/// `custom_editor` fills a node from the `line` children's own text and
+/// runs, and there is no reading of those inputs that does not amount to
+/// building the node. Such a view is one whose text is changing anyway, so
+/// it is the case a cache would miss on regardless.
+pub(crate) fn inputs_hash(tree: &Tree, src: &Sources<'_>) -> Option<u64> {
+    use std::hash::{Hash, Hasher};
+    let mut h = rustc_hash::FxHasher::default();
+    let f = |h: &mut rustc_hash::FxHasher, v: f32| v.to_bits().hash(h);
+
+    tree.len().hash(&mut h);
+    src.focus.map(|k| k.0).hash(&mut h);
+    src.modal.map(|k| k.0).hash(&mut h);
+    src.title.hash(&mut h);
+    f(&mut h, src.viewport.w);
+    f(&mut h, src.viewport.h);
+    f(&mut h, src.scale);
+
+    let mut skip_until = 0usize;
+    let mut i = 0usize;
+    while i < tree.len() {
+        if i < skip_until {
+            i += 1;
+            continue;
+        }
+        let Some(sem) = semantic(tree, src.text, src.edit, src.title, i) else {
+            i += 1;
+            continue;
+        };
+        if sem.role == Role::None {
+            skip_until = tree.subtree_end(i);
+            i += 1;
+            continue;
+        }
+        if is_custom_editor(tree, i) {
+            return None;
+        }
+        let key = tree.keys[i];
+        let spec = &tree.specs[i];
+        let ax = spec.access();
+
+        // Identity and place in the tree.
+        i.hash(&mut h);
+        key.0.hash(&mut h);
+        tree.parent[i].hash(&mut h);
+        tree.origins[i].0.hash(&mut h);
+
+        // What `semantic` decided, and the node's own strings.
+        sem.role.hash(&mut h);
+        sem.name.hash(&mut h);
+        sem.presentational.hash(&mut h);
+        ax.description.as_deref().hash(&mut h);
+
+        // The rect, which is the root's viewport and everyone else's box.
+        let rect = if i == 0 {
+            Rect::new(0.0, 0.0, src.viewport.w, src.viewport.h)
+        } else {
+            Rect::from_pos_size(tree.pos[i], tree.size[i])
+        };
+        for v in [rect.x, rect.y, rect.w, rect.h] {
+            f(&mut h, v);
+        }
+
+        // State the node reports, and everything the action bits read.
+        (src.focus == Some(key)).hash(&mut h);
+        (src.modal == Some(key)).hash(&mut h);
+        spec.disabled.hash(&mut h);
+        ax.live.hash(&mut h);
+        spec.window.hash(&mut h);
+        spec.events().on_click.is_some().hash(&mut h);
+        focusable(tree, i).hash(&mut h);
+        crate::composite::orientation(tree, i).hash(&mut h);
+        ax.expanded.hash(&mut h);
+        ax.checked.hash(&mut h);
+        ax.selected.hash(&mut h);
+        ax.value_text.as_deref().hash(&mut h);
+        for v in [ax.value_now, ax.value_min, ax.value_max] {
+            v.is_some().hash(&mut h);
+            f(&mut h, v.unwrap_or(0.0));
+        }
+
+        // The content's own value, through the same accessors `build` uses.
+        match tree.content[i] {
+            NodeContent::Edit(edit_key) => {
+                let pad = spec.layout.padding;
+                f(&mut h, tree.pos[i].x + pad.l);
+                f(&mut h, tree.pos[i].y + pad.t);
+                src.edit.text(edit_key).hash(&mut h);
+                src.edit.caret_and_selection(edit_key).hash(&mut h);
+                src.edit.selection_cursors(edit_key).hash(&mut h);
+                // `runs` is the editor's shaped layout, which the text and
+                // the box above do not fully determine — a font arriving
+                // between frames reshapes it. The store's own version bumps
+                // on every mutation that could, so it stands in for reading
+                // the runs, which would cost what building them costs.
+                src.edit.version(edit_key).hash(&mut h);
+            }
+            NodeContent::Cells(id) => src.cells.value(id).hash(&mut h),
+            _ => {}
+        }
+
+        // Scrolling: the offset is retained state, the max a layout output.
+        if spec.layout.scroll_x || spec.layout.scroll_y {
+            spec.layout.scroll_x.hash(&mut h);
+            spec.layout.scroll_y.hash(&mut h);
+            let off = src.scroll.offset(key);
+            let max = tree.scroll_max[i];
+            for v in [off.x, off.y, max.x, max.y] {
+                f(&mut h, v);
+            }
+        }
+
+        if sem.presentational {
+            skip_until = tree.subtree_end(i);
+        }
+        i += 1;
+    }
+    Some(h.finish())
+}
+
 /// Derives the access tree of a laid-out frame.
 pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
     let mut out = AccessTree::default();

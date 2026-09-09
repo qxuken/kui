@@ -36,7 +36,7 @@ impl WindowId {
 /// Role a node plays in window chrome (set via `NodeSpec::window_drag` /
 /// `NodeSpec::window_button`). Chrome nodes never emit `UiEvent`s — their
 /// interactions become [`WindowCommand`]s for the driver instead.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum WindowRole {
     /// Mouse-down here asks the driver to start an OS window drag (drivers
     /// conventionally promote a quick second press to a maximize toggle).
@@ -45,7 +45,7 @@ pub enum WindowRole {
     Button(WindowButton),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum WindowButton {
     Close,
     Minimize,

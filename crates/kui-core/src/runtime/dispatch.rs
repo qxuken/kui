@@ -581,20 +581,32 @@ impl Core {
     /// never asks pays nothing.
     pub fn access_tree(&mut self) -> &crate::access::AccessTree {
         if self.access_built != self.frame_no {
-            self.access = crate::access::build(
-                &self.tree,
-                &crate::access::Sources {
-                    text: &self.text,
-                    cells: &self.cells,
-                    edit: &self.edit,
-                    scroll: &self.scroll,
-                    title: self.window_title.as_deref(),
-                    focus: self.focus,
-                    modal: self.modal(),
-                    viewport: self.viewport,
-                    scale: self.scale,
-                },
-            );
+            let src = crate::access::Sources {
+                text: &self.text,
+                cells: &self.cells,
+                edit: &self.edit,
+                scroll: &self.scroll,
+                title: self.window_title.as_deref(),
+                focus: self.focus,
+                modal: self.modal(),
+                viewport: self.viewport,
+                scale: self.scale,
+            };
+            // Deriving the tree is about 480 µs on a 10,000-node frame and
+            // is paid on every frame a screen reader is attached; hashing
+            // what it reads is about 105 µs, because three quarters of the
+            // work is making the nodes rather than walking to them. So a
+            // frame that changed nothing this tree can see — a pointer
+            // moving across hover backgrounds, a colour transition — keeps
+            // the one it had. See `access::inputs_hash` for the invariant
+            // that makes it safe, and ADR 0016 decision 3 for why this is
+            // the one thing in the frame that gets cached.
+            let hash = crate::access::inputs_hash(&self.tree, &src);
+            if hash.is_none() || self.access_inputs != hash {
+                self.access = crate::access::build(&self.tree, &src);
+                self.access_rebuilds += 1;
+            }
+            self.access_inputs = hash;
             self.access_built = self.frame_no;
         }
         &self.access
@@ -958,4 +970,204 @@ fn edit_key_code(ek: EditKey) -> Option<KeyCode> {
         EditKey::End => KeyCode::End,
         _ => return None,
     })
+}
+
+/// ADR 0016 decision 3's gate: the access tree is cached on a hash of what
+/// derives it, so every input that hash misses is a frame that serves a
+/// stale reading. One case per input `access::build` reads, each mutating
+/// only that input and asserting the tree was derived again *and* came out
+/// different; plus the case the cache exists for, where a frame changes
+/// something the tree cannot see and keeps the one it had.
+#[cfg(test)]
+mod access_cache {
+    use crate::access::{Live, Role};
+    use crate::*;
+
+    /// Builds a frame from `spec` on a keyed node with a text child, reads
+    /// the access tree, and reports (how many derivations have happened,
+    /// the tree's own hash).
+    fn frame(core: &mut Core, spec: NodeSpec) -> (u64, u64) {
+        let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+        ui.configure_root(NodeSpec::column());
+        ui.with_keyed("node", spec, |ui| {
+            ui.text("hello", TextStyle::new(12.0));
+        });
+        ui.finish();
+        let hash = core.access_tree().hash;
+        (core.access_rebuilds, hash)
+    }
+
+    /// The base node: a button, so it is a semantic node with a name.
+    fn base() -> NodeSpec {
+        NodeSpec::column()
+            .width(Sizing::Fixed(40.0))
+            .height(Sizing::Fixed(20.0))
+            .on_click(Value::from(1.0))
+            .label("Save")
+    }
+
+    /// Draws `first`, then `second`, and says whether the second frame
+    /// derived the tree again and whether the tree changed.
+    fn change(first: NodeSpec, second: NodeSpec) -> (bool, bool) {
+        let mut core = Core::new();
+        let (b0, h0) = frame(&mut core, first.clone());
+        let (b1, h1) = frame(&mut core, second);
+        (b1 > b0, h1 != h0)
+    }
+
+    /// The case the cache is for: a pointer moving over a hover background
+    /// changes `style.bg` before the node is pushed, and the access tree
+    /// cannot see a background. The tree is kept, not rebuilt.
+    #[test]
+    fn a_change_the_tree_cannot_see_keeps_the_tree() {
+        let (rebuilt, moved) = change(base().bg(Color::WHITE), base().bg(Color::BLACK));
+        assert!(!rebuilt, "a colour the access tree never reads rebuilt it");
+        assert!(!moved, "and the tree would have been the same anyway");
+    }
+
+    /// And the same frame twice: no input moved at all.
+    #[test]
+    fn an_identical_frame_keeps_the_tree() {
+        assert_eq!(change(base(), base()), (false, false));
+    }
+
+    macro_rules! moves_the_tree {
+        ($($name:ident: $first:expr => $second:expr;)*) => {$(
+            #[test]
+            fn $name() {
+                let (rebuilt, moved) = change($first, $second);
+                assert!(rebuilt, "the tree was served from the cache");
+                assert!(moved, "it was derived again but came out the same");
+            }
+        )*};
+    }
+
+    moves_the_tree! {
+        label:        base().label("Save") => base().label("Open");
+        description:  base() => base().description("Writes the file");
+        role:         base() => base().role(Role::Checkbox);
+        clickable:    NodeSpec::column().label("x") => NodeSpec::column().label("x").on_click(Value::from(1.0));
+        disabled:     base() => base().disabled(true);
+        live:         base() => base().live(Live::Polite);
+        checked:      base().role(Role::Checkbox) => base().role(Role::Checkbox).checked(true);
+        selected:     base().role(Role::Tab) => base().role(Role::Tab).selected(true);
+        expanded:     base() => base().expanded(true);
+        value_now:    base().role(Role::Slider) => base().role(Role::Slider).value_now(3.0);
+        value_min:    base().role(Role::Slider).value_now(3.0) => base().role(Role::Slider).value_now(3.0).value_min(1.0);
+        value_text:   base().role(Role::Slider) => base().role(Role::Slider).value_text("three");
+        focusable:    NodeSpec::column().role(Role::Group).label("g")
+                          => NodeSpec::column().role(Role::Group).label("g").focusable();
+        rect:         base() => base().width(Sizing::Fixed(80.0));
+    }
+
+    /// The text a node is named by is not in its spec at all — it is the
+    /// child text node's content, reached through the text system.
+    #[test]
+    fn the_text_a_node_reads_moves_the_tree() {
+        let mut core = Core::new();
+        let mut draw = |s: &str| {
+            let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+            ui.configure_root(NodeSpec::column());
+            ui.text(s, TextStyle::new(12.0));
+            ui.finish();
+            let h = core.access_tree().hash;
+            (core.access_rebuilds, h)
+        };
+        let (b0, h0) = draw("hello");
+        let (b1, h1) = draw("goodbye");
+        assert!(b1 > b0 && h1 != h0, "a changed string kept its old node");
+    }
+
+    /// Focus is the core's, not any node's spec.
+    #[test]
+    fn focus_moves_the_tree() {
+        let mut core = Core::new();
+        let (b0, h0) = frame(&mut core, base().focusable());
+        core.set_key_focus(Some(Key::ROOT.str("node")));
+        let (b1, h1) = frame(&mut core, base().focusable());
+        assert!(b1 > b0 && h1 != h0, "focus moved and the tree did not");
+    }
+
+    /// So is the scroll offset, which is retained across frames and only
+    /// ever reaches the tree through the store.
+    #[test]
+    fn a_scroll_offset_moves_the_tree() {
+        let mut core = Core::new();
+        // Tall content, or the offset clamps to zero and nothing moved.
+        let scroller = || {
+            NodeSpec::column()
+                .width(Sizing::Fixed(40.0))
+                .height(Sizing::Fixed(20.0))
+                .scroll_y()
+                .label("list")
+        };
+        let draw = |core: &mut Core| {
+            let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+            ui.configure_root(NodeSpec::column());
+            ui.with_keyed("node", scroller(), |ui| {
+                ui.with_keyed(
+                    "tall",
+                    NodeSpec::column().height(Sizing::Fixed(400.0)),
+                    |_| {},
+                );
+            });
+            ui.finish();
+            let h = core.access_tree().hash;
+            (core.access_rebuilds, h)
+        };
+        let (b0, h0) = draw(&mut core);
+        core.set_scroll(Key::ROOT.str("node"), Vec2::new(0.0, 7.0));
+        let (b1, h1) = draw(&mut core);
+        assert!(b1 > b0 && h1 != h0, "the offset moved and the tree did not");
+    }
+
+    /// An editor's text reaches the tree through the store, and its shaped
+    /// runs through a version that stands in for them.
+    #[test]
+    fn editor_text_moves_the_tree() {
+        let mut core = Core::new();
+        let draw = |core: &mut Core, text: &str| {
+            let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+            ui.configure_root(NodeSpec::column());
+            let key = ui.text_edit(
+                "name",
+                text,
+                &Default::default(),
+                NodeSpec::column()
+                    .width(Sizing::Fixed(120.0))
+                    .height(Sizing::Fixed(20.0)),
+            );
+            ui.finish();
+            let h = core.access_tree().hash;
+            (core.access_rebuilds, h, key)
+        };
+        let (b0, h0, key) = draw(&mut core, "one");
+        core.frame(Size::new(200.0, 100.0), 1.0).finish();
+        core.set_edit_text(key, "typed");
+        let (b1, h1, _) = draw(&mut core, "one");
+        assert!(
+            b1 > b0 && h1 != h0,
+            "the editor's text moved and the tree did not"
+        );
+    }
+
+    /// And the viewport, which is the root node's whole rect.
+    #[test]
+    fn the_viewport_moves_the_tree() {
+        let mut core = Core::new();
+        let mut draw = |w: f32| {
+            let mut ui = core.frame(Size::new(w, 100.0), 1.0);
+            ui.configure_root(NodeSpec::column());
+            ui.with_keyed("node", base(), |_| {});
+            ui.finish();
+            let h = core.access_tree().hash;
+            (core.access_rebuilds, h)
+        };
+        let (b0, h0) = draw(200.0);
+        let (b1, h1) = draw(300.0);
+        assert!(
+            b1 > b0 && h1 != h0,
+            "the viewport moved and the tree did not"
+        );
+    }
 }

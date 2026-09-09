@@ -442,11 +442,11 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** One written ADR with no code, and nothing filed that is not
-either parked or deliberately unbuilt: after alpha.10 the open list is C12,
-C13, C14 and F36. The ADR is
-[`docs/adr/0016-caching-against-the-last-frame.md`](adr/0016-caching-against-the-last-frame.md),
-**proposed 2026-09-09** out of the performance round that shipped the quad
+**Build next.** Nothing with a written ADR and no code, and nothing filed
+that is not either parked or deliberately unbuilt: after alpha.10 the open
+list is C12, C13, C14 and F36.
+[`docs/adr/0016-caching-against-the-last-frame.md`](adr/0016-caching-against-the-last-frame.md)
+was **proposed and its one yes built on 2026-09-09** out of the performance round that shipped the quad
 shrink and closed C24, and it is written to be mostly declined: no general
 subtree cache (a 2.5× ceiling, against `virtual_column`'s 218× and `cells`'s
 37× where either applies, and a list of inputs a digest cannot see that has
@@ -457,9 +457,13 @@ is attached, is output the core never acts on, and has inputs you can
 enumerate. Its two measurement sections are why: detection is affordable (a
 per-node digest at push costs about 0.8% of a frame, if the fold happens at
 close rather than in a pass of its own) and the ceiling is not (the app
-rebuilds the tree either way, which is 40% of the bill). Decision 3 is the
-only part with code to write, and it is gated on a conformance scene that
-mutates each enumerated input and asserts the tree moved. The `fragment` element, [`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`](adr/0015-a-fragment-element-and-the-painter-it-is-not.md), was proposed, measured twice, accepted and **built on 2026-09-08** — a box a registered WGSL function paints, in four bindings with a corpus scene, plus `animate` as a plain row and ABI 9. Its two measurement sections are why it was accepted (naga costs a cold build of `kui-core` alone; the draw-call split costs about 0.6 µs of CPU a fragment and nothing the GPU can see) and its amendment is what the building changed — including a collision the design could not have seen, that JSX's own `Fragment` sentinel was the string `'fragment'`. Before it, slots, [`docs/adr/0014-slots-an-extension-fills-in-place.md`](adr/0014-slots-an-extension-fills-in-place.md), were proposed, accepted and **built on 2026-09-07** for alpha.9 — an extension fills a place the host declares in its own view, under a namespace the host decides, with `Value` parameters in and replies out; its status block records what the building changed, and the first test it pins was a defect before it: an extension whose root carried no `key` was rekeyed whenever the host added a child at the root. Before it, ADR 0012's
+rebuilds the tree either way, which is 40% of the bill). Decision 3 was the only part with code
+to write and it is written: `access::inputs_hash` beside `access::build`,
+hit-checked in `Core::access_tree`, worth **−21.7%** on
+`frame_10k_rects_with_access_tree` against a ±3.0% floor. Its gate is 21
+cases in `runtime::dispatch::access_cache`, one per input, and the
+amendment records what building it changed — including that two of those
+cases failed first and both were the test's fault, not the hash's. The `fragment` element, [`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`](adr/0015-a-fragment-element-and-the-painter-it-is-not.md), was proposed, measured twice, accepted and **built on 2026-09-08** — a box a registered WGSL function paints, in four bindings with a corpus scene, plus `animate` as a plain row and ABI 9. Its two measurement sections are why it was accepted (naga costs a cold build of `kui-core` alone; the draw-call split costs about 0.6 µs of CPU a fragment and nothing the GPU can see) and its amendment is what the building changed — including a collision the design could not have seen, that JSX's own `Fragment` sentinel was the string `'fragment'`. Before it, slots, [`docs/adr/0014-slots-an-extension-fills-in-place.md`](adr/0014-slots-an-extension-fills-in-place.md), were proposed, accepted and **built on 2026-09-07** for alpha.9 — an extension fills a place the host declares in its own view, under a namespace the host decides, with `Value` parameters in and replies out; its status block records what the building changed, and the first test it pins was a defect before it: an extension whose root carried no `key` was rekeyed whenever the host added a child at the root. Before it, ADR 0012's
 decisions 2, 3 and 6 — the last such item — **landed on 2026-09-07**, the
 day after decision 5 did: a frame's departures are admitted or refused
 together, a new removal outranks ghosts already in flight, the

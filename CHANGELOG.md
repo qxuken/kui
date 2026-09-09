@@ -169,6 +169,32 @@ field reports).
   retargeting a live tween continuous. Only the two fields no leg reads
   were ever redundant.
 
+- **The access tree is derived only when it would come out different**
+  (ADR 0016, decision 3). `Core::access_tree()` rebuilt from scratch on
+  every frame a screen reader was attached — about **480 µs on a
+  10,000-node frame**, +40% on top of it — although most frames change
+  nothing it can see: a pointer crossing hover backgrounds, a colour
+  transition, a caret blink. It now hashes what deriving it reads and keeps
+  the tree it had when the hash matches.
+  `frame_10k_rects_with_access_tree` goes **1.77 ms → 1.39 ms (−21.7%)**
+  against a ±3.0% run-to-run floor, the only row in the table that moved.
+
+  The reason it can be both safe and cheap is that the walk is the cheap
+  quarter of the work: the same traversal calling the same `semantic`,
+  `focusable` and `orientation` costs 105 µs against `build`'s 480, because
+  three quarters of that function is constructing nodes and pushing them.
+  So the hash calls the real helpers rather than reimplementing what they
+  decide, and what could drift is only the fields `build` reads directly —
+  gated by 21 cases in `runtime::dispatch::access_cache`, one per input,
+  each mutating that input alone and asserting the tree was derived again
+  *and* came out different. A view whose editor is a custom one made of
+  `line` children answers "rebuild" rather than a hash, because reading its
+  inputs amounts to building its node.
+
+  Nothing about the tree changes — only how often it is computed. `WindowRole`
+  and `WindowButton` derive `Hash` so that a variant added later is covered
+  without anyone remembering to cover it.
+
 ### Fixed
 
 - **A field that hugs its text no longer ratchets down to one character**

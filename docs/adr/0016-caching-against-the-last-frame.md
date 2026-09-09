@@ -1,17 +1,23 @@
 ---
-status: proposed
+status: accepted
 date: 2026-09-09
 ---
 
 # Caching against the last frame: the access tree yes, the frame no
 
-> **Proposed (2026-09-09), out of the performance round that shipped the
-> quad shrink and closed C24.** It asks one question — may a frame reuse
-> work from the frame before it, and immediate mode still mean what it says
-> — and answers it three times, because the answer is different for the
-> three places it could be asked. One narrow yes, two noes, and a trigger
-> written down for the larger one so that the next person to want it has
-> something to argue with. Nothing here is built.
+> **Accepted (2026-09-09), and its one yes is built.** Out of the
+> performance round that shipped the quad shrink and closed C24. It asks
+> one question — may a frame reuse work from the frame before it, and
+> immediate mode still mean what it says — and answers it three times,
+> because the answer is different for the three places it could be asked.
+> Decisions 1 and 2 decline, with a trigger written down for the first so
+> the next person to want it has something to argue with. Decision 3 is
+> built: `frame_10k_rects_with_access_tree` **1.77 ms → 1.39 ms, −21.7%**
+> against a ±3.0% run-to-run floor, the only row in the table that moved.
+> What the building changed is at the end, and the detection measurement
+> below was wrong when this was written and is corrected in place —
+> [that correction](#measurement-what-detection-costs-2026-09-09-corrected)
+> is the more useful half of the document.
 
 kui is immediate mode: the view runs every frame and what it builds is the
 frame. Nothing is retained between frames except what has to be — scroll
@@ -111,21 +117,23 @@ down.
    `painter`.
 
 3. **Cache the derived access tree on a digest**, subject to its own
-   measurement. `Core::access_tree()` recomputes from scratch on every call;
+   measurement. **Built 2026-09-09; see the amendment.** `Core::access_tree()` recomputes from scratch on every call;
    it should recompute only when its inputs changed. This is accepted in
    principle because it is the one place where the work is large (+40%),
    purely derived, and reached through a single function whose inputs can be
    enumerated: the tree's specs and content, the laid-out rects, focus, the
    edit store's text and selection, scroll offsets, and the viewport.
 
-4. **If any of the three is built, the digest is computed at `push` and
-   folded at `close`** — not in a pass of its own. Hashing a spec while
-   `Tree::push` already has it in cache costs about 6 µs per 10,000 nodes;
-   folding children into parents as a separate reverse pass costs about
-   25 µs more, because it is a scattered read-modify-write, while folding a
-   child's digest into its parent's *as the child closes* is O(1) with the
-   parent on the stack. See
-   [Measurement: what detection costs](#measurement-what-detection-costs-2026-09-09).
+4. **Detection is by comparison against last frame, not by hashing, and it
+   compares only what the consumer reads.** A serial digest of the specs
+   costs 280 µs per 10,000 nodes — more than half of what deriving the
+   access tree costs — while equality against a retained copy costs 52 µs.
+   And whole-spec equality is the wrong granularity anyway: hover, press and
+   the accent colour all land in `style.bg` before push, so comparing whole
+   specs would invalidate on every frame a mouse moves, which is exactly the
+   frame the cache exists for. See
+   [Measurement: what detection costs](#measurement-what-detection-costs-2026-09-09-corrected),
+   whose first version got this wrong by a factor of fifty.
 
 5. **A cache key is never just the subtree.** Layout resolves against the
    box the parent gives, and emission against an inherited clip, group
@@ -147,9 +155,10 @@ frame's, reuse its sizes, positions (translated), quads (translated), hit
 regions and access rows. This is a pure optimisation in the sense that a
 correct implementation is unobservable — which is also the problem, because
 an *incorrect* one is unobservable too until it is on screen. Ceiling 2.5×;
-detection about 1% of a frame; the list of inputs a digest does not see is
-under [What a digest cannot see](#what-a-digest-cannot-see) and is the real
-cost of this option.
+detection about 10% of a frame once measured honestly; the list of inputs a
+digest does not see is under
+[What a digest cannot see](#what-a-digest-cannot-see) and is the real cost of
+this option, cost being the lesser word for it.
 
 **C. A `memo` / `static` element the view declares.** Skips the build as
 well, so the ceiling is unbounded rather than 2.5×. Rejected on the contract
@@ -223,27 +232,44 @@ that someone has to remember to write. The cost of option B is not the 1% of
 detection; it is that this list has to be complete, and stay complete as the
 core grows, with nothing but a stale pixel to say when it is not.
 
-## Measurement: what detection costs (2026-09-09)
+## Measurement: what detection costs (2026-09-09, corrected)
 
-Over 10,000 nodes, on an Apple M3 Pro, against a push loop that models
-`Tree::push`'s existing read-then-move:
+**The first version of this section was wrong, and the correction is the
+more interesting number.** It reported an FNV digest of a 224-byte spec at
+about 6 µs per 10,000 nodes, and concluded detection was free. The probe
+hashed near-constant data, so LLVM folded most of the chain away; 6 µs for
+280,000 dependent multiply-xor steps was never physically possible and
+should have been caught by that alone. Re-measured over specs the compiler
+cannot see through, on an Apple M3 Pro, 10,000 nodes:
 
-| | median | over plain |
-|---|---|---|
-| push, reading the spec for the `any_*` flags | 40.8 µs | — |
-| push + an FNV digest of the 224-byte spec | 46.7 µs | **+5.9 µs** |
-| push + digest + folding children into parents in a reverse pass | 72.3 µs | +31.5 µs |
-| push + comparing against last frame's spec (224-byte memcmp) | 71.5 µs | +30.7 µs |
+| | median |
+|---|---|
+| walking every spec and reading one word (the floor) | 4.5 µs |
+| comparing each against a retained copy of last frame's | **52 µs** |
+| FNV, four independent lanes combined at the end | 73 µs |
+| FNV, one serial chain over every word | **280 µs** |
 
-Two things follow. The per-node digest is affordable — about **0.8% of a
-717 µs frame** — because the spec is already in cache at that point, which is
-the same reason `Tree::push` reads the `any_*` flags there
-(`crates/kui-core/src/tree.rs:142`). And the fold must not be its own pass:
-scattered writes into parents cost five times what the digest did, which is
-why decision 4 folds at close instead.
+The serial digest — the obvious implementation, and the one the first
+version of this section priced at 6 µs — costs **more than half** of what
+deriving the access tree costs, and would have made a cache that loses on
+its own detection. FNV's multiply is a four-cycle dependency and there are
+28 words a node; nothing about it is free.
 
-Keeping last frame's specs and comparing is the same price as the fold pass
-*and* costs 2.24 MB of retained specs, so a digest wins on both counts.
+Three things follow, and they replace what decision 4 originally said:
+
+- **Compare, do not hash.** Equality against a retained copy is five times
+  cheaper than the serial digest and lowers to vector loads; the price is
+  keeping last frame's state, which for the tree the core already knows how
+  to do (`depart` swaps buffers rather than copying).
+- **Compare only what the consumer reads.** Whole-spec equality is the wrong
+  granularity for the access tree specifically: hover, press and accent all
+  land in `style.bg` before push, so a mouse moving across a UI would
+  invalidate on every frame over a field the access tree never looks at —
+  which is precisely the frame where the cache would otherwise pay.
+- **Detection is about 10% of a frame, not 1%.** That does not change the
+  decision for option B, which was declined on the correctness list rather
+  than on cost, but it removes the argument that its detection would be
+  invisible.
 
 ## Measurement: what a cache could save (2026-09-09)
 
@@ -273,3 +299,53 @@ The access tree, by contrast, is 470 µs on a 1.16 ms frame that already
 contains it, which is the whole reason decision 3 separates it from the
 rest: it is the one number in the table that a cache would meaningfully
 change, and the only one whose output the core never acts on itself.
+
+## Amendment: what the building changed (2026-09-09)
+
+Decision 3 is built, in `access::inputs_hash` and `Core::access_tree`.
+Five things the design did not say, in the order they came up.
+
+**The walk is a quarter of the work, which is what makes it pay.** The
+design assumed deriving the tree was mostly walking it, and if it had been
+there would have been nothing to gain — a hash walk that costs what the
+build costs saves nothing, which is how C24 died. Measured before writing
+any of it: `build` is **480 µs** over a 10,000-node frame and the same
+traversal calling the same `semantic` is **105 µs**, so three quarters of
+that function is constructing `AccessNode`s and pushing them. That is the
+part a hit skips, and it is why the *safe* implementation — one that calls
+the real `semantic`, `focusable` and `orientation` rather than
+reimplementing what they decide — is also the cheap one. The drift surface
+is therefore only the fields `build` reads directly.
+
+**A custom editor answers `None`, not a hash.** `custom_editor` fills a node
+from its `line` children's own text and runs, and there is no reading of
+those inputs short of building the node. Such a view returns "cannot
+answer, rebuild"; it is a view whose text is changing anyway, so it is the
+case a cache would miss on regardless.
+
+**An editor's shaped runs are not determined by its text and its box.** A
+font arriving between frames reshapes them without necessarily moving the
+rect. `EditStore::version` already bumps on every mutation that could, so it
+is mixed in and stands in for reading the runs.
+
+**`WindowRole` and `WindowButton` gained `Hash`** rather than being matched
+by hand in the hash, so a variant added later is covered without anyone
+remembering to cover it.
+
+**Two of the gating tests failed first, and both were the test's fault** —
+which is the outcome that should be reported, because it is evidence the
+hash was right and the assertion wrong. `focusable` asserted that adding
+`focusable()` to a node that already had `on_click` moved the tree; it does
+not, because such a node was focusable already. `a_scroll_offset_moves_the_tree`
+scrolled a box with nothing in it to scroll, so the offset clamped to zero
+and nothing moved. Both now ask what they meant to. There are 21 cases in
+`runtime::dispatch::access_cache`, one per input plus the two that assert a
+frame the tree cannot see keeps the tree it had.
+
+**What the bench measures, and what it does not.** The −21.7% is a 100% hit
+rate: `run_frame` rebuilds an identical grid, so nothing the tree can see
+ever changes. A real session hits on the frames the cache was argued for — a
+pointer crossing hover backgrounds, a colour transition, a caret blink — and
+misses whenever a rect moves, text changes, or focus does. The honest claim
+is the one the decision made: this is the cost of *deriving* the tree, and
+it is now paid only when the tree would come out different.

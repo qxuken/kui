@@ -282,6 +282,15 @@ pub struct Core {
     /// `access_tree`) and stamped with the frame it was built from.
     access: crate::access::AccessTree,
     access_built: u64,
+    /// The hash of the inputs `self.access` was derived from, so a frame
+    /// whose access-relevant state is unchanged keeps it (ADR 0016,
+    /// decision 3). `None` when the last frame could not be hashed, which
+    /// forces the next derivation.
+    access_inputs: Option<u64>,
+    /// How many times the access tree has actually been derived, as against
+    /// asked for. Tests read it to tell a cache hit from a miss; nothing in
+    /// the library acts on it.
+    access_rebuilds: u64,
 }
 
 /// How long a type-ahead search buffer survives without a keystroke
@@ -344,6 +353,8 @@ impl Core {
             keys_held: Vec::new(),
             access: Default::default(),
             access_built: 0,
+            access_inputs: None,
+            access_rebuilds: 0,
             tree: Tree::new(),
             prev_tree: Tree::new(),
             lines: Default::default(),
