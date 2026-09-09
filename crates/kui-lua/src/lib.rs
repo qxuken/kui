@@ -267,28 +267,6 @@ fn slot_table(lua: &Lua, slot: &Slot<'_>) -> mlua::Result<Table> {
     Ok(t)
 }
 
-/// Host facts handed to `view(env)`, the reading `schema::ENV_FIELDS`
-/// documents and `the_env_table_is_the_documented_env_shape` pins to it key
-/// for key: `refresh_hz` (nil if unknown),
-/// `frame_budget_ms`, `focused` (the *window*'s keyboard focus, a bool),
-/// `system` (what the user set in the OS: `appearance` and `motion` as
-/// strings, always there because "unknown" is one of their readings, and
-/// `accent` (0xRRGGBBAA) / `locale` (a BCP-47 tag) only when the host can
-/// tell), `focus` (the focused *node*'s key), `focus_visible`,
-/// `viewport_w`/`viewport_h` (logical px), `window` chrome facts, the
-/// queries `edit_text(key)`, `is_focused(key)`, `is_hovered(key)`,
-/// `is_pressed(key)` (keys are the integers events carry; `is_focused`,
-/// `set_focus` and `reveal` also take a declared `key` string, see
-/// `key_arg`), the editor verb `set_edit_text(key_or_label, text)` (whose
-/// label spelling reaches an editor this view is about to declare),
-/// `measure_text(s, opts, max_w)` (see `measure_from_lua`), the
-/// focus verbs `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()`
-/// and the scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
-/// `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
-/// `caret_rect(key, byte)`, the window requests `set_window_size(window,
-/// w, h)` / `focus_window(window)`, and the two calls of a script that
-/// hosts a plugin of its own: `add_extension(namespace, path)` and
-/// `extension_namespaces()`.
 /// A node named either way a script can: the integer key an event carried,
 /// or the string label its `key` field declared, resolved through the
 /// frame so far and then the last finished one (`Ui::key_of`). A string no
@@ -335,6 +313,31 @@ fn key_query(ui: &mut Ui<'_>, v: mlua::Value) -> mlua::Result<Option<Key>> {
     }
 }
 
+/// Host facts handed to `view(env)`, the reading `schema::ENV_FIELDS`
+/// documents and `the_env_table_is_the_documented_env_shape` pins to it key
+/// for key: `refresh_hz` (nil if unknown),
+/// `frame_budget_ms`, `focused` (the *window*'s keyboard focus, a bool),
+/// `system` (what the user set in the OS: `appearance` and `motion` as
+/// strings, always there because "unknown" is one of their readings, and
+/// `accent` (0xRRGGBBAA) / `locale` (a BCP-47 tag) only when the host can
+/// tell), `focus` (the focused *node*'s key), `focus_visible`,
+/// `viewport_w`/`viewport_h` (logical px), `window` chrome facts, the
+/// queries `edit_text(key)`, `is_focused(key)`, `is_hovered(key)`,
+/// `is_pressed(key)`, `scroll_offset(key)`, `scroll_geometry(key)`,
+/// `text_hit(key, x, y)` and `caret_rect(key, byte)` (each takes either
+/// spelling — the integer key an event carried or the label a `key` field
+/// declared — and answers nil/false/zero for a name no frame declared, see
+/// `key_query`; the verbs take the same two and refuse an undeclared name,
+/// see `key_arg`), the editor verb `set_edit_text(key_or_label, text)` (whose
+/// label spelling reaches an editor this view is about to declare),
+/// `measure_text(s, opts, max_w)` (see `measure_from_lua`), the
+/// focus verbs `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()`
+/// and the scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
+/// `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
+/// `caret_rect(key, byte)`, the window requests `set_window_size(window,
+/// w, h)` / `focus_window(window)`, and the two calls of a script that
+/// hosts a plugin of its own: `add_extension(namespace, path)` and
+/// `extension_namespaces()`.
 fn env_table<'scope, 'env: 'scope>(
     lua: &Lua,
     scope: &'scope mlua::Scope<'scope, 'env>,
