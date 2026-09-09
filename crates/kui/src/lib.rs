@@ -451,6 +451,50 @@ pub fn run<A: App>(
     app(title).extensions(extensions).run(application)
 }
 
+/// Everything about a pane the driver owns and the app only reads: the
+/// display's refresh rate, the four OS settings, and what kind of window
+/// this is.
+///
+/// Written here rather than only before a frame because a host that drives
+/// its own loop runs its view before the first one — Node's `runWindowed`
+/// renders as soon as the window exists — and a view that read these off a
+/// core nothing had filled in got the defaults: appearance unknown, no
+/// refresh rate, `custom_chrome` false in an app that draws its own
+/// titlebar. It is also the frame the user actually sees in an app that
+/// only redraws on input, since nothing re-runs a view that nothing asked
+/// a question of (backlog F39).
+fn sync_env(pane: &mut Pane, system: &system_env::Queried, chrome: Chrome) {
+    let window = &pane.window;
+    // Per-frame so it self-corrects when the window moves to another
+    // monitor.
+    pane.core.env.refresh_hz = window
+        .current_monitor()
+        .and_then(|m| m.refresh_rate_millihertz())
+        .map(|mhz| mhz as f32 / 1000.0);
+    // All four settings are event-driven rather than re-asked here: the
+    // appearance arrives on `ThemeChanged` (and is read once when the
+    // window is created), the other three were asked of the OS in `mod
+    // system_env`. Unlike the refresh rate above there is nothing for a
+    // per-frame read to self-correct against — a window does not drift
+    // into another appearance the way it drifts onto another monitor —
+    // and taking focus back re-asks both, which covers a change the
+    // platform did not report.
+    pane.core.env.system = SystemEnv {
+        appearance: pane.appearance,
+        accent: system.accent,
+        motion: system.motion,
+        locale: system.locale,
+    };
+    pane.core.env.window = WindowEnv {
+        id: pane.id,
+        custom_chrome: chrome != Chrome::Native,
+        maximized: window.is_maximized(),
+        fullscreen: window.fullscreen().is_some(),
+        native_controls: (cfg!(target_os = "macos") && chrome == Chrome::Custom)
+            .then_some(MACOS_TRAFFIC_LIGHTS),
+    };
+}
+
 /// A window's OS light/dark setting, as `env.system.appearance`.
 ///
 /// winit answers on macOS and Windows and returns `None` on X11 and on
@@ -1612,6 +1656,11 @@ impl<A: App> Shell<A> {
             #[cfg(target_os = "windows")]
             nc,
         });
+        // Before anything can ask: a host that drives its own loop runs
+        // its view as soon as the window exists, which is before the
+        // first frame (backlog F39).
+        let pane = self.panes.last_mut().expect("just pushed");
+        sync_env(pane, &self.system, self.chrome);
     }
 
     /// The attributes every window of this app is created with: the
@@ -1990,40 +2039,14 @@ impl<A: App> Shell<A> {
             ..
         } = self;
         let pane = &mut panes[i];
+        // What the driver knows and the view only reads, refreshed for
+        // this frame (it was already filled in when the pane opened).
+        sync_env(pane, system, *chrome);
         let window = &pane.window;
-        let (viewport, scale) = pane.size();
-        let size = window.inner_size();
         // The core turns a changed viewport into a `resize` event, routed
         // with the rest of the pending events after this frame.
-        // Per-frame so it self-corrects when the window moves to another
-        // monitor.
-        pane.core.env.refresh_hz = window
-            .current_monitor()
-            .and_then(|m| m.refresh_rate_millihertz())
-            .map(|mhz| mhz as f32 / 1000.0);
-        // All four settings are event-driven rather than re-asked here:
-        // the appearance arrives on `ThemeChanged` (and is read once when
-        // the window is created), the other three were asked of the OS in
-        // `mod system_env`. Unlike the refresh rate above there is nothing
-        // for a per-frame read to self-correct against — a window does not
-        // drift into another appearance the way it drifts onto another
-        // monitor — and taking focus back re-asks both, which covers a
-        // change the platform did not report.
-        pane.core.env.system = SystemEnv {
-            appearance: pane.appearance,
-            accent: system.accent,
-            motion: system.motion,
-            locale: system.locale,
-        };
-        pane.core.env.window = WindowEnv {
-            id: pane.id,
-            custom_chrome: *chrome != Chrome::Native,
-            maximized: window.is_maximized(),
-            fullscreen: window.fullscreen().is_some(),
-            native_controls: (cfg!(target_os = "macos") && *chrome == Chrome::Custom)
-                .then_some(MACOS_TRAFFIC_LIGHTS),
-        };
-
+        let (viewport, scale) = pane.size();
+        let size = window.inner_size();
         let t_view = std::time::Instant::now();
         pane.core.set_time(epoch.elapsed().as_secs_f64());
         // The extensions fill the slots the host's view declares, in place

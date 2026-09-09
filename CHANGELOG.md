@@ -101,6 +101,47 @@ field reports).
   A field inside a `scrollX` box already worked, and still does; that is
   a composition an app builds, and this is what the element does alone.
 
+- **A window's `env` is filled in before the first view, not before the
+  first frame** (backlog F39). The refresh rate, the four OS settings and
+  the window facts were written into the core in the runner's redraw — but
+  a host that drives its own loop runs its view as soon as the window
+  exists, which is earlier. So every Node app's first `view` read
+  `appearance: "unknown"`, no refresh rate and — the sharp one —
+  `customChrome: false` in an app launched with `chrome: 'custom'`, which
+  is a titlebar drawn wrong on the frame the user sees. For an app that
+  only redraws on input that frame is also the last one, which is what the
+  `system` event above is for.
+
+- **`<button accent>` typechecks** (backlog F37, from an alpha.10 field
+  report). alpha.10 gave the stock button the accent row, and said so in
+  its own entry above and in `howto.md`; every binding read it and
+  `docs/props.md` documented it. `ButtonProps` in `jsx-runtime.d.ts` did
+  not name it, so a TypeScript app got `Property 'accent' does not exist
+  on type 'ButtonProps'` for the spelling the release was about, and the
+  app that found it moved the colour onto a node beside the button
+  instead. The runtime was never wrong — the encoder admitted the row and
+  painted it, which is how the report could verify the three backgrounds
+  before filing.
+
+  This is the second time that interface fell behind the list it is meant
+  to mirror: alpha.9 added `description` to it by hand (F24) and left the
+  hand-written list in place. So the fix is the list. `ButtonProps` now
+  `extends` what `gen-types.mjs` generates from `BUTTON_ROWS_JSX` — the
+  same rows `ElementDef::jsx_rows` hands the encoder — between markers of
+  its own, beside the prop types that file already writes. A row added in
+  `schema.rs` is a prop on `<button>` one `npm run gen` later, and the CI
+  step that reruns the generator and diffs `jsx-runtime.d.ts` is what
+  catches the next drift. The button is no wider than it was: it still
+  takes exactly `onClick`, `key`, `label`, `description`, `tooltip`,
+  `disabled` and `accent`, and `<button bg="…">` is still a type error and
+  an `unknown-prop` warning.
+
+  What let it ship: nothing typechecked the spelling. CI does run
+  `npm run typecheck` over `examples/node`, on the stated grounds that the
+  example "uses every app-facing type" — but no example wrote `accent`, so
+  the one check that could have seen the gap had nothing to look at. The
+  counter's `+1` carries it now.
+
 ### What you can delete
 
 The cast, or the node you moved the accent onto: `accent` is a row on the
