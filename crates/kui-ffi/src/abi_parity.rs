@@ -540,9 +540,13 @@ fn asserts() -> String {
         border_w: f32 => "float",
         blur: f32 => "float",
         kind: u32 => "uint32_t",
+        clip: u32 => "uint32_t",
         uv: [u32; 4] => "uint32_t *",
-        clip: [f32; 4] => "float *",
-        clip_radius: [f32; 4] => "float *",
+    });
+
+    abi_struct!(o, KuiClip {
+        rect: [f32; 4] => "float *",
+        radius: [f32; 4] => "float *",
     });
 
     abi_struct!(o, KuiDrawData {
@@ -559,6 +563,8 @@ fn asserts() -> String {
         fragments: *const KuiFragmentDraw => "const KuiFragmentDraw *",
         fragment_count: usize => "size_t",
         time: f32 => "float",
+        clips: *const KuiClip => "const KuiClip *",
+        clip_count: usize => "size_t",
     });
     abi_out_struct!(o, KuiDrawData);
     abi_struct!(o, KuiFragmentDraw {

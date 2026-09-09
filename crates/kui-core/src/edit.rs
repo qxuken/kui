@@ -13,7 +13,7 @@ use cosmic_text::{
 use rustc_hash::FxHashMap;
 
 use crate::color::Color;
-use crate::display::{Clip, Quad, QuadKind};
+use crate::display::{Clip, ClipId, Quad, QuadKind};
 use crate::geom::{Rect, Size, Vec2};
 use crate::input::{EditKey, Mods};
 use crate::key::Key;
@@ -1260,6 +1260,7 @@ impl EditStore {
         origin: Vec2,
         focused: bool,
         clip: Clip,
+        clip_id: ClipId,
         fs: &mut FontSystem,
         text_system: &mut TextSystem,
         atlas: &mut crate::atlas::GlyphAtlas,
@@ -1327,8 +1328,7 @@ impl EditStore {
                             blur: 0.0,
                             kind: QuadKind::Solid,
                             uv: [0; 4],
-                            clip: clip.rect,
-                            clip_radius: clip.radius,
+                            clip: clip_id,
                         });
                     }
                     // Empty line inside the selection: a stub for the
@@ -1343,8 +1343,7 @@ impl EditStore {
                             blur: 0.0,
                             kind: QuadKind::Solid,
                             uv: [0; 4],
-                            clip: clip.rect,
-                            clip_radius: clip.radius,
+                            clip: clip_id,
                         });
                     }
                 }
@@ -1364,8 +1363,7 @@ impl EditStore {
                             blur: 0.0,
                             kind: QuadKind::Solid,
                             uv: [0; 4],
-                            clip: clip.rect,
-                            clip_radius: clip.radius,
+                            clip: clip_id,
                         };
                         out.push(solid(
                             Rect::new(origin.x + x, origin.y + run.line_top, w, line_height),
@@ -1405,8 +1403,7 @@ impl EditStore {
                         blur: 0.0,
                         kind: crate::text::glyph_kind(&slot),
                         uv: [slot.x, slot.y, slot.w, slot.h],
-                        clip: clip.rect,
-                        clip_radius: clip.radius,
+                        clip: clip_id,
                     });
                 }
             }
@@ -1426,8 +1423,7 @@ impl EditStore {
                     blur: 0.0,
                     kind: QuadKind::Solid,
                     uv: [0; 4],
-                    clip: clip.rect,
-                    clip_radius: clip.radius,
+                    clip: clip_id,
                 });
             }
         });

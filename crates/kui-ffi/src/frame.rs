@@ -710,6 +710,8 @@ pub extern "C" fn kui_draw_data(ptr: *mut KuiCtx, out: *mut KuiDrawData) -> bool
         let data = KuiDrawData {
             quads: dl.quads.as_ptr().cast(),
             quad_count: dl.quads.len(),
+            clips: dl.clips.as_ptr().cast(),
+            clip_count: dl.clips.len(),
             viewport_w: dl.viewport.w,
             viewport_h: dl.viewport.h,
             scale: dl.scale,
@@ -728,6 +730,8 @@ pub extern "C" fn kui_draw_data(ptr: *mut KuiCtx, out: *mut KuiDrawData) -> bool
 }
 
 const _: () = {
-    // KuiQuad must mirror kui_core::Quad field-for-field for the cast above.
+    // KuiQuad and KuiClip must mirror kui_core::Quad and kui_core::Clip
+    // field-for-field for the casts above.
     assert!(std::mem::size_of::<KuiQuad>() == std::mem::size_of::<kui_core::Quad>());
+    assert!(std::mem::size_of::<KuiClip>() == std::mem::size_of::<kui_core::Clip>());
 };

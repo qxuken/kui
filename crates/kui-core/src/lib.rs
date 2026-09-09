@@ -57,7 +57,7 @@ pub use color::Color;
 pub use cursor::CursorShape;
 pub use depart::DepartStore;
 pub use diag::Warning;
-pub use display::{Clip, DisplayList, FragmentDraw, NO_CLIP, Quad, QuadKind};
+pub use display::{Clip, ClipId, DisplayList, FragmentDraw, NO_CLIP, NO_CLIP_ID, Quad, QuadKind};
 pub use edit::{EditOptions, MAX_UNDECLARED_EDITS};
 pub use enter::Enter;
 pub use env::{Appearance, Env, Locale, MotionPref, SystemEnv};

@@ -12,7 +12,7 @@ use rustc_hash::FxHashMap;
 
 use crate::atlas::GlyphAtlas;
 use crate::color::Color;
-use crate::display::{Clip, Quad, QuadKind};
+use crate::display::{Clip, ClipId, Quad, QuadKind};
 use crate::geom::{Rect, Size, Vec2};
 use crate::key::Key;
 use crate::resources::Resources;
@@ -1292,6 +1292,8 @@ impl TextSystem {
         origin: Vec2,
         node: Size,
         clip: Clip,
+        clip_id: ClipId,
+        clips: &mut Vec<Clip>,
         res: &Resources,
         fs: &mut FontSystem,
         atlas: &mut GlyphAtlas,
@@ -1314,8 +1316,9 @@ impl TextSystem {
             if clip.rect.w <= 0.0 || clip.rect.h <= 0.0 {
                 return;
             }
+            let clip_id = crate::display::intern_clip(clips, clip);
             if let Some(w) = self.long[&key].wrap_w {
-                self.emit_long_rows(key, w, ox, oy, color, clip, res, fs, atlas, out);
+                self.emit_long_rows(key, w, ox, oy, color, clip, clip_id, res, fs, atlas, out);
                 return;
             }
             let (first, last) = {
@@ -1339,7 +1342,18 @@ impl TextSystem {
                 };
                 let raster = &mut self.raster;
                 let entry = self.cache.get_mut(&chunk_key).expect("just ensured");
-                emit_entry(entry, ox + x, oy, color, clip, raster, fs, atlas, out);
+                emit_entry(
+                    entry,
+                    ox + x,
+                    oy,
+                    color,
+                    clip,
+                    clip_id,
+                    raster,
+                    fs,
+                    atlas,
+                    out,
+                );
             }
             return;
         }
@@ -1352,13 +1366,14 @@ impl TextSystem {
 
         // Overflowing modes own their box: a line that runs past the node's
         // width is clipped there rather than painted over siblings.
-        let clip = if entry.clamp_w {
+        let (clip, clip_id) = if entry.clamp_w {
             let own = Rect::new(ox, oy, (node.w * scale).ceil(), (node.h * scale).ceil());
-            clip.intersect(own, crate::display::SQUARE)
+            let clip = clip.intersect(own, crate::display::SQUARE);
+            (clip, crate::display::intern_clip(clips, clip))
         } else {
-            clip
+            (clip, clip_id)
         };
-        emit_entry(entry, ox, oy, color, clip, raster, fs, atlas, out);
+        emit_entry(entry, ox, oy, color, clip, clip_id, raster, fs, atlas, out);
     }
 }
 
@@ -1375,6 +1390,7 @@ impl TextSystem {
         oy: f32,
         color: Color,
         clip: Clip,
+        clip_id: ClipId,
         res: &Resources,
         fs: &mut FontSystem,
         atlas: &mut GlyphAtlas,
@@ -1418,6 +1434,7 @@ impl TextSystem {
                 line.line_h,
                 color,
                 clip,
+                clip_id,
                 raster,
                 fs,
                 atlas,
@@ -1441,6 +1458,7 @@ fn emit_entry_rows(
     line_h: f32,
     color: Color,
     clip: Clip,
+    clip_id: ClipId,
     raster: &mut Raster,
     fs: &mut FontSystem,
     atlas: &mut GlyphAtlas,
@@ -1470,9 +1488,8 @@ fn emit_entry_rows(
             border_w: 0.0,
             blur: 0.0,
             kind: g.kind,
+            clip: clip_id,
             uv: g.uv,
-            clip: clip.rect,
-            clip_radius: clip.radius,
         });
     }
 }
@@ -1623,6 +1640,7 @@ fn emit_entry(
     oy: f32,
     color: Color,
     clip: Clip,
+    clip_id: ClipId,
     raster: &mut Raster,
     fs: &mut FontSystem,
     atlas: &mut GlyphAtlas,
@@ -1644,9 +1662,8 @@ fn emit_entry(
             border_w: 0.0,
             blur: 0.0,
             kind: QuadKind::Solid,
+            clip: clip_id,
             uv: [0; 4],
-            clip: clip.rect,
-            clip_radius: clip.radius,
         };
         // A span's background goes under its glyphs; its lines go over.
         out.extend(
@@ -1678,9 +1695,8 @@ fn emit_entry(
                     border_w: 0.0,
                     blur: 0.0,
                     kind: g.kind,
+                    clip: clip_id,
                     uv: g.uv,
-                    clip: clip.rect,
-                    clip_radius: clip.radius,
                 }),
         );
         out.extend(

@@ -4,11 +4,12 @@
 //!
 //! Offscreen, so there is no surface and no vsync to hide behind. The quad
 //! pipeline is this crate's: the same `shader.wgsl`, the same descriptor,
-//! the same blend. `Instance` and `preprocess_shader` are copied from
-//! `lib.rs` because both are private; if either changes there and not here
-//! the numbers stop meaning anything. The size assertion below catches a
+//! the same blend. `Instance`, `Globals` and `preprocess_shader` are copied
+//! from `lib.rs` because all three are private; if any changes there and not
+//! here the numbers stop meaning anything. The size assertions below catch a
 //! field added on one side only, which is the drift that has actually
-//! happened to this struct (C15: 92 to 124 bytes, one field at a time).
+//! happened to both structs (C15: `Instance` 92 to 124 bytes, one field at a
+//! time; ADR 0015: `Globals` 16 to 32).
 //!
 //! Not a divan bench — it drives a GPU and reports three different things,
 //! so it prints a table and exits.
@@ -41,12 +42,21 @@ struct Instance {
 /// 32 floats. A mismatch here means `lib.rs` moved and this bench did not.
 const _: () = assert!(std::mem::size_of::<Instance>() == 128);
 
+/// Mirrors the private `Globals` in `lib.rs`, field for field. The quad
+/// pipeline here is built from that crate's `shader.wgsl`, so this is the
+/// layout the shader reads and a short buffer fails the draw outright.
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Globals {
     viewport: [f32; 2],
     atlas_size: [f32; 2],
+    time: f32,
+    scale: f32,
+    _pad: [f32; 2],
 }
+
+/// 32 bytes, as `globals_layout_matches` in `lib.rs` asserts of the real one.
+const _: () = assert!(std::mem::size_of::<Globals>() == 32);
 
 /// Mirrors the private `preprocess_shader` in `lib.rs`.
 fn preprocess_shader(src: &str, dual: bool) -> String {
@@ -377,6 +387,9 @@ impl Bench {
         let globals = Globals {
             viewport: [W as f32, H as f32],
             atlas_size: [1024.0, 1024.0],
+            time: 0.0,
+            scale: 1.0,
+            _pad: [0.0; 2],
         };
         let globals_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("kui.globals"),

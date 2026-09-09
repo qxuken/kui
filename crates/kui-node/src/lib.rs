@@ -1097,6 +1097,12 @@ pub fn quad_stride() -> u32 {
     std::mem::size_of::<kui_core::Quad>() as u32
 }
 
+/// Byte stride of one clip in the `clips()` buffer.
+#[napi]
+pub fn clip_stride() -> u32 {
+    std::mem::size_of::<kui_core::Clip>() as u32
+}
+
 // ---------------------------------------------------------------------------
 // Windowed runner (winit + wgpu via kui's PumpRunner)
 
@@ -1574,6 +1580,23 @@ macro_rules! core_methods {
                     std::slice::from_raw_parts(
                         dl.quads.as_ptr().cast::<u8>(),
                         std::mem::size_of_val(dl.quads.as_slice()),
+                    )
+                };
+                Buffer::from(bytes.to_vec())
+            }
+
+            /// The clips this frame's quads name through their `clip`
+            /// index, `clipStride()` bytes each, laid out as kui-ffi's
+            /// KuiClip (see include/kui.h) and decoded by `decodeClips`.
+            /// Entry zero clips nothing, so a quad always has one; the
+            /// list is empty only on a frame that drew nothing.
+            #[napi]
+            pub fn clips(&mut self) -> Buffer {
+                let (dl, _) = self.$core().output();
+                let bytes = unsafe {
+                    std::slice::from_raw_parts(
+                        dl.clips.as_ptr().cast::<u8>(),
+                        std::mem::size_of_val(dl.clips.as_slice()),
                     )
                 };
                 Buffer::from(bytes.to_vec())

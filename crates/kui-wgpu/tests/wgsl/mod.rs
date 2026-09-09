@@ -43,20 +43,21 @@ pub fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// `shade`'s `inside` — how much of the fragment at (`x`, `y`) the quad's
-/// clip lets through. The plain rect test while `clip_radius` is all zero;
-/// the rounded SDF otherwise.
-pub fn inside(q: &kui_core::Quad, x: f32, y: f32) -> f32 {
-    if q.clip_radius.iter().all(|r| *r <= 0.0) {
-        let ok =
-            x >= q.clip.x && y >= q.clip.y && x <= q.clip.x + q.clip.w && y <= q.clip.y + q.clip.h;
+/// `shade`'s `inside` — how much of the fragment at (`x`, `y`) the given
+/// clip lets through. The plain rect test while the radii are all zero;
+/// the rounded SDF otherwise. The clip comes from `DisplayList::clips`,
+/// which is where a quad's `clip` index points.
+pub fn inside(clip: &kui_core::Clip, x: f32, y: f32) -> f32 {
+    let r = clip.rect;
+    if clip.radius.iter().all(|v| *v <= 0.0) {
+        let ok = x >= r.x && y >= r.y && x <= r.x + r.w && y <= r.y + r.h;
         return f32::from(ok);
     }
-    let half = [q.clip.w * 0.5, q.clip.h * 0.5];
+    let half = [r.w * 0.5, r.h * 0.5];
     let d = sd_rounded_box(
-        [x - (q.clip.x + half[0]), y - (q.clip.y + half[1])],
+        [x - (r.x + half[0]), y - (r.y + half[1])],
         half,
-        q.clip_radius,
+        clip.radius,
     );
     1.0 - smoothstep(-AA, AA, d)
 }

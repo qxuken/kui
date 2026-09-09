@@ -13,7 +13,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { constants as osConstants, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Ctx, KuiWindow, createApp, createEncoder, decodeQuads, protocol, quadStride, withEffects } from './index.js';
+import { Ctx, KuiWindow, clipStride, createApp, createEncoder, decodeQuads, protocol, quadStride, withEffects } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
@@ -2675,24 +2675,34 @@ const FNV_OFFSET = 0xcbf29ce484222325n;
 const FNV_PRIME = 0x100000001b3n;
 const MASK = 0xffffffffffffffffn;
 
-/** FNV-1a over each quad's words 0..18 and 23..30 — `KuiQuad` without its
- *  `uv`, which depends on glyph insertion order — plus the `uv` of a segment
- *  quad (kind 6), where it is the endpoints. Mirrors
- *  `conformance::quad_digest`. */
-function quadDigest(buffer) {
+/** FNV-1a over each quad's words 0..18 — `KuiQuad` without its `uv`, which
+ *  depends on glyph insertion order, and without the clip index — plus the
+ *  `uv` of a segment quad (kind 6), where it is the endpoints, and then the
+ *  eight words of the clip that index names. The clip is digested resolved
+ *  rather than as the index, so the number says what a backend clips by and
+ *  not how this frame interned it. Mirrors `conformance::quad_digest`. */
+function quadDigest(buffer, clipBuffer) {
   const stride = quadStride();
+  const clipStrideBytes = clipStride();
   const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  const clipView = new DataView(clipBuffer.buffer, clipBuffer.byteOffset, clipBuffer.byteLength);
   let h = FNV_OFFSET;
+  const mix = (word) => {
+    let v = BigInt(word);
+    for (let b = 0; b < 4; b++) {
+      h = (h ^ (v & 0xffn)) & MASK;
+      h = (h * FNV_PRIME) & MASK;
+      v >>= 8n;
+    }
+  };
   for (let off = 0; off + stride <= buffer.byteLength; off += stride) {
     const segment = view.getUint32(off + KIND_WORD * 4, true) === 6;
-    const words = [...Array(19).keys(), ...(segment ? [19, 20, 21, 22] : []), 23, 24, 25, 26, 27, 28, 29, 30];
-    for (const i of words) {
-      let word = BigInt(view.getUint32(off + i * 4, true));
-      for (let b = 0; b < 4; b++) {
-        h = (h ^ (word & 0xffn)) & MASK;
-        h = (h * FNV_PRIME) & MASK;
-        word >>= 8n;
-      }
+    // Word 19 is the clip index, digested through the table below.
+    const words = [...Array(19).keys(), ...(segment ? [20, 21, 22, 23] : [])];
+    for (const i of words) mix(view.getUint32(off + i * 4, true));
+    const clip = view.getUint32(off + 19 * 4, true) * clipStrideBytes;
+    for (let i = 0; i < 8; i++) {
+      mix(clip + (i + 1) * 4 <= clipBuffer.byteLength ? clipView.getUint32(clip + i * 4, true) : 0);
     }
   }
   return h.toString(16).padStart(16, '0');
@@ -2818,7 +2828,7 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
   const quads = Buffer.from(ctx.quads());
   const stride = quadStride();
   const count = quads.byteLength / stride;
-  lines.push(`quads ${count} ${quadDigest(quads)}`);
+  lines.push(`quads ${count} ${quadDigest(quads, Buffer.from(ctx.clips()))}`);
   const kinds = [0, 0, 0, 0, 0, 0, 0, 0];
   for (let off = 0; off < quads.byteLength; off += stride) kinds[quads.readUInt32LE(off + KIND_WORD * 4)]++;
   lines.push(`kinds ${kinds.join(' ')}`);

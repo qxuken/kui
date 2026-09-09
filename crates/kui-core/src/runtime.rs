@@ -19,7 +19,7 @@ use crate::atlas::GlyphAtlas;
 use crate::color::Color;
 use crate::depart::{DepartStore, Ghost, GhostContent, Pass, Place, Playback, Replay};
 use crate::diag::{Diagnostics, Warning};
-use crate::display::{Clip, DisplayList, Quad, QuadKind};
+use crate::display::{Clip, ClipId, DisplayList, NO_CLIP_ID, Quad, QuadKind};
 use crate::edit::{EditOptions, EditStore};
 use crate::env::{Env, SystemEnv};
 use crate::geom::{Rect, Size, Vec2};
@@ -168,6 +168,10 @@ pub struct Core {
     origin: OriginId,
     /// Per-node inherited clip (logical), rebuilt each finish_frame.
     clips: Vec<Clip>,
+    /// The `DisplayList::clips` index each of those became, so a node
+    /// whose clip is its parent's names the entry the parent already
+    /// interned instead of asking again. Parallel to `clips`.
+    clip_ids: Vec<ClipId>,
     /// Whether any node this frame clips — lets emission skip clip math
     /// entirely for the common unclipped case.
     any_clip: bool,
@@ -210,6 +214,8 @@ pub struct Core {
     /// is replayed: the clips its own clippers establish, since a ghost
     /// draws outside every clip its ancestors held (`depart`).
     ghost_clip: Vec<Clip>,
+    /// The interned index of each of those, as `clip_ids` is for `clips`.
+    ghost_clip_ids: Vec<ClipId>,
     ghost_rect: Vec<Rect>,
     /// A view asked for one more frame (`request_frame`); cleared by
     /// `begin_frame`, reported through `animating`.
@@ -349,6 +355,7 @@ impl Core {
             counters: Vec::new(),
             origin: OriginId::HOST,
             clips: Vec::new(),
+            clip_ids: Vec::new(),
             any_clip: false,
             any_rounded_clip: false,
             opacity: Vec::new(),
@@ -366,6 +373,7 @@ impl Core {
             any_exit: false,
             ghost_opacity: Vec::new(),
             ghost_clip: Vec::new(),
+            ghost_clip_ids: Vec::new(),
             ghost_rect: Vec::new(),
             frame_requested: false,
             pending_reveal: None,

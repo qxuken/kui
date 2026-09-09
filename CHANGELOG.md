@@ -60,6 +60,64 @@ field reports).
   for a redraw when taking focus back finds the settings changed, which is
   the one path that had no event behind it.
 
+- `KUI_ABI_VERSION` is 11, and this one the size handshake cannot absorb.
+  `KuiQuad` lost `clip[4]` and `clip_radius[4]` and gained a `uint32_t clip`
+  in their place: the struct is 96 bytes where it was 124, and every field
+  after `kind` moved. `KuiQuad` travels as an array you stride with your own
+  `sizeof`, so an un-recompiled host reads element 1 at the wrong offset
+  whatever element 0 says — recompile, and read `dd.clips[q.clip]` where you
+  read `q.clip` and `q.clip_radius`. `KuiDrawData` gained `clips` and
+  `clip_count` to point at.
+- `kui_core::Quad::clip` is a `ClipId` (a `u32` index into
+  `DisplayList::clips`) and `Quad::clip_radius` is gone. `DisplayList::clip_of(&quad)`
+  resolves one; `Clip` is unchanged and still carries the rect and the four
+  radii. A backend or a test that read `q.clip.x` reads `dl.clip_of(q).rect.x`.
+- `conformance::quad_digest` takes the clip table as a second argument. The
+  number it produces is unchanged — the clip is digested resolved, so a
+  report from this version compares byte for byte against one from
+  alpha.10 — but a binding mirroring the walk (the C and Node adapters both
+  do) has to follow the index.
+- `decodeQuads` returns `clip` as a number, the index, and no longer returns
+  `clipRadii`. `ctx.clips()` and `decodeClips` are the other half;
+  `clipStride()` sizes them, as `quadStride()` does quads.
+
+### Changed
+
+- **`Quad` is 96 bytes, down from 124.** The clip — a rect and four corner
+  radii, 32 bytes — was on every quad, and nearly every quad of a frame
+  shares one with its neighbours: a clip is inherited, and only a clipping
+  node makes a new one. It rides in `DisplayList::clips` now with a 4-byte
+  index on the quad, the way a fragment's sixteen parameters have ridden in
+  `DisplayList::fragments` since ADR 0015 and for the same reason. The 28
+  bytes come off the struct emission writes once per quad and then walks
+  again in the fade pass, in the backend's upload, and in the whole previous
+  frame `depart` keeps for a diff.
+
+  What it is worth, measured interleaved against alpha.10 on an M3 Pro. The
+  win is where the quads are, and it is not everywhere: `cells_200x50_warm`,
+  which is 94% `CellStore::emit` and therefore almost entirely quad writes,
+  goes **57.3 µs → 47.6 µs (−17%)** with under 1% run-to-run spread on
+  either side, and `cells_200x50_streaming` **59.0 → 54.0 µs (−11%)**. The
+  frame benches move much less, because emission is about a seventh of what
+  they do: `frame_10k_rects_with_text_and_hits` 1.24 ms → 1.17 ms (−5.7%,
+  against ±3.2% run-to-run), `frame_1k_curves` −4.5% (±3.6%),
+  `frame_1k_typical` −3.6% (±3.4%), and `frame_10k_rects` itself −0.7%,
+  which on a ±1.7% floor is nothing. The two rows that clip read +2.4% and
+  +2.5% — inside their own spread, and the one place the change adds work
+  rather than removing it, since those frames intern a hundred clips.
+
+  Nothing renders differently. The corpus report — every quad digest of
+  every scene, across all four bindings — is byte-identical to alpha.10's,
+  which is the property the change was built to keep.
+
+  Interning is a constant-time append with a run-length check rather than a
+  real intern, and the callers avoid most of the calls: a node whose clip is
+  its parent's reuses the index the parent interned without comparing
+  anything, so a 10,000-node frame under one clipper interns twice. The
+  alternative — scanning the table — is quadratic on the frame shape that
+  makes many clips, a screen of width-clamped labels, which narrows the clip
+  once per label.
+
 ### Fixed
 
 - **A field that hugs its text no longer ratchets down to one character**
@@ -155,6 +213,12 @@ The palette branch that could only read `"unknown"`. `env.system` is filled
 in before your first view, and a change to it is a message — so a view that
 picks its colours from the OS can be written the way it reads, rather than
 against a reading that never arrived.
+
+Nothing for the two performance changes above, and that is the point: a
+view declares no clip and no tween slot, so the only code either one asks
+to change is a backend or a test reading the clip off a quad — the
+**What breaks** list, rather than a workaround this release made
+unnecessary.
 
 ## 0.1.0-alpha.10 (2026-09-09)
 

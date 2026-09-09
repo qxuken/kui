@@ -101,7 +101,7 @@ extern "C" {
  * elements it reads at the wrong places. Recompile and nothing in your
  * source changes; a zeroed bg is none.
  */
-#define KUI_ABI_VERSION 10u
+#define KUI_ABI_VERSION 11u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -1039,16 +1039,27 @@ typedef struct KuiQuad {
     float border_w;
     float blur;              /* KUI_QUAD_SHADOW: blur radius, also how far the rect is inflated */
     uint32_t kind;           /* KUI_QUAD_* */
+    /* Which entry of KuiDrawData.clips clips this quad. An index and not
+     * the clip itself since ABI 11: a clip is 32 bytes and a frame has a
+     * handful of them, so carrying one per quad was paid by every quad of
+     * every frame for a value nearly all of them share. Read
+     * dd.clips[q.clip]; entry 0 clips nothing, so there is no null case. */
+    uint32_t clip;
     uint32_t uv[4];          /* atlas texels: x, y, w, h; KUI_QUAD_SEGMENT: the endpoints as float bits */
-    float clip[4];           /* clip rect (physical px): pixels outside are transparent */
-    /* Corner radii of the clip (physical px), clockwise from the top-left:
-     * pixels outside the ROUNDED clip are transparent too. A clipping node
-     * with a radius rounds what it clips, the way CSS rounds
-     * `overflow: hidden` under a `border-radius`. All zero - every quad of
-     * a frame with no rounded clipper - is the plain rect clip, so a
-     * renderer that ignores this field is correct until an app rounds one. */
-    float clip_radius[4];
 } KuiQuad;
+
+/* [lib] One clip the frame's quads name, read through KuiDrawData.clips.
+ * You stride the array with your own sizeof, as with KuiQuad. */
+typedef struct KuiClip {
+    float rect[4];           /* physical px: pixels outside are transparent */
+    /* Corner radii (physical px), clockwise from the top-left: pixels
+     * outside the ROUNDED clip are transparent too. A clipping node with a
+     * radius rounds what it clips, the way CSS rounds `overflow: hidden`
+     * under a `border-radius`. All zero - every clip of a frame with no
+     * rounded clipper - is the plain rect clip, so a renderer that ignores
+     * this field is correct until an app rounds one. */
+    float radius[4];
+} KuiClip;
 
 /* [out-array] One KUI_QUAD_FRAGMENT's draw, addressed by that quad's uv[0].
  * `params` is what the node declared, zero-padded to sixteen; the shader
@@ -1076,6 +1087,10 @@ typedef struct KuiDrawData {
     size_t fragment_count;
     /* The frame clock in seconds, for a fragment's `time`. */
     float time;
+    /* The clips quads index through KuiQuad.clip. Never empty on a frame
+     * that drew anything: entry 0 clips nothing. Added in ABI 11. */
+    const KuiClip *clips;
+    size_t clip_count;
 } KuiDrawData;
 #define KUI_DRAW_DATA_INIT ((KuiDrawData){ .size = sizeof(KuiDrawData) })
 

@@ -1106,16 +1106,27 @@ pub struct KuiQuad {
     pub blur: f32,
     /// KUI_QUAD_*
     pub kind: u32,
+    /// Which entry of `KuiDrawData::clips` clips this quad. An index and
+    /// not the clip itself since ABI 11: a clip is thirty-two bytes and a
+    /// frame has a handful of them, so carrying it per quad cost every
+    /// quad of every frame for a value nearly all of them share.
+    pub clip: u32,
     /// Atlas texels: x, y, w, h. `KUI_QUAD_SEGMENT`: the endpoints as
     /// float bits (see `kui_core::Quad::segment_ends`).
     pub uv: [u32; 4],
-    /// Clip rect (physical px): x, y, w, h. Pixels outside are transparent.
-    pub clip: [f32; 4],
-    /// Corner radii of the clip (physical px), clockwise from the
-    /// top-left: pixels outside the rounded clip are transparent too. All
-    /// zero — every quad of a frame with no rounded clipper — is the plain
-    /// rect clip.
-    pub clip_radius: [f32; 4],
+}
+
+/// One clip a frame's quads name, in physical pixels. Mirrors
+/// `kui_core::Clip`, so `KuiDrawData::clips` is a cast and not a copy.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiClip {
+    /// Clip rect: x, y, w, h. Pixels outside are transparent.
+    pub rect: [f32; 4],
+    /// Corner radii (physical px), clockwise from the top-left: pixels
+    /// outside the rounded clip are transparent too. All zero — every clip
+    /// of a frame with no rounded clipper — is the plain rect clip.
+    pub radius: [f32; 4],
 }
 
 /// One `KUI_QUAD_FRAGMENT`'s draw, addressed by that quad's `uv[0]`.
@@ -1150,6 +1161,11 @@ pub struct KuiDrawData {
     pub fragment_count: usize,
     /// The frame clock in seconds, for a fragment's `time`.
     pub time: f32,
+    /// The clips the quads index through `KuiQuad::clip`. Never empty on a
+    /// frame that drew anything: entry zero clips nothing. Added in
+    /// ABI 11.
+    pub clips: *const KuiClip,
+    pub clip_count: usize,
 }
 
 impl Default for KuiDrawData {
@@ -1168,6 +1184,8 @@ impl Default for KuiDrawData {
             fragments: std::ptr::null(),
             fragment_count: 0,
             time: 0.0,
+            clips: std::ptr::null(),
+            clip_count: 0,
         }
     }
 }

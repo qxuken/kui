@@ -1289,6 +1289,14 @@ export declare class Ctx {
    */
   quads(): Buffer
   /**
+   * The clips this frame's quads name through their `clip`
+   * index, `clipStride()` bytes each, laid out as kui-ffi's
+   * KuiClip (see include/kui.h) and decoded by `decodeClips`.
+   * Entry zero clips nothing, so a quad always has one; the
+   * list is empty only on a frame that drew nothing.
+   */
+  clips(): Buffer
+  /**
    * This frame's fragment draws, in the order their quads index
    * them by `uv[0]`: seventeen doubles each, the handle as two
    * 32-bit halves and then the sixteen parameters. The
@@ -1574,6 +1582,9 @@ export declare class Ctx {
 /** Byte stride of one quad in the `quads()` buffer. */
 export declare function quadStride(): number
 
+/** Byte stride of one clip in the `clips()` buffer. */
+export declare function clipStride(): number
+
 /**
  * A real kui window (winit + wgpu) driven from Node. The event loop is
  * pumped, not run: call `pump()` from a timer loop so winit and libuv share
@@ -1738,6 +1749,14 @@ export declare class KuiWindow {
    * because the OS is what drives a real window.
    */
   quads(): Buffer
+  /**
+   * The clips this frame's quads name through their `clip`
+   * index, `clipStride()` bytes each, laid out as kui-ffi's
+   * KuiClip (see include/kui.h) and decoded by `decodeClips`.
+   * Entry zero clips nothing, so a quad always has one; the
+   * list is empty only on a frame that drew nothing.
+   */
+  clips(): Buffer
   /**
    * This frame's fragment draws, in the order their quads index
    * them by `uv[0]`: seventeen doubles each, the handle as two
@@ -2164,13 +2183,25 @@ export interface Quad {
    *  in the core, so a display list carries many. `null` on every other
    *  kind. */
   ends: [number, number, number, number] | null;
-  clip: [number, number, number, number];
-  /** Corner radii of the clip, same order as `radii`: a clipping node with a
+  /** Which entry of `decodeClips(ctx.clips())` clips this quad. An index
+   *  rather than the clip itself since ABI 11: a clip is 32 bytes and a
+   *  frame has a handful of them, so carrying one per quad was paid by
+   *  every quad of every frame for a value nearly all of them share.
+   *  Entry 0 clips nothing, so there is no null case. */
+  clip: number;
+}
+
+/** One clip a frame's quads name, from `decodeClips`. Physical px. */
+export interface Clip {
+  rect: [number, number, number, number];
+  /** Corner radii, clockwise from the top-left: a clipping node with a
    *  radius rounds what it clips. All zero = a plain rect clip. */
-  clipRadii: [number, number, number, number];
+  radii: [number, number, number, number];
 }
 
 export declare function decodeQuads(buffer: Buffer): Quad[];
+
+export declare function decodeClips(buffer: Buffer): Clip[];
 
 /** `M` is the model, `A` every message `update` can see. Annotate `update`
  *  with the app's own union (`type Msg = MyMsg | CoreMsg`) and `A` is

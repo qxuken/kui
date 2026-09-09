@@ -126,7 +126,19 @@
 /// opened it. A plugin's source does not change; a plugin *binary* built
 /// against ABI 9 must not be handed an ABI 10 event, and the version is
 /// what says so.
-pub const KUI_ABI_VERSION: u32 = 10;
+/// ABI 11 takes the clip off `KuiQuad` and puts it behind an index into a
+/// new `KuiDrawData::clips`. This is the second bump the size handshake
+/// cannot absorb (ABI 7 was the first): `KuiQuad` travels as an array, so
+/// the [out-array] hazard applies — the struct got 28 bytes shorter and
+/// every field after `kind` moved, which an ABI-10 host reading element 1
+/// of the new array would find as garbage whatever element 0 said. The
+/// reason is cost, not tidiness: the clip was a rect and four radii on a
+/// struct written once per quad and then walked again by the fade pass,
+/// the backend's upload and the previous frame `depart` keeps, for a
+/// value nearly every quad of a frame shares. A host reads
+/// `dd.clips[q.clip]` where it used to read `q.clip` and `q.clip_radius`;
+/// entry zero clips nothing, so there is no null case.
+pub const KUI_ABI_VERSION: u32 = 11;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its

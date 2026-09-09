@@ -3,7 +3,7 @@
 import native from './native.cjs';
 import { createEncoder } from './encoder.js';
 
-export const { Ctx, KuiWindow, quadStride, protocol } = native;
+export const { Ctx, KuiWindow, quadStride, clipStride, protocol } = native;
 export { createEncoder };
 
 // The brand on what `update` (or a function `init`) returns to hand the loop
@@ -564,15 +564,36 @@ export function decodeQuads(buffer) {
       // is inflated past the shape being blurred.
       blur: f[17],
       kind: u[18],
-      uv: [u[19], u[20], u[21], u[22]],
+      // Which entry of `decodeClips(ctx.clips())` clips this quad. An
+      // index rather than the clip itself since ABI 11: a clip is 32 bytes
+      // and a frame has a handful of them, so carrying one per quad was
+      // paid by every quad of every frame. Entry 0 clips nothing.
+      clip: u[19],
+      uv: [u[20], u[21], u[22], u[23]],
       // Segment quads (kind 6) only: the endpoints `uv` carries as float
       // bits, x0, y0, x1, y1 in physical px; `borderW` is the stroke width.
-      ends: u[18] === 6 ? [f[19], f[20], f[21], f[22]] : null,
-      clip: [f[23], f[24], f[25], f[26]],
-      // Corner radii of the clip, same order as `radii`: a clipping node
-      // with a radius rounds what it clips. All zero = a plain rect clip.
-      clipRadii: [f[27], f[28], f[29], f[30]],
+      ends: u[18] === 6 ? [f[20], f[21], f[22], f[23]] : null,
     });
   }
   return quads;
+}
+
+/**
+ * Decodes `ctx.clips()` into JS objects (debugging/testing aid).
+ * Layout mirrors KuiClip in include/kui.h; coordinates are physical px.
+ * A quad's `clip` indexes this list.
+ */
+export function decodeClips(buffer) {
+  const stride = clipStride();
+  const clips = [];
+  for (let off = 0; off + stride <= buffer.byteLength; off += stride) {
+    const f = new Float32Array(buffer.buffer, buffer.byteOffset + off, stride / 4);
+    clips.push({
+      rect: [f[0], f[1], f[2], f[3]],
+      // Corner radii clockwise from the top-left: a clipping node with a
+      // radius rounds what it clips. All zero = a plain rect clip.
+      radii: [f[4], f[5], f[6], f[7]],
+    });
+  }
+  return clips;
 }

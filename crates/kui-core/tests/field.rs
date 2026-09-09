@@ -47,15 +47,17 @@ fn frame(
 }
 
 /// The glyph quads of the last frame, left to right.
-fn glyphs(core: &mut Core) -> Vec<kui_core::Quad> {
+/// The glyph quads, each with the clip it names resolved out of
+/// `DisplayList::clips` — a quad carries an index, not the clip.
+fn glyphs(core: &mut Core) -> Vec<(kui_core::Quad, kui_core::Clip)> {
     let (dl, _) = core.output();
     let mut out: Vec<_> = dl
         .quads
         .iter()
         .filter(|q| !matches!(q.kind, QuadKind::Solid))
-        .copied()
+        .map(|q| (*q, dl.clip_of(q)))
         .collect();
-    out.sort_by(|a, b| a.rect.x.total_cmp(&b.rect.x));
+    out.sort_by(|a, b| a.0.rect.x.total_cmp(&b.0.rect.x));
     out
 }
 
@@ -148,17 +150,17 @@ fn a_field_scrolls_its_text_under_the_caret() {
     let drawn = glyphs(&mut core);
     assert!(!drawn.is_empty(), "no glyphs emitted");
     assert!(
-        drawn[0].rect.x < content_l,
+        drawn[0].0.rect.x < content_l,
         "the head of the text has scrolled out to the left: {} vs {content_l}",
-        drawn[0].rect.x
+        drawn[0].0.rect.x
     );
     // Every glyph is clipped to the field's content box, so the tail does
     // not run out over whatever sits beside it.
-    for q in &drawn {
+    for (_, clip) in &drawn {
         assert!(
-            q.clip.x >= content_l - 0.5 && q.clip.x + q.clip.w <= content_r + 0.5,
+            clip.rect.x >= content_l - 0.5 && clip.rect.x + clip.rect.w <= content_r + 0.5,
             "a glyph escaped the field: clip {:?} vs {content_l}..{content_r}",
-            q.clip
+            clip.rect
         );
     }
     // The caret is at the end and inside the box, which is the whole point.
@@ -174,7 +176,7 @@ fn a_field_scrolls_its_text_under_the_caret() {
     // Home brings the head back.
     core.handle_input(InputEvent::Key(EditKey::Home, Mods::default()));
     frame(&mut core, "", false, Some(100.0), 16.0);
-    let head = glyphs(&mut core)[0].rect.x;
+    let head = glyphs(&mut core)[0].0.rect.x;
     assert!(
         (head - content_l).abs() < 1.0,
         "Home should scroll the field back to the start: {head} vs {content_l}"

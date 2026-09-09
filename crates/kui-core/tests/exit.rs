@@ -275,6 +275,7 @@ fn a_ghost_escapes_its_ancestors_clip_and_keeps_its_place() {
         .collect();
     assert_eq!(quads.len(), 2, "the clipper, and the ghost after it");
     let ghost = quads[1];
+    let ghost_clip = dl.clip_of(ghost);
     assert!(
         (ghost.rect.x - 100.0).abs() < 1e-3,
         "halfway to +200: {:?}",
@@ -283,9 +284,9 @@ fn a_ghost_escapes_its_ancestors_clip_and_keeps_its_place() {
     // 100..140 is entirely outside the clipper's 0..50 box: a live child
     // there would have been clipped away to nothing.
     assert!(
-        ghost.clip.w > 1e8,
+        ghost_clip.rect.w > 1e8,
         "unclipped, though its parent clips: {:?}",
-        ghost.clip
+        ghost_clip.rect
     );
 }
 
@@ -348,18 +349,19 @@ fn a_ghost_keeps_the_clips_its_own_subtree_established() {
         quads.iter().map(|q| q.rect).collect::<Vec<_>>()
     );
     let (bx, child) = (quads[0], quads[1]);
+    let (bx_clip, child_clip) = (dl.clip_of(bx), dl.clip_of(child));
     assert!(
-        bx.clip.w > 1e8,
+        bx_clip.rect.w > 1e8,
         "the box itself is unclipped: {:?}",
-        bx.clip
+        bx_clip.rect
     );
     assert!((bx.rect.x - 100.0).abs() < 1e-3, "halfway: {:?}", bx.rect);
     assert!(
-        (child.clip.x - 100.0).abs() < 1e-3
-            && (child.clip.w - 50.0).abs() < 1e-3
-            && (child.clip.h - 20.0).abs() < 1e-3,
+        (child_clip.rect.x - 100.0).abs() < 1e-3
+            && (child_clip.rect.w - 50.0).abs() < 1e-3
+            && (child_clip.rect.h - 20.0).abs() < 1e-3,
         "the child is clipped to the box where it now is: {:?}",
-        child.clip
+        child_clip.rect
     );
 }
 

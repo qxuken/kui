@@ -12,7 +12,7 @@
 pub use wgpu;
 
 use kui_core::atlas::GlyphAtlas;
-use kui_core::{DisplayList, Quad, QuadKind};
+use kui_core::{Clip, DisplayList, Quad, QuadKind};
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -53,7 +53,11 @@ struct FragmentParams {
     params: [f32; 16],
 }
 
-fn instance_of(q: &Quad) -> Instance {
+/// The clip is resolved out of the frame's table here rather than read off
+/// the quad: it rides as an index (`kui_core::ClipId`) so the display list
+/// carries it once per distinct clip instead of once per quad.
+fn instance_of(q: &Quad, clips: &[Clip]) -> Instance {
+    let clip = clips.get(q.clip as usize).copied().unwrap_or(Clip::NONE);
     let kind = match q.kind {
         QuadKind::Solid => 0.0,
         QuadKind::GlyphMask => 1.0,
@@ -88,9 +92,9 @@ fn instance_of(q: &Quad) -> Instance {
         ],
         params: [q.blur, q.border_w, kind, 0.0],
         uv,
-        clip: [q.clip.x, q.clip.y, q.clip.w, q.clip.h],
+        clip: [clip.rect.x, clip.rect.y, clip.rect.w, clip.rect.h],
         radii: q.radius,
-        clip_radii: q.clip_radius,
+        clip_radii: clip.radius,
     }
 }
 
@@ -658,7 +662,8 @@ impl Renderer {
         self.sync_atlas(atlas);
 
         self.instances.clear();
-        self.instances.extend(dl.quads.iter().map(instance_of));
+        self.instances
+            .extend(dl.quads.iter().map(|q| instance_of(q, &dl.clips)));
         if self.instances.len() > self.instance_cap {
             self.instance_cap = self.instances.len().next_power_of_two();
             self.instance_buf = create_instance_buffer(self.gpu.device(), self.instance_cap);

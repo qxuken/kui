@@ -21,7 +21,7 @@ use rustc_hash::FxHashMap;
 
 use crate::atlas::GlyphAtlas;
 use crate::color::Color;
-use crate::display::{Clip, Quad, QuadKind};
+use crate::display::{Clip, ClipId, Quad, QuadKind};
 use crate::geom::{Rect, Size, Vec2};
 use crate::resources::Resources;
 use crate::spec::TextStyle;
@@ -282,6 +282,7 @@ impl CellStore {
         id: CellsId,
         origin: Vec2,
         clip: Clip,
+        clip_id: ClipId,
         res: &Resources,
         fs: &mut FontSystem,
         raster: &mut Raster,
@@ -310,9 +311,8 @@ impl CellStore {
             border_w: 0.0,
             blur: 0.0,
             kind,
+            clip: clip_id,
             uv,
-            clip: clip.rect,
-            clip_radius: clip.radius,
         };
         // Only the rows and columns the clip can show.
         let r0 = (((clip.rect.y - oy) / ch).floor().max(0.0)) as usize;

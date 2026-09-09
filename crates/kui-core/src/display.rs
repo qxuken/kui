@@ -85,18 +85,35 @@ pub struct Quad {
     /// Zero elsewhere.
     pub blur: f32,
     pub kind: QuadKind,
+    /// Which entry of [`DisplayList::clips`] clips this quad: pixels
+    /// outside that rect — and outside its rounded corners, when it has
+    /// any — are discarded.
+    ///
+    /// An index rather than the clip itself because a clip is thirty-two
+    /// bytes and a frame has a handful of them: every quad under one card
+    /// names the same entry, and a frame that clips nothing names one
+    /// entry from every quad it has. Carrying the rect and its four radii
+    /// on the quad cost 32 of the 124 bytes each, on a struct written once
+    /// per quad and then walked again by the fade pass, the backend's
+    /// upload and the previous frame `depart` keeps. The same reasoning
+    /// put a fragment's parameters in [`DisplayList::fragments`].
+    pub clip: ClipId,
     /// Atlas texels: x, y, w, h. For [`QuadKind::Segment`] the two
     /// endpoints instead, as `f32` bits (see [`Quad::segment_ends`]).
     pub uv: [u32; 4],
-    /// Clip rect in physical pixels; pixels outside are discarded.
-    pub clip: Rect,
-    /// Corner radii of the clip, clockwise from the top-left, in physical
-    /// pixels: pixels outside the *rounded* `clip` are discarded too. All
-    /// zero — every quad of a frame that has no rounded clipper — means the
-    /// clip is the plain rect, which is what lets a backend skip the second
-    /// SDF. See [`Clip`] for where the radii come from.
-    pub clip_radius: [f32; 4],
 }
+
+/// An index into [`DisplayList::clips`]. Every quad has one; there is no
+/// "no clip" value, because a frame that clips nothing still names an
+/// entry — [`Clip::NONE`] scaled — and a backend that reads it needs no
+/// special case.
+pub type ClipId = u32;
+
+/// The entry every frame's clip table starts with: [`Clip::NONE`] in
+/// physical pixels. Emission seeds it before any quad is made, so a quad
+/// that is clipped by nothing — most quads of most frames — names this
+/// without interning anything.
+pub const NO_CLIP_ID: ClipId = 0;
 
 impl Quad {
     /// A [`QuadKind::Segment`]'s endpoints, `[x0, y0, x1, y1]` in physical
@@ -133,6 +150,7 @@ pub const SQUARE: [f32; 4] = [0.0; 4];
 ///
 /// One rounded rect cannot name the intersection of two, so nesting is
 /// approximated by [`Clip::intersect`], which says what it gives up.
+#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Clip {
     pub rect: Rect,
@@ -236,6 +254,11 @@ pub struct FragmentDraw {
 #[derive(Default)]
 pub struct DisplayList {
     pub quads: Vec<Quad>,
+    /// The clips the quads name, in physical pixels. One entry per
+    /// *distinct* clip a frame reaches — a handful, even on a frame of
+    /// ten thousand quads, because a clip is inherited and only a clipping
+    /// node makes a new one. Empty only on a frame that drew nothing.
+    pub clips: Vec<Clip>,
     /// One entry per [`QuadKind::Fragment`] quad, indexed by its `uv[0]`.
     /// Empty on a frame that draws none.
     pub fragments: Vec<FragmentDraw>,
@@ -258,7 +281,47 @@ pub struct DisplayList {
 impl DisplayList {
     pub fn clear(&mut self) {
         self.quads.clear();
+        self.clips.clear();
         self.fragments.clear();
         self.fragment_sources.clear();
     }
+
+    /// The clip a quad names. Out of range — which a well-formed frame
+    /// never is — reads as clipping nothing, so a malformed list draws
+    /// rather than panics.
+    pub fn clip_of(&self, q: &Quad) -> Clip {
+        self.clips
+            .get(q.clip as usize)
+            .copied()
+            .unwrap_or(Clip::NONE)
+    }
+
+    /// Interns a clip and returns its index. See [`intern_clip`].
+    pub fn intern_clip(&mut self, clip: Clip) -> ClipId {
+        intern_clip(&mut self.clips, clip)
+    }
+}
+
+/// Interns a clip into a frame's table and returns the index a quad names.
+///
+/// Only the last entry is compared, so this is a constant-time append with
+/// a run-length check and not a real intern: a clip that comes back after
+/// another one gets a second entry. That is deliberate. Emission runs in
+/// paint order, so equal clips arrive in runs, and the alternative — a scan
+/// of the whole table — is quadratic on the one frame shape that makes many
+/// clips (a screen of width-clamped labels, which narrows the clip once per
+/// label). A duplicate costs thirty-two bytes on a list that is orders of
+/// magnitude shorter than the quads; a quadratic scan costs the frame.
+///
+/// Callers avoid most of the calls entirely: a node whose clip is its
+/// parent's reuses the index the parent interned without comparing anything
+/// (`Core::emit_frame`).
+pub fn intern_clip(clips: &mut Vec<Clip>, clip: Clip) -> ClipId {
+    if let Some(last) = clips.last()
+        && *last == clip
+    {
+        return clips.len() as ClipId - 1;
+    }
+    clips.push(clip);
+    clips.len() as ClipId - 1
 }

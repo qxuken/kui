@@ -983,26 +983,37 @@ static void repf(Rep *r, const char *fmt, ...) {
     }
 }
 
-/* FNV-1a over each quad's words 0..18 and 23..30 - KuiQuad without its uv,
- * which follows glyph insertion order - plus the uv of a KUI_QUAD_SEGMENT,
- * where it is the endpoints. Mirrors conformance::quad_digest. */
-_Static_assert(sizeof(KuiQuad) == 31 * sizeof(uint32_t), "KuiQuad is not 31 words");
+/* FNV-1a over each quad's words 0..18 - KuiQuad without its uv, which
+ * follows glyph insertion order, and without the clip index - plus the uv
+ * of a KUI_QUAD_SEGMENT, where it is the endpoints, and then the eight
+ * words of the clip that index names. The clip is digested resolved, not
+ * as the index, so the number says what a backend clips by and not how the
+ * frame interned it. Mirrors conformance::quad_digest. */
+_Static_assert(sizeof(KuiQuad) == 24 * sizeof(uint32_t), "KuiQuad is not 24 words");
+_Static_assert(sizeof(KuiClip) == 8 * sizeof(uint32_t), "KuiClip is not 8 words");
 
-static uint64_t quad_digest(const KuiQuad *quads, size_t count) {
+static void digest_words(uint64_t *h, const uint32_t *w, int n) {
+    for (int j = 0; j < n; j++) {
+        uint32_t v = w[j];
+        for (int b = 0; b < 4; b++) {
+            *h ^= (uint8_t)(v & 0xff);
+            *h *= 0x100000001b3ull;
+            v >>= 8;
+        }
+    }
+}
+
+static uint64_t quad_digest(const KuiQuad *quads, size_t count,
+                            const KuiClip *clips, size_t clip_count) {
     uint64_t h = 0xcbf29ce484222325ull;
     for (size_t i = 0; i < count; i++) {
-        uint32_t w[31];
+        uint32_t w[24];
         memcpy(w, &quads[i], sizeof w);
-        int segment = quads[i].kind == KUI_QUAD_SEGMENT;
-        for (int j = 0; j < 31; j++) {
-            if (j >= 19 && j <= 22 && !segment) continue; /* uv */
-            uint32_t v = w[j];
-            for (int b = 0; b < 4; b++) {
-                h ^= (uint8_t)(v & 0xff);
-                h *= 0x100000001b3ull;
-                v >>= 8;
-            }
-        }
+        digest_words(&h, w, 19); /* x..kind; word 19 is the clip index */
+        if (quads[i].kind == KUI_QUAD_SEGMENT) digest_words(&h, w + 20, 4);
+        uint32_t c[8] = {0};
+        if (quads[i].clip < clip_count) memcpy(c, &clips[quads[i].clip], sizeof c);
+        digest_words(&h, c, 8);
     }
     return h;
 }
@@ -2148,7 +2159,8 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
     KuiDrawData dd = KUI_DRAW_DATA_INIT;
     kui_draw_data(ctx, &dd);
     repf(out, "quads %zu %016llx\n", dd.quad_count,
-         (unsigned long long)quad_digest(dd.quads, dd.quad_count));
+         (unsigned long long)quad_digest(dd.quads, dd.quad_count, dd.clips,
+                                         dd.clip_count));
     size_t kinds[8] = {0};
     for (size_t i = 0; i < dd.quad_count; i++) {
         if (dd.quads[i].kind < 8) kinds[dd.quads[i].kind]++;

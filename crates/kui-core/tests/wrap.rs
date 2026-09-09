@@ -2,14 +2,17 @@
 //! `TextStyle` through a live `Core` (real shaping), checked on the emitted
 //! glyph quads and on the boxes around them.
 
-use kui_core::{Color, Core, NodeSpec, Quad, QuadKind, Size, Sizing, TextStyle};
+use kui_core::{Clip, Color, Core, NodeSpec, Quad, QuadKind, Size, Sizing, TextStyle};
 
 const LONG: &str = "A window title that is far too long to fit inside a narrow header strip";
 const BOX_W: f32 = 160.0;
 const LINE_H: f32 = 22.0; // TextStyle::new(16.0) rounds 16 * 1.35
 
 /// The glyph quads of `LONG` rendered with `style` inside a fixed-width box.
-fn glyphs(core: &mut Core, style: TextStyle) -> Vec<Quad> {
+/// The frame's glyph quads, each paired with the clip it names — the clip
+/// rides in `DisplayList::clips` now, so a test that dropped the list
+/// could not resolve it.
+fn glyphs(core: &mut Core, style: TextStyle) -> (Vec<Quad>, Vec<Clip>) {
     let mut ui = core.frame(Size::new(800.0, 600.0), 1.0);
     ui.configure_root(NodeSpec::column());
     ui.with(NodeSpec::column().width(Sizing::Fixed(BOX_W)), |ui| {
@@ -20,8 +23,8 @@ fn glyphs(core: &mut Core, style: TextStyle) -> Vec<Quad> {
     dl.quads
         .iter()
         .filter(|q| !matches!(q.kind, QuadKind::Solid))
-        .copied()
-        .collect()
+        .map(|q| (*q, dl.clip_of(q)))
+        .unzip()
 }
 
 /// How many text lines a set of glyph quads spans.
@@ -44,7 +47,7 @@ fn right_edge(glyphs: &[Quad]) -> f32 {
 #[test]
 fn default_still_wraps_between_words() {
     let mut core = Core::new();
-    let g = glyphs(&mut core, TextStyle::new(16.0));
+    let (g, _) = glyphs(&mut core, TextStyle::new(16.0));
     assert!(lines(&g) >= 3, "expected several lines, got {}", lines(&g));
     assert!(
         right_edge(&g) <= BOX_W + 0.5,
@@ -55,15 +58,15 @@ fn default_still_wraps_between_words() {
 #[test]
 fn nowrap_keeps_one_line_and_clips_to_the_box() {
     let mut core = Core::new();
-    let wrapped = glyphs(&mut core, TextStyle::new(16.0));
-    let g = glyphs(&mut core, TextStyle::new(16.0).nowrap());
+    let (wrapped, _) = glyphs(&mut core, TextStyle::new(16.0));
+    let (g, g_clips) = glyphs(&mut core, TextStyle::new(16.0).nowrap());
     assert_eq!(lines(&g), 1, "no-wrap text is a single line");
     assert!(!g.is_empty());
-    for q in &g {
+    for (q, clip) in g.iter().zip(&g_clips) {
         assert!(
-            q.clip.x >= -0.5 && q.clip.x + q.clip.w <= BOX_W + 0.5,
+            clip.rect.x >= -0.5 && clip.rect.x + clip.rect.w <= BOX_W + 0.5,
             "glyph clip must be the node's box, got {:?}",
-            q.clip
+            clip.rect
         );
         assert!(
             q.rect.x < BOX_W,
@@ -80,8 +83,8 @@ fn nowrap_keeps_one_line_and_clips_to_the_box() {
 #[test]
 fn ellipsis_truncates_within_the_box() {
     let mut core = Core::new();
-    let whole = glyphs(&mut core, TextStyle::new(16.0));
-    let g = glyphs(&mut core, TextStyle::new(16.0).ellipsis());
+    let (whole, _) = glyphs(&mut core, TextStyle::new(16.0));
+    let (g, _) = glyphs(&mut core, TextStyle::new(16.0).ellipsis());
     assert_eq!(lines(&g), 1, "ellipsis alone means a single line");
     assert!(g.len() > 3, "something is drawn");
     assert!(
@@ -100,12 +103,12 @@ fn ellipsis_truncates_within_the_box() {
 #[test]
 fn max_lines_clamps_wrapped_text() {
     let mut core = Core::new();
-    let g = glyphs(&mut core, TextStyle::new(16.0).max_lines(2));
+    let (g, _) = glyphs(&mut core, TextStyle::new(16.0).max_lines(2));
     assert_eq!(lines(&g), 2);
-    let e = glyphs(&mut core, TextStyle::new(16.0).max_lines(2).ellipsis());
+    let (e, _) = glyphs(&mut core, TextStyle::new(16.0).max_lines(2).ellipsis());
     assert_eq!(lines(&e), 2, "ellipsis honours an explicit line budget");
     assert!(right_edge(&e) <= BOX_W + 0.5);
-    let whole = glyphs(&mut core, TextStyle::new(16.0));
+    let (whole, _) = glyphs(&mut core, TextStyle::new(16.0));
     assert!(
         e.len() < whole.len(),
         "the clamp cuts text: {} vs {}",

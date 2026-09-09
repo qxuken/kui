@@ -39,6 +39,7 @@ impl Core {
     ) {
         let Paint {
             clip,
+            clip_id,
             scale,
             opacity,
         } = paint;
@@ -54,7 +55,7 @@ impl Core {
         if style.shadow.is_visible() {
             self.display
                 .quads
-                .push(shadow_quad(&style, rect, clip, scale));
+                .push(shadow_quad(&style, rect, clip_id, scale));
         }
         if !is_line
             && (style.bg.is_visible() || (style.border_w > 0.0 && style.border_color.is_visible()))
@@ -67,9 +68,8 @@ impl Core {
                 border_w: style.border_w * scale,
                 blur: 0.0,
                 kind: QuadKind::Solid,
+                clip: clip_id,
                 uv: [0; 4],
-                clip: clip_px.rect,
-                clip_radius: clip_px.radius,
             });
         }
         if spec.hover_tracked() && interactive && !is_line {
@@ -122,6 +122,8 @@ impl Core {
                     self.tree.pos[i],
                     self.tree.size[i],
                     clip_px,
+                    clip_id,
+                    &mut self.display.clips,
                     &sess.resources,
                     &mut sess.fonts,
                     &mut self.atlas,
@@ -150,6 +152,7 @@ impl Core {
                     cid,
                     self.tree.pos[i],
                     clip_px,
+                    clip_id,
                     &sess.resources,
                     &mut sess.fonts,
                     self.text.raster_mut(),
@@ -207,10 +210,12 @@ impl Core {
                 // out over its neighbours. Horizontally only: the
                 // ancestors own the vertical clip, and a descender or a
                 // caret is not what a field is trying to cut off.
-                let edit_clip = if self.edit.is_multiline(key) {
-                    clip_px
+                // Narrowing the clip makes a new one, so it needs an entry
+                // of its own; a multiline editor keeps the node's.
+                let (edit_clip, edit_clip_id) = if self.edit.is_multiline(key) {
+                    (clip_px, clip_id)
                 } else {
-                    clip_px.intersect(
+                    let narrowed = clip_px.intersect(
                         Rect::new(
                             origin_phys.x,
                             clip_px.rect.y,
@@ -218,7 +223,8 @@ impl Core {
                             clip_px.rect.h,
                         ),
                         crate::display::SQUARE,
-                    )
+                    );
+                    (narrowed, self.display.intern_clip(narrowed))
                 };
                 let sess = &mut *self.session.state();
                 self.edit.emit(
@@ -226,6 +232,7 @@ impl Core {
                     origin_phys,
                     focused,
                     edit_clip,
+                    edit_clip_id,
                     &mut sess.fonts,
                     &mut self.text,
                     &mut self.atlas,
@@ -248,9 +255,8 @@ impl Core {
                         border_w: 0.0,
                         blur: 0.0,
                         kind: QuadKind::Image,
+                        clip: clip_id,
                         uv: [slot.x, slot.y, slot.w, slot.h],
-                        clip: clip_px.rect,
-                        clip_radius: clip_px.radius,
                     });
                 }
             }
@@ -264,7 +270,7 @@ impl Core {
                     draw,
                     rect.scaled(scale),
                     spec.style.radius.map(|r| r * scale),
-                    clip_px,
+                    clip_id,
                 );
             }
             NodeContent::Line(id) => {
@@ -275,7 +281,7 @@ impl Core {
                     points,
                     run.width,
                     style.bg,
-                    clip_px,
+                    clip_id,
                     scale,
                 );
             }
@@ -392,9 +398,16 @@ impl Core {
 
         // inherited clip per node (logical): ancestors only, not the node
         // itself. Only materialized when something actually clips.
+        // Index 0 is the clip that clips nothing, so an unclipped frame
+        // interns once and every quad on it names entry zero. Seeded
+        // rather than found, so `clip_of` has something to answer with
+        // even on a frame that emitted no quad at all.
+        let no_clip = self.display.intern_clip(Clip::NONE.scaled(scale));
         self.clips.clear();
+        self.clip_ids.clear();
         if any_clip {
             self.clips.resize(self.tree.len(), Clip::NONE);
+            self.clip_ids.resize(self.tree.len(), no_clip);
         }
         self.opacity.clear();
         if any_opacity {
@@ -445,12 +458,12 @@ impl Core {
                 self.opacity[i] = o;
                 o
             };
-            let clip = if !any_clip {
-                Clip::NONE
+            let (clip, clip_id) = if !any_clip {
+                (Clip::NONE, no_clip)
             } else {
                 // Floating nodes escape ancestor clips.
-                let clip = if parent == NIL || floats_here {
-                    Clip::NONE
+                let (clip, id) = if parent == NIL || floats_here {
+                    (Clip::NONE, no_clip)
                 } else {
                     let p = parent as usize;
                     if self.tree.specs[p].layout.clips() {
@@ -463,13 +476,17 @@ impl Core {
                         } else {
                             crate::display::SQUARE
                         };
-                        self.clips[p].intersect(box_rect, box_radius)
+                        let clip = self.clips[p].intersect(box_rect, box_radius);
+                        (clip, self.display.intern_clip(clip.scaled(scale)))
                     } else {
-                        self.clips[p]
+                        // The overwhelming case: the clip is the parent's,
+                        // so the entry is too, and nothing is compared.
+                        (self.clips[p], self.clip_ids[p])
                     }
                 };
                 self.clips[i] = clip;
-                clip
+                self.clip_ids[i] = id;
+                (clip, id)
             };
             if any_float && self.in_float[i] {
                 continue; // deferred to the float pass
@@ -491,6 +508,7 @@ impl Core {
             }
             let paint = Paint {
                 clip,
+                clip_id,
                 scale,
                 opacity,
             };
@@ -520,6 +538,7 @@ impl Core {
                 }
                 let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
                 let clip = if any_clip { self.clips[i] } else { Clip::NONE };
+                let clip_id = if any_clip { self.clip_ids[i] } else { no_clip };
                 let opacity = if any_opacity { self.opacity[i] } else { 1.0 };
                 let visible = rect.intersect(&clip.rect);
                 if visible.w <= 0.0 || visible.h <= 0.0 {
@@ -527,6 +546,7 @@ impl Core {
                 }
                 let paint = Paint {
                     clip,
+                    clip_id,
                     scale,
                     opacity,
                 };
@@ -556,7 +576,7 @@ impl Core {
                 .expect("scroll region from this frame");
             let max = self.tree.scroll_max[i];
             let offset = self.scroll.offset(r.key);
-            let clip = self.clips[i].scaled(scale);
+            let clip_id = self.clip_ids[i];
             let opacity = self.opacity.get(i).copied().unwrap_or(1.0);
             if max.y > 0.0 {
                 let track_h = r.rect.h - 2.0 * SCROLLBAR_INSET;
@@ -581,7 +601,7 @@ impl Core {
                     w,
                     bar_h,
                 );
-                let mut bar = scrollbar_quad(thumb, scale, clip, active);
+                let mut bar = scrollbar_quad(thumb, scale, clip_id, active);
                 bar.color.a *= opacity;
                 self.display.quads.push(bar);
                 scrollbars.push(ScrollbarRegion {
@@ -617,7 +637,7 @@ impl Core {
                     bar_w,
                     w,
                 );
-                let mut bar = scrollbar_quad(thumb, scale, clip, active);
+                let mut bar = scrollbar_quad(thumb, scale, clip_id, active);
                 bar.color.a *= opacity;
                 self.display.quads.push(bar);
                 scrollbars.push(ScrollbarRegion {
@@ -773,6 +793,8 @@ impl Core {
         self.ghost_opacity.resize(g.nodes.len(), 1.0);
         self.ghost_clip.clear();
         self.ghost_clip.resize(g.nodes.len(), Clip::NONE);
+        self.ghost_clip_ids.clear();
+        self.ghost_clip_ids.resize(g.nodes.len(), NO_CLIP_ID);
         self.ghost_rect.clear();
         self.ghost_rect
             .resize(g.nodes.len(), Rect::new(0.0, 0.0, 0.0, 0.0));
@@ -813,18 +835,21 @@ impl Core {
             // virtual list built past its edge stay past it), while the
             // ancestors outside the picture, which may be gone, clip
             // nothing. Same rule as the live pass, from the root down.
-            let clip = if node.parent == NIL || node.spec.layout.float.is_some() {
-                Clip::NONE
+            let (clip, clip_id) = if node.parent == NIL || node.spec.layout.float.is_some() {
+                (Clip::NONE, NO_CLIP_ID)
             } else {
                 let p = node.parent as usize;
                 let inherited = self.ghost_clip[p];
                 if g.nodes[p].spec.layout.clips() {
-                    inherited.intersect(self.ghost_rect[p], g.nodes[p].spec.style.radius)
+                    let clip =
+                        inherited.intersect(self.ghost_rect[p], g.nodes[p].spec.style.radius);
+                    (clip, self.display.intern_clip(clip.scaled(scale)))
                 } else {
-                    inherited
+                    (inherited, self.ghost_clip_ids[p])
                 }
             };
             self.ghost_clip[i] = clip;
+            self.ghost_clip_ids[i] = clip_id;
             self.ghost_rect[i] = rect;
             let visible = rect.intersect(&clip.rect);
             if visible.w <= 0.0 || visible.h <= 0.0 {
@@ -835,7 +860,7 @@ impl Core {
             if style.shadow.is_visible() {
                 self.display
                     .quads
-                    .push(shadow_quad(&style, rect, clip, scale));
+                    .push(shadow_quad(&style, rect, clip_id, scale));
             }
             if style.bg.is_visible() || (style.border_w > 0.0 && style.border_color.is_visible()) {
                 self.display.quads.push(Quad {
@@ -846,9 +871,8 @@ impl Core {
                     border_w: style.border_w * scale,
                     blur: 0.0,
                     kind: QuadKind::Solid,
+                    clip: clip_id,
                     uv: [0; 4],
-                    clip: clip_px.rect,
-                    clip_radius: clip_px.radius,
                 });
             }
             match node.content {
@@ -864,6 +888,8 @@ impl Core {
                             Vec2::new(rect.x, rect.y),
                             Size::new(rect.w, rect.h),
                             clip_px,
+                            clip_id,
+                            &mut self.display.clips,
                             &sess.resources,
                             &mut sess.fonts,
                             &mut self.atlas,
@@ -900,6 +926,7 @@ impl Core {
                         origin,
                         false,
                         clip_px,
+                        clip_id,
                         &mut sess.fonts,
                         &mut self.text,
                         &mut self.atlas,
@@ -924,9 +951,8 @@ impl Core {
                             border_w: 0.0,
                             blur: 0.0,
                             kind: QuadKind::Image,
+                            clip: clip_id,
                             uv: [slot.x, slot.y, slot.w, slot.h],
-                            clip: clip_px.rect,
-                            clip_radius: clip_px.radius,
                         });
                     }
                 }
@@ -942,7 +968,7 @@ impl Core {
                         draw,
                         rect.scaled(scale),
                         style.radius.map(|r| r * scale),
-                        clip_px,
+                        clip_id,
                     );
                 }
                 GhostContent::Line { first, len, width } => {
@@ -955,7 +981,7 @@ impl Core {
                         points,
                         width,
                         style.bg,
-                        clip_px,
+                        clip_id,
                         scale,
                     );
                 }
@@ -1100,6 +1126,8 @@ impl Core {
             node.h + 2.0 * FOCUS_RING_GAP,
         );
         let clip = self.clips.get(i).copied().unwrap_or(Clip::NONE);
+        // No entry means nothing clipped this frame, which is entry zero.
+        let clip_id = self.clip_ids.get(i).copied().unwrap_or(NO_CLIP_ID);
         let visible = rect.intersect(&clip.rect);
         if visible.w <= 0.0 || visible.h <= 0.0 {
             return;
@@ -1114,9 +1142,8 @@ impl Core {
             border_w: FOCUS_RING_W * scale,
             blur: 0.0,
             kind: QuadKind::Solid,
+            clip: clip_id,
             uv: [0; 4],
-            clip: clip.rect.scaled(scale),
-            clip_radius: clip.radius.map(|r| r * scale),
         });
     }
 
@@ -1201,6 +1228,8 @@ impl TextMeasure for Measure<'_> {
 #[derive(Clone, Copy)]
 struct Paint {
     clip: Clip,
+    /// `clip`, scaled and interned: what the node's quads name.
+    clip_id: ClipId,
     scale: f32,
     /// Multiplied into the alpha of every quad the node emits.
     opacity: f32,
@@ -1267,7 +1296,7 @@ fn push_segments(
     points: &[Vec2],
     width: f32,
     color: Color,
-    clip: Clip,
+    clip_id: ClipId,
     scale: f32,
 ) {
     let pad = crate::line::pad(width) * scale;
@@ -1291,9 +1320,8 @@ fn push_segments(
             border_w: w,
             blur: 0.0,
             kind: QuadKind::Segment,
+            clip: clip_id,
             uv: Quad::segment_uv([a.x, a.y, b.x, b.y]),
-            clip: clip.rect,
-            clip_radius: clip.radius,
         });
     }
 }
@@ -1304,7 +1332,7 @@ fn push_segments(
 /// the blurred edge reaches; the backend insets by `blur` again to find
 /// the shape. Radii grow with the spread so a rounded box keeps its
 /// silhouette instead of sprouting corners.
-fn shadow_quad(style: &crate::spec::VisualStyle, rect: Rect, clip: Clip, scale: f32) -> Quad {
+fn shadow_quad(style: &crate::spec::VisualStyle, rect: Rect, clip_id: ClipId, scale: f32) -> Quad {
     let sh = style.shadow;
     let blur = sh.blur.max(0.0);
     let shape = Rect::new(
@@ -1326,9 +1354,8 @@ fn shadow_quad(style: &crate::spec::VisualStyle, rect: Rect, clip: Clip, scale: 
         border_w: 0.0,
         blur: blur * scale,
         kind: QuadKind::Shadow,
+        clip: clip_id,
         uv: [0; 4],
-        clip: clip.rect.scaled(scale),
-        clip_radius: clip.radius.map(|r| r * scale),
     }
 }
 
@@ -1342,7 +1369,7 @@ fn fade(quads: &mut [Quad], opacity: f32) {
     }
 }
 
-fn scrollbar_quad(bar: Rect, scale: f32, clip: Clip, active: bool) -> Quad {
+fn scrollbar_quad(bar: Rect, scale: f32, clip_id: ClipId, active: bool) -> Quad {
     Quad {
         rect: bar.scaled(scale),
         color: Color::rgba(1.0, 1.0, 1.0, if active { 0.4 } else { 0.18 }),
@@ -1351,9 +1378,8 @@ fn scrollbar_quad(bar: Rect, scale: f32, clip: Clip, active: bool) -> Quad {
         border_w: 0.0,
         blur: 0.0,
         kind: QuadKind::Solid,
+        clip: clip_id,
         uv: [0; 4],
-        clip: clip.rect,
-        clip_radius: clip.radius,
     }
 }
 
@@ -1375,7 +1401,7 @@ fn push_fragment(
     draw: crate::display::FragmentDraw,
     rect: Rect,
     radius: [f32; 4],
-    clip: Clip,
+    clip_id: ClipId,
 ) {
     let Some(source) = resources.fragment(draw.id) else {
         return;
@@ -1393,8 +1419,7 @@ fn push_fragment(
         border_w: 0.0,
         blur: 0.0,
         kind: QuadKind::Fragment,
+        clip: clip_id,
         uv: [index, 0, 0, 0],
-        clip: clip.rect,
-        clip_radius: clip.radius,
     });
 }

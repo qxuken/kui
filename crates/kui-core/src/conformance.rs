@@ -49,7 +49,7 @@ use std::fmt::Write as _;
 use crate::access::{AccessTree, Role};
 use crate::audio::{AudioCommand, AudioSpec};
 use crate::color::Color;
-use crate::display::{Quad, QuadKind};
+use crate::display::{Clip, Quad, QuadKind};
 use crate::edit::EditOptions;
 use crate::enter::Enter;
 use crate::geom::{Edges, Rect, Size, Vec2};
@@ -2786,7 +2786,12 @@ fn mix(h: &mut u64, word: u32) {
     }
 }
 
-pub fn quad_digest(quads: &[Quad]) -> u64 {
+/// The clip is digested resolved rather than as the index it now rides as
+/// (`display::ClipId`), so the number a report carries is the geometry a
+/// backend clips by and not how this frame happened to intern it. That is
+/// what keeps a report comparable across a change to the table — and what
+/// the C and Node mirrors have to do too, walking `clips[q.clip]`.
+pub fn quad_digest(quads: &[Quad], clips: &[Clip]) -> u64 {
     let mut h = FNV_OFFSET;
     for q in quads {
         for v in [
@@ -2822,15 +2827,16 @@ pub fn quad_digest(quads: &[Quad]) -> u64 {
                 mix(&mut h, v);
             }
         }
+        let clip = clips.get(q.clip as usize).copied().unwrap_or(Clip::NONE);
         for v in [
-            q.clip.x,
-            q.clip.y,
-            q.clip.w,
-            q.clip.h,
-            q.clip_radius[0],
-            q.clip_radius[1],
-            q.clip_radius[2],
-            q.clip_radius[3],
+            clip.rect.x,
+            clip.rect.y,
+            clip.rect.w,
+            clip.rect.h,
+            clip.radius[0],
+            clip.radius[1],
+            clip.radius[2],
+            clip.radius[3],
         ] {
             mix(&mut h, v.to_bits());
         }
@@ -3019,6 +3025,7 @@ pub fn drive(
     let dl = core.output().0;
     let fragment_params: Vec<[f32; 16]> = dl.fragments.iter().map(|f| f.params).collect();
     let quads = &dl.quads;
+    let clips = &dl.clips;
     let mut kinds = [0usize; 8];
     for q in quads.iter() {
         kinds[match q.kind {
@@ -3034,7 +3041,7 @@ pub fn drive(
     }
     Output {
         quad_count: quads.len(),
-        quad_digest: quad_digest(quads),
+        quad_digest: quad_digest(quads, clips),
         kinds,
         fragments: fragment_params,
         nodes,

@@ -14,8 +14,15 @@ const CARD: f32 = 100.0;
 const CHILD: f32 = 60.0;
 
 /// A card at (10, 10) with one child inside it, and whatever the caller
-/// wants on each. Returns the emitted quads: the card's, then the child's.
-fn card_and_child(core: &mut Core, card: NodeSpec, child: NodeSpec, scale: f32) -> Vec<Quad> {
+/// wants on each. Returns the emitted quads — the card's, then the
+/// child's — each paired with the clip it names, resolved out of
+/// `DisplayList::clips`.
+fn card_and_child(
+    core: &mut Core,
+    card: NodeSpec,
+    child: NodeSpec,
+    scale: f32,
+) -> (Vec<Quad>, Vec<Clip>) {
     let mut ui = core.frame(Size::new(300.0, 200.0), scale);
     ui.configure_root(NodeSpec::column().pad(10.0));
     ui.with_keyed(
@@ -35,13 +42,14 @@ fn card_and_child(core: &mut Core, card: NodeSpec, child: NodeSpec, scale: f32) 
         },
     );
     ui.finish();
-    core.output().0.quads.to_vec()
+    let dl = core.output().0;
+    dl.quads.iter().map(|q| (*q, dl.clip_of(q))).unzip()
 }
 
 #[test]
 fn a_rounded_clipper_rounds_the_clip_its_children_inherit() {
     let mut core = Core::new();
-    let q = card_and_child(
+    let (q, c) = card_and_child(
         &mut core,
         NodeSpec::column().radius(12.0).clip(),
         NodeSpec::column(),
@@ -50,11 +58,11 @@ fn a_rounded_clipper_rounds_the_clip_its_children_inherit() {
     // The card draws itself rounded, as it always did, and is not clipped
     // by its own clip: `clips[i]` is ancestors only.
     assert_eq!(q[0].radius, [12.0; 4]);
-    assert_eq!(q[0].clip_radius, [0.0; 4], "the card is not its own clip");
+    assert_eq!(c[0].radius, [0.0; 4], "the card is not its own clip");
     // The child is square, and the clip it inherits is not.
     assert_eq!(q[1].radius, [0.0; 4]);
-    assert_eq!(q[1].clip_radius, [12.0; 4]);
-    assert_eq!(q[1].clip, Rect::new(10.0, 10.0, CARD, CARD));
+    assert_eq!(c[1].radius, [12.0; 4]);
+    assert_eq!(c[1].rect, Rect::new(10.0, 10.0, CARD, CARD));
 }
 
 #[test]
@@ -62,13 +70,13 @@ fn a_scrolling_container_rounds_what_it_scrolls() {
     // `scroll_y` clips too, and is the case the symptom was reported as:
     // rows sliding out of a rounded card with square corners.
     let mut core = Core::new();
-    let q = card_and_child(
+    let (_q, c) = card_and_child(
         &mut core,
         NodeSpec::column().radius(8.0).scroll_y(),
         NodeSpec::column(),
         1.0,
     );
-    assert_eq!(q[1].clip_radius, [8.0; 4]);
+    assert_eq!(c[1].radius, [8.0; 4]);
 }
 
 #[test]
@@ -76,26 +84,26 @@ fn per_corner_radii_reach_the_clip_per_corner() {
     // The shape a uniform clip radius could not express: a card rounded at
     // the top only, the way a header sits over a flush-bottomed panel.
     let mut core = Core::new();
-    let q = card_and_child(
+    let (_q, c) = card_and_child(
         &mut core,
         NodeSpec::column().radius_top(14.0).clip(),
         NodeSpec::column(),
         1.0,
     );
-    assert_eq!(q[1].clip_radius, [14.0, 14.0, 0.0, 0.0]);
+    assert_eq!(c[1].radius, [14.0, 14.0, 0.0, 0.0]);
 }
 
 #[test]
 fn a_clipper_without_a_radius_still_clips_square() {
     let mut core = Core::new();
-    let q = card_and_child(
+    let (_q, c) = card_and_child(
         &mut core,
         NodeSpec::column().clip(),
         NodeSpec::column(),
         1.0,
     );
-    assert_eq!(q[1].clip, Rect::new(10.0, 10.0, CARD, CARD));
-    assert_eq!(q[1].clip_radius, [0.0; 4]);
+    assert_eq!(c[1].rect, Rect::new(10.0, 10.0, CARD, CARD));
+    assert_eq!(c[1].radius, [0.0; 4]);
 }
 
 #[test]
@@ -103,30 +111,27 @@ fn a_rounded_node_that_does_not_clip_rounds_nothing() {
     // Rounding the clip is what *clipping* does; a radius on a node that
     // lets its children overflow changes only its own corners.
     let mut core = Core::new();
-    let q = card_and_child(
+    let (q, c) = card_and_child(
         &mut core,
         NodeSpec::column().radius(12.0),
         NodeSpec::column(),
         1.0,
     );
     assert_eq!(q[0].radius, [12.0; 4]);
-    assert_eq!(q[1].clip_radius, [0.0; 4]);
+    assert_eq!(c[1].radius, [0.0; 4]);
 }
 
 #[test]
 fn clip_radii_are_physical_pixels() {
     let mut core = Core::new();
-    let q = card_and_child(
+    let (_q, c) = card_and_child(
         &mut core,
         NodeSpec::column().radius(12.0).clip(),
         NodeSpec::column(),
         2.0,
     );
-    assert_eq!(
-        q[1].clip_radius, [24.0; 4],
-        "scaled like every other length"
-    );
-    assert_eq!(q[1].clip, Rect::new(20.0, 20.0, 200.0, 200.0));
+    assert_eq!(c[1].radius, [24.0; 4], "scaled like every other length");
+    assert_eq!(c[1].rect, Rect::new(20.0, 20.0, 200.0, 200.0));
 }
 
 #[test]
@@ -153,7 +158,12 @@ fn glyphs_and_images_inherit_the_rounded_clip_too() {
     let (dl, _) = core.output();
     assert!(dl.quads.len() > 2, "text and image both drew");
     for q in &dl.quads {
-        assert_eq!(q.clip_radius, [9.0; 4], "{:?} kept a square clip", q.kind);
+        assert_eq!(
+            dl.clip_of(q).radius,
+            [9.0; 4],
+            "{:?} kept a square clip",
+            q.kind
+        );
     }
 }
 
@@ -187,7 +197,7 @@ fn a_float_escapes_the_rounded_clip_with_the_rest_of_it() {
     ui.finish();
     let (dl, _) = core.output();
     let tip = dl.quads.last().expect("the float draws last");
-    assert_eq!(tip.clip_radius, [0.0; 4]);
+    assert_eq!(dl.clip_of(tip).radius, [0.0; 4]);
 }
 
 // -- Nesting ---------------------------------------------------------------
@@ -281,7 +291,8 @@ fn a_scrolled_child_keeps_the_containers_corners_not_its_own_position() {
         .collect();
     assert!(rows.len() > 2, "several rows visible");
     for r in rows {
-        assert_eq!(r.clip, Rect::new(10.0, 10.0, CARD, CARD));
-        assert_eq!(r.clip_radius, [12.0; 4]);
+        let clip = dl.clip_of(r);
+        assert_eq!(clip.rect, Rect::new(10.0, 10.0, CARD, CARD));
+        assert_eq!(clip.radius, [12.0; 4]);
     }
 }
