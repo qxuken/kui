@@ -114,6 +114,7 @@ pub fn app(title: &str) -> Launcher {
         extensions: Extensions::new(),
         text_aa: TextAa::Auto,
         diagnostics: None,
+        deferred_events: false,
     }
 }
 
@@ -131,6 +132,9 @@ pub struct Launcher {
     /// Whether the core's diagnostics run (see `kui_core::diag`); None =
     /// on in debug builds, off in release.
     diagnostics: Option<bool>,
+    /// Whether the host answers events after the loop has handed them over
+    /// (see [`Launcher::deferred_events`]).
+    deferred_events: bool,
 }
 
 impl Launcher {
@@ -151,6 +155,36 @@ impl Launcher {
     /// build says why the grow weight did nothing.
     pub fn diagnostics(mut self, on: bool) -> Self {
         self.diagnostics = Some(on);
+        self
+    }
+
+    /// Says that this app answers an event *after* `on_event` returns —
+    /// which only a host driving the loop itself can do, since only it has
+    /// a turn between pumps ([`Launcher::open`], [`PumpRunner`]). Node's
+    /// `update` is the case: `on_event` keeps the event, the pump returns,
+    /// and JS runs the handler and submits the next view.
+    ///
+    /// What it changes is one thing: an input whose events reached the app
+    /// **does not ask for the frame itself**. Ordinarily it does, and for
+    /// an app that answered inside `on_event` that frame is right — it
+    /// shows the button let go *and* what letting go did. For one that has
+    /// not answered yet the same frame shows the button let go and the
+    /// count still at its old value, with the new one a pump later: a
+    /// two-frame release, plain to see at an 8 ms pump. Declining to ask
+    /// leaves the frame to the host, which asks
+    /// ([`PumpRunner::request_redraw`], and every `setView` and drained
+    /// `pollEvents` does) once its handler has run, so the release and its
+    /// answer land in one frame.
+    ///
+    /// Nothing else is suppressed. A transition, a caret blink, a
+    /// first-frame retry, a `Waker` wake or the OS's own repaint still
+    /// paint whenever they ask, including during a platform's modal
+    /// move-resize loop, and an input that reached nobody still asks for
+    /// its own frame — so the worst this can cost is that a frame some
+    /// *other* subsystem asked for in the same pump shows the input's
+    /// answer one frame late.
+    pub fn deferred_events(mut self) -> Self {
+        self.deferred_events = true;
         self
     }
 
@@ -275,6 +309,8 @@ impl Launcher {
             proxy: None,
             next_deadline: None,
             saw_event: false,
+            deferred_events: self.deferred_events,
+            owed: std::cell::Cell::new(false),
         }
     }
 
@@ -329,6 +365,62 @@ impl Launcher {
             alive,
         })
     }
+}
+
+/// Whether this input is one whose own visible effect is finished, so the
+/// app's answer to it belongs in the same frame.
+///
+/// A press or a release changes what the core itself paints — the button
+/// goes down, the button comes up — and that change reads as the whole of
+/// what happened, so a frame showing the button let go with the count
+/// unchanged is a frame that lies. A keystroke, an IME commit and an
+/// assistive-technology action are discrete the same way.
+///
+/// A pointer moving, a wheel turning and a preedit being revised are not:
+/// they arrive as a stream, every frame during one is superseded by the
+/// next, and an app's content trailing the pointer by a frame is what
+/// every toolkit does. Waiting on those would halve the frame rate of a
+/// drag for nothing — measured at 18 frames against 36 in a 578 ms drag —
+/// so they never wait.
+fn input_completes(ev: &InputEvent) -> bool {
+    match ev {
+        InputEvent::MouseDown { .. }
+        | InputEvent::MouseUp { .. }
+        | InputEvent::Key(..)
+        | InputEvent::KeyDown(_)
+        | InputEvent::KeyUp(_)
+        | InputEvent::Text(_)
+        | InputEvent::Commit(_)
+        | InputEvent::Access(_) => true,
+        InputEvent::CursorMoved(_)
+        | InputEvent::CursorLeft
+        | InputEvent::Scroll(_)
+        | InputEvent::Preedit(..)
+        | InputEvent::Modifiers(_) => false,
+    }
+}
+
+/// Whether a redraw waits for the host's answer instead of painting now.
+///
+/// Two conditions, and the second is the one that makes this safe. `owed`
+/// says an input reached an app that answers later, so what would be
+/// painted predates that input ([`Launcher::deferred_events`]).
+/// `deferred_last` says this window's previous redraw already waited — and
+/// a frame never waits twice running.
+///
+/// That bound is not a nicety. Waiting until the host says otherwise is
+/// the obvious rule and it starves the window: winit hands a pump its
+/// input before that pump's redraw, so under a stream of input that
+/// reaches the app — a drag, an auto-repeating key — each pump re-arms the
+/// wait before the frame the host just asked for is delivered, and the
+/// window paints **nothing** until the stream ends (measured: one frame in
+/// a 578 ms drag). The same unbounded rule freezes a window for a whole
+/// title-bar drag, since a platform's modal move loop never returns to the
+/// host that would end the wait. Never twice running costs at worst half
+/// the frame rate under continuous input, and bounds every one of those to
+/// a single frame.
+fn frame_waits_for_host(owed: bool, deferred_last: bool) -> bool {
+    owed && !deferred_last
 }
 
 fn pump_once<A: App>(
@@ -444,8 +536,12 @@ impl<A: App> PumpRunner<A> {
     }
 
     /// Schedules a redraw of every window (call after changing what `view`
-    /// will produce).
+    /// will produce). Under [`Launcher::deferred_events`] it is also what
+    /// ends a frame's wait: the host calling this is the host saying its
+    /// view is current, so the frame that was waiting can be painted now —
+    /// with the answer in it.
     pub fn request_redraw(&self) {
+        self.shell.owed.set(false);
         for p in &self.shell.panes {
             p.window.request_redraw();
         }
@@ -708,6 +804,11 @@ struct Pane {
     /// and when to make the next one — `None` once a frame has landed. See
     /// the `Skip` arm of [`Shell::redraw`].
     first_frame: Option<(u32, std::time::Instant)>,
+    /// Whether the last redraw this pane was asked for was let wait for
+    /// the host's answer (`Launcher::deferred_events`). It is what bounds
+    /// the wait to a single frame: never two in a row, so no stream of
+    /// input and no platform modal loop can stop this window painting.
+    deferred_frame: bool,
     /// The platform accessibility bridge.
     access: Option<access_bridge::Bridge>,
     /// Windows: the timer that keeps an animation running while the modal
@@ -1063,6 +1164,19 @@ struct Shell<A: App> {
     /// redraw and wants pumping to present it, and that is also the honest
     /// signal for "somebody is using this window".
     saw_event: bool,
+    /// The host answers events after the loop hands them over
+    /// (`Launcher::deferred_events`).
+    deferred_events: bool,
+    /// An input reached the app and the host has not answered yet, so the
+    /// next frame would be painted from a view that predates that input.
+    /// Set only under `deferred_events`; cleared when the host says its
+    /// view is current ([`PumpRunner::request_redraw`], which every
+    /// `setView` and every drained `pollEvents` reaches).
+    ///
+    /// A `Cell` because the clearing is the host's `&self` call, and the
+    /// alternative — taking `&mut self` there — is a signature break for
+    /// what is bookkeeping.
+    owed: std::cell::Cell<bool>,
 }
 
 impl<A: App> Shell<A> {
@@ -1245,11 +1359,17 @@ impl<A: App> Shell<A> {
     /// so `UiEvent::window` is the window it is about — the `window` event
     /// cannot do that, because the window it names has just stopped or not
     /// yet started existing.
-    fn dismiss(&mut self, id: WindowId, reason: DismissReason) {
-        let Some(i) = self.pane_of(id) else { return };
+    /// Returns whether the dismissal reached the app, so a caller that
+    /// redraws for it can leave that frame to the host under
+    /// [`Launcher::deferred_events`] — an item chosen in a menu closes the
+    /// menu *and* does what it says, and both belong in one frame.
+    fn dismiss(&mut self, id: WindowId, reason: DismissReason) -> bool {
+        let Some(i) = self.pane_of(id) else {
+            return false;
+        };
         self.panes[i].core.dismiss_window(id, reason);
         let events = self.panes[i].core.take_pending_events();
-        self.route_events(events);
+        self.route_events(events)
     }
 
     /// Feeds a move the pressed pane received to every popup armed into
@@ -1419,8 +1539,10 @@ impl<A: App> Shell<A> {
         // Someone is using the app, so a sound may be moments away: keep
         // the device warm (`AUDIO_IDLE_CLOSE`).
         self.audio_touch = t0;
+        let completes = input_completes(&ev);
         let events = self.panes[i].core.handle_input(ev);
-        self.route_events(events);
+        let reached_app = self.route_events(events);
+        self.owe_for(reached_app && completes);
         self.apply_window_commands(event_loop);
         self.apply_audio();
         if let Some(pane) = self.panes.get_mut(i) {
@@ -1703,6 +1825,7 @@ impl<A: App> Shell<A> {
             appearance,
             handed_back: false,
             first_frame: Some((FIRST_FRAME_RETRIES, std::time::Instant::now())),
+            deferred_frame: false,
             access,
             #[cfg(target_os = "windows")]
             anim_timer,
@@ -1854,7 +1977,17 @@ impl<A: App> Shell<A> {
         }
     }
 
-    fn route_events(&mut self, events: Vec<UiEvent>) {
+    /// An input's events reached the app: under `deferred_events` the next
+    /// frame owes the host's answer (see `frame_waits_for_host`).
+    fn owe_for(&self, reached_app: bool) {
+        if reached_app && self.deferred_events {
+            self.owed.set(true);
+        }
+    }
+
+    /// Returns whether anything reached the app (as against an extension
+    /// answering for itself).
+    fn route_events(&mut self, events: Vec<UiEvent>) -> bool {
         let mut reached_app = false;
         // An extension's replies go to whoever declared its slot (ADR 0014
         // decision 6): not routed by origin — a reply is addressed by being
@@ -1883,6 +2016,7 @@ impl<A: App> Shell<A> {
                 p.window.request_redraw();
             }
         }
+        reached_app
     }
 
     /// Direct edits (cut) mutate the document outside handle_input, so they
@@ -1898,7 +2032,10 @@ impl<A: App> Shell<A> {
                 key,
                 payload: Value::map([("kind", "changed".into())]),
             };
-            self.route_events(vec![ev]);
+            // A cut is input too: the frame that shows the text gone
+            // should show what the app made of `changed`.
+            let reached_app = self.route_events(vec![ev]);
+            self.owe_for(reached_app);
         }
         self.panes[i].window.request_redraw();
     }
@@ -2433,12 +2570,16 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 // panel beside the app expects a click in the app to act.
                 if state == ElementState::Pressed {
                     let mut consumed = false;
+                    let mut reached_app = false;
                     for (id, activates) in self.popups_outside(i) {
-                        self.dismiss(id, DismissReason::Outside);
+                        reached_app |= self.dismiss(id, DismissReason::Outside);
                         consumed |= primary && !activates;
                     }
                     if consumed {
                         self.swallowed_press = Some(here);
+                        // Choosing in a menu closes it *and* does what it
+                        // says: one frame, so this one waits for the host.
+                        self.owe_for(reached_app);
                         for p in &self.panes {
                             p.window.request_redraw();
                         }
@@ -2517,7 +2658,19 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 };
                 self.dispatch(event_loop, i, ev);
             }
+            WindowEvent::RedrawRequested
+                if frame_waits_for_host(self.owed.get(), self.panes[i].deferred_frame) =>
+            {
+                // What would be painted predates an input the app has been
+                // told about and not yet answered — the release of a
+                // button, with the count still at its old value. The host
+                // asks again the moment its handler has run, and that
+                // frame carries both. Never twice running, so nothing here
+                // can stop a window painting.
+                self.panes[i].deferred_frame = true;
+            }
             WindowEvent::RedrawRequested => {
+                self.panes[i].deferred_frame = false;
                 self.redraw(i);
                 // KUI_SMOKE_FRAMES: count what the main window actually
                 // landed and quit at the target. `first_frame` is `None`
@@ -2734,6 +2887,39 @@ mod tests {
     struct Empty;
     impl App for Empty {
         fn view(&mut self, _ui: &mut Ui<'_>) {}
+    }
+
+    /// A frame waits only for an answer that is actually owed, and never
+    /// twice running — the bound that keeps a stream of input, or a
+    /// platform modal loop the host cannot interrupt, from stopping the
+    /// window altogether.
+    /// A press and a release finish something the core drew; a pointer
+    /// moving and a wheel turning do not, and a frame that waited on those
+    /// would cost a drag half its frames.
+    #[test]
+    fn only_a_discrete_input_is_worth_waiting_for() {
+        assert!(input_completes(&InputEvent::mouse_down(1)));
+        assert!(input_completes(&InputEvent::mouse_up()));
+        assert!(input_completes(&InputEvent::Text("x".into())));
+        assert!(!input_completes(&InputEvent::CursorMoved(Vec2::ZERO)));
+        assert!(!input_completes(&InputEvent::Scroll(Vec2::ZERO)));
+        assert!(!input_completes(&InputEvent::CursorLeft));
+    }
+
+    #[test]
+    fn a_frame_never_waits_twice_running() {
+        assert!(frame_waits_for_host(true, false));
+        assert!(!frame_waits_for_host(true, true));
+        assert!(!frame_waits_for_host(false, false));
+        assert!(!frame_waits_for_host(false, true));
+    }
+
+    /// The default is an app that answers inside `on_event`; only a host
+    /// driving the loop itself opts out.
+    #[test]
+    fn deferred_events_is_opt_in() {
+        assert!(!app("t").deferred_events);
+        assert!(app("t").deferred_events().deferred_events);
     }
 
     #[test]

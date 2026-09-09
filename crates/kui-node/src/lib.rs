@@ -1148,6 +1148,8 @@ impl kui::App for TreeApp {
         }
     }
 
+    /// Kept, not answered: `update` runs in JS after the pump, which is
+    /// what `Launcher::deferred_events` tells the shell below.
     fn on_event(&mut self, ev: UiEvent) {
         self.events.push(ev);
     }
@@ -1181,7 +1183,11 @@ impl KuiWindow {
             .as_ref()
             .and_then(Json::as_object)
             .unwrap_or(empty_props());
-        let mut launcher = kui::app(&title);
+        // `TreeApp::on_event` only keeps an event; JS runs `update` after
+        // the pump and submits the next view. So an input leaves its frame
+        // to that answer, and a click paints once — the button let go and
+        // the count moved in one frame, not two.
+        let mut launcher = kui::app(&title).deferred_events();
         let w = o.get("width").and_then(Json::as_f64);
         let h = o.get("height").and_then(Json::as_f64);
         if let (Some(w), Some(h)) = (w, h) {
@@ -1603,7 +1609,18 @@ macro_rules! core_methods {
                 // same moment rather than a pump apart.
                 let pending = self.$core().take_pending_events();
                 self.$take(pending);
-                events_json(std::mem::take(self.$events()))
+                let events = std::mem::take(self.$events());
+                // An input that reached the app declined to ask for its own
+                // frame (`Launcher::deferred_events`), leaving it to this
+                // host — so handing the batch over is where the host owes
+                // one. `runWindowed` draws on any non-empty drain and its
+                // `setView` asks too, coalescing into the same frame; the
+                // request here is what makes an input produce a frame for
+                // *any* host, including one whose handler submits no view.
+                if !events.is_empty() {
+                    self.$redraw();
+                }
+                events_json(events)
             }
 
             // -- Frame -----------------------------------------------------

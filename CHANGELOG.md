@@ -346,6 +346,51 @@ field reports).
 
 ### Fixed
 
+- **A click in a Node window paints once, not twice.** Press, and the
+  button went down; release, and the button came up in one frame and the
+  count moved in the *next* — a two-frame release, plain to see at the
+  8 ms pump. The release's frame was painted inside the pump that carried
+  the release, from the tree JS had submitted before it, since `update`
+  runs in JS after the pump returns; only then did `setView` ask for the
+  frame with the count in it. Measured with a probe that samples the frame
+  counter between pumps and inside `update`: before, the pump that
+  delivered the `add` event painted a frame before `update` ran and the
+  count's frame came 14 ms later; now that pump paints nothing, and the
+  one frame after `update` shows the button let go and the count moved
+  together.
+
+  So **a frame can now wait one turn for the host's answer**.
+  `Launcher::deferred_events()` — set by the runner behind `KuiWindow`,
+  and not reachable by an app that does not drive the loop itself — says
+  the host answers after `on_event` returns. Under it, a redraw waits when
+  the app owes an answer to an input, and the host ends the wait by saying
+  its view is current: `setView` already did, and a drained `pollEvents`
+  now does too, so an input produces a frame even when the handler submits
+  no view. Rust, C and Lua apps answer inside `on_event` and are
+  untouched; the `App` trait is unchanged.
+
+  **Two bounds are what make waiting safe, and the obvious version of this
+  change has neither.** A wait that simply stands until the host speaks
+  starves the window, because winit hands a pump its input *before* that
+  pump's redraw: under a stream that reaches the app, each pump re-arms
+  the wait before the frame the host just asked for is delivered. Measured
+  on a node with `onDrag`, a 578 ms drag painted **one** frame. The same
+  unbounded wait freezes a window for the length of a title-bar drag,
+  since a platform's modal move loop never returns to the host that would
+  end it. So:
+
+  - **A frame never waits twice running.** Whatever happens, a window
+    keeps painting — the worst case is half its frames, and a modal loop
+    the host cannot interrupt costs one frame, not the whole gesture.
+  - **Only a discrete input is worth waiting for.** A press, a release, a
+    keystroke, an IME commit and an assistive-technology action finish
+    something the core itself drew, and a frame showing the button let go
+    with the count unchanged is a frame that lies. A pointer moving, a
+    wheel turning and a preedit being revised are a stream, where content
+    trailing by a frame is what every toolkit does. With both bounds the
+    same drag paints 36 frames, which is what it painted before the
+    change.
+
 - **An idle window costs nothing again.** Three separate things kept a
   process that was doing nothing from settling at zero, and each was
   measured on its own before it was touched — a windowed app with none of
