@@ -208,10 +208,47 @@ field reports).
   characters. A dictionary handed a paragraph draws the whole thing back
   over the window and then says "No Results Found".
 
-- **Windows gets the native context menu too** (ADR 0017, step 3). A popup
-  `HMENU` tracked with `TPM_RETURNCMD`, which reports the chosen row
-  itself. Written against the headers and type-checked for
-  `x86_64-pc-windows-msvc`; **not yet run on Windows**.
+- **A standard menu row draws the shortcut its role has.** Copy reads
+  `Ctrl+C` — `⌘C` on macOS, the same split `KeyMods::primary` makes for
+  the key that produces it — without the app spelling one out.
+  `MenuRole::default_accel()` supplies it the way `default_label()`
+  supplies the wording, and `MenuItem::accel_text()` is what the stock
+  menu draws: the row's own accelerator where it declares one, the role's
+  otherwise. A `Custom` row still gets nothing, because only the app knows
+  what key runs it, and `LookUp` gets nothing because the one platform
+  with the panel draws its own menu.
+
+  Display only, as `accel` has always been — the core binds no keys. It is
+  also paint as far as a reader is concerned: `menuItem` is a
+  name-from-content role and the widget names each row itself, so a screen
+  reader hears "Copy", not "Copy Ctrl+C", and the accelerator adds no node
+  of its own. It is not yet in AccessKit's `keyboard_shortcut` either, for
+  want of a prop to carry it; a reader that would have announced the
+  shortcut does not.
+
+- **Windows draws the stock menu, not a Win32 one** (ADR 0017, decision 5,
+  amended 2026-09-10). The `TrackPopupMenu` renderer that appeared earlier
+  in this section was built, run, and taken out again: the drawn menu is
+  what a Windows window gets, the same one Linux gets and the same one the
+  conformance corpus tests.
+
+  It worked. What it could not do is look like the app it was opened from.
+  A popup `HMENU` is themed against the *process's* app mode and nothing
+  else — the most it can be told is "follow the desktop", and even then
+  the menu comes back in the desktop's grey, at the desktop's row height,
+  in the desktop's typeface. A dark app on a light desktop gets a white
+  menu and no call changes it. macOS keeps its `NSMenu` because Look Up
+  and Services cannot be drawn at all; Windows has no such row, so there
+  the native menu was charging the app's appearance for the system's
+  metrics.
+
+  What you give up on Windows, and Linux already had: the menu is a float
+  inside the frame, so it is clamped to the window instead of spilling
+  past its edge, and it casts no system shadow.
+
+  Nothing moved in the seam. `set_native_menus` + `activate_menu_item` is
+  still how a host renders menus itself, and a Windows host that wants an
+  `HMENU` can still build one — the Rust runner has stopped asking for it.
 
 - **macOS windows show the platform's own context menu** (ADR 0017, step
   3). The Rust runner declares `set_native_menus`, the core then holds the
@@ -221,9 +258,10 @@ field reports).
   selected. Choosing a row runs the same code the drawn menu's row runs.
 
   The seam is not macOS's: `set_native_menus` + `activate_menu_item` is
-  what any host with a menu of its own uses, C hosts included. Windows is
-  the next one and is not built yet — there, and on Linux, the core keeps
-  drawing the menu it drew before.
+  what any host with a menu of its own uses, C hosts included. macOS is
+  the only platform the runner uses it on — see the entry above for why
+  Windows does not — and everywhere else the core keeps drawing the menu
+  it drew before.
 
   Worth knowing if you drive winit yourself: the menu is *scheduled* onto
   the run loop rather than shown where the press is handled.

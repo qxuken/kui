@@ -43,8 +43,6 @@ smoke = []
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.52", features = [
     "Win32_Foundation",
-    # The context menu (ADR 0017 step 3) lives in WindowsAndMessaging,
-    # which is already here for the non-client chrome.
     "Win32_Globalization",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",

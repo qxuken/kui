@@ -31,8 +31,6 @@ mod system_env;
 #[cfg(target_os = "windows")]
 mod windows_anim;
 #[cfg(target_os = "windows")]
-mod windows_menu;
-#[cfg(target_os = "windows")]
 mod windows_nc;
 
 use winit::application::ApplicationHandler;
@@ -307,8 +305,8 @@ impl Launcher {
             clipboard: arboard::Clipboard::new().ok(),
             #[cfg(target_os = "macos")]
             native_menu: macos_menu::MacMenu::new(),
+            #[cfg(target_os = "macos")]
             menu_shown: false,
-            menu_idle: false,
             audio: audio::Audio::new(),
             audio_touch: std::time::Instant::now(),
             smoke_frames: Self::smoke_frames(),
@@ -1154,14 +1152,9 @@ struct Shell<A: App> {
     native_menu: Option<macos_menu::MacMenu>,
     /// Whether a menu the core opened has been handed to the platform and
     /// is waiting for an answer. One per app: only one menu can be up.
-    /// Unused where the platform's tracking call reports the row itself
-    /// (Win32), which needs no second turn to wait for.
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    /// Beside `native_menu` because it means nothing without one.
+    #[cfg(target_os = "macos")]
     menu_shown: bool,
-    /// True only while `about_to_wait` is running, which is the one place
-    /// a platform menu that blocks (Win32's) may be entered from: no other
-    /// handler is on the stack there. See `pump_native_menu`.
-    menu_idle: bool,
     /// The audio device the core's audio commands drive; see `audio`.
     audio: audio::Audio,
     /// When the app was last doing something that could lead to a sound:
@@ -1617,7 +1610,6 @@ impl<A: App> Shell<A> {
     /// and gone — reads which row it reported. A host with no native menu
     /// does neither and the core draws its own.
     fn pump_native_menu(&mut self, event_loop: &ActiveEventLoop) {
-        let _ = &self.menu_idle;
         #[cfg(target_os = "macos")]
         {
             let Some(native) = self.native_menu.as_ref() else {
@@ -1658,40 +1650,7 @@ impl<A: App> Shell<A> {
             self.apply_window_commands(event_loop);
             self.panes[i].window.request_redraw();
         }
-        // Win32's tracking call reports the row itself and blocks until
-        // the menu closes, so there is no second turn to wait for — but
-        // for the same reason it is only ever made from `about_to_wait`,
-        // where no other handler is on the stack (see `windows_menu`).
-        #[cfg(target_os = "windows")]
-        {
-            if !self.menu_idle {
-                return;
-            }
-            let Some(i) = self.panes.iter().position(|p| p.core.menu().is_some()) else {
-                return;
-            };
-            let menu = self.panes[i].core.menu().expect("checked").clone();
-            let tracked = windows_menu::track(&self.panes[i].window, menu.at, &menu.items);
-            let events = match tracked {
-                windows_menu::Tracked::Chosen(row) => self.panes[i].core.activate_menu_item(row),
-                windows_menu::Tracked::Dismissed => {
-                    self.panes[i].core.close_menu();
-                    Vec::new()
-                }
-                windows_menu::Tracked::Refused => {
-                    // Fall back to the menu the core draws rather than
-                    // leaving one open that never shows.
-                    self.panes[i].core.set_native_menus(false);
-                    self.panes[i].window.request_redraw();
-                    return;
-                }
-            };
-            self.route_events(events);
-            self.apply_menu_actions(event_loop, i);
-            self.apply_window_commands(event_loop);
-            self.panes[i].window.request_redraw();
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        #[cfg(not(target_os = "macos"))]
         let _ = event_loop;
     }
 
@@ -1964,15 +1923,15 @@ impl<A: App> Shell<A> {
         window: Arc<Window>,
         renderer: kui_wgpu::Renderer,
     ) {
-        // This driver shows the platform's own context menu where the
-        // platform has one, so the core keeps the open menu as state and
-        // draws none of it (ADR 0017, decision 5, step 3). Everywhere else
-        // — Linux today — the core draws the menu it always drew.
+        // macOS is the one platform whose own menu is worth the app's
+        // appearance, because it is the one with rows that cannot be drawn
+        // at all — Look Up, Services — so there the core keeps the open
+        // menu as state and draws none of it. Everywhere else, Windows now
+        // included, it draws the menu it always drew (ADR 0017, decision 5,
+        // amended 2026-09-10).
         #[cfg(target_os = "macos")]
         let native_menus = self.native_menu.is_some();
-        #[cfg(target_os = "windows")]
-        let native_menus = true;
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        #[cfg(not(target_os = "macos"))]
         let native_menus = false;
         core.set_native_menus(native_menus);
         // macOS is the one platform with a definition panel to show, so
@@ -3012,12 +2971,9 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
     /// asks for the next frame right away (vsync paces it). While a sound
     /// plays, the loop wakes every `AUDIO_POLL` to notice it finishing.
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        // The platform's menu comes and goes between turns of the loop,
-        // so this is where its answer is collected — and, where the
-        // platform's tracking call blocks, the only place it is made.
-        self.menu_idle = true;
+        // The platform's menu comes and goes between turns of the loop, so
+        // this is where its answer is collected.
         self.pump_native_menu(event_loop);
-        self.menu_idle = false;
         self.settle_focus();
         self.dismiss_popups_if_deactivated();
         self.poll_audio();

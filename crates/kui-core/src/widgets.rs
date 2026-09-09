@@ -683,7 +683,7 @@ pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> MenuNodes 
                 }
                 rows.push(ui.with_indexed(i as u64, spec, |ui| {
                     ui.text(item.text(), TextStyle::new(MENU_TEXT).color(MENU_FG));
-                    if let Some(accel) = &item.accel {
+                    if let Some(accel) = item.accel_text() {
                         // Pushed to the right edge by a grow spacer, so
                         // the label stays where the eye expects it
                         // whatever the accelerator is.

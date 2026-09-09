@@ -69,6 +69,35 @@ impl MenuRole {
         }
     }
 
+    /// The shortcut the stock renderer draws beside the row when the item
+    /// declares none, spelled the way the platform spells it — Command on
+    /// macOS, Control elsewhere, the same split [`KeyMods::primary`] makes
+    /// for the key that produces it.
+    ///
+    /// Display only, like every accelerator here: the core binds nothing,
+    /// and the row only names the key the host is already handling. Empty
+    /// for the roles with no standard shortcut — `Custom` above all, since
+    /// an app's own accelerator is the app's to declare
+    /// ([`MenuItem::accel`]) — and empty for `LookUp`, whose shortcut
+    /// belongs to the one platform that has the panel and draws its own
+    /// menu anyway.
+    ///
+    /// [`KeyMods::primary`]: crate::input::KeyMods::primary
+    pub fn default_accel(self) -> &'static str {
+        let mac = cfg!(target_os = "macos");
+        match self {
+            MenuRole::Cut if mac => "⌘X",
+            MenuRole::Copy if mac => "⌘C",
+            MenuRole::Paste if mac => "⌘V",
+            MenuRole::SelectAll if mac => "⌘A",
+            MenuRole::Cut => "Ctrl+X",
+            MenuRole::Copy => "Ctrl+C",
+            MenuRole::Paste => "Ctrl+V",
+            MenuRole::SelectAll => "Ctrl+A",
+            MenuRole::Custom | MenuRole::Separator | MenuRole::LookUp => "",
+        }
+    }
+
     /// Whether the core performs this itself, or with one hand from the
     /// host. `false` is an item only the app can carry out.
     pub fn is_builtin(self) -> bool {
@@ -93,7 +122,9 @@ pub struct MenuItem {
     pub id: Option<Value>,
     /// Drawn right-aligned and dimmed; the core binds nothing to it. The
     /// keyboard shortcut is the app's or the platform's, and an
-    /// accelerator here only says which one it is.
+    /// accelerator here only says which one it is. A standard row that
+    /// declares none takes its role's ([`MenuRole::default_accel`]), the
+    /// way an empty label takes the role's wording.
     pub accel: Option<String>,
 }
 
@@ -145,6 +176,16 @@ impl MenuItem {
             self.role.default_label()
         } else {
             &self.label
+        }
+    }
+
+    /// What the row draws on its right: its own accelerator, or the
+    /// role's. `None` is a row with neither, which is every `Custom` one
+    /// the app did not spell a shortcut for.
+    pub fn accel_text(&self) -> Option<&str> {
+        match &self.accel {
+            Some(accel) => Some(accel),
+            None => Some(self.role.default_accel()).filter(|a| !a.is_empty()),
         }
     }
 

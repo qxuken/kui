@@ -318,12 +318,13 @@ node; dismissing posts nothing.
 
 Who draws it, in order of preference:
 
-1. **The host, natively.** The Rust runner renders an `NSMenu` on macOS and
-   a `TrackPopupMenu` on Windows. This is what buys the system look, the
-   system keyboard behaviour, and — the reason it matters here — Look Up
-   and Services, which cannot be drawn.
-2. **The core, into the frame.** With no native renderer (Linux today,
-   every binding whose host has not implemented one, every headless test),
+1. **The host, natively.** The Rust runner renders an `NSMenu` on macOS
+   ~~and a `TrackPopupMenu` on Windows~~ (see the amendment below). This
+   is what buys the system look, the system keyboard behaviour, and — the
+   reason it matters here — Look Up and Services, which cannot be drawn.
+2. **The core, into the frame.** With no native renderer (Windows and
+   Linux today, every binding whose host has not implemented one, every
+   headless test),
    the core builds a stock menu subtree through the filler that already
    runs after the app's view and before layout
    (`crates/kui-core/src/ui.rs:613`). It is `widgets::` code building
@@ -331,6 +332,34 @@ Who draws it, in order of preference:
    arrow-navigable, dismissed by the modal rules ADR 0003 already defines.
    No new overlay layer, no core-owned window, and it lands in the
    conformance corpus like any other scene.
+
+**Amended after running it on Windows (2026-09-10): Windows takes 2, not
+1.** The Win32 popup menu was built, worked, and came out again, which is
+worth writing down rather than quietly reverting.
+
+What it could not do is look like the app it was opened from. A popup
+`HMENU` is themed against the *process's* app mode and against nothing
+else — not the window's palette, not the frame it was opened over. The
+most it can be told is "follow the desktop", and only through two
+undocumented `uxtheme.dll` ordinals; even then the answer comes back in
+the desktop's grey, at the desktop's row height, in the desktop's
+typeface. A dark app on a light desktop gets a white menu and there is no
+call that changes that.
+
+That trade is worth making on macOS and only on macOS, because there the
+native menu carries rows that cannot be drawn at all — Look Up, Services,
+the dictionary panel (decision 6). Windows has no such row. Its native
+menu buys the system's own metrics and charges the app's appearance for
+them, which for a library whose argument is that the app owns its pixels
+is the wrong side of the exchange.
+
+What that costs, and it is a real cost: a drawn menu is a float inside the
+frame, so it is clamped to the window rather than spilling past its edge,
+it casts no system shadow, and it is not the compositor's to place. Linux
+has always paid this. Windows pays it now too. The seam does not move —
+`set_native_menus` + `activate_menu_item` is still what a host with a menu
+of its own uses, and a Windows host that wants an `HMENU` can still render
+one; the *runner* has stopped asking for it.
 
 **Automatic, with the app's declaration winning.** A secondary press or a
 force click inside an `edit` or a `selectable` scope produces the default
@@ -572,8 +601,11 @@ corpus can see it.
    `menu` — the `selection` tree under a secondary press, since the menu
    is the core's and no binding declares it.
 3. Native menu renderers in the Rust runner: macOS first (it is the one
-   with Look Up), Windows second. **macOS built 2026-09-09**; Windows
-   still open. The core half is a seam any host can use —
+   with Look Up), Windows second. **macOS built 2026-09-09. Windows built
+   2026-09-10 and removed the same day** — see the amendment in decision
+   5: it worked, and it could not be made to look like the app, so the
+   runner draws the menu there instead. The core half is a seam any host
+   can use —
    `set_native_menus` makes the core hold the menu and draw none of it,
    and the host answers with `activate_menu_item` — so a C host on any
    platform can render one too.

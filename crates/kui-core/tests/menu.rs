@@ -255,6 +255,107 @@ fn a_disabled_row_is_inert() {
     assert!(core.take_menu_actions().is_empty());
 }
 
+/// A standard row takes its role's accelerator the way an empty label
+/// takes the role's wording, and an item that spells its own keeps it.
+#[test]
+fn a_standard_row_reads_the_shortcut_its_role_has() {
+    let mac = cfg!(target_os = "macos");
+    assert_eq!(
+        MenuRole::Copy.default_accel(),
+        if mac { "⌘C" } else { "Ctrl+C" }
+    );
+    assert_eq!(
+        MenuItem::role(MenuRole::SelectAll).accel_text(),
+        Some(if mac { "⌘A" } else { "Ctrl+A" })
+    );
+    // An app's own row has no shortcut the core could know, and Look Up
+    // belongs to the platform that draws its own menu anyway.
+    assert_eq!(MenuItem::new("Inspect").accel_text(), None);
+    assert_eq!(MenuItem::role(MenuRole::LookUp).accel_text(), None);
+    // Declared beats derived, including on a standard row.
+    assert_eq!(
+        MenuItem::role(MenuRole::Copy).accel("F2").accel_text(),
+        Some("F2")
+    );
+}
+
+/// The accelerator is paint. `menuItem` is a name-from-content role, so a
+/// row that stopped naming itself would start reading "Copy Ctrl+C" — or,
+/// worse, hand a reader the shortcut as a row of its own. Neither: the
+/// name is the label, and the second text run adds no node.
+#[test]
+fn an_accelerator_is_drawn_and_is_not_read_as_part_of_the_row() {
+    let mut core = Core::new();
+    let scope = frame(&mut core);
+    core.open_menu(Menu::new(
+        scope,
+        Vec2::new(40.0, 30.0),
+        vec![
+            MenuItem::role(MenuRole::Copy),
+            MenuItem::new("Inspect").accel("F12"),
+        ],
+    ));
+    frame(&mut core);
+    assert_eq!(rows(&mut core), ["Copy", "Inspect"]);
+    let tree = core.access_tree().clone();
+    let statics = tree
+        .nodes
+        .iter()
+        .filter(|n| n.role == kui_core::Role::StaticText)
+        .count();
+    assert_eq!(statics, 2, "the card's two lines, and no accelerator rows");
+}
+
+/// What a reader is handed when a menu opens: a modal `menu`, its rows as
+/// `menuItem`s in the order they were given, the dead one dead, and the
+/// keyboard already on the first row that can take it — so the arrow keys
+/// have somewhere to start and a reader is not left on the window.
+#[test]
+fn an_open_menu_reads_as_a_modal_menu_with_its_rows_under_it() {
+    let mut core = Core::new();
+    let scope = frame(&mut core);
+    core.open_menu(Menu::new(
+        scope,
+        Vec2::new(40.0, 30.0),
+        vec![
+            MenuItem::role(MenuRole::Copy).enabled(false),
+            MenuItem::separator(),
+            MenuItem::role(MenuRole::SelectAll),
+        ],
+    ));
+    frame(&mut core);
+    let tree = core.access_tree().clone();
+    let menu = tree
+        .nodes
+        .iter()
+        .find(|n| n.role == kui_core::Role::Menu)
+        .expect("a menu node");
+    assert_eq!(menu.name.as_deref(), Some("Menu"));
+    assert!(menu.modal, "everything behind it is inert (ADR 0003)");
+    // The separator is paint too: a reader hearing "separator" between
+    // every pair of rows is noise.
+    assert_eq!(rows(&mut core), ["Copy", "Select All"]);
+    let copy = tree
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Copy"))
+        .unwrap();
+    let all = tree
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Select All"))
+        .unwrap();
+    assert!(
+        copy.disabled && !copy.focused,
+        "dead, and not where we start"
+    );
+    assert!(all.focused, "the first row that can take focus has it");
+    assert!(
+        all.supports(kui_core::AccessAction::Click),
+        "and a reader can choose it without a pointer"
+    );
+}
+
 // -- The automatic path -----------------------------------------------------
 
 fn right_click(core: &mut Core, at: Vec2) -> Vec<kui_core::UiEvent> {
