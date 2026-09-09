@@ -411,6 +411,20 @@ impl Core {
                             Some((key, _, focusable, Some(scope))) => {
                                 let target = self.press_focus(key, focusable);
                                 self.set_focus(target);
+                                // A grid selects in cells, not in bytes:
+                                // the scope is the grid itself, and Alt
+                                // makes it the rectangular selection every
+                                // terminal has.
+                                if self.cells_id_of_ref(scope).is_some() {
+                                    let block = self.interaction.modifiers().alt;
+                                    if self.begin_cell_selection(scope, p, block) {
+                                        self.select_dragging = Some(scope);
+                                    }
+                                    self.focus_visible = false;
+                                    self.interaction
+                                        .handle(InputEvent::MouseDown { button, clicks }, &mut out);
+                                    return out;
+                                }
                                 match clicks {
                                     0 | 1 => {
                                         if self.begin_selection(scope, p) {
@@ -469,8 +483,12 @@ impl Core {
                     let local = Vec2::new(p.x - origin.x, p.y - origin.y);
                     self.edit_with_fonts(|edit, fs| edit.drag(key, local, fs));
                 }
-                if self.select_dragging.is_some() {
-                    self.extend_selection(p);
+                if let Some(scope) = self.select_dragging {
+                    if self.cells_id_of_ref(scope).is_some() {
+                        self.extend_cell_selection(p);
+                    } else {
+                        self.extend_selection(p);
+                    }
                 }
                 self.interaction
                     .handle(InputEvent::CursorMoved(p), &mut out);
@@ -1033,6 +1051,9 @@ impl Core {
     pub fn copy_selection(&self) -> Option<String> {
         if self.selection.is_some() {
             return self.selection_text();
+        }
+        if self.cell_selection.is_some() {
+            return self.cell_selection_text();
         }
         self.edit.copy_selection(self.edit.focused()?)
     }

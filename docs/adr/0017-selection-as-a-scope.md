@@ -394,6 +394,36 @@ view configuration does not deliver stage 2 —
 content view at window creation, reached through the raw window handle the
 way `windows_nc.rs:69` already reaches a Win32 one.
 
+### 7. A copy carries the formatting the text declared — and not the theme
+
+**Added 2026-09-09, while building steps 4 and 5.** A selection knows more
+than its characters: the core shaped it, so it still holds the weight, the
+slant and the per-span colours the view asked for. Throwing that away at
+the clipboard makes "copy" mean less than it does in every other app, and
+keeping it is a second flavour beside the plain text, not instead of it —
+`set_html(html, alt_text)` on macOS, Windows and Linux alike, so an editor
+that understands HTML takes the formatting and every plain-text field
+takes the words. A clipboard whose only flavour is HTML pastes markup into
+half the machine, which is why the two always travel together.
+
+What travels is **bold, italic, and a span's own colour**. What does not
+is the node's colour. That distinction is the whole decision: a paragraph
+drawn light grey on a dark card is grey because of the app's theme, and
+pasting it into a white document as grey-on-white is exactly how "copy
+with formatting" earns its bad name. A `rich_text` span that declared a
+colour is the other case — that colour is authored, the way a highlighted
+keyword is — and it travels.
+
+The mechanism is that cosmic-text keeps the attributes it shaped with, so
+`AttrsList` still answers for the run long after the spans that declared
+it are gone. One catch worth writing down: `spans_iter` lists only the
+ranges something *changed*, so a plain paragraph has none at all and reads
+its line's defaults — a walk that asks per character and coalesces is what
+covers both.
+
+Not carried: a `cells` selection, whose colours are the app's grid rather
+than the text's, and a long line, which holds one style throughout.
+
 ## Considered options
 
 **A document model over the whole tree.** Retain enough of every frame to
@@ -524,7 +554,11 @@ corpus can see it.
    the run loop with no winit handler on the stack, which also means the
    answer arrives a turn later and is collected in `about_to_wait`.
 4. Cells: grid selection, `originLine`, linewise and block, copy with
-   trailing-blank trimming.
+   trailing-blank trimming. **Built 2026-09-09.** A grid selects only when
+   it declares `selectable` — the ADR said "a `cells` node is its own
+   scope", which it is, but making every terminal selectable without
+   asking would surprise an app that draws its own selection over `cell`
+   payloads. It never joins the text scope around it either way.
 5. Force click: the pressure arm, the `forceclick` event, `onForceClick`,
    and Look Up as a menu role. **Built 2026-09-09**, and the least
    verifiable thing in the repo: the core routing has tests, the Look Up

@@ -68,6 +68,83 @@ impl Selection {
     }
 }
 
+/// One end of a selection in a cell grid: an *absolute* line (the grid's
+/// `origin_line` plus the row) and a column. Absolute because a grid is
+/// one screenful of an app's own history, so a row number means a
+/// different line after every scroll (ADR 0017, decision 4).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct CellEnd {
+    pub line: u64,
+    pub col: usize,
+}
+
+impl CellEnd {
+    pub fn new(line: u64, col: usize) -> Self {
+        Self { line, col }
+    }
+}
+
+/// A selection inside one `cells` grid.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CellSelection {
+    /// The grid it lives in.
+    pub node: Key,
+    pub anchor: CellEnd,
+    pub focus: CellEnd,
+    /// Rectangular rather than linewise: the column range is the same on
+    /// every line, which is how a terminal selects a column of output.
+    /// Held by a modifier while dragging, the way every terminal does it.
+    pub block: bool,
+}
+
+impl CellSelection {
+    pub fn new(node: Key, anchor: CellEnd, focus: CellEnd) -> Self {
+        Self {
+            node,
+            anchor,
+            focus,
+            block: false,
+        }
+    }
+
+    pub fn block(mut self, on: bool) -> Self {
+        self.block = on;
+        self
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.anchor == self.focus
+    }
+
+    /// The two ends in reading order.
+    pub fn ordered(&self) -> (CellEnd, CellEnd) {
+        if self.anchor <= self.focus {
+            (self.anchor, self.focus)
+        } else {
+            (self.focus, self.anchor)
+        }
+    }
+
+    /// The columns selected on `line`, as a half-open range, or `None`
+    /// when the line is outside the selection. Linewise by default — a
+    /// line in the middle runs edge to edge, which `cols` gives — and a
+    /// block selection is the same column range on every line it covers.
+    pub fn cols_on(&self, line: u64, cols: usize) -> Option<(usize, usize)> {
+        let (a, b) = self.ordered();
+        if line < a.line || line > b.line {
+            return None;
+        }
+        if self.block {
+            let (lo, hi) = (a.col.min(b.col), a.col.max(b.col));
+            return (lo < hi).then_some((lo.min(cols), hi.min(cols)));
+        }
+        let from = if line == a.line { a.col } else { 0 };
+        let to = if line == b.line { b.col } else { cols };
+        let (from, to) = (from.min(cols), to.min(cols));
+        (from < to).then_some((from, to))
+    }
+}
+
 /// Where one text node's content sits in a selection: the two ends
 /// resolved against *this* node, in its own bytes.
 ///
@@ -118,6 +195,37 @@ impl Ends {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn cells(a: (u64, usize), b: (u64, usize)) -> CellSelection {
+        CellSelection::new(Key::ROOT, CellEnd::new(a.0, a.1), CellEnd::new(b.0, b.1))
+    }
+
+    #[test]
+    fn a_linewise_cell_selection_runs_edge_to_edge_in_the_middle() {
+        let s = cells((10, 3), (12, 5));
+        assert_eq!(s.cols_on(10, 80), Some((3, 80)));
+        assert_eq!(s.cols_on(11, 80), Some((0, 80)));
+        assert_eq!(s.cols_on(12, 80), Some((0, 5)));
+        assert_eq!(s.cols_on(13, 80), None);
+        assert_eq!(s.cols_on(9, 80), None);
+    }
+
+    #[test]
+    fn a_block_selection_is_the_same_columns_on_every_line() {
+        let s = cells((10, 6), (12, 2)).block(true);
+        for line in 10..=12 {
+            assert_eq!(s.cols_on(line, 80), Some((2, 6)));
+        }
+        assert_eq!(s.cols_on(13, 80), None);
+    }
+
+    #[test]
+    fn a_backwards_drag_selects_the_same_thing() {
+        assert_eq!(
+            cells((12, 5), (10, 3)).ordered(),
+            cells((10, 3), (12, 5)).ordered()
+        );
+    }
 
     #[test]
     fn ends_order_by_ordinal_then_byte() {

@@ -131,6 +131,15 @@
 /// against ABI 9 must not be handed an ABI 10 event, and the version is
 /// what says so.
 ///
+/// ABI 12 appends `origin_line` to `kui_cells` (ADR 0017 decision 4): the
+/// absolute line a grid's row 0 is, so a terminal's selection keeps its
+/// ends across a scroll. This is the case the note above does not cover —
+/// not an [out] struct's layout, not an [in] struct's append, not a new
+/// function, but an existing function's *signature*. A host that does not
+/// recompile passes one argument too few and the library reads whatever is
+/// in that register, which is exactly the silent failure the version check
+/// turns into a message.
+///
 /// ABI 11 takes the clip off `KuiQuad` and puts it behind an index into a
 /// new `KuiDrawData::clips`. This is the second bump the size handshake
 /// cannot absorb (ABI 7 was the first): `KuiQuad` travels as an array, so
@@ -143,7 +152,7 @@
 /// value nearly every quad of a frame shares. A host reads
 /// `dd.clips[q.clip]` where it used to read `q.clip` and `q.clip_radius`;
 /// entry zero clips nothing, so there is no null case.
-pub const KUI_ABI_VERSION: u32 = 11;
+pub const KUI_ABI_VERSION: u32 = 12;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its

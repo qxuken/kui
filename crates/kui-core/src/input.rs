@@ -1148,7 +1148,6 @@ mod tests {
             key_up: false,
             context_menu: None,
             force_click: None,
-            force_click: None,
             focusable: true,
             window: None,
             hover: None,

@@ -307,3 +307,49 @@ fn a_scope_inside_a_scope_is_warned_about() {
         "got {warnings:?}"
     );
 }
+
+#[test]
+fn a_copy_carries_the_formatting_the_text_declared() {
+    use kui_core::Span;
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let scope = ui.with_keyed(
+        "card",
+        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
+        |ui| {
+            ui.rich_text(
+                &[
+                    Span::new("plain "),
+                    Span::new("bold").bold(),
+                    Span::new(" & "),
+                    Span::new("green").color(kui_core::Color::rgb8(0, 0x80, 0)),
+                ],
+                style(),
+            );
+        },
+    );
+    ui.finish();
+    assert!(core.select_all_in(scope));
+    assert_eq!(core.selection_text().as_deref(), Some("plain bold & green"));
+    let html = core.selection_html().expect("formatting to carry");
+    assert!(html.contains("<b>bold</b>"), "{html}");
+    assert!(html.contains("color:#008000"), "{html}");
+    assert!(html.contains("&amp;"), "escaped, not raw: {html}");
+    assert!(
+        !html.contains("plain</b>"),
+        "the plain run is not swept into the bold one: {html}"
+    );
+}
+
+#[test]
+fn a_plain_selection_carries_no_theme_colour() {
+    // The node's own colour is the app's theme, not the text's: a grey
+    // paragraph pasted into a white document should not arrive grey.
+    let mut core = Core::new();
+    let scope = three_labels(&mut core);
+    core.select_all_in(scope);
+    let html = core.selection_html().expect("some html");
+    assert!(!html.contains("color:"), "{html}");
+    assert!(html.contains("one<br>two<br>three"), "{html}");
+}

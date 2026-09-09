@@ -258,6 +258,11 @@ impl<'a> Ui<'a> {
         self.core.close_menu()
     }
 
+    /// The selection as HTML; see `Core::selection_html`.
+    pub fn selection_html(&self) -> Option<String> {
+        self.core.selection_html()
+    }
+
     /// Selects everything in the scope `key` declared; see
     /// `Core::select_all_in`.
     pub fn select_all_in(&mut self, key: Key) -> bool {

@@ -146,6 +146,10 @@ impl Core {
                 );
             }
             NodeContent::Cells(cid) => {
+                // The window's selection, when it is in this very grid.
+                let sel = self
+                    .cell_selection
+                    .filter(|s| s.node == self.tree.keys[i] && !s.is_empty());
                 let sess = &mut *self.session.state();
                 self.cells.emit(
                     cid,
@@ -157,6 +161,7 @@ impl Core {
                     self.text.raster_mut(),
                     &mut self.atlas,
                     &mut self.display.quads,
+                    sel.as_ref().map(|s| (s, crate::select::TINT)),
                 );
             }
             NodeContent::Edit(key) => {
@@ -515,8 +520,16 @@ impl Core {
                 };
                 // An inner scope takes the text under it; the nesting
                 // itself is reported by `diag`, over the finished tree.
+                //
+                // A `cells` grid is its own scope and never joins the one
+                // around it: it selects in cells, and a selection that ran
+                // from a paragraph into a terminal screen would be two
+                // kinds of selection at once (ADR 0017, decision 4).
+                let grid = matches!(self.tree.content[i], NodeContent::Cells(_));
                 self.scopes[i] = if self.tree.specs[i].interact().selectable {
                     Some(self.tree.keys[i])
+                } else if grid {
+                    None
                 } else {
                     outer
                 };

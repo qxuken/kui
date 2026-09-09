@@ -561,6 +561,9 @@ pub extern "C" fn kui_cells(
     cursor_col: u32,
     cursor_shape: u32,
     cursor_color: u32,
+    // `origin_line`: the absolute line row 0 is (ADR 0017 decision 4);
+    // 0 says nothing.
+    origin_line: u64,
 ) {
     guard((), || {
         let Some(c) = (unsafe { ctx(ptr) }) else {
@@ -616,6 +619,7 @@ pub extern "C" fn kui_cells(
             cells: &cells,
             style,
             cursor,
+            origin_line,
         };
         let label = kstr(label);
         if label.is_empty() {

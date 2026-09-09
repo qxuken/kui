@@ -645,7 +645,7 @@ export function createEncoder(P) {
         if (cells == null || cells.length !== n * 4) {
           throw new Error(`<cells> needs a cells array of ${n * 4} entries (four per cell) for ${rows}×${cols}, got ${cells?.length}`);
         }
-        reserve(12 + n * 3);
+        reserve(13 + n * 3);
         f[fi++] = OP.cells;
         f[fi++] = rows;
         f[fi++] = cols;
@@ -657,6 +657,9 @@ export function createEncoder(P) {
         if (shape < 0) throw new Error(`bad cursorShape ${JSON.stringify(p.cursorShape)} for <cells> (block, bar or underline)`);
         f[fi++] = shape;
         f[fi++] = p.cursorColor != null ? color(p.cursorColor) : 0xffffffff;
+        // The absolute line row 0 is: what makes a selection in a
+        // scrolling terminal keep its ends (ADR 0017, decision 4).
+        f[fi++] = typeof p.originLine === 'number' ? p.originLine : 0;
         f[fi++] = n;
         for (let i = 0; i < n; i++) {
           const ch = cells[i * 4] >>> 0;

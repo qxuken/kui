@@ -393,6 +393,26 @@ impl Launcher {
 /// every toolkit does. Waiting on those would halve the frame rate of a
 /// drag for nothing — measured at 18 frames against 36 in a 578 ms drag —
 /// so they never wait.
+/// Puts a copy on the system clipboard, with the formatting beside the
+/// words where there is any (ADR 0017, decision 7).
+///
+/// Both flavours or neither: `set_html` writes the HTML *and* the plain
+/// text it is given as an alternative, so an app that understands one
+/// takes it and everything else takes the words. A clipboard holding only
+/// HTML pastes markup into every plain-text field on the machine, which is
+/// the failure mode this shape exists to avoid.
+fn set_clipboard(clipboard: Option<&mut arboard::Clipboard>, text: String, html: Option<String>) {
+    let Some(cb) = clipboard else { return };
+    match html {
+        Some(html) => {
+            let _ = cb.set_html(html, Some(text));
+        }
+        None => {
+            let _ = cb.set_text(text);
+        }
+    }
+}
+
 fn input_completes(ev: &InputEvent) -> bool {
     match ev {
         InputEvent::MouseDown { .. }
@@ -1687,10 +1707,8 @@ impl<A: App> Shell<A> {
         };
         for action in pane.core.take_menu_actions() {
             match action {
-                MenuAction::SetClipboard(text) => {
-                    if let Some(cb) = self.clipboard.as_mut() {
-                        let _ = cb.set_text(text);
-                    }
+                MenuAction::SetClipboard { text, html } => {
+                    set_clipboard(self.clipboard.as_mut(), text, html);
                 }
                 MenuAction::Paste => {
                     if let Some(text) = self.clipboard.as_mut().and_then(|cb| cb.get_text().ok()) {
@@ -2318,18 +2336,15 @@ impl<A: App> Shell<A> {
         {
             match c.to_lowercase().as_str() {
                 "c" => {
-                    if let (Some(text), Some(cb)) =
-                        (pane.core.copy_selection(), self.clipboard.as_mut())
-                    {
-                        let _ = cb.set_text(text);
+                    if let Some(text) = pane.core.copy_selection() {
+                        let html = pane.core.selection_html();
+                        set_clipboard(self.clipboard.as_mut(), text, html);
                     }
                     return;
                 }
                 "x" => {
                     if let Some(text) = pane.core.cut_selection() {
-                        if let Some(cb) = self.clipboard.as_mut() {
-                            let _ = cb.set_text(text);
-                        }
+                        set_clipboard(self.clipboard.as_mut(), text, None);
                         self.after_direct_edit(i);
                     }
                     return;

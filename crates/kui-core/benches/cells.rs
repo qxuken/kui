@@ -59,6 +59,7 @@ fn frame(core: &mut Core, cells: &[Cell]) -> usize {
                 kui_core::CellCursor::Block,
                 Color::rgb8(0x6a, 0x8b, 0xff),
             )),
+            origin_line: 0,
         },
         NodeSpec::default(),
     );

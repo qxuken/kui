@@ -108,6 +108,17 @@ pub struct CellGrid<'a> {
     pub style: TextStyle,
     /// `(row, col, shape, colour)`.
     pub cursor: Option<(usize, usize, CursorShape, Color)>,
+    /// The absolute line number of row 0 — where this screenful sits in
+    /// the app's own history (`docs/adr/0017-selection-as-a-scope.md`,
+    /// decision 4).
+    ///
+    /// A grid is one screenful and the scrollback behind it is the app's,
+    /// so a row number is not an address: it means a different line after
+    /// every scroll. Stamping this makes a selection's ends absolute, and
+    /// a terminal that scrolls under a selection keeps it. An app that
+    /// never sets it gets 0 and a selection that is correct only while it
+    /// does not scroll, which is the honest reading of saying nothing.
+    pub origin_line: u64,
 }
 
 /// Index into the frame's grid list.
@@ -120,6 +131,7 @@ struct Entry {
     cells: Vec<Cell>,
     style: TextStyle,
     cursor: Option<(usize, usize, CursorShape, Color)>,
+    origin_line: u64,
 }
 
 /// A glyph placed in a cell: where its raster goes, from the cell's
@@ -192,6 +204,7 @@ impl CellStore {
             cells,
             style: grid.style,
             cursor: grid.cursor,
+            origin_line: grid.origin_line,
         });
         CellsId((self.frame.len() - 1) as u32)
     }
@@ -231,6 +244,22 @@ impl CellStore {
         let key = self.table(&style, res, fs);
         let t = &self.tables[&key];
         Size::new(t.cell_w / self.scale, t.cell_h / self.scale)
+    }
+
+    /// The absolute line the grid's row 0 is (`CellGrid::origin_line`).
+    pub(crate) fn origin_line(&self, id: CellsId) -> u64 {
+        self.frame[id.0 as usize].origin_line
+    }
+
+    /// The character in one cell, and whether it is a spacer after a wide
+    /// glyph (which a copy skips rather than turning into a space).
+    pub(crate) fn cell_char(&self, id: CellsId, row: usize, col: usize) -> Option<(char, bool)> {
+        let e = &self.frame[id.0 as usize];
+        if row >= e.rows || col >= e.cols {
+            return None;
+        }
+        let c = e.cells[row * e.cols + col];
+        Some((c.ch, c.flags & flags::WIDE != 0))
     }
 
     pub(crate) fn dims(&self, id: CellsId) -> (usize, usize) {
@@ -288,6 +317,11 @@ impl CellStore {
         raster: &mut Raster,
         atlas: &mut GlyphAtlas,
         out: &mut Vec<Quad>,
+        // The window's selection when it is in *this* grid, and the tint
+        // to paint it under (ADR 0017, decision 4). Resolved by the
+        // caller, which is the only place that knows which grid is
+        // selected in.
+        sel: Option<(&crate::select::CellSelection, Color)>,
     ) {
         let scale = self.scale;
         let style = self.frame[id.0 as usize].style;
@@ -323,6 +357,33 @@ impl CellStore {
             return;
         }
         let stroke = (scale).round().max(1.0);
+        // The selection, under everything the rows draw: one quad per
+        // run of selected columns on each visible row, so a linewise
+        // selection is one quad a line and a block selection is a
+        // rectangle of them.
+        if let Some((sel, tint)) = sel {
+            for r in r0..r1 {
+                let line = entry.origin_line + r as u64;
+                let Some((from, to)) = sel.cols_on(line, entry.cols) else {
+                    continue;
+                };
+                let (from, to) = (from.max(c0), to.min(c1));
+                if from >= to {
+                    continue;
+                }
+                out.push(quad(
+                    Rect::new(
+                        ox + from as f32 * cw,
+                        oy + r as f32 * ch,
+                        (to - from) as f32 * cw,
+                        ch,
+                    ),
+                    tint,
+                    QuadKind::Solid,
+                    [0; 4],
+                ));
+            }
+        }
         for r in r0..r1 {
             let row = &entry.cells[r * entry.cols..(r + 1) * entry.cols];
             let cy = oy + r as f32 * ch;

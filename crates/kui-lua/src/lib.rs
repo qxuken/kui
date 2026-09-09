@@ -375,6 +375,7 @@ fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
 /// and the scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
 /// `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
 /// `caret_rect(key, byte)`, the selection calls `selection_text()` /
+/// `selection_html()` (the same words with the formatting they declared) /
 /// `select_all_in(key)` / `clear_selection()` (ADR 0017 — one selection
 /// per window, a `selectable` scope's or the focused editor's), the menu
 /// verbs `open_menu(key, x, y, items)` / `close_menu()` (whose chosen row
@@ -678,6 +679,17 @@ fn env_table<'scope, 'env: 'scope>(
         scope.create_function(move |_, ()| {
             let ui = ui.borrow();
             Ok(ui.selection_text())
+        })?,
+    )?;
+    // The selection as HTML: the formatting the text declared (bold,
+    // italic, a span's own colour) and not the node's colour, which is
+    // the theme's. Nil with no text selection. A second clipboard flavour
+    // beside the plain text, never instead of it.
+    t.set(
+        "selection_html",
+        scope.create_function(move |_, ()| {
+            let ui = ui.borrow();
+            Ok(ui.selection_html())
         })?,
     )?;
     // Selects every run inside the scope a keyed node declared, first
@@ -1253,12 +1265,15 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
                 }
                 None => None,
             };
+            // The absolute line row 0 is; 0 when the app says nothing.
+            let origin_line = t.get::<Option<u64>>("origin_line")?.unwrap_or(0);
             let grid = kui_core::CellGrid {
                 rows,
                 cols,
                 cells: &cells,
                 style: p.style,
                 cursor,
+                origin_line,
             };
             match (p.index, &p.key) {
                 (Some(i), _) => ui.cells_indexed(i, &grid, p.spec),
@@ -3035,6 +3050,7 @@ mod tests {
                 "scroll_geometry",
                 "scroll_offset",
                 "select_all_in",
+                "selection_html",
                 "selection_text",
                 "set_edit_text",
                 "set_focus",

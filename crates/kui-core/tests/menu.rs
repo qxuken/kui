@@ -122,7 +122,10 @@ fn copy_puts_the_selection_on_the_hosts_clipboard() {
     let events = click(&mut core, at);
     assert_eq!(
         core.take_menu_actions(),
-        vec![MenuAction::SetClipboard("one\ntwo".into())],
+        vec![MenuAction::SetClipboard {
+            text: "one\ntwo".into(),
+            html: Some("one<br>two".into()),
+        }],
         "the core works out what to copy; the clipboard stays the host's"
     );
     assert_eq!(
@@ -223,7 +226,10 @@ fn an_editors_selection_survives_the_menu_that_is_about_it() {
     click(&mut core, at);
     assert_eq!(
         core.take_menu_actions(),
-        vec![MenuAction::SetClipboard("typed text".into())]
+        vec![MenuAction::SetClipboard {
+            text: "typed text".into(),
+            html: None,
+        }]
     );
     assert_eq!(
         core.edit_text(edit).as_deref(),
@@ -398,7 +404,10 @@ fn the_host_reports_the_row_it_chose() {
     let events = core.activate_menu_item(0);
     assert_eq!(
         core.take_menu_actions(),
-        vec![MenuAction::SetClipboard("one\ntwo".into())],
+        vec![MenuAction::SetClipboard {
+            text: "one\ntwo".into(),
+            html: Some("one<br>two".into()),
+        }],
         "the same path the drawn menu's row takes"
     );
     assert_eq!(events.len(), 1);

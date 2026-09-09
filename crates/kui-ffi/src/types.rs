@@ -59,6 +59,7 @@ pub struct KuiCtx {
     /// caller until the next call, like every other string here.
     pub(crate) menu_actions: VecDeque<kui_core::MenuAction>,
     pub(crate) menu_text: String,
+    pub(crate) menu_html: String,
     /// The name most recently handed out by kui_ctx_window_name; valid
     /// until the next call.
     pub(crate) last_window_name: Option<Rc<str>>,
@@ -123,6 +124,7 @@ impl KuiCtx {
             window_commands: VecDeque::new(),
             menu_actions: VecDeque::new(),
             menu_text: String::new(),
+            menu_html: String::new(),
             last_window_name: None,
             slot_name: None,
             slot_namespace: None,
@@ -1288,6 +1290,12 @@ pub struct KuiMenuAction {
     pub kind: u32,
     /// Borrowed until the next `kui_take_menu_action` on this context.
     pub text: KuiStr,
+    /// The same selection with the formatting the core knows about, for a
+    /// host offering a second clipboard flavour (ADR 0017, decision 7).
+    /// Empty when there is none to carry — and never a *replacement* for
+    /// `text`: a clipboard whose only flavour is HTML pastes markup into
+    /// every plain-text field on the machine.
+    pub html: KuiStr,
 }
 
 impl Default for KuiMenuAction {
@@ -1299,13 +1307,17 @@ impl Default for KuiMenuAction {
                 ptr: std::ptr::null(),
                 len: 0,
             },
+            html: KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
         }
     }
 }
 
 // SAFETY: `repr(C)` with `size: u32` first.
 unsafe impl OutParam for KuiMenuAction {
-    const ABI_V1_SIZE: u32 = abi_through!(KuiMenuAction, text, KuiStr);
+    const ABI_V1_SIZE: u32 = abi_through!(KuiMenuAction, html, KuiStr);
     fn size_mut(&mut self) -> &mut u32 {
         &mut self.size
     }

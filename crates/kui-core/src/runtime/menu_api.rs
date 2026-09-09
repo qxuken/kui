@@ -312,7 +312,9 @@ impl Core {
                     None => self.selection_text().filter(|t| !t.is_empty()),
                 };
                 if let Some(text) = text {
-                    self.menu_actions.push(MenuAction::SetClipboard(text));
+                    let html = self.selection_html();
+                    self.menu_actions
+                        .push(MenuAction::SetClipboard { text, html });
                 }
             }
             MenuRole::Cut => {
@@ -324,7 +326,10 @@ impl Core {
                 {
                     self.set_focus(Some(key));
                     self.edit_with_fonts(|edit, fs| edit.delete_selection(key, fs));
-                    self.menu_actions.push(MenuAction::SetClipboard(text));
+                    // No `html`: an editor's text is one style, and what
+                    // was cut is gone anyway.
+                    self.menu_actions
+                        .push(MenuAction::SetClipboard { text, html: None });
                 }
             }
             MenuRole::Paste => self.menu_actions.push(MenuAction::Paste),

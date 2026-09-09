@@ -461,7 +461,7 @@ static void surface_view(void *user, KuiCtx *ui) {
         KuiTextStyle cell_style = {.size = 13, .family = KUI_FONT_MONO, .line_height = 18};
         KuiSpec term = {0};
         kui_cells(ui, KUI_STR("term"), 2, 6, screen, 12, &cell_style, &term, NULL, NULL, NULL,
-                  1, 2, KUI_CELL_CURSOR_BLOCK, 0x6a8bffff);
+                  1, 2, KUI_CELL_CURSOR_BLOCK, 0x6a8bffff, 0);
 
         kui_latency_graph(ui);
         kui_latency_hud(ui, KUI_END, KUI_START);
@@ -1532,7 +1532,7 @@ static void conf_cells(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_value_map_set(hit, KUI_STR("kind"), kui_value_str(KUI_STR("hit")));
     KuiSpec term = {.label = KUI_STR("term")};
     kui_cells(ui, KUI_STR("term"), 1, 11, screen, 11, &style, &term, hit, NULL, NULL, 0, 3,
-              KUI_CELL_CURSOR_BLOCK, 0x6a8bffff);
+              KUI_CELL_CURSOR_BLOCK, 0x6a8bffff, 0);
     kui_close(ui);
 }
 

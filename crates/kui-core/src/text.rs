@@ -2088,6 +2088,48 @@ impl TextSystem {
         Some(run.base + byte.min(run.text.content().len()))
     }
 
+    /// The selection `from..to` as HTML, carrying the styling that is
+    /// *the text's* rather than the theme's: bold, italic, and a span's
+    /// own colour where one was declared (ADR 0017, decision 7).
+    ///
+    /// What it deliberately leaves behind is the node's colour. A
+    /// paragraph drawn light grey on a dark card is grey because of the
+    /// app's theme, not because the words are grey; pasting it into a
+    /// white document as grey-on-white is how "copy with formatting"
+    /// earns its reputation. A `rich_text` span that declared a colour is
+    /// the other case — that colour is authored, the way a highlighted
+    /// keyword is — and it travels.
+    ///
+    /// Runs are joined the way [`Self::scope_slice`] joins them: a `<br>`
+    /// where the plain text gets a newline.
+    pub(crate) fn scope_html(&self, scope: Key, from: usize, to: usize, prev: bool) -> String {
+        let (from, to) = (from.min(to), from.max(to));
+        let mut out = String::new();
+        let mut prev_run: Option<&ScopeRun<'_>> = None;
+        for run in &self.scope_runs(scope, prev) {
+            let (start, end) = run.span();
+            if end <= from || start >= to {
+                continue;
+            }
+            if let Some(p) = prev_run
+                && (p.place.origin.y - run.place.origin.y).abs() > f32::EPSILON
+            {
+                out.push_str("<br>");
+            }
+            let content = run.text.content();
+            let lo = floor_boundary(content, from.saturating_sub(start));
+            let hi = floor_boundary(content, (to - start).min(content.len()));
+            match run.text {
+                // A long line is shaped in chunks and holds one style
+                // throughout, so its selection is plain escaped text.
+                ScopeText::Long(_) => escape_into(&content[lo..hi], &mut out),
+                ScopeText::Run(entry) => html_of_run(entry, lo, hi, &mut out),
+            }
+            prev_run = Some(run);
+        }
+        out
+    }
+
     /// The box the selection `from..to` occupies in `scope`, logical
     /// viewport px: the union of the drawn runs it touches, clipped to
     /// the part of each run that is actually selected in x only where the
@@ -2527,6 +2569,92 @@ fn word_range(content: &str, byte: usize) -> (usize, usize) {
         end = at + i + c.len_utf8();
     }
     (start, end)
+}
+
+/// One shaped run's `lo..hi` as HTML, span by span: cosmic-text keeps the
+/// attributes the text was shaped with, so the bold in a rich paragraph is
+/// still readable off the buffer long after the spans that declared it are
+/// gone.
+fn html_of_run(entry: &CachedText, lo: usize, hi: usize, out: &mut String) {
+    let starts = line_starts(&entry.buffer, &entry.content);
+    for (li, line) in entry.buffer.lines.iter().enumerate() {
+        let base = starts.get(li).copied().unwrap_or(0);
+        let text = line.text();
+        if li > 0 {
+            // A newline inside one node's text is a line break in the
+            // copy, the same way it is on screen.
+            if base > lo && base <= hi {
+                out.push_str("<br>");
+            }
+        }
+        // `spans_iter` lists only the ranges something *changed* — a
+        // plain paragraph has none at all and reads its line's defaults —
+        // so this walks the line and asks per character, coalescing runs
+        // that answer the same. `get_span` falls back to the defaults
+        // itself, which is exactly the case a rich paragraph's gaps are.
+        let attrs_list = line.attrs_list();
+        let mut spans: Vec<(usize, usize, cosmic_text::AttrsOwned)> = Vec::new();
+        for (i, _) in text.char_indices() {
+            let a = cosmic_text::AttrsOwned::new(&attrs_list.get_span(i));
+            match spans.last_mut() {
+                Some((_, end, prev)) if *prev == a && *end == i => {
+                    *end = i + text[i..].chars().next().map_or(1, char::len_utf8);
+                }
+                _ => spans.push((i, i + text[i..].chars().next().map_or(1, char::len_utf8), a)),
+            }
+        }
+        for (start, end, attrs) in &spans {
+            let (s, e) = (base + start, base + end);
+            let (s, e) = (s.max(lo), e.min(hi));
+            if s >= e {
+                continue;
+            }
+            let piece = &entry.content[s..e];
+            let bold = attrs.weight >= cosmic_text::Weight::BOLD;
+            let italic = attrs.style != cosmic_text::Style::Normal;
+            if let Some(c) = attrs.color_opt {
+                let _ = std::fmt::Write::write_fmt(
+                    out,
+                    format_args!(
+                        "<span style=\"color:#{:02x}{:02x}{:02x}\">",
+                        c.r(),
+                        c.g(),
+                        c.b()
+                    ),
+                );
+            }
+            if bold {
+                out.push_str("<b>");
+            }
+            if italic {
+                out.push_str("<i>");
+            }
+            escape_into(piece, out);
+            if italic {
+                out.push_str("</i>");
+            }
+            if bold {
+                out.push_str("</b>");
+            }
+            if attrs.color_opt.is_some() {
+                out.push_str("</span>");
+            }
+        }
+    }
+}
+
+/// HTML-escapes into `out`. The four that matter in element content and
+/// nothing else: a clipboard flavour is not a document, and over-escaping
+/// is what turns a copied apostrophe into `&#39;` in someone's email.
+fn escape_into(s: &str, out: &mut String) {
+    for ch in s.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            _ => out.push(ch),
+        }
+    }
 }
 
 /// The nearest char boundary at or below `i`, so a slice taken from a/// The nearest char boundary at or below `i`, so a slice taken from a

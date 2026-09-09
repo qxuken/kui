@@ -2133,6 +2133,17 @@ macro_rules! core_methods {
                 Ok(self.$core().copy_selection())
             }
 
+            /// The selection as HTML, carrying the formatting the text
+            /// declared — bold, italic, a span's own colour — and *not*
+            /// the node's colour, which is the app's theme rather than
+            /// the text's (`docs/adr/0017-selection-as-a-scope.md`).
+            /// Null with no text selection. Meant as a second clipboard
+            /// flavour beside the plain text, never instead of it.
+            #[napi]
+            pub fn selection_html(&mut self) -> Result<Option<String>> {
+                Ok(self.$core().selection_html())
+            }
+
             /// Selects every run inside the selection scope a keyed node
             /// declared (`selectable`), first byte to last — Select All,
             /// scoped. False when that node drew no text, or is not a

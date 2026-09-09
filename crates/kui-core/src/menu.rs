@@ -199,7 +199,14 @@ impl Menu {
 pub enum MenuAction {
     /// Put this on the system clipboard. Both Copy and Cut produce one;
     /// Cut has already removed the text by the time it arrives.
-    SetClipboard(String),
+    ///
+    /// `html` is the same selection with the formatting the core knows
+    /// about — bold, italic, a span's declared colour (ADR 0017, decision
+    /// 7) — for a host that can offer a second flavour. It is an
+    /// *addition* to `text` and never a replacement: a clipboard whose
+    /// only flavour is HTML pastes markup into every plain-text field on
+    /// the machine.
+    SetClipboard { text: String, html: Option<String> },
     /// Read the clipboard and deliver it as `InputEvent::Text`, exactly
     /// as the host does for Cmd-V. The core cannot read a clipboard, so
     /// Paste is the one standard item it can only ask for.

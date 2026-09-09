@@ -102,6 +102,7 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             window_commands: VecDeque::new(),
             menu_actions: VecDeque::new(),
             menu_text: String::new(),
+            menu_html: String::new(),
             last_window_name: None,
             slot_name: None,
             slot_namespace: None,

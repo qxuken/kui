@@ -35,6 +35,34 @@ field reports).
 
 ### Added
 
+- **A terminal screen selects, in cells** (ADR 0017, step 4). A `cells`
+  grid that declares `selectable` drags out a selection in cells rather
+  than bytes: linewise by default, rectangular with Alt held, painted
+  under the glyphs, and copied with each line's trailing blanks trimmed —
+  the rule that makes a copied screenful paste like text instead of like a
+  rectangle of spaces. A grid never joins a text scope around it, and the
+  window still has exactly one selection: starting one in a grid clears the
+  paragraph's, and the other way round.
+
+  Its ends are **absolute lines**, not rows, so `cells` gains `originLine`
+  / `origin_line` — the absolute line number of the grid's row 0. A screen
+  is one screenful of an app's own history, so a row number means a
+  different line after every scroll; stamping the origin is what lets a
+  selection survive one. An app that says nothing gets 0 and a selection
+  correct only while it does not scroll.
+
+- **Copy carries formatting** (ADR 0017, decision 7). The clipboard now
+  gets two flavours: the words, and the same words with the bold, the
+  italic and the per-span colours the view declared. `selectionHtml()` /
+  `env.selection_html()` / `KuiMenuAction.html` expose it, and the runner
+  writes both so an editor that understands HTML takes the formatting and
+  every plain-text field takes the words.
+
+  What does not travel is the **node's** colour — that is the app's theme,
+  not the text's, and a grey-on-dark paragraph pasted into a white document
+  as grey-on-white is how this feature usually goes wrong. A span that
+  declared its own colour is the other case, and it travels.
+
 - **Force click, and Look Up** (ADR 0017, decision 6 — the question this
   whole ADR started from). A press that deepens past the second stage of a
   Force Touch trackpad is `InputEvent::ForceClick`, routed like a

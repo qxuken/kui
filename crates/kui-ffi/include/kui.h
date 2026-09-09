@@ -144,8 +144,18 @@ extern "C" {
  * value nearly every quad of a frame shares. Your source changes in one
  * place - read dd.clips[q.clip] where you read q.clip and q.clip_radius;
  * entry zero clips nothing, so there is no null case.
+ *
+ * ABI 12 appends origin_line to kui_cells (ADR 0017 decision 4): the
+ * absolute line a grid's row 0 is, so a terminal's selection keeps its
+ * ends across a scroll. This is the case the rules above do not cover -
+ * not an [out] struct's layout, not an [in] struct's append, not a new
+ * function, but an existing function's *signature*. A host that does not
+ * recompile passes one argument too few and the library reads whatever is
+ * in that register, which is exactly the silent failure the version check
+ * exists to turn into a message. Recompile and pass 0 to keep what you
+ * had.
  */
-#define KUI_ABI_VERSION 11u
+#define KUI_ABI_VERSION 12u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -953,6 +963,13 @@ typedef struct KuiMenuAction {
     uint32_t size; /* = sizeof(KuiMenuAction) in, bytes filled out */
     uint32_t kind;
     KuiStr text; /* borrowed until the next kui_take_menu_action */
+    /* The same selection with the formatting this library knows about -
+     * bold, italic, a span's declared colour
+     * (docs/adr/0017-selection-as-a-scope.md). Empty when there is none,
+     * and never a replacement for `text`: a clipboard whose only flavour
+     * is HTML pastes markup into every plain-text field on the machine.
+     * Borrowed like `text`. */
+    KuiStr html;
 } KuiMenuAction;
 #define KUI_MENU_ACTION_INIT ((KuiMenuAction){ .size = sizeof(KuiMenuAction) })
 
@@ -1788,7 +1805,8 @@ void kui_cells(KuiCtx *ctx, KuiStr label, uint32_t rows, uint32_t cols,
                const KuiCell *cells, size_t count, const KuiTextStyle *style,
                const KuiSpec *spec, KuiValue *on_click, KuiValue *on_drag,
                KuiValue *on_key, uint32_t cursor_row, uint32_t cursor_col,
-               uint32_t cursor_shape, uint32_t cursor_color);
+               uint32_t cursor_shape, uint32_t cursor_color,
+               uint64_t origin_line);
 uint64_t kui_child_key(KuiCtx *ctx, KuiStr label);
 bool kui_is_hovered(KuiCtx *ctx, uint64_t key);
 bool kui_is_pressed(KuiCtx *ctx, uint64_t key);

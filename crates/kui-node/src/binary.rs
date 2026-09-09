@@ -44,7 +44,11 @@ use crate::{Result, err, value_of};
 /// never heard of it writes a stream this addon still reads - the bump is
 /// for the other direction, an encoder that emits one to an addon without
 /// the op).
-pub const VERSION: u32 = 5;
+/// v6: `<cells originLine>` — the absolute line a grid's row 0 is, so a
+/// terminal's selection survives a scroll (ADR 0017, decision 4). A slot
+/// in the middle of the cells op rather than a new op, so the bump is what
+/// keeps an older encoder's stream from being read as if it had one.
+pub const VERSION: u32 = 6;
 
 pub const OP_END: u32 = 0;
 pub const OP_ROOT: u32 = 1;
@@ -556,6 +560,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let ccol = r.u()? as usize;
             let cshape = r.u()? as usize;
             let ccolor = r.f()? as u32;
+            let origin_line = r.f()?.max(0.0) as u64;
             let n = r.u()? as usize;
             if n != rows * cols {
                 return Err(err(format!("<cells> carries {n} cells for {rows}×{cols}")));
@@ -587,6 +592,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 cells: &cells,
                 style: p.style,
                 cursor,
+                origin_line,
             };
             match (p.index, &p.key) {
                 (Some(i), _) => ui.core().cells_indexed(i, &grid, p.spec),

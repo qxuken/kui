@@ -2182,6 +2182,7 @@ fn build_cells(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 cells: &cells,
                 style: TextStyle::new(13.0).mono().line_height(18.0),
                 cursor: Some((0, 3, CursorShape::Block, Color::hex(0x6a8bffff))),
+                origin_line: 0,
             },
             NodeSpec::default()
                 .on_click(Value::map([("kind", Value::str("hit"))]))

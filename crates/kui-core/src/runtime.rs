@@ -212,6 +212,11 @@ pub struct Core {
     /// `None` when this frame builds neither end. See
     /// `docs/adr/0017-selection-as-a-scope.md`.
     selection: Option<crate::select::Selection>,
+    /// The window's selection when it is in a `cells` grid instead of in
+    /// text. One selection per window: starting either clears the other,
+    /// which `Core::set_selection` / `set_cell_selection` enforce in one
+    /// place each (ADR 0017, decisions 1 and 4).
+    cell_selection: Option<crate::select::CellSelection>,
     /// The scope a press is currently dragging a selection through, if
     /// any: set on the press inside a scope, cleared on release. The
     /// counterpart of `EditStore::dragging` for text nobody is editing.
@@ -417,6 +422,7 @@ impl Core {
             native_menus: false,
             lookup_available: false,
             selection: None,
+            cell_selection: None,
             select_dragging: None,
             sel_ords: Vec::new(),
             sel_ends: None,

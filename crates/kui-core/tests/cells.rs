@@ -23,6 +23,7 @@ fn grid(
             cells,
             style: mono(),
             cursor,
+            origin_line: 0,
         },
         NodeSpec::default(),
     );
@@ -161,6 +162,7 @@ fn a_click_names_its_cell_and_the_screen_is_the_value() {
                 cells: &cells,
                 style: mono(),
                 cursor: None,
+                origin_line: 0,
             },
             NodeSpec::default()
                 .on_click(Value::map([("kind", Value::str("hit"))]))
