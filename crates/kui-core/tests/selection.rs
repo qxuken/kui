@@ -89,7 +89,10 @@ fn a_word_is_the_run_of_like_characters_around_the_point() {
         |ui| ui.text("hello brave world", style()),
     );
     ui.finish();
-    assert!(core.select_word_at(scope, Vec2::new(lead + word / 2.0, 8.0)));
+    assert!(
+        core.select_word_at(scope, Vec2::new(lead + word / 2.0, 8.0))
+            .is_some()
+    );
     assert_eq!(core.selection_text().as_deref(), Some("brave"));
 }
 
@@ -352,4 +355,86 @@ fn a_plain_selection_carries_no_theme_colour() {
     let html = core.selection_html().expect("some html");
     assert!(!html.contains("color:"), "{html}");
     assert!(html.contains("one<br>two<br>three"), "{html}");
+}
+
+/// Double-click and hold, then drag: the selection moves by *words*, and
+/// the word the press took stays whole when the drag turns back over it.
+/// What every text UI does, and what the stock `<edit>` gets from
+/// cosmic-text's `Selection::Word` for nothing.
+#[test]
+fn a_held_double_press_drags_by_words() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let at = |s: &str, ui: &mut kui_core::Ui<'_>| ui.measure_text(s, &style(), None).width;
+    let x_brave = at("hello ", &mut ui) + at("brave", &mut ui) / 2.0;
+    let x_world = at("hello brave ", &mut ui) + at("world", &mut ui) / 2.0;
+    let x_hello = at("hell", &mut ui);
+    ui.with_keyed(
+        "card",
+        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
+        |ui| ui.text("hello brave world", style()),
+    );
+    ui.finish();
+
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(x_brave, 8.0)));
+    core.handle_input(InputEvent::MouseDown {
+        button: MouseButton::Primary,
+        clicks: 2,
+    });
+    assert_eq!(core.selection_text().as_deref(), Some("brave"));
+    // Held and dragged forward: whole words, not the character under the
+    // pointer.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(x_world, 8.0)));
+    assert_eq!(core.selection_text().as_deref(), Some("brave world"));
+    // Back over the start: the word it began in stays whole.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(x_hello, 8.0)));
+    assert_eq!(core.selection_text().as_deref(), Some("hello brave"));
+    core.handle_input(InputEvent::MouseUp {
+        button: MouseButton::Primary,
+    });
+    // The release ends the drag: moving on does not keep selecting.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(x_world, 8.0)));
+    assert_eq!(core.selection_text().as_deref(), Some("hello brave"));
+}
+
+/// The same gesture one click deeper: a third press held drags whole runs.
+#[test]
+fn a_held_triple_press_drags_by_runs() {
+    let mut core = Core::new();
+    let scope = three_labels(&mut core);
+    let _ = scope;
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(4.0, 8.0)));
+    core.handle_input(InputEvent::MouseDown {
+        button: MouseButton::Primary,
+        clicks: 3,
+    });
+    assert_eq!(core.selection_text().as_deref(), Some("one"));
+    // Into the third label: whole runs, not a partial one.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(4.0, 45.0)));
+    assert_eq!(core.selection_text().as_deref(), Some("one\ntwo\nthree"));
+}
+
+/// One click still drags by characters — the gesture that was there
+/// before, unchanged.
+#[test]
+fn a_single_press_still_drags_by_characters() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let lead = ui.measure_text("hello ", &style(), None).width;
+    let two = ui.measure_text("hello br", &style(), None).width;
+    ui.with_keyed(
+        "card",
+        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
+        |ui| ui.text("hello brave world", style()),
+    );
+    ui.finish();
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(lead, 8.0)));
+    core.handle_input(InputEvent::MouseDown {
+        button: MouseButton::Primary,
+        clicks: 1,
+    });
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(two, 8.0)));
+    assert_eq!(core.selection_text().as_deref(), Some("br"));
 }

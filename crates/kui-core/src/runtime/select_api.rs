@@ -10,7 +10,7 @@
 use crate::geom::{Rect, Vec2};
 use crate::key::Key;
 use crate::runtime::Core;
-use crate::select::{CellEnd, CellSelection, Endpoint, Selection};
+use crate::select::{CellEnd, CellSelection, Endpoint, Grain, Selection};
 
 impl Core {
     /// The window's text selection outside an editor, if it has one.
@@ -283,43 +283,113 @@ impl Core {
         true
     }
 
+    /// The motion half of a drag that is moving by *words* or by whole
+    /// runs: the live end rounds outwards to its own word (or run), and so
+    /// does the anchor, so the word the press took stays whole however far
+    /// back over itself the drag turns.
+    ///
+    /// This is what a double-click-and-drag does in every text UI, and
+    /// what the stock `<edit>` gets for free from cosmic-text's
+    /// `Selection::Word`; a `selectable` scope is the one that had to be
+    /// taught (ADR 0017).
+    pub(crate) fn extend_selection_grained(
+        &mut self,
+        drag: crate::select::SelectDrag,
+        point: Vec2,
+    ) -> bool {
+        let grain = drag.grain;
+        if grain == Grain::Char {
+            return self.extend_selection(point);
+        }
+        let Some(sel) = self.selection else {
+            return false;
+        };
+        let Some(hit) = self.selection_hit(sel.scope, point) else {
+            return false;
+        };
+        let Some((anode, a_from, a_to)) = drag.anchor else {
+            return self.extend_selection(point);
+        };
+        // The unit under the live end, in that node's own bytes.
+        let (f_from, f_to) = match grain {
+            Grain::Word => match self
+                .text
+                .word_at(sel.scope, hit.node, hit.byte, self.building)
+            {
+                Some(span) => span,
+                None => return false,
+            },
+            _ => match self
+                .text
+                .scope_runs(sel.scope, self.building)
+                .into_iter()
+                .find(|r| r.place.key == hit.node)
+                .map(|r| r.text.content().len())
+            {
+                Some(len) => (0, len),
+                None => return false,
+            },
+        };
+        // Which side of the anchor the live end is on decides which edge
+        // of each unit the selection runs between.
+        let prev = self.building;
+        let ga = self.text.scope_offset(sel.scope, anode, a_from, prev);
+        let gf = self.text.scope_offset(sel.scope, hit.node, f_from, prev);
+        let (Some(ga), Some(gf)) = (ga, gf) else {
+            return false;
+        };
+        let next = if gf < ga {
+            // Backwards: from the far edge of the anchor's unit to the
+            // near edge of the live one.
+            Selection::new(
+                sel.scope,
+                Endpoint::new(anode, a_to),
+                Endpoint::new(hit.node, f_from),
+            )
+        } else {
+            Selection::new(
+                sel.scope,
+                Endpoint::new(anode, a_from),
+                Endpoint::new(hit.node, f_to),
+            )
+        };
+        if Some(next) == self.selection {
+            return false;
+        }
+        self.selection = Some(next);
+        true
+    }
+
     /// Selects the word under `point` inside `scope` — a double click,
-    /// and (on macOS) a force click. `false` when the point lands in no
-    /// run, or in one with no word under it.
-    pub fn select_word_at(&mut self, scope: Key, point: Vec2) -> bool {
-        let Some(at) = self.selection_hit(scope, point) else {
-            return false;
-        };
-        let Some((from, to)) = self.text.word_at(scope, at.node, at.byte, self.building) else {
-            return false;
-        };
+    /// and (on macOS) a force click. Answers the span it took, in the
+    /// node's own bytes, so a drag that follows can round to it.
+    pub fn select_word_at(&mut self, scope: Key, point: Vec2) -> Option<(Key, usize, usize)> {
+        let at = self.selection_hit(scope, point)?;
+        let (from, to) = self.text.word_at(scope, at.node, at.byte, self.building)?;
         self.set_selection(Selection::new(
             scope,
             Endpoint::new(at.node, from),
             Endpoint::new(at.node, to),
         ));
-        true
+        Some((at.node, from, to))
     }
 
     /// Selects the whole run under `point` — a triple click, which takes
-    /// the line a label is. `false` when the point lands in no run.
-    pub fn select_run_at(&mut self, scope: Key, point: Vec2) -> bool {
-        let Some(at) = self.selection_hit(scope, point) else {
-            return false;
-        };
+    /// the line a label is. Answers the span, like `select_word_at`.
+    pub fn select_run_at(&mut self, scope: Key, point: Vec2) -> Option<(Key, usize, usize)> {
+        let at = self.selection_hit(scope, point)?;
         let len = self
             .text
             .scope_runs(scope, self.building)
             .into_iter()
             .find(|r| r.place.key == at.node)
-            .map(|r| r.text.content().len());
-        let Some(len) = len else { return false };
+            .map(|r| r.text.content().len())?;
         self.set_selection(Selection::new(
             scope,
             Endpoint::new(at.node, 0),
             Endpoint::new(at.node, len),
         ));
-        true
+        Some((at.node, 0, len))
     }
 
     /// Collapses the focused editor's selection, so a window never shows

@@ -394,6 +394,24 @@ view configuration does not deliver stage 2 —
 content view at window creation, reached through the raw window handle the
 way `windows_nc.rs:69` already reaches a Win32 one.
 
+### 8. A drag moves by what the press counted
+
+**Added 2026-09-09, from the field.** A press arms its drag with a
+granularity: one click drags by characters, two by words, three by whole
+runs. Both ends round outwards to that unit, not just the live one — a
+double-click-drag turned back on itself keeps the word it started in
+whole, which is the difference between a gesture that selects words and
+one that snaps to them.
+
+This is not novel; it is what every text UI does, and what the stock
+`<edit>` already did without being asked, since cosmic-text's
+`Selection::Word` expands both ends as the cursor moves. Only a
+`selectable` scope had to be taught, and the editor's half now has a test
+so it cannot quietly stop working.
+
+A `cells` grid drags in cells at every click count. A word in a terminal
+is the app's idea rather than the grid's, and nothing has needed one yet.
+
 ### 7. A copy carries the formatting the text declared — and not the theme
 
 **Added 2026-09-09, while building steps 4 and 5.** A selection knows more

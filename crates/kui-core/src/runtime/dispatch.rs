@@ -6,6 +6,7 @@
 //! lives in `focus`, the arrow-key patterns in `composites`.
 
 use super::*;
+use crate::select::{Grain, SelectDrag};
 
 impl Core {
     /// Feeds one input event; returns any UI events it resolved to,
@@ -418,25 +419,38 @@ impl Core {
                                 if self.cells_id_of_ref(scope).is_some() {
                                     let block = self.interaction.modifiers().alt;
                                     if self.begin_cell_selection(scope, p, block) {
-                                        self.select_dragging = Some(scope);
+                                        self.select_dragging = Some(SelectDrag {
+                                            scope,
+                                            grain: Grain::Char,
+                                            anchor: None,
+                                        });
                                     }
                                     self.focus_visible = false;
                                     self.interaction
                                         .handle(InputEvent::MouseDown { button, clicks }, &mut out);
                                     return out;
                                 }
-                                match clicks {
-                                    0 | 1 => {
-                                        if self.begin_selection(scope, p) {
-                                            self.select_dragging = Some(scope);
-                                        }
-                                    }
-                                    2 => {
-                                        self.select_word_at(scope, p);
-                                    }
-                                    _ => {
-                                        self.select_run_at(scope, p);
-                                    }
+                                // The press arms the drag with what the
+                                // click count says it moves by: a second
+                                // click held and dragged selects word by
+                                // word, a third run by run.
+                                let armed = match clicks {
+                                    0 | 1 => self
+                                        .begin_selection(scope, p)
+                                        .then_some((Grain::Char, None)),
+                                    2 => self
+                                        .select_word_at(scope, p)
+                                        .map(|span| (Grain::Word, Some(span))),
+                                    _ => self
+                                        .select_run_at(scope, p)
+                                        .map(|span| (Grain::Run, Some(span))),
+                                };
+                                if let Some((grain, anchor)) = armed {
+                                    self.select_dragging = Some(SelectDrag {
+                                        scope,
+                                        grain,
+                                        anchor,
+                                    });
                                 }
                             }
                             // Everything else: a plain node, and a
@@ -483,11 +497,11 @@ impl Core {
                     let local = Vec2::new(p.x - origin.x, p.y - origin.y);
                     self.edit_with_fonts(|edit, fs| edit.drag(key, local, fs));
                 }
-                if let Some(scope) = self.select_dragging {
-                    if self.cells_id_of_ref(scope).is_some() {
+                if let Some(drag) = self.select_dragging {
+                    if self.cells_id_of_ref(drag.scope).is_some() {
                         self.extend_cell_selection(p);
                     } else {
-                        self.extend_selection(p);
+                        self.extend_selection_grained(drag, p);
                     }
                 }
                 self.interaction
@@ -550,7 +564,7 @@ impl Core {
             return;
         }
         if let Some(scope) = scope {
-            if !self.select_word_at(scope, p) {
+            if self.select_word_at(scope, p).is_none() {
                 return;
             }
             // A force click between words is a force click on nothing:

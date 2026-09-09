@@ -35,6 +35,18 @@ field reports).
 
 ### Added
 
+- **Double-click and hold, then drag, selects by words** — and a third
+  press by whole runs. The press arms the drag with what the click count
+  says it moves by, and both ends round outwards: drag back over the word
+  you started in and it stays whole, which is what makes the gesture feel
+  like it is selecting words rather than snapping to them. A single press
+  still drags by characters.
+
+  A stock `<edit>` already did this — cosmic-text's `Selection::Word`
+  expands both ends while the cursor moves — so this is a `selectable`
+  scope learning the same trick, plus a test that pins the editor's half
+  so it cannot quietly stop.
+
 - **A terminal screen selects, in cells** (ADR 0017, step 4). A `cells`
   grid that declares `selectable` drags out a selection in cells rather
   than bytes: linewise by default, rectangular with Alt held, painted

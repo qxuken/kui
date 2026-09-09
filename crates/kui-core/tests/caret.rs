@@ -138,6 +138,28 @@ fn double_click_selects_word_triple_selects_line() {
     assert!(core.is_focused(edit_key));
 }
 
+/// The other half of the double-click gesture: hold the second press and
+/// drag, and an editor selects word by word rather than character by
+/// character. cosmic-text's `Selection::Word` does the expanding — this
+/// pins that our press and drag actually reach it, since a `selectable`
+/// scope had to be taught the same trick by hand (ADR 0017).
+#[test]
+fn a_held_double_press_drags_an_editor_by_words() {
+    let mut core = Core::new();
+    frame(&mut core, "alpha beta gamma\nsecond line");
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(12.0, 8.0)));
+    core.handle_input(InputEvent::mouse_down(2));
+    assert_eq!(core.copy_selection().as_deref(), Some("alpha"));
+    // Held, and dragged into the third word: whole words.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(96.0, 8.0)));
+    let text = core.copy_selection().unwrap_or_default();
+    assert!(
+        text.starts_with("alpha") && text.ends_with("gamma"),
+        "words, not characters: {text:?}"
+    );
+    core.handle_input(InputEvent::mouse_up());
+}
+
 #[test]
 fn blink_gate_hides_caret_quads() {
     let caret_quads = |core: &mut Core| {

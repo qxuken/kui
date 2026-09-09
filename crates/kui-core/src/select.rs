@@ -68,6 +68,24 @@ impl Selection {
     }
 }
 
+/// What a drag-select moves by. A press sets it from the click count the
+/// driver counted, the way every text UI does: one click drags by
+/// characters, two by words, three by whole runs.
+///
+/// The unit is not just a rounding of the live end — the *anchor* rounds
+/// too, and outwards. A double-click-drag that turns back on itself keeps
+/// the word it started in whole, which is what makes the gesture feel
+/// like it is selecting words rather than snapping to them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Grain {
+    #[default]
+    Char,
+    Word,
+    /// One text node's whole content — a label, a paragraph. cosmic-text
+    /// calls this a line; here a run is the thing a triple click takes.
+    Run,
+}
+
 /// One end of a selection in a cell grid: an *absolute* line (the grid's
 /// `origin_line` plus the row) and a column. Absolute because a grid is
 /// one screenful of an app's own history, so a row number means a
@@ -143,6 +161,19 @@ impl CellSelection {
         let (from, to) = (from.min(cols), to.min(cols));
         (from < to).then_some((from, to))
     }
+}
+
+/// A drag-select in flight: which scope it is in, what it moves by, and
+/// the span the press itself selected — the word a double click took, the
+/// run a triple click took — which both ends round outwards to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SelectDrag {
+    pub scope: Key,
+    pub grain: Grain,
+    /// `(node, from, to)` in that node's own bytes. `None` for a
+    /// character drag, which has nothing to round to, and for a grid,
+    /// which drags in cells.
+    pub anchor: Option<(Key, usize, usize)>,
 }
 
 /// Where one text node's content sits in a selection: the two ends

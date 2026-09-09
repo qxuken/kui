@@ -76,7 +76,7 @@ pub use menu::{Menu, MenuAction, MenuItem, MenuRole};
 pub use resources::{FontId, FragmentId, ImageId, Resources, SessionId, SoundId};
 pub use runtime::{Core, Extension};
 pub use scroll::{MAX_UNDECLARED_SCROLLS, ScrollGeometry};
-pub use select::{CellEnd, CellSelection, Endpoint, Selection};
+pub use select::{CellEnd, CellSelection, Endpoint, Grain, Selection};
 pub use session::{Session, SharedAudio, SharedResources};
 pub use slot::{Extensions, Fill, NAMESPACE_SEPARATOR, ROOT_SLOT, Slot, full_name, split_name};
 pub use spec::{

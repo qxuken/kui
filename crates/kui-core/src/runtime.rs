@@ -217,10 +217,10 @@ pub struct Core {
     /// which `Core::set_selection` / `set_cell_selection` enforce in one
     /// place each (ADR 0017, decisions 1 and 4).
     cell_selection: Option<crate::select::CellSelection>,
-    /// The scope a press is currently dragging a selection through, if
-    /// any: set on the press inside a scope, cleared on release. The
-    /// counterpart of `EditStore::dragging` for text nobody is editing.
-    select_dragging: Option<Key>,
+    /// The drag a press is running through a selection scope, if any: set
+    /// on the press inside a scope, cleared on release. The counterpart of
+    /// `EditStore::dragging` for text nobody is editing.
+    select_dragging: Option<crate::select::SelectDrag>,
     sel_ords: Vec<u32>,
     sel_ends: Option<crate::select::Ends>,
     /// Per-node innermost enclosing selection scope — the key of the
