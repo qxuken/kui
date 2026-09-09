@@ -629,12 +629,15 @@ impl<'a> Ui<'a> {
 
     /// Runs layout and emission; results land in `Core::output()`. A frame
     /// begun with a filler lets it finish first: the `"root"` fill, unless
-    /// the view declared it, and the `unknown-slot` check.
+    /// the view declared it, and the `unknown-slot` check. An open context
+    /// menu is drawn after both, which is what makes it the frame's modal
+    /// scope and its topmost float (ADR 0017, decision 5).
     pub fn finish(self) {
         let Ui { core, filler } = self;
         if let Some(filler) = filler {
             filler.finish(&mut Ui::new(core));
         }
+        Core::build_menu(&mut Ui::new(core));
         core.finish_frame();
     }
 }

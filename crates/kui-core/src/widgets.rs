@@ -2,11 +2,13 @@
 //! widgets should follow (composition over traits, state by key), which is
 //! what keeps them reachable from scripting frontends.
 
+use crate::access::Role;
 use crate::color::Color;
 use crate::edit::EditOptions;
 use crate::geom::{Edges, Vec2};
 use crate::key::Key;
-use crate::spec::{Align, NodeSpec, Sizing, TextStyle};
+use crate::menu::{MenuItem, MenuRole};
+use crate::spec::{Align, FloatConfig, NodeSpec, Sizing, TextStyle};
 use crate::stats::{FrameSample, STATS_CAPACITY};
 use crate::ui::Ui;
 use crate::value::Value;
@@ -568,6 +570,165 @@ pub fn button_with(ui: &mut Ui<'_>, key: &str, text: &str, spec: NodeSpec, hint:
         }
     });
 }
+
+// -- Context menus ----------------------------------------------------------
+// The menu every app was writing for itself (ADR 0017, decision 5). It is
+// exported rather than hidden inside the core's automatic path, and the
+// automatic path calls exactly this — so an app that answers its own
+// `onContextMenu` to add two items of its own gets the layout, the
+// keyboard, the dismissal and the access rows without rewriting them, and
+// the corpus tests one menu rather than two.
+
+/// Menu chrome, in one place so a native renderer's absence still looks
+/// deliberate rather than improvised.
+pub const MENU_WIDTH: f32 = 200.0;
+pub const MENU_TEXT: f32 = 13.0;
+/// The reserved label the stock menu is keyed under. A menu the core
+/// opened is found by key, not by guessing at payloads, so an app is free
+/// to post whatever it likes from its own items.
+pub const MENU_KEY: &str = "kui.menu";
+
+/// The nodes [`context_menu`] built: the root a `modal` dismissal arrives
+/// on, and one key per item in the order they were given, separators
+/// included, so an index into the item list is an index into this.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MenuNodes {
+    pub root: Key,
+    pub rows: Vec<Key>,
+}
+
+/// Draws a context menu at `at` (logical viewport px) and returns the key
+/// of its root. A float anchored to the viewport rather than to a parent,
+/// because a context menu belongs at the pointer and not under whatever
+/// node happens to enclose it; `fit` is what keeps it in the window, which
+/// for a menu near the bottom edge means flipping above the point.
+///
+/// It declares `modal`, so a press outside it or Escape asks it to go away
+/// through the one mechanism that already exists for that
+/// (`docs/adr/0003-modal-surfaces.md`) rather than through a dismissal
+/// rule of its own; the caller closes it when that dismissal arrives. The
+/// rows are `menuItem`s under a `menu`, which is what makes the arrow keys
+/// work (`docs/adr/0007-composite-keyboard-patterns.md`) and what a screen
+/// reader reads.
+///
+/// Each chosen row posts the item's `id`, or its label when it declares
+/// none. A `Separator` posts nothing and takes no focus.
+pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> MenuNodes {
+    let accent = ui.env().system.accent.unwrap_or(MENU_ACCENT);
+    let mut rows = Vec::with_capacity(items.len());
+    let root = ui.with_keyed(
+        MENU_KEY,
+        NodeSpec::column()
+            .float(
+                FloatConfig::viewport()
+                    // Top-left of the menu at the top-left of the
+                    // viewport, then offset to the point: the placement
+                    // every context menu has, with `fit` flipping it up
+                    // or clamping it in when the point is near an edge.
+                    .at(Align::Start, Align::Start)
+                    .self_at(Align::Start, Align::Start)
+                    .offset(at.x, at.y)
+                    .fit(),
+            )
+            .modal(Value::str(MENU_KEY))
+            .role(Role::Menu)
+            .label("Menu")
+            .width(Sizing::Fixed(MENU_WIDTH))
+            .pad(4.0)
+            .gap(1.0)
+            .bg(MENU_BG)
+            .border(1.0, MENU_BORDER)
+            .radius(6.0),
+        |ui| {
+            let mut first = true;
+            for (i, item) in items.iter().enumerate() {
+                if item.role == MenuRole::Separator {
+                    rows.push(
+                        ui.with_indexed(
+                            i as u64,
+                            NodeSpec::row()
+                                .width(Sizing::Grow(1.0))
+                                .height(Sizing::Fixed(1.0))
+                                .bg(MENU_BORDER)
+                                // Not a row anything reads out: a divider is
+                                // paint, and a screen reader hearing "separator"
+                                // between every pair of items is noise.
+                                .role(Role::None),
+                            |_| {},
+                        ),
+                    );
+                    continue;
+                }
+                let payload = item.id.clone().unwrap_or_else(|| Value::str(item.text()));
+                let mut spec = NodeSpec::row()
+                    .role(Role::MenuItem)
+                    .label(item.text())
+                    .width(Sizing::Grow(1.0))
+                    .pad_xy(8.0, 5.0)
+                    .gap(8.0)
+                    .radius(4.0)
+                    .main_align(Align::Start)
+                    .cross_align(Align::Center);
+                if item.enabled {
+                    spec = spec.on_click(payload).hover_bg(accent).focus_bg(accent);
+                    // The first row that can take focus is where the
+                    // modal opens: a menu whose keyboard starts nowhere
+                    // makes the arrow keys feel like they missed.
+                    if first {
+                        spec = spec.initial_focus();
+                        first = false;
+                    }
+                } else {
+                    spec = spec.disabled(true).opacity(MENU_DISABLED_OPACITY);
+                }
+                rows.push(ui.with_indexed(i as u64, spec, |ui| {
+                    ui.text(item.text(), TextStyle::new(MENU_TEXT).color(MENU_FG));
+                    if let Some(accel) = &item.accel {
+                        // Pushed to the right edge by a grow spacer, so
+                        // the label stays where the eye expects it
+                        // whatever the accelerator is.
+                        ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
+                        ui.text(accel, TextStyle::new(MENU_TEXT).color(MENU_ACCEL));
+                    }
+                }));
+            }
+        },
+    );
+    MenuNodes { root, rows }
+}
+
+const MENU_BG: Color = Color {
+    r: 0.114,
+    g: 0.125,
+    b: 0.169,
+    a: 1.0,
+};
+const MENU_BORDER: Color = Color {
+    r: 0.231,
+    g: 0.247,
+    b: 0.294,
+    a: 1.0,
+};
+const MENU_FG: Color = Color {
+    r: 0.839,
+    g: 0.847,
+    b: 0.878,
+    a: 1.0,
+};
+const MENU_ACCEL: Color = Color {
+    r: 0.541,
+    g: 0.561,
+    b: 0.639,
+    a: 1.0,
+};
+const MENU_ACCENT: Color = Color {
+    r: 0.231,
+    g: 0.357,
+    b: 0.831,
+    a: 1.0,
+};
+/// A disabled row is dimmed the way a disabled button is.
+const MENU_DISABLED_OPACITY: f32 = BUTTON_DISABLED_OPACITY;
 
 // -- Virtual lists ----------------------------------------------------------
 // The core culls glyphs by viewport but builds every child a view declares,

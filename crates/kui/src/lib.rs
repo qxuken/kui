@@ -1543,6 +1543,7 @@ impl<A: App> Shell<A> {
         let events = self.panes[i].core.handle_input(ev);
         let reached_app = self.route_events(events);
         self.owe_for(reached_app && completes);
+        self.apply_menu_actions(event_loop, i);
         self.apply_window_commands(event_loop);
         self.apply_audio();
         if let Some(pane) = self.panes.get_mut(i) {
@@ -1551,6 +1552,32 @@ impl<A: App> Shell<A> {
             // damage pass can tighten this later.
             pane.core.stats.pending_input_ms += t0.elapsed().as_secs_f32() * 1e3;
             pane.window.request_redraw();
+        }
+    }
+
+    /// What choosing a stock context-menu item left for the host: the
+    /// clipboard, which is this driver's in the same way Cmd-C's is (ADR
+    /// 0017, decision 5). Copy and Cut arrive as the text to put there —
+    /// the core worked out *what*, which is the half only it can do — and
+    /// Paste as a request for what is there, delivered back as typing so
+    /// it takes exactly the path Cmd-V takes.
+    fn apply_menu_actions(&mut self, event_loop: &ActiveEventLoop, i: usize) {
+        let Some(pane) = self.panes.get_mut(i) else {
+            return;
+        };
+        for action in pane.core.take_menu_actions() {
+            match action {
+                MenuAction::SetClipboard(text) => {
+                    if let Some(cb) = self.clipboard.as_mut() {
+                        let _ = cb.set_text(text);
+                    }
+                }
+                MenuAction::Paste => {
+                    if let Some(text) = self.clipboard.as_mut().and_then(|cb| cb.get_text().ok()) {
+                        self.dispatch(event_loop, i, InputEvent::Text(text));
+                    }
+                }
+            }
         }
     }
 

@@ -31,6 +31,7 @@ pub mod key;
 pub mod keyframes;
 pub mod layout;
 pub mod line;
+pub mod menu;
 pub mod resources;
 pub mod runtime;
 pub mod schema;
@@ -71,6 +72,7 @@ pub use input::{
 pub use key::Key;
 pub use keyframes::Keyframe;
 pub use line::{LineId, LineStore, Stroke};
+pub use menu::{Menu, MenuAction, MenuItem, MenuRole};
 pub use resources::{FontId, FragmentId, ImageId, Resources, SessionId, SoundId};
 pub use runtime::{Core, Extension};
 pub use scroll::{MAX_UNDECLARED_SCROLLS, ScrollGeometry};

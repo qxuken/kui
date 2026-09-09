@@ -53,6 +53,7 @@ mod dispatch;
 mod emit;
 mod fills;
 mod focus;
+mod menu_api;
 mod resources_api;
 mod scrolling;
 mod select_api;
@@ -188,6 +189,17 @@ pub struct Core {
     /// Per-node "inside a floating subtree" marker (only filled when needed).
     in_float: Vec<bool>,
     any_float: bool,
+    /// The context menu this window has open, the keys the stock renderer
+    /// gave its rows (so their clicks can be told from the app's), and
+    /// what choosing one left for the host to do. See
+    /// `docs/adr/0017-selection-as-a-scope.md`, decision 5.
+    menu: Option<crate::menu::Menu>,
+    menu_root: Option<Key>,
+    menu_items: Vec<Key>,
+    menu_actions: Vec<crate::menu::MenuAction>,
+    /// The editor that held focus when the menu opened, since the menu's
+    /// own rows take focus from it — what Cut, Copy and Select All act on.
+    menu_editor: Option<Key>,
     /// The window's text selection outside an editor, and what the
     /// frame resolved it to: `sel_ords` numbers the text nodes of the
     /// selection's scope in emission order (`u32::MAX` for a node
@@ -392,6 +404,11 @@ impl Core {
             opacity: Vec::new(),
             any_opacity: false,
             in_float: Vec::new(),
+            menu: None,
+            menu_root: None,
+            menu_items: Vec::new(),
+            menu_actions: Vec::new(),
+            menu_editor: None,
             selection: None,
             select_dragging: None,
             sel_ords: Vec::new(),

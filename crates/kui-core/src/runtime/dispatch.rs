@@ -16,6 +16,13 @@ impl Core {
         // releases a focus move forces — belongs to this batch, not to the
         // next frame's drain.
         out.append(&mut self.pending);
+        // A row of the core's own context menu is not the app's click, and
+        // neither is that menu's dismissal: taken back here, acted on, and
+        // reported as one `menu` event on the node the menu was about (ADR
+        // 0017, decision 5). Here rather than inside `route_input` because
+        // several of its arms return early — the modal press among them,
+        // which is exactly the one that dismisses a menu.
+        self.consume_menu_events(&mut out);
         self.attach_cells(&mut out);
         self.stamp(&mut out);
         out
@@ -382,8 +389,14 @@ impl Core {
                     if primary {
                         // A press anywhere ends the last selection; the
                         // arms below start whichever new one it begins.
-                        // One selection per window (ADR 0017).
-                        self.clear_selection();
+                        // One selection per window (ADR 0017) — except a
+                        // press inside the core's own context menu, which
+                        // is *about* that selection: a Copy row that
+                        // cleared what it was going to copy would be a
+                        // menu that never works.
+                        if !hit.as_ref().is_some_and(|(k, ..)| self.in_menu(*k)) {
+                            self.clear_selection();
+                        }
                         match hit {
                             Some((key, Some(origin), true, _)) => {
                                 self.set_focus(Some(key));
@@ -425,6 +438,17 @@ impl Core {
                 }
                 self.interaction
                     .handle(InputEvent::MouseDown { button, clicks }, &mut out);
+                // A right-click the app did not claim with `onContextMenu`
+                // gets the stock menu, where there is anything standard to
+                // put in one (ADR 0017, decision 5).
+                if button == MouseButton::Secondary
+                    && let Some(p) = self.interaction.cursor()
+                {
+                    let claimed = out.iter().any(|e| {
+                        e.payload.get("kind").and_then(Value::as_str) == Some("contextmenu")
+                    });
+                    self.auto_menu(p, claimed);
+                }
             }
             InputEvent::CursorMoved(p) => {
                 if let Some((key, axis, grab)) = self.interaction.scrollbar_drag
