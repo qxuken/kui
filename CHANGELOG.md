@@ -17,6 +17,46 @@ for the reader deciding whether to upgrade. Earlier sections keep the shape
 they shipped with and are not retrofitted (backlog F31, from the alpha.8
 field reports).
 
+## Unreleased
+
+### Fixed
+
+- **`<button accent>` typechecks** (backlog F37, from an alpha.10 field
+  report). alpha.10 gave the stock button the accent row, and said so in
+  its own entry above and in `howto.md`; every binding read it and
+  `docs/props.md` documented it. `ButtonProps` in `jsx-runtime.d.ts` did
+  not name it, so a TypeScript app got `Property 'accent' does not exist
+  on type 'ButtonProps'` for the spelling the release was about, and the
+  app that found it moved the colour onto a node beside the button
+  instead. The runtime was never wrong — the encoder admitted the row and
+  painted it, which is how the report could verify the three backgrounds
+  before filing.
+
+  This is the second time that interface fell behind the list it is meant
+  to mirror: alpha.9 added `description` to it by hand (F24) and left the
+  hand-written list in place. So the fix is the list. `ButtonProps` now
+  `extends` what `gen-types.mjs` generates from `BUTTON_ROWS_JSX` — the
+  same rows `ElementDef::jsx_rows` hands the encoder — between markers of
+  its own, beside the prop types that file already writes. A row added in
+  `schema.rs` is a prop on `<button>` one `npm run gen` later, and the CI
+  step that reruns the generator and diffs `jsx-runtime.d.ts` is what
+  catches the next drift. The button is no wider than it was: it still
+  takes exactly `onClick`, `key`, `label`, `description`, `tooltip`,
+  `disabled` and `accent`, and `<button bg="…">` is still a type error and
+  an `unknown-prop` warning.
+
+  What let it ship: nothing typechecked the spelling. CI does run
+  `npm run typecheck` over `examples/node`, on the stated grounds that the
+  example "uses every app-facing type" — but no example wrote `accent`, so
+  the one check that could have seen the gap had nothing to look at. The
+  counter's `+1` carries it now.
+
+### What you can delete
+
+The cast, or the node you moved the accent onto: `accent` is a row on the
+stock button in TypeScript as it already was on the wire, and a button that
+carries it needs nothing standing beside it.
+
 ## 0.1.0-alpha.10 (2026-09-09)
 
 **What breaks.**

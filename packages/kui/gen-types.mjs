@@ -64,6 +64,7 @@ function field([name, def]) {
 const entries = Object.entries(prop).filter(([, d]) => d.kind !== 'custom');
 const spec = entries.filter(([, d]) => d.target === 'spec');
 const style = entries.filter(([, d]) => d.target === 'style');
+const custom = Object.entries(prop).filter(([, d]) => d.kind === 'custom');
 
 // ---------------------------------------------------------------- types --
 
@@ -77,12 +78,51 @@ ${style.map(field).join('\n')}
 }
 // -- end generated --`;
 
+// The stock button reads only the rows it names (`BUTTON_ROWS_JSX`, the
+// list the encoder admits and drops the rest with an `unknown-prop`), so
+// `ButtonProps` has to be exactly those and not the whole schema. Written
+// by hand it fell behind twice - `description` was a row the type rejected
+// until alpha.9, `accent` until alpha.10, each found by an app whose tsc
+// said no to what docs/props.md advertised (backlog F24, then F37) - so the
+// heritage clause comes off the same list. A row added in schema.rs is a
+// prop here, and the CI step that reruns this generator and diffs the file
+// is what says so the third time.
+//
+// `key` is `Keyed`, which the interface extends already; every other row is
+// a schema prop (`GeneratedSpecProps`) or one of a composite's JSX
+// spellings (`CustomSpecProps`), and a row that is neither stops the run
+// rather than emitting a `Pick` of a name TypeScript has never heard of.
+const specNames = new Set(spec.map(([name]) => name));
+const customNames = new Set(custom.flatMap(([, d]) => d.names));
+const buttonRows = elements.find((e) => e.name === 'button')?.rows;
+if (!buttonRows) throw new Error('the button element admits every row; ButtonProps expects a list');
+const fromSpec = [];
+const fromCustom = [];
+for (const row of buttonRows) {
+  if (row === 'key') continue;
+  if (specNames.has(row)) fromSpec.push(row);
+  else if (customNames.has(row)) fromCustom.push(row);
+  else throw new Error(`button row \`${row}\` is in neither the prop schema nor the composites`);
+}
+const picked = (names) => names.map((n) => `'${n}'`).join(' | ');
+const heritage = ['Keyed'];
+if (fromSpec.length) heritage.push(`Pick<GeneratedSpecProps, ${picked(fromSpec)}>`);
+if (fromCustom.length) heritage.push(`Pick<CustomSpecProps, ${picked(fromCustom)}>`);
+const buttonBlock = `// -- generated from the addon's button rows; edit BUTTON_ROWS_JSX in schema.rs, then \`npm run gen\` --
+  extends ${heritage.join(',\n    ')}
+  // -- end generated --`;
+
 const path = new URL('./jsx-runtime.d.ts', import.meta.url);
 const src = readFileSync(path, 'utf8');
 const re = /\/\/ -- generated from the addon's prop schema[\s\S]*?\/\/ -- end generated --/;
 if (!re.test(src)) throw new Error('generated-region markers not found in jsx-runtime.d.ts');
-writeFileSync(path, src.replace(re, block));
-console.log(`jsx-runtime.d.ts: ${spec.length} spec + ${style.length} style props generated`);
+const buttonRe = /\/\/ -- generated from the addon's button rows[\s\S]*?\/\/ -- end generated --/;
+if (!buttonRe.test(src)) throw new Error('button-row markers not found in jsx-runtime.d.ts');
+writeFileSync(path, src.replace(re, block).replace(buttonRe, buttonBlock));
+console.log(
+  `jsx-runtime.d.ts: ${spec.length} spec + ${style.length} style props generated,` +
+    ` ButtonProps over ${buttonRows.length} button rows`,
+);
 
 // ----------------------------------------------------------------- docs --
 // Every table below comes from the core (`PROPS`, `CUSTOM`, `ELEMENTS`,
@@ -114,7 +154,6 @@ const tableOf = (header, rows) =>
 // description says where that binding carries it instead.
 const keysCell = (keys) => (keys.length ? keys.map((k) => `\`${k}\``).join(' / ') : '—');
 const propRow = ([name, def]) => [`\`${name}\``, `\`${def.lua}\``, def.c, typeOf(def), def.doc];
-const custom = Object.entries(prop).filter(([, d]) => d.kind === 'custom');
 
 const md = `# kui props, elements, events and warnings
 

@@ -348,14 +348,23 @@ export interface SpanProps extends Keyed {
  *  `unknown-prop` warning — and what is here are the rows a reader hears:
  *  `label` when the text is not the name, `description` for what the
  *  button will do, `tooltip`, and `disabled` (inert, and dimmed to half).
+ *  The one paint row it does take is `accent`, which is a question put to
+ *  the OS rather than a colour: the three backgrounds come off
+ *  `env.system.accent` and the label goes black or white by its luminance,
+ *  and the stock blue stands on a host that never said what the accent is.
  *  A button that needs any other row is a `<box role="button">` with the
- *  same rows spelled out. Keyed by its text unless `key` says otherwise. */
+ *  same rows spelled out. Keyed by its text unless `key` says otherwise.
+ *
+ *  The list is `BUTTON_ROWS_JSX` in schema.rs — the rows the encoder admits
+ *  — so what it extends is generated from there with the rest of this file:
+ *  add a row in Rust and it is a prop here the same `npm run gen` later. */
 export interface ButtonProps
+  // -- generated from the addon's button rows; edit BUTTON_ROWS_JSX in schema.rs, then `npm run gen` --
   extends Keyed,
-    Pick<GeneratedSpecProps, 'label' | 'description' | 'disabled'>,
-    Pick<CustomSpecProps, 'tooltip'> {
-  /** Message emitted on click. */
-  onClick?: AppMsg;
+    Pick<GeneratedSpecProps, 'onClick' | 'label' | 'description' | 'disabled' | 'accent'>,
+    Pick<CustomSpecProps, 'tooltip'>
+  // -- end generated --
+{
   children?: KuiNode;
 }
 

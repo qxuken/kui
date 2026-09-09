@@ -69,7 +69,7 @@ function Menu({ at }: { at: { x: number; y: number } }) {
 function Counter({ count }: { count: number }) {
   return (
     <box dir="row" gap={12} crossAlign="center">
-      <button onClick={{ kind: 'add', by: 1 }}>+1</button>
+      <button onClick={{ kind: 'add', by: 1 }} accent>+1</button>
       <button onClick={{ kind: 'add', by: -1 }}>-1</button>
       <button onClick={{ kind: 'reset' }} description="Back to zero">reset</button>
       <text size={20} color="#e8e8f0">{`count = ${count}`}</text>
