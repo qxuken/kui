@@ -631,10 +631,15 @@ export function virtualColumn(ctx, opts, row) {
   if (typeof rowH !== 'number' || !(rowH > 0)) {
     throw new Error('kui: virtualColumn needs a positive `rowH` — one row\'s height is the whole stride');
   }
+  // Said rather than coerced: `rows` misspelled draws an empty list, which
+  // looks like a broken widget rather than a typo.
+  if (typeof rows !== 'number' || !Number.isFinite(rows) || rows < 0) {
+    throw new Error('kui: virtualColumn needs a `rows` count — how many rows the list has, built or not');
+  }
   if (typeof row !== 'function') {
     throw new Error('kui: virtualColumn needs a row builder — virtualColumn(ctx, opts, (i) => node)');
   }
-  const n = Math.max(0, Math.floor(rows) || 0);
+  const n = Math.floor(rows);
   // Null until a layout has resolved the container, which is the first
   // frame: a container is not taller than the window in the ordinary case,
   // so a screenful of the viewport is a safe over-build for one frame.
@@ -645,7 +650,13 @@ export function virtualColumn(ctx, opts, row) {
   // falls back the same way `PadShorthand` does in the core.
   const padT = box.padT ?? box.padY ?? box.pad ?? 0;
   const top = (g ? g.offset.y : 0) - padT;
-  const first = Math.max(0, Math.floor(top / rowH) - overscan);
+  // Both ends are clamped to the list, `first` included: the geometry is the
+  // previous frame's, so a list that shrank under its own scroll offset
+  // slices past its new end. Left unclamped that builds a lead spacer taller
+  // than the whole list and no rows at all, and the oversized spacer keeps
+  // the offset legal, so it unwinds one viewport a frame instead of landing
+  // in one. `widgets::visible_rows` clamps the same way.
+  const first = Math.min(n, Math.max(0, Math.floor(top / rowH) - overscan));
   const last = Math.max(first, Math.min(n, Math.ceil((top + vh) / rowH) + overscan));
 
   const children = [
@@ -659,7 +670,7 @@ export function virtualColumn(ctx, opts, row) {
   // Keyed, not auto-keyed: an auto key *is* the sibling index, and the rows
   // already occupy that namespace at their data indices.
   if (first > 0) children.push(spacer(first * rowH, 'kui:lead'));
-  for (let i = first; i < n && i < last; i++) {
+  for (let i = first; i < last; i++) {
     children.push({
       type: 'box',
       props: { index: i, width: 'grow', height: rowH },

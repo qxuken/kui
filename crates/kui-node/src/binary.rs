@@ -259,7 +259,21 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut) -> Result<PropsOut> {
             }
             P_KEY_FOCUS => out.key_focus = true,
             P_KEY => out.key = Some(r.req_str()?.to_string()),
-            P_INDEX => out.index = Some(r.f()?.max(0.0) as u64),
+            // A row number, so anything that is not one is refused rather
+            // than folded to 0 — where it would take row 0's key, and two
+            // of them in one frame would share it silently.
+            P_INDEX => {
+                let i = r.f()?;
+                // NaN fails `is_finite`, so the comparisons below are on
+                // numbers and read as written.
+                if !i.is_finite() || i < 0.0 || i.fract() != 0.0 {
+                    return Err(err(format!(
+                        "index must be a whole row number, not {i}: it is the data index the row \
+                         is keyed by"
+                    )));
+                }
+                out.index = Some(i as u64);
+            }
             P_TITLE => out.title = Some(r.req_str()?.to_string()),
             // A count, then per window: name, kind, width, height (zero =
             // the default size), activates, and the anchor rect a popup is

@@ -2682,6 +2682,11 @@ fn is_label_keyed(t: &Tree, i: usize) -> bool {
 /// here, and deliberately — it is exactly the key auto-keying would have
 /// given, which is the row's whole point. So a scene that means to pin the
 /// row numbers its rows past the sibling count, as a virtual list does.
+///
+/// Only asked of nodes [`is_label_keyed`] has already put outside the auto
+/// range: an auto-keyed node cannot be far-indexed, and it is the common
+/// case by a wide margin — asking every node cost the conformance suite
+/// 8.5 s of the 12 it took.
 fn is_far_indexed(t: &Tree, i: usize) -> bool {
     let parent = t.parent[i];
     let parent_key = t.keys[parent as usize];
@@ -2808,11 +2813,17 @@ fn observe(core: &Core, cov: &mut Coverage) {
             }
         }
 
+        // A key outside the auto range is one the view spelled, and it is
+        // one of the two namespaces or the other — never both, so an
+        // index-keyed row must not be credited to `key`. Nesting them also
+        // keeps `is_far_indexed`'s scan off the auto-keyed nodes, which are
+        // nearly all of them and cannot be far-indexed by construction.
         if i > 0 && is_label_keyed(t, i) {
-            cov.custom.insert("key");
-        }
-        if i > 0 && is_far_indexed(t, i) {
-            cov.custom.insert("index");
+            if is_far_indexed(t, i) {
+                cov.custom.insert("index");
+            } else {
+                cov.custom.insert("key");
+            }
         }
     }
 }

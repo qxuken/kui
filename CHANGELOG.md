@@ -70,6 +70,10 @@ field reports).
   `fragment`, wherever `key` names a node. The corpus scene `virtual` pins
   it in all four.
 
+  A row's `index` is refused unless it is a whole non-negative number: folded
+  to zero it would silently take row 0's key, and two of them in one frame
+  would share it — the `duplicate-key` case, arrived at in silence.
+
   **A query now answers for a name no frame declared**, where a command
   still refuses. `scrollGeometry('log')` *threw* for a container the first
   frame has not built yet — which is every list's first frame — while

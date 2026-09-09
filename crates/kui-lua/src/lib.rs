@@ -293,28 +293,7 @@ fn slot_table(lua: &Lua, slot: &Slot<'_>) -> mlua::Result<Table> {
 /// or the string label its `key` field declared, resolved through the
 /// frame so far and then the last finished one (`Ui::key_of`). A string no
 /// node declared is an error naming both spellings, since nothing else
-/// would (backlog F5).
-/// The same two spellings for a *query* — `is_hovered`, `scroll_geometry`,
-/// `edit_text` and the rest — where a name nothing declared is the answer
-/// rather than an error. Every one of them already has a "no such node"
-/// reply for a key no layout resolved (false, nil, a zero offset), and a
-/// label is the spelling a view uses *before* the node exists: the first
-/// frame of a `virtual_column` asks its own container for geometry that is
-/// not there yet. The command verbs keep throwing, where a typo is a bug
-/// worth naming (backlog C25).
-fn key_query(ui: &mut Ui<'_>, v: mlua::Value) -> mlua::Result<Option<Key>> {
-    match v {
-        mlua::Value::Integer(i) => Ok(Some(Key(i as u64))),
-        mlua::Value::Number(n) => Ok(Some(Key(n as u64))),
-        mlua::Value::String(s) => Ok(ui.key_of(&s.to_str()?)),
-        other => Err(mlua::Error::runtime(format!(
-            "a node is named by the integer key an event carried or the label its `key` field \
-             declared, not by {}",
-            other.type_name()
-        ))),
-    }
-}
-
+/// would (backlog F5) — see [`key_query`] for the calls that answer instead.
 fn key_arg(ui: &mut Ui<'_>, v: mlua::Value) -> mlua::Result<Key> {
     match v {
         mlua::Value::Integer(i) => Ok(Key(i as u64)),
@@ -328,6 +307,27 @@ fn key_arg(ui: &mut Ui<'_>, v: mlua::Value) -> mlua::Result<Key> {
                 ))
             })
         }
+        other => Err(mlua::Error::runtime(format!(
+            "a node key is an integer or a declared label, not {}",
+            other.type_name()
+        ))),
+    }
+}
+
+/// The two spellings for a *query* — `is_hovered`, `scroll_geometry`,
+/// `edit_text` and the rest — where a name nothing declared is the answer
+/// rather than an error. Every one of them already has a "no such node"
+/// reply for a key no layout resolved (false, nil, a zero offset), and a
+/// label is the spelling a view uses *before* the node exists: the first
+/// frame of a `virtual_column` asks its own container for geometry that is
+/// not there yet. The command verbs ([`key_arg`]) keep throwing, where a
+/// typo is a bug worth naming (backlog C25). What a key may *be* is the
+/// same question for both, so anything that is not an integer or a string
+/// is refused here too.
+fn key_query(ui: &mut Ui<'_>, v: mlua::Value) -> mlua::Result<Option<Key>> {
+    match v {
+        mlua::Value::Integer(i) => Ok(Some(Key(i as u64))),
+        mlua::Value::String(s) => Ok(ui.key_of(&s.to_str()?)),
         other => Err(mlua::Error::runtime(format!(
             "a node key is an integer or a declared label, not {}",
             other.type_name()
@@ -3382,6 +3382,61 @@ mod tests {
                 .any(|n| n.key == list.index(300).index(0)),
             "row 300 is not keyed by its data index"
         );
+    }
+
+    /// The same clamp as the JSX widget's: a list that shrank while scrolled
+    /// slices past its own new end, and an unclamped `first` builds a lead
+    /// spacer taller than the whole list with no rows in it.
+    #[test]
+    fn a_virtual_column_whose_list_shrank_lands_in_one_frame() {
+        let mut ext = LuaExtension::from_source(
+            "virtual",
+            r#"
+                ROWS, first_built = 200, -1
+                function view(env)
+                  first_built = -1
+                  return virtual_column(env,
+                    { key = "list", rows = ROWS, row_h = 20,
+                      width = "grow", height = "grow" },
+                    function(i)
+                      if first_built < 0 then first_built = i end
+                      return column { fill = true, bg = 0x282840ff }
+                    end)
+                end
+            "#,
+        )
+        .unwrap();
+        let list = Key::ROOT.str("list");
+        let mut core = Core::new();
+        let frame = |core: &mut Core, ext: &mut LuaExtension| {
+            let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+            ui.set_origin(OriginId(1));
+            ext.view(&Slot::root(), &mut ui).unwrap();
+            ui.finish();
+        };
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        core.set_scroll(list, Vec2::new(0.0, 3_000.0));
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        let deep: i64 = ext.lua.globals().get("first_built").unwrap();
+        assert!(
+            deep > 100,
+            "expected to be deep in the list, built from {deep}"
+        );
+
+        ext.lua.globals().set("ROWS", 10).unwrap();
+        frame(&mut core, &mut ext);
+        let g = core.scroll_geometry(list).expect("laid out");
+        assert_eq!(
+            g.content.h,
+            10.0 * 20.0,
+            "the content is the list it has now"
+        );
+        frame(&mut core, &mut ext);
+        let first: i64 = ext.lua.globals().get("first_built").unwrap();
+        assert_eq!(first, 0, "and every row of it is built");
+        assert_eq!(core.scroll_offset(list).y, 0.0);
     }
 
     /// A query answers for a label nothing declared, where a command says it

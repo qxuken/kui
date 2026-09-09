@@ -3448,10 +3448,60 @@ test('a virtualColumn row is keyed by its data index, so a full list agrees', ()
   }
 });
 
+test('a virtualColumn whose list shrank under it lands in one frame', () => {
+  // The geometry is the previous frame's, so a list that shrank while
+  // scrolled slices past its own new end. Both ends have to be clamped to
+  // the row count, not just the far one: an unclamped `first` builds a lead
+  // spacer taller than the whole list and no rows at all, and that spacer
+  // keeps the offset legal, so it unwinds a viewport a frame instead of
+  // landing in one.
+  let rows = 200;
+  const seen = { range: null };
+  const view = (_m, _w, ctx) => {
+    seen.range = null;
+    return box({ width: 'grow', height: 'grow' }, [
+      virtualColumn(ctx, { key: 'log', rows, rowH: 20, width: 'grow', height: 'grow' }, (i) => {
+        seen.range = seen.range === null ? [i, i + 1] : [Math.min(seen.range[0], i), i + 1];
+        return box({ width: 'grow', height: 'grow', label: `row ${i}` });
+      }),
+    ]);
+  };
+  const app = createApp({ init: {}, update: (m) => m, view }, { width: 480, height: 300, warnings: false });
+  app.render();
+  app.render();
+  app.ctx.setScroll('log', 0, 3000);
+  app.render();
+  app.render();
+  assert.ok(seen.range[0] > 100, `expected to be deep in the list, built from ${seen.range[0]}`);
+
+  rows = 10;
+  app.render();
+  assert.equal(app.ctx.scrollGeometry('log').contentH, 10 * 20, 'the content is the list it has now');
+  app.render();
+  assert.deepEqual(seen.range, [0, 10], 'and every row of it is built');
+  assert.equal(app.ctx.scrollGeometry('log').offset.y, 0);
+});
+
+test('an index is a row number, and anything else is refused', () => {
+  // Folded to 0 it would silently take row 0's key, and two of them in one
+  // frame would share it - the `duplicate-key` case, arrived at in silence.
+  const ctx = new Ctx();
+  for (const bad of [-1, 1.5, NaN]) {
+    assert.throws(
+      () => ctx.frame(320, 240, 1, box({ width: 'grow', height: 'grow' }, [
+        box({ index: bad, width: 'grow', height: 10 }),
+      ])),
+      /index must be a whole row number/,
+      `index ${bad}`,
+    );
+  }
+});
+
 test('virtualColumn says what it needs rather than drawing nothing', () => {
   const ctx = new Ctx();
   assert.throws(() => virtualColumn(ctx, { rows: 10, rowH: 10 }, () => box({})), /string `key`/);
   assert.throws(() => virtualColumn(ctx, { key: 'l', rows: 10 }, () => box({})), /positive `rowH`/);
+  assert.throws(() => virtualColumn(ctx, { key: 'l', rowH: 10 }, () => box({})), /`rows` count/);
   assert.throws(() => virtualColumn(ctx, { key: 'l', rows: 10, rowH: 10 }), /row builder/);
 });
 

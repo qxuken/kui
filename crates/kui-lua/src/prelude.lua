@@ -196,7 +196,13 @@ function virtual_column(env, opts, row)
   -- there; only the top padding shifts it.
   local pad_t = opts.pad_t or opts.pad_y or opts.pad or 0
   local top = (g and g.offset.y or 0) - pad_t
-  local first = math.max(0, math.floor(top / row_h) - overscan)
+  -- Both ends are clamped to the list, `first` included: the geometry is the
+  -- previous frame's, so a list that shrank under its own scroll offset
+  -- slices past its new end. Left unclamped that builds a lead spacer taller
+  -- than the whole list and no rows at all, and the oversized spacer keeps
+  -- the offset legal, so it unwinds one viewport a frame instead of landing
+  -- in one.
+  local first = math.min(n, math.max(0, math.floor(top / row_h) - overscan))
   local last = math.min(n, math.ceil((top + math.max(vh, 0)) / row_h) + overscan)
   if last < first then last = first end
 
