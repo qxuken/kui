@@ -194,3 +194,51 @@ fn one_selection_per_window_holds_across_the_two_kinds() {
     assert_eq!(core.copy_selection().as_deref(), Some("hello"));
     let _ = Color::BLACK;
 }
+
+/// A right-click on a grid gets a menu that works on *cells*. Reading the
+/// text selection for it left Copy dimmed over a terminal with half its
+/// screen selected, and Select All did nothing at all.
+#[test]
+fn the_stock_menu_over_a_grid_copies_cells() {
+    let mut core = Core::new();
+    let key = frame(&mut core, 0);
+    let from = cell_at(&mut core, key, 0, 0);
+    let to = cell_at(&mut core, key, 0, 5);
+    drag(&mut core, from, to);
+    core.handle_input(InputEvent::CursorMoved(from));
+    core.handle_input(InputEvent::MouseDown {
+        button: kui_core::MouseButton::Secondary,
+        clicks: 1,
+    });
+    let menu = core.menu().expect("a menu over the grid").clone();
+    let copy = menu
+        .items
+        .iter()
+        .find(|i| i.role == kui_core::MenuRole::Copy)
+        .expect("a Copy row");
+    assert!(copy.enabled, "cells are selected, so Copy can act");
+
+    // And Select All takes the whole screen it was given.
+    core.close_menu();
+    assert!(core.select_all_in(key));
+    assert_eq!(core.copy_selection().as_deref(), Some("hello\nbrave\nbye"));
+}
+
+/// A selection scrolled entirely off the grid copies nothing — rather than
+/// an empty string, which would let Cmd-C wipe the clipboard.
+#[test]
+fn a_grid_selection_scrolled_away_copies_nothing() {
+    let mut core = Core::new();
+    let key = frame(&mut core, 0);
+    let from = cell_at(&mut core, key, 0, 0);
+    let to = cell_at(&mut core, key, 0, 5);
+    drag(&mut core, from, to);
+    assert_eq!(core.copy_selection().as_deref(), Some("hello"));
+    // The terminal scrolls: row 0 is now absolute line 900.
+    frame(&mut core, 900);
+    assert_eq!(
+        core.copy_selection(),
+        None,
+        "nothing of the selection is on screen, so there is nothing to copy"
+    );
+}

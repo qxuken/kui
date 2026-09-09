@@ -113,6 +113,7 @@ impl Core {
         let origin = self.cells.origin_line(id);
         let mut out = String::new();
         let mut first = true;
+        let mut any = false;
         for row in 0..rows {
             let line = origin + row as u64;
             let Some((from, to)) = sel.cols_on(line, cols) else {
@@ -122,6 +123,7 @@ impl Core {
                 out.push('\n');
             }
             first = false;
+            any = true;
             let mut text = String::new();
             for col in from..to {
                 match self.cells.cell_char(id, row, col) {
@@ -134,7 +136,10 @@ impl Core {
             }
             out.push_str(text.trim_end());
         }
-        (!out.is_empty() || !sel.is_empty()).then_some(out)
+        // Nothing of the grid is inside the selection — it is scrolled
+        // away entirely — so there is nothing to copy. `Some("")` here
+        // would let Cmd-C wipe whatever was on the clipboard.
+        any.then_some(out)
     }
 
     /// Sets it. The scope is a node that declared `selectable`; the two
@@ -159,6 +164,21 @@ impl Core {
     /// Selects every run in `scope`, first byte to last — what Select All
     /// does inside one. `false` when the scope drew no text.
     pub fn select_all_in(&mut self, scope: Key) -> bool {
+        // A grid selects in cells: the whole screen it was given, from
+        // its first absolute line to its last.
+        if let Some(id) = self.cells_id_of_ref(scope) {
+            let (rows, cols) = self.cells.dims(id);
+            if rows == 0 || cols == 0 {
+                return false;
+            }
+            let origin = self.cells.origin_line(id);
+            self.set_cell_selection(CellSelection::new(
+                scope,
+                CellEnd::new(origin, 0),
+                CellEnd::new(origin + rows as u64 - 1, cols),
+            ));
+            return true;
+        }
         let runs = self.text.scope_runs(scope, self.building);
         let (Some(first), Some(last)) = (runs.first(), runs.last()) else {
             return false;
@@ -186,8 +206,24 @@ impl Core {
     /// The virtualised row a node sits in, if any — what an endpoint keeps
     /// so it can be placed after its row stops being built.
     pub(crate) fn row_of(&self, node: Key) -> Option<u64> {
-        let i = self.tree.keys.iter().position(|k| *k == node)?;
-        self.rows.get(i).copied().flatten()
+        // Off the tree the key is looked up in, rather than off the map
+        // the last *emission* filled: during a build those are two
+        // different trees, and an index into one says nothing about the
+        // other. Free where it does not apply — a frame with no
+        // virtualised rows answers on the first line.
+        if self.tree.indexed.is_empty() {
+            return None;
+        }
+        let mut i = self.tree.keys.iter().position(|k| *k == node)?;
+        loop {
+            if let Some(&(_, row)) = self.tree.indexed.iter().find(|(n, _)| *n as usize == i) {
+                return Some(row);
+            }
+            match self.tree.parent[i] {
+                crate::tree::NIL => return None,
+                p => i = p as usize,
+            }
+        }
     }
 
     /// The selected text, assembled across every run the selection

@@ -202,3 +202,68 @@ fn a_copy_over_unbuilt_rows_asks_the_app_and_takes_its_answer() {
     assert!(!core.answer_selection_range("stale"));
     assert!(core.take_menu_actions().is_empty());
 }
+
+/// A scope that holds a header beside its virtual rows: an end *below* the
+/// built range must be placed below it. Comparing against the last built
+/// run rather than the last built *row* put it at the top instead, and the
+/// wrong half of the list highlighted.
+#[test]
+fn an_end_below_a_mixed_scope_is_placed_below_it() {
+    let mut core = Core::new();
+    let build = |core: &mut Core, range: std::ops::Range<u64>| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let scope = ui.with_keyed(
+            "list",
+            NodeSpec::column()
+                .width(Sizing::Grow(1.0))
+                .height(Sizing::Fixed(200.0))
+                .scroll_y()
+                .selectable(),
+            |ui| {
+                // A header, which is not a row and knows no index.
+                ui.text("HEADER", style());
+                for i in range.clone() {
+                    ui.with_indexed(
+                        i,
+                        NodeSpec::column()
+                            .width(Sizing::Grow(1.0))
+                            .height(Sizing::Fixed(20.0)),
+                        |ui| ui.text(&format!("row {i}"), style()),
+                    );
+                }
+            },
+        );
+        ui.finish();
+        scope
+    };
+    build(&mut core, 0..4);
+    // Select from the header down into row 3.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(2.0, 4.0)));
+    core.handle_input(InputEvent::MouseDown {
+        button: MouseButton::Primary,
+        clicks: 1,
+    });
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, 85.0)));
+    core.handle_input(InputEvent::MouseUp {
+        button: MouseButton::Primary,
+    });
+    let all = core.selection_text().expect("a selection");
+    assert!(all.starts_with("HEADER"), "{all:?}");
+
+    // Now only rows 0..2 are built: the far end (row 3) is above nothing
+    // and below everything, so the whole built scope stays highlighted.
+    build(&mut core, 0..2);
+    let tint = kui_core::select::TINT;
+    let painted = core
+        .output()
+        .0
+        .quads
+        .iter()
+        .filter(|q| q.color == tint)
+        .count();
+    assert_eq!(
+        painted, 3,
+        "the header and both built rows, not a single run at the top"
+    );
+}

@@ -126,13 +126,23 @@ impl Core {
     /// makes an app that never pumps another frame after a right-click a
     /// bug the app can see rather than a menu that appears out of turn.
     pub fn open_menu(&mut self, mut menu: Menu) {
-        // Whoever is building right now owns it, unless the caller said
-        // otherwise: an extension that opens a menu hears its rows come
-        // back, the way it hears every other event it declared (ADR 0014
-        // decision 6). A host calling this outside a frame is `HOST`,
-        // which is what the origin already is there.
+        // Whose menu it is, unless the caller said: the node it is about.
+        // An extension that opens a menu over its own node hears the rows
+        // come back, the way it hears every other event it declared (ADR
+        // 0014 decision 6).
+        //
+        // The node and not `self.origin()`, which is the *builder's*: it
+        // is right during a view and stale afterwards — whatever ran last
+        // in the frame that finished, an extension in any app that loads
+        // one — so a host opening a menu from its own event handler would
+        // have the rows answered to somebody else.
         if menu.origin == crate::tree::OriginId::HOST {
-            menu.origin = self.origin();
+            menu.origin = self
+                .tree
+                .keys
+                .iter()
+                .position(|k| *k == menu.target)
+                .map_or_else(|| self.origin(), |i| self.tree.origins[i]);
         }
         // Which editor the menu is about, remembered now rather than
         // looked up when a row is chosen: the menu's rows are focusable
@@ -211,7 +221,11 @@ impl Core {
             ];
         }
         if scope.is_some() {
-            let has = self.selection_text().is_some_and(|t| !t.is_empty());
+            // `copy_selection`, not `selection_text`: a `cells` grid is a
+            // scope too, and its selection is in cells rather than in
+            // runs — reading only the text one left Copy dimmed over a
+            // terminal with half its screen selected.
+            let has = self.copy_selection().is_some_and(|t| !t.is_empty());
             let mut items = vec![
                 MenuItem::role(MenuRole::Copy).enabled(has),
                 MenuItem::role(MenuRole::SelectAll),
@@ -318,10 +332,18 @@ impl Core {
                 match self.menu_editor {
                     Some(key) => {
                         self.set_focus(Some(key));
-                        self.handle_input(crate::input::InputEvent::Key(
-                            crate::input::EditKey::SelectAll,
-                            crate::input::Mods::default(),
-                        ));
+                        // The editor directly, not back through
+                        // `handle_input`: this runs *inside* one already,
+                        // and the events the nested call returned were
+                        // dropped on the floor.
+                        self.edit_with_fonts(|edit, fs| {
+                            edit.apply_key(
+                                key,
+                                crate::input::EditKey::SelectAll,
+                                crate::input::Mods::default(),
+                                fs,
+                            )
+                        });
                     }
                     None => {
                         let scope = self.selection().map_or(menu.target, |s| s.scope);

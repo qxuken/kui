@@ -427,16 +427,20 @@ impl Core {
         // virtual list scrolls under a selection (ADR 0017, tier 3).
         let place = |end: &crate::select::Endpoint| -> Option<(u32, usize)> {
             let row = end.row?;
-            let first = built.first()?;
-            let last = built.last()?;
-            match (first.1, last.1) {
-                (Some(f), _) if row < f => Some((first.0, 0)),
-                (_, Some(l)) if row > l => Some((last.0, last.2)),
-                // Inside the built range but not built: a hole, which a
-                // contiguous virtual window does not have. Take the
-                // nearest boundary rather than guessing at the middle.
-                _ => Some((first.0, 0)),
+            let (start, last) = (built.first()?, built.last()?);
+            // Against the built runs that *carry* a row, not the first and
+            // last of everything built: a scope can hold plain labels
+            // beside virtual rows — a header, a footer — and a label says
+            // nothing about where a row sits in the data. Comparing
+            // against one puts an end below the list at the top of it.
+            let hi = built.iter().rev().find_map(|(_, r, _)| *r)?;
+            if row > hi {
+                return Some((last.0, last.2));
             }
+            // Below the first row, or inside the built range without being
+            // built — a hole, which a contiguous virtual window does not
+            // have. Either way the start is the nearest honest boundary.
+            Some((start.0, 0))
         };
         let anchor = anchor.or_else(|| place(&sel.anchor));
         let focus = focus.or_else(|| place(&sel.focus));
