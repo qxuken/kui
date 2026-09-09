@@ -40,9 +40,18 @@ struct Sounds {
 }
 
 /// A button with a click sound: the stock button spec plus one prop.
-fn sound_button(ui: &mut Ui<'_>, label: &str, payload: Value, sound: SoundId) {
+///
+/// `name` is the node's key and `label` is what it says, and they are two
+/// arguments because for one of these buttons they are two things: `hum`
+/// reads `hum: off` and then `hum: on`. Keyed by its label it would be a
+/// *different node* the frame after it is pressed — and everything the
+/// core keeps per node is keyed too, so the focus would be left on a key
+/// nothing declares any more and the ring would vanish under the press
+/// that caused it. Hover and any tween would go the same way. The key is
+/// what the button *is*; the label is a view of the state it toggles.
+fn sound_button(ui: &mut Ui<'_>, name: &str, label: &str, payload: Value, sound: SoundId) {
     ui.with_keyed(
-        label,
+        name,
         widgets::button_spec().on_click(payload).click_sound(sound),
         |ui| {
             ui.text(
@@ -98,10 +107,23 @@ impl App for Counter {
                 );
                 ui.text(&self.count.to_string(), TextStyle::new(56.0));
                 ui.with(NodeSpec::row().gap(12.0).cross_align(Align::Center), |ui| {
-                    sound_button(ui, "-1", Value::map([("kind", "dec".into())]), sounds.click);
-                    sound_button(ui, "+1", Value::map([("kind", "inc".into())]), sounds.click);
                     sound_button(
                         ui,
+                        "dec",
+                        "-1",
+                        Value::map([("kind", "dec".into())]),
+                        sounds.click,
+                    );
+                    sound_button(
+                        ui,
+                        "inc",
+                        "+1",
+                        Value::map([("kind", "inc".into())]),
+                        sounds.click,
+                    );
+                    sound_button(
+                        ui,
+                        "hum",
                         if self.hum { "hum: on" } else { "hum: off" },
                         Value::map([("kind", "hum".into())]),
                         sounds.click,
@@ -170,12 +192,14 @@ impl App for Counter {
                 |ui| {
                     sound_button(
                         ui,
+                        "add10",
                         "+10",
                         Value::map([("kind", "add10".into())]),
                         sounds.click,
                     );
                     sound_button(
                         ui,
+                        "reset",
                         "reset",
                         Value::map([("kind", "reset".into())]),
                         sounds.click,
