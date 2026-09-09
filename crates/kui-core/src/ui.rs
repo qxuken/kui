@@ -318,6 +318,11 @@ impl<'a> Ui<'a> {
     }
 
     /// [`Self::cells`] under a declared key.
+    /// [`Self::cells`] under a data index; see [`Self::open_indexed`].
+    pub fn cells_indexed(&mut self, i: u64, grid: &crate::cells::CellGrid<'_>, spec: NodeSpec) {
+        self.core.cells_indexed(i, grid, spec);
+    }
+
     pub fn cells_keyed(&mut self, label: &str, grid: &crate::cells::CellGrid<'_>, spec: NodeSpec) {
         self.core.cells_keyed(label, grid, spec);
     }
@@ -410,6 +415,11 @@ impl<'a> Ui<'a> {
     }
 
     /// [`Self::polyline`] under a label key.
+    /// [`Self::polyline`] under a data index; see [`Self::open_indexed`].
+    pub fn polyline_indexed(&mut self, i: u64, points: &[Vec2], stroke: Stroke, spec: NodeSpec) {
+        self.core.line_node_indexed(i, points, stroke, spec);
+    }
+
     pub fn polyline_keyed(&mut self, label: &str, points: &[Vec2], stroke: Stroke, spec: NodeSpec) {
         self.core.line_node_keyed(label, points, stroke, spec);
     }

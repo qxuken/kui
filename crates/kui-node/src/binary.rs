@@ -30,8 +30,8 @@ use kui_core::{
 use serde_json::{Map as JsonMap, Value as Json};
 
 use crate::schema::{
-    self, Kind, P_BORDER, P_DIR, P_FLOAT, P_KEY, P_KEY_FOCUS, P_OVERFLOW, P_PAD, P_SIZE, P_TITLE,
-    P_TOOLTIP, P_WINDOWS, Parsed, PropsOut, align_idx, color_num, min_num, sizing_num,
+    self, Kind, P_BORDER, P_DIR, P_FLOAT, P_INDEX, P_KEY, P_KEY_FOCUS, P_OVERFLOW, P_PAD, P_SIZE,
+    P_TITLE, P_TOOLTIP, P_WINDOWS, Parsed, PropsOut, align_idx, color_num, min_num, sizing_num,
 };
 use crate::{Result, err, value_of};
 
@@ -259,6 +259,7 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut) -> Result<PropsOut> {
             }
             P_KEY_FOCUS => out.key_focus = true,
             P_KEY => out.key = Some(r.req_str()?.to_string()),
+            P_INDEX => out.index = Some(r.f()?.max(0.0) as u64),
             P_TITLE => out.title = Some(r.req_str()?.to_string()),
             // A count, then per window: name, kind, width, height (zero =
             // the default size), activates, and the anchor rect a popup is
@@ -332,9 +333,10 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
     match op {
         OP_OPEN => {
             let p = read_props(r)?;
-            let node_key = match &p.key {
-                Some(label) => ui.core().open_keyed(label, p.spec),
-                None => ui.core().open(p.spec),
+            let node_key = match (p.index, &p.key) {
+                (Some(i), _) => ui.core().open_indexed(i, p.spec),
+                (None, Some(label)) => ui.core().open_keyed(label, p.spec),
+                (None, None) => ui.core().open(p.spec),
             };
             if p.key_focus {
                 ui.core().set_key_focus(Some(node_key));
@@ -494,9 +496,10 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let p = read_props(r)?;
             let mut stroke = kui_core::Stroke::new(width, p.style.color);
             stroke.curve = flags & 1 != 0;
-            match &p.key {
-                Some(label) => ui.core().line_node_keyed(label, &points, stroke, p.spec),
-                None => ui.core().line_node(&points, stroke, p.spec),
+            match (p.index, &p.key) {
+                (Some(i), _) => ui.core().line_node_indexed(i, &points, stroke, p.spec),
+                (None, Some(label)) => ui.core().line_node_keyed(label, &points, stroke, p.spec),
+                (None, None) => ui.core().line_node(&points, stroke, p.spec),
             }
             Ok(())
         }
@@ -512,9 +515,10 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             }
             let p = read_props(r)?;
             let id = kui_core::FragmentId::from_ffi((hi << 32) | lo);
-            let key = match &p.key {
-                Some(label) => ui.core().open_fragment_keyed(label, id, &params, p.spec),
-                None => ui.core().open_fragment(id, &params, p.spec),
+            let key = match (p.index, &p.key) {
+                (Some(i), _) => ui.core().open_fragment_indexed(i, id, &params, p.spec),
+                (None, Some(label)) => ui.core().open_fragment_keyed(label, id, &params, p.spec),
+                (None, None) => ui.core().open_fragment(id, &params, p.spec),
             };
             if p.key_focus {
                 ui.core().set_key_focus(Some(key));
@@ -570,9 +574,10 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 style: p.style,
                 cursor,
             };
-            match &p.key {
-                Some(label) => ui.core().cells_keyed(label, &grid, p.spec),
-                None => ui.core().cells(&grid, p.spec),
+            match (p.index, &p.key) {
+                (Some(i), _) => ui.core().cells_indexed(i, &grid, p.spec),
+                (None, Some(label)) => ui.core().cells_keyed(label, &grid, p.spec),
+                (None, None) => ui.core().cells(&grid, p.spec),
             }
             Ok(())
         }
@@ -798,6 +803,10 @@ mod tests {
                     s.extend([0.0, 3.0]);
                     strings = b"abc";
                     expected.key = Some("abc".into());
+                }
+                "index" => {
+                    s.push(7.0);
+                    expected.index = Some(7);
                 }
                 "title" => {
                     s.extend([0.0, 3.0]);

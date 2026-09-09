@@ -309,6 +309,13 @@ export interface CustomSpecProps {
   /** Hover hint: a tooltip floated below this box while it is hovered
    *  (implies hoverable). */
   tooltip?: string;
+  /** Stable identity by *data* index rather than by name: the key
+   *  auto-keying would have given this node as the `i`th child, given to
+   *  it wherever it actually sits. What a virtualised list is for — a
+   *  view that builds rows 900..930 opens each with its own row number,
+   *  so a row keeps its hover, focus, edit buffer and tweens as the built
+   *  range slides over it. Beside a `key`, the index wins. */
+  index?: number;
 }
 
 export interface BoxProps extends Keyed, GeneratedSpecProps, CustomSpecProps {

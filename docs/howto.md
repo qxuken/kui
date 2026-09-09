@@ -78,6 +78,54 @@ shape (exact under monospace), so a scrollbar can move a little as they do.
 [`text` row](props.md#elements) ·
 [alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08)
 
+### How do I show a list of ten thousand rows?
+
+`virtualColumn` (JSX), `virtual_column` (Lua, Rust): declare the rows that
+can be seen and two spacers holding the height of the rest, so the frame
+costs a screenful however long the list is — about 16 µs against 3.9 ms
+for ten thousand rows built whole. It takes the row count and one row's height;
+the rows come from a callback it runs for the ones it slices, and it keys
+each by its data `index`, so a row keeps its hover, focus, edit buffer and
+tweens as the built range slides over it. `setScroll(key, 0, i * rowH)` is
+"scroll to row `i`" — `reveal` finds nothing for a row nobody declared.
+
+In Node it also declares the node that makes `view` run again when the
+container scrolls: the wheel raises no event and a window redraws by
+re-lowering the tree it was handed, so nothing else would. Those events
+never reach `update`.
+
+```jsx
+virtualColumn(ctx, { key: 'log', rows: lines.length, rowH: 28 }, (i) => (
+  <box width="grow" height="grow" onClick={{ kind: 'pick', row: i }}>
+    <text>{lines[i]}</text>
+  </box>
+))
+```
+
+[`index` row](props.md#composite-props-hand-written-per-binding) ·
+[`virtual-list.tsx`](../examples/node/virtual-list.tsx)
+
+### How do I do that when the rows are not all the same height?
+
+`widgets::virtual_rows` (Rust): the same list over prefix sums instead of a
+stride. It calls a `measure(ui, i, width)` for the rows it is about to build
+and nothing else — `ui.measure_text(text, &style, Some(width))` is what
+layout would give that row, wrap included, through the same shaping cache
+its draw will hit — and every row it has not measured stands at the mean of
+the ones it has. What `measure` returns is the height the row *gets*, so the
+spacers can never disagree with the layout.
+
+The heights live in a `RowHeights` the app owns and hands back each frame
+(`set_len` when the list grows, `clear` when the rows change under the same
+indices). Measuring changes the height of every row still standing at the
+mean, the ones above the window included, so the widget puts the row the
+window starts in back where it was before it re-slices — the frame that
+learns is drawn already corrected. To stay at the end of a growing log, ask
+for it: one `set_scroll(key, huge)` after the widget, every frame.
+
+[`bulk_exit.rs`](../examples/rust/bulk_exit.rs) ·
+[`virtual_list.rs`](../examples/rust/virtual_list.rs)
+
 ### How do I draw a terminal's screen?
 
 `cells`: rows × cols of `{ch, fg, bg, flags}` and a cursor, one node — a

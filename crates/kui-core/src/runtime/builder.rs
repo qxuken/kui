@@ -469,6 +469,12 @@ impl Core {
         self.cells_at(key, grid, spec);
     }
 
+    /// [`Self::cells`] under a data index; see [`Self::open_indexed`].
+    pub fn cells_indexed(&mut self, i: u64, grid: &crate::cells::CellGrid<'_>, spec: NodeSpec) {
+        let key = self.child_key_index(i);
+        self.cells_at(key, grid, spec);
+    }
+
     fn cells_at(&mut self, key: Key, grid: &crate::cells::CellGrid<'_>, spec: NodeSpec) {
         if self.tree.is_empty() {
             return;
@@ -632,6 +638,22 @@ impl Core {
         key
     }
 
+    /// [`Self::open_fragment`] under a data index; see [`Self::open_indexed`].
+    pub fn open_fragment_indexed(
+        &mut self,
+        i: u64,
+        id: crate::resources::FragmentId,
+        params: &[f32],
+        spec: NodeSpec,
+    ) -> Key {
+        if self.tree.is_empty() {
+            return Key::ROOT;
+        }
+        let key = self.child_key_index(i);
+        self.fragment_with_key(key, id, params, spec);
+        key
+    }
+
     fn fragment_with_key(
         &mut self,
         key: Key,
@@ -697,6 +719,15 @@ impl Core {
             return;
         }
         let key = self.child_key(label);
+        self.line_with_key(key, points, stroke, spec);
+    }
+
+    /// [`Self::line_node`] under a data index; see [`Self::open_indexed`].
+    pub fn line_node_indexed(&mut self, i: u64, points: &[Vec2], stroke: Stroke, spec: NodeSpec) {
+        if self.tree.is_empty() {
+            return;
+        }
+        let key = self.child_key_index(i);
         self.line_with_key(key, points, stroke, spec);
     }
 

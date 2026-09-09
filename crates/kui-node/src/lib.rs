@@ -252,6 +252,21 @@ fn resolve_key(core: &mut kui_core::Core, s: &str) -> Result<Key> {
     })
 }
 
+/// The same two spellings for a *query* — `isHovered`, `scrollGeometry`,
+/// `editText` and the rest — where a name nothing declared is not an error
+/// but the answer. Every one of them already has a "no such node" reply for
+/// a hex key no layout resolved (`false`, `null`, a zero offset), and a
+/// label is the spelling a view uses *before* the node exists: the first
+/// frame of a virtual list asks its container for geometry that is not
+/// there yet. So the command verbs throw, where a typo is a bug the app
+/// wants named, and the queries answer (backlog C25).
+fn resolve_query(core: &mut kui_core::Core, s: &str) -> Option<Key> {
+    match hex_key(s) {
+        Some(k) => Some(k),
+        None => core.key_of(s),
+    }
+}
+
 fn keycode_of(s: &str) -> Result<KeyCode> {
     KeyCode::from_name(s).ok_or_else(|| err(format!("unknown key code {s:?}")))
 }
@@ -1745,7 +1760,9 @@ macro_rules! core_methods {
             /// a round trip.
             #[napi]
             pub fn is_hovered(&mut self, key: String) -> Result<bool> {
-                let key = resolve_key(self.$core(), &key)?;
+                let Some(key) = resolve_query(self.$core(), &key) else {
+                    return Ok(false);
+                };
                 Ok(self.$core().is_hovered(key))
             }
 
@@ -1753,7 +1770,9 @@ macro_rules! core_methods {
             /// as for `isHovered`.
             #[napi]
             pub fn is_pressed(&mut self, key: String) -> Result<bool> {
-                let key = resolve_key(self.$core(), &key)?;
+                let Some(key) = resolve_query(self.$core(), &key) else {
+                    return Ok(false);
+                };
                 Ok(self.$core().is_pressed(key))
             }
 
@@ -1780,7 +1799,9 @@ macro_rules! core_methods {
             #[napi]
             pub fn is_focused(&mut self, key: String) -> Result<bool> {
                 let core = self.$core();
-                let key = resolve_key(core, &key)?;
+                let Some(key) = resolve_query(core, &key) else {
+                    return Ok(false);
+                };
                 Ok(core.is_focused(key))
             }
 
@@ -1890,7 +1911,9 @@ macro_rules! core_methods {
             /// that never scrolled.
             #[napi(ts_return_type = "ScrollOffset")]
             pub fn scroll_offset(&mut self, key: String) -> Result<Json> {
-                let key = resolve_key(self.$core(), &key)?;
+                let Some(key) = resolve_query(self.$core(), &key) else {
+                    return Ok(offset_json(kui_core::Vec2::ZERO));
+                };
                 Ok(offset_json(self.$core().scroll_offset(key)))
             }
 
@@ -1907,7 +1930,9 @@ macro_rules! core_methods {
             /// frame late — render a row or two extra at each end.
             #[napi(ts_return_type = "ScrollGeometry | null")]
             pub fn scroll_geometry(&mut self, key: String) -> Result<Option<Json>> {
-                let key = resolve_key(self.$core(), &key)?;
+                let Some(key) = resolve_query(self.$core(), &key) else {
+                    return Ok(None);
+                };
                 Ok(geometry_json(self.$core().scroll_geometry(key)))
             }
 
@@ -1923,7 +1948,9 @@ macro_rules! core_methods {
             /// over.
             #[napi(ts_return_type = "TextHit | null")]
             pub fn text_hit(&mut self, key: String, x: f64, y: f64) -> Result<Option<Json>> {
-                let key = resolve_key(self.$core(), &key)?;
+                let Some(key) = resolve_query(self.$core(), &key) else {
+                    return Ok(None);
+                };
                 Ok(self
                     .$core()
                     .text_hit(key, Vec2::new(x as f32, y as f32))
@@ -1942,7 +1969,9 @@ macro_rules! core_methods {
             /// no text.
             #[napi(ts_return_type = "Rect | null")]
             pub fn caret_rect(&mut self, key: String, byte: f64) -> Result<Option<Json>> {
-                let key = resolve_key(self.$core(), &key)?;
+                let Some(key) = resolve_query(self.$core(), &key) else {
+                    return Ok(None);
+                };
                 Ok(self
                     .$core()
                     .caret_rect(key, byte.max(0.0) as usize)
@@ -2026,7 +2055,9 @@ macro_rules! core_methods {
 
             #[napi]
             pub fn edit_text(&mut self, key: String) -> Result<Option<String>> {
-                let key = resolve_key(self.$core(), &key)?;
+                let Some(key) = resolve_query(self.$core(), &key) else {
+                    return Ok(None);
+                };
                 Ok(self.$core().edit_text(key))
             }
 

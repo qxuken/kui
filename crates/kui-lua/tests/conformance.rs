@@ -411,6 +411,31 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                             on_drag = { kind = "split" } }
         "#
         .to_string(),
+        "virtual" => {
+            // `index` is a number where `key` is a string: the row's own
+            // data index, which is what a virtual list opens its rows at.
+            let rows = conformance::VIRTUAL_ROWS
+                .iter()
+                .map(|i| {
+                    format!(
+                        "column {{ index = {i}, width = \"grow\", height = 20, \
+                         bg = 0x30344aff, role = \"listItem\", label = \"row {i}\" }},"
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n                ");
+            format!(
+                r#"
+            return column {{ key = "list", width = 120, height = 60, gap = 0,
+                             scroll_y = true, bg = 0x101018ff,
+                             role = "list", label = "log",
+              column {{ key = "lead", width = "grow", height = 20 }},
+                {rows}
+              column {{ key = "tail", width = "grow", height = 100 }},
+            }}
+        "#
+            )
+        }
         other => panic!("no Lua scene for {other:?} — every corpus scene needs one"),
     };
     // Every scene also records what the script saw in `env.window`, so the

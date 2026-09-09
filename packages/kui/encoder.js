@@ -235,6 +235,14 @@ export function createEncoder(P) {
         case 'dir':
         case 'size':
           break; // handled above
+        // A data index rather than a name: `open_indexed` on the other
+        // side, and the row above's `key` loses to it there.
+        case 'index':
+          if (isRoot) break;
+          f[fi++] = PR.index.id;
+          f[fi++] = v;
+          n++;
+          break;
         case 'pad': pad = v; break;
         case 'padX': padX = v; break;
         case 'padY': padY = v; break;

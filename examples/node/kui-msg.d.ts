@@ -17,7 +17,9 @@ type AppMessages =
   | { tool: string }
   // mindmap.tsx: the canvas's drag tag and a card's click payload.
   | { kind: 'pan' }
-  | { kind: 'card'; id: string };
+  | { kind: 'card'; id: string }
+  // virtual-list.tsx: the row a click picked.
+  | { kind: 'pick'; row: number };
 
 declare module '@qxuken/kui/jsx-runtime' {
   interface KuiMsg {

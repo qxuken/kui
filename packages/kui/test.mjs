@@ -13,7 +13,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { constants as osConstants, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Ctx, KuiWindow, clipStride, createApp, createEncoder, decodeQuads, protocol, quadStride, withEffects } from './index.js';
+import { Ctx, KuiWindow, clipStride, createApp, createEncoder, decodeQuads, protocol, quadStride, virtualColumn, withEffects } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
@@ -564,11 +564,13 @@ test('focus, isFocused and access resolve a declared label', () => {
   ctx.access('beta', 'click');
   assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [{ kind: 'beta' }]);
   // A label nothing declared is an error that names both spellings —
-  // "bad id" named neither.
+  // "bad id" named neither. On a *command*: a name nothing answers to is a
+  // typo the app wants told about. A query answers instead (C25), which is
+  // its own test below.
   assert.throws(() => ctx.focus('gamma'), /no node is keyed "gamma".*`key` prop.*hex key/);
-  assert.throws(() => ctx.isFocused('gamma'), /no node is keyed/);
   assert.throws(() => ctx.reveal('gamma'), /no node is keyed/);
   assert.throws(() => ctx.access('gamma', 'click'), /no node is keyed/);
+  assert.equal(ctx.isFocused('gamma'), false);
   assert.deepEqual(ctx.warnings(), []);
 });
 
@@ -2624,6 +2626,33 @@ SCENE_TREES.live = (_fx, phase, ctx) => {
   ]);
 };
 
+// `conformance::build_virtual`: the rows a virtual list builds, each at its
+// own data index rather than at the position it occupies — `index` is what
+// makes those two different, and a binding that drops the prop auto-keys the
+// rows 1, 2, 3 instead and reports a different access tree for the same
+// quads. The spacers are keyed by name, in the other namespace.
+SCENE_TREES.virtual = () =>
+  root({}, [
+    box(
+      { width: 120, height: 60, gap: 0, scrollY: true, bg: '#101018', role: 'list', label: 'log' },
+      [
+        box({ width: 'grow', height: 20 }, [], 'lead'),
+        ...VIRTUAL_ROWS.map((i) =>
+          box({
+            index: i,
+            width: 'grow',
+            height: 20,
+            bg: '#30344a',
+            role: 'listItem',
+            label: `row ${i}`,
+          }),
+        ),
+        box({ width: 'grow', height: 100 }, [], 'tail'),
+      ],
+      'list',
+    ),
+  ]);
+
 // `conformance::build_drag`: one keyed handle whose drag deltas the event
 // rows carry, measured from the press point in every phase.
 SCENE_TREES.drag = () =>
@@ -2644,6 +2673,9 @@ const keep = (key, label) =>
   box({ dir: 'row', width: 60, height: 16, bg: '#22242c', focusable: true, label }, [], key);
 
 const ITEM_KEYS = ['i0', 'i1', 'i2', 'i3', 'i4', 'i5'];
+/** `conformance::VIRTUAL_ROWS`: data indices past what auto-keying could
+ *  have reached under five children, so the keys are the view's own. */
+const VIRTUAL_ROWS = [100, 101, 102];
 /** A root box sized like the core's implicit root: `configure_root` with
  *  the same data it already has, so only `title` actually lands. */
 const root = (props, children) => box({ width: 'grow', height: 'grow', ...props }, children);
@@ -3301,6 +3333,169 @@ test('scrollGeometry reports the container box, its content and the travel', () 
   // and a key this frame never declared.
   assert.equal(ctx.scrollGeometry(nodesByName(ctx)['row 0'].key), null);
   assert.equal(ctx.scrollGeometry('0123456789abcdef'), null);
+});
+
+// -- Virtual lists (backlog C25) --------------------------------------------
+// `virtualColumn` is the slicing above as a widget: the spacers, the row
+// keys, and the one thing a retained-tree binding needs that Rust does not —
+// something that makes the view run again when the wheel moves the core's
+// offset and no model changed.
+
+/** A `virtualColumn` app that records the range each frame built. */
+function virtualApp(opts = {}) {
+  const ROWS = opts.rows ?? 10_000;
+  const ROW_H = opts.rowH ?? 28;
+  const seen = { range: null, updates: [] };
+  const view = (_model, _window, ctx) =>
+    box({ width: 'grow', height: 'grow' }, [
+      virtualColumn(
+        ctx,
+        { key: 'log', rows: ROWS, rowH: ROW_H, width: 'grow', height: 'grow', ...(opts.box ?? {}) },
+        (i) => {
+          seen.range = seen.range === null ? [i, i + 1] : [Math.min(seen.range[0], i), i + 1];
+          return box({ width: 'grow', height: 'grow', label: `row ${i}`, onClick: { kind: 'pick', row: i } });
+        },
+      ),
+    ]);
+  const app = createApp(
+    {
+      init: { picked: -1 },
+      update: (model, msg) => {
+        seen.updates.push(msg);
+        return msg.kind === 'pick' ? { picked: msg.row } : undefined;
+      },
+      view,
+    },
+    { width: 480, height: 300, warnings: false },
+  );
+  return { app, seen, ROWS, ROW_H };
+}
+
+test('virtualColumn builds a screenful of a ten-thousand-row list', () => {
+  const { app, seen, ROWS, ROW_H } = virtualApp();
+  app.render();
+  seen.range = null;
+  app.render(); // the second frame is the first with geometry to slice by
+  const [first, last] = seen.range;
+  assert.equal(first, 0);
+  assert.ok(last <= Math.ceil(300 / ROW_H) + 3, `built ${last} rows`);
+
+  // The spacers make it the whole list: the content, the travel and so the
+  // scrollbar are the ten thousand rows', not the dozen that were built.
+  const g = app.ctx.scrollGeometry('log');
+  assert.equal(g.contentH, ROWS * ROW_H);
+  assert.equal(g.maxOffset.y, ROWS * ROW_H - g.h);
+});
+
+test('a virtualColumn re-slices on the wheel, with no model change anywhere', () => {
+  // The gate: the wheel raises no event of its own and the driver redraws by
+  // re-lowering the tree it was handed, so before C25 a JSX list sliced once
+  // and froze. One `step()` — what the pump runs after every pump — has to
+  // move the built range.
+  const { app, seen, ROW_H } = virtualApp();
+  app.render();
+  app.render();
+  const before = seen.range;
+
+  app.ctx.cursor(240, 150);
+  app.ctx.scroll(0, -3000);
+  seen.range = null;
+  seen.updates.length = 0;
+  app.step();
+
+  assert.notDeepEqual(seen.range, before, 'the built range did not follow the wheel');
+  assert.equal(seen.range[0], Math.floor(3000 / ROW_H) - 2);
+  // And `update` never heard about it: the sentinel is the widget's own
+  // bookkeeping, not a message the app wrote.
+  assert.deepEqual(seen.updates, []);
+});
+
+test('a virtualColumn row is keyed by its data index, so a full list agrees', () => {
+  const { app, seen } = virtualApp({ rows: 200, rowH: 20 });
+  app.render();
+  app.render();
+
+  // Scroll so the built range starts past the top, then click the row under
+  // a known y and check the key against the one a list that built every row
+  // would have given it.
+  app.ctx.setScroll('log', 0, 1000);
+  app.render(); // the offset lands on this frame's layout
+  seen.range = null;
+  app.render(); // ...and this one slices by it
+  const [first] = seen.range;
+  assert.ok(first > 0, `expected to be scrolled past the top, built from ${first}`);
+
+  const named = app.ctx.accessTree().nodes.filter((n) => n.name?.startsWith('row '));
+  assert.ok(named.length > 0);
+  // A full list of the same rows: the row at data index `i` gets the same
+  // key either way, which is what `index` buys.
+  // The same rows built whole. They carry the click the widget's rows carry,
+  // because a labelled box with no role and no click is not a semantic node
+  // and would not be in the tree to compare.
+  const full = new Ctx();
+  full.frame(480, 300, 1, box({ width: 'grow', height: 'grow' }, [
+    box({ width: 'grow', height: 'grow', scrollY: true, gap: 0 },
+      Array.from({ length: 200 }, (_, i) =>
+        box({ width: 'grow', height: 20 }, [
+          box({ width: 'grow', height: 'grow', label: `row ${i}`, onClick: { kind: 'pick', row: i } }),
+        ])), 'log'),
+  ]));
+  const fullKeys = new Map(
+    full.accessTree().nodes.filter((n) => n.name?.startsWith('row ')).map((n) => [n.name, n.key]),
+  );
+  for (const n of named) {
+    assert.equal(n.key, fullKeys.get(n.name), `${n.name} is keyed differently than in a full list`);
+  }
+});
+
+test('virtualColumn says what it needs rather than drawing nothing', () => {
+  const ctx = new Ctx();
+  assert.throws(() => virtualColumn(ctx, { rows: 10, rowH: 10 }, () => box({})), /string `key`/);
+  assert.throws(() => virtualColumn(ctx, { key: 'l', rows: 10 }, () => box({})), /positive `rowH`/);
+  assert.throws(() => virtualColumn(ctx, { key: 'l', rows: 10, rowH: 10 }), /row builder/);
+});
+
+test('a query answers for a label no frame declared; a command still throws', () => {
+  // Both spellings name a node, but the two kinds of call want different
+  // answers for "nothing is called that". A query has one already — false,
+  // null, a zero offset — and a view asks *before* the node exists: the
+  // first frame of a virtual list asks its own container for geometry.
+  const ctx = new Ctx();
+  ctx.frame(320, 240, 1, box({ width: 'grow', height: 'grow' }));
+  assert.equal(ctx.scrollGeometry('nothing'), null);
+  assert.deepEqual(ctx.scrollOffset('nothing'), { x: 0, y: 0 });
+  assert.equal(ctx.isHovered('nothing'), false);
+  assert.equal(ctx.isPressed('nothing'), false);
+  assert.equal(ctx.isFocused('nothing'), false);
+  assert.equal(ctx.editText('nothing'), null);
+  assert.equal(ctx.textHit('nothing', 1, 1), null);
+  assert.equal(ctx.caretRect('nothing', 0), null);
+  // A command is a typo the app wants named.
+  assert.throws(() => ctx.focus('nothing'), /no node is keyed/);
+  assert.throws(() => ctx.reveal('nothing'), /no node is keyed/);
+  assert.throws(() => ctx.setScroll('nothing', 0, 0), /no node is keyed/);
+});
+
+test('index keys a node the way auto-keying would have, wherever it sits', () => {
+  // Three rows at data indices 5, 6, 7 with a spacer before them: the keys
+  // are the ones a list that built rows 0..8 would have given, not the ones
+  // their positions (1, 2, 3) would.
+  const indexed = new Ctx();
+  indexed.frame(320, 240, 1, box({ width: 'grow', height: 'grow' }, [
+    box({ width: 'grow', height: 10 }, [], 'lead'),
+    ...[5, 6, 7].map((i) => box({ index: i, width: 'grow', height: 10, label: `r${i}` })),
+  ]));
+  const full = new Ctx();
+  full.frame(320, 240, 1, box({ width: 'grow', height: 'grow' },
+    Array.from({ length: 8 }, (_, i) => box({ width: 'grow', height: 10, label: `r${i}` }))));
+
+  const keys = (ctx) =>
+    new Map(ctx.accessTree().nodes.filter((n) => /^r\d$/.test(n.name ?? '')).map((n) => [n.name, n.key]));
+  const a = keys(indexed);
+  const b = keys(full);
+  for (const name of ['r5', 'r6', 'r7']) {
+    assert.equal(a.get(name), b.get(name), `${name} differs between an indexed list and a full one`);
+  }
 });
 
 test('scrollGeometry is one coherent moment, so a view can slice by it', () => {

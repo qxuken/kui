@@ -1,4 +1,4 @@
-import type { AppMsg, GeneratedSpecProps, KuiNode, TextProps } from './jsx-runtime.js';
+import type { AppMsg, BoxProps, GeneratedSpecProps, KuiNode, TextProps } from './jsx-runtime.js';
 
 export type { KuiNode, KuiElement, Msg, KuiMsg, AppMsg } from './jsx-runtime.js';
 
@@ -2198,6 +2198,54 @@ export interface Clip {
    *  radius rounds what it clips. All zero = a plain rect clip. */
   radii: [number, number, number, number];
 }
+
+/** The container `virtualColumn` declares: every `<box>` prop, plus what it
+ *  needs to slice by. `scrollY` and `gap` are the widget's own. */
+export interface VirtualColumnProps extends Omit<BoxProps, 'children' | 'scrollY' | 'gap'> {
+  /** Names the container. Required: its geometry is read back by this name,
+   *  so two lists cannot share one (`ambiguous-key`). */
+  key: string;
+  /** How many rows the list has, built or not. */
+  rows: number;
+  /** One row's height in logical px — the whole stride. Put a row's
+   *  spacing inside it (a row that pads itself) rather than in a `gap`. */
+  rowH: number;
+  /** Rows built past each edge of the window, covering the frame of lag on
+   *  a resize or a wheel jump. Two by default. */
+  overscan?: number;
+}
+
+/**
+ * A vertically scrolling column of `rows` uniform rows that declares only
+ * the visible ones, and the two spacers that hold the height of the rest —
+ * so the frame costs a screenful however long the list is.
+ *
+ *     virtualColumn(ctx, { key: 'log', rows: lines.length, rowH: 28 }, (i) => (
+ *       <box width="grow" height="grow" onClick={{ kind: 'pick', row: i }}>
+ *         <text>{lines[i]}</text>
+ *       </box>
+ *     ))
+ *
+ * `row(i)` returns row `i`'s *contents*; the widget owns the row's own node,
+ * `rowH` tall and keyed by the row's data `index`, so a row keeps its hover,
+ * focus, edit buffer and tweens as the built range slides over it — and a
+ * virtualised list and a full one agree on identity. A clickable row puts
+ * its `onClick` on a `width="grow" height="grow"` child, as above.
+ *
+ * It also declares the zero-height node that makes the *loop* re-run `view`
+ * when the container scrolls: the wheel raises no event and a window redraws
+ * by re-lowering the tree it was handed, so nothing else would. That node's
+ * events never reach `update`.
+ *
+ * `ctx.setScroll(key, 0, i * rowH)` puts row `i` at the top — the way to
+ * reach a row that is not built, since `reveal` of an unbuilt row finds
+ * nothing.
+ */
+export declare function virtualColumn(
+  ctx: Pick<Ctx, 'scrollGeometry' | 'env'>,
+  opts: VirtualColumnProps,
+  row: (i: number) => KuiNode,
+): KuiNode;
 
 export declare function decodeQuads(buffer: Buffer): Quad[];
 

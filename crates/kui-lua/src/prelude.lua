@@ -149,3 +149,77 @@ function fill(t)
   t.type = "fill"
   return t
 end
+
+-- virtual_column(env, { key = "log", rows = 10000, row_h = 28, ... }, function(i)
+--   return column { fill = true, on_click = { kind = "pick", row = i }, text("line " .. i) }
+-- end)
+--
+-- A scrolling column of `rows` uniform rows that declares only the visible
+-- ones, plus the two spacers that hold the height of the rest -- so the
+-- frame costs a screenful however long the list is. `env.scroll_geometry`
+-- is what it slices by, so the container needs the `key` this reads it back
+-- under. Every other key of `opts` is the container's own; `scroll_y` and
+-- `gap` are the widget's (put a row's spacing inside `row_h`).
+--
+-- `row(i)` returns row i's *contents*: the widget owns the row's own node,
+-- `row_h` tall and keyed by the row's data `index`, so a row keeps its
+-- hover, focus, edit buffer and tweens as the built range slides over it,
+-- and a virtualised list and a full one agree on identity. A clickable row
+-- puts its on_click on a `fill = true` child, as above.
+--
+-- The geometry is the previous frame's, so the first frame -- before any
+-- layout has resolved the container -- slices by the viewport, and a resize
+-- is one frame late and covered by `overscan` (two rows each side).
+--
+-- To reach a row that is not built, scroll to it:
+-- `env.set_scroll(key, 0, i * row_h)` puts row i at the top.
+function virtual_column(env, opts, row)
+  local key = opts.key
+  if type(key) ~= "string" or key == "" then
+    error("virtual_column needs a string `key` -- its geometry is read back by that name", 2)
+  end
+  local row_h = opts.row_h
+  if type(row_h) ~= "number" or row_h <= 0 then
+    error("virtual_column needs a positive `row_h` -- one row's height is the whole stride", 2)
+  end
+  if type(row) ~= "function" then
+    error("virtual_column needs a row builder -- virtual_column(env, opts, function(i) ... end)", 2)
+  end
+  local n = math.max(0, math.floor(opts.rows or 0))
+  local overscan = opts.overscan or 2
+
+  -- nil until a layout has resolved the container, which is the first
+  -- frame: a screenful of the viewport is a safe over-build for one.
+  local g = env.scroll_geometry(key)
+  local vh = g and g.h or env.viewport_h
+  -- Layout puts the flow's origin at pad_t - offset, so the band starts
+  -- there; only the top padding shifts it.
+  local pad_t = opts.pad_t or opts.pad_y or opts.pad or 0
+  local top = (g and g.offset.y or 0) - pad_t
+  local first = math.max(0, math.floor(top / row_h) - overscan)
+  local last = math.min(n, math.ceil((top + math.max(vh, 0)) / row_h) + overscan)
+  if last < first then last = first end
+
+  local t = {}
+  for k, v in pairs(opts) do t[k] = v end
+  t.rows, t.row_h, t.overscan = nil, nil, nil
+  t.type = "column"
+  t.scroll_y = true
+  t.gap = 0
+
+  local at = 1
+  -- Keyed, not auto-keyed: an auto key *is* the sibling index, and the rows
+  -- already occupy that namespace at their data indices.
+  if first > 0 then
+    t[at] = column { key = "kui:lead", width = "grow", height = first * row_h }
+    at = at + 1
+  end
+  for i = first, last - 1 do
+    t[at] = column { index = i, width = "grow", height = row_h, row(i) }
+    at = at + 1
+  end
+  if last < n then
+    t[at] = column { key = "kui:tail", width = "grow", height = (n - last) * row_h }
+  end
+  return t
+end

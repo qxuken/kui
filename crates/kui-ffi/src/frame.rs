@@ -93,6 +93,30 @@ pub extern "C" fn kui_open_keyed(
     })
 }
 
+/// `kui_open` under a data index rather than a name: the key auto-keying
+/// would have given the `i`th child, given to this node wherever it sits.
+/// A virtualising list opens each row with its own row number, so a row
+/// keeps its hover, focus, edit buffer and tweens as the built range slides
+/// over it — and agrees with a list that builds every row.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_open_indexed(
+    ptr: *mut KuiCtx,
+    index: u64,
+    spec: *const KuiSpec,
+    on_click: *mut KuiValue,
+) -> u64 {
+    guard(0, || {
+        let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else {
+            return 0;
+        };
+        let key = c
+            .core()
+            .open_indexed(index, spec_of(s, on_click, NONE, NONE, NONE));
+        c.push_tooltip(key, s.tooltip);
+        key.0
+    })
+}
+
 /// An image node. Fit sizing takes the image's pixel size as logical px;
 /// Fit height against a resolved width keeps the aspect. radius rounds it.
 #[unsafe(no_mangle)]

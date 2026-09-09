@@ -20,8 +20,10 @@ at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
 
-What is left here is four entries and a plan: three parked headings — C12,
-C13 and C14, each waiting for a view that wants it — and F36, which fell out
+What is left here is five entries: three parked headings — C12, C13 and C14,
+each waiting for a view that wants it — C26, whose first two steps were built
+on 2026-09-09 and whose last two wait for a view (C25 beside it closed the day
+it was filed), and F36, which fell out
 of building the last two of the four entries the two alpha.9 field reports and
 the bake-off produced, and which is filed rather than built on purpose (the
 only host driving its own audio device today is the runner). Everything else
@@ -423,6 +425,227 @@ package has and does not document, which is F33's shape again and became a
   their notes say so.
 
 
+## From the two virtual-list examples (2026-09-09)
+
+`examples/rust/virtual_list.rs` and `examples/node/virtual-list.tsx` were
+written on 2026-09-09 to answer "what does a virtualised list look like in
+JSX" — the same 10,000 rows through `widgets::virtual_column`, through the
+arithmetic unrolled (`child_key` + `scroll_geometry` + `visible_rows` +
+`with_indexed`), and through JSX. The Rust two agree row for row (12 built,
+`298..312` after a wheel to row 300, a click on row 302 that frame 1 never
+built). The JSX one works too, but only after three things the Rust one never had to
+do, and the third of them was a list that silently freezes. **C25, which was
+those three, closed the day it was filed** and is in
+[`backlog/closed-2026-09.md`](backlog/closed-2026-09.md#-c25--a-virtual-list-in-jsx-needs-a-sentinel-a-hand-written-key-and-a-guard-make-it-one-call--done-2026-09-09)
+whole. What stays here is C26.
+
+### `.` C26 — Rows of varying height — **steps 0 and 1 built (2026-09-09); 2 and 3 open**
+
+**Built the day this was filed, and the plan below survived it with two
+corrections.** `widgets::RowHeights` and `widgets::virtual_rows` are steps 0
+and 1 together — there was no reason to ship known heights without the
+estimate, since the same `measure` callback serves both — with the tests the
+step list asked for (`crates/kui-core/tests/scroll.rs`: the anchoring one is
+`the_row_under_the_pointer_stays_there_while_the_estimate_moves`) and the
+bench (`list_10k_rows_variable*`). `examples/rust/virtual_list.rs
+--variable` is a wrapped log through it.
+
+**Correction 1: the anchor is an in-frame correction, not a cross-frame
+one.** The plan had the widget remembering the row its last slice started at
+and correcting on the *next* frame. It does not need to: it takes the
+anchor row and the fraction scrolled into it *before* it measures, and puts
+that pair back *after*, in the same frame — so there is no stored anchor,
+nothing to invalidate when the data changes under it, and the corrected
+frame is the first one drawn. `set_scroll` from inside a view landing on the
+frame being built is the fact that makes it work, and it held exactly as the
+plan claimed.
+
+**Correction 2: sources 2 and 3 are not both needed, and 3 is not needed at
+all here.** Because what `measure` returns is the height the row *gets* (the
+row's node is fixed to it), the measurement is authoritative and the layout
+cannot disagree with it. That removes the reason for step 2's `layout_of`
+query in this design — a row whose height is not text says what it is in
+`measure` like any other — and leaves step 3 standing on its own merits,
+which are not about virtual lists.
+
+**On the perf question this was filed with** (*keep it a separate widget
+unless the general one costs nothing where a stride is known*): at one
+height it costs what `virtual_column` costs. Holding the built rows equal —
+`list_10k_rows_variable_at_one_height`, the variable widget told row by row
+that every row is 24px, against `list_10k_rows_virtual`, the same 38 rows
+through the stride — it is **16.79 µs against 16.22 µs**, and three runs of
+these benches move their own medians by up to 10%, so that gap is not a
+reading. It stays separate anyway, for a reason the frame time does not
+show: `virtual_rows` needs a `RowHeights` the app owns, one allocation per
+row, and a `set_len` whenever the list changes length. The cost is the
+state, not the frame, and a caller who can name the stride should carry
+none of it.
+
+**Read the frame totals per row or they mislead.** Every virtualised bench
+here costs 427–455 ns a row and a naive row costs 393 ns, so the 242×
+against `list_10k_rows_naive` (3.93 ms) is entirely "38 rows instead of ten
+thousand" and not a cheaper row. It is also why `list_10k_rows_variable`
+reads *under* the uniform bench (13.66 µs): its rows average 32px against
+24px, so eight fewer fit the window. Only the at-one-height pair holds that
+equal, which is what it is for.
+
+**What the lazy prefix sums and the galloping search were worth.** The first
+cut rebuilt the sums whole on every change and bisected `0..len`. Both
+changes were needed — laziness alone buys nothing, because a bisection
+probes the midpoint first and fills everything under it — and the same
+benches run against both implementations say so:
+
+| | first cut | shipped |
+|---|---|---|
+| learns nothing, 10k | 14.41 µs | 13.66 µs |
+| learns a row it is looking at, 10k | 21.24 µs | **13.20 µs** |
+| the same at 100k | 84.43 µs | **13.31 µs** |
+| a row nowhere near the window, 10k | 28.08 µs | 18.83 µs |
+
+Learning a row's height is now free and flat in the length of the list,
+where at 100k rows it used to be six times the steady cost. The Fenwick
+tree the plan named is unbuilt and now has nothing to buy. The one case
+that still pays is a list told about a row nowhere near its window — a list
+whose data changed under it — which pays for the distance between that row
+and the window, and is the honest cost of a prefix sum.
+
+**What is still open**, and what the original plan said about each:
+
+- **Step 2, a measured-size query** (`Core::layout_of(key)`). Not needed by
+  `virtual_rows` any more (correction 2), and worth building only if
+  something else wants the rect the core already keeps for an `on_layout`
+  key without the event.
+- **Step 3, anchoring in the core** (`anchor` on a scroll container, CSS's
+  `overflow-anchor`). Untouched, and the argument for it is unchanged and
+  not about virtual lists: a chat that prepends history and a log that
+  inserts above the viewport want it with no virtualisation at all. If it
+  is built, this is the part of C5(b) that was worth building — not the
+  core skipping rows.
+- **A JS/Lua `virtualRows`.** The bindings got the *uniform* widget in C25.
+  The variable one needs the height cache to live in the app's model there,
+  which is a different shape from Rust's `&mut RowHeights` and wants a view
+  that has asked for it.
+- **Variable widths, and heights that depend on scroll position.** Still
+  nobody has asked.
+
+The plan as filed follows, unchanged.
+
+---
+
+`virtual_column` takes one number and every row must come out that tall;
+C5's close said in so many words that rows of *varying* height are the one
+case (a) does not serve and the one that would justify (b). This entry is
+the plan for them, written before any of it is built so that the core-side
+part can be argued from a view-side attempt rather than guessed. Nothing
+here is scheduled; the first view that is a chat history, a log with wrapped
+lines or a feed of mixed cards is what starts it.
+
+**What breaks without a stride.** Three things `virtual_column` does with
+`i * row_h` have no closed form: the lead spacer (the height of every row
+above the range), the search from `offset.y` to the first visible row, and
+`set_scroll(i * row_h)` as "scroll to row `i`". All three need a prefix sum
+over heights the view does not have for rows it has never built.
+
+**Where a height can come from, in kui.** Three sources, and the design is
+which of them a row uses:
+
+1. *Known from the data.* A `kind` per row with a height per kind, a fixed
+   thumbnail size. Exact and free; the prefix sum is over the data.
+2. *Measured before layout.* `measure_text(content, style, Some(width))`
+   is what layout would give the text node, wrap and `max_lines` included,
+   shaped through the same cache — so measuring a row and then drawing it
+   shapes once (`runtime.rs`, "Measurement"). The width is
+   `scroll_geometry(key).rect.w` less the row's own padding, from the frame
+   before, and a resize changes it for every row at once. Exact for text
+   rows, which is most of the case; the catch is that measuring the *unbuilt*
+   rows is the cost virtualisation exists to avoid, so it has to be lazy and
+   cached per `(row, width)`, and rows never measured need an estimate.
+3. *Reported after layout.* `on_layout` on each built row posts its rect
+   when it changes — the only source for a row whose height is not text (a
+   `Fit` image, a nested layout). It is an event, it is one frame late, and
+   it is the shape C5 called wrong for the container; for rows it is the
+   right shape only when 2 cannot answer.
+
+**The design that follows** (the one every browser-side virtualiser
+converged on — estimate, measure, prefix sums, anchor — in kui's terms):
+
+- The view keeps `heights: Vec<Option<f32>>` (measured or known) and one
+  `estimate` (the running mean of the measured ones, or the caller's guess
+  before any). A row's height is `heights[i].unwrap_or(estimate)`. Prefix
+  sums over that: a Fenwick tree for O(log n) point updates when 3 is in
+  play, a plain cumulative array rebuilt on change when only 1 and 2 are —
+  measure before choosing; 10,000 rows is a 40 KB array and a rebuild is a
+  microsecond-scale loop.
+- Slicing: binary-search the prefix sum for the first row whose bottom is
+  past `offset.y`, build until a row's top is past `offset.y + rect.h`, plus
+  overscan **in rows**, not pixels. Lead spacer = prefix[first]; tail =
+  total − prefix[last]. Rows are opened with `with_indexed(i)` and are
+  `Fit`-height (they measure themselves); the stride assumption is gone.
+- **Anchoring is the whole difficulty.** The retained offset is a pixel
+  count (`ScrollStore`, `resolve` clamps it and nothing else), so when a row
+  *above* the range gets measured and differs from its estimate by Δ, the
+  lead spacer grows by Δ and everything on screen jumps by Δ. Correction:
+  the frame that learns Δ for rows above `first` calls
+  `set_scroll(key, offset + Δ)` in the same view. `positions` reads the store
+  at `finish_frame`, after the view has run, so a write from inside `view`
+  lands on the frame being built — the same fact `reveal`'s doc comment
+  states for itself — and the screen never shows the uncorrected frame.
+  **Pin that with a test before anything else**; if it turns out to be one
+  frame late in any binding, the jitter is the argument for the core doing
+  it (below). Two boundary cases the test suite needs: at
+  `offset == max_offset` (tailing a log) a shrinking estimate must keep the
+  view at the end, and "scroll to row `i`" is
+  `set_scroll(prefix[i])` followed by the correction loop converging over
+  the next frame or two as the rows around `i` measure — the scrollbar thumb
+  drifts a little while it does, as it does in a browser.
+- Node/JSX: the same, with C25's `virtualColumn` grown a `rowH: (i) =>
+  number | undefined` — the height cache lives in the model because source
+  3 arrives through `update` there, and source 2 is `ctx.measureText`.
+
+**Steps, each with its gate, each usable on its own:**
+
+0. **Known heights** — `widgets::virtual_rows(ui, label, spec, rows, |i|
+   height, |ui, i| row)`: source 1 only, prefix sums, `visible_range` from
+   a binary search. `virtual_column` becomes the `|_| row_h` case of it (or
+   stays as the fast path; measure whether the search costs anything at
+   10k). Gate: a `scroll.rs` test with heights `20, 40, 60, …` that builds
+   only what shows and where `set_scroll(prefix[i])` lands row `i` at the
+   top. This alone is the chat history whose rows are `measure_text`-able:
+   the view measures the rows it builds and the rows the search touches,
+   caches them, and hands `virtual_rows` the cached number.
+1. **Estimate and correct** — the height cache, the estimate, and the
+   anchoring write. Gate: a test with an estimate wrong by 2× where the row
+   at the top of the window stays at the top across the frame that measures
+   the rows above it; the tailing case; the jump-to-row convergence within N
+   frames. Bench: `list_10k_rows_variable` beside `list_10k_rows_virtual`
+   (~19 µs); the budget is a prefix-sum search and a handful of
+   `measure_text` hits per frame.
+2. **A measured-size query, if 3 turns out to matter** — the core keeps the
+   last rect per `on_layout` key already (`layouts`, for the edge trigger).
+   `Core::layout_of(key) -> Option<Rect>` reads it back during the next
+   build with no event, no tag and no model field — the query shape C5
+   preferred over the event, for a row this time. Only if step 1 shows the
+   event traffic (one per built row per scroll frame, ~15 at a screenful)
+   costing something a profile can see, or the JSX model plumbing being the
+   bulk of the widget.
+3. **Anchoring in the core, if step 1's correction is late** — `anchor`
+   on a scroll container (a row id naming a child key), meaning "keep this
+   node's top where it was when content above it changes size": the core
+   has the previous frame's rect for any `on_layout` key and this frame's
+   layout, so it is a subtraction in `positions` before `resolve` clamps.
+   This is CSS `overflow-anchor`, and it is bigger than virtual lists — a
+   chat that prepends history and a log that inserts above the viewport
+   want it with no virtualisation at all. If it is built, this is the part
+   of C5(b) that was worth building: **not the core skipping rows, which
+   breaks tree-as-data in every binding (Node encodes the tree whole; a
+   layout pass cannot call back into a view), but the core keeping a row
+   still.** Corpus scene, since it is a one-frame property once the
+   previous frame is given.
+
+**Not this:** the core building rows lazily (above); variable *widths*
+(a horizontal list is the same plan turned sideways, and nobody has asked);
+heights that depend on the row's own scroll position; a `virtual` flag.
+
 ## After alpha.10
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -444,7 +667,10 @@ which the archived entry measures and leaves.
 
 **Build next.** Nothing with a written ADR and no code, and nothing filed
 that is not either parked or deliberately unbuilt: after alpha.10 the open
-list is C12, C13, C14 and F36.
+list is C12, C13, C14, F36 and C26's last two steps — a measured-size query
+nothing needs since `virtual_rows` measures its own rows, and core-side
+scroll anchoring, which is CSS's `overflow-anchor` and is wanted by lists
+that are not virtual at all.
 [`docs/adr/0016-caching-against-the-last-frame.md`](adr/0016-caching-against-the-last-frame.md)
 was **proposed and its one yes built on 2026-09-09** out of the performance round that shipped the quad
 shrink and closed C24, and it is written to be mostly declined: no general
@@ -780,6 +1006,10 @@ move.
 - `.` **F33** — [`howto.md` contradicts the release that shipped it, and nothing checks a "today" sentence](backlog/closed-2026-09.md#-f33--howtomd-contradicts-the-release-that-shipped-it-and-nothing-checks-a-today-sentence--done-2026-09-08) — done (2026-09-08) — and the guard that keeps the page honest is a workspace test
 - `.` **F34** — [A one-shot cut off without `finish` is silent (pomodoro wish 3)](backlog/closed-2026-09.md#-f34--a-one-shot-cut-off-without-finish-is-silent-pomodoro-wish-3--built-2026-09-08) — built (2026-09-08)
 - `.` **F35** — [A released playback holds a voice, and a refused play is a stderr line the view never hears (pomodoro wish 4)](backlog/closed-2026-09.md#-f35--a-released-playback-holds-a-voice-and-a-refused-play-is-a-stderr-line-the-view-never-hears-pomodoro-wish-4--done-2026-09-08) — done (2026-09-08) — the refusal is an event and a warning; F36 is the asymmetry it left
+
+**From the two virtual-list examples (2026-09-09)** — C25 and C26, filed and built the same day; C26's last two steps stay open above
+
+- `.` **C25** — [A virtual list in JSX needs a sentinel, a hand-written key and a guard; make it one call](backlog/closed-2026-09.md#-c25--a-virtual-list-in-jsx-needs-a-sentinel-a-hand-written-key-and-a-guard-make-it-one-call--done-2026-09-09) — done (2026-09-09) — `virtualColumn` / `virtual_column`, an `index` row in all four bindings, and every query answering for a name no frame declared
 
 **From an alpha.10 field report (2026-09-09)** — F37, closed the day it was filed, and the first entry to land after the alpha.10 tag
 

@@ -294,6 +294,27 @@ fn slot_table(lua: &Lua, slot: &Slot<'_>) -> mlua::Result<Table> {
 /// frame so far and then the last finished one (`Ui::key_of`). A string no
 /// node declared is an error naming both spellings, since nothing else
 /// would (backlog F5).
+/// The same two spellings for a *query* — `is_hovered`, `scroll_geometry`,
+/// `edit_text` and the rest — where a name nothing declared is the answer
+/// rather than an error. Every one of them already has a "no such node"
+/// reply for a key no layout resolved (false, nil, a zero offset), and a
+/// label is the spelling a view uses *before* the node exists: the first
+/// frame of a `virtual_column` asks its own container for geometry that is
+/// not there yet. The command verbs keep throwing, where a typo is a bug
+/// worth naming (backlog C25).
+fn key_query(ui: &mut Ui<'_>, v: mlua::Value) -> mlua::Result<Option<Key>> {
+    match v {
+        mlua::Value::Integer(i) => Ok(Some(Key(i as u64))),
+        mlua::Value::Number(n) => Ok(Some(Key(n as u64))),
+        mlua::Value::String(s) => Ok(ui.key_of(&s.to_str()?)),
+        other => Err(mlua::Error::runtime(format!(
+            "a node is named by the integer key an event carried or the label its `key` field \
+             declared, not by {}",
+            other.type_name()
+        ))),
+    }
+}
+
 fn key_arg(ui: &mut Ui<'_>, v: mlua::Value) -> mlua::Result<Key> {
     match v {
         mlua::Value::Integer(i) => Ok(Key(i as u64)),
@@ -407,20 +428,34 @@ fn env_table<'scope, 'env: 'scope>(
         "is_focused",
         scope.create_function(move |_, key: mlua::Value| {
             let mut ui = ui.borrow_mut();
-            let key = key_arg(&mut ui, key)?;
+            let Some(key) = key_query(&mut ui, key)? else {
+                return Ok(false);
+            };
             Ok(ui.is_focused(key))
         })?,
     )?;
     t.set(
         "is_hovered",
-        scope.create_function(move |_, key: i64| Ok(ui.borrow().is_hovered(Key(key as u64))))?,
+        scope.create_function(move |_, key: mlua::Value| {
+            let mut ui = ui.borrow_mut();
+            let Some(key) = key_query(&mut ui, key)? else {
+                return Ok(false);
+            };
+            Ok(ui.is_hovered(key))
+        })?,
     )?;
     // Held down: the press started on this node and the pointer is still
     // over it (or it captured a drag). Goes with `is_hovered` — a script
     // that draws its own button styles the pressed state from this.
     t.set(
         "is_pressed",
-        scope.create_function(move |_, key: i64| Ok(ui.borrow().is_pressed(Key(key as u64))))?,
+        scope.create_function(move |_, key: mlua::Value| {
+            let mut ui = ui.borrow_mut();
+            let Some(key) = key_query(&mut ui, key)? else {
+                return Ok(false);
+            };
+            Ok(ui.is_pressed(key))
+        })?,
     )?;
     // Moving focus from the script, the imperative half of `key_focus`.
     // `set_focus`, not `focus`: `env.focus` is already the reading above
@@ -513,8 +548,12 @@ fn env_table<'scope, 'env: 'scope>(
     // back to `set_scroll` to restore a position.
     t.set(
         "scroll_offset",
-        scope.create_function(move |lua, key: i64| {
-            let off = ui.borrow().scroll_offset(Key(key as u64));
+        scope.create_function(move |lua, key: mlua::Value| {
+            let mut ui = ui.borrow_mut();
+            let off = match key_query(&mut ui, key)? {
+                Some(key) => ui.scroll_offset(key),
+                None => kui_core::Vec2::ZERO,
+            };
             let r = lua.create_table()?;
             r.set("x", off.x)?;
             r.set("y", off.y)?;
@@ -538,7 +577,9 @@ fn env_table<'scope, 'env: 'scope>(
         "text_hit",
         scope.create_function(move |lua, (key, x, y): (mlua::Value, f32, f32)| {
             let mut ui = ui.borrow_mut();
-            let key = key_arg(&mut ui, key)?;
+            let Some(key) = key_query(&mut ui, key)? else {
+                return Ok(mlua::Value::Nil);
+            };
             let Some(h) = ui.text_hit(key, kui_core::Vec2::new(x, y)) else {
                 return Ok(mlua::Value::Nil);
             };
@@ -555,7 +596,9 @@ fn env_table<'scope, 'env: 'scope>(
         "caret_rect",
         scope.create_function(move |lua, (key, byte): (mlua::Value, usize)| {
             let mut ui = ui.borrow_mut();
-            let key = key_arg(&mut ui, key)?;
+            let Some(key) = key_query(&mut ui, key)? else {
+                return Ok(mlua::Value::Nil);
+            };
             let Some(r) = ui.caret_rect(key, byte) else {
                 return Ok(mlua::Value::Nil);
             };
@@ -569,8 +612,12 @@ fn env_table<'scope, 'env: 'scope>(
     )?;
     t.set(
         "scroll_geometry",
-        scope.create_function(move |lua, key: i64| {
-            let Some(g) = ui.borrow().scroll_geometry(Key(key as u64)) else {
+        scope.create_function(move |lua, key: mlua::Value| {
+            let mut ui = ui.borrow_mut();
+            let Some(key) = key_query(&mut ui, key)? else {
+                return Ok(mlua::Value::Nil);
+            };
+            let Some(g) = ui.scroll_geometry(key) else {
                 return Ok(mlua::Value::Nil);
             };
             let r = lua.create_table()?;
@@ -595,9 +642,10 @@ fn env_table<'scope, 'env: 'scope>(
     // to the top" and a huge y is "jump to the end".
     t.set(
         "set_scroll",
-        scope.create_function(move |_, (key, x, y): (i64, f32, f32)| {
-            ui.borrow_mut()
-                .set_scroll(Key(key as u64), kui_core::Vec2::new(x, y));
+        scope.create_function(move |_, (key, x, y): (mlua::Value, f32, f32)| {
+            let mut ui = ui.borrow_mut();
+            let key = key_arg(&mut ui, key)?;
+            ui.set_scroll(key, kui_core::Vec2::new(x, y));
             Ok(())
         })?,
     )?;
@@ -928,9 +976,10 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     match ty.as_str() {
         "row" | "column" => {
             let p = parse_props(t, ty == "row")?;
-            let key = match &p.key {
-                Some(label) => ui.open_keyed(label, p.spec),
-                None => ui.open(p.spec),
+            let key = match (p.index, &p.key) {
+                (Some(i), _) => ui.open_indexed(i, p.spec),
+                (None, Some(label)) => ui.open_keyed(label, p.spec),
+                (None, None) => ui.open(p.spec),
             };
             if p.key_focus {
                 ui.take_key_focus(key);
@@ -974,9 +1023,10 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             };
             let p = parse_props(t, false)?;
             let id = kui_core::FragmentId::from_ffi(id as u64);
-            let key = match &p.key {
-                Some(label) => ui.core().open_fragment_keyed(label, id, &params, p.spec),
-                None => ui.core().open_fragment(id, &params, p.spec),
+            let key = match (p.index, &p.key) {
+                (Some(i), _) => ui.core().open_fragment_indexed(i, id, &params, p.spec),
+                (None, Some(label)) => ui.core().open_fragment_keyed(label, id, &params, p.spec),
+                (None, None) => ui.core().open_fragment(id, &params, p.spec),
             };
             if p.key_focus {
                 ui.take_key_focus(key);
@@ -1021,9 +1071,10 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             let width = t.get::<Option<f32>>("width")?.unwrap_or(1.0);
             let mut stroke = kui_core::Stroke::new(width, p.style.color);
             stroke.curve = t.get::<Option<bool>>("curve")?.unwrap_or(false);
-            match &p.key {
-                Some(label) => ui.polyline_keyed(label, &points, stroke, p.spec),
-                None => ui.polyline(&points, stroke, p.spec),
+            match (p.index, &p.key) {
+                (Some(i), _) => ui.polyline_indexed(i, &points, stroke, p.spec),
+                (None, Some(label)) => ui.polyline_keyed(label, &points, stroke, p.spec),
+                (None, None) => ui.polyline(&points, stroke, p.spec),
             }
             Ok(())
         }
@@ -1095,9 +1146,10 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
                 style: p.style,
                 cursor,
             };
-            match &p.key {
-                Some(label) => ui.cells_keyed(label, &grid, p.spec),
-                None => ui.cells(&grid, p.spec),
+            match (p.index, &p.key) {
+                (Some(i), _) => ui.cells_indexed(i, &grid, p.spec),
+                (None, Some(label)) => ui.cells_keyed(label, &grid, p.spec),
+                (None, None) => ui.cells(&grid, p.spec),
             }
             Ok(())
         }
@@ -1362,6 +1414,12 @@ pub fn parse_props(t: &Table, is_row: bool) -> mlua::Result<PropsOut> {
                     return Err(bad("key must be a string"));
                 };
                 out.key = Some(s.to_str()?.to_string());
+            }
+            "index" => {
+                let Some(i) = v.as_number().or_else(|| v.as_integer().map(|i| i as f64)) else {
+                    return Err(bad("index must be a number (the row's data index)"));
+                };
+                out.index = Some(i.max(0.0) as u64);
             }
             "tooltip" => {
                 let mlua::Value::String(s) = &v else {
@@ -3262,6 +3320,111 @@ mod tests {
         assert_eq!(core.scroll_offset(list).y, 10_000.0 * 30.0 - 200.0);
         let built: i64 = ext.lua.globals().get("built").unwrap();
         assert_eq!(built, 7, "still a screenful at the far end");
+    }
+
+    /// The same list as one call: `virtual_column` from the prelude owns the
+    /// slicing, the two spacers and the row keys, and the script says what a
+    /// row looks like. It names its container by label, which is why the
+    /// queries had to answer for a name no frame has declared yet — the
+    /// first frame asks before the container exists (backlog C25).
+    #[test]
+    fn the_prelude_virtualizes_a_long_list_in_one_call() {
+        let mut ext = LuaExtension::from_source(
+            "virtual",
+            r#"
+                ROWS, ROW_H, first_built, built = 10000, 30, -1, 0
+                function view(env)
+                  built, first_built = 0, -1
+                  return virtual_column(env,
+                    { key = "list", rows = ROWS, row_h = ROW_H,
+                      width = "grow", height = "grow" },
+                    function(i)
+                      built = built + 1
+                      if first_built < 0 then first_built = i end
+                      return column { fill = true, bg = 0x282840ff,
+                                      on_click = { kind = "pick", row = i } }
+                    end)
+                end
+            "#,
+        )
+        .unwrap();
+        let list = Key::ROOT.str("list");
+        let mut core = Core::new();
+        let frame = |core: &mut Core, ext: &mut LuaExtension| {
+            let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+            ui.set_origin(OriginId(1));
+            ext.view(&Slot::root(), &mut ui).unwrap();
+            ui.finish();
+        };
+
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        let built: i64 = ext.lua.globals().get("built").unwrap();
+        assert_eq!(built, 9, "200 / 30 rounded up, plus two rows of overscan");
+
+        // The spacers make it the whole list, and a row keeps the key its
+        // data index gives it however far the range has slid.
+        let g = core.scroll_geometry(list).expect("laid out");
+        assert_eq!(g.content.h, 10_000.0 * 30.0);
+        core.set_scroll(list, Vec2::new(0.0, 300.0 * 30.0));
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        let first: i64 = ext.lua.globals().get("first_built").unwrap();
+        assert_eq!(first, 298, "two rows of overscan above row 300");
+        let built: i64 = ext.lua.globals().get("built").unwrap();
+        assert_eq!(built, 11, "a screenful with overscan on both sides now");
+        // The row's own node carries the data index, which is the key a list
+        // that built all ten thousand would have given it.
+        assert!(
+            core.access_tree()
+                .nodes
+                .iter()
+                .any(|n| n.key == list.index(300).index(0)),
+            "row 300 is not keyed by its data index"
+        );
+    }
+
+    /// A query answers for a label nothing declared, where a command says it
+    /// is a name nothing answers to. The first frame of any view that slices
+    /// by geometry asks before its container exists.
+    #[test]
+    fn a_query_answers_for_an_undeclared_label_and_a_command_refuses() {
+        let mut ext = LuaExtension::from_source(
+            "queries",
+            r#"
+                function view(env)
+                  geom = env.scroll_geometry("nothing")
+                  off = env.scroll_offset("nothing")
+                  hovered = env.is_hovered("nothing")
+                  pressed = env.is_pressed("nothing")
+                  focused = env.is_focused("nothing")
+                  hit = env.text_hit("nothing", 1, 1)
+                  caret = env.caret_rect("nothing", 0)
+                  refused = not pcall(function() env.set_scroll("nothing", 0, 0) end)
+                  refused_focus = not pcall(function() env.set_focus("nothing") end)
+                  return column { width = "grow", height = "grow" }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+        ext.view(&Slot::root(), &mut ui).unwrap();
+        ui.finish();
+        let g = ext.lua.globals();
+        assert_eq!(g.get::<mlua::Value>("geom").unwrap(), mlua::Value::Nil);
+        assert_eq!(g.get::<mlua::Value>("hit").unwrap(), mlua::Value::Nil);
+        assert_eq!(g.get::<mlua::Value>("caret").unwrap(), mlua::Value::Nil);
+        assert!(!g.get::<bool>("hovered").unwrap());
+        assert!(!g.get::<bool>("pressed").unwrap());
+        assert!(!g.get::<bool>("focused").unwrap());
+        let off: Table = g.get("off").unwrap();
+        assert_eq!(off.get::<f32>("y").unwrap(), 0.0);
+        assert!(
+            g.get::<bool>("refused").unwrap(),
+            "set_scroll named nothing"
+        );
+        assert!(g.get::<bool>("refused_focus").unwrap());
     }
 
     #[test]

@@ -222,9 +222,17 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
 
   // Everything the surface has queued, through `update`. The loop draws once
   // after, not once per event.
+  //
+  // All but one kind: a `virtualColumn`'s sentinel says its container
+  // scrolled, and the widget slices by the geometry the next frame reads for
+  // itself. So it is a redraw and nothing else — an app that had to add a
+  // `case 'layout'` for a widget to work has not been given a widget.
   function drainEvents() {
     const events = surface.pollEvents();
-    for (const ev of events) app.dispatch(ev.payload, ev);
+    for (const ev of events) {
+      if (isVirtualLayout(ev.payload)) continue;
+      app.dispatch(ev.payload, ev);
+    }
     return events.length > 0;
   }
 
@@ -545,6 +553,129 @@ export function createApp(config, opts = {}) {
  * Decodes `ctx.quads()` into JS objects (debugging/testing aid).
  * Layout mirrors KuiQuad in include/kui.h; coordinates are physical px.
  */
+// -- Virtual lists ----------------------------------------------------------
+// The core builds every child a view declares, so a ten-thousand-row list
+// costs ten thousand rows of build and layout on every frame. A view that
+// knows how tall the container is and how far it is scrolled can declare a
+// screenful and two spacers instead — `ctx.scrollGeometry(key)` is that
+// knowledge, and `widgets::virtual_column` is this same arithmetic in Rust.
+//
+// What Rust does not need and this does: a *reason to run again*. The wheel
+// moves the core's retained offset and raises no event, and a window redraws
+// by re-lowering the tree it was last handed — so a view that sliced by the
+// geometry once would slice by it once and never again. The zero-height
+// first child below has an `onLayout` whose rect changes whenever the
+// content moves, and `createLoop` redraws on it *without* handing it to
+// `update`: it is the widget's own bookkeeping, not a message the app wrote.
+
+/** The tag on that sentinel — a string key so it survives the wire as the
+ *  plain data every payload is, and one nothing else would spell. */
+const VIRTUAL_TAG = '@kui/virtual';
+
+/** Whether an event is one of those sentinels rather than an app message. */
+function isVirtualLayout(payload) {
+  return (
+    payload !== null &&
+    typeof payload === 'object' &&
+    payload.kind === 'layout' &&
+    payload.tag !== null &&
+    typeof payload.tag === 'object' &&
+    typeof payload.tag[VIRTUAL_TAG] === 'string'
+  );
+}
+
+const spacer = (h, key) => ({
+  type: 'box',
+  key,
+  props: { width: 'grow', height: h },
+  children: [],
+});
+
+/**
+ * A vertically scrolling column of `rows` uniform rows that declares only
+ * the visible ones, in JSX.
+ *
+ *   virtualColumn(ctx, { key: 'log', rows: lines.length, rowH: 28, bg: '#111' },
+ *     (i) => <box width="grow" height="grow" onClick={{ kind: 'pick', row: i }}>
+ *              <text>{lines[i]}</text>
+ *            </box>)
+ *
+ * `ctx` is the surface `view(model, window, ctx)` is handed. `key` names the
+ * container — the geometry is read back by that name, so it has to be one
+ * (two lists on one name is the `ambiguous-key` warning). Every other prop
+ * is the container's own; it is forced to `scrollY` with no `gap`, because
+ * `rowH` is the whole stride and spacing belongs inside a row that pads
+ * itself.
+ *
+ * `row(i)` returns row `i`'s *contents*. The widget owns the row's own node:
+ * `rowH` tall and keyed by the row's data index (`index`), so a row keeps
+ * its hover, focus, edit buffer and tweens as the built range slides over
+ * it, and so a virtualised list and a full one agree on identity. A
+ * clickable row puts its `onClick` on a `width="grow" height="grow"` child,
+ * which is what the example above does.
+ *
+ * The geometry it slices by is the previous frame's, so the first frame —
+ * before any layout has resolved the container — slices by the viewport
+ * instead, and a resize is one frame late and covered by `overscan` (two
+ * rows each side by default).
+ *
+ * To reach a row that is not built, scroll to it: `ctx.setScroll(key, 0, i *
+ * rowH)` puts row `i` at the top. `ctx.reveal` of an unbuilt row finds
+ * nothing, because nothing declared it.
+ */
+export function virtualColumn(ctx, opts, row) {
+  const { key, rows, rowH, overscan = 2, ...box } = opts ?? {};
+  if (typeof key !== 'string' || key === '') {
+    throw new Error('kui: virtualColumn needs a string `key` — its geometry is read back by that name');
+  }
+  if (typeof rowH !== 'number' || !(rowH > 0)) {
+    throw new Error('kui: virtualColumn needs a positive `rowH` — one row\'s height is the whole stride');
+  }
+  if (typeof row !== 'function') {
+    throw new Error('kui: virtualColumn needs a row builder — virtualColumn(ctx, opts, (i) => node)');
+  }
+  const n = Math.max(0, Math.floor(rows) || 0);
+  // Null until a layout has resolved the container, which is the first
+  // frame: a container is not taller than the window in the ordinary case,
+  // so a screenful of the viewport is a safe over-build for one frame.
+  const g = ctx.scrollGeometry(key);
+  const vh = Math.max(0, g ? g.h : ctx.env().viewport.height);
+  // Layout puts the flow's origin at `padT - offset`, so the visible band
+  // starts there. Only the top padding shifts it; the shorthand family
+  // falls back the same way `PadShorthand` does in the core.
+  const padT = box.padT ?? box.padY ?? box.pad ?? 0;
+  const top = (g ? g.offset.y : 0) - padT;
+  const first = Math.max(0, Math.floor(top / rowH) - overscan);
+  const last = Math.max(first, Math.min(n, Math.ceil((top + vh) / rowH) + overscan));
+
+  const children = [
+    {
+      type: 'box',
+      key: 'kui:at',
+      props: { width: 'grow', height: 0, onLayout: { [VIRTUAL_TAG]: key } },
+      children: [],
+    },
+  ];
+  // Keyed, not auto-keyed: an auto key *is* the sibling index, and the rows
+  // already occupy that namespace at their data indices.
+  if (first > 0) children.push(spacer(first * rowH, 'kui:lead'));
+  for (let i = first; i < n && i < last; i++) {
+    children.push({
+      type: 'box',
+      props: { index: i, width: 'grow', height: rowH },
+      children: row(i),
+    });
+  }
+  if (last < n) children.push(spacer((n - last) * rowH, 'kui:tail'));
+
+  return {
+    type: 'box',
+    key,
+    props: { ...box, scrollY: true, gap: 0 },
+    children,
+  };
+}
+
 export function decodeQuads(buffer) {
   const stride = quadStride();
   const quads = [];

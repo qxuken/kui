@@ -1882,6 +1882,36 @@ static void conf_drag(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* A virtual list's three built rows, each opened at its *data* index rather
+ * than at the position it occupies (kui_open_indexed), between the two
+ * spacers that stand in for the rows nobody built. The indices are past what
+ * auto-keying under five children could reach, so a build that ignored them
+ * would report a different access tree for the same four quads. */
+static void conf_virtual(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec list = {.width = {KUI_FIXED, 120}, .height = {KUI_FIXED, 60},
+                    .gap = 0, .overflow = KUI_SCROLL_Y, .bg = 0x101018ff,
+                    .role = KUI_ROLE_LIST, .label = KUI_STR("log")};
+    kui_open_keyed(ui, KUI_STR("list"), &list, NULL);
+    KuiSpec lead = {.width = {KUI_GROW, 1}, .height = {KUI_FIXED, 20}};
+    kui_open_keyed(ui, KUI_STR("lead"), &lead, NULL);
+    kui_close(ui);
+    for (uint64_t i = 100; i < 103; i++) {
+        char name[16];
+        snprintf(name, sizeof name, "row %llu", (unsigned long long)i);
+        KuiSpec row = {.width = {KUI_GROW, 1}, .height = {KUI_FIXED, 20},
+                       .bg = 0x30344aff, .role = KUI_ROLE_LIST_ITEM,
+                       .label = KUI_STR(name)};
+        kui_open_indexed(ui, i, &row, NULL);
+        kui_close(ui);
+    }
+    KuiSpec tail = {.width = {KUI_GROW, 1}, .height = {KUI_FIXED, 100}};
+    kui_open_keyed(ui, KUI_STR("tail"), &tail, NULL);
+    kui_close(ui);
+    kui_close(ui);
+}
+
 /* One entry per scene of conformance::SCENES; a scene in the reference with
  * no entry here fails the run rather than being skipped. */
 static const ConfScene CONF_SCENES[] = {
@@ -1910,6 +1940,7 @@ static const ConfScene CONF_SCENES[] = {
     {"popup", conf_popup},
     {"live", conf_live},
     {"drag", conf_drag},
+    {"virtual", conf_virtual},
 };
 
 /* -- driving one scene --------------------------------------------------- */

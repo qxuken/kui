@@ -35,6 +35,117 @@ field reports).
 
 ### Added
 
+- **`virtualColumn` / `virtual_column`, and `index`, so a long list is one
+  call in every binding** (backlog C25). A JSX or Lua view that sliced a
+  10,000-row list by `scrollGeometry` had three things a Rust one never
+  needs, and this release is those three:
+
+  ```jsx
+  virtualColumn(ctx, { key: 'log', rows: lines.length, rowH: 28 }, (i) => (
+    <box width="grow" height="grow" onClick={{ kind: 'pick', row: i }}>
+      <text>{lines[i]}</text>
+    </box>
+  ))
+  ```
+
+  **The wheel raises no event, and a retained-tree binding redraws by
+  re-lowering the tree it was handed.** So a JSX list that sliced by the
+  geometry sliced by it *once*: `route_input` moves the container's offset
+  and pushes nothing, and the Node loop runs `view` only when `update`
+  returned a new model. Scrolling showed the spacers. The widget declares a
+  zero-height node whose `onLayout` fires whenever the content moves, and
+  the loop redraws on it **without handing it to `update`** — an app that
+  had to add a `case 'layout'` for a widget to work has not been given a
+  widget. Lua needs none of this (its view runs every frame) and gets the
+  same call from the prelude.
+
+  **`index`** is the second: a schema row, so all four bindings have it
+  (`index={i}`, `index = i`, `kui_open_indexed`). It gives a node the key
+  auto-keying would have given the `i`th child, wherever the node actually
+  sits — so a row keeps its hover, focus, edit buffer and tweens as the
+  built range slides over it, and a virtualised list and a full one agree
+  on identity. Auto-keying is the *sibling* index, which a lead spacer
+  shifts by one; `Ui::open_indexed` has been the Rust answer since alpha.7
+  and had no spelling anywhere else. Also on a `line`, a `cells` and a
+  `fragment`, wherever `key` names a node. The corpus scene `virtual` pins
+  it in all four.
+
+  **A query now answers for a name no frame declared**, where a command
+  still refuses. `scrollGeometry('log')` *threw* for a container the first
+  frame has not built yet — which is every list's first frame — while
+  `scrollGeometry(hexKey)` returned `null` for the same situation.
+  `scrollOffset`, `scrollGeometry`, `isHovered`, `isPressed`, `isFocused`,
+  `textHit`, `caretRect` and `editText` answer with their own "nothing"
+  now; `focus`, `reveal`, `setScroll`, `setEditText` and `access` keep
+  throwing, where a typo is a bug worth naming. In Lua the same call was
+  worse than inconsistent: `scroll_geometry` and `scroll_offset` took an
+  integer key *only*, so the container could not be named at all, and
+  `is_hovered` / `is_pressed` were the same. All four take either spelling
+  now, which is what the module doc always said.
+
+- **`widgets::virtual_rows`: a virtual list whose rows are not one height**
+  (backlog C26, steps 0 and 1). `virtual_column` takes a stride and every
+  row must come out that tall. This one takes prefix sums over a
+  `RowHeights` the app owns, and fills them from a `measure(ui, i, width)`
+  it runs for the rows it is about to build and no others —
+  `ui.measure_text(text, &style, Some(width))` is what layout would give
+  that row, wrap, `max_lines` and the shaping cache included, so measuring
+  a row and then drawing it shapes once. What `measure` returns is the
+  height the row *gets*: each row's node is fixed to it, so the spacers can
+  never disagree with the layout.
+
+  Every row not measured stands at the mean of the ones that are, which
+  means measuring a screenful changes the height of every row above the
+  window too. Left alone that slides the content out from under the pointer
+  on the frame the list learns anything, so the widget takes the row the
+  window starts in and how far into it, measures, and puts that pair back:
+  `Core::set_scroll` from inside a view lands on the frame being built (the
+  positions pass reads the store after the view has run), so the corrected
+  frame is the only one ever seen. What does move is the scrollbar, which
+  is the honest thing to move. To *stay* at the end of a growing log, ask
+  for it — one `set_scroll(key, huge)` after the widget, every frame.
+
+  **It stays a second widget rather than replacing the first**, and the
+  measurement is why it could have gone either way: at one height it costs
+  what the uniform one costs. `list_10k_rows_variable_at_one_height` (the
+  variable widget told, row by row, that every row is 24px) against
+  `list_10k_rows_virtual` (the same 38 rows through the stride) is **16.79
+  µs against 16.22 µs**, and three runs of these benches move their own
+  medians by up to 10%, so that gap is not a reading. What differs is not
+  the frame but the *state* — a `RowHeights` the app owns, an allocation
+  per row, and a `set_len` when the data changes — and a caller who can
+  name the stride should not have to carry any of it.
+
+  Normalised per row, every virtualised frame here costs the same 427–455
+  ns a row, and a row built naively costs 393 ns. That is the whole of the
+  242× (`list_10k_rows_naive`, 3.93 ms): virtualisation does not make a row
+  cheaper, it makes there be 38 of them instead of ten thousand. It is also
+  why `list_10k_rows_variable` reads *under* the uniform bench — its rows
+  average 32px against 24px, so eight fewer fit the window. Only the
+  at-one-height pair holds that equal.
+
+  Two numbers worth keeping from building it. The prefix sums are filled
+  lazily and only as far as a query asks, and the search gallops out from
+  where the last one landed rather than bisecting the whole list. Both were
+  needed: laziness alone buys nothing, because a bisection from `0..len`
+  probes the midpoint first and fills everything under it. The first cut
+  had neither, and the same benches run against both implementations say
+  what they were worth:
+
+  | | first cut | shipped |
+  |---|---|---|
+  | a frame that learns nothing, 10k | 14.41 µs | 13.66 µs |
+  | a frame that learns a row it is looking at, 10k | 21.24 µs | **13.20 µs** |
+  | the same at 100k | 84.43 µs | **13.31 µs** |
+  | a row nowhere near the window, 10k | 28.08 µs | 18.83 µs |
+
+  So learning a row's height now costs nothing measurable, and is flat in
+  the length of the list where it used to be six times the steady cost at
+  100k rows. The one case that still pays is a list told about a row
+  nowhere near its window — a list whose data changed under it — which
+  pays for the distance between that row and the window, and is the honest
+  cost of a prefix sum.
+
 - **`{kind: "system"}`, when an OS setting changes** (backlog F40, from
   the two alpha.10 field reports). The appearance, the accent, reduced
   motion or the locale changing while the app is open now arrives on the
@@ -293,6 +404,18 @@ frame the keystroke arrives — the core re-lays out the tree it was handed,
 so there is no frame where the text is wider than the box it is drawn in
 and nothing for a margin to absorb. If the box is a fixed size, the second
 line the text used to fold onto is gone too: it scrolls.
+
+The sentinel, the `case 'layout'` beside it, the `key={String(i)}` on every
+row and the `keyOf` guard in front of `scrollGeometry` — the four things a
+JSX virtual list needed and a Rust one never did. `virtualColumn` is the
+call; `examples/node/virtual-list.tsx` is that file with all four deleted,
+printing what it printed before.
+
+The row cap on a list whose rows are not all one height — the "one line
+each" a log viewer settled for so a stride would describe it, the
+`onLayout` on every row copying heights into a model, and the running total
+kept beside them. `virtual_rows` measures what it builds and estimates the
+rest, and the row you scrolled to stays where it is while it learns.
 
 The palette branch that could only read `"unknown"`. `env.system` is filled
 in before your first view, and a change to it is a message — so a view that

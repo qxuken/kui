@@ -1386,6 +1386,16 @@ void kui_root(KuiCtx *ctx, const KuiSpec *spec);
 /* on_click may be NULL; consumed when given. Returns the node key. */
 uint64_t kui_open(KuiCtx *ctx, const KuiSpec *spec, KuiValue *on_click);
 uint64_t kui_open_keyed(KuiCtx *ctx, KuiStr label, const KuiSpec *spec, KuiValue *on_click);
+/* The same node under a data *index* rather than a name: the key auto-keying
+ * would have given the i-th child, given to this one wherever it sits. What
+ * a virtualised list is for - a view that builds rows 900..930 of ten
+ * thousand opens each with its own row number, so a row keeps its hover,
+ * focus, edit buffer and tweens as the built range slides over it, and a
+ * list that builds every row agrees with one that builds a screenful.
+ * Indices and names are separate namespaces, so a spacer keyed "lead" cannot
+ * collide with row 0. Added after ABI 11 as a new symbol: no struct moved,
+ * so a binary built against ABI 11 keeps working unrecompiled. */
+uint64_t kui_open_indexed(KuiCtx *ctx, uint64_t index, const KuiSpec *spec, KuiValue *on_click);
 /* A slot: a position among the current node's children that an extension
  * fills, in place (docs/adr/0014-slots-an-extension-fills-in-place.md).
  * `name` is the full name, `namespace/slot`: the namespace the host gave

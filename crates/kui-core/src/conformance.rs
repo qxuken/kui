@@ -1502,7 +1502,96 @@ pub const SCENES: &[Scene] = &[
             title: None,
         },
     },
+    Scene {
+        name: "virtual",
+        doc: "A virtualised list, which is what the `index` row exists for: \
+              the rows a long list can show, each opened at its *data* index \
+              rather than at the position it happens to occupy, between the \
+              two spacers that hold the height of the rows nobody built. \
+              The rows are numbered 100..103 under five children, so their \
+              keys are ones auto-keying could not have produced — which is \
+              how a binding that dropped the row (and auto-keyed them 1, 2, \
+              3 instead) is caught, and what pins that a row's identity \
+              follows the row rather than the slot.",
+        custom: &["index", "key", "overflow"],
+        elements: &["box"],
+        build: build_virtual,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            solid: 4,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            fragments: 0,
+            glyphs_min: 0,
+            access: &[
+                "0 window ||",
+                "1 list log||",
+                "2 listItem row 100||",
+                "2 listItem row 101||",
+                // Built and clipped away: three rows are declared and two
+                // draw, so the count of quads and the count of access rows
+                // deliberately disagree.
+                "2 listItem row 102||",
+            ],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+        },
+    },
 ];
+
+/// The rows a virtual list builds, at the data indices it builds them at.
+/// A binding that lowers `index` correctly reproduces these keys wherever it
+/// puts the rows; one that ignores the row auto-keys them by position and
+/// every quad in the scene lands the same while the access tree and the hit
+/// keys do not — which is why the rows carry roles and names.
+pub const VIRTUAL_ROWS: [u64; 3] = [100, 101, 102];
+
+fn build_virtual(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    ui.with_keyed(
+        "list",
+        NodeSpec::column()
+            .width(Sizing::Fixed(120.0))
+            .height(Sizing::Fixed(60.0))
+            .gap(0.0)
+            .scroll_y()
+            .bg(Color::hex(0x101018ff))
+            .role(Role::List)
+            .label("log"),
+        |ui| {
+            // The height of the rows above the built range, and below it.
+            ui.with_keyed("lead", virtual_spacer(20.0), |_| {});
+            for i in VIRTUAL_ROWS {
+                ui.with_indexed(
+                    i,
+                    NodeSpec::column()
+                        .width(Sizing::Grow(1.0))
+                        .height(Sizing::Fixed(20.0))
+                        .bg(Color::hex(0x30344aff))
+                        .role(Role::ListItem)
+                        .label(match i {
+                            100 => "row 100",
+                            101 => "row 101",
+                            _ => "row 102",
+                        }),
+                    |_| {},
+                );
+            }
+            ui.with_keyed("tail", virtual_spacer(100.0), |_| {});
+        },
+    );
+}
+
+fn virtual_spacer(h: f32) -> NodeSpec {
+    NodeSpec::column()
+        .width(Sizing::Grow(1.0))
+        .height(Sizing::Fixed(h))
+}
 
 fn build_layout(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with(
@@ -2583,6 +2672,27 @@ fn is_label_keyed(t: &Tree, i: usize) -> bool {
     !(0..siblings + 16).any(|j| parent_key.index(j) == t.keys[i])
 }
 
+/// Whether node `i` was opened at a data index the *view* chose rather than
+/// the one its position would have given it — the observable half of the
+/// `index` row. Both live in `Key`'s sibling-index namespace, so the only
+/// difference there is *which* index: auto-keying draws 0, 1, 2 … from a
+/// counter that advances once per auto-keyed child, so an index past
+/// anything that counter could have reached is one nothing but a
+/// declaration produces. An `index` inside the auto range is invisible
+/// here, and deliberately — it is exactly the key auto-keying would have
+/// given, which is the row's whole point. So a scene that means to pin the
+/// row numbers its rows past the sibling count, as a virtual list does.
+fn is_far_indexed(t: &Tree, i: usize) -> bool {
+    let parent = t.parent[i];
+    let parent_key = t.keys[parent as usize];
+    let siblings = t.children(parent).count() as u64;
+    let auto_max = siblings + 16;
+    // A window rather than an unbounded scan: the corpus is the only caller
+    // and its indices are row numbers, so this is generous by three orders
+    // of magnitude and still a few thousand hashes on a handful of nodes.
+    (auto_max..auto_max + 4096).any(|j| parent_key.index(j) == t.keys[i])
+}
+
 /// Derives the `CUSTOM` / `ELEMENTS` rows the frame `core` just built
 /// exercises, unioning into `cov` (a scene is driven over several frames,
 /// and a hover-gated tooltip only exists on some of them).
@@ -2700,6 +2810,9 @@ fn observe(core: &Core, cov: &mut Coverage) {
 
         if i > 0 && is_label_keyed(t, i) {
             cov.custom.insert("key");
+        }
+        if i > 0 && is_far_indexed(t, i) {
+            cov.custom.insert("index");
         }
     }
 }

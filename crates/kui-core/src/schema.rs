@@ -140,6 +140,7 @@ pub const P_UNDERLINE: u32 = 85;
 pub const P_STRIKETHROUGH: u32 = 86;
 pub const P_ANIMATE: u32 = 87;
 pub const P_ACCENT: u32 = 88;
+pub const P_INDEX: u32 = 89;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -1105,6 +1106,16 @@ pub const CUSTOM: &[CustomProp] = &[
         doc: "Stable identity for retained state (scroll offsets, editors, transitions; keys are hashes of the path from the root). Retained state outlives the key's absence, under a budget on the states nobody declares (see `<edit>` and the overflow props).",
     },
     CustomProp {
+        name: "index",
+        id: P_INDEX,
+        jsx_names: &["index"],
+        lua_names: &["index"],
+        jsx: "`index`",
+        lua: "`index`",
+        c: "`kui_open_indexed`",
+        doc: "Stable identity by *data* index rather than by name: the key auto-keying would have given this node as the `i`th child, given to it wherever it actually sits. What a virtualised list is for — a view that builds rows 900..930 of ten thousand opens each with its own row number, so the row keeps its hover, focus, edit buffer and tweens as the built range slides over it, and a list that builds every row agrees with one that builds a screenful. Wherever `key` names a node this numbers it (a box, a `line`, a `cells`, a `fragment`); declared beside `key` the index wins. Indices and names are separate namespaces, so a spacer keyed `\"lead\"` cannot collide with row 0 — but two rows on one index do, exactly as two on one name would.",
+    },
+    CustomProp {
         name: "title",
         id: P_TITLE,
         jsx_names: &["title"],
@@ -1939,6 +1950,9 @@ pub struct PropsOut {
     pub spec: NodeSpec,
     pub style: TextStyle,
     pub key: Option<String>,
+    /// `index`: the data index this node is opened under, which beats `key`
+    /// when a binding is handed both.
+    pub index: Option<u64>,
     pub title: Option<String>,
     pub key_focus: bool,
     /// Hover hint: the element lowering floats `widgets::tooltip` below the
@@ -1954,6 +1968,7 @@ impl PropsOut {
             spec: NodeSpec::column(),
             style: TextStyle::new(16.0),
             key: None,
+            index: None,
             title: None,
             key_focus: false,
             tooltip: None,

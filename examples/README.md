@@ -124,6 +124,7 @@ npm install
 npm start        # headless
 npm run window   # a real winit + wgpu window, pumped from a timer
 npm run mindmap  # a canvas of easing floats, panned by dragging it
+npm run virtual-list  # 10,000 rows for a screenful
 npm run bench    # the JSX/Node side of lua/bench.rs
 ```
 
@@ -132,6 +133,7 @@ npm run bench    # the JSX/Node side of lua/bench.rs
 | [`counter.tsx`](node/counter.tsx) | The Elm loop headless, driven by its own hit tests |
 | [`counter-window.tsx`](node/counter-window.tsx) | The same app in a real window, with images, sounds and an editor |
 | [`mindmap.tsx`](node/mindmap.tsx) | A canvas of floats and `line` connectors, all easing, panned by an `onDrag` root |
+| [`virtual-list.tsx`](node/virtual-list.tsx) | `virtualColumn`: 10,000 rows costing a screenful, re-sliced on the wheel with no model change |
 
 An extension is a C shared library either way, and the same binary loads
 into a Rust, C or Node host: `<slot name="ns/panel" params={…}/>` places it
