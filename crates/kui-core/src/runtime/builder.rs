@@ -94,7 +94,10 @@ impl Core {
 
     #[inline(never)]
     fn ease_transitioning(&mut self, key: Key, spec: &mut NodeSpec, t: crate::anim::Transition) {
-        let anim = &mut self.anim;
+        // One lookup for the whole node. Every slot below used to reach
+        // `AnimStore` by key on its own, which was seven to nine hashes and
+        // probes of the same entry per transitioning node, per frame.
+        let mut anim = self.anim.node(key);
         let tracks = (!spec.anim().keyframes.is_empty()).then(|| Tracks::of(spec));
         let track = |slot: Slot| tracks.as_ref().and_then(|k| k.get(slot));
         let enter = spec.anim().enter.unwrap_or_default();
@@ -105,7 +108,7 @@ impl Core {
             let from = from.and_then(|f| f.amount()).map(|f| [f, 0.0, 0.0, 0.0]);
             let eased = match track(slot) {
                 Some(track) => anim.sample(track, t).map_or(v, |v| v[0]),
-                None => anim.drive(key, slot, from, [v, 0.0, 0.0, 0.0], t, true)[0],
+                None => anim.drive(slot, from, [v, 0.0, 0.0, 0.0], t, true)[0],
             };
             s.with_amount(eased)
         };
@@ -116,7 +119,7 @@ impl Core {
             let from = from.map(|f| [f.r, f.g, f.b, f.a]);
             let v = match track(slot) {
                 Some(track) => anim.sample(track, t).unwrap_or(target),
-                None => anim.drive(key, slot, from, target, t, true),
+                None => anim.drive(slot, from, target, t, true),
             };
             Color {
                 r: v[0],
@@ -130,7 +133,6 @@ impl Core {
         spec.style.shadow.color = color(Slot::ShadowColor, spec.style.shadow.color, None);
         let sh = spec.style.shadow;
         let geom = anim.drive(
-            key,
             Slot::Shadow,
             None,
             [sh.dx, sh.dy, sh.blur, sh.spread],
@@ -144,7 +146,6 @@ impl Core {
         spec.style.opacity = match track(Slot::Opacity) {
             Some(track) => anim.sample(track, t).map_or(spec.style.opacity, |v| v[0]),
             None => anim.drive(
-                key,
                 Slot::Opacity,
                 enter.opacity.map(|o| [o, 0.0, 0.0, 0.0]),
                 [spec.style.opacity, 0.0, 0.0, 0.0],
@@ -156,7 +157,6 @@ impl Core {
         spec.style.radius = match track(Slot::Radius) {
             Some(track) => anim.sample(track, t).unwrap_or(spec.style.radius),
             None => anim.drive(
-                key,
                 Slot::Radius,
                 enter.radius.map(|r| [r; 4]),
                 spec.style.radius,

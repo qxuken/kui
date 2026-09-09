@@ -118,6 +118,33 @@ field reports).
   makes many clips, a screen of width-clamped labels, which narrows the clip
   once per label.
 
+- **A transitioning node hashes its key once a frame, not nine times.**
+  `AnimStore::drive` opened with `tweens.entry(key)`, and
+  `ease_transitioning` calls it seven to nine times in a row for one node —
+  width, height, bg, border, shadow colour, shadow geometry, opacity,
+  radius. `AnimStore::node(key)` does the lookup once and hands back a
+  `NodeAnim` holding the node's slot array, the clock and the store's
+  "another frame is owed" flag; every slot drives through that.
+  `AnimStore::drive` stays as a one-slot wrapper, which is what
+  `ease_positions` wants.
+
+  Worth less than the profile suggested, and the honest number is the small
+  one. `drive` was 31% of `frame_10k_rects_all_transitioning` under
+  `sample`(1) — the largest single entry anywhere — but the lookup was only
+  about a fifth of that, since after the first probe the entry is in L1 and
+  the other eight are a hash and a hit. Interleaved on an M3 Pro:
+  `drop_1k_rows_declaring_exit` **157 → 147 µs (−6.1%** against ±0.8%
+  run-to-run**)**, `drop_500_rows_declaring_exit` 139 → 134 µs (−3.5%,
+  ±0.4%), and `frame_10k_rects_all_transitioning` itself 1.74 → 1.70 ms
+  (−2.6%), which on a ±4.4% floor that row cannot resolve.
+
+  What is left in `drive` is not arithmetic either: `[Option<Tween>; 9]` is
+  about 1 KB of retained state per node, so a 10,000-node frame streams ~10
+  MB of it. `Tween` copies the node's `Transition` and `last_used` into all
+  nine slots although both are the node's, and carries a `velocity` only
+  springs read. That is the next thing to measure, and it is a data-layout
+  change rather than this one.
+
 ### Fixed
 
 - **A field that hugs its text no longer ratchets down to one character**

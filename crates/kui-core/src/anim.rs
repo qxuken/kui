@@ -283,44 +283,6 @@ impl AnimStore {
         }
     }
 
-    /// Samples a keyframed slot: where the clock lands in the cycle picks
-    /// a segment of `track`, and the transition's easing shapes that
-    /// segment (CSS applies the timing function per keyframe interval, so
-    /// an alternate cycle traverses the same curve backwards on its way
-    /// home). Sampled, not retained: this needs no key and cannot drift,
-    /// so two nodes with the same duration stay locked together. Spring
-    /// easings sample as ease-out — there is no leg to carry momentum
-    /// across.
-    ///
-    /// None without a clock or a duration: the caller keeps the declared
-    /// value, the same snap a plain transition gets.
-    pub(crate) fn sample(&mut self, track: &Track, transition: Transition) -> Option<[f32; 4]> {
-        let dur = transition.duration_ms as f64 / 1000.0;
-        let (Some(now), true, Some(&(_, first))) = (self.now, dur > 0.0, track.first()) else {
-            return None;
-        };
-        // A cycle never finishes, so the driver owes another frame while
-        // a keyframed node is on screen.
-        self.active = true;
-        let u = (now - transition.delay_ms as f64 / 1000.0) / dur;
-        let p = transition.repeat.progress(u);
-        let mut from = (0.0, first);
-        for &(at, value) in track {
-            if p < at {
-                let (a, va) = from;
-                let t = if at > a { (p - a) / (at - a) } else { 1.0 };
-                let e = transition.easing.apply(t);
-                let mut out = [0.0; 4];
-                for i in 0..4 {
-                    out[i] = va[i] + (value[i] - va[i]) * e;
-                }
-                return Some(out);
-            }
-            from = (at, value);
-        }
-        Some(from.1)
-    }
-
     /// Eases `key`'s `slot` toward `target`, returning the value to use this
     /// frame. A slot not driven last frame (node just appeared, or rendered
     /// without a transition in between) snaps: nothing animates in from
@@ -339,10 +301,105 @@ impl AnimStore {
         transition: Transition,
         follow: bool,
     ) -> [f32; 4] {
+        self.node(key)
+            .drive(slot, enter_from, target, transition, follow)
+    }
+
+    /// The tween slots of one node, borrowed once.
+    ///
+    /// A node that declares a transition drives up to nine slots in a row
+    /// (`Core::ease_transitioning`), and each of those used to ask the map
+    /// for the same key — nine hashes and nine probes per node per frame,
+    /// which on a frame where every node transitions was the largest single
+    /// entry in the profile. The lookup happens here instead and the borrow
+    /// serves every slot. `sample` rides along because a keyframed slot is
+    /// reached from the same walk and needs the same `active` flag, not
+    /// because it needs the slots: a sampled track is not retained.
+    pub(crate) fn node(&mut self, key: Key) -> NodeAnim<'_> {
+        NodeAnim {
+            slots: self.tweens.entry(key).or_default(),
+            now: self.now,
+            frame_no: self.frame_no,
+            active: &mut self.active,
+        }
+    }
+}
+
+/// Where `now` lands in `track`'s cycle, shaped by `transition`'s easing.
+/// The walk behind [`AnimStore::sample`] and [`NodeAnim::sample`], which
+/// differ only in whose `active` flag they set. None without a clock or a
+/// duration.
+fn sample_track(track: &Track, transition: Transition, now: Option<f64>) -> Option<[f32; 4]> {
+    let dur = transition.duration_ms as f64 / 1000.0;
+    let (Some(now), true, Some(&(_, first))) = (now, dur > 0.0, track.first()) else {
+        return None;
+    };
+    let u = (now - transition.delay_ms as f64 / 1000.0) / dur;
+    let p = transition.repeat.progress(u);
+    let mut from = (0.0, first);
+    for &(at, value) in track {
+        if p < at {
+            let (a, va) = from;
+            let t = if at > a { (p - a) / (at - a) } else { 1.0 };
+            let e = transition.easing.apply(t);
+            let mut out = [0.0; 4];
+            for i in 0..4 {
+                out[i] = va[i] + (value[i] - va[i]) * e;
+            }
+            return Some(out);
+        }
+        from = (at, value);
+    }
+    Some(from.1)
+}
+
+/// One node's animation state for this frame: its retained tween slots,
+/// the clock, and the store's "another frame is owed" flag. Made by
+/// [`AnimStore::node`].
+pub(crate) struct NodeAnim<'a> {
+    slots: &'a mut [Option<Tween>; SLOTS],
+    /// Driver time in seconds; None until the driver first sets it.
+    now: Option<f64>,
+    frame_no: u64,
+    active: &'a mut bool,
+}
+
+impl NodeAnim<'_> {
+    /// Samples a keyframed slot: where the clock lands in the cycle picks
+    /// a segment of `track`, and the transition's easing shapes that
+    /// segment (CSS applies the timing function per keyframe interval, so
+    /// an alternate cycle traverses the same curve backwards on its way
+    /// home). Sampled, not retained: this needs no key and cannot drift,
+    /// so two nodes with the same duration stay locked together. Spring
+    /// easings sample as ease-out — there is no leg to carry momentum
+    /// across.
+    ///
+    /// None without a clock or a duration: the caller keeps the declared
+    /// value, the same snap a plain transition gets.
+    ///
+    /// It is reached from a node borrow only because the caller holds one
+    /// (`Core::ease_transitioning` walks a node's slots and its keyframed
+    /// ones together) and because the `active` flag it sets lives behind
+    /// that borrow. The walk itself is [`sample_track`] and takes no key.
+    pub(crate) fn sample(&mut self, track: &Track, transition: Transition) -> Option<[f32; 4]> {
+        let v = sample_track(track, transition, self.now);
+        if v.is_some() {
+            *self.active = true;
+        }
+        v
+    }
+
+    pub(crate) fn drive(
+        &mut self,
+        slot: Slot,
+        enter_from: Option<[f32; 4]>,
+        target: [f32; 4],
+        transition: Transition,
+        follow: bool,
+    ) -> [f32; 4] {
         let frame_no = self.frame_no;
         let now = self.now;
-        let slots = self.tweens.entry(key).or_default();
-        let entry = &mut slots[slot as usize];
+        let entry = &mut self.slots[slot as usize];
         let stale = entry.is_none_or(|t| t.last_used + 1 < frame_no);
         let Some(now) = now else {
             *entry = Some(Tween {
@@ -405,7 +462,7 @@ impl AnimStore {
             tw.to = target;
             tw.transition = transition;
             if tw.spring_step(now, zeta) {
-                self.active = true;
+                *self.active = true;
             }
             return tw.value;
         }
@@ -429,7 +486,7 @@ impl AnimStore {
             (((now - tw.start) / dur) as f32).clamp(0.0, 1.0)
         };
         if p < 1.0 {
-            self.active = true;
+            *self.active = true;
             let e = tw.transition.easing.apply(p);
             for i in 0..4 {
                 tw.value[i] = tw.from[i] + (tw.to[i] - tw.from[i]) * e;
@@ -756,7 +813,7 @@ mod tests {
             let t = Transition::ms(1000.0).easing(Easing::Linear).repeat(repeat);
             a.set_time(now);
             a.begin_frame();
-            let v = a.sample(&track, t).unwrap()[0];
+            let v = a.node(Key::ROOT).sample(&track, t).unwrap()[0];
             assert!(a.animating(), "a keyframed slot always owes a frame");
             v
         };
@@ -784,22 +841,25 @@ mod tests {
         let t = Transition::ms(1000.0).easing(Easing::Linear);
         a.set_time(0.25);
         a.begin_frame();
-        assert!((a.sample(&track, t).unwrap()[0] - 5.0).abs() < 1e-3);
+        assert!((a.node(Key::ROOT).sample(&track, t).unwrap()[0] - 5.0).abs() < 1e-3);
         // Held back 250ms: reads what an undelayed node read at 0.
         a.set_time(0.25);
         a.begin_frame();
-        assert!((a.sample(&track, t.delay(250.0)).unwrap()[0]).abs() < 1e-3);
+        assert!((a.node(Key::ROOT).sample(&track, t.delay(250.0)).unwrap()[0]).abs() < 1e-3);
         // Ease-in per segment: a quarter of the way through the first leg
         // sits well below linear's 5.
         a.set_time(0.125);
         a.begin_frame();
-        let v = a.sample(&track, t.easing(Easing::EaseIn)).unwrap()[0];
+        let v = a
+            .node(Key::ROOT)
+            .sample(&track, t.easing(Easing::EaseIn))
+            .unwrap()[0];
         assert!(v > 0.0 && v < 2.0, "{v}");
         // Stops that don't start at 0 hold the first value until they do.
         let late = [(0.5, one(3.0)), (1.0, one(9.0))];
         a.set_time(0.1);
         a.begin_frame();
-        assert_eq!(a.sample(&late, t).unwrap()[0], 3.0);
+        assert_eq!(a.node(Key::ROOT).sample(&late, t).unwrap()[0], 3.0);
     }
 
     #[test]
@@ -807,12 +867,24 @@ mod tests {
         let mut a = AnimStore::default();
         let track = [(0.0, one(0.0)), (1.0, one(1.0))];
         a.begin_frame();
-        assert!(a.sample(&track, Transition::ms(100.0)).is_none());
+        assert!(
+            a.node(Key::ROOT)
+                .sample(&track, Transition::ms(100.0))
+                .is_none()
+        );
         assert!(!a.animating());
         a.set_time(1.0);
         a.begin_frame();
-        assert!(a.sample(&track, Transition::ms(0.0)).is_none());
-        assert!(a.sample(&[], Transition::ms(100.0)).is_none());
+        assert!(
+            a.node(Key::ROOT)
+                .sample(&track, Transition::ms(0.0))
+                .is_none()
+        );
+        assert!(
+            a.node(Key::ROOT)
+                .sample(&[], Transition::ms(100.0))
+                .is_none()
+        );
         assert!(!a.animating());
     }
 
