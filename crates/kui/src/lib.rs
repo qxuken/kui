@@ -2250,10 +2250,22 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 // here, and re-asking costs microseconds against something
                 // that happens when a human switches windows.
                 if focused {
+                    let before = (self.system, self.panes[i].appearance);
                     self.system = system_env::query();
                     // And the window's own setting, in case the platform
                     // changed it without an event while we were away.
                     self.panes[i].appearance = appearance_of(&self.panes[i].window);
+                    // A change found this way has no event of its own
+                    // behind it, so ask for the frame that reports it:
+                    // `begin_frame` turns the difference into a `system`
+                    // event, and a host that only draws on input would
+                    // otherwise not learn of it until it drew for
+                    // something else (F40).
+                    if before != (self.system, self.panes[i].appearance) {
+                        for p in &self.panes {
+                            p.window.request_redraw();
+                        }
+                    }
                 }
             }
             // The theme changing is the other one, and the only one that

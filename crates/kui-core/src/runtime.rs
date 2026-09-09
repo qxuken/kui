@@ -21,7 +21,7 @@ use crate::depart::{DepartStore, Ghost, GhostContent, Pass, Place, Playback, Rep
 use crate::diag::{Diagnostics, Warning};
 use crate::display::{Clip, DisplayList, Quad, QuadKind};
 use crate::edit::{EditOptions, EditStore};
-use crate::env::Env;
+use crate::env::{Env, SystemEnv};
 use crate::geom::{Rect, Size, Vec2};
 use crate::input::{
     EditKey, HitRegion, InputEvent, Interaction, KeyCode, KeyPhase, KeyPress, MouseButton,
@@ -224,6 +224,11 @@ pub struct Core {
     /// Whether any frame has begun yet: the first one establishes the
     /// viewport instead of resizing it.
     framed: bool,
+    /// The OS settings the last frame was begun with. A driver pushes
+    /// them into `env` whenever it learns of a change, and the difference
+    /// between two frames is what becomes a `system` event — the same
+    /// bookkeeping `viewport` does for `resize` (backlog F40).
+    system_seen: SystemEnv,
     /// Frames begun so far; stamps the per-key stores below.
     frame_no: u64,
     /// The rect last reported for each `on_layout` node and the frame it
@@ -368,6 +373,7 @@ impl Core {
             ime_rect: None,
             pending: Vec::new(),
             framed: false,
+            system_seen: SystemEnv::default(),
             frame_no: 0,
             layouts: FxHashMap::default(),
             announcements: Vec::new(),
@@ -678,6 +684,37 @@ impl Core {
                 ]),
             });
         }
+        // And what the user set in the OS. A driver that learns of a
+        // change writes it into `env` and asks for a redraw — which is
+        // enough for a host whose view is a function the runner calls
+        // every frame, and nothing at all for one that retains the tree
+        // it was handed (Node, C, Lua): its `view` runs when a message
+        // changes the model, so the change has to *be* a message. The
+        // first frame establishes the reading rather than reporting it,
+        // the way the viewport does.
+        if self.framed && self.env.system != self.system_seen {
+            let sys = self.env.system;
+            self.pending.push(UiEvent {
+                origin: OriginId::HOST,
+                window: WindowId::MAIN,
+                key: Key::ROOT,
+                payload: Value::map([
+                    ("kind", Value::str("system")),
+                    ("appearance", Value::str(sys.appearance.name())),
+                    (
+                        "accent",
+                        sys.accent
+                            .map_or(Value::Null, |c| Value::Int(c.to_hex() as i64)),
+                    ),
+                    ("motion", Value::str(sys.motion.name())),
+                    (
+                        "locale",
+                        sys.locale.map_or(Value::Null, |l| Value::str(l.as_str())),
+                    ),
+                ]),
+            });
+        }
+        self.system_seen = self.env.system;
         self.framed = true;
         self.frame_no += 1;
         if self.frame_no.is_multiple_of(240) {

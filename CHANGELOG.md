@@ -33,6 +33,33 @@ field reports).
   old one — a hand-measured width, headroom past the widest character —
   can go; see **What you can delete**.
 
+### Added
+
+- **`{kind: "system"}`, when an OS setting changes** (backlog F40, from
+  the two alpha.10 field reports). The appearance, the accent, reduced
+  motion or the locale changing while the app is open now arrives on the
+  root as an event carrying the whole of `env.system` — same spellings,
+  same nulls — one per window that noticed, and the first frame
+  establishes the reading rather than reporting it. Exactly the
+  bookkeeping a changed viewport already got as `resize`.
+
+  It exists because a redraw is not a re-render for three of the four
+  bindings. alpha.10 said the appearance is re-read from `ThemeChanged`,
+  "which carries the new theme and also requests a redraw", and that is
+  true of a Rust `App`, whose `view` is what the runner calls every frame.
+  Node, C and Lua hand the core a tree and keep it: their `view` runs when
+  a message changes the model, and there was no message — so a palette
+  picked from `env.system.appearance` was the one the first frame picked,
+  for the life of the window. Now:
+
+  ```ts
+  if (msg.kind === 'system') return { ...m, dark: msg.appearance === 'dark' };
+  ```
+
+  A Rust app can keep reading `env` and ignore it. The runner also asks
+  for a redraw when taking focus back finds the settings changed, which is
+  the one path that had no event behind it.
+
 ### Fixed
 
 - **A field that hugs its text no longer ratchets down to one character**
@@ -53,37 +80,6 @@ field reports).
   that makes a rename field size itself: the core re-lays out the tree it
   was handed when it echoes a keystroke, so a `fit` field grows on the
   frame the character arrives, with no second render from the app.
-
-
-- **`<button accent>` typechecks** (backlog F37, from an alpha.10 field
-  report). alpha.10 gave the stock button the accent row, and said so in
-  its own entry above and in `howto.md`; every binding read it and
-  `docs/props.md` documented it. `ButtonProps` in `jsx-runtime.d.ts` did
-  not name it, so a TypeScript app got `Property 'accent' does not exist
-  on type 'ButtonProps'` for the spelling the release was about, and the
-  app that found it moved the colour onto a node beside the button
-  instead. The runtime was never wrong — the encoder admitted the row and
-  painted it, which is how the report could verify the three backgrounds
-  before filing.
-
-  This is the second time that interface fell behind the list it is meant
-  to mirror: alpha.9 added `description` to it by hand (F24) and left the
-  hand-written list in place. So the fix is the list. `ButtonProps` now
-  `extends` what `gen-types.mjs` generates from `BUTTON_ROWS_JSX` — the
-  same rows `ElementDef::jsx_rows` hands the encoder — between markers of
-  its own, beside the prop types that file already writes. A row added in
-  `schema.rs` is a prop on `<button>` one `npm run gen` later, and the CI
-  step that reruns the generator and diffs `jsx-runtime.d.ts` is what
-  catches the next drift. The button is no wider than it was: it still
-  takes exactly `onClick`, `key`, `label`, `description`, `tooltip`,
-  `disabled` and `accent`, and `<button bg="…">` is still a type error and
-  an `unknown-prop` warning.
-
-  What let it ship: nothing typechecked the spelling. CI does run
-  `npm run typecheck` over `examples/node`, on the stated grounds that the
-  example "uses every app-facing type" — but no example wrote `accent`, so
-  the one check that could have seen the gap had nothing to look at. The
-  counter's `+1` carries it now.
 
 - **A single-line `<edit>` is a field, not a short document** (backlog
   F41). `multiline` decided whether Enter inserts a newline, what the up
@@ -154,6 +150,11 @@ frame the keystroke arrives — the core re-lays out the tree it was handed,
 so there is no frame where the text is wider than the box it is drawn in
 and nothing for a margin to absorb. If the box is a fixed size, the second
 line the text used to fold onto is gone too: it scrolls.
+
+The palette branch that could only read `"unknown"`. `env.system` is filled
+in before your first view, and a change to it is a message — so a view that
+picks its colours from the OS can be written the way it reads, rather than
+against a reading that never arrived.
 
 ## 0.1.0-alpha.10 (2026-09-09)
 

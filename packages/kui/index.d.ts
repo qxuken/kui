@@ -139,6 +139,27 @@ export type ResizeMsg = {
   scale: number;
 };
 
+/** An OS setting changed while the app was open — the appearance, the
+ *  accent colour, reduced motion or the UI language (delivered on the
+ *  root, one per window that noticed). The payload is `env().system` as it
+ *  now reads, so a handler keeps the whole reading or takes the one field
+ *  it branches on.
+ *
+ *  A window's view runs when a message changes the model, so without this
+ *  a palette picked from `env().system.appearance` is the one the first
+ *  frame read and stays it: the driver's redraw re-lowers the tree it was
+ *  handed, it does not re-run `view`. The first frame establishes the
+ *  reading rather than reporting it, the way `ResizeMsg` does. */
+export type SystemMsg = {
+  kind: 'system';
+  appearance: 'unknown' | 'light' | 'dark';
+  /** `0xRRGGBBAA`, or null where the host cannot tell. */
+  accent: number | null;
+  motion: 'unknown' | 'full' | 'reduced';
+  /** A BCP-47 tag, or null where the host cannot tell. */
+  locale: string | null;
+};
+
 /** A declared window opened, or closed — because nothing declares it any
  *  more, or because the user closed it. A window the user closed stays
  *  closed while it is still declared (a declaration reopens a window only
@@ -250,6 +271,7 @@ export type CoreMsg =
   | LayoutMsg
   | DismissMsg
   | ResizeMsg
+  | SystemMsg
   | WindowMsg
   | ModifiersMsg
   | EditMsg

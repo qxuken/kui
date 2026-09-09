@@ -1,6 +1,6 @@
 //! Env + declared window title: frame-scoped data the driver reconciles.
 
-use kui_core::{Core, Size};
+use kui_core::{Appearance, Core, MotionPref, Size, SystemEnv, Value};
 
 #[test]
 fn window_title_is_frame_scoped() {
@@ -122,4 +122,51 @@ fn an_accent_button_repaints_its_whole_palette() {
         widgets::readable_on(hover) == Color::BLACK,
         "the hover of a light accent is still light"
     );
+}
+
+/// A `system` event is how a host that retains its tree learns the OS
+/// settings changed: its `view` runs for a message, and the driver's
+/// redraw only re-lowers what it was handed (backlog F40).
+#[test]
+fn a_changed_system_reading_becomes_an_event() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core| {
+        core.frame(Size::new(100.0, 100.0), 1.0).finish();
+        core.take_pending_events()
+    };
+
+    // The first frame establishes the reading rather than reporting it,
+    // the way the viewport does.
+    core.env.system = SystemEnv {
+        appearance: Appearance::Light,
+        motion: MotionPref::Full,
+        ..Default::default()
+    };
+    assert!(
+        kinds(&frame(&mut core)).is_empty(),
+        "the first frame has nothing to compare against"
+    );
+    assert!(kinds(&frame(&mut core)).is_empty(), "nothing changed");
+
+    // The user switched to dark and asked for less motion.
+    core.env.system.appearance = Appearance::Dark;
+    core.env.system.motion = MotionPref::Reduced;
+    let evs = frame(&mut core);
+    assert_eq!(kinds(&evs), vec!["system"], "one event, on the root");
+    let p = &evs[0].payload;
+    assert_eq!(evs[0].key, kui_core::Key::ROOT);
+    assert_eq!(p.get("appearance").and_then(Value::as_str), Some("dark"));
+    assert_eq!(p.get("motion").and_then(Value::as_str), Some("reduced"));
+    // The whole reading, in `env().system`'s own spellings and nulls.
+    assert!(matches!(p.get("accent"), Some(Value::Null)));
+    assert!(matches!(p.get("locale"), Some(Value::Null)));
+
+    // And once only: a reading that stops changing stops reporting.
+    assert!(kinds(&frame(&mut core)).is_empty());
+}
+
+fn kinds(evs: &[kui_core::UiEvent]) -> Vec<&str> {
+    evs.iter()
+        .filter_map(|e| e.payload.get("kind").and_then(Value::as_str))
+        .collect()
 }

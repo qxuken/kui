@@ -123,7 +123,26 @@ host has no accent to report. Any other node can carry `accent` too, which
 substitutes its `bg` and nothing else; `Color::mix` and `Color::luminance`
 are there for a palette of your own.
 
+The reading is there before your first view — a window fills it in as it
+opens, not on its first frame — and a change to it arrives as a `system`
+message on the root, carrying the whole of `env.system` as it now reads:
+
+```ts
+update(m, msg) {
+  if (msg.kind === 'system') return { ...m, dark: msg.appearance === 'dark' };
+  ...
+}
+```
+
+Take the message rather than only reading `env`, because a driver's redraw
+re-lowers the tree it was handed and does not re-run your `view`: an app
+that paints only on input would otherwise hold the palette its first frame
+picked for as long as the user leaves it alone. A Rust `App`, whose `view`
+*is* what the runner calls every frame, can read `env` and ignore the
+message.
+
 [`system.*` rows](props.md#env) ·
+[`system` event](props.md#events) ·
 [`accent` row](props.md#container-props) ·
 [alpha.10](../CHANGELOG.md#010-alpha10-2026-09-09)
 
@@ -367,6 +386,30 @@ shared surface rather than on the headless `Ctx`. Drive that window with
 `access(key, 'setValue', text)` types into an editor — since `click`, `type`
 and `key` are refused on a window, which the OS drives and which says so
 rather than pretending.
+
+To run one in CI it has to close itself. `setup` is handed both the window
+and the loop, so a test counts presented frames and then closes it —
+`runWindowed`'s promise resolves with the final model, and the process
+exits with a code:
+
+```ts
+await runWindowed(app, {
+  setup: (win, loop) => (async () => {
+    for (let i = 0; i < 5; i += 1) await loop.frame();
+    assert.equal(win.env().system.motion, 'full');
+    assert.ok(decodeQuads(win.quads()).length > 0);
+    win.close();
+  })(),
+});
+```
+
+`loop.frame()` resolves on the next pump that painted; `loop.settled()`
+waits for one that left nothing animating, and returns how long it waited.
+Neither needs an environment variable and neither is a build of kui: the
+app asks, in its own code, which is the only place that knows a window is
+being opened to be looked at rather than used. (`KUI_SMOKE_FRAMES` is the
+Rust runner's own version of this, live in a dev build — for the examples
+in this repository, which have no test around them to do the asking.)
 
 [`access` event](props.md#events) ·
 [alpha.8](../CHANGELOG.md#010-alpha8-2026-09-07)
