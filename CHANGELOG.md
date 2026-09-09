@@ -102,9 +102,17 @@ field reports).
   they do: `frame_10k_rects_with_text_and_hits` 1.24 ms → 1.17 ms (−5.7%,
   against ±3.2% run-to-run), `frame_1k_curves` −4.5% (±3.6%),
   `frame_1k_typical` −3.6% (±3.4%), and `frame_10k_rects` itself −0.7%,
-  which on a ±1.7% floor is nothing. The two rows that clip read +2.4% and
-  +2.5% — inside their own spread, and the one place the change adds work
-  rather than removing it, since those frames intern a hundred clips.
+  which on a ±1.7% floor is nothing.
+
+  **It costs a rounded clip about 2.5%**, and that is not noise: measured
+  again for the whole branch against `main`, on a quieter machine,
+  `frame_10k_rects_rounded_clip` reads **802 → 821 µs, +2.5% on a ±0.3%
+  run-to-run floor**. It is the one place the change adds work rather than
+  removing it — a frame where every row clips interns a hundred entries and
+  every quad under one carries an index the backend then resolves — and it
+  is the trade the shrink is: 28 bytes off every quad of every frame
+  against a few percent on the frames that clip most. `frame_10k_rects_square_clip`
+  is unchanged (−0.1%), so what costs is the rounding, not the clipping.
 
   Nothing renders differently. The corpus report — every quad digest of
   every scene, across all four bindings — is byte-identical to alpha.10's,
