@@ -406,6 +406,21 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        "selection" => {
+            let lines = conformance::SELECTION_LINES
+                .iter()
+                .map(|l| format!("text(\"{l}\", {{ size = 13 }}),"))
+                .collect::<Vec<_>>()
+                .join("\n                ");
+            format!(
+                r#"
+            return column {{ key = "card", width = 200, pad = 8, gap = 4,
+                             bg = 0x14161eff, selectable = true,
+                {lines}
+            }}
+        "#
+            )
+        }
         "drag" => r#"
             return column { key = "handle", width = 80, height = 40, bg = 0x30344aff,
                             on_drag = { kind = "split" } }

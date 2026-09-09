@@ -2688,6 +2688,20 @@ SCENE_TREES.virtual = () =>
     ),
   ]);
 
+// `conformance::build_selection`: a `selectable` card the pointer drags
+// across, so the frame carries the three highlight quads under its glyphs
+// (ADR 0017). One row on the container is the whole declaration — the
+// labels inside say nothing about selection.
+const SELECTION_LINES = ['one', 'two', 'three'];
+SCENE_TREES.selection = () =>
+  root({}, [
+    box(
+      { width: 200, pad: 8, gap: 4, bg: '#14161e', selectable: true },
+      SELECTION_LINES.map((line) => text(line, { size: 13 })),
+      'card',
+    ),
+  ]);
+
 // `conformance::build_drag`: one keyed handle whose drag deltas the event
 // rows carry, measured from the press point in every phase.
 SCENE_TREES.drag = () =>

@@ -78,14 +78,18 @@ fn a_word_is_the_run_of_like_characters_around_the_point() {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
+    // Where "brave" sits, measured rather than guessed: the fonts on a CI
+    // container are not the fonts here, and a hard-coded x lands in a
+    // different word on a different machine.
+    let lead = ui.measure_text("hello ", &style(), None).width;
+    let word = ui.measure_text("brave", &style(), None).width;
     let scope = ui.with_keyed(
         "card",
         NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
         |ui| ui.text("hello brave world", style()),
     );
     ui.finish();
-    // Into "brave": past "hello " at 16px, comfortably inside the word.
-    assert!(core.select_word_at(scope, Vec2::new(60.0, 8.0)));
+    assert!(core.select_word_at(scope, Vec2::new(lead + word / 2.0, 8.0)));
     assert_eq!(core.selection_text().as_deref(), Some("brave"));
 }
 

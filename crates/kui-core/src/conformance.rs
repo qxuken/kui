@@ -1503,6 +1503,51 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "selection",
+        doc: "A `selectable` card and a drag across it (ADR 0017): the \
+              pointer presses inside the first label, moves into the third \
+              and lets go, so the selection covers the tail of one run, all \
+              of the next and the head of the last. The three highlight \
+              quads that leaves are what pins it — they are solid quads \
+              under the glyphs, at the tint every binding must produce and \
+              at the geometry cosmic-text resolved the two ends to, so an \
+              adapter that started the selection at the wrong byte, painted \
+              over the text instead of under it, or missed a run in the \
+              middle disagrees on both the count and the digest. The card \
+              also fixes its own width, so the runs do not depend on the \
+              window.",
+        custom: &["key", "pad", "size"],
+        elements: &["box", "text"],
+        build: build_selection,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Cursor(14, 16),
+            Step::MouseDown,
+            Step::Cursor(30, 60),
+            Step::MouseUp,
+        ],
+        expect: Expect {
+            solid: 4,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            fragments: 0,
+            glyphs_min: 11,
+            access: &[
+                "0 window ||",
+                "1 staticText one||",
+                "1 staticText two||",
+                "1 staticText three||",
+            ],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+        },
+    },
+    Scene {
         name: "virtual",
         doc: "A virtualised list, which is what the `index` row exists for: \
               the rows a long list can show, each opened at its *data* index \
@@ -1726,6 +1771,27 @@ fn build_wrap(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     );
 }
 
+/// A card that scopes one selection over the three runs inside it. Fixed
+/// width so the runs sit where the steps expect whatever the window is,
+/// and one style for all three so a binding cannot pass by getting one
+/// size right and another wrong.
+fn build_selection(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    ui.with_keyed(
+        "card",
+        NodeSpec::column()
+            .width(Sizing::Fixed(200.0))
+            .pad(8.0)
+            .gap(4.0)
+            .bg(Color::hex(0x14161eff))
+            .selectable(),
+        |ui| {
+            for line in SELECTION_LINES {
+                ui.text(line, TextStyle::new(13.0));
+            }
+        },
+    );
+}
+
 fn build_tabs(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     let bar = || {
         NodeSpec::row()
@@ -1800,6 +1866,12 @@ fn build_overflow(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// Item labels as constants: a binding building this scene has to use the
 /// same strings, since keys are hashes of the path.
 pub const ITEM_KEYS: [&str; 6] = ["i0", "i1", "i2", "i3", "i4", "i5"];
+
+/// The three runs of the `selection` scene, in order. Short and distinct
+/// so a report shows at a glance which run a highlight belongs to, and
+/// three of them so the drag has a run to cover *whole* between its two
+/// partial ends.
+pub const SELECTION_LINES: [&str; 3] = ["one", "two", "three"];
 
 fn build_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with(NodeSpec::column().pad(20.0).gap(4.0), |ui| {

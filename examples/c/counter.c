@@ -1882,6 +1882,23 @@ static void conf_drag(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_selection: a `selectable` card of three runs the
+ * pointer drags across, leaving the three highlight quads the report pins.
+ * The row is on the container; the labels inside declare nothing. */
+static void conf_selection(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec card = {.width = {KUI_FIXED, 200},
+                    .pad_l = 8, .pad_r = 8, .pad_t = 8, .pad_b = 8,
+                    .gap = 4, .bg = 0x14161eff, .selectable = 1};
+    kui_open_keyed(ui, KUI_STR("card"), &card, NULL);
+    KuiTextStyle s13 = {.size = 13};
+    kui_text(ui, KUI_STR("one"), &s13);
+    kui_text(ui, KUI_STR("two"), &s13);
+    kui_text(ui, KUI_STR("three"), &s13);
+    kui_close(ui);
+}
+
 /* A virtual list's three built rows, each opened at its *data* index rather
  * than at the position it occupies (kui_open_indexed), between the two
  * spacers that stand in for the rows nobody built. The indices are past what
@@ -1940,6 +1957,7 @@ static const ConfScene CONF_SCENES[] = {
     {"popup", conf_popup},
     {"live", conf_live},
     {"drag", conf_drag},
+    {"selection", conf_selection},
     {"virtual", conf_virtual},
 };
 

@@ -483,7 +483,9 @@ corpus can see it.
 
 1. Scopes: `selectable`, the scope on `TextPlace`, hit and drag ownership,
    the highlight, copy, tier 2. This alone answers "selection outside the
-   viewport".
+   viewport". **Built 2026-09-09**, corpus scene `selection` included: a
+   drag across a `selectable` card, replayed by all four adapters, whose
+   three highlight quads and their digest are what pin the ends.
 2. The menu as data: `MenuCommand`, `widgets::context_menu` and the `menu`
    element it is exposed as, the stock renderer through the filler, the
    default item sets, `onContextMenu` still winning. The widget lands
