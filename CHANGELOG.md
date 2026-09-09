@@ -138,12 +138,36 @@ field reports).
   ±0.4%), and `frame_10k_rects_all_transitioning` itself 1.74 → 1.70 ms
   (−2.6%), which on a ±4.4% floor that row cannot resolve.
 
-  What is left in `drive` is not arithmetic either: `[Option<Tween>; 9]` is
-  about 1 KB of retained state per node, so a 10,000-node frame streams ~10
-  MB of it. `Tween` copies the node's `Transition` and `last_used` into all
-  nine slots although both are the node's, and carries a `velocity` only
-  springs read. That is the next thing to measure, and it is a data-layout
-  change rather than this one.
+- **A `Tween` carries its leg's curve, not a whole `Transition`.** 96 bytes
+  a slot rather than 104, so a transitioning node's nine slots are 864 and
+  not 936. `Transition::repeat` and `delay_ms` belong to the keyframe
+  cycle, which is sampled straight off the clock and never reaches a
+  `Tween`; they were being copied into every slot of every node and read by
+  nobody. A leg keeps `duration_ms` and `easing` alone. `anim.rs` carries a
+  size assertion on `Option<Tween>` now, the way `spec.rs` does on
+  `NodeSpec`, since a field added here is paid nine times per node forever.
+
+  **It is not measurably faster, and the measurement is why the shrink
+  stops here.** Interleaved on an M3 Pro the transitioning frame moves
+  between −7% and −2.5% depending on which of four rounds is read, on a row
+  whose own run-to-run spread reached ±19%: unreadable, which is the honest
+  answer rather than the favourable one. The arithmetic says why. `drive`
+  is about 27% of that frame, but it is called 90,000 times in it — ten
+  thousand nodes by nine slots — which is **~5 ns, about 15 cycles, per
+  call**, for a function that reads and writes a 96-byte struct, branches
+  four or five times and eases four lanes. There is no fat left in it; the
+  cost is the call count.
+
+  So the two hoists that looked obvious from the profile are not available
+  either, and for reasons worth writing down. `last_used` cannot move to
+  the node: a node does not drive all nine slots every frame —
+  `ease_positions` drives `Slot::Pos` alone, and a keyframed slot is
+  sampled instead of driven — so per-slot staleness is what makes a skipped
+  slot snap rather than resume. `transition` cannot move either: what a
+  `Tween` holds is the curve the *running leg* started under, read in
+  `eased_at` one line before the new one replaces it, which is what makes
+  retargeting a live tween continuous. Only the two fields no leg reads
+  were ever redundant.
 
 ### Fixed
 

@@ -176,6 +176,23 @@ pub(crate) enum Slot {
 
 const SLOTS: usize = 9;
 
+/// One slot's retained motion. Nine of these per transitioning node, held
+/// across frames, so what is *not* on it matters: a 10,000-node frame with
+/// a transition on every node walks the lot of them.
+///
+/// Two fields of the [`Transition`] and not the transition itself. A leg
+/// keeps the curve it started under — that is what makes retargeting a
+/// running tween continuous, and why this cannot be one value on the node
+/// — but a leg only ever reads `duration_ms` and `easing`. `repeat` and
+/// `delay_ms` belong to the keyframe cycle, which is sampled straight off
+/// the clock ([`sample_track`]) and never reaches a `Tween` at all. Both
+/// were being copied into every slot of every node to be read by nobody.
+///
+/// `last_used` stays per slot, and is not the same redundancy: a node does
+/// not drive all nine every frame — `Core::ease_positions` drives
+/// `Slot::Pos` on its own, and a slot the node's keyframes name is sampled
+/// instead of driven — so staleness, which is what makes a skipped slot
+/// snap rather than resume, is per slot too.
 #[derive(Clone, Copy, Debug)]
 struct Tween {
     from: [f32; 4],
@@ -186,7 +203,10 @@ struct Tween {
     /// Springs: velocity per component and the time last integrated to.
     velocity: [f32; 4],
     last_time: f64,
-    transition: Transition,
+    /// The leg's own curve: `Transition::duration_ms` and `easing` as they
+    /// were when it started.
+    duration_ms: f32,
+    easing: Easing,
     last_used: u64,
 }
 
@@ -194,7 +214,7 @@ impl Tween {
     /// Where this tween's current leg stands at `now`, without touching it.
     /// A settled leg (`start` infinitely far back) reads as its target.
     fn eased_at(&self, now: f64) -> [f32; 4] {
-        let dur = self.transition.duration_ms.max(0.0) as f64 / 1000.0;
+        let dur = self.duration_ms.max(0.0) as f64 / 1000.0;
         let p = if dur <= 0.0 {
             1.0
         } else {
@@ -203,7 +223,7 @@ impl Tween {
         if p >= 1.0 {
             return self.to;
         }
-        let e = self.transition.easing.apply(p);
+        let e = self.easing.apply(p);
         let mut v = [0.0; 4];
         for (i, out) in v.iter_mut().enumerate() {
             *out = self.from[i] + (self.to[i] - self.from[i]) * e;
@@ -216,7 +236,7 @@ impl Tween {
     /// spring with stiffness and damping from the response time and ratio
     /// (SwiftUI's parametrization).
     fn spring_step(&mut self, now: f64, zeta: f32) -> bool {
-        let response = (self.transition.duration_ms.max(1.0) / 1000.0) as f64;
+        let response = (self.duration_ms.max(1.0) / 1000.0) as f64;
         let omega = std::f64::consts::TAU / response;
         let k = (omega * omega) as f32;
         let c = (2.0 * zeta as f64 * omega) as f32;
@@ -409,7 +429,8 @@ impl NodeAnim<'_> {
                 start: 0.0,
                 velocity: [0.0; 4],
                 last_time: 0.0,
-                transition,
+                duration_ms: transition.duration_ms,
+                easing: transition.easing,
                 last_used: frame_no,
             });
             return target;
@@ -425,7 +446,8 @@ impl NodeAnim<'_> {
                         start: now,
                         velocity: [0.0; 4],
                         last_time: now,
-                        transition,
+                        duration_ms: transition.duration_ms,
+                        easing: transition.easing,
                         last_used: frame_no,
                     });
                 }
@@ -439,7 +461,8 @@ impl NodeAnim<'_> {
                         start: f64::NEG_INFINITY,
                         velocity: [0.0; 4],
                         last_time: now,
-                        transition,
+                        duration_ms: transition.duration_ms,
+                        easing: transition.easing,
                         last_used: frame_no,
                     });
                     return target;
@@ -460,7 +483,8 @@ impl NodeAnim<'_> {
         if let Some(zeta) = transition.easing.damping() {
             // Springs retarget freely: the velocity carries over.
             tw.to = target;
-            tw.transition = transition;
+            tw.duration_ms = transition.duration_ms;
+            tw.easing = transition.easing;
             if tw.spring_step(now, zeta) {
                 *self.active = true;
             }
@@ -477,9 +501,10 @@ impl NodeAnim<'_> {
             tw.from = tw.eased_at(now);
             tw.to = target;
             tw.start = now;
-            tw.transition = transition;
+            tw.duration_ms = transition.duration_ms;
+            tw.easing = transition.easing;
         }
-        let dur = tw.transition.duration_ms.max(0.0) as f64 / 1000.0;
+        let dur = tw.duration_ms.max(0.0) as f64 / 1000.0;
         let p = if dur <= 0.0 {
             1.0
         } else {
@@ -487,7 +512,7 @@ impl NodeAnim<'_> {
         };
         if p < 1.0 {
             *self.active = true;
-            let e = tw.transition.easing.apply(p);
+            let e = tw.easing.apply(p);
             for i in 0..4 {
                 tw.value[i] = tw.from[i] + (tw.to[i] - tw.from[i]) * e;
             }
@@ -501,6 +526,32 @@ impl NodeAnim<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `Tween` is retained per slot, nine slots per transitioning node, and
+    /// walked in full every frame the node is driven: a 10,000-node frame
+    /// with a transition on every node carries 8.6 MB of it. So a field
+    /// added here is paid nine times per node forever, and this is the
+    /// number a review can fail — the same guard `NodeSpec` carries, for
+    /// the same reason (C15).
+    ///
+    /// Raise it only for something a *leg* reads. What belongs to the node
+    /// rather than the leg goes on the node, and what belongs to the
+    /// keyframe cycle goes nowhere near here: `Transition::repeat` and
+    /// `delay_ms` used to ride along and were read by nobody.
+    #[test]
+    fn a_tween_stays_small() {
+        const BOUND: usize = 96;
+        let size = std::mem::size_of::<Option<Tween>>();
+        assert!(
+            size <= BOUND,
+            "Option<Tween> is {size} bytes, over the {BOUND}-byte bound. \
+             It is held per slot per node across frames; put what the node \
+             owns on the node and what the cycle owns in the Transition."
+        );
+        // The discriminant rides in `Easing`'s niche rather than widening
+        // the struct; a field ordering that loses that is worth noticing.
+        assert_eq!(size, std::mem::size_of::<Tween>());
+    }
 
     fn one(v: f32) -> [f32; 4] {
         [v, 0.0, 0.0, 0.0]
