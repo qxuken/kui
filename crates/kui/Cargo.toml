@@ -102,6 +102,10 @@ name = "accessibility"
 path = "../../examples/rust/accessibility.rs"
 
 [[example]]
+name = "context_menu"
+path = "../../examples/rust/context_menu.rs"
+
+[[example]]
 name = "counter"
 path = "../../examples/rust/counter.rs"
 

@@ -2096,7 +2096,7 @@ macro_rules! core_methods {
             /// `onContextMenu` calls — and what the core calls itself for
             /// a right-click nobody claimed, so the two menus are one
             /// implementation.
-            #[napi]
+            #[napi(ts_args_type = "key: string, x: number, y: number, items: MenuItemInput[]")]
             pub fn open_menu(&mut self, key: String, x: f64, y: f64, items: Json) -> Result<bool> {
                 let Some(target) = resolve_query(self.$core(), &key) else {
                     return Ok(false);
@@ -2107,6 +2107,116 @@ macro_rules! core_methods {
                     Vec2::new(x as f32, y as f32),
                     items,
                 ));
+                self.$redraw();
+                Ok(true)
+            }
+
+            /// Drains what choosing a menu row left for the host: the
+            /// clipboard, which is the host's in this library. Each entry
+            /// is `{kind}` — `"setClipboard"` with `text` (and `html`
+            /// where there is formatting to carry), `"paste"` asking for
+            /// what is on the clipboard (deliver it back with `text()`),
+            /// or `"lookUp"` with the `text` to show a definition panel
+            /// for at `x`, `y`.
+            ///
+            /// A windowed app never needs this — the driver drains it —
+            /// but a headless one does: nothing else empties the queue,
+            /// and a Copy nobody drains is a copy that never happened.
+            #[napi(ts_return_type = "MenuAction[]")]
+            pub fn take_menu_actions(&mut self) -> Result<Json> {
+                let out: Vec<Json> = self
+                    .$core()
+                    .take_menu_actions()
+                    .into_iter()
+                    .map(|a| {
+                        let mut o = JsonMap::new();
+                        match a {
+                            kui_core::MenuAction::SetClipboard { text, html } => {
+                                o.insert("kind".into(), Json::from("setClipboard"));
+                                o.insert("text".into(), Json::from(text));
+                                o.insert("html".into(), html.map_or(Json::Null, Json::String));
+                            }
+                            kui_core::MenuAction::Paste => {
+                                o.insert("kind".into(), Json::from("paste"));
+                            }
+                            kui_core::MenuAction::LookUp { text, at } => {
+                                o.insert("kind".into(), Json::from("lookUp"));
+                                o.insert("text".into(), Json::from(text));
+                                o.insert("x".into(), Json::from(at.x));
+                                o.insert("y".into(), Json::from(at.y));
+                            }
+                        }
+                        Json::Object(o)
+                    })
+                    .collect();
+                Ok(Json::Array(out))
+            }
+
+            /// The menu this window has open, or null:
+            /// `{target, x, y, items}`. What a host rendering menus itself
+            /// reads after `setNativeMenus(true)` — the core then keeps
+            /// the menu as state and draws none of it — and answers with
+            /// `activateMenuItem` or `closeMenu`.
+            #[napi(ts_return_type = "OpenMenu | null")]
+            pub fn menu(&mut self) -> Result<Option<Json>> {
+                let Some(menu) = self.$core().menu().cloned() else {
+                    return Ok(None);
+                };
+                let items: Vec<Json> = menu
+                    .items
+                    .iter()
+                    .map(|item| {
+                        let mut o = JsonMap::new();
+                        o.insert("label".into(), Json::from(item.text()));
+                        o.insert("role".into(), Json::from(item.role.name()));
+                        o.insert("enabled".into(), Json::Bool(item.enabled));
+                        o.insert(
+                            "accel".into(),
+                            item.accel.clone().map_or(Json::Null, Json::String),
+                        );
+                        Json::Object(o)
+                    })
+                    .collect();
+                let mut o = JsonMap::new();
+                o.insert("target".into(), Json::from(key_str(menu.target)));
+                o.insert("x".into(), Json::from(menu.at.x));
+                o.insert("y".into(), Json::from(menu.at.y));
+                o.insert("items".into(), Json::Array(items));
+                Ok(Some(Json::Object(o)))
+            }
+
+            /// Tells the core this host shows menus itself. It then keeps
+            /// the open menu as state and draws none of it: read it with
+            /// `menu()`, show it, and report back with `activateMenuItem`
+            /// or `closeMenu`. Off by default, which is the menu this
+            /// library draws.
+            #[napi]
+            pub fn set_native_menus(&mut self, on: bool) -> Result<()> {
+                self.$core().set_native_menus(on);
+                self.$redraw();
+                Ok(())
+            }
+
+            /// Tells the core this host can show the platform's definition
+            /// panel. The standard Look Up row is then offered where it
+            /// means something, and a force click over text asks for one.
+            #[napi]
+            pub fn set_lookup_available(&mut self, on: bool) -> Result<()> {
+                self.$core().set_lookup_available(on);
+                Ok(())
+            }
+
+            /// Reports that the host's own menu chose row `index` — the
+            /// same path a press on the drawn menu's row takes. An index
+            /// past the end closes the menu and posts nothing. False when
+            /// no menu was open.
+            #[napi]
+            pub fn activate_menu_item(&mut self, index: u32) -> Result<bool> {
+                if self.$core().menu().is_none() {
+                    return Ok(false);
+                }
+                let events = self.$core().activate_menu_item(index as usize);
+                self.$take(events);
                 self.$redraw();
                 Ok(true)
             }

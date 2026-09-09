@@ -1843,6 +1843,21 @@ bool kui_open_menu(KuiCtx *ctx, uint64_t key, float x, float y,
 /* Closes whatever menu is open; true when there was one. */
 bool kui_close_menu(KuiCtx *ctx);
 
+/* The window's selected text - a `selectable` scope's, a `cells` grid's,
+ * or the focused editor's, whichever it holds. False when nothing is
+ * selected; *out is borrowed until the next selection call. */
+bool kui_selection_text(KuiCtx *ctx, KuiStr *out);
+/* The same selection with the formatting the text declared - bold, italic,
+ * a span's own colour - for a host offering a second clipboard flavour.
+ * Never a replacement for kui_selection_text
+ * (docs/adr/0017-selection-as-a-scope.md). */
+bool kui_selection_html(KuiCtx *ctx, KuiStr *out);
+/* Selects everything in the scope `key` declared: every run of a
+ * `selectable` container, or the whole screen of a `cells` grid. */
+bool kui_select_all_in(KuiCtx *ctx, uint64_t key);
+/* Drops the window's selection, whichever kind; true when there was one. */
+bool kui_clear_selection(KuiCtx *ctx);
+
 /* kui_request_copy's answer. */
 enum { KUI_COPY_READY = 0, KUI_COPY_ASKED = 1, KUI_COPY_NOTHING = 2 };
 /* Asks for the selection as text

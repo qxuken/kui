@@ -60,6 +60,11 @@ pub struct KuiCtx {
     pub(crate) menu_actions: VecDeque<kui_core::MenuAction>,
     pub(crate) menu_text: String,
     pub(crate) menu_html: String,
+    /// The selection most recently handed out by `kui_selection_text` /
+    /// `kui_selection_html`; valid until the next such call, like every
+    /// other borrowed string here.
+    pub(crate) selection_text: String,
+    pub(crate) selection_html: String,
     /// The name most recently handed out by kui_ctx_window_name; valid
     /// until the next call.
     pub(crate) last_window_name: Option<Rc<str>>,
@@ -125,6 +130,8 @@ impl KuiCtx {
             menu_actions: VecDeque::new(),
             menu_text: String::new(),
             menu_html: String::new(),
+            selection_text: String::new(),
+            selection_html: String::new(),
             last_window_name: None,
             slot_name: None,
             slot_namespace: None,

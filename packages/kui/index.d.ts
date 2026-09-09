@@ -434,6 +434,60 @@ export interface TextHit {
   line: number;
 }
 
+/** One row to put in a context menu (`Ctx.openMenu`). Everything but
+ *  `label` is optional, and a standard `role` takes its own wording when
+ *  `label` is empty — so `{ role: 'copy' }` is the platform's Copy.
+ *  `id` is what the row posts when chosen (its label, when absent). */
+export interface MenuItemInput {
+  label?: string;
+  role?: 'custom' | 'separator' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'lookUp';
+  enabled?: boolean;
+  id?: unknown;
+  /** Display only: the shortcut is the app's or the platform's. */
+  accel?: string;
+}
+
+/** One row of a context menu, as `Ctx.menu()` reports it
+ *  (`docs/adr/0017-selection-as-a-scope.md`). `label` is what a drawn menu
+ *  reads; a host rendering natively uses `role` to pick the platform's own
+ *  wording for the standard items, and draws `accel` beside them. */
+export interface OpenMenuItem {
+  label: string;
+  role: 'custom' | 'separator' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'lookUp';
+  /** A disabled row is drawn dimmed and cannot be chosen — Paste with an
+   *  empty clipboard, Copy with no selection. Present rather than absent,
+   *  so a menu's rows do not move under the pointer. */
+  enabled: boolean;
+  /** Display only: the shortcut is the app's or the platform's. */
+  accel: string | null;
+}
+
+/** The menu a window has open (`Ctx.menu()`): where it opened, the node it
+ *  is about, and its rows. Read it after `setNativeMenus(true)`, show it
+ *  however the platform does, and answer with `activateMenuItem(i)` or
+ *  `closeMenu()`. */
+export interface OpenMenu {
+  /** The node the menu is about; chosen rows post their event on it. */
+  target: string;
+  x: number;
+  y: number;
+  items: OpenMenuItem[];
+}
+
+/** What choosing a menu row left for the host (`Ctx.takeMenuActions()`).
+ *  The clipboard is the host's in this library: the core works out *what*
+ *  to copy, which is the half only it can do, and hands over the text.
+ *
+ *  `setClipboard` carries `text` (and `html` where the selection had
+ *  formatting to carry — beside the text, never instead of it);
+ *  `paste` asks for what is on the clipboard, delivered back with
+ *  `Ctx.text(...)`; `lookUp` asks for the platform's definition panel for
+ *  `text`, anchored at the baseline origin `x`, `y`. */
+export type MenuAction =
+  | { kind: 'setClipboard'; text: string; html: string | null }
+  | { kind: 'paste' }
+  | { kind: 'lookUp'; text: string; x: number; y: number };
+
 /** What text measures (`measureText`): logical px at the scale of the
  *  current or last frame; `lines` after wrapping. The same numbers layout
  *  gives a `<text>` with that content and style. */
@@ -1527,7 +1581,50 @@ export declare class Ctx {
    * a right-click nobody claimed, so the two menus are one
    * implementation.
    */
-  openMenu(key: string, x: number, y: number, items: Json): boolean
+  openMenu(key: string, x: number, y: number, items: MenuItemInput[]): boolean
+  /**
+   * Drains what choosing a menu row left for the host: the
+   * clipboard, which is the host's in this library. Each entry
+   * is `{kind}` — `"setClipboard"` with `text` (and `html`
+   * where there is formatting to carry), `"paste"` asking for
+   * what is on the clipboard (deliver it back with `text()`),
+   * or `"lookUp"` with the `text` to show a definition panel
+   * for at `x`, `y`.
+   *
+   * A windowed app never needs this — the driver drains it —
+   * but a headless one does: nothing else empties the queue,
+   * and a Copy nobody drains is a copy that never happened.
+   */
+  takeMenuActions(): MenuAction[]
+  /**
+   * The menu this window has open, or null:
+   * `{target, x, y, items}`. What a host rendering menus itself
+   * reads after `setNativeMenus(true)` — the core then keeps
+   * the menu as state and draws none of it — and answers with
+   * `activateMenuItem` or `closeMenu`.
+   */
+  menu(): OpenMenu | null
+  /**
+   * Tells the core this host shows menus itself. It then keeps
+   * the open menu as state and draws none of it: read it with
+   * `menu()`, show it, and report back with `activateMenuItem`
+   * or `closeMenu`. Off by default, which is the menu this
+   * library draws.
+   */
+  setNativeMenus(on: boolean): void
+  /**
+   * Tells the core this host can show the platform's definition
+   * panel. The standard Look Up row is then offered where it
+   * means something, and a force click over text asks for one.
+   */
+  setLookupAvailable(on: boolean): void
+  /**
+   * Reports that the host's own menu chose row `index` — the
+   * same path a press on the drawn menu's row takes. An index
+   * past the end closes the menu and posts nothing. False when
+   * no menu was open.
+   */
+  activateMenuItem(index: number): boolean
   /** Closes whatever menu is open; true when there was one. */
   closeMenu(): boolean
   /**
@@ -2098,7 +2195,50 @@ export declare class KuiWindow {
    * a right-click nobody claimed, so the two menus are one
    * implementation.
    */
-  openMenu(key: string, x: number, y: number, items: Json): boolean
+  openMenu(key: string, x: number, y: number, items: MenuItemInput[]): boolean
+  /**
+   * Drains what choosing a menu row left for the host: the
+   * clipboard, which is the host's in this library. Each entry
+   * is `{kind}` — `"setClipboard"` with `text` (and `html`
+   * where there is formatting to carry), `"paste"` asking for
+   * what is on the clipboard (deliver it back with `text()`),
+   * or `"lookUp"` with the `text` to show a definition panel
+   * for at `x`, `y`.
+   *
+   * A windowed app never needs this — the driver drains it —
+   * but a headless one does: nothing else empties the queue,
+   * and a Copy nobody drains is a copy that never happened.
+   */
+  takeMenuActions(): MenuAction[]
+  /**
+   * The menu this window has open, or null:
+   * `{target, x, y, items}`. What a host rendering menus itself
+   * reads after `setNativeMenus(true)` — the core then keeps
+   * the menu as state and draws none of it — and answers with
+   * `activateMenuItem` or `closeMenu`.
+   */
+  menu(): OpenMenu | null
+  /**
+   * Tells the core this host shows menus itself. It then keeps
+   * the open menu as state and draws none of it: read it with
+   * `menu()`, show it, and report back with `activateMenuItem`
+   * or `closeMenu`. Off by default, which is the menu this
+   * library draws.
+   */
+  setNativeMenus(on: boolean): void
+  /**
+   * Tells the core this host can show the platform's definition
+   * panel. The standard Look Up row is then offered where it
+   * means something, and a force click over text asks for one.
+   */
+  setLookupAvailable(on: boolean): void
+  /**
+   * Reports that the host's own menu chose row `index` — the
+   * same path a press on the drawn menu's row takes. An index
+   * past the end closes the menu and posts nothing. False when
+   * no menu was open.
+   */
+  activateMenuItem(index: number): boolean
   /** Closes whatever menu is open; true when there was one. */
   closeMenu(): boolean
   /**

@@ -35,6 +35,34 @@ field reports).
 
 ### Added
 
+- **`examples/rust/context_menu.rs`**, which is the whole of ADR 0017's
+  menu decision in one window: the stock menu over selectable text, an
+  app's own menu over a row that declares `onContextMenu` (its two items
+  beside the standard ones, opened with `Ui::open_menu`), an editor's four,
+  and nothing at all over a plain box. On macOS every one of them is the
+  platform's `NSMenu`; elsewhere the core draws the same list. The app's
+  code is identical either way.
+
+- **Parity across the bindings for the selection and menu work.** C gains
+  `kui_selection_text`, `kui_selection_html`, `kui_select_all_in` and
+  `kui_clear_selection` — it could open a menu but not read or move the
+  selection the menu acts on. Node gains the host seam it was missing:
+  `takeMenuActions()`, `menu()`, `setNativeMenus`, `setLookupAvailable`
+  and `activateMenuItem`, so a headless app or one driving its own window
+  can render menus itself and drain what choosing a row left to do —
+  before this, a Copy chosen in a headless Node app queued a clipboard
+  write nothing could collect.
+
+### Fixed
+
+- **`<cells originLine>` no longer warns as an unknown prop.** The row was
+  read by every binding and missing from the element's own list, so a grid
+  that stamped where its screen sat in the scrollback got told the prop
+  "is not a prop of cells: no binding reads it" — a warning that was both
+  noise and wrong. `Ctx.openMenu`'s `items` parameter also reached the
+  shipped `.d.ts` as a bare `Json`, which is not a TypeScript type: the
+  examples' typecheck failed against it.
+
 - **A selection survives a virtual list scrolling under it** (ADR 0017,
   tier 3). Two halves. The core places an end whose row is no longer built
   by that row's *data index*, so the part of the selection still on screen

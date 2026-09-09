@@ -1390,6 +1390,7 @@ pub const ELEMENTS: &[ElementDef] = &[
             "cursorAt",
             "cursorShape",
             "cursorColor",
+            "originLine",
         ],
         lua_own: &[
             "rows",
@@ -1399,13 +1400,14 @@ pub const ELEMENTS: &[ElementDef] = &[
             "cursor_at",
             "cursor_shape",
             "cursor_color",
+            "origin_line",
         ],
         jsx_rows: None,
         lua_rows: None,
         jsx: "`<cells rows cols cells={Uint32Array} cursorAt={[row, col]} cursorShape cursorColor size family lineHeight/>`",
         lua: "`cells { rows=, cols=, lines={\"row text\", …}, runs={{row, col, len, fg, bg, flags}, …}, cursor_at={row, col}, cursor_shape=, cursor_color=, size=, family= }`",
         c: "`kui_cells`",
-        doc: "A terminal's screen as one node (backlog C20): `rows × cols` cells, each a character, a foreground and background as `0xRRGGBBAA` (0 = no background), and attribute bits — 1 bold, 2 italic, 4 underline, 8 strikethrough, 16 wide (the glyph spans this cell and the next, which the app leaves blank). A glyph is shaped once per character and style variant and thereafter placed at `col × cell_w` without shaping, so a screen whose every cell is new each frame costs what a still one costs (~60 µs for 200 × 50). The cell width is `M`'s advance in the style's font snapped to whole pixels, the height its `lineHeight`; a cell is a cell, so ligatures never form. JSX passes the cells as a `Uint32Array` (or number array) of four entries per cell — codepoint, fg, bg, flags — in row-major order; Lua a string per row in `lines` plus `runs` of `{row, col, len, fg, bg, flags}` over them (a run's fg or bg of 0 keeps the default: the style's colour, and no background); C a `KuiCell` array. `cursorAt` (`cursor_at`) names a cell to paint under its glyph in `cursorColor` as a `block` (default), `bar` or `underline` — its own name, since `cursor` is the pointer shape. The node's own rows apply — an `onKey` makes it the terminal's sink, an `onClick` or `onDrag` carries `cell: {row, col}` on its events — and its access row is `terminal`, the rows joined as its value.",
+        doc: "A terminal's screen as one node (backlog C20): `rows × cols` cells, each a character, a foreground and background as `0xRRGGBBAA` (0 = no background), and attribute bits — 1 bold, 2 italic, 4 underline, 8 strikethrough, 16 wide (the glyph spans this cell and the next, which the app leaves blank). A glyph is shaped once per character and style variant and thereafter placed at `col × cell_w` without shaping, so a screen whose every cell is new each frame costs what a still one costs (~60 µs for 200 × 50). The cell width is `M`'s advance in the style's font snapped to whole pixels, the height its `lineHeight`; a cell is a cell, so ligatures never form. JSX passes the cells as a `Uint32Array` (or number array) of four entries per cell — codepoint, fg, bg, flags — in row-major order; Lua a string per row in `lines` plus `runs` of `{row, col, len, fg, bg, flags}` over them (a run's fg or bg of 0 keeps the default: the style's colour, and no background); C a `KuiCell` array. `cursorAt` (`cursor_at`) names a cell to paint under its glyph in `cursorColor` as a `block` (default), `bar` or `underline` — its own name, since `cursor` is the pointer shape. `originLine` (`origin_line`) is the absolute line number of row 0: a grid is one screenful of the app's own history, so a row number means a different line after every scroll, and stamping where the screen sits is what lets a selection keep its ends across one (`docs/adr/0017-selection-as-a-scope.md`). Saying nothing is 0, and a selection then holds only while the screen does not move. The node's own rows apply — an `onKey` makes it the terminal's sink, an `onClick` or `onDrag` carries `cell: {row, col}` on its events — and its access row is `terminal`, the rows joined as its value.",
     },
     ElementDef {
         name: "line",

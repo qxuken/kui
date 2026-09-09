@@ -29,7 +29,8 @@ in the workspace lands in one flat `target/debug/examples/`, where two called
 | Example | Run | What it shows |
 |---|---|---|
 | [`counter.rs`](rust/counter.rs) | `cargo run -p kui --example counter` | Minimal Elm-ish flow: state → tree, clicks back as data. Sound is data too; right-click for a `modal` context menu |
-| [`rich_text.rs`](rust/rich_text.rs) | `cargo run -p kui --example rich_text` | Styled spans shaped and wrapped as one paragraph flow |
+| [`rich_text.rs`](rust/rich_text.rs) | `cargo run -p kui --example rich_text` | Styled spans shaped and wrapped as one paragraph flow; the card is `selectable`, so a drag selects across all three labels |
+| [`context_menu.rs`](rust/context_menu.rs) | `cargo run -p kui --example context_menu` | The four menus a right-click can get: the stock one over selectable text, the app's own over a row that declares `onContextMenu`, an editor's Cut/Copy/Paste/Select All, and nothing over a plain box — the platform's own `NSMenu` on macOS, the core's drawn one elsewhere, from the same item list |
 | [`editor.rs`](rust/editor.rs) | `cargo run -p kui --example editor` | Multiline editing: caret, selection, clipboard, scrolling |
 | [`waker.rs`](rust/waker.rs) | `cargo run -p kui --example waker` | A thread feeds lines and wakes the parked loop through `kui::Waker`; frames with no input |
 | [`modal_editor.rs`](rust/modal_editor.rs) | `cargo run -p kui --example modal_editor` | Helix-flavored modal editing; the app owns the keymap |

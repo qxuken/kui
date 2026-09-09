@@ -39,6 +39,7 @@ mod resources;
 #[cfg(feature = "runner")]
 mod run;
 mod scrolling;
+mod select;
 mod slots;
 mod types;
 mod value;
@@ -55,6 +56,7 @@ pub use resources::*;
 #[cfg(feature = "runner")]
 pub use run::*;
 pub use scrolling::*;
+pub use select::*;
 pub use slots::*;
 pub use types::*;
 pub use value::*;
@@ -103,6 +105,8 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             menu_actions: VecDeque::new(),
             menu_text: String::new(),
             menu_html: String::new(),
+            selection_text: String::new(),
+            selection_html: String::new(),
             last_window_name: None,
             slot_name: None,
             slot_namespace: None,
