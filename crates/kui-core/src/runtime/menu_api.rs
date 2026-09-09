@@ -44,7 +44,15 @@ impl Core {
     /// state and the frame is a function of state — which is also what
     /// makes an app that never pumps another frame after a right-click a
     /// bug the app can see rather than a menu that appears out of turn.
-    pub fn open_menu(&mut self, menu: Menu) {
+    pub fn open_menu(&mut self, mut menu: Menu) {
+        // Whoever is building right now owns it, unless the caller said
+        // otherwise: an extension that opens a menu hears its rows come
+        // back, the way it hears every other event it declared (ADR 0014
+        // decision 6). A host calling this outside a frame is `HOST`,
+        // which is what the origin already is there.
+        if menu.origin == crate::tree::OriginId::HOST {
+            menu.origin = self.origin();
+        }
         // Which editor the menu is about, remembered now rather than
         // looked up when a row is chosen: the menu's rows are focusable
         // (they have to be — the arrow keys are the composite's), so by

@@ -227,6 +227,21 @@ fn asserts() -> String {
         flags: u32 => "uint32_t",
     });
 
+    abi_struct!(o, KuiMenuItem {
+        label: KuiStr => "KuiStr",
+        role: u32 => "uint32_t",
+        enabled: u32 => "uint32_t",
+        id: *const KuiValue => "const KuiValue *",
+        accel: KuiStr => "KuiStr",
+    });
+
+    abi_struct!(o, KuiMenuAction {
+        size: u32 => "uint32_t",
+        kind: u32 => "uint32_t",
+        text: KuiStr => "KuiStr",
+    });
+    abi_out_struct!(o, KuiMenuAction);
+
     abi_struct!(o, KuiTextHit {
         size: u32 => "uint32_t",
         line: u32 => "uint32_t",

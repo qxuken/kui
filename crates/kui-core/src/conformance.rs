@@ -1548,6 +1548,51 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "menu",
+        doc: "The stock context menu (ADR 0017, decision 5), opened the way \
+              a user opens one: a secondary press inside the `selectable` \
+              card of the `selection` scene, which nothing claimed with \
+              `onContextMenu`, so the core offers Copy and Select All \
+              itself. Copy is dead — nothing is selected — and drawn dimmed \
+              rather than left out, so the row a reader reaches for is \
+              where it was last time. Same tree as `selection`; only the \
+              steps differ, which is the point: no binding declares this \
+              menu, and all four have to end up with the same quads under \
+              the same access rows anyway. Two solid quads and not four: \
+              the card and the menu's own panel, since a row paints a \
+              background only while it is hovered or *visibly* focused, and \
+              a menu opened by a press has taken no keyboard focus to \
+              show.",
+        custom: &["key", "pad", "size"],
+        elements: &["box", "text"],
+        build: build_selection,
+        env: NATIVE_CHROME,
+        steps: &[Step::Cursor(30, 16), Step::SecondaryDown],
+        expect: Expect {
+            solid: 2,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            fragments: 0,
+            glyphs_min: 11,
+            access: &[
+                "0 window ||",
+                "1 staticText one||",
+                "1 staticText two||",
+                "1 staticText three||",
+                "1 menu Menu||",
+                "2 menuItem Copy||",
+                "2 menuItem Select All||",
+            ],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+        },
+    },
+    Scene {
         name: "virtual",
         doc: "A virtualised list, which is what the `index` row exists for: \
               the rows a long list can show, each opened at its *data* index \

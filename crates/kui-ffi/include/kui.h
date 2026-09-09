@@ -885,6 +885,59 @@ enum {
 /* kui_cells cursor_shape: 0 = none. */
 enum { KUI_CELL_CURSOR_BLOCK = 1, KUI_CELL_CURSOR_BAR = 2, KUI_CELL_CURSOR_UNDERLINE = 3 };
 
+/* -- Context menus (docs/adr/0017-selection-as-a-scope.md) ----------------
+ *
+ * A menu is a list of items and a point, not a node: the core holds the one
+ * a window has open and draws it, so a host asks for one with a call the
+ * way it asks for focus, and hears what was chosen as an ordinary event.
+ * A right-click the host does not claim with `on_context_menu` opens the
+ * stock menu by itself where there is anything standard to offer - an
+ * editor, or a `selectable` scope - so this is for the menus a host wants
+ * of its own. */
+
+/* KuiMenuItem.role. A standard role means the core does what it can with
+ * the row: KUI_MENU_SELECT_ALL it performs, the clipboard three it turns
+ * into a KuiMenuAction, and a KUI_MENU_LOOK_UP is the host's panel to show.
+ * KUI_MENU_CUSTOM is an item only the host can carry out. */
+enum {
+    KUI_MENU_CUSTOM = 0,
+    KUI_MENU_SEPARATOR = 1,
+    KUI_MENU_CUT = 2,
+    KUI_MENU_COPY = 3,
+    KUI_MENU_PASTE = 4,
+    KUI_MENU_SELECT_ALL = 5,
+    KUI_MENU_LOOK_UP = 6,
+};
+
+/* [in] One row of a menu. `label` may be empty for a standard role, which
+ * then reads the way this library words it. `id` is what the row posts when
+ * chosen (NULL posts its text); `accel` is drawn right-aligned and bound to
+ * nothing - the shortcut is the host's, and this only says which one.
+ * `enabled` zero draws the row dimmed and inert, which is what a menu does
+ * with an impossible item: the row stays where it is rather than vanishing
+ * and moving every row under it. */
+typedef struct KuiMenuItem {
+    KuiStr label;
+    uint32_t role;
+    uint32_t enabled;
+    const KuiValue *id;
+    KuiStr accel;
+} KuiMenuItem;
+
+/* KuiMenuAction.kind. */
+enum { KUI_MENU_ACTION_SET_CLIPBOARD = 0, KUI_MENU_ACTION_PASTE = 1 };
+
+/* [out] What choosing a row left for the host: the clipboard, which is the
+ * host's in this library. SET_CLIPBOARD carries the text to put there - the
+ * core worked out *what*, which is the half only it can do - and PASTE asks
+ * for what is there, which the host delivers back with kui_input_text. */
+typedef struct KuiMenuAction {
+    uint32_t size; /* = sizeof(KuiMenuAction) in, bytes filled out */
+    uint32_t kind;
+    KuiStr text; /* borrowed until the next kui_take_menu_action */
+} KuiMenuAction;
+#define KUI_MENU_ACTION_INIT ((KuiMenuAction){ .size = sizeof(KuiMenuAction) })
+
 /* [out] Where a point landed in the text a keyed node drew (kui_text_hit):
  * a byte offset into that text - across the node's text runs in order, the
  * way the access tree reads a `line` - and the visual (wrapped) line. */
@@ -1739,6 +1792,18 @@ bool kui_measure_rich_text(KuiCtx *ctx, const KuiSpan *spans, size_t span_count,
  * them in order. Answered from the frame that finished - the layout the
  * pointer was over. False for a key that drew no text. */
 bool kui_text_hit(KuiCtx *ctx, uint64_t key, float x, float y, KuiTextHit *out);
+/* Opens a context menu at (x, y) over `key`, with `count` items read from
+ * `items`; the next frame draws it. Choosing a row posts {kind:"menu",
+ * role, item} on `key` and closes the menu, and a press outside it or
+ * Escape closes it with nothing posted. False - and nothing opens - for a
+ * key of 0, no items, or an item whose role this build does not know. */
+bool kui_open_menu(KuiCtx *ctx, uint64_t key, float x, float y,
+                   const KuiMenuItem *items, size_t count);
+/* Closes whatever menu is open; true when there was one. */
+bool kui_close_menu(KuiCtx *ctx);
+/* Drains one queued menu action (see KuiMenuAction); false when there are
+ * none. Drain to empty after handling input, the way window commands are. */
+bool kui_take_menu_action(KuiCtx *ctx, KuiMenuAction *out);
 /* The caret rect for byte offset `byte` in that text: where a caret, a
  * selection edge or an IME candidate window goes. A byte past the text is
  * the end. False for a key that drew no text. */

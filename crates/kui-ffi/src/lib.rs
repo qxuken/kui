@@ -34,6 +34,7 @@ mod convert;
 mod focus;
 mod frame;
 mod input;
+mod menu;
 mod resources;
 #[cfg(feature = "runner")]
 mod run;
@@ -49,6 +50,7 @@ pub use access::*;
 pub use focus::*;
 pub use frame::*;
 pub use input::*;
+pub use menu::*;
 pub use resources::*;
 #[cfg(feature = "runner")]
 pub use run::*;
@@ -98,6 +100,8 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             last_announcements: Vec::new(),
             open_tooltips: Vec::new(),
             window_commands: VecDeque::new(),
+            menu_actions: VecDeque::new(),
+            menu_text: String::new(),
             last_window_name: None,
             slot_name: None,
             slot_namespace: None,

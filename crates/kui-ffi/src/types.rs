@@ -54,6 +54,11 @@ pub struct KuiCtx {
     /// Window commands taken from the core and not yet handed out one at a
     /// time by `kui_take_window_command`.
     pub(crate) window_commands: VecDeque<WindowCommand>,
+    /// The same for the menu actions `kui_take_menu_action` hands out, and
+    /// the text of the one most recently handed out — borrowed by the
+    /// caller until the next call, like every other string here.
+    pub(crate) menu_actions: VecDeque<kui_core::MenuAction>,
+    pub(crate) menu_text: String,
     /// The name most recently handed out by kui_ctx_window_name; valid
     /// until the next call.
     pub(crate) last_window_name: Option<Rc<str>>,
@@ -116,6 +121,8 @@ impl KuiCtx {
             last_announcements: Vec::new(),
             open_tooltips: Vec::new(),
             window_commands: VecDeque::new(),
+            menu_actions: VecDeque::new(),
+            menu_text: String::new(),
             last_window_name: None,
             slot_name: None,
             slot_namespace: None,
@@ -1258,6 +1265,43 @@ pub struct KuiCell {
     pub fg: u32,
     pub bg: u32,
     pub flags: u32,
+}
+
+/// [out] What choosing a context-menu row left for the host
+/// (`kui_take_menu_action`): the clipboard, which is the host's in this
+/// library. `KUI_MENU_ACTION_SET_CLIPBOARD` carries the text to put there;
+/// `KUI_MENU_ACTION_PASTE` carries nothing and asks for what is there,
+/// which the host delivers back with `kui_input_text`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiMenuAction {
+    /// [out] reservation; see `KUI_MENU_ACTION_INIT`.
+    pub size: u32,
+    /// A `KUI_MENU_ACTION_*` kind.
+    pub kind: u32,
+    /// Borrowed until the next `kui_take_menu_action` on this context.
+    pub text: KuiStr,
+}
+
+impl Default for KuiMenuAction {
+    fn default() -> Self {
+        Self {
+            size: std::mem::size_of::<Self>() as u32,
+            kind: 0,
+            text: KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
+        }
+    }
+}
+
+// SAFETY: `repr(C)` with `size: u32` first.
+unsafe impl OutParam for KuiMenuAction {
+    const ABI_V1_SIZE: u32 = abi_through!(KuiMenuAction, text, KuiStr);
+    fn size_mut(&mut self) -> &mut u32 {
+        &mut self.size
+    }
 }
 
 /// [out] Where a point landed in the text a keyed node drew

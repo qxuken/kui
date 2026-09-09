@@ -406,7 +406,9 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
-        "selection" => {
+        // Same tree as `selection`: the menu is not declared by anyone,
+        // it is what the core opens over the card on a secondary press.
+        "selection" | "menu" => {
             let lines = conformance::SELECTION_LINES
                 .iter()
                 .map(|l| format!("text(\"{l}\", {{ size = 13 }}),"))

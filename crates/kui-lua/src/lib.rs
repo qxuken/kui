@@ -313,6 +313,46 @@ fn key_query(ui: &mut Ui<'_>, v: mlua::Value) -> mlua::Result<Option<Key>> {
     }
 }
 
+/// `env.open_menu`'s items: a list of tables, `label` required for a
+/// custom row and everything else optional. An unknown `role` is an error
+/// rather than a quiet `custom`, so a Copy row that stopped being Copy
+/// says so instead of looking like the core ignoring it.
+fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
+    let mut out = Vec::new();
+    for row in t.sequence_values::<mlua::Table>() {
+        let row = row?;
+        let role = match row.get::<Option<String>>("role")?.as_deref() {
+            None | Some("custom") => kui_core::MenuRole::Custom,
+            Some("separator") => kui_core::MenuRole::Separator,
+            Some("cut") => kui_core::MenuRole::Cut,
+            Some("copy") => kui_core::MenuRole::Copy,
+            Some("paste") => kui_core::MenuRole::Paste,
+            Some("select_all") => kui_core::MenuRole::SelectAll,
+            Some("look_up") => kui_core::MenuRole::LookUp,
+            Some(other) => {
+                return Err(mlua::Error::runtime(format!(
+                    "unknown menu item role {other:?}"
+                )));
+            }
+        };
+        let label = row.get::<Option<String>>("label")?.unwrap_or_default();
+        if label.is_empty() && role == kui_core::MenuRole::Custom {
+            return Err(mlua::Error::runtime("a custom menu item needs a label"));
+        }
+        out.push(kui_core::MenuItem {
+            label,
+            role,
+            enabled: row.get::<Option<bool>>("enabled")?.unwrap_or(true),
+            id: match row.get::<mlua::Value>("id")? {
+                mlua::Value::Nil => None,
+                v => Some(lua_to_value(&v)?),
+            },
+            accel: row.get::<Option<String>>("accel")?,
+        });
+    }
+    Ok(out)
+}
+
 /// Host facts handed to `view(env)`, the reading `schema::ENV_FIELDS`
 /// documents and `the_env_table_is_the_documented_env_shape` pins to it key
 /// for key: `refresh_hz` (nil if unknown),
@@ -336,7 +376,9 @@ fn key_query(ui: &mut Ui<'_>, v: mlua::Value) -> mlua::Result<Option<Key>> {
 /// `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
 /// `caret_rect(key, byte)`, the selection calls `selection_text()` /
 /// `select_all_in(key)` / `clear_selection()` (ADR 0017 — one selection
-/// per window, a `selectable` scope's or the focused editor's), the
+/// per window, a `selectable` scope's or the focused editor's), the menu
+/// verbs `open_menu(key, x, y, items)` / `close_menu()` (whose chosen row
+/// comes back as a `menu` event on that node), the
 /// window requests `set_window_size(window,
 /// w, h)` / `focus_window(window)`, and the two calls of a script that
 /// hosts a plugin of its own: `add_extension(namespace, path)` and
@@ -593,6 +635,38 @@ fn env_table<'scope, 'env: 'scope>(
             r.set("byte", h.byte)?;
             r.set("line", h.line)?;
             Ok(mlua::Value::Table(r))
+        })?,
+    )?;
+    // Opens a context menu at (x, y) over a keyed node, its items a list
+    // of tables: `{ label=, role=, enabled=, id=, accel= }`, all but
+    // `label` optional, `role` one of "custom" (the default),
+    // "separator", "cut", "copy", "paste", "select_all", "look_up".
+    // Choosing a row posts `{kind="menu", role, item}` on the node and
+    // closes the menu (docs/adr/0017-selection-as-a-scope.md).
+    t.set(
+        "open_menu",
+        scope.create_function(
+            move |_, (key, x, y, items): (mlua::Value, f32, f32, mlua::Table)| {
+                let mut ui = ui.borrow_mut();
+                let Some(target) = key_query(&mut ui, key)? else {
+                    return Ok(false);
+                };
+                let items = menu_items(&items)?;
+                ui.open_menu(kui_core::Menu::new(
+                    target,
+                    kui_core::Vec2::new(x, y),
+                    items,
+                ));
+                Ok(true)
+            },
+        )?,
+    )?;
+    // Closes whatever menu is open; true when there was one.
+    t.set(
+        "close_menu",
+        scope.create_function(move |_, ()| {
+            let mut ui = ui.borrow_mut();
+            Ok(ui.close_menu())
         })?,
     )?;
     // The window's selected text: what a `selectable` scope holds, or the
@@ -2946,6 +3020,7 @@ mod tests {
                 "blur",
                 "caret_rect",
                 "clear_selection",
+                "close_menu",
                 "edit_text",
                 "extension_namespaces",
                 "focus_next",
@@ -2955,6 +3030,7 @@ mod tests {
                 "is_hovered",
                 "is_pressed",
                 "measure_text",
+                "open_menu",
                 "reveal",
                 "scroll_geometry",
                 "scroll_offset",
@@ -3096,6 +3172,65 @@ mod tests {
         assert_eq!(ws.len(), 1, "{ws:?}");
         assert_eq!(ws[0].code, kui_core::diag::AMBIGUOUS_KEY);
         assert!(ws[0].message.contains("\"item\""), "{}", ws[0].message);
+    }
+
+    /// A script opens a context menu with `env.open_menu` and hears the
+    /// chosen row as a `menu` event on the node it named (ADR 0017).
+    #[test]
+    fn scripts_open_a_menu_and_hear_the_row() {
+        let mut ext = LuaExtension::from_source(
+            "menu",
+            r#"
+                frames = 0
+                function view(env)
+                  frames = frames + 1
+                  if frames == 2 then
+                    opened = env.open_menu("card", 40, 30, {
+                      { role = "copy" },
+                      { role = "separator" },
+                      { label = "Inspect", id = "inspect" },
+                    })
+                  end
+                  return column {
+                    column { key = "card", selectable = true, text("one", { size = 14 }) },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let frame = |core: &mut Core, ext: &mut LuaExtension| {
+            let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+            ui.set_origin(OriginId(1));
+            ext.view(&Slot::root(), &mut ui).unwrap();
+            ui.finish();
+        };
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        assert!(ext.lua.globals().get::<bool>("opened").unwrap());
+        frame(&mut core, &mut ext);
+        // The row the tree reports is the row the pointer can press.
+        let row = core
+            .access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.name.as_deref() == Some("Inspect"))
+            .expect("the menu drew")
+            .rect;
+        let at = kui_core::Vec2::new(row.x + row.w / 2.0, row.y + row.h / 2.0);
+        core.handle_input(InputEvent::CursorMoved(at));
+        core.handle_input(InputEvent::mouse_down(1));
+        let events = core.handle_input(InputEvent::mouse_up());
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert_eq!(
+            events[0].payload.get("item").and_then(Value::as_str),
+            Some("inspect")
+        );
+        assert_eq!(
+            events[0].origin,
+            OriginId(1),
+            "posted with the origin that asked for the menu"
+        );
     }
 
     /// A `selectable` container scopes one selection over the runs inside

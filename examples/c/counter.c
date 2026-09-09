@@ -1958,6 +1958,9 @@ static const ConfScene CONF_SCENES[] = {
     {"live", conf_live},
     {"drag", conf_drag},
     {"selection", conf_selection},
+    /* Same builder: `menu` is that tree under a secondary press, and what
+     * it draws is the core's own menu rather than anything declared. */
+    {"menu", conf_selection},
     {"virtual", conf_virtual},
 };
 

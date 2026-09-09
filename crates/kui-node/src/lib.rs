@@ -267,6 +267,48 @@ fn resolve_query(core: &mut kui_core::Core, s: &str) -> Option<Key> {
     }
 }
 
+/// `openMenu`'s items: `{label, role, enabled, id, accel}` objects, with
+/// everything but `label` optional. An unknown `role` is an error rather
+/// than a silent `custom`: a menu whose Copy row quietly stopped being
+/// Copy would look like the core ignoring it.
+fn menu_items(v: &Json) -> Result<Vec<kui_core::MenuItem>> {
+    let Json::Array(rows) = v else {
+        return Err(err("openMenu needs an array of items"));
+    };
+    rows.iter()
+        .map(|row| {
+            let Json::Object(o) = row else {
+                return Err(err("each menu item is an object"));
+            };
+            let role = match o.get("role").and_then(Json::as_str) {
+                None | Some("custom") => kui_core::MenuRole::Custom,
+                Some("separator") => kui_core::MenuRole::Separator,
+                Some("cut") => kui_core::MenuRole::Cut,
+                Some("copy") => kui_core::MenuRole::Copy,
+                Some("paste") => kui_core::MenuRole::Paste,
+                Some("selectAll") => kui_core::MenuRole::SelectAll,
+                Some("lookUp") => kui_core::MenuRole::LookUp,
+                Some(other) => return Err(err(format!("unknown menu item role {other:?}"))),
+            };
+            let item = kui_core::MenuItem {
+                label: o
+                    .get("label")
+                    .and_then(Json::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                role,
+                enabled: o.get("enabled").and_then(Json::as_bool).unwrap_or(true),
+                id: o.get("id").map(value_of),
+                accel: o.get("accel").and_then(Json::as_str).map(str::to_string),
+            };
+            if item.label.is_empty() && item.role == kui_core::MenuRole::Custom {
+                return Err(err("a custom menu item needs a label"));
+            }
+            Ok(item)
+        })
+        .collect()
+}
+
 fn keycode_of(s: &str) -> Result<KeyCode> {
     KeyCode::from_name(s).ok_or_else(|| err(format!("unknown key code {s:?}")))
 }
@@ -2038,6 +2080,45 @@ macro_rules! core_methods {
                         o.insert("line".into(), Json::from(h.line));
                         Json::Object(o)
                     }))
+            }
+
+            /// Opens a context menu at `(x, y)` over the node `key`, with
+            /// `items` as plain objects: `{label, role, enabled, id,
+            /// accel}`, all but `label` optional. `role` is one of
+            /// `custom` (the default), `separator`, `cut`, `copy`,
+            /// `paste`, `selectAll` or `lookUp`; the standard ones take
+            /// their own wording when `label` is empty, and the core
+            /// performs the ones it can (`docs/adr/0017-selection-as-a-scope.md`).
+            ///
+            /// Choosing a row posts `{kind:"menu", role, item}` on `key`
+            /// and closes the menu; a press outside it or Escape closes it
+            /// with nothing posted. What an app answering its own
+            /// `onContextMenu` calls — and what the core calls itself for
+            /// a right-click nobody claimed, so the two menus are one
+            /// implementation.
+            #[napi]
+            pub fn open_menu(&mut self, key: String, x: f64, y: f64, items: Json) -> Result<bool> {
+                let Some(target) = resolve_query(self.$core(), &key) else {
+                    return Ok(false);
+                };
+                let items = menu_items(&items)?;
+                self.$core().open_menu(kui_core::Menu::new(
+                    target,
+                    Vec2::new(x as f32, y as f32),
+                    items,
+                ));
+                self.$redraw();
+                Ok(true)
+            }
+
+            /// Closes whatever menu is open; true when there was one.
+            #[napi]
+            pub fn close_menu(&mut self) -> Result<bool> {
+                let closed = self.$core().close_menu();
+                if closed {
+                    self.$redraw();
+                }
+                Ok(closed)
             }
 
             /// The window's selected text: what a `selectable` scope has

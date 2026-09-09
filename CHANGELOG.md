@@ -35,6 +35,38 @@ field reports).
 
 ### Added
 
+- **Context menus are data, and a right-click nobody claimed opens one**
+  (`docs/adr/0017-selection-as-a-scope.md`, step 2). A menu is a list of
+  items and a point: each item a label, an enabled flag, an optional
+  payload and a *role* — `cut`, `copy`, `paste`, `selectAll`, `lookUp`,
+  `separator`, or `custom` for one the app invented. `openMenu(key, x, y,
+  items)` / `env.open_menu(...)` / `kui_open_menu(...)` opens one over a
+  node; choosing a row posts `{kind:"menu", role, item}` on that node and
+  closes it, and a press outside or Escape closes it with nothing posted.
+
+  **The menu the core opens is the widget you can call.**
+  `widgets::context_menu` is public, and the automatic path calls exactly
+  it — so an app that answers its own `onContextMenu` to add two items of
+  its own keeps the layout, the arrow keys, the dismissal and the access
+  rows. It is a viewport-anchored float at the press point with `fit` (so
+  it flips in off an edge), `modal` (so ADR 0003 dismisses it) and
+  `menuItem` rows under a `menu` (so ADR 0007's keyboard and a screen
+  reader both find it).
+
+  **Automatic where it can be.** A right-click inside an `<edit>` offers
+  Cut, Copy, Paste and Select All; one inside a `selectable` scope offers
+  Copy and Select All; anywhere else it offers nothing, because a
+  right-click on a plain box has never opened a menu. A node that declares
+  `onContextMenu` wins and gets today's event unchanged. Rows that cannot
+  act — Copy with nothing selected — are drawn dimmed and inert rather
+  than left out, so the row a reader reaches for stays where it was.
+
+  The clipboard remains the host's: Copy and Cut queue the text the core
+  worked out, Paste asks for what is there, and the Rust runner answers
+  both through the calls Cmd-C/V already use. C hosts drain the same queue
+  with `kui_take_menu_action`. No ABI version moved — the new calls are new
+  symbols, and `KuiMenuItem` / `KuiMenuAction` are new structs.
+
 - **`selectable` — text outside an editor can be selected, and the
   selection reaches past the viewport** (`docs/adr/0017-selection-as-a-scope.md`,
   step 1). A node that declares it becomes a *selection scope*: the text of

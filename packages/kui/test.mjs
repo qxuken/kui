@@ -987,6 +987,47 @@ test('a composition and its commit reach the focused sink, anchored at its caret
   assert.equal(ctx.imeRect(), null);
 });
 
+// Context menus (ADR 0017, decision 5): a list of items and a point, not
+// a node — the core holds the open one and draws it, so a view asks with
+// a call and hears what was chosen as an event on the node it named.
+test('openMenu draws a menu whose chosen row posts on the target', () => {
+  const ctx = new Ctx();
+  const view = () => box({}, [box({ selectable: true }, [text('one', { size: 14 })], 'card')]);
+  ctx.frame(320, 240, 1, view());
+  assert.equal(ctx.selectionText(), null);
+  assert.equal(
+    ctx.openMenu('card', 40, 30, [
+      { role: 'copy' },
+      { role: 'separator' },
+      { label: 'Inspect', id: { do: 'inspect' } },
+    ]),
+    true,
+  );
+  ctx.frame(320, 240, 1, view());
+  // The rows are in the access tree as menuItems under a menu.
+  const tree = ctx.accessTree();
+  const rows = tree.nodes.filter((n) => n.role === 'menuItem');
+  assert.deepEqual(rows.map((r) => r.name), ['Copy', 'Inspect']);
+  const inspect = rows[1].rect;
+  ctx.cursor(inspect.x + inspect.w / 2, inspect.y + inspect.h / 2);
+  ctx.mouse(true, 1);
+  ctx.mouse(false);
+  const events = ctx.pollEvents();
+  assert.equal(events.length, 1, JSON.stringify(events));
+  const p = events[0].payload;
+  assert.equal(p.kind, 'menu');
+  assert.equal(p.role, 'custom');
+  assert.deepEqual(p.item, { do: 'inspect' });
+  assert.equal(ctx.closeMenu(), false, 'choosing closed it already');
+});
+
+test('openMenu refuses an item it cannot read', () => {
+  const ctx = new Ctx();
+  ctx.frame(320, 240, 1, box({}, [box({ selectable: true }, [text('one', { size: 14 })], 'card')]));
+  assert.throws(() => ctx.openMenu('card', 0, 0, [{ role: 'frobnicate' }]), /frobnicate/);
+  assert.throws(() => ctx.openMenu('card', 0, 0, [{}]), /needs a label/);
+});
+
 // A `selectable` container makes the text under it one selection
 // (ADR 0017): three labels select as three lines of one text, and a run
 // the frame built but never drew is part of it.
@@ -2701,6 +2742,11 @@ SCENE_TREES.selection = () =>
       'card',
     ),
   ]);
+
+// `menu` is the same tree under different steps: the stock context menu
+// is the core's, opened by a secondary press that nothing claimed, so no
+// binding declares it and all four must still draw it identically.
+SCENE_TREES.menu = () => SCENE_TREES.selection();
 
 // `conformance::build_drag`: one keyed handle whose drag deltas the event
 // rows carry, measured from the press point in every phase.

@@ -347,14 +347,27 @@ navigation, our dismissal and our access rows instead of reimplementing
 them; the corpus tests one menu rather than two; and the core's menu cannot
 drift from the one apps see, because it is the one apps see.
 
-For the bindings, the same widget is a **`menu` element** taking its items
-as data — `<menu at={[x, y]} items={[{id, label, enabled, role}]}
-onSelect={…}/>`, `menu { at = {x, y}, items = {…} }`, `kui_menu` — so
-"open a menu here with these five items" is one node in every language and
-not a hand-built column of `onClick` rows. An app answering its own
-`onContextMenu` builds one of these; so does the core. The item list is
-plain data either way, which is what lets a host swap in a native renderer
-for it (above) without the app changing a line.
+~~For the bindings, the same widget is a **`menu` element**~~ —
+**amended while building step 2 (2026-09-09): it is a verb, not an
+element.** The bindings get `openMenu(target, at, items)` /
+`open_menu(...)` / `kui_open_menu(...)`, mirroring `Core::open_menu`, and
+the items' choices come back as the `menu` event on the target.
+
+The reason is that this decision was written before the core held the
+menu. Once it does — and it must, for the automatic path to open one —
+an element is the wrong shape twice over. It would make the app re-declare
+an open menu on every frame and own "is it open" in its own model, which
+is a second copy of state the core is already keeping; and it would cost,
+per binding, an opcode, an encoder, a decoder, a parser arm and a C
+function, against a verb's handful of lines. What it would buy over the
+verb is nothing an app can see: the item list is plain data through either
+door, which is all a native renderer needs.
+
+The Rust widget stays a widget — `widgets::context_menu(ui, at, &items)`
+is what the core's own path calls and what a Rust app placing a menu
+itself calls — so the "one menu, not two" property the paragraph above
+argues for is unaffected. What changed is only how the other three
+languages ask for one.
 
 ### 6. Force click is one input event, and Look Up is a menu role
 
@@ -486,11 +499,14 @@ corpus can see it.
    viewport". **Built 2026-09-09**, corpus scene `selection` included: a
    drag across a `selectable` card, replayed by all four adapters, whose
    three highlight quads and their digest are what pin the ends.
-2. The menu as data: `MenuCommand`, `widgets::context_menu` and the `menu`
-   element it is exposed as, the stock renderer through the filler, the
-   default item sets, `onContextMenu` still winning. The widget lands
-   *before* the automatic path is wired, so the thing apps get and the
-   thing the core opens are the same code from the first commit.
+2. The menu as data: `widgets::context_menu` and the verb the bindings
+   open one with, the stock renderer through the filler, the default item
+   sets, `onContextMenu` still winning. The widget lands *before* the
+   automatic path is wired, so the thing apps get and the thing the core
+   opens are the same code from the first commit. **Built 2026-09-09**,
+   with the amendment above (a verb, not an element) and a corpus scene
+   `menu` — the `selection` tree under a secondary press, since the menu
+   is the core's and no binding declares it.
 3. Native menu renderers in the Rust runner: macOS first (it is the one
    with Look Up), Windows second.
 4. Cells: grid selection, `originLine`, linewise and block, copy with

@@ -248,6 +248,16 @@ impl<'a> Ui<'a> {
         self.core.copy_selection()
     }
 
+    /// Opens a context menu; see `Core::open_menu`.
+    pub fn open_menu(&mut self, menu: crate::menu::Menu) {
+        self.core.open_menu(menu);
+    }
+
+    /// Closes whatever menu is open; see `Core::close_menu`.
+    pub fn close_menu(&mut self) -> bool {
+        self.core.close_menu()
+    }
+
     /// Selects everything in the scope `key` declared; see
     /// `Core::select_all_in`.
     pub fn select_all_in(&mut self, key: Key) -> bool {
