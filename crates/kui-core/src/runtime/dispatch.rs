@@ -532,6 +532,13 @@ impl Core {
         let editor = region.edit_origin.map(|origin| (key, origin));
         let scope = region.select_scope;
         // Text first: the word under the pointer, selected, and looked up.
+        // The press that deepened into this force click is still running,
+        // and its drag would overwrite the word the moment the finger
+        // moved a pixel — which is what "the panel says one word and the
+        // highlight is one character" looks like. The gesture takes the
+        // press over: no caret drag, no selection drag.
+        self.select_dragging = None;
+        self.edit.dragging = None;
         if let Some((key, content_origin)) = editor {
             let local = Vec2::new(p.x - content_origin.x, p.y - content_origin.y);
             self.set_focus(Some(key));
@@ -543,9 +550,18 @@ impl Core {
             return;
         }
         if let Some(scope) = scope {
-            if self.select_word_at(scope, p)
-                && let Some(action) = self.lookup_action()
-            {
+            if !self.select_word_at(scope, p) {
+                return;
+            }
+            // A force click between words is a force click on nothing:
+            // looking up a space would put a dictionary panel over the
+            // page for no reason, which is not what the gesture does
+            // anywhere else on the platform.
+            if self.selection_text().is_none_or(|t| t.trim().is_empty()) {
+                self.clear_selection();
+                return;
+            }
+            if let Some(action) = self.lookup_action() {
                 self.menu_actions.push(action);
             }
             return;

@@ -2149,17 +2149,31 @@ impl TextSystem {
             if !run.place.drawn || end <= from || start >= to {
                 continue;
             }
-            let box_ = self.scope_box(&run);
-            let r = Rect::new(
-                box_.x / self.scale,
-                box_.y / self.scale,
-                box_.w / self.scale,
-                box_.h / self.scale,
-            );
-            out = Some(match out {
-                None => r,
-                Some(o) => o.union(&r),
-            });
+            let content = run.text.content();
+            let lo = floor_boundary(content, from.saturating_sub(start));
+            let hi = floor_boundary(content, (to - start).min(content.len()));
+            // The rects the *painter* would draw, not the run's box: a
+            // paragraph that wraps is one run four rows tall, and its box
+            // is four rows tall with it. Anchoring a panel to that puts it
+            // under the whole paragraph instead of under the word, which
+            // is what a reader sees as the popover pointing at nothing.
+            let (ox, oy) = self.physical_origin(run.place);
+            let rects = match run.text {
+                ScopeText::Long(l) => self.long_highlight(l, lo, hi),
+                ScopeText::Run(e) => Self::run_highlight(e, lo, hi),
+            };
+            for r in rects {
+                let r = Rect::new(
+                    (ox + r.x) / self.scale,
+                    (oy + r.y) / self.scale,
+                    r.w / self.scale,
+                    r.h / self.scale,
+                );
+                out = Some(match out {
+                    None => r,
+                    Some(o) => o.union(&r),
+                });
+            }
         }
         out
     }

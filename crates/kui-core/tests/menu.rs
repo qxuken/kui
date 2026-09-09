@@ -516,3 +516,107 @@ fn the_lookup_row_is_offered_where_a_host_can_show_one() {
     frame(&mut core);
     assert_eq!(rows(&mut core), ["Look Up", "Copy", "Select All"]);
 }
+
+/// A wrapped paragraph, a force click on a row that is not the first:
+/// the panel is anchored to the *word*, not to the paragraph's box. The
+/// bug this pins put the popover under the whole paragraph — a Look Up
+/// panel pointing at nothing (reported from a screenshot, 2026-09-09).
+#[test]
+fn the_panel_is_anchored_to_the_word_and_not_the_paragraph() {
+    let mut core = Core::new();
+    core.set_lookup_available(true);
+    let text = "Spans are plain data, so every frontend may build them. The whole \
+                paragraph is shaped together, which means wrapping crosses style \
+                boundaries correctly instead of breaking at every run.";
+    let build = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(420.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.with_keyed(
+            "card",
+            NodeSpec::column().width(Sizing::Fixed(400.0)).selectable(),
+            |ui| ui.text(text, TextStyle::new(16.0).line_height(26.0)),
+        );
+        ui.finish();
+    };
+    build(&mut core);
+    // Row three of the wrapped paragraph.
+    core.handle_input(InputEvent::ForceClick(Vec2::new(150.0, 60.0)));
+    let rect = core.selection_rect().expect("a word is selected");
+    assert!(
+        rect.y >= 52.0 && rect.y < 78.0,
+        "anchored on the row that was clicked, not the paragraph: {rect:?}"
+    );
+    assert!(
+        rect.h < 30.0,
+        "one line tall, not the whole paragraph: {rect:?}"
+    );
+    let word = core.selection_text().expect("a word");
+    assert!(
+        rect.w < 120.0,
+        "as wide as {word:?}, not the column: {rect:?}"
+    );
+}
+
+/// The press that deepened into a force click is still running, and its
+/// drag used to overwrite the word the moment the pointer moved — the
+/// panel said "Spans" while the highlight was one character wide.
+#[test]
+fn a_force_click_keeps_its_word_through_the_rest_of_the_press() {
+    let mut core = Core::new();
+    core.set_lookup_available(true);
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let lead = ui.measure_text("hello ", &style(), None).width;
+    let word = ui.measure_text("brave", &style(), None).width;
+    ui.with_keyed(
+        "card",
+        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
+        |ui| ui.text("hello brave world", style()),
+    );
+    ui.finish();
+    let at = Vec2::new(lead + word / 2.0, 8.0);
+    core.handle_input(InputEvent::CursorMoved(at));
+    core.handle_input(InputEvent::MouseDown {
+        button: MouseButton::Primary,
+        clicks: 1,
+    });
+    core.handle_input(InputEvent::ForceClick(at));
+    assert_eq!(core.selection_text().as_deref(), Some("brave"));
+    // The finger moves a little, as a finger does, and lets go.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(at.x + 2.0, at.y + 1.0)));
+    core.handle_input(InputEvent::MouseUp {
+        button: MouseButton::Primary,
+    });
+    assert_eq!(
+        core.selection_text().as_deref(),
+        Some("brave"),
+        "the press does not take the word back"
+    );
+}
+
+/// A single space between two words resolves to the word beside it — the
+/// hit rounds to the nearer character, which is what a reader means. A
+/// *run* of spaces is the case this pins: the middle of a wide gap is not
+/// a word, and putting a dictionary panel over the page for it is not
+/// what the gesture does anywhere else on the platform.
+#[test]
+fn a_force_click_in_a_wide_gap_looks_nothing_up() {
+    let mut core = Core::new();
+    core.set_lookup_available(true);
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let lead = ui.measure_text("hello", &style(), None).width;
+    let gap = ui.measure_text("hello          ", &style(), None).width - lead;
+    ui.with_keyed(
+        "card",
+        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
+        |ui| ui.text("hello          world", style()),
+    );
+    ui.finish();
+    core.handle_input(InputEvent::ForceClick(Vec2::new(lead + gap / 2.0, 8.0)));
+    assert_eq!(core.selection_text(), None, "no selection over a gap");
+    assert!(
+        core.take_menu_actions().is_empty(),
+        "and no panel over a space"
+    );
+}
