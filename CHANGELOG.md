@@ -21,6 +21,12 @@ field reports).
 
 **What breaks.**
 
+- **A single-line `<edit>` no longer wraps.** It takes one line whatever
+  its box, sizes to its text when its width is `fit`, and scrolls that
+  line under the caret when it is not — what `multiline: false` has always
+  said it is, and what the `<edit>` row already called "a native field".
+  A view that was relying on a field folding onto a second line wants
+  `multiline` on it. A multiline editor is unchanged.
 - **A `Fit`-width `<edit>` is now as wide as its text.** It was as wide as
   the widest line of its text wrapped at whatever width it had last frame,
   which is a number that only ever went down. Any arithmetic built on the
@@ -79,11 +85,34 @@ field reports).
   the one check that could have seen the gap had nothing to look at. The
   counter's `+1` carries it now.
 
+- **A single-line `<edit>` is a field, not a short document** (backlog
+  F41). `multiline` decided whether Enter inserts a newline, what the up
+  and down arrows do, and where a seed leaves the caret — and nothing
+  about layout: every editor was wrapped to its content width. So a name
+  that outgrew its field was drawn on two lines, or four, inside a box
+  measured for one. A field now lays out on one line and scrolls it under
+  the caret, clipping horizontally to its own content box (and only
+  horizontally — the ancestors own the vertical clip, and a descender is
+  not what a field is cutting off). Clicks, drag-selection and the access
+  tree's character rects all read the same offset emission drew with, and
+  a field that scrolls itself no longer makes a scrolling ancestor scroll
+  for it.
+
+  A field inside a `scrollX` box already worked, and still does; that is
+  a composition an app builds, and this is what the element does alone.
+
 ### What you can delete
 
 The cast, or the node you moved the accent onto: `accent` is a row on the
 stock button in TypeScript as it already was on the wire, and a button that
 carries it needs nothing standing beside it.
+
+The width you measured for a rename field, and the headroom you added past
+it. A field that hugs its text is `width: "fit"` now, and it grows on the
+frame the keystroke arrives — the core re-lays out the tree it was handed,
+so there is no frame where the text is wider than the box it is drawn in
+and nothing for a margin to absorb. If the box is a fixed size, the second
+line the text used to fold onto is gone too: it scrolls.
 
 ## 0.1.0-alpha.10 (2026-09-09)
 

@@ -160,6 +160,15 @@ impl Core {
             NodeContent::Edit(key) => {
                 let pad = spec.layout.padding;
                 let content_origin = Vec2::new(rect.x + pad.l, rect.y + pad.t);
+                let inner_w = (rect.w - pad.x()).max(0.0);
+                // A single-line field scrolls its own text (F41). Resolved
+                // here, where the box is known, and read back by the hit
+                // region and the access runs so all three agree on where
+                // the glyphs are.
+                let offset = {
+                    let sess = &mut *self.session.state();
+                    self.edit.line_offset(key, inner_w * scale, &mut sess.fonts)
+                };
                 if interactive {
                     hits.push(HitRegion {
                         key,
@@ -169,7 +178,12 @@ impl Core {
                         payload: None,
                         drag: None,
                         parent_rect: rect,
-                        edit_origin: Some(content_origin),
+                        // Shifted by what the field is scrolled: a click
+                        // lands on the character under the pointer.
+                        edit_origin: Some(Vec2::new(
+                            content_origin.x - offset / scale,
+                            content_origin.y,
+                        )),
                         key_sink: None,
                         key_up: false,
                         context_menu: None,
@@ -188,12 +202,30 @@ impl Core {
                     crate::geom::snap_px(content_origin.x * scale),
                     crate::geom::snap_px(content_origin.y * scale),
                 );
+                // A field bounds its own text horizontally — it is what
+                // makes scrolling one legible rather than a line running
+                // out over its neighbours. Horizontally only: the
+                // ancestors own the vertical clip, and a descender or a
+                // caret is not what a field is trying to cut off.
+                let edit_clip = if self.edit.is_multiline(key) {
+                    clip_px
+                } else {
+                    clip_px.intersect(
+                        Rect::new(
+                            origin_phys.x,
+                            clip_px.rect.y,
+                            inner_w * scale,
+                            clip_px.rect.h,
+                        ),
+                        crate::display::SQUARE,
+                    )
+                };
                 let sess = &mut *self.session.state();
                 self.edit.emit(
                     key,
                     origin_phys,
                     focused,
-                    clip_px,
+                    edit_clip,
                     &mut sess.fonts,
                     &mut self.text,
                     &mut self.atlas,
@@ -845,6 +877,21 @@ impl Core {
                         crate::geom::snap_px((rect.x + pad.l) * scale),
                         crate::geom::snap_px((rect.y + pad.t) * scale),
                     );
+                    // A field leaves scrolled where it was scrolled to, so
+                    // it takes its own horizontal clip with it (F41).
+                    let clip_px = if self.edit.is_multiline(key) {
+                        clip_px
+                    } else {
+                        clip_px.intersect(
+                            Rect::new(
+                                origin.x,
+                                clip_px.rect.y,
+                                (rect.w - pad.x()).max(0.0) * scale,
+                                clip_px.rect.h,
+                            ),
+                            crate::display::SQUARE,
+                        )
+                    };
                     // Never focused: the departing subtree gave the
                     // keyboard up the frame it stopped being declared.
                     let sess = &mut *self.session.state();

@@ -66,6 +66,11 @@ pub(crate) struct EditState {
     /// the buffer as it stands: the buffer is still carrying whatever
     /// width `wrapped` last set on it (backlog F38).
     natural: Option<(u64, u32, Size)>,
+    /// How far a single-line field has scrolled its text left, in physical
+    /// px. A field keeps the caret inside its box by moving the text under
+    /// it, the way a native field does, rather than by wrapping (backlog
+    /// F41); a multiline editor wraps and this stays 0.
+    offset_x: f32,
     /// In-progress IME composition: a marked, uncommitted range living
     /// inside the buffer (so the text around it reflows as it grows).
     preedit: Option<Preedit>,
@@ -400,6 +405,17 @@ impl Default for EditStore {
     }
 }
 
+/// What an editor's buffer may hold: a field is one line, so a newline that
+/// arrived in a seed or a `set_text` is dropped rather than drawn below a
+/// box measured for one line (F41). The same rule `apply_text` applies to
+/// typing and pasting, so the two doors agree.
+fn admitted(text: &str, multiline: bool) -> std::borrow::Cow<'_, str> {
+    if multiline || !text.contains(['\n', '\r']) {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    std::borrow::Cow::Owned(text.chars().filter(|c| *c != '\n' && *c != '\r').collect())
+}
+
 fn attrs_for<'a>(style: &TextStyle, res: &'a Resources) -> Attrs<'a> {
     Attrs::new()
         .family(res.family_of(style.family))
@@ -527,7 +543,7 @@ impl EditStore {
             let mut buffer = Buffer::new(fs, metrics);
             buffer.set_size(None, None);
             buffer.set_text(
-                initial,
+                &admitted(initial, opts.multiline),
                 &attrs_for(&opts.style, res),
                 Shaping::Advanced,
                 None,
@@ -563,6 +579,7 @@ impl EditStore {
                 metrics_rev: 0,
                 measured: None,
                 natural: None,
+                offset_x: 0.0,
                 preedit: None,
                 undo: VecDeque::new(),
                 redo: VecDeque::new(),
@@ -625,8 +642,9 @@ impl EditStore {
         };
         s.preedit = None;
         let a = attrs_for(&s.style, res);
+        let text = admitted(text, s.multiline);
         s.editor
-            .with_buffer_mut(|b| b.set_text(text, &a, Shaping::Advanced, None));
+            .with_buffer_mut(|b| b.set_text(&text, &a, Shaping::Advanced, None));
         s.editor.set_selection(Selection::None);
         s.editor.action(fs, Action::Motion(Motion::BufferEnd));
         s.version += 1;
@@ -743,6 +761,10 @@ impl EditStore {
         };
         let mut out = Vec::new();
         let mut n = 0;
+        // Where the glyphs are, not where they would be unscrolled: a
+        // screen reader's character rects have to land on the pixels
+        // emission drew (a scrolled field, F41).
+        let origin = Vec2::new(origin.x - s.offset_x, origin.y);
         s.editor.with_buffer(|b| {
             crate::access::runs_of_buffer(
                 b,
@@ -1075,11 +1097,57 @@ impl EditStore {
         let (x, y) = s.editor.cursor_position()?;
         let line_height = s.editor.with_buffer(|b| b.metrics().line_height);
         Some(Rect::new(
-            x as f32,
+            x as f32 - s.offset_x,
             y as f32,
             (2.0 * s.scale).max(2.0),
             line_height,
         ))
+    }
+
+    /// How far a single-line field's text is scrolled left, in physical
+    /// px, for a content box `inner_w` wide (physical too). 0 for a
+    /// multiline editor, which wraps instead.
+    ///
+    /// A field does not wrap ([`EditStore::wrapped`]), so a value that
+    /// outgrows its box is moved under the caret rather than folded onto a
+    /// second line — which is what a native field does, and what an app
+    /// otherwise has to fake by declaring the box wider than the text it
+    /// is about to hold (backlog F41). Recomputed where the box is known,
+    /// so a field that grows or shrinks between frames re-anchors with it.
+    pub(crate) fn line_offset(&mut self, key: Key, inner_w: f32, fs: &mut FontSystem) -> f32 {
+        let focused = self.focused == Some(key);
+        let Some(s) = self.states.get_mut(&key) else {
+            return 0.0;
+        };
+        if s.multiline {
+            return 0.0;
+        }
+        // Unfocused, a field shows its value from the start: what it says
+        // is what a reader wants, not where its caret was left.
+        if !focused {
+            s.offset_x = 0.0;
+            return 0.0;
+        }
+        s.editor.shape_as_needed(fs, false);
+        let caret_w = (2.0 * s.scale).max(2.0);
+        let text_w = s
+            .editor
+            .with_buffer(|b| b.layout_runs().map(|r| r.line_w).fold(0.0f32, f32::max));
+        if let Some((x, _)) = s.editor.cursor_position() {
+            let x = x as f32;
+            // Two ends, one rule: keep the caret inside the box, moving
+            // the text by the least that does it.
+            if x - s.offset_x > inner_w - caret_w {
+                s.offset_x = x - inner_w + caret_w;
+            }
+            if x < s.offset_x {
+                s.offset_x = x;
+            }
+        }
+        // Never past the end of the text (a field that shrank, or one
+        // whose value was replaced by a shorter one, scrolls back).
+        s.offset_x = s.offset_x.clamp(0.0, (text_w + caret_w - inner_w).max(0.0));
+        s.offset_x
     }
 
     // -- Layout measurement (logical units)
@@ -1126,10 +1194,33 @@ impl EditStore {
         size
     }
 
+    /// The editor's height at its final content width — and, for a
+    /// single-line field, the width it is *not* wrapped to.
+    ///
+    /// `multiline: false` is a field, not a short document: it lays out on
+    /// one line whatever it is given and scrolls that line under the caret
+    /// (see [`EditStore::line_offset`]), which is what a native field does
+    /// and what the `<edit>` row has always said it is. Wrapping one was
+    /// how a name that outgrew its box came to be drawn two lines tall
+    /// inside a box measured for one (backlog F41).
     pub(crate) fn wrapped(&mut self, key: Key, max_w: f32, fs: &mut FontSystem) -> Size {
         let Some(s) = self.states.get_mut(&key) else {
             return Size::ZERO;
         };
+        if !s.multiline {
+            // The buffer stays unwrapped (an editor that was multiline
+            // last frame may be carrying a width), and the box is one line
+            // tall whatever the text has in it — a `\n` that reached a
+            // field through `set_text` does not make it two.
+            if s.wrap.is_some() {
+                s.editor.with_buffer_mut(|b| b.set_size(None, None));
+                s.wrap = None;
+                s.invalidate_measurements();
+            }
+            s.editor.shape_as_needed(fs, false);
+            let line = s.editor.with_buffer(|b| b.metrics().line_height);
+            return Size::new(max_w, line / s.scale);
+        }
         let target = (max_w * s.scale).max(1.0);
         let differs = match s.wrap {
             Some(a) => (a - target).abs() > 0.5,
@@ -1197,6 +1288,9 @@ impl EditStore {
         } else {
             None
         };
+        // A single-line field scrolls its text under the caret; the box it
+        // scrolls inside is the clip emission was handed (F41).
+        let origin = Vec2::new(origin.x - s.offset_x, origin.y);
 
         s.editor.with_buffer(|b| {
             let line_height = b.metrics().line_height;

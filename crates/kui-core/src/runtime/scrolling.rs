@@ -96,10 +96,17 @@ impl Core {
         else {
             return;
         };
+        let pad = self.tree.specs[i].layout.padding;
+        // A single-line field scrolls its own text, and the box it does
+        // that in is final now that layout has run — so settle its offset
+        // before asking where the caret is. Without this the ancestor
+        // scrolls to reveal a caret the field is about to bring into view
+        // itself (F41); emission recomputes the same number.
+        let inner_w = (self.tree.size[i].w - pad.x()).max(0.0) * self.scale;
+        self.edit_with_fonts(|edit, fs| edit.line_offset(key, inner_w, fs));
         let Some(caret_phys) = self.edit_with_fonts(|edit, fs| edit.caret_rect(key, fs)) else {
             return;
         };
-        let pad = self.tree.specs[i].layout.padding;
         let caret = Rect::new(
             self.tree.pos[i].x + pad.l + caret_phys.x / self.scale,
             self.tree.pos[i].y + pad.t + caret_phys.y / self.scale,

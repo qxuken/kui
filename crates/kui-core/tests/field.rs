@@ -1,7 +1,12 @@
-//! An `<edit>` measures what its text wants, not what the last frame's
-//! wrap left of it. Backlog F38.
+//! A single-line `<edit>` is a field, not a short document: it measures
+//! what its text wants, lays out on one line whatever it is given, and
+//! scrolls that line under the caret. Backlog F38 (the fit width that fed
+//! back on itself) and F41 (the field that wrapped).
 
-use kui_core::{Core, EditOptions, InputEvent, Key, NodeSpec, Size, Sizing, TextStyle};
+use kui_core::{
+    Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, QuadKind, Size, Sizing, TextStyle,
+    Vec2,
+};
 
 const PAD: f32 = 5.0;
 
@@ -39,6 +44,19 @@ fn frame(
         .map(|n| n.rect)
         .expect("the editor is in the access tree");
     (key, rect)
+}
+
+/// The glyph quads of the last frame, left to right.
+fn glyphs(core: &mut Core) -> Vec<kui_core::Quad> {
+    let (dl, _) = core.output();
+    let mut out: Vec<_> = dl
+        .quads
+        .iter()
+        .filter(|q| !matches!(q.kind, QuadKind::Solid))
+        .copied()
+        .collect();
+    out.sort_by(|a, b| a.rect.x.total_cmp(&b.rect.x));
+    out
 }
 
 /// How many visual lines the editor's text is on, read off the access
@@ -92,4 +110,127 @@ fn a_style_change_remeasures_the_same_text() {
         small.w,
         big.w
     );
+}
+
+#[test]
+fn a_field_does_not_wrap_and_a_document_does() {
+    // F41: `multiline` decides it, and it used to decide nothing about
+    // layout — both wrapped, so a name that outgrew its box was drawn two
+    // lines tall inside a box measured for one.
+    let long = "Throwaway name that is long";
+    let mut core = Core::new();
+    let (field, field_rect) = frame(&mut core, long, false, Some(80.0), 16.0);
+    assert_eq!(lines(&mut core, field), 1, "a field is one line");
+
+    let mut core = Core::new();
+    let (doc, doc_rect) = frame(&mut core, long, true, Some(80.0), 16.0);
+    assert!(
+        lines(&mut core, doc) > 1,
+        "a multiline editor still wraps to its box"
+    );
+    assert!(
+        doc_rect.h > field_rect.h,
+        "and is taller for it: {} vs {}",
+        doc_rect.h,
+        field_rect.h
+    );
+}
+
+#[test]
+fn a_field_scrolls_its_text_under_the_caret() {
+    let mut core = Core::new();
+    let (_key, rect) = frame(&mut core, "", false, Some(100.0), 16.0);
+    core.handle_input(InputEvent::Text("Throwaway name that is long".into()));
+    frame(&mut core, "", false, Some(100.0), 16.0);
+
+    let content_l = rect.x + PAD;
+    let content_r = rect.x + rect.w - PAD;
+    let drawn = glyphs(&mut core);
+    assert!(!drawn.is_empty(), "no glyphs emitted");
+    assert!(
+        drawn[0].rect.x < content_l,
+        "the head of the text has scrolled out to the left: {} vs {content_l}",
+        drawn[0].rect.x
+    );
+    // Every glyph is clipped to the field's content box, so the tail does
+    // not run out over whatever sits beside it.
+    for q in &drawn {
+        assert!(
+            q.clip.x >= content_l - 0.5 && q.clip.x + q.clip.w <= content_r + 0.5,
+            "a glyph escaped the field: clip {:?} vs {content_l}..{content_r}",
+            q.clip
+        );
+    }
+    // The caret is at the end and inside the box, which is the whole point.
+    // `ime_rect` is where the focused caret was drawn, in viewport px.
+    let caret = core.ime_rect().expect("the focused caret has a rect");
+    assert!(
+        caret.x >= rect.x && caret.x <= content_r,
+        "caret at {} is outside {}..{content_r}",
+        caret.x,
+        rect.x
+    );
+
+    // Home brings the head back.
+    core.handle_input(InputEvent::Key(EditKey::Home, Mods::default()));
+    frame(&mut core, "", false, Some(100.0), 16.0);
+    let head = glyphs(&mut core)[0].rect.x;
+    assert!(
+        (head - content_l).abs() < 1.0,
+        "Home should scroll the field back to the start: {head} vs {content_l}"
+    );
+}
+
+#[test]
+fn a_click_lands_on_the_character_under_it_while_scrolled() {
+    let mut core = Core::new();
+    let (key, rect) = frame(&mut core, "", false, Some(100.0), 16.0);
+    core.handle_input(InputEvent::Text("aaaaaaaaaaaaaaaaaaaaaaaaaaaa".into()));
+    frame(&mut core, "", false, Some(100.0), 16.0);
+    let end = core.edit_text(key).unwrap().len();
+
+    // A click at the left edge of the content box picks the first
+    // character *shown*, which is deep into the text — not the first
+    // character of the value.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(
+        rect.x + PAD + 1.0,
+        rect.y + rect.h / 2.0,
+    )));
+    core.handle_input(InputEvent::MouseDown {
+        button: kui_core::MouseButton::Primary,
+        clicks: 1,
+    });
+    core.handle_input(InputEvent::MouseUp {
+        button: kui_core::MouseButton::Primary,
+    });
+    let (caret, _) = core
+        .edit
+        .caret_and_selection(key)
+        .expect("a caret after the click");
+    assert!(
+        caret > 0 && caret < end,
+        "the click should land inside the shown window of the text, not at {caret} of {end}"
+    );
+}
+
+#[test]
+fn a_field_keeps_its_value_to_one_line() {
+    // Typing already dropped a newline into a field; a seed and a
+    // `set_text` do too, so the buffer cannot hold a line the box was
+    // never measured for.
+    let mut core = Core::new();
+    let (key, _) = frame(&mut core, "one\ntwo", false, None, 16.0);
+    assert_eq!(core.edit_text(key).as_deref(), Some("onetwo"));
+    assert_eq!(lines(&mut core, key), 1);
+
+    core.set_edit_text(key, "three\nfour");
+    frame(&mut core, "", false, None, 16.0);
+    assert_eq!(core.edit_text(key).as_deref(), Some("threefour"));
+    assert_eq!(lines(&mut core, key), 1);
+
+    // A document keeps both.
+    let mut core = Core::new();
+    let (doc, _) = frame(&mut core, "one\ntwo", true, None, 16.0);
+    assert_eq!(core.edit_text(doc).as_deref(), Some("one\ntwo"));
+    assert_eq!(lines(&mut core, doc), 2);
 }
