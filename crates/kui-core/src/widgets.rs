@@ -4,7 +4,7 @@
 
 use crate::color::Color;
 use crate::edit::EditOptions;
-use crate::geom::Edges;
+use crate::geom::{Edges, Vec2};
 use crate::key::Key;
 use crate::spec::{Align, NodeSpec, Sizing, TextStyle};
 use crate::stats::{FrameSample, STATS_CAPACITY};
@@ -689,4 +689,406 @@ fn spacer_spec(h: f32) -> NodeSpec {
     NodeSpec::column()
         .width(Sizing::Grow(1.0))
         .height(Sizing::Fixed(h))
+}
+
+// -- Variable-height virtual lists ------------------------------------------
+// `virtual_column` takes one stride and every row must come out that tall,
+// which is the log viewer, the data table and the chat history whose rows are
+// one line. A row that wraps, a card with an image, a message that is
+// sometimes three lines: none of those have a stride, and the three things
+// the uniform arithmetic does with `i * row_h` — the lead spacer, the search
+// from an offset to the first visible row, and "scroll to row i" — have no
+// closed form without one. Prefix sums are the closed form, and
+// `RowHeights` is where they live.
+//
+// Heights come from the caller, measured only for the rows the frame needs:
+// `measure_text` gives layout's own number for a text row (wrap, max_lines
+// and the shaping cache included), so a row measured and then drawn shapes
+// once. Everything not measured yet stands at an estimate, and the estimate
+// is the mean of what has been measured — which means it *moves*, and moving
+// it changes the height of every row above the window as well as below.
+// That is what the anchor is for.
+
+/// The heights a [`virtual_rows`] list slices by: a measured number per row
+/// where one is known, an estimate everywhere else, and the prefix sums over
+/// both.
+///
+/// The app owns it and hands the same one back every frame — a widget
+/// composed from primitives keeps no state of its own, which is what keeps
+/// it reachable from a scripting frontend. Rebuild it (or [`Self::clear`])
+/// when the rows themselves change.
+#[derive(Clone, Debug)]
+pub struct RowHeights {
+    /// One per row; `f32::NAN` for a row nothing has measured yet.
+    h: Vec<f32>,
+    /// The prefix sums, split so that the estimate is applied at the query
+    /// rather than baked in: `m[i]` is the measured height in rows `0..i`
+    /// and `u[i]` how many of those rows have none. A moving mean then costs
+    /// nothing to fold in — which matters, because every measurement moves
+    /// it, and a mean baked into the sums would dirty all of them.
+    m: Vec<f32>,
+    u: Vec<u32>,
+    /// How many entries of `m` / `u` are valid, counting from 0. Filled
+    /// on demand and only as far as a query asks, so a list scrolled to row
+    /// 30 never sums the 9,970 below it; a measurement at row `i` truncates
+    /// this to `i + 1`, since nothing at or below `i` changed.
+    clean: usize,
+    /// What the caller guessed before anything was measured.
+    seed: f32,
+    /// Running mean of the measured rows — the estimate for the rest.
+    sum: f32,
+    n: usize,
+    /// The content width the cached heights were measured at. A different
+    /// one rewraps every row, so it drops them all.
+    width: f32,
+    /// Where the last search landed. Scrolling is local, so the next one
+    /// gallops out from here instead of bisecting the whole list — which is
+    /// what keeps the lazy `ensure` above from being filled past what is
+    /// being looked at, and what a bisection from 0..len would defeat by
+    /// probing the middle every time.
+    last: usize,
+}
+
+impl RowHeights {
+    /// `rows` rows, none measured, each standing at `estimate` logical px
+    /// until it is. The estimate only has to be the right order of
+    /// magnitude: it decides how wrong the scrollbar is before the list has
+    /// been scrolled through, and nothing else.
+    pub fn new(rows: usize, estimate: f32) -> Self {
+        RowHeights {
+            h: vec![f32::NAN; rows],
+            m: vec![0.0],
+            u: vec![0],
+            clean: 1,
+            seed: estimate.max(1.0),
+            sum: 0.0,
+            n: 0,
+            width: f32::NAN,
+            last: 0,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.h.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.h.is_empty()
+    }
+
+    /// Grows or shrinks to `rows`, keeping what is still in range — rows
+    /// appended to a log keep every height already measured, and cost
+    /// nothing until something asks about them. A list whose rows *changed*
+    /// rather than grew wants [`Self::clear`].
+    pub fn set_len(&mut self, rows: usize) {
+        if rows == self.h.len() {
+            return;
+        }
+        for i in rows..self.h.len() {
+            self.forget(i);
+        }
+        self.h.resize(rows, f32::NAN);
+        self.clean = self.clean.min(rows + 1);
+    }
+
+    /// Forgets every measurement, keeping the length and the seed — the call
+    /// for a list whose contents changed under the same indices.
+    pub fn clear(&mut self) {
+        self.h.fill(f32::NAN);
+        self.sum = 0.0;
+        self.n = 0;
+        self.clean = 1;
+    }
+
+    /// Records row `i`'s height. Rows measured this way are what the
+    /// estimate for the others is the mean of.
+    pub fn set(&mut self, i: usize, h: f32) {
+        if i >= self.h.len() || !h.is_finite() || h < 0.0 {
+            return;
+        }
+        self.forget(i);
+        self.h[i] = h;
+        self.sum += h;
+        self.n += 1;
+        // Everything up to and including row `i`'s own top is unchanged.
+        self.clean = self.clean.min(i + 1);
+    }
+
+    fn forget(&mut self, i: usize) {
+        let old = self.h[i];
+        if !old.is_nan() {
+            self.sum -= old;
+            self.n -= 1;
+            self.h[i] = f32::NAN;
+            self.clean = self.clean.min(i + 1);
+        }
+    }
+
+    /// Row `i`'s height as it was measured, or `None` for one standing at
+    /// the estimate.
+    pub fn measured(&self, i: usize) -> Option<f32> {
+        self.h.get(i).copied().filter(|h| !h.is_nan())
+    }
+
+    /// Row `i`'s height: measured, or the estimate.
+    pub fn get(&self, i: usize) -> f32 {
+        self.measured(i).unwrap_or_else(|| self.estimate())
+    }
+
+    /// What an unmeasured row stands at: the mean of the measured ones, or
+    /// the caller's seed before there are any.
+    pub fn estimate(&self) -> f32 {
+        if self.n == 0 {
+            self.seed
+        } else {
+            self.sum / self.n as f32
+        }
+    }
+
+    /// The width the measurements were taken at, or `NaN` before any.
+    pub fn width(&self) -> f32 {
+        self.width
+    }
+
+    /// Declares the content width the next measurements are for. A width
+    /// that differs from the cached one drops every height — the rows wrap
+    /// differently now — and returns true. [`virtual_rows`] calls this from
+    /// the container's own laid-out box.
+    pub fn set_width(&mut self, w: f32) -> bool {
+        if !w.is_finite() || w <= 0.0 || (self.width - w).abs() < 0.5 {
+            return false;
+        }
+        let had = self.n > 0;
+        self.width = w;
+        if had {
+            self.clear();
+        }
+        true
+    }
+
+    /// Fills the prefix sums up to `i` if they do not reach it yet.
+    fn ensure(&mut self, i: usize) {
+        let want = i.min(self.h.len()) + 1;
+        if self.clean >= want {
+            return;
+        }
+        self.m.truncate(self.clean);
+        self.u.truncate(self.clean);
+        self.m.reserve(want - self.clean);
+        self.u.reserve(want - self.clean);
+        let (mut acc, mut est) = (self.m[self.clean - 1], self.u[self.clean - 1]);
+        for &h in &self.h[self.clean - 1..want - 1] {
+            if h.is_nan() {
+                est += 1;
+            } else {
+                acc += h;
+            }
+            self.m.push(acc);
+            self.u.push(est);
+        }
+        self.clean = want;
+    }
+
+    /// The top of row `i` in content coordinates — the height of everything
+    /// above it. `offset_of(len())` is the whole list's height.
+    pub fn offset_of(&mut self, i: usize) -> f32 {
+        let i = i.min(self.h.len());
+        self.ensure(i);
+        self.m[i] + self.u[i] as f32 * self.estimate()
+    }
+
+    /// The list's total height, measured and estimated together — what the
+    /// two spacers and the scrollbar are made of. Kept as it goes, so the
+    /// tail spacer costs nothing however long the list is.
+    pub fn total(&self) -> f32 {
+        self.sum + (self.h.len() - self.n) as f32 * self.estimate()
+    }
+
+    /// The row `y` (content coordinates) lands in: the last row whose top is
+    /// at or above it, clamped to the list. The binary search that replaces
+    /// `y / row_h`.
+    pub fn row_at(&mut self, y: f32) -> usize {
+        let rows = self.h.len();
+        if rows == 0 || y <= 0.0 {
+            self.last = 0;
+            return 0;
+        }
+        // `offset_of` is non-decreasing, so what is wanted is the last row
+        // whose top is at or below `y`. Row 0's top is 0, so it always
+        // qualifies and the bracket below always closes.
+        let mut lo = self.last.min(rows - 1);
+        let mut hi;
+        if self.offset_of(lo) > y {
+            hi = lo;
+            let mut step = 1usize;
+            while lo > 0 {
+                lo = lo.saturating_sub(step);
+                if self.offset_of(lo) <= y {
+                    break;
+                }
+                hi = lo;
+                step *= 2;
+            }
+        } else {
+            hi = (lo + 1).min(rows);
+            let mut step = 1usize;
+            while hi < rows && self.offset_of(hi) <= y {
+                lo = hi;
+                hi = (hi + step).min(rows);
+                step *= 2;
+            }
+        }
+        while lo + 1 < hi {
+            let mid = lo + (hi - lo) / 2;
+            if self.offset_of(mid) <= y {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        self.last = lo;
+        lo
+    }
+}
+
+/// A vertically scrolling column of rows of *different* heights that builds
+/// only the visible ones — [`virtual_column`] where no single stride
+/// describes the list.
+///
+/// `measure(ui, i, width)` returns row `i`'s height at that content width,
+/// and is called only for rows the frame is about to build that `heights`
+/// has no number for; `ui.measure_text(.., Some(width))` is layout's own
+/// answer for a text row, wrap and all, and shapes through the same cache
+/// the row's draw will hit. What it returns is the height the row *gets*:
+/// each row's node is fixed to it, so the arithmetic above and below can
+/// never disagree with the layout, the way `virtual_column`'s stride cannot.
+/// A row that would rather size itself has to say what that size is here.
+///
+/// `row(ui, i)` declares row `i` inside that node, exactly as
+/// `virtual_column`'s does, and rows are opened with [`Ui::open_indexed`] at
+/// their data index, so a row keeps its hover, focus, edit buffer and tweens
+/// as the built range slides over it.
+///
+/// **What it does that the uniform one never has to:** every row not yet
+/// measured stands at the mean of the ones that are, so measuring the rows
+/// this frame builds changes the height of every row it does not — the ones
+/// above the window included. Left alone that slides the content out from
+/// under the pointer on the frame it learns anything. So the widget takes
+/// the row the window starts in and how far into it, measures, and then puts
+/// that pair back: `Core::set_scroll` from inside a view lands on the frame
+/// being built (the positions pass reads the store after the view has run),
+/// so the corrected frame is the only one ever seen. What does move is the
+/// scrollbar, which is the honest thing to move — the list really did just
+/// learn it is a different length.
+///
+/// Returns the container's key, for `set_scroll` — and "scroll to row `i`"
+/// is `set_scroll(key, Vec2::new(0.0, heights.offset_of(i)))`, exact for a
+/// measured row and converging over a frame or two for one that is not.
+pub fn virtual_rows(
+    ui: &mut Ui<'_>,
+    label: &str,
+    spec: NodeSpec,
+    heights: &mut RowHeights,
+    mut measure: impl FnMut(&mut Ui<'_>, usize, f32) -> f32,
+    mut row: impl FnMut(&mut Ui<'_>, usize),
+) -> Key {
+    const OVERSCAN: usize = 2;
+    // Measuring changes the heights the range was sliced from, which can
+    // widen it; four passes is far more than a screenful ever needs and
+    // bounds the work whatever the measurements do.
+    const PASSES: usize = 4;
+
+    let key = ui.child_key(label);
+    let pad = spec.layout.padding;
+    let (offset_y, vh, cw, first_frame) = match ui.scroll_geometry(key) {
+        Some(g) => (g.offset.y, g.rect.h, g.rect.w - pad.x(), false),
+        // Nothing laid out yet: a screenful of the viewport is a safe
+        // over-build for one frame, and the width is its width.
+        None => (
+            ui.scroll_offset(key).y,
+            ui.viewport().h,
+            ui.viewport().w - pad.x(),
+            true,
+        ),
+    };
+    // A resize rewraps every row, so the cache is void; the frame after it
+    // measures a screenful again.
+    heights.set_width(cw);
+
+    // The row the window starts in and how far into it — the pair the
+    // correction below puts back where it was.
+    let mut top = (offset_y - pad.t).max(0.0);
+    let anchor = heights.row_at(top);
+    let into = top - heights.offset_of(anchor);
+
+    let mut range = visible_range(heights, top, vh, OVERSCAN);
+    for _ in 0..PASSES {
+        let mut measured = false;
+        for i in range.clone() {
+            if heights.measured(i).is_none() {
+                let h = measure(ui, i, cw);
+                heights.set(i, h);
+                measured = true;
+            }
+        }
+        if !measured {
+            break;
+        }
+        // Measuring moved the numbers the slice was taken from — this row's
+        // own, the rows above it, and (through the mean) every row nobody
+        // has measured at all. Put the anchor row back where it was before
+        // re-slicing, so what is under the pointer does not slide out from
+        // under it.
+        top = heights.offset_of(anchor) + into;
+        let next = visible_range(heights, top, vh, OVERSCAN);
+        if next == range {
+            break;
+        }
+        range = next;
+    }
+
+    // `Core::set_scroll` from inside a view lands on the frame being built:
+    // the positions pass reads the store after the view has run. So the
+    // frame that learned the rows are a different size is drawn already
+    // corrected, and the uncorrected one is never seen.
+    let corrected = top + pad.t;
+    if (corrected - offset_y).abs() > 0.01 {
+        ui.set_scroll(key, Vec2::new(0.0, corrected));
+    }
+
+    let lead = heights.offset_of(range.start);
+    let tail = heights.total() - heights.offset_of(range.end);
+    ui.with_keyed(label, spec.scroll_y().gap(0.0), |ui| {
+        if lead > 0.0 {
+            ui.with_keyed("lead", spacer_spec(lead), |_| {});
+        }
+        for i in range.clone() {
+            ui.with_indexed(i as u64, row_spec(heights.get(i)), |ui| row(ui, i));
+        }
+        if tail > 0.0 {
+            ui.with_keyed("tail", spacer_spec(tail), |_| {});
+        }
+    });
+
+    if first_frame {
+        ui.request_frame();
+    }
+    key
+}
+
+/// The rows crossing `[top, top + vh)` plus `overscan` on each side, by
+/// prefix-sum search. The variable-height [`visible_rows`].
+fn visible_range(
+    heights: &mut RowHeights,
+    top: f32,
+    vh: f32,
+    overscan: usize,
+) -> std::ops::Range<usize> {
+    let rows = heights.len();
+    if rows == 0 {
+        return 0..0;
+    }
+    let first = heights.row_at(top).saturating_sub(overscan);
+    let last = (heights.row_at(top + vh.max(0.0)) + 1 + overscan).min(rows);
+    first..last.max(first)
 }

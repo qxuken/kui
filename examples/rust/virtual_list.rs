@@ -1,0 +1,360 @@
+//! A ten-thousand-row list that costs a screenful.
+//!
+//! The core builds every child a view declares, so a naive thousand-row
+//! column pays for a thousand rows on every frame. `Core::scroll_geometry`
+//! is the way out: it retains what the last layout resolved for a scroll
+//! container — its box, its content size and the clamped offset — so the
+//! *view* can decide which rows are worth declaring, and hold the space of
+//! the rest with two spacers.
+//!
+//! Two spellings of the same thing:
+//!
+//!   - **`widgets::virtual_column`** is the uniform-row case done — visible
+//!     range, two rows of overscan, the two spacers, and rows opened at
+//!     their *data* index so a row keeps its hover, focus and tweens as the
+//!     built range slides over it.
+//!   - **`widgets::visible_rows` + `ui.scroll_geometry`** is the arithmetic
+//!     alone, for a view that builds its own container (a header inside the
+//!     scroller, a grid, rows that are not all one node). `--by-hand` runs
+//!     that one; it is what the widget does, unrolled.
+//!
+//! And when the rows are *not* all one height — a log whose lines wrap —
+//! `widgets::virtual_rows` is the same idea over prefix sums instead of a
+//! stride: heights come from a `measure` callback it runs only for the rows
+//! it is about to build, everything else stands at the mean of those, and
+//! the row the window starts in is put back where it was after each frame
+//! learns something, so the content never slides. `--variable` runs that.
+//!
+//! Run: cargo run -p kui --example virtual_list
+//!      cargo run -p kui --example virtual_list -- --by-hand
+//!      cargo run -p kui --example virtual_list -- --variable
+//!      cargo run -p kui --example virtual_list -- --headless
+
+use kui::{
+    Align, App, Color, Key, NodeSpec, Role, Sizing, TextStyle, TextWrap, Ui, UiEvent, Value,
+    widgets,
+};
+
+const ROWS: usize = 10_000;
+const ROW_H: f32 = 28.0;
+/// The geometry a view slices by is the previous frame's, so a resize (and
+/// the frame a wheel jump lands on) is one frame late; two rows cover it.
+const OVERSCAN: usize = 2;
+
+struct VirtualList {
+    selected: usize,
+    mode: Mode,
+    /// What the last frame built, for the header to report.
+    built: std::ops::Range<usize>,
+    /// `--variable` only: the row heights, which the app owns because the
+    /// widget is composed from primitives and keeps nothing of its own.
+    heights: widgets::RowHeights,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Mode {
+    Widget,
+    ByHand,
+    Variable,
+}
+
+/// `--variable`'s data: lines of very different lengths, so wrapping gives
+/// the rows three or four different heights and no stride describes them.
+fn line_of(i: usize) -> String {
+    let words = 2 + (i * 7 + i / 3) % 22;
+    let mut s = format!("{i:>5}  ");
+    for w in 0..words {
+        s.push_str(["log", "line", "of", "some", "length", "here"][w % 6]);
+        s.push(' ');
+    }
+    s
+}
+
+const BODY: f32 = 13.0;
+
+fn ink() -> Color {
+    Color::rgb8(0x8a, 0x8a, 0x9a)
+}
+
+/// One row. Whatever declares it, it has to come out exactly `ROW_H` tall:
+/// that is the stride the arithmetic above and below it assumes.
+fn row(ui: &mut Ui<'_>, i: usize, selected: usize) {
+    let bg = if i == selected {
+        Color::rgb8(0x2f, 0x4f, 0x7f)
+    } else if i.is_multiple_of(2) {
+        Color::rgb8(0x22, 0x22, 0x2c)
+    } else {
+        Color::rgb8(0x1c, 0x1c, 0x24)
+    };
+    ui.with(
+        NodeSpec::row()
+            .fill()
+            .pad(6.0)
+            .gap(8.0)
+            .cross_align(Align::Center)
+            .bg(bg)
+            .hover_bg(Color::rgb8(0x2a, 0x2a, 0x38))
+            .on_click(Value::Int(i as i64))
+            .role(Role::ListItem)
+            .label(format!("row {i} of {ROWS}")),
+        |ui| {
+            ui.text(&format!("{i:>5}"), TextStyle::new(13.0).color(ink()));
+            ui.text(
+                &format!("log line {i}"),
+                TextStyle::new(13.0).color(Color::rgb8(0xe8, 0xe8, 0xf0)),
+            );
+        },
+    );
+}
+
+/// The style a `--variable` row's text is measured *and* drawn in. The
+/// measurement is only worth anything if it is the same style: `measure_text`
+/// is what layout would give a text node with this content and this style.
+fn body() -> TextStyle {
+    TextStyle::new(BODY)
+        .color(Color::rgb8(0xe8, 0xe8, 0xf0))
+        .wrap(TextWrap::Word)
+}
+
+fn list_spec() -> NodeSpec {
+    NodeSpec::column()
+        .fill()
+        .bg(Color::rgb8(0x14, 0x14, 0x18))
+        .role(Role::List)
+        .label("log")
+}
+
+impl VirtualList {
+    /// The whole list, in one call.
+    fn widget(&mut self, ui: &mut Ui<'_>) {
+        let selected = self.selected;
+        let (mut first, mut last) = (usize::MAX, 0usize);
+        widgets::virtual_column(ui, "log", list_spec(), ROWS, ROW_H, |ui, i| {
+            first = first.min(i);
+            last = i + 1;
+            row(ui, i, selected);
+        });
+        self.built = if last == 0 { 0..0 } else { first..last };
+    }
+
+    /// The same list with the container in the app's hands: read the
+    /// geometry, slice, and open each row at its data index.
+    fn by_hand(&mut self, ui: &mut Ui<'_>) {
+        // The key the container *will* have — `child_key` is the same hash
+        // the open below computes, so the geometry can be read before the
+        // node it belongs to is declared.
+        let key: Key = ui.child_key("log");
+        // `None` until a layout has resolved the container: on the first
+        // frame slice by the viewport instead, and ask for the frame that
+        // will know better.
+        let (offset_y, vh) = match ui.scroll_geometry(key) {
+            Some(g) => (g.offset.y, g.rect.h),
+            None => {
+                ui.request_frame();
+                (ui.scroll_offset(key).y, ui.viewport().h)
+            }
+        };
+        let range = widgets::visible_rows(offset_y, vh, 0.0, ROW_H, ROWS, OVERSCAN);
+        self.built = range.clone();
+
+        let selected = self.selected;
+        // `scroll_y()` implies the clip; `gap(0)` because the stride is
+        // `ROW_H` and nothing else.
+        ui.with_keyed("log", list_spec().scroll_y().gap(0.0), |ui| {
+            // Keyed, not auto-keyed: an auto key *is* the sibling index, and
+            // the rows already occupy that namespace at their data indices.
+            let lead = range.start as f32 * ROW_H;
+            if lead > 0.0 {
+                ui.with_keyed("lead", spacer(lead), |_| {});
+            }
+            for i in range.clone() {
+                // The key auto-keying would have given row `i` in a list
+                // that built them all — so hover, focus and any tween stay
+                // with the row as the window slides over it.
+                ui.with_indexed(
+                    i as u64,
+                    NodeSpec::column()
+                        .width(Sizing::Grow(1.0))
+                        .height(Sizing::Fixed(ROW_H)),
+                    |ui| row(ui, i, selected),
+                );
+            }
+            let tail = (ROWS - range.end) as f32 * ROW_H;
+            if tail > 0.0 {
+                ui.with_keyed("tail", spacer(tail), |_| {});
+            }
+        });
+    }
+}
+
+fn spacer(h: f32) -> NodeSpec {
+    NodeSpec::column()
+        .width(Sizing::Grow(1.0))
+        .height(Sizing::Fixed(h))
+}
+
+impl VirtualList {
+    /// Rows of different heights, from `measure_text` — the number layout
+    /// itself would give the row's text at that width, so what the row
+    /// measures is what the row gets.
+    fn variable(&mut self, ui: &mut Ui<'_>) {
+        let selected = self.selected;
+        let (mut first, mut last) = (usize::MAX, 0usize);
+        widgets::virtual_rows(
+            ui,
+            "log",
+            list_spec().pad(6.0),
+            &mut self.heights,
+            |ui, i, w| {
+                // The row pads itself by 6 on each side, and that padding is
+                // part of the stride the arithmetic uses.
+                ui.measure_text(&line_of(i), &body(), Some(w - 12.0)).height + 12.0
+            },
+            |ui, i| {
+                first = first.min(i);
+                last = i + 1;
+                let bg = if i == selected {
+                    Color::rgb8(0x2f, 0x4f, 0x7f)
+                } else if i.is_multiple_of(2) {
+                    Color::rgb8(0x22, 0x22, 0x2c)
+                } else {
+                    Color::rgb8(0x1c, 0x1c, 0x24)
+                };
+                ui.with(
+                    NodeSpec::column()
+                        .fill()
+                        .pad(6.0)
+                        .bg(bg)
+                        .hover_bg(Color::rgb8(0x2a, 0x2a, 0x38))
+                        .on_click(Value::Int(i as i64))
+                        .role(Role::ListItem)
+                        .label(format!("row {i} of {ROWS}")),
+                    |ui| ui.text(&line_of(i), body()),
+                );
+            },
+        );
+        self.built = if last == 0 { 0..0 } else { first..last };
+    }
+}
+
+impl App for VirtualList {
+    fn view(&mut self, ui: &mut Ui<'_>) {
+        ui.window_title("kui — virtual list");
+        ui.configure_root(NodeSpec::column().fill().bg(Color::rgb8(0x14, 0x14, 0x18)));
+
+        let built = self.built.len();
+        let how = match self.mode {
+            Mode::Widget => "virtual_column",
+            Mode::ByHand => "by hand",
+            Mode::Variable => "virtual_rows",
+        };
+        ui.with(
+            NodeSpec::row()
+                .width(Sizing::Grow(1.0))
+                .pad(8.0)
+                .bg(Color::rgb8(0x1a, 0x1a, 0x22)),
+            |ui| {
+                ui.text(
+                    &format!(
+                        "{ROWS} rows, {built} built ({how}) — row {} selected",
+                        self.selected
+                    ),
+                    TextStyle::new(14.0).color(Color::rgb8(0xe8, 0xe8, 0xf0)),
+                );
+            },
+        );
+
+        match self.mode {
+            Mode::Widget => self.widget(ui),
+            Mode::ByHand => self.by_hand(ui),
+            Mode::Variable => self.variable(ui),
+        }
+    }
+
+    fn on_event(&mut self, ev: UiEvent) {
+        // A row's `on_click` payload arrives verbatim — it is the row's
+        // index, and there is nothing else to decode.
+        if let Some(i) = ev.payload.as_int() {
+            self.selected = i as usize;
+        }
+    }
+}
+
+fn main() {
+    let mode = if std::env::args().any(|a| a == "--variable") {
+        Mode::Variable
+    } else if std::env::args().any(|a| a == "--by-hand") {
+        Mode::ByHand
+    } else {
+        Mode::Widget
+    };
+    let app = VirtualList {
+        selected: 0,
+        mode,
+        built: 0..0,
+        // 28 is a guess, and all it decides is how wrong the scrollbar is
+        // before anything has been measured.
+        heights: widgets::RowHeights::new(ROWS, ROW_H),
+    };
+    if std::env::args().any(|a| a == "--headless") {
+        headless(app);
+    } else {
+        kui::run("kui — virtual list", app, vec![]).unwrap();
+    }
+}
+
+/// The same view against a bare `Core` — no window, no GPU. Two frames,
+/// because the first has no geometry to slice by, then a jump to row 300.
+fn headless(mut app: VirtualList) {
+    use kui::{Core, InputEvent, Size, Vec2};
+
+    let mut core = Core::new();
+    let frame = |app: &mut VirtualList, core: &mut Core| {
+        let mut ui = core.frame(Size::new(480.0, 300.0), 1.0);
+        app.view(&mut ui);
+        ui.finish();
+    };
+
+    frame(&mut app, &mut core);
+    println!("frame 1 (no geometry yet): {} rows", app.built.len());
+    frame(&mut app, &mut core);
+    println!(
+        "frame 2: rows {:?} — {} of {ROWS}",
+        app.built,
+        app.built.len()
+    );
+
+    let key = Key::ROOT.str("log");
+    let g = core.scroll_geometry(key).expect("laid out");
+    println!(
+        "content height {} (the whole list), travel {}",
+        g.content.h, g.max_offset.y
+    );
+
+    // The wheel, which is all the core needs to slide the built range: no
+    // event reaches the app, and the next frame's view reads the new offset.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(240.0, 200.0)));
+    core.handle_input(InputEvent::Scroll(Vec2::new(0.0, -300.0 * ROW_H)));
+    frame(&mut app, &mut core);
+    frame(&mut app, &mut core);
+    println!("after a wheel to row 300: rows {:?}", app.built);
+    if app.mode == Mode::Variable {
+        println!(
+            "heights: {} measured, the rest standing at {:.1} — total {:.0}",
+            (0..ROWS)
+                .filter(|&i| app.heights.measured(i).is_some())
+                .count(),
+            app.heights.estimate(),
+            app.heights.total(),
+        );
+    }
+
+    // A row that was never in the first frame's range is an ordinary node:
+    // it hit-tests, and its payload comes back as the app wrote it.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(240.0, 100.0)));
+    core.handle_input(InputEvent::mouse_down(1));
+    for ev in core.handle_input(InputEvent::mouse_up()) {
+        app.on_event(ev);
+    }
+    println!("clicked row {} (never built by frame 1)", app.selected);
+}

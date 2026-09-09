@@ -511,3 +511,291 @@ fn visible_rows_covers_the_band_and_no_more() {
     // A list shorter than the window builds all of it, never past the end.
     assert_eq!(visible_rows(0.0, 200.0, 0.0, 30.0, 3, 2), 0..3);
 }
+
+// -- Variable-height virtual lists ------------------------------------------
+// `virtual_column` takes one stride; these are the rows that have none. The
+// heights come from a `measure` callback the widget runs for the rows it is
+// about to build, everything else stands at the mean of what has been
+// measured, and the prefix sums over both are what the spacers and the search
+// are made of.
+
+use kui_core::widgets::RowHeights;
+
+const VAR_ROWS: usize = 1_000;
+
+/// Row `i`'s true height. Short at the top and tall for the rest, so the
+/// estimate the first screenful produces is badly wrong for the middle of
+/// the list — which is what makes the anchoring observable.
+fn var_h(i: usize) -> f32 {
+    if i < 100 { 20.0 } else { 60.0 }
+}
+
+/// One frame of a variable-height list, returning what it built.
+fn var_frame(core: &mut Core, heights: &mut RowHeights) -> std::ops::Range<usize> {
+    let (mut first, mut last) = (usize::MAX, 0usize);
+    let mut ui = core.frame(Size::new(400.0, VIEW_H), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    kui_core::widgets::virtual_rows(
+        &mut ui,
+        "list",
+        NodeSpec::column().fill(),
+        heights,
+        |_ui, i, _w| var_h(i),
+        |ui, i| {
+            first = first.min(i);
+            last = i + 1;
+            ui.with(
+                NodeSpec::row()
+                    .fill()
+                    .bg(Color::rgb8(40, 40, 60))
+                    .on_click(Value::Int(i as i64)),
+                |_| {},
+            );
+        },
+    );
+    ui.finish();
+    if last == 0 { 0..0 } else { first..last }
+}
+
+/// Which row is under the top edge of the window, by hit-testing rather than
+/// by arithmetic — the question "did the content move" asks of the pixels.
+fn row_under(core: &mut Core, y: f32) -> Option<i64> {
+    hit_under(core, y).map(|(i, _)| i)
+}
+
+/// The same hit, with the key of the node that took it — the row wrapper's
+/// own first child, so the wrapper's key is one step up.
+fn hit_under(core: &mut Core, y: f32) -> Option<(i64, kui_core::Key)> {
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, y)));
+    core.handle_input(InputEvent::mouse_down(1));
+    let evs = core.handle_input(InputEvent::mouse_up());
+    let e = evs.first()?;
+    Some((e.payload.as_int()?, e.key))
+}
+
+#[test]
+fn row_heights_answer_the_three_questions_a_stride_answered() {
+    let mut h = RowHeights::new(10, 20.0);
+    // Nothing measured: every row stands at the seed.
+    assert_eq!(h.estimate(), 20.0);
+    assert_eq!(h.total(), 200.0);
+    assert_eq!(h.offset_of(3), 60.0);
+    assert_eq!(h.row_at(0.0), 0);
+    assert_eq!(h.row_at(65.0), 3);
+
+    // Measure three rows: they take their own height and the estimate
+    // becomes their mean, which moves every row that has none.
+    h.set(0, 50.0);
+    h.set(1, 50.0);
+    h.set(2, 50.0);
+    assert_eq!(h.measured(0), Some(50.0));
+    assert_eq!(h.measured(9), None);
+    assert_eq!(h.estimate(), 50.0);
+    assert_eq!(h.get(9), 50.0);
+    assert_eq!(h.total(), 500.0);
+    assert_eq!(h.offset_of(3), 150.0);
+    assert_eq!(h.row_at(149.0), 2);
+    assert_eq!(h.row_at(150.0), 3);
+    // Past the end clamps to the last row rather than panicking.
+    assert_eq!(h.row_at(1e9), 9);
+
+    // Appending keeps what is measured; clearing keeps only the length.
+    h.set_len(12);
+    assert_eq!(h.measured(0), Some(50.0));
+    assert_eq!(h.total(), 600.0);
+    h.clear();
+    assert_eq!(h.measured(0), None);
+    assert_eq!(h.estimate(), 20.0, "back to the seed with nothing measured");
+    assert_eq!(h.len(), 12);
+}
+
+/// A width that differs from the one the heights were measured at rewraps
+/// every row, so the cache is void — the frame after a resize measures again.
+#[test]
+fn a_new_width_drops_every_measurement() {
+    let mut h = RowHeights::new(10, 20.0);
+    assert!(h.set_width(300.0));
+    h.set(0, 55.0);
+    assert!(!h.set_width(300.0), "the same width changes nothing");
+    assert_eq!(h.measured(0), Some(55.0));
+    assert!(h.set_width(200.0));
+    assert_eq!(h.measured(0), None);
+    assert_eq!(h.width(), 200.0);
+}
+
+/// The point of the exercise, without a stride: a thousand rows of three
+/// different heights build a screenful.
+#[test]
+fn a_variable_list_builds_only_what_shows() {
+    let mut core = Core::new();
+    let mut h = RowHeights::new(VAR_ROWS, 20.0);
+    var_frame(&mut core, &mut h);
+    let built = var_frame(&mut core, &mut h);
+    // 200px of window over 20px rows at the top, plus two of overscan.
+    assert!(built.len() <= 14, "built {built:?}");
+    assert_eq!(built.start, 0);
+    // Only what was built has been measured; the rest stands at the mean.
+    assert_eq!(h.measured(built.end - 1), Some(20.0));
+    assert_eq!(h.measured(built.end + 50), None);
+}
+
+/// Each row is exactly as tall as it measured, so the arithmetic above and
+/// below it cannot disagree with the layout the way an estimate would.
+#[test]
+fn a_row_is_as_tall_as_it_measured() {
+    let mut core = Core::new();
+    let mut h = RowHeights::new(VAR_ROWS, 20.0);
+    var_frame(&mut core, &mut h);
+    var_frame(&mut core, &mut h);
+    let (dl, _) = core.output();
+    let mut rows: Vec<f32> = dl
+        .quads
+        .iter()
+        .filter(|q| q.kind == kui_core::QuadKind::Solid && q.rect.w > 100.0)
+        .map(|q| q.rect.h)
+        .collect();
+    rows.dedup();
+    assert_eq!(rows, vec![20.0], "every visible row is its measured height");
+}
+
+/// The content height — the scrollbar, the travel and "jump to the end" —
+/// is what has been measured plus what is estimated, and it converges on the
+/// truth as the list is scrolled through.
+#[test]
+fn the_content_height_is_the_measured_and_the_estimated_together() {
+    let mut core = Core::new();
+    let mut h = RowHeights::new(VAR_ROWS, 20.0);
+    var_frame(&mut core, &mut h);
+    var_frame(&mut core, &mut h);
+    let g = core.scroll_geometry(list_key()).expect("laid out");
+    // Everything estimated at 20 (the seed, and the mean of the short rows
+    // the first screenful measured).
+    assert_eq!(g.content.h, VAR_ROWS as f32 * 20.0);
+    assert_eq!(h.total(), VAR_ROWS as f32 * 20.0);
+
+    // Scroll into the tall half: the rows built there are measured at 60,
+    // the mean rises, and the list learns it is longer than it looked.
+    core.set_scroll(list_key(), Vec2::new(0.0, 5_000.0));
+    for _ in 0..4 {
+        var_frame(&mut core, &mut h);
+    }
+    assert!(
+        h.total() > VAR_ROWS as f32 * 20.0 * 1.5,
+        "total {} did not grow with what was measured",
+        h.total()
+    );
+}
+
+/// The crux. Measuring the rows a frame builds changes the height of every
+/// row it does not — including the ones above the window — so without a
+/// correction the content slides out from under the pointer on the frame the
+/// list learns anything. The row under the top edge has to stay the row
+/// under the top edge.
+#[test]
+fn the_row_under_the_pointer_stays_there_while_the_estimate_moves() {
+    let mut core = Core::new();
+    let mut h = RowHeights::new(VAR_ROWS, 20.0);
+    var_frame(&mut core, &mut h);
+    var_frame(&mut core, &mut h);
+
+    // Jump into the tall half. The estimate is still 20, so this lands
+    // around row 250 by the arithmetic of the moment; which row does not
+    // matter, only that it is the same one on every frame after.
+    core.set_scroll(list_key(), Vec2::new(0.0, 5_000.0));
+    var_frame(&mut core, &mut h);
+    let settled = row_under(&mut core, 4.0);
+    assert!(settled.is_some(), "nothing under the top edge");
+
+    // Four more frames, each measuring more of the list and moving the mean
+    // under everything above the window.
+    for n in 0..4 {
+        var_frame(&mut core, &mut h);
+        assert_eq!(
+            row_under(&mut core, 4.0),
+            settled,
+            "the content slid on frame {n} as the estimate moved",
+        );
+    }
+}
+
+/// "Scroll to row `i`" is the prefix sum, and it lands the row at the top —
+/// exactly for a row whose height is known, and within a frame or two for
+/// one standing at the estimate.
+#[test]
+fn set_scroll_to_a_rows_offset_lands_it_at_the_top() {
+    let mut core = Core::new();
+    let mut h = RowHeights::new(VAR_ROWS, 20.0);
+    var_frame(&mut core, &mut h);
+    var_frame(&mut core, &mut h);
+
+    let target = 400usize;
+    core.set_scroll(list_key(), Vec2::new(0.0, h.offset_of(target)));
+    // Two frames: the first builds and measures around the target, the
+    // second is drawn from what it learned.
+    var_frame(&mut core, &mut h);
+    var_frame(&mut core, &mut h);
+    assert_eq!(row_under(&mut core, 4.0), Some(target as i64));
+}
+
+/// Tailing a log: a list told to stay at the end stays at the end while it
+/// learns how long it is. The widget's own correction keeps the *rows* still
+/// (which is what a reader who scrolled there wants), so "the end" is the
+/// app asking for it every frame — one `set_scroll` after the widget, the
+/// last write of the frame.
+#[test]
+fn a_list_that_asks_for_the_end_every_frame_converges_on_it() {
+    let mut core = Core::new();
+    let mut h = RowHeights::new(VAR_ROWS, 20.0);
+    for _ in 0..8 {
+        var_frame(&mut core, &mut h);
+        core.set_scroll(list_key(), Vec2::new(0.0, f32::MAX));
+    }
+    let built = var_frame(&mut core, &mut h);
+    assert_eq!(built.end, VAR_ROWS, "the last row is built at the end");
+    let g = core.scroll_geometry(list_key()).expect("laid out");
+    assert_eq!(g.offset, g.max_offset);
+}
+
+/// Left to itself the widget keeps the *rows* still rather than the offset,
+/// so a list that was scrolled to the end of an estimate is no longer at the
+/// end once the estimate grows — it is still showing what it was showing.
+#[test]
+fn a_list_left_alone_keeps_its_rows_not_its_place_in_the_travel() {
+    let mut core = Core::new();
+    let mut h = RowHeights::new(VAR_ROWS, 20.0);
+    var_frame(&mut core, &mut h);
+    var_frame(&mut core, &mut h);
+    core.set_scroll(list_key(), Vec2::new(0.0, f32::MAX));
+    var_frame(&mut core, &mut h);
+    let at = row_under(&mut core, 4.0);
+    for _ in 0..4 {
+        var_frame(&mut core, &mut h);
+    }
+    assert_eq!(row_under(&mut core, 4.0), at);
+    let g = core.scroll_geometry(list_key()).expect("laid out");
+    assert!(g.offset.y < g.max_offset.y, "the travel grew under it");
+}
+
+/// The same list, and the same identity rule as the uniform one: a row is
+/// keyed by its data index, so the built range sliding over it changes
+/// nothing it retains.
+#[test]
+fn variable_rows_keep_their_key_as_the_range_slides() {
+    let mut core = Core::new();
+    let mut h = RowHeights::new(VAR_ROWS, 20.0);
+    var_frame(&mut core, &mut h);
+    var_frame(&mut core, &mut h);
+
+    core.set_scroll(list_key(), Vec2::new(0.0, 3_000.0));
+    var_frame(&mut core, &mut h);
+    let built = var_frame(&mut core, &mut h);
+    assert!(built.start > 0, "scrolled past the top: {built:?}");
+
+    // The row under the top edge is the one the arithmetic says, and the
+    // node that took the click is that row wrapper's own child — so the
+    // wrapper is keyed by the *data* index, which is the key auto-keying
+    // would have given it in a list that built every row.
+    let (row, key) = hit_under(&mut core, 4.0).expect("a row under the edge");
+    assert_eq!(key, list_key().index(row as u64).index(0));
+    assert!(row as usize > built.start, "overscan sits above the window");
+}

@@ -93,6 +93,10 @@ name = "editor"
 path = "../../examples/rust/editor.rs"
 
 [[example]]
+name = "virtual_list"
+path = "../../examples/rust/virtual_list.rs"
+
+[[example]]
 name = "waker"
 path = "../../examples/rust/waker.rs"
 

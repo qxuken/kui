@@ -652,6 +652,120 @@ fn list_100k_rows_virtual(bencher: divan::Bencher) {
     bencher.bench_local(|| list_virtual(&mut core, 100_000));
 }
 
+// The same list with no stride: `widgets::virtual_rows`, whose spacers and
+// search come from prefix sums over a height cache instead of `i * row_h`.
+// Three questions, in this order: what does it cost when nothing has changed
+// (the frame that only scrolls), what does it cost on the frame that learns a
+// row's height (the prefix sums are rebuilt), and — the one that decides
+// whether the uniform widget still earns its place — what does it cost when
+// every row *is* the same height and the caller could have used a stride.
+
+fn list_variable(core: &mut Core, heights: &mut widgets::RowHeights, vary: bool) -> usize {
+    let mut ui = core.frame(Size::new(1200.0, 800.0), 2.0);
+    ui.configure_root(NodeSpec::column().fill());
+    widgets::virtual_rows(
+        &mut ui,
+        "list",
+        NodeSpec::column().fill(),
+        heights,
+        |_ui, i, _w| {
+            if vary {
+                LIST_ROW_H + (i % 3) as f32 * 8.0
+            } else {
+                LIST_ROW_H
+            }
+        },
+        list_row,
+    );
+    ui.finish();
+    let (dl, _) = core.output();
+    dl.quads.len()
+}
+
+/// Two frames to settle (the first has no geometry), then scrolled to the
+/// middle and settled again — the state every one of these benches measures.
+fn warm_variable(core: &mut Core, rows: usize, vary: bool) -> widgets::RowHeights {
+    let mut h = widgets::RowHeights::new(rows, LIST_ROW_H);
+    list_variable(core, &mut h, vary);
+    list_variable(core, &mut h, vary);
+    scroll_to_middle(core, rows);
+    list_variable(core, &mut h, vary);
+    list_variable(core, &mut h, vary);
+    h
+}
+
+/// Nothing new to measure: two searches and the build. It comes out *under*
+/// `list_10k_rows_virtual` for a reason that is not a win — its rows average
+/// 32px against the uniform bench's 24, so fewer of them are on screen.
+/// `list_10k_rows_variable_at_one_height` is the comparison that holds
+/// everything else equal.
+#[divan::bench]
+fn list_10k_rows_variable(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    let mut h = warm_variable(&mut core, 10_000, true);
+    bencher.bench_local(|| list_variable(&mut core, &mut h, true));
+}
+
+/// A frame that learns a row's height — what every frame of a scroll is, and
+/// what invalidates the prefix sums. The row it learns is one it is looking
+/// at, which is the only kind a scroll ever measures.
+#[divan::bench]
+fn list_10k_rows_variable_learning(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    let mut h = warm_variable(&mut core, 10_000, true);
+    let mut i = 0usize;
+    bencher.bench_local(|| {
+        i = (i + 1) % 8;
+        h.set(5_000 + i, LIST_ROW_H + (i % 3) as f32 * 8.0);
+        list_variable(&mut core, &mut h, true)
+    });
+}
+
+/// The same frame told about a row nowhere near the window — a list whose
+/// data changed under it. Everything between that row and the window has to
+/// be summed again, and this is what that costs.
+#[divan::bench]
+fn list_10k_rows_variable_learning_far(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    let mut h = warm_variable(&mut core, 10_000, true);
+    let mut i = 0usize;
+    bencher.bench_local(|| {
+        i = (i + 1) % 8;
+        h.set(i, LIST_ROW_H + (i % 3) as f32 * 8.0);
+        list_variable(&mut core, &mut h, true)
+    });
+}
+
+/// The comparison that decides whether `virtual_column` is still a widget of
+/// its own: the variable one told, row by row, that every row is the same
+/// height. Against `list_10k_rows_virtual`, this is what the stride buys.
+#[divan::bench]
+fn list_10k_rows_variable_at_one_height(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    let mut h = warm_variable(&mut core, 10_000, false);
+    bencher.bench_local(|| list_variable(&mut core, &mut h, false));
+}
+
+/// And an order of magnitude more rows, where an O(n) rebuild would show.
+#[divan::bench]
+fn list_100k_rows_variable(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    let mut h = warm_variable(&mut core, 100_000, true);
+    bencher.bench_local(|| list_variable(&mut core, &mut h, true));
+}
+
+#[divan::bench]
+fn list_100k_rows_variable_learning(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    let mut h = warm_variable(&mut core, 100_000, true);
+    let mut i = 0usize;
+    bencher.bench_local(|| {
+        i = (i + 1) % 8;
+        h.set(50_000 + i, LIST_ROW_H + (i % 3) as f32 * 8.0);
+        list_variable(&mut core, &mut h, true)
+    });
+}
+
 fn main() {
     divan::main();
 }
