@@ -62,6 +62,37 @@ field reports).
 
 ### Fixed
 
+- **A double click in a `cells` grid selects a word, a triple click the
+  row.** A grid took one cell at every click count (ADR 0017 said a word
+  in a terminal was the app's idea, which was wrong in practice: a
+  terminal that does not select a word on a double click reads as broken).
+  It now takes the same three grains a paragraph does, counted in cells,
+  and both ends round outwards while the second click is held and dragged
+  — so a word-drag turned back on itself keeps the word it started in
+  whole. A force click on a grid takes the same word. The word is the run
+  of like cells the pointer is in, classed the way a double click classes
+  text; an app that wants a different rule still owns the gesture through
+  `cell: {row, col}`.
+
+- **Cmd-C and Cmd-A work over a `cells` grid.** The runner gated both on a
+  focused editor or a *text* selection, so copying a selected terminal did
+  nothing at all — unless some editor elsewhere in the window happened to
+  hold focus, which is why it looked like it worked. Select All with a
+  grid selection now takes the grid rather than falling through to the
+  editor's.
+
+- **A view can read a grid selection while it builds the next frame.** A
+  host calling `selectionText()` from inside its own `view` — which is
+  where Lua and Node hosts read it — got `null` over a `cells` grid: the
+  grid was looked up in a tree that was still half-built. The cell store
+  now keeps the frame before it, the way the text places already did, so
+  the answer is last frame's grid rather than nothing.
+
+- **A wide glyph copies as itself.** The `WIDE` flag is on the glyph and
+  the blank the app leaves is the cell *after* it; the copy read the flag
+  off the cell it was looking at, so it replaced every wide character with
+  a space and left the spacer in. A line of CJK came back as blanks.
+
 - **Copy over a `cells` grid copies the cells.** The stock menu lit its
   Copy row from the cell selection and then acted on the *text* one, which
   a grid does not have: choosing Copy over a terminal with half its screen

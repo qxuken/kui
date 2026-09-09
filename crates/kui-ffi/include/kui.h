@@ -1253,8 +1253,10 @@ void kui_ctx_free(KuiCtx *ctx);
 void kui_input_cursor(KuiCtx *ctx, float x, float y);
 void kui_input_cursor_left(KuiCtx *ctx);
 /* clicks: host-counted multi-click for presses (1 single, 2 double = word
- * select in editors, 3 triple = line select); ignored on release. This is
- * the primary button; kui_input_mouse_button carries the others. */
+ * select, 3 triple = line select); ignored on release. The count picks the
+ * grain everywhere text can be selected — an editor, a `selectable` scope,
+ * and a `cells` grid, where it counts in cells. This is the primary
+ * button; kui_input_mouse_button carries the others. */
 void kui_input_mouse(KuiCtx *ctx, bool down, uint32_t clicks);
 /* Buttons (kui_input_mouse_button). Only the primary one presses, drags,
  * places the caret and clicks; the secondary one asks the node under it

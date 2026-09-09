@@ -6,7 +6,7 @@
 //! lives in `focus`, the arrow-key patterns in `composites`.
 
 use super::*;
-use crate::select::{Grain, SelectDrag};
+use crate::select::{DragAnchor, Grain, SelectDrag};
 
 impl Core {
     /// Feeds one input event; returns any UI events it resolved to,
@@ -66,9 +66,10 @@ impl Core {
             };
             let cell = {
                 let sess = &mut *self.session.state();
-                self.cells.cell_size(id, &sess.resources, &mut sess.fonts)
+                self.cells
+                    .cell_size(id, false, &sess.resources, &mut sess.fonts)
             };
-            let (rows, cols) = self.cells.dims(id);
+            let (rows, cols) = self.cells.dims(id, false);
             let pos = self.cells_origin(i);
             let col = ((point.x - pos.x) / cell.w.max(f32::EPSILON)).floor();
             let row = ((point.y - pos.y) / cell.h.max(f32::EPSILON)).floor();
@@ -418,11 +419,30 @@ impl Core {
                                 // terminal has.
                                 if self.cells_id_of_ref(scope).is_some() {
                                     let block = self.interaction.modifiers().alt;
-                                    if self.begin_cell_selection(scope, p, block) {
+                                    // The same three grains a paragraph
+                                    // gets, counted in cells: one click a
+                                    // cell, two the word under it, three
+                                    // the whole row.
+                                    let armed = match clicks {
+                                        0 | 1 => self
+                                            .begin_cell_selection(scope, p, block)
+                                            .then_some((Grain::Char, None)),
+                                        2 => self.select_word_in_cells(scope, p, block).map(
+                                            |(l, f, t)| {
+                                                (Grain::Word, Some(DragAnchor::Cells(l, f, t)))
+                                            },
+                                        ),
+                                        _ => self.select_line_in_cells(scope, p, block).map(
+                                            |(l, f, t)| {
+                                                (Grain::Run, Some(DragAnchor::Cells(l, f, t)))
+                                            },
+                                        ),
+                                    };
+                                    if let Some((grain, anchor)) = armed {
                                         self.select_dragging = Some(SelectDrag {
                                             scope,
-                                            grain: Grain::Char,
-                                            anchor: None,
+                                            grain,
+                                            anchor,
                                         });
                                     }
                                     self.focus_visible = false;
@@ -438,12 +458,12 @@ impl Core {
                                     0 | 1 => self
                                         .begin_selection(scope, p)
                                         .then_some((Grain::Char, None)),
-                                    2 => self
-                                        .select_word_at(scope, p)
-                                        .map(|span| (Grain::Word, Some(span))),
-                                    _ => self
-                                        .select_run_at(scope, p)
-                                        .map(|span| (Grain::Run, Some(span))),
+                                    2 => self.select_word_at(scope, p).map(|(n, f, t)| {
+                                        (Grain::Word, Some(DragAnchor::Bytes(n, f, t)))
+                                    }),
+                                    _ => self.select_run_at(scope, p).map(|(n, f, t)| {
+                                        (Grain::Run, Some(DragAnchor::Bytes(n, f, t)))
+                                    }),
                                 };
                                 if let Some((grain, anchor)) = armed {
                                     self.select_dragging = Some(SelectDrag {
@@ -499,7 +519,7 @@ impl Core {
                 }
                 if let Some(drag) = self.select_dragging {
                     if self.cells_id_of_ref(drag.scope).is_some() {
-                        self.extend_cell_selection(p);
+                        self.extend_cell_selection_grained(drag, p);
                     } else {
                         self.extend_selection_grained(drag, p);
                     }
@@ -573,14 +593,22 @@ impl Core {
             return;
         }
         if let Some(scope) = scope {
-            if self.select_word_at(scope, p).is_none() {
+            // A grid's word is in cells, not in bytes — and a force click
+            // is a double click that also asks for a definition, so it
+            // takes the same word the second click would have.
+            let took = if self.cells_id_of_ref(scope).is_some() {
+                self.select_word_in_cells(scope, p, false).is_some()
+            } else {
+                self.select_word_at(scope, p).is_some()
+            };
+            if !took {
                 return;
             }
             // A force click between words is a force click on nothing:
             // looking up a space would put a dictionary panel over the
             // page for no reason, which is not what the gesture does
             // anywhere else on the platform.
-            if self.selection_text().is_none_or(|t| t.trim().is_empty()) {
+            if self.copy_selection().is_none_or(|t| t.trim().is_empty()) {
                 self.clear_selection();
                 return;
             }

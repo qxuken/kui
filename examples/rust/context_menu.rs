@@ -13,10 +13,11 @@
 //!     chosen arrives as one `menu` event on the row.
 //!   * **Right-click the terminal.** A `cells` grid selects in *cells*,
 //!     not in bytes: drag out a block of the screen (hold Alt for a
-//!     rectangle), and its menu copies what a terminal copies — the lines,
-//!     with each one's trailing blanks trimmed. Its ends are absolute
-//!     lines, so the readout says which lines of the session they are and
-//!     not which rows of the screen.
+//!     rectangle), double-click a word, triple-click a row, and its menu
+//!     copies what a terminal copies — the lines, with each one's trailing
+//!     blanks trimmed. Its ends are absolute lines, so the readout says
+//!     which lines of the session they are and not which rows of the
+//!     screen.
 //!   * **Right-click the field.** An editor gets Cut / Copy / Paste /
 //!     Select All without asking for anything.
 //!   * **Right-click the footer.** A plain box: no menu, because a
@@ -262,7 +263,7 @@ impl Demo {
         };
         ui.with(card().pad(12.0).gap(8.0), |ui| {
             ui.text(
-                "A terminal selects in cells (hold Alt for a rectangle)",
+                "A terminal selects in cells — double-click a word, Alt-drag a rectangle",
                 TextStyle::new(13.0).color(MUTED),
             );
             ui.cells_keyed(

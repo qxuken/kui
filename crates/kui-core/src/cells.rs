@@ -23,6 +23,7 @@ use crate::atlas::GlyphAtlas;
 use crate::color::Color;
 use crate::display::{Clip, ClipId, Quad, QuadKind};
 use crate::geom::{Rect, Size, Vec2};
+use crate::key::Key;
 use crate::resources::Resources;
 use crate::spec::TextStyle;
 use crate::text::{Raster, glyph_kind, raster_glyph};
@@ -126,6 +127,10 @@ pub struct CellGrid<'a> {
 pub struct CellsId(pub u32);
 
 struct Entry {
+    /// The node that drew it, so a grid stays findable after the frame it
+    /// was built in — a view asking about the selection runs while the
+    /// next frame's tree is half-built, and the answer is last frame's.
+    key: Key,
     rows: usize,
     cols: usize,
     cells: Vec<Cell>,
@@ -163,9 +168,13 @@ fn variant(flags: u8) -> usize {
     (flags & (flags::BOLD | flags::ITALIC)) as usize
 }
 
-/// The frame's grids and the glyph tables they draw from.
+/// The frame's grids and the glyph tables they draw from. The frame
+/// before it is kept too, the way the text store keeps its places: a host
+/// that reads the selection from inside its own `view` is asking about a
+/// frame that has not been built yet.
 pub struct CellStore {
     frame: Vec<Entry>,
+    prev: Vec<Entry>,
     tables: FxHashMap<u64, StyleTable>,
     scale: f32,
 }
@@ -180,6 +189,7 @@ impl CellStore {
     pub fn new() -> Self {
         Self {
             frame: Vec::new(),
+            prev: Vec::new(),
             tables: FxHashMap::default(),
             scale: 1.0,
         }
@@ -190,15 +200,33 @@ impl CellStore {
             self.tables.clear();
         }
         self.scale = scale;
+        std::mem::swap(&mut self.frame, &mut self.prev);
         self.frame.clear();
     }
 
-    pub(crate) fn add(&mut self, grid: &CellGrid<'_>) -> CellsId {
+    /// The grid `key` drew, in this frame or the one before it.
+    pub(crate) fn find(&self, key: Key, prev: bool) -> Option<CellsId> {
+        self.list(prev)
+            .iter()
+            .position(|e| e.key == key)
+            .map(|i| CellsId(i as u32))
+    }
+
+    fn list(&self, prev: bool) -> &[Entry] {
+        if prev { &self.prev } else { &self.frame }
+    }
+
+    fn entry(&self, id: CellsId, prev: bool) -> &Entry {
+        &self.list(prev)[id.0 as usize]
+    }
+
+    pub(crate) fn add(&mut self, key: Key, grid: &CellGrid<'_>) -> CellsId {
         let n = grid.rows * grid.cols;
         let mut cells = Vec::with_capacity(n);
         cells.extend_from_slice(&grid.cells[..grid.cells.len().min(n)]);
         cells.resize(n, Cell::default());
         self.frame.push(Entry {
+            key,
             rows: grid.rows,
             cols: grid.cols,
             cells,
@@ -239,31 +267,94 @@ impl CellStore {
     }
 
     /// One cell's size, logical px.
-    pub(crate) fn cell_size(&mut self, id: CellsId, res: &Resources, fs: &mut FontSystem) -> Size {
-        let style = self.frame[id.0 as usize].style;
+    pub(crate) fn cell_size(
+        &mut self,
+        id: CellsId,
+        prev: bool,
+        res: &Resources,
+        fs: &mut FontSystem,
+    ) -> Size {
+        let style = self.entry(id, prev).style;
         let key = self.table(&style, res, fs);
         let t = &self.tables[&key];
         Size::new(t.cell_w / self.scale, t.cell_h / self.scale)
     }
 
     /// The absolute line the grid's row 0 is (`CellGrid::origin_line`).
-    pub(crate) fn origin_line(&self, id: CellsId) -> u64 {
-        self.frame[id.0 as usize].origin_line
+    pub(crate) fn origin_line(&self, id: CellsId, prev: bool) -> u64 {
+        self.entry(id, prev).origin_line
     }
 
     /// The character in one cell, and whether it is a spacer after a wide
     /// glyph (which a copy skips rather than turning into a space).
-    pub(crate) fn cell_char(&self, id: CellsId, row: usize, col: usize) -> Option<(char, bool)> {
-        let e = &self.frame[id.0 as usize];
+    ///
+    /// The flag lives on the *glyph*, so the spacer is recognised by the
+    /// cell before it — reading `WIDE` off the cell itself said the wide
+    /// character was the spacer, and copying a line of CJK gave back a
+    /// row of blanks.
+    pub(crate) fn cell_char(
+        &self,
+        id: CellsId,
+        row: usize,
+        col: usize,
+        prev: bool,
+    ) -> Option<(char, bool)> {
+        let e = self.entry(id, prev);
         if row >= e.rows || col >= e.cols {
             return None;
         }
         let c = e.cells[row * e.cols + col];
-        Some((c.ch, c.flags & flags::WIDE != 0))
+        Some((c.ch, self.is_spacer(e, row, col)))
     }
 
-    pub(crate) fn dims(&self, id: CellsId) -> (usize, usize) {
-        let e = &self.frame[id.0 as usize];
+    /// Whether this cell is the blank the app leaves after a wide glyph.
+    fn is_spacer(&self, e: &Entry, row: usize, col: usize) -> bool {
+        col > 0 && e.cells[row * e.cols + col - 1].flags & flags::WIDE != 0
+    }
+
+    /// The word around one cell, as a half-open column range on that row:
+    /// the run of like cells it sits in, classed the way a double click
+    /// classes text — word characters (alphanumeric or `_`), blanks, and
+    /// everything else. `'\0'` and the spacer after a wide glyph are the
+    /// glyph's own, so a double click on a wide character takes the pair.
+    pub(crate) fn word_at(
+        &self,
+        id: CellsId,
+        row: usize,
+        col: usize,
+        prev: bool,
+    ) -> Option<(usize, usize)> {
+        let e = self.entry(id, prev);
+        if row >= e.rows || col >= e.cols {
+            return None;
+        }
+        let class = |c: usize| -> u8 {
+            // A spacer belongs to the glyph in front of it, so a wide
+            // character and its blank are never two different words.
+            let c = if self.is_spacer(e, row, c) { c - 1 } else { c };
+            let ch = e.cells[row * e.cols + c].ch;
+            if ch == '\0' || ch.is_whitespace() {
+                1
+            } else if ch.is_alphanumeric() || ch == '_' {
+                0
+            } else {
+                2
+            }
+        };
+        let here = class(col);
+        let mut from = col;
+        while from > 0 && class(from - 1) == here {
+            from -= 1;
+        }
+        let mut to = col + 1;
+        while to < e.cols && class(to) == here {
+            to += 1;
+        }
+        Some((from, to))
+    }
+
+    pub(crate) fn dims(&self, id: CellsId, prev: bool) -> (usize, usize) {
+        let e = self.entry(id, prev);
         (e.rows, e.cols)
     }
 

@@ -37,7 +37,10 @@ impl Core {
     pub fn cell_at(&mut self, key: Key, point: Vec2) -> Option<CellEnd> {
         let (row, col) = self.cell_row_col(key, point)?;
         let id = self.cells_id_of(key)?;
-        Some(CellEnd::new(self.cells.origin_line(id) + row as u64, col))
+        Some(CellEnd::new(
+            self.cells.origin_line(id, self.building) + row as u64,
+            col,
+        ))
     }
 
     /// The grid a keyed node drew this frame, if it drew one.
@@ -46,11 +49,11 @@ impl Core {
     }
 
     pub(crate) fn cells_id_of_ref(&self, key: Key) -> Option<crate::cells::CellsId> {
-        let i = self.tree.keys.iter().position(|k| *k == key)?;
-        match self.tree.content[i] {
-            crate::tree::NodeContent::Cells(id) => Some(id),
-            _ => None,
-        }
+        // Off the cell store rather than off the tree: a host reading the
+        // selection from inside its own `view` is asking while this
+        // frame's tree is half-built, and the grid it means is last
+        // frame's — the same rule the text places follow.
+        self.cells.find(key, self.building)
     }
 
     /// The top-left of the cells themselves, which is the node's box
@@ -66,15 +69,20 @@ impl Core {
     /// it — the same arithmetic a `cell` payload on a click uses, so a
     /// selection and an app's own hit test agree.
     fn cell_row_col(&mut self, key: Key, point: Vec2) -> Option<(usize, usize)> {
+        // Off the tree, not off the store: a hit test needs the node's
+        // box, and only a built frame has one. Which is also why this one
+        // reads the drawn frame rather than `building` — nothing hit-tests
+        // a frame that is still being declared.
         let i = self.tree.keys.iter().position(|k| *k == key)?;
         let crate::tree::NodeContent::Cells(id) = self.tree.content[i] else {
             return None;
         };
         let cell = {
             let sess = &mut *self.session.state();
-            self.cells.cell_size(id, &sess.resources, &mut sess.fonts)
+            self.cells
+                .cell_size(id, false, &sess.resources, &mut sess.fonts)
         };
-        let (rows, cols) = self.cells.dims(id);
+        let (rows, cols) = self.cells.dims(id, false);
         let pos = self.cells_origin(i);
         let col = ((point.x - pos.x) / cell.w.max(f32::EPSILON)).floor();
         let row = ((point.y - pos.y) / cell.h.max(f32::EPSILON)).floor();
@@ -82,6 +90,44 @@ impl Core {
             (row.max(0.0) as usize).min(rows.saturating_sub(1)),
             (col.max(0.0) as usize).min(cols.saturating_sub(1)),
         ))
+    }
+
+    /// Selects the word under `point` in the grid `key` — a double click
+    /// on a terminal. Answers the span it took, as an absolute line and a
+    /// half-open column range, so a drag that follows can round to it.
+    pub fn select_word_in_cells(
+        &mut self,
+        key: Key,
+        point: Vec2,
+        block: bool,
+    ) -> Option<(u64, usize, usize)> {
+        let (row, col) = self.cell_row_col(key, point)?;
+        let id = self.cells_id_of_ref(key)?;
+        let (from, to) = self.cells.word_at(id, row, col, self.building)?;
+        let line = self.cells.origin_line(id, self.building) + row as u64;
+        self.set_cell_selection(
+            CellSelection::new(key, CellEnd::new(line, from), CellEnd::new(line, to)).block(block),
+        );
+        Some((line, from, to))
+    }
+
+    /// Selects the whole row under `point` — a triple click. Edge to edge,
+    /// the way a line in the middle of a linewise selection runs; the
+    /// copy is what trims the blanks off the end of it.
+    pub fn select_line_in_cells(
+        &mut self,
+        key: Key,
+        point: Vec2,
+        block: bool,
+    ) -> Option<(u64, usize, usize)> {
+        let (row, _) = self.cell_row_col(key, point)?;
+        let id = self.cells_id_of_ref(key)?;
+        let (_, cols) = self.cells.dims(id, self.building);
+        let line = self.cells.origin_line(id, self.building) + row as u64;
+        self.set_cell_selection(
+            CellSelection::new(key, CellEnd::new(line, 0), CellEnd::new(line, cols)).block(block),
+        );
+        Some((line, 0, cols))
     }
 
     /// Starts a cell selection at `point` in the grid `key`.
@@ -108,6 +154,69 @@ impl Core {
         true
     }
 
+    /// Moves the live end of a cell selection by whatever the press armed
+    /// it with: cells, words, or whole rows. The *anchor* rounds outwards
+    /// too, so a double-click-drag that turns back on itself keeps the
+    /// word it started in whole — the same rule the text side follows.
+    pub(crate) fn extend_cell_selection_grained(
+        &mut self,
+        drag: crate::select::SelectDrag,
+        point: Vec2,
+    ) -> bool {
+        let Some(crate::select::DragAnchor::Cells(a_line, a_from, a_to)) =
+            drag.anchor.filter(|_| drag.grain != Grain::Char)
+        else {
+            return self.extend_cell_selection(point);
+        };
+        let Some(sel) = self.cell_selection else {
+            return false;
+        };
+        let Some((row, col)) = self.cell_row_col(sel.node, point) else {
+            return false;
+        };
+        let Some(id) = self.cells_id_of_ref(sel.node) else {
+            return false;
+        };
+        let (_, cols) = self.cells.dims(id, self.building);
+        let line = self.cells.origin_line(id, self.building) + row as u64;
+        // The unit under the live end.
+        let (f_from, f_to) = match drag.grain {
+            Grain::Word => match self.cells.word_at(id, row, col, self.building) {
+                Some(span) => span,
+                None => return false,
+            },
+            _ => (0, cols),
+        };
+        // Which side of the anchor the live end is on decides which edge
+        // of each unit the selection runs between. A block selection is
+        // ordered by column alone, because that is the only axis its two
+        // ends disagree on.
+        let backwards = if sel.block {
+            col < a_from
+        } else {
+            (line, col) < (a_line, a_from)
+        };
+        let next = if backwards {
+            CellSelection::new(
+                sel.node,
+                CellEnd::new(a_line, a_to),
+                CellEnd::new(line, f_from),
+            )
+        } else {
+            CellSelection::new(
+                sel.node,
+                CellEnd::new(a_line, a_from),
+                CellEnd::new(line, f_to),
+            )
+        }
+        .block(sel.block);
+        if next == sel {
+            return false;
+        }
+        self.cell_selection = Some(next);
+        true
+    }
+
     /// The selected cells as text: one line per grid row it covers, each
     /// with its trailing blanks trimmed — the rule that makes a copied
     /// screen paste like text instead of like a rectangle of spaces.
@@ -118,8 +227,8 @@ impl Core {
     pub fn cell_selection_text(&self) -> Option<String> {
         let sel = self.cell_selection?;
         let id = self.cells_id_of_ref(sel.node)?;
-        let (rows, cols) = self.cells.dims(id);
-        let origin = self.cells.origin_line(id);
+        let (rows, cols) = self.cells.dims(id, self.building);
+        let origin = self.cells.origin_line(id, self.building);
         let mut out = String::new();
         let mut first = true;
         let mut any = false;
@@ -135,10 +244,10 @@ impl Core {
             any = true;
             let mut text = String::new();
             for col in from..to {
-                match self.cells.cell_char(id, row, col) {
+                match self.cells.cell_char(id, row, col, self.building) {
                     // The cell after a wide glyph is the app's spacer, and
-                    // copying it would double the character.
-                    Some((_, true)) => text.push(' '),
+                    // copying it would put a blank in the middle of a word.
+                    Some((_, true)) => {}
                     Some((ch, _)) => text.push(ch),
                     None => {}
                 }
@@ -176,11 +285,11 @@ impl Core {
         // A grid selects in cells: the whole screen it was given, from
         // its first absolute line to its last.
         if let Some(id) = self.cells_id_of_ref(scope) {
-            let (rows, cols) = self.cells.dims(id);
+            let (rows, cols) = self.cells.dims(id, self.building);
             if rows == 0 || cols == 0 {
                 return false;
             }
-            let origin = self.cells.origin_line(id);
+            let origin = self.cells.origin_line(id, self.building);
             self.set_cell_selection(CellSelection::new(
                 scope,
                 CellEnd::new(origin, 0),
@@ -478,7 +587,7 @@ impl Core {
         let Some(hit) = self.selection_hit(sel.scope, point) else {
             return false;
         };
-        let Some((anode, a_from, a_to)) = drag.anchor else {
+        let Some(crate::select::DragAnchor::Bytes(anode, a_from, a_to)) = drag.anchor else {
             return self.extend_selection(point);
         };
         // The unit under the live end, in that node's own bytes.

@@ -659,7 +659,9 @@ impl Ctx {
     }
 
     /// A button press or release. `clicks`: 1 single, 2 double (word
-    /// select), 3 triple (line select). `button` defaults to "primary", and
+    /// select), 3 triple (line select) — the grain everywhere text can be
+    /// selected: an editor, a `selectable` scope, and a `cells` grid,
+    /// where it counts in cells. `button` defaults to "primary", and
     /// only that one presses, drags, places the caret and clicks;
     /// "secondary" asks the node under the pointer for a context menu and
     /// moves nothing else, and nothing routes "middle" yet.

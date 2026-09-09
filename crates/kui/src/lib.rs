@@ -2330,7 +2330,16 @@ impl<A: App> Shell<A> {
         // selection per window and `copy_selection` answers for whichever
         // it is (ADR 0017).
         let pane = &mut self.panes[i];
-        if (pane.core.edit.focused().is_some() || pane.core.selection().is_some())
+        // Whichever scope the window's selection is in — a `selectable`
+        // node's, or a `cells` grid's, which is a scope too. Reading only
+        // the text one left Cmd-C over a terminal doing nothing unless
+        // some editor elsewhere happened to hold focus.
+        let scope = pane
+            .core
+            .selection()
+            .map(|s| s.scope)
+            .or_else(|| pane.core.cell_selection().map(|s| s.node));
+        if (pane.core.edit.focused().is_some() || scope.is_some())
             && pane.primary()
             && let WinitKey::Character(c) = &event.logical_key
         {
@@ -2369,8 +2378,8 @@ impl<A: App> Shell<A> {
                 }
                 // Select All inside a selection scope stays in that
                 // scope; with none, it is the editor's as before.
-                "a" if pane.core.selection().is_some() => {
-                    if let Some(scope) = pane.core.selection().map(|s| s.scope) {
+                "a" if scope.is_some() => {
+                    if let Some(scope) = scope {
                         pane.core.select_all_in(scope);
                         pane.window.request_redraw();
                     }

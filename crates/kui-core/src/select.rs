@@ -100,6 +100,8 @@ pub enum Grain {
     Word,
     /// One text node's whole content — a label, a paragraph. cosmic-text
     /// calls this a line; here a run is the thing a triple click takes.
+    /// In a `cells` grid it is one whole row, edge to edge, which is what
+    /// a triple click takes in every terminal.
     Run,
 }
 
@@ -209,6 +211,19 @@ pub enum CopyRequest {
     Nothing,
 }
 
+/// The span the press itself selected — the word a double click took, the
+/// run or row a triple click took — which both ends of the drag round
+/// outwards to. Two shapes because the two kinds of scope address
+/// themselves differently, and a drag is only ever in one of them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DragAnchor {
+    /// `(node, from, to)`, in that node's own bytes.
+    Bytes(Key, usize, usize),
+    /// `(line, from, to)`: a half-open column range on one absolute line
+    /// of a `cells` grid.
+    Cells(u64, usize, usize),
+}
+
 /// A drag-select in flight: which scope it is in, what it moves by, and
 /// the span the press itself selected — the word a double click took, the
 /// run a triple click took — which both ends round outwards to.
@@ -216,10 +231,8 @@ pub enum CopyRequest {
 pub(crate) struct SelectDrag {
     pub scope: Key,
     pub grain: Grain,
-    /// `(node, from, to)` in that node's own bytes. `None` for a
-    /// character drag, which has nothing to round to, and for a grid,
-    /// which drags in cells.
-    pub anchor: Option<(Key, usize, usize)>,
+    /// `None` for a character drag, which has nothing to round to.
+    pub anchor: Option<DragAnchor>,
 }
 
 /// Where one text node's content sits in a selection: the two ends

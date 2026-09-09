@@ -486,7 +486,7 @@ impl Core {
         if self.tree.is_empty() {
             return;
         }
-        let cid = self.cells.add(grid);
+        let cid = self.cells.add(key, grid);
         let parent = self.current();
         self.tree
             .push(parent, key, self.origin, spec, NodeContent::Cells(cid));

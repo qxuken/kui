@@ -895,6 +895,60 @@ test('cells draws a screen from a Uint32Array and a click names its cell', () =>
   assert.deepEqual(hit, { kind: 'hit', cell: { row: 1, col: 3 } });
 });
 
+// A `selectable` grid selects in cells, and the click count picks the
+// grain the same way it does over a paragraph: one a cell, two the word,
+// three the whole row (ADR 0017, decision 4). Driven from Node because
+// the click count is the binding's to pass on — `mouse(down, clicks)`.
+test('a cells grid selects by cell, word and row from the click count', () => {
+  const ctx = new Ctx();
+  const mono = { size: 14, family: 'mono', lineHeight: 20 };
+  const rows = 2, cols = 12;
+  const grid = new Uint32Array(rows * cols * 4);
+  const put = (r, c, ch) => {
+    const i = (r * cols + c) * 4;
+    grid[i] = ch.codePointAt(0); grid[i + 1] = 0xffffffff; grid[i + 2] = 0; grid[i + 3] = 0;
+  };
+  for (let c = 0; c < cols; c++) {
+    put(0, c, 'hello world'[c] ?? ' ');
+    put(1, c, 'bye there  '[c] ?? ' ');
+  }
+  const view = box({}, [
+    el('cells', { ...mono, rows, cols, cells: grid, originLine: 900, selectable: true }, [], 'term'),
+  ]);
+  ctx.frame(400, 200, 1, view);
+  assert.deepEqual(ctx.warnings(), []);
+  const w = Math.round(ctx.measureText('M', mono).width);
+  // The middle of (row, col), in the grid's own metrics.
+  const at = (r, c) => ctx.cursor((c + 0.5) * w, (r + 0.5) * 20);
+
+  // One click: a cell, and a drag from it selects cells.
+  at(0, 0); ctx.mouse(true, 1); at(0, 5); ctx.mouse(false);
+  assert.equal(ctx.selectionText(), 'hello');
+
+  // Two: the word under the pointer, whole.
+  at(0, 8); ctx.mouse(true, 2); ctx.mouse(false);
+  assert.equal(ctx.selectionText(), 'world');
+
+  // Two, held and dragged: word by word, both ends rounding outwards, so
+  // the word the drag started in stays whole across the rows.
+  at(0, 8); ctx.mouse(true, 2); at(1, 1); ctx.mouse(false);
+  assert.equal(ctx.selectionText(), 'world\nbye');
+
+  // Three: the whole row, edge to edge; the copy trims its blanks.
+  at(1, 5); ctx.mouse(true, 3); ctx.mouse(false);
+  assert.equal(ctx.selectionText(), 'bye there');
+
+  // And the stock menu over it acts on the cells, not on a text
+  // selection the grid does not have. The right-click leaves the row it
+  // is about selected, so Copy takes that whole row.
+  at(1, 5); ctx.mouse(true, 1, 'secondary'); ctx.mouse(false, 1, 'secondary');
+  const menu = ctx.menu();
+  const copy = menu.items.findIndex((i) => i.role === 'copy');
+  assert.ok(copy >= 0 && menu.items[copy].enabled, 'Copy is lit by the cell selection');
+  ctx.activateMenuItem(copy);
+  assert.deepEqual(ctx.takeMenuActions(), [{ kind: 'setClipboard', text: 'bye there', html: null }]);
+});
+
 // Underline, strikethrough and a background per span (backlog C22): solid
 // quads beside the glyphs, the background under them and the lines over.
 test('a span carries its own background and lines', () => {

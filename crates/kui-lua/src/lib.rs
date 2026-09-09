@@ -3438,6 +3438,67 @@ mod tests {
         assert_eq!(term.value.as_deref(), Some("hello world\n  bye"));
     }
 
+    /// A `selectable` grid selects in cells, and the click count picks the
+    /// grain — one a cell, two the word, three the whole row (ADR 0017,
+    /// decision 4). Lua declares the scope and reads the result back
+    /// through `env.selection_text`; the gesture itself is the core's, so
+    /// what this pins is that a Lua-declared grid is a scope at all.
+    #[test]
+    fn a_lua_grid_selects_by_cell_word_and_row() {
+        let mut ext = LuaExtension::from_source(
+            "term",
+            r#"
+                function view(env)
+                  said = env.selection_text()
+                  return column { cells { key = "term", rows = 2, cols = 12,
+                    size = 14, family = "mono", line_height = 20,
+                    origin_line = 900, selectable = true,
+                    lines = { "hello world", "bye there" } } }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let frame = |core: &mut Core, ext: &mut LuaExtension| {
+            let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+            ui.set_origin(OriginId(1));
+            ext.view(&Slot::root(), &mut ui).unwrap();
+            ui.finish();
+        };
+        frame(&mut core, &mut ext);
+        let said = |ext: &LuaExtension| ext.lua.globals().get::<Option<String>>("said").unwrap();
+
+        // The middle of (row, col), from the grid's own metrics.
+        let w = core
+            .measure_text(
+                "M",
+                &kui_core::TextStyle::new(14.0)
+                    .family(kui_core::FontFamily::Mono)
+                    .line_height(20.0),
+                None,
+            )
+            .width;
+        let at = |r: usize, c: usize| Vec2::new(w * (c as f32 + 0.5), 20.0 * (r as f32 + 0.5));
+        let click = |core: &mut Core, p: Vec2, clicks: u8| {
+            core.handle_input(InputEvent::CursorMoved(p));
+            core.handle_input(InputEvent::MouseDown {
+                button: kui_core::MouseButton::Primary,
+                clicks,
+            });
+            core.handle_input(InputEvent::MouseUp {
+                button: kui_core::MouseButton::Primary,
+            });
+        };
+
+        click(&mut core, at(0, 8), 2);
+        frame(&mut core, &mut ext);
+        assert_eq!(said(&ext).as_deref(), Some("world"), "a double click");
+
+        click(&mut core, at(1, 1), 3);
+        frame(&mut core, &mut ext);
+        assert_eq!(said(&ext).as_deref(), Some("bye there"), "a triple click");
+    }
+
     /// A span's `underline`, `strikethrough` and `bg` reach the core
     /// (backlog C22): the frame carries the solid quads beside the glyphs.
     #[test]
