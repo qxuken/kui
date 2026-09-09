@@ -96,6 +96,51 @@ pub extern "C" fn kui_open_menu(
     })
 }
 
+/// Tells the core this host can show the platform's definition panel
+/// (macOS's Look Up). The standard Look Up row is then offered where it
+/// means something, and a force click over text asks for one; without
+/// this the core neither offers nor asks, because a row that does nothing
+/// is worse than a row that is not there.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_lookup_available(ptr: *mut KuiCtx, on: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_lookup_available(on);
+        }
+    });
+}
+
+/// Tells the core that this host shows menus itself — the platform's own,
+/// however it draws them. The core then keeps the open menu as state and
+/// draws none of it: read it with `kui_menu_items`, show it, and report
+/// back with `kui_activate_menu_item` or `kui_close_menu`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_native_menus(ptr: *mut KuiCtx, on: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_native_menus(on);
+        }
+    });
+}
+
+/// Reports that the host's menu chose row `index`: the same path a press
+/// on the drawn menu's row takes. An index past the end closes the menu
+/// and posts nothing. Returns false when no menu was open.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_activate_menu_item(ptr: *mut KuiCtx, index: usize) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        if c.core().menu().is_none() {
+            return false;
+        }
+        let events = c.core().activate_menu_item(index);
+        c.absorb(events);
+        true
+    })
+}
+
 /// Closes whatever menu is open; true when there was one.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_close_menu(ptr: *mut KuiCtx) -> bool {
@@ -127,6 +172,10 @@ pub extern "C" fn kui_take_menu_action(ptr: *mut KuiCtx, out: *mut KuiMenuAction
         let (kind, text) = match action {
             kui_core::MenuAction::SetClipboard(t) => (0u32, t),
             kui_core::MenuAction::Paste => (1u32, String::new()),
+            // The core only asks for a panel a host said it can show
+            // (`kui_set_lookup_available`), so this arrives exactly where
+            // a host is ready for it.
+            kui_core::MenuAction::LookUp { text, .. } => (2u32, text),
         };
         c.menu_text = text;
         let written = KuiMenuAction {

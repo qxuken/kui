@@ -7,7 +7,7 @@
 //! against the layout the user could see, not against the one being
 //! assembled in response to it.
 
-use crate::geom::Vec2;
+use crate::geom::{Rect, Vec2};
 use crate::key::Key;
 use crate::runtime::Core;
 use crate::select::{Endpoint, Selection};
@@ -79,6 +79,25 @@ impl Core {
             .text
             .scope_offset(sel.scope, sel.focus.node, sel.focus.byte, prev)?;
         Some(self.text.scope_slice(sel.scope, from, to, prev))
+    }
+
+    /// The box the window's selection occupies, logical viewport px —
+    /// what a platform panel about that selection is anchored to. The
+    /// union of the drawn runs it covers, so a selection that runs off
+    /// the screen is anchored by the part the reader can see.
+    ///
+    /// `None` with no selection, an empty one, or one whose runs the
+    /// frame never drew.
+    pub fn selection_rect(&self) -> Option<Rect> {
+        let sel = self.selection?;
+        let prev = self.building;
+        let from = self
+            .text
+            .scope_offset(sel.scope, sel.anchor.node, sel.anchor.byte, prev)?;
+        let to = self
+            .text
+            .scope_offset(sel.scope, sel.focus.node, sel.focus.byte, prev)?;
+        self.text.scope_selection_rect(sel.scope, from, to, prev)
     }
 
     /// Starts a selection at `point` inside `scope` — the press half of a

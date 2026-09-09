@@ -207,6 +207,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "animate" => s.animate = 1,
             "accent" => s.accent = 1,
             "selectable" => s.selectable = 1,
+            "onForceClick" => s.on_force_click = &layout_tag,
             "window" => s.window_role = 2, // KUI_WINDOW_* = schema index + 1
             "transition" => s.transition_ms = F,
             "easing" => s.easing = 1,
@@ -363,6 +364,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         animate: 1,
         accent: 1,
         selectable: 1,
+        on_force_click: &menu_tag,
         window_role: 1,
         transition_ms: 150.0,
         easing: 3,
@@ -467,6 +469,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .animate()
         .accent()
         .selectable()
+        .on_force_click(Value::str("cm"))
         .window_drag()
         .transition(150.0)
         .easing(kui_core::Easing::EaseInOut)

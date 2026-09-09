@@ -31,7 +31,9 @@ use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Sel};
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{NSEventModifierFlags, NSMenu, NSMenuItem, NSView};
-use objc2_foundation::{MainThreadMarker, NSObject, NSObjectProtocol, NSPoint, NSString};
+use objc2_foundation::{
+    MainThreadMarker, NSAttributedString, NSObject, NSObjectProtocol, NSPoint, NSString,
+};
 use winit::window::Window;
 
 /// What one presentation needs to know once it is finally shown: the view
@@ -155,6 +157,40 @@ fn accelerator(role: MenuRole) -> &'static str {
         MenuRole::SelectAll => "a",
         _ => "",
     }
+}
+
+/// Shows the platform's definition panel for `text`, anchored at `rect`
+/// (logical viewport px). macOS's own Look Up: the same panel a force
+/// click opens in any AppKit text view, which is what a custom-drawn UI
+/// otherwise has no way to offer (ADR 0017, decision 6).
+///
+/// Not deferred, unlike the menu: `showDefinitionForAttributedString:`
+/// puts up an ordinary popover and returns, with no nested run loop to
+/// re-enter winit from.
+pub fn show_definition(window: &Window, rect: kui_core::Rect, text: &str) -> bool {
+    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    if text.is_empty() {
+        return false;
+    }
+    let Ok(handle) = window.window_handle() else {
+        return false;
+    };
+    let RawWindowHandle::AppKit(h) = handle.as_raw() else {
+        return false;
+    };
+    // SAFETY: a live winit content view, on the event loop's thread.
+    let Some(view) = (unsafe { Retained::retain(h.ns_view.as_ptr().cast::<NSView>()) }) else {
+        return false;
+    };
+    let s = NSAttributedString::from_nsstring(&NSString::from_str(text));
+    // The panel points at a *baseline origin*, so it wants the bottom-left
+    // of the text and not the top-left of its box. The descender is not
+    // ours to know here, so the box's bottom is the approximation — a few
+    // px low, which reads as the panel hanging off the word rather than
+    // through it.
+    let at = NSPoint::new(rect.x as f64, (rect.y + rect.h) as f64);
+    view.showDefinitionForAttributedString_atPoint(Some(&s), at);
+    true
 }
 
 /// One window's menu target, kept alive between presentations because the

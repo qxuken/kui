@@ -419,3 +419,91 @@ fn a_row_the_host_invented_closes_the_menu_and_posts_nothing() {
     assert!(events.is_empty(), "{events:?}");
     assert!(core.menu().is_none());
 }
+
+// -- Force click (ADR 0017, decision 6) -------------------------------------
+
+#[test]
+fn a_force_click_over_text_selects_the_word_and_asks_for_a_panel() {
+    let mut core = Core::new();
+    core.set_lookup_available(true);
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let lead = ui.measure_text("hello ", &style(), None).width;
+    let word = ui.measure_text("brave", &style(), None).width;
+    ui.with_keyed(
+        "card",
+        NodeSpec::column().width(Sizing::Grow(1.0)).selectable(),
+        |ui| ui.text("hello brave world", style()),
+    );
+    ui.finish();
+    let at = Vec2::new(lead + word / 2.0, 8.0);
+    let events = core.handle_input(InputEvent::ForceClick(at));
+    assert!(events.is_empty(), "nothing reaches the app: {events:?}");
+    assert_eq!(core.selection_text().as_deref(), Some("brave"));
+    match core.take_menu_actions().as_slice() {
+        [MenuAction::LookUp { text, rect }] => {
+            assert_eq!(text, "brave");
+            assert!(rect.w > 0.0 && rect.h > 0.0, "anchored somewhere: {rect:?}");
+        }
+        other => panic!("expected one LookUp, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_host_that_cannot_look_up_is_not_asked_to() {
+    let mut core = Core::new();
+    let scope = frame(&mut core);
+    let events = core.handle_input(InputEvent::ForceClick(Vec2::new(4.0, 8.0)));
+    assert!(events.is_empty());
+    assert!(
+        core.selection_text().is_some(),
+        "the word is still selected"
+    );
+    assert!(
+        core.take_menu_actions().is_empty(),
+        "no panel is asked of a host that has none"
+    );
+    // ...and the row is not offered either.
+    right_click(&mut core, Vec2::new(4.0, 8.0));
+    frame(&mut core);
+    assert_eq!(rows(&mut core), ["Copy", "Select All"]);
+    let _ = scope;
+}
+
+#[test]
+fn a_force_click_elsewhere_reaches_the_node_that_asked_for_it() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let key = ui.with_keyed(
+        "chart",
+        NodeSpec::column()
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Fixed(80.0))
+            .on_force_click(Value::str("peek")),
+        |_| {},
+    );
+    ui.finish();
+    let events = core.handle_input(InputEvent::ForceClick(Vec2::new(30.0, 30.0)));
+    assert_eq!(events.len(), 1, "{events:?}");
+    assert_eq!(events[0].key, key);
+    assert_eq!(
+        events[0].payload.get("kind").and_then(Value::as_str),
+        Some("forceclick")
+    );
+    assert_eq!(
+        events[0].payload.get("tag").and_then(Value::as_str),
+        Some("peek")
+    );
+}
+
+#[test]
+fn the_lookup_row_is_offered_where_a_host_can_show_one() {
+    let mut core = Core::new();
+    core.set_lookup_available(true);
+    let scope = frame(&mut core);
+    core.select_all_in(scope);
+    right_click(&mut core, Vec2::new(20.0, 8.0));
+    frame(&mut core);
+    assert_eq!(rows(&mut core), ["Look Up", "Copy", "Select All"]);
+}

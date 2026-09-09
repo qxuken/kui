@@ -2088,6 +2088,40 @@ impl TextSystem {
         Some(run.base + byte.min(run.text.content().len()))
     }
 
+    /// The box the selection `from..to` occupies in `scope`, logical
+    /// viewport px: the union of the drawn runs it touches, clipped to
+    /// the part of each run that is actually selected in x only where the
+    /// run holds both ends. Rough on purpose — it anchors a platform
+    /// panel, and a panel wants the block of text, not its outline.
+    pub(crate) fn scope_selection_rect(
+        &self,
+        scope: Key,
+        from: usize,
+        to: usize,
+        prev: bool,
+    ) -> Option<Rect> {
+        let (from, to) = (from.min(to), from.max(to));
+        let mut out: Option<Rect> = None;
+        for run in self.scope_runs(scope, prev) {
+            let (start, end) = run.span();
+            if !run.place.drawn || end <= from || start >= to {
+                continue;
+            }
+            let box_ = self.scope_box(&run);
+            let r = Rect::new(
+                box_.x / self.scale,
+                box_.y / self.scale,
+                box_.w / self.scale,
+                box_.h / self.scale,
+            );
+            out = Some(match out {
+                None => r,
+                Some(o) => o.union(&r),
+            });
+        }
+        out
+    }
+
     /// The scope's text between two offsets in its concatenation, with a
     /// newline between two runs that were laid out on different lines and
     /// nothing between two that share one — the join rule ADR 0017 leaves

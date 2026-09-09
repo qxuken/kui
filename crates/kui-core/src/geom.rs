@@ -109,6 +109,16 @@ impl Rect {
         }
     }
 
+    /// The smallest rect holding both. What a selection spanning several
+    /// runs is anchored by (ADR 0017's Look Up panel).
+    pub fn union(&self, other: &Rect) -> Rect {
+        let x = self.x.min(other.x);
+        let y = self.y.min(other.y);
+        let r = (self.x + self.w).max(other.x + other.w);
+        let b = (self.y + self.h).max(other.y + other.h);
+        Rect::new(x, y, r - x, b - y)
+    }
+
     pub fn intersect(&self, other: &Rect) -> Rect {
         let x = self.x.max(other.x);
         let y = self.y.max(other.y);

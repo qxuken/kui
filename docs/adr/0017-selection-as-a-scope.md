@@ -526,7 +526,13 @@ corpus can see it.
 4. Cells: grid selection, `originLine`, linewise and block, copy with
    trailing-blank trimming.
 5. Force click: the pressure arm, the `forceclick` event, `onForceClick`,
-   and Look Up as a menu role.
+   and Look Up as a menu role. **Built 2026-09-09**, and the least
+   verifiable thing in the repo: the core routing has tests, the Look Up
+   row and its `MenuAction` reach the driver through the drain Copy and
+   Paste already use, and the last two inches — `showDefinition` putting a
+   panel on screen, and stage 2 ever arriving — need a Force Touch
+   trackpad and a finger. Both are one call each, and both are written
+   down here rather than left to be discovered.
 
 Steps 1 and 2 are the ADR; 3, 4 and 5 are each independently declinable
 without stranding the others.
@@ -544,9 +550,16 @@ without stranding the others.
    that `long_place`'s "queried alone" shortcut stops being the whole story
    and the two paths have to agree about offsets — which is exactly the
    sort of thing the corpus scene is for.
-2. **Does winit's default view deliver stage 2?** winit never calls
-   `setPressureConfiguration:`, and whether `primaryDefault` reaches stage
-   2 without it decides whether step 5 needs the raw-handle call at all.
+2. ~~**Does winit's default view deliver stage 2?**~~ **Answered by
+   declaring it (2026-09-09).** winit never calls
+   `setPressureConfiguration:`, and the question of what its default does
+   is not one this project can observe — nothing synthesises a trackpad
+   press, so the answer would be a guess either way. So the driver asks
+   for what it wants: `NSPressureBehaviorPrimaryDeepClick`, the behaviour
+   Quick Look and every force-clickable text view use, set on the content
+   view before the window is shown. That is one call, it cannot be wrong
+   about a default that may change, and it is the same call the answer
+   "no" would have required.
    Measurable in an afternoon on real hardware, and worth measuring before
    the step is planned rather than during it.
 3. **Selection in the access tree.** AccessKit models a text selection;

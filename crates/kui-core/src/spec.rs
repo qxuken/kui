@@ -593,6 +593,19 @@ pub struct EventSpec {
     /// interactive child takes the press unless it declares its own.
     /// Null = the behaviour without a tag.
     pub on_context_menu: Option<Value>,
+    /// Force-click events: a press that deepened past the second stage of
+    /// a Force Touch trackpad over this node emits `{kind="forceclick",
+    /// x, y, tag}` with this payload under `tag`. Routed like the
+    /// context-menu press — topmost node, no focus moved, no caret, no
+    /// click — and the ordinary click the press produces still follows,
+    /// which is what macOS does (ADR 0017, decision 6).
+    ///
+    /// Text does not need this: a force click over an editor or a
+    /// `selectable` scope selects the word and asks the host to look it
+    /// up, which is what the gesture means on that platform. This is for
+    /// what the core cannot guess — a force click on a chart, a map, a
+    /// timeline.
+    pub on_force_click: Option<Value>,
     /// Hover events: the pointer entering or leaving this node emits
     /// `{kind="hover", phase="enter"|"leave", tag}` with this payload under
     /// `tag` — for hover-dependent *layout* (a close button that appears)
@@ -625,6 +638,7 @@ impl EventSpec {
         on_key: None,
         key_up: false,
         on_context_menu: None,
+        on_force_click: None,
         on_hover: None,
         on_layout: None,
         modal: None,
@@ -886,6 +900,7 @@ impl NodeSpec {
                     || e.on_drag.is_some()
                     || e.on_key.is_some()
                     || e.on_context_menu.is_some()
+                    || e.on_force_click.is_some()
                     || e.on_hover.is_some()
             })
             || self.interact.as_deref().is_some_and(|i| {
@@ -1376,6 +1391,13 @@ impl NodeSpec {
     /// `key_up` field). Meaningless without `on_key`.
     pub fn key_up(mut self) -> Self {
         self.events_mut().key_up = true;
+        self
+    }
+
+    /// Asks for force-click events on this node (see the
+    /// `on_force_click` field).
+    pub fn on_force_click(mut self, tag: impl Into<Value>) -> Self {
+        self.events_mut().on_force_click = Some(tag.into());
         self
     }
 

@@ -43,6 +43,8 @@ smoke = []
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.52", features = [
     "Win32_Foundation",
+    # The context menu (ADR 0017 step 3) lives in WindowsAndMessaging,
+    # which is already here for the non-client chrome.
     "Win32_Globalization",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
@@ -74,12 +76,17 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
     "NSResponder",
     "NSView",
     "NSEvent",
+    # Force Touch: asking the view for the deep-click stage (step 5).
+    "NSPressureConfiguration",
 ] }
 objc2-foundation = { version = "0.3", default-features = false, features = [
     "std",
     "NSArray",
     "NSLocale",
     "NSString",
+    # The Look Up panel takes an attributed string (ADR 0017 step 5).
+    "NSAttributedString",
+    "NSGeometry",
 ] }
 
 # Every example in the repo lives under examples/ at the root, one directory

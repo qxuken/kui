@@ -35,6 +35,36 @@ field reports).
 
 ### Added
 
+- **Force click, and Look Up** (ADR 0017, decision 6 — the question this
+  whole ADR started from). A press that deepens past the second stage of a
+  Force Touch trackpad is `InputEvent::ForceClick`, routed like a
+  right-click: topmost node, no focus moved, no caret placed, no click, and
+  the ordinary click the press is still producing arrives afterwards, as it
+  does everywhere on macOS.
+
+  Over an `<edit>` or a `selectable` scope it selects the word under the
+  pointer and asks the host for the platform's definition panel — the same
+  panel the standard **Look Up** row asks for, which is now offered in the
+  stock menu on hosts that can show one. Elsewhere it reaches a node
+  declaring `onForceClick`, for a force click on a chart or a map that
+  means something the core cannot guess.
+
+  Two host capabilities carry it, both usable by any host including C:
+  `set_lookup_available` (offer the row, ask for the panel) and the
+  `LookUp` menu action. The macOS driver answers with
+  `showDefinitionForAttributedString:atPoint:` and asks the content view
+  for `NSPressureBehaviorPrimaryDeepClick` at window creation — winit never
+  sets a pressure configuration, and the deep-click stage is the gesture.
+
+  Nothing synthesises a trackpad press, so the last two inches — the panel
+  appearing, and stage 2 arriving — are the one part of this release that
+  no test and no scripted run can reach.
+
+- **Windows gets the native context menu too** (ADR 0017, step 3). A popup
+  `HMENU` tracked with `TPM_RETURNCMD`, which reports the chosen row
+  itself. Written against the headers and type-checked for
+  `x86_64-pc-windows-msvc`; **not yet run on Windows**.
+
 - **macOS windows show the platform's own context menu** (ADR 0017, step
   3). The Rust runner declares `set_native_menus`, the core then holds the
   open menu without drawing it, and the driver shows an `NSMenu` at the

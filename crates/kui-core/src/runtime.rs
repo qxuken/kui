@@ -202,6 +202,9 @@ pub struct Core {
     menu_editor: Option<Key>,
     /// Whether the host draws menus itself (`set_native_menus`).
     native_menus: bool,
+    /// Whether the host can show a definition panel
+    /// (`set_lookup_available`).
+    lookup_available: bool,
     /// The window's text selection outside an editor, and what the
     /// frame resolved it to: `sel_ords` numbers the text nodes of the
     /// selection's scope in emission order (`u32::MAX` for a node
@@ -412,6 +415,7 @@ impl Core {
             menu_actions: Vec::new(),
             menu_editor: None,
             native_menus: false,
+            lookup_available: false,
             selection: None,
             select_dragging: None,
             sel_ords: Vec::new(),

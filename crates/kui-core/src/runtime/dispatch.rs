@@ -484,6 +484,7 @@ impl Core {
                 self.interaction
                     .handle(InputEvent::MouseUp { button }, &mut out);
             }
+            InputEvent::ForceClick(p) => self.force_click(p, &mut out),
             InputEvent::Access(req) => self.handle_access(req, &mut out),
             other => self.interaction.handle(other, &mut out),
         }
@@ -492,6 +493,63 @@ impl Core {
         // derived earlier this frame no longer describes it.
         self.access_built = 0;
         out
+    }
+
+    /// A force click (ADR 0017, decision 6). Over text — an editor or a
+    /// `selectable` scope — it selects the word under it and asks the host
+    /// for its definition panel, which is what the gesture means on the
+    /// one platform that has it. Anywhere else it reaches a node
+    /// declaring `on_force_click`, and over anything else it does
+    /// nothing at all.
+    ///
+    /// It moves no focus and places no caret: it happens *during* a press
+    /// that is still running, and stealing the caret out from under a
+    /// drag would be a gesture fighting itself.
+    fn force_click(&mut self, p: Vec2, out: &mut Vec<UiEvent>) {
+        let Some(region) = self.interaction.hit_at(p) else {
+            return;
+        };
+        let (key, origin) = (region.key, region.origin);
+        let tag = region.force_click.clone();
+        let editor = region.edit_origin.map(|origin| (key, origin));
+        let scope = region.select_scope;
+        // Text first: the word under the pointer, selected, and looked up.
+        if let Some((key, content_origin)) = editor {
+            let local = Vec2::new(p.x - content_origin.x, p.y - content_origin.y);
+            self.set_focus(Some(key));
+            self.edit_with_fonts(|edit, fs| edit.click(key, local, 2, fs));
+            self.menu_editor = Some(key);
+            if let Some(action) = self.lookup_action() {
+                self.menu_actions.push(action);
+            }
+            return;
+        }
+        if let Some(scope) = scope {
+            if self.select_word_at(scope, p)
+                && let Some(action) = self.lookup_action()
+            {
+                self.menu_actions.push(action);
+            }
+            return;
+        }
+        // Not text: the node's own event, if it asked for one.
+        let Some(tag) = tag else { return };
+        let mut payload = Value::map([
+            ("kind", Value::str("forceclick")),
+            ("x", Value::Float(p.x as f64)),
+            ("y", Value::Float(p.y as f64)),
+        ]);
+        if tag != Value::Null
+            && let Value::Map(entries) = &mut payload
+        {
+            entries.push(("tag".to_string(), tag));
+        }
+        out.push(UiEvent {
+            origin,
+            window: WindowId::MAIN,
+            key,
+            payload,
+        });
     }
 
     /// Resolves a request from assistive technology against the last

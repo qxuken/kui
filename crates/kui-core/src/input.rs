@@ -77,6 +77,20 @@ pub enum InputEvent {
     /// Cmd-held drag overlay, a hint bar) and is queryable while building
     /// a frame (`Ui::modifiers`).
     Modifiers(KeyMods),
+    /// A force click at a point in logical viewport coordinates: the
+    /// press deepened past the second stage of a Force Touch trackpad
+    /// (`docs/adr/0017-selection-as-a-scope.md`, decision 6).
+    ///
+    /// Routed like the secondary press — the topmost node under the point,
+    /// no focus moved, no caret placed, no click — because it arrives
+    /// *during* an ordinary press that is still running, and the click
+    /// that press produces still happens afterwards. Over text it selects
+    /// the word and asks the host to look it up; anywhere else it reaches
+    /// a node declaring `on_force_click`.
+    ///
+    /// macOS-only in practice: no other platform winit supports reports
+    /// pressure at all, and there a user can switch it off.
+    ForceClick(Vec2),
 }
 
 /// Which button a press came from — driver-facing rather than shaped after
@@ -582,6 +596,8 @@ pub struct HitRegion {
     /// The sink declared `key_up`: releases reach it too. Without it a
     /// release is dropped at routing, and the sink hears presses only.
     pub key_up: bool,
+    /// Force-click tag when the node declared `on_force_click`.
+    pub force_click: Option<Value>,
     /// Context-menu tag when the node declared `on_context_menu`: a
     /// secondary-button press emits `{kind="contextmenu", x, y, tag}` on
     /// it. Like a click, the topmost region under the pointer is the one
@@ -985,7 +1001,11 @@ impl Interaction {
             | InputEvent::Key(..)
             | InputEvent::KeyDown(_)
             | InputEvent::KeyUp(_)
-            | InputEvent::Access(_) => {}
+            | InputEvent::Access(_)
+            // A force click needs the text and selection stores, and the
+            // node it lands on it finds by hit test the way a secondary
+            // press does.
+            | InputEvent::ForceClick(_) => {}
             InputEvent::MouseUp { button } if button != MouseButton::Primary => {}
             InputEvent::MouseUp { .. } => {
                 let dragged = self.drag.take().inspect(|drag| {
@@ -1127,6 +1147,8 @@ mod tests {
             key_sink: None,
             key_up: false,
             context_menu: None,
+            force_click: None,
+            force_click: None,
             focusable: true,
             window: None,
             hover: None,

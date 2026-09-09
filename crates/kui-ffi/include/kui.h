@@ -667,6 +667,19 @@ typedef struct KuiSpec {
      * the shorter struct and reads as zero: not a selection scope, which
      * is what every node was before this. */
     uint32_t selectable;
+    /* Force-click tag: a press that deepens past the second stage of a
+     * Force Touch trackpad over this node emits {kind:"forceclick", x, y,
+     * tag} on it, at the point it happened
+     * (docs/adr/0017-selection-as-a-scope.md). Routed like
+     * on_context_menu - topmost node, no focus moved, no caret placed, no
+     * click - and the ordinary click that press produces still arrives
+     * afterwards. Text needs none of this: a force click over an editor or
+     * a `selectable` scope selects the word and asks the host for its
+     * definition panel. macOS-only in practice, and switchable off there,
+     * so nothing may be reachable only this way. Borrowed while the node
+     * opens; appended after ABI 11 the compatible way, so a host that
+     * predates it passes the shorter struct and reads as NULL. */
+    const KuiValue *on_force_click;
 } KuiSpec;
 
 /* Disclosure state (KuiSpec.expanded): the schema index plus one, so zero
@@ -924,8 +937,13 @@ typedef struct KuiMenuItem {
     KuiStr accel;
 } KuiMenuItem;
 
-/* KuiMenuAction.kind. */
-enum { KUI_MENU_ACTION_SET_CLIPBOARD = 0, KUI_MENU_ACTION_PASTE = 1 };
+/* KuiMenuAction.kind. LOOK_UP carries the text to show a definition panel
+ * for, and only ever reaches a host that said it can show one. */
+enum {
+    KUI_MENU_ACTION_SET_CLIPBOARD = 0,
+    KUI_MENU_ACTION_PASTE = 1,
+    KUI_MENU_ACTION_LOOK_UP = 2,
+};
 
 /* [out] What choosing a row left for the host: the clipboard, which is the
  * host's in this library. SET_CLIPBOARD carries the text to put there - the
@@ -1801,6 +1819,21 @@ bool kui_open_menu(KuiCtx *ctx, uint64_t key, float x, float y,
                    const KuiMenuItem *items, size_t count);
 /* Closes whatever menu is open; true when there was one. */
 bool kui_close_menu(KuiCtx *ctx);
+/* Tells the core this host shows menus itself, however the platform draws
+ * them: the core then keeps the open menu as state and draws none of it.
+ * Read what is open, show it, and report back with kui_activate_menu_item
+ * or kui_close_menu. Off by default, which is the menu this library
+ * draws. */
+void kui_set_native_menus(KuiCtx *ctx, bool on);
+/* Reports that the host's own menu chose row `index` - the same path a
+ * press on the drawn menu's row takes; an index past the end closes the
+ * menu and posts nothing. False when no menu was open. */
+bool kui_activate_menu_item(KuiCtx *ctx, size_t index);
+/* Tells the core this host can show the platform's definition panel
+ * (macOS's Look Up). The standard Look Up row is then offered where it
+ * means something and a force click over text asks for one; without it the
+ * core neither offers nor asks. */
+void kui_set_lookup_available(KuiCtx *ctx, bool on);
 /* Drains one queued menu action (see KuiMenuAction); false when there are
  * none. Drain to empty after handling input, the way window commands are. */
 bool kui_take_menu_action(KuiCtx *ctx, KuiMenuAction *out);

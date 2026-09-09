@@ -496,6 +496,13 @@ pub struct KuiSpec {
     /// `accent` was: an [in] struct that never travels as an array, so
     /// the size handshake absorbs it and no version moves.
     pub selectable: u32,
+    /// Force-click tag (`on_force_click`): a press that deepens past the
+    /// second stage of a Force Touch trackpad over this node emits
+    /// `{kind:"forceclick", x, y, tag}` on it. Borrowed while the node
+    /// opens, like every other tag. Appended after ABI 11 the compatible
+    /// way; a host that predates it passes the shorter struct and reads
+    /// as NULL.
+    pub on_force_click: *const KuiValue,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a

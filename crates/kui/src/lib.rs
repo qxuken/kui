@@ -20,6 +20,8 @@ mod access_bridge;
 pub mod audio;
 /// The platform's own context menu, where there is one (ADR 0017 step 3).
 #[cfg(target_os = "macos")]
+mod macos_force;
+#[cfg(target_os = "macos")]
 mod macos_menu;
 /// ADR 0009's arithmetic: where a pointer in one window is in another.
 mod retarget;
@@ -28,6 +30,8 @@ mod retarget;
 mod system_env;
 #[cfg(target_os = "windows")]
 mod windows_anim;
+#[cfg(target_os = "windows")]
+mod windows_menu;
 #[cfg(target_os = "windows")]
 mod windows_nc;
 
@@ -304,6 +308,7 @@ impl Launcher {
             #[cfg(target_os = "macos")]
             native_menu: macos_menu::MacMenu::new(),
             menu_shown: false,
+            menu_idle: false,
             audio: audio::Audio::new(),
             audio_touch: std::time::Instant::now(),
             smoke_frames: Self::smoke_frames(),
@@ -392,6 +397,8 @@ fn input_completes(ev: &InputEvent) -> bool {
     match ev {
         InputEvent::MouseDown { .. }
         | InputEvent::MouseUp { .. }
+        // A force click is one moment and one answer, like a press.
+        | InputEvent::ForceClick(_)
         | InputEvent::Key(..)
         | InputEvent::KeyDown(_)
         | InputEvent::KeyUp(_)
@@ -794,6 +801,10 @@ struct Pane {
     last_titlebar_press: Option<std::time::Instant>,
     /// Last cursor position (logical px), for multi-click distance checks.
     cursor: Vec2,
+    /// The last Force Touch stage this window reported (0 none, 1 a
+    /// press, 2 a force click). Kept so only the *edge* into 2 counts:
+    /// AppKit reports the whole ramp, many events a press.
+    pressure_stage: i64,
     /// Last primary press: time, position, and its click count.
     last_click: Option<(std::time::Instant, Vec2, u8)>,
     /// Caret blink phase mirror + next toggle time; the clock lives here,
@@ -1123,7 +1134,14 @@ struct Shell<A: App> {
     native_menu: Option<macos_menu::MacMenu>,
     /// Whether a menu the core opened has been handed to the platform and
     /// is waiting for an answer. One per app: only one menu can be up.
+    /// Unused where the platform's tracking call reports the row itself
+    /// (Win32), which needs no second turn to wait for.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     menu_shown: bool,
+    /// True only while `about_to_wait` is running, which is the one place
+    /// a platform menu that blocks (Win32's) may be entered from: no other
+    /// handler is on the stack there. See `pump_native_menu`.
+    menu_idle: bool,
     /// The audio device the core's audio commands drive; see `audio`.
     audio: audio::Audio,
     /// When the app was last doing something that could lead to a sound:
@@ -1579,6 +1597,7 @@ impl<A: App> Shell<A> {
     /// and gone — reads which row it reported. A host with no native menu
     /// does neither and the core draws its own.
     fn pump_native_menu(&mut self, event_loop: &ActiveEventLoop) {
+        let _ = &self.menu_idle;
         #[cfg(target_os = "macos")]
         {
             let Some(native) = self.native_menu.as_ref() else {
@@ -1619,7 +1638,40 @@ impl<A: App> Shell<A> {
             self.apply_window_commands(event_loop);
             self.panes[i].window.request_redraw();
         }
-        #[cfg(not(target_os = "macos"))]
+        // Win32's tracking call reports the row itself and blocks until
+        // the menu closes, so there is no second turn to wait for — but
+        // for the same reason it is only ever made from `about_to_wait`,
+        // where no other handler is on the stack (see `windows_menu`).
+        #[cfg(target_os = "windows")]
+        {
+            if !self.menu_idle {
+                return;
+            }
+            let Some(i) = self.panes.iter().position(|p| p.core.menu().is_some()) else {
+                return;
+            };
+            let menu = self.panes[i].core.menu().expect("checked").clone();
+            let tracked = windows_menu::track(&self.panes[i].window, menu.at, &menu.items);
+            let events = match tracked {
+                windows_menu::Tracked::Chosen(row) => self.panes[i].core.activate_menu_item(row),
+                windows_menu::Tracked::Dismissed => {
+                    self.panes[i].core.close_menu();
+                    Vec::new()
+                }
+                windows_menu::Tracked::Refused => {
+                    // Fall back to the menu the core draws rather than
+                    // leaving one open that never shows.
+                    self.panes[i].core.set_native_menus(false);
+                    self.panes[i].window.request_redraw();
+                    return;
+                }
+            };
+            self.route_events(events);
+            self.apply_menu_actions(event_loop, i);
+            self.apply_window_commands(event_loop);
+            self.panes[i].window.request_redraw();
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         let _ = event_loop;
     }
 
@@ -1644,6 +1696,17 @@ impl<A: App> Shell<A> {
                     if let Some(text) = self.clipboard.as_mut().and_then(|cb| cb.get_text().ok()) {
                         self.dispatch(event_loop, i, InputEvent::Text(text));
                     }
+                }
+                MenuAction::LookUp { text, rect } => {
+                    // Only macOS has a panel to show. Everywhere else the
+                    // core never offers the row and never asks, so this is
+                    // unreachable rather than merely unhandled.
+                    #[cfg(target_os = "macos")]
+                    if let Some(pane) = self.panes.get(i) {
+                        macos_menu::show_definition(&pane.window, rect, &text);
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    let _ = (text, rect);
                 }
             }
         }
@@ -1885,9 +1948,19 @@ impl<A: App> Shell<A> {
     ) {
         // This driver shows the platform's own context menu where the
         // platform has one, so the core keeps the open menu as state and
-        // draws none of it (ADR 0017, decision 5, step 3).
+        // draws none of it (ADR 0017, decision 5, step 3). Everywhere else
+        // — Linux today — the core draws the menu it always drew.
         #[cfg(target_os = "macos")]
-        core.set_native_menus(self.native_menu.is_some());
+        let native_menus = self.native_menu.is_some();
+        #[cfg(target_os = "windows")]
+        let native_menus = true;
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let native_menus = false;
+        core.set_native_menus(native_menus);
+        // macOS is the one platform with a definition panel to show, so
+        // it is the one where the Look Up row is offered and a force click
+        // asks for one (ADR 0017, decision 6).
+        core.set_lookup_available(cfg!(target_os = "macos"));
         let access = self
             .proxy
             .clone()
@@ -1898,6 +1971,11 @@ impl<A: App> Shell<A> {
             .flatten();
         #[cfg(target_os = "windows")]
         let anim_timer = windows_anim::AnimTimer::new(&window);
+        // Ask for the deep-click stage before the window is shown: the
+        // press that reaches stage 2 is what a force click *is*, and a
+        // view that never asked never gets one (ADR 0017, decision 6).
+        #[cfg(target_os = "macos")]
+        macos_force::configure(&window);
         window.set_visible(true);
         window.set_ime_allowed(true);
         window.request_redraw();
@@ -1920,6 +1998,7 @@ impl<A: App> Shell<A> {
             blink_deadline: None,
             caret_stamp_seen: 0,
             resize_edge: None,
+            pressure_stage: 0,
             cursor_icon: CursorIcon::Default,
             os_focused: false,
             appearance,
@@ -2619,6 +2698,20 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 let t = self.key_target(i);
                 self.dispatch(event_loop, t, InputEvent::Preedit(text, cursor));
             }
+            // Force Touch: stage 2 is the deepened press macOS calls a
+            // force click. winit reports the whole ramp, and only the
+            // *edge* into stage 2 is the gesture — a stage that stays at 2
+            // while the finger presses harder is the same click still
+            // happening (ADR 0017, decision 6). macOS-only: no other
+            // winit backend reports pressure at all.
+            WindowEvent::TouchpadPressure { stage, .. } => {
+                let pane = &mut self.panes[i];
+                let was = std::mem::replace(&mut pane.pressure_stage, stage);
+                if stage >= 2 && was < 2 {
+                    let at = pane.cursor;
+                    self.dispatch(event_loop, i, InputEvent::ForceClick(at));
+                }
+            }
             WindowEvent::MouseWheel { delta, .. } => {
                 let scale = self.panes[i].window.scale_factor() as f32;
                 let d = match delta {
@@ -2884,8 +2977,11 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
     /// plays, the loop wakes every `AUDIO_POLL` to notice it finishing.
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         // The platform's menu comes and goes between turns of the loop,
-        // so this is where its answer is collected.
+        // so this is where its answer is collected — and, where the
+        // platform's tracking call blocks, the only place it is made.
+        self.menu_idle = true;
         self.pump_native_menu(event_loop);
+        self.menu_idle = false;
         self.settle_focus();
         self.dismiss_popups_if_deactivated();
         self.poll_audio();

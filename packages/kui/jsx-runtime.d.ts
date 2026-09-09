@@ -202,6 +202,8 @@ export interface GeneratedSpecProps {
   onContextMenu?: AppMsg | null;
   /** Drag tag: emits {kind:"drag", phase, x, y, dx, dy, parent, tag} events, `dx`/`dy` measured from the press point in every phase. */
   onDrag?: AppMsg | null;
+  /** Force-click tag: a press that deepens past the second stage of a Force Touch trackpad emits {kind:"forceclick", x, y, tag} on the node, at the logical viewport point it happened at (`docs/adr/0017-selection-as-a-scope.md`). Routed like `onContextMenu` — topmost node, no focus moved, no caret placed, no click — and the ordinary click the press is still producing arrives afterwards, as it does on macOS. Text needs none of this: a force click over an `edit` or a `selectable` scope selects the word under it and asks the host for its Look Up panel. macOS-only in practice, and there the user can switch the gesture off, so nothing may declare itself the only way to reach something. */
+  onForceClick?: AppMsg | null;
   /** Hover tag: the pointer entering/leaving emits {kind:"hover", phase:"enter"|"leave", tag} events. */
   onHover?: AppMsg | null;
   /** Key-sink tag: with key focus held, presses arrive as {kind:"key", phase:"down", code, ...} events. Releases only with `keyUp` beside it. */

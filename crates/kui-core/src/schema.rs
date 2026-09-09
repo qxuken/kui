@@ -142,6 +142,7 @@ pub const P_ANIMATE: u32 = 87;
 pub const P_ACCENT: u32 = 88;
 pub const P_INDEX: u32 = 89;
 pub const P_SELECTABLE: u32 = 90;
+pub const P_ON_FORCE_CLICK: u32 = 91;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
@@ -746,6 +747,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Tag,
         apply: Apply::SpecMsg(|s, v| s.on_context_menu(v)),
         doc: "Context-menu tag: a secondary-button (right) press emits {kind:\"contextmenu\", x, y, tag} on the node, at the logical viewport point to open the menu at. The press moves no focus, places no caret and produces no click, so right-clicking a selection keeps it; the topmost node under the pointer is the one asked, as for a click.",
+    },
+    PropDef {
+        name: "onForceClick",
+        id: P_ON_FORCE_CLICK,
+        kind: Kind::Tag,
+        apply: Apply::SpecMsg(|s, v| s.on_force_click(v)),
+        doc: "Force-click tag: a press that deepens past the second stage of a Force Touch trackpad emits {kind:\"forceclick\", x, y, tag} on the node, at the logical viewport point it happened at (`docs/adr/0017-selection-as-a-scope.md`). Routed like `onContextMenu` — topmost node, no focus moved, no caret placed, no click — and the ordinary click the press is still producing arrives afterwards, as it does on macOS. Text needs none of this: a force click over an `edit` or a `selectable` scope selects the word under it and asks the host for its Look Up panel. macOS-only in practice, and there the user can switch the gesture off, so nothing may declare itself the only way to reach something.",
     },
     PropDef {
         name: "window",

@@ -44,6 +44,20 @@ impl Core {
         self.native_menus = on;
     }
 
+    /// Tells the core that this host can show the platform's definition
+    /// panel — macOS's Look Up. The standard Look Up row is then offered
+    /// where it means something, and a force click over text asks for
+    /// one; without it the core neither offers nor asks, because an item
+    /// that does nothing is worse than an item that is not there.
+    pub fn set_lookup_available(&mut self, on: bool) {
+        self.lookup_available = on;
+    }
+
+    /// Whether the host said it can show a definition panel.
+    pub fn lookup_available(&self) -> bool {
+        self.lookup_available
+    }
+
     /// Whether the host said it shows menus itself.
     pub fn native_menus(&self) -> bool {
         self.native_menus
@@ -64,6 +78,18 @@ impl Core {
             self.close_menu();
         }
         out
+    }
+
+    /// A definition-panel request for whatever is selected: the text and
+    /// the box to anchor the panel to. `None` with nothing selected, or
+    /// with a host that cannot show one.
+    pub(crate) fn lookup_action(&self) -> Option<MenuAction> {
+        if !self.lookup_available {
+            return None;
+        }
+        let text = self.copy_selection().filter(|t| !t.is_empty())?;
+        let rect = self.selection_rect()?;
+        Some(MenuAction::LookUp { text, rect })
     }
 
     /// Whether `key` is a node of the stock menu — its root or one of its
@@ -167,10 +193,18 @@ impl Core {
         }
         if scope.is_some() {
             let has = self.selection_text().is_some_and(|t| !t.is_empty());
-            return vec![
+            let mut items = vec![
                 MenuItem::role(MenuRole::Copy).enabled(has),
                 MenuItem::role(MenuRole::SelectAll),
             ];
+            // Only where the host can show one, and only with something
+            // to look up: the row is the platform's, and a dead one would
+            // be a promise this library cannot keep.
+            if self.lookup_available {
+                items.insert(0, MenuItem::role(MenuRole::LookUp).enabled(has));
+                items.insert(1, MenuItem::separator());
+            }
+            return items;
         }
         Vec::new()
     }
@@ -294,10 +328,12 @@ impl Core {
                 }
             }
             MenuRole::Paste => self.menu_actions.push(MenuAction::Paste),
-            // Not offered without a host that can show one, so reaching
-            // here means a host asked for it: it hears about it the way it
-            // hears about a custom item, and answers with its own panel.
-            MenuRole::LookUp | MenuRole::Custom => {}
+            MenuRole::LookUp => {
+                if let Some(action) = self.lookup_action() {
+                    self.menu_actions.push(action);
+                }
+            }
+            MenuRole::Custom => {}
         }
         // Every chosen item posts, including the standard ones: an app
         // that wants to know its editor was cut from does not have to

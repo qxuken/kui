@@ -195,7 +195,7 @@ impl Menu {
 /// and writes it for Cmd-C/X/V — and nothing here changes that. The core
 /// works out *what* to copy, which is the half it is uniquely able to do,
 /// and hands over a string.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum MenuAction {
     /// Put this on the system clipboard. Both Copy and Cut produce one;
     /// Cut has already removed the text by the time it arrives.
@@ -204,4 +204,14 @@ pub enum MenuAction {
     /// as the host does for Cmd-V. The core cannot read a clipboard, so
     /// Paste is the one standard item it can only ask for.
     Paste,
+    /// Show the platform's definition panel for `text`, anchored at
+    /// `rect` (logical viewport px — the word's own box, which is what
+    /// macOS's `showDefinitionForAttributedString:atPoint:` wants). Both
+    /// the Look Up row and a force click over text produce one; a host
+    /// that cannot show a panel drops it, and is never offered the row in
+    /// the first place (`Core::set_lookup_available`).
+    LookUp {
+        text: String,
+        rect: crate::geom::Rect,
+    },
 }

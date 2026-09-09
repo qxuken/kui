@@ -258,6 +258,9 @@ pub(crate) fn spec_of(
     if let Some(tag) = unsafe { s.on_context_menu.as_ref() } {
         spec = spec.on_context_menu(tag.0.clone());
     }
+    if let Some(tag) = unsafe { s.on_force_click.as_ref() } {
+        spec = spec.on_force_click(tag.0.clone());
+    }
     if s.cursor != 0 {
         // KUI_CURSOR_* = schema index + 1, so zero can mean "derive".
         spec = spec.cursor(kui_core::schema::cursor_idx(s.cursor as usize - 1));
