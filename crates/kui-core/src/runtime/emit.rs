@@ -474,6 +474,8 @@ impl Core {
         let any_opacity =
             self.any_opacity || (!self.tree.is_empty() && self.tree.specs[0].style.opacity < 1.0);
         let any_float = self.any_float;
+        // Read once: every per-node selection check below is behind it.
+        let any_selectable = self.tree.any_selectable;
 
         // inherited clip per node (logical): ancestors only, not the node
         // itself. Only materialized when something actually clips.
@@ -502,7 +504,7 @@ impl Core {
         // takes the text under it and is warned about, because two scopes
         // over one run would each think they own it.
         self.scopes.clear();
-        if self.tree.any_selectable {
+        if any_selectable {
             self.scopes.resize(self.tree.len(), None);
             for i in 0..self.tree.len() {
                 let parent = self.tree.parent[i];
@@ -626,7 +628,12 @@ impl Core {
                 // selection can run past the edge of a scroller (ADR
                 // 0017, tier 2). Marked undrawn: no hit region, no
                 // `text_hit`, nothing a pointer can find.
-                if let Some(scope) = self.scope_of(i)
+                //
+                // Behind the frame's own flag, hoisted out of the loop:
+                // a frame that declares no scope does not pay a lookup
+                // per culled node to find that out (C15).
+                if any_selectable
+                    && let Some(scope) = self.scope_of(i)
                     && let NodeContent::Text(tid) = self.tree.content[i]
                 {
                     let (anc, depth) = self.text_ancestors(i);
