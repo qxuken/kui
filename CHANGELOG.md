@@ -19,7 +19,35 @@ field reports).
 
 ## Unreleased
 
+**What breaks.**
+
+- **A `Fit`-width `<edit>` is now as wide as its text.** It was as wide as
+  the widest line of its text wrapped at whatever width it had last frame,
+  which is a number that only ever went down. Any arithmetic built on the
+  old one — a hand-measured width, headroom past the widest character —
+  can go; see **What you can delete**.
+
 ### Fixed
+
+- **A field that hugs its text no longer ratchets down to one character**
+  (backlog F38). An `<edit>` with a `Fit` width was measured off its text
+  buffer *as it stood* — still carrying the wrap width the last frame set
+  on it — so the box took the widest wrapped line, the next frame wrapped
+  to that, and the fixed point of that loop is one character per line:
+  `hello`, typed into a field that hugs its text, was four lines and 11 px
+  wide. The intrinsic measurement takes the wrap off first and is cached
+  against the text *and its metrics*, which closes a second, quieter half
+  of the same bug: a style or scale change re-metrics the buffer without
+  touching the text, and a cache keyed on the text alone answered the new
+  frame with the old font's size.
+
+  Nothing in this repository hit it, because every example and every test
+  gives its editor a `Fixed` or `Grow` width. It was the natural spelling
+  that was broken — and, with the field change below, it is the spelling
+  that makes a rename field size itself: the core re-lays out the tree it
+  was handed when it echoes a keystroke, so a `fit` field grows on the
+  frame the character arrives, with no second render from the app.
+
 
 - **`<button accent>` typechecks** (backlog F37, from an alpha.10 field
   report). alpha.10 gave the stock button the accent row, and said so in

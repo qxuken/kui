@@ -55,8 +55,17 @@ pub(crate) struct EditState {
     wrap: Option<f32>,
     /// Bumped on every content change.
     pub version: u64,
-    /// Cached wrapped measurement: (version, wrap bits, size).
-    measured: Option<(u64, u32, Size)>,
+    /// Bumped whenever the same text is laid out under new metrics (a
+    /// style or a scale change), so neither cache below can answer a
+    /// question about this font with a size measured for the last one.
+    metrics_rev: u32,
+    /// Cached wrapped measurement: (version, metrics, wrap bits, size).
+    measured: Option<(u64, u32, u32, Size)>,
+    /// Cached unwrapped measurement: (version, metrics, size). What the
+    /// fit width reads, and the reason it is cached rather than taken off
+    /// the buffer as it stands: the buffer is still carrying whatever
+    /// width `wrapped` last set on it (backlog F38).
+    natural: Option<(u64, u32, Size)>,
     /// In-progress IME composition: a marked, uncommitted range living
     /// inside the buffer (so the text around it reflows as it grows).
     preedit: Option<Preedit>,
@@ -147,6 +156,14 @@ fn abs_offset(b: &Buffer, c: Cursor) -> usize {
 }
 
 impl EditState {
+    /// Both measurement caches, dropped together: the text under them
+    /// changed, so neither the wrapped size nor the natural one still
+    /// describes it.
+    fn invalidate_measurements(&mut self) {
+        self.measured = None;
+        self.natural = None;
+    }
+
     /// Pushes a fresh op (clearing redo), merging into the top op when the
     /// declared coalesce kind matches and the edits are adjacent.
     fn record(&mut self, op: EditOp, kind: Option<Coalesce>) {
@@ -403,7 +420,7 @@ impl EditStore {
                 && s.abandon_preedit()
             {
                 s.version += 1;
-                s.measured = None;
+                s.invalidate_measurements();
             }
         }
         self.focused = key;
@@ -543,7 +560,9 @@ impl EditStore {
                 scale,
                 wrap: None,
                 version: 0,
+                metrics_rev: 0,
                 measured: None,
+                natural: None,
                 preedit: None,
                 undo: VecDeque::new(),
                 redo: VecDeque::new(),
@@ -556,12 +575,18 @@ impl EditStore {
         state.multiline = opts.multiline;
         state.accent = opts.accent;
         // Style/scale changes re-metric the buffer (text and cursor survive).
+        // The text is the same, so `version` does not move — but every
+        // measurement of it is now of the wrong font, which is what
+        // `metrics_rev` is for: without it a cache keyed on the text alone
+        // answers the new frame with the old size.
         if state.scale != scale || state.style != opts.style {
             state.style = opts.style;
             state.scale = scale;
             let metrics = Metrics::new(opts.style.size * scale, opts.style.line_height * scale);
             state.editor.with_buffer_mut(|b| b.set_metrics(metrics));
             state.wrap = None;
+            state.metrics_rev = state.metrics_rev.wrapping_add(1);
+            state.invalidate_measurements();
         }
         // `autofocus` is the core's decision (it owns the one focus).
     }
@@ -605,7 +630,7 @@ impl EditStore {
         s.editor.set_selection(Selection::None);
         s.editor.action(fs, Action::Motion(Motion::BufferEnd));
         s.version += 1;
-        s.measured = None;
+        s.invalidate_measurements();
         s.wrap = None;
         // A wholesale replacement invalidates the recorded deltas.
         s.undo.clear();
@@ -780,7 +805,7 @@ impl EditStore {
         s.insert_recorded(text);
         s.editor.shape_as_needed(fs, false);
         s.version += 1;
-        s.measured = None;
+        s.invalidate_measurements();
         self.touch_caret(key);
         true
     }
@@ -798,7 +823,7 @@ impl EditStore {
         s.abandon_preedit();
         if s.delete_selection_recorded() {
             s.version += 1;
-            s.measured = None;
+            s.invalidate_measurements();
             self.touch_caret(key);
             true
         } else {
@@ -825,7 +850,7 @@ impl EditStore {
         s.insert_recorded(&filtered);
         s.editor.shape_as_needed(fs, false);
         s.version += 1;
-        s.measured = None;
+        s.invalidate_measurements();
         self.touch_caret(key);
         true
     }
@@ -937,7 +962,7 @@ impl EditStore {
         s.editor.shape_as_needed(fs, false);
         if changed {
             s.version += 1;
-            s.measured = None;
+            s.invalidate_measurements();
         }
         self.touch_caret(key);
         (changed, submit)
@@ -950,7 +975,7 @@ impl EditStore {
         if let Some(s) = self.states.get_mut(&key) {
             if s.abandon_preedit() {
                 s.version += 1;
-                s.measured = None;
+                s.invalidate_measurements();
             }
             let (x, y) = ((local.x * s.scale) as i32, (local.y * s.scale) as i32);
             let action = match clicks {
@@ -1024,7 +1049,7 @@ impl EditStore {
         }
         s.editor.shape_as_needed(fs, false);
         s.version += 1;
-        s.measured = None;
+        s.invalidate_measurements();
         self.touch_caret(key);
         true
     }
@@ -1059,27 +1084,46 @@ impl EditStore {
 
     // -- Layout measurement (logical units)
 
+    /// What the text wants on its own: the width a `Fit` editor takes, and
+    /// the floor under a `Min::FIT` one.
+    ///
+    /// Measured with the wrap taken *off*, and cached against the text and
+    /// its metrics rather than read off the buffer as it stands. The
+    /// buffer is still carrying whatever width `wrapped` last set on it,
+    /// and a fit width measured under that is a width that feeds back on
+    /// itself: the box takes the widest wrapped line, the next frame wraps
+    /// to that, and a field declared to hug its text ratchets down to one
+    /// character with every keystroke on its own line (backlog F38).
     pub(crate) fn intrinsic(&mut self, key: Key, fs: &mut FontSystem) -> Size {
         let Some(s) = self.states.get_mut(&key) else {
             return Size::ZERO;
         };
+        if let Some((v, m, size)) = s.natural
+            && (v, m) == (s.version, s.metrics_rev)
+        {
+            return size;
+        }
+        // Taken off and left off: `wrapped` runs after this in the same
+        // pass, and putting the frame's width back is its job. Off
+        // unconditionally rather than when `wrap` says it is on — a style
+        // change clears that flag without touching the buffer, and
+        // measuring the wrapped buffer is the whole bug.
+        s.editor.with_buffer_mut(|b| b.set_size(None, None));
+        s.wrap = None;
         s.editor.shape_as_needed(fs, false);
-        let (w, h, lh) = s.editor.with_buffer(|b| {
+        let (w, h) = s.editor.with_buffer(|b| {
             let mut w = 0.0f32;
             let mut lines = 0u32;
             for run in b.layout_runs() {
                 w = w.max(run.line_w);
                 lines += 1;
             }
-            (
-                w,
-                lines.max(1) as f32 * b.metrics().line_height,
-                b.metrics().line_height,
-            )
+            (w, lines.max(1) as f32 * b.metrics().line_height)
         });
-        let _ = lh;
         // Caret margin so the cursor at line end isn't clipped.
-        Size::new((w + 2.0 * s.scale) / s.scale, h / s.scale)
+        let size = Size::new((w + 2.0 * s.scale) / s.scale, h / s.scale);
+        s.natural = Some((s.version, s.metrics_rev, size));
+        size
     }
 
     pub(crate) fn wrapped(&mut self, key: Key, max_w: f32, fs: &mut FontSystem) -> Size {
@@ -1095,9 +1139,9 @@ impl EditStore {
             s.editor.with_buffer_mut(|b| b.set_size(Some(target), None));
             s.wrap = Some(target);
         }
-        let stamp = (s.version, target.to_bits());
-        if let Some((v, w, size)) = s.measured
-            && (v, w) == stamp
+        let stamp = (s.version, s.metrics_rev, target.to_bits());
+        if let Some((v, m, w, size)) = s.measured
+            && (v, m, w) == stamp
         {
             return size;
         }
@@ -1110,7 +1154,7 @@ impl EditStore {
             lines.max(1) as f32 * b.metrics().line_height
         });
         let size = Size::new(max_w, h / s.scale);
-        s.measured = Some((stamp.0, stamp.1, size));
+        s.measured = Some((stamp.0, stamp.1, stamp.2, size));
         size
     }
 

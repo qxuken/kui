@@ -355,6 +355,74 @@ without one. Under "Distribution" in *After alpha.9*.
   watch"). A model-side sound lifetime that holds while the clock moves
   is the app's design and its headless assertions guard it.
 
+## From the two alpha.10 upgrade reports (2026-09-09)
+
+Both apps upgraded to alpha.10 the day it was tagged and reported again:
+the mind map's `FINDINGS.md` and the LCARS pomodoro's
+`docs/kui-alpha-10.md`. F37 came out of the same pair and closed first;
+what the rest of the round produced is four entries, **F38–F41, all built
+on 2026-09-09** and moved whole to
+[`backlog/closed-2026-09.md`](backlog/closed-2026-09.md#from-the-two-alpha10-upgrade-reports-2026-09-09).
+
+The theme is not last round's. Every one of them is a fact the core or the
+driver owns that never reached the view — the width an editor measures
+itself at, the settings a window learns as it opens, the setting the user
+changes while it is open — and **three of the four were filed by the apps
+as their own problem**. The check was done by running the reports' probes
+against a build rather than by reading the tree, which is what turned two
+paragraphs of workaround into defects: the mind map's "the mechanism is a
+property of the design rather than a slip" is F41, and it is a slip.
+
+Three claims did not survive the check, and are below. One of them —
+"the self-terminating window is not in the package" — is a facility the
+package has and does not document, which is F33's shape again and became a
+`howto.md` answer rather than an entry.
+
+### Theirs, not ours
+
+- **`KUI_SMOKE_FRAMES` is not in the npm prebuilds** (mind map). True,
+  and deliberate — the changelog's own reasoning — but the conclusion
+  drawn from it, that "the one facility for getting a windowed app under
+  test is unavailable to every app consuming the package", is not. `setup`
+  is handed the window *and the loop*: `await loop.frame()` counts
+  presented frames, `win.close()` ends it, and `runWindowed`'s promise
+  resolves with the final model, so the process exits with a code. Run
+  from this tree: five frames in 302 ms, then `window closed, final model
+  = {...}`, exit 0. It is the better shape for an app — it is the app
+  asking, in the only place that knows a window is being opened to be
+  looked at rather than used — and it was reachable in alpha.7. A `Test
+  it` answer in `howto.md` now says so.
+- **`truncated-playback` "did not come"** (pomodoro). It comes. A Node
+  window, a real device, a 3 s sound and an `<audio>` node removed 0.28 s
+  in raises it with the full message; the report's own run is the one
+  thing here that cannot be reproduced, and the likeliest reading is that
+  its chime had finished (a stop that lands after the sound ended is not a
+  truncation, and the core says so). What the report is right about is
+  that it had no way to tell, and that is F36 and the pomodoro's wish 1:
+  `audioCommands()` is on `Ctx` and not on `KuiWindow`, so a window can
+  neither see the queue nor say whether a device is open. Still open,
+  still not urgent.
+- **A second is drawn 1562 ms long** (pomodoro, "the seconds were not
+  equal"). Filed by the app as its own and it is: `tick: { every: 250 }`
+  is how far past its boundary a second can be drawn, and `every: 16` is
+  what the tick doc asks for. kui's share was said to be the 1062 ms pump
+  stall — which is not the driver: 2390 pumps over 20 s idle, worst gap
+  41 ms, and that one was the first frame. `pump_app_events` is starved
+  for as long as the platform holds the run loop (a live resize or a
+  window drag on macOS and Windows), which a pumped loop cannot pre-empt
+  and a `setTimeout` cannot outrun. Worth a sentence in the docs if it
+  comes up again; not an entry.
+- **`setEnv` for a window** (pomodoro wish 2). Refused, as its doc
+  comment says: the runner reports the real window every frame, so
+  anything pushed would be overwritten before the next view ran. The
+  reduced-motion branch is asserted headless, which is where a machine
+  the test is not running on can be described. If a view ever needs the
+  override in a window, the place for it is the launcher — an app asking
+  in its own code, the same line `KUI_SMOKE_FRAMES` draws.
+- **`preview.svg` is gitignored**, fourth report running. Theirs, and
+  their notes say so.
+
+
 
 ## After alpha.10
 
@@ -403,8 +471,11 @@ and all four were built on 2026-09-08 in the order this paragraph asked
 for — F32 first, then F33's page and guard, then F34 and F35 together as
 one `Core::audio_*` door each on the same driver seam. F36 fell out of the
 last two and is filed rather than built, for the reason its entry gives.
-The alpha.10 reports have not been written yet; when they are, this is
-where what survives the check goes.
+The alpha.10 reports came the day after that tag, F37 first and then the
+four of F38–F41, all built on 2026-09-09 with their outcomes written on top
+of their entries in the archive. What is open from that round is nothing:
+its three surviving "theirs, not ours" are answered above, one of them by a
+`howto.md` answer.
 
 **Editor and mux (2026-09-07, built 2026-09-07/08).** The assessment
 section above was the order of work, and it was followed: C16, C18,
@@ -695,6 +766,10 @@ move.
 **From an alpha.10 field report (2026-09-09)** — F37, closed the day it was filed, and the first entry to land after the alpha.10 tag
 
 - `~` **F37** — [`<button accent>` is in the changelog, the docs and every binding, and `tsc` rejects it](backlog/closed-2026-09.md#-f37--button-accent-is-in-the-changelog-the-docs-and-every-binding-and-tsc-rejects-it--done-2026-09-09) — done (2026-09-09) — `ButtonProps` is generated from `BUTTON_ROWS_JSX` now, so F24's fix cannot come undone a third time
+
+**From the two alpha.10 upgrade reports (2026-09-09)** — F38–F41, all four built the day they were filed. Three of the four were filed by the apps as their own problem
+
+- `!` **F38** — [A field that hugs its text ratchets down to one character](backlog/closed-2026-09.md#-f38--a-field-that-hugs-its-text-ratchets-down-to-one-character--done-2026-09-09) — done (2026-09-09) — the fit width was measured off a buffer still carrying last frame's wrap; the metrics half of the same cache went with it
 
 **From the editor-and-mux assessment (2026-09-07)** — C16–C23, all eight built between 2026-09-07 and 2026-09-08; W3 stays above, built blind
 
