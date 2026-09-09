@@ -2336,9 +2336,21 @@ impl<A: App> Shell<A> {
         {
             match c.to_lowercase().as_str() {
                 "c" => {
-                    if let Some(text) = pane.core.copy_selection() {
-                        let html = pane.core.selection_html();
-                        set_clipboard(self.clipboard.as_mut(), text, html);
+                    // A selection that reaches rows a virtual list never
+                    // built is answered by the app, not by the core: the
+                    // ask goes out with the pending events and the answer
+                    // comes back as a clipboard action (ADR 0017, tier 3).
+                    match pane.core.request_copy() {
+                        CopyRequest::Ready(text) => {
+                            let html = pane.core.selection_html();
+                            set_clipboard(self.clipboard.as_mut(), text, html);
+                        }
+                        CopyRequest::Asked => {
+                            let events = self.panes[i].core.take_pending_events();
+                            self.route_events(events);
+                            self.apply_menu_actions(event_loop, i);
+                        }
+                        CopyRequest::Nothing => {}
                     }
                     return;
                 }

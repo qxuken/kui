@@ -2,13 +2,13 @@
 //! for one scroll position and gone at the next (ADR 0017, decision 3,
 //! tier 3).
 //!
-//! **This pins a gap, not a feature.** Tier 3 — the core reporting its
-//! ends and the app filling in the rows it never built — is described in
-//! the ADR and was never staged, so today a selection whose ends are not
-//! built reads as nothing at all: no highlight, no copy. It is at least
-//! not *wrong*: the ends are addresses, the state survives, and scrolling
-//! the rows back brings the selection back intact. When tier 3 lands,
-//! these assertions are the ones that change.
+//! Two halves. The *ordering* half is the core's own: an end whose row is
+//! not built is placed by that row's index in the data, so the part of a
+//! selection a reader can still see keeps its highlight while the list
+//! scrolls under it. The *filling* half is the app's: the rows behind a
+//! gap were never handed to the core, so a copy over one is asked for
+//! (`selectionrange`) and answered (`answer_selection_range`) rather than
+//! guessed at.
 
 use kui_core::{Core, InputEvent, Key, MouseButton, NodeSpec, Size, Sizing, TextStyle, Vec2};
 
@@ -81,7 +81,7 @@ fn a_selection_over_unbuilt_rows_reads_as_nothing_and_comes_back() {
     assert_eq!(
         core.selection_text(),
         None,
-        "but nothing resolves, so nothing copies: tier 3 is what fills this in"
+        "the core cannot answer for rows it never built"
     );
     let tint = kui_core::select::TINT;
     let painted = core
@@ -102,4 +102,103 @@ fn a_selection_over_unbuilt_rows_reads_as_nothing_and_comes_back() {
         Some("row 0\nrow 1\nrow 2"),
         "no drift: `open_indexed` gives a row the same key wherever it sits"
     );
+}
+
+/// Scrolled *partway*: the anchor's row is gone but rows the selection
+/// covers are still built, so the part a reader can see is still painted.
+/// This is what the row index buys — an end that is not built can still be
+/// placed against the ends that are (ADR 0017, decisions 2 and 3).
+#[test]
+fn the_built_middle_of_a_selection_still_paints() {
+    let mut core = Core::new();
+    frame(&mut core, 0..6);
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(2.0, 4.0)));
+    core.handle_input(InputEvent::MouseDown {
+        button: MouseButton::Primary,
+        clicks: 1,
+    });
+    // Down through rows 0, 1, 2.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, 45.0)));
+    core.handle_input(InputEvent::MouseUp {
+        button: MouseButton::Primary,
+    });
+    let tint = kui_core::select::TINT;
+    let painted = |core: &mut Core| {
+        core.output()
+            .0
+            .quads
+            .iter()
+            .filter(|q| q.color == tint)
+            .count()
+    };
+    frame(&mut core, 0..6);
+    assert_eq!(painted(&mut core), 3, "three rows selected, three runs");
+
+    // The list scrolls: row 0 is no longer built, rows 1 and 2 are.
+    frame(&mut core, 1..7);
+    assert_eq!(
+        painted(&mut core),
+        2,
+        "the two rows still on screen keep their highlight"
+    );
+
+    // Past the selection entirely: nothing of it is built, nothing paints.
+    frame(&mut core, 10..16);
+    assert_eq!(painted(&mut core), 0);
+}
+
+/// The filling half: a copy that reaches unbuilt rows asks the app, and
+/// the app's answer is what reaches the clipboard.
+#[test]
+fn a_copy_over_unbuilt_rows_asks_the_app_and_takes_its_answer() {
+    use kui_core::{CopyRequest, MenuAction, Value};
+
+    let mut core = Core::new();
+    frame(&mut core, 0..6);
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(2.0, 4.0)));
+    core.handle_input(InputEvent::MouseDown {
+        button: MouseButton::Primary,
+        clicks: 1,
+    });
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, 45.0)));
+    core.handle_input(InputEvent::MouseUp {
+        button: MouseButton::Primary,
+    });
+    // Everything selected is built, so the core answers it itself.
+    assert_eq!(
+        core.request_copy(),
+        CopyRequest::Ready("row 0\nrow 1\nrow 2".into())
+    );
+
+    // Scroll so the anchor's row is gone.
+    frame(&mut core, 2..8);
+    assert_eq!(core.request_copy(), CopyRequest::Asked);
+    let asked = core.take_pending_events();
+    let ev = asked
+        .iter()
+        .find(|e| e.payload.get("kind").and_then(Value::as_str) == Some("selectionrange"))
+        .expect("the app is asked, on the scope");
+    let end = |name: &str| {
+        let e = ev.payload.get(name).expect("an end");
+        (
+            e.get("index").and_then(Value::as_int),
+            e.get("byte").and_then(Value::as_int),
+        )
+    };
+    assert_eq!(end("from"), (Some(0), Some(0)), "row 0, byte 0");
+    assert_eq!(end("to").0, Some(2), "row 2");
+
+    // The app knows its own data; its answer is what gets copied.
+    assert!(core.answer_selection_range("row 0\nrow 1\nrow 2"));
+    assert_eq!(
+        core.take_menu_actions(),
+        vec![MenuAction::SetClipboard {
+            text: "row 0\nrow 1\nrow 2".into(),
+            html: None,
+        }]
+    );
+    // And an answer nobody asked for changes nothing: a late reply cannot
+    // overwrite whatever has been copied since.
+    assert!(!core.answer_selection_range("stale"));
+    assert!(core.take_menu_actions().is_empty());
 }

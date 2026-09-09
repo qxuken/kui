@@ -1842,6 +1842,22 @@ bool kui_open_menu(KuiCtx *ctx, uint64_t key, float x, float y,
                    const KuiMenuItem *items, size_t count);
 /* Closes whatever menu is open; true when there was one. */
 bool kui_close_menu(KuiCtx *ctx);
+
+/* kui_request_copy's answer. */
+enum { KUI_COPY_READY = 0, KUI_COPY_ASKED = 1, KUI_COPY_NOTHING = 2 };
+/* Asks for the selection as text
+ * (docs/adr/0017-selection-as-a-scope.md). KUI_COPY_READY writes it into
+ * *out, borrowed until the next call on this context. KUI_COPY_ASKED means
+ * the selection reaches rows a virtual list never built: a
+ * {kind:"selectionrange", from:{index, byte}, to:{index, byte}} event is
+ * in the queue, the rows behind that gap are yours, and answering with
+ * kui_answer_selection_range hands the text back as a
+ * KUI_MENU_ACTION_SET_CLIPBOARD. */
+uint32_t kui_request_copy(KuiCtx *ctx, KuiStr *out);
+/* Answers that ask with the text for the range it named, whole. False when
+ * nothing asked - a late answer cannot overwrite what has been copied
+ * since. */
+bool kui_answer_selection_range(KuiCtx *ctx, KuiStr text);
 /* Tells the core this host shows menus itself, however the platform draws
  * them: the core then keeps the open menu as state and draws none of it.
  * Read what is open, show it, and report back with kui_activate_menu_item

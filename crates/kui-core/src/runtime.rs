@@ -217,6 +217,8 @@ pub struct Core {
     /// which `Core::set_selection` / `set_cell_selection` enforce in one
     /// place each (ADR 0017, decisions 1 and 4).
     cell_selection: Option<crate::select::CellSelection>,
+    /// Whether a `selectionrange` ask is outstanding (ADR 0017, tier 3).
+    awaiting_selection: bool,
     /// The drag a press is running through a selection scope, if any: set
     /// on the press inside a scope, cleared on release. The counterpart of
     /// `EditStore::dragging` for text nobody is editing.
@@ -229,6 +231,9 @@ pub struct Core {
     /// one at all (`Tree::any_selectable`), which is what keeps ADR 0017
     /// off the frames of apps that never select anything.
     scopes: Vec<Option<Key>>,
+    /// Per-node enclosing virtualised row index, filled beside `scopes`:
+    /// what places an endpoint whose own node is no longer built.
+    rows: Vec<Option<u64>>,
     /// Whether any node this frame declared `modal`.
     any_modal: bool,
     /// The frame's modal scope: the tree range `[i, subtree_end(i))` of the
@@ -423,10 +428,12 @@ impl Core {
             lookup_available: false,
             selection: None,
             cell_selection: None,
+            awaiting_selection: false,
             select_dragging: None,
             sel_ords: Vec::new(),
             sel_ends: None,
             scopes: Vec::new(),
+            rows: Vec::new(),
             any_float: false,
             any_modal: false,
             modal: None,

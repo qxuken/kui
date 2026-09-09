@@ -94,6 +94,16 @@ pub struct Tree {
     pub any_wrap: bool,
     /// Whether any node is text (a `Text` or `Edit` content).
     pub any_text: bool,
+    /// The data index of every node opened with one (`open_indexed`), by
+    /// node. A side list rather than a column, because it is a virtual
+    /// list's rows and nothing else: a frame that builds none is one empty
+    /// `Vec` (C15's rule about what every node pays for).
+    ///
+    /// What it is for: a selection endpoint in a row that is *not built*
+    /// can still be ordered against the rows that are, because a row's
+    /// index says where it sits in the data even when nothing on screen
+    /// says where it sits in the frame (ADR 0017, decisions 2 and 3).
+    pub indexed: Vec<(u32, u64)>,
     /// Whether any node declares `selectable` (ADR 0017). False on every
     /// frame of an app that never asks for one, which is what keeps the
     /// scope walk and the off-screen places of tier 2 off those frames
@@ -132,6 +142,7 @@ impl Tree {
         self.any_wrap = false;
         self.any_text = false;
         self.any_selectable = false;
+        self.indexed.clear();
     }
 
     #[inline]

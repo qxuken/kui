@@ -141,6 +141,54 @@ pub extern "C" fn kui_activate_menu_item(ptr: *mut KuiCtx, index: usize) -> bool
     })
 }
 
+/// Asks for the selection as text (`docs/adr/0017-selection-as-a-scope.md`).
+///
+/// `KUI_COPY_READY` writes the selection into `out` — borrowed until the
+/// next call on this context. `KUI_COPY_ASKED` means the selection reaches
+/// rows a virtual list never built: a `{kind:"selectionrange", from, to}`
+/// event is waiting in the queue, the rows behind that gap are the host's,
+/// and the host answers with `kui_answer_selection_range`, whose text then
+/// arrives as a `KUI_MENU_ACTION_SET_CLIPBOARD`. `KUI_COPY_NOTHING` is
+/// nothing selected.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_request_copy(ptr: *mut KuiCtx, out: *mut KuiStr) -> u32 {
+    guard(2, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 2;
+        };
+        match c.core().request_copy() {
+            kui_core::CopyRequest::Ready(text) => {
+                c.menu_text = text;
+                if !out.is_null() {
+                    unsafe {
+                        out.write(KuiStr {
+                            ptr: c.menu_text.as_ptr(),
+                            len: c.menu_text.len(),
+                        })
+                    };
+                }
+                0
+            }
+            kui_core::CopyRequest::Asked => 1,
+            kui_core::CopyRequest::Nothing => 2,
+        }
+    })
+}
+
+/// Answers a `selectionrange` ask with the text for the range it named,
+/// whole. False when nothing asked — a late answer cannot overwrite what
+/// has been copied since.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_answer_selection_range(ptr: *mut KuiCtx, text: KuiStr) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let text = kstr(text).into_owned();
+        c.core().answer_selection_range(&text)
+    })
+}
+
 /// Closes whatever menu is open; true when there was one.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_close_menu(ptr: *mut KuiCtx) -> bool {

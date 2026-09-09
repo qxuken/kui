@@ -10,7 +10,8 @@
 use crate::geom::{Rect, Vec2};
 use crate::key::Key;
 use crate::runtime::Core;
-use crate::select::{CellEnd, CellSelection, Endpoint, Grain, Selection};
+use crate::select::{CellEnd, CellSelection, CopyRequest, Endpoint, Grain, RangeEnd, Selection};
+use crate::value::Value;
 
 impl Core {
     /// The window's text selection outside an editor, if it has one.
@@ -162,12 +163,13 @@ impl Core {
         let (Some(first), Some(last)) = (runs.first(), runs.last()) else {
             return false;
         };
+        let (fk, lk, llen) = (first.place.key, last.place.key, last.text.content().len());
+        drop(runs);
         let sel = Selection::new(
             scope,
-            Endpoint::new(first.place.key, 0),
-            Endpoint::new(last.place.key, last.text.content().len()),
+            Endpoint::new(fk, 0).in_row(self.row_of(fk)),
+            Endpoint::new(lk, llen).in_row(self.row_of(lk)),
         );
-        drop(runs);
         self.set_selection(sel);
         true
     }
@@ -178,7 +180,14 @@ impl Core {
     /// the scope's text but is under no pointer.
     pub fn selection_hit(&self, scope: Key, point: Vec2) -> Option<Endpoint> {
         let (node, byte) = self.text.scope_hit(scope, point, self.building)?;
-        Some(Endpoint::new(node, byte))
+        Some(Endpoint::new(node, byte).in_row(self.row_of(node)))
+    }
+
+    /// The virtualised row a node sits in, if any — what an endpoint keeps
+    /// so it can be placed after its row stops being built.
+    pub(crate) fn row_of(&self, node: Key) -> Option<u64> {
+        let i = self.tree.keys.iter().position(|k| *k == node)?;
+        self.rows.get(i).copied().flatten()
     }
 
     /// The selected text, assembled across every run the selection
@@ -253,6 +262,123 @@ impl Core {
             .scope_offset(sel.scope, sel.focus.node, sel.focus.byte, prev)?;
         let html = self.text.scope_html(sel.scope, from, to, prev);
         (!html.is_empty()).then_some(html)
+    }
+
+    /// The selection's two ends as the app's own addresses — the data
+    /// index of the virtualised row each is in, and the byte inside that
+    /// row's text. `None` when there is no selection, or when neither end
+    /// is in a virtualised row (nothing to ask about: the core has it
+    /// all).
+    pub fn selection_range(&self) -> Option<(RangeEnd, RangeEnd)> {
+        let sel = self.selection?;
+        let (a, f) = (sel.anchor, sel.focus);
+        (a.row.is_some() || f.row.is_some()).then_some((
+            RangeEnd {
+                row: a.row,
+                byte: a.byte,
+            },
+            RangeEnd {
+                row: f.row,
+                byte: f.byte,
+            },
+        ))
+    }
+
+    /// Whether the core can answer a copy on its own: both ends resolve
+    /// against runs this frame built.
+    fn selection_is_whole(&self) -> bool {
+        let Some(sel) = self.selection else {
+            return false;
+        };
+        let prev = self.building;
+        self.text
+            .scope_offset(sel.scope, sel.anchor.node, sel.anchor.byte, prev)
+            .is_some()
+            && self
+                .text
+                .scope_offset(sel.scope, sel.focus.node, sel.focus.byte, prev)
+                .is_some()
+    }
+
+    /// Asks for the selection as text, and says how the answer will come.
+    ///
+    /// [`CopyRequest::Ready`] is the ordinary case: everything selected is
+    /// text the core shaped, so it hands it over. [`CopyRequest::Asked`]
+    /// is a selection that reaches rows a virtual list never built — the
+    /// core posts `{kind:"selectionrange", from:{index, byte}, to:{index,
+    /// byte}}` on the scope and waits for
+    /// [`Self::answer_selection_range`], because the rows behind that gap
+    /// are the app's and only the app has them.
+    ///
+    /// The event goes out with the frame's pending events, so a host that
+    /// calls this outside `handle_input` drains `take_pending_events`
+    /// after it.
+    pub fn request_copy(&mut self) -> CopyRequest {
+        if self.selection.is_none() && self.cell_selection.is_none() {
+            return match self
+                .edit
+                .focused()
+                .and_then(|k| self.edit.copy_selection(k))
+            {
+                Some(text) => CopyRequest::Ready(text),
+                None => CopyRequest::Nothing,
+            };
+        }
+        if self.cell_selection.is_some() || self.selection_is_whole() {
+            return match self.copy_selection() {
+                Some(text) => CopyRequest::Ready(text),
+                None => CopyRequest::Nothing,
+            };
+        }
+        let Some(sel) = self.selection else {
+            return CopyRequest::Nothing;
+        };
+        let Some((from, to)) = self.selection_range() else {
+            // Not virtualised and not resolvable: nothing to ask anyone
+            // about, and nothing to hand over.
+            return CopyRequest::Nothing;
+        };
+        let end = |row: Option<u64>, byte: usize| {
+            Value::map([
+                ("index", row.map_or(Value::Null, |r| Value::Int(r as i64))),
+                ("byte", Value::Int(byte as i64)),
+            ])
+        };
+        self.pending.push(crate::input::UiEvent {
+            // The scope's own origin: an extension that declared the
+            // list is the one that can answer for its rows.
+            origin: self
+                .tree
+                .keys
+                .iter()
+                .position(|k| *k == sel.scope)
+                .map_or(crate::tree::OriginId::HOST, |i| self.tree.origins[i]),
+            window: crate::window::WindowId::MAIN,
+            key: sel.scope,
+            payload: Value::map([
+                ("kind", Value::str("selectionrange")),
+                ("from", end(from.row, from.byte)),
+                ("to", end(to.row, to.byte)),
+            ]),
+        });
+        self.awaiting_selection = true;
+        CopyRequest::Asked
+    }
+
+    /// The app's answer to a `selectionrange` ask: the text for the range
+    /// it was asked about, whole. Queues it for the clipboard the way a
+    /// menu's Copy does, and is ignored when nothing asked — a stale
+    /// answer cannot overwrite what somebody copied since.
+    pub fn answer_selection_range(&mut self, text: &str) -> bool {
+        if !std::mem::take(&mut self.awaiting_selection) {
+            return false;
+        }
+        self.menu_actions
+            .push(crate::menu::MenuAction::SetClipboard {
+                text: text.to_string(),
+                html: None,
+            });
+        true
     }
 
     /// Starts a selection at `point` inside `scope` — the press half of a
@@ -338,19 +464,20 @@ impl Core {
         let (Some(ga), Some(gf)) = (ga, gf) else {
             return false;
         };
+        let (arow, frow) = (self.row_of(anode), self.row_of(hit.node));
         let next = if gf < ga {
             // Backwards: from the far edge of the anchor's unit to the
             // near edge of the live one.
             Selection::new(
                 sel.scope,
-                Endpoint::new(anode, a_to),
-                Endpoint::new(hit.node, f_from),
+                Endpoint::new(anode, a_to).in_row(arow),
+                Endpoint::new(hit.node, f_from).in_row(frow),
             )
         } else {
             Selection::new(
                 sel.scope,
-                Endpoint::new(anode, a_from),
-                Endpoint::new(hit.node, f_to),
+                Endpoint::new(anode, a_from).in_row(arow),
+                Endpoint::new(hit.node, f_to).in_row(frow),
             )
         };
         if Some(next) == self.selection {
@@ -366,10 +493,11 @@ impl Core {
     pub fn select_word_at(&mut self, scope: Key, point: Vec2) -> Option<(Key, usize, usize)> {
         let at = self.selection_hit(scope, point)?;
         let (from, to) = self.text.word_at(scope, at.node, at.byte, self.building)?;
+        let row = self.row_of(at.node);
         self.set_selection(Selection::new(
             scope,
-            Endpoint::new(at.node, from),
-            Endpoint::new(at.node, to),
+            Endpoint::new(at.node, from).in_row(row),
+            Endpoint::new(at.node, to).in_row(row),
         ));
         Some((at.node, from, to))
     }
@@ -384,10 +512,11 @@ impl Core {
             .into_iter()
             .find(|r| r.place.key == at.node)
             .map(|r| r.text.content().len())?;
+        let row = self.row_of(at.node);
         self.set_selection(Selection::new(
             scope,
-            Endpoint::new(at.node, 0),
-            Endpoint::new(at.node, len),
+            Endpoint::new(at.node, 0).in_row(row),
+            Endpoint::new(at.node, len).in_row(row),
         ));
         Some((at.node, 0, len))
     }

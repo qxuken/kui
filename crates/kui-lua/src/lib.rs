@@ -376,6 +376,8 @@ fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
 /// `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
 /// `caret_rect(key, byte)`, the selection calls `selection_text()` /
 /// `selection_html()` (the same words with the formatting they declared) /
+/// `request_copy()` + `answer_selection_range(text)` (a copy that reaches
+/// rows a virtual list never built is asked of the app) /
 /// `select_all_in(key)` / `clear_selection()` (ADR 0017 — one selection
 /// per window, a `selectable` scope's or the focused editor's), the menu
 /// verbs `open_menu(key, x, y, items)` / `close_menu()` (whose chosen row
@@ -679,6 +681,31 @@ fn env_table<'scope, 'env: 'scope>(
         scope.create_function(move |_, ()| {
             let ui = ui.borrow();
             Ok(ui.selection_text())
+        })?,
+    )?;
+    // Asks for the selection as text: returns the text, or nil and true
+    // when the app was asked instead — a selection that reaches rows a
+    // virtual list never built posts `{kind="selectionrange", from={index,
+    // byte}, to={index, byte}}` on the scope, and the app answers with
+    // `answer_selection_range` (docs/adr/0017-selection-as-a-scope.md).
+    t.set(
+        "request_copy",
+        scope.create_function(move |_, ()| {
+            let mut ui = ui.borrow_mut();
+            Ok(match ui.request_copy() {
+                kui_core::CopyRequest::Ready(text) => (Some(text), false),
+                kui_core::CopyRequest::Asked => (None, true),
+                kui_core::CopyRequest::Nothing => (None, false),
+            })
+        })?,
+    )?;
+    // Answers a `selectionrange` ask with the text for the range it named,
+    // whole. False when nothing asked.
+    t.set(
+        "answer_selection_range",
+        scope.create_function(move |_, text: String| {
+            let mut ui = ui.borrow_mut();
+            Ok(ui.answer_selection_range(&text))
         })?,
     )?;
     // The selection as HTML: the formatting the text declared (bold,
@@ -3032,6 +3059,7 @@ mod tests {
             [
                 "add_extension",
                 "announce",
+                "answer_selection_range",
                 "blur",
                 "caret_rect",
                 "clear_selection",
@@ -3046,6 +3074,7 @@ mod tests {
                 "is_pressed",
                 "measure_text",
                 "open_menu",
+                "request_copy",
                 "reveal",
                 "scroll_geometry",
                 "scroll_offset",

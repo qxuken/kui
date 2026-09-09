@@ -258,6 +258,16 @@ impl<'a> Ui<'a> {
         self.core.close_menu()
     }
 
+    /// Asks for the selection as text; see `Core::request_copy`.
+    pub fn request_copy(&mut self) -> crate::select::CopyRequest {
+        self.core.request_copy()
+    }
+
+    /// Answers a `selectionrange` ask; see `Core::answer_selection_range`.
+    pub fn answer_selection_range(&mut self, text: &str) -> bool {
+        self.core.answer_selection_range(text)
+    }
+
     /// The selection as HTML; see `Core::selection_html`.
     pub fn selection_html(&self) -> Option<String> {
         self.core.selection_html()

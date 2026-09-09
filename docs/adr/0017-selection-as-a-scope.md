@@ -264,14 +264,11 @@ the app asked to be selectable, and the app says so by declaring it.
 This is the tier that makes "select past the bottom of a scroller and keep
 going" work, and it covers every non-virtualized app.
 
-**Tier 3 — never built. Described here, and not built: see
-`crates/kui-core/tests/virtual_selection.rs`, which pins what a selection
-over virtualised rows does today — the ends stop resolving, so nothing
-paints and nothing copies until the rows are built again. It is not
-*wrong* (the ends are addresses, the state survives, and a row keeps its
-key because `open_indexed` derives one from the data index), but a reader
-who selects a screenful of a log, scrolls, and presses Cmd-C gets
-nothing.** The core reports the endpoints and the app fills
+**Tier 3 — never built.** Built 2026-09-09, in the two halves it turned
+out to have. *Ordering* is the core's own: an end whose row is not built is
+placed by that row's index in the data (`Tree::indexed`, `Endpoint::row`),
+so the part of a selection a reader can still see keeps its highlight while
+the list scrolls under it. *Filling* is the app's: The core reports the endpoints and the app fills
 the middle. A copy over a range whose interior was never built emits a
 `{kind:"selectionrange", from:{index, byte}, to:{index, byte}}` event that
 the app answers with the text, through the reply channel ADR 0014 decision
@@ -586,15 +583,11 @@ corpus can see it.
    payloads. It never joins the text scope around it either way.
 5. Force click: the pressure arm, the `forceclick` event, `onForceClick`,
    and Look Up as a menu role.
-6. **Tier 3, unbuilt.** Two halves, and the first is worth having on its
-   own. *Ordering:* an endpoint whose node is not built cannot be placed
-   among the ones that are, which is why nothing paints — the fix is the
-   data index decision 2 already calls for, recorded for the indexed nodes
-   inside a scope, so the ends can be ordered against built rows and the
-   built middle can be painted. *Filling:* the `selectionrange` event the
-   app answers, so a copy over a gap is the app's text rather than a
-   silent hole. Until then a virtual list selects only what it has built,
-   and says so by going blank rather than by copying half a document. **Built 2026-09-09**, and the least
+6. Tier 3: ordering by the data index so the built middle paints, and
+   `request_copy` / `selectionrange` / `answer_selection_range` so a copy
+   over a gap is the app's own text. **Built 2026-09-09**, after a field
+   question — "did you check the virtual list?" — found a selection going
+   blank the moment its ends scrolled out of the built set. **Built 2026-09-09**, and the least
    verifiable thing in the repo: the core routing has tests, the Look Up
    row and its `MenuAction` reach the driver through the drain Copy and
    Paste already use, and the last two inches — `showDefinition` putting a

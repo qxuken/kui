@@ -2121,6 +2121,37 @@ macro_rules! core_methods {
                 Ok(closed)
             }
 
+            /// Asks for the selection as text: `{ text, asked }`.
+            ///
+            /// `text` is the selection when the core has all of it. When
+            /// the selection reaches rows a virtual list never built,
+            /// `asked` is true instead and a `{kind:"selectionrange",
+            /// from:{index, byte}, to:{index, byte}}` event is posted on
+            /// the scope — the rows behind that gap are the app's, so the
+            /// app answers with `answerSelectionRange`, and the answer is
+            /// what reaches the clipboard
+            /// (`docs/adr/0017-selection-as-a-scope.md`).
+            #[napi(ts_return_type = "{ text: string | null, asked: boolean }")]
+            pub fn request_copy(&mut self) -> Result<Json> {
+                let (text, asked) = match self.$core().request_copy() {
+                    kui_core::CopyRequest::Ready(t) => (Some(t), false),
+                    kui_core::CopyRequest::Asked => (None, true),
+                    kui_core::CopyRequest::Nothing => (None, false),
+                };
+                let mut o = JsonMap::new();
+                o.insert("text".into(), text.map_or(Json::Null, Json::String));
+                o.insert("asked".into(), Json::Bool(asked));
+                Ok(Json::Object(o))
+            }
+
+            /// Answers a `selectionrange` ask with the text for the range
+            /// it named, whole. False when nothing asked — a late answer
+            /// cannot overwrite what has been copied since.
+            #[napi]
+            pub fn answer_selection_range(&mut self, text: String) -> Result<bool> {
+                Ok(self.$core().answer_selection_range(&text))
+            }
+
             /// The window's selected text: what a `selectable` scope has
             /// selected, or the focused `<edit>`'s selection, whichever
             /// the window holds — starting either clears the other, so

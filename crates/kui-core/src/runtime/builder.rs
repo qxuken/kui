@@ -352,7 +352,14 @@ impl Core {
     #[inline]
     pub fn open_indexed(&mut self, i: u64, spec: NodeSpec) -> Key {
         let key = self.child_key_index(i);
+        let at = self.tree.len() as u32;
         self.open_with_key(key, spec);
+        // Remembered for the node that was actually pushed, so a selection
+        // inside a virtual row can be ordered by the row's place in the
+        // *data* when the row itself is not built (ADR 0017, tier 3).
+        if self.tree.len() as u32 > at {
+            self.tree.indexed.push((at, i));
+        }
         key
     }
 

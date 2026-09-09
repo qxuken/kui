@@ -396,6 +396,9 @@ impl Core {
         let Some(sel) = self.selection else { return };
         self.sel_ords.resize(self.tree.len(), u32::MAX);
         let (mut anchor, mut focus) = (None, None);
+        // The built runs, in order, with the virtualised row each is in:
+        // what an end whose own node is *not* built is placed against.
+        let mut built: Vec<(u32, Option<u64>, usize)> = Vec::new();
         let mut ord = 0u32;
         for i in 0..self.tree.len() {
             if self.scopes.get(i).copied().flatten() != Some(sel.scope)
@@ -405,6 +408,11 @@ impl Core {
             }
             self.sel_ords[i] = ord;
             let key = self.tree.keys[i];
+            let len = match self.tree.content[i] {
+                NodeContent::Text(tid) => self.text.content_len(tid),
+                _ => 0,
+            };
+            built.push((ord, self.rows.get(i).copied().flatten(), len));
             if key == sel.anchor.node {
                 anchor = Some((ord, sel.anchor.byte));
             }
@@ -413,8 +421,25 @@ impl Core {
             }
             ord += 1;
         }
-        // One end the frame no longer builds paints nothing at all,
-        // rather than a selection that reaches to whatever is there now.
+        // An end this frame did not build is placed by its row's index in
+        // the data: before everything built, after it, or at the boundary
+        // it falls on. That is what lets the built middle paint while a
+        // virtual list scrolls under a selection (ADR 0017, tier 3).
+        let place = |end: &crate::select::Endpoint| -> Option<(u32, usize)> {
+            let row = end.row?;
+            let first = built.first()?;
+            let last = built.last()?;
+            match (first.1, last.1) {
+                (Some(f), _) if row < f => Some((first.0, 0)),
+                (_, Some(l)) if row > l => Some((last.0, last.2)),
+                // Inside the built range but not built: a hole, which a
+                // contiguous virtual window does not have. Take the
+                // nearest boundary rather than guessing at the middle.
+                _ => Some((first.0, 0)),
+            }
+        };
+        let anchor = anchor.or_else(|| place(&sel.anchor));
+        let focus = focus.or_else(|| place(&sel.focus));
         if let (Some(a), Some(f)) = (anchor, focus) {
             self.sel_ends = Some(crate::select::Ends::ordered(a, f));
         }
@@ -504,8 +529,17 @@ impl Core {
         // takes the text under it and is warned about, because two scopes
         // over one run would each think they own it.
         self.scopes.clear();
+        self.rows.clear();
         if any_selectable {
             self.scopes.resize(self.tree.len(), None);
+            self.rows.resize(self.tree.len(), None);
+            // The rows a virtual list built, by node, so the walk below
+            // can carry each one down to the text inside it.
+            for &(node, index) in &self.tree.indexed {
+                if let Some(slot) = self.rows.get_mut(node as usize) {
+                    *slot = Some(index);
+                }
+            }
             for i in 0..self.tree.len() {
                 let parent = self.tree.parent[i];
                 // A floating subtree escapes the scope it floats out of,
@@ -533,6 +567,11 @@ impl Core {
                 } else {
                     outer
                 };
+                // A row's index reaches the text inside it: the node that
+                // declared it keeps its own, everything under it inherits.
+                if self.rows[i].is_none() && parent != NIL {
+                    self.rows[i] = self.rows[parent as usize];
+                }
             }
         }
         self.resolve_selection();

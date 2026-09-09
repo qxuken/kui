@@ -30,11 +30,28 @@ pub const TINT: Color = Color {
 pub struct Endpoint {
     pub node: Key,
     pub byte: usize,
+    /// The data index of the virtualised row this end is in, when it is in
+    /// one (`open_indexed`). Recorded when the end is made, and the only
+    /// thing that can place it once its row stops being built: a key says
+    /// *which* node, an index says *where in the data* — and a frame that
+    /// never built the node can still answer the second question (ADR
+    /// 0017, decision 3).
+    pub row: Option<u64>,
 }
 
 impl Endpoint {
     pub fn new(node: Key, byte: usize) -> Self {
-        Self { node, byte }
+        Self {
+            node,
+            byte,
+            row: None,
+        }
+    }
+
+    /// The same end, in the virtualised row `row`.
+    pub fn in_row(mut self, row: Option<u64>) -> Self {
+        self.row = row;
+        self
     }
 }
 
@@ -161,6 +178,35 @@ impl CellSelection {
         let (from, to) = (from.min(cols), to.min(cols));
         (from < to).then_some((from, to))
     }
+}
+
+/// One end of the range an app is asked to fill in
+/// (`Core::selection_range`): the data index of the row it is in, and the
+/// byte inside that row's own text. An end outside every virtualised row
+/// has no index — it is text the core built and can answer for itself.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RangeEnd {
+    pub row: Option<u64>,
+    pub byte: usize,
+}
+
+/// What asking for a copy answered (`Core::request_copy`).
+///
+/// The third case is the one this type exists for: a selection can reach
+/// rows a virtual list never built, and the core will not invent them
+/// (ADR 0017, decision 3). It asks the app instead — a `selectionrange`
+/// event on the scope — and the answer arrives later as a clipboard
+/// action, so a copy over a gap is the app's own text rather than a
+/// silent hole in the middle of one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CopyRequest {
+    /// The core had all of it; here it is.
+    Ready(String),
+    /// The app was asked and has not answered yet
+    /// (`Core::answer_selection_range`).
+    Asked,
+    /// Nothing is selected.
+    Nothing,
 }
 
 /// A drag-select in flight: which scope it is in, what it moves by, and

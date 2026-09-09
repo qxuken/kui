@@ -1531,6 +1531,25 @@ export declare class Ctx {
   /** Closes whatever menu is open; true when there was one. */
   closeMenu(): boolean
   /**
+   * Asks for the selection as text: `{ text, asked }`.
+   *
+   * `text` is the selection when the core has all of it. When
+   * the selection reaches rows a virtual list never built,
+   * `asked` is true instead and a `{kind:"selectionrange",
+   * from:{index, byte}, to:{index, byte}}` event is posted on
+   * the scope — the rows behind that gap are the app's, so the
+   * app answers with `answerSelectionRange`, and the answer is
+   * what reaches the clipboard
+   * (`docs/adr/0017-selection-as-a-scope.md`).
+   */
+  requestCopy(): { text: string | null, asked: boolean }
+  /**
+   * Answers a `selectionrange` ask with the text for the range
+   * it named, whole. False when nothing asked — a late answer
+   * cannot overwrite what has been copied since.
+   */
+  answerSelectionRange(text: string): boolean
+  /**
    * The window's selected text: what a `selectable` scope has
    * selected, or the focused `<edit>`'s selection, whichever
    * the window holds — starting either clears the other, so
@@ -2082,6 +2101,25 @@ export declare class KuiWindow {
   openMenu(key: string, x: number, y: number, items: Json): boolean
   /** Closes whatever menu is open; true when there was one. */
   closeMenu(): boolean
+  /**
+   * Asks for the selection as text: `{ text, asked }`.
+   *
+   * `text` is the selection when the core has all of it. When
+   * the selection reaches rows a virtual list never built,
+   * `asked` is true instead and a `{kind:"selectionrange",
+   * from:{index, byte}, to:{index, byte}}` event is posted on
+   * the scope — the rows behind that gap are the app's, so the
+   * app answers with `answerSelectionRange`, and the answer is
+   * what reaches the clipboard
+   * (`docs/adr/0017-selection-as-a-scope.md`).
+   */
+  requestCopy(): { text: string | null, asked: boolean }
+  /**
+   * Answers a `selectionrange` ask with the text for the range
+   * it named, whole. False when nothing asked — a late answer
+   * cannot overwrite what has been copied since.
+   */
+  answerSelectionRange(text: string): boolean
   /**
    * The window's selected text: what a `selectable` scope has
    * selected, or the focused `<edit>`'s selection, whichever

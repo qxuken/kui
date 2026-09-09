@@ -35,6 +35,25 @@ field reports).
 
 ### Added
 
+- **A selection survives a virtual list scrolling under it** (ADR 0017,
+  tier 3). Two halves. The core places an end whose row is no longer built
+  by that row's *data index*, so the part of the selection still on screen
+  keeps its highlight while the list scrolls — before this the whole
+  selection went blank as soon as an end left the built range. And a copy
+  that reaches rows the core never saw now **asks the app**: `requestCopy()`
+  answers `{text}` when the core has it all and `{asked: true}` otherwise,
+  posting `{kind:"selectionrange", from:{index, byte}, to:{index, byte}}`
+  on the scope; the app answers with `answerSelectionRange(text)` and that
+  text is what reaches the clipboard.
+
+  The alternative was copying the built rows and dropping the gap, which
+  puts something on the clipboard that looks complete and is not. The rows
+  behind the gap are the app's — it has the data, the core only ever had a
+  screenful — so the app is who to ask.
+
+  `env.request_copy()` / `env.answer_selection_range(text)` in Lua,
+  `kui_request_copy` / `kui_answer_selection_range` in C, both new symbols.
+
 - **Double-click and hold, then drag, selects by words** — and a third
   press by whole runs. The press arms the drag with what the click count
   says it moves by, and both ends round outwards: drag back over the word
