@@ -265,6 +265,7 @@ impl Launcher {
             system: system_env::query(),
             clipboard: arboard::Clipboard::new().ok(),
             audio: audio::Audio::new(),
+            audio_touch: std::time::Instant::now(),
             smoke_frames: Self::smoke_frames(),
             frames_drawn: 0,
             exit_requested: false,
@@ -272,6 +273,8 @@ impl Launcher {
             armed: Vec::new(),
             swallowed_press: None,
             proxy: None,
+            next_deadline: None,
+            saw_event: false,
         }
     }
 
@@ -377,6 +380,24 @@ impl<A: App> PumpRunner<A> {
             PumpStatus::Exit(_) => false,
         };
         self.alive
+    }
+
+    /// When the shell next needs pumping, as the last [`pump`](Self::pump)
+    /// left it — `None` when nothing it knows about is due, which is
+    /// `ControlFlow::Wait` for a loop that owns itself.
+    ///
+    /// A host driving from a foreign loop has to guess how long to leave
+    /// between pumps, and the guess is what pays: a caret blink, a tick, a
+    /// transition's next frame, the audio poll and a window's first-frame
+    /// retry are all deadlines the shell has already worked out, and a
+    /// driver on a fixed interval hits them a whole interval late. Ask
+    /// after each pump and sleep to the answer instead.
+    ///
+    /// What it does *not* say is whether an OS event is waiting — nothing
+    /// short of pumping can — so a driver still needs a ceiling of its own.
+    /// This only ever tells it to come back sooner.
+    pub fn next_deadline(&self) -> Option<std::time::Instant> {
+        self.shell.next_deadline
     }
 
     /// A [`Waker`] for this loop, to clone into the threads the host's
@@ -554,6 +575,16 @@ const MULTI_CLICK_SLOP: f32 = 4.0;
 const BLINK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
 /// How often the loop wakes to notice a playing sound finishing.
 const AUDIO_POLL: std::time::Duration = std::time::Duration::from_millis(50);
+
+/// How long the output device is held open after the last input or sound.
+/// An open device is a real-time thread the OS runs ~94 times a second
+/// whether or not anything is playing, which is the entire idle CPU cost of
+/// an app that owns a sound — the counter example sat at 0.3% doing nothing.
+/// Held rather than closed at once because the point of opening early is
+/// that a click finds it open (the ~90 ms open used to stall the counter's
+/// first click), and any input at all re-warms it: the pointer moving
+/// towards a button is minutes of warning before the button is pressed.
+const AUDIO_IDLE_CLOSE: std::time::Duration = std::time::Duration::from_secs(5);
 /// How long to wait between tries at a window's first frame, and how many
 /// tries to make: about a second of a just-shown window insisting it is
 /// occluded, after which it is taken at its word and the ordinary redraw
@@ -980,6 +1011,12 @@ struct Shell<A: App> {
     clipboard: Option<arboard::Clipboard>,
     /// The audio device the core's audio commands drive; see `audio`.
     audio: audio::Audio,
+    /// When the app was last doing something that could lead to a sound:
+    /// any input, or any audio command. The device is warmed while this is
+    /// recent and let go once it is not — see `AUDIO_IDLE_CLOSE`. Starts at
+    /// launch, so a session holding sounds still opens the device before
+    /// its first click the way it always did.
+    audio_touch: std::time::Instant,
     /// `KUI_SMOKE_FRAMES=n`: quit after the main window has presented `n`
     /// frames, so an example is a self-terminating check — a real window
     /// on a real GPU, driven by the real loop, that exits 0 when it drew
@@ -1013,6 +1050,19 @@ struct Shell<A: App> {
     /// Hands AccessKit a way back into the loop; set before the window
     /// exists.
     proxy: Option<EventLoopProxy<access_bridge::UserEvent>>,
+    /// What the last `about_to_wait` decided the control flow should be, kept
+    /// so a host that owns the loop can read it (`PumpRunner::next_deadline`).
+    /// `None` is `ControlFlow::Wait`: nothing the shell knows about is due.
+    next_deadline: Option<std::time::Instant>,
+    /// Whether this batch carried an OS event the shell acted on. A driver
+    /// cannot see most of them — a pointer crossing a window that declares no
+    /// hover produces no *app* event at all, and neither does a key nothing
+    /// is listening for — so a driver pacing itself on what the app saw
+    /// concludes that a window being moved across is idle. It is the reason
+    /// `next_deadline` reports "now" after an event: the shell asked for a
+    /// redraw and wants pumping to present it, and that is also the honest
+    /// signal for "somebody is using this window".
+    saw_event: bool,
 }
 
 impl<A: App> Shell<A> {
@@ -1366,6 +1416,9 @@ impl<A: App> Shell<A> {
 
     fn dispatch(&mut self, event_loop: &ActiveEventLoop, i: usize, ev: InputEvent) {
         let t0 = std::time::Instant::now();
+        // Someone is using the app, so a sound may be moments away: keep
+        // the device warm (`AUDIO_IDLE_CLOSE`).
+        self.audio_touch = t0;
         let events = self.panes[i].core.handle_input(ev);
         self.route_events(events);
         self.apply_window_commands(event_loop);
@@ -1743,7 +1796,15 @@ impl<A: App> Shell<A> {
         let core = self.core_mut();
         let cmds = core.take_audio_commands();
         let resources = core.resources.clone();
-        if resources.has_sounds() {
+        if !cmds.is_empty() {
+            self.audio_touch = std::time::Instant::now();
+        }
+        // Warmed while the app is being used and let go when it is not.
+        // Not every frame: a frame is drawn for the caret, for a
+        // transition, for a window moving over the top — none of which is
+        // anybody about to play anything, and re-warming on one of those
+        // would reopen the device the moment `about_to_wait` closed it.
+        if resources.has_sounds() && self.audio_touch.elapsed() < AUDIO_IDLE_CLOSE {
             self.audio.warm();
         }
         // Two things only the device knows come back here. A `Stop` it found
@@ -2200,6 +2261,12 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
         event: WindowEvent,
     ) {
         let Some(i) = self.pane_index(id) else { return };
+        // Everything but the redraw itself: a redraw is the *answer* to an
+        // event, so counting it would make a frame its own reason for the
+        // next one and an animation would report activity for ever.
+        if !matches!(event, WindowEvent::RedrawRequested) {
+            self.saw_event = true;
+        }
         {
             let pane = &mut self.panes[i];
             if let Some(bridge) = &mut pane.access {
@@ -2522,6 +2589,7 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
         // A wake is the app saying "what `view` shows has changed": every
         // window draws, as after any input. Coalesced by the platform's
         // queue, so a thread waking a thousand times a frame costs one.
+        self.saw_event = true;
         if matches!(event, access_bridge::UserEvent::Wake) {
             for pane in &self.panes {
                 pane.window.request_redraw();
@@ -2582,6 +2650,25 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
                 pane.blink_deadline = None;
                 continue;
             }
+            // A caret in a window that does not have the keyboard is not
+            // blinking on any platform, and the blink is the one thing in
+            // an idle app that asks for a frame twice a second forever: an
+            // editor left in the background drew 120 frames a minute for a
+            // caret nobody could type into. Hidden rather than parked
+            // solid, because solid is what a *focused* field looks like.
+            // The caret comes back with the keyboard: `blink_deadline` is
+            // cleared here, and a cleared deadline is what the arm below
+            // reads as "start blinking", so the first `about_to_wait`
+            // after focus returns shows it and re-arms.
+            if !pane.core.env.focused {
+                if pane.blink_visible {
+                    pane.blink_visible = false;
+                    pane.core.edit.set_blink_visible(false);
+                    pane.window.request_redraw();
+                }
+                pane.blink_deadline = None;
+                continue;
+            }
             let stamp = pane.core.edit.caret_stamp();
             if stamp != pane.caret_stamp_seen || pane.blink_deadline.is_none() {
                 pane.caret_stamp_seen = stamp;
@@ -2605,6 +2692,31 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
             let poll = now + AUDIO_POLL;
             deadline = Some(deadline.map_or(poll, |d| d.min(poll)));
         }
+        // An output device nothing has used for `AUDIO_IDLE_CLOSE` is let
+        // go: it is a real-time thread the OS keeps calling, and it is what
+        // an idle app that owns a sound spends its whole CPU on. The wake
+        // this schedules is the point — under `ControlFlow::Wait` a truly
+        // idle app is never called again, so without a deadline the close
+        // would be scheduled and never run.
+        if self.audio.holds_device() {
+            if !self.audio.active() && self.audio_touch.elapsed() >= AUDIO_IDLE_CLOSE {
+                self.audio.close();
+            }
+            if self.audio.holds_device() {
+                // Either it is still in use (wake when the hold expires) or
+                // the close found it mid-open (ask again shortly).
+                let at = (self.audio_touch + AUDIO_IDLE_CLOSE).max(now + AUDIO_POLL);
+                deadline = Some(deadline.map_or(at, |d| d.min(at)));
+            }
+        }
+        // A batch that carried an event has left a redraw asked for, so the
+        // shell wants pumping at once to present it — and a driver reading
+        // this is also being told that the window is in use, which is the
+        // one thing it cannot work out from the events *it* was handed.
+        if std::mem::take(&mut self.saw_event) {
+            deadline = Some(now);
+        }
+        self.next_deadline = deadline;
         event_loop.set_control_flow(match deadline {
             Some(d) => ControlFlow::WaitUntil(d),
             None => ControlFlow::Wait,

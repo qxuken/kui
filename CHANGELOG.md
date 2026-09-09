@@ -150,6 +150,32 @@ field reports).
   pays for the distance between that row and the window, and is the honest
   cost of a prefix sum.
 
+- **`KuiWindow.pumpUntil(timeoutMs)`, a pump that parks** — the Node door
+  onto `PumpRunner::pump_until` (backlog C21), returning the moment an OS
+  event or a `Waker` wake arrives and otherwise when the time is up. For a
+  driver that owns its process; read the warning about libuv under
+  **Fixed** before reaching for it. `runWindowed` does not use it.
+- **`idlePumpMs` and `quietMs` on `runWindowed`** — the ceiling the gap
+  between pumps grows to, and how long a window must have been quiet
+  before it starts growing. See **Fixed**; the defaults (32 and 500) are
+  what an app should want, and an app happy to answer a click into a deep
+  idle more slowly can raise `idlePumpMs` — it is linear in both CPU and
+  that first click.
+- **`KuiWindow.nextDeadlineMs()` and `PumpRunner::next_deadline`** — when
+  the runner next needs pumping, so a host driving from a foreign loop can
+  sleep to it instead of guessing. Zero means "now": an OS event has been
+  handled and its redraw is waiting, which is also the only way a driver
+  hears about input the app itself never sees (see **Fixed**). The caret blink, a transition's next
+  frame, the audio poll and a window's first-frame retry are deadlines the
+  shell has already worked out, and a driver on a fixed interval hits each
+  one a whole interval late: with a 200 ms interval and a sound in flight,
+  a probe pumped every 203 ms while the shell was asking for 50 — asking
+  brought it to 63. `runWindowed` uses it; it only ever asks for *sooner*,
+  since whether an OS event is waiting is not something it can say.
+- **`app.step()` reports whether the turn drew.** It returned nothing; it
+  returns the boolean it already computed, which is what lets a driver
+  pace itself from what the loop actually did.
+
 - **`{kind: "system"}`, when an OS setting changes** (backlog F40, from
   the two alpha.10 field reports). The appearance, the accent, reduced
   motion or the locale changing while the app is open now arrives on the
@@ -320,6 +346,90 @@ field reports).
 
 ### Fixed
 
+- **An idle window costs nothing again.** Three separate things kept a
+  process that was doing nothing from settling at zero, and each was
+  measured on its own before it was touched — a windowed app with none of
+  them (`examples/rust/gallery`) already idles at 0.0% CPU and one context
+  switch a second, which is what made the other three legible as defects
+  rather than as the cost of having a window.
+
+  **The audio device stayed open forever.** A session that holds a sound
+  warms the output device at launch, so the first click does not stall for
+  the ~90 ms open — that is alpha.9's fix and it stays. But an open device
+  is a real-time thread the OS calls every buffer period whether or not
+  anything is playing: 94 times a second at the usual 512 frames, which is
+  0.3% of a core and *the whole* of `examples/rust/counter` sitting idle
+  (16 threads, 92 wakeups a second). It is let go after five seconds with
+  nothing playing and nothing to play — the decoded-sound cache stays, so
+  what a re-warm pays is the open and not the decode — and any input at
+  all warms it again, which is minutes of warning before a button is
+  pressed. The counter now idles at 0.0% with 8 threads and 2 wakeups a
+  second, and its click still sounds.
+
+  A detail worth naming, because it is the case that mattered: a device
+  warmed and never commanded sits in `Opening` forever, with the opened
+  manager live in the channel and its stream running, since nothing else
+  asks whether the open has landed. Closing has to settle that state
+  before it can read it.
+
+  **The caret blinked in windows nobody was typing into.** The blink is
+  the one thing in an idle app that asks for a frame twice a second for
+  ever, and it ran on widget focus alone — so `examples/rust/editor` left
+  in the background drew 120 frames a minute, 0.7% of a core, for a caret
+  no keystroke could reach. It now stops with the window's keyboard focus
+  (`env.focused`), and the caret hides rather than parking solid, since
+  solid is what a focused field looks like. Unfocused: 0.7% to 0.0%.
+
+  **Node's driver polled the OS 125 times a second.** A pump costs the
+  same empty as full — on macOS it runs a whole `NSApp` iteration and
+  posts a synthetic event through the window server to break out again,
+  about 1.2 ms of CPU — so the rate was the entire bill, and it was
+  linear: 8 ms cost 8-15% of a core, 16 ms half of that, 100 ms a tenth.
+  The gap between pumps now grows while nothing is happening — `pumpMs`
+  (8) while the app is being used, doubling after `quietMs` (500) of
+  silence up to `idlePumpMs` (32) — and anything at all puts it back at
+  once. `examples/node/counter-window` idles at ~3%, from 8.7%.
+
+  What "anything at all" has to mean was the trap, and it took clicking a
+  real window with posted `CGEvent`s to find: **most OS input produces no
+  app event.** A pointer crossing a window that declares no hover is a
+  stream of events the shell acts on and the app never hears about, and a
+  driver pacing itself on what `update` saw reads that as an idle window —
+  so it went on backing off while the pointer was reaching for a button.
+  Measured click-to-update was **520 ms** at worst, against 34 ms for a
+  driver that never backs off. It is the runner that knows, so the runner
+  says: after any OS event `nextDeadlineMs()` reports 0 — it has a redraw
+  to present — and the driver takes that as work. With that, and the
+  ceiling at 32 ms, a click into a fully idle window answers in ~55 ms
+  (worst 72), and one into a window a pointer has approached in ~53 ms.
+
+  The trade is `idlePumpMs` and it is linear both ways: 8 ms is 34 ms a
+  click and ~9% of a core, 32 ms is ~55 ms and ~3%. Only the first event
+  after half a second of silence pays it; the second is already back at
+  `pumpMs`.
+
+  What the driver deliberately does not do is park inside the pump, which
+  is the obvious fix and looks strictly better: `KuiWindow.pumpUntil(ms)`
+  wakes on the event itself, so there is no latency at all. It is exposed,
+  and a driver that owns its whole process can use it — but a blocked main
+  thread is a blocked libuv, and Node cannot be asked whether that is
+  safe: `process.getActiveResourcesInfo()` reports nothing at all for an
+  in-flight `fs.readFile`. Behind a 50 ms park, 200 sequential
+  `await readFile` went from 6 ms to 4 s.
+
+  Backing off turns out to be the best of the three options rather than a
+  compromise, which is backlog C27 and its measurements. The cost is not the pump
+  rate in the abstract: leaving and re-entering the platform's loop is
+  ~1 ms of real main-thread CPU (987 of 1011 µs, awake, by
+  `CLOCK_THREAD_CPUTIME_ID`) where a `WaitUntil` wake *inside* `run_app` is
+  ~46 µs. A third of it is winit breaking out of `[NSApp run]` by posting a
+  synthetic event and AppKit answering that event with a LaunchServices
+  `sysctl`; the rest is the door itself. Which is why a Rust app has
+  nothing to back off from — it never leaves the loop — and why parking is
+  not the fix it looks like: winit 0.30 stops a parked pump on the first
+  wake of any kind, so a 200 ms park runs 101 ms, and parking costs 4.59%
+  against polling's 1.80% at a 32 ms period.
+
 - **A field that hugs its text no longer ratchets down to one character**
   (backlog F38). An `<edit>` with a `Fit` width was measured off its text
   buffer *as it stood* — still carrying the wrap width the last frame set
@@ -397,6 +507,14 @@ field reports).
   counter's `+1` carries it now.
 
 ### What you can delete
+
+The `pumpMs` you lowered to make a Node window feel responsive, and any
+timer an app added beside `runWindowed` to keep it awake: the gap is 8 ms
+whenever anything is happening and grows only into silence, so tuning it
+down buys nothing but CPU. If you raised it instead, to stop the window
+costing something while idle, that is now what the backoff does — and it
+does it without the input latency you were paying for at every moment,
+including the busy ones.
 
 The cast, or the node you moved the accent onto: `accent` is a row on the
 stock button in TypeScript as it already was on the wire, and a button that

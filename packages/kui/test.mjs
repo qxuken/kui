@@ -4058,6 +4058,24 @@ test('an effects handler runs after the frame, its dispatch lands in the next tu
   assert.deepEqual(app.effects(), [{ kind: 'write' }]);
 });
 
+test('step() reports whether the turn drew, which is what paces the windowed driver', () => {
+  let t = 0;
+  const app = createApp(
+    {
+      init: { n: 0 },
+      update: (m, msg) => (msg === 'tick' ? { n: m.n + 1 } : m),
+      view: () => box({ pad: 0 }),
+      tick: { every: 100, msg: 'tick' },
+    },
+    { width: 320, height: 240, clock: () => t },
+  );
+  app.render();
+  assert.equal(app.step(), false, 'a turn with nothing owed says so');
+  t = 100;
+  assert.equal(app.step(), true, 'a tick that changed the model drew');
+  assert.equal(app.step(), false, 'and the next turn is quiet again');
+});
+
 test('a tick that returns effects and no model hands them on without a frame (ADR 0013)', () => {
   const seen = [];
   let draws = 0;

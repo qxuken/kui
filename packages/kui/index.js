@@ -19,6 +19,8 @@ const EFFECTS = Symbol.for('kui.effects');
 // needs a way in. Private to this module — the loop's public shape is what
 // `Loop` in index.d.ts says it is.
 const FAILED = Symbol('kui.failed');
+// How long the windowed driver may park in one pump — see `runWindowed`.
+const BUDGET = Symbol('kui.budget');
 
 /**
  * What `update` returns when it has effects to hand the loop besides the
@@ -345,11 +347,15 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
     },
     /** One turn of the loop: whatever the surface queued, then the ticks the
      *  clock owes, then a frame if either changed the model. The windowed
-     *  driver runs one after every `win.pump()`. */
+     *  driver runs one after every `win.pump()`.
+     *
+     *  Returns whether the turn drew — which is how the windowed driver
+     *  knows the app is being used, and paces itself from it. */
     step() {
+      let redraw = false;
       try {
         drainWarnings();
-        let redraw = drainEvents();
+        redraw = drainEvents();
         if (ticksTo(at(), false)) redraw = true;
         // A tick that returned effects and no model draws nothing, so the
         // step that owed them is what hands them on.
@@ -361,6 +367,7 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
       }
       // The turn is over, so whatever was waiting for one has its answer.
       drainWaiters();
+      return redraw;
     },
     /** Drain events -> update -> re-render until no events remain. */
     settle() {
@@ -410,6 +417,18 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
       return new Promise((resolve, reject) => {
         waiters.push({ frame: false, started, maxMs, resolve, reject });
       });
+    },
+    /** How long the windowed driver may wait before the next pump, in ms —
+     *  the loop answering for its own timing. `idleMs` is what it would
+     *  like to wait; a tick due sooner shortens it, and `animating` cuts it
+     *  to the frame cadence, since a gap past the next frame is a dropped
+     *  frame. The driver passes `animating` in rather than letting this ask
+     *  again: it has just read it to pace itself, and one turn should not
+     *  decide two things from two answers. */
+    [BUDGET](busyMs, idleMs, animating) {
+      if (animating) return busyMs;
+      const untilTick = nextTick - at();
+      return Math.max(busyMs, Math.min(idleMs, untilTick));
     },
     /** One more pump has painted. The cheap half of `settled` — what a test
      *  that only needs the window to have drawn *something* was buying with
@@ -490,13 +509,56 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
 
 /**
  * Opens a real kui window (winit + wgpu) and runs the loop against it.
- * The winit event loop is pumped from a timer so it shares the main thread
- * with libuv — Node stays fully responsive while the window is open.
+ * The winit event loop is pumped from the main thread between libuv turns,
+ * so Node stays fully responsive while the window is open.
  *
  * Resolves with the final model when the main window closes. One event
  * loop per process (winit event loops are not recreatable everywhere); any
  * number of windows on it — `windows: (model) => [...]` declares them, and
  * `view(model, window, win)` is called once per open window.
+ *
+ * **What the loop costs when nothing is happening.** A pump is not free and
+ * costs the same empty as full: on macOS it runs a whole `NSApp` iteration
+ * and posts a synthetic event through the window server to break out of it
+ * again, about 1.2 ms of CPU. The rate is therefore the whole bill, and it
+ * is linear — at a pump every 8 ms an idle window costs 8-15% of a core,
+ * at 16 ms half that, at 100 ms a tenth. So the gap between pumps grows
+ * while nothing happens: `pumpMs` (8) while the app is being used, doubling
+ * once it has been quiet for `quietMs` (500), up to `idlePumpMs` (32).
+ * Anything at all — an event, a tick, a frame, a transition, and any OS
+ * event the app itself never sees — puts it back to `pumpMs` on the spot.
+ *
+ * `idlePumpMs` is the whole trade and it was measured both ways, clicking a
+ * real window with posted `CGEvent`s. A driver that never backs off answers
+ * a click in 34 ms; at 32 ms it answers in ~55 ms, and an idle window costs
+ * ~3% of a core instead of ~9%. Raising it is linear in both directions.
+ * The delay is only ever paid by the *first* event after half a second of
+ * complete silence — the second is already back at `pumpMs`.
+ *
+ * The gap is only ever the *ceiling*. `win.nextDeadlineMs()` is the runner
+ * saying when it next needs pumping — the caret blink, a transition's next
+ * frame, the audio poll, a window's first-frame retry — and the driver
+ * sleeps to that instead whenever it is sooner, so a deadline the shell
+ * worked out precisely is not then missed by a whole interval. What it
+ * cannot say is whether an OS event is waiting, which is why there is a
+ * ceiling at all.
+ *
+ * The cost of the backoff is that an OS event arriving into a *deep* idle
+ * waits for the next pump, up to that gap. In practice a pointer moves
+ * before it clicks and the first move has already reset it, so what pays
+ * is the first event after a window has been left alone — raise
+ * `idlePumpMs` to spend less and feel that more.
+ *
+ * What the driver deliberately does *not* do is park inside the pump.
+ * `KuiWindow.pumpUntil` blocks until an OS event, which sounds strictly
+ * better — the wake is the event itself, so there is no latency at all —
+ * and it is wrong twice over. A blocked main thread is a blocked libuv:
+ * 200 sequential `await readFile` went from 6 ms to 4 s behind a 50 ms
+ * park. And it does not even save CPU, because winit stops a parked pump
+ * on the first wake of any kind: a 200 ms park runs 101 ms, and a 32 ms
+ * period costs 4.59% of a core parked against 1.80% polled. Parking buys
+ * latency and nothing else; a driver that owns its whole process and does
+ * no async I/O can spend that way, but this one cannot assume either.
  */
 export function runWindowed(config, opts = {}) {
   const { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome } = opts;
@@ -504,13 +566,24 @@ export function runWindowed(config, opts = {}) {
     width, height, minWidth, minHeight, maxWidth, maxHeight, chrome,
   });
   const app = createLoop(config, opts, win, opts.clock ?? Date.now);
+  const busyMs = opts.pumpMs ?? 8;
+  const idleMs = Math.max(opts.idlePumpMs ?? 32, busyMs);
+  const quietMs = opts.quietMs ?? 500;
+  // How long to wait before the next pump, and since when there has been
+  // nothing to pump for.
+  let gap = busyMs;
+  let quietSince = 0;
   app.render();
   return new Promise((resolve, reject) => {
     const pump = () => {
       let alive;
+      let worked;
+      let animating;
       try {
         alive = win.pump();
-        app.step();
+        // `step` draws if anything arrived; a transition draws without it.
+        animating = win.animating();
+        worked = app.step() || animating;
         // A real driver drains every channel every frame, the app's
         // effects included: the handler had them at the frame, and what
         // `effects()` keeps is for a headless test.
@@ -529,7 +602,36 @@ export function runWindowed(config, opts = {}) {
         resolve(app.model);
         return;
       }
-      setTimeout(pump, opts.pumpMs ?? 8);
+      // When the runner next wants pumping. Zero means it has an event's
+      // redraw to present — which is also the only way this driver hears
+      // about OS input the *app* never sees: a pointer crossing a window
+      // that declares no hover produces no app event at all, and a driver
+      // pacing itself on app events alone reads that as an idle window and
+      // goes on backing off while somebody is reaching for a button. It
+      // measured 520 ms from click to update before this counted as work,
+      // against 34 ms for a driver that never backs off.
+      const due = win.nextDeadlineMs();
+      const now = Date.now();
+      if (worked || (due !== null && due <= 1)) {
+        gap = busyMs;
+        quietSince = 0;
+      } else if (!quietSince) {
+        quietSince = now;
+      } else if (now - quietSince >= quietMs) {
+        // Doubling rather than jumping: the window that just went quiet is
+        // the one most likely to be used again in a moment, and it keeps
+        // its cadence for the first half-second either way.
+        gap = Math.min(gap * 2, idleMs);
+      }
+      // The loop's own timing (ticks, anything animating) capped by the
+      // backoff, and then the runner's deadline if it is sooner. Floored at
+      // 1ms rather than `busyMs`: every deadline the shell reports is one it
+      // set in the future and recomputes each pump, so there is no gap to
+      // spin in — and rounding a 2 ms blink up to 8 would put the precision
+      // back where it was.
+      let wait = app[BUDGET](busyMs, gap, animating);
+      if (due !== null) wait = Math.min(wait, Math.max(1, due));
+      setTimeout(pump, wait);
     };
     pump();
   });

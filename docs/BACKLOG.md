@@ -94,6 +94,82 @@ already do half of it — a `Fit` height on an `<image>` preserves the intrinsic
 aspect against a final width (`fit_heights`), so the machinery and the pass
 ordering are proven; this generalises it to a declared ratio on any node.
 
+### `~` C27 — An idle pumped window costs ~1 ms a pump, and every way out of it is worse
+
+**Parked, measured and closed as "nothing to build" on 2026-09-09.** The
+entry began as "park the pump and wake it on libuv's backend descriptor",
+which would have been three native run-loop integrations whose failure mode
+is a hang. Measuring first killed it twice over, and the measurements are
+the point of keeping the entry.
+
+**A pump is ~1 ms of real CPU, and it is the door, not the room.** M3 Pro,
+macOS 26.6, marginal (two rates, background subtracted):
+
+| | cost |
+| --- | --- |
+| `PumpRunner::pump` from outside, pure Rust | **~1.0-1.7 ms** a call |
+| the same through Node's addon | **~1.2 ms** a call |
+| a `ControlFlow::WaitUntil` wake *inside* `run_app` | **~46 µs** |
+
+Not rendering — 800 pumps on an idle window drew **0 frames**. Not the
+binding — `pollEvents` + `warnings` + `animating` + `app.step()` are ~1 µs a
+turn together. Not other threads, and not blocking: bracketing a pump with
+`CLOCK_THREAD_CPUTIME_ID` puts **987 of 1011 µs on the main thread**, awake.
+An idle `run_app` window is 0.00% and one context switch a second, so the
+loop is free and the bill is entirely leaving and re-entering it.
+
+`sample` is honest here *because* the thread is running, and it splits one
+pump three ways: ~14% winit's `stop_app_immediately`, which breaks out of
+`[NSApp run]` by posting a synthetic `NSEvent` and waking the run loop
+through `mach_msg`; **~20% AppKit's `_NS_SetBasicPasteTelemetry` →
+`_LSCopyFrontApplication` → a LaunchServices `sysctl`**, dragged in by
+dequeuing that very synthetic event; and the remaining ~66% the machinery of
+one `[NSApp run]` entry and exit. So a third of it is the break-out
+mechanism and two thirds is the door itself. There is no 10× upstream fix
+hiding in it.
+
+**And parking does not help, which is what the entry was built on.** winit
+0.30's macOS `pump_events(Some(t))` sets `stop_after_wait`, and `wakeup`
+stops the app on the *first* wake of any kind — so an unrelated run-loop
+wake ends the park and the caller pays a full re-entry to resume it. A
+200 ms park runs **101 ms** on average (min 172 µs, max 203 ms). Against
+polling at the same period:
+
+| period | polling | parking |
+| --- | --- | --- |
+| 32 ms | 30 pumps/s, **1.80%** | 49 pumps/s, **4.59%** |
+| 200 ms | 5 pumps/s, **0.70%** | 11 pumps/s, **0.70%** |
+
+Parking is never cheaper and at the periods a driver would actually use it
+is 2.5× dearer. What parking *buys* is latency — the wake is the event, so
+the period stops setting the response time — and it costs libuv, which
+cannot be made safe from Node: `process.getActiveResourcesInfo()` and
+`process._getActiveRequests()` both report nothing for an in-flight
+`fs.readFile`, and behind a 50 ms park 200 sequential `await readFile` went
+from 6 ms to 4 s. Adding a libuv wake source to a park that is already being
+woken spuriously would have bought nothing and risked a hang.
+
+**So the driver polls with a backoff and that is not a compromise, it is the
+best of the three.** `idlePumpMs` is a real dial — 8 ms is 34 ms a click and
+~9% of a core, 32 ms is ~55 ms and ~3% — and only the first event after
+`quietMs` of silence pays it.
+
+**What would actually move it,** in order of how likely it is to happen:
+
+- **Upstream winit.** Two separate things: resume the park after a wake that
+  is not ours instead of stopping on the first one, and break out of
+  `[NSApp run]` without posting an event AppKit answers with a `sysctl`.
+  Together they are the difference between "polling is the best option" and
+  "parking is free". winit 0.31 is in beta; the pinned 0.30 is deliberate.
+- **Owning the loop.** `uv_run(loop, UV_RUN_NOWAIT)` from winit's
+  `about_to_wait`, capped by `uv_backend_timeout` — portable, no
+  per-platform code, ~0.5% at 100 Hz. Blocked because `uv_run` may not be
+  called from inside a libuv callback and `runWindowed` is called from JS,
+  which is inside one: taking the loop means a launcher binary that embeds
+  Node. That is Electron's shape and it is not worth an idle 3%.
+- **Nobody minding.** The most likely, and the reason this is parked rather
+  than open. A Rust window idles at 0.00%; a Node one at ~3% with a knob.
+
 ## From two alpha.7 field reports (2026-09-07)
 
 Both apps that reported on alpha.6 upgraded to alpha.7 and reported again:
@@ -670,7 +746,7 @@ that is not either parked or deliberately unbuilt: after alpha.10 the open
 list is C12, C13, C14, F36 and C26's last two steps — a measured-size query
 nothing needs since `virtual_rows` measures its own rows, and core-side
 scroll anchoring, which is CSS's `overflow-anchor` and is wanted by lists
-that are not virtual at all.
+that are not virtual at all. C27 is parked with its measurements.
 [`docs/adr/0016-caching-against-the-last-frame.md`](adr/0016-caching-against-the-last-frame.md)
 was **proposed and its one yes built on 2026-09-09** out of the performance round that shipped the quad
 shrink and closed C24, and it is written to be mostly declined: no general

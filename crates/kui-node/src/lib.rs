@@ -1159,7 +1159,7 @@ impl kui::App for TreeApp {
 const UNBOUNDED_SIZE: f64 = 65_535.0;
 
 /// A real kui window (winit + wgpu) driven from Node. The event loop is
-/// pumped, not run: call `pump()` from a timer loop so winit and libuv share
+/// pumped, not run: call `pump()` between libuv turns so winit and libuv share
 /// the main thread — or prefer `runWindowed`, which does that for you, unless
 /// you are building your own loop. One event loop per process (winit event
 /// loops are not recreatable on every platform), any number of windows on
@@ -1268,6 +1268,67 @@ impl KuiWindow {
             return Err(err(format!("view lowering failed: {e}")));
         }
         Ok(alive)
+    }
+
+    /// `pump`, but parked for up to `timeoutMs` — returning the moment an
+    /// OS event or a `Waker` wake arrives, and otherwise when the time is
+    /// up. Returns false once the window has closed. `timeoutMs` is clamped
+    /// to an hour; anything not finite and positive parks not at all.
+    ///
+    /// **What this buys is latency, and it is not what `runWindowed` idles
+    /// on.** The wake is the event itself rather than the next tick after
+    /// it, so the period stops setting the response time — but two measured
+    /// things make it the wrong default, and both surprise:
+    ///
+    /// - **It does not save CPU; it costs.** winit 0.30's macOS pump stops
+    ///   on the *first* wake of any kind, so a park does not hold: a 200 ms
+    ///   park runs 101 ms on average. Against polling at the same period, a
+    ///   32 ms period is 49 pumps a second and 4.59% of a core parked,
+    ///   against 30 pumps and 1.80% polled.
+    /// - **A blocked main thread is a blocked libuv**, and Node cannot be
+    ///   asked whether that is safe — `process.getActiveResourcesInfo()`
+    ///   reports nothing for an in-flight `fs.readFile`. Behind a 50 ms
+    ///   park, 200 sequential `await readFile` went from 6 ms to 4 s.
+    ///
+    /// So reach for it only in a loop that owns its whole process and does
+    /// no async I/O, and wants the latency. Otherwise `pump()` on a timer
+    /// is both cheaper and safer — which is what `runWindowed` does.
+    #[napi]
+    pub fn pump_until(&mut self, timeout_ms: f64) -> Result<bool> {
+        // Clamped, not just checked: `Duration::from_secs_f64` panics on a
+        // large finite value rather than saturating, so a caller spelling
+        // "forever" as `Number.MAX_VALUE` would take the process with it.
+        const MAX_PARK_MS: f64 = 60.0 * 60.0 * 1e3;
+        let ms = if timeout_ms.is_finite() && timeout_ms > 0.0 {
+            timeout_ms.min(MAX_PARK_MS)
+        } else {
+            0.0
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs_f64(ms / 1e3);
+        let alive = self.runner.pump_until(deadline);
+        if let Some(e) = self.runner.app_mut().error.take() {
+            return Err(err(format!("view lowering failed: {e}")));
+        }
+        Ok(alive)
+    }
+
+    /// How long until the window next needs a pump, in ms — `null` when
+    /// nothing the runner knows about is due.
+    ///
+    /// A driver on a fixed interval hits every deadline the shell has
+    /// already worked out a whole interval late: the caret blink, a
+    /// transition's next frame, the audio poll, a window's first-frame
+    /// retry. Ask after each pump and sleep to the answer instead, which is
+    /// what `runWindowed` does. It only ever asks for *sooner* — whether an
+    /// OS event is waiting is not something it can say, so a driver still
+    /// needs a ceiling of its own.
+    #[napi]
+    pub fn next_deadline_ms(&self) -> Option<f64> {
+        self.runner.next_deadline().map(|d| {
+            d.saturating_duration_since(std::time::Instant::now())
+                .as_secs_f64()
+                * 1e3
+        })
     }
 
     /// The window's inner size in logical px plus its scale factor:

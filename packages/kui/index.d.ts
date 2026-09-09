@@ -1587,7 +1587,7 @@ export declare function clipStride(): number
 
 /**
  * A real kui window (winit + wgpu) driven from Node. The event loop is
- * pumped, not run: call `pump()` from a timer loop so winit and libuv share
+ * pumped, not run: call `pump()` between libuv turns so winit and libuv share
  * the main thread — or prefer `runWindowed`, which does that for you, unless
  * you are building your own loop. One event loop per process (winit event
  * loops are not recreatable on every platform), any number of windows on
@@ -1613,6 +1613,45 @@ export declare class KuiWindow {
    * window has closed.
    */
   pump(): boolean
+  /**
+   * `pump`, but parked for up to `timeoutMs` — returning the moment an
+   * OS event or a `Waker` wake arrives, and otherwise when the time is
+   * up. Returns false once the window has closed. `timeoutMs` is clamped
+   * to an hour; anything not finite and positive parks not at all.
+   *
+   * **What this buys is latency, and it is not what `runWindowed` idles
+   * on.** The wake is the event itself rather than the next tick after
+   * it, so the period stops setting the response time — but two measured
+   * things make it the wrong default, and both surprise:
+   *
+   * - **It does not save CPU; it costs.** winit 0.30's macOS pump stops
+   *   on the *first* wake of any kind, so a park does not hold: a 200 ms
+   *   park runs 101 ms on average. Against polling at the same period, a
+   *   32 ms period is 49 pumps a second and 4.59% of a core parked,
+   *   against 30 pumps and 1.80% polled.
+   * - **A blocked main thread is a blocked libuv**, and Node cannot be
+   *   asked whether that is safe — `process.getActiveResourcesInfo()`
+   *   reports nothing for an in-flight `fs.readFile`. Behind a 50 ms
+   *   park, 200 sequential `await readFile` went from 6 ms to 4 s.
+   *
+   * So reach for it only in a loop that owns its whole process and does
+   * no async I/O, and wants the latency. Otherwise `pump()` on a timer
+   * is both cheaper and safer — which is what `runWindowed` does.
+   */
+  pumpUntil(timeoutMs: number): boolean
+  /**
+   * How long until the window next needs a pump, in ms — `null` when
+   * nothing the runner knows about is due.
+   *
+   * A driver on a fixed interval hits every deadline the shell has
+   * already worked out a whole interval late: the caret blink, a
+   * transition's next frame, the audio poll, a window's first-frame
+   * retry. Ask after each pump and sleep to the answer instead, which is
+   * what `runWindowed` does. It only ever asks for *sooner* — whether an
+   * OS event is waiting is not something it can say, so a driver still
+   * needs a ceiling of its own.
+   */
+  nextDeadlineMs(): number | null
   /**
    * The window's inner size in logical px plus its scale factor:
    * `{width, height, scale}`. Readable before the first frame (in
@@ -2147,7 +2186,23 @@ export declare function runWindowed<M, A = AppMsg | CoreMsg, E = never>(
   config: WindowedConfig<M, A, E>,
   opts?: WindowOptions & {
     title?: string;
+    /** The gap between pumps while the app is being used, in ms
+     *  (default 8) — and the floor the backoff never goes under. */
     pumpMs?: number;
+    /** The longest gap between pumps, in ms (default 32), reached by
+     *  doubling once the window has been quiet for `quietMs`. This is what
+     *  an idle window costs: a pump is ~1.2 ms of CPU whether or not
+     *  anything happened, so the bill is linear in the rate — 8 ms is
+     *  8-15% of a core, 32 ms is ~3%, 250 ms is under 1%. What it buys back
+     *  is the wait an OS event arriving into a deep idle sits through, up
+     *  to this long: clicked with a posted `CGEvent`, a window answers in
+     *  34 ms at 8 and ~55 ms at 32. Only the first event after `quietMs` of
+     *  silence pays it. Floored at `pumpMs`. */
+    idlePumpMs?: number;
+    /** How long a window must have been quiet before the gap starts
+     *  growing, in ms (default 500). Anything at all — an event, a tick, a
+     *  frame, a transition — resets both the gap and this. */
+    quietMs?: number;
     /** Runs after the window opens, before `init` and the first frame —
      *  register images, fonts and other resources here. `app` is the loop
      *  itself, so a test can hold on to it and drive a real window with the

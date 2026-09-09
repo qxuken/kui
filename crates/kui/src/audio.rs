@@ -347,6 +347,39 @@ mod backend {
             ended
         }
 
+        /// Whether the device is open (or opening) and so costing
+        /// something. A CoreAudio/WASAPI/ALSA output stream is a real-time
+        /// thread that runs whether or not anything is playing — 94 buffer
+        /// callbacks a second at the usual 512-frame period — which is the
+        /// whole of an idle kui app's CPU once a session holds a sound.
+        /// The driver asks so it knows whether there is anything to close.
+        pub fn holds_device(&self) -> bool {
+            matches!(self.device, Device::Opening(_) | Device::Open(_))
+        }
+
+        /// Lets the output device go. The decoded-sound cache stays — it is
+        /// the ~90 ms open that has to be paid again, not the decode — so a
+        /// re-warm costs nothing a cold start does not. Refuses while
+        /// anything is playing or waiting, since that is the device's whole
+        /// job; the driver only asks after `active()` has been false for a
+        /// while.
+        ///
+        /// Asks `opening()` first, and that is not a detail: a device the
+        /// app warmed but never commanded stays in `Opening` forever —
+        /// nothing else on this type calls `opening()` unless a command
+        /// flows — with the opened manager sitting live in the channel and
+        /// its stream running. That is precisely the case worth closing, so
+        /// the state has to be settled before it can be read. Still opening
+        /// means not yet closable; the driver asks again.
+        pub fn close(&mut self) {
+            if self.active() || self.opening() {
+                return;
+            }
+            if matches!(self.device, Device::Open(_)) {
+                self.device = Device::Closed;
+            }
+        }
+
         /// Whether any playback is live, or waiting on the device to
         /// open — drivers keep polling while so. Both answer buffers count:
         /// a `flush_pending` from the poll can fill either, and the core
@@ -378,6 +411,55 @@ mod backend {
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        /// An idle device is let go, and a warm that was never commanded
+        /// is the case that matters: nothing but `close` calls `opening`,
+        /// so a device warmed at launch and never played sits in `Opening`
+        /// with a live output stream behind it — 94 buffer callbacks a
+        /// second, and the whole of an idle app's CPU. Skipped where there
+        /// is no device to open (CI), since there is then nothing to close.
+        #[test]
+        fn a_warm_device_nothing_used_is_closed_and_reopens() {
+            let mut audio = Audio::new();
+            audio.warm();
+            assert!(audio.holds_device(), "warm holds the device");
+            // Let the open land, the way the ~90 ms one does in an app.
+            let deadline = std::time::Instant::now() + Duration::from_secs(3);
+            while matches!(audio.device, Device::Opening(_)) && std::time::Instant::now() < deadline
+            {
+                std::thread::sleep(Duration::from_millis(20));
+                audio.close();
+            }
+            if matches!(audio.device, Device::Failed) {
+                return; // no device on this machine: nothing to close
+            }
+            assert!(!audio.holds_device(), "an unused device is let go");
+            // And the app is not deaf afterwards.
+            audio.warm();
+            assert!(audio.holds_device(), "a closed device warms again");
+        }
+
+        /// A device with something playing is not closed under it.
+        #[test]
+        fn a_playing_device_is_not_closed() {
+            use kui_core::{Core, PlayOptions};
+            let mut core = Core::new();
+            let s = core.add_sound(super::super::blip(44_100, 220.0, 2_000.0, 0.05));
+            core.play(s, PlayOptions::default());
+            let mut audio = Audio::new();
+            audio.apply(core.take_audio_commands(), &core.resources);
+            let deadline = std::time::Instant::now() + Duration::from_secs(3);
+            while audio.playing.is_empty() && audio.active() && std::time::Instant::now() < deadline
+            {
+                std::thread::sleep(Duration::from_millis(20));
+                audio.poll_ended();
+            }
+            if matches!(audio.device, Device::Failed) {
+                return; // no device: nothing plays and nothing is held
+            }
+            audio.close();
+            assert!(audio.holds_device(), "a sound mid-flight keeps the device");
+        }
 
         /// The decoder needs no device: a synthesized WAV round-trips.
         #[test]
@@ -494,6 +576,12 @@ mod backend {
         }
 
         pub fn warm(&mut self) {}
+
+        pub fn holds_device(&self) -> bool {
+            false
+        }
+
+        pub fn close(&mut self) {}
 
         pub fn apply(
             &mut self,
