@@ -306,3 +306,43 @@ role, bubbling dynamically), the phase question and the modal boundary are
 in `docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`. Decisions 2, 3, 5
 and 9 are unchanged; decision 3's `focus_next` is now half of a pattern
 rather than a whole answer.
+
+## Amendment: a key that acts on the focus shows it, built (2026-09-09)
+
+Decision 4 names two ways focus starts showing — a Tab step and an
+assistive-technology request — and one way it stops: a mouse press. That
+is the whole of `:focus-visible` as a *starting* rule and only half of it
+as a live one. A browser also turns the indicator on when the keyboard is
+used on focus a click placed, and kui did not:
+
+Click the `+1` button in `examples/rust/counter`, then press Space. The
+count goes up — Space presses the focused control, decision 3 — and
+nothing on screen says which of the three buttons answered. Press Tab
+first and the ring appears, and from then on Space looks like it works.
+So the honest reading of the report this came from is not "Space does not
+press the button" but "I cannot tell that it did".
+
+4a. **A key the core acts on the focused control with shows that focus.**
+    Space and Enter pressing it, a slider's arrows, a composite's arrows,
+    Home, End and type-ahead — the same set decision 13 says a control
+    keeps. Escape is the exception, because it acts by letting go and a
+    ring around nothing is not a ring; and a key that bubbles to an
+    enclosing sink (ADR 0011) never reaches this arm, so a shortcut
+    handled above the control does not pop a ring around it.
+
+Composite motion already did this (`docs/adr/0007`, decision 5, through
+`move_within_composite`), which is the same rule reached one pattern at a
+time. The clearing rule is untouched: the next mouse press hides it again.
+
+### Rejected
+
+- **Show on any key, as the browsers do.** They set the flag on *every*
+  keydown that is not a modifier, wherever it goes. In kui that would
+  light a ring on a control while a shortcut layer above it handled the
+  key — the app's own surface answering, and the ring naming a node that
+  did nothing — because ADR 0011 sends unclaimed keys past the control.
+  "The core acted on this node" is the fact the ring is drawn from.
+- **Show it on the click.** A pointer user gets a ring around whatever
+  they last touched, which is the noise `:focus-visible` exists to
+  remove, and the app that reads `focus_visible` for its own styling
+  loses the distinction entirely.

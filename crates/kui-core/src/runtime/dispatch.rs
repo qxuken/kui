@@ -165,6 +165,9 @@ impl Core {
                         && !self.type_ahead(i, &s, &mut out)
                         && s == " "
                     {
+                        // The press shows the focus, as Enter's does
+                        // (`docs/adr/0002`, decision 4a).
+                        self.focus_visible = true;
                         self.click_node(self.tree.keys[i], &mut out);
                     }
                 }
@@ -256,19 +259,34 @@ impl Core {
                     use crate::access::AccessAction;
                     let slider =
                         self.tree.specs[i].access().role == Some(crate::access::Role::Slider);
+                    // Each key the core acts with shows the focus first
+                    // (`docs/adr/0002`, decision 4a): pointer focus is
+                    // unshown, but the moment the keyboard uses it the
+                    // user is owed the answer to "which node did that?" —
+                    // a button pressed with Space after a click otherwise
+                    // emits its event with nothing on screen naming it.
+                    // Escape acts by letting go, and a ring around nothing
+                    // is not a ring; a key the control does not claim went
+                    // to the sink above and never arrives here at all.
                     match ek {
-                        EditKey::Enter => self.click_node(self.tree.keys[i], &mut out),
+                        EditKey::Enter => {
+                            self.focus_visible = true;
+                            self.click_node(self.tree.keys[i], &mut out);
+                        }
                         EditKey::Escape => self.set_focus(None),
                         EditKey::Right | EditKey::Up if slider => {
-                            self.nudge(i, AccessAction::Increment, &mut out)
+                            self.focus_visible = true;
+                            self.nudge(i, AccessAction::Increment, &mut out);
                         }
                         EditKey::Left | EditKey::Down if slider => {
-                            self.nudge(i, AccessAction::Decrement, &mut out)
+                            self.focus_visible = true;
+                            self.nudge(i, AccessAction::Decrement, &mut out);
                         }
                         // Inside a composite the arrows, Home and End move
                         // focus among the items instead (see
-                        // `docs/adr/0007-composite-keyboard-patterns.md`);
-                        // on anything else they do nothing, as before.
+                        // `docs/adr/0007-composite-keyboard-patterns.md`),
+                        // showing the focus where they land; on anything
+                        // else they do nothing, as before.
                         EditKey::Left
                         | EditKey::Right
                         | EditKey::Up

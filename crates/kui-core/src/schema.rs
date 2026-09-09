@@ -1780,7 +1780,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
         node: &[],
         lua: &["focus_visible"],
         c: "`kui_focus_visible()`",
-        doc: "Whether focus shows — it got there by Tab or assistive technology rather than a click. Node: `focusVisible()` on the context.",
+        doc: "Whether focus shows — the keyboard or assistive technology put it where it is, or acted on it there; a click alone does not. Node: `focusVisible()` on the context.",
     },
 ];
 

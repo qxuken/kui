@@ -1250,3 +1250,59 @@ fn a_modal_closing_over_no_edge_still_gives_the_focus_back() {
     rename_frame(&mut core, &["a", "b"], false, None);
     assert_eq!(core.focus(), Some(a));
 }
+
+/// A click focuses without showing (pointer focus, ADR 0002 decision 4) —
+/// and then the keyboard acts on that focus. Space presses the button the
+/// pointer left focused, and a press whose ring never appears is a press
+/// the user cannot attribute to a control: the frame answered, but nothing
+/// on screen says which node answered. So the key that acts shows the
+/// focus, exactly as the Tab that could have put it there would have.
+#[test]
+fn a_key_acting_on_pointer_focus_shows_it() {
+    let mut core = Core::new();
+    let k = frame(&mut core, false, false);
+
+    // Space, after a click on the same button.
+    click_at(&mut core, 50.0, 2.0 * H + 10.0);
+    assert_eq!(core.focus(), Some(k.go));
+    assert!(!core.focus_visible(), "the click alone shows nothing");
+    assert_eq!(
+        payloads(&core.handle_input(InputEvent::Text(" ".into()))),
+        ["go"]
+    );
+    assert!(core.focus_visible(), "Space pressed it: say which one");
+    frame(&mut core, false, false);
+    assert_eq!(ring_count(&mut core), 1);
+
+    // Enter, on a switch the pointer focused.
+    click_at(&mut core, 50.0, 4.0 * H + 10.0);
+    assert_eq!(core.focus(), Some(k.mute));
+    assert!(!core.focus_visible());
+    assert_eq!(payloads(&key(&mut core, EditKey::Enter)), ["mute"]);
+    assert!(core.focus_visible(), "Enter pressed it");
+
+    // An arrow nudging a slider is the keyboard acting too.
+    click_at(&mut core, 50.0, 5.0 * H + 10.0);
+    assert_eq!(core.focus(), Some(k.vol));
+    assert!(!core.focus_visible());
+    assert_eq!(
+        payloads(&key(&mut core, EditKey::Right)),
+        ["access:increment"]
+    );
+    assert!(core.focus_visible(), "the slider moved: say which one");
+
+    // A key the core does nothing with shows nothing: an arrow on a
+    // button is not the keyboard using the focus, it is a key going
+    // nowhere.
+    click_at(&mut core, 50.0, 2.0 * H + 10.0);
+    assert_eq!(core.focus(), Some(k.go));
+    assert!(key(&mut core, EditKey::Right).is_empty());
+    assert!(!core.focus_visible(), "nothing acted: nothing to show");
+
+    // Escape is the other exception: it acts by letting go, and a ring
+    // around nothing is not a ring.
+    key(&mut core, EditKey::Escape);
+    assert_eq!(core.focus(), None);
+    frame(&mut core, false, false);
+    assert_eq!(ring_count(&mut core), 0);
+}

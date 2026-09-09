@@ -390,6 +390,25 @@ field reports).
     trailing by a frame is what every toolkit does. With both bounds the
     same drag paints 36 frames, which is what it painted before the
     change.
+- **A control pressed from the keyboard shows its focus ring.** Click the
+  `+1` button in `examples/rust/counter` and then press Space: the count
+  goes up — Space has pressed the focused control since alpha.6 — and
+  nothing on screen says *which* of the three buttons answered. Press Tab
+  once first and the ring appears, and from then on Space looks like it
+  works. So the report this came from reads as "Space does nothing until I
+  press Tab", and what was actually missing is the ring.
+
+  A click focuses without showing, deliberately (`focus_visible`, the
+  web's `:focus-visible`) — a pointer user should not collect a ring
+  around everything they touch. But that is a rule about how focus
+  *arrives*, and the moment a key acts on it the user is owed the answer
+  to "which node did that?". So each key the core acts on the focused
+  control with now shows the focus first: Space and Enter pressing it, a
+  slider's arrows, and the composite arrows that already did. Escape does
+  not, because it acts by letting go; nor does a key the control does not
+  claim, which went to the enclosing sink and never reached the control at
+  all. The next mouse press hides the ring again, as before.
+  `docs/adr/0002-keyboard-focus-as-data.md` carries it as decision 4a.
 
 - **An idle window costs nothing again.** Three separate things kept a
   process that was doing nothing from settling at zero, and each was
