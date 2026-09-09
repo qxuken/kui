@@ -108,25 +108,30 @@ impl App for RichText {
                     TextStyle::new(16.0).line_height(26.0).color(MUTED),
                 );
 
-                ui.with(
-                    NodeSpec::row()
-                        .width(Sizing::Grow(1.0))
-                        .main_align(Align::End),
-                    |ui| {
-                        // What the pointer has selected, live. An empty
-                        // selection (a plain click) reads as none.
-                        let selected = ui
-                            .selection_text()
-                            .filter(|t| !t.is_empty())
-                            .map(|t| format!("{} characters selected", t.chars().count()))
-                            .unwrap_or_else(|| {
-                                "drag across the text to select it, or resize to rewrap".into()
-                            });
-                        ui.text(&selected, TextStyle::new(12.0).color(MUTED));
-                    },
-                );
-
                 kui::widgets::latency_hud(ui);
+            },
+        );
+
+        // The readout sits *outside* the selectable card on purpose. Inside
+        // it, it would be part of what Select All selects — and since it
+        // reports the length of the selection, selecting everything would
+        // include a label whose text is a function of that selection, and
+        // the number would chase itself.
+        ui.with(
+            NodeSpec::row()
+                .width(Sizing::Grow(1.0))
+                .max_width(560.0)
+                .pad_xy(36.0, 8.0)
+                .main_align(Align::End),
+            |ui| {
+                let selected = ui
+                    .selection_text()
+                    .filter(|t| !t.is_empty())
+                    .map(|t| format!("{} characters selected", t.chars().count()))
+                    .unwrap_or_else(|| {
+                        "drag across the text to select it, right-click for a menu".into()
+                    });
+                ui.text(&selected, TextStyle::new(12.0).color(MUTED));
             },
         );
     }

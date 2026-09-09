@@ -30,6 +30,42 @@ impl Core {
         self.menu.as_ref()
     }
 
+    /// Tells the core that this host shows menus itself — an `NSMenu`, a
+    /// `TrackPopupMenu`, whatever the platform has (ADR 0017, decision 5,
+    /// step 3). The core then keeps the open menu as state and **does not
+    /// draw it**: the host reads `menu()`, shows it, and reports back with
+    /// [`Self::activate_menu_item`] or [`Self::close_menu`].
+    ///
+    /// Declared once by the driver, not per menu, because it is a fact
+    /// about the host and not about any one menu. Off by default: a host
+    /// that says nothing gets the drawn menu, which is every binding's
+    /// starting point and the only thing a headless test can see.
+    pub fn set_native_menus(&mut self, on: bool) {
+        self.native_menus = on;
+    }
+
+    /// Whether the host said it shows menus itself.
+    pub fn native_menus(&self) -> bool {
+        self.native_menus
+    }
+
+    /// The host's menu reports that item `i` was chosen: the same path a
+    /// press on the drawn menu's row takes — the core performs what it
+    /// can, queues what the host must do, and returns the events the app
+    /// hears (one `menu` event on the node the menu was about).
+    ///
+    /// An index past the end closes the menu and posts nothing, which is
+    /// what a host reporting a row this build does not know should do.
+    pub fn activate_menu_item(&mut self, i: usize) -> Vec<UiEvent> {
+        let mut out = Vec::new();
+        if self.menu.as_ref().is_some_and(|m| i < m.items.len()) {
+            self.choose_menu_item(i, &mut out);
+        } else {
+            self.close_menu();
+        }
+        out
+    }
+
     /// Whether `key` is a node of the stock menu — its root or one of its
     /// rows. What tells a press inside the core's own menu from a press in
     /// the app.
@@ -83,6 +119,13 @@ impl Core {
     /// slots, so the menu is the last thing declared and therefore the
     /// frame's modal scope and its topmost float.
     pub(crate) fn build_menu(ui: &mut Ui<'_>) {
+        if ui.core().native_menus {
+            // The host is showing it. Nothing is drawn, and the rows the
+            // stock renderer would have keyed are not there to be clicked
+            // — which is why `menu_items` stays empty and
+            // `consume_menu_events` finds nothing to take back.
+            return;
+        }
         let Some(menu) = ui.core().menu.clone() else {
             return;
         };

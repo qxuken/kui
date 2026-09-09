@@ -35,6 +35,25 @@ field reports).
 
 ### Added
 
+- **macOS windows show the platform's own context menu** (ADR 0017, step
+  3). The Rust runner declares `set_native_menus`, the core then holds the
+  open menu without drawing it, and the driver shows an `NSMenu` at the
+  press point: the platform's wording, the platform's keyboard, ⌘C / ⌘A
+  beside the rows that have them, and a dimmed Copy when nothing is
+  selected. Choosing a row runs the same code the drawn menu's row runs.
+
+  The seam is not macOS's: `set_native_menus` + `activate_menu_item` is
+  what any host with a menu of its own uses, C hosts included. Windows is
+  the next one and is not built yet — there, and on Linux, the core keeps
+  drawing the menu it drew before.
+
+  Worth knowing if you drive winit yourself: the menu is *scheduled* onto
+  the run loop rather than shown where the press is handled.
+  `popUpMenuPositioningItem` runs a nested modal loop, winit's macOS event
+  handler panics when re-entered, and its run-loop observers fire in
+  `NSEventTrackingRunLoopMode` — so popping a menu from inside
+  `window_event` takes the app down the moment the pointer moves.
+
 - **Context menus are data, and a right-click nobody claimed opens one**
   (`docs/adr/0017-selection-as-a-scope.md`, step 2). A menu is a list of
   items and a point: each item a label, an enabled flag, an optional

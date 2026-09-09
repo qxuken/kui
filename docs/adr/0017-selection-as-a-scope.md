@@ -508,7 +508,21 @@ corpus can see it.
    `menu` — the `selection` tree under a secondary press, since the menu
    is the core's and no binding declares it.
 3. Native menu renderers in the Rust runner: macOS first (it is the one
-   with Look Up), Windows second.
+   with Look Up), Windows second. **macOS built 2026-09-09**; Windows
+   still open. The core half is a seam any host can use —
+   `set_native_menus` makes the core hold the menu and draw none of it,
+   and the host answers with `activate_menu_item` — so a C host on any
+   platform can render one too.
+
+   The one thing this step turned out to be *about* is re-entrancy.
+   `popUpMenuPositioningItem:atLocation:inView:` runs a nested modal run
+   loop, winit's macOS event handler `panic!`s when re-entered, and its
+   run-loop observers fire in `NSEventTrackingRunLoopMode` — so a menu
+   popped from inside `window_event` kills the app the first time the
+   pointer moves over it. The menu is therefore *scheduled*
+   (`performSelector:withObject:afterDelay:` at zero delay) and shown from
+   the run loop with no winit handler on the stack, which also means the
+   answer arrives a turn later and is collected in `about_to_wait`.
 4. Cells: grid selection, `originLine`, linewise and block, copy with
    trailing-blank trimming.
 5. Force click: the pressure arm, the `forceclick` event, `onForceClick`,

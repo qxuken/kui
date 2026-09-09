@@ -57,6 +57,7 @@ windows-sys = { version = "0.52", features = [
 # than crates; the feature lists are the four classes we call and nothing
 # else.
 [target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = [
     "std",
     "objc2-core-foundation",
@@ -64,6 +65,15 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
     "NSColor",
     "NSColorSpace",
     "NSWorkspace",
+    # The context menu (ADR 0017 step 3): an NSMenu of NSMenuItems shown
+    # over the window's view, which is what `NSResponder` and `NSView` are
+    # here for — the menu is popped up *in* a view, and NSView needs its
+    # superclass.
+    "NSMenu",
+    "NSMenuItem",
+    "NSResponder",
+    "NSView",
+    "NSEvent",
 ] }
 objc2-foundation = { version = "0.3", default-features = false, features = [
     "std",

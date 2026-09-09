@@ -366,3 +366,56 @@ fn a_right_click_on_a_plain_box_opens_nothing() {
     assert!(events.is_empty(), "{events:?}");
     assert!(core.menu().is_none());
 }
+
+// -- A host that shows menus itself ----------------------------------------
+
+#[test]
+fn a_native_host_gets_the_state_and_draws_nothing() {
+    let mut core = Core::new();
+    core.set_native_menus(true);
+    let scope = frame(&mut core);
+    right_click(&mut core, Vec2::new(20.0, 8.0));
+    // The menu is open — the host is expected to show it — but the frame
+    // draws none of it.
+    let menu = core.menu().expect("the core still holds it").clone();
+    assert_eq!(menu.target, scope);
+    assert_eq!(menu.items.len(), 2, "Copy and Select All");
+    frame(&mut core);
+    assert!(
+        menu_rect(&mut core).is_none(),
+        "nothing drawn: the host is showing it"
+    );
+}
+
+#[test]
+fn the_host_reports_the_row_it_chose() {
+    let mut core = Core::new();
+    core.set_native_menus(true);
+    let scope = frame(&mut core);
+    core.select_all_in(scope);
+    right_click(&mut core, Vec2::new(20.0, 8.0));
+    // Copy is item 0 of a scope's default menu.
+    let events = core.activate_menu_item(0);
+    assert_eq!(
+        core.take_menu_actions(),
+        vec![MenuAction::SetClipboard("one\ntwo".into())],
+        "the same path the drawn menu's row takes"
+    );
+    assert_eq!(events.len(), 1);
+    assert_eq!(
+        events[0].payload.get("role").and_then(Value::as_str),
+        Some("copy")
+    );
+    assert!(core.menu().is_none());
+}
+
+#[test]
+fn a_row_the_host_invented_closes_the_menu_and_posts_nothing() {
+    let mut core = Core::new();
+    core.set_native_menus(true);
+    let scope = frame(&mut core);
+    core.open_menu(Menu::new(scope, Vec2::new(0.0, 0.0), items()));
+    let events = core.activate_menu_item(99);
+    assert!(events.is_empty(), "{events:?}");
+    assert!(core.menu().is_none());
+}

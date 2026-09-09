@@ -18,6 +18,9 @@ pub use kui_core::*;
 
 mod access_bridge;
 pub mod audio;
+/// The platform's own context menu, where there is one (ADR 0017 step 3).
+#[cfg(target_os = "macos")]
+mod macos_menu;
 /// ADR 0009's arithmetic: where a pointer in one window is in another.
 mod retarget;
 /// The OS settings winit has no call for, asked once and re-asked when the
@@ -298,6 +301,9 @@ impl Launcher {
             epoch: std::time::Instant::now(),
             system: system_env::query(),
             clipboard: arboard::Clipboard::new().ok(),
+            #[cfg(target_os = "macos")]
+            native_menu: macos_menu::MacMenu::new(),
+            menu_shown: false,
             audio: audio::Audio::new(),
             audio_touch: std::time::Instant::now(),
             smoke_frames: Self::smoke_frames(),
@@ -1110,6 +1116,14 @@ struct Shell<A: App> {
     /// per-window and comes off the window itself.
     system: system_env::Queried,
     clipboard: Option<arboard::Clipboard>,
+    /// The platform's context menu, where the platform has one (ADR 0017
+    /// step 3). `None` on every other platform and on a macOS build that
+    /// could not reach the main thread, and then the core draws its own.
+    #[cfg(target_os = "macos")]
+    native_menu: Option<macos_menu::MacMenu>,
+    /// Whether a menu the core opened has been handed to the platform and
+    /// is waiting for an answer. One per app: only one menu can be up.
+    menu_shown: bool,
     /// The audio device the core's audio commands drive; see `audio`.
     audio: audio::Audio,
     /// When the app was last doing something that could lead to a sound:
@@ -1546,6 +1560,7 @@ impl<A: App> Shell<A> {
         self.apply_menu_actions(event_loop, i);
         self.apply_window_commands(event_loop);
         self.apply_audio();
+        self.pump_native_menu(event_loop);
         if let Some(pane) = self.panes.get_mut(i) {
             pane.apply_cursor();
             // Hover styling depends on input too, so any input redraws. A
@@ -1553,6 +1568,59 @@ impl<A: App> Shell<A> {
             pane.core.stats.pending_input_ms += t0.elapsed().as_secs_f32() * 1e3;
             pane.window.request_redraw();
         }
+    }
+
+    /// Hands a menu the core opened to the platform, and hands the
+    /// platform's answer back (ADR 0017, decision 5, step 3).
+    ///
+    /// Two turns, not one, because the platform's menu is modal and cannot
+    /// be entered from inside a winit callback (see `macos_menu`): the
+    /// first turn schedules it, and a later one — after the menu has come
+    /// and gone — reads which row it reported. A host with no native menu
+    /// does neither and the core draws its own.
+    fn pump_native_menu(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(target_os = "macos")]
+        {
+            let Some(native) = self.native_menu.as_ref() else {
+                return;
+            };
+            // Only the main window's menu: a popup window's owner is what
+            // a context menu belongs to, and no pane but the main one has
+            // asked for one yet.
+            let Some(i) = self.panes.iter().position(|p| p.core.menu().is_some()) else {
+                self.menu_shown = false;
+                return;
+            };
+            if !self.menu_shown {
+                let menu = self.panes[i].core.menu().expect("checked").clone();
+                let pane = &self.panes[i];
+                self.menu_shown = native.present(&pane.window, menu.at, &menu.items);
+                if !self.menu_shown {
+                    // No view to show it over: fall back to the drawn
+                    // menu rather than leaving one open that never shows.
+                    self.panes[i].core.set_native_menus(false);
+                    self.panes[i].window.request_redraw();
+                }
+                return;
+            }
+            if native.busy() {
+                return;
+            }
+            self.menu_shown = false;
+            let events = match native.take_chosen() {
+                Some(row) => self.panes[i].core.activate_menu_item(row),
+                None => {
+                    self.panes[i].core.close_menu();
+                    Vec::new()
+                }
+            };
+            self.route_events(events);
+            self.apply_menu_actions(event_loop, i);
+            self.apply_window_commands(event_loop);
+            self.panes[i].window.request_redraw();
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = event_loop;
     }
 
     /// What choosing a stock context-menu item left for the host: the
@@ -1811,10 +1879,15 @@ impl<A: App> Shell<A> {
         id: WindowId,
         config: WindowConfig,
         owner: WindowId,
-        core: Core,
+        mut core: Core,
         window: Arc<Window>,
         renderer: kui_wgpu::Renderer,
     ) {
+        // This driver shows the platform's own context menu where the
+        // platform has one, so the core keeps the open menu as state and
+        // draws none of it (ADR 0017, decision 5, step 3).
+        #[cfg(target_os = "macos")]
+        core.set_native_menus(self.native_menu.is_some());
         let access = self
             .proxy
             .clone()
@@ -2810,6 +2883,9 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
     /// asks for the next frame right away (vsync paces it). While a sound
     /// plays, the loop wakes every `AUDIO_POLL` to notice it finishing.
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // The platform's menu comes and goes between turns of the loop,
+        // so this is where its answer is collected.
+        self.pump_native_menu(event_loop);
         self.settle_focus();
         self.dismiss_popups_if_deactivated();
         self.poll_audio();

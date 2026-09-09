@@ -200,6 +200,8 @@ pub struct Core {
     /// The editor that held focus when the menu opened, since the menu's
     /// own rows take focus from it — what Cut, Copy and Select All act on.
     menu_editor: Option<Key>,
+    /// Whether the host draws menus itself (`set_native_menus`).
+    native_menus: bool,
     /// The window's text selection outside an editor, and what the
     /// frame resolved it to: `sel_ords` numbers the text nodes of the
     /// selection's scope in emission order (`u32::MAX` for a node
@@ -409,6 +411,7 @@ impl Core {
             menu_items: Vec::new(),
             menu_actions: Vec::new(),
             menu_editor: None,
+            native_menus: false,
             selection: None,
             select_dragging: None,
             sel_ords: Vec::new(),
