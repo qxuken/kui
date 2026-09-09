@@ -970,6 +970,11 @@ typedef struct KuiMenuAction {
      * is HTML pastes markup into every plain-text field on the machine.
      * Borrowed like `text`. */
     KuiStr html;
+    /* KUI_MENU_ACTION_LOOK_UP only: where to anchor the panel - the
+     * baseline origin of the selection's first line, logical viewport px.
+     * Zero for every other kind. */
+    float x;
+    float y;
 } KuiMenuAction;
 #define KUI_MENU_ACTION_INIT ((KuiMenuAction){ .size = sizeof(KuiMenuAction) })
 

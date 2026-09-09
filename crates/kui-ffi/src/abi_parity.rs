@@ -240,6 +240,8 @@ fn asserts() -> String {
         kind: u32 => "uint32_t",
         text: KuiStr => "KuiStr",
         html: KuiStr => "KuiStr",
+            x: f32 => "float",
+        y: f32 => "float",
     });
     abi_out_struct!(o, KuiMenuAction);
 

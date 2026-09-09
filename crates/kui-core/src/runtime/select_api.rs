@@ -219,6 +219,21 @@ impl Core {
         self.text.scope_selection_rect(sel.scope, from, to, prev)
     }
 
+    /// Where a platform panel about the selection should point: the
+    /// baseline origin of its first line, logical viewport px. See
+    /// `TextSystem::scope_selection_anchor`.
+    pub fn selection_anchor(&self) -> Option<Vec2> {
+        let sel = self.selection?;
+        let prev = self.building;
+        let from = self
+            .text
+            .scope_offset(sel.scope, sel.anchor.node, sel.anchor.byte, prev)?;
+        let to = self
+            .text
+            .scope_offset(sel.scope, sel.focus.node, sel.focus.byte, prev)?;
+        self.text.scope_selection_anchor(sel.scope, from, to, prev)
+    }
+
     /// The selection as HTML — the same text `selection_text` gives, with
     /// the bold, the italic and the span colours it was declared with
     /// (ADR 0017, decision 7). `None` with no text selection; a cells

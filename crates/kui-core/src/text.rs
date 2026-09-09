@@ -2130,6 +2130,75 @@ impl TextSystem {
         out
     }
 
+    /// Where a platform panel about the selection `from..to` should point:
+    /// the **baseline origin of its first line**, logical viewport px.
+    ///
+    /// Not the box's corner, and not the union's bottom. macOS's
+    /// `showDefinitionForAttributedString:atPoint:` takes the point the
+    /// string's own baseline starts at and draws the term back over the
+    /// text there — so a box's bottom puts the term a line low, and a
+    /// multi-run selection's union puts it at the bottom of the last line
+    /// while the panel shows the first.
+    pub(crate) fn scope_selection_anchor(
+        &self,
+        scope: Key,
+        from: usize,
+        to: usize,
+        prev: bool,
+    ) -> Option<Vec2> {
+        let (from, to) = (from.min(to), from.max(to));
+        for run in self.scope_runs(scope, prev) {
+            let (start, end) = run.span();
+            if !run.place.drawn || end <= from || start >= to {
+                continue;
+            }
+            let content = run.text.content();
+            let lo = floor_boundary(content, from.saturating_sub(start));
+            let hi = floor_boundary(content, (to - start).min(content.len()));
+            let (ox, oy) = self.physical_origin(run.place);
+            match run.text {
+                ScopeText::Run(e) => {
+                    if let Some((x, base)) = Self::run_anchor(e, lo, hi) {
+                        return Some(Vec2::new((ox + x) / self.scale, (oy + base) / self.scale));
+                    }
+                }
+                ScopeText::Long(l) => {
+                    if let Some((x, y)) = self.long_caret_local(l, lo) {
+                        // A long line holds one style, so its baseline is
+                        // the row's height less the descender the metrics
+                        // put under it; `line_h` is all this path knows.
+                        return Some(Vec2::new(
+                            (ox + x) / self.scale,
+                            (oy + y + l.line_h * 0.8) / self.scale,
+                        ));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// The x and baseline of the first row of `lo..hi` inside one run,
+    /// physical px from the run's origin.
+    fn run_anchor(entry: &CachedText, lo: usize, hi: usize) -> Option<(f32, f32)> {
+        let starts = line_starts(&entry.buffer, &entry.content);
+        let cursor = |byte: usize| {
+            let li = starts.iter().rposition(|&s| s <= byte).unwrap_or(0);
+            let index = (byte - starts[li]).min(entry.buffer.lines[li].text().len());
+            cosmic_text::Cursor::new(li, index)
+        };
+        let (a, b) = (cursor(lo), cursor(hi));
+        for run in entry.buffer.layout_runs() {
+            if run.line_i < a.line || run.line_i > b.line {
+                continue;
+            }
+            if let Some((x, _)) = run.highlight(a, b).next() {
+                return Some((x, run.line_y));
+            }
+        }
+        None
+    }
+
     /// The box the selection `from..to` occupies in `scope`, logical
     /// viewport px: the union of the drawn runs it touches, clipped to
     /// the part of each run that is actually selected in x only where the

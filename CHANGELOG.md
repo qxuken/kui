@@ -85,8 +85,17 @@ field reports).
   sets a pressure configuration, and the deep-click stage is the gesture.
 
   Nothing synthesises a trackpad press, so the last two inches — the panel
-  appearing, and stage 2 arriving — are the one part of this release that
-  no test and no scripted run can reach.
+  appearing, and stage 2 arriving — could not be tested here; they were
+  confirmed by hand on a Force Touch trackpad, which is also where the
+  remaining rough edges came from. The panel is anchored to the **baseline
+  origin of the selection's first line** (a box's bottom draws the term a
+  line low; a multi-run selection's union draws it under the last line
+  while the panel shows the first), the gesture takes over the press that
+  produced it rather than letting that press's drag take the word back, a
+  force click in a run of spaces looks nothing up, and Look Up is offered
+  only for a word or a short phrase — one line, at most a hundred
+  characters. A dictionary handed a paragraph draws the whole thing back
+  over the window and then says "No Results Found".
 
 - **Windows gets the native context menu too** (ADR 0017, step 3). A popup
   `HMENU` tracked with `TPM_RETURNCMD`, which reports the chosen row

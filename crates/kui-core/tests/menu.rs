@@ -450,9 +450,9 @@ fn a_force_click_over_text_selects_the_word_and_asks_for_a_panel() {
     assert!(events.is_empty(), "nothing reaches the app: {events:?}");
     assert_eq!(core.selection_text().as_deref(), Some("brave"));
     match core.take_menu_actions().as_slice() {
-        [MenuAction::LookUp { text, rect }] => {
+        [MenuAction::LookUp { text, at }] => {
             assert_eq!(text, "brave");
-            assert!(rect.w > 0.0 && rect.h > 0.0, "anchored somewhere: {rect:?}");
+            assert!(at.x > 0.0 && at.y > 0.0, "anchored somewhere: {at:?}");
         }
         other => panic!("expected one LookUp, got {other:?}"),
     }
@@ -619,4 +619,34 @@ fn a_force_click_in_a_wide_gap_looks_nothing_up() {
         core.take_menu_actions().is_empty(),
         "and no panel over a space"
     );
+}
+
+/// A dictionary answers a word, not a page. Handed a whole paragraph, the
+/// platform panel drew the entire selection back over the window as one
+/// highlighted strip and then said "No Results Found" (field report,
+/// 2026-09-09), so a passage is neither offered nor asked about.
+#[test]
+fn a_passage_is_not_offered_to_a_dictionary() {
+    let mut core = Core::new();
+    core.set_lookup_available(true);
+    let scope = frame(&mut core);
+    core.select_all_in(scope);
+    // "one\ntwo" — two lines, so not a phrase.
+    assert_eq!(core.lookup_text(), None, "a selection across lines");
+    right_click(&mut core, Vec2::new(20.0, 8.0));
+    frame(&mut core);
+    let tree = core.access_tree().clone();
+    let look = tree
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Look Up"))
+        .expect("the row is still there");
+    assert!(look.disabled, "dimmed, not missing: the rows do not move");
+    // A word, on the other hand, is exactly what it is for.
+    core.set_selection(kui_core::Selection::new(
+        core.selection().expect("a selection").scope,
+        kui_core::Endpoint::new(core.selection().unwrap().anchor.node, 0),
+        kui_core::Endpoint::new(core.selection().unwrap().anchor.node, 3),
+    ));
+    assert_eq!(core.lookup_text().as_deref(), Some("one"));
 }

@@ -1296,6 +1296,11 @@ pub struct KuiMenuAction {
     /// `text`: a clipboard whose only flavour is HTML pastes markup into
     /// every plain-text field on the machine.
     pub html: KuiStr,
+    /// `KUI_MENU_ACTION_LOOK_UP` only: where to anchor the panel — the
+    /// baseline origin of the selection's first line, logical viewport
+    /// px. Zero for every other kind.
+    pub x: f32,
+    pub y: f32,
 }
 
 impl Default for KuiMenuAction {
@@ -1311,13 +1316,15 @@ impl Default for KuiMenuAction {
                 ptr: std::ptr::null(),
                 len: 0,
             },
+            x: 0.0,
+            y: 0.0,
         }
     }
 }
 
 // SAFETY: `repr(C)` with `size: u32` first.
 unsafe impl OutParam for KuiMenuAction {
-    const ABI_V1_SIZE: u32 = abi_through!(KuiMenuAction, html, KuiStr);
+    const ABI_V1_SIZE: u32 = abi_through!(KuiMenuAction, y, f32);
     fn size_mut(&mut self) -> &mut u32 {
         &mut self.size
     }

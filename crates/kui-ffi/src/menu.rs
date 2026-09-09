@@ -169,13 +169,17 @@ pub extern "C" fn kui_take_menu_action(ptr: *mut KuiCtx, out: *mut KuiMenuAction
         let Some(action) = c.menu_actions.pop_front() else {
             return false;
         };
+        let mut at = kui_core::Vec2::new(0.0, 0.0);
         let (kind, text, html) = match action {
             kui_core::MenuAction::SetClipboard { text, html } => (0u32, text, html),
             kui_core::MenuAction::Paste => (1u32, String::new(), None),
             // The core only asks for a panel a host said it can show
             // (`kui_set_lookup_available`), so this arrives exactly where
             // a host is ready for it.
-            kui_core::MenuAction::LookUp { text, .. } => (2u32, text, None),
+            kui_core::MenuAction::LookUp { text, at: point } => {
+                at = point;
+                (2u32, text, None)
+            }
         };
         c.menu_text = text;
         c.menu_html = html.unwrap_or_default();
@@ -190,6 +194,8 @@ pub extern "C" fn kui_take_menu_action(ptr: *mut KuiCtx, out: *mut KuiMenuAction
                 ptr: c.menu_html.as_ptr(),
                 len: c.menu_html.len(),
             },
+            x: at.x,
+            y: at.y,
         };
         write_out(out, written)
     })

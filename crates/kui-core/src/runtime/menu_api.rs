@@ -16,6 +16,11 @@
 //! own payload, on the node the menu was opened over.
 
 use crate::geom::Vec2;
+/// The longest selection a definition panel is offered for. A word, a
+/// term, a short phrase — past this it is a passage, and a dictionary has
+/// nothing to say about a passage.
+pub const LOOKUP_MAX: usize = 100;
+
 use crate::input::UiEvent;
 use crate::key::Key;
 use crate::menu::{Menu, MenuAction, MenuItem, MenuRole};
@@ -80,16 +85,30 @@ impl Core {
         out
     }
 
-    /// A definition-panel request for whatever is selected: the text and
-    /// the box to anchor the panel to. `None` with nothing selected, or
-    /// with a host that cannot show one.
+    /// What the selection would be looked *up* as, or `None` when it is
+    /// not something to look up.
+    ///
+    /// A definition panel answers a word or a short phrase. Handed a
+    /// paragraph it draws the whole thing back over the page as one
+    /// enormous highlighted strip and then says "No Results Found" — seen
+    /// in the field, 2026-09-09 — so a selection that spans lines, or runs
+    /// past [`LOOKUP_MAX`] characters, is neither offered nor asked about.
+    /// A force click always passes: it selects one word.
+    pub fn lookup_text(&self) -> Option<String> {
+        let text = self.copy_selection().filter(|t| !t.trim().is_empty())?;
+        let one_line = !text.contains('\n');
+        (one_line && text.chars().count() <= LOOKUP_MAX).then_some(text)
+    }
+
+    /// A definition-panel request for whatever is selected: the text, and
+    /// the baseline origin of its first line to anchor the panel at.
     pub(crate) fn lookup_action(&self) -> Option<MenuAction> {
         if !self.lookup_available {
             return None;
         }
-        let text = self.copy_selection().filter(|t| !t.is_empty())?;
-        let rect = self.selection_rect()?;
-        Some(MenuAction::LookUp { text, rect })
+        let text = self.lookup_text()?;
+        let at = self.selection_anchor()?;
+        Some(MenuAction::LookUp { text, at })
     }
 
     /// Whether `key` is a node of the stock menu — its root or one of its
@@ -201,7 +220,11 @@ impl Core {
             // to look up: the row is the platform's, and a dead one would
             // be a promise this library cannot keep.
             if self.lookup_available {
-                items.insert(0, MenuItem::role(MenuRole::LookUp).enabled(has));
+                // Enabled only for something a dictionary can answer —
+                // dimmed for a passage, and dimmed rather than missing, so
+                // the rows a reader reaches for stay where they were.
+                let can = self.lookup_text().is_some();
+                items.insert(0, MenuItem::role(MenuRole::LookUp).enabled(has && can));
                 items.insert(1, MenuItem::separator());
             }
             return items;

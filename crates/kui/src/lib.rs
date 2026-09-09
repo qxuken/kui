@@ -1715,16 +1715,16 @@ impl<A: App> Shell<A> {
                         self.dispatch(event_loop, i, InputEvent::Text(text));
                     }
                 }
-                MenuAction::LookUp { text, rect } => {
+                MenuAction::LookUp { text, at } => {
                     // Only macOS has a panel to show. Everywhere else the
                     // core never offers the row and never asks, so this is
                     // unreachable rather than merely unhandled.
                     #[cfg(target_os = "macos")]
                     if let Some(pane) = self.panes.get(i) {
-                        macos_menu::show_definition(&pane.window, rect, &text);
+                        macos_menu::show_definition(&pane.window, at, &text);
                     }
                     #[cfg(not(target_os = "macos"))]
-                    let _ = (text, rect);
+                    let _ = (text, at);
                 }
             }
         }

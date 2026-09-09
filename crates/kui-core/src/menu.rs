@@ -219,6 +219,12 @@ pub enum MenuAction {
     /// the first place (`Core::set_lookup_available`).
     LookUp {
         text: String,
-        rect: crate::geom::Rect,
+        /// The **baseline origin of the selection's first line**, logical
+        /// viewport px — the point
+        /// `showDefinitionForAttributedString:atPoint:` takes and draws
+        /// the term back over. Not a box's corner: a box's bottom puts the
+        /// term a line low, and a multi-run selection's union puts it
+        /// under the last line while the panel shows the first.
+        at: crate::geom::Vec2,
     },
 }
