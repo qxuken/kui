@@ -149,10 +149,11 @@ impl Core {
                 let sel = self
                     .cell_selection
                     .filter(|s| s.node == self.tree.keys[i] && !s.is_empty());
+                let at = self.cells_origin(i);
                 let sess = &mut *self.session.state();
                 self.cells.emit(
                     cid,
-                    self.tree.pos[i],
+                    at,
                     clip_px,
                     clip_id,
                     &sess.resources,

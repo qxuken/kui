@@ -211,12 +211,27 @@ fn the_stock_menu_over_a_grid_copies_cells() {
         clicks: 1,
     });
     let menu = core.menu().expect("a menu over the grid").clone();
-    let copy = menu
+    let at = menu
         .items
         .iter()
-        .find(|i| i.role == kui_core::MenuRole::Copy)
+        .position(|i| i.role == kui_core::MenuRole::Copy)
         .expect("a Copy row");
-    assert!(copy.enabled, "cells are selected, so Copy can act");
+    assert!(
+        menu.items[at].enabled,
+        "cells are selected, so Copy can act"
+    );
+
+    // And choosing it puts the cells on the clipboard — the row was lit
+    // from the cell selection, so acting on it has to read the same one.
+    core.activate_menu_item(at);
+    let acts = core.take_menu_actions();
+    assert!(
+        matches!(
+            acts.first(),
+            Some(kui_core::MenuAction::SetClipboard { text, .. }) if text == "hello"
+        ),
+        "Copy over a grid copies the cells, not the (absent) text selection: {acts:?}"
+    );
 
     // And Select All takes the whole screen it was given.
     core.close_menu();
@@ -240,5 +255,49 @@ fn a_grid_selection_scrolled_away_copies_nothing() {
         core.copy_selection(),
         None,
         "nothing of the selection is on screen, so there is nothing to copy"
+    );
+}
+
+/// A grid's padding moves the cells, so a hit test has to move with them:
+/// layout reserves the padding and the glyphs start inside it, and reading
+/// row 0 off the node's own corner picked the cell above and left of the
+/// one under the pointer.
+#[test]
+fn a_padded_grid_counts_its_rows_from_inside_the_padding() {
+    const PAD: f32 = 12.0;
+    let mut core = Core::new();
+    let cells = screen();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let grid = CellGrid {
+        rows: ROWS,
+        cols: COLS,
+        cells: &cells,
+        style: TextStyle::new(14.0).family(kui_core::FontFamily::Mono),
+        cursor: None,
+        origin_line: 0,
+    };
+    ui.cells_keyed(
+        "term",
+        &grid,
+        NodeSpec::column()
+            .width(Sizing::Grow(1.0))
+            .pad(PAD)
+            .selectable(),
+    );
+    ui.finish();
+    // The middle of row 1, column 1 — measured from the padded corner.
+    let m = core.measure_text(
+        "M",
+        &TextStyle::new(14.0).family(kui_core::FontFamily::Mono),
+        None,
+    );
+    let at = Vec2::new(PAD + m.width * 1.5, PAD + m.height * 1.5);
+    drag(&mut core, at, at);
+    let sel = core.cell_selection().expect("a selection");
+    assert_eq!(
+        (sel.anchor.line, sel.anchor.col),
+        (1, 1),
+        "the cell under the pointer, not the one the padding hides"
     );
 }

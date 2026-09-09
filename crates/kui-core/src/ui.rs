@@ -248,6 +248,17 @@ impl<'a> Ui<'a> {
         self.core.copy_selection()
     }
 
+    /// The window's selection when it lives in a `cells` grid — its ends
+    /// as absolute lines and columns; see `Core::cell_selection`.
+    ///
+    /// Offered where the text selection offers only [`Self::selection_text`]
+    /// because a grid's ends mean something to the app: they are the
+    /// session's own line numbers, not byte offsets into runs the app never
+    /// laid out (ADR 0017, decision 4).
+    pub fn cell_selection(&self) -> Option<crate::select::CellSelection> {
+        self.core.cell_selection()
+    }
+
     /// Opens a context menu; see `Core::open_menu`.
     pub fn open_menu(&mut self, menu: crate::menu::Menu) {
         self.core.open_menu(menu);

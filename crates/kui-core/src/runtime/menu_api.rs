@@ -352,9 +352,13 @@ impl Core {
                 }
             }
             MenuRole::Copy => {
+                // `copy_selection` again, for the reason it is used to
+                // enable the row: a `cells` grid's selection is in cells,
+                // and reading only the text one left Copy lit over a
+                // terminal and then copied nothing when it was chosen.
                 let text = match self.menu_editor {
                     Some(key) => self.edit.copy_selection(key),
-                    None => self.selection_text().filter(|t| !t.is_empty()),
+                    None => self.copy_selection().filter(|t| !t.is_empty()),
                 };
                 if let Some(text) = text {
                     let html = self.selection_html();

@@ -38,10 +38,17 @@ field reports).
 - **`examples/rust/context_menu.rs`**, which is the whole of ADR 0017's
   menu decision in one window: the stock menu over selectable text, an
   app's own menu over a row that declares `onContextMenu` (its two items
-  beside the standard ones, opened with `Ui::open_menu`), an editor's four,
-  and nothing at all over a plain box. On macOS every one of them is the
-  platform's `NSMenu`; elsewhere the core draws the same list. The app's
-  code is identical either way.
+  beside the standard ones, opened with `Ui::open_menu`), a `cells` grid
+  that selects in cells rather than in bytes, an editor's four, and nothing
+  at all over a plain box. On macOS every one of them is the platform's
+  `NSMenu`; elsewhere the core draws the same list. The app's code is
+  identical either way.
+
+- **`Ui::cell_selection`**, the grid half of `Ui::selection`: the window's
+  selection when it lives in a `cells` grid, its ends as absolute lines and
+  columns. `Ui::selection_text` already covered both kinds, but an app that
+  wanted to *say* which lines of the session were selected had to reach for
+  the `Core`.
 
 - **Parity across the bindings for the selection and menu work.** C gains
   `kui_selection_text`, `kui_selection_html`, `kui_select_all_in` and
@@ -54,6 +61,20 @@ field reports).
   write nothing could collect.
 
 ### Fixed
+
+- **Copy over a `cells` grid copies the cells.** The stock menu lit its
+  Copy row from the cell selection and then acted on the *text* one, which
+  a grid does not have: choosing Copy over a terminal with half its screen
+  selected posted the event, closed the menu and left the clipboard exactly
+  as it was. Cmd-C was never affected — it reads the same selection the row
+  was lit from, which is now what the row does too.
+
+- **A `cells` grid honours its own padding.** Layout reserved it and the
+  paint ignored it, so a padded grid drew from the box's corner with the
+  padding hanging off the bottom-right, and a hit test — a `cell` payload
+  on a click, or the end of a selection drag — named the cell above and
+  left of the one under the pointer. All three now start from the same
+  corner.
 
 - **`<cells originLine>` no longer warns as an unknown prop.** The row was
   read by every binding and missing from the element's own list, so a grid

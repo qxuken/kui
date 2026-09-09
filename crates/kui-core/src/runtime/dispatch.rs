@@ -69,7 +69,7 @@ impl Core {
                 self.cells.cell_size(id, &sess.resources, &mut sess.fonts)
             };
             let (rows, cols) = self.cells.dims(id);
-            let pos = self.tree.pos[i];
+            let pos = self.cells_origin(i);
             let col = ((point.x - pos.x) / cell.w.max(f32::EPSILON)).floor();
             let row = ((point.y - pos.y) / cell.h.max(f32::EPSILON)).floor();
             let col = (col.max(0.0) as usize).min(cols.saturating_sub(1));

@@ -53,6 +53,15 @@ impl Core {
         }
     }
 
+    /// The top-left of the cells themselves, which is the node's box
+    /// moved in by its padding — the same corner the grid is painted
+    /// from, so a hit test and the glyphs agree about where row 0 is.
+    pub(crate) fn cells_origin(&self, i: usize) -> Vec2 {
+        let pad = self.tree.specs[i].layout.padding;
+        let pos = self.tree.pos[i];
+        Vec2::new(pos.x + pad.l, pos.y + pad.t)
+    }
+
     /// Where `point` lands in that grid, as a row and column clamped to
     /// it — the same arithmetic a `cell` payload on a click uses, so a
     /// selection and an app's own hit test agree.
@@ -66,7 +75,7 @@ impl Core {
             self.cells.cell_size(id, &sess.resources, &mut sess.fonts)
         };
         let (rows, cols) = self.cells.dims(id);
-        let pos = self.tree.pos[i];
+        let pos = self.cells_origin(i);
         let col = ((point.x - pos.x) / cell.w.max(f32::EPSILON)).floor();
         let row = ((point.y - pos.y) / cell.h.max(f32::EPSILON)).floor();
         Some((

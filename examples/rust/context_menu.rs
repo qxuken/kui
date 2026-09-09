@@ -1,7 +1,7 @@
 //! Context menus, and the selection they act on
 //! (`docs/adr/0017-selection-as-a-scope.md`).
 //!
-//! Four things to try, and each one is a different rule:
+//! Five things to try, and each one is a different rule:
 //!
 //!   * **Right-click the article.** Nothing declares a menu there, so the
 //!     core offers the standard one for a `selectable` scope — Copy, and
@@ -11,6 +11,12 @@
 //!     `on_context_menu`, so the app's own menu wins: the standard items
 //!     *and* two of the app's, opened with `Ui::open_menu`. Whichever is
 //!     chosen arrives as one `menu` event on the row.
+//!   * **Right-click the terminal.** A `cells` grid selects in *cells*,
+//!     not in bytes: drag out a block of the screen (hold Alt for a
+//!     rectangle), and its menu copies what a terminal copies — the lines,
+//!     with each one's trailing blanks trimmed. Its ends are absolute
+//!     lines, so the readout says which lines of the session they are and
+//!     not which rows of the screen.
 //!   * **Right-click the field.** An editor gets Cut / Copy / Paste /
 //!     Select All without asking for anything.
 //!   * **Right-click the footer.** A plain box: no menu, because a
@@ -28,8 +34,8 @@
 //! italic carried beside the plain text.
 
 use kui::{
-    Align, App, Color, Key, Menu, MenuItem, MenuRole, NodeSpec, Sizing, Span, TextStyle, Ui,
-    UiEvent, Value, Vec2,
+    Align, App, Cell, CellCursor, CellGrid, Color, FontFamily, Key, Menu, MenuItem, MenuRole,
+    NodeSpec, Sizing, Span, TextStyle, Ui, UiEvent, Value, Vec2,
 };
 
 const BG: Color = Color {
@@ -71,6 +77,23 @@ const ACCENT: Color = Color {
 
 const ROWS: [&str; 4] = ["alpha", "bravo", "charlie", "delta"];
 
+/// The fake session the `cells` panel shows: a prompt, a command, its
+/// output. Trailing blanks are the app's own padding, which is exactly
+/// what a copy has to trim.
+const SESSION: [(&str, u32); 6] = [
+    ("~/kui $ cargo test -p kui-core", 0xd6d8e0ff),
+    ("   Compiling kui-core v0.1.0-alpha.10", 0x8a90a3ff),
+    ("    Finished `test` profile in 3.42s", 0x8a90a3ff),
+    ("running 23 tests ..............", 0xd6d8e0ff),
+    ("test result: ok. 23 passed; 0 failed", 0x6bd08aff),
+    ("~/kui $ ", 0xd6d8e0ff),
+];
+/// Where this screenful sits in the session's own history: an end of a
+/// selection is an *absolute* line, so scrolling the screen under it does
+/// not move it (`origin_line`).
+const FIRST_LINE: u64 = 1_204;
+const TERM_COLS: usize = 44;
+
 #[derive(Default)]
 struct Demo {
     /// The last thing a menu reported, shown at the bottom — the whole
@@ -109,6 +132,7 @@ impl App for Demo {
             |ui| {
                 self.article(ui);
                 self.list(ui);
+                self.terminal(ui);
                 self.field(ui);
                 self.footer(ui);
             },
@@ -207,6 +231,56 @@ impl Demo {
         });
     }
 
+    fn terminal(&mut self, ui: &mut Ui<'_>) {
+        // One screenful of cells: a character, a colour and a background
+        // each, laid out row-major. The app pads its own lines, which is
+        // why a copy trims them.
+        let mut cells = vec![Cell::new(' ', 0x8a90a3ff, 0); SESSION.len() * TERM_COLS];
+        for (r, (line, fg)) in SESSION.iter().enumerate() {
+            for (c, ch) in line.chars().take(TERM_COLS).enumerate() {
+                cells[r * TERM_COLS + c] = Cell::new(ch, *fg, 0);
+            }
+        }
+        let grid = CellGrid {
+            rows: SESSION.len(),
+            cols: TERM_COLS,
+            cells: &cells,
+            style: TextStyle::new(13.0).family(FontFamily::Mono).color(TEXT),
+            // The block cursor after the last prompt.
+            cursor: Some((
+                SESSION.len() - 1,
+                8,
+                CellCursor::Block,
+                Color {
+                    r: 0.42,
+                    g: 0.62,
+                    b: 1.0,
+                    a: 0.7,
+                },
+            )),
+            origin_line: FIRST_LINE,
+        };
+        ui.with(card().pad(12.0).gap(8.0), |ui| {
+            ui.text(
+                "A terminal selects in cells (hold Alt for a rectangle)",
+                TextStyle::new(13.0).color(MUTED),
+            );
+            ui.cells_keyed(
+                "term",
+                &grid,
+                NodeSpec::column()
+                    .width(Sizing::Grow(1.0))
+                    .pad(10.0)
+                    .radius(6.0)
+                    .bg(BG)
+                    .border(1.0, EDGE)
+                    // A scope of one grid: the drag selects cells, and the
+                    // stock menu's Select All takes the whole screen.
+                    .selectable(),
+            );
+        });
+    }
+
     fn field(&mut self, ui: &mut Ui<'_>) {
         ui.with(card().pad(12.0).gap(8.0), |ui| {
             ui.text(
@@ -232,6 +306,19 @@ impl Demo {
             .last
             .clone()
             .unwrap_or_else(|| "right-click anything above".into());
+        // What is selected, whichever kind of selection it is — and for
+        // the grid, which *lines* of the session, since its ends are
+        // absolute and its rows are not.
+        let selected = match ui.cell_selection() {
+            Some(sel) => {
+                let (a, b) = sel.ordered();
+                Some(format!("lines {}–{} of the session", a.line, b.line))
+            }
+            None => ui
+                .selection_text()
+                .filter(|t| !t.is_empty())
+                .map(|t| format!("{} characters selected", t.chars().count())),
+        };
         ui.with(
             NodeSpec::row()
                 .width(Sizing::Grow(1.0))
@@ -240,6 +327,10 @@ impl Demo {
             |ui| {
                 ui.text("last menu event —", TextStyle::new(12.0).color(MUTED));
                 ui.text(&said, TextStyle::new(12.0).color(ACCENT));
+                if let Some(selected) = &selected {
+                    ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
+                    ui.text(selected, TextStyle::new(12.0).color(MUTED));
+                }
             },
         );
     }
@@ -286,5 +377,8 @@ fn num(ev: &UiEvent, name: &str) -> f32 {
 }
 
 fn main() {
-    kui::run("kui — context menus", Demo::default(), vec![]).unwrap();
+    kui::app("kui — context menus")
+        .size(700.0, 820.0)
+        .run(Demo::default())
+        .unwrap();
 }
