@@ -38,6 +38,22 @@ field reports).
   which is a number that only ever went down. Any arithmetic built on the
   old one — a hand-measured width, headroom past the widest character —
   can go; see **What you can delete**.
+- **`TextStyle::color` is `Option<Color>`.** `None` is "the theme's
+  foreground", which is what the schema row has said this prop means since
+  it was written ("default foreground when omitted") and now what it does.
+  `TextStyle::new(..).color(c)` is unchanged; code that *reads* the field
+  wants `.color_or_default()`. Same for `EditOptions::accent`, whose
+  `None` is `theme.selection`.
+- **The stock widgets follow the OS appearance.** A host that reports a
+  light `env.system.appearance` gets a light context menu, tooltip, field,
+  titlebar, scrollbar and focus ring where it got dark ones. A host that
+  reports nothing is unaffected, byte for byte. An app that wants the old
+  behaviour on a light desktop pins it: `core.set_theme(Theme::dark())`.
+- **The stock context menu's hovered row is a wash, not a fill.** It was
+  the raw accent under a fixed light label, which is unreadable on a light
+  base; it is now `theme.accent_soft` over `theme.raised` with `theme.fg`
+  on top. Menu colours also consolidated onto the theme's roles, so the
+  corpus report changes and `target/conformance.txt` wants regenerating.
 
 ### Added
 
@@ -63,6 +79,76 @@ field reports).
   assistive technology), and `Accel` parses `"mod+shift+s"` — the portable
   spelling — into what the platform's own bar binds and what both bars
   draw (`⇧⌘S`, `Ctrl+Shift+S`).
+
+- **`kui_core::Theme` — the colours a view paints with, as roles, derived
+  from what the OS said** ([ADR
+  0019](docs/adr/0019-a-theme-derived-from-appearance-and-accent.md)).
+  `env.system.appearance` had been reported to every binding since the day
+  it was plumbed and read by *nothing*: not the core, which is deliberate,
+  and not the stock widgets or a single example, which was not. A view
+  that wanted to honour it had no name for "the colour a card is", so it
+  wrote the hex out again — 199 colour literals across the crates and the
+  examples, 87 distinct values, and `#8a8fa3` by hand in sixteen files for
+  one role nobody had a word for.
+
+  Twenty-three roles in five groups — four surfaces, two borders, three
+  text tiers, the accent family, and the state and status colours — chosen
+  because four files in `examples/` had already converged on the same set
+  under the same names. `ui.theme()` in Rust, `env.theme` in Lua,
+  `ctx.theme()` in Node, `kui_theme` in C, all generated from one table
+  (`schema::THEME_ROLES`) so a role added is a row added and nothing else.
+  Every value is in the Theme table of [`docs/props.md`](docs/props.md),
+  for both bases.
+
+  Three sources, and the default follows the OS for both facts: `Derived`,
+  `DerivedWithAccent(c)` — the OS's light/dark with the app's brand colour,
+  which is what most apps with a colour of their own actually want — and
+  `Pinned(theme)`, following nothing. `Core::set_accent`, `ctx.setAccent`
+  and `kui_theme_set_accent` are the middle one; `set_theme` /
+  `setTheme` / `kui_theme_set` the last. A Lua script reads and does not
+  set: it is a guest in someone else's frame.
+
+  An unknown appearance takes the **dark** base, which is what makes this
+  safe to have on by default rather than behind a flag — every value in
+  `Theme::dark()` is one this crate already painted, down to ADR 0002's
+  focus ring, and a test asserts it colour by colour. The light base is
+  new, mirrored rather than inverted (a float above a white page is not
+  lighter than one; it separates by its border), and checked against WCAG
+  AA by a test rather than by eye. That test failed on its first run
+  against the *existing* palette: the `faint` grey four examples shared is
+  2.43:1 on the page background, under the 3:1 floor for text a person is
+  meant to read, and moved.
+
+- **The window's ground follows the theme.** `kui-wgpu` cleared the
+  surface to a constant near-black and nothing ever set it, so a view that
+  paints no root background — most of them — showed that constant whatever
+  the palette said. It is the one surface a `bg` prop cannot reach, since
+  it is behind the tree. The runner writes `theme.bg` into the clear colour
+  each frame; Node and C inherit it, both driving `kui::App` through the
+  same `PumpRunner`.
+
+- **Every example in the repo is on the theme** — sixteen Rust ones, the
+  two Rust hosts that load a Lua and a C panel, the Lua panel itself, four
+  JSX ones, and C on both sides of the FFI. The three `struct Pal`s survive
+  as renames with a `From<Theme>` rebuilt each frame, because `pal.bg2`
+  reads better than `theme.sunken` at twenty call sites. `fragments.rs`
+  went too, and is where the idea reads best: fragment *parameters* are
+  where a theme meets a shader — the WGSL says what a gradient, a ring or a
+  shimmer is, and the palette says which colours it is made of, so all four
+  follow the OS without a line of any shader changing. Three remainders
+  keep colours of their own on purpose: `syntax_view`'s six syntax hues,
+  authored the way ADR 0017 says a span's colour is (now in two sets,
+  darkened for the light base, each checked past 4.5:1); the C self-test,
+  whose checks assert exact colours; and `examples/lua/bench.rs`, whose two
+  halves have to declare the same tree for the comparison to mean
+  anything.
+
+- **`examples/rust/theme.rs`** — the token reference page. Every role as a
+  swatch beside its resolved hex, over every stock widget that reads it,
+  with `1`/`2`/`3` switching between following the OS and pinning a base,
+  `a` cycling an accent of the app's own, and the drawn context menu (it
+  opts out of the platform's) to check a hovered row on both bases. It is
+  where the next role gets looked at before it is added.
 
 - **`examples/rust/context_menu.rs`**, which is the whole of ADR 0017's
   menu decision in one window: the stock menu over selectable text, an
@@ -934,6 +1020,26 @@ The palette branch that could only read `"unknown"`. `env.system` is filled
 in before your first view, and a change to it is a message — so a view that
 picks its colours from the OS can be written the way it reads, rather than
 against a reading that never arrived.
+
+**Your palette.** The `struct Pal`, the six `const BG/CARD/EDGE/TEXT/MUTED/
+ACCENT`, the `#8a8fa3` you typed for the caption under the card — the whole
+of it, if what it held were UI roles. `ui.theme()` names them, derives them
+from the appearance and the accent the OS reported, and the stock widgets
+paint from the same ones, so a menu, a tooltip and your own card agree
+without you passing anything between them. What is worth keeping is the
+half that was never a role: a syntax highlighter's keyword colour, a
+chart's series, a brand illustration. Those are the app's, and always were.
+
+**The `if dark { … } else { … }` you were about to write.** Following the
+OS is the default rather than a mode, so the branch is a `Theme::derive`
+you never call. What is left for a view to decide with `theme.is_dark()`
+is the handful of things a palette cannot carry: which of two images, how
+heavy a shadow.
+
+**The readability arithmetic on an accent-painted control.** `on_accent`
+is black or white by the accent's luminance, and the hover and pressed
+shades come off it too — the trio a view was computing by hand every time
+it wanted a second button in a colour of its own.
 
 Nothing for the two performance changes above, and that is the point: a
 view declares no clip and no tween slot, so the only code either one asks

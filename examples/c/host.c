@@ -90,14 +90,18 @@ static void view(void *user, KuiCtx *ui) {
     };
     kui_root(ui, &root);
 
-    /* Our half. */
+    /* Our half. Its colours are theme roles (ADR 0019), so the host and
+     * the plugin it loads agree on what a surface is without either of
+     * them being told. */
+    KuiTheme t = KUI_THEME_INIT;
+    kui_theme(ui, &t);
     KuiSpec col = {
         .dir = KUI_COLUMN,
         .width = {KUI_GROW, 1},
         .height = {KUI_GROW, 1},
         .pad_l = 24, .pad_r = 24, .pad_t = 24, .pad_b = 24,
         .gap = 12,
-        .bg = 0x161820ff,
+        .bg = t.surface,
         .radius = 10,
     };
     kui_open(ui, &col, NULL);
@@ -108,7 +112,7 @@ static void view(void *user, KuiCtx *ui) {
         char line[80];
         snprintf(line, sizeof line, "clicks %lld, toggles heard %lld", h->clicks,
                  h->toggles);
-        KuiTextStyle body = {.size = 13, .color = 0x8a8fa3ff};
+        KuiTextStyle body = {.size = 13, .color = t.muted};
         kui_text(ui, (KuiStr){(const uint8_t *)line, strlen(line)}, &body);
 
         kui_button(ui, KUI_STR("count"), msg("count"));

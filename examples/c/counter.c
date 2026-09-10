@@ -32,13 +32,15 @@ typedef struct AppState {
  * on it. Nothing here is special-cased in the core — it is a float plus
  * the `modal` prop. */
 static void context_menu(KuiCtx *ui, const AppState *state) {
+    KuiTheme t = KUI_THEME_INIT;
+    kui_theme(ui, &t);
     KuiValue *tag = kui_value_map();
     kui_value_map_set(tag, KUI_STR("kind"), kui_value_str(KUI_STR("menu")));
     KuiSpec menu = {
         .dir = KUI_COLUMN, .gap = 4, .width = {KUI_FIXED, 120},
         .pad_l = 4, .pad_r = 4, .pad_t = 4, .pad_b = 4,
-        .bg = 0x22242cff, .radius = 6,
-        .border_w = 1, .border_color = 0x2a2d3aff,
+        .bg = t.raised, .radius = 6,
+        .border_w = 1, .border_color = t.border_strong,
         .float_mode = KUI_FLOAT_VIEWPORT,
         .float_anchor_x = KUI_START, .float_anchor_y = KUI_START,
         .float_self_x = KUI_START, .float_self_y = KUI_START,
@@ -69,9 +71,18 @@ static void context_menu(KuiCtx *ui, const AppState *state) {
 static void view(void *user, KuiCtx *ui) {
     AppState *state = (AppState *)user;
 
+    /* The palette the core derived from what this host pushed through
+     * kui_env_set_system - the appearance picks the base, the accent
+     * recolours it (ADR 0019). Every colour below is a role, so the
+     * window follows the OS with no branch of its own; a host that says
+     * nothing gets the dark base, which is what C always painted. */
+    KuiTheme t = KUI_THEME_INIT;
+    kui_theme(ui, &t);
+
     KuiSpec root = {
         .width = {KUI_GROW, 1}, .height = {KUI_GROW, 1},
         .main_align = KUI_CENTER, .cross_align = KUI_CENTER, .gap = 24,
+        .bg = t.bg,
     };
     kui_root(ui, &root);
 
@@ -83,13 +94,13 @@ static void view(void *user, KuiCtx *ui) {
     KuiSpec card = {
         .dir = KUI_COLUMN, .gap = 20, .cross_align = KUI_CENTER,
         .pad_l = 32, .pad_r = 32, .pad_t = 32, .pad_b = 32,
-        .bg = 0x161820ff, .radius = 12,
-        .border_w = 1, .border_color = 0x2a2d3aff,
+        .bg = t.surface, .radius = 12,
+        .border_w = 1, .border_color = t.border,
         .on_context_menu = menu_tag,
     };
     kui_open(ui, &card, NULL);
     {
-        KuiTextStyle muted = {.size = 14, .color = 0x8a8fa3ff};
+        KuiTextStyle muted = {.size = 14, .color = t.muted};
         kui_text(ui, KUI_STR("kui from C"), &muted);
 
         char buf[32];
@@ -112,10 +123,10 @@ static void view(void *user, KuiCtx *ui) {
 
         KuiSpan spans[] = {
             {KUI_STR("same IR as Rust and "), 0, 0},
-            {KUI_STR("Lua"), 0x73d98cff, KUI_SPAN_BOLD},
+            {KUI_STR("Lua"), t.success, KUI_SPAN_BOLD},
             {KUI_STR(" — just flatter"), 0, KUI_SPAN_ITALIC},
         };
-        KuiTextStyle base = {.size = 13, .color = 0x5c6174ff};
+        KuiTextStyle base = {.size = 13, .color = t.faint};
         kui_rich_text(ui, spans, 3, &base);
     }
     kui_close(ui);
@@ -279,6 +290,16 @@ static void check(bool ok, const char *what) {
         fails++;
     }
 }
+
+/* -- The self-test below --------------------------------------------------
+ *
+ * Everything from here down is a fixture, not an app: it drives every FFI
+ * call once and checks what came back, and several of those checks assert
+ * on the exact colours it declared. So the literals stay literal on
+ * purpose - a fixture that read the theme would be asserting against
+ * whatever the host's OS happened to be set to. The *app* above this line
+ * is on the theme (ADR 0019), which is the half a reader is copying from.
+ */
 
 /* KuiStr is not NUL-terminated and memmem is not standard C. */
 static bool has(KuiStr s, const char *needle) {

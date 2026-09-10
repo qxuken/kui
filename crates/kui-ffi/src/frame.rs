@@ -251,8 +251,10 @@ pub extern "C" fn kui_polyline(
             Some(s) => spec_of(s, NONE, NONE, NONE, NONE),
             None => kui_core::NodeSpec::column(),
         };
+        // A stroke with no colour of its own is the theme's foreground,
+        // the way a text run with none is (ADR 0019).
         let color = if color == 0 {
-            kui_core::TextStyle::default().color
+            c.core().theme().fg
         } else {
             color_of(color)
         };

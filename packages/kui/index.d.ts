@@ -904,6 +904,115 @@ export interface Env {
   window: WindowEnv;
 }
 
+/** The palette a frame paints with: one `0xRRGGBBAA` number per role,
+ *  derived from `env().system` — the OS's light/dark picks the base and the
+ *  OS's accent recolours it — unless the app called `setAccent` or
+ *  `setTheme`. Pass a role straight to a prop: `<box bg={theme.surface}>`.
+ *
+ *  The stock widgets already read it, so an app built out of `<button>`,
+ *  `<text>` and the context menu follows the OS's appearance without
+ *  touching this. Read it when painting something of your own. */
+export interface Theme {
+  /** Which base this came from. `'unknown'` is the dark base, without
+   *  claiming the user chose it — what kui painted before themes. */
+  appearance: 'unknown' | 'light' | 'dark';
+  /** The window behind everything. */
+  bg: number;
+  /** A card, panel or list sitting on `bg`. */
+  surface: number;
+  /** A surface floating above content: a menu, a tooltip, a popover.
+   *  Under a light theme it is no lighter than `surface` — a float on a
+   *  white page separates by its border. */
+  raised: number;
+  /** A well cut into a surface: a text field, a code block, a track. */
+  sunken: number;
+  /** The hairline between two surfaces. */
+  border: number;
+  /** A border that has to be seen — a float's edge, a focused field. */
+  borderStrong: number;
+  /** Body text, and what a `<text>` with no `color` resolves to. */
+  fg: number;
+  /** Secondary text: captions, hints, an accelerator beside a label. */
+  muted: number;
+  /** Text that is barely there: a placeholder, a gutter number. */
+  faint: number;
+  /** The one saturated colour: the OS accent where the host reports
+   *  one, this app's where it called `setAccent`, kui's blue otherwise.
+   *  The `accent` prop paints from this. */
+  accent: number;
+  /** `accent` under a pointer. */
+  accentHover: number;
+  /** `accent` under a press. */
+  accentPressed: number;
+  /** Black or white — whichever a reader can see on `accent`. What a
+   *  button's label is. */
+  onAccent: number;
+  /** The accent as a translucent wash rather than a fill: a selected
+   *  menu row, a chosen tab, a highlighted list item. Keeps `fg`
+   *  readable over it on both bases, which a fill does not. */
+  accentSoft: number;
+  /** What a text selection is painted under, in an editor and over a
+   *  `selectable` scope alike. */
+  selection: number;
+  /** The default keyboard focus ring. */
+  focusRing: number;
+  /** A translucent wash over a hovered neutral control — an overlay,
+   *  not a fill, so one value works on every surface. */
+  hover: number;
+  /** The same over a pressed one, and the firmer of the two. */
+  pressed: number;
+  /** A good outcome. Readable on `surface` on both bases, which is why
+   *  it is not one colour for both. */
+  success: number;
+  /** Something that wants attention. */
+  warning: number;
+  /** A destructive action or a failure. */
+  danger: number;
+  /** The scrollbar thumb at rest. */
+  scrollbar: number;
+  /** The thumb while hovered or dragged. */
+  scrollbarActive: number;
+  /** What a disabled control's opacity is multiplied by. */
+  disabledOpacity: number;
+}
+
+/** `setTheme`'s argument: a base, then the roles to change on top of it.
+ *  Every colour takes the two spellings a prop takes — `0xRRGGBBAA` or
+ *  `'#rrggbb'`.
+ *
+ *  `accent` is not just one role: naming it also recomputes `accentHover`,
+ *  `accentPressed`, `onAccent`, `accentSoft`, `selection` and `focusRing`
+ *  from it, and any of those named explicitly then wins. An unknown key
+ *  throws rather than doing nothing. */
+export interface ThemeOverrides {
+  /** Which base to start from; the OS's when absent. */
+  appearance?: 'unknown' | 'light' | 'dark';
+  bg?: number | string;
+  surface?: number | string;
+  raised?: number | string;
+  sunken?: number | string;
+  border?: number | string;
+  borderStrong?: number | string;
+  fg?: number | string;
+  muted?: number | string;
+  faint?: number | string;
+  accent?: number | string;
+  accentHover?: number | string;
+  accentPressed?: number | string;
+  onAccent?: number | string;
+  accentSoft?: number | string;
+  selection?: number | string;
+  focusRing?: number | string;
+  hover?: number | string;
+  pressed?: number | string;
+  success?: number | string;
+  warning?: number | string;
+  danger?: number | string;
+  scrollbar?: number | string;
+  scrollbarActive?: number | string;
+  disabledOpacity?: number;
+}
+
 /** The OS settings on `Env` — appearance, accent, motion, locale — as the
  *  host reported them. Every one of them can be "the host cannot tell", and
  *  that is the default: a `KuiWindow` asks the OS for all four on macOS and
@@ -1443,6 +1552,37 @@ export declare class Ctx {
    * focused node's key — that is `focused()`, one call up.
    */
   env(): Env
+  /**
+   * The palette this window paints with: one `0xRRGGBBAA` number
+   * per role, derived from `env().system` unless this app said
+   * otherwise (`setAccent` / `setTheme`). A view reads it and
+   * paints with it — `<box bg={theme.surface}>` — and the stock
+   * widgets already do, so a JSX app that only uses `<button>`,
+   * the context menu and `<text>` follows the OS's light and
+   * dark without reading this at all.
+   */
+  theme(): Theme
+  /**
+   * Keep following the OS's light/dark, but paint this accent
+   * instead of the OS's — an app with a brand colour. A
+   * `0xRRGGBBAA` number or a `"#hex"` string, as any colour
+   * prop takes; `null` goes back to the OS's own.
+   */
+  setAccent(accent: number | string | null): void
+  /**
+   * Pin the palette: an object of role overrides on top of the
+   * base named by `appearance` (`"light"`, `"dark"`, or absent
+   * for the OS's), each value a colour the way a prop takes
+   * one. Follows nothing afterwards — `setAccent(null)` is how
+   * an app goes back to following the OS.
+   *
+   * `{ appearance: "dark", accent: "#d2691e" }` is a dark app
+   * with one colour changed; every role the object does not
+   * name keeps the base's, and the ones derived from the accent
+   * (its hover, its pressed shade, the label on it, the ring,
+   * the selection tint) are recomputed unless named too.
+   */
+  setTheme(theme: ThemeOverrides): void
   /**
    * Measures text the way layout would, without adding a node:
    * `{width, height, lines}` in logical px, wrapped to `maxWidth`
@@ -2080,6 +2220,37 @@ export declare class KuiWindow {
    * focused node's key — that is `focused()`, one call up.
    */
   env(): Env
+  /**
+   * The palette this window paints with: one `0xRRGGBBAA` number
+   * per role, derived from `env().system` unless this app said
+   * otherwise (`setAccent` / `setTheme`). A view reads it and
+   * paints with it — `<box bg={theme.surface}>` — and the stock
+   * widgets already do, so a JSX app that only uses `<button>`,
+   * the context menu and `<text>` follows the OS's light and
+   * dark without reading this at all.
+   */
+  theme(): Theme
+  /**
+   * Keep following the OS's light/dark, but paint this accent
+   * instead of the OS's — an app with a brand colour. A
+   * `0xRRGGBBAA` number or a `"#hex"` string, as any colour
+   * prop takes; `null` goes back to the OS's own.
+   */
+  setAccent(accent: number | string | null): void
+  /**
+   * Pin the palette: an object of role overrides on top of the
+   * base named by `appearance` (`"light"`, `"dark"`, or absent
+   * for the OS's), each value a colour the way a prop takes
+   * one. Follows nothing afterwards — `setAccent(null)` is how
+   * an app goes back to following the OS.
+   *
+   * `{ appearance: "dark", accent: "#d2691e" }` is a dark app
+   * with one colour changed; every role the object does not
+   * name keeps the base's, and the ones derived from the accent
+   * (its hover, its pressed shade, the label on it, the ring,
+   * the selection tint) are recomputed unless named too.
+   */
+  setTheme(theme: ThemeOverrides): void
   /**
    * Measures text the way layout would, without adding a node:
    * `{width, height, lines}` in logical px, wrapped to `maxWidth`

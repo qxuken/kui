@@ -45,59 +45,47 @@
 //! italic carried beside the plain text.
 
 use kui::{
-    Align, App, BarMenu, Cell, CellCursor, CellGrid, Color, FontFamily, Key, Menu, MenuBar,
-    MenuItem, MenuRole, NodeSpec, Sizing, Span, TextStyle, Ui, UiEvent, Value, Vec2,
-};
-
-const BG: Color = Color {
-    r: 0.055,
-    g: 0.063,
-    b: 0.086,
-    a: 1.0,
-};
-const CARD: Color = Color {
-    r: 0.086,
-    g: 0.094,
-    b: 0.125,
-    a: 1.0,
-};
-const EDGE: Color = Color {
-    r: 0.165,
-    g: 0.176,
-    b: 0.212,
-    a: 1.0,
-};
-const TEXT: Color = Color {
-    r: 0.851,
-    g: 0.863,
-    b: 0.898,
-    a: 1.0,
-};
-const MUTED: Color = Color {
-    r: 0.541,
-    g: 0.561,
-    b: 0.639,
-    a: 1.0,
-};
-const ACCENT: Color = Color {
-    r: 0.42,
-    g: 0.62,
-    b: 1.0,
-    a: 1.0,
+    Align, App, BarMenu, Cell, CellCursor, CellGrid, FontFamily, Key, Menu, MenuBar, MenuItem,
+    MenuRole, NodeSpec, Sizing, Span, TextStyle, Theme, Ui, UiEvent, Value, Vec2,
 };
 
 const ROWS: [&str; 4] = ["alpha", "bravo", "charlie", "delta"];
 
+/// What a line of the fake session is *for*. A terminal's palette is the
+/// app's, but these three are roles the theme already names — so the
+/// screen reads on a light desktop instead of staying the grey it was
+/// picked to be on a dark one.
+#[derive(Clone, Copy)]
+enum Ink {
+    /// A prompt, a command, ordinary output.
+    Plain,
+    /// The compiler's own chatter.
+    Quiet,
+    /// A passing test run.
+    Good,
+}
+
+impl Ink {
+    fn of(self, t: &Theme) -> u32 {
+        match self {
+            Ink::Plain => t.fg,
+            Ink::Quiet => t.muted,
+            Ink::Good => t.success,
+        }
+        .to_hex()
+    }
+}
+
 /// The fake session the `cells` panel shows: a prompt, a command, its
 /// output. Trailing blanks are the app's own padding, which is exactly
 /// what a copy has to trim.
-const SESSION: [(&str, u32); 6] = [
-    ("~/kui $ cargo test -p kui-core", 0xd6d8e0ff),
-    ("   Compiling kui-core v0.1.0-alpha.10", 0x8a90a3ff),
-    ("    Finished `test` profile in 3.42s", 0x8a90a3ff),
-    ("running 23 tests ..............", 0xd6d8e0ff),
-    ("test result: ok. 23 passed; 0 failed", 0x6bd08aff),
-    ("~/kui $ ", 0xd6d8e0ff),
+const SESSION: [(&str, Ink); 6] = [
+    ("~/kui $ cargo test -p kui-core", Ink::Plain),
+    ("   Compiling kui-core v0.1.0-alpha.10", Ink::Quiet),
+    ("    Finished `test` profile in 3.42s", Ink::Quiet),
+    ("running 23 tests ..............", Ink::Plain),
+    ("test result: ok. 23 passed; 0 failed", Ink::Good),
+    ("~/kui $ ", Ink::Plain),
 ];
 /// Where this screenful sits in the session's own history: an end of a
 /// selection is an *absolute* line, so scrolling the screen under it does
@@ -130,7 +118,7 @@ impl App for Demo {
         if let Some((target, at, row)) = self.pending.take() {
             ui.open_menu(Menu::new(target, at, self.row_menu(&row)));
         }
-        ui.configure_root(NodeSpec::column().fill().bg(BG).gap(16.0));
+        ui.configure_root(NodeSpec::column().fill().bg(ui.theme().bg).gap(16.0));
         // The application menu, in one call: what it is, and where its
         // strip goes when it has to be drawn. Full width and flush with
         // the top, because that is where a menu bar goes — the padding the
@@ -212,32 +200,35 @@ impl App for Demo {
 
 impl Demo {
     fn article(&mut self, ui: &mut Ui<'_>) {
-        ui.with(card().selectable().pad(20.0).gap(10.0), |ui| {
-            ui.text("Selectable article", TextStyle::new(20.0).color(TEXT));
+        ui.with(card(&ui.theme()).selectable().pad(20.0).gap(10.0), |ui| {
+            ui.text(
+                "Selectable article",
+                TextStyle::new(20.0).color(ui.theme().fg),
+            );
             ui.rich_text(
                 &[
                     Span::new("Drag across this paragraph and the whole card selects as "),
-                    Span::new("one run of text").bold().color(ACCENT),
+                    Span::new("one run of text").bold().color(ui.theme().accent),
                     Span::new(
                         " — three labels, one selection. Right-click for the standard \
                              menu; nothing here declares one, so the core offers what it \
                              can do: Copy, and Select All.",
                     ),
                 ],
-                TextStyle::new(15.0).line_height(24.0).color(TEXT),
+                TextStyle::new(15.0).line_height(24.0).color(ui.theme().fg),
             );
             ui.text(
                 "Copy carries the bold with it, beside the plain text.",
-                TextStyle::new(13.0).color(MUTED),
+                TextStyle::new(13.0).color(ui.theme().muted),
             );
         });
     }
 
     fn list(&mut self, ui: &mut Ui<'_>) {
-        ui.with(card().pad(12.0).gap(2.0), |ui| {
+        ui.with(card(&ui.theme()).pad(12.0).gap(2.0), |ui| {
             ui.text(
                 "Rows with a menu of their own",
-                TextStyle::new(13.0).color(MUTED),
+                TextStyle::new(13.0).color(ui.theme().muted),
             );
             for name in ROWS {
                 let archived = self.archived.iter().any(|a| a == name);
@@ -247,16 +238,20 @@ impl Demo {
                         .width(Sizing::Grow(1.0))
                         .pad_xy(10.0, 8.0)
                         .radius(6.0)
-                        .hover_bg(EDGE)
+                        .hover_bg(ui.theme().hover)
                         // The declaration that wins: the core stands back
                         // and this reaches `on_event` instead.
                         .on_context_menu(Value::str(name)),
                     |ui| {
-                        let style = TextStyle::new(14.0).color(if archived { MUTED } else { TEXT });
+                        let style = TextStyle::new(14.0).color(if archived {
+                            ui.theme().muted
+                        } else {
+                            ui.theme().fg
+                        });
                         ui.text(name, style);
                         if archived {
                             ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
-                            ui.text("archived", TextStyle::new(12.0).color(MUTED));
+                            ui.text("archived", TextStyle::new(12.0).color(ui.theme().muted));
                         }
                     },
                 );
@@ -268,35 +263,33 @@ impl Demo {
         // One screenful of cells: a character, a colour and a background
         // each, laid out row-major. The app pads its own lines, which is
         // why a copy trims them.
-        let mut cells = vec![Cell::new(' ', 0x8a90a3ff, 0); SESSION.len() * TERM_COLS];
-        for (r, (line, fg)) in SESSION.iter().enumerate() {
+        let t = ui.theme();
+        let mut cells = vec![Cell::new(' ', t.muted.to_hex(), 0); SESSION.len() * TERM_COLS];
+        for (r, (line, ink)) in SESSION.iter().enumerate() {
+            let fg = ink.of(&t);
             for (c, ch) in line.chars().take(TERM_COLS).enumerate() {
-                cells[r * TERM_COLS + c] = Cell::new(ch, *fg, 0);
+                cells[r * TERM_COLS + c] = Cell::new(ch, fg, 0);
             }
         }
         let grid = CellGrid {
             rows: SESSION.len(),
             cols: TERM_COLS,
             cells: &cells,
-            style: TextStyle::new(13.0).family(FontFamily::Mono).color(TEXT),
-            // The block cursor after the last prompt.
+            style: TextStyle::new(13.0).family(FontFamily::Mono).color(t.fg),
+            // The block cursor after the last prompt: the accent, kept
+            // translucent so the glyph under it still reads.
             cursor: Some((
                 SESSION.len() - 1,
                 8,
                 CellCursor::Block,
-                Color {
-                    r: 0.42,
-                    g: 0.62,
-                    b: 1.0,
-                    a: 0.7,
-                },
+                t.accent.with_alpha(0.7),
             )),
             origin_line: FIRST_LINE,
         };
-        ui.with(card().pad(12.0).gap(8.0), |ui| {
+        ui.with(card(&ui.theme()).pad(12.0).gap(8.0), |ui| {
             ui.text(
                 "A terminal selects in cells — double-click a word, Alt-drag a rectangle",
-                TextStyle::new(13.0).color(MUTED),
+                TextStyle::new(13.0).color(ui.theme().muted),
             );
             ui.cells_keyed(
                 "term",
@@ -305,8 +298,8 @@ impl Demo {
                     .width(Sizing::Grow(1.0))
                     .pad(10.0)
                     .radius(6.0)
-                    .bg(BG)
-                    .border(1.0, EDGE)
+                    .bg(t.sunken)
+                    .border(1.0, t.border)
                     // A scope of one grid: the drag selects cells, and the
                     // stock menu's Select All takes the whole screen.
                     .selectable(),
@@ -315,10 +308,10 @@ impl Demo {
     }
 
     fn field(&mut self, ui: &mut Ui<'_>) {
-        ui.with(card().pad(12.0).gap(8.0), |ui| {
+        ui.with(card(&ui.theme()).pad(12.0).gap(8.0), |ui| {
             ui.text(
                 "An editor gets the four a field has",
-                TextStyle::new(13.0).color(MUTED),
+                TextStyle::new(13.0).color(ui.theme().muted),
             );
             ui.text_edit(
                 "note",
@@ -328,8 +321,8 @@ impl Demo {
                     .width(Sizing::Grow(1.0))
                     .pad(10.0)
                     .radius(6.0)
-                    .bg(BG)
-                    .border(1.0, EDGE),
+                    .bg(ui.theme().bg)
+                    .border(1.0, ui.theme().border),
             );
         });
     }
@@ -358,11 +351,14 @@ impl Demo {
                 .pad_xy(4.0, 2.0)
                 .gap(8.0),
             |ui| {
-                ui.text("last menu event —", TextStyle::new(12.0).color(MUTED));
-                ui.text(&said, TextStyle::new(12.0).color(ACCENT));
+                ui.text(
+                    "last menu event —",
+                    TextStyle::new(12.0).color(ui.theme().muted),
+                );
+                ui.text(&said, TextStyle::new(12.0).color(ui.theme().accent));
                 if let Some(selected) = &selected {
                     ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
-                    ui.text(selected, TextStyle::new(12.0).color(MUTED));
+                    ui.text(selected, TextStyle::new(12.0).color(ui.theme().muted));
                 }
             },
         );
@@ -437,12 +433,15 @@ impl Demo {
     }
 }
 
-fn card() -> NodeSpec {
+/// A card in the theme's own surface and edge — the two roles every
+/// panel in this window shares, named once instead of spelled out six
+/// times (`kui::Theme`).
+fn card(t: &Theme) -> NodeSpec {
     NodeSpec::column()
         .width(Sizing::Grow(1.0))
-        .bg(CARD)
+        .bg(t.surface)
         .radius(10.0)
-        .border(1.0, EDGE)
+        .border(1.0, t.border)
 }
 
 fn num(ev: &UiEvent, name: &str) -> f32 {

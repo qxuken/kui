@@ -1813,6 +1813,167 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
 ];
 
+/// One colour role in a [`crate::theme::Theme`], with the spelling each
+/// binding reads it under and the reading itself.
+///
+/// The same pin `ENV_FIELDS` is: the palette is one contract, so the roles
+/// are written down once and every binding's reading is generated from
+/// this table rather than restated beside it. `get` is what makes that
+/// possible — a binding iterates the rows and asks each one for its
+/// colour, so adding a token is one row here and nothing anywhere else.
+/// The test below destructures [`crate::theme::Theme`] exhaustively, so a
+/// field added to it stops the crate compiling until it has a row.
+pub struct ThemeRole {
+    /// The Rust field, and the name used everywhere but Node.
+    pub name: &'static str,
+    /// What Node calls it (camelCase).
+    pub node: &'static str,
+    pub doc: &'static str,
+    /// This role's colour out of a theme.
+    pub get: fn(&crate::theme::Theme) -> crate::color::Color,
+}
+
+pub const THEME_ROLES: &[ThemeRole] = &[
+    ThemeRole {
+        name: "bg",
+        node: "bg",
+        get: |t| t.bg,
+        doc: "The window behind everything.",
+    },
+    ThemeRole {
+        name: "surface",
+        node: "surface",
+        get: |t| t.surface,
+        doc: "A card, panel or list sitting on `bg`.",
+    },
+    ThemeRole {
+        name: "raised",
+        node: "raised",
+        get: |t| t.raised,
+        doc: "A surface floating above content: a menu, a tooltip, a popover. Under a light theme it is no lighter than `surface` — a float on a white page separates by its border.",
+    },
+    ThemeRole {
+        name: "sunken",
+        node: "sunken",
+        get: |t| t.sunken,
+        doc: "A well cut into a surface: a text field, a code block, a track.",
+    },
+    ThemeRole {
+        name: "border",
+        node: "border",
+        get: |t| t.border,
+        doc: "The hairline between two surfaces.",
+    },
+    ThemeRole {
+        name: "border_strong",
+        node: "borderStrong",
+        get: |t| t.border_strong,
+        doc: "A border that has to be seen — a float's edge, a focused field.",
+    },
+    ThemeRole {
+        name: "fg",
+        node: "fg",
+        get: |t| t.fg,
+        doc: "Body text, and what a `color`-less text run resolves to.",
+    },
+    ThemeRole {
+        name: "muted",
+        node: "muted",
+        get: |t| t.muted,
+        doc: "Secondary text: captions, hints, an accelerator beside a label.",
+    },
+    ThemeRole {
+        name: "faint",
+        node: "faint",
+        get: |t| t.faint,
+        doc: "Text that is barely there: a placeholder, a gutter number.",
+    },
+    ThemeRole {
+        name: "accent",
+        node: "accent",
+        get: |t| t.accent,
+        doc: "The one saturated colour: the OS accent where the host reports one, the app's where it pinned one, kui's blue otherwise. The `accent` prop paints from this.",
+    },
+    ThemeRole {
+        name: "accent_hover",
+        node: "accentHover",
+        get: |t| t.accent_hover,
+        doc: "`accent` under a pointer.",
+    },
+    ThemeRole {
+        name: "accent_pressed",
+        node: "accentPressed",
+        get: |t| t.accent_pressed,
+        doc: "`accent` under a press.",
+    },
+    ThemeRole {
+        name: "on_accent",
+        node: "onAccent",
+        get: |t| t.on_accent,
+        doc: "Black or white — whichever a reader can see on `accent`. What a button's label is.",
+    },
+    ThemeRole {
+        name: "accent_soft",
+        node: "accentSoft",
+        get: |t| t.accent_soft,
+        doc: "The accent as a translucent wash rather than a fill: a selected menu row, a chosen tab, a highlighted list item. Keeps `fg` readable over it on both bases, which a fill does not.",
+    },
+    ThemeRole {
+        name: "selection",
+        node: "selection",
+        get: |t| t.selection,
+        doc: "What a text selection is painted under, in an editor and over a `selectable` scope alike.",
+    },
+    ThemeRole {
+        name: "focus_ring",
+        node: "focusRing",
+        get: |t| t.focus_ring,
+        doc: "The default keyboard focus ring (ADR 0002).",
+    },
+    ThemeRole {
+        name: "hover",
+        node: "hover",
+        get: |t| t.hover,
+        doc: "A translucent wash over a hovered neutral control. An overlay, not a fill, so one value works on every surface.",
+    },
+    ThemeRole {
+        name: "pressed",
+        node: "pressed",
+        get: |t| t.pressed,
+        doc: "The same over a pressed one, and the firmer of the two on both bases.",
+    },
+    ThemeRole {
+        name: "success",
+        node: "success",
+        get: |t| t.success,
+        doc: "A good outcome. Readable on `surface` on both bases, which is why it is not one colour for both.",
+    },
+    ThemeRole {
+        name: "warning",
+        node: "warning",
+        get: |t| t.warning,
+        doc: "Something that wants attention.",
+    },
+    ThemeRole {
+        name: "danger",
+        node: "danger",
+        get: |t| t.danger,
+        doc: "A destructive action or a failure. The close button's hover, too.",
+    },
+    ThemeRole {
+        name: "scrollbar",
+        node: "scrollbar",
+        get: |t| t.scrollbar,
+        doc: "The scrollbar thumb at rest.",
+    },
+    ThemeRole {
+        name: "scrollbar_active",
+        node: "scrollbarActive",
+        get: |t| t.scrollbar_active,
+        doc: "The thumb while hovered or dragged.",
+    },
+];
+
 static SNAKE_NAMES: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     PROPS
         .iter()
@@ -2164,6 +2325,103 @@ mod tests {
                 assert_ne!(name, other_name, "duplicate prop name");
                 assert_ne!(id, other_id, "duplicate wire id for {name} / {other_name}");
             }
+        }
+    }
+
+    /// `THEME_ROLES` restates `Theme`; this pins the two together the way
+    /// `ENV_FIELDS` pins `Env`. The exhaustive pattern is the pin on the
+    /// struct — a role added to `Theme` stops this compiling until it has
+    /// a row — and the names are then checked in both directions, so a
+    /// row cannot be forgotten and a row cannot name a field that is not
+    /// there. `appearance` and `disabled_opacity` are not colours and are
+    /// carried beside the roles rather than among them.
+    #[test]
+    fn theme_roles_restate_the_theme_exactly() {
+        use crate::theme::Theme;
+        let t = Theme::dark();
+        let Theme {
+            appearance: _,
+            disabled_opacity: _,
+            bg,
+            surface,
+            raised,
+            sunken,
+            border,
+            border_strong,
+            fg,
+            muted,
+            faint,
+            accent,
+            accent_hover,
+            accent_pressed,
+            on_accent,
+            accent_soft,
+            selection,
+            focus_ring,
+            hover,
+            pressed,
+            success,
+            warning,
+            danger,
+            scrollbar,
+            scrollbar_active,
+        } = t;
+        let fields: &[(&str, crate::color::Color)] = &[
+            ("bg", bg),
+            ("surface", surface),
+            ("raised", raised),
+            ("sunken", sunken),
+            ("border", border),
+            ("border_strong", border_strong),
+            ("fg", fg),
+            ("muted", muted),
+            ("faint", faint),
+            ("accent", accent),
+            ("accent_hover", accent_hover),
+            ("accent_pressed", accent_pressed),
+            ("on_accent", on_accent),
+            ("accent_soft", accent_soft),
+            ("selection", selection),
+            ("focus_ring", focus_ring),
+            ("hover", hover),
+            ("pressed", pressed),
+            ("success", success),
+            ("warning", warning),
+            ("danger", danger),
+            ("scrollbar", scrollbar),
+            ("scrollbar_active", scrollbar_active),
+        ];
+        assert_eq!(THEME_ROLES.len(), fields.len(), "a role has no row");
+        for (name, value) in fields {
+            let row = THEME_ROLES
+                .iter()
+                .find(|r| r.name == *name)
+                .unwrap_or_else(|| panic!("no THEME_ROLES row for {name}"));
+            assert_eq!((row.get)(&t), *value, "{name}'s row reads another field");
+        }
+        for row in THEME_ROLES {
+            assert!(
+                fields.iter().any(|(n, _)| *n == row.name),
+                "{} names no field",
+                row.name
+            );
+            // Node's spelling is this one in camelCase, always.
+            let camel = {
+                let mut out = String::new();
+                let mut up = false;
+                for ch in row.name.chars() {
+                    if ch == '_' {
+                        up = true;
+                    } else if up {
+                        out.extend(ch.to_uppercase());
+                        up = false;
+                    } else {
+                        out.push(ch);
+                    }
+                }
+                out
+            };
+            assert_eq!(row.node, camel, "{}'s Node spelling", row.name);
         }
     }
 

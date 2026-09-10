@@ -30,7 +30,7 @@
 
 use kui::widgets;
 use kui::{
-    Align, App, Color, Core, Extension, Extensions, InputEvent, NodeSpec, OriginId, Size, Sizing,
+    Align, App, Core, Extension, Extensions, InputEvent, NodeSpec, OriginId, Size, Sizing,
     TextStyle, Ui, UiEvent, Value, Vec2,
 };
 use kui_ffi::CExtension;
@@ -45,7 +45,11 @@ struct Host {
 
 impl App for Host {
     fn view(&mut self, ui: &mut Ui<'_>) {
-        ui.configure_root(NodeSpec::row().fill().pad(16.0).gap(16.0));
+        // The host's own colours are theme roles, and so are the guest's:
+        // a panel loaded into this frame reads the same palette, which is
+        // what makes it look like it belongs (ADR 0019).
+        let t = ui.theme();
+        ui.configure_root(NodeSpec::row().fill().bg(t.bg).pad(16.0).gap(16.0));
 
         ui.with(
             NodeSpec::column()
@@ -53,19 +57,16 @@ impl App for Host {
                 .height(Sizing::Grow(1.0))
                 .pad(24.0)
                 .gap(16.0)
-                .bg(Color::rgb8(0x16, 0x18, 0x20))
+                .bg(t.surface)
                 .radius(10.0)
                 .cross_align(Align::Center)
                 .main_align(Align::Center),
             |ui| {
-                ui.text(
-                    "host (Rust)",
-                    TextStyle::new(12.0).color(Color::rgb8(0x8a, 0x8f, 0xa3)),
-                );
+                ui.text("host (Rust)", TextStyle::new(12.0).color(t.muted));
                 ui.text(&format!("{} clicks", self.clicks), TextStyle::new(40.0));
                 ui.text(
                     &format!("{} toggles reported by the panel", self.toggles),
-                    TextStyle::new(13.0).color(Color::rgb8(0x8a, 0x8f, 0xa3)),
+                    TextStyle::new(13.0).color(t.muted),
                 );
                 widgets::button(ui, "click me", Value::map([("kind", "click".into())]));
             },

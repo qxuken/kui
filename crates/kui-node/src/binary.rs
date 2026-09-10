@@ -514,7 +514,9 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let width = r.f()? as f32;
             let flags = r.u()?;
             let p = read_props(r)?;
-            let mut stroke = kui_core::Stroke::new(width, p.style.color);
+            // No `color` is the theme's foreground, as for a text run.
+            let stroke_color = p.style.color.unwrap_or(ui.theme().fg);
+            let mut stroke = kui_core::Stroke::new(width, stroke_color);
             stroke.curve = flags & 1 != 0;
             match (p.index, &p.key) {
                 (Some(i), _) => ui.core().line_node_indexed(i, &points, stroke, p.spec),

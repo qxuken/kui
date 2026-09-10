@@ -15,7 +15,7 @@
 
 use kui::widgets;
 use kui::{
-    Align, App, Color, NodeSpec, Role, Sizing, TextStyle, Ui, UiEvent, Value, WindowCommand,
+    Align, App, Color, NodeSpec, Role, Sizing, TextStyle, Theme, Ui, UiEvent, Value, WindowCommand,
 };
 
 const FONT: f32 = 13.5;
@@ -41,20 +41,23 @@ struct Pal {
     command: Color,
 }
 
-impl Default for Pal {
-    fn default() -> Self {
+impl From<Theme> for Pal {
+    /// Every field is a theme role, including the three that look like
+    /// app colours: a mode indicator is a status, and the theme already
+    /// names the three statuses an editor has anything to say with.
+    fn from(t: Theme) -> Self {
         Self {
-            bg: Color::rgb8(0x0f, 0x11, 0x17),
-            bg2: Color::rgb8(0x13, 0x15, 0x1d),
-            panel: Color::rgb8(0x14, 0x16, 0x1e),
-            status: Color::rgb8(0x1a, 0x1d, 0x27),
-            fg: Color::rgb8(0xd6, 0xd8, 0xe0),
-            dim: Color::rgb8(0x8a, 0x8f, 0xa3),
-            faint: Color::rgb8(0x50, 0x55, 0x66),
-            accent: Color::rgb8(0x6a, 0x8b, 0xff),
-            select: Color::rgba8(0x3b, 0x5b, 0xd4, 0x55),
-            insert: Color::rgb8(0x5f, 0xc1, 0x7e),
-            command: Color::rgb8(0xd9, 0xa1, 0x4d),
+            bg: t.bg,
+            bg2: t.sunken,
+            panel: t.surface,
+            status: t.sunken,
+            fg: t.fg,
+            dim: t.muted,
+            faint: t.faint,
+            accent: t.focus_ring,
+            select: t.selection,
+            insert: t.success,
+            command: t.warning,
         }
     }
 }
@@ -150,7 +153,7 @@ impl KeyEv {
 impl ModalEditor {
     fn new() -> Self {
         Self {
-            pal: Pal::default(),
+            pal: Theme::default().into(),
             doc: Doc::new("*scratch*", SAMPLE),
             view: View::default(),
             mode: Mode::Normal,
@@ -380,6 +383,8 @@ impl App for ModalEditor {
         if self.quit {
             ui.window_command(WindowCommand::Close(ui.env().window.id));
         }
+        // Rebuilt from the theme each frame, so the window follows the OS.
+        self.pal = ui.theme().into();
         let pal = self.pal;
         ui.configure_root(NodeSpec::column().fill().bg(pal.bg));
         widgets::titlebar(ui, "kui — modal editor (the app owns the keymap)");

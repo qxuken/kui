@@ -22,26 +22,18 @@ use crate::spec::TextStyle;
 use crate::text::TextSystem;
 use crate::tree::OriginId;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct EditOptions {
     pub style: TextStyle,
     pub multiline: bool,
     /// Takes keyboard focus whenever nothing else holds it (on creation,
     /// and again after a blur) — never from a focused control.
     pub autofocus: bool,
-    /// Selection highlight color.
-    pub accent: Color,
-}
-
-impl Default for EditOptions {
-    fn default() -> Self {
-        Self {
-            style: TextStyle::default(),
-            multiline: false,
-            autofocus: false,
-            accent: Color::rgba8(0x3b, 0x5b, 0xd4, 0x66),
-        }
-    }
+    /// Selection highlight color. `None` is the theme's `selection`,
+    /// which is what a field gets unless the caller says otherwise — so a
+    /// selection over a label and one over a field are the same tint on
+    /// both bases (ADR 0019).
+    pub accent: Option<Color>,
 }
 
 pub(crate) struct EditState {
@@ -570,7 +562,7 @@ impl EditStore {
             EditState {
                 editor,
                 style: opts.style,
-                accent: opts.accent,
+                accent: opts.accent.unwrap_or(crate::select::TINT),
                 multiline: opts.multiline,
                 origin,
                 scale,
@@ -590,7 +582,7 @@ impl EditStore {
         state.last_declared = frame_no;
         state.origin = origin;
         state.multiline = opts.multiline;
-        state.accent = opts.accent;
+        state.accent = opts.accent.unwrap_or(crate::select::TINT);
         // Style/scale changes re-metric the buffer (text and cursor survive).
         // The text is the same, so `version` does not move — but every
         // measurement of it is now of the wrong font, which is what
@@ -1288,7 +1280,7 @@ impl EditStore {
         };
         let raster = text_system.raster_mut();
         s.editor.shape_as_needed(fs, false);
-        let color = s.style.color;
+        let color = s.style.color_or_default();
         let accent = s.accent;
         let scale = s.scale;
         let selection = s.editor.selection_bounds();

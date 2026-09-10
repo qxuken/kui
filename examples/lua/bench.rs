@@ -12,6 +12,11 @@ const ROWS: usize = 300;
 const WARMUP: usize = 30;
 const ITERS: usize = 200;
 
+/// The two sides of the comparison declare the *same* tree, colours
+/// included, so the literals here stay literal: a bench whose Lua half
+/// read `env.theme` and whose Rust half read `ui.theme()` would still be
+/// comparable, but a bench whose halves could drift is not a bench. The
+/// apps are on the theme (ADR 0019); this is a measurement fixture.
 const LUA_VIEW: &str = r#"
 function view(env)
   local t = { pad = 8, gap = 2 }

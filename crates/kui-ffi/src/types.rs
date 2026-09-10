@@ -733,6 +733,96 @@ unsafe impl OutParam for KuiTextMetrics {
     }
 }
 
+/// The palette a frame paints with ([out] for `kui_theme`, [in] for
+/// `kui_theme_set`): one `0xRRGGBBAA` per role, derived from what the host
+/// reported through `kui_env_set_system` unless it pinned something else.
+/// See `docs/adr/0019-a-theme-derived-from-appearance-and-accent.md` and
+/// the Theme table in `docs/props.md`.
+///
+/// The roles are `kui_core::schema::THEME_ROLES` field for field, in that
+/// order, and `theme_struct_covers_every_role` pins the two together. A
+/// role added there fails that test until it is appended here — appending
+/// to an [out] struct is the compatible move, so it costs no ABI bump, and
+/// an old host's shorter reservation is simply filled up to its own size.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiTheme {
+    /// [out] reservation; see `KUI_THEME_INIT`. Ignored by
+    /// `kui_theme_set`, which reads the struct the host filled.
+    pub size: u32,
+    /// Which base this came from: `KUI_APPEARANCE_UNKNOWN` (0, the dark
+    /// base without claiming the user chose it) / `_LIGHT` / `_DARK`.
+    pub appearance: u32,
+    /// What a disabled control's opacity is multiplied by.
+    pub disabled_opacity: f32,
+    pub bg: u32,
+    pub surface: u32,
+    pub raised: u32,
+    pub sunken: u32,
+    pub border: u32,
+    pub border_strong: u32,
+    pub fg: u32,
+    pub muted: u32,
+    pub faint: u32,
+    pub accent: u32,
+    pub accent_hover: u32,
+    pub accent_pressed: u32,
+    pub on_accent: u32,
+    pub accent_soft: u32,
+    pub selection: u32,
+    pub focus_ring: u32,
+    pub hover: u32,
+    pub pressed: u32,
+    pub success: u32,
+    pub warning: u32,
+    pub danger: u32,
+    pub scrollbar: u32,
+    pub scrollbar_active: u32,
+}
+
+// Hand-written for the same reason `KuiTextMetrics`'s is: a zeroed `size`
+// is the one value the handshake refuses.
+impl Default for KuiTheme {
+    fn default() -> Self {
+        Self {
+            size: std::mem::size_of::<Self>() as u32,
+            appearance: 0,
+            disabled_opacity: 0.0,
+            bg: 0,
+            surface: 0,
+            raised: 0,
+            sunken: 0,
+            border: 0,
+            border_strong: 0,
+            fg: 0,
+            muted: 0,
+            faint: 0,
+            accent: 0,
+            accent_hover: 0,
+            accent_pressed: 0,
+            on_accent: 0,
+            accent_soft: 0,
+            selection: 0,
+            focus_ring: 0,
+            hover: 0,
+            pressed: 0,
+            success: 0,
+            warning: 0,
+            danger: 0,
+            scrollbar: 0,
+            scrollbar_active: 0,
+        }
+    }
+}
+
+// SAFETY: `repr(C)` with `size: u32` first.
+unsafe impl OutParam for KuiTheme {
+    const ABI_V1_SIZE: u32 = abi_through!(KuiTheme, scrollbar_active, u32);
+    fn size_mut(&mut self) -> &mut u32 {
+        &mut self.size
+    }
+}
+
 /// One diagnostic (`kui_take_warnings`): a silent misconfiguration the
 /// core noticed. `code` is stable (`grow-weight-ignored`,
 /// `transition-auto-key`, `duplicate-key`); the strings are borrowed until

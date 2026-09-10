@@ -32,16 +32,37 @@ function update(model: Model, msg: Msg, _ev: UiEvent<Msg>): Model | undefined {
   return msg.kind === 'pick' ? { selected: msg.row } : undefined;
 }
 
+/// `a` moved `t` of the way toward `b`, per channel, keeping `a`'s alpha —
+/// `Color::mix` from the Rust side, for the two places a view wants a
+/// colour *between* two roles. Both are `0xRRGGBBAA`.
+function mix(a: number, b: number, t: number): number {
+  const ch = (shift: number) => {
+    const x = (a >>> shift) & 0xff;
+    const y = (b >>> shift) & 0xff;
+    return Math.round(x + (y - x) * t) & 0xff;
+  };
+  return (((ch(24) << 24) | (ch(16) << 16) | (ch(8) << 8) | (a & 0xff)) >>> 0);
+}
+
 // The surface is a `Ctx` headless and a `KuiWindow` in a window; this view
 // asks for the two calls both of them have, which is what `virtualColumn`
 // takes as well.
-type Surface = Pick<Ctx | KuiWindow, 'scrollGeometry' | 'env'>;
+type Surface = Pick<Ctx | KuiWindow, 'scrollGeometry' | 'env' | 'theme'>;
 
 function view(model: Model, _window: string, ctx: Surface) {
+  // The palette the core derived from the OS (ADR 0019). The surface a
+  // view is handed already answers for it, headless and windowed alike,
+  // so a striped list follows the appearance without a branch.
+  const t = ctx.theme();
+  // The two surfaces a striped list alternates between, and the selected
+  // row as an opaque step toward the accent — `hoverBg` replaces a
+  // background rather than compositing over it, so a wash would not do.
+  const rowBg = (i: number) =>
+    i === model.selected ? mix(t.surface, t.accent, 0.28) : i % 2 ? t.sunken : t.surface;
   return (
-    <box width="grow" height="grow" bg="#141418" dir="column">
-      <box pad={8} bg="#1a1a22">
-        <text size={14} color="#e8e8f0">
+    <box width="grow" height="grow" bg={t.bg} dir="column">
+      <box pad={8} bg={t.surface}>
+        <text size={14} color={t.fg}>
           {`${ROWS} rows — row ${model.selected} selected`}
         </text>
       </box>
@@ -58,14 +79,14 @@ function view(model: Model, _window: string, ctx: Surface) {
             pad={6}
             dir="row"
             gap={8}
-            bg={i === model.selected ? '#2f4f7f' : i % 2 ? '#1c1c24' : '#22222c'}
-            hoverBg="#2a2a38"
+            bg={rowBg(i)}
+            hoverBg={mix(rowBg(i), t.accent, 0.12)}
             onClick={{ kind: 'pick', row: i }}
             role="listItem"
             label={`row ${i} of ${ROWS}`}
           >
-            <text size={13} color="#8a8a9a">{String(i).padStart(5, ' ')}</text>
-            <text size={13} color="#e8e8f0">{`log line ${i}`}</text>
+            <text size={13} color={t.faint}>{String(i).padStart(5, ' ')}</text>
+            <text size={13} color={t.fg}>{`log line ${i}`}</text>
           </box>
         ),
       )}

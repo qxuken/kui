@@ -20,8 +20,12 @@ at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
 
-What is left here is five entries: three parked headings — C12, C13 and C14,
-each waiting for a view that wants it — C26, whose first two steps were built
+What is left here is seven entries: three parked headings — C12, C13 and C14,
+each waiting for a view that wants it — the two the design-system audit left
+open on 2026-09-10 (T1, a defect that ships today; T2, the axis ADR 0019
+scoped itself out of; T3 closed the same day, when every example in the repo
+went onto the theme) —
+C26, whose first two steps were built
 on 2026-09-09 and whose last two wait for a view (C25 beside it closed the day
 it was filed), and F36, which fell out
 of building the last two of the four entries the two alpha.9 field reports and
@@ -722,6 +726,59 @@ converged on — estimate, measure, prefix sums, anchor — in kui's terms):
 (a horizontal list is the same plan turned sideways, and nobody has asked);
 heights that depend on the row's own scroll position; a `virtual` flag.
 
+## From the design-system audit (2026-09-10)
+
+The round that produced
+[ADR 0019](adr/0019-a-theme-derived-from-appearance-and-accent.md). The
+palette itself is built, and so is every example's migration onto it (T3,
+closed the day it was filed); these are the two the audit turned up and
+did not close.
+
+### `!` T1 — `on_context_menu` does not bubble, and keys do
+
+Found building `examples/rust/theme.rs`. A secondary press asks
+`Interaction::hit_at` for the **topmost** hit region and reads
+`context_menu` off that one region alone
+(`crates/kui-core/src/input.rs:952`); there is no walk to an ancestor. So a
+full-window node that declares `on_key` — the shell pattern
+`examples/rust/splitmux.rs` uses, and the one the reference page needed —
+sits above a root that declared `on_context_menu` and swallows every
+secondary press, silently. Moving the row onto the sink is the workaround,
+and it is not discoverable: nothing warns, and the app looks like it has no
+menu.
+
+This is exactly the shape ADR 0011 settled for keys — "unclaimed keys
+bubble to the nearest enclosing sink" — decided for keys alone. A press
+that lands on a node with no menu of its own is unclaimed in the same
+sense, and a container offering a menu for everything inside it is the
+common case, not an exotic one.
+
+**Do:** walk the hit stack from the topmost outward for the first region
+carrying a `context_menu` tag, the way `enclosing_sink` walks for keys.
+`hits` is already in paint order and already reversed for the topmost
+lookup, so it is the same iterator without the `.next()`. One corpus step
+(a menu-declaring root under a full-size sink) and one test that a nested
+declaration still wins over its ancestor's.
+
+### `.` T2 — The metrics are still constants
+
+`BUTTON_TEXT` 15, `MENU_TEXT` 13, `MENU_WIDTH` 200, `TITLEBAR_H`, every
+`pad_xy(14.0, 8.0)` and every `radius(6.0)` in
+`crates/kui-core/src/widgets.rs` are hard-coded the way the colours were,
+and the same three examples that each grew a `Pal` also each picked their
+own row height and gutter. ADR 0019 scoped itself to colour on purpose —
+that is where both the duplication and the accessibility failure were —
+but the argument for a `Metrics` beside `Theme` is the argument that
+document already makes, one axis over.
+
+Two things worth settling before building it: whether a metric scales
+(a density setting is the obvious use, and it interacts with `env`'s scale
+factor, which is the renderer's and not the palette's), and whether the
+stock widgets' geometry is a *contract* the corpus pins — changing
+`MENU_WIDTH` today changes the corpus report, which is the cheap kind of
+break, but changing it per app changes what a conformance scene means.
+
+
 ## After alpha.10
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -743,7 +800,8 @@ which the archived entry measures and leaves.
 
 **Build next.** Nothing with a written ADR and no code, and nothing filed
 that is not either parked or deliberately unbuilt: after alpha.10 the open
-list is C12, C13, C14, F36 and C26's last two steps — a measured-size query
+list is C12, C13, C14, F36, T1, T2 and C26's last two steps — T1 first, as
+the only defect among them — a measured-size query
 nothing needs since `virtual_rows` measures its own rows, and core-side
 scroll anchoring, which is CSS's `overflow-anchor` and is wanted by lists
 that are not virtual at all. C27 is parked with its measurements.

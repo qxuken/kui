@@ -35,8 +35,8 @@
 
 use kui::widgets;
 use kui::{
-    Align, App, Color, Easing, FloatConfig, KeyMods, NodeSpec, Sizing, TextStyle, Ui, UiEvent,
-    Value, WindowCommand,
+    Align, App, Color, Easing, FloatConfig, KeyMods, NodeSpec, Sizing, TextStyle, Theme, Ui,
+    UiEvent, Value, WindowCommand,
 };
 
 const TABBAR_H: f32 = 30.0;
@@ -54,6 +54,11 @@ const PRIMARY: &str = "Ctrl-";
 
 // ---------------------------------------------------------------- palette
 
+/// This app's names for the theme's roles. Every one of them *is* a role
+/// — a mux is chrome all the way down — so the struct is a rename rather
+/// than a palette, kept because `pal.bg2` reads better at the twenty call
+/// sites below than `theme.sunken` does, and rebuilt from `ui.theme()`
+/// each frame so the window follows the OS.
 #[derive(Clone, Copy)]
 struct Pal {
     bg: Color,
@@ -67,18 +72,18 @@ struct Pal {
     accent: Color,
 }
 
-impl Default for Pal {
-    fn default() -> Self {
+impl From<Theme> for Pal {
+    fn from(t: Theme) -> Self {
         Self {
-            bg: Color::rgb8(0x0f, 0x11, 0x17),
-            bg2: Color::rgb8(0x13, 0x15, 0x1d),
-            panel: Color::rgb8(0x14, 0x16, 0x1e),
-            border: Color::rgb8(0x22, 0x25, 0x31),
-            border_focus: Color::rgb8(0x3b, 0x5b, 0xd4),
-            fg: Color::rgb8(0xd6, 0xd8, 0xe0),
-            dim: Color::rgb8(0x8a, 0x8f, 0xa3),
-            faint: Color::rgb8(0x50, 0x55, 0x66),
-            accent: Color::rgb8(0x6a, 0x8b, 0xff),
+            bg: t.bg,
+            bg2: t.sunken,
+            panel: t.surface,
+            border: t.border,
+            border_focus: t.accent,
+            fg: t.fg,
+            dim: t.muted,
+            faint: t.faint,
+            accent: t.focus_ring,
         }
     }
 }
@@ -356,7 +361,7 @@ impl Splitmux {
             fresh: Fresh::No,
         };
         Self {
-            pal: Pal::default(),
+            pal: Theme::default().into(),
             next_pane: 4,
             tabs: vec![Tab { id: 1, root }],
             next_tab: 2,
@@ -836,6 +841,9 @@ impl App for Splitmux {
             ui.window_command(WindowCommand::Close(ui.env().window.id));
             return;
         }
+        // Rebuilt every frame from the theme, so an OS appearance change
+        // repaints the mux without a message reaching the model.
+        self.pal = ui.theme().into();
         let pal = self.pal;
         ui.configure_root(NodeSpec::column().fill().bg(pal.bg));
         widgets::titlebar(

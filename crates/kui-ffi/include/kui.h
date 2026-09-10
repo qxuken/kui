@@ -1441,6 +1441,76 @@ enum {
  * which is loud. */
 void kui_env_set_system(KuiCtx *ctx, uint32_t appearance, uint32_t accent,
                         uint32_t motion, KuiStr locale);
+/* -- Theme --------------------------------------------------------------- */
+/* The colours a view paints with, as roles rather than values, derived from
+ * the two facts above: the appearance picks the base, the accent recolours
+ * it. See docs/adr/0019-a-theme-derived-from-appearance-and-accent.md and
+ * the Theme table in docs/props.md, which lists every role with the value
+ * it takes on each base.
+ *
+ * The stock widgets read it already - kui_button_with, the context menu,
+ * the tooltip, the field, the scrollbars, the focus ring, and any text
+ * whose `color` is zero - so a host that pushes the OS appearance through
+ * kui_env_set_system and does nothing else already follows the OS. Read it
+ * for paint of your own:
+ *
+ *   KuiTheme t = KUI_THEME_INIT;
+ *   kui_theme(ctx, &t);
+ *   spec.bg = t.surface;
+ *
+ * The roles are kui_core::schema::THEME_ROLES field for field and in that
+ * order; kui-ffi's tests hold this struct to that table. Fields are
+ * 0xRRGGBBAA. */
+typedef struct KuiTheme {
+    uint32_t size; /* = sizeof(KuiTheme) in, bytes filled out */
+    /* KUI_APPEARANCE_* - which base this came from. UNKNOWN is the dark
+     * base, without claiming the user chose it: what kui painted before
+     * there were themes, which is why following the OS is the default. */
+    uint32_t appearance;
+    /* What a disabled control's opacity is multiplied by. */
+    float disabled_opacity;
+    uint32_t bg;
+    uint32_t surface;
+    uint32_t raised;
+    uint32_t sunken;
+    uint32_t border;
+    uint32_t border_strong;
+    uint32_t fg;
+    uint32_t muted;
+    uint32_t faint;
+    uint32_t accent;
+    uint32_t accent_hover;
+    uint32_t accent_pressed;
+    uint32_t on_accent;
+    uint32_t accent_soft;
+    uint32_t selection;
+    uint32_t focus_ring;
+    uint32_t hover;
+    uint32_t pressed;
+    uint32_t success;
+    uint32_t warning;
+    uint32_t danger;
+    uint32_t scrollbar;
+    uint32_t scrollbar_active;
+} KuiTheme;
+#define KUI_THEME_INIT ((KuiTheme){ .size = sizeof(KuiTheme) })
+
+/* This window's palette as of the current or last frame. False for a bad
+ * context, a NULL out, or a reservation below the ABI-1 layout. */
+bool kui_theme(KuiCtx *ctx, KuiTheme *out);
+/* Keep following the OS's light/dark, but paint this accent instead of the
+ * OS's - a host with a brand colour. 0xRRGGBBAA; zero goes back to
+ * following the OS for the accent too, which is the default. Everything
+ * that comes off the accent moves with it: the button's hover and pressed
+ * shades, the label on it (black or white by luminance), the selection
+ * tint and the focus ring. */
+void kui_theme_set_accent(KuiCtx *ctx, uint32_t accent);
+/* Pin the whole palette: exactly these colours, following neither the OS's
+ * appearance nor its accent. NULL goes back to deriving both. Read one with
+ * kui_theme and change the roles you mean to change rather than zeroing a
+ * fresh struct - a zeroed role is transparent, not "leave it alone". */
+void kui_theme_set(KuiCtx *ctx, const KuiTheme *theme);
+
 /* The frame clock for transitions (monotonic seconds, any origin). Set before
  * each kui_frame_begin; never setting it makes transitions snap. */
 void kui_set_time(KuiCtx *ctx, double now_secs);

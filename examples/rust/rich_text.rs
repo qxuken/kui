@@ -39,6 +39,7 @@ struct RichText;
 
 impl App for RichText {
     fn view(&mut self, ui: &mut Ui<'_>) {
+        let t = ui.theme();
         // Scrollable root: when the window is shorter than the content, the
         // wheel/trackpad scrolls it (with a scrollbar indicator).
         ui.configure_root(
@@ -57,9 +58,9 @@ impl App for RichText {
                 .max_width(560.0)
                 .pad(36.0)
                 .gap(18.0)
-                .bg(Color::rgb8(0x16, 0x18, 0x20))
+                .bg(t.surface)
                 .radius(12.0)
-                .border(1.0, Color::rgb8(0x2a, 0x2d, 0x3a))
+                .border(1.0, t.border)
                 // One row on the container, and every run inside it —
                 // plain text and rich paragraphs alike — selects as one.
                 .selectable(),
@@ -98,7 +99,7 @@ impl App for RichText {
                 ui.rich_text(
                     &[
                         Span::new("Per-span color overrides the node color at glyph level — "),
-                        Span::new("red").color(Color::rgb8(0xe8, 0x5d, 0x5d)),
+                        Span::new("red").color(t.danger),
                         Span::new(", "),
                         Span::new("green").color(GREEN),
                         Span::new(", "),

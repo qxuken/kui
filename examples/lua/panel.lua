@@ -57,6 +57,10 @@ title = "lua panel"
 on_toggle = nil -- the host's reply template, kept from view for on_event
 
 function view(env, slot)
+  -- The palette the host derived from the OS (ADR 0019): every key is the
+  -- 0xRRGGBBAA a colour prop takes, so a role goes straight into `bg`.
+  -- Read, not set: a script is a guest in someone else's frame.
+  local t = env.theme
   local params = slot and slot.params or {}
   title = params.title or "lua panel"
   on_toggle = params.on_toggle
@@ -69,7 +73,7 @@ function view(env, slot)
   for i, todo in ipairs(todos) do
     if filter == "" or todo:find(filter, 1, true) then
       local checked = done[i] and "[x] " or "[ ] "
-      local color = done[i] and 0x5c6174ff or 0xe8e8eaff
+      local color = done[i] and t.faint or t.fg
       items[#items + 1] = row {
         gap = 8,
         cross_align = "center",
@@ -91,16 +95,16 @@ function view(env, slot)
     height = "grow",
     pad = 16,
     gap = 10,
-    bg = 0x14161eff,
+    bg = t.surface,
     radius = 10,
-    border = { w = 1, color = 0x2a2d3aff },
-    text({ title, { " · " .. remaining .. " left", color = "#8a8fa3" } },
-         { size = 12, color = 0x8a8fa3ff }),
+    border = { w = 1, color = t.border },
+    text({ title, { " · " .. remaining .. " left", color = t.muted } },
+         { size = 12, color = t.muted }),
     -- `label` because nothing else names it: an edit with no text inside it
     -- and no label is what `control-without-name` is for.
     edit { key = "filter", label = "filter todos", initial = "", size = 14,
            width = "grow", pad = { l = 8, r = 8, t = 6, b = 6 },
-           bg = 0x0e1016ff, radius = 6 },
+           bg = t.sunken, radius = 6 },
     column { height = "grow", scroll = true, table.unpack(items) },
     row {
       gap = 8,
@@ -128,14 +132,14 @@ function view(env, slot)
       width = 300,
       pad = 16,
       gap = 6,
-      bg = 0x14161eff,
+      bg = t.surface,
       radius = 10,
-      border = { w = 1, color = 0x2a2d3aff },
-      text("no native panel loaded", { size = 12, color = 0x8a8fa3ff }),
+      border = { w = 1, color = t.border },
+      text("no native panel loaded", { size = 12, color = t.muted }),
       -- `wrap` is the text one: "word" / "glyph" / "none". The boolean is
       -- `wrap_children`, on a row, and passing it here is a runtime error
       -- that takes the whole view with it.
-      text(plugin_why or "build examples/c first", { size = 11, color = 0x5c6174ff, wrap = "word" }),
+      text(plugin_why or "build examples/c first", { size = 11, color = t.faint, wrap = "word" }),
     }
   end
 

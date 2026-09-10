@@ -150,6 +150,23 @@ impl<'a> Ui<'a> {
         self.core.env
     }
 
+    /// This frame's palette: the named colours the stock widgets paint
+    /// with, derived from `env.system` unless the app pinned something
+    /// else (`docs/adr/0019-a-theme-derived-from-appearance-and-accent.md`).
+    ///
+    /// By value, because it is [`Copy`] and a view that took a reference
+    /// could not then touch `ui` — which is the whole of what a view
+    /// does. `let t = ui.theme();` at the top of a widget is the idiom.
+    pub fn theme(&self) -> crate::theme::Theme {
+        *self.core.theme()
+    }
+
+    /// Whether anyone chose the theme's accent, or it is kui's fallback
+    /// blue — see [`Core::has_accent`](crate::runtime::Core::has_accent).
+    pub fn has_accent(&self) -> bool {
+        self.core.has_accent()
+    }
+
     /// Declares this frame's window title (declare every frame you care;
     /// the driver diffs and applies changes).
     pub fn window_title(&mut self, title: &str) {

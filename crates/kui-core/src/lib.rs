@@ -42,6 +42,7 @@ pub mod slot;
 pub mod spec;
 pub mod stats;
 pub mod text;
+pub mod theme;
 pub mod tree;
 pub mod ui;
 pub mod value;
@@ -86,6 +87,7 @@ pub use spec::{
 };
 pub use stats::{FrameSample, FrameStats};
 pub use text::{DEFAULT_TEXT_CACHE_BYTES, LONG_LINE_BYTES, Span, TextHit, TextMetrics};
+pub use theme::{Theme, ThemeSource};
 pub use tree::OriginId;
 pub use ui::Ui;
 pub use value::Value;

@@ -7,7 +7,7 @@
 //!
 //! Run: cargo run -p kui --example gallery
 
-use kui::{Align, App, Color, ImageId, NodeSpec, Sizing, TextStyle, Ui};
+use kui::{Align, App, ImageId, NodeSpec, Sizing, TextStyle, Ui};
 
 /// A procedural "photo": vertical sky gradient with a sun disc.
 fn sky(w: u32, h: u32) -> Vec<u8> {
@@ -55,6 +55,7 @@ struct Gallery {
 
 impl App for Gallery {
     fn view(&mut self, ui: &mut Ui<'_>) {
+        let t = ui.theme();
         // Register once, lazily, through the escape hatch — resources are
         // long-lived core state, not per-frame data.
         let sky_id = *self
@@ -66,7 +67,7 @@ impl App for Gallery {
 
         ui.configure_root(NodeSpec::column().fill().pad(24.0).gap(16.0).scroll_y());
         kui::widgets::titlebar(ui, "kui — gallery");
-        let muted = TextStyle::new(12.0).color(Color::rgb8(0x8a, 0x8f, 0xa3));
+        let muted = TextStyle::new(12.0).color(t.muted);
 
         ui.text(
             "Grow width + Fit height: rescales with the window, keeps aspect",
@@ -89,7 +90,7 @@ impl App for Gallery {
             NodeSpec::row()
                 .pad(16.0)
                 .gap(16.0)
-                .bg(Color::rgb8(0x14, 0x16, 0x1e))
+                .bg(t.surface)
                 .radius(10.0),
             |ui| {
                 ui.image(
@@ -124,7 +125,7 @@ impl App for Gallery {
                 // and last rows are cut to the corners instead of poking out
                 // of them. Nothing below declares anything about it.
                 .radius(16.0)
-                .bg(Color::rgb8(0x14, 0x16, 0x1e))
+                .bg(t.surface)
                 .scroll_y(),
             |ui| {
                 for i in 0..12 {
@@ -135,11 +136,7 @@ impl App for Gallery {
                             .height(Sizing::Fixed(28.0))
                             .cross_align(Align::Center)
                             .pad_xy(14.0, 0.0)
-                            .bg(if i % 2 == 0 {
-                                Color::rgb8(0x1e, 0x21, 0x2c)
-                            } else {
-                                Color::rgb8(0x24, 0x27, 0x33)
-                            }),
+                            .bg(if i % 2 == 0 { t.sunken } else { t.raised }),
                         |ui| {
                             ui.text(&format!("row {i}"), muted);
                         },

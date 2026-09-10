@@ -35,10 +35,6 @@ const ROWS: usize = 15;
 const LIST_ROWS: usize = 1000;
 const ROW_H: f32 = 22.0;
 
-fn ink() -> Color {
-    Color::rgb8(0x8a, 0x8f, 0xa3)
-}
-
 struct BulkExit {
     a: bool,
     b: bool,
@@ -86,13 +82,14 @@ impl BulkExit {
         if !self.list {
             return;
         }
+        let t = ui.theme();
         widgets::virtual_column(
             ui,
             "list",
             NodeSpec::column()
                 .width(Sizing::Fixed(200.0))
                 .height(Sizing::Fixed(ROWS as f32 * 14.0 - 2.0))
-                .bg(Color::rgb8(0x1b, 0x1e, 0x28))
+                .bg(t.raised)
                 .radius(6.0)
                 .transition(360.0)
                 .exit(Enter::from(0.0, 40.0).opacity(0.0)),
@@ -109,6 +106,7 @@ impl BulkExit {
 
 impl App for BulkExit {
     fn view(&mut self, ui: &mut Ui<'_>) {
+        let t = ui.theme();
         ui.window_title("kui — the exit budget");
         ui.configure_root(NodeSpec::column().fill().pad(24.0).gap(16.0));
 
@@ -125,7 +123,7 @@ impl App for BulkExit {
              fading: B animates whole and A's oldest ghosts give way. Clear \
              the list: a thousand rows go, but the picture is the built \
              slice, so it slides out as one.",
-            TextStyle::new(13.0).color(ink()),
+            TextStyle::new(13.0).color(t.muted),
         );
         ui.with(NodeSpec::row().gap(12.0).cross_align(Align::Center), |ui| {
             widgets::button(ui, "fill", Value::map([("kind", "fill".into())]));
@@ -135,8 +133,8 @@ impl App for BulkExit {
             widgets::button(ui, "clear list", Value::map([("kind", "list".into())]));
         });
         ui.with(NodeSpec::row().gap(24.0), |ui| {
-            self.grid(ui, "a", self.a, Color::rgb8(0x3b, 0x5b, 0xd4));
-            self.grid(ui, "b", self.b, Color::rgb8(0x73, 0xd9, 0x8c));
+            self.grid(ui, "a", self.a, t.accent);
+            self.grid(ui, "b", self.b, t.success);
             self.list(ui);
         });
         widgets::latency_hud_at(ui, Align::Start, Align::End);

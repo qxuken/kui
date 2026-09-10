@@ -361,7 +361,9 @@ fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
 /// `system` (what the user set in the OS: `appearance` and `motion` as
 /// strings, always there because "unknown" is one of their readings, and
 /// `accent` (0xRRGGBBAA) / `locale` (a BCP-47 tag) only when the host can
-/// tell), `focus` (the focused *node*'s key), `focus_visible`,
+/// tell), `focus` (the focused *node*'s key), `focus_visible`, `theme`
+/// (the palette derived from `system`: one 0xRRGGBBAA number per role in
+/// `schema::THEME_ROLES`, plus `appearance` and `disabled_opacity`),
 /// `viewport_w`/`viewport_h` (logical px), `window` chrome facts, the
 /// queries `edit_text(key)`, `is_focused(key)`, `is_hovered(key)`,
 /// `is_pressed(key)`, `scroll_offset(key)`, `scroll_geometry(key)`,
@@ -393,9 +395,15 @@ fn env_table<'scope, 'env: 'scope>(
     ui: &'env std::cell::RefCell<&'env mut Ui<'_>>,
     loaded: &'env std::cell::RefCell<Vec<Loaded>>,
 ) -> mlua::Result<Table> {
-    let (env, vp, focus, focus_visible) = {
+    let (env, theme, vp, focus, focus_visible) = {
         let ui = ui.borrow();
-        (ui.env(), ui.viewport(), ui.focused(), ui.focus_visible())
+        (
+            ui.env(),
+            ui.theme(),
+            ui.viewport(),
+            ui.focused(),
+            ui.focus_visible(),
+        )
     };
     let t = lua.create_table()?;
     if let Some(hz) = env.refresh_hz {
@@ -425,6 +433,21 @@ fn env_table<'scope, 'env: 'scope>(
         st.set("locale", locale.as_str())?;
     }
     t.set("system", st)?;
+    // The palette the core derived from `system`, as roles rather than
+    // values (ADR 0019). Every key is a 0xRRGGBBAA number — the same
+    // spelling a `color` prop takes — so `bg = env.theme.surface` needs no
+    // conversion; `appearance` says which base it came from and
+    // `disabled_opacity` is a multiplier, not a colour. The roles are
+    // generated from `schema::THEME_ROLES`, so a script and a Rust view
+    // read the same list under the same names. Read-only: a Lua script is
+    // a guest in someone else's frame, and the theme is the host's to set.
+    let th = lua.create_table()?;
+    for role in kui_core::schema::THEME_ROLES {
+        th.set(role.name, (role.get)(&theme).to_hex())?;
+    }
+    th.set("appearance", theme.appearance.name())?;
+    th.set("disabled_opacity", theme.disabled_opacity)?;
+    t.set("theme", th)?;
     if let Some(k) = focus {
         t.set("focus", k.0 as i64)?;
     }
@@ -1258,7 +1281,9 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
                 }
             };
             let width = t.get::<Option<f32>>("width")?.unwrap_or(1.0);
-            let mut stroke = kui_core::Stroke::new(width, p.style.color);
+            // No `color` is the theme's foreground, as for a text run.
+            let stroke_color = p.style.color.unwrap_or(ui.theme().fg);
+            let mut stroke = kui_core::Stroke::new(width, stroke_color);
             stroke.curve = t.get::<Option<bool>>("curve")?.unwrap_or(false);
             match (p.index, &p.key) {
                 (Some(i), _) => ui.polyline_indexed(i, &points, stroke, p.spec),
@@ -1278,7 +1303,7 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             if rows == 0 || cols == 0 {
                 return Err(bad("cells needs rows and cols"));
             }
-            let default_fg = p.style.color.to_hex();
+            let default_fg = p.style.color.unwrap_or(ui.theme().fg).to_hex();
             let mut cells = vec![kui_core::Cell::new(' ', default_fg, 0); rows * cols];
             if let Some(lines) = t.get::<Option<Table>>("lines")? {
                 for (r, line) in lines.sequence_values::<String>().enumerate() {
@@ -3088,11 +3113,23 @@ mod tests {
             .iter()
             .flat_map(|f| f.lua.iter().map(|k| (*k).to_string()))
             .collect();
+        // The palette rides in the same reading and is pinned the same
+        // way, to `schema::THEME_ROLES` rather than to `ENV_FIELDS` — it
+        // is derived from `system` and not reported by the host, so it is
+        // not an `Env` field (ADR 0019). The two flat keys beside the
+        // roles are the base it came from and the disabled multiplier.
+        documented.extend(
+            kui_core::schema::THEME_ROLES
+                .iter()
+                .map(|r| format!("theme.{}", r.name)),
+        );
+        documented.push("theme.appearance".into());
+        documented.push("theme.disabled_opacity".into());
         documented.sort();
         assert_eq!(
             sorted("values"),
             documented,
-            "env's value keys and schema::ENV_FIELDS's Lua column disagree"
+            "env's value keys and schema::ENV_FIELDS + THEME_ROLES disagree"
         );
         assert_eq!(
             sorted("calls"),

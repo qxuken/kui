@@ -37,6 +37,7 @@ in the workspace lands in one flat `target/debug/examples/`, where two called
 | [`splitmux.rs`](rust/splitmux.rs) | `cargo run -p kui --example splitmux` | tmux-style splits, tabs, focus, ⌘-drag pane moves; the pane tree is data |
 | [`syntax_view.rs`](rust/syntax_view.rs) | `cargo run -p kui --example syntax_view` | Syntax highlighting as coalesced style runs |
 | [`gallery.rs`](rust/gallery.rs) | `cargo run -p kui --example gallery` | Registered images: Fit sizing, kept aspect, rounded corners |
+| [`theme.rs`](rust/theme.rs) | `cargo run -p kui --example theme` | The token reference: every `Theme` role as a swatch over every stock widget, with the base and the accent switchable live (`1`/`2`/`3`, `a`) and the drawn context menu to check a hovered row on both bases |
 | [`virtual_list.rs`](rust/virtual_list.rs) | `cargo run -p kui --example virtual_list` | 10,000 rows for a screenful: `widgets::virtual_column`, the same list unrolled from `scroll_geometry` + `visible_rows` (`--by-hand`), and rows of no fixed height through `widgets::virtual_rows` (`--variable`); `--headless` for any of them |
 | [`toasts.rs`](rust/toasts.rs) | `cargo run -p kui --example toasts` | `enter`/`exit`: toasts that slide in and back out |
 | [`bulk_exit.rs`](rust/bulk_exit.rs) | `cargo run -p kui --example bulk_exit` | the exit budget at its boundary: a removal animates whole or not at all, a new one outranks the old, a virtual list keeps the picture small |

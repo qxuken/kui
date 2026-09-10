@@ -985,7 +985,7 @@ impl TextSystem {
         };
         self.frame.push(FrameText {
             cache_key: key,
-            color: style.color,
+            color: style.color_or_default(),
             long,
         });
         TextId((self.frame.len() - 1) as u32)
@@ -1238,7 +1238,7 @@ impl TextSystem {
         let key = self.intern_rich(spans, base, res, fs);
         self.frame.push(FrameText {
             cache_key: key,
-            color: base.color,
+            color: base.color_or_default(),
             long: false,
         });
         TextId((self.frame.len() - 1) as u32)

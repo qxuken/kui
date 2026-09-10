@@ -4064,6 +4064,87 @@ test('nativeControls inset the titlebar and take its buttons away', () => {
   assert.deepEqual(titleX({ w: 78, h: 28 }), { x: 78, buttons: 0 });
 });
 
+// The palette (ADR 0019): derived from what the host said about the OS,
+// pinnable by the app, and read back as the numbers a prop takes. The
+// roles are `protocol().theme`, so this checks the reading against the one
+// table every binding is generated from rather than against a list here.
+test('theme() is the roles the protocol declares, derived from env.system', () => {
+  const roles = protocol().theme;
+  assert.ok(roles.length >= 20, 'the protocol declares the roles');
+  const ctx = new Ctx();
+  ctx.setEnv({ system: { appearance: 'dark' } });
+  const dark = ctx.theme();
+  for (const r of roles) {
+    assert.equal(typeof dark[r.node], 'number', `${r.node} is a 0xRRGGBBAA number`);
+  }
+  assert.equal(dark.appearance, 'dark');
+  assert.equal(typeof dark.disabledOpacity, 'number');
+
+  // The light base is a different palette, and a readable one: what a
+  // hardcoded near-white foreground could not be on a light page.
+  ctx.setEnv({ system: { appearance: 'light' } });
+  const light = ctx.theme();
+  assert.notEqual(light.bg, dark.bg);
+  assert.notEqual(light.fg, dark.fg);
+  assert.equal(light.appearance, 'light');
+  // Roles, not a ramp: the light `surface` is near white, the dark near black.
+  assert.ok((light.surface >>> 24) > 0xe0);
+  assert.ok((dark.surface >>> 24) < 0x40);
+});
+
+test('setAccent keeps the OS light/dark, setTheme follows nothing, null derives again', () => {
+  const ctx = new Ctx();
+  ctx.setEnv({ system: { appearance: 'light', accent: 0x007affff } });
+  assert.equal(ctx.theme().accent, 0x007affff, 'the OS accent, derived');
+
+  // A brand colour, still following the OS's appearance.
+  ctx.setAccent('#d2691e');
+  assert.equal(ctx.theme().accent, 0xd2691eff);
+  assert.equal(ctx.theme().appearance, 'light');
+  ctx.setEnv({ system: { appearance: 'dark' } });
+  assert.equal(ctx.theme().appearance, 'dark', 'still following');
+  assert.equal(ctx.theme().accent, 0xd2691eff, 'still ours');
+
+  // Naming the accent carries its family with it, and a light accent
+  // flips the label that goes on top.
+  ctx.setAccent(0xffc409ff);
+  assert.equal(ctx.theme().onAccent, 0x000000ff, 'white on yellow is not a button');
+  assert.notEqual(ctx.theme().accentHover, ctx.theme().accent);
+
+  // Pinned: this base, this one role changed, and nothing follows.
+  ctx.setTheme({ appearance: 'light', surface: '#fafafa' });
+  assert.equal(ctx.theme().surface, 0xfafafaff);
+  assert.equal(ctx.theme().appearance, 'light');
+  ctx.setEnv({ system: { appearance: 'dark' } });
+  assert.equal(ctx.theme().appearance, 'light', 'pinned follows nothing');
+
+  // And back to the OS for both.
+  ctx.setAccent(null);
+  assert.equal(ctx.theme().appearance, 'dark');
+
+  // A role that is not one is a typo worth hearing about.
+  assert.throws(() => ctx.setTheme({ surfce: '#fff' }), /no such role/);
+});
+
+test('a <text> with no color takes the theme\'s foreground, so light mode is legible', () => {
+  // The colour a glyph quad carries, for a text that named none. Before
+  // ADR 0019 this was the constant `#e8e8ea` on every base, which is
+  // 1.22:1 on a light page.
+  const fg = (appearance, props) => {
+    const ctx = new Ctx();
+    ctx.setEnv({ system: { appearance } });
+    ctx.frame(200, 100, 1, text('hello', props));
+    // Glyph quads are the non-solid ones; kind 0 is a box. The colour is
+    // four floats, so compare it as a string rather than by identity.
+    return JSON.stringify(decodeQuads(ctx.quads()).find((q) => q.kind !== 0).color);
+  };
+  assert.notEqual(fg('dark', {}), fg('light', {}), 'the default follows the base');
+  // An explicit colour is still exactly itself on both bases.
+  const c = { color: '#ff00ff' };
+  assert.equal(fg('dark', c), fg('light', c));
+  assert.notEqual(fg('light', c), fg('light', {}), 'and it is not the default');
+});
+
 test('quads() is on both classes, so a smoke test can read what a window drew (F19)', () => {
   // It sat on `Ctx` alone while `accessTree()`, `stats()` and `animating()`
   // answered for a window through the same core; the pomodoro's report

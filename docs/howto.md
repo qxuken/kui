@@ -164,12 +164,34 @@ none of it: nothing repaints because the appearance changed and no animation
 shortens itself, because only the view knows which of its colours is the
 background.
 
+Mostly you do not have to. The **theme** is that branch, written once: the
+appearance picks a base and the accent recolours it, and the palette comes
+back as named roles — `ctx.theme()` in Node, `ui.theme()` in Rust,
+`env.theme` in Lua, `kui_theme` in C. The stock widgets already read it, so
+a button, the context menu, a tooltip, a field, the scrollbars, the focus
+ring and a `<text>` with no `color` follow the OS with nothing written at
+all. Paint your own boxes from the same roles and they agree:
+
+```tsx
+const t = ctx.theme();
+<box bg={t.surface} radius={10} borderColor={t.border} borderWidth={1}>
+  <text color={t.muted}>seventeen items</text>
+</box>
+```
+
+`ctx.setAccent('#d2691e')` keeps following the OS's light/dark while
+painting your own colour — what an app with a brand colour wants — and
+`ctx.setTheme({ appearance: 'dark', surface: '#101014' })` pins a palette
+that follows nothing. Every role, and its value on both bases, is in the
+[Theme table](props.md#theme).
+
 A stock button follows the accent on its own: `<button accent>` takes the
-OS colour, derives its hover and pressed shades from it, and picks a black
-or white label by its luminance — falling back to the stock blue where the
-host has no accent to report. Any other node can carry `accent` too, which
-substitutes its `bg` and nothing else; `Color::mix` and `Color::luminance`
-are there for a palette of your own.
+theme's accent, derives its hover and pressed shades from it, and picks a
+black or white label by its luminance — falling back to the stock blue
+where nobody, the OS included, has said what the accent is. Any other node
+can carry `accent` too, which substitutes its `bg` and nothing else;
+`Color::mix` and `Color::luminance` are there for a colour of your own that
+is not a role.
 
 The reading is there before your first view — a window fills it in as it
 opens, not on its first frame — and a change to it arrives as a `system`
@@ -190,8 +212,10 @@ picked for as long as the user leaves it alone. A Rust `App`, whose `view`
 message.
 
 [`system.*` rows](props.md#env) ·
+[Theme table](props.md#theme) ·
 [`system` event](props.md#events) ·
 [`accent` row](props.md#container-props) ·
+[ADR 0019](adr/0019-a-theme-derived-from-appearance-and-accent.md) ·
 [alpha.10](../CHANGELOG.md#010-alpha10-2026-09-09)
 
 ## Interaction, focus and reading

@@ -483,6 +483,35 @@ fn asserts() -> String {
         looped: u32 => "uint32_t",
     });
 
+    abi_struct!(o, KuiTheme {
+        size: u32 => "uint32_t",
+        appearance: u32 => "uint32_t",
+        disabled_opacity: f32 => "float",
+        bg: u32 => "uint32_t",
+        surface: u32 => "uint32_t",
+        raised: u32 => "uint32_t",
+        sunken: u32 => "uint32_t",
+        border: u32 => "uint32_t",
+        border_strong: u32 => "uint32_t",
+        fg: u32 => "uint32_t",
+        muted: u32 => "uint32_t",
+        faint: u32 => "uint32_t",
+        accent: u32 => "uint32_t",
+        accent_hover: u32 => "uint32_t",
+        accent_pressed: u32 => "uint32_t",
+        on_accent: u32 => "uint32_t",
+        accent_soft: u32 => "uint32_t",
+        selection: u32 => "uint32_t",
+        focus_ring: u32 => "uint32_t",
+        hover: u32 => "uint32_t",
+        pressed: u32 => "uint32_t",
+        success: u32 => "uint32_t",
+        warning: u32 => "uint32_t",
+        danger: u32 => "uint32_t",
+        scrollbar: u32 => "uint32_t",
+        scrollbar_active: u32 => "uint32_t",
+    });
+
     abi_struct!(o, KuiTextStyle {
         size: f32 => "float",
         line_height: f32 => "float",

@@ -19,6 +19,25 @@
 
 use kui::{App, Color, FragmentId, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value, widgets};
 
+/// One colour as the four floats a `params` slot is. Fragment parameters
+/// are where a theme meets a shader: the WGSL says *what* a gradient or a
+/// ring is, and the palette says which colours it is made of — so every
+/// fragment below follows the OS without a line of its shader changing
+/// (`docs/adr/0019-a-theme-derived-from-appearance-and-accent.md`).
+fn rgba(c: Color) -> [f32; 4] {
+    [c.r, c.g, c.b, c.a]
+}
+
+/// The four params a fragment takes, flattened: colours as `rgba`, plain
+/// numbers as themselves.
+fn params(slots: [[f32; 4]; 4]) -> [f32; 16] {
+    let mut out = [0.0; 16];
+    for (i, s) in slots.iter().enumerate() {
+        out[i * 4..i * 4 + 4].copy_from_slice(s);
+    }
+    out
+}
+
 /// A vertical gradient between `params[0]` and `params[1]`.
 const GRADIENT: &str = "\
 fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {
@@ -78,10 +97,8 @@ struct Shaders {
 }
 
 fn label(ui: &mut Ui<'_>, text: &str) {
-    ui.text(
-        text,
-        TextStyle::new(12.0).color(Color::rgb8(0x8a, 0x90, 0xa6)),
-    );
+    let muted = ui.theme().muted;
+    ui.text(text, TextStyle::new(12.0).color(muted));
 }
 
 /// One labelled tile.
@@ -94,6 +111,7 @@ fn tile(ui: &mut Ui<'_>, name: &str, f: impl FnOnce(&mut Ui<'_>)) {
 
 impl App for Demo {
     fn view(&mut self, ui: &mut Ui<'_>) {
+        let t = ui.theme();
         // Registration is idempotent by source, so calling it every frame
         // costs a comparison. A real app would still do this once.
         let s = *self.shaders.get_or_insert_with(|| {
@@ -106,26 +124,19 @@ impl App for Demo {
             }
         });
 
-        ui.configure_root(
-            NodeSpec::column()
-                .fill()
-                .pad(28.0)
-                .gap(24.0)
-                .bg(Color::rgb8(0x0e, 0x10, 0x16)),
-        );
-        ui.text(
-            "fragments",
-            TextStyle::new(22.0).color(Color::rgb8(0xe7, 0xe9, 0xf0)),
-        );
+        ui.configure_root(NodeSpec::column().fill().pad(28.0).gap(24.0).bg(t.bg));
+        ui.text("fragments", TextStyle::new(22.0).color(t.fg));
 
         ui.with(NodeSpec::row().gap(20.0), |ui| {
             tile(ui, "gradient", |ui| {
                 ui.fragment(
                     s.gradient,
-                    &[
-                        0.42, 0.31, 0.86, 1.0, // top
-                        0.16, 0.63, 0.78, 1.0, // bottom
-                    ],
+                    &params([
+                        rgba(t.accent),  // top
+                        rgba(t.surface), // bottom
+                        [0.0; 4],
+                        [0.0; 4],
+                    ]),
                     NodeSpec::column()
                         .width(Sizing::Fixed(150.0))
                         .height(Sizing::Fixed(96.0))
@@ -136,24 +147,12 @@ impl App for Demo {
             tile(ui, "ring", |ui| {
                 ui.fragment(
                     s.ring,
-                    &[
-                        0.36,
-                        0.85,
-                        0.55,
-                        1.0, // the arc
-                        self.progress,
-                        0.0,
-                        0.0,
-                        0.0, // how far round
-                        0.16,
-                        0.18,
-                        0.24,
-                        1.0, // the track
-                        10.0,
-                        5.0,
-                        0.0,
-                        0.0, // inset, half-width
-                    ],
+                    &params([
+                        rgba(t.accent),                 // the arc
+                        [self.progress, 0.0, 0.0, 0.0], // how far round
+                        rgba(t.border),                 // the track
+                        [10.0, 5.0, 0.0, 0.0],          // inset, half-width
+                    ]),
                     NodeSpec::column()
                         .width(Sizing::Fixed(96.0))
                         .height(Sizing::Fixed(96.0)),
@@ -163,11 +162,12 @@ impl App for Demo {
             tile(ui, "shimmer (animate)", |ui| {
                 ui.fragment(
                     s.shimmer,
-                    &[
-                        0.13, 0.14, 0.19, 1.0, // base
-                        0.26, 0.28, 0.36, 1.0, // sheen
-                        0.35, 0.22, 0.0, 0.0, // turns per second, width
-                    ],
+                    &params([
+                        rgba(t.sunken),         // base
+                        rgba(t.border_strong),  // sheen
+                        [0.35, 0.22, 0.0, 0.0], // turns per second, width
+                        [0.0; 4],
+                    ]),
                     NodeSpec::column()
                         .width(Sizing::Fixed(150.0))
                         .height(Sizing::Fixed(96.0))
@@ -182,20 +182,19 @@ impl App for Demo {
         tile(ui, "a fragment with children", |ui| {
             ui.fragment_with(
                 s.wash,
-                &[
-                    0.21, 0.24, 0.42, 1.0, // centre
-                    0.09, 0.10, 0.16, 1.0, // edge
-                ],
+                &params([
+                    rgba(t.surface.mix(t.accent, 0.30)), // centre
+                    rgba(t.surface),                     // edge
+                    [0.0; 4],
+                    [0.0; 4],
+                ]),
                 NodeSpec::column()
                     .width(Sizing::Fixed(320.0))
                     .pad(18.0)
                     .gap(12.0)
                     .radius(12.0),
                 |ui| {
-                    ui.text(
-                        "on a wash",
-                        TextStyle::new(16.0).color(Color::rgb8(0xe7, 0xe9, 0xf0)),
-                    );
+                    ui.text("on a wash", TextStyle::new(16.0).color(t.fg));
                     widgets::button(ui, "advance", Value::str("advance"));
                 },
             );

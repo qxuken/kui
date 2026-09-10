@@ -16,18 +16,30 @@ const SCROLLBAR_HIT_W: f32 = 10.0;
 const SCROLLBAR_INSET: f32 = 2.0;
 const SCROLLBAR_MIN: f32 = 24.0;
 /// The default focus ring (see `docs/adr/0002-keyboard-focus-as-data.md`):
-/// drawn this far outside the focused node, this thick, in this colour,
-/// when focus is keyboard-visible and the node styles nothing itself.
+/// drawn this far outside the focused node, this thick, when focus is
+/// keyboard-visible and the node styles nothing itself.
+///
+/// The *colour* is `theme.focus_ring` (ADR 0019, which revisits ADR
+/// 0002's "a constant in the core, not a theme value"): the geometry is
+/// still not a prop and still not negotiable, but a ring that cannot be
+/// seen is not a focus indicator, and the pale blue that reads on a dark
+/// page is invisible on a light one.
 const FOCUS_RING_GAP: f32 = 2.0;
 const FOCUS_RING_W: f32 = 2.0;
-const FOCUS_RING: Color = Color {
-    r: 0x7f as f32 / 255.0,
-    g: 0x9c as f32 / 255.0,
-    b: 0xf5 as f32 / 255.0,
-    a: 1.0,
-};
 
 impl Core {
+    /// The scrollbar thumb's colour at rest and while hovered or dragged.
+    /// A wash over whatever it sits on rather than a fill, which is why
+    /// it is two translucent colours and not one with an alpha applied.
+    fn thumb_color(&self, active: bool) -> Color {
+        let t = self.theme();
+        if active {
+            t.scrollbar_active
+        } else {
+            t.scrollbar
+        }
+    }
+
     /// Emits one node's quads and registers its hit/scroll regions.
     fn emit_node(
         &mut self,
@@ -150,6 +162,7 @@ impl Core {
                     .cell_selection
                     .filter(|s| s.node == self.tree.keys[i] && !s.is_empty());
                 let at = self.cells_origin(i);
+                let tint = self.theme.selection;
                 let sess = &mut *self.session.state();
                 self.cells.emit(
                     cid,
@@ -161,7 +174,7 @@ impl Core {
                     self.text.raster_mut(),
                     &mut self.atlas,
                     &mut self.display.quads,
-                    sel.as_ref().map(|s| (s, crate::select::TINT)),
+                    sel.as_ref().map(|s| (s, tint)),
                 );
             }
             NodeContent::Edit(key) => {
@@ -460,7 +473,7 @@ impl Core {
             return None;
         }
         let range = ends.range_in(ord, self.text.content_len(tid))?;
-        Some((range, crate::select::TINT))
+        Some((range, self.theme().selection))
     }
 
     /// The innermost selection scope node `i` is inside, if any. Empty on
@@ -787,7 +800,7 @@ impl Core {
                     w,
                     bar_h,
                 );
-                let mut bar = scrollbar_quad(thumb, scale, clip_id, active);
+                let mut bar = scrollbar_quad(thumb, scale, clip_id, self.thumb_color(active));
                 bar.color.a *= opacity;
                 self.display.quads.push(bar);
                 scrollbars.push(ScrollbarRegion {
@@ -823,7 +836,7 @@ impl Core {
                     bar_w,
                     w,
                 );
-                let mut bar = scrollbar_quad(thumb, scale, clip_id, active);
+                let mut bar = scrollbar_quad(thumb, scale, clip_id, self.thumb_color(active));
                 bar.color.a *= opacity;
                 self.display.quads.push(bar);
                 scrollbars.push(ScrollbarRegion {
@@ -1322,7 +1335,7 @@ impl Core {
         if visible.w <= 0.0 || visible.h <= 0.0 {
             return;
         }
-        let mut ring = FOCUS_RING;
+        let mut ring = self.theme().focus_ring;
         ring.a *= self.opacity.get(i).copied().unwrap_or(1.0);
         self.display.quads.push(Quad {
             rect: rect.scaled(scale),
@@ -1559,10 +1572,10 @@ fn fade(quads: &mut [Quad], opacity: f32) {
     }
 }
 
-fn scrollbar_quad(bar: Rect, scale: f32, clip_id: ClipId, active: bool) -> Quad {
+fn scrollbar_quad(bar: Rect, scale: f32, clip_id: ClipId, color: Color) -> Quad {
     Quad {
         rect: bar.scaled(scale),
-        color: Color::rgba(1.0, 1.0, 1.0, if active { 0.4 } else { 0.18 }),
+        color,
         border_color: Color::TRANSPARENT,
         radius: [bar.w.min(bar.h) / 2.0 * scale; 4],
         border_w: 0.0,

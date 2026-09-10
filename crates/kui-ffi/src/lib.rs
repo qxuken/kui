@@ -169,8 +169,137 @@ pub extern "C" fn kui_env_set_system(
             sys.motion = MotionPref::from_code(motion).unwrap_or_default();
             sys.accent = (accent != 0).then(|| Color::hex(accent));
             sys.locale = opt_str(locale).and_then(|tag| Locale::new(&tag));
+            // The palette is derived from what was just written, so a host
+            // that pushes the appearance and reads `kui_theme` back before
+            // its next frame sees the answer (ADR 0019).
+            c.core().refresh_theme();
         }
     });
+}
+
+/// This window's palette, as of the current or last frame
+/// (`docs/adr/0019-a-theme-derived-from-appearance-and-accent.md`): one
+/// `0xRRGGBBAA` per role, derived from what `kui_env_set_system` reported
+/// unless this host pinned something with the two setters below.
+///
+/// The stock widgets already read it — a button, the context menu, a
+/// tooltip, a field, the scrollbars, the focus ring and any text with a
+/// zero `color` all follow it — so a C host that reports the OS appearance
+/// and nothing else already follows the OS. Read it for the paint of your
+/// own: `KuiTheme t = KUI_THEME_INIT; kui_theme(ctx, &t);` then
+/// `spec.bg = t.surface`.
+///
+/// False for a bad context, a NULL `out`, or a reservation smaller than
+/// the ABI-1 layout.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_theme(ptr: *mut KuiCtx, out: *mut KuiTheme) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let t = *c.core().theme();
+        write_out(
+            out,
+            KuiTheme {
+                appearance: t.appearance.code(),
+                disabled_opacity: t.disabled_opacity,
+                bg: t.bg.to_hex(),
+                surface: t.surface.to_hex(),
+                raised: t.raised.to_hex(),
+                sunken: t.sunken.to_hex(),
+                border: t.border.to_hex(),
+                border_strong: t.border_strong.to_hex(),
+                fg: t.fg.to_hex(),
+                muted: t.muted.to_hex(),
+                faint: t.faint.to_hex(),
+                accent: t.accent.to_hex(),
+                accent_hover: t.accent_hover.to_hex(),
+                accent_pressed: t.accent_pressed.to_hex(),
+                on_accent: t.on_accent.to_hex(),
+                accent_soft: t.accent_soft.to_hex(),
+                selection: t.selection.to_hex(),
+                focus_ring: t.focus_ring.to_hex(),
+                hover: t.hover.to_hex(),
+                pressed: t.pressed.to_hex(),
+                success: t.success.to_hex(),
+                warning: t.warning.to_hex(),
+                danger: t.danger.to_hex(),
+                scrollbar: t.scrollbar.to_hex(),
+                scrollbar_active: t.scrollbar_active.to_hex(),
+                ..Default::default()
+            },
+        )
+    })
+}
+
+/// Keep following the OS's light/dark, but paint `accent` instead of the
+/// OS's — a host with a brand colour of its own. `0xRRGGBBAA`; zero goes
+/// back to following the OS for the accent too, which is the default.
+///
+/// Everything that comes off the accent moves with it: the button's hover
+/// and pressed shades, the label on it (black or white, by luminance), the
+/// selection tint and the focus ring.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_theme_set_accent(ptr: *mut KuiCtx, accent: u32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            match accent {
+                0 => c.core().derive_theme(),
+                hex => c.core().set_accent(Color::hex(hex)),
+            }
+        }
+    })
+}
+
+/// Pin the whole palette: exactly these colours, following neither the
+/// OS's appearance nor its accent. NULL goes back to deriving both.
+///
+/// The struct is read as the host filled it — `size` is ignored here,
+/// since the host wrote every byte it declared — so build one from
+/// `kui_theme` and change the roles you mean to change, rather than
+/// zeroing a fresh one: a zeroed role is transparent, not "leave it".
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_theme_set(ptr: *mut KuiCtx, theme: *const KuiTheme) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            match unsafe { theme.as_ref() } {
+                None => c.core().derive_theme(),
+                Some(t) => c.core().set_theme(theme_of(t)),
+            }
+        }
+    })
+}
+
+/// A `KuiTheme` the host filled, as a core [`kui_core::Theme`]. An
+/// appearance code past the end is `unknown`, the way every other code is.
+fn theme_of(t: &KuiTheme) -> kui_core::Theme {
+    kui_core::Theme {
+        appearance: Appearance::from_code(t.appearance).unwrap_or_default(),
+        disabled_opacity: t.disabled_opacity,
+        bg: Color::hex(t.bg),
+        surface: Color::hex(t.surface),
+        raised: Color::hex(t.raised),
+        sunken: Color::hex(t.sunken),
+        border: Color::hex(t.border),
+        border_strong: Color::hex(t.border_strong),
+        fg: Color::hex(t.fg),
+        muted: Color::hex(t.muted),
+        faint: Color::hex(t.faint),
+        accent: Color::hex(t.accent),
+        accent_hover: Color::hex(t.accent_hover),
+        accent_pressed: Color::hex(t.accent_pressed),
+        on_accent: Color::hex(t.on_accent),
+        accent_soft: Color::hex(t.accent_soft),
+        selection: Color::hex(t.selection),
+        focus_ring: Color::hex(t.focus_ring),
+        hover: Color::hex(t.hover),
+        pressed: Color::hex(t.pressed),
+        success: Color::hex(t.success),
+        warning: Color::hex(t.warning),
+        danger: Color::hex(t.danger),
+        scrollbar: Color::hex(t.scrollbar),
+        scrollbar_active: Color::hex(t.scrollbar_active),
+    }
 }
 
 /// The frame clock for transitions (monotonic seconds, any origin). Set it

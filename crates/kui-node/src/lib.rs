@@ -649,6 +649,10 @@ impl Ctx {
                 .as_object()
                 .ok_or_else(|| err("setEnv(): system must be an object"))?;
             system_env(&mut self.core.env.system, s)?;
+            // The palette is a function of what was just written, and a
+            // test that sets the appearance and reads `theme()` back
+            // without drawing should see the answer, not the last frame's.
+            self.core.refresh_theme();
         }
         let Some(w) = o.get("window") else {
             return Ok(());
@@ -1144,6 +1148,119 @@ fn env_json(core: &mut Core) -> Json {
     o.insert("system".into(), Json::Object(sy));
     o.insert("viewport".into(), Json::Object(vp));
     o.insert("window".into(), Json::Object(w));
+    Json::Object(o)
+}
+
+/// One colour out of JSON, the way any prop takes one: a `0xRRGGBBAA`
+/// number or a `"#rgb"` / `"#rrggbb"` / `"#rrggbbaa"` string.
+fn color_from_json(v: &Json) -> Result<Color> {
+    match v {
+        Json::String(s) => color_hex_str(s).map_err(err),
+        _ => v
+            .as_u64()
+            .and_then(|n| u32::try_from(n).ok())
+            .map(Color::hex)
+            .ok_or_else(|| err("expected 0xRRGGBBAA or \"#rrggbb\"")),
+    }
+}
+
+/// `setTheme`'s object: a base named by `appearance` (the OS's when
+/// absent), then role overrides on top of it. `accent` is applied through
+/// `Theme::with_accent`, so naming it also moves its hover, its pressed
+/// shade, the label on it, the ring and the selection tint — and any of
+/// those named explicitly wins over what the accent derived.
+fn theme_from_json(core: &Core, v: &Json) -> Result<kui_core::Theme> {
+    let Json::Object(o) = v else {
+        return Err(err("setTheme(): expected an object of role overrides"));
+    };
+    let appearance = match o.get("appearance") {
+        None | Some(Json::Null) => core.env.system.appearance,
+        Some(Json::String(s)) => Appearance::parse(s).ok_or_else(|| {
+            err(format!(
+                "setTheme(): appearance is one of {:?}",
+                kui_core::schema::APPEARANCES
+            ))
+        })?,
+        Some(_) => return Err(err("setTheme(): appearance must be a string")),
+    };
+    let mut t = kui_core::Theme::derive(appearance, core.env.system.accent);
+    if let Some(v) = o.get("accent") {
+        t = t.with_accent(color_from_json(v).map_err(|e| err(format!("setTheme(): accent: {e}")))?);
+    }
+    if let Some(v) = o.get("disabledOpacity") {
+        t.disabled_opacity = v
+            .as_f64()
+            .ok_or_else(|| err("setTheme(): disabledOpacity must be a number"))?
+            as f32;
+    }
+    // Every other key is a role, and an unknown one is a typo worth
+    // saying out loud rather than a value silently doing nothing.
+    for (key, v) in o {
+        if matches!(key.as_str(), "appearance" | "accent" | "disabledOpacity") {
+            continue;
+        }
+        let Some(role) = kui_core::schema::THEME_ROLES.iter().find(|r| r.node == key) else {
+            return Err(err(format!("setTheme(): no such role {key:?}")));
+        };
+        let c = color_from_json(v).map_err(|e| err(format!("setTheme(): {key}: {e}")))?;
+        set_role(&mut t, role.name, c);
+    }
+    Ok(t)
+}
+
+/// Writes one role by name. The other half of `ThemeRole::get`, kept here
+/// rather than on `Theme` because reading a palette is every binding's
+/// business and writing one is a host's.
+fn set_role(t: &mut kui_core::Theme, name: &str, c: Color) {
+    match name {
+        "bg" => t.bg = c,
+        "surface" => t.surface = c,
+        "raised" => t.raised = c,
+        "sunken" => t.sunken = c,
+        "border" => t.border = c,
+        "border_strong" => t.border_strong = c,
+        "fg" => t.fg = c,
+        "muted" => t.muted = c,
+        "faint" => t.faint = c,
+        "accent" => t.accent = c,
+        "accent_hover" => t.accent_hover = c,
+        "accent_pressed" => t.accent_pressed = c,
+        "on_accent" => t.on_accent = c,
+        "accent_soft" => t.accent_soft = c,
+        "selection" => t.selection = c,
+        "focus_ring" => t.focus_ring = c,
+        "hover" => t.hover = c,
+        "pressed" => t.pressed = c,
+        "success" => t.success = c,
+        "warning" => t.warning = c,
+        "danger" => t.danger = c,
+        "scrollbar" => t.scrollbar = c,
+        "scrollbar_active" => t.scrollbar_active = c,
+        // Unreachable: the caller found `name` in THEME_ROLES, and
+        // `theme_roles_restate_the_theme_exactly` pins that list to the
+        // struct — a role added there fails this arm's own test first.
+        other => debug_assert!(false, "no setter for theme role {other}"),
+    }
+}
+
+/// The palette the core derived from `env.system`, as roles rather than
+/// values (ADR 0019): one `0xRRGGBBAA` number per row of
+/// `schema::THEME_ROLES`, under that row's camelCase spelling, plus
+/// `appearance` (which base it came from) and `disabledOpacity` (a
+/// multiplier, not a colour). Numbers rather than `#hex` strings because
+/// that is what a `color` prop already takes, so `bg={theme.surface}` is
+/// the whole of using one.
+fn theme_json(core: &Core) -> Json {
+    let t = *core.theme();
+    let mut o = JsonMap::new();
+    for role in kui_core::schema::THEME_ROLES {
+        o.insert(role.node.into(), Json::from((role.get)(&t).to_hex()));
+    }
+    o.insert("appearance".into(), Json::from(t.appearance.name()));
+    o.insert(
+        "disabledOpacity".into(),
+        Json::from(t.disabled_opacity as f64),
+    );
     Json::Object(o)
 }
 
@@ -1810,6 +1927,53 @@ macro_rules! core_methods {
             #[napi(ts_return_type = "Env")]
             pub fn env(&mut self) -> Json {
                 env_json(self.$core())
+            }
+
+            /// The palette this window paints with: one `0xRRGGBBAA` number
+            /// per role, derived from `env().system` unless this app said
+            /// otherwise (`setAccent` / `setTheme`). A view reads it and
+            /// paints with it — `<box bg={theme.surface}>` — and the stock
+            /// widgets already do, so a JSX app that only uses `<button>`,
+            /// the context menu and `<text>` follows the OS's light and
+            /// dark without reading this at all.
+            #[napi(ts_return_type = "Theme")]
+            pub fn theme(&mut self) -> Json {
+                theme_json(self.$core())
+            }
+
+            /// Keep following the OS's light/dark, but paint this accent
+            /// instead of the OS's — an app with a brand colour. A
+            /// `0xRRGGBBAA` number or a `"#hex"` string, as any colour
+            /// prop takes; `null` goes back to the OS's own.
+            #[napi(ts_args_type = "accent: number | string | null")]
+            pub fn set_accent(&mut self, accent: Json) -> Result<()> {
+                match accent {
+                    Json::Null => self.$core().derive_theme(),
+                    v => {
+                        let c =
+                            color_from_json(&v).map_err(|e| err(format!("setAccent(): {e}")))?;
+                        self.$core().set_accent(c);
+                    }
+                }
+                Ok(())
+            }
+
+            /// Pin the palette: an object of role overrides on top of the
+            /// base named by `appearance` (`"light"`, `"dark"`, or absent
+            /// for the OS's), each value a colour the way a prop takes
+            /// one. Follows nothing afterwards — `setAccent(null)` is how
+            /// an app goes back to following the OS.
+            ///
+            /// `{ appearance: "dark", accent: "#d2691e" }` is a dark app
+            /// with one colour changed; every role the object does not
+            /// name keeps the base's, and the ones derived from the accent
+            /// (its hover, its pressed shade, the label on it, the ring,
+            /// the selection tint) are recomputed unless named too.
+            #[napi(ts_args_type = "theme: ThemeOverrides")]
+            pub fn set_theme(&mut self, theme: Json) -> Result<()> {
+                let t = theme_from_json(self.$core(), &theme)?;
+                self.$core().set_theme(t);
+                Ok(())
             }
 
             // -- Queries ---------------------------------------------------

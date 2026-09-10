@@ -2,7 +2,7 @@
 // Runs headlessly - builds real frames, clicks real buttons via hit-testing,
 // types into a real editor - and prints what happened.
 import { createApp, decodeQuads, Ctx } from '@qxuken/kui';
-import type { App, CoreMsg, KeyMsg, UiEvent } from '@qxuken/kui';
+import type { App, CoreMsg, KeyMsg, Theme, UiEvent } from '@qxuken/kui';
 
 type Model = {
   count: number;
@@ -51,14 +51,14 @@ function update(model: Model, msg: Msg, ev: UiEvent<Msg>): Model | undefined {
 
 /** The context menu: a modal float at the press. `modal` scopes Tab and
  *  the pointer to it and brings the `dismiss` above back. */
-function Menu({ at }: { at: { x: number; y: number } }) {
+function Menu({ at, t }: { at: { x: number; y: number }; t: Theme }) {
   return (
     <box
       float={{ anchor: 'viewport', at: ['start', 'start'], self: ['start', 'start'],
                dx: at.x, dy: at.y, fit: true }}
       modal={{ kind: 'menu' }}
       label="Actions"
-      pad={4} gap={4} width={120} bg="#22242c" radius={6}
+      pad={4} gap={4} width={120} bg={t.raised} radius={6}
     >
       <button onClick={{ kind: 'add', by: 10 }}>+10</button>
       <button onClick={{ kind: 'reset' }} description="Back to zero">reset</button>
@@ -66,33 +66,40 @@ function Menu({ at }: { at: { x: number; y: number } }) {
   );
 }
 
-function Counter({ count }: { count: number }) {
+function Counter({ count, t }: { count: number; t: Theme }) {
   return (
     <box dir="row" gap={12} crossAlign="center">
       <button onClick={{ kind: 'add', by: 1 }} accent>+1</button>
       <button onClick={{ kind: 'add', by: -1 }}>-1</button>
       <button onClick={{ kind: 'reset' }} description="Back to zero">reset</button>
-      <text size={20} color="#e8e8f0">{`count = ${count}`}</text>
+      <text size={20} color={t.fg}>{`count = ${count}`}</text>
       {/* The count as a slider, for assistive technology: the range it
           declares is the range the value is held to, or the core warns
           (`slider-value-out-of-range`). Its payload is what a nudge
           carries back. */}
       <box key="tally" role="slider" label="count" valueNow={count} valueMin={0} valueMax={10}
-           onClick={{ kind: 'add', by: 1 }} width={100} height={8} bg="#2a2c3a" radius={4} />
+           onClick={{ kind: 'add', by: 1 }} width={100} height={8} bg={t.sunken} radius={4} />
     </box>
   );
 }
 
-const view = (model: Model) => (
-  <box pad={24} gap={16} bg="#14141c" width="grow" height="grow" onContextMenu={{ kind: 'menu' }}>
-    <text size={24} color="#ffffff"><span bold color="#7aa2ff">kui</span> × Node × JSX</text>
-    <Counter count={model.count} />
-    <edit key="note" label="note" initial="" size={16} width={280} padX={10} padY={6}
-          bg="#1f2030" color="#e8e8f0" radius={4} autofocus />
-    <text size={14} color="#99a0b0">{`note: ${model.note || '(empty)'}`}</text>
-    {model.menu ? <Menu at={model.menu} /> : null}
-  </box>
-);
+// Every colour below is a theme role (ADR 0019), so this window follows
+// the OS's light/dark and its accent without a branch: `ctx.theme()` is
+// the palette the core derived from `env.system`, as the `0xRRGGBBAA`
+// numbers a colour prop already takes.
+const view = (model: Model) => {
+  const t = app.ctx.theme();
+  return (
+    <box pad={24} gap={16} bg={t.bg} width="grow" height="grow" onContextMenu={{ kind: 'menu' }}>
+      <text size={24} color={t.fg}><span bold color={t.accent}>kui</span> × Node × JSX</text>
+      <Counter count={model.count} t={t} />
+      <edit key="note" label="note" initial="" size={16} width={280} padX={10} padY={6}
+            bg={t.sunken} color={t.fg} radius={4} autofocus />
+      <text size={14} color={t.muted}>{`note: ${model.note || '(empty)'}`}</text>
+      {model.menu ? <Menu at={model.menu} t={t} /> : null}
+    </box>
+  );
+};
 
 const app: App<Model, Msg> = createApp({ init, update, view }, { width: 640, height: 480 });
 
@@ -160,7 +167,7 @@ const img = modal.addImage(8, 8, pixels);
 modal.frame(240, 240, 1, (
   <box pad={12} gap={8} keyFocus onKey={{ tool: 'brush' }} keyUp>
     <image src={img} width={32} radius={4} label="swatch" />
-    <text><span bold>bold</span> and <span italic color="#ff8888">red italic</span></text>
+    <text><span bold>bold</span> and <span italic color={modal.theme().danger}>red italic</span></text>
   </box>
 ));
 const imageQuads = decodeQuads(modal.quads()).filter((q) => q.kind === 3).length;

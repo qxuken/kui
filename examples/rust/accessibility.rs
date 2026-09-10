@@ -57,7 +57,7 @@
 
 use kui::widgets;
 use kui::{
-    Align, App, Color, EditOptions, FloatConfig, Key, Live, NodeSpec, Role, Sizing, TextStyle, Ui,
+    Align, App, EditOptions, FloatConfig, Key, Live, NodeSpec, Role, Sizing, TextStyle, Ui,
     UiEvent, Value,
 };
 
@@ -136,11 +136,12 @@ impl A11y {
 
 impl App for A11y {
     fn view(&mut self, ui: &mut Ui<'_>) {
-        let text = TextStyle::new(14.0).color(Color::rgb8(0xd6, 0xd8, 0xe0));
+        let t = ui.theme();
+        let text = TextStyle::new(14.0).color(t.fg);
         // No pad or gap on the root: the scrolling column below owns
         // both, so the scrollbar rides the window edge rather than
         // floating inside a margin.
-        ui.configure_root(NodeSpec::column().fill().bg(Color::rgb8(0x11, 0x13, 0x1a)));
+        ui.configure_root(NodeSpec::column().fill().bg(t.bg));
         widgets::titlebar(ui, "kui — accessibility");
 
         // Everything but the chrome scrolls. Every control below is in one
@@ -161,7 +162,7 @@ impl App for A11y {
                 // A heading: named by the text inside it, which is then read as
                 // part of it rather than as a label of its own.
                 ui.with(NodeSpec::row().role(Role::Heading), |ui| {
-                    ui.text("Controls", TextStyle::new(20.0).color(Color::WHITE))
+                    ui.text("Controls", TextStyle::new(20.0).color(t.fg))
                 });
 
                 // A tab list: `selected` is which one the view shows, and every
@@ -177,19 +178,15 @@ impl App for A11y {
                                 .selected(on)
                                 .on_click(Value::Int(i as i64))
                                 .pad_xy(10.0, 6.0)
-                                .bg(if on {
-                                    Color::rgb8(0x3b, 0x5b, 0xd4)
-                                } else {
-                                    Color::rgb8(0x1d, 0x20, 0x2b)
-                                })
+                                .bg(if on { t.accent } else { t.surface })
                                 .radius(6.0),
                             |ui| {
                                 ui.text(
                                     name,
                                     TextStyle::new(13.0).color(if on {
-                                        Color::WHITE
+                                        t.on_accent
                                     } else {
-                                        Color::rgb8(0x8a, 0x8f, 0xa3)
+                                        t.muted
                                     }),
                                 )
                             },
@@ -212,16 +209,13 @@ impl App for A11y {
                             } else {
                                 "▸ Advanced"
                             },
-                            TextStyle::new(widgets::BUTTON_TEXT).color(Color::WHITE),
+                            TextStyle::new(widgets::BUTTON_TEXT).color(t.on_accent),
                         )
                     },
                 );
                 if self.advanced {
                     ui.with(
-                        NodeSpec::row()
-                            .pad_xy(10.0, 6.0)
-                            .bg(Color::rgb8(0x0e, 0x10, 0x16))
-                            .radius(6.0),
+                        NodeSpec::row().pad_xy(10.0, 6.0).bg(t.sunken).radius(6.0),
                         |ui| ui.text("Nothing here yet.", text),
                     );
                 }
@@ -233,7 +227,7 @@ impl App for A11y {
                 // laid out horizontally. Nothing declares a Tab stop or an arrow
                 // key — the group holds focusable radios, and that is a composite.
                 ui.with(NodeSpec::row().role(Role::Heading), |ui| {
-                    ui.text("Theme", TextStyle::new(15.0).color(Color::WHITE))
+                    ui.text("Theme", TextStyle::new(15.0).color(t.fg))
                 });
                 ui.with_keyed(
                     "theme",
@@ -251,19 +245,15 @@ impl App for A11y {
                                     .checked(on)
                                     .on_click(Value::str(format!("theme{i}")))
                                     .pad_xy(10.0, 6.0)
-                                    .bg(if on {
-                                        Color::rgb8(0x3b, 0x5b, 0xd4)
-                                    } else {
-                                        Color::rgb8(0x1d, 0x20, 0x2b)
-                                    })
+                                    .bg(if on { t.accent } else { t.surface })
                                     .radius(6.0),
                                 |ui| {
                                     ui.text(
                                         name,
                                         TextStyle::new(13.0).color(if on {
-                                            Color::WHITE
+                                            t.on_accent
                                         } else {
-                                            Color::rgb8(0x8a, 0x8f, 0xa3)
+                                            t.muted
                                         }),
                                     )
                                 },
@@ -292,19 +282,15 @@ impl App for A11y {
                                     .on_click(Value::str(format!("row{i}")))
                                     .width(Sizing::Fixed(200.0))
                                     .pad_xy(10.0, 5.0)
-                                    .bg(if on {
-                                        Color::rgb8(0x2f, 0x54, 0xc4)
-                                    } else {
-                                        Color::rgb8(0x1d, 0x20, 0x2b)
-                                    })
+                                    .bg(if on { t.accent_pressed } else { t.surface })
                                     .radius(4.0),
                                 |ui| {
                                     ui.text(
                                         name,
                                         TextStyle::new(13.0).color(if on {
-                                            Color::WHITE
+                                            t.on_accent
                                         } else {
-                                            Color::rgb8(0x8a, 0x8f, 0xa3)
+                                            t.muted
                                         }),
                                     )
                                 },
@@ -325,7 +311,7 @@ impl App for A11y {
                     |ui| {
                         ui.text(
                             &format!("count {}", self.presses),
-                            TextStyle::new(widgets::BUTTON_TEXT).color(Color::WHITE),
+                            TextStyle::new(widgets::BUTTON_TEXT).color(t.on_accent),
                         )
                     },
                 );
@@ -336,7 +322,7 @@ impl App for A11y {
                     widgets::button_spec()
                         .on_click(Value::str("save"))
                         .label("Save"),
-                    |ui| ui.text("⌘", TextStyle::new(15.0).color(Color::WHITE)),
+                    |ui| ui.text("⌘", TextStyle::new(15.0).color(t.on_accent)),
                 );
 
                 // A one-off announcement: nothing on screen says "Copied", and
@@ -360,7 +346,7 @@ impl App for A11y {
                     NodeSpec::row()
                         .live(Live::Polite)
                         .pad_xy(10.0, 5.0)
-                        .bg(Color::rgb8(0x0e, 0x10, 0x16))
+                        .bg(t.sunken)
                         .radius(4.0),
                     |ui| {
                         ui.text(
@@ -416,8 +402,8 @@ impl App for A11y {
                                 .width(Sizing::Fixed(180.0))
                                 .pad(4.0)
                                 .gap(2.0)
-                                .bg(Color::rgb8(0x1d, 0x20, 0x2b))
-                                .border(1.0, Color::rgb8(0x3b, 0x5b, 0xd4))
+                                .bg(t.surface)
+                                .border(1.0, t.accent)
                                 .radius(6.0),
                             |ui| {
                                 for name in ["Rename", "Duplicate", "Archive"] {
@@ -429,14 +415,8 @@ impl App for A11y {
                                             .width(Sizing::Grow(1.0))
                                             .pad_xy(8.0, 5.0)
                                             .radius(4.0)
-                                            .focus_bg(Color::rgb8(0x3b, 0x5b, 0xd4)),
-                                        |ui| {
-                                            ui.text(
-                                                name,
-                                                TextStyle::new(13.0)
-                                                    .color(Color::rgb8(0xd6, 0xd8, 0xe0)),
-                                            )
-                                        },
+                                            .focus_bg(t.accent_soft),
+                                        |ui| ui.text(name, TextStyle::new(13.0).color(t.fg)),
                                     );
                                 }
                             },
@@ -452,13 +432,13 @@ impl App for A11y {
                         .checked(self.muted)
                         .on_click(Value::str("mute"))
                         .pad_xy(10.0, 6.0)
-                        .bg(Color::rgb8(0x1d, 0x20, 0x2b))
+                        .bg(t.surface)
                         .radius(6.0)
                         .label("Mute"),
                     |ui| {
                         ui.text(
                             if self.muted { "on" } else { "off" },
-                            TextStyle::new(13.0).color(Color::rgb8(0x8a, 0x8f, 0xa3)),
+                            TextStyle::new(13.0).color(t.muted),
                         )
                     },
                 );
@@ -476,14 +456,14 @@ impl App for A11y {
                         .on_drag(Value::str("volume"))
                         .width(Sizing::Fixed(200.0))
                         .height(Sizing::Fixed(16.0))
-                        .bg(Color::rgb8(0x1d, 0x20, 0x2b))
+                        .bg(t.surface)
                         .radius(8.0),
                     |ui| {
                         ui.with(
                             NodeSpec::row()
                                 .width(Sizing::Percent(self.volume / 10.0))
                                 .height(Sizing::Grow(1.0))
-                                .bg(Color::rgb8(0x3b, 0x5b, 0xd4))
+                                .bg(t.accent)
                                 .radius(8.0),
                             |_| {},
                         );
@@ -510,14 +490,14 @@ impl App for A11y {
                         .on_drag(Value::str("focus"))
                         .width(Sizing::Fixed(200.0))
                         .height(Sizing::Fixed(16.0))
-                        .bg(Color::rgb8(0x1d, 0x20, 0x2b))
+                        .bg(t.surface)
                         .radius(8.0),
                     |ui| {
                         ui.with(
                             NodeSpec::row()
                                 .width(Sizing::Percent((self.focus_min - 5.0) / 55.0))
                                 .height(Sizing::Grow(1.0))
-                                .bg(Color::rgb8(0x3b, 0x5b, 0xd4))
+                                .bg(t.accent)
                                 .radius(8.0),
                             |_| {},
                         );
@@ -528,7 +508,7 @@ impl App for A11y {
                 // and selection come out of the edit store, and a screen reader's
                 // selection and text requests are applied for you.
                 ui.with(NodeSpec::row().role(Role::Heading), |ui| {
-                    ui.text("Built-in editor", TextStyle::new(15.0).color(Color::WHITE))
+                    ui.text("Built-in editor", TextStyle::new(15.0).color(t.fg))
                 });
                 self.edit = ui.text_edit(
                     "doc",
@@ -542,7 +522,7 @@ impl App for A11y {
                         .width(Sizing::Fixed(280.0))
                         .height(Sizing::Fixed(56.0))
                         .pad(8.0)
-                        .bg(Color::rgb8(0x0e, 0x10, 0x16))
+                        .bg(t.sunken)
                         .radius(6.0)
                         .clip()
                         .label("Notes"),
@@ -552,7 +532,7 @@ impl App for A11y {
                 // row is a line of its text, and the caret rides along as a byte
                 // offset. Text requests come back as `access` events.
                 ui.with(NodeSpec::row().role(Role::Heading), |ui| {
-                    ui.text("App-owned editor", TextStyle::new(15.0).color(Color::WHITE))
+                    ui.text("App-owned editor", TextStyle::new(15.0).color(t.fg))
                 });
                 let (lines, caret) = (&self.lines, self.caret);
                 sink = ui.with_keyed(
@@ -560,7 +540,7 @@ impl App for A11y {
                     NodeSpec::column()
                         .width(Sizing::Fixed(280.0))
                         .pad(8.0)
-                        .bg(Color::rgb8(0x0e, 0x10, 0x16))
+                        .bg(t.sunken)
                         .radius(6.0)
                         .on_key(Value::str("code"))
                         .role(Role::MultilineTextInput)
@@ -572,9 +552,7 @@ impl App for A11y {
                                 for i in 0..lines.len() {
                                     ui.text(
                                         &format!("{}", i + 1),
-                                        TextStyle::new(12.0)
-                                            .mono()
-                                            .color(Color::rgb8(0x50, 0x55, 0x66)),
+                                        TextStyle::new(12.0).mono().color(t.faint),
                                     );
                                 }
                             });
@@ -587,7 +565,9 @@ impl App for A11y {
                                     ui.with_keyed(&format!("l{i}"), row, |ui| {
                                         ui.text(
                                             line,
-                                            TextStyle::new(13.0).mono().color(text.color),
+                                            TextStyle::new(13.0)
+                                                .mono()
+                                                .color(text.color_or_default()),
                                         );
                                     });
                                 }
@@ -619,14 +599,11 @@ impl App for A11y {
                     .width(Sizing::Fixed(260.0))
                     .gap(10.0)
                     .pad(14.0)
-                    .bg(Color::rgb8(0x1d, 0x20, 0x2b))
-                    .border(1.0, Color::rgb8(0x3b, 0x5b, 0xd4))
+                    .bg(t.surface)
+                    .border(1.0, t.accent)
                     .radius(8.0),
                 |ui| {
-                    ui.text(
-                        "Delete this note?",
-                        TextStyle::new(15.0).color(Color::WHITE),
-                    );
+                    ui.text("Delete this note?", TextStyle::new(15.0).color(t.fg));
                     ui.with(NodeSpec::row().gap(8.0), |ui| {
                         // Where focus lands when the dialog opens, said
                         // rather than inherited from declaration order: a
@@ -644,7 +621,7 @@ impl App for A11y {
                             |ui| {
                                 ui.text(
                                     "Cancel",
-                                    TextStyle::new(widgets::BUTTON_TEXT).color(Color::WHITE),
+                                    TextStyle::new(widgets::BUTTON_TEXT).color(t.on_accent),
                                 )
                             },
                         );

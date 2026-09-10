@@ -36,17 +36,6 @@ use kui::{
 };
 
 const LIFETIME: Duration = Duration::from_millis(3200);
-fn card() -> Color {
-    Color::rgb8(0x1b, 0x1e, 0x28)
-}
-
-fn edge() -> Color {
-    Color::rgb8(0x2f, 0x33, 0x42)
-}
-
-fn ink() -> Color {
-    Color::rgb8(0x8a, 0x8f, 0xa3)
-}
 
 /// The same color with nothing behind it — what a toast fades up from.
 fn clear(c: Color) -> Color {
@@ -74,6 +63,8 @@ impl Toasts {
     /// The stack: a viewport float pinned to the bottom-right corner, with
     /// the toasts themselves in ordinary flow inside it.
     fn stack(&self, ui: &mut Ui<'_>) {
+        // `t` is taken by the toast in the loop below; the palette is `th`.
+        let th = ui.theme();
         ui.with(
             NodeSpec::column()
                 .float(
@@ -92,18 +83,18 @@ impl Toasts {
                             .width(Sizing::Fixed(268.0))
                             .pad(14.0)
                             .gap(3.0)
-                            .bg(card())
+                            .bg(th.raised)
                             .radius(10.0)
-                            .border(1.0, edge())
+                            .border(1.0, th.border_strong)
                             .transition(260.0)
                             // In from beyond the right edge, fading up. The
                             // transparent part happens off screen, so what
                             // you see is a card that is already there.
-                            .enter(Enter::from(340.0, 0.0).bg(clear(card())))
+                            .enter(Enter::from(340.0, 0.0).bg(clear(th.raised)))
                             // And out the same way. The app has already
                             // forgotten this toast by the time this runs:
                             // what leaves is the core's copy of it.
-                            .exit(Enter::from(340.0, 0.0).bg(clear(card())))
+                            .exit(Enter::from(340.0, 0.0).bg(clear(th.raised)))
                             // And afterwards it keeps following layout, so
                             // the stack closes up when one of them goes.
                             .slide(),
@@ -111,7 +102,7 @@ impl Toasts {
                             ui.text(&t.text, TextStyle::new(13.0));
                             ui.text(
                                 "clears itself in a moment",
-                                TextStyle::new(11.0).color(ink()),
+                                TextStyle::new(11.0).color(th.muted),
                             );
                         },
                     );
@@ -128,6 +119,7 @@ impl Toasts {
         if !self.panel {
             return;
         }
+        let t = ui.theme();
         ui.with_keyed(
             "panel",
             NodeSpec::column()
@@ -140,8 +132,8 @@ impl Toasts {
                 .height(Sizing::Percent(1.0))
                 .pad(20.0)
                 .gap(12.0)
-                .bg(Color::rgb8(0x14, 0x16, 0x1e))
-                .border(1.0, edge())
+                .bg(t.surface)
+                .border(1.0, t.border)
                 .transition(420.0)
                 .easing(Easing::Spring)
                 .enter(Enter::from(-240.0, 0.0))
@@ -156,7 +148,7 @@ impl Toasts {
                      same way. Close and open it again and it enters again: \
                      the ghost is discarded the moment the key comes back, \
                      so the two never overlap.",
-                    TextStyle::new(12.0).color(ink()),
+                    TextStyle::new(12.0).color(t.muted),
                 );
             },
         );
@@ -165,6 +157,7 @@ impl Toasts {
 
 impl App for Toasts {
     fn view(&mut self, ui: &mut Ui<'_>) {
+        let t = ui.theme();
         let now = Instant::now();
         self.toasts
             .retain(|t| now.duration_since(t.born) < LIFETIME);
@@ -185,7 +178,7 @@ impl App for Toasts {
              into nowhere — a node the view stops declaring is gone before \
              the frame ends — so `exit` has the core keep a picture of it \
              and play that out instead.",
-            TextStyle::new(13.0).color(ink()),
+            TextStyle::new(13.0).color(t.muted),
         );
         ui.with(NodeSpec::row().gap(12.0).cross_align(Align::Center), |ui| {
             widgets::button(ui, "notify", Value::map([("kind", "notify".into())]));

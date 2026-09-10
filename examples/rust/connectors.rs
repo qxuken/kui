@@ -10,7 +10,7 @@
 //!
 //! Run: cargo run -p kui --example connectors
 
-use kui::{App, Color, FloatConfig, NodeSpec, Sizing, Stroke, TextStyle, Ui, Vec2};
+use kui::{App, FloatConfig, NodeSpec, Sizing, Stroke, TextStyle, Ui, Vec2};
 
 struct Card {
     label: &'static str,
@@ -89,16 +89,19 @@ impl Map {
 
 impl App for Map {
     fn view(&mut self, ui: &mut Ui<'_>) {
-        ui.configure_root(NodeSpec::column().fill().pad(24.0).gap(12.0));
+        let t = ui.theme();
+        ui.configure_root(NodeSpec::column().fill().bg(t.bg).pad(24.0).gap(12.0));
         kui::widgets::titlebar(ui, "kui — connectors");
         ui.text(
             "Links are `line` nodes: a Bézier sampled into a polyline, in the canvas's box space. Hover a card.",
-            TextStyle::new(12.0).color(Color::rgb8(0x8a, 0x8f, 0xa3)),
+            TextStyle::new(12.0).color(t.muted),
         );
         let canvas = NodeSpec::column()
             .width(Sizing::Grow(1.0))
             .height(Sizing::Grow(1.0))
-            .bg(Color::rgb8(0x14, 0x16, 0x1e))
+            // The canvas is a panel on the page, not the page.
+            .bg(t.surface)
+            .border(1.0, t.border)
             .radius(12.0);
         ui.with_keyed("canvas", canvas, |ui| {
             // Which cards are hovered, read before anything is declared so
@@ -113,11 +116,9 @@ impl App for Map {
                 let from = Vec2::new(self.cards[p].at.x + W, self.cards[p].at.y + H / 2.0);
                 let to = Vec2::new(self.cards[i].at.x, self.cards[i].at.y + H / 2.0);
                 let lit = hovered[i] || hovered[p];
-                let color = if lit {
-                    Color::rgb8(0x7f, 0x9c, 0xf5)
-                } else {
-                    Color::rgb8(0x3a, 0x3f, 0x52)
-                };
+                // A lit link is the accent; a resting one is the strong
+                // border, which is what every other hairline on the page is.
+                let color = if lit { t.focus_ring } else { t.border_strong };
                 link(from, to, &mut self.points);
                 ui.polyline_keyed(
                     &format!("link{i}"),
@@ -135,13 +136,20 @@ impl App for Map {
                         .height(Sizing::Fixed(H))
                         .pad_xy(12.0, 0.0)
                         .cross_align(kui::Align::Center)
-                        .bg(Color::rgb8(0x24, 0x27, 0x33))
-                        .hover_bg(Color::rgb8(0x30, 0x34, 0x4a))
+                        .bg(t.raised)
+                        // An opaque step toward the accent rather than the
+                        // translucent `accent_soft`: a `hover_bg` replaces
+                        // the background, it does not composite over it.
+                        .hover_bg(t.raised.mix(t.accent, 0.18))
+                        // The border is what makes the card a card on the
+                        // light base, where `raised` and the canvas it
+                        // floats over are the same white (ADR 0019).
+                        .border(1.0, t.border)
                         .radius(8.0)
                         .transition(160.0)
                         .hoverable(),
                     |ui| {
-                        ui.text(card.label, TextStyle::new(13.0));
+                        ui.text(card.label, TextStyle::new(13.0).color(t.fg));
                     },
                 );
             }

@@ -40,6 +40,7 @@ use crate::spec::{NodeSpec, Sizing, TextStyle};
 use crate::stats::FrameStats;
 use crate::text::TextHit;
 use crate::text::{Span, TextMetrics, TextSystem};
+use crate::theme::{Theme, ThemeSource};
 use crate::tree::{NIL, NodeContent, OriginId, Tree};
 use crate::ui::Ui;
 use crate::value::Value;
@@ -100,6 +101,14 @@ pub struct Core {
     pub stats: FrameStats,
     /// Host facts pushed by the frame driver (refresh rate, focus).
     pub env: Env,
+    /// Where this window's palette comes from; see [`crate::theme`].
+    /// `Derived` unless the app said otherwise, so an app that never
+    /// mentions themes still follows the OS.
+    theme_source: ThemeSource,
+    /// `theme_source` resolved against `env.system`, re-resolved at the
+    /// start of every frame. Read by the stock widgets, by the core's own
+    /// chrome (ring, scrollbar, selection) and by any view that asks.
+    theme: Theme,
     /// Window title declared this frame (immediate-mode: cleared each
     /// `begin_frame`; the driver diffs and applies). None = leave as-is.
     window_title: Option<String>,
@@ -382,6 +391,76 @@ fn step(at: usize, delta: isize, len: usize, wrap: bool) -> Option<usize> {
 }
 
 impl Core {
+    /// This window's palette, as of this frame
+    /// (`docs/adr/0019-a-theme-derived-from-appearance-and-accent.md`).
+    /// Resolved from [`Core::theme_source`] and `env.system` at the start
+    /// of every frame, so it is already right by the time a view runs.
+    ///
+    /// Frame-stable on purpose: every widget in one frame paints from the
+    /// same palette, whatever the driver does to `env` while the view
+    /// runs. A host that writes `env.system` *directly* and wants the new
+    /// answer before its next frame calls [`Core::refresh_theme`]; every
+    /// env setter a binding exposes already does.
+    pub fn theme(&self) -> &Theme {
+        &self.theme
+    }
+
+    /// Re-resolve the palette from `env.system` now, rather than at the
+    /// start of the next frame. What an env setter calls after writing.
+    pub fn refresh_theme(&mut self) {
+        self.theme = self.theme_source.resolve(&self.env.system);
+    }
+
+    /// Whether anyone actually *chose* the accent — the OS reported one,
+    /// or the app set or pinned one — as opposed to the palette falling
+    /// back to kui's own blue.
+    ///
+    /// The question the `accent` row asks before it repaints anything:
+    /// that row has always meant "the accent colour where there is one,
+    /// the `bg` I declared where there is not", so a view can name its
+    /// own fallback and a host that knows nothing changes nothing. The
+    /// theme widened *where* the accent comes from without widening
+    /// *whether* there is one.
+    pub fn has_accent(&self) -> bool {
+        match self.theme_source {
+            ThemeSource::Derived => self.env.system.accent.is_some(),
+            ThemeSource::DerivedWithAccent(_) | ThemeSource::Pinned(_) => true,
+        }
+    }
+
+    /// Where the palette comes from. [`ThemeSource::Derived`] by default.
+    pub fn theme_source(&self) -> ThemeSource {
+        self.theme_source
+    }
+
+    /// Change where the palette comes from. Takes effect on the next
+    /// frame, and immediately for anything reading [`Core::theme`] after
+    /// this call, so a host may set it before its first frame or in a
+    /// handler and get the same answer either way.
+    pub fn set_theme_source(&mut self, source: ThemeSource) {
+        self.theme_source = source;
+        self.refresh_theme();
+    }
+
+    /// Pin a palette: this exact [`Theme`], following neither the OS's
+    /// appearance nor its accent. Shorthand for
+    /// [`ThemeSource::Pinned`].
+    pub fn set_theme(&mut self, theme: Theme) {
+        self.set_theme_source(ThemeSource::Pinned(theme));
+    }
+
+    /// Keep following the OS's light/dark, but paint this accent instead
+    /// of the OS's. Shorthand for [`ThemeSource::DerivedWithAccent`], and
+    /// what an app with a brand colour wants.
+    pub fn set_accent(&mut self, accent: Color) {
+        self.set_theme_source(ThemeSource::DerivedWithAccent(accent));
+    }
+
+    /// Go back to following the OS for both — the default.
+    pub fn derive_theme(&mut self) {
+        self.set_theme_source(ThemeSource::Derived);
+    }
+
     /// A core with a session of its own — one window, nothing shared.
     pub fn new() -> Self {
         Self::new_in(&Session::new())
@@ -409,6 +488,8 @@ impl Core {
             depart: DepartStore::default(),
             stats: FrameStats::default(),
             env: Env::default(),
+            theme_source: ThemeSource::Derived,
+            theme: Theme::default(),
             window_title: None,
             focus: None,
             focus_visible: false,
@@ -829,6 +910,11 @@ impl Core {
             });
         }
         self.system_seen = self.env.system;
+        // The palette is a function of what the OS said and what the app
+        // asked for, so it is recomputed rather than invalidated: a
+        // couple of dozen float ops once a frame, against a cache that
+        // would have to be poked from every writer of `env.system`.
+        self.refresh_theme();
         self.framed = true;
         self.frame_no += 1;
         if self.frame_no.is_multiple_of(240) {

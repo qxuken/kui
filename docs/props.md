@@ -272,3 +272,56 @@ meaning.
 | `scale` | `Core::scale()`, the frame's | `viewport.scale` | — | `kui_frame_begin(scale)` | Device pixels per logical px. Lua has no reading: a script sees logical px only. |
 | `focus` | `Core::focus()`, the frame's | — | `focus` | `kui_focused()` | The focused *node*'s key, as events carry it (absent for none). A value the host wrote before the view ran, so it lags a same-frame verb by one frame; `env.is_focused(key)` is the live query. Node spells it as the call `focused()` on the context, and C as `kui_focused`, rather than a key on `env`. |
 | `focus_visible` | `Core::focus_visible()`, the frame's | — | `focus_visible` | `kui_focus_visible()` | Whether focus shows — the keyboard or assistive technology put it where it is, or acted on it there; a click alone does not. Node: `focusVisible()` on the context. |
+
+## Theme
+
+The colours a view paints with, as roles rather than values, derived from
+the two `system` facts above: the appearance picks the base and the accent
+recolours it ([ADR 0019](adr/0019-a-theme-derived-from-appearance-and-accent.md)).
+This is the half `system.appearance` was missing — the core still acts on
+nothing, but a view that wants to act now has something to act *with*, and
+the stock widgets do, so a button, a context menu, a tooltip, a field, a
+scrollbar, a focus ring and a `<text>` with no `color` all follow the OS
+without an app writing a line.
+
+Read it as `ui.theme()` in Rust, `env.theme` in Lua, `ctx.theme()` /
+`win.theme()` in Node and `kui_theme` in C — one `0xRRGGBBAA` number per
+role under the name below, so a role goes straight into a `bg` or `color`
+prop. Three sources, and the default follows the OS for both facts: pin an
+accent of the app's own and keep the OS's light/dark
+(`Core::set_accent`, `ctx.setAccent`, `kui_theme_set_accent`), or pin a
+whole palette that follows nothing (`Core::set_theme`, `ctx.setTheme`,
+`kui_theme_set`). A Lua script reads but does not set: it is a guest in
+someone else's frame, and the palette is the host's.
+
+An unknown appearance takes the **dark** base — not a guess about the
+user, but exactly what kui painted before this table existed, which is
+what makes following the OS safe as the default rather than an opt-in.
+Beside the roles ride `appearance` (which base this came from) and
+`disabled_opacity` / `disabledOpacity` (a multiplier, not a colour).
+
+| role | Node | dark | light | description |
+|---|---|---|---|---|
+| `bg` | `bg` | `#14161eff` | `#f6f7f9ff` | The window behind everything. |
+| `surface` | `surface` | `#1a1d27ff` | `#ffffffff` | A card, panel or list sitting on `bg`. |
+| `raised` | `raised` | `#242733ff` | `#ffffffff` | A surface floating above content: a menu, a tooltip, a popover. Under a light theme it is no lighter than `surface` — a float on a white page separates by its border. |
+| `sunken` | `sunken` | `#0e1016ff` | `#eceef2ff` | A well cut into a surface: a text field, a code block, a track. |
+| `border` | `border` | `#2a2d3aff` | `#dde1e8ff` | The hairline between two surfaces. |
+| `border_strong` | `borderStrong` | `#3a3e4eff` | `#b4bbc8ff` | A border that has to be seen — a float's edge, a focused field. |
+| `fg` | `fg` | `#e8e8eaff` | `#1b1e27ff` | Body text, and what a `color`-less text run resolves to. |
+| `muted` | `muted` | `#8a8fa3ff` | `#5b6171ff` | Secondary text: captions, hints, an accelerator beside a label. |
+| `faint` | `faint` | `#6e758aff` | `#767d8dff` | Text that is barely there: a placeholder, a gutter number. |
+| `accent` | `accent` | `#3b5bd4ff` | `#3b5bd4ff` | The one saturated colour: the OS accent where the host reports one, the app's where it pinned one, kui's blue otherwise. The `accent` prop paints from this. |
+| `accent_hover` | `accentHover` | `#476ce0ff` | `#4d6ad8ff` | `accent` under a pointer. |
+| `accent_pressed` | `accentPressed` | `#2f54c4ff` | `#3552bfff` | `accent` under a press. |
+| `on_accent` | `onAccent` | `#ffffffff` | `#ffffffff` | Black or white — whichever a reader can see on `accent`. What a button's label is. |
+| `accent_soft` | `accentSoft` | `#3b5bd44d` | `#3b5bd429` | The accent as a translucent wash rather than a fill: a selected menu row, a chosen tab, a highlighted list item. Keeps `fg` readable over it on both bases, which a fill does not. |
+| `selection` | `selection` | `#3b5bd466` | `#3b5bd447` | What a text selection is painted under, in an editor and over a `selectable` scope alike. |
+| `focus_ring` | `focusRing` | `#7f9cf5ff` | `#3b5bd4ff` | The default keyboard focus ring (ADR 0002). |
+| `hover` | `hover` | `#ffffff14` | `#0000000f` | A translucent wash over a hovered neutral control. An overlay, not a fill, so one value works on every surface. |
+| `pressed` | `pressed` | `#ffffff24` | `#0000001f` | The same over a pressed one, and the firmer of the two on both bases. |
+| `success` | `success` | `#73d98cff` | `#1a7a3eff` | A good outcome. Readable on `surface` on both bases, which is why it is not one colour for both. |
+| `warning` | `warning` | `#d9a14dff` | `#8a5c08ff` | Something that wants attention. |
+| `danger` | `danger` | `#e85d5dff` | `#c02b2bff` | A destructive action or a failure. The close button's hover, too. |
+| `scrollbar` | `scrollbar` | `#ffffff2e` | `#00000038` | The scrollbar thumb at rest. |
+| `scrollbar_active` | `scrollbarActive` | `#ffffff66` | `#0000006b` | The thumb while hovered or dragged. |

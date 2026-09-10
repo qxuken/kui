@@ -490,14 +490,17 @@ pub struct NodeSpec {
     /// node is declared (`animate`). What a `fragment` reading `time`
     /// needs; opt-in, because it takes the loop off input-driven.
     pub animate: bool,
-    /// Paint this node's background in the OS accent colour when the host
-    /// reported one (`env.system.accent`), keeping the declared `bg` when
-    /// it did not. The one prop whose paint depends on the environment, and
-    /// opt-in for exactly that reason: the same tree is a different colour
-    /// on two machines, which is the point here and a surprise anywhere
-    /// else. The stock button reads it further — see `widgets::button_with`,
-    /// which derives its hover and pressed shades and a readable label
-    /// colour from the same accent.
+    /// Paint this node's background in the theme's accent
+    /// (`docs/adr/0019-a-theme-derived-from-appearance-and-accent.md`) —
+    /// the OS's where the host reported one, the app's where it pinned
+    /// one, kui's blue otherwise — keeping the declared `bg` only as what
+    /// a binding that never sets this row still gets.
+    ///
+    /// A question, not a colour: a view says *that* this node is the
+    /// accented one and the palette says which colour that is. The stock
+    /// button takes it further and repaints its hover, its pressed shade
+    /// and its label from the same accent, so a light accent still reads
+    /// (`crate::widgets::button_with`).
     pub accent: bool,
     /// Window-chrome role (drag handle / window button). A chrome node's
     /// interactions become `WindowCommand`s for the frame driver instead of
@@ -1627,7 +1630,11 @@ impl FontFeatures {
 pub struct TextStyle {
     pub size: f32,
     pub line_height: f32,
-    pub color: Color,
+    /// `None` is "the theme's foreground" — which is what the schema has
+    /// always said this row means ("default foreground when omitted") and,
+    /// since ADR 0019, what it does. Filled in as the text enters the
+    /// tree, so nothing downstream of that ever sees a `None`.
+    pub color: Option<Color>,
     pub family: FontFamily,
     pub wrap: TextWrap,
     /// At most this many lines are laid out; 0 = unlimited.
@@ -1656,7 +1663,7 @@ impl TextStyle {
         Self {
             size,
             line_height: (size * 1.35).round(),
-            color: Color::rgb8(0xe8, 0xe8, 0xea),
+            color: None,
             family: FontFamily::Sans,
             wrap: TextWrap::Word,
             max_lines: 0,
@@ -1726,8 +1733,24 @@ impl TextStyle {
     }
 
     pub fn color(mut self, c: Color) -> Self {
-        self.color = c;
+        self.color = Some(c);
         self
+    }
+
+    /// This style with `fg` where it named no colour of its own: what the
+    /// core stamps on as the text enters the tree, so the shaping caches,
+    /// the display list and every binding see a resolved colour and never
+    /// the question mark (ADR 0019).
+    pub fn or_fg(mut self, fg: Color) -> Self {
+        self.color = Some(self.color.unwrap_or(fg));
+        self
+    }
+
+    /// The colour this style paints in, falling back to what kui painted
+    /// before there were themes. For the handful of places that hold a
+    /// style the core never stamped.
+    pub fn color_or_default(&self) -> Color {
+        self.color.unwrap_or(crate::theme::Theme::DEFAULT_FG)
     }
 }
 

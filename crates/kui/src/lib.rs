@@ -2587,6 +2587,21 @@ impl<A: App> Shell<A> {
         }
 
         let t_render = std::time::Instant::now();
+        // The ground under the frame is a theme role like any other
+        // (ADR 0019). Without this a view that paints no root background
+        // — every example that lets the window show through — would show
+        // the renderer's own near-black on a light desktop, which is the
+        // one surface a `bg` prop cannot reach.
+        // Written straight through: the renderer asks for a non-sRGB
+        // surface, so a clear component is the byte it lands as, the same
+        // way a quad's colour is.
+        let ground = pane.core.theme().bg;
+        pane.renderer.clear_color = kui_wgpu::wgpu::Color {
+            r: ground.r as f64,
+            g: ground.g as f64,
+            b: ground.b as f64,
+            a: ground.a as f64,
+        };
         let (dl, atlas) = pane.core.output();
         let mut wait_ms = 0.0;
         match pane.renderer.render(dl, atlas) {

@@ -90,6 +90,7 @@ impl App for Combo {
             ui.window("menu", WindowConfig::popup(self.field, MENU_W, MENU_H));
         }
 
+        let t = ui.theme();
         ui.with(
             NodeSpec::column()
                 .pad(16.0)
@@ -100,9 +101,9 @@ impl App for Combo {
                 // cleared it to.
                 .width(Sizing::Grow(1.0))
                 .height(Sizing::Grow(1.0))
-                .bg(Color::hex(0x14161eff)),
+                .bg(t.bg),
             |ui| {
-                ui.text("Alloy", TextStyle::new(12.0).color(Color::hex(0x8b90a0ff)));
+                ui.text("Alloy", TextStyle::new(12.0).color(t.muted));
                 // The field. `on_layout` is the only thing here that has
                 // anything to do with the popup: it reports this rect, and
                 // the rect is the anchor.
@@ -112,8 +113,8 @@ impl App for Combo {
                         .pad_xy(10.0, 6.0)
                         .gap(8.0)
                         .width(Sizing::Fixed(MENU_W))
-                        .bg(Color::hex(0x202030ff))
-                        .hover_bg(Color::hex(0x272839ff))
+                        .bg(t.sunken)
+                        .hover_bg(t.sunken.mix(t.accent, 0.10))
                         .radius(5.0)
                         .focusable()
                         .label("Alloy")
@@ -132,9 +133,9 @@ impl App for Combo {
                         // pressed. The `cursor` row exists for exactly this.
                         .cursor(CursorShape::Pointer),
                     |ui| {
-                        ui.text(ITEMS[self.chosen], TextStyle::new(14.0).color(Color::WHITE));
+                        ui.text(ITEMS[self.chosen], TextStyle::new(14.0).color(t.fg));
                         ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
-                        ui.text("v", TextStyle::new(11.0).color(Color::hex(0x8b90a0ff)));
+                        ui.text("v", TextStyle::new(11.0).color(t.muted));
                     },
                 );
                 ui.text(
@@ -143,7 +144,7 @@ impl App for Combo {
                     } else {
                         "Press and drag into the list, or Tab here and press Space"
                     },
-                    TextStyle::new(11.0).color(Color::hex(0x6c7180ff)),
+                    TextStyle::new(11.0).color(t.faint),
                 );
             },
         );
@@ -204,6 +205,7 @@ impl Combo {
     /// The popup window's own frame: a plain list, drawn by the same
     /// `view`. Nothing about it says "popup" — the declaration did that.
     fn list(&mut self, ui: &mut Ui<'_>) {
+        let t = ui.theme();
         let root = ui.with(
             NodeSpec::column()
                 .pad(6.0)
@@ -212,8 +214,10 @@ impl Combo {
                 // the height with.
                 .width(Sizing::Grow(1.0))
                 .height(Sizing::Grow(1.0))
-                .bg(Color::hex(0x1b1d27ff))
-                .border(1.0, Color::hex(0x2f3342ff))
+                // A popup window is a float that got its own surface, so
+                // it takes the role a menu or a tooltip takes.
+                .bg(t.raised)
+                .border(1.0, t.border_strong)
                 // The list owns its keyboard: `on_key` makes it a sink, so
                 // the arrows walk the list rather than moving a focus ring
                 // the user cannot see — the visible ring is over in the
@@ -228,12 +232,17 @@ impl Combo {
                             .pad_xy(10.0, 4.0)
                             .height(Sizing::Fixed(ROW_H))
                             .width(Sizing::Grow(1.0))
+                            // The cursor row is a wash, not a fill, for
+                            // the reason the stock menu's is: the label's
+                            // colour is chosen before the core resolves a
+                            // `hover_bg`, so a fill would be unreadable on
+                            // a light base for a frame.
                             .bg(if on {
-                                Color::hex(0x3b5bd4ff)
+                                t.accent_soft
                             } else {
-                                Color::hex(0x00000000)
+                                Color::TRANSPARENT
                             })
-                            .hover_bg(Color::hex(0x2a2d3aff))
+                            .hover_bg(t.raised.mix(t.accent, 0.10))
                             .radius(4.0)
                             .selected(i == self.chosen)
                             .on_click(Value::map([
@@ -243,11 +252,7 @@ impl Combo {
                         |ui| {
                             ui.text(
                                 item,
-                                TextStyle::new(13.0).color(if on {
-                                    Color::WHITE
-                                } else {
-                                    Color::hex(0xc7cbd6ff)
-                                }),
+                                TextStyle::new(13.0).color(if on { t.fg } else { t.muted }),
                             );
                         },
                     );

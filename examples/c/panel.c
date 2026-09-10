@@ -108,14 +108,18 @@ void kui_ext_view(void *user, KuiCtx *ui) {
     p->toggle_kind[n] = 0;
 
     /* Opened where the host declared the slot - here, as a child of its
-     * root row, to the right of its own column. */
+     * root row, to the right of its own column. Its colours come off the
+     * *host's* theme (ADR 0019): a plugin is a guest in someone else's
+     * frame, and reading the palette is how it looks like it belongs. */
+    KuiTheme t = KUI_THEME_INIT;
+    kui_theme(ui, &t);
     KuiSpec panel = {
         .dir = KUI_COLUMN,
         .width = {KUI_FIXED, 300}, .height = {KUI_GROW, 1},
         .pad_l = 16, .pad_r = 16, .pad_t = 16, .pad_b = 16,
         .gap = 10,
-        .bg = 0x14161eff, .radius = 10,
-        .border_w = 1, .border_color = 0x2a2d3aff,
+        .bg = t.surface, .radius = 10,
+        .border_w = 1, .border_color = t.border,
     };
     kui_open(ui, &panel, NULL);
     {
@@ -126,9 +130,9 @@ void kui_ext_view(void *user, KuiCtx *ui) {
         snprintf(left, sizeof left, " · %d left", remaining);
         KuiSpan head[] = {
             {title, 0, 0},
-            {KUI_STR(left), 0x8a8fa3ff, 0},
+            {KUI_STR(left), t.muted, 0},
         };
-        KuiTextStyle muted = {.size = 12, .color = 0x8a8fa3ff};
+        KuiTextStyle muted = {.size = 12, .color = t.muted};
         kui_rich_text(ui, head, 2, &muted);
 
         /* Declared before the list, so the filter it holds is readable in
@@ -168,7 +172,7 @@ void kui_ext_view(void *user, KuiCtx *ui) {
                          p->todos[i]);
                 KuiTextStyle style = {
                     .size = 14,
-                    .color = p->done[i] ? 0x5c6174ff : 0xe8e8eaff,
+                    .color = p->done[i] ? t.faint : t.fg,
                 };
                 kui_text(ui, KUI_STR(line), &style);
             }

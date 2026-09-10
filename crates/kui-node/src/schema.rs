@@ -396,5 +396,44 @@ pub fn protocol_tables() -> Vec<(&'static str, Json)> {
                     .collect(),
             ),
         ),
+        // The palette, the same way: one row per colour role, with the
+        // Node spelling beside the name every other binding uses. Not an
+        // env field — it is derived from `system` rather than reported by
+        // the host (ADR 0019) — so it is its own table, and the docs
+        // generator gives it its own section.
+        (
+            "theme",
+            Json::Array(
+                kui_core::schema::THEME_ROLES
+                    .iter()
+                    .map(|r| {
+                        Json::Object(
+                            [
+                                ("name", Json::String(r.name.into())),
+                                ("node", Json::String(r.node.into())),
+                                ("doc", Json::String(r.doc.into())),
+                                (
+                                    "dark",
+                                    Json::String(format!(
+                                        "#{:08x}",
+                                        (r.get)(&kui_core::Theme::dark()).to_hex()
+                                    )),
+                                ),
+                                (
+                                    "light",
+                                    Json::String(format!(
+                                        "#{:08x}",
+                                        (r.get)(&kui_core::Theme::light()).to_hex()
+                                    )),
+                                ),
+                            ]
+                            .into_iter()
+                            .map(|(k, v)| (k.to_string(), v))
+                            .collect(),
+                        )
+                    })
+                    .collect(),
+            ),
+        ),
     ]
 }

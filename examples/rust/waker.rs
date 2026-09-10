@@ -12,7 +12,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use kui::{App, Color, NodeSpec, Sizing, TextStyle, Ui, Waker, WindowCommand};
+use kui::{App, NodeSpec, Sizing, TextStyle, Ui, Waker, WindowCommand};
 
 struct Feed {
     lines: Arc<Mutex<Vec<String>>>,
@@ -42,6 +42,7 @@ impl App for Feed {
     }
 
     fn view(&mut self, ui: &mut Ui<'_>) {
+        let t = ui.theme();
         self.frames += 1;
         let lines = self.lines.lock().unwrap().clone();
         if let Some(limit) = self.limit
@@ -54,31 +55,18 @@ impl App for Feed {
             );
             ui.window_command(WindowCommand::Close(ui.env().window.id));
         }
-        ui.configure_root(
-            NodeSpec::column()
-                .fill()
-                .pad(16.0)
-                .gap(4.0)
-                .bg(Color::rgb8(0x0f, 0x11, 0x17)),
-        );
+        ui.configure_root(NodeSpec::column().fill().pad(16.0).gap(4.0).bg(t.bg));
         ui.text(
             &format!(
                 "{} lines, {} frames — no input, a thread woke the loop",
                 lines.len(),
                 self.frames
             ),
-            TextStyle::new(13.0)
-                .mono()
-                .color(Color::rgb8(0x8a, 0x8f, 0xa3)),
+            TextStyle::new(13.0).mono().color(t.muted),
         );
         for line in lines.iter().rev().take(10).rev() {
             ui.with(NodeSpec::row().height(Sizing::Fixed(18.0)), |ui| {
-                ui.text(
-                    line,
-                    TextStyle::new(13.0)
-                        .mono()
-                        .color(Color::rgb8(0xd6, 0xd8, 0xe0)),
-                )
+                ui.text(line, TextStyle::new(13.0).mono().color(t.fg))
             });
         }
     }

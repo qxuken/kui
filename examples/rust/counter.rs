@@ -16,8 +16,7 @@
 use kui::audio::{blip, wav_pcm16};
 use kui::widgets;
 use kui::{
-    Align, App, AudioSpec, Color, FloatConfig, NodeSpec, Sizing, SoundId, TextStyle, Ui, UiEvent,
-    Value,
+    Align, App, AudioSpec, FloatConfig, NodeSpec, Sizing, SoundId, TextStyle, Ui, UiEvent, Value,
 };
 
 #[derive(Default)]
@@ -50,20 +49,24 @@ struct Sounds {
 /// that caused it. Hover and any tween would go the same way. The key is
 /// what the button *is*; the label is a view of the state it toggles.
 fn sound_button(ui: &mut Ui<'_>, name: &str, label: &str, payload: Value, sound: SoundId) {
+    // `on_accent` rather than white: the label has to be readable on
+    // whatever the button's background is, and under a light OS accent
+    // that is black (`kui::Theme`).
+    let fg = ui.theme().on_accent;
     ui.with_keyed(
         name,
         widgets::button_spec().on_click(payload).click_sound(sound),
-        |ui| {
-            ui.text(
-                label,
-                TextStyle::new(widgets::BUTTON_TEXT).color(Color::WHITE),
-            )
-        },
+        |ui| ui.text(label, TextStyle::new(widgets::BUTTON_TEXT).color(fg)),
     );
 }
 
 impl App for Counter {
     fn view(&mut self, ui: &mut Ui<'_>) {
+        // Every colour below is a token, not a literal: the card, the
+        // caption, the badge and the menu all come off the palette kui
+        // derived from what the OS said (`kui::Theme`), so this window
+        // follows a light appearance and an accent without one branch.
+        let t = ui.theme();
         let sounds = *self.sounds.get_or_insert_with(|| {
             let core = ui.core();
             // A 200-sample period at 44.1kHz loops seamlessly.
@@ -96,15 +99,12 @@ impl App for Counter {
             NodeSpec::column()
                 .pad(32.0)
                 .gap(20.0)
-                .bg(Color::rgb8(0x16, 0x18, 0x20))
+                .bg(t.surface)
                 .radius(12.0)
-                .border(1.0, Color::rgb8(0x2a, 0x2d, 0x3a))
+                .border(1.0, t.border)
                 .cross_align(Align::Center),
             |ui| {
-                ui.text(
-                    "kui counter",
-                    TextStyle::new(14.0).color(Color::rgb8(0x8a, 0x8f, 0xa3)),
-                );
+                ui.text("kui counter", TextStyle::new(14.0).color(t.muted));
                 ui.text(&self.count.to_string(), TextStyle::new(56.0));
                 ui.with(NodeSpec::row().gap(12.0).cross_align(Align::Center), |ui| {
                     sound_button(
@@ -135,7 +135,7 @@ impl App for Counter {
                         "help",
                         NodeSpec::column()
                             .pad_xy(9.0, 4.0)
-                            .bg(Color::rgb8(0x24, 0x27, 0x33))
+                            .bg(t.raised)
                             .radius(10.0)
                             .hoverable()
                             .hover_sound(sounds.tick),
@@ -157,7 +157,7 @@ impl App for Counter {
             |ui| {
                 ui.text(
                     "clicks are data: view() never sees a callback",
-                    TextStyle::new(13.0).color(Color::rgb8(0x5c, 0x61, 0x74)),
+                    TextStyle::new(13.0).color(t.faint),
                 );
             },
         );
@@ -186,8 +186,8 @@ impl App for Counter {
                     .width(Sizing::Fixed(120.0))
                     .pad(4.0)
                     .gap(4.0)
-                    .bg(Color::rgb8(0x22, 0x24, 0x2c))
-                    .border(1.0, Color::rgb8(0x3b, 0x5b, 0xd4))
+                    .bg(t.raised)
+                    .border(1.0, t.border_strong)
                     .radius(6.0),
                 |ui| {
                     sound_button(

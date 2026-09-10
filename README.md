@@ -1144,6 +1144,25 @@ takes the tighter of the two, and a corner an ancestor's straight edge crosses
 goes square) and hit-testing, which stays rectangular — a click in the corner
 of a rounded scroll container still reaches the row under it.
 
+**Theme.** The colours a view paints with are named roles, derived from the
+two facts the OS reports — the appearance picks a base, the accent recolours
+the family that comes off it
+([ADR 0019](docs/adr/0019-a-theme-derived-from-appearance-and-accent.md), and
+the Theme table in [docs/props.md](docs/props.md) for every role and its value
+on both bases). The core still acts on the appearance exactly as much as it
+did before, which is not at all; the **widgets** do, so a button, a context
+menu, a tooltip, a field, the scrollbars, the focus ring and a `<text>` with no
+`color` all follow the OS without an app writing a line about it. `ui.theme()`
+in Rust, `env.theme` in Lua, `ctx.theme()` in Node, `kui_theme` in C — the
+same twenty-three roles, generated from one table. Three sources, defaulting
+to the OS for both facts: follow it, follow its light/dark with an accent of
+your own (`set_accent`), or pin a palette that follows nothing (`set_theme`).
+An unknown appearance takes the dark base, which is exactly what kui painted
+before there were themes — so a host that reports nothing sees no change. What
+this is **not** is a cascade: there is no inherited colour, no `var()`, no
+numbered ramp. A role is read off `ui` and put in a `bg`, and an app's own
+non-role colours — a highlighter's keywords, a chart's series — stay the app's.
+
 **Layout.** Wrapping is rows only, for the pass-order reason above: a
 **column** that outgrows its height is still one line, so it shrinks its `Fit`
 children toward their `min` (or overflows) rather than moving anything into a
@@ -1198,8 +1217,11 @@ roles rather than declared
 ([ADR 0007](docs/adr/0007-composite-keyboard-patterns.md)): a tab list, radio
 group, menu or picker list is one Tab stop with arrows, Home/End and type-ahead
 inside it, and `initialFocus` says which control a modal opens on. The focus
-ring's colour is still a constant in the core, not a prop and not a theme
-value (ADR 0002). ADR 0007's own follow-ups are the rest: grid navigation
+ring is still not a prop — no node styles the default one, and the geometry is
+fixed — but its *colour* is now `theme.focus_ring`
+([ADR 0019](docs/adr/0019-a-theme-derived-from-appearance-and-accent.md)
+revisiting ADR 0002): a pale blue ring reads on a dark page and is invisible
+on a light one, and a focus indicator nobody can see is not one. ADR 0007's own follow-ups are the rest: grid navigation
 (Left/Right into a row, Up/Down between rows, which wants a `grid` / `row` /
 `cell` vocabulary), submenus, a `radio-without-group` warning, and
 multi-select.

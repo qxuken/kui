@@ -132,6 +132,10 @@ name = "gallery"
 path = "../../examples/rust/gallery.rs"
 
 [[example]]
+name = "theme"
+path = "../../examples/rust/theme.rs"
+
+[[example]]
 name = "modal_editor"
 path = "../../examples/rust/modal_editor.rs"
 

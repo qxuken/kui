@@ -56,7 +56,7 @@ fn an_underline_and_a_strikethrough_are_lines_where_the_face_puts_them() {
             "spans the glyphs: {l:?} vs {lo}..{hi}"
         );
         assert!(l.3 >= 1.0);
-        assert_eq!(l.4, mono().color);
+        assert_eq!(l.4, mono().color_or_default());
     }
     // The underline is below the strikethrough, and both within the line.
     assert!(

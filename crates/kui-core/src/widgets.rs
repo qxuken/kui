@@ -10,6 +10,7 @@ use crate::key::Key;
 use crate::menu::{MenuBar, MenuItem, MenuRole};
 use crate::spec::{Align, FloatConfig, NodeSpec, Sizing, TextStyle};
 use crate::stats::{FrameSample, STATS_CAPACITY};
+use crate::theme::Theme;
 use crate::ui::Ui;
 use crate::value::Value;
 use crate::window::WindowButton;
@@ -39,6 +40,10 @@ pub fn latency_hud_at(ui: &mut Ui<'_>, x: Align, y: Align) {
         Align::Center => 0.0,
         Align::End => -12.0,
     };
+    // Translucent over whatever the app is painting, so the panel takes
+    // the theme's backmost surface and its strong border at the alphas
+    // the HUD has always used.
+    let t = ui.theme();
     ui.with(
         NodeSpec::column()
             .float(
@@ -48,9 +53,9 @@ pub fn latency_hud_at(ui: &mut Ui<'_>, x: Align, y: Align) {
                     .offset(dx, dy),
             )
             .pad(10.0)
-            .bg(Color::rgba8(0x10, 0x12, 0x1a, 0xb4))
+            .bg(t.bg.with_alpha(0.71))
             .radius(8.0)
-            .border(1.0, Color::rgba8(0x3a, 0x3e, 0x4e, 0x80)),
+            .border(1.0, t.border_strong.with_alpha(0.5)),
         latency_graph,
     );
 }
@@ -99,6 +104,7 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
         a: 1.0,
     };
 
+    let theme = ui.theme();
     let budget_ms = ui.env().frame_budget_ms(); // full graph height
     let stats = &ui.core().stats;
     let samples: Vec<FrameSample> = stats.iter().collect();
@@ -122,19 +128,15 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
                 label.push_str(&format!(" · +{avg_wait:.2}ms vsync"));
             }
             ui.with(NodeSpec::row().gap(6.0).cross_align(Align::Center), |ui| {
-                ui.text(
-                    &label,
-                    TextStyle::new(10.0).color(Color::rgb8(0x8a, 0x8f, 0xa3)),
-                );
+                ui.text(&label, TextStyle::new(10.0).color(theme.muted));
                 // "?" badge: hover for the color legend. Also the dynamic-float
                 // showcase — in the default bottom-right HUD the tooltip has no
                 // room below or to the right, so it flips above and slides left.
                 let badge = ui.child_key("kui:latency-legend");
-                let badge_bg = if ui.is_hovered(badge) {
-                    Color::rgba8(0x8a, 0x8f, 0xa3, 0x50)
-                } else {
-                    Color::rgba8(0x8a, 0x8f, 0xa3, 0x28)
-                };
+                let badge_bg =
+                    theme
+                        .muted
+                        .with_alpha(if ui.is_hovered(badge) { 0.31 } else { 0.16 });
                 ui.with_keyed(
                     "kui:latency-legend",
                     NodeSpec::column()
@@ -145,10 +147,7 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
                         .radius(6.5)
                         .hoverable(),
                     |ui| {
-                        ui.text(
-                            "?",
-                            TextStyle::new(9.0).color(Color::rgb8(0xc9, 0xcc, 0xd6)),
-                        );
+                        ui.text("?", TextStyle::new(9.0).color(theme.fg));
                         if ui.is_hovered(badge) {
                             tooltip_with(ui, |ui| {
                                 ui.with(NodeSpec::column().gap(5.0), |ui| {
@@ -171,11 +170,7 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
                                                         .radius(2.0),
                                                     |_| {},
                                                 );
-                                                ui.text(
-                                                    name,
-                                                    TextStyle::new(11.0)
-                                                        .color(Color::rgb8(0xc9, 0xcc, 0xd6)),
-                                                );
+                                                ui.text(name, TextStyle::new(11.0).color(theme.fg));
                                             },
                                         );
                                     }
@@ -192,7 +187,7 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
                     .gap(1.0)
                     .main_align(Align::End)
                     .cross_align(Align::End)
-                    .bg(Color::rgba8(0x0c, 0x0e, 0x14, 0x99))
+                    .bg(theme.sunken.with_alpha(0.6))
                     .radius(3.0)
                     .clip(),
                 |ui| {
@@ -259,13 +254,14 @@ pub fn tooltip(ui: &mut Ui<'_>, text: &str) {
 
 /// [`tooltip`] chrome around arbitrary content (legends, shortcut hints, …).
 pub fn tooltip_with(ui: &mut Ui<'_>, content: impl FnOnce(&mut Ui<'_>)) {
+    let t = ui.theme();
     ui.with(
         NodeSpec::column()
             .float(crate::spec::FloatConfig::below().fit())
             .pad_xy(10.0, 6.0)
-            .bg(Color::rgb8(0x24, 0x27, 0x33))
+            .bg(t.raised)
             .radius(6.0)
-            .border(1.0, Color::rgb8(0x3a, 0x3e, 0x4e)),
+            .border(1.0, t.border_strong),
         content,
     );
 }
@@ -281,10 +277,11 @@ pub fn label(ui: &mut Ui<'_>, text: &str) {
 /// announce; use `ui.text_edit` with `NodeSpec::label` when they differ.
 pub fn text_input(ui: &mut Ui<'_>, label: &str, initial: &str) -> Key {
     let key = ui.child_key(label);
+    let t = ui.theme();
     let border = if ui.is_focused(key) {
-        Color::rgb8(0x3b, 0x5b, 0xd4)
+        t.accent
     } else {
-        Color::rgb8(0x2a, 0x2d, 0x3a)
+        t.border
     };
     ui.text_edit(
         label,
@@ -296,7 +293,7 @@ pub fn text_input(ui: &mut Ui<'_>, label: &str, initial: &str) -> Key {
         NodeSpec::column()
             .width(Sizing::Grow(1.0))
             .pad_xy(10.0, 8.0)
-            .bg(Color::rgb8(0x0e, 0x10, 0x16))
+            .bg(t.sunken)
             .radius(6.0)
             .border(1.0, border)
             .clip()
@@ -326,11 +323,9 @@ pub fn titlebar(ui: &mut Ui<'_>, title: &str) {
     let focused = ui.env().focused;
     let title = title.to_string();
     titlebar_with(ui, move |ui| {
-        let color = if focused {
-            Color::rgb8(0xc9, 0xcc, 0xd6)
-        } else {
-            Color::rgb8(0x6e, 0x72, 0x80)
-        };
+        // A background window's title recedes; the OS does the same.
+        let t = ui.theme();
+        let color = if focused { t.fg } else { t.faint };
         ui.with(
             NodeSpec::row()
                 .width(Sizing::Grow(1.0))
@@ -389,12 +384,16 @@ fn window_button(ui: &mut Ui<'_>, button: WindowButton, maximized: bool) {
     };
     let key = ui.child_key(label);
     let (hovered, pressed) = (ui.is_hovered(key), ui.is_pressed(key));
-    let fg = Color::rgb8(0xc9, 0xcc, 0xd6);
+    let t = ui.theme();
+    let fg = t.fg;
+    // Close is the one button that keeps a colour of its own on both
+    // bases — it is the platform's signal, not the palette's — but it is
+    // the theme's danger rather than a second red.
     let (bg, fg) = match button {
-        WindowButton::Close if pressed => (Color::rgb8(0xc5, 0x0f, 0x1f), Color::WHITE),
-        WindowButton::Close if hovered => (Color::rgb8(0xe8, 0x11, 0x23), Color::WHITE),
-        _ if pressed => (Color::rgba(1.0, 1.0, 1.0, 0.06), fg),
-        _ if hovered => (Color::rgba(1.0, 1.0, 1.0, 0.10), fg),
+        WindowButton::Close if pressed => (t.danger.mix(Color::BLACK, 0.15), Color::WHITE),
+        WindowButton::Close if hovered => (t.danger, Color::WHITE),
+        _ if pressed => (t.pressed, fg),
+        _ if hovered => (t.hover, fg),
         _ => (Color::TRANSPARENT, fg),
     };
     ui.with_keyed(
@@ -539,20 +538,24 @@ pub fn button(ui: &mut Ui<'_>, text: &str, payload: impl Into<Value>) {
 /// This is what `<button>`, `button { }` and `kui_button_with` lower to,
 /// so a binding cannot end up with a button of its own.
 pub fn button_with(ui: &mut Ui<'_>, key: &str, text: &str, spec: NodeSpec, hint: Option<&str>) {
-    // `accent` asks for the whole palette, not just the background the
+    let theme = ui.theme();
+    // `accent` asks for the whole family, not just the background the
     // core would substitute for any node: a button whose hover and pressed
     // shades stayed the stock blue would flash blue under a yellow accent.
-    // A host that cannot tell what the accent is leaves the stock trio,
-    // which is what makes this safe to declare unconditionally.
-    let spec = match ui.env().system.accent.filter(|_| spec.accent) {
-        Some(accent) => {
-            let (bg, hover, pressed) = button_palette(accent);
-            spec.bg(bg).hover_bg(hover).pressed_bg(pressed)
-        }
-        None => spec,
+    //
+    // The family is the *theme's* (ADR 0019), which is the OS accent
+    // where the host reports one, the app's brand colour where it set
+    // one, and kui's blue otherwise — so this widened from "the OS
+    // accent, or nothing" without a single call site changing.
+    let spec = if spec.accent && ui.has_accent() {
+        spec.bg(theme.accent)
+            .hover_bg(theme.accent_hover)
+            .pressed_bg(theme.accent_pressed)
+    } else {
+        spec
     };
     let spec = if spec.disabled {
-        let o = spec.style.opacity * BUTTON_DISABLED_OPACITY;
+        let o = spec.style.opacity * theme.disabled_opacity;
         spec.opacity(o)
     } else {
         spec
@@ -614,10 +617,11 @@ pub struct MenuNodes {
 /// Each chosen row posts the item's `id`, or its label when it declares
 /// none. A `Separator` posts nothing and takes no focus.
 pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> MenuNodes {
+    let t = ui.theme();
     menu_panel(
         ui,
         MENU_KEY,
-        menu_panel_spec()
+        menu_panel_spec(&t)
             .float(
                 FloatConfig::viewport()
                     // Top-left of the menu at the top-left of the
@@ -640,14 +644,17 @@ pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> MenuNodes 
 /// scope it belongs to — a context menu floats at the pointer and declares
 /// its own `modal`; the menu bar's drops out of its title and lives inside
 /// the bar's (`docs/adr/0018-a-menu-bar-the-app-declares.md`, decision 5).
-pub fn menu_panel_spec() -> NodeSpec {
+/// Takes the palette rather than reading it, because a caller that has a
+/// `Ui` in one hand cannot lend it to this and to `menu_panel` in the
+/// same expression — `let t = ui.theme();` first is the idiom (ADR 0019).
+pub fn menu_panel_spec(t: &Theme) -> NodeSpec {
     NodeSpec::column()
         .role(Role::Menu)
         .width(Sizing::Fixed(MENU_WIDTH))
         .pad(4.0)
         .gap(1.0)
-        .bg(MENU_BG)
-        .border(1.0, MENU_BORDER)
+        .bg(t.raised)
+        .border(1.0, t.border_strong)
         .radius(6.0)
 }
 
@@ -655,7 +662,11 @@ pub fn menu_panel_spec() -> NodeSpec {
 /// reports the keys they took. The one place a menu's rows are drawn:
 /// both menus kui has are this function with a different container.
 pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuItem]) -> MenuNodes {
-    let accent = ui.env().system.accent.unwrap_or(MENU_ACCENT);
+    let t = ui.theme();
+    // A wash rather than a fill, so a row's label stays readable on both
+    // bases without the view guessing a frame ahead of the core — see
+    // `Theme::accent_soft`.
+    let accent = t.accent_soft;
     // A gutter for the checkmarks, and only where a row has one: a menu of
     // plain commands is not indented for a column nothing uses, and one
     // with a setting in it keeps every label on the same left edge whether
@@ -672,7 +683,7 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
                         NodeSpec::row()
                             .width(Sizing::Grow(1.0))
                             .height(Sizing::Fixed(1.0))
-                            .bg(MENU_BORDER)
+                            .bg(t.border)
                             // Not a row anything reads out: a divider is
                             // paint, and a screen reader hearing "separator"
                             // between every pair of items is noise.
@@ -708,23 +719,23 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
                     first = false;
                 }
             } else {
-                spec = spec.disabled(true).opacity(MENU_DISABLED_OPACITY);
+                spec = spec.disabled(true).opacity(t.disabled_opacity);
             }
             rows.push(ui.with_indexed(i as u64, spec, |ui| {
                 if gutter {
                     ui.with(NodeSpec::row().width(Sizing::Fixed(MENU_CHECK_W)), |ui| {
                         if item.checked {
-                            ui.text("\u{2713}", TextStyle::new(MENU_TEXT).color(MENU_FG));
+                            ui.text("\u{2713}", TextStyle::new(MENU_TEXT).color(t.fg));
                         }
                     });
                 }
-                ui.text(item.text(), TextStyle::new(MENU_TEXT).color(MENU_FG));
+                ui.text(item.text(), TextStyle::new(MENU_TEXT).color(t.fg));
                 if let Some(accel) = item.accel_text() {
                     // Pushed to the right edge by a grow spacer, so the label
                     // stays where the eye expects it whatever the
                     // accelerator is.
                     ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
-                    ui.text(accel, TextStyle::new(MENU_TEXT).color(MENU_ACCEL));
+                    ui.text(accel, TextStyle::new(MENU_TEXT).color(t.muted));
                 }
             }));
         }
@@ -788,7 +799,8 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
     if bar.menus.is_empty() {
         return;
     }
-    let accent = ui.env().system.accent.unwrap_or(MENU_ACCENT);
+    let t = ui.theme();
+    let accent = t.accent_soft;
     let mut open = ui.core().menu_bar_open();
     let mut titles = Vec::with_capacity(bar.menus.len());
     let mut rows = Vec::new();
@@ -798,7 +810,7 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
         .cross_align(Align::Center)
         .pad_xy(4.0, 0.0)
         .gap(2.0)
-        .bg(MENU_BAR_BG)
+        .bg(t.bg)
         .role(Role::Menu)
         .label("Menu bar");
     if open.is_some() {
@@ -851,10 +863,10 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
                         spec = spec.bg(accent);
                     }
                 } else {
-                    spec = spec.disabled(true).opacity(MENU_DISABLED_OPACITY);
+                    spec = spec.disabled(true).opacity(t.disabled_opacity);
                 }
                 titles.push(ui.with_keyed(MENU_BAR_TITLE_KEY, spec, |ui| {
-                    ui.text(m.label.as_str(), TextStyle::new(MENU_TEXT).color(MENU_FG));
+                    ui.text(m.label.as_str(), TextStyle::new(MENU_TEXT).color(t.fg));
                 }));
                 if is_open {
                     // Out of the title's bottom-left corner, and `fit` to
@@ -862,7 +874,7 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
                     let nodes = menu_panel(
                         ui,
                         MENU_BAR_PANEL_KEY,
-                        menu_panel_spec().label(m.label.as_str()).float(
+                        menu_panel_spec(&t).label(m.label.as_str()).float(
                             FloatConfig::parent()
                                 .at(Align::Start, Align::End)
                                 .self_at(Align::Start, Align::Start)
@@ -879,50 +891,8 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
     ui.core().set_menu_bar_nodes(root, titles, rows);
 }
 
-/// The bar's own ground: a shade darker than the menus that drop out of
-/// it, so the strip reads as chrome and not as content.
-const MENU_BAR_BG: Color = Color {
-    r: 0.086,
-    g: 0.094,
-    b: 0.129,
-    a: 1.0,
-};
-
 /// The checkmark gutter's width, logical px.
 const MENU_CHECK_W: f32 = 14.0;
-
-const MENU_BG: Color = Color {
-    r: 0.114,
-    g: 0.125,
-    b: 0.169,
-    a: 1.0,
-};
-const MENU_BORDER: Color = Color {
-    r: 0.231,
-    g: 0.247,
-    b: 0.294,
-    a: 1.0,
-};
-const MENU_FG: Color = Color {
-    r: 0.839,
-    g: 0.847,
-    b: 0.878,
-    a: 1.0,
-};
-const MENU_ACCEL: Color = Color {
-    r: 0.541,
-    g: 0.561,
-    b: 0.639,
-    a: 1.0,
-};
-const MENU_ACCENT: Color = Color {
-    r: 0.231,
-    g: 0.357,
-    b: 0.831,
-    a: 1.0,
-};
-/// A disabled row is dimmed the way a disabled button is.
-const MENU_DISABLED_OPACITY: f32 = BUTTON_DISABLED_OPACITY;
 
 // -- Virtual lists ----------------------------------------------------------
 // The core culls glyphs by viewport but builds every child a view declares,

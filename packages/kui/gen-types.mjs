@@ -39,7 +39,7 @@ try {
 }
 
 const native = createRequire(import.meta.url)('./native.cjs');
-const { prop, elements, events, resources, warnings, env } = native.protocol();
+const { prop, elements, events, resources, warnings, env, theme } = native.protocol();
 
 const TS_BY_KIND = {
   f32: 'number',
@@ -248,11 +248,43 @@ ${tableOf(
   ['field', 'from', 'Node', 'Lua', 'C', 'description'],
   env.map((f) => [`\`${f.name}\``, f.from, keysCell(f.node), keysCell(f.lua), f.c, f.doc]),
 )}
+
+## Theme
+
+The colours a view paints with, as roles rather than values, derived from
+the two \`system\` facts above: the appearance picks the base and the accent
+recolours it ([ADR 0019](adr/0019-a-theme-derived-from-appearance-and-accent.md)).
+This is the half \`system.appearance\` was missing — the core still acts on
+nothing, but a view that wants to act now has something to act *with*, and
+the stock widgets do, so a button, a context menu, a tooltip, a field, a
+scrollbar, a focus ring and a \`<text>\` with no \`color\` all follow the OS
+without an app writing a line.
+
+Read it as \`ui.theme()\` in Rust, \`env.theme\` in Lua, \`ctx.theme()\` /
+\`win.theme()\` in Node and \`kui_theme\` in C — one \`0xRRGGBBAA\` number per
+role under the name below, so a role goes straight into a \`bg\` or \`color\`
+prop. Three sources, and the default follows the OS for both facts: pin an
+accent of the app's own and keep the OS's light/dark
+(\`Core::set_accent\`, \`ctx.setAccent\`, \`kui_theme_set_accent\`), or pin a
+whole palette that follows nothing (\`Core::set_theme\`, \`ctx.setTheme\`,
+\`kui_theme_set\`). A Lua script reads but does not set: it is a guest in
+someone else's frame, and the palette is the host's.
+
+An unknown appearance takes the **dark** base — not a guess about the
+user, but exactly what kui painted before this table existed, which is
+what makes following the OS safe as the default rather than an opt-in.
+Beside the roles ride \`appearance\` (which base this came from) and
+\`disabled_opacity\` / \`disabledOpacity\` (a multiplier, not a colour).
+
+${tableOf(
+  ['role', 'Node', 'dark', 'light', 'description'],
+  theme.map((r) => [`\`${r.name}\``, `\`${r.node}\``, `\`${r.dark}\``, `\`${r.light}\``, r.doc]),
+)}
 `;
 
 writeFileSync(new URL('../../docs/props.md', import.meta.url), md);
 console.log(
-  `docs/props.md: ${spec.length + style.length} schema rows, ${custom.length} composites, ${elements.length} elements, ${events.length} events, ${warnings.length} warnings, ${env.length} env fields`,
+  `docs/props.md: ${spec.length + style.length} schema rows, ${custom.length} composites, ${elements.length} elements, ${events.length} events, ${warnings.length} warnings, ${env.length} env fields, ${theme.length} theme roles`,
 );
 
 // ------------------------------------------------------ the warning codes --

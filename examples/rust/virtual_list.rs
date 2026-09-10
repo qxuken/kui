@@ -31,7 +31,7 @@
 //!      cargo run -p kui --example virtual_list -- --headless
 
 use kui::{
-    Align, App, Color, Key, NodeSpec, Role, Sizing, TextStyle, TextWrap, Ui, UiEvent, Value,
+    Align, App, Color, Key, NodeSpec, Role, Sizing, TextStyle, TextWrap, Theme, Ui, UiEvent, Value,
     widgets,
 };
 
@@ -72,20 +72,25 @@ fn line_of(i: usize) -> String {
 
 const BODY: f32 = 13.0;
 
-fn ink() -> Color {
-    Color::rgb8(0x8a, 0x8a, 0x9a)
+/// A row's background: the accent where it is selected, and otherwise the
+/// two surfaces a striped list alternates between. Opaque rather than a
+/// translucent wash, because a `hover_bg` replaces a background instead of
+/// compositing over it.
+fn row_bg(t: &Theme, i: usize, selected: usize) -> Color {
+    if i == selected {
+        t.surface.mix(t.accent, 0.28)
+    } else if i.is_multiple_of(2) {
+        t.surface
+    } else {
+        t.sunken
+    }
 }
 
 /// One row. Whatever declares it, it has to come out exactly `ROW_H` tall:
 /// that is the stride the arithmetic above and below it assumes.
 fn row(ui: &mut Ui<'_>, i: usize, selected: usize) {
-    let bg = if i == selected {
-        Color::rgb8(0x2f, 0x4f, 0x7f)
-    } else if i.is_multiple_of(2) {
-        Color::rgb8(0x22, 0x22, 0x2c)
-    } else {
-        Color::rgb8(0x1c, 0x1c, 0x24)
-    };
+    let t = ui.theme();
+    let bg = row_bg(&t, i, selected);
     ui.with(
         NodeSpec::row()
             .fill()
@@ -93,16 +98,13 @@ fn row(ui: &mut Ui<'_>, i: usize, selected: usize) {
             .gap(8.0)
             .cross_align(Align::Center)
             .bg(bg)
-            .hover_bg(Color::rgb8(0x2a, 0x2a, 0x38))
+            .hover_bg(bg.mix(t.accent, 0.12))
             .on_click(Value::Int(i as i64))
             .role(Role::ListItem)
             .label(format!("row {i} of {ROWS}")),
         |ui| {
-            ui.text(&format!("{i:>5}"), TextStyle::new(13.0).color(ink()));
-            ui.text(
-                &format!("log line {i}"),
-                TextStyle::new(13.0).color(Color::rgb8(0xe8, 0xe8, 0xf0)),
-            );
+            ui.text(&format!("{i:>5}"), TextStyle::new(13.0).color(t.faint));
+            ui.text(&format!("log line {i}"), TextStyle::new(13.0).color(t.fg));
         },
     );
 }
@@ -110,16 +112,14 @@ fn row(ui: &mut Ui<'_>, i: usize, selected: usize) {
 /// The style a `--variable` row's text is measured *and* drawn in. The
 /// measurement is only worth anything if it is the same style: `measure_text`
 /// is what layout would give a text node with this content and this style.
-fn body() -> TextStyle {
-    TextStyle::new(BODY)
-        .color(Color::rgb8(0xe8, 0xe8, 0xf0))
-        .wrap(TextWrap::Word)
+fn body(t: &Theme) -> TextStyle {
+    TextStyle::new(BODY).color(t.fg).wrap(TextWrap::Word)
 }
 
-fn list_spec() -> NodeSpec {
+fn list_spec(t: &Theme) -> NodeSpec {
     NodeSpec::column()
         .fill()
-        .bg(Color::rgb8(0x14, 0x14, 0x18))
+        .bg(t.bg)
         .role(Role::List)
         .label("log")
 }
@@ -128,8 +128,9 @@ impl VirtualList {
     /// The whole list, in one call.
     fn widget(&mut self, ui: &mut Ui<'_>) {
         let selected = self.selected;
+        let spec = list_spec(&ui.theme());
         let (mut first, mut last) = (usize::MAX, 0usize);
-        widgets::virtual_column(ui, "log", list_spec(), ROWS, ROW_H, |ui, i| {
+        widgets::virtual_column(ui, "log", spec, ROWS, ROW_H, |ui, i| {
             first = first.min(i);
             last = i + 1;
             row(ui, i, selected);
@@ -160,7 +161,8 @@ impl VirtualList {
         let selected = self.selected;
         // `scroll_y()` implies the clip; `gap(0)` because the stride is
         // `ROW_H` and nothing else.
-        ui.with_keyed("log", list_spec().scroll_y().gap(0.0), |ui| {
+        let spec = list_spec(&ui.theme()).scroll_y().gap(0.0);
+        ui.with_keyed("log", spec, |ui| {
             // Keyed, not auto-keyed: an auto key *is* the sibling index, and
             // the rows already occupy that namespace at their data indices.
             let lead = range.start as f32 * ROW_H;
@@ -199,37 +201,34 @@ impl VirtualList {
     /// measures is what the row gets.
     fn variable(&mut self, ui: &mut Ui<'_>) {
         let selected = self.selected;
+        let t = ui.theme();
         let (mut first, mut last) = (usize::MAX, 0usize);
         widgets::virtual_rows(
             ui,
             "log",
-            list_spec().pad(6.0),
+            list_spec(&t).pad(6.0),
             &mut self.heights,
             |ui, i, w| {
                 // The row pads itself by 6 on each side, and that padding is
                 // part of the stride the arithmetic uses.
-                ui.measure_text(&line_of(i), &body(), Some(w - 12.0)).height + 12.0
+                ui.measure_text(&line_of(i), &body(&t), Some(w - 12.0))
+                    .height
+                    + 12.0
             },
             |ui, i| {
                 first = first.min(i);
                 last = i + 1;
-                let bg = if i == selected {
-                    Color::rgb8(0x2f, 0x4f, 0x7f)
-                } else if i.is_multiple_of(2) {
-                    Color::rgb8(0x22, 0x22, 0x2c)
-                } else {
-                    Color::rgb8(0x1c, 0x1c, 0x24)
-                };
+                let bg = row_bg(&t, i, selected);
                 ui.with(
                     NodeSpec::column()
                         .fill()
                         .pad(6.0)
                         .bg(bg)
-                        .hover_bg(Color::rgb8(0x2a, 0x2a, 0x38))
+                        .hover_bg(bg.mix(t.accent, 0.12))
                         .on_click(Value::Int(i as i64))
                         .role(Role::ListItem)
                         .label(format!("row {i} of {ROWS}")),
-                    |ui| ui.text(&line_of(i), body()),
+                    |ui| ui.text(&line_of(i), body(&t)),
                 );
             },
         );
@@ -240,7 +239,8 @@ impl VirtualList {
 impl App for VirtualList {
     fn view(&mut self, ui: &mut Ui<'_>) {
         ui.window_title("kui — virtual list");
-        ui.configure_root(NodeSpec::column().fill().bg(Color::rgb8(0x14, 0x14, 0x18)));
+        let t = ui.theme();
+        ui.configure_root(NodeSpec::column().fill().bg(t.bg));
 
         let built = self.built.len();
         let how = match self.mode {
@@ -252,14 +252,14 @@ impl App for VirtualList {
             NodeSpec::row()
                 .width(Sizing::Grow(1.0))
                 .pad(8.0)
-                .bg(Color::rgb8(0x1a, 0x1a, 0x22)),
+                .bg(t.surface),
             |ui| {
                 ui.text(
                     &format!(
                         "{ROWS} rows, {built} built ({how}) — row {} selected",
                         self.selected
                     ),
-                    TextStyle::new(14.0).color(Color::rgb8(0xe8, 0xe8, 0xf0)),
+                    TextStyle::new(14.0).color(t.fg),
                 );
             },
         );

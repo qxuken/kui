@@ -376,14 +376,15 @@ impl Core {
         if self.tree.is_empty() {
             return;
         }
-        // The one paint the environment decides (`accent`): the OS colour
-        // where the host reported one, the declared `bg` where it did not.
+        // The one paint the environment decides (`accent`): the theme's
+        // accent, which is the OS's where the host reported one, the app's
+        // where it pinned one, and kui's otherwise (ADR 0019 — before it,
+        // this read `env.system.accent` and a host that reported none left
+        // the declared `bg`, which is the same answer by a shorter route).
         // Before the hover resolution below, so a node that declares both
         // still hovers to what it declared.
-        if spec.accent
-            && let Some(accent) = self.env.system.accent
-        {
-            spec.style.bg = accent;
+        if spec.accent && self.has_accent() {
+            spec.style.bg = self.theme.accent;
         }
         self.resolve_hover_style(key, &mut spec);
         self.ease_spec(key, &mut spec);
@@ -444,6 +445,11 @@ impl Core {
         if self.tree.is_empty() {
             return;
         }
+        // A style that named no colour takes the theme's foreground here,
+        // at the one door text comes through, so the shaping cache, the
+        // display list and every binding downstream see a real colour
+        // (ADR 0019).
+        let style = style.or_fg(self.theme.fg);
         let tid = {
             let sess = &mut *self.session.state();
             self.text
@@ -513,6 +519,14 @@ impl Core {
         if spec.anim().exit.is_some() && spec.transition.is_some() {
             self.any_exit = true;
         }
+        // The same stamp the two text funnels make: an editor that named
+        // no text colour and no selection tint takes the theme's, so a
+        // field and a label beside it agree on both (ADR 0019).
+        let opts = &EditOptions {
+            style: opts.style.or_fg(self.theme.fg),
+            accent: Some(opts.accent.unwrap_or(self.theme.selection)),
+            ..opts.clone()
+        };
         {
             let origin = self.origin;
             let scale = self.scale;
@@ -821,6 +835,8 @@ impl Core {
         if self.tree.is_empty() {
             return;
         }
+        // The paragraph's own colour, which each span falls back to.
+        let base = base.or_fg(self.theme.fg);
         let tid = {
             let sess = &mut *self.session.state();
             self.text

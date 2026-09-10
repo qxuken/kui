@@ -11,7 +11,7 @@
 //! Keys: j/k or arrows move · pageup/pagedown · g/G ends · tab next buffer.
 
 use kui::widgets;
-use kui::{Align, App, Color, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
+use kui::{Align, App, Color, NodeSpec, Sizing, TextStyle, Theme, Ui, UiEvent, Value};
 
 const FONT: f32 = 13.5;
 const LH: f32 = 20.0;
@@ -38,23 +38,33 @@ struct Pal {
     mac: Color,
 }
 
-impl Default for Pal {
-    fn default() -> Self {
+impl From<Theme> for Pal {
+    /// The chrome comes off the theme; the six syntax hues are the app's
+    /// own, which is the honest split — a keyword's purple is authored,
+    /// the way ADR 0017 says a span's colour is, and no UI role names it.
+    /// They still come in two sets, because a hue picked to read on
+    /// `#0f1117` does not read on white: same families, darkened for the
+    /// light base, each checked past 4.5:1 on the surface it lands on.
+    fn from(t: Theme) -> Self {
+        let dark = t.is_dark();
+        let hue = |d: u32, l: u32| Color::hex(if dark { d } else { l });
         Self {
-            bg: Color::rgb8(0x0f, 0x11, 0x17),
-            panel: Color::rgb8(0x14, 0x16, 0x1e),
-            line: Color::rgb8(0x1a, 0x1d, 0x29),
-            status: Color::rgb8(0x1a, 0x1d, 0x27),
-            fg: Color::rgb8(0xd6, 0xd8, 0xe0),
-            dim: Color::rgb8(0x8a, 0x8f, 0xa3),
-            faint: Color::rgb8(0x50, 0x55, 0x66),
-            accent: Color::rgb8(0x6a, 0x8b, 0xff),
-            kw: Color::rgb8(0xc7, 0x8f, 0xe8),
-            string: Color::rgb8(0x9c, 0xc8, 0x7a),
-            number: Color::rgb8(0xd9, 0xa1, 0x4d),
-            comment: Color::rgb8(0x5c, 0x66, 0x79),
-            ty: Color::rgb8(0x6f, 0xc3, 0xd6),
-            mac: Color::rgb8(0xe0, 0x9a, 0x6a),
+            bg: t.bg,
+            panel: t.surface,
+            line: t.sunken,
+            status: t.sunken,
+            fg: t.fg,
+            dim: t.muted,
+            faint: t.faint,
+            accent: t.focus_ring,
+            kw: hue(0xc78fe8ff, 0x7c3aabff),
+            string: hue(0x9cc87aff, 0x35701cff),
+            number: hue(0xd9a14dff, 0x8a5c08ff),
+            // A comment is meant to recede, so it is the theme's own
+            // "barely there" tier rather than a seventh hue.
+            comment: t.faint,
+            ty: hue(0x6fc3d6ff, 0x17697dff),
+            mac: hue(0xe09a6aff, 0xa1541cff),
         }
     }
 }
@@ -98,7 +108,7 @@ struct SyntaxView {
 impl SyntaxView {
     fn new() -> Self {
         Self {
-            pal: Pal::default(),
+            pal: Theme::default().into(),
             docs: vec![
                 Doc::new("main.rs", SAMPLE_RS, Lang::Rust),
                 Doc::new("NOTES", NOTES, Lang::Text),
@@ -135,6 +145,8 @@ impl SyntaxView {
 
 impl App for SyntaxView {
     fn view(&mut self, ui: &mut Ui<'_>) {
+        // Rebuilt from the theme each frame, so the window follows the OS.
+        self.pal = ui.theme().into();
         let pal = self.pal;
         ui.configure_root(NodeSpec::column().fill().bg(pal.bg));
         widgets::titlebar(

@@ -37,6 +37,10 @@ function update(model: Model, msg: Msg, ev: UiEvent<Msg>, win: KuiWindow): Model
 }
 
 // Registered in setup() before the first frame; drawn with <image src={..}>.
+/// The window handle, kept from `setup` so the view can read the palette
+/// the core derived from the OS. `runWindowed` calls `setup` before the
+/// first frame, so it is set by the time `view` runs.
+let window_: KuiWindow | null = null;
 let gradient = '';
 // Sounds are resources too: synthesized here (no asset files), played by
 // the `clickSound` prop and an `<audio>` node the view declares while on.
@@ -62,35 +66,41 @@ function wav(sampleRate: number, samples: Float32Array): Buffer {
   return b;
 }
 
-const view = (model: Model) => (
-  <box gap={16} bg="#14141c" width="grow" height="grow" title={`kui counter — ${model.count}`}>
+// Every colour here is a theme role (ADR 0019): the window follows the
+// OS's light/dark and its accent, and `win.theme()` is the palette the
+// core derived — the same `0xRRGGBBAA` numbers a colour prop takes.
+const view = (model: Model) => {
+  const t = window_!.theme();
+  return (
+  <box gap={16} bg={t.bg} width="grow" height="grow" title={`kui counter — ${model.count}`}>
     <titlebar title="kui counter" />
     <box pad={24} gap={16}>
-    <text size={24} color="#ffffff"><span bold color="#7aa2ff">kui</span> × Node × JSX</text>
+    <text size={24} color={t.fg}><span bold color={t.accent}>kui</span> × Node × JSX</text>
     <image src={gradient} width={128} radius={8} label="gradient" />
     <box dir="row" gap={12} crossAlign="center">
       <button onClick={{ kind: 'add', by: 1 }}>+1</button>
       <button onClick={{ kind: 'add', by: -1 }}>-1</button>
       <button onClick={{ kind: 'reset' }} description="Back to zero">reset</button>
-      <text size={20} color="#e8e8f0">{`count = ${model.count}`}</text>
+      <text size={20} color={t.fg}>{`count = ${model.count}`}</text>
     </box>
     <box dir="row" gap={12} crossAlign="center">
-      <box padX={14} padY={8} radius={6} bg="#3b5bd4" hoverBg="#476ce0" pressedBg="#2f54c4"
-           onClick={{ kind: 'hum' }} clickSound={click}>
-        <text size={15} color="#ffffff">{model.hum ? 'hum: on' : 'hum: off'}</text>
+      <box padX={14} padY={8} radius={6} bg={t.accent} hoverBg={t.accentHover}
+           pressedBg={t.accentPressed} onClick={{ kind: 'hum' }} clickSound={click}>
+        <text size={15} color={t.onAccent}>{model.hum ? 'hum: on' : 'hum: off'}</text>
       </box>
       {model.hum && <audio key="hum" src={hum} loop volume={0.3} />}
     </box>
     <edit key="note" label="note" initial="" size={16} width={280} padX={10} padY={6}
-          bg="#1f2030" color="#e8e8f0" radius={4} autofocus />
-    <text size={14} color="#99a0b0">{`note: ${model.note || '(empty)'}`}</text>
-    <text size={14} color="#99a0b0">
+          bg={t.sunken} color={t.fg} radius={4} autofocus />
+    <text size={14} color={t.muted}>{`note: ${model.note || '(empty)'}`}</text>
+    <text size={14} color={t.muted}>
       {`window: ${Math.round(model.size.width)}x${Math.round(model.size.height)} @ ${model.size.scale}x`}
     </text>
     </box>
     <latencyHud />
   </box>
-);
+  );
+};
 
 const done = runWindowed({ init, update, view }, {
   title: 'kui counter',
@@ -100,6 +110,7 @@ const done = runWindowed({ init, update, view }, {
   minHeight: 320,
   chrome: 'custom',
   setup(win) {
+    window_ = win;
     const [w, h] = [64, 32];
     const px = Buffer.alloc(w * h * 4);
     for (let y = 0; y < h; y++) {

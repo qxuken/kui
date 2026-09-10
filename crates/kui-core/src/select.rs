@@ -14,9 +14,13 @@
 use crate::color::Color;
 use crate::key::Key;
 
-/// What a selection is painted under. The editor's own default
-/// (`EditOptions::accent`), because a selection over a label and one over
-/// a field sitting side by side must not be two different blues.
+/// What a selection is painted under when nothing else says — the dark
+/// base's tint, and what kui painted before there were themes. The live
+/// value is `theme.selection`, which both a `selectable` scope and an
+/// editor read, because a selection over a label and one over a field
+/// sitting side by side must not be two different blues. This constant
+/// stays as the floor an [`crate::edit::EditOptions`] the core never
+/// stamped falls back to (ADR 0019).
 pub const TINT: Color = Color {
     r: 0x3b as f32 / 255.0,
     g: 0x5b as f32 / 255.0,

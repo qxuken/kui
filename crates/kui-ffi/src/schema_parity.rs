@@ -531,3 +531,73 @@ fn fully_populated_spec_matches_the_rust_builder() {
     );
     assert_eq!(got, expected);
 }
+
+/// `KuiTheme` restates `schema::THEME_ROLES`, and the header restates
+/// `KuiTheme`. This pins the first pair; `abi_parity`'s generated
+/// `KUI_FIELD` asserts pin the second, so a role added in the core reaches
+/// C or fails here.
+#[test]
+fn theme_struct_covers_every_role() {
+    use crate::types::KuiTheme;
+    let t = KuiTheme::default();
+    // Every role, in the order the table lists them: the offsets are what
+    // a C host reads by name, so the order is part of the contract only in
+    // that the header must match — this checks presence, and `abi_parity`
+    // checks each field's offset against the header.
+    let by_name: &[(&str, u32)] = &[
+        ("bg", t.bg),
+        ("surface", t.surface),
+        ("raised", t.raised),
+        ("sunken", t.sunken),
+        ("border", t.border),
+        ("border_strong", t.border_strong),
+        ("fg", t.fg),
+        ("muted", t.muted),
+        ("faint", t.faint),
+        ("accent", t.accent),
+        ("accent_hover", t.accent_hover),
+        ("accent_pressed", t.accent_pressed),
+        ("on_accent", t.on_accent),
+        ("accent_soft", t.accent_soft),
+        ("selection", t.selection),
+        ("focus_ring", t.focus_ring),
+        ("hover", t.hover),
+        ("pressed", t.pressed),
+        ("success", t.success),
+        ("warning", t.warning),
+        ("danger", t.danger),
+        ("scrollbar", t.scrollbar),
+        ("scrollbar_active", t.scrollbar_active),
+    ];
+    let roles = kui_core::schema::THEME_ROLES;
+    assert_eq!(
+        roles.len(),
+        by_name.len(),
+        "a theme role has no KuiTheme field"
+    );
+    for role in roles {
+        assert!(
+            by_name.iter().any(|(n, _)| *n == role.name),
+            "KuiTheme has no field for the {} role",
+            role.name
+        );
+    }
+    // And the header declares the struct and the three calls.
+    let header = include_str!("../include/kui.h");
+    for name in [
+        "KuiTheme",
+        "KUI_THEME_INIT",
+        "kui_theme",
+        "kui_theme_set",
+        "kui_theme_set_accent",
+    ] {
+        assert!(header.contains(name), "kui.h never mentions {name}");
+    }
+    for role in roles {
+        assert!(
+            header.contains(&format!("uint32_t {};", role.name)),
+            "kui.h has no field for the {} role",
+            role.name
+        );
+    }
+}

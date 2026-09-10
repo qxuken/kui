@@ -14,7 +14,7 @@
 //   node dist/mindmap.mjs --headless      the same gesture, no window
 //   node dist/mindmap.mjs --trace         print every event the loop gets
 import { createApp, runWindowed } from '@qxuken/kui';
-import type { CoreMsg, UiEvent } from '@qxuken/kui';
+import type { CoreMsg, Theme, UiEvent } from '@qxuken/kui';
 
 type Card = { id: string; x: number; y: number; label: string };
 type Model = {
@@ -60,10 +60,16 @@ function update(model: Model, msg: Msg, _ev: UiEvent<Msg>): Model | undefined {
   };
 }
 
+/// Whichever driver is running — the headless `Ctx` or the real window —
+/// set before the first frame. Both spell the palette the same way, so
+/// the view reads roles rather than hex (ADR 0019).
+let ui: { theme(): Theme } | null = null;
+
 const view = (model: Model) => {
+  const t = ui!.theme();
   const at = (c: Card) => ({ x: c.x + model.pan.x, y: c.y + model.pan.y });
   return (
-    <box width="grow" height="grow" bg="#12121a" onDrag={{ kind: 'pan' }} title="kui mindmap">
+    <box width="grow" height="grow" bg={t.bg} onDrag={{ kind: 'pan' }} title="kui mindmap">
       {LINKS.map(([a, b]) => {
         const p = at(card(a));
         const q = at(card(b));
@@ -73,7 +79,7 @@ const view = (model: Model) => {
             from={[p.x + 40, p.y + 18]}
             to={[q.x + 40, q.y + 18]}
             width={2}
-            color="#3a4370"
+            color={t.borderStrong}
             transition={EASE}
             slide
           />
@@ -88,18 +94,18 @@ const view = (model: Model) => {
             padX={14}
             padY={10}
             radius={8}
-            bg="#2a3050"
-            hoverBg="#37406a"
+            bg={t.raised}
+            hoverBg={t.accentSoft}
             transition={EASE}
             slide
             onClick={{ kind: 'card', id: c.id }}
           >
-            <text size={15} color="#e8e8f0">{c.label}</text>
+            <text size={15} color={t.fg}>{c.label}</text>
           </box>
         );
       })}
-      <box float={{ anchor: 'parent', dx: 8, dy: 8 }} padX={8} padY={4} bg="#000000" radius={4}>
-        <text size={13} color="#8ef08e">{model.log}</text>
+      <box float={{ anchor: 'parent', dx: 8, dy: 8 }} padX={8} padY={4} bg={t.sunken} radius={4}>
+        <text size={13} color={t.success}>{model.log}</text>
       </box>
     </box>
   );
@@ -110,6 +116,7 @@ const view = (model: Model) => {
 // and `advance` is what makes it observable (see packages/kui/test.mjs).
 if (process.argv.includes('--headless')) {
   const app = createApp({ init, update, view }, { width: 640, height: 480 });
+  ui = app.ctx;
   app.render();
   app.ctx.cursor(400, 300);
   app.ctx.mouse(true, 1);
@@ -135,6 +142,9 @@ const done = runWindowed({ init, update, view }, {
   width: 640,
   height: 480,
   chrome,
+  setup(win) {
+    ui = win;
+  },
 });
 
 if (process.argv.includes('--smoke')) setTimeout(() => process.exit(0), 2000);

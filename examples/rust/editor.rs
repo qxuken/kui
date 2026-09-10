@@ -6,8 +6,7 @@
 //! Run: cargo run -p kui --example editor
 
 use kui::{
-    Align, App, Color, EditOptions, FontFamily, Key, NodeSpec, Sizing, TextStyle, Ui, UiEvent,
-    Value,
+    Align, App, EditOptions, FontFamily, Key, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value,
 };
 
 const INITIAL: &str = "\
@@ -37,6 +36,7 @@ struct Editor {
 
 impl App for Editor {
     fn view(&mut self, ui: &mut Ui<'_>) {
+        let t = ui.theme();
         ui.configure_root(NodeSpec::column().fill());
 
         // Custom titlebar: drag strip + adaptive window controls (native
@@ -89,21 +89,17 @@ impl App for Editor {
                 .width(Sizing::Grow(1.0))
                 .pad_xy(12.0, 6.0)
                 .gap(16.0)
-                .bg(Color::rgb8(0x14, 0x16, 0x1e))
-                .border(1.0, Color::rgb8(0x22, 0x25, 0x30))
+                .bg(t.surface)
+                .border(1.0, t.border)
                 .cross_align(Align::Center),
             |ui| {
-                let muted = TextStyle::new(12.0).color(Color::rgb8(0x8a, 0x8f, 0xa3));
+                let muted = TextStyle::new(12.0).color(t.muted);
                 ui.text(&format!("{} lines", self.lines), muted);
                 ui.text(&format!("{} chars", self.chars), muted);
                 ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
                 ui.text(
                     if self.saved { "saved" } else { "edited" },
-                    TextStyle::new(12.0).color(if self.saved {
-                        Color::rgb8(0x73, 0xd9, 0x8c)
-                    } else {
-                        Color::rgb8(0xf0, 0xb8, 0x59)
-                    }),
+                    TextStyle::new(12.0).color(if self.saved { t.success } else { t.warning }),
                 );
             },
         );
