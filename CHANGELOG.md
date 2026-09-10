@@ -118,8 +118,10 @@ field reports).
   scroll; `auto` shows the bar while the scroll state is changing — the
   offset or the extent moved, the pointer is on the track, a thumb is
   dragged — and for a second after, then fades it out over a quarter of
-  one, asking for frames only while it fades (a node first seen shows it
-  the same second; without a driver clock it is `visible`). The other
+  one, asking for frames from the last change until it has faded, as a
+  transition of that length would, and none while the pointer holds it
+  (a node first seen shows it the same second; without a driver clock it
+  is `visible`). The other
   three restyle the thumb: its width at rest (the active one is 2 px
   wider, and the track grows to fit), and its two colours over the
   theme's `scrollbar` / `scrollbar_active`. `ScrollbarMode` and

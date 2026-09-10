@@ -1480,7 +1480,10 @@ impl Core {
     /// ADR 0003's `modal-behind-content`, for the stack: a float layer
     /// above the modal's whose root is outside the modal's scope is inert
     /// and drawn over the one surface that takes input, which is the same
-    /// defect the in-flow check names (ADR 0023, decision 6).
+    /// defect the in-flow check names (ADR 0023, decision 6). Only a layer
+    /// with something in it that *would* take input is the defect — a
+    /// control the user sees and cannot press. A picture over the dialog
+    /// (a HUD, the devtools' inspector outline) is not, and is not named.
     fn check_layers_over_modal(&mut self, order: &[u32]) {
         let Some((start, end, modal_key)) = self.modal else {
             return;
@@ -1492,10 +1495,16 @@ impl Core {
         let Some(at) = order.iter().position(|&r| r == modal_layer) else {
             return;
         };
-        if order[at + 1..]
-            .iter()
-            .any(|&r| !(start..end).contains(&(r as usize)))
-        {
+        let over = order[at + 1..].iter().any(|&r| {
+            let root = r as usize;
+            !(start..end).contains(&root)
+                && (root..self.tree.subtree_end(root)).any(|i| {
+                    self.float_root[i] == r
+                        && (self.tree.specs[i].hover_tracked()
+                            || crate::access::focusable(&self.tree, i))
+                })
+        });
+        if over {
             self.diag.raise(crate::diag::modal_under_layer(modal_key));
         }
     }

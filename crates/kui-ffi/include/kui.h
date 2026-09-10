@@ -741,7 +741,8 @@ typedef struct KuiSpec {
  * still scroll); AUTO shows the bar while the scroll state is changing -
  * the offset or the extent moved, the pointer is on the track, a thumb is
  * dragged - and for a second after, then fades it out over a quarter of
- * one, asking for frames while it fades. AUTO needs the driver's clock
+ * one, asking for frames from the last change until it has faded (and
+ * none while the pointer holds it). AUTO needs the driver's clock
  * (kui_set_time) and is VISIBLE without one. */
 enum {
     KUI_SCROLLBAR_VISIBLE = 1,

@@ -374,13 +374,15 @@ fn a_nested_float_is_above_the_float_it_is_in() {
     assert_eq!(painted(&mut core), ["red", "green", "blue"]);
 }
 
-/// A float from outside the modal's scope that opens over it is the same
-/// inert-over-interactive surface `modal-behind-content` names for an
-/// in-flow modal; one that opened before it is under it and fine.
+/// A float from outside the modal's scope that opens over it, holding a
+/// control, is the same inert-over-interactive surface
+/// `modal-behind-content` names for an in-flow modal. A picture over it
+/// — a HUD, an inspector's outline — is not: nothing there could have
+/// been pressed, so nothing reads as broken.
 #[test]
-fn a_float_over_a_modal_from_outside_it_warns() {
+fn a_float_over_a_modal_from_outside_it_warns_when_it_holds_a_control() {
     let mut core = Core::new();
-    let build = |core: &mut Core, hud: bool| {
+    let build = |core: &mut Core, hud: bool, button: bool| {
         let mut ui = core.frame(VIEW, 1.0);
         ui.configure_root(NodeSpec::column().fill());
         ui.with_keyed(
@@ -391,13 +393,27 @@ fn a_float_over_a_modal_from_outside_it_warns() {
             |_| {},
         );
         if hud {
-            ui.with_keyed("hud", float_at(150.0, BLUE), |_| {});
+            ui.with_keyed("hud", float_at(150.0, BLUE), |ui| {
+                if button {
+                    ui.with_keyed(
+                        "close",
+                        NodeSpec::row()
+                            .width(Sizing::Fixed(20.0))
+                            .height(Sizing::Fixed(20.0))
+                            .on_click(Value::str("close"))
+                            .label("Close"),
+                        |_| {},
+                    );
+                }
+            });
         }
         ui.finish();
     };
-    build(&mut core, false);
+    build(&mut core, false, false);
     assert!(core.take_warnings().is_empty());
-    build(&mut core, true);
+    build(&mut core, true, false);
+    assert!(core.take_warnings().is_empty(), "a picture over the dialog");
+    build(&mut core, true, true);
     let codes: Vec<_> = core.take_warnings().iter().map(|w| w.code).collect();
-    assert_eq!(codes, ["modal-behind-content"]);
+    assert_eq!(codes, ["modal-behind-content"], "a control over it");
 }
