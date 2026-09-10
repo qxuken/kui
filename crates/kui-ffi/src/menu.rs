@@ -36,16 +36,7 @@ impl KuiMenuItem {
     /// Reads one item. `None` for a role this build does not know, which
     /// is a host built against a newer header.
     fn to_core(self) -> Option<kui_core::MenuItem> {
-        let role = match self.role {
-            0 => kui_core::MenuRole::Custom,
-            1 => kui_core::MenuRole::Separator,
-            2 => kui_core::MenuRole::Cut,
-            3 => kui_core::MenuRole::Copy,
-            4 => kui_core::MenuRole::Paste,
-            5 => kui_core::MenuRole::SelectAll,
-            6 => kui_core::MenuRole::LookUp,
-            _ => return None,
-        };
+        let role = *kui_core::MenuRole::ALL.get(self.role as usize)?;
         Some(kui_core::MenuItem {
             label: kstr(self.label).into_owned(),
             role,
@@ -172,10 +163,10 @@ pub extern "C" fn kui_request_copy(ptr: *mut KuiCtx, out: *mut KuiStr) -> u32 {
                         })
                     };
                 }
-                0
+                KUI_COPY_READY
             }
-            kui_core::CopyRequest::Asked => 1,
-            kui_core::CopyRequest::Nothing => 2,
+            kui_core::CopyRequest::Asked => KUI_COPY_ASKED,
+            kui_core::CopyRequest::Nothing => KUI_COPY_NOTHING,
         }
     })
 }
@@ -224,14 +215,16 @@ pub extern "C" fn kui_take_menu_action(ptr: *mut KuiCtx, out: *mut KuiMenuAction
         };
         let mut at = kui_core::Vec2::new(0.0, 0.0);
         let (kind, text, html) = match action {
-            kui_core::MenuAction::SetClipboard { text, html } => (0u32, text, html),
-            kui_core::MenuAction::Paste => (1u32, String::new(), None),
+            kui_core::MenuAction::SetClipboard { text, html } => {
+                (KUI_MENU_ACTION_SET_CLIPBOARD, text, html)
+            }
+            kui_core::MenuAction::Paste => (KUI_MENU_ACTION_PASTE, String::new(), None),
             // The core only asks for a panel a host said it can show
             // (`kui_set_lookup_available`), so this arrives exactly where
             // a host is ready for it.
             kui_core::MenuAction::LookUp { text, at: point } => {
                 at = point;
-                (2u32, text, None)
+                (KUI_MENU_ACTION_LOOK_UP, text, None)
             }
         };
         c.menu_text = text;
@@ -413,36 +406,116 @@ pub extern "C" fn kui_menu_bar_item(
         let Some(row) = c.core().menu_bar().and_then(|b| b.item(menu, item)) else {
             return false;
         };
-        let (text, shortcut) = (
-            row.text().to_string(),
-            row.accel_text().unwrap_or_default().to_string(),
-        );
-        let (r, on, checked) = (role_code(row.role), row.enabled, row.checked);
-        c.menu_text = text;
-        c.menu_accel = shortcut;
-        if !label.is_null() {
-            unsafe {
-                label.write(KuiStr {
-                    ptr: c.menu_text.as_ptr(),
-                    len: c.menu_text.len(),
-                })
-            };
+        let row = row.clone();
+        write_row(c, &row, label, accel, role, flags);
+        true
+    })
+}
+
+/// One row of either menu, spelled the one way a host reads a row: what
+/// the drawn menu would show (`MenuItem::text`, `MenuItem::accel_text` —
+/// the role's default where the row declared none), the `KUI_MENU_*` role
+/// and the `KUI_MENU_ITEM_*` flags. Shared by `kui_menu_bar_item` and
+/// `kui_menu_item` so the bar and the context menu cannot read one item
+/// two ways. Any out pointer may be NULL; the strings are borrowed until
+/// the next call on this context.
+fn write_row(
+    c: &mut KuiCtx,
+    row: &kui_core::MenuItem,
+    label: *mut KuiStr,
+    accel: *mut KuiStr,
+    role: *mut u32,
+    flags: *mut u32,
+) {
+    c.menu_text = row.text().to_string();
+    c.menu_accel = row.accel_text().unwrap_or_default().to_string();
+    if !label.is_null() {
+        unsafe {
+            label.write(KuiStr {
+                ptr: c.menu_text.as_ptr(),
+                len: c.menu_text.len(),
+            })
+        };
+    }
+    if !accel.is_null() {
+        unsafe {
+            accel.write(KuiStr {
+                ptr: c.menu_accel.as_ptr(),
+                len: c.menu_accel.len(),
+            })
+        };
+    }
+    if !role.is_null() {
+        unsafe { role.write(role_code(row.role)) };
+    }
+    if !flags.is_null() {
+        let mut bits = 0;
+        if row.enabled {
+            bits |= KUI_MENU_ITEM_ENABLED;
         }
-        if !accel.is_null() {
-            unsafe {
-                accel.write(KuiStr {
-                    ptr: c.menu_accel.as_ptr(),
-                    len: c.menu_accel.len(),
-                })
-            };
+        if row.checked {
+            bits |= KUI_MENU_ITEM_CHECKED;
         }
-        if !role.is_null() {
-            unsafe { role.write(r) };
+        unsafe { flags.write(bits) };
+    }
+}
+
+/// The menu this window has open, for a host that said it shows menus
+/// itself (`kui_set_native_menus`): how many rows it has, writing the node
+/// it is about into `target` and where it opened (logical viewport px)
+/// into `x` / `y` — any of the three may be NULL. Zero when none is open,
+/// which is unambiguous because a menu never opens with no rows. What
+/// Node's `menu()` and `Core::menu` answer, so a C host is not the one
+/// binding told to read what is open and given nothing to read it with.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_menu_item_count(
+    ptr: *mut KuiCtx,
+    target: *mut u64,
+    x: *mut f32,
+    y: *mut f32,
+) -> usize {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        let Some(menu) = c.core().menu() else {
+            return 0;
+        };
+        if !target.is_null() {
+            unsafe { target.write(menu.target.0) };
         }
-        if !flags.is_null() {
-            // `KUI_MENU_ITEM_ENABLED` | `KUI_MENU_ITEM_CHECKED`.
-            unsafe { flags.write(u32::from(on) | (u32::from(checked) << 1)) };
+        if !x.is_null() {
+            unsafe { x.write(menu.at.x) };
         }
+        if !y.is_null() {
+            unsafe { y.write(menu.at.y) };
+        }
+        menu.items.len()
+    })
+}
+
+/// Reads row `item` of the open menu, spelled exactly as `kui_menu_bar_item`
+/// spells a bar's row. False for a row that is not there, including when
+/// no menu is open. Answer with `kui_activate_menu_item` or
+/// `kui_close_menu`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_menu_item(
+    ptr: *mut KuiCtx,
+    item: usize,
+    label: *mut KuiStr,
+    accel: *mut KuiStr,
+    role: *mut u32,
+    flags: *mut u32,
+) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let Some(row) = c.core().menu().and_then(|m| m.items.get(item)) else {
+            return false;
+        };
+        let row = row.clone();
+        write_row(c, &row, label, accel, role, flags);
         true
     })
 }
@@ -465,13 +538,8 @@ pub extern "C" fn kui_activate_menu_bar_item(ptr: *mut KuiCtx, menu: usize, item
 
 /// The `KUI_MENU_*` code for a role, the inverse of `KuiMenuItem::to_core`.
 fn role_code(role: kui_core::MenuRole) -> u32 {
-    match role {
-        kui_core::MenuRole::Custom => 0,
-        kui_core::MenuRole::Separator => 1,
-        kui_core::MenuRole::Cut => 2,
-        kui_core::MenuRole::Copy => 3,
-        kui_core::MenuRole::Paste => 4,
-        kui_core::MenuRole::SelectAll => 5,
-        kui_core::MenuRole::LookUp => 6,
-    }
+    kui_core::MenuRole::ALL
+        .iter()
+        .position(|r| *r == role)
+        .expect("every role is in MenuRole::ALL") as u32
 }

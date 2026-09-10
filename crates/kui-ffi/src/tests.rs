@@ -515,9 +515,12 @@ mod queries_headless {
         kui_input_key_down(ctx, ks("w"), null, 0, null, false);
         kui_input_key_down(ctx, ks("w"), null, 0, null, true);
         kui_input_key_up(ctx, ks("w"), null, 0);
-        // Held when the window loses the keyboard: the release is made up.
-        kui_input_key_down(ctx, ks("f5"), null, KMOD_CTRL, null, false);
-        kui_release_held_keys(ctx);
+        // Held when the window loses the keyboard: the release is made up
+        // by the report itself, the way the windowed runner's is, so the
+        // host owes no second call. The bools on the payload read as
+        // bools: `ctrl` is the modifier the press carried.
+        kui_input_key_down(ctx, ks("f5"), null, KUI_KMOD_CTRL, null, false);
+        kui_env_set(ctx, 60.0, false);
         // An unknown name is ignored rather than delivered as "unknown".
         kui_input_key_down(ctx, ks("nonsense"), null, 0, null, false);
 
@@ -535,26 +538,36 @@ mod queries_headless {
             assert_eq!(ev.key, sink);
             assert_eq!(get("kind").as_deref(), Some("key"));
             assert_eq!(get("tag").as_deref(), Some("keys"));
+            let mut ctrl = false;
+            assert!(kui_value_as_bool(
+                kui_value_get(ev.payload, ks("ctrl")),
+                &mut ctrl
+            ));
+            let mut repeat = false;
+            assert!(kui_value_as_bool(
+                kui_value_get(ev.payload, ks("repeat")),
+                &mut repeat
+            ));
             seen.push((
                 get("phase").unwrap_or_default(),
                 get("code").unwrap_or_default(),
                 get("text"),
+                ctrl,
+                repeat,
             ));
         }
         assert_eq!(
             seen,
             [
-                ("down".into(), "w".into(), Some("w".into())),
-                ("down".into(), "w".into(), Some("w".into())),
-                ("up".into(), "w".into(), None),
-                ("down".into(), "f5".into(), None),
-                ("up".into(), "f5".into(), None),
+                ("down".into(), "w".into(), Some("w".into()), false, false),
+                ("down".into(), "w".into(), Some("w".into()), false, true),
+                ("up".into(), "w".into(), None, false, false),
+                ("down".into(), "f5".into(), None, true, false),
+                ("up".into(), "f5".into(), None, true, false),
             ]
         );
         kui_ctx_free(ctx);
     }
-
-    const KMOD_CTRL: u32 = 1 << 1;
 
     /// An editor's runs cross as rows with borrowed arrays, and a text
     /// request addresses them: select "world" by run positions, type
@@ -1017,5 +1030,251 @@ mod env_headless {
     #[test]
     fn a_null_context_is_survivable() {
         kui_env_set_system(std::ptr::null_mut(), 1, 0, 1, ks("en"));
+    }
+}
+
+#[cfg(test)]
+mod parity_headless {
+    use super::*;
+
+    fn ks(s: &str) -> KuiStr {
+        KuiStr {
+            ptr: s.as_ptr(),
+            len: s.len(),
+        }
+    }
+
+    fn s(k: KuiStr) -> String {
+        kstr(k).into_owned()
+    }
+
+    /// Every shape a payload can take reads back from C by its own reader:
+    /// a bool as a bool (not a number, which `kui_value_as_int` refuses), a
+    /// float whole (not truncated), a list by index and length, a map by
+    /// entry, null as null. These are the shapes the events carry — a key
+    /// event's `shift`, a drag's `dx`, a preedit's `cursor` — so a C host
+    /// reads what a Node or Lua host reads, and not a subset of it.
+    #[test]
+    fn every_payload_shape_reads_back_through_its_own_door() {
+        let map = kui_value_map();
+        kui_value_map_set(map, ks("held"), kui_value_bool(true));
+        kui_value_map_set(map, ks("dx"), kui_value_float(12.75));
+        kui_value_map_set(map, ks("n"), kui_value_int(3));
+        let list = kui_value_list();
+        kui_value_list_push(list, kui_value_int(4));
+        kui_value_list_push(list, kui_value_int(9));
+        kui_value_map_set(map, ks("cursor"), list);
+        kui_value_map_set(map, ks("text"), kui_value_null());
+
+        let mut b = false;
+        assert!(kui_value_as_bool(kui_value_get(map, ks("held")), &mut b) && b);
+        let mut i = 0;
+        assert!(
+            !kui_value_as_int(kui_value_get(map, ks("held")), &mut i),
+            "a bool is not coerced to a number"
+        );
+        let mut f = 0.0;
+        assert!(kui_value_as_float(kui_value_get(map, ks("dx")), &mut f));
+        assert_eq!(f, 12.75, "read whole, where as_int gives 12");
+        assert!(kui_value_as_float(kui_value_get(map, ks("n")), &mut f));
+        assert_eq!(f, 3.0, "an integer widens");
+
+        let cursor = kui_value_get(map, ks("cursor"));
+        assert_eq!(kui_value_len(cursor), 2);
+        assert!(kui_value_as_int(kui_value_at(cursor, 1), &mut i) && i == 9);
+        assert!(kui_value_at(cursor, 2).is_null(), "past the end is NULL");
+        assert!(kui_value_at(map, 0).is_null(), "a map is not a list");
+        assert_eq!(
+            kui_value_len(kui_value_get(map, ks("n"))),
+            0,
+            "a scalar has no length"
+        );
+
+        assert!(kui_value_is_null(kui_value_get(map, ks("text"))));
+        assert!(
+            kui_value_is_null(kui_value_get(map, ks("missing"))),
+            "absent reads as null"
+        );
+        assert!(!kui_value_is_null(kui_value_get(map, ks("n"))));
+
+        // A map walks in the order it was set.
+        assert_eq!(kui_value_len(map), 5);
+        let mut key = ks("");
+        let v = kui_value_entry(map, 1, &mut key);
+        assert_eq!(s(key), "dx");
+        assert!(kui_value_as_float(v, &mut f) && f == 12.75);
+        assert!(kui_value_entry(map, 5, &mut key).is_null());
+
+        // Pushing onto a non-list drops the value rather than leaking or
+        // panicking.
+        let scalar = kui_value_int(1);
+        kui_value_list_push(scalar, kui_value_int(2));
+        assert_eq!(kui_value_len(scalar), 0);
+        kui_value_free(scalar);
+        kui_value_free(map);
+    }
+
+    /// A host that shows menus itself reads the open one back the way it
+    /// reads the bar: count and rows, each row spelled as
+    /// `kui_menu_bar_item` spells it — the role's accelerator where the
+    /// row declared none, the checked flag a row can carry — because the
+    /// two readers are one function. Before this, `kui_set_native_menus`
+    /// told a C host to read what is open and gave it nothing to read it
+    /// with.
+    #[test]
+    fn the_open_menu_reads_back_row_for_row() {
+        let ctx = kui_ctx_new();
+        let mut spec = unsafe { std::mem::zeroed::<KuiSpec>() };
+        spec.width = KuiSizing {
+            tag: 2,
+            value: 100.0,
+        };
+        spec.height = KuiSizing {
+            tag: 2,
+            value: 50.0,
+        };
+        kui_frame_begin(ctx, 200.0, 100.0, 1.0);
+        let key = kui_open_with(ctx, ks("card"), &spec, NONE, NONE, NONE, NONE);
+        kui_close(ctx);
+        kui_frame_finish(ctx);
+        assert_ne!(key, 0);
+
+        assert_eq!(
+            kui_menu_item_count(
+                ctx,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            0
+        );
+        assert!(!kui_menu_item(
+            ctx,
+            0,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut()
+        ));
+
+        kui_set_native_menus(ctx, true);
+        let items = [
+            KuiMenuItem {
+                label: ks(""),
+                role: KUI_MENU_COPY,
+                enabled: 1,
+                id: std::ptr::null(),
+                accel: ks(""),
+                checked: 0,
+            },
+            KuiMenuItem {
+                label: ks("Wrap"),
+                role: KUI_MENU_CUSTOM,
+                enabled: 1,
+                id: std::ptr::null(),
+                accel: ks("⌥Z"),
+                checked: 1,
+            },
+            KuiMenuItem {
+                label: ks("Gone"),
+                role: KUI_MENU_CUSTOM,
+                enabled: 0,
+                id: std::ptr::null(),
+                accel: ks(""),
+                checked: 0,
+            },
+        ];
+        assert!(kui_open_menu(
+            ctx,
+            key,
+            40.0,
+            30.0,
+            items.as_ptr(),
+            items.len()
+        ));
+
+        let (mut target, mut x, mut y) = (0u64, 0.0f32, 0.0f32);
+        assert_eq!(kui_menu_item_count(ctx, &mut target, &mut x, &mut y), 3);
+        assert_eq!((target, x, y), (key, 40.0, 30.0));
+
+        let read = |i: usize| -> (String, String, u32, u32) {
+            let (mut label, mut accel, mut role, mut flags) = (ks(""), ks(""), 0u32, 0u32);
+            assert!(kui_menu_item(
+                ctx, i, &mut label, &mut accel, &mut role, &mut flags
+            ));
+            (s(label), s(accel), role, flags)
+        };
+        // The role's default is the platform's (`⌘C` here, `Ctrl+C` on
+        // CI's Linux runner), so the test asks the core rather than
+        // spelling it.
+        assert_eq!(
+            read(0),
+            (
+                "Copy".into(),
+                kui_core::MenuRole::Copy.default_accel().into(),
+                KUI_MENU_COPY,
+                KUI_MENU_ITEM_ENABLED
+            ),
+            "a standard row reads with its role's wording and shortcut"
+        );
+        assert_eq!(
+            read(1),
+            (
+                "Wrap".into(),
+                "⌥Z".into(),
+                KUI_MENU_CUSTOM,
+                KUI_MENU_ITEM_ENABLED | KUI_MENU_ITEM_CHECKED
+            ),
+            "a checked custom row carries its flag and its own accelerator"
+        );
+        assert_eq!(read(2), ("Gone".into(), String::new(), KUI_MENU_CUSTOM, 0));
+        assert!(!kui_menu_item(
+            ctx,
+            3,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut()
+        ));
+
+        assert!(kui_close_menu(ctx));
+        assert_eq!(
+            kui_menu_item_count(
+                ctx,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            0
+        );
+        kui_ctx_free(ctx);
+    }
+
+    /// The family names `kui_font_add_system` can take, listed — what
+    /// Node's `systemFontFamilies()` answers. A short array is filled as
+    /// far as it goes and the total still comes back, like every other
+    /// array the library fills.
+    #[test]
+    fn font_families_list_what_add_system_can_take() {
+        let ctx = kui_ctx_new();
+        let total = kui_font_families(ctx, std::ptr::null_mut(), 0);
+        assert!(total > 0, "the bundled face is always there");
+        let mut out = vec![ks(""); total];
+        assert_eq!(kui_font_families(ctx, out.as_mut_ptr(), out.len()), total);
+        let names: Vec<String> = out.iter().map(|k| s(*k)).collect();
+        let mut sorted = names.clone();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(names, sorted, "sorted and without repeats");
+        assert_ne!(
+            kui_font_add_system(ctx, ks(&names[0])),
+            0,
+            "each name registers"
+        );
+
+        let mut one = [ks("")];
+        assert_eq!(kui_font_families(ctx, one.as_mut_ptr(), 1), total);
+        assert_eq!(s(one[0]), names[0]);
+        kui_ctx_free(ctx);
     }
 }

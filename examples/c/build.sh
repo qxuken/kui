@@ -54,17 +54,21 @@ cargo build --profile "$profile" -p kui-ffi --lib --example c_panel
 # or misordered in - kui.h shifts every field after it, silently, at runtime.
 # The same goes for the enums the API reads as indices into a list the core
 # owns (KUI_ROLE_* and the rest): a list that grew leaves the header without a
-# name for the new member, and C alone unable to say it. The test below
-# regenerates a translation unit of _Static_asserts from the Rust layout and
-# those lists (see mod abi_parity); compiling it against the header settles
-# the two. Nothing links - the asserts are checked in the front end.
+# name for the new member, and C alone unable to say it. And for the
+# prototypes: an argument Rust gained and the header did not (ABI 12's case)
+# reads a register the caller never filled. The test below regenerates a
+# translation unit of _Static_asserts from the Rust layout and those lists,
+# plus a second declaration of every entry point under its Rust signature
+# (see mod abi_parity); compiling it against the header settles the two,
+# since C refuses two declarations of one function that disagree. Nothing
+# links - everything is checked in the front end.
 abi=target/kui-abi-assert.c
 rm -f "$abi"
 cargo test -p kui-ffi --lib abi_parity
 test -f "$abi" # the test filter matched nothing if this is missing
 cc "$abi" "${cflags[@]}" -fsyntax-only
 # Anchored, so the #define in the prelude is not counted as a row.
-echo "kui.h matches Rust ($(grep -c '^KUI_FIELD' "$abi") fields, $(grep -c '^KUI_ENUM' "$abi") enum members)"
+echo "kui.h matches Rust ($(grep -c '^KUI_FIELD' "$abi") fields, $(grep -c '^KUI_ENUM' "$abi") enum members, $(grep -c '^[A-Za-z].* kui_[a-z_0-9]*(.*);$' "$abi") prototypes)"
 
 cc examples/c/counter.c "${cflags[@]}" "${link[@]}" -o "$bin/counter"
 echo "built $bin/counter"

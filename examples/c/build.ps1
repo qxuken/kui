@@ -173,7 +173,8 @@ $synOnly = if ($cc -eq 'cl') { @('/Zs') } else { @('-fsyntax-only') }
 Invoke-Cc ($cflags + $synOnly + $abi) 'kui.h ABI check'
 $fields = (Select-String -Path $abi -Pattern '^KUI_FIELD').Count
 $enums = (Select-String -Path $abi -Pattern '^KUI_ENUM').Count
-Write-Host "kui.h matches Rust ($fields fields, $enums enum members)" -ForegroundColor Green
+$protos = (Select-String -Path $abi -Pattern '^[A-Za-z].* kui_[a-z_0-9]*\(.*\);$').Count
+Write-Host "kui.h matches Rust ($fields fields, $enums enum members, $protos prototypes)" -ForegroundColor Green
 
 # --- the two hosts ----------------------------------------------------------
 

@@ -117,13 +117,21 @@ export interface FloatProp {
   fit?: boolean;
 }
 
+// -- generated from the core's menu roles; edit MenuRole::ALL in crates/kui-core/src/menu.rs, then `npm run gen` --
+/** What a menu row is: the app's own (`custom`), a divider, or one of
+ *  the standard rows the core performs itself. The same spelling a
+ *  `menu` message reports back. */
+export type MenuItemRole =
+  | 'custom' | 'separator' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'lookUp';
+// -- end generated --
+
 /** One row to put in a context menu (`Ctx.openMenu`). Everything but
  *  `label` is optional, and a standard `role` takes its own wording when
  *  `label` is empty — so `{ role: 'copy' }` is the platform's Copy.
  *  `id` is what the row posts when chosen (its label, when absent). */
 export interface MenuItemInput {
   label?: string;
-  role?: 'custom' | 'separator' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'lookUp';
+  role?: MenuItemRole;
   enabled?: boolean;
   /** Draws a checkmark beside the row (and sets the platform's own check
    *  state where a host renders the menu): a setting the row *is*, not a

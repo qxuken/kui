@@ -272,6 +272,24 @@ fn resolve_query(core: &mut kui_core::Core, s: &str) -> Option<Key> {
 /// but `label` optional. An unknown `role` is an error rather than a silent
 /// `custom`: a menu whose Copy row quietly stopped being Copy would look
 /// like the core ignoring it.
+/// One row as either reader reports it — `menu()`'s and `menuBar()`'s
+/// alike, and as C's `kui_menu_item` / `kui_menu_bar_item` spell it:
+/// the text the drawn menu would show, the role's accelerator where the
+/// row declared none, `enabled` and `checked` both present. One function
+/// so the two menus cannot read one row two ways.
+fn menu_item_json(item: &kui_core::MenuItem) -> Json {
+    let mut o = JsonMap::new();
+    o.insert("label".into(), Json::from(item.text()));
+    o.insert("role".into(), Json::from(item.role.name()));
+    o.insert("enabled".into(), Json::Bool(item.enabled));
+    o.insert("checked".into(), Json::Bool(item.checked));
+    o.insert(
+        "accel".into(),
+        item.accel_text().map_or(Json::Null, Json::from),
+    );
+    Json::Object(o)
+}
+
 fn menu_items(v: &Json) -> Result<Vec<kui_core::MenuItem>> {
     let Json::Array(rows) = v else {
         return Err(err("a menu's items are an array"));
@@ -282,14 +300,9 @@ fn menu_items(v: &Json) -> Result<Vec<kui_core::MenuItem>> {
                 return Err(err("each menu item is an object"));
             };
             let role = match o.get("role").and_then(Json::as_str) {
-                None | Some("custom") => kui_core::MenuRole::Custom,
-                Some("separator") => kui_core::MenuRole::Separator,
-                Some("cut") => kui_core::MenuRole::Cut,
-                Some("copy") => kui_core::MenuRole::Copy,
-                Some("paste") => kui_core::MenuRole::Paste,
-                Some("selectAll") => kui_core::MenuRole::SelectAll,
-                Some("lookUp") => kui_core::MenuRole::LookUp,
-                Some(other) => return Err(err(format!("unknown menu item role {other:?}"))),
+                None => kui_core::MenuRole::Custom,
+                Some(name) => kui_core::MenuRole::from_name(name)
+                    .ok_or_else(|| err(format!("unknown menu item role {name:?}")))?,
             };
             let item = kui_core::MenuItem {
                 label: o
@@ -640,9 +653,16 @@ impl Ctx {
             .filter(|hz| *hz > 0.0);
         }
         if let Some(f) = o.get("focused") {
-            self.core.env.focused = f
+            let focused = f
                 .as_bool()
                 .ok_or_else(|| err("setEnv(): focused must be a boolean"))?;
+            // A window that lost the keyboard lets go of every key its
+            // sink was holding (`Core::set_focused`), so a test can hand
+            // the OS's Cmd-Tab to a headless context and see the `up`s
+            // the windowed driver would have produced.
+            self.core.set_focused(focused);
+            let pending = self.core.take_pending_events();
+            self.take_events(pending);
         }
         if let Some(s) = o.get("system") {
             let s = s
@@ -2357,27 +2377,14 @@ macro_rules! core_methods {
             /// `{target, x, y, items}`. What a host rendering menus itself
             /// reads after `setNativeMenus(true)` — the core then keeps
             /// the menu as state and draws none of it — and answers with
-            /// `activateMenuItem` or `closeMenu`.
+            /// `activateMenuItem` or `closeMenu`. A row reads exactly as a
+            /// `menuBar()` row does (`menu_item_json`).
             #[napi(ts_return_type = "OpenMenu | null")]
             pub fn menu(&mut self) -> Result<Option<Json>> {
                 let Some(menu) = self.$core().menu().cloned() else {
                     return Ok(None);
                 };
-                let items: Vec<Json> = menu
-                    .items
-                    .iter()
-                    .map(|item| {
-                        let mut o = JsonMap::new();
-                        o.insert("label".into(), Json::from(item.text()));
-                        o.insert("role".into(), Json::from(item.role.name()));
-                        o.insert("enabled".into(), Json::Bool(item.enabled));
-                        o.insert(
-                            "accel".into(),
-                            item.accel.clone().map_or(Json::Null, Json::String),
-                        );
-                        Json::Object(o)
-                    })
-                    .collect();
+                let items: Vec<Json> = menu.items.iter().map(menu_item_json).collect();
                 let mut o = JsonMap::new();
                 o.insert("target".into(), Json::from(key_str(menu.target)));
                 o.insert("x".into(), Json::from(menu.at.x));
@@ -2414,22 +2421,7 @@ macro_rules! core_methods {
                     .menus
                     .iter()
                     .map(|menu| {
-                        let items: Vec<Json> = menu
-                            .items
-                            .iter()
-                            .map(|item| {
-                                let mut o = JsonMap::new();
-                                o.insert("label".into(), Json::from(item.text()));
-                                o.insert("role".into(), Json::from(item.role.name()));
-                                o.insert("enabled".into(), Json::Bool(item.enabled));
-                                o.insert("checked".into(), Json::Bool(item.checked));
-                                o.insert(
-                                    "accel".into(),
-                                    item.accel_text().map_or(Json::Null, Json::from),
-                                );
-                                Json::Object(o)
-                            })
-                            .collect();
+                        let items: Vec<Json> = menu.items.iter().map(menu_item_json).collect();
                         let mut o = JsonMap::new();
                         o.insert("label".into(), Json::from(menu.label.clone()));
                         o.insert("enabled".into(), Json::Bool(menu.enabled));

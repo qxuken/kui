@@ -321,19 +321,17 @@ fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
     let mut out = Vec::new();
     for row in t.sequence_values::<mlua::Table>() {
         let row = row?;
+        // The wire name (`selectAll`, the spelling the `menu` event
+        // reports back and every other enum value takes in Lua —
+        // `alternateReverse`, `notAllowed`), with the snake spelling a
+        // script may have learned first kept as an alias, the way
+        // `direction` is for `repeat`.
         let role = match row.get::<Option<String>>("role")?.as_deref() {
-            None | Some("custom") => kui_core::MenuRole::Custom,
-            Some("separator") => kui_core::MenuRole::Separator,
-            Some("cut") => kui_core::MenuRole::Cut,
-            Some("copy") => kui_core::MenuRole::Copy,
-            Some("paste") => kui_core::MenuRole::Paste,
+            None => kui_core::MenuRole::Custom,
             Some("select_all") => kui_core::MenuRole::SelectAll,
             Some("look_up") => kui_core::MenuRole::LookUp,
-            Some(other) => {
-                return Err(mlua::Error::runtime(format!(
-                    "unknown menu item role {other:?}"
-                )));
-            }
+            Some(name) => kui_core::MenuRole::from_name(name)
+                .ok_or_else(|| mlua::Error::runtime(format!("unknown menu item role {name:?}")))?,
         };
         let label = row.get::<Option<String>>("label")?.unwrap_or_default();
         if label.is_empty() && role == kui_core::MenuRole::Custom {
@@ -665,11 +663,12 @@ fn env_table<'scope, 'env: 'scope>(
         })?,
     )?;
     // Opens a context menu at (x, y) over a keyed node, its items a list
-    // of tables: `{ label=, role=, enabled=, id=, accel= }`, all but
-    // `label` optional, `role` one of "custom" (the default),
-    // "separator", "cut", "copy", "paste", "select_all", "look_up".
-    // Choosing a row posts `{kind="menu", role, item}` on the node and
-    // closes the menu (docs/adr/0017-selection-as-a-scope.md).
+    // of tables: `{ label=, role=, enabled=, checked=, id=, accel= }`, all
+    // but `label` optional, `role` one of "custom" (the default),
+    // "separator", "cut", "copy", "paste", "selectAll", "lookUp" — the
+    // spelling the `menu` event reports back ("select_all" / "look_up"
+    // are taken too). Choosing a row posts `{kind="menu", role, item}` on
+    // the node and closes the menu (docs/adr/0017-selection-as-a-scope.md).
     t.set(
         "open_menu",
         scope.create_function(
@@ -3310,6 +3309,11 @@ mod tests {
                     opened = env.open_menu("card", 40, 30, {
                       { role = "copy" },
                       { role = "separator" },
+                      -- The wire spelling the event reports, and the
+                      -- snake one a script may have learned first.
+                      { role = "selectAll" },
+                      { role = "look_up" },
+                      { label = "Wrap", checked = true },
                       { label = "Inspect", id = "inspect" },
                     })
                   end
@@ -3330,10 +3334,37 @@ mod tests {
         frame(&mut core, &mut ext);
         frame(&mut core, &mut ext);
         assert!(ext.lua.globals().get::<bool>("opened").unwrap());
+        let roles: Vec<_> = core
+            .menu()
+            .expect("open")
+            .items
+            .iter()
+            .map(|i| (i.role, i.checked))
+            .collect();
+        assert_eq!(
+            roles,
+            [
+                (kui_core::MenuRole::Copy, false),
+                (kui_core::MenuRole::Separator, false),
+                (kui_core::MenuRole::SelectAll, false),
+                (kui_core::MenuRole::LookUp, false),
+                (kui_core::MenuRole::Custom, true),
+                (kui_core::MenuRole::Custom, false),
+            ]
+        );
         frame(&mut core, &mut ext);
-        // The row the tree reports is the row the pointer can press.
-        let row = core
-            .access_tree()
+        // The row the tree reports is the row the pointer can press, and
+        // the checked one reads as checked there.
+        let tree = core.access_tree();
+        assert_eq!(
+            tree.nodes
+                .iter()
+                .find(|n| n.name.as_deref() == Some("Wrap"))
+                .expect("the checked row")
+                .checked,
+            Some(true)
+        );
+        let row = tree
             .nodes
             .iter()
             .find(|n| n.name.as_deref() == Some("Inspect"))

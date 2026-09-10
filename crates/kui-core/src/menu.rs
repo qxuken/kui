@@ -42,6 +42,27 @@ pub enum MenuRole {
 }
 
 impl MenuRole {
+    /// Every role, in wire order: the index a binding that spells roles as
+    /// numbers sends (C's `KUI_MENU_*`), pinned there by name. Append-only,
+    /// like every list a C enum restates.
+    pub const ALL: [MenuRole; 7] = [
+        MenuRole::Custom,
+        MenuRole::Separator,
+        MenuRole::Cut,
+        MenuRole::Copy,
+        MenuRole::Paste,
+        MenuRole::SelectAll,
+        MenuRole::LookUp,
+    ];
+
+    /// The role a wire name spells, for the bindings that take roles as
+    /// strings: the inverse of [`Self::name`], so a binding cannot accept
+    /// a spelling the event will not report back. `None` for a name that
+    /// is no role.
+    pub fn from_name(name: &str) -> Option<MenuRole> {
+        Self::ALL.into_iter().find(|r| r.name() == name)
+    }
+
     /// The wire name, for the bindings and the report.
     pub fn name(self) -> &'static str {
         match self {
@@ -529,6 +550,34 @@ fn key_label(code: crate::input::KeyCode) -> String {
 mod tests {
     use super::*;
     use crate::input::{KeyCode, KeyMods};
+
+    /// `ALL` is what C indexes, what Node's generated `MenuItemRole` is
+    /// spelled from and what `from_name` searches, so a variant it lacks
+    /// is one no binding can say. The match is exhaustive on purpose: a
+    /// variant added to the enum fails to compile here until it is placed
+    /// in `ALL` too.
+    #[test]
+    fn all_names_every_role_once() {
+        let mut seen = 0;
+        for role in MenuRole::ALL {
+            match role {
+                MenuRole::Custom
+                | MenuRole::Separator
+                | MenuRole::Cut
+                | MenuRole::Copy
+                | MenuRole::Paste
+                | MenuRole::SelectAll
+                | MenuRole::LookUp => seen += 1,
+            }
+            assert_eq!(MenuRole::from_name(role.name()), Some(role));
+            assert_eq!(
+                MenuRole::ALL.iter().filter(|r| **r == role).count(),
+                1,
+                "{role:?} is listed more than once"
+            );
+        }
+        assert_eq!(seen, MenuRole::ALL.len());
+    }
 
     #[test]
     fn mod_is_the_platform_primary() {

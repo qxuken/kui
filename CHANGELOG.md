@@ -57,6 +57,57 @@ field reports).
 
 ### Added
 
+- **The C ABI is pinned prototype by prototype, and constant by constant**
+  ([ADR 0020](docs/adr/0020-the-surface-the-schema-does-not-cover.md)).
+  `mod abi_parity` used to settle struct layout and three enum lists
+  against `kui.h`; it now redeclares every one of the 173 entry points
+  under its Rust signature in the generated translation unit, so a header
+  prototype that drifts — a `const` dropped, an argument Rust gained
+  (ABI 12's case) — fails the C build as `conflicting types` instead of
+  reading a register nobody filled; and every plain constant the entry
+  points read (`KUI_AUDIO_*`, `KUI_KMOD_*`, `KUI_ACCESS_*`, `KUI_KEY_*`,
+  `KUI_MENU_*`, the span, cell and keyframe bits — 207 members, up from
+  89) has a Rust name and a `KUI_ENUM` assert. The header's "Who writes
+  what" audit is a test too, and was brought up to date: four `[out]`
+  structs had the size handshake without being listed, and `KuiTheme` had
+  it without the parity row. `./examples/c/build.sh` reports prototypes
+  beside fields and enum members.
+
+- **A C host can read every shape a payload takes.** `kui_value_as_bool`
+  (a key event's `shift` / `ctrl` / `alt` / `super` / `repeat` were
+  unreadable), `kui_value_as_float` (a drag's `dx`, a layout's rect and a
+  resize's `scale` were truncated through `as_int`), `kui_value_len` /
+  `kui_value_at` (a preedit's `cursor`, an `access` request's ends),
+  `kui_value_entry` for a map whose keys you do not know,
+  `kui_value_is_null`, and `kui_value_list` / `kui_value_list_push` for
+  posting one.
+
+- **The open menu reads back from C.** `kui_set_native_menus` said "read
+  what is open" and offered nothing to read it with; `kui_menu_item_count`
+  and `kui_menu_item` are that, spelled exactly as the menu bar's readers
+  are and implemented by the same function, so a row cannot read two ways.
+
+- **`kui_font_families`** lists what `kui_font_add_system` can take — what
+  Node's `systemFontFamilies()` answers.
+
+- **`Ctx.menu()` rows carry `checked` and the role's accelerator.** A
+  `copy` row that declared no shortcut reported `accel: null` from the
+  context menu and `⌘C` from the bar; both now read through one emitter,
+  and `checked` is on every row (`openMenu` always accepted it).
+
+- **`AccessRole`, `AccessAction` and `MenuItemRole` are generated.** The
+  hand-written `AccessRole` union had missed `terminal` since backlog C20
+  appended it; the three now come off `Role::ALL`, `AccessAction::ALL` and
+  the new `MenuRole::ALL` through `npm run gen`, and `AccessNode.live` —
+  emitted on every node since ADR 0008 — is declared.
+
+- **A window losing the keyboard lets go of held keys in the core.**
+  `Core::set_focused(false)` releases what the focused sink holds; the
+  runner, `kui_env_set` and `setEnv({focused: false})` all go through it,
+  so a headless test sees the `up`s a Cmd-Tab would have produced and a C
+  host owes no `kui_release_held_keys` of its own (the call stays for a
+  host with another reason).
+
 - **An application menu bar the app declares**
   ([ADR 0018](docs/adr/0018-a-menu-bar-the-app-declares.md)). One call in
   the view says what the app's menu is and where its titles go when they
@@ -176,6 +227,24 @@ field reports).
   write nothing could collect.
 
 ### Fixed
+
+- **A checked menu row reads as checked.** `widgets::menu_panel` declared
+  it and the access tree kept `checked` for checkbox / radio / switch
+  alone, so a reader heard "Wrap" where the gutter drew "✓ Wrap". A
+  `menuItem` that declares `checked` now reports it (and only then, the
+  way a list row reports `selected` only when it is); the corpus's
+  `menu_bar` report moves by one column on that row.
+
+- **The macOS native context menu shows a row's own accelerator and its
+  check state.** It kept a four-entry role table of its own and ignored
+  both, while the native menu bar beside it parsed `accel_text()` and set
+  the state; the two now build a row through one function.
+
+- **Lua takes a menu role by its wire name.** `open_menu` took
+  `"select_all"` and `"look_up"` and the `menu` event reported
+  `"selectAll"` and `"lookUp"` back, the spelling every other enum value
+  in Lua already used. Both spellings are accepted now, the snake ones as
+  aliases the way `direction` is one for `repeat`.
 
 - **A double click in a `cells` grid selects a word, a triple click the
   row.** A grid took one cell at every click count (ADR 0017 said a word

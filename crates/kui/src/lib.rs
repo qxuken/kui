@@ -1385,14 +1385,11 @@ impl<A: App> Shell<A> {
             if pane.core.env.focused == focused {
                 continue;
             }
-            pane.core.env.focused = focused;
-            if !focused {
-                // The OS stops sending key events to a window that lost
-                // the keyboard, so the release of anything held over a
-                // Cmd-Tab would never arrive. Let go now; the synthetic
-                // `up`s route out with the pending events.
-                pane.core.release_held_keys();
-            }
+            // The core lets go of any held keys on the way out: the OS
+            // stops sending key events to a window that lost the
+            // keyboard, so the release would never arrive. The synthetic
+            // `up`s route out with the pending events.
+            pane.core.set_focused(focused);
             pane.window.request_redraw();
         }
     }

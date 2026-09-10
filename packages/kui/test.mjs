@@ -494,6 +494,32 @@ test('focus moving releases the keys the old sink held', () => {
   assert.equal(ctx.pollEvents().length, 0);
 });
 
+test('the window losing the keyboard releases the keys its sink held', () => {
+  // What the windowed driver does on Cmd-Tab, reachable headless: the OS
+  // stops delivering key events to a window that lost the keyboard, so
+  // the core lets go on the report itself (`Core::set_focused`) rather
+  // than each driver remembering to. Before this a custom Node driver had
+  // no door for it at all.
+  const build = () => box({ onKey: { pane: 0 }, keyUp: true, keyFocus: true, width: 100, height: 50 }, [], 'a');
+  const { ctx } = run(build);
+  ctx.keyDown('w');
+  const [down] = ctx.pollEvents();
+  ctx.setEnv({ focused: false });
+  const ups = ctx.pollEvents();
+  assert.deepEqual(
+    ups.map((e) => [e.key, e.payload.phase, e.payload.code]),
+    [[down.key, 'up', 'w']],
+  );
+  assert.equal(ctx.env().focused, false);
+  // Saying it again changes nothing, and getting the keyboard back
+  // releases nothing: there is nothing held.
+  ctx.setEnv({ focused: false });
+  ctx.setEnv({ focused: true });
+  assert.equal(ctx.pollEvents().length, 0);
+  ctx.keyUp('w');
+  assert.equal(ctx.pollEvents().length, 0, 'the physical release is not a second one');
+});
+
 // Keyboard focus as data: Tab reaches a button, a disabled box is not a
 // stop, Enter presses the focused button, and the access tree reports the
 // same focus.
@@ -1073,6 +1099,51 @@ test('openMenu draws a menu whose chosen row posts on the target', () => {
   assert.equal(p.role, 'custom');
   assert.deepEqual(p.item, { do: 'inspect' });
   assert.equal(ctx.closeMenu(), false, 'choosing closed it already');
+});
+
+// A host that shows menus itself reads a row the way it reads a bar's:
+// the drawn text, the accelerator the drawn menu would show (the role's
+// where the row declared none), `enabled` and `checked` both present. One
+// emitter for both readers, so a context menu's Copy does not read as a
+// row with no shortcut while the bar's reads `⌘C`.
+test('menu() reads a row the way menuBar() does', () => {
+  const ctx = new Ctx();
+  ctx.frame(320, 240, 1, box({}, [box({ selectable: true }, [text('one', { size: 14 })], 'card')]));
+  ctx.setNativeMenus(true);
+  ctx.openMenu('card', 40, 30, [
+    { role: 'copy' },
+    { label: 'Wrap', checked: true, accel: '⌥Z' },
+    { label: 'Gone', enabled: false },
+  ]);
+  const menu = ctx.menu();
+  assert.deepEqual(
+    [menu.target, menu.x, menu.y],
+    [ctx.keyOf('card'), 40, 30],
+  );
+  // The role's default accelerator is the platform's: the glyph on
+  // macOS, `Ctrl+C` on CI's Linux runner.
+  const copyAccel = process.platform === 'darwin' ? '⌘C' : 'Ctrl+C';
+  assert.deepEqual(menu.items, [
+    { label: 'Copy', role: 'copy', enabled: true, checked: false, accel: copyAccel },
+    { label: 'Wrap', role: 'custom', enabled: true, checked: true, accel: '⌥Z' },
+    { label: 'Gone', role: 'custom', enabled: false, checked: false, accel: null },
+  ]);
+  ctx.closeMenu();
+  assert.equal(ctx.menu(), null);
+  // Drawn by the core instead, the checked row is a checked item in the
+  // tree, and every node says how live it is — a field the addon always
+  // wrote and the type never declared.
+  ctx.setNativeMenus(false);
+  ctx.openMenu('card', 40, 30, [{ label: 'Wrap', checked: true }]);
+  const view = box({}, [box({ selectable: true, live: 'polite' }, [text('one', { size: 14 })], 'card')]);
+  ctx.frame(320, 240, 1, view);
+  const nodes = ctx.accessTree().nodes;
+  const wrap = nodes.find((n) => n.name === 'Wrap');
+  assert.equal(wrap.checked, true);
+  assert.deepEqual(
+    nodes.map((n) => n.live).filter((l) => l !== 'off'),
+    ['polite'],
+  );
 });
 
 test('openMenu refuses an item it cannot read', () => {

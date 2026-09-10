@@ -117,11 +117,12 @@ impl MenuTarget {
     }
 }
 
-/// Builds the `NSMenu` for `items`. Every row is the platform's own
-/// wording for its role where it has one (`MenuRole::default_label`), and
-/// the standard rows carry the accelerators a macOS user reads them by —
-/// display only, since the app's own key handling is what actually runs
-/// them.
+/// Builds the `NSMenu` for `items`: one [`menu_row`] per row, so a
+/// context menu's row reads exactly as the bar's does — the role's wording
+/// where the row declared none, its accelerator or the role's, its check
+/// state. Display only for the accelerator, since the app's own key
+/// handling is what actually runs a row; a popup menu's key equivalents
+/// fire only while it is up.
 fn build(mtm: MainThreadMarker, target: &MenuTarget, items: &[MenuItem]) -> Retained<NSMenu> {
     let menu = NSMenu::new(mtm);
     // Ours to decide: without this AppKit greys out every row whose target
@@ -132,40 +133,80 @@ fn build(mtm: MainThreadMarker, target: &MenuTarget, items: &[MenuItem]) -> Reta
             menu.addItem(&NSMenuItem::separatorItem(mtm));
             continue;
         }
-        let title = NSString::from_str(item.text());
-        let key = NSString::from_str(accelerator(item.role));
-        let row = unsafe {
-            NSMenuItem::initWithTitle_action_keyEquivalent(
-                NSMenuItem::alloc(mtm),
-                &title,
-                Some(sel!(kuiMenuPick:)),
-                &key,
-            )
-        };
-        unsafe {
-            row.setTarget(Some(&*(target as *const MenuTarget as *const AnyObject)));
-            row.setTag(i as isize);
-            row.setEnabled(item.enabled);
-            if !key.to_string().is_empty() {
-                row.setKeyEquivalentModifierMask(NSEventModifierFlags::Command);
-            }
-        }
-        menu.addItem(&row);
+        let target = unsafe { &*(target as *const MenuTarget as *const AnyObject) };
+        menu.addItem(&menu_row(mtm, item, target, sel!(kuiMenuPick:), i));
     }
     menu
 }
 
-/// The key equivalent a macOS user expects to see beside a standard row.
-/// Empty for everything else: an app's own accelerator is the app's to
-/// draw, and a wrong one here would be worse than none.
-fn accelerator(role: MenuRole) -> &'static str {
-    match role {
-        MenuRole::Cut => "x",
-        MenuRole::Copy => "c",
-        MenuRole::Paste => "v",
-        MenuRole::SelectAll => "a",
-        _ => "",
+/// One `NSMenuItem` for a row, the same for the context menu and the bar
+/// (ADR 0018): the row was one `MenuItem` on the way in, so it is one
+/// reading on the way out, wherever the platform shows it. `tag` is what
+/// `action` hears back.
+///
+/// The accelerator the item declares, parsed back into the parts AppKit
+/// wants. `accel_text` is the row's own or, for a standard role, the one
+/// this platform reads it by (`⌘C`) — so a role needs no special case,
+/// and a row that declares an empty accelerator on purpose binds nothing,
+/// which is what declaring it empty means.
+///
+/// Modifier-less ones are drawn and not bound. AppKit matches a key
+/// equivalent in `performKeyEquivalent:`, ahead of the responder chain,
+/// so a bare `"space"` would fire the item on every space the user typed
+/// — including into an `edit` — and swallow the key.
+fn menu_row(
+    mtm: MainThreadMarker,
+    item: &MenuItem,
+    target: &AnyObject,
+    action: Sel,
+    tag: usize,
+) -> Retained<NSMenuItem> {
+    let accel = item
+        .accel_text()
+        .and_then(kui_core::Accel::parse)
+        .filter(|a| a.mods.any());
+    let key = accel
+        .as_ref()
+        .and_then(|a| a.key_equivalent())
+        .unwrap_or_default();
+    let title = NSString::from_str(item.text());
+    let equiv = NSString::from_str(&key);
+    let row = unsafe {
+        NSMenuItem::initWithTitle_action_keyEquivalent(
+            NSMenuItem::alloc(mtm),
+            &title,
+            Some(action),
+            &equiv,
+        )
+    };
+    unsafe {
+        row.setTarget(Some(target));
+        row.setTag(tag as isize);
+        row.setEnabled(item.enabled);
+        // `NSControlStateValueOn` / `Off`, which are 1 and 0.
+        row.setState(objc2_app_kit::NSControlStateValue::from(if item.checked {
+            1isize
+        } else {
+            0
+        }));
+        if let Some(a) = accel.filter(|_| !key.is_empty()) {
+            let mut flags = NSEventModifierFlags::empty();
+            if a.mods.super_key {
+                flags |= NSEventModifierFlags::Command;
+            }
+            if a.mods.shift {
+                flags |= NSEventModifierFlags::Shift;
+            }
+            if a.mods.alt {
+                flags |= NSEventModifierFlags::Option;
+            }
+            if a.mods.ctrl {
+                flags |= NSEventModifierFlags::Control;
+            }
+            row.setKeyEquivalentModifierMask(flags);
+        }
     }
+    row
 }
 
 /// Shows the platform's definition panel for `text`, anchored at `at` —
@@ -386,70 +427,14 @@ impl MacMenuBar {
     }
 
     /// One row: its wording, its shortcut where kui can parse one, and the
-    /// tag that says which item it is.
+    /// tag that says which item it is. `declare_menu_bar` has already
+    /// normalized the accelerator into the platform's spelling, so this
+    /// is the same string the drawn bar would have shown — one
+    /// declaration, two readings of it, and never two different
+    /// shortcuts.
     fn row(&self, mtm: MainThreadMarker, item: &MenuItem, tag: usize) -> Retained<NSMenuItem> {
-        // The accelerator the item declares, parsed back into the parts
-        // AppKit wants. `declare_menu_bar` has already normalized it into
-        // the platform's spelling, so this is the same string the drawn bar
-        // would have shown — one declaration, two readings of it, and
-        // never two different shortcuts.
-        // `accel_text` is the row's own or, for a standard role, the one
-        // this platform reads it by (`⌘C`) — so a role needs no special
-        // case here, and a row that declares an empty accelerator on
-        // purpose binds nothing, which is what declaring it empty means.
-        //
-        // Modifier-less ones are drawn and not bound. AppKit matches a key
-        // equivalent in `performKeyEquivalent:`, ahead of the responder
-        // chain, so a bare `"space"` would fire the item on every space the
-        // user typed — including into an `edit` — and swallow the key.
-        let accel = item
-            .accel_text()
-            .and_then(kui_core::Accel::parse)
-            .filter(|a| a.mods.any());
-        let key = accel
-            .as_ref()
-            .and_then(|a| a.key_equivalent())
-            .unwrap_or_default();
-        let title = NSString::from_str(item.text());
-        let equiv = NSString::from_str(&key);
-        let row = unsafe {
-            NSMenuItem::initWithTitle_action_keyEquivalent(
-                NSMenuItem::alloc(mtm),
-                &title,
-                Some(sel!(kuiBarPick:)),
-                &equiv,
-            )
-        };
-        unsafe {
-            row.setTarget(Some(
-                &*(&*self.target as *const BarTarget as *const AnyObject),
-            ));
-            row.setTag(tag as isize);
-            row.setEnabled(item.enabled);
-            // `NSControlStateValueOn` / `Off`, which are 1 and 0.
-            row.setState(objc2_app_kit::NSControlStateValue::from(if item.checked {
-                1isize
-            } else {
-                0
-            }));
-            if let Some(a) = accel.filter(|_| !key.is_empty()) {
-                let mut flags = NSEventModifierFlags::empty();
-                if a.mods.super_key {
-                    flags |= NSEventModifierFlags::Command;
-                }
-                if a.mods.shift {
-                    flags |= NSEventModifierFlags::Shift;
-                }
-                if a.mods.alt {
-                    flags |= NSEventModifierFlags::Option;
-                }
-                if a.mods.ctrl {
-                    flags |= NSEventModifierFlags::Control;
-                }
-                row.setKeyEquivalentModifierMask(flags);
-            }
-        }
-        row
+        let target = unsafe { &*(&*self.target as *const BarTarget as *const AnyObject) };
+        menu_row(mtm, item, target, sel!(kuiBarPick:), tag)
     }
 
     /// The `(menu, item)` the last pick chose, taken. `None` when nothing

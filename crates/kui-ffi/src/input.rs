@@ -65,25 +65,7 @@ pub extern "C" fn kui_input_text(ptr: *mut KuiCtx, text: KuiStr) {
 }
 
 fn edit_key_of(key: u32) -> Option<EditKey> {
-    Some(match key {
-        0 => EditKey::Left,
-        1 => EditKey::Right,
-        2 => EditKey::Up,
-        3 => EditKey::Down,
-        4 => EditKey::Home,
-        5 => EditKey::End,
-        6 => EditKey::PageUp,
-        7 => EditKey::PageDown,
-        8 => EditKey::Backspace,
-        9 => EditKey::Delete,
-        10 => EditKey::Enter,
-        11 => EditKey::Tab,
-        12 => EditKey::SelectAll,
-        13 => EditKey::Escape,
-        14 => EditKey::Undo,
-        15 => EditKey::Redo,
-        _ => return None,
-    })
+    KUI_EDIT_KEYS.get(key as usize).map(|(_, k)| *k)
 }
 
 /// Physical modifier state changed (KUI_KMOD_* bits). The host polls a
@@ -94,10 +76,10 @@ pub extern "C" fn kui_input_modifiers(ptr: *mut KuiCtx, mods: u32) {
     push_input(
         ptr,
         InputEvent::Modifiers(kui_core::KeyMods {
-            shift: mods & 1 != 0,
-            ctrl: mods & 2 != 0,
-            alt: mods & 4 != 0,
-            super_key: mods & 8 != 0,
+            shift: mods & KUI_KMOD_SHIFT != 0,
+            ctrl: mods & KUI_KMOD_CTRL != 0,
+            alt: mods & KUI_KMOD_ALT != 0,
+            super_key: mods & KUI_KMOD_SUPER != 0,
         }),
     );
 }
@@ -107,9 +89,9 @@ pub extern "C" fn kui_input_modifiers(ptr: *mut KuiCtx, mods: u32) {
 pub extern "C" fn kui_input_key(ptr: *mut KuiCtx, key: u32, mods: u32) {
     if let Some(k) = edit_key_of(key) {
         let mods = Mods {
-            shift: mods & 1 != 0,
-            word: mods & 2 != 0,
-            doc: mods & 4 != 0,
+            shift: mods & KUI_MOD_SHIFT != 0,
+            word: mods & KUI_MOD_WORD != 0,
+            doc: mods & KUI_MOD_DOC != 0,
         };
         push_input(ptr, InputEvent::Key(k, mods));
     }
@@ -123,10 +105,10 @@ fn key_press_of(
 ) -> Option<kui_core::KeyPress> {
     let layout = kui_core::KeyCode::from_name(&kstr(code))?;
     let mods = kui_core::KeyMods {
-        shift: kmods & 1 != 0,
-        ctrl: kmods & 2 != 0,
-        alt: kmods & 4 != 0,
-        super_key: kmods & 8 != 0,
+        shift: kmods & KUI_KMOD_SHIFT != 0,
+        ctrl: kmods & KUI_KMOD_CTRL != 0,
+        alt: kmods & KUI_KMOD_ALT != 0,
+        super_key: kmods & KUI_KMOD_SUPER != 0,
     };
     // A NULL `physical` means "the key I just named": a host that does not
     // track positions says so by omission, and gets `code` through unchanged

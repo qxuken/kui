@@ -368,16 +368,16 @@ fn with_spans<R>(
         .zip(texts.iter())
         .map(|(s, t)| {
             let mut span = Span::new(t.as_ref());
-            if s.flags & 1 != 0 {
+            if s.flags & KUI_SPAN_BOLD != 0 {
                 span = span.bold();
             }
-            if s.flags & 2 != 0 {
+            if s.flags & KUI_SPAN_ITALIC != 0 {
                 span = span.italic();
             }
-            if s.flags & 4 != 0 {
+            if s.flags & KUI_SPAN_UNDERLINE != 0 {
                 span = span.underline();
             }
-            if s.flags & 8 != 0 {
+            if s.flags & KUI_SPAN_STRIKETHROUGH != 0 {
                 span = span.strikethrough();
             }
             if s.color != 0 {

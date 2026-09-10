@@ -68,6 +68,10 @@ pub struct KuiCtx {
     /// other borrowed string here.
     pub(crate) selection_text: String,
     pub(crate) selection_html: String,
+    /// The family names most recently handed out by `kui_font_families`,
+    /// held so the `KuiStr`s written into the host's array stay valid
+    /// until the next call.
+    pub(crate) font_families: Vec<String>,
     /// The name most recently handed out by kui_ctx_window_name; valid
     /// until the next call.
     pub(crate) last_window_name: Option<Rc<str>>,
@@ -136,6 +140,7 @@ impl KuiCtx {
             menu_html: String::new(),
             selection_text: String::new(),
             selection_html: String::new(),
+            font_families: Vec::new(),
             last_window_name: None,
             slot_name: None,
             slot_namespace: None,
@@ -176,7 +181,10 @@ impl KuiCtx {
     }
 }
 
-/// Opaque dynamic value (event payloads).
+/// Opaque dynamic value (event payloads). Transparent over `Value`, which
+/// is what lets `kui_value_get` / `kui_value_at` / `kui_value_entry` hand
+/// out a borrowed `*const Value` as a `*const KuiValue`.
+#[repr(transparent)]
 pub struct KuiValue(pub(crate) Value);
 
 #[repr(C)]
@@ -1506,3 +1514,97 @@ unsafe impl OutParam for KuiScrollGeometry {
         &mut self.size
     }
 }
+
+// ---------------------------------------------------------------------------
+// The plain-constant enums the header spells and the entry points read.
+//
+// Each of these used to be a literal at the one site that read it (`kind =
+// 3`, `flags & 8`), with the header the only place the number had a name.
+// Named here so `mod abi_parity` can pin every one of them to the header
+// by name, the way it pins `KUI_CMD_*`: a value renumbered on either side
+// fails the C build instead of meaning something else at runtime.
+
+/// `KUI_SPAN_*`: the flags on a `KuiSpan`.
+pub const KUI_SPAN_BOLD: u32 = 1 << 0;
+pub const KUI_SPAN_ITALIC: u32 = 1 << 1;
+pub const KUI_SPAN_UNDERLINE: u32 = 1 << 2;
+pub const KUI_SPAN_STRIKETHROUGH: u32 = 1 << 3;
+
+/// `KUI_KMOD_*`: the modifier bits `kui_input_key_down` and its siblings
+/// take, and `kui_input_modifiers` reports.
+pub const KUI_KMOD_SHIFT: u32 = 1 << 0;
+pub const KUI_KMOD_CTRL: u32 = 1 << 1;
+pub const KUI_KMOD_ALT: u32 = 1 << 2;
+pub const KUI_KMOD_SUPER: u32 = 1 << 3;
+
+/// `KUI_MOD_*`: the editing modifiers `kui_input_key` takes — extend the
+/// selection, move by word, move by document.
+pub const KUI_MOD_SHIFT: u32 = 1 << 0;
+pub const KUI_MOD_WORD: u32 = 1 << 1;
+pub const KUI_MOD_DOC: u32 = 1 << 2;
+
+/// `KUI_KEY_*`: the editing keys `kui_input_key` takes, in the header's
+/// order — which is not `EditKey`'s declaration order, so the table is
+/// the pin rather than a cast. `edit_key_of` reads it and `mod
+/// abi_parity` emits it.
+pub const KUI_EDIT_KEYS: [(&str, EditKey); 16] = [
+    ("KUI_KEY_LEFT", EditKey::Left),
+    ("KUI_KEY_RIGHT", EditKey::Right),
+    ("KUI_KEY_UP", EditKey::Up),
+    ("KUI_KEY_DOWN", EditKey::Down),
+    ("KUI_KEY_HOME", EditKey::Home),
+    ("KUI_KEY_END", EditKey::End),
+    ("KUI_KEY_PAGE_UP", EditKey::PageUp),
+    ("KUI_KEY_PAGE_DOWN", EditKey::PageDown),
+    ("KUI_KEY_BACKSPACE", EditKey::Backspace),
+    ("KUI_KEY_DELETE", EditKey::Delete),
+    ("KUI_KEY_ENTER", EditKey::Enter),
+    ("KUI_KEY_TAB", EditKey::Tab),
+    ("KUI_KEY_SELECT_ALL", EditKey::SelectAll),
+    ("KUI_KEY_ESCAPE", EditKey::Escape),
+    ("KUI_KEY_UNDO", EditKey::Undo),
+    ("KUI_KEY_REDO", EditKey::Redo),
+];
+
+/// `KUI_MOUSE_*`: `kui_input_mouse_button`'s button, which is
+/// `MouseButton::code` — the core owns the numbering, this is its name.
+pub const KUI_MOUSE_PRIMARY: u32 = 0;
+pub const KUI_MOUSE_SECONDARY: u32 = 1;
+pub const KUI_MOUSE_MIDDLE: u32 = 2;
+pub const KUI_MOUSE_OTHER: u32 = 3;
+
+/// `KUI_MENU_*`: a `KuiMenuItem.role`, the position in `MenuRole::ALL`.
+pub const KUI_MENU_CUSTOM: u32 = 0;
+pub const KUI_MENU_SEPARATOR: u32 = 1;
+pub const KUI_MENU_CUT: u32 = 2;
+pub const KUI_MENU_COPY: u32 = 3;
+pub const KUI_MENU_PASTE: u32 = 4;
+pub const KUI_MENU_SELECT_ALL: u32 = 5;
+pub const KUI_MENU_LOOK_UP: u32 = 6;
+
+/// `KUI_MENU_ITEM_*`: the flags `kui_menu_bar_item` and `kui_menu_item`
+/// report on a row.
+pub const KUI_MENU_ITEM_ENABLED: u32 = 1 << 0;
+pub const KUI_MENU_ITEM_CHECKED: u32 = 1 << 1;
+
+/// `KUI_MENU_ACTION_*`: a `KuiMenuAction.kind`.
+pub const KUI_MENU_ACTION_SET_CLIPBOARD: u32 = 0;
+pub const KUI_MENU_ACTION_PASTE: u32 = 1;
+pub const KUI_MENU_ACTION_LOOK_UP: u32 = 2;
+
+/// `KUI_COPY_*`: what `kui_request_copy` returns.
+pub const KUI_COPY_READY: u32 = 0;
+pub const KUI_COPY_ASKED: u32 = 1;
+pub const KUI_COPY_NOTHING: u32 = 2;
+
+/// `KUI_AUDIO_*`: a `KuiAudioCommand.kind`.
+pub const KUI_AUDIO_PLAY: u32 = 1;
+pub const KUI_AUDIO_STOP: u32 = 2;
+pub const KUI_AUDIO_SET_VOLUME: u32 = 3;
+pub const KUI_AUDIO_PAUSE: u32 = 4;
+pub const KUI_AUDIO_RESUME: u32 = 5;
+pub const KUI_AUDIO_MASTER_VOLUME: u32 = 6;
+pub const KUI_AUDIO_UNLOAD: u32 = 7;
+
+/// `KUI_WINDOW_NONE`: a `KuiSpec.window_role` that is no chrome role.
+pub const KUI_WINDOW_NONE: u32 = 0;

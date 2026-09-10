@@ -170,9 +170,12 @@ uint32_t kui_abi_version(void);
  *
  * [in]     You allocate and fill it; the library reads it. Zero-initialize
  *          and set what you need - a zeroed field is the documented default.
- *          A later kui may append fields; your shorter struct is fine.
+ *          A later kui may append fields; your shorter struct is fine -
+ *          unless the struct travels as an ARRAY (KuiSpan, KuiCell,
+ *          KuiMenuItem, KuiMenu), where an append moves the stride and
+ *          bumps KUI_ABI_VERSION instead (ABI 8, ABI 13).
  *          KuiSpec, KuiSizing, KuiKeyframe, KuiEnter, KuiTextStyle, KuiSpan,
- *          KuiPlay, KuiAudio, KuiWindowConfig.
+ *          KuiCell, KuiMenuItem, KuiMenu, KuiPlay, KuiAudio, KuiWindowConfig.
  *
  * [out]    You allocate it; the library WRITES it. These lead with a
  *          `uint32_t size` you set to sizeof the struct, and the library
@@ -191,7 +194,8 @@ uint32_t kui_abi_version(void);
  *          `size` holds how many bytes were filled, which is stable across
  *          a loop that reuses one struct.
  *          KuiEvent, KuiDrawData, KuiTextMetrics, KuiScrollGeometry,
- *          KuiWindowCommand.
+ *          KuiWindowCommand, KuiMenuAction, KuiTextHit, KuiCaretRect,
+ *          KuiTheme.
  *
  * [out[]]  You allocate an ARRAY; the library fills up to `cap` elements.
  *          A `size` field cannot help here: the library strides by its own
@@ -201,12 +205,14 @@ uint32_t kui_abi_version(void);
  *          grows by gaining an explicit stride argument - a source break
  *          every host sees - and by bumping KUI_ABI_VERSION. Until then the
  *          version check is the whole guard.
- *          KuiAccessNode, KuiAccessRun, KuiWarning, KuiAudioCommand.
+ *          KuiAccessNode, KuiAccessRun, KuiWarning, KuiAudioCommand,
+ *          KuiAnnouncement.
  *
- * [lib]    The library allocates it; you read it. KuiQuad, through
- *          KuiDrawData.quads. The same stride problem mirrored - you walk
- *          the array with your sizeof - except read-only, so a mismatch
- *          misreads every quad after the first rather than corrupting
+ * [lib]    The library allocates it; you read it. KuiQuad, KuiClip and
+ *          KuiFragmentDraw, through KuiDrawData.quads / .clips /
+ *          .fragments. The same stride problem mirrored - you walk the
+ *          array with your sizeof - except read-only, so a mismatch
+ *          misreads every element after the first rather than corrupting
  *          anything. Guarded by KUI_ABI_VERSION.
  *
  * KuiStr is the exception and is frozen: it crosses both ways (kui_edit_text
@@ -1375,9 +1381,11 @@ void kui_input_press(KuiCtx *ctx, KuiStr code, KuiStr physical, uint32_t kmods,
 void kui_input_release(KuiCtx *ctx, KuiStr code, KuiStr physical,
                        uint32_t kmods);
 /* Lets go of every key the focused sink is holding, as if the user had
- * released them. Call it when the window loses the keyboard: the OS stops
- * delivering key events to it, so the release of anything held over an app
- * switch would never arrive. Focus moves do this by themselves. */
+ * released them. Focus moves do this by themselves, and so does
+ * kui_env_set(ctx, hz, false) - the OS stops delivering key events to a
+ * window that lost the keyboard, so the release of anything held over an
+ * app switch would never arrive, and reporting the loss is what lets go.
+ * This is the same release for a host with a reason of its own. */
 void kui_release_held_keys(KuiCtx *ctx);
 /* Physical modifier state changed (KUI_KMOD_* bits); the host polls a
  * {kind="modifiers", shift, ctrl, alt, super} event when it differs. */
@@ -1405,7 +1413,10 @@ bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
  *                       window origin, the shape Lua also reads)
  */
 /* Host facts for views to read (refresh_hz <= 0 = unknown). Survives across
- * frames; set on change or every frame, either works. */
+ * frames; set on change or every frame, either works. `focused` going
+ * false lets go of every key the focused sink is holding (see
+ * kui_release_held_keys): the synthetic releases are polled like any
+ * event. */
 void kui_env_set(KuiCtx *ctx, float refresh_hz, bool focused);
 /* The OS light/dark setting, as kui_env_set_system takes it and Node and
  * Lua read back as "unknown"/"light"/"dark". Zero is unknown - a host that
@@ -1811,6 +1822,12 @@ uint64_t kui_font_add(KuiCtx *ctx, const uint8_t *data, size_t len);
 /* The handle for a font family by name ("Menlo") — installed, or loaded with
  * the two calls below; 0 when none matches. Idempotent per family. */
 uint64_t kui_font_add_system(KuiCtx *ctx, KuiStr name);
+/* The family names kui_font_add_system can take - every face this context
+ * knows, installed or loaded, sorted - written into `out` up to `cap` and
+ * the total returned, so a short array can be resized and the call
+ * repeated (NULL `out` asks for the count alone). Strings are borrowed
+ * until the next kui_font_families on the context. */
+size_t kui_font_families(KuiCtx *ctx, KuiStr *out, size_t cap);
 /* Registers a font file by path (memory-mapped); 0 on failure. */
 uint64_t kui_font_load_file(KuiCtx *ctx, KuiStr path);
 /* Loads every font file under a folder (recursively) for kui_font_add_system;
@@ -2030,6 +2047,19 @@ bool kui_answer_selection_range(KuiCtx *ctx, KuiStr text);
  * or kui_close_menu. Off by default, which is the menu this library
  * draws. */
 void kui_set_native_menus(KuiCtx *ctx, bool on);
+/* What is open: how many rows the open menu has, writing the node it is
+ * about into *target and where it opened (logical viewport px) into *x /
+ * *y - any of the three may be NULL. 0 when no menu is open, which is
+ * unambiguous because a menu never opens with no rows. */
+size_t kui_menu_item_count(KuiCtx *ctx, uint64_t *target, float *x, float *y);
+/* Reads one row of the open menu, spelled exactly as kui_menu_bar_item
+ * spells a bar's: its text into *label, its accelerator into *accel (the
+ * role's own where the row declared none, empty where there is neither),
+ * its KUI_MENU_* role into *role and its KUI_MENU_ITEM_* flags into
+ * *flags. Any out pointer may be NULL; both strings are borrowed until
+ * the next call on this context. False for a row that is not there. */
+bool kui_menu_item(KuiCtx *ctx, size_t item, KuiStr *label, KuiStr *accel,
+                   uint32_t *role, uint32_t *flags);
 /* Reports that the host's own menu chose row `index` - the same path a
  * press on the drawn menu's row takes; an index past the end closes the
  * menu and posts nothing. False when no menu was open. */
@@ -2158,21 +2188,44 @@ void kui_frame_finish(KuiCtx *ctx);
 bool kui_draw_data(KuiCtx *ctx, KuiDrawData *out);
 
 /* -- Values -------------------------------------------------------------- */
+/* A payload is one of seven shapes - null, bool, integer, float, string,
+ * list, map - and an event carries every one of them: a key event's
+ * `shift` is a bool, a drag's `dx` a float, a preedit's `cursor` a list
+ * of two integers, its `tag` whatever the view declared. Build one with
+ * the constructors and read one with the `as_*` readers, each of which
+ * answers false for a shape it is not, so a field's absence and a
+ * field's shape are both something a host can branch on. */
 KuiValue *kui_value_null(void);
 KuiValue *kui_value_bool(bool v);
 KuiValue *kui_value_int(int64_t v);
 KuiValue *kui_value_float(double v);
 KuiValue *kui_value_str(KuiStr s);
 KuiValue *kui_value_map(void);
+KuiValue *kui_value_list(void);
 void kui_value_map_set(KuiValue *map, KuiStr key, KuiValue *val); /* consumes val */
+void kui_value_list_push(KuiValue *list, KuiValue *val);          /* consumes val */
 const KuiValue *kui_value_get(const KuiValue *v, KuiStr key);     /* borrowed */
+/* Entry `i` of a list (borrowed; NULL past the end), and the `i`th (key,
+ * value) of a map for walking one whose keys you do not know. */
+const KuiValue *kui_value_at(const KuiValue *v, size_t i);
+const KuiValue *kui_value_entry(const KuiValue *v, size_t i, KuiStr *key);
+size_t kui_value_len(const KuiValue *v); /* a list's or map's entries; 0 otherwise */
+/* True for the null value and for a NULL pointer alike, so a missing key
+ * and an explicit null read the same. */
+bool kui_value_is_null(const KuiValue *v);
+bool kui_value_as_bool(const KuiValue *v, bool *out);
+/* An integer as itself, a float truncated; the reader for a count, an
+ * index, a byte offset. */
 bool kui_value_as_int(const KuiValue *v, int64_t *out);
+/* A float as itself, an integer widened; the reader for anything in
+ * pixels - a drag's x/dx, a layout's rect, a resize's scale. */
+bool kui_value_as_float(const KuiValue *v, double *out);
 bool kui_value_as_str(const KuiValue *v, KuiStr *out);            /* borrowed */
 void kui_value_free(KuiValue *v);
 
 /* -- Windowed runner (winit + wgpu), blocks until the window closes ------ */
 /* These two are the library's `runner` feature, on by default and the only
- * thing in it. They are also the only two of the 135 entry points that need
+ * thing in it. They are also the only two of the 173 entry points that need
  * the GUI runtime - winit, wgpu, kira, accesskit - and it is most of the
  * library's size: the release cdylib is 12.3 MB with them and 5.1 MB
  * without (x86_64-pc-windows-msvc). A host that already has a window and

@@ -20,11 +20,12 @@ at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
 
-What is left here is seven entries: three parked headings — C12, C13 and C14,
+What is left here is eight entries: three parked headings — C12, C13 and C14,
 each waiting for a view that wants it — the two the design-system audit left
 open on 2026-09-10 (T1, a defect that ships today; T2, the axis ADR 0019
 scoped itself out of; T3 closed the same day, when every example in the repo
-went onto the theme) —
+went onto the theme), B1 from the same day's ABI-and-bindings audit (a table
+declined with the condition that would build it) —
 C26, whose first two steps were built
 on 2026-09-09 and whose last two wait for a view (C25 beside it closed the day
 it was filed), and F36, which fell out
@@ -779,6 +780,35 @@ stock widgets' geometry is a *contract* the corpus pins — changing
 break, but changing it per app changes what a conformance scene means.
 
 
+## From the ABI-and-bindings audit (2026-09-10)
+
+The round that produced
+[ADR 0020](adr/0020-the-surface-the-schema-does-not-cover.md). Nine drifts
+were found and all nine closed the same day — the prototypes, the plain
+constants and the header's audit are pinned now the way struct layout has
+been since P6 — and one thing was declined with a condition, which is what
+this entry keeps.
+
+### `.` B1 — The verb surface is documented, not pinned
+
+The schema pins props, the corpus pins behaviour and `abi_parity` pins
+what C can say; nothing pins *which doors each binding has*. The audit
+found three that Node had and C did not (the open-menu reader, the font
+family listing, the seven payload shapes) by reading all four lists side by
+side, and ADR 0020 declines a `DOORS` table in `schema.rs` — one row per
+verb with its Rust, C, Node and Lua spellings — because the verbs are not
+one surface: Lua is a guest with a view-time env, Node's `KuiWindow`
+refuses input injection on purpose, C is both a driver and a guest. A table
+would carry three "n/a" columns with a reason in each, which is
+documentation rather than a pin.
+
+**The condition:** the next time a verb reaches one binding and not the
+others, build the table, and put the "n/a" reasons in it. The audit's own
+matrix is the draft; the ADR's "Not done here" names the two intentional
+holes (`stats()` / `frameStats()` with no C twin, `kui_fragment_source` /
+`kui_set_subpixel_text` with no Node twin) so the first two rows write
+themselves.
+
 ## After alpha.10
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -800,7 +830,7 @@ which the archived entry measures and leaves.
 
 **Build next.** Nothing with a written ADR and no code, and nothing filed
 that is not either parked or deliberately unbuilt: after alpha.10 the open
-list is C12, C13, C14, F36, T1, T2 and C26's last two steps — T1 first, as
+list is C12, C13, C14, F36, T1, T2, B1 and C26's last two steps — T1 first, as
 the only defect among them — a measured-size query
 nothing needs since `virtual_rows` measures its own rows, and core-side
 scroll anchoring, which is CSS's `overflow-anchor` and is wanted by lists

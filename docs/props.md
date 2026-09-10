@@ -171,7 +171,7 @@ one field. The payload shapes:
 | font from bytes | `ctx.addFont(buffer)` → id for `font` | the host registers; `font = id` | `kui_font_add` → `KuiTextStyle.font` |
 | font file by path | `ctx.loadFontFile("fonts/Antonio.ttf")` → id for `font` | the host registers; `font = id` | `kui_font_load_file` |
 | a folder of fonts | `ctx.loadFontsDir("fonts")`, then pick by name | the host loads | `kui_font_load_dir` |
-| font by family name (installed or loaded) | `ctx.addSystemFont("Antonio")` (see `systemFontFamilies()`) | the host registers; `font = id` | `kui_font_add_system` |
+| font by family name (installed or loaded) | `ctx.addSystemFont("Antonio")` (see `systemFontFamilies()`) | the host registers; `font = id` | `kui_font_add_system` (see `kui_font_families`) |
 | sound (wav / ogg / mp3 / flac bytes) | `ctx.addSound(buffer)` → id for `<audio src>`, `clickSound`, `play(id)` | the host registers; `audio { src = id }`, `click_sound = id` | `kui_sound_add` → `kui_audio`, `KuiSpec.click_sound`, `kui_play` |
 
 Handles are slotmap keys with a generation: a removed resource's handle is

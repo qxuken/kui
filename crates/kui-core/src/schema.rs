@@ -1625,7 +1625,7 @@ pub const RESOURCES: &[ResourceDef] = &[
         what: "font by family name (installed or loaded)",
         node: "`ctx.addSystemFont(\"Antonio\")` (see `systemFontFamilies()`)",
         lua: "the host registers; `font = id`",
-        c: "`kui_font_add_system`",
+        c: "`kui_font_add_system` (see `kui_font_families`)",
     },
     ResourceDef {
         what: "sound (wav / ogg / mp3 / flac bytes)",

@@ -1101,6 +1101,13 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             // noise AccessKit warns about.
             Role::Tab => node.selected = Some(ax.selected),
             Role::ListItem | Role::Link if ax.selected => node.selected = Some(true),
+            // A menu row that is a setting reads as checked (the drawn
+            // menu's checkmark, `widgets::menu_panel`); every other row is
+            // a command and says nothing, the way a list row says nothing
+            // about a selection it is not part of. Before this the widget
+            // declared the fact and the tree dropped it, so a reader heard
+            // "Wrap" where a sighted user saw "✓ Wrap".
+            Role::MenuItem if ax.checked => node.checked = Some(true),
             Role::Slider => {
                 node.number = ax.value_now;
                 node.min = ax.value_min;

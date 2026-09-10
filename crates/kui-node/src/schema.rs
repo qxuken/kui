@@ -367,6 +367,38 @@ pub fn protocol_tables() -> Vec<(&'static str, Json)> {
                 &[("code", |w: &WarningDef| w.code), ("doc", |w| w.doc)],
             ),
         ),
+        // The three name lists index.d.ts used to spell by hand and fell
+        // behind on (`terminal` reached `Role::ALL` and not `AccessRole`):
+        // every role a tree can report, every request a node can take,
+        // every role a menu row can carry. The generator writes the
+        // unions from these, so a list that grows reaches the types.
+        (
+            "accessRoles",
+            Json::Array(
+                kui_core::Role::ALL
+                    .iter()
+                    .map(|r| Json::String(r.name().into()))
+                    .collect(),
+            ),
+        ),
+        (
+            "accessActions",
+            Json::Array(
+                kui_core::AccessAction::ALL
+                    .iter()
+                    .map(|a| Json::String(a.name().into()))
+                    .collect(),
+            ),
+        ),
+        (
+            "menuRoles",
+            Json::Array(
+                kui_core::MenuRole::ALL
+                    .iter()
+                    .map(|r| Json::String(r.name().into()))
+                    .collect(),
+            ),
+        ),
         // The env reading, with the per-binding key paths as arrays: the
         // docs generator lays them out, and test.mjs reads `node` back to
         // check `ctx.env()` against it key for key.

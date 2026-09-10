@@ -48,6 +48,34 @@ pub extern "C" fn kui_font_add_system(ptr: *mut KuiCtx, name: KuiStr) -> u64 {
     })
 }
 
+/// The family names `kui_font_add_system` can take — every face the
+/// context knows, installed or loaded, sorted and deduplicated — written
+/// into `out` up to `cap` and the total returned, so a short array can be
+/// resized and the call repeated. Strings are borrowed until the next
+/// call on this context. What Node's `systemFontFamilies()` answers.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_font_families(ptr: *mut KuiCtx, out: *mut KuiStr, cap: usize) -> usize {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        c.font_families = c.core().system_font_families();
+        let n = c.font_families.len();
+        if out.is_null() {
+            return n;
+        }
+        for (i, name) in c.font_families.iter().take(cap).enumerate() {
+            unsafe {
+                out.add(i).write(KuiStr {
+                    ptr: name.as_ptr(),
+                    len: name.len(),
+                })
+            };
+        }
+        n
+    })
+}
+
 /// Registers a WGSL fragment function; 0 when it does not compile, with a
 /// `fragment-rejected` warning carrying the message. Idempotent by source.
 #[unsafe(no_mangle)]
@@ -305,7 +333,7 @@ pub extern "C" fn kui_take_audio_commands(
                     looped,
                     fade_in_ms,
                 } => {
-                    o.kind = 1;
+                    o.kind = KUI_AUDIO_PLAY;
                     o.playback = playback.0;
                     o.sound = sound.to_ffi();
                     o.volume = volume;
@@ -313,7 +341,7 @@ pub extern "C" fn kui_take_audio_commands(
                     o.looped = looped as u32;
                 }
                 A::Stop { playback, fade_ms } => {
-                    o.kind = 2;
+                    o.kind = KUI_AUDIO_STOP;
                     o.playback = playback.0;
                     o.ms = fade_ms;
                 }
@@ -322,28 +350,28 @@ pub extern "C" fn kui_take_audio_commands(
                     volume,
                     tween_ms,
                 } => {
-                    o.kind = 3;
+                    o.kind = KUI_AUDIO_SET_VOLUME;
                     o.playback = playback.0;
                     o.volume = volume;
                     o.ms = tween_ms;
                 }
                 A::Pause { playback, fade_ms } => {
-                    o.kind = 4;
+                    o.kind = KUI_AUDIO_PAUSE;
                     o.playback = playback.0;
                     o.ms = fade_ms;
                 }
                 A::Resume { playback, fade_ms } => {
-                    o.kind = 5;
+                    o.kind = KUI_AUDIO_RESUME;
                     o.playback = playback.0;
                     o.ms = fade_ms;
                 }
                 A::MasterVolume { volume, tween_ms } => {
-                    o.kind = 6;
+                    o.kind = KUI_AUDIO_MASTER_VOLUME;
                     o.volume = volume;
                     o.ms = tween_ms;
                 }
                 A::Unload { sound } => {
-                    o.kind = 7;
+                    o.kind = KUI_AUDIO_UNLOAD;
                     o.sound = sound.to_ffi();
                 }
             }

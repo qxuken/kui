@@ -4,9 +4,12 @@
 //   - ../../docs/props.md the cross-binding reference (JSX / Lua / C names),
 //                        with the env reading and the warning codes
 //                        (`kui_core::diag::WARNINGS`)
-//   - index.d.ts         the `WarningCode` union, from the same table, and
-//                        the addon's own surface, from the `#[napi]`
+//   - index.d.ts         the `WarningCode` union, from the same table, the
+//                        `AccessRole` / `AccessAction` unions from the
+//                        core's `Role::ALL` / `AccessAction::ALL`, and the
+//                        addon's own surface, from the `#[napi]`
 //                        attributes in crates/kui-node/src/lib.rs
+//   - jsx-runtime.d.ts   also the `MenuItemRole` union, from `MenuRole::ALL`
 // Run after changing either: npm run gen. CI fails on stale output.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -39,7 +42,8 @@ try {
 }
 
 const native = createRequire(import.meta.url)('./native.cjs');
-const { prop, elements, events, resources, warnings, env, theme } = native.protocol();
+const { prop, elements, events, resources, warnings, env, theme, accessRoles, accessActions, menuRoles } =
+  native.protocol();
 
 const TS_BY_KIND = {
   f32: 'number',
@@ -318,6 +322,58 @@ const warningRe = /\/\/ -- generated from the core's warning codes[\s\S]*?\/\/ -
 if (!warningRe.test(indexSrc)) throw new Error('warning-code markers not found in index.d.ts');
 indexSrc = indexSrc.replace(warningRe, warningBlock);
 console.log(`index.d.ts: ${warnings.length} warning codes generated`);
+
+// The name lists a reader or a request is spelled from. Hand-written, the
+// role union missed `terminal` for a release: `Role::ALL` grew and nothing
+// said the union had to. Each is one line per name, wrapped like a
+// hand-written union would be.
+const union = (names) => {
+  const lines = [];
+  let line = ' ';
+  for (const n of names) {
+    const piece = ` | '${n}'`;
+    if (line.length + piece.length > 78) {
+      lines.push(line);
+      line = ' ';
+    }
+    line += piece;
+  }
+  lines.push(line);
+  return lines.join('\n');
+};
+const accessBlock = [
+  "// -- generated from the core's access lists; edit Role::ALL / AccessAction::ALL in crates/kui-core/src/access.rs, then `npm run gen` --",
+  '/** Every role a node of the tree can report: the ones a view declares',
+  ' *  (`role`), the ones the core derives (a `cells` grid is a `terminal`,',
+  ' *  an editor a text input, a scrolling box a scroll view, the root the',
+  ' *  window). */',
+  `export type AccessRole =\n${union(accessRoles)};`,
+  '',
+  '/** What assistive technology can ask of a node (`access(key, action)`). */',
+  `export type AccessAction =\n${union(accessActions)};`,
+  '// -- end generated --',
+].join('\n');
+const accessRe = /\/\/ -- generated from the core's access lists[\s\S]*?\/\/ -- end generated --/;
+if (!accessRe.test(indexSrc)) throw new Error('access-list markers not found in index.d.ts');
+indexSrc = indexSrc.replace(accessRe, accessBlock);
+console.log(`index.d.ts: ${accessRoles.length} access roles, ${accessActions.length} access actions generated`);
+
+const menuBlock = [
+  "// -- generated from the core's menu roles; edit MenuRole::ALL in crates/kui-core/src/menu.rs, then `npm run gen` --",
+  '/** What a menu row is: the app\'s own (`custom`), a divider, or one of',
+  ' *  the standard rows the core performs itself. The same spelling a',
+  ' *  `menu` message reports back. */',
+  `export type MenuItemRole =\n${union(menuRoles)};`,
+  '// -- end generated --',
+].join('\n');
+{
+  const jsxPath = new URL('./jsx-runtime.d.ts', import.meta.url);
+  const jsxSrc = readFileSync(jsxPath, 'utf8');
+  const menuRe = /\/\/ -- generated from the core's menu roles[\s\S]*?\/\/ -- end generated --/;
+  if (!menuRe.test(jsxSrc)) throw new Error('menu-role markers not found in jsx-runtime.d.ts');
+  writeFileSync(jsxPath, jsxSrc.replace(menuRe, menuBlock));
+  console.log(`jsx-runtime.d.ts: ${menuRoles.length} menu roles generated`);
+}
 
 // ------------------------------------------------------- the addon surface --
 // napi-rs derives a TypeScript signature for every `#[napi]` item from the

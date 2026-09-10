@@ -965,6 +965,24 @@ impl Core {
         self.pending.append(&mut out);
     }
 
+    /// The driver's report that this window gained or lost the keyboard:
+    /// `env.focused`, plus the one rule that rides on it — a window that
+    /// lost the keyboard lets go of every key its sink was holding, since
+    /// the OS stops delivering key events to it and the release would
+    /// never arrive. The rule lives here rather than in each driver so a
+    /// Node test's `setEnv({focused: false})` and a C host's `kui_env_set`
+    /// do what the windowed runner does, instead of each remembering to.
+    /// The synthetic `up`s are pending, like `release_held_keys`'s.
+    pub fn set_focused(&mut self, focused: bool) {
+        if self.env.focused == focused {
+            return;
+        }
+        self.env.focused = focused;
+        if !focused {
+            self.release_held_keys();
+        }
+    }
+
     /// Which node hears a raw press: the focused sink, the nearest sink
     /// above a focused control that does not claim the key, or nothing
     /// (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`, decision 1).

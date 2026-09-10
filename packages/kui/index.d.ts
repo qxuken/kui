@@ -4,6 +4,7 @@ import type {
   GeneratedSpecProps,
   KuiNode,
   MenuItemInput,
+  MenuItemRole,
   TextProps,
 } from './jsx-runtime.js';
 
@@ -11,7 +12,7 @@ export type { KuiNode, KuiElement, Msg, KuiMsg, AppMsg } from './jsx-runtime.js'
 // The menu inputs live beside the other prop types, because `<menuBar/>`
 // takes one; they are re-exported here because `Ctx.openMenu` takes one
 // too, and an app should not have to know which file a type sits in.
-export type { MenuItemInput, MenuInput, MenuBarInput } from './jsx-runtime.js';
+export type { MenuItemInput, MenuItemRole, MenuInput, MenuBarInput } from './jsx-runtime.js';
 
 // -- the messages the core itself sends ------------------------------------
 // Payload shapes from `EVENTS` in crates/kui-core/src/schema.rs (the table
@@ -108,7 +109,7 @@ export type ContextMenuMsg<T = AppMsg> = {
  *  an app can hear its editor being cut from and is free to ignore it. */
 export type MenuMsg<T = AppMsg> = {
   kind: 'menu';
-  role: 'custom' | 'separator' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'lookUp';
+  role: MenuItemRole;
   item: T;
 };
 
@@ -361,22 +362,24 @@ export interface AccessArg {
   text?: string;
 }
 
-/** What a node is to assistive technology. The first group can be declared
- *  with the `role` prop; the rest the core derives (an `onClick` box is a
- *  button, an editor a text input, a scrolling box a scroll view, the root
- *  the window). */
+// -- generated from the core's access lists; edit Role::ALL / AccessAction::ALL in crates/kui-core/src/access.rs, then `npm run gen` --
+/** Every role a node of the tree can report: the ones a view declares
+ *  (`role`), the ones the core derives (a `cells` grid is a `terminal`,
+ *  an editor a text input, a scrolling box a scroll view, the root the
+ *  window). */
 export type AccessRole =
   | 'none' | 'button' | 'checkbox' | 'radio' | 'switch' | 'slider' | 'tab'
   | 'tabList' | 'link' | 'heading' | 'list' | 'listItem' | 'image' | 'dialog'
-  | 'group' | 'textInput' | 'multilineTextInput' | 'line'
-  | 'radioGroup' | 'menu' | 'menuItem'
-  | 'window' | 'titleBar' | 'staticText' | 'scrollView';
+  | 'group' | 'window' | 'titleBar' | 'staticText' | 'textInput'
+  | 'multilineTextInput' | 'scrollView' | 'line' | 'radioGroup' | 'menu'
+  | 'menuItem' | 'terminal';
 
 /** What assistive technology can ask of a node (`access(key, action)`). */
 export type AccessAction =
   | 'click' | 'focus' | 'blur' | 'setValue' | 'increment' | 'decrement'
-  | 'scrollIntoView' | 'scrollUp' | 'scrollDown' | 'scrollLeft' | 'scrollRight'
-  | 'setTextSelection' | 'replaceSelectedText';
+  | 'scrollIntoView' | 'scrollUp' | 'scrollDown' | 'scrollLeft'
+  | 'scrollRight' | 'setTextSelection' | 'replaceSelectedText';
+// -- end generated --
 
 /** One semantic node of a frame. Plain boxes are elided, so `parent` is
  *  the nearest semantic ancestor. */
@@ -435,6 +438,10 @@ export interface AccessNode {
   scroll: { x: number; y: number; maxX: number; maxY: number } | null;
   /** The requests this node accepts. */
   actions: AccessAction[];
+  /** Declared `live`: when the text inside this node changes, a reader
+   *  reads the change without being asked. `'off'` for every other node
+   *  (`docs/adr/0008-live-regions-and-announcements.md`). */
+  live: Live;
 }
 
 /** The semantic nodes of a frame in tree order (root first) — what a
@@ -474,21 +481,26 @@ export interface MenuBarState {
   }[];
 }
 
-/** One row of a context menu, as `Ctx.menu()` reports it
- *  (`docs/adr/0017-selection-as-a-scope.md`). `label` is what a drawn menu
- *  reads; a host rendering natively uses `role` to pick the platform's own
- *  wording for the standard items, and draws `accel` beside them. */
+/** One row of a menu, as `Ctx.menu()` and `Ctx.menuBar()` both report it
+ *  (`docs/adr/0017-selection-as-a-scope.md`): what the drawn menu would
+ *  show. `label` is the row's own text or, for a standard role that
+ *  declared none, the role's wording; a host rendering natively uses `role`
+ *  to pick the platform's own wording instead, and draws `accel` beside
+ *  it. */
 export interface OpenMenuItem {
   label: string;
-  role: 'custom' | 'separator' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'lookUp';
-  /** Drawn with a checkmark: a setting rather than a command. Absent on a
-   *  context menu's rows, which have never had one. */
-  checked?: boolean;
+  role: MenuItemRole;
+  /** Drawn with a checkmark: a setting the row *is* rather than a command
+   *  it runs. Present on every row; a context menu's rows can carry it as
+   *  a bar's can. */
+  checked: boolean;
   /** A disabled row is drawn dimmed and cannot be chosen — Paste with an
    *  empty clipboard, Copy with no selection. Present rather than absent,
    *  so a menu's rows do not move under the pointer. */
   enabled: boolean;
-  /** Display only: the shortcut is the app's or the platform's. */
+  /** Display only: the shortcut is the app's or the platform's. The row's
+   *  own, or its role's default (`⌘C` on a `copy` row that declared none);
+   *  null where there is neither. */
   accel: string | null;
 }
 
@@ -1773,7 +1785,8 @@ export declare class Ctx {
    * `{target, x, y, items}`. What a host rendering menus itself
    * reads after `setNativeMenus(true)` — the core then keeps
    * the menu as state and draws none of it — and answers with
-   * `activateMenuItem` or `closeMenu`.
+   * `activateMenuItem` or `closeMenu`. A row reads exactly as a
+   * `menuBar()` row does (`menu_item_json`).
    */
   menu(): OpenMenu | null
   /**
@@ -2441,7 +2454,8 @@ export declare class KuiWindow {
    * `{target, x, y, items}`. What a host rendering menus itself
    * reads after `setNativeMenus(true)` — the core then keeps
    * the menu as state and draws none of it — and answers with
-   * `activateMenuItem` or `closeMenu`.
+   * `activateMenuItem` or `closeMenu`. A row reads exactly as a
+   * `menuBar()` row does (`menu_item_json`).
    */
   menu(): OpenMenu | null
   /**

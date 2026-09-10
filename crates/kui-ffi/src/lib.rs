@@ -108,6 +108,7 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             menu_html: String::new(),
             selection_text: String::new(),
             selection_html: String::new(),
+            font_families: Vec::new(),
             last_window_name: None,
             slot_name: None,
             slot_namespace: None,
@@ -130,13 +131,17 @@ pub extern "C" fn kui_ctx_free(ptr: *mut KuiCtx) {
 // Host environment
 
 /// Host facts for views to read (`refresh_hz <= 0` = unknown). Survives
-/// across frames; set on change or every frame, either works.
+/// across frames; set on change or every frame, either works. A window
+/// that lost the keyboard lets go of every key its sink was holding
+/// (`Core::set_focused`), so the `kui_release_held_keys` a host used to
+/// owe on focus loss is owed no more; the synthetic releases are polled
+/// like any event.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_env_set(ptr: *mut KuiCtx, refresh_hz: f32, focused: bool) {
     guard((), || {
         if let Some(c) = unsafe { ctx(ptr) } {
             c.core().env.refresh_hz = (refresh_hz > 0.0).then_some(refresh_hz);
-            c.core().env.focused = focused;
+            c.core().set_focused(focused);
         }
     });
 }
