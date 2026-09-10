@@ -643,12 +643,13 @@ impl<E: Example> Harness<E> {
         }
         // `code` is what the layout produced with Shift applied; the
         // physical position is the fallback for a layout that produced
-        // something else under Control.
+        // something else under Control. A letter is a one-character name:
+        // `"tab"`, `"delete"` and `"down"` are not `t`, `d` and `d`.
         let letter = |k: &str| {
-            p.get(k)
-                .and_then(Value::as_str)
-                .and_then(|s| s.chars().next())
-                .map(|c| c.to_ascii_lowercase())
+            let s = p.get(k).and_then(Value::as_str)?;
+            let mut chars = s.chars();
+            let c = chars.next()?;
+            chars.next().is_none().then(|| c.to_ascii_lowercase())
         };
         let what = match letter("code").or_else(|| letter("physical")) {
             Some('t') => "base",
@@ -952,9 +953,11 @@ impl<E: Example> Harness<E> {
         );
     }
 
-    fn stream_panel(&mut self, ui: &mut Ui<'_>, t: &Theme, height: Sizing) {
-        // The core's warnings since the last frame, into the stream: the
-        // runner drains and prints them, so this reads the log it leaves.
+    /// The core's warnings since the last frame, into the stream: the
+    /// runner drains and prints them, so this reads the log it leaves.
+    /// Every frame, whichever tab shows, so each is stamped with the
+    /// frame it was raised on and not the one the stream was next seen.
+    fn sync_warnings(&mut self, ui: &mut Ui<'_>) {
         let raised = ui.core().warnings_raised();
         if raised.len() > self.warnings_seen {
             let new: Vec<String> = raised[self.warnings_seen..]
@@ -966,6 +969,9 @@ impl<E: Example> Harness<E> {
                 self.push(EntryKind::Warning, text);
             }
         }
+    }
+
+    fn stream_panel(&mut self, ui: &mut Ui<'_>, t: &Theme, height: Sizing) {
         ui.with(
             NodeSpec::row()
                 .width(Sizing::Grow(1.0))
@@ -1029,9 +1035,10 @@ impl<E: Example> Harness<E> {
         }
         // The example's nodes only: the dock's own subtree is under the
         // `dock` key and is not what anyone opened this tab to see.
+        let dock_key = Key::ROOT.str("dock");
         let nodes: Vec<kui::NodeInfo> = {
             let all = ui.core().nodes();
-            let dock = all.iter().position(|n| n.label.as_deref() == Some("dock"));
+            let dock = all.iter().position(|n| n.key == dock_key);
             let dock_end = dock.map(|d| {
                 let depth = all[d].depth;
                 all[d + 1..]
@@ -1050,10 +1057,10 @@ impl<E: Example> Harness<E> {
         let selected = self
             .selected
             .and_then(|k| nodes.iter().find(|n| n.key == k).cloned());
-        let hovered_row = nodes
-            .iter()
-            .find(|n| ui.is_hovered(ui.child_key(&format!("node:{:016x}", n.key.0))))
-            .cloned();
+        // The row under the pointer, read where the rows are opened: each
+        // is a child of the virtual column's indexed slot, so its key is
+        // only known from inside the row closure.
+        let mut hovered_row: Option<kui::NodeInfo> = None;
         ui.text(
             &format!("{} nodes · click one to inspect it", nodes.len()),
             TextStyle::new(11.0).color(t.muted),
@@ -1087,8 +1094,12 @@ impl<E: Example> Harness<E> {
                 } else {
                     format!(" · {}", n.flags.join(" "))
                 };
+                let row_key = format!("node:{:016x}", n.key.0);
+                if ui.is_hovered(ui.child_key(&row_key)) {
+                    hovered_row = Some(n.clone());
+                }
                 ui.with_keyed(
-                    &format!("node:{:016x}", n.key.0),
+                    &row_key,
                     NodeSpec::row()
                         .width(Sizing::Grow(1.0))
                         .height(Sizing::Grow(1.0))
@@ -1183,7 +1194,9 @@ impl<E: Example> Harness<E> {
         }
         // The outline over the example: the selected node's rect, and the
         // hovered row's beside it — viewport floats, since the rects are
-        // viewport px and the example is a sibling.
+        // viewport px and the example is a sibling. The border is the
+        // foreground, not the accent: half the nodes worth outlining are
+        // accent-coloured buttons, on which an accent border is nothing.
         for (n, strong) in [(selected, true), (hovered_row, false)]
             .into_iter()
             .filter_map(|(n, s)| n.map(|n| (n, s)))
@@ -1205,7 +1218,7 @@ impl<E: Example> Harness<E> {
                     .height(Sizing::Fixed(n.rect.h.max(1.0)))
                     .border(
                         if strong { 2.0 } else { 1.0 },
-                        t.accent.with_alpha(if strong { 1.0 } else { 0.6 }),
+                        t.fg.with_alpha(if strong { 0.9 } else { 0.5 }),
                     )
                     .bg(t.accent.with_alpha(if strong { 0.10 } else { 0.05 }))
                     .role(Role::None),
@@ -1275,6 +1288,7 @@ impl<E: Example> App for Harness<E> {
             .on_key(Value::str(SINK_TAG))
         };
         ui.configure_root(root(self.dock));
+        self.sync_warnings(ui);
         ui.with_keyed(
             "example",
             NodeSpec::column()
@@ -1557,6 +1571,71 @@ mod tests {
         assert_eq!(core.focus(), Some(button), "the ring has one member");
     }
 
+    /// The tree tab: the example's nodes and not the dock's, a click on a
+    /// row selects it and outlines it, the pointer over a row outlines it
+    /// too — the rows are keyed under the virtual column's slots, and the
+    /// hover has to be read where they are opened.
+    #[test]
+    fn the_tree_tab_lists_the_example_and_outlines_what_is_picked() {
+        let mut core = Core::new();
+        let mut h = Harness::new("blank", Blank::default(), Dock::Side, None, None);
+        h.tab = Tab::Tree;
+        frame(&mut h, &mut core);
+        frame(&mut h, &mut core);
+        let press = core.key_of("press").unwrap();
+        let rows: Vec<Key> = core
+            .nodes()
+            .iter()
+            .filter(|n| n.label.as_deref().is_some_and(|l| l.starts_with("node:")))
+            .map(|n| n.key)
+            .collect();
+        assert!(rows.len() >= 2, "rows: {}", rows.len());
+        assert!(
+            !core
+                .nodes()
+                .iter()
+                .any(|n| n.label.as_deref() == Some("node:0000000000000000")),
+            "a dock row never lists the dock"
+        );
+        let press_row = core
+            .key_of(&format!("node:{:016x}", press.0))
+            .expect("the example's button has a row");
+        // Hover it: the next frame outlines the button.
+        let r = core
+            .nodes()
+            .iter()
+            .find(|n| n.key == press_row)
+            .unwrap()
+            .rect;
+        core.handle_input(kui::InputEvent::CursorMoved(Vec2::new(
+            r.x + r.w / 2.0,
+            r.y + r.h / 2.0,
+        )));
+        frame(&mut h, &mut core);
+        assert!(
+            core.key_of("outline-hover").is_some(),
+            "the hovered row outlines its node"
+        );
+        assert!(core.key_of("outline-selected").is_none());
+        // Click it: selected, and the inspector is up.
+        for ev in core.handle_input(kui::InputEvent::Access(kui::AccessRequest::new(
+            press_row,
+            kui::AccessAction::Click,
+        ))) {
+            h.on_event(ev);
+        }
+        assert_eq!(h.selected, Some(press));
+        frame(&mut h, &mut core);
+        let outline = core.key_of("outline-selected").expect("outlined");
+        let o = core.nodes().iter().find(|n| n.key == outline).unwrap();
+        let b = core.nodes().iter().find(|n| n.key == press).unwrap();
+        assert_eq!(
+            (o.rect.x, o.rect.y),
+            (b.rect.x, b.rect.y),
+            "over the button"
+        );
+    }
+
     /// A click on the example reaches it and lands in the stream; a click
     /// on a dock button is the harness's and does not.
     #[test]
@@ -1611,6 +1690,21 @@ mod tests {
         h.on_event(chord('M'));
         assert!(h.native_menus.is_some());
         assert!(h.example.events.is_empty(), "no chord reached the example");
+        // A named key under the modifiers is not a chord: Ctrl+Shift+Tab
+        // starts with a `t` and is nobody's base toggle. It stays a key
+        // on the root, which — untagged — is the example's.
+        let mut named = chord('t');
+        if let Value::Map(m) = &mut named.payload {
+            for (k, v) in m.iter_mut() {
+                if k == "code" || k == "physical" {
+                    *v = Value::str("tab");
+                }
+            }
+        }
+        h.on_event(named);
+        assert_eq!(h.base, None, "Ctrl+Shift+Tab is not Ctrl+Shift+T");
+        assert_eq!(h.example.events.len(), 1);
+        h.example.events.clear();
         // A bare key the root sink was handed is the harness's too: it
         // carries the sink's tag, and the example declared nothing there.
         let mut plain = chord('d');

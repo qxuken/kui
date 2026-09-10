@@ -1124,7 +1124,8 @@ fn window_commands_json(cmds: Vec<kui_core::WindowCommand>) -> Json {
     )
 }
 
-/// `{x, y, w, h}` — the shape `scrollGeometry` already returns for a box.
+/// One row of `nodes()`: `NodeInfo` with the key as a hex string, sizing
+/// spelled the way `docs/props.md` does, and the role by its schema name.
 fn node_info_json(n: &kui_core::NodeInfo) -> Json {
     let mut o = JsonMap::new();
     o.insert("key".into(), Json::String(key_str(n.key)));
@@ -1168,6 +1169,7 @@ fn node_info_json(n: &kui_core::NodeInfo) -> Json {
     Json::Object(o)
 }
 
+/// `{x, y, w, h}` — the shape `scrollGeometry` already returns for a box.
 fn rect_json(r: Rect) -> Json {
     let mut o = JsonMap::new();
     o.insert("x".into(), Json::from(r.x as f64));

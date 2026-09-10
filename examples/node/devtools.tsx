@@ -217,7 +217,13 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
     const accent = hs.accent !== null ? ACCENTS[hs.accent][1] : hs.customAccent;
     if (hs.base) win.setTheme(accent ? { appearance: hs.base, accent } : { appearance: hs.base });
     else win.setAccent(accent ?? null);
-    if (hs.nativeMenus !== null) win.setNativeMenus(hs.nativeMenus);
+    // Both the popup menus and the bar, like the Rust twin: on macOS the
+    // bar is the platform's by default, and "drawn" is how the strip is
+    // seen on that host at all.
+    if (hs.nativeMenus !== null) {
+      win.setNativeMenus(hs.nativeMenus);
+      win.setNativeMenuBar(hs.nativeMenus);
+    }
   };
 
   const act = (hs: HarnessState, what: string): HarnessState => {
@@ -454,7 +460,7 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
         ) : null}
         {selected ? (
           <box key="outline" float={{ anchor: 'viewport', at: ['start', 'start'], self: ['start', 'start'], dx: selected.rect.x, dy: selected.rect.y }}
-               width={Math.max(1, selected.rect.w)} height={Math.max(1, selected.rect.h)} borderW={2} borderColor={t.accent}
+               width={Math.max(1, selected.rect.w)} height={Math.max(1, selected.rect.h)} borderW={2} borderColor={t.fg}
                bg={(t.accent & 0xffffff00) | 0x1a} role="none" />
         ) : null}
       </>
