@@ -7,7 +7,7 @@ use crate::color::Color;
 use crate::edit::EditOptions;
 use crate::geom::{Edges, Vec2};
 use crate::key::Key;
-use crate::menu::{MenuItem, MenuRole};
+use crate::menu::{MenuBar, MenuItem, MenuRole};
 use crate::spec::{Align, FloatConfig, NodeSpec, Sizing, TextStyle};
 use crate::stats::{FrameSample, STATS_CAPACITY};
 use crate::ui::Ui;
@@ -614,11 +614,10 @@ pub struct MenuNodes {
 /// Each chosen row posts the item's `id`, or its label when it declares
 /// none. A `Separator` posts nothing and takes no focus.
 pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> MenuNodes {
-    let accent = ui.env().system.accent.unwrap_or(MENU_ACCENT);
-    let mut rows = Vec::with_capacity(items.len());
-    let root = ui.with_keyed(
+    menu_panel(
+        ui,
         MENU_KEY,
-        NodeSpec::column()
+        menu_panel_spec()
             .float(
                 FloatConfig::viewport()
                     // Top-left of the menu at the top-left of the
@@ -631,71 +630,266 @@ pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> MenuNodes 
                     .fit(),
             )
             .modal(Value::str(MENU_KEY))
-            .role(Role::Menu)
-            .label("Menu")
-            .width(Sizing::Fixed(MENU_WIDTH))
-            .pad(4.0)
-            .gap(1.0)
-            .bg(MENU_BG)
-            .border(1.0, MENU_BORDER)
-            .radius(6.0),
-        |ui| {
-            let mut first = true;
-            for (i, item) in items.iter().enumerate() {
-                if item.role == MenuRole::Separator {
-                    rows.push(
-                        ui.with_indexed(
-                            i as u64,
-                            NodeSpec::row()
-                                .width(Sizing::Grow(1.0))
-                                .height(Sizing::Fixed(1.0))
-                                .bg(MENU_BORDER)
-                                // Not a row anything reads out: a divider is
-                                // paint, and a screen reader hearing "separator"
-                                // between every pair of items is noise.
-                                .role(Role::None),
-                            |_| {},
-                        ),
-                    );
-                    continue;
+            .label("Menu"),
+        items,
+    )
+}
+
+/// The panel every menu is: a fixed-width column of rows, in the palette
+/// the stock menu paints. What the caller adds is where it goes and what
+/// scope it belongs to — a context menu floats at the pointer and declares
+/// its own `modal`; the menu bar's drops out of its title and lives inside
+/// the bar's (`docs/adr/0018-a-menu-bar-the-app-declares.md`, decision 5).
+pub fn menu_panel_spec() -> NodeSpec {
+    NodeSpec::column()
+        .role(Role::Menu)
+        .width(Sizing::Fixed(MENU_WIDTH))
+        .pad(4.0)
+        .gap(1.0)
+        .bg(MENU_BG)
+        .border(1.0, MENU_BORDER)
+        .radius(6.0)
+}
+
+/// Builds the rows of one menu into `spec`, keyed under `label`, and
+/// reports the keys they took. The one place a menu's rows are drawn:
+/// both menus kui has are this function with a different container.
+pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuItem]) -> MenuNodes {
+    let accent = ui.env().system.accent.unwrap_or(MENU_ACCENT);
+    // A gutter for the checkmarks, and only where a row has one: a menu of
+    // plain commands is not indented for a column nothing uses, and one
+    // with a setting in it keeps every label on the same left edge whether
+    // the setting is on or off.
+    let gutter = items.iter().any(|i| i.checked);
+    let mut rows = Vec::with_capacity(items.len());
+    let root = ui.with_keyed(label, spec, |ui| {
+        let mut first = true;
+        for (i, item) in items.iter().enumerate() {
+            if item.role == MenuRole::Separator {
+                rows.push(
+                    ui.with_indexed(
+                        i as u64,
+                        NodeSpec::row()
+                            .width(Sizing::Grow(1.0))
+                            .height(Sizing::Fixed(1.0))
+                            .bg(MENU_BORDER)
+                            // Not a row anything reads out: a divider is
+                            // paint, and a screen reader hearing "separator"
+                            // between every pair of items is noise.
+                            .role(Role::None),
+                        |_| {},
+                    ),
+                );
+                continue;
+            }
+            let payload = item.id.clone().unwrap_or_else(|| Value::str(item.text()));
+            let mut spec = NodeSpec::row()
+                .role(Role::MenuItem)
+                .label(item.text())
+                .width(Sizing::Grow(1.0))
+                .pad_xy(8.0, 5.0)
+                .gap(8.0)
+                .radius(4.0)
+                .main_align(Align::Start)
+                .cross_align(Align::Center);
+            if item.checked {
+                // The gutter's checkmark is paint; this is the same fact for
+                // a screen reader, which reads a row that carries one as
+                // checked rather than as "✓ Wrap".
+                spec = spec.checked(true);
+            }
+            if item.enabled {
+                spec = spec.on_click(payload).hover_bg(accent).focus_bg(accent);
+                // The first row that can take focus is where the modal opens:
+                // a menu whose keyboard starts nowhere makes the arrow keys
+                // feel like they missed.
+                if first {
+                    spec = spec.initial_focus();
+                    first = false;
                 }
-                let payload = item.id.clone().unwrap_or_else(|| Value::str(item.text()));
+            } else {
+                spec = spec.disabled(true).opacity(MENU_DISABLED_OPACITY);
+            }
+            rows.push(ui.with_indexed(i as u64, spec, |ui| {
+                if gutter {
+                    ui.with(NodeSpec::row().width(Sizing::Fixed(MENU_CHECK_W)), |ui| {
+                        if item.checked {
+                            ui.text("\u{2713}", TextStyle::new(MENU_TEXT).color(MENU_FG));
+                        }
+                    });
+                }
+                ui.text(item.text(), TextStyle::new(MENU_TEXT).color(MENU_FG));
+                if let Some(accel) = item.accel_text() {
+                    // Pushed to the right edge by a grow spacer, so the label
+                    // stays where the eye expects it whatever the
+                    // accelerator is.
+                    ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
+                    ui.text(accel, TextStyle::new(MENU_TEXT).color(MENU_ACCEL));
+                }
+            }));
+        }
+    });
+    MenuNodes { root, rows }
+}
+
+/// The reserved label the drawn menu bar is keyed under, the way
+/// [`MENU_KEY`] is the open menu's.
+pub const MENU_BAR_KEY: &str = "kui.menubar";
+/// The label its dropped menu is keyed under, beside the open title.
+const MENU_BAR_PANEL_KEY: &str = "kui.menubar.menu";
+/// The label each title is keyed under, inside its own wrapper.
+const MENU_BAR_TITLE_KEY: &str = "kui.menubar.title";
+
+/// The hover group a title and its menu share, so the widget can ask
+/// whether the pointer is on the `i`th title without knowing its key.
+fn group_name(i: usize) -> String {
+    format!("{MENU_BAR_KEY}.{i}")
+}
+/// The bar's height, logical px — a little under a titlebar's, which is
+/// what every platform that draws one in the window does.
+pub const MENU_BAR_H: f32 = 26.0;
+
+/// The application menu: `bar` is what the app's menu *is*, and calling
+/// this is where its titles go when they have to be drawn in the window
+/// (`docs/adr/0018-a-menu-bar-the-app-declares.md`).
+///
+/// One call and not two, because the declaration and the placement are one
+/// decision. **It draws nothing where the platform owns the bar** — macOS,
+/// where the driver hands this same declaration to `NSApp` — so the call
+/// still says what the menu is and the strip simply is not there; that is
+/// the contract [`window_buttons`] has under native decorations, and it is
+/// what makes one view portable. An empty `bar` takes the menu away.
+///
+/// Declared every frame, and diffed: an unchanged menu costs a comparison
+/// and rebuilds nothing.
+///
+/// Everything below a title is the stock menu: the same rows, roles,
+/// accelerators and access tree the context menu draws, through the same
+/// [`menu_panel`]. What is the bar's own is the scope — while a menu is
+/// open the *bar* is the frame's modal, not the dropdown, so hovering
+/// across the titles moves the open menu the way a menu bar does, a press
+/// on the open title closes it, and Escape or a press in the app below
+/// closes it through ADR 0003's one mechanism.
+///
+/// Typical use, as the first child of a full-height root, under the
+/// titlebar if there is one:
+/// `widgets::menu_bar(ui, self.menu());`
+pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
+    // Declaring it is this call's first half, and drawing it the second:
+    // where the platform owns the bar there is no second half, and the
+    // frame has still said what the app's menu is.
+    ui.core().declare_menu_bar(bar);
+    if ui.core().native_menu_bar() {
+        return;
+    }
+    let Some(bar) = ui.core().menu_bar().cloned() else {
+        return;
+    };
+    if bar.menus.is_empty() {
+        return;
+    }
+    let accent = ui.env().system.accent.unwrap_or(MENU_ACCENT);
+    let mut open = ui.core().menu_bar_open();
+    let mut titles = Vec::with_capacity(bar.menus.len());
+    let mut rows = Vec::new();
+    let mut spec = NodeSpec::row()
+        .width(Sizing::Grow(1.0))
+        .height(Sizing::Fixed(MENU_BAR_H))
+        .cross_align(Align::Center)
+        .pad_xy(4.0, 0.0)
+        .gap(2.0)
+        .bg(MENU_BAR_BG)
+        .role(Role::Menu)
+        .label("Menu bar");
+    if open.is_some() {
+        // The bar and not the dropdown is the modal while a menu is open:
+        // the titles have to stay live for the hover to walk them, and the
+        // app below has to be as inert as it is under any other menu.
+        spec = spec.modal(Value::str(MENU_BAR_KEY));
+    }
+    let root = ui.with_keyed(MENU_BAR_KEY, spec, |ui| {
+        // Hovering another title while a menu is open moves the open menu
+        // to it, which is what a menu bar does everywhere. Resolved before
+        // anything is built, so the frame that notices the hover is the
+        // frame that draws the new menu and not the one after it — and
+        // asked by *group* rather than by key, since a title's key is
+        // inside a wrapper this loop has not opened yet.
+        if open.is_some() {
+            for (i, m) in bar.menus.iter().enumerate() {
+                let hovered = ui.is_group_hovered(NodeSpec::hover_group_id(&group_name(i)));
+                if open != Some(i) && m.enabled && !m.items.is_empty() && hovered {
+                    open = Some(i);
+                    ui.core().set_menu_bar_open(open);
+                }
+            }
+        }
+        for (i, m) in bar.menus.iter().enumerate() {
+            let live = m.enabled && !m.items.is_empty();
+            let is_open = open == Some(i);
+            // A wrapper the menu drops out of, so the panel is a *sibling*
+            // of the title and not a child of it: a `menuItem` is a
+            // name-from-content role, and a menu nested inside one would be
+            // read as part of its name and never reached on its own.
+            ui.with_indexed(i as u64, NodeSpec::row(), |ui| {
                 let mut spec = NodeSpec::row()
                     .role(Role::MenuItem)
-                    .label(item.text())
-                    .width(Sizing::Grow(1.0))
-                    .pad_xy(8.0, 5.0)
-                    .gap(8.0)
+                    .label(m.label.as_str())
+                    .pad_xy(8.0, 3.0)
                     .radius(4.0)
-                    .main_align(Align::Start)
                     .cross_align(Align::Center);
-                if item.enabled {
-                    spec = spec.on_click(payload).hover_bg(accent).focus_bg(accent);
-                    // The first row that can take focus is where the
-                    // modal opens: a menu whose keyboard starts nowhere
-                    // makes the arrow keys feel like they missed.
-                    if first {
-                        spec = spec.initial_focus();
-                        first = false;
+                if live {
+                    // The payload never reaches the app — the core takes
+                    // the event back by key — but a title that posts its
+                    // own name is what a host driving the bar by hand
+                    // would expect to see if it ever did.
+                    spec = spec
+                        .on_click(Value::str(m.label.as_str()))
+                        .hover_group(&group_name(i))
+                        .hover_bg(accent)
+                        .focus_bg(accent);
+                    if is_open {
+                        spec = spec.bg(accent);
                     }
                 } else {
                     spec = spec.disabled(true).opacity(MENU_DISABLED_OPACITY);
                 }
-                rows.push(ui.with_indexed(i as u64, spec, |ui| {
-                    ui.text(item.text(), TextStyle::new(MENU_TEXT).color(MENU_FG));
-                    if let Some(accel) = item.accel_text() {
-                        // Pushed to the right edge by a grow spacer, so
-                        // the label stays where the eye expects it
-                        // whatever the accelerator is.
-                        ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
-                        ui.text(accel, TextStyle::new(MENU_TEXT).color(MENU_ACCEL));
-                    }
+                titles.push(ui.with_keyed(MENU_BAR_TITLE_KEY, spec, |ui| {
+                    ui.text(m.label.as_str(), TextStyle::new(MENU_TEXT).color(MENU_FG));
                 }));
-            }
-        },
-    );
-    MenuNodes { root, rows }
+                if is_open {
+                    // Out of the title's bottom-left corner, and `fit` to
+                    // slide back in at the right-hand end of the bar.
+                    let nodes = menu_panel(
+                        ui,
+                        MENU_BAR_PANEL_KEY,
+                        menu_panel_spec().label(m.label.as_str()).float(
+                            FloatConfig::parent()
+                                .at(Align::Start, Align::End)
+                                .self_at(Align::Start, Align::Start)
+                                .offset(0.0, 2.0)
+                                .fit(),
+                        ),
+                        &m.items,
+                    );
+                    rows = nodes.rows;
+                }
+            });
+        }
+    });
+    ui.core().set_menu_bar_nodes(root, titles, rows);
 }
+
+/// The bar's own ground: a shade darker than the menus that drop out of
+/// it, so the strip reads as chrome and not as content.
+const MENU_BAR_BG: Color = Color {
+    r: 0.086,
+    g: 0.094,
+    b: 0.129,
+    a: 1.0,
+};
+
+/// The checkmark gutter's width, logical px.
+const MENU_CHECK_W: f32 = 14.0;
 
 const MENU_BG: Color = Color {
     r: 0.114,

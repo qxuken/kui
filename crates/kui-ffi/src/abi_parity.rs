@@ -233,6 +233,14 @@ fn asserts() -> String {
         enabled: u32 => "uint32_t",
         id: *const KuiValue => "const KuiValue *",
         accel: KuiStr => "KuiStr",
+        checked: u32 => "uint32_t",
+    });
+
+    abi_struct!(o, KuiMenu {
+        label: KuiStr => "KuiStr",
+        items: *const KuiMenuItem => "const KuiMenuItem *",
+        count: usize => "size_t",
+        enabled: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiMenuAction {

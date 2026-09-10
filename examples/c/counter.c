@@ -917,6 +917,55 @@ static int surface(void) {
         while (kui_poll_event(ui, &wev)) {}
     }
 
+    /* The application menu bar (ADR 0018): declared in a frame, read back
+     * the way a host with a bar of its own reads it, and one row chosen
+     * the way that host reports a choice. */
+    {
+        KuiValue *save = kui_value_str(KUI_STR("file.save"));
+        KuiMenuItem file[] = {
+            {.label = KUI_STR("Save"), .role = KUI_MENU_CUSTOM, .enabled = 1,
+             .id = save, .accel = KUI_STR("mod+s")},
+            {.role = KUI_MENU_SEPARATOR},
+            {.label = KUI_STR("Wrap"), .role = KUI_MENU_CUSTOM, .enabled = 1, .checked = 1},
+        };
+        KuiMenu menus[] = {
+            {.label = KUI_STR("File"), .items = file, .count = 3, .enabled = 1},
+        };
+        kui_frame_begin(ui, 320, 240, 1);
+        check(kui_menu_bar(ui, menus, 1), "kui_menu_bar declares and draws");
+        kui_frame_finish(ui);
+        kui_value_free(save);
+
+        uint64_t rev = 0;
+        check(kui_menu_bar_menu_count(ui, &rev) == 1 && rev > 0, "one menu, at a revision");
+        KuiStr label = {0};
+        bool on = false;
+        check(kui_menu_bar_menu(ui, 0, &label, &on) == 3 && has(label, "File") && on,
+              "kui_menu_bar_menu reads the title back");
+        KuiStr accel = {0};
+        uint32_t role = 99, flags = 0;
+        check(kui_menu_bar_item(ui, 0, 2, &label, &accel, &role, &flags)
+                  && has(label, "Wrap") && role == KUI_MENU_CUSTOM
+                  && (flags & KUI_MENU_ITEM_CHECKED) && (flags & KUI_MENU_ITEM_ENABLED),
+              "kui_menu_bar_item reads a checked row back");
+        check(kui_menu_bar_item(ui, 0, 0, &label, &accel, &role, &flags) && accel.len > 0,
+              "and the accelerator, in this platform's spelling");
+        check(!kui_menu_bar_item(ui, 9, 9, &label, &accel, &role, &flags),
+              "a row that is not there is false");
+
+        /* The choice a native bar reports: the same event a press on the
+         * drawn bar's row produces. */
+        check(kui_activate_menu_bar_item(ui, 0, 0), "kui_activate_menu_bar_item");
+        KuiEvent mev = KUI_EVENT_INIT;
+        int menus_heard = 0;
+        while (kui_poll_event(ui, &mev)) {
+            const KuiValue *kind = kui_value_get(mev.payload, KUI_STR("kind"));
+            KuiStr s = {0};
+            if (kind && kui_value_as_str(kind, &s) && has(s, "menu")) menus_heard++;
+        }
+        check(menus_heard == 1, "and the app hears one menu event");
+    }
+
     kui_image_remove(ui, k.image);
     kui_ctx_free(ui);
 
@@ -1929,6 +1978,43 @@ static void conf_virtual(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_menu_bar: the application menu bar (ADR 0018) - a
+ * declaration, and the widget that draws it. The rows are the KuiMenuItems
+ * a context menu takes, one level down; `id` values are borrowed for the
+ * length of the declaring call, so they are freed right after it. */
+static void conf_menu_bar(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiValue *new_id = kui_value_str(KUI_STR("file.new"));
+    KuiValue *wrap_id = kui_value_str(KUI_STR("file.wrap"));
+    KuiValue *print_id = kui_value_str(KUI_STR("file.print"));
+    KuiMenuItem file[] = {
+        {.label = KUI_STR("New"), .role = KUI_MENU_CUSTOM, .enabled = 1,
+         .id = new_id, .accel = KUI_STR("mod+n")},
+        {.role = KUI_MENU_SEPARATOR},
+        {.label = KUI_STR("Wrap"), .role = KUI_MENU_CUSTOM, .enabled = 1,
+         .id = wrap_id, .checked = 1},
+        {.label = KUI_STR("Print"), .role = KUI_MENU_CUSTOM, .enabled = 0,
+         .id = print_id},
+    };
+    KuiMenuItem edit[] = {
+        {.role = KUI_MENU_COPY, .enabled = 1},
+    };
+    KuiMenu menus[] = {
+        {.label = KUI_STR("File"), .items = file, .count = 4, .enabled = 1},
+        {.label = KUI_STR("Edit"), .items = edit, .count = 1, .enabled = 1},
+    };
+    KuiSpec outer = {.gap = 6, .width = {KUI_GROW, 1}};
+    kui_open(ui, &outer, NULL);
+    kui_menu_bar(ui, menus, 2);
+    kui_value_free(new_id);
+    kui_value_free(wrap_id);
+    kui_value_free(print_id);
+    KuiTextStyle body = {.size = 12};
+    kui_text(ui, KUI_STR("body"), &body);
+    kui_close(ui);
+}
+
 /* One entry per scene of conformance::SCENES; a scene in the reference with
  * no entry here fails the run rather than being skipped. */
 static const ConfScene CONF_SCENES[] = {
@@ -1961,6 +2047,7 @@ static const ConfScene CONF_SCENES[] = {
     /* Same builder: `menu` is that tree under a secondary press, and what
      * it draws is the core's own menu rather than anything declared. */
     {"menu", conf_selection},
+    {"menubar", conf_menu_bar},
     {"virtual", conf_virtual},
 };
 

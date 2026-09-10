@@ -20,17 +20,26 @@
 //! app — and the chosen row is handed back through the callback the
 //! caller supplied.
 //!
-//! What this is not: a menu bar, a submenu, or a Services entry. Those are
-//! `NSMenu` too and would arrive the same way; nothing here has needed
-//! them yet.
+//! **The application menu bar is the other half of this file**
+//! ([`MacMenuBar`], `docs/adr/0018-a-menu-bar-the-app-declares.md`). It is
+//! the same `NSMenu`, one level up and with the opposite lifetime: not
+//! popped up and torn down around one press, but *set* on `NSApp` and left
+//! there until the declaration changes. It also needs none of the deferral
+//! above — `setMainMenu:` returns immediately, and AppKit runs the bar's
+//! own tracking loop from its own turn of the run loop, never from inside
+//! a winit callback. What it does need is a wake: an item chosen from the
+//! bar (⌘S with no other event behind it, above all) has to reach a loop
+//! that may be asleep, so the target holds a [`Waker`] and rings it.
+//!
+//! What this is still not: a submenu, or a Services entry.
 
 use std::cell::{Cell, RefCell};
 
-use kui_core::{MenuItem, MenuRole, Vec2};
+use kui_core::{MenuBar, MenuItem, MenuRole, Vec2};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Sel};
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send, sel};
-use objc2_app_kit::{NSEventModifierFlags, NSMenu, NSMenuItem, NSView};
+use objc2_app_kit::{NSApplication, NSEventModifierFlags, NSMenu, NSMenuItem, NSView};
 use objc2_foundation::{
     MainThreadMarker, NSAttributedString, NSObject, NSObjectProtocol, NSPoint, NSString,
 };
@@ -248,5 +257,207 @@ impl MacMenu {
     /// including the answer "nothing", for a menu the user dismissed.
     pub fn busy(&self) -> bool {
         self.target.ivars().up.get() || self.target.ivars().pending.borrow().is_some()
+    }
+}
+
+// -- The application menu bar -----------------------------------------------
+
+/// The ivars of [`BarTarget`]: what the last pick was, and who to wake
+/// about it.
+struct BarIvars {
+    /// The flat index of the chosen item in the map the last `apply` built,
+    /// or `-1` for none. Read and cleared by the runner's drain.
+    chosen: Cell<isize>,
+    /// The loop to wake when one arrives. A ⌘-shortcut chosen from the
+    /// menu bar is the whole of the event as far as winit is concerned —
+    /// AppKit consumed the key — so without this the app would sit still
+    /// until the user moved the mouse.
+    waker: RefCell<Option<crate::Waker>>,
+}
+
+define_class!(
+    // SAFETY:
+    // - `NSObject` has no subclassing requirements.
+    // - `BarTarget` does not implement `Drop`.
+    #[unsafe(super(NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "KuiMenuBarTarget"]
+    #[ivars = BarIvars]
+    struct BarTarget;
+
+    impl BarTarget {
+        /// Every row's action. `tag` is the item's index in the flat map
+        /// `apply` built, so the answer needs no lookup and no menu walk.
+        #[unsafe(method(kuiBarPick:))]
+        fn pick(&self, sender: &NSMenuItem) {
+            self.ivars().chosen.set(sender.tag());
+            if let Some(waker) = self.ivars().waker.borrow().as_ref() {
+                waker.wake();
+            }
+        }
+    }
+
+    unsafe impl NSObjectProtocol for BarTarget {}
+);
+
+impl BarTarget {
+    fn new(mtm: MainThreadMarker) -> Retained<Self> {
+        let this = Self::alloc(mtm).set_ivars(BarIvars {
+            chosen: Cell::new(-1),
+            waker: RefCell::new(None),
+        });
+        unsafe { msg_send![super(this), init] }
+    }
+}
+
+/// The process's menu bar: `NSApp.mainMenu`, built from whatever the
+/// frontmost window's frame declared.
+///
+/// One per process and not one per window, because that is what the
+/// platform has (ADR 0018, decision 8): the runner applies the declaration
+/// of the window that holds the keyboard, and re-applies when either the
+/// declaration or that window changes.
+pub struct MacMenuBar {
+    target: Retained<BarTarget>,
+    /// `(menu, item)` per flat tag, so a pick is one index lookup.
+    map: RefCell<Vec<(usize, usize)>>,
+}
+
+impl MacMenuBar {
+    pub fn new() -> Option<Self> {
+        let mtm = MainThreadMarker::new()?;
+        Some(Self {
+            target: BarTarget::new(mtm),
+            map: RefCell::new(Vec::new()),
+        })
+    }
+
+    /// Whose loop to wake when the user chooses from the bar. Set once,
+    /// when the runner has a proxy to give.
+    pub fn set_waker(&self, waker: crate::Waker) {
+        *self.target.ivars().waker.borrow_mut() = Some(waker);
+    }
+
+    /// Hands `bar` to AppKit, replacing whatever was there.
+    ///
+    /// The first menu is the application menu: macOS draws that one's title
+    /// from the process itself whatever the declaration says, which is why
+    /// an app's own menu belongs first and is documented as doing so.
+    /// An empty declaration takes the bar away.
+    pub fn apply(&self, bar: &MenuBar) {
+        let Some(mtm) = MainThreadMarker::new() else {
+            return;
+        };
+        let app = NSApplication::sharedApplication(mtm);
+        if bar.is_empty() {
+            app.setMainMenu(None);
+            self.map.borrow_mut().clear();
+            return;
+        }
+        let mut map = Vec::new();
+        let root = NSMenu::new(mtm);
+        // Every enable state is the declaration's; without this AppKit
+        // greys out every row whose target does not answer
+        // `validateMenuItem:`, which is all of them.
+        root.setAutoenablesItems(false);
+        for (mi, menu) in bar.menus.iter().enumerate() {
+            let title = NSString::from_str(&menu.label);
+            // A top-level entry is a titled item whose submenu holds the
+            // rows; the item itself does nothing when clicked.
+            let head = NSMenuItem::new(mtm);
+            head.setTitle(&title);
+            head.setEnabled(menu.enabled);
+            let sub = NSMenu::initWithTitle(NSMenu::alloc(mtm), &title);
+            sub.setAutoenablesItems(false);
+            for (ii, item) in menu.items.iter().enumerate() {
+                if item.role == MenuRole::Separator {
+                    sub.addItem(&NSMenuItem::separatorItem(mtm));
+                    continue;
+                }
+                let tag = map.len();
+                map.push((mi, ii));
+                sub.addItem(&self.row(mtm, item, tag));
+            }
+            head.setSubmenu(Some(&sub));
+            root.addItem(&head);
+        }
+        *self.map.borrow_mut() = map;
+        app.setMainMenu(Some(&root));
+    }
+
+    /// One row: its wording, its shortcut where kui can parse one, and the
+    /// tag that says which item it is.
+    fn row(&self, mtm: MainThreadMarker, item: &MenuItem, tag: usize) -> Retained<NSMenuItem> {
+        // The accelerator the item declares, parsed back into the parts
+        // AppKit wants. `declare_menu_bar` has already normalized it into
+        // the platform's spelling, so this is the same string the drawn bar
+        // would have shown — one declaration, two readings of it, and
+        // never two different shortcuts.
+        // `accel_text` is the row's own or, for a standard role, the one
+        // this platform reads it by (`⌘C`) — so a role needs no special
+        // case here, and a row that declares an empty accelerator on
+        // purpose binds nothing, which is what declaring it empty means.
+        //
+        // Modifier-less ones are drawn and not bound. AppKit matches a key
+        // equivalent in `performKeyEquivalent:`, ahead of the responder
+        // chain, so a bare `"space"` would fire the item on every space the
+        // user typed — including into an `edit` — and swallow the key.
+        let accel = item
+            .accel_text()
+            .and_then(kui_core::Accel::parse)
+            .filter(|a| a.mods.any());
+        let key = accel
+            .as_ref()
+            .and_then(|a| a.key_equivalent())
+            .unwrap_or_default();
+        let title = NSString::from_str(item.text());
+        let equiv = NSString::from_str(&key);
+        let row = unsafe {
+            NSMenuItem::initWithTitle_action_keyEquivalent(
+                NSMenuItem::alloc(mtm),
+                &title,
+                Some(sel!(kuiBarPick:)),
+                &equiv,
+            )
+        };
+        unsafe {
+            row.setTarget(Some(
+                &*(&*self.target as *const BarTarget as *const AnyObject),
+            ));
+            row.setTag(tag as isize);
+            row.setEnabled(item.enabled);
+            // `NSControlStateValueOn` / `Off`, which are 1 and 0.
+            row.setState(objc2_app_kit::NSControlStateValue::from(if item.checked {
+                1isize
+            } else {
+                0
+            }));
+            if let Some(a) = accel.filter(|_| !key.is_empty()) {
+                let mut flags = NSEventModifierFlags::empty();
+                if a.mods.super_key {
+                    flags |= NSEventModifierFlags::Command;
+                }
+                if a.mods.shift {
+                    flags |= NSEventModifierFlags::Shift;
+                }
+                if a.mods.alt {
+                    flags |= NSEventModifierFlags::Option;
+                }
+                if a.mods.ctrl {
+                    flags |= NSEventModifierFlags::Control;
+                }
+                row.setKeyEquivalentModifierMask(flags);
+            }
+        }
+        row
+    }
+
+    /// The `(menu, item)` the last pick chose, taken. `None` when nothing
+    /// has been chosen since the last drain.
+    pub fn take_chosen(&self) -> Option<(usize, usize)> {
+        let tag = self.target.ivars().chosen.replace(-1);
+        (tag >= 0)
+            .then(|| self.map.borrow().get(tag as usize).copied())
+            .flatten()
     }
 }

@@ -324,6 +324,27 @@ impl Core {
             return;
         };
         self.close_menu();
+        self.perform_menu_item(&item, menu.target, menu.origin, out);
+    }
+
+    /// One item, performed and posted, wherever it was chosen from: the
+    /// open context menu's row, a host's native menu, or a menu of the
+    /// application menu bar (`docs/adr/0018-a-menu-bar-the-app-declares.md`,
+    /// decision 3). The two callers differ only in what they close first
+    /// and what node the event lands on, so everything after that is here
+    /// and cannot drift between them.
+    ///
+    /// `target` is the node the event is posted on and `origin` who hears
+    /// it; the standard roles act on [`Core::menu_editor`], which each
+    /// caller sets when its menu opens — an editor's selection lives with
+    /// its focus, and a menu's rows take that focus.
+    pub(crate) fn perform_menu_item(
+        &mut self,
+        item: &MenuItem,
+        target: Key,
+        origin: crate::tree::OriginId,
+        out: &mut Vec<UiEvent>,
+    ) {
         match item.role {
             MenuRole::Separator => return,
             MenuRole::SelectAll => {
@@ -346,7 +367,7 @@ impl Core {
                         });
                     }
                     None => {
-                        let scope = self.selection().map_or(menu.target, |s| s.scope);
+                        let scope = self.selection().map_or(target, |s| s.scope);
                         self.select_all_in(scope);
                     }
                 }
@@ -394,9 +415,9 @@ impl Core {
         // guess, and one that does not simply ignores the event.
         let payload = item.id.clone().unwrap_or_else(|| Value::str(item.text()));
         out.push(UiEvent {
-            origin: menu.origin,
+            origin,
             window: WindowId::MAIN,
-            key: menu.target,
+            key: target,
             payload: Value::map([
                 ("kind", Value::str("menu")),
                 ("role", Value::str(item.role.name())),

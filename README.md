@@ -752,6 +752,32 @@ counter example builds one. Drivers pass the button through
 `InputEvent::MouseDown { button, clicks }`), and `kui_input_mouse` /
 `ctx.mouse(down, clicks)` still mean the primary one.
 
+Menus are data, and there are two of them. A **context menu** is a list of
+`MenuItem`s and a point (`ui.open_menu`, `ctx.openMenu`, `kui_open_menu`);
+an **application menu bar** is a list of menus of the same rows, handed to
+one call in the view (`<menuBar menu={…}/>`, `menu_bar { menu = … }`,
+`kui_menu_bar`, `widgets::menu_bar`) —
+[ADR 0017](docs/adr/0017-selection-as-a-scope.md) and
+[ADR 0018](docs/adr/0018-a-menu-bar-the-app-declares.md). A row is a label,
+an optional `id` the choice posts back, an accelerator to draw, `enabled`,
+`checked`, and a `role`: the standard roles (`copy`, `cut`, `paste`,
+`selectAll`, `lookUp`) the core performs itself, handing the clipboard half
+to the host as a `MenuAction`, and `custom` is the app's own. Either way
+choosing a row is one event, `{kind:"menu", role, item}`, so an app wires
+Save once and gets it in both places.
+
+Where they are drawn is the platform's business and not the app's. A host
+says what it owns — `set_native_menus` for the context menu (macOS's
+`NSMenu`, for the Look Up and Services rows nothing can draw),
+`set_native_menu_bar` for the bar (macOS's, which is not in any window) —
+and the core draws whatever is left: `widgets::context_menu` and
+`widgets::menu_bar`, the second of which draws *nothing* where the platform
+has a bar — so the call still says what the menu is, the strip simply is not
+there, and one view is portable. The drawn bar keeps its own open menu, hovers across its
+titles the way a menu bar does, and closes on Escape or a press below it;
+the platform's binds the accelerators its rows declare. `cargo run -p kui
+--example context_menu` is both.
+
 Images: register RGBA pixels once (`resources.add_image`), then `ui.image(id,
 spec)` draws them through the same atlas page and draw call as glyphs (the
 page doubles up to 4096² when needed). `Fit` takes the pixel size, a `Fit`

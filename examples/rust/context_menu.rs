@@ -23,6 +23,16 @@
 //!   * **Right-click the footer.** A plain box: no menu, because a
 //!     right-click on nothing has never opened one.
 //!
+//! And one that is not a right-click at all:
+//!
+//!   * **The menu bar across the top.** The frame declares it
+//!     (`docs/adr/0018-a-menu-bar-the-app-declares.md`) and, on this
+//!     machine, `widgets::menu_bar` draws it — on macOS the same
+//!     declaration goes to the OS and the strip in the window is not
+//!     there. Its rows are the rows a context menu has, so View ▸ Wrap
+//!     checks itself and Edit ▸ Copy is the same Copy, and every choice
+//!     arrives as the same one event.
+//!
 //! On macOS all of them are the platform's own `NSMenu`, because the
 //! runner says it can draw one; everywhere else the core draws the same
 //! items itself. The app's code is identical either way, which is the
@@ -35,8 +45,8 @@
 //! italic carried beside the plain text.
 
 use kui::{
-    Align, App, Cell, CellCursor, CellGrid, Color, FontFamily, Key, Menu, MenuItem, MenuRole,
-    NodeSpec, Sizing, Span, TextStyle, Ui, UiEvent, Value, Vec2,
+    Align, App, BarMenu, Cell, CellCursor, CellGrid, Color, FontFamily, Key, Menu, MenuBar,
+    MenuItem, MenuRole, NodeSpec, Sizing, Span, TextStyle, Ui, UiEvent, Value, Vec2,
 };
 
 const BG: Color = Color {
@@ -103,6 +113,9 @@ struct Demo {
     /// Rows the app's own menu archived, to show a custom item doing
     /// something the core could not have done for it.
     archived: Vec<String>,
+    /// A setting one of the menu bar's rows toggles, to show a `checked`
+    /// row doing what a checked row is for.
+    wrap: bool,
     /// A menu the app was asked for and has not opened yet. `on_event`
     /// has no `Ui` — an app changes its model there and builds from it —
     /// so the request waits one frame, which is the frame it opens in.
@@ -117,25 +130,37 @@ impl App for Demo {
         if let Some((target, at, row)) = self.pending.take() {
             ui.open_menu(Menu::new(target, at, self.row_menu(&row)));
         }
-        ui.configure_root(
-            NodeSpec::column()
-                .fill()
-                .bg(BG)
-                .pad(28.0)
-                .gap(16.0)
-                .cross_align(Align::Center),
-        );
+        ui.configure_root(NodeSpec::column().fill().bg(BG).gap(16.0));
+        // The application menu, in one call: what it is, and where its
+        // strip goes when it has to be drawn. Full width and flush with
+        // the top, because that is where a menu bar goes — the padding the
+        // rest of the page had moves inside. On macOS this draws nothing
+        // and the same menu is the one at the top of the screen.
+        kui::widgets::menu_bar(ui, self.menu());
         ui.with(
             NodeSpec::column()
                 .width(Sizing::Grow(1.0))
-                .max_width(620.0)
-                .gap(16.0),
+                .padding(kui::Edges {
+                    l: 28.0,
+                    r: 28.0,
+                    t: 0.0,
+                    b: 28.0,
+                })
+                .cross_align(Align::Center),
             |ui| {
-                self.article(ui);
-                self.list(ui);
-                self.terminal(ui);
-                self.field(ui);
-                self.footer(ui);
+                ui.with(
+                    NodeSpec::column()
+                        .width(Sizing::Grow(1.0))
+                        .max_width(620.0)
+                        .gap(16.0),
+                    |ui| {
+                        self.article(ui);
+                        self.list(ui);
+                        self.terminal(ui);
+                        self.field(ui);
+                        self.footer(ui);
+                    },
+                );
             },
         );
     }
@@ -155,6 +180,13 @@ impl App for Demo {
                 let row = item.get("row").and_then(Value::as_str).unwrap_or("");
                 if did == Some("archive") && !self.archived.iter().any(|a| a == row) {
                     self.archived.push(row.to_string());
+                }
+                // The menu bar's own rows arrive here too, on the same
+                // event: one handler for both menus is the whole point.
+                match did {
+                    Some("wrap") => self.wrap = !self.wrap,
+                    Some("clear") => self.archived.clear(),
+                    _ => {}
                 }
                 self.last = Some(match did {
                     Some(d) => format!("{d} {row}"),
@@ -340,6 +372,49 @@ impl Demo {
     /// two the app invented. A custom row carries its own payload, which
     /// is what comes back in the event — so nothing here has to work out
     /// afterwards which row the menu was about.
+    /// The application menu, rebuilt every frame from the model — which is
+    /// what lets View ▸ Wrap carry its own state without anything retained
+    /// anywhere. Every row is an ordinary `MenuItem`: two of the app's own
+    /// with `id`s, a `checked` setting, and the standard Edit rows the core
+    /// performs itself.
+    fn menu(&self) -> MenuBar {
+        let mine = |what: &str| Value::map([("do", Value::str(what))]);
+        MenuBar::new(vec![
+            // First, which on macOS is the position the OS titles with the
+            // app's own name whatever this label says.
+            BarMenu::new(
+                "Demo",
+                vec![
+                    MenuItem::new("About this example").id(mine("about")),
+                    MenuItem::separator(),
+                    MenuItem::new("Close").id(mine("close")).accel("mod+w"),
+                ],
+            ),
+            BarMenu::new(
+                "Edit",
+                vec![
+                    MenuItem::role(MenuRole::Cut),
+                    MenuItem::role(MenuRole::Copy),
+                    MenuItem::role(MenuRole::Paste),
+                    MenuItem::separator(),
+                    MenuItem::role(MenuRole::SelectAll),
+                ],
+            ),
+            BarMenu::new(
+                "View",
+                vec![
+                    MenuItem::new("Wrap the article")
+                        .id(mine("wrap"))
+                        .accel("mod+shift+w")
+                        .checked(self.wrap),
+                    MenuItem::new("Clear the archive")
+                        .id(mine("clear"))
+                        .enabled(!self.archived.is_empty()),
+                ],
+            ),
+        ])
+    }
+
     fn row_menu(&self, row: &str) -> Vec<MenuItem> {
         let about = |what: &str| Value::map([("do", Value::str(what)), ("row", Value::str(row))]);
         let archived = self.archived.iter().any(|a| a == row);

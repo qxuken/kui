@@ -154,8 +154,16 @@ extern "C" {
  * in that register, which is exactly the silent failure the version check
  * exists to turn into a message. Recompile and pass 0 to keep what you
  * had.
+ *
+ * ABI 13 appends `checked` to KuiMenuItem (the menu bar, ADR 0018): a row
+ * that is a setting rather than a command draws a checkmark. An [in]
+ * struct, which would ordinarily be a compatible append - but this one
+ * travels as an ARRAY, so the append moves the stride and every row after
+ * the first is read from the wrong bytes. Same reason ABI 8 bumped for
+ * KuiSpan. Recompile; a zeroed tail is `checked = 0`, which is what every
+ * row had before.
  */
-#define KUI_ABI_VERSION 12u
+#define KUI_ABI_VERSION 13u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -945,7 +953,38 @@ typedef struct KuiMenuItem {
     uint32_t enabled;
     const KuiValue *id;
     KuiStr accel;
+    /* Non-zero draws a checkmark beside the row, and sets the platform's
+     * own check state where the host renders the menu: a setting the row
+     * *is* (View > Show Sidebar), not a command it runs. */
+    uint32_t checked;
 } KuiMenuItem;
+
+/* -- The application menu bar ---------------------------------------------
+ *
+ * docs/adr/0018-a-menu-bar-the-app-declares.md. The bar is the same rows
+ * one level up: kui_menu_bar_declare takes a list of menus, each a label
+ * and the KuiMenuItems above, and the declaration is sticky and diffed the
+ * way kui_window_title is. Where the platform owns a menu bar the host
+ * hands it over; everywhere else kui_menu_bar draws it into the frame.
+ * Either way a chosen row posts the same {kind:"menu", role, item} event
+ * the context menu posts. */
+
+/* [in] One menu of the bar. `items` is `count` rows; `enabled` zero dims
+ * the whole menu and opens nothing. On macOS the first menu is the
+ * application menu, which the OS titles with the app's own name whatever
+ * `label` says. */
+typedef struct KuiMenu {
+    KuiStr label;
+    const KuiMenuItem *items;
+    size_t count;
+    uint32_t enabled;
+} KuiMenu;
+
+/* KuiMenu item flags, as kui_menu_bar_item reports them. */
+enum {
+    KUI_MENU_ITEM_ENABLED = 1u << 0,
+    KUI_MENU_ITEM_CHECKED = 1u << 1,
+};
 
 /* KuiMenuAction.kind. LOOK_UP carries the text to show a definition panel
  * for, and only ever reaches a host that said it can show one. */
@@ -1844,6 +1883,46 @@ bool kui_open_menu(KuiCtx *ctx, uint64_t key, float x, float y,
                    const KuiMenuItem *items, size_t count);
 /* Closes whatever menu is open; true when there was one. */
 bool kui_close_menu(KuiCtx *ctx);
+
+/* The application menu for this frame: `count` menus in bar order,
+ * declared and - where the platform has no menu bar of its own - drawn
+ * right here as a row of titles that drop their menus
+ * (docs/adr/0018-a-menu-bar-the-app-declares.md). One call and not two,
+ * because what the menu is and where its strip goes are one decision.
+ * Where the platform owns the bar (kui_set_native_menu_bar) nothing is
+ * drawn and the declaration still stands, so calling this unconditionally
+ * is what a portable view does. Sticky and diffed, like kui_window_title:
+ * a frame that does not call it leaves the last declaration in force, the
+ * same one again changes nothing, and `count` of 0 takes the menu away.
+ * False - declaring and drawing nothing - for a row whose role this build
+ * does not know. Between kui_frame_begin and kui_frame_finish. */
+bool kui_menu_bar(KuiCtx *ctx, const KuiMenu *menus, size_t count);
+/* Tells the core the platform owns the menu bar, so kui_menu_bar draws
+ * nothing and you are the one handing the declaration over (read it back
+ * with the two calls below) and reporting what was chosen. Off by
+ * default. */
+void kui_set_native_menu_bar(KuiCtx *ctx, bool on);
+/* How many menus the declaration in force has, writing its revision into
+ * *revision when that is not NULL. The revision changes only when the
+ * declaration does, so a host with a native bar rebuilds nothing until it
+ * moves. */
+size_t kui_menu_bar_menu_count(KuiCtx *ctx, uint64_t *revision);
+/* Reads one menu back: its title into *label and its enabled state into
+ * *enabled (either may be NULL), returning how many rows it has. Zero for
+ * a menu past the end. *label is borrowed until the next call on this
+ * context. */
+size_t kui_menu_bar_menu(KuiCtx *ctx, size_t menu, KuiStr *label, bool *enabled);
+/* Reads one row: its text into *label, its accelerator into *accel (empty
+ * when it has none), its KUI_MENU_* role into *role and its
+ * KUI_MENU_ITEM_* flags into *flags. Any out pointer may be NULL; both
+ * strings are borrowed until the next call on this context. False for a
+ * row that is not there. */
+bool kui_menu_bar_item(KuiCtx *ctx, size_t menu, size_t item, KuiStr *label,
+                       KuiStr *accel, uint32_t *role, uint32_t *flags);
+/* Reports that the platform's menu bar chose row `item` of menu `menu`:
+ * the same path a press on the drawn bar's row takes. Out of range does
+ * nothing and returns false. */
+bool kui_activate_menu_bar_item(KuiCtx *ctx, size_t menu, size_t item);
 
 /* The window's selected text - a `selectable` scope's, a `cells` grid's,
  * or the focused editor's, whichever it holds. False when nothing is

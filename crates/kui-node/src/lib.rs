@@ -267,13 +267,14 @@ fn resolve_query(core: &mut kui_core::Core, s: &str) -> Option<Key> {
     }
 }
 
-/// `openMenu`'s items: `{label, role, enabled, id, accel}` objects, with
-/// everything but `label` optional. An unknown `role` is an error rather
-/// than a silent `custom`: a menu whose Copy row quietly stopped being
-/// Copy would look like the core ignoring it.
+/// The rows of a menu — `openMenu`'s items and a `<menuBar>` menu's alike:
+/// `{label, role, enabled, checked, id, accel}` objects, with everything
+/// but `label` optional. An unknown `role` is an error rather than a silent
+/// `custom`: a menu whose Copy row quietly stopped being Copy would look
+/// like the core ignoring it.
 fn menu_items(v: &Json) -> Result<Vec<kui_core::MenuItem>> {
     let Json::Array(rows) = v else {
-        return Err(err("openMenu needs an array of items"));
+        return Err(err("a menu's items are an array"));
     };
     rows.iter()
         .map(|row| {
@@ -298,6 +299,7 @@ fn menu_items(v: &Json) -> Result<Vec<kui_core::MenuItem>> {
                     .to_string(),
                 role,
                 enabled: o.get("enabled").and_then(Json::as_bool).unwrap_or(true),
+                checked: o.get("checked").and_then(Json::as_bool).unwrap_or(false),
                 id: o.get("id").map(value_of),
                 accel: o.get("accel").and_then(Json::as_str).map(str::to_string),
             };
@@ -307,6 +309,39 @@ fn menu_items(v: &Json) -> Result<Vec<kui_core::MenuItem>> {
             Ok(item)
         })
         .collect()
+}
+
+/// The root's `menu` prop, as the JSON the encoder writes: a list of
+/// `{ label, items, enabled? }`, whose items are the same objects
+/// `openMenu` takes (`docs/adr/0018-a-menu-bar-the-app-declares.md`). One
+/// reader for both menus, so a row can never mean two things.
+pub(crate) fn menu_bar_of(json: &str) -> Result<kui_core::MenuBar> {
+    let parsed: Json = serde_json::from_str(json).map_err(|e| err(format!("menu: {e}")))?;
+    let Json::Array(menus) = parsed else {
+        return Err(err("menu is an array of menus"));
+    };
+    let mut out = Vec::with_capacity(menus.len());
+    for entry in &menus {
+        let Json::Object(o) = entry else {
+            return Err(err("each menu is an object { label, items }"));
+        };
+        let label = o
+            .get("label")
+            .and_then(Json::as_str)
+            .ok_or_else(|| err("each menu needs a label"))?
+            .to_string();
+        // A menu with no `items` is a shape error rather than an empty
+        // menu: the two look the same on screen and only one was meant.
+        let items = o
+            .get("items")
+            .ok_or_else(|| err(format!("menu {label:?} needs items")))?;
+        out.push(kui_core::BarMenu {
+            label,
+            items: menu_items(items)?,
+            enabled: o.get("enabled").and_then(Json::as_bool).unwrap_or(true),
+        });
+    }
+    Ok(kui_core::MenuBar::new(out))
 }
 
 fn keycode_of(s: &str) -> Result<KeyCode> {
@@ -2197,6 +2232,77 @@ macro_rules! core_methods {
                 self.$core().set_native_menus(on);
                 self.$redraw();
                 Ok(())
+            }
+
+            /// The application menu the frame declared, or null:
+            /// `{revision, menus: [{label, enabled, items}]}`
+            /// (`docs/adr/0018-a-menu-bar-the-app-declares.md`). What a
+            /// host with a menu bar of its own reads after
+            /// `setNativeMenuBar(true)`; `revision` changes only when the
+            /// declaration does, so a host rebuilds nothing until it moves.
+            #[napi(ts_return_type = "MenuBarState | null")]
+            pub fn menu_bar(&mut self) -> Result<Option<Json>> {
+                let revision = self.$core().menu_bar_revision();
+                let Some(bar) = self.$core().menu_bar().cloned() else {
+                    return Ok(None);
+                };
+                let menus: Vec<Json> = bar
+                    .menus
+                    .iter()
+                    .map(|menu| {
+                        let items: Vec<Json> = menu
+                            .items
+                            .iter()
+                            .map(|item| {
+                                let mut o = JsonMap::new();
+                                o.insert("label".into(), Json::from(item.text()));
+                                o.insert("role".into(), Json::from(item.role.name()));
+                                o.insert("enabled".into(), Json::Bool(item.enabled));
+                                o.insert("checked".into(), Json::Bool(item.checked));
+                                o.insert(
+                                    "accel".into(),
+                                    item.accel_text().map_or(Json::Null, Json::from),
+                                );
+                                Json::Object(o)
+                            })
+                            .collect();
+                        let mut o = JsonMap::new();
+                        o.insert("label".into(), Json::from(menu.label.clone()));
+                        o.insert("enabled".into(), Json::Bool(menu.enabled));
+                        o.insert("items".into(), Json::Array(items));
+                        Json::Object(o)
+                    })
+                    .collect();
+                let mut o = JsonMap::new();
+                o.insert("revision".into(), Json::from(revision));
+                o.insert("menus".into(), Json::Array(menus));
+                Ok(Some(Json::Object(o)))
+            }
+
+            /// Tells the core the platform owns the menu bar, so
+            /// `<menuBar/>` draws nothing and this host is the one handing
+            /// the declaration over (`menuBar()`) and reporting what was
+            /// chosen (`activateMenuBarItem`). Off by default, which is
+            /// the bar this library draws.
+            #[napi]
+            pub fn set_native_menu_bar(&mut self, on: bool) -> Result<()> {
+                self.$core().set_native_menu_bar(on);
+                self.$redraw();
+                Ok(())
+            }
+
+            /// Reports that the platform's menu bar chose row `item` of
+            /// menu `menu` — the same path a press on the drawn bar's row
+            /// takes. False for a row that is not there.
+            #[napi]
+            pub fn activate_menu_bar_item(&mut self, menu: u32, item: u32) -> Result<bool> {
+                let events = self
+                    .$core()
+                    .activate_menu_bar_item(menu as usize, item as usize);
+                let any = !events.is_empty();
+                self.$take(events);
+                self.$redraw();
+                Ok(any)
             }
 
             /// Tells the core this host can show the platform's definition

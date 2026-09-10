@@ -469,6 +469,13 @@ export declare namespace JSX {
     titlebar: Keyed & { title?: string; children?: KuiNode };
     /** Just the min/max/close buttons, for fully custom titlebars. */
     windowButtons: Keyed;
+    /** The application menu (`docs/adr/0018-a-menu-bar-the-app-declares.md`):
+     *  `menu` is what it is, and where this element sits is where its
+     *  titles go when they have to be drawn in the window. Draws nothing
+     *  where the platform owns the bar (macOS, where the driver hands the
+     *  same declaration to the OS), so one view is portable. `[]` takes
+     *  the menu away. */
+    menuBar: Keyed & { menu?: MenuBarInput };
     /** Per-phase frame-latency bars (input/view/layout/render) vs the
      *  display budget. Reads the runner's frame stats — renders empty
      *  when headless. */

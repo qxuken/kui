@@ -24,6 +24,10 @@ impl Core {
         // several of its arms return early — the modal press among them,
         // which is exactly the one that dismisses a menu.
         self.consume_menu_events(&mut out);
+        // And the drawn menu bar's own nodes, on the same terms: its
+        // titles and rows post ordinary clicks, and none of them is the
+        // app's (`docs/adr/0018-a-menu-bar-the-app-declares.md`).
+        self.consume_menu_bar_events(&mut out);
         self.attach_cells(&mut out);
         self.stamp(&mut out);
         out
@@ -396,8 +400,22 @@ impl Core {
                         // is *about* that selection: a Copy row that
                         // cleared what it was going to copy would be a
                         // menu that never works.
-                        if !hit.as_ref().is_some_and(|(k, ..)| self.in_menu(*k)) {
+                        // The menu bar's Edit menu is about the selection
+                        // for the same reason, so a press in it is spared
+                        // the same way.
+                        let in_bar = hit.as_ref().is_some_and(|(k, ..)| self.in_menu_bar(*k));
+                        if !hit.as_ref().is_some_and(|(k, ..)| self.in_menu(*k)) && !in_bar {
                             self.clear_selection();
+                        }
+                        // And the field a menu-bar menu will be about: this
+                        // press is about to move focus onto the title, so
+                        // the answer has to be taken before it does. Only
+                        // on the way *in* — a press with a menu already
+                        // open is a row or a second title, and focus is
+                        // inside the bar by then, so asking again would
+                        // record "no field" over the real answer.
+                        if in_bar && self.menu_bar_open().is_none() {
+                            self.note_menu_bar_editor();
                         }
                         match hit {
                             Some((key, Some(origin), true, _)) => {

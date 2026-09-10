@@ -21,6 +21,12 @@ field reports).
 
 **What breaks.**
 
+- **ABI 13: `KuiMenuItem` grew a `checked` field.** It is an [in] struct,
+  whose appends are ordinarily free — but this one travels as an *array*,
+  so the append moved the stride and a host that does not recompile reads
+  every row after the first from the wrong bytes. Recompile; a zeroed tail
+  is `checked = 0`, which is what every row had. The same exception
+  `KuiSpan` was (ABI 8).
 - **A single-line `<edit>` no longer wraps.** It takes one line whatever
   its box, sizes to its text when its width is `fit`, and scrolls that
   line under the caret when it is not — what `multiline: false` has always
@@ -34,6 +40,29 @@ field reports).
   can go; see **What you can delete**.
 
 ### Added
+
+- **An application menu bar the app declares**
+  ([ADR 0018](docs/adr/0018-a-menu-bar-the-app-declares.md)). One call in
+  the view says what the app's menu is and where its titles go when they
+  have to be drawn: `<menuBar menu={[…]}/>`, `menu_bar { menu = {…} }`,
+  `kui_menu_bar(ctx, menus, count)`, `widgets::menu_bar(ui, bar)`. On macOS
+  it draws nothing and the same declaration becomes `NSApp.mainMenu`, with
+  the OS drawing it, tracking it and binding the ⌘-shortcuts the rows
+  declare; everywhere else it draws those menus as a strip in the window.
+  One view is portable and no app writes its menu twice.
+
+  Its rows are the rows a context menu has, deliberately: an Edit menu's
+  `{ role: "copy" }` is the right-click Copy, performed by the core with
+  the clipboard half handed to the host, and every choice arrives as the
+  same `{kind:"menu", role, item}` event on both paths. The declaration is
+  sticky and diffed the way the window title is, so re-declaring it every
+  frame costs one comparison, an empty bar takes it away, and a window that
+  declares none leaves the last one standing. `MenuItem` gains `checked`
+  for the rows that are settings rather than commands (drawn as a
+  checkmark, `NSMenuItem.state` where the platform draws, and reported to
+  assistive technology), and `Accel` parses `"mod+shift+s"` — the portable
+  spelling — into what the platform's own bar binds and what both bars
+  draw (`⇧⌘S`, `Ctrl+Shift+S`).
 
 - **`examples/rust/context_menu.rs`**, which is the whole of ADR 0017's
   menu decision in one window: the stock menu over selectable text, an

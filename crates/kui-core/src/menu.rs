@@ -120,6 +120,11 @@ pub struct MenuItem {
     /// Posted as the event payload when the row is chosen. A `Custom`
     /// item without one posts its label.
     pub id: Option<Value>,
+    /// Drawn with a checkmark, and the platform's own check state where a
+    /// host renders the menu itself. A setting the row *is* rather than a
+    /// command it runs — View ▸ Show Sidebar — and inert for every other
+    /// row, which is why it is a flag beside the label and not a role.
+    pub checked: bool,
     /// Drawn right-aligned and dimmed; the core binds nothing to it. The
     /// keyboard shortcut is the app's or the platform's, and an
     /// accelerator here only says which one it is. A standard row that
@@ -135,6 +140,7 @@ impl MenuItem {
             label: label.into(),
             role: MenuRole::Custom,
             enabled: true,
+            checked: false,
             id: None,
             accel: None,
         }
@@ -146,6 +152,7 @@ impl MenuItem {
             label: String::new(),
             role,
             enabled: true,
+            checked: false,
             id: None,
             accel: None,
         }
@@ -157,6 +164,13 @@ impl MenuItem {
 
     pub fn enabled(mut self, on: bool) -> Self {
         self.enabled = on;
+        self
+    }
+
+    /// Draws a checkmark beside the row (and sets the platform's check
+    /// state where a host renders the menu).
+    pub fn checked(mut self, on: bool) -> Self {
+        self.checked = on;
         self
     }
 
@@ -268,4 +282,304 @@ pub enum MenuAction {
         /// under the last line while the panel shows the first.
         at: crate::geom::Vec2,
     },
+}
+
+// -- The application menu bar -----------------------------------------------
+// `docs/adr/0018-a-menu-bar-the-app-declares.md`. The bar is the same rows
+// one level up: a list of menus, each a label and the `MenuItem`s above, so
+// an Edit menu's Copy is the *same item* the context menu's Copy is and the
+// core performs it the same way.
+
+/// One menu of the bar: what the bar reads, and what drops out of it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct BarMenu {
+    /// What the bar shows. On macOS the first menu is the application menu
+    /// and the platform titles that one with the app's own name, whatever
+    /// this says.
+    pub label: String,
+    pub items: Vec<MenuItem>,
+    /// A disabled menu is dimmed and opens nothing.
+    pub enabled: bool,
+}
+
+impl BarMenu {
+    pub fn new(label: impl Into<String>, items: Vec<MenuItem>) -> Self {
+        Self {
+            label: label.into(),
+            items,
+            enabled: true,
+        }
+    }
+
+    pub fn enabled(mut self, on: bool) -> Self {
+        self.enabled = on;
+        self
+    }
+}
+
+/// The application menu: what a frame declares, in order
+/// (`Core::declare_menu_bar`).
+///
+/// Declared and not commanded, like the window title: a frame that declares
+/// none leaves the last one in force, and a frame that declares an empty
+/// bar takes it away. Where the platform owns a menu bar the driver hands
+/// this over (macOS: `NSApp.mainMenu`); everywhere else
+/// [`crate::widgets::menu_bar`] draws it, and each of its titles opens the
+/// ordinary [`Menu`] machinery — so the dropdown, its keyboard, its
+/// dismissal and its access tree are the ones already built for the context
+/// menu.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MenuBar {
+    pub menus: Vec<BarMenu>,
+}
+
+impl MenuBar {
+    pub fn new(menus: Vec<BarMenu>) -> Self {
+        Self { menus }
+    }
+
+    /// Nothing declared: the bar the platform is asked to take away.
+    pub fn is_empty(&self) -> bool {
+        self.menus.is_empty()
+    }
+
+    /// The item at `(menu, item)`, if it is there.
+    pub fn item(&self, menu: usize, item: usize) -> Option<&MenuItem> {
+        self.menus.get(menu)?.items.get(item)
+    }
+}
+
+/// A keyboard shortcut, parsed out of the string an item declares.
+///
+/// The core binds nothing to it and never has ([`MenuItem::accel`] is
+/// display); this exists for the one consumer that needs the parts rather
+/// than the words — a platform menu bar, which sets a real key equivalent
+/// and then matches it before the window ever sees the key.
+///
+/// Both spellings parse, because both are written in the field: the
+/// portable one (`"mod+shift+s"`, where `mod` is Command on macOS and
+/// Control elsewhere) and the platform one a menu is read in (`"⇧⌘S"`,
+/// `"Ctrl+Shift+S"`). [`Accel::display`] is the second, which is what
+/// `declare_menu_bar` normalizes a declaration into so the drawn bar and
+/// the platform's read the same.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Accel {
+    pub code: crate::input::KeyCode,
+    pub mods: crate::input::KeyMods,
+}
+
+impl Accel {
+    /// Parses `"mod+s"`, `"ctrl+shift+p"`, `"f5"`, `"⇧⌘S"`. `None` for
+    /// anything this vocabulary cannot name — the caller then leaves the
+    /// string alone and draws it as written, since a shortcut kui cannot
+    /// parse is still a shortcut the app's own keymap runs.
+    pub fn parse(s: &str) -> Option<Accel> {
+        use crate::input::{KeyCode, KeyMods};
+        let mut mods = KeyMods::default();
+        let mut rest = s.trim();
+        // The glyph spelling has no separators: ⌃⌥⇧⌘ in that order, then
+        // the key. Stripped first so `"⌘S"` and `"cmd+s"` land together.
+        loop {
+            let mut chars = rest.chars();
+            match chars.next() {
+                Some('\u{2303}') => mods.ctrl = true,
+                Some('\u{2325}') => mods.alt = true,
+                Some('\u{21e7}') => mods.shift = true,
+                Some('\u{2318}') => mods.super_key = true,
+                _ => break,
+            }
+            rest = chars.as_str();
+        }
+        let mut code = None;
+        for part in rest.split('+') {
+            let part = part.trim();
+            if part.is_empty() {
+                return None;
+            }
+            let lower = part.to_ascii_lowercase();
+            match lower.as_str() {
+                // The one token that is not a key on any keyboard:
+                // whichever modifier this platform puts shortcuts behind.
+                "mod" | "cmdorctrl" => {
+                    if cfg!(target_os = "macos") {
+                        mods.super_key = true;
+                    } else {
+                        mods.ctrl = true;
+                    }
+                }
+                "cmd" | "command" | "super" | "meta" | "win" => mods.super_key = true,
+                "ctrl" | "control" => mods.ctrl = true,
+                "alt" | "option" | "opt" => mods.alt = true,
+                "shift" => mods.shift = true,
+                // The key, and only one of them: `"s+s"` is a typo.
+                _ if code.is_some() => return None,
+                _ => {
+                    code = Some(if part.chars().count() == 1 {
+                        KeyCode::Char(part.chars().next().unwrap())
+                    } else {
+                        KeyCode::from_name(&lower)?
+                    });
+                }
+            }
+        }
+        let code = code?;
+        (code != KeyCode::Unknown).then_some(Accel { code, mods })
+    }
+
+    /// How the platform writes it: the macOS glyph run (`⇧⌘S`, in AppKit's
+    /// order, no separators) or the spelled form (`Ctrl+Shift+S`).
+    pub fn display(&self) -> String {
+        let key = key_label(self.code);
+        if cfg!(target_os = "macos") {
+            let mut out = String::new();
+            for (on, glyph) in [
+                (self.mods.ctrl, '\u{2303}'),
+                (self.mods.alt, '\u{2325}'),
+                (self.mods.shift, '\u{21e7}'),
+                (self.mods.super_key, '\u{2318}'),
+            ] {
+                if on {
+                    out.push(glyph);
+                }
+            }
+            out.push_str(&key);
+            out
+        } else {
+            let mut parts = Vec::new();
+            for (on, name) in [
+                (self.mods.ctrl, "Ctrl"),
+                (self.mods.super_key, "Super"),
+                (self.mods.alt, "Alt"),
+                (self.mods.shift, "Shift"),
+            ] {
+                if on {
+                    parts.push(name);
+                }
+            }
+            parts.push(&key);
+            parts.join("+")
+        }
+    }
+
+    /// The key equivalent an `NSMenuItem` takes: the character, lowercased
+    /// (AppKit reads an uppercase one as Shift being held), or `None` for a
+    /// key AppKit spells with a function-key code this does not carry.
+    pub fn key_equivalent(&self) -> Option<String> {
+        match self.code {
+            crate::input::KeyCode::Char(c) => Some(c.to_lowercase().to_string()),
+            crate::input::KeyCode::Space => Some(" ".into()),
+            crate::input::KeyCode::Enter => Some("\r".into()),
+            crate::input::KeyCode::Tab => Some("\t".into()),
+            crate::input::KeyCode::Backspace => Some("\u{8}".into()),
+            crate::input::KeyCode::Delete => Some("\u{7f}".into()),
+            crate::input::KeyCode::Escape => Some("\u{1b}".into()),
+            _ => None,
+        }
+    }
+}
+
+/// What a menu writes a key as: the macOS glyph a user reads a shortcut by
+/// (`⇧`, `⌫`, `↩`), and the spelled word everywhere else. A key name is
+/// wire vocabulary (`"pageup"`); this is the label beside a row.
+fn key_label(code: crate::input::KeyCode) -> String {
+    use crate::input::KeyCode;
+    let mac = cfg!(target_os = "macos");
+    match code {
+        KeyCode::Char(c) => return c.to_uppercase().to_string(),
+        KeyCode::F(n) => return format!("F{n}"),
+        _ => {}
+    }
+    let s = match (code, mac) {
+        (KeyCode::Left, true) => "\u{2190}",
+        (KeyCode::Right, true) => "\u{2192}",
+        (KeyCode::Up, true) => "\u{2191}",
+        (KeyCode::Down, true) => "\u{2193}",
+        (KeyCode::Home, true) => "\u{2196}",
+        (KeyCode::End, true) => "\u{2198}",
+        (KeyCode::PageUp, true) => "\u{21de}",
+        (KeyCode::PageDown, true) => "\u{21df}",
+        (KeyCode::Backspace, true) => "\u{232b}",
+        (KeyCode::Delete, true) => "\u{2326}",
+        (KeyCode::Enter, true) => "\u{21a9}",
+        (KeyCode::Tab, true) => "\u{21e5}",
+        (KeyCode::Escape, true) => "\u{238b}",
+        (KeyCode::Space, true) => "\u{2423}",
+        (KeyCode::Left, _) => "Left",
+        (KeyCode::Right, _) => "Right",
+        (KeyCode::Up, _) => "Up",
+        (KeyCode::Down, _) => "Down",
+        (KeyCode::Home, _) => "Home",
+        (KeyCode::End, _) => "End",
+        (KeyCode::PageUp, _) => "Page Up",
+        (KeyCode::PageDown, _) => "Page Down",
+        (KeyCode::Backspace, _) => "Backspace",
+        (KeyCode::Delete, _) => "Delete",
+        (KeyCode::Enter, _) => "Enter",
+        (KeyCode::Tab, _) => "Tab",
+        (KeyCode::Escape, _) => "Esc",
+        (KeyCode::Space, _) => "Space",
+        (KeyCode::Insert, _) => "Insert",
+        // Neither reachable from a parsed accelerator nor worth a lie.
+        (KeyCode::Unknown, _) | (KeyCode::Char(_), _) | (KeyCode::F(_), _) => "",
+    };
+    s.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::input::{KeyCode, KeyMods};
+
+    #[test]
+    fn mod_is_the_platform_primary() {
+        let a = Accel::parse("mod+s").unwrap();
+        assert_eq!(a.mods.super_key, cfg!(target_os = "macos"));
+        assert_eq!(a.mods.ctrl, !cfg!(target_os = "macos"));
+        assert_eq!(a.code, KeyCode::Char('s'));
+    }
+
+    #[test]
+    fn the_glyph_spelling_parses_back() {
+        let a = Accel::parse("\u{21e7}\u{2318}S").unwrap();
+        assert_eq!(
+            a,
+            Accel {
+                code: KeyCode::Char('S'),
+                mods: KeyMods {
+                    shift: true,
+                    super_key: true,
+                    ..KeyMods::default()
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn a_named_key_parses_and_reads_back_capitalised() {
+        let a = Accel::parse("ctrl+pageup").unwrap();
+        assert_eq!(a.code, KeyCode::PageUp);
+        let expect = if cfg!(target_os = "macos") {
+            "\u{21de}"
+        } else {
+            "Page Up"
+        };
+        assert!(a.display().ends_with(expect), "{}", a.display());
+    }
+
+    #[test]
+    fn a_shortcut_kui_cannot_name_is_not_a_shortcut() {
+        assert!(Accel::parse("mod+nope").is_none());
+        assert!(Accel::parse("s+s").is_none());
+        assert!(Accel::parse("").is_none());
+    }
+
+    #[test]
+    fn a_key_equivalent_is_lowercase() {
+        // AppKit reads an uppercase key equivalent as Shift being held, so
+        // ⌘S must be sent as "s" with the Command flag and nothing else.
+        assert_eq!(
+            Accel::parse("cmd+S").unwrap().key_equivalent().as_deref(),
+            Some("s")
+        );
+    }
 }

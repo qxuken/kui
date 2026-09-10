@@ -60,6 +60,9 @@ pub struct KuiCtx {
     pub(crate) menu_actions: VecDeque<kui_core::MenuAction>,
     pub(crate) menu_text: String,
     pub(crate) menu_html: String,
+    /// The accelerator most recently handed out by `kui_menu_bar_item`,
+    /// on the same terms as `menu_text` beside it.
+    pub(crate) menu_accel: String,
     /// The selection most recently handed out by `kui_selection_text` /
     /// `kui_selection_html`; valid until the next such call, like every
     /// other borrowed string here.
@@ -129,6 +132,7 @@ impl KuiCtx {
             window_commands: VecDeque::new(),
             menu_actions: VecDeque::new(),
             menu_text: String::new(),
+            menu_accel: String::new(),
             menu_html: String::new(),
             selection_text: String::new(),
             selection_html: String::new(),

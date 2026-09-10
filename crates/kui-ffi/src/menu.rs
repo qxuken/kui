@@ -26,6 +26,10 @@ pub struct KuiMenuItem {
     pub enabled: u32,
     pub id: *const KuiValue,
     pub accel: KuiStr,
+    /// Non-zero draws a checkmark beside the row (and sets the platform's
+    /// own check state where the host renders the menu): a setting the row
+    /// *is*, not a command it runs.
+    pub checked: u32,
 }
 
 impl KuiMenuItem {
@@ -46,6 +50,7 @@ impl KuiMenuItem {
             label: kstr(self.label).into_owned(),
             role,
             enabled: self.enabled != 0,
+            checked: self.checked != 0,
             id: unsafe { self.id.as_ref() }.map(|v| v.0.clone()),
             accel: opt_str(self.accel).map(|s| s.into_owned()),
         })
@@ -247,4 +252,226 @@ pub extern "C" fn kui_take_menu_action(ptr: *mut KuiCtx, out: *mut KuiMenuAction
         };
         write_out(out, written)
     })
+}
+
+// -- The application menu bar -----------------------------------------------
+
+/// One menu of the application menu bar (`kui_menu_bar_declare`). [in],
+/// read while the call runs — nothing is retained, the core copies what it
+/// needs.
+///
+/// `items` is `count` rows in the same `KuiMenuItem` a context menu takes,
+/// which is the point: an Edit menu's Copy is the same row the right-click
+/// Copy is, and the core performs it the same way.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiMenu {
+    pub label: KuiStr,
+    pub items: *const KuiMenuItem,
+    pub count: usize,
+    /// Zero disables the whole menu: dimmed, and it opens nothing.
+    pub enabled: u32,
+}
+
+/// The application menu for this frame
+/// (`docs/adr/0018-a-menu-bar-the-app-declares.md`): `count` menus read
+/// from `menus`, in bar order, declared *and* — where the platform has no
+/// menu bar of its own — drawn into the frame right here, as a row of
+/// titles that drop their menus.
+///
+/// One call and not two, because what the menu is and where its strip goes
+/// are one decision. Where the platform owns the bar
+/// (`kui_set_native_menu_bar`) nothing is drawn and the declaration still
+/// stands, so a host calls this unconditionally and is portable; a host
+/// with a bar of its own reads the declaration back with
+/// `kui_menu_bar_menu_count` / `_menu` / `_item` and reports a choice with
+/// `kui_activate_menu_bar_item`.
+///
+/// Sticky and diffed, like `kui_window_title`: a frame that does not call
+/// this leaves the last declaration in force, the same declaration again
+/// changes nothing, and `count == 0` takes the menu away. Choosing an item
+/// posts `{kind:"menu", role, item}` — the same event the context menu
+/// posts — on the bar's own node, or on the root where the platform drew
+/// it. Returns false, declaring and drawing nothing, for an item with a
+/// role this build does not know. Call between `kui_frame_begin` and
+/// `kui_frame_finish`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_menu_bar(ptr: *mut KuiCtx, menus: *const KuiMenu, count: usize) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let mut out = Vec::with_capacity(count);
+        if !menus.is_null() {
+            for menu in unsafe { std::slice::from_raw_parts(menus, count) } {
+                let mut items = Vec::with_capacity(menu.count);
+                if !menu.items.is_null() {
+                    for row in unsafe { std::slice::from_raw_parts(menu.items, menu.count) } {
+                        match row.to_core() {
+                            Some(item) => items.push(item),
+                            None => return false,
+                        }
+                    }
+                }
+                out.push(kui_core::BarMenu {
+                    label: kstr(menu.label).into_owned(),
+                    items,
+                    enabled: menu.enabled != 0,
+                });
+            }
+        }
+        let mut ui = kui_core::Ui::wrap(c.core());
+        kui_core::widgets::menu_bar(&mut ui, kui_core::MenuBar::new(out));
+        true
+    })
+}
+
+/// Tells the core that the platform owns the menu bar, so `kui_menu_bar`
+/// draws nothing and the host is the one that hands the declaration over
+/// (`kui_menu_bar_menu_count` / `kui_menu_bar_item` read it back) and
+/// reports what was chosen with `kui_activate_menu_bar_item`.
+///
+/// Off by default: a host that says nothing draws its own bar.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_native_menu_bar(ptr: *mut KuiCtx, on: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_native_menu_bar(on);
+        }
+    });
+}
+
+/// How many menus the declaration in force has, and a revision that
+/// changes only when the declaration does — a host with a native bar
+/// keeps the last number it built and rebuilds nothing until it moves.
+/// Writes the revision into `revision` when it is not NULL.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_menu_bar_menu_count(ptr: *mut KuiCtx, revision: *mut u64) -> usize {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        if !revision.is_null() {
+            unsafe { revision.write(c.core().menu_bar_revision()) };
+        }
+        c.core().menu_bar().map_or(0, |b| b.menus.len())
+    })
+}
+
+/// Reads one menu of the declaration back: its title into `label` and how
+/// many rows it has. Both borrowed until the next call on this context.
+/// Returns false for a menu past the end.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_menu_bar_menu(
+    ptr: *mut KuiCtx,
+    menu: usize,
+    label: *mut KuiStr,
+    enabled: *mut bool,
+) -> usize {
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        let Some(m) = c.core().menu_bar().and_then(|b| b.menus.get(menu)) else {
+            return 0;
+        };
+        let (text, on, count) = (m.label.clone(), m.enabled, m.items.len());
+        c.menu_text = text;
+        if !label.is_null() {
+            unsafe {
+                label.write(KuiStr {
+                    ptr: c.menu_text.as_ptr(),
+                    len: c.menu_text.len(),
+                })
+            };
+        }
+        if !enabled.is_null() {
+            unsafe { enabled.write(on) };
+        }
+        count
+    })
+}
+
+/// Reads one row of one menu: its text into `label`, its accelerator into
+/// `accel` (empty when it has none), and its role and flags through the
+/// out pointers. Both strings are borrowed until the next call on this
+/// context. False for a row that is not there.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_menu_bar_item(
+    ptr: *mut KuiCtx,
+    menu: usize,
+    item: usize,
+    label: *mut KuiStr,
+    accel: *mut KuiStr,
+    role: *mut u32,
+    flags: *mut u32,
+) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let Some(row) = c.core().menu_bar().and_then(|b| b.item(menu, item)) else {
+            return false;
+        };
+        let (text, shortcut) = (
+            row.text().to_string(),
+            row.accel_text().unwrap_or_default().to_string(),
+        );
+        let (r, on, checked) = (role_code(row.role), row.enabled, row.checked);
+        c.menu_text = text;
+        c.menu_accel = shortcut;
+        if !label.is_null() {
+            unsafe {
+                label.write(KuiStr {
+                    ptr: c.menu_text.as_ptr(),
+                    len: c.menu_text.len(),
+                })
+            };
+        }
+        if !accel.is_null() {
+            unsafe {
+                accel.write(KuiStr {
+                    ptr: c.menu_accel.as_ptr(),
+                    len: c.menu_accel.len(),
+                })
+            };
+        }
+        if !role.is_null() {
+            unsafe { role.write(r) };
+        }
+        if !flags.is_null() {
+            // `KUI_MENU_ITEM_ENABLED` | `KUI_MENU_ITEM_CHECKED`.
+            unsafe { flags.write(u32::from(on) | (u32::from(checked) << 1)) };
+        }
+        true
+    })
+}
+
+/// Reports that the platform's menu bar chose row `item` of menu `menu`:
+/// the same path a press on the drawn bar's row takes. Out of range does
+/// nothing. Returns whether an item was performed.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_activate_menu_bar_item(ptr: *mut KuiCtx, menu: usize, item: usize) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let events = c.core().activate_menu_bar_item(menu, item);
+        let any = !events.is_empty();
+        c.absorb(events);
+        any
+    })
+}
+
+/// The `KUI_MENU_*` code for a role, the inverse of `KuiMenuItem::to_core`.
+fn role_code(role: kui_core::MenuRole) -> u32 {
+    match role {
+        kui_core::MenuRole::Custom => 0,
+        kui_core::MenuRole::Separator => 1,
+        kui_core::MenuRole::Cut => 2,
+        kui_core::MenuRole::Copy => 3,
+        kui_core::MenuRole::Paste => 4,
+        kui_core::MenuRole::SelectAll => 5,
+        kui_core::MenuRole::LookUp => 6,
+    }
 }

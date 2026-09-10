@@ -406,6 +406,24 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        // The application menu bar (ADR 0018): one element that declares
+        // the menu and draws it. The item tables are the ones
+        // `env.open_menu` takes, one level down.
+        "menubar" => r#"
+            return column { gap = 6, width = { grow = 1 },
+              menu_bar { menu = {
+                { label = "File", items = {
+                    { label = "New", id = "file.new", accel = "mod+n" },
+                    { role = "separator" },
+                    { label = "Wrap", id = "file.wrap", checked = true },
+                    { label = "Print", id = "file.print", enabled = false },
+                } },
+                { label = "Edit", items = { { role = "copy" } } },
+              } },
+              text("body", { size = 12 }),
+            }
+        "#
+        .to_string(),
         // Same tree as `selection`: the menu is not declared by anyone,
         // it is what the core opens over the card on a secondary press.
         "selection" | "menu" => {

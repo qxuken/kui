@@ -2743,6 +2743,31 @@ SCENE_TREES.popup = (_fx, phase) =>
     [box({ pad: 8, bg: '#14161e' }, [text(phase === 0 ? 'menu' : 'closed', { size: 12 })])],
   );
 
+// `conformance::build_menu_bar`: the application menu bar (ADR 0018). The
+// declaration rides on the root box the way `windows` does, and the
+// `<menuBar/>` element draws it — on a machine with no bar of its own,
+// which is what a headless corpus always is.
+SCENE_TREES.menubar = () =>
+  root({}, [
+    box({ gap: 6, width: 'grow' }, [
+      el('menuBar', {
+        menu: [
+          {
+            label: 'File',
+            items: [
+              { label: 'New', id: 'file.new', accel: 'mod+n' },
+              { role: 'separator' },
+              { label: 'Wrap', id: 'file.wrap', checked: true },
+              { label: 'Print', id: 'file.print', enabled: false },
+            ],
+          },
+          { label: 'Edit', items: [{ role: 'copy' }] },
+        ],
+      }),
+      text('body', { size: 12 }),
+    ]),
+  ]);
+
 // `conformance::build_live`: the row on a box that would otherwise be
 // elided, and the queue through `ctx.announce` — the third argument, since
 // an announcement is an act and a tree is not.

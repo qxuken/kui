@@ -56,6 +56,7 @@ use crate::geom::{Edges, Rect, Size, Vec2};
 use crate::input::{EditKey, InputEvent, KeyCode, KeyMods, KeyPress, Mods};
 use crate::key::Key;
 use crate::line::Stroke;
+use crate::menu::{BarMenu, MenuBar, MenuItem, MenuRole};
 use crate::resources::{ImageId, SoundId};
 use crate::runtime::Core;
 use crate::spec::{
@@ -686,6 +687,52 @@ pub const SCENES: &[Scene] = &[
                 "2 staticText badge||",
                 "2 staticText a hint||",
                 "1 button Save|Nothing to save yet|",
+            ],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+        },
+    },
+    Scene {
+        name: "menubar",
+        doc: "The application menu bar (ADR 0018): the `menuBar` element \
+              declares one and draws it, because this is a machine \
+              with no menu bar of its own — on macOS the driver would hand \
+              the same declaration to the OS and the element would draw \
+              nothing, which is the one thing about it a headless corpus \
+              cannot see. The steps open the File menu the way a user does, \
+              so the frame the report keeps has the bar *and* its dropped \
+              menu in it: a row with an accelerator, a separator, a checked \
+              row and a dead one. Nothing reaches the app — a press on a \
+              title is the bar's own, taken back by key — which is what the \
+              empty event list says.",
+        custom: &["key", "pad", "size"],
+        elements: &["menuBar", "box", "text"],
+        build: build_menu_bar,
+        env: NATIVE_CHROME,
+        steps: &[Step::Cursor(20, 13), Step::MouseDown, Step::MouseUp],
+        expect: Expect {
+            // The bar, the open menu's panel, the open title's accent
+            // background, and the separator's rule.
+            solid: 4,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            fragments: 0,
+            glyphs_min: 20,
+            access: &[
+                "0 window ||",
+                "1 menu Menu bar||",
+                "2 menuItem File||",
+                "2 menu File||",
+                "3 menuItem New||",
+                "3 menuItem Wrap||",
+                "3 menuItem Print||",
+                "2 menuItem Edit||",
+                "1 staticText body||",
             ],
             events: &[],
             announcements: &[],
@@ -2030,6 +2077,38 @@ fn build_tooltip(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     });
 }
 
+/// The application menu bar (ADR 0018): a declaration, and the widget that
+/// draws it. Two menus, so the second's title is somewhere to hover; a
+/// standard role, a separator, a checked row and an accelerator, so every
+/// part of a row is in the frame the report keeps.
+fn build_menu_bar(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    let bar = MenuBar::new(vec![
+        BarMenu::new(
+            "File",
+            vec![
+                MenuItem::new("New")
+                    .id(Value::str("file.new"))
+                    .accel("mod+n"),
+                MenuItem::separator(),
+                MenuItem::new("Wrap")
+                    .id(Value::str("file.wrap"))
+                    .checked(true),
+                MenuItem::new("Print")
+                    .id(Value::str("file.print"))
+                    .enabled(false),
+            ],
+        ),
+        BarMenu::new("Edit", vec![MenuItem::role(MenuRole::Copy)]),
+    ]);
+    // Grow, because the bar is a full-width strip: in a `fit` parent it
+    // would be squeezed to the widest thing beside it and its titles would
+    // wrap, which is ordinary flex and worth a scene not tripping over.
+    ui.with(NodeSpec::column().gap(6.0).width(Sizing::Grow(1.0)), |ui| {
+        widgets::menu_bar(ui, bar);
+        ui.text("body", TextStyle::new(12.0));
+    });
+}
+
 fn build_chrome(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.window_title("kui conformance");
     ui.with(NodeSpec::column().gap(6.0), |ui| {
@@ -2833,6 +2912,14 @@ fn observe(core: &Core, cov: &mut Coverage) {
     // only trace of one.
     if !core.declared_windows().is_empty() {
         cov.custom.insert("windows");
+    }
+    // The `menuBar` element declares a menu and may draw nothing at all, so
+    // neither its rows nor its nodes are a reliable trace of it; the
+    // declaration is. (The bar it draws is told from a hand-built row of
+    // `menuItem`s by the core having recorded its nodes, which only the
+    // widget does — but on a host with a platform bar there are none.)
+    if core.menu_bar().is_some() {
+        cov.elements.insert("menuBar");
     }
     // An `audio` element builds no node either — it declares a playback
     // the audio store reconciles — so it is read off the store.

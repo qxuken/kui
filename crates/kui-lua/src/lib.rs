@@ -343,6 +343,7 @@ fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
             label,
             role,
             enabled: row.get::<Option<bool>>("enabled")?.unwrap_or(true),
+            checked: row.get::<Option<bool>>("checked")?.unwrap_or(false),
             id: match row.get::<mlua::Value>("id")? {
                 mlua::Value::Nil => None,
                 v => Some(lua_to_value(&v)?),
@@ -985,9 +986,44 @@ fn element_of(ty: &str) -> &str {
         "row" | "column" => "box",
         "input" => "edit",
         "window_buttons" => "windowButtons",
+        "menu_bar" => "menuBar",
         "latency_graph" | "latency_hud" => "latencyGraph",
         other => other,
     }
+}
+
+/// `menu_bar { menu = { … } }`'s list — the application menu bar
+/// (`docs/adr/0018-a-menu-bar-the-app-declares.md`): each entry
+/// `{ label=, items= { ... }, enabled= }`, whose items are the same row
+/// tables `env.open_menu` takes. Declared where the element sits, because
+/// what the menu is and where its strip goes are one decision; sticky and
+/// diffed by the core, so a script that returns the same menu every frame
+/// costs one comparison, and an empty list takes the bar away.
+fn menu_bar_of(t: &Table) -> mlua::Result<kui_core::MenuBar> {
+    let Some(list) = t.get::<Option<Table>>("menu")? else {
+        return Ok(kui_core::MenuBar::default());
+    };
+    let mut menus = Vec::new();
+    for entry in list.sequence_values::<Table>() {
+        let entry = entry?;
+        let label: String = entry.get("label")?;
+        // A menu with no `items` is a shape error and not an empty menu:
+        // the two read the same on screen and only one of them was meant.
+        let items = match entry.get::<Option<Table>>("items")? {
+            Some(items) => menu_items(&items)?,
+            None => {
+                return Err(mlua::Error::runtime(format!(
+                    "menu entry `{label}` needs `items` (a list of rows)"
+                )));
+            }
+        };
+        menus.push(kui_core::BarMenu {
+            label,
+            items,
+            enabled: entry.get::<Option<bool>>("enabled")?.unwrap_or(true),
+        });
+    }
+    Ok(kui_core::MenuBar::new(menus))
 }
 
 /// The root table's `windows` list (`docs/adr/0004-multi-window.md`): each
@@ -1366,6 +1402,10 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
         }
         "window_buttons" => {
             widgets::window_buttons(ui);
+            Ok(())
+        }
+        "menu_bar" => {
+            widgets::menu_bar(ui, menu_bar_of(t)?);
             Ok(())
         }
         "tooltip" => {

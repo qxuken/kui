@@ -86,6 +86,21 @@ export type ContextMenuMsg<T = AppMsg> = {
   tag?: T;
 };
 
+/** A menu row was chosen — a context menu's (`Ctx.openMenu`, or the stock
+ *  one a right-click opens) or the application menu bar's
+ *  (`docs/adr/0018-a-menu-bar-the-app-declares.md`). One message for both,
+ *  so an app that wires Save once has it in both places.
+ *
+ *  `item` is the row's `id`, or its label when it declared none. `role`
+ *  says whether the core already carried the row out: a standard role is
+ *  performed (and its clipboard work queued for the host) *and* posted, so
+ *  an app can hear its editor being cut from and is free to ignore it. */
+export type MenuMsg<T = AppMsg> = {
+  kind: 'menu';
+  role: 'custom' | 'separator' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'lookUp';
+  item: T;
+};
+
 /** The pointer entered or left an `onHover` node — also when a new frame
  *  moved it under a still cursor. */
 export type HoverMsg<T = AppMsg> = {
@@ -267,6 +282,7 @@ export type CoreMsg =
   | TextMsg
   | PreeditMsg
   | ContextMenuMsg
+  | MenuMsg
   | HoverMsg
   | LayoutMsg
   | DismissMsg
@@ -442,9 +458,51 @@ export interface MenuItemInput {
   label?: string;
   role?: 'custom' | 'separator' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'lookUp';
   enabled?: boolean;
+  /** Draws a checkmark beside the row (and sets the platform's own check
+   *  state where a host renders the menu): a setting the row *is*, not a
+   *  command it runs. */
+  checked?: boolean;
   id?: unknown;
-  /** Display only: the shortcut is the app's or the platform's. */
+  /** Display only: the shortcut is the app's or the platform's — except in
+   *  a menu bar the platform draws, where a spelling kui can parse
+   *  (`'mod+s'`, `'⌘S'`, `'Ctrl+Shift+P'`) becomes the real key equivalent.
+   *  A declaration kui can parse is rewritten into the platform's own
+   *  spelling, so `'mod+s'` reads as `⌘S` on macOS and `Ctrl+S` elsewhere. */
   accel?: string;
+}
+
+/** One menu of the application menu bar (the `<menuBar menu={…}/>`
+ *  element's prop): a title and the rows that drop out of it
+ *  (`docs/adr/0018-a-menu-bar-the-app-declares.md`). Its rows are the same
+ *  `MenuItemInput` a context menu takes, so a standard `role` is performed
+ *  by the core here too — an Edit menu's `{ role: 'copy' }` is the
+ *  right-click Copy.
+ *
+ *  On macOS the first menu is the application menu, which the OS titles
+ *  with the app's own name whatever `label` says. */
+export interface MenuInput {
+  label: string;
+  items: MenuItemInput[];
+  /** A disabled menu is dimmed and opens nothing. */
+  enabled?: boolean;
+}
+
+/** The whole bar, in order — the `<menuBar menu={…}/>` element's prop.
+ *  `[]` takes the menu away; a frame that draws no `<menuBar/>` at all
+ *  leaves the last declaration in force. */
+export type MenuBarInput = MenuInput[];
+
+/** The application menu as the core holds it (`Ctx.menuBar()`): what a
+ *  host with a menu bar of its own reads after `setNativeMenuBar(true)`.
+ *  `revision` changes only when the declaration does, so a host keeps the
+ *  last one it built and rebuilds nothing until the number moves. */
+export interface MenuBarState {
+  revision: number;
+  menus: {
+    label: string;
+    enabled: boolean;
+    items: OpenMenuItem[];
+  }[];
 }
 
 /** One row of a context menu, as `Ctx.menu()` reports it
@@ -454,6 +512,9 @@ export interface MenuItemInput {
 export interface OpenMenuItem {
   label: string;
   role: 'custom' | 'separator' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'lookUp';
+  /** Drawn with a checkmark: a setting rather than a command. Absent on a
+   *  context menu's rows, which have never had one. */
+  checked?: boolean;
   /** A disabled row is drawn dimmed and cannot be chosen — Paste with an
    *  empty clipboard, Copy with no selection. Present rather than absent,
    *  so a menu's rows do not move under the pointer. */
@@ -1615,6 +1676,29 @@ export declare class Ctx {
    */
   setNativeMenus(on: boolean): void
   /**
+   * The application menu the frame declared, or null:
+   * `{revision, menus: [{label, enabled, items}]}`
+   * (`docs/adr/0018-a-menu-bar-the-app-declares.md`). What a
+   * host with a menu bar of its own reads after
+   * `setNativeMenuBar(true)`; `revision` changes only when the
+   * declaration does, so a host rebuilds nothing until it moves.
+   */
+  menuBar(): MenuBarState | null
+  /**
+   * Tells the core the platform owns the menu bar, so
+   * `<menuBar/>` draws nothing and this host is the one handing
+   * the declaration over (`menuBar()`) and reporting what was
+   * chosen (`activateMenuBarItem`). Off by default, which is
+   * the bar this library draws.
+   */
+  setNativeMenuBar(on: boolean): void
+  /**
+   * Reports that the platform's menu bar chose row `item` of
+   * menu `menu` — the same path a press on the drawn bar's row
+   * takes. False for a row that is not there.
+   */
+  activateMenuBarItem(menu: number, item: number): boolean
+  /**
    * Tells the core this host can show the platform's definition
    * panel. The standard Look Up row is then offered where it
    * means something, and a force click over text asks for one.
@@ -2228,6 +2312,29 @@ export declare class KuiWindow {
    * library draws.
    */
   setNativeMenus(on: boolean): void
+  /**
+   * The application menu the frame declared, or null:
+   * `{revision, menus: [{label, enabled, items}]}`
+   * (`docs/adr/0018-a-menu-bar-the-app-declares.md`). What a
+   * host with a menu bar of its own reads after
+   * `setNativeMenuBar(true)`; `revision` changes only when the
+   * declaration does, so a host rebuilds nothing until it moves.
+   */
+  menuBar(): MenuBarState | null
+  /**
+   * Tells the core the platform owns the menu bar, so
+   * `<menuBar/>` draws nothing and this host is the one handing
+   * the declaration over (`menuBar()`) and reporting what was
+   * chosen (`activateMenuBarItem`). Off by default, which is
+   * the bar this library draws.
+   */
+  setNativeMenuBar(on: boolean): void
+  /**
+   * Reports that the platform's menu bar chose row `item` of
+   * menu `menu` — the same path a press on the drawn bar's row
+   * takes. False for a row that is not there.
+   */
+  activateMenuBarItem(menu: number, item: number): boolean
   /**
    * Tells the core this host can show the platform's definition
    * panel. The standard Look Up row is then offered where it

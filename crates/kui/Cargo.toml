@@ -71,6 +71,10 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
     # superclass.
     "NSMenu",
     "NSMenuItem",
+    # The application menu bar (ADR 0018): `NSApp.mainMenu`, and the
+    # checkmark an item's `checked` sets (`NSControlStateValue`, in NSCell).
+    "NSApplication",
+    "NSCell",
     "NSResponder",
     "NSView",
     "NSEvent",

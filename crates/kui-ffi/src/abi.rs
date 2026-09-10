@@ -152,7 +152,15 @@
 /// value nearly every quad of a frame shares. A host reads
 /// `dd.clips[q.clip]` where it used to read `q.clip` and `q.clip_radius`;
 /// entry zero clips nothing, so there is no null case.
-pub const KUI_ABI_VERSION: u32 = 12;
+///
+/// ABI 13 appends `checked` to `KuiMenuItem` (the menu bar, ADR 0018): a
+/// row that is a setting rather than a command draws a checkmark. An [in]
+/// struct, whose appends are ordinarily compatible — but this one travels
+/// as an *array*, so the append moves the stride and every row after the
+/// first is read from the wrong bytes. The same exception `KuiSpan` is,
+/// for the same reason (ABI 8). A recompiled host's zeroed tail is
+/// `checked = 0`, which is what every row had before.
+pub const KUI_ABI_VERSION: u32 = 13;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its

@@ -700,6 +700,14 @@ export function createEncoder(P) {
       case 'windowButtons':
         f[fi++] = OP.windowButtons;
         return;
+      case 'menuBar':
+        // The menu rides on the element, as one JSON blob: it nests, and
+        // every row has five optional fields, so the addon parses it with
+        // the same reader `openMenu`'s items go through rather than a
+        // second hand-written stanza that could disagree with it.
+        f[fi++] = OP.menuBar;
+        strRef(JSON.stringify(p.menu ?? []));
+        return;
       case 'latencyGraph':
         f[fi++] = OP.latencyGraph;
         return;

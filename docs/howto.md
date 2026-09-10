@@ -211,6 +211,24 @@ beside the app — because a popup is an OS surface where a `fit` float plus a
 [ADR 0003](adr/0003-modal-surfaces.md) ·
 [ADR 0004](adr/0004-multi-window.md)
 
+### How do I give my app a menu bar?
+
+One call, in the view, wherever the strip belongs: `<menuBar menu={[…]}/>`,
+`menu_bar { menu = {…} }`, `kui_menu_bar(ctx, menus, count)`,
+`widgets::menu_bar(ui, bar)`. The menu is a list of `{ label, items }`
+whose items are the rows a context menu takes (`id`, `role`, `accel`,
+`enabled`, `checked`). On macOS the call draws nothing and the driver hands
+the same declaration to the OS; everywhere else it draws those menus in the
+window. Choosing a row is one
+`{kind:"menu", role, item}` event either way, and a standard `role` is
+performed by the core — an Edit menu's Copy is the right-click Copy.
+Declare it every frame: it is diffed, so an unchanged bar costs a
+comparison, and an empty list takes it away.
+
+[`menuBar` element](props.md#elements) ·
+[ADR 0018](adr/0018-a-menu-bar-the-app-declares.md) ·
+[examples/rust/context_menu.rs](../examples/rust/context_menu.rs)
+
 ### How do I have global shortcuts and a Tab ring at once?
 
 Put the keymap on an `onKey` sink that encloses the controls: a focused

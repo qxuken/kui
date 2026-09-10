@@ -307,6 +307,10 @@ impl Launcher {
             native_menu: macos_menu::MacMenu::new(),
             #[cfg(target_os = "macos")]
             menu_shown: false,
+            #[cfg(target_os = "macos")]
+            native_menu_bar: macos_menu::MacMenuBar::new(),
+            #[cfg(target_os = "macos")]
+            applied_menu_bar: None,
             audio: audio::Audio::new(),
             audio_touch: std::time::Instant::now(),
             smoke_frames: Self::smoke_frames(),
@@ -350,6 +354,13 @@ impl Launcher {
         let mut shell = self.shell(app);
         shell.proxy = Some(event_loop.create_proxy());
         shell.app.setup(Waker(event_loop.create_proxy()));
+        // A menu-bar item chosen by its ⌘-shortcut is the whole of the
+        // event as far as winit is concerned — AppKit consumed the key —
+        // so the bar rings the loop itself.
+        #[cfg(target_os = "macos")]
+        if let Some(bar) = &shell.native_menu_bar {
+            bar.set_waker(Waker(event_loop.create_proxy()));
+        }
         event_loop.run_app(&mut shell)?;
         Ok(())
     }
@@ -366,6 +377,13 @@ impl Launcher {
         let mut shell = self.shell(app);
         shell.proxy = Some(event_loop.create_proxy());
         shell.app.setup(Waker(event_loop.create_proxy()));
+        // A menu-bar item chosen by its ⌘-shortcut is the whole of the
+        // event as far as winit is concerned — AppKit consumed the key —
+        // so the bar rings the loop itself.
+        #[cfg(target_os = "macos")]
+        if let Some(bar) = &shell.native_menu_bar {
+            bar.set_waker(Waker(event_loop.create_proxy()));
+        }
         // First pump delivers `resumed`, creating the window + renderer.
         let alive = pump_once(&mut event_loop, &mut shell);
         Ok(PumpRunner {
@@ -1155,6 +1173,17 @@ struct Shell<A: App> {
     /// Beside `native_menu` because it means nothing without one.
     #[cfg(target_os = "macos")]
     menu_shown: bool,
+    /// The platform's application menu bar, where the platform has one
+    /// (`docs/adr/0018-a-menu-bar-the-app-declares.md`). One per process,
+    /// because that is what macOS has: it carries the declaration of the
+    /// window that has the keyboard, or of whichever window made one.
+    #[cfg(target_os = "macos")]
+    native_menu_bar: Option<macos_menu::MacMenuBar>,
+    /// The declaration it currently carries: the window it came from and
+    /// that core's `menu_bar_revision`. The diff that keeps a re-declared
+    /// bar from being rebuilt sixty times a second.
+    #[cfg(target_os = "macos")]
+    applied_menu_bar: Option<(WindowId, u64)>,
     /// The audio device the core's audio commands drive; see `audio`.
     audio: audio::Audio,
     /// When the app was last doing something that could lead to a sound:
@@ -1654,6 +1683,73 @@ impl<A: App> Shell<A> {
         let _ = event_loop;
     }
 
+    /// Hands the frontmost window's menu-bar declaration to the platform,
+    /// and the platform's answers back (ADR 0018, decisions 4 and 8).
+    ///
+    /// The bar belongs to the process and a `Core` to a window, so the one
+    /// that holds the keyboard is the one whose declaration is up — and,
+    /// when none does, whichever window declared one, since an app can be
+    /// active with no key window and that is the state a menu is used in.
+    /// A window that declares nothing leaves the last bar standing rather
+    /// than blanking it. Diffed against `(window, revision)`, so
+    /// re-declaring the same bar every frame rebuilds no `NSMenu`.
+    fn pump_menu_bar(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(target_os = "macos")]
+        {
+            let Some(native) = self.native_menu_bar.as_ref() else {
+                return;
+            };
+            // What the user chose, if anything — read *before* anything is
+            // applied, because a pick names a row of the menu that was up
+            // when it was made: applying first would rebuild the tag map
+            // under it and resolve the pick through the new one.
+            let chosen = native.take_chosen();
+            // The window with the keyboard, and — when the app is active
+            // with no key window, which is an ordinary macOS state and the
+            // one a menu is chosen from — whichever window has declared
+            // one. Without the second half the bar goes up at launch and
+            // is never rebuilt again.
+            let declared = |p: &Pane| p.core.menu_bar().is_some();
+            let front = self
+                .panes
+                .iter()
+                .position(|p| p.core.env.focused && declared(p))
+                .or_else(|| self.panes.iter().position(declared));
+            if let Some(i) = front {
+                let pane = &self.panes[i];
+                let stamp = (pane.core.env.window.id, pane.core.menu_bar_revision());
+                if self.applied_menu_bar != Some(stamp) {
+                    native.apply(pane.core.menu_bar().expect("checked"));
+                    self.applied_menu_bar = Some(stamp);
+                }
+            }
+            // Reported to the window the bar was applied from, which is the
+            // one the items are about.
+            let Some((menu, item)) = chosen else {
+                return;
+            };
+            let Some(i) = self
+                .applied_menu_bar
+                .and_then(|(w, _)| self.pane_of(w))
+                .or_else(|| (!self.panes.is_empty()).then_some(0))
+            else {
+                return;
+            };
+            let events = self.panes[i].core.activate_menu_bar_item(menu, item);
+            // A chosen row is input that reached the app, so the frame
+            // after it waits for the host's answer where the host answers
+            // late (`Launcher::deferred_events`) — otherwise it would
+            // paint the model the pick was about to change.
+            let reached_app = self.route_events(events);
+            self.owe_for(reached_app);
+            self.apply_menu_actions(event_loop, i);
+            self.apply_window_commands(event_loop);
+            self.panes[i].window.request_redraw();
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = event_loop;
+    }
+
     /// What choosing a stock context-menu item left for the host: the
     /// clipboard, which is this driver's in the same way Cmd-C's is (ADR
     /// 0017, decision 5). Copy and Cut arrive as the text to put there —
@@ -1934,6 +2030,10 @@ impl<A: App> Shell<A> {
         #[cfg(not(target_os = "macos"))]
         let native_menus = false;
         core.set_native_menus(native_menus);
+        // And the menu *bar*, which is the platform's on macOS and drawn
+        // by `widgets::menu_bar` everywhere else (ADR 0018, decision 4).
+        #[cfg(target_os = "macos")]
+        core.set_native_menu_bar(self.native_menu_bar.is_some());
         // macOS is the one platform with a definition panel to show, so
         // it is the one where the Look Up row is offered and a force click
         // asks for one (ADR 0017, decision 6).
@@ -2972,8 +3072,10 @@ impl<A: App> ApplicationHandler<access_bridge::UserEvent> for Shell<A> {
     /// plays, the loop wakes every `AUDIO_POLL` to notice it finishing.
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         // The platform's menu comes and goes between turns of the loop, so
-        // this is where its answer is collected.
+        // this is where its answer is collected. The menu bar is handed
+        // over and read back from the same place, for the same reason.
         self.pump_native_menu(event_loop);
+        self.pump_menu_bar(event_loop);
         self.settle_focus();
         self.dismiss_popups_if_deactivated();
         self.poll_audio();
