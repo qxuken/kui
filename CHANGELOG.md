@@ -21,6 +21,17 @@ field reports).
 
 **What breaks.**
 
+- **Floats stack in the order they opened, not in tree order, and a
+  scroller's bars are under the floats over it**
+  ([ADR 0023](docs/adr/0023-layers-stack-in-the-order-they-open.md)). A
+  float declared later in the tree is no longer guaranteed above one
+  declared earlier — only one that *opened* later is; two floats declared
+  every frame from the same first frame keep tree order. A scroller's
+  bars and the focus ring paint at the end of the layer that owns them
+  rather than at the end of the frame, so a menu over a page's bar covers
+  it and takes the press there. The corpus report changes (`layers` is a
+  new scene, and every scene with a bar or a ring beside a float moves),
+  so `target/conformance.txt` wants regenerating.
 - **ABI 13: `KuiMenuItem` grew a `checked` field.** It is an [in] struct,
   whose appends are ordinarily free — but this one travels as an *array*,
   so the append moved the stride and a host that does not recompile reads
@@ -184,6 +195,21 @@ field reports).
 
 ### Fixed
 
+- **The drawn context menu came up under the page's scrollbar**, and so
+  did every float that reached a scroller's edge; a press on a non-modal
+  float over the track jumped the scroller instead of clicking the float;
+  a menu bar's dropdown painted under a tooltip from the body; the focus
+  ring painted over every float. One cause: `emit_frame` painted in-flow,
+  then floats in tree order, then *every* scrollbar, then the ring, and
+  the press asked the bars before the hit list. It paints a stack of
+  layers now — the in-flow tree, then one per float in the order they
+  opened, each with its own chrome at its end — and one
+  `Interaction::target_at` answers the press and the cursor shape from
+  that order ([ADR 0023](docs/adr/0023-layers-stack-in-the-order-they-open.md);
+  `tests/layers.rs`, the `layers` corpus scene). A float from outside a
+  modal's scope that opens over it raises `modal-behind-content`, as
+  in-flow content after a modal already did. There is no `zIndex`;
+  re-keying a float reopens it on top.
 - **The macOS runner presented the platform's context menu over the
   core's drawn one** when a core had said `set_native_menus(false)` —
   both came up at once. `pump_native_menu` asks the core first. And a
@@ -1209,6 +1235,12 @@ keeps the ring out and nothing else.
 The guard that kept an `autofocus` editor from retaking focus after a blur
 — a `focused` flag beside the model, a `blur()` in the next frame: the flag
 asks once now.
+
+The order you declared floats in to get one over another, and the wrapper
+you moved a menu bar's dropdown into so it would paint over the body's
+tooltips: a float is above what opened before it wherever it sits in the
+tree. And the gutter you kept clear of a scroller's right edge so a popover
+would not come up under its bar — the bar is under the popover now.
 
 The `pumpMs` you lowered to make a Node window feel responsive, and any
 timer an app added beside `runWindowed` to keep it awake: the gap is 8 ms

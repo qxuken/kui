@@ -6,6 +6,7 @@
 //! lives in `focus`, the arrow-key patterns in `composites`.
 
 use super::*;
+use crate::input::Target;
 use crate::select::{DragAnchor, Grain, SelectDrag};
 
 impl Core {
@@ -335,12 +336,13 @@ impl Core {
                 // focus, the caret and the scrollbars exactly as they were
                 // (a right-click on a selection has to keep it).
                 let primary = button == MouseButton::Primary;
-                // Scrollbars win over everything under them (they draw on
-                // top): a thumb press starts a drag, a track press jumps
-                // there first. Neither blurs the focused edit.
+                // A scrollbar wins what it was painted over — its own
+                // scroller's content, not a float over it (ADR 0023): a
+                // thumb press starts a drag, a track press jumps there
+                // first. Neither blurs the focused edit.
                 if primary
                     && let Some(p) = self.interaction.cursor()
-                    && let Some(bar) = self.interaction.scrollbar_at(p)
+                    && let Some(Target::Bar(bar)) = self.interaction.target_at(p)
                 {
                     let (pos, thumb_start) = match bar.axis {
                         ScrollAxis::X => (p.x, bar.thumb.x),

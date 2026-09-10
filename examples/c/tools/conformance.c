@@ -997,6 +997,55 @@ static void conf_virtual(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::LAYERS_ROWS: enough rows to overflow the viewport, so the
+ * page has a bar for the popover to cover. */
+#define CONF_LAYERS_ROWS 16
+
+/* One of the two floats of conf_layers: a viewport float at (x, y) that
+ * posts `kind` when clicked. The payload is consumed by kui_open_keyed. */
+static void conf_layers_float(KuiCtx *ui, const char *key, float x, float y,
+                              uint32_t bg, const char *kind, const char *label) {
+    KuiValue *tag = kui_value_map();
+    kui_value_map_set(tag, KUI_STR("kind"), kui_value_str(KUI_STR(kind)));
+    KuiSpec spec = {
+        .float_mode = KUI_FLOAT_VIEWPORT,
+        .float_anchor_x = KUI_START, .float_anchor_y = KUI_START,
+        .float_self_x = KUI_START, .float_self_y = KUI_START,
+        .float_dx = x, .float_dy = y,
+        .width = {KUI_FIXED, 120}, .height = {KUI_FIXED, 80}, .bg = bg,
+        .label = KUI_STR(label),
+    };
+    kui_open_keyed(ui, KUI_STR(key), &spec, tag);
+    kui_close(ui);
+}
+
+/* conformance::build_layers: two floats over a scroller's bar (ADR 0023).
+ * The toast is later in the tree than the popover, so it is over it in
+ * phase 0; the popover closes in phase 1 and reopens in phase 2, which
+ * puts it over the toast. */
+static void conf_layers(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    KuiSpec outer = {.width = {KUI_GROW, 1}, .height = {KUI_GROW, 1}};
+    kui_open(ui, &outer, NULL);
+    KuiSpec page = {.width = {KUI_GROW, 1}, .height = {KUI_GROW, 1},
+                    .overflow = KUI_SCROLL_Y, .bg = 0x101018ff};
+    kui_open_keyed(ui, KUI_STR("page"), &page, NULL);
+    for (int i = 0; i < CONF_LAYERS_ROWS; i++) {
+        char name[16];
+        snprintf(name, sizeof name, "row%d", i);
+        KuiSpec row = {.dir = KUI_ROW, .width = {KUI_GROW, 1}, .height = {KUI_FIXED, 30},
+                       .bg = i % 2 == 0 ? 0x22242cff : 0x30344aff};
+        kui_open_keyed(ui, KUI_STR(name), &row, NULL);
+        kui_close(ui);
+    }
+    kui_close(ui);
+    if (phase != 1) {
+        conf_layers_float(ui, "popover", 200, 40, 0x3b5bd4ff, "popover", "Popover");
+    }
+    conf_layers_float(ui, "toast", 140, 60, 0x73d98cff, "toast", "Toast");
+    kui_close(ui);
+}
+
 /* conformance::build_menu_bar: the application menu bar (ADR 0018) - a
  * declaration, and the widget that draws it. The rows are the KuiMenuItems
  * a context menu takes, one level down; `id` values are borrowed for the
@@ -1068,6 +1117,7 @@ static const ConfScene CONF_SCENES[] = {
     {"menu", conf_selection},
     {"menubar", conf_menu_bar},
     {"virtual", conf_virtual},
+    {"layers", conf_layers},
 };
 
 /* -- driving one scene --------------------------------------------------- */

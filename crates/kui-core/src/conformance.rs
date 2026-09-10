@@ -1680,6 +1680,62 @@ pub const SCENES: &[Scene] = &[
             title: None,
         },
     },
+    Scene {
+        name: "layers",
+        doc: "The paint order as a stack of layers \
+              (`docs/adr/0023-layers-stack-in-the-order-they-open.md`): a \
+              scroller with its bar, two floats over it that overlap each \
+              other, and a click where each of them is the topmost thing. \
+              The popover covers the scroller's bar and takes the press \
+              there (the bar is the in-flow layer's chrome, under every \
+              float); the toast is over the popover in phase 0 because it \
+              is later in the tree, and under it in phase 2 because the \
+              popover closed and reopened — so the same press at the same \
+              point reaches a different float. The digest carries the \
+              order; the events pin what it decides.",
+        custom: &["float", "key", "overflow"],
+        elements: &["box"],
+        build: build_layers,
+        env: NATIVE_CHROME,
+        steps: &[
+            // Where the two floats overlap: the toast, later in the tree.
+            Step::Cursor(230, 90),
+            Step::MouseDown,
+            Step::MouseUp,
+            // On the scroller's track, under the popover: the popover.
+            Step::Cursor(315, 80),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::Phase(1),
+            Step::Phase(2),
+            // The same overlap, with the popover reopened over the toast.
+            Step::Cursor(230, 90),
+            Step::MouseDown,
+            Step::MouseUp,
+        ],
+        expect: Expect {
+            // The page, the eight rows the viewport shows, its bar, and
+            // the two floats.
+            solid: 12,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            fragments: 0,
+            glyphs_min: 0,
+            access: &[
+                "0 window ||",
+                "1 scrollView ||",
+                "1 button Popover||",
+                "1 button Toast||",
+            ],
+            events: &["toast -", "popover -", "popover -"],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+        },
+    },
 ];
 
 /// The rows a virtual list builds, at the data indices it builds them at.
@@ -3593,4 +3649,76 @@ pub fn blocks(text: &str) -> Vec<(String, String)> {
         }
     }
     out
+}
+
+/// The rows the `layers` scene's scroller holds: enough to overflow the
+/// viewport, so it has a bar for the popover to cover.
+pub const LAYERS_ROWS: usize = 16;
+
+fn build_layers(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
+    // One wrapper the size of the window, as every binding's scene returns
+    // one node; the page fills it and the floats hang off the viewport.
+    ui.with(
+        NodeSpec::column()
+            .width(Sizing::Grow(1.0))
+            .height(Sizing::Grow(1.0)),
+        |ui| {
+            ui.with_keyed(
+                "page",
+                NodeSpec::column()
+                    .width(Sizing::Grow(1.0))
+                    .height(Sizing::Grow(1.0))
+                    .scroll_y()
+                    .bg(Color::hex(0x101018ff)),
+                |ui| {
+                    for i in 0..LAYERS_ROWS {
+                        ui.with_keyed(
+                            &format!("row{i}"),
+                            NodeSpec::row()
+                                .width(Sizing::Grow(1.0))
+                                .height(Sizing::Fixed(30.0))
+                                .bg(if i % 2 == 0 {
+                                    Color::hex(0x22242cff)
+                                } else {
+                                    Color::hex(0x30344aff)
+                                }),
+                            |_| {},
+                        );
+                    }
+                },
+            );
+            let at = |x: f32, y: f32| {
+                FloatConfig::viewport()
+                    .at(Align::Start, Align::Start)
+                    .self_at(Align::Start, Align::Start)
+                    .offset(x, y)
+            };
+            // Closed in phase 1, back in phase 2: the reopening is what
+            // puts it over the toast, whatever the tree says.
+            if phase != 1 {
+                ui.with_keyed(
+                    "popover",
+                    NodeSpec::column()
+                        .float(at(200.0, 40.0))
+                        .width(Sizing::Fixed(120.0))
+                        .height(Sizing::Fixed(80.0))
+                        .bg(Color::hex(0x3b5bd4ff))
+                        .on_click(Value::map([("kind", Value::str("popover"))]))
+                        .label("Popover"),
+                    |_| {},
+                );
+            }
+            ui.with_keyed(
+                "toast",
+                NodeSpec::column()
+                    .float(at(140.0, 60.0))
+                    .width(Sizing::Fixed(120.0))
+                    .height(Sizing::Fixed(80.0))
+                    .bg(Color::hex(0x73d98cff))
+                    .on_click(Value::map([("kind", Value::str("toast"))]))
+                    .label("Toast"),
+                |_| {},
+            );
+        },
+    );
 }

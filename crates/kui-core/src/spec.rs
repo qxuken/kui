@@ -116,7 +116,10 @@ pub enum FloatAnchor {
 
 /// Takes a node out of flex flow: it doesn't consume space in its parent,
 /// sizes Grow/Percent against its anchor, is positioned by attach points,
-/// draws on top of in-flow content, and escapes ancestor clips.
+/// and escapes ancestor clips. It paints as a layer of its own — above the
+/// in-flow tree and every float that opened before it, under every one
+/// that opened after — and takes input in the same order
+/// (`docs/adr/0023-layers-stack-in-the-order-they-open.md`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FloatConfig {
     pub anchor: FloatAnchor,

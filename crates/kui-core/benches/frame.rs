@@ -432,6 +432,39 @@ fn bench_drop(bencher: divan::Bencher, rows_n: usize, exits: bool) {
     });
 }
 
+/// The 1k-typical grid with a hundred tooltips floating over it, the same
+/// hundred every frame: what the float stack (ADR 0023) costs at its
+/// steady state — the per-root layer walk, and one pass over the stack to
+/// find that nothing opened or closed. Against `frame_1k_typical`, the
+/// difference is a hundred floats.
+#[divan::bench]
+fn frame_1k_typical_with_100_floats(bencher: divan::Bencher) {
+    fn build(core: &mut Core) -> usize {
+        let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
+        grid(&mut ui, Grid::new(32, 32).text().clicks());
+        for i in 0..100u64 {
+            ui.with_indexed(
+                i,
+                NodeSpec::column()
+                    .float(
+                        kui_core::FloatConfig::viewport()
+                            .offset((i % 10) as f32 * 40.0, (i / 10) as f32 * 30.0),
+                    )
+                    .width(Sizing::Fixed(60.0))
+                    .height(Sizing::Fixed(20.0))
+                    .bg(Color::rgb8(30, 30, 40)),
+                |ui| ui.text("tip", TextStyle::new(10.0)),
+            );
+        }
+        ui.finish();
+        let (dl, _) = core.output();
+        dl.quads.len()
+    }
+    let mut core = Core::new();
+    build(&mut core);
+    bencher.bench_local(|| build(&mut core));
+}
+
 /// The frame *after* a mass removal: nothing left to diff, and the budget's
 /// worth of frozen subtrees replayed on top of an empty view.
 #[divan::bench]

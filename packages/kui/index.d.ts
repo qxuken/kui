@@ -609,7 +609,10 @@ export type WarningCode =
    *  is drawn on top of it: everything the user can see over the modal is
    *  inert, which looks like inert-behind is broken. A modal that has to cover
    *  the app is a float (`float="viewport"`); see
-   *  `docs/adr/0003-modal-surfaces.md`. */
+   *  `docs/adr/0003-modal-surfaces.md`. Also raised for a modal that *is* a
+   *  float when another float from outside its scope stacks over it
+   *  (`docs/adr/0023-layers-stack-in-the-order-they-open.md`): a HUD opened
+   *  after the dialog is the same inert surface over it. */
   | 'modal-behind-content'
   /** A control (a button, link, tab, checkbox, slider, editor) with no
    *  computable name: no `label`, and no text inside it. Icon buttons and

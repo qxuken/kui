@@ -610,10 +610,11 @@ fn leaving(spec: NodeSpec) -> NodeSpec {
         .exit(Enter::from(40.0, 0.0))
 }
 
-/// The toasts example's panel: a side panel float declared *before* the
-/// HUD float, so the HUD is painted over it — there is no z-index, floats
-/// stack in tree order. Its ghost stays under the HUD for the exit, rather
-/// than jumping to the top of the window for its last few frames.
+/// The toasts example's panel: a side panel float and a HUD float opened
+/// in the same frame, panel first in the tree, so the HUD is painted over
+/// it (ADR 0023: same frame, tree order). Its ghost stays under the HUD
+/// for the exit, rather than jumping to the top of the window for its
+/// last few frames.
 #[test]
 fn a_float_leaves_under_the_floats_that_were_above_it() {
     use kui_core::{Align, FloatConfig};
@@ -784,5 +785,99 @@ fn a_ghost_that_lost_its_place_ends_its_pass_under_the_floats() {
         painted(&mut core, NAMES),
         ["a", "b", "hud"],
         "after the in-flow content, under the float"
+    );
+}
+
+/// The stack, not the tree, says what a departed float was under: a
+/// panel opened *after* the HUD was over it, so its ghost leaves over it
+/// too — even though the panel comes first in the tree.
+#[test]
+fn a_float_that_opened_over_another_leaves_over_it() {
+    use kui_core::{Align, FloatConfig};
+
+    let mut core = Core::new();
+    let build = |core: &mut Core, now: f64, panel: bool| {
+        core.set_time(now);
+        let mut ui = core.frame(VIEW, 1.0);
+        if panel {
+            ui.with_keyed(
+                "panel",
+                leaving(
+                    NodeSpec::column()
+                        .float(FloatConfig::viewport())
+                        .width(Sizing::Fixed(60.0))
+                        .height(Sizing::Fixed(120.0))
+                        .bg(PANEL),
+                ),
+                |_| {},
+            );
+        }
+        ui.with(
+            NodeSpec::column()
+                .float(FloatConfig::viewport().at(Align::Start, Align::End))
+                .width(Sizing::Fixed(80.0))
+                .height(Sizing::Fixed(20.0))
+                .bg(HUD),
+            |_| {},
+        );
+        ui.finish();
+    };
+    build(&mut core, 0.0, false);
+    build(&mut core, 0.0, true);
+    assert_eq!(painted(&mut core, NAMES), ["hud", "panel"], "opened later");
+    build(&mut core, 0.0, false);
+    assert_eq!(
+        painted(&mut core, NAMES),
+        ["hud", "panel"],
+        "the ghost keeps the panel's place over the HUD"
+    );
+    build(&mut core, 0.05, false);
+    assert_eq!(painted(&mut core, NAMES), ["hud", "panel"]);
+    build(&mut core, 0.1, false);
+    assert_eq!(painted(&mut core, NAMES), ["hud"]);
+}
+
+/// A ghost inside a float keeps its place in that float's layer: between
+/// the rows it had, under the float's own chrome, and under a float over
+/// it — not at the end of the frame.
+#[test]
+fn a_ghost_inside_a_float_stays_in_that_layer() {
+    use kui_core::FloatConfig;
+
+    let mut core = Core::new();
+    let build = |core: &mut Core, now: f64, b: bool| {
+        core.set_time(now);
+        let mut ui = core.frame(VIEW, 1.0);
+        let cell = |bg| {
+            NodeSpec::column()
+                .width(Sizing::Fixed(30.0))
+                .height(Sizing::Fixed(10.0))
+                .bg(bg)
+        };
+        ui.with_keyed(
+            "panel",
+            NodeSpec::column()
+                .float(FloatConfig::viewport())
+                .width(Sizing::Fixed(60.0))
+                .height(Sizing::Fixed(60.0))
+                .bg(PANEL),
+            |ui| {
+                ui.with_keyed("a", cell(A), |_| {});
+                if b {
+                    ui.with_keyed("b", leaving(cell(B)), |_| {});
+                }
+                ui.with_keyed("c", cell(C), |_| {});
+            },
+        );
+        ui.with_keyed("hud", cell(HUD).float(FloatConfig::viewport()), |_| {});
+        ui.finish();
+    };
+    build(&mut core, 0.0, true);
+    assert_eq!(painted(&mut core, NAMES), ["panel", "a", "b", "c", "hud"]);
+    build(&mut core, 0.02, false);
+    assert_eq!(
+        painted(&mut core, NAMES),
+        ["panel", "a", "b", "c", "hud"],
+        "between its siblings, inside the panel's layer"
     );
 }

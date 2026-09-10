@@ -666,8 +666,16 @@ were absent and raises a `wrap-ignored` warning.
 Out-of-flow: `.float(FloatConfig)` takes a node out of flex flow — it doesn't
 consume space in its parent, positions by attach points against its parent's
 rect or the viewport (plus an offset), sizes Grow/Percent against that anchor,
-paints on top of in-flow content, hit-tests topmost, and escapes ancestor
-clips. `FloatConfig::below()`/`above()` give tooltip placement in one call
+and escapes ancestor clips. It paints as a layer of its own: above the in-flow
+tree and every float that opened before it, under every float that opened
+after — a tooltip that appears over an open menu is over it, a menu that opens
+while a tooltip shows is over that — and it hit-tests in the same order, so a
+popover over a scroller's bar takes the press there. A scroller's bars and
+the focus ring are the chrome of the layer that owns them, above its content
+and under the layers over it; there is no `zIndex`, and re-keying a float
+reopens it on top
+(`docs/adr/0023-layers-stack-in-the-order-they-open.md`).
+`FloatConfig::below()`/`above()` give tooltip placement in one call
 (`widgets::tooltip` wraps it); `FloatConfig::viewport().at(End, End)` pins a
 HUD to a corner.
 
@@ -842,6 +850,7 @@ that prop costs.
 | bench | what it holds | median |
 |---|---|---|
 | `frame_1k_typical` | 32×32 grid, every 8th cell a label, every 4th clickable — a "typical app" frame | ~112 µs |
+| `frame_1k_typical_with_100_floats` | the typical frame with a hundred tooltips floating over it every frame — what a hundred layers on the float stack cost at rest (ADR 0023) | ~145 µs |
 | `frame_10k_rects` | 100×100 plain rects, nothing switched on | ~729 µs |
 | `frame_10k_rects_with_text_and_hits` | the same grid plus 1.2k texts and 2.5k hit regions | ~1.14 ms |
 | `frame_10k_rects_with_access_tree` | that frame with `core.access_tree()` derived after it — what a frame costs while assistive technology is attached | ~1.57 ms |

@@ -166,7 +166,10 @@ warnings! {
     /// it is drawn on top of it: everything the user can see over the modal is
     /// inert, which looks like inert-behind is broken. A modal that has to
     /// cover the app is a float (`float="viewport"`); see
-    /// `docs/adr/0003-modal-surfaces.md`.
+    /// `docs/adr/0003-modal-surfaces.md`. Also raised for a modal that *is*
+    /// a float when another float from outside its scope stacks over it
+    /// (`docs/adr/0023-layers-stack-in-the-order-they-open.md`): a HUD
+    /// opened after the dialog is the same inert surface over it.
     pub const MODAL_BEHIND_CONTENT: &str = "modal-behind-content";
     /// A control (a button, link, tab, checkbox, slider, editor) with no
     /// computable name: no `label`, and no text inside it. Icon buttons and
@@ -463,6 +466,19 @@ pub fn playback_refused(key: crate::key::Key, playback: crate::audio::PlaybackId
 /// The [`EDIT_TEXT_WITHOUT_EDITOR`] warning for one key. Keyed by the
 /// editor's own key, so a view that never declares it reports once, the
 /// way every node-shaped code does.
+/// [`MODAL_BEHIND_CONTENT`], the float-stack case: raised from emission,
+/// where the stack exists, rather than from the tree walk.
+pub(crate) fn modal_under_layer(key: Key) -> Warning {
+    Warning {
+        code: MODAL_BEHIND_CONTENT,
+        key,
+        message: "a float from outside this modal's scope opened after it and paints on top \
+                  of it: everything drawn over a modal is inert, which reads as a broken \
+                  dialog (declare it inside the modal, or close it while the modal is up)"
+            .to_string(),
+    }
+}
+
 pub fn edit_text_without_editor(key: Key) -> Warning {
     Warning {
         code: EDIT_TEXT_WITHOUT_EDITOR,

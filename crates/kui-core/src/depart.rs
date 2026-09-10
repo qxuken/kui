@@ -129,23 +129,71 @@ pub(crate) struct GhostNode {
     pub rect: Rect,
 }
 
-/// Which emission pass painted a node: in-flow content first, then every
-/// floating subtree on top of it (see `Core::emit_frame`). A ghost is
-/// painted in the pass its root was, at the place it had.
+/// Where a departing subtree sat in the paint order (ADR 0023): the
+/// layer, and the key of the first node painted after it in that layer
+/// that the frame which noticed it gone still declares. Its ghost is
+/// painted just under that node — and at the end of its layer once the
+/// node is gone too, or on top of everything once the layer is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Pass {
-    InFlow,
-    Float,
+pub(crate) enum Place {
+    /// In the in-flow layer, just under `before`; at its end for `None`.
+    InFlow { before: Option<Key> },
+    /// Inside the float layer rooted at `layer`, just under `before`; at
+    /// that layer's end for `None`.
+    InLayer { layer: Key, before: Option<Key> },
+    /// A float layer of its own, just under the layer rooted at `before`;
+    /// on top of the stack for `None`.
+    Layer { before: Option<Key> },
 }
 
-/// Where a departing subtree sat in the paint order: the pass, and the key
-/// of the first node painted after it in that pass that the frame which
-/// noticed it gone still declares. Its ghost is painted just under that
-/// node — and at the end of its pass once the node is gone too.
+impl Place {
+    /// The key a per-node ask names, for the membership mask: the node a
+    /// ghost is painted under, or for one at a layer's end the layer.
+    fn mask_key(self) -> Option<Key> {
+        match self {
+            Place::InFlow { before } | Place::Layer { before } => before,
+            Place::InLayer { layer, before } => Some(before.unwrap_or(layer)),
+        }
+    }
+
+    /// The node (or, for a whole layer, the layer) the ghost is painted
+    /// just under; `None` at the end of wherever it is.
+    fn before(self) -> Option<Key> {
+        match self {
+            Place::InFlow { before } | Place::Layer { before } | Place::InLayer { before, .. } => {
+                before
+            }
+        }
+    }
+
+    /// The same place, under something else.
+    fn with_before(self, before: Option<Key>) -> Self {
+        match self {
+            Place::InFlow { .. } => Place::InFlow { before },
+            Place::InLayer { layer, .. } => Place::InLayer { layer, before },
+            Place::Layer { .. } => Place::Layer { before },
+        }
+    }
+}
+
+/// One ask a pass makes of the replay: the slot the emission has reached.
+/// The three `Under*` asks are per node and gated by [`Replay::may_precede`];
+/// the three `*End`/`Top` asks are per layer and also sweep up every
+/// ghost of that layer whose `before` node is gone.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Place {
-    pub pass: Pass,
-    pub before: Option<Key>,
+pub(crate) enum At {
+    /// Just under in-flow node `key`.
+    UnderInFlow(Key),
+    /// The end of the in-flow layer.
+    InFlowEnd,
+    /// Just under the float layer rooted at `key`.
+    UnderLayer(Key),
+    /// Just under node `key` inside a float layer.
+    UnderInLayer(Key),
+    /// The end of the float layer rooted at `key`.
+    LayerEnd(Key),
+    /// Above every layer: whatever is still unpainted.
+    Top,
 }
 
 /// One departing subtree, with what it needs to play itself out.
@@ -442,12 +490,12 @@ impl DepartStore {
         // the order they had, since the store keeps departures in order.
         if self.before_mask & (1u64 << (key.0 & 63)) != 0 {
             for g in &mut self.ghosts {
-                if g.place.before == Some(key) {
-                    g.place.before = place.before;
+                if g.place.before() == Some(key) {
+                    g.place = g.place.with_before(place.before());
                 }
             }
         }
-        if let Some(before) = place.before {
+        if let Some(before) = place.before() {
             self.before_mask |= 1u64 << (before.0 & 63);
         }
         self.held.insert(key);
@@ -479,7 +527,7 @@ impl DepartStore {
         self.ghosts.retain_mut(|g| match g.playback(now) {
             Some(play) => {
                 g.last_used = frame_no;
-                if let Some(k) = g.place.before {
+                if let Some(k) = g.place.mask_key() {
                     mask |= 1u64 << (k.0 & 63);
                 }
                 plays.push(play);
@@ -519,9 +567,7 @@ impl DepartStore {
     #[cfg(test)]
     pub(crate) fn replay(&mut self, now: f64, mut emit: impl FnMut(&Ghost, &Playback)) {
         let mut replay = self.begin_replay(now);
-        for pass in [Pass::InFlow, Pass::Float] {
-            replay.paint(pass, None, &mut emit);
-        }
+        replay.paint(At::Top, &mut emit);
         self.end_replay(replay);
     }
 
@@ -564,26 +610,30 @@ impl Replay {
         self.mask & (1u64 << (key.0 & 63)) != 0
     }
 
-    /// Hands `emit` the ghosts of `pass` painted under `before` — or, for
-    /// `None`, every ghost of that pass not painted yet, which is where a
-    /// ghost whose place is gone ends up: at the end of its pass, still
-    /// under everything the later pass paints.
-    pub fn paint(
-        &mut self,
-        pass: Pass,
-        before: Option<Key>,
-        mut emit: impl FnMut(&Ghost, &Playback),
-    ) {
+    /// Hands `emit` the ghosts whose place is `at` — and, for a layer's
+    /// end, every ghost of that layer not painted yet, which is where a
+    /// ghost whose `before` node is gone ends up: at the end of its layer,
+    /// still under everything above it. `At::Top` takes what is left,
+    /// which is a ghost whose whole layer is gone.
+    pub fn paint(&mut self, at: At, mut emit: impl FnMut(&Ghost, &Playback)) {
         for i in 0..self.ghosts.len() {
-            let g = &self.ghosts[i];
-            if self.painted[i] || g.place.pass != pass {
+            if self.painted[i] {
                 continue;
             }
-            if before.is_some() && g.place.before != before {
+            let here = match (at, self.ghosts[i].place) {
+                (At::UnderInFlow(k), Place::InFlow { before }) => before == Some(k),
+                (At::InFlowEnd, Place::InFlow { .. }) => true,
+                (At::UnderLayer(k), Place::Layer { before }) => before == Some(k),
+                (At::UnderInLayer(k), Place::InLayer { before, .. }) => before == Some(k),
+                (At::LayerEnd(k), Place::InLayer { layer, .. }) => layer == k,
+                (At::Top, _) => true,
+                _ => false,
+            };
+            if !here {
                 continue;
             }
             self.painted[i] = true;
-            emit(g, &self.plays[i]);
+            emit(&self.ghosts[i], &self.plays[i]);
         }
     }
 }
@@ -593,10 +643,7 @@ mod tests {
     use super::*;
     use crate::tree::OriginId;
 
-    const IN_FLOW: Place = Place {
-        pass: Pass::InFlow,
-        before: None,
-    };
+    const IN_FLOW: Place = Place::InFlow { before: None };
 
     fn tree_with(spec: NodeSpec, children: usize) -> Tree {
         let mut t = Tree::new();

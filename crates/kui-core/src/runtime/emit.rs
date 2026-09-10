@@ -122,6 +122,7 @@ impl Core {
             // refuses the wheel and the thumb.
             scroll_regions.push(ScrollRegion {
                 key: self.tree.keys[i],
+                node: i as u32,
                 rect,
                 clip: clip.rect,
                 inert: !interactive,
@@ -400,9 +401,6 @@ impl Core {
         }
     }
 
-    /// The frame's second half: the laid-out tree into the display list,
-    /// in paint order — in-flow content, then floating subtrees, each with
-    /// the departed subtrees that were painted among them, then the
     /// Numbers the text nodes of the selection's scope in tree order and
     /// resolves the two ends against those ordinals. Run once per frame,
     /// after the scope map and before emission, because a run's range has
@@ -504,8 +502,12 @@ impl Core {
         (ancestors, depth)
     }
 
-    /// scrollbars and the focus ring on top — and the hit and scroll
-    /// regions the next input is tested against.
+    /// The frame's second half: the laid-out tree into the display list,
+    /// in paint order — the in-flow layer, then one layer per floating
+    /// subtree in the order they opened, each with the departed subtrees
+    /// that were painted among it and its own chrome (scrollbars, the
+    /// ring) at its end (ADR 0023) — and the hit and scroll regions the
+    /// next input is tested against, in the same order.
     fn emit_frame(&mut self) {
         let scale = self.scale;
         let mut hits: Vec<HitRegion> = self.interaction.take_hit_buffer();
@@ -542,9 +544,9 @@ impl Core {
         if any_opacity {
             self.opacity.resize(self.tree.len(), 1.0);
         }
-        self.in_float.clear();
+        self.float_root.clear();
         if any_float {
-            self.in_float.resize(self.tree.len(), false);
+            self.float_root.resize(self.tree.len(), NIL);
         }
         // The innermost `selectable` above each node (ADR 0017). Parents
         // precede their children in the tree array, so one forward pass
@@ -617,12 +619,23 @@ impl Core {
         let any_ghost = !replay.is_empty();
 
         // Pass 1: clip/float propagation + in-flow emission (preorder =
-        // paint order; parents precede children).
+        // paint order; parents precede children). `float_root[i]` is the
+        // nearest floating ancestor-or-self, `NIL` in flow: the layer a
+        // node paints in (ADR 0023, decision 1). Every float root goes into
+        // `roots`, in tree order, for the stack to sort.
+        let mut roots: Vec<u32> = Vec::new();
         for i in 0..self.tree.len() {
             let parent = self.tree.parent[i];
             let floats_here = any_float && self.tree.specs[i].layout.float.is_some();
             if any_float {
-                self.in_float[i] = floats_here || (parent != NIL && self.in_float[parent as usize]);
+                self.float_root[i] = if floats_here {
+                    roots.push(i as u32);
+                    i as u32
+                } else if parent != NIL {
+                    self.float_root[parent as usize]
+                } else {
+                    NIL
+                };
             }
             let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
             // Opacity multiplies down the tree, floats included: a tooltip
@@ -669,14 +682,14 @@ impl Core {
                 self.clip_ids[i] = id;
                 (clip, id)
             };
-            if any_float && self.in_float[i] {
-                continue; // deferred to the float pass
+            if any_float && self.float_root[i] != NIL {
+                continue; // deferred to its layer, in the float pass
             }
             // A departing subtree painted just under this node last time
             // goes first, so it stays under it.
             if any_ghost && replay.may_precede(self.tree.keys[i]) {
                 let key = self.tree.keys[i];
-                replay.paint(Pass::InFlow, Some(key), |g, play| {
+                replay.paint(At::UnderInFlow(key), |g, play| {
                     self.emit_ghost(g, play, scale)
                 });
             }
@@ -721,142 +734,94 @@ impl Core {
 
         if any_ghost {
             // The in-flow ghosts whose place is gone: the end of their
-            // pass, still under every float.
-            replay.paint(Pass::InFlow, None, |g, play| {
-                self.emit_ghost(g, play, scale)
-            });
+            // layer, still under its chrome and under every float.
+            replay.paint(At::InFlowEnd, |g, play| self.emit_ghost(g, play, scale));
         }
 
-        // Pass 2: floating subtrees, on top of all in-flow content (their
-        // hit regions land last too, so they're topmost for input).
+        // The in-flow layer's chrome — its scrollers' bars and, if the
+        // focused node is in flow, the ring — above its content and under
+        // every float (ADR 0023, decision 2).
+        let mut scrollbars: Vec<ScrollbarRegion> = Vec::new();
+        let mut chrome_from = 0usize;
+        self.emit_layer_chrome(
+            NIL,
+            &scroll_regions[chrome_from..],
+            &mut scrollbars,
+            hits.len(),
+            scale,
+        );
+        chrome_from = scroll_regions.len();
+
+        // Pass 2: the float layers, bottom to top in the order they opened
+        // (ADR 0023, decision 3); each one's chrome at its end. Their hit
+        // regions land in the same order, so `hit_at` reads the stack.
         if any_float {
-            for i in 0..self.tree.len() {
-                if !self.in_float[i] {
-                    continue;
-                }
-                if any_ghost && replay.may_precede(self.tree.keys[i]) {
-                    let key = self.tree.keys[i];
-                    replay.paint(Pass::Float, Some(key), |g, play| {
+            let order = self.stack_floats(&roots);
+            for &r in &order {
+                let root = r as usize;
+                let root_key = self.tree.keys[root];
+                if any_ghost && replay.may_precede(root_key) {
+                    // A departed float that was under this one stays under
+                    // it: a whole layer, painted before this layer starts.
+                    replay.paint(At::UnderLayer(root_key), |g, play| {
                         self.emit_ghost(g, play, scale)
                     });
                 }
-                let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
-                let clip = if any_clip { self.clips[i] } else { Clip::NONE };
-                let clip_id = if any_clip { self.clip_ids[i] } else { no_clip };
-                let opacity = if any_opacity { self.opacity[i] } else { 1.0 };
-                let visible = rect.intersect(&clip.rect);
-                if visible.w <= 0.0 || visible.h <= 0.0 {
-                    continue;
+                let end = self.tree.subtree_end(root);
+                for i in root..end {
+                    if self.float_root[i] != r {
+                        continue; // a nested float: its own layer, later
+                    }
+                    if any_ghost && replay.may_precede(self.tree.keys[i]) {
+                        let key = self.tree.keys[i];
+                        replay.paint(At::UnderInLayer(key), |g, play| {
+                            self.emit_ghost(g, play, scale)
+                        });
+                    }
+                    let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
+                    let clip = if any_clip { self.clips[i] } else { Clip::NONE };
+                    let clip_id = if any_clip { self.clip_ids[i] } else { no_clip };
+                    let opacity = if any_opacity { self.opacity[i] } else { 1.0 };
+                    let visible = rect.intersect(&clip.rect);
+                    if visible.w <= 0.0 || visible.h <= 0.0 {
+                        continue;
+                    }
+                    let paint = Paint {
+                        clip,
+                        clip_id,
+                        scale,
+                        opacity,
+                    };
+                    self.emit_node(i, rect, paint, &mut hits, &mut scroll_regions);
                 }
-                let paint = Paint {
-                    clip,
-                    clip_id,
+                if any_ghost {
+                    replay.paint(At::LayerEnd(root_key), |g, play| {
+                        self.emit_ghost(g, play, scale)
+                    });
+                }
+                self.emit_layer_chrome(
+                    r,
+                    &scroll_regions[chrome_from..],
+                    &mut scrollbars,
+                    hits.len(),
                     scale,
-                    opacity,
-                };
-                self.emit_node(i, rect, paint, &mut hits, &mut scroll_regions);
+                );
+                chrome_from = scroll_regions.len();
             }
+            self.check_layers_over_modal(&order);
+        } else if !self.float_stack.is_empty() {
+            // No floats this frame: every layer closed.
+            self.float_stack.clear();
         }
 
         if any_ghost {
-            // The float ghosts whose place is gone, and every ghost of a
-            // float in a frame with no floats to paint among.
-            replay.paint(Pass::Float, None, |g, play| self.emit_ghost(g, play, scale));
+            // A ghost whose whole layer is gone: on top, the only place
+            // left that is under nothing it was under.
+            replay.paint(At::Top, |g, play| self.emit_ghost(g, play, scale));
         }
         if took_ghosts {
             self.depart.end_replay(replay);
         }
-
-        // Scrollbars, on top of content: indicator quads plus the hit
-        // regions that make their thumbs draggable.
-        let cursor = self.interaction.cursor();
-        let mut scrollbars: Vec<ScrollbarRegion> = Vec::new();
-        for r in &scroll_regions {
-            let i = self
-                .tree
-                .keys
-                .iter()
-                .position(|k| *k == r.key)
-                .expect("scroll region from this frame");
-            let max = self.tree.scroll_max[i];
-            let offset = self.scroll.offset(r.key);
-            let clip_id = self.clip_ids[i];
-            let opacity = self.opacity.get(i).copied().unwrap_or(1.0);
-            if max.y > 0.0 {
-                let track_h = r.rect.h - 2.0 * SCROLLBAR_INSET;
-                let bar_h = (track_h * r.rect.h / (r.rect.h + max.y)).max(SCROLLBAR_MIN);
-                let t = (offset.y / max.y).clamp(0.0, 1.0);
-                let track = Rect::new(
-                    r.rect.x + r.rect.w - SCROLLBAR_HIT_W,
-                    r.rect.y + SCROLLBAR_INSET,
-                    SCROLLBAR_HIT_W,
-                    track_h,
-                );
-                let active = self.interaction.is_scrollbar_dragging(r.key, ScrollAxis::Y)
-                    || cursor.is_some_and(|p| track.contains(p));
-                let w = if active {
-                    SCROLLBAR_ACTIVE_W
-                } else {
-                    SCROLLBAR_W
-                };
-                let thumb = Rect::new(
-                    r.rect.x + r.rect.w - w - SCROLLBAR_INSET,
-                    r.rect.y + SCROLLBAR_INSET + t * (track_h - bar_h),
-                    w,
-                    bar_h,
-                );
-                let mut bar = scrollbar_quad(thumb, scale, clip_id, self.thumb_color(active));
-                bar.color.a *= opacity;
-                self.display.quads.push(bar);
-                scrollbars.push(ScrollbarRegion {
-                    key: r.key,
-                    axis: ScrollAxis::Y,
-                    thumb,
-                    track,
-                    bar_len: bar_h,
-                    max: max.y,
-                    inert: r.inert,
-                });
-            }
-            if max.x > 0.0 {
-                let track_w = r.rect.w - 2.0 * SCROLLBAR_INSET;
-                let bar_w = (track_w * r.rect.w / (r.rect.w + max.x)).max(SCROLLBAR_MIN);
-                let t = (offset.x / max.x).clamp(0.0, 1.0);
-                let track = Rect::new(
-                    r.rect.x + SCROLLBAR_INSET,
-                    r.rect.y + r.rect.h - SCROLLBAR_HIT_W,
-                    track_w,
-                    SCROLLBAR_HIT_W,
-                );
-                let active = self.interaction.is_scrollbar_dragging(r.key, ScrollAxis::X)
-                    || cursor.is_some_and(|p| track.contains(p));
-                let w = if active {
-                    SCROLLBAR_ACTIVE_W
-                } else {
-                    SCROLLBAR_W
-                };
-                let thumb = Rect::new(
-                    r.rect.x + SCROLLBAR_INSET + t * (track_w - bar_w),
-                    r.rect.y + r.rect.h - w - SCROLLBAR_INSET,
-                    bar_w,
-                    w,
-                );
-                let mut bar = scrollbar_quad(thumb, scale, clip_id, self.thumb_color(active));
-                bar.color.a *= opacity;
-                self.display.quads.push(bar);
-                scrollbars.push(ScrollbarRegion {
-                    key: r.key,
-                    axis: ScrollAxis::X,
-                    thumb,
-                    track,
-                    bar_len: bar_w,
-                    max: max.x,
-                    inert: r.inert,
-                });
-            }
-        }
-
-        self.emit_focus_ring(scale);
 
         self.interaction.set_hits(hits);
         // A new frame can move a hover-sound node under a still cursor.
@@ -962,7 +927,7 @@ impl Core {
         for i in roots {
             let place = order
                 .get_or_insert_with(|| PaintOrder::of(&self.prev_tree, &self.tree))
-                .place(&self.prev_tree, i);
+                .place(&self.prev_tree, i, &self.float_stack);
             // The group opacity the root inherited from ancestors that are
             // now gone: a subtree already half-faded departs from there.
             let mut base = 1.0;
@@ -1301,18 +1266,214 @@ impl Core {
         }
     }
 
-    /// After content and scrollbars: the default focus ring around the
-    /// keyboard-visibly focused node, on top of everything, in the same
-    /// display list every binding draws. Not for editors (the caret shows
-    /// focus), key sinks (an app surface styles itself, through
-    /// `is_focused` / `focus_visible`) or nodes declaring `focus_bg`.
-    fn emit_focus_ring(&mut self, scale: f32) {
+    /// The chrome of one layer, after its content: the bars of every
+    /// scroller the layer emitted (`regions`), then the ring if the focused
+    /// node is in this layer (ADR 0023, decision 2). `layer` is the float
+    /// root's index, or `NIL` for the in-flow layer; `above` is the hit
+    /// list's length now, which is what a bar records so a press can tell
+    /// a region under it from one in a layer over it (decision 4).
+    fn emit_layer_chrome(
+        &mut self,
+        layer: u32,
+        regions: &[ScrollRegion],
+        scrollbars: &mut Vec<ScrollbarRegion>,
+        above: usize,
+        scale: f32,
+    ) {
+        let cursor = self.interaction.cursor();
+        let above = above as u32;
+        for r in regions {
+            let i = r.node as usize;
+            let max = self.tree.scroll_max[i];
+            let offset = self.scroll.offset(r.key);
+            let clip_id = self.clip_ids.get(i).copied().unwrap_or(NO_CLIP_ID);
+            let opacity = self.opacity.get(i).copied().unwrap_or(1.0);
+            if max.y > 0.0 {
+                let track_h = r.rect.h - 2.0 * SCROLLBAR_INSET;
+                let bar_h = (track_h * r.rect.h / (r.rect.h + max.y)).max(SCROLLBAR_MIN);
+                let t = (offset.y / max.y).clamp(0.0, 1.0);
+                let track = Rect::new(
+                    r.rect.x + r.rect.w - SCROLLBAR_HIT_W,
+                    r.rect.y + SCROLLBAR_INSET,
+                    SCROLLBAR_HIT_W,
+                    track_h,
+                );
+                let active = self.interaction.is_scrollbar_dragging(r.key, ScrollAxis::Y)
+                    || cursor.is_some_and(|p| track.contains(p));
+                let w = if active {
+                    SCROLLBAR_ACTIVE_W
+                } else {
+                    SCROLLBAR_W
+                };
+                let thumb = Rect::new(
+                    r.rect.x + r.rect.w - w - SCROLLBAR_INSET,
+                    r.rect.y + SCROLLBAR_INSET + t * (track_h - bar_h),
+                    w,
+                    bar_h,
+                );
+                let mut bar = scrollbar_quad(thumb, scale, clip_id, self.thumb_color(active));
+                bar.color.a *= opacity;
+                self.display.quads.push(bar);
+                scrollbars.push(ScrollbarRegion {
+                    key: r.key,
+                    axis: ScrollAxis::Y,
+                    thumb,
+                    track,
+                    bar_len: bar_h,
+                    max: max.y,
+                    inert: r.inert,
+                    above,
+                });
+            }
+            if max.x > 0.0 {
+                let track_w = r.rect.w - 2.0 * SCROLLBAR_INSET;
+                let bar_w = (track_w * r.rect.w / (r.rect.w + max.x)).max(SCROLLBAR_MIN);
+                let t = (offset.x / max.x).clamp(0.0, 1.0);
+                let track = Rect::new(
+                    r.rect.x + SCROLLBAR_INSET,
+                    r.rect.y + r.rect.h - SCROLLBAR_HIT_W,
+                    track_w,
+                    SCROLLBAR_HIT_W,
+                );
+                let active = self.interaction.is_scrollbar_dragging(r.key, ScrollAxis::X)
+                    || cursor.is_some_and(|p| track.contains(p));
+                let w = if active {
+                    SCROLLBAR_ACTIVE_W
+                } else {
+                    SCROLLBAR_W
+                };
+                let thumb = Rect::new(
+                    r.rect.x + SCROLLBAR_INSET + t * (track_w - bar_w),
+                    r.rect.y + r.rect.h - w - SCROLLBAR_INSET,
+                    bar_w,
+                    w,
+                );
+                let mut bar = scrollbar_quad(thumb, scale, clip_id, self.thumb_color(active));
+                bar.color.a *= opacity;
+                self.display.quads.push(bar);
+                scrollbars.push(ScrollbarRegion {
+                    key: r.key,
+                    axis: ScrollAxis::X,
+                    thumb,
+                    track,
+                    bar_len: bar_w,
+                    max: max.x,
+                    inert: r.inert,
+                    above,
+                });
+            }
+        }
+        self.emit_focus_ring(layer, scale);
+    }
+
+    /// The layer node `i` paints in: its float root's index, `NIL` in flow
+    /// — and `NIL` for every node of a frame that floats nothing, where the
+    /// map is not even sized.
+    #[inline]
+    fn layer_of(&self, i: usize) -> u32 {
+        self.float_root.get(i).copied().unwrap_or(NIL)
+    }
+
+    /// This frame's float layers in paint order, from `roots` (the float
+    /// roots in tree order) and the stack the last frame left: a root the
+    /// stack knows keeps its place, one it does not is appended, in tree
+    /// order, and a root the frame no longer declares is dropped. Writes
+    /// the stack back for the next frame (ADR 0023, decision 3).
+    ///
+    /// The steady state — the same roots as last frame — is one pass over
+    /// the stack and no allocation beyond the order itself: each entry
+    /// remembers its root's rank in tree order, so the check and the
+    /// answer are the same read.
+    fn stack_floats(&mut self, roots: &[u32]) -> Vec<u32> {
+        let keys = &self.tree.keys;
+        let stack = &mut self.float_stack;
+        let steady = stack.len() == roots.len()
+            && stack
+                .iter()
+                .all(|&(k, rank)| keys[roots[rank as usize] as usize] == k);
+        let order: Vec<u32> = if steady {
+            stack
+                .iter()
+                .map(|&(_, rank)| roots[rank as usize])
+                .collect()
+        } else {
+            // A float opened or closed: the ranks are found again, by key.
+            let rank_of: FxHashMap<Key, u32> = roots
+                .iter()
+                .enumerate()
+                .map(|(rank, &r)| (keys[r as usize], rank as u32))
+                .collect();
+            let mut placed = vec![false; roots.len()];
+            let mut next: Vec<(Key, u32)> = Vec::with_capacity(roots.len());
+            for &(k, _) in stack.iter() {
+                if let Some(&rank) = rank_of.get(&k) {
+                    placed[rank as usize] = true;
+                    next.push((k, rank));
+                }
+            }
+            for (rank, &r) in roots.iter().enumerate() {
+                if !placed[rank] {
+                    next.push((keys[r as usize], rank as u32));
+                }
+            }
+            *stack = next;
+            stack
+                .iter()
+                .map(|&(_, rank)| roots[rank as usize])
+                .collect()
+        };
+        // A nested float is above the float it is in — by construction,
+        // since its key derives from its parent's and so cannot have been
+        // opened first; said here so the construction cannot drift.
+        debug_assert!(order.iter().enumerate().all(|(pos, &r)| {
+            let parent = self.tree.parent[r as usize];
+            parent == NIL || {
+                let outer = self.float_root[parent as usize];
+                outer == NIL || order[..pos].contains(&outer)
+            }
+        }));
+        order
+    }
+
+    /// ADR 0003's `modal-behind-content`, for the stack: a float layer
+    /// above the modal's whose root is outside the modal's scope is inert
+    /// and drawn over the one surface that takes input, which is the same
+    /// defect the in-flow check names (ADR 0023, decision 6).
+    fn check_layers_over_modal(&mut self, order: &[u32]) {
+        let Some((start, end, modal_key)) = self.modal else {
+            return;
+        };
+        let modal_layer = self.layer_of(start);
+        if modal_layer == NIL {
+            return; // `diag::check_modal` has this case
+        }
+        let Some(at) = order.iter().position(|&r| r == modal_layer) else {
+            return;
+        };
+        if order[at + 1..]
+            .iter()
+            .any(|&r| !(start..end).contains(&(r as usize)))
+        {
+            self.diag.raise(crate::diag::modal_under_layer(modal_key));
+        }
+    }
+
+    /// The default focus ring around the keyboard-visibly focused node, at
+    /// the end of the layer the node is in — above every sibling that could
+    /// touch it, under every layer over it — in the same display list
+    /// every binding draws. Not for editors (the caret shows focus), key
+    /// sinks (an app surface styles itself, through `is_focused` /
+    /// `focus_visible`) or nodes declaring `focus_bg`.
+    fn emit_focus_ring(&mut self, layer: u32, scale: f32) {
         if !self.focus_visible {
             return;
         }
         let Some(i) = self.focus_index() else {
             return;
         };
+        if self.layer_of(i) != layer {
+            return;
+        }
         let spec = &self.tree.specs[i];
         let editor = matches!(self.tree.content[i], NodeContent::Edit(_))
             || spec
@@ -1444,51 +1605,93 @@ struct Paint {
 }
 
 /// As much of the previous frame's paint order as a departure needs to
-/// keep its place (see `depart::Place`): the pass each node painted in,
-/// and for each index the next node at or after it in each pass that this
-/// frame still declares. Two linear passes over the previous tree, once
-/// per frame that has a departure.
+/// keep its place (see `depart::Place`): the layer each node painted in,
+/// and for the in-flow layer the next node at or after each index that
+/// this frame still declares. Built once per frame that has a departure,
+/// from the previous tree and the stack as that frame left it.
 struct PaintOrder {
-    in_float: Vec<bool>,
-    /// Indexed by pass (in flow, float), then by previous-tree index; one
-    /// past the end reads `NIL`.
-    next_live: [Vec<u32>; 2],
+    /// The previous tree's float roots, by node: `NIL` in flow.
+    float_root: Vec<u32>,
+    /// By previous-tree index: the next live in-flow node at or after it;
+    /// one past the end reads `NIL`.
+    next_live: Vec<u32>,
+    /// This frame's keys.
+    live: FxHashSet<Key>,
+    /// This frame's float roots, by key.
+    roots: FxHashSet<Key>,
 }
 
 impl PaintOrder {
     fn of(prev: &Tree, tree: &Tree) -> Self {
         let n = prev.len();
         let live: FxHashSet<Key> = tree.keys.iter().copied().collect();
-        let mut in_float = vec![false; n];
+        let roots: FxHashSet<Key> = (0..tree.len())
+            .filter(|&i| tree.specs[i].layout.float.is_some())
+            .map(|i| tree.keys[i])
+            .collect();
+        let mut float_root = vec![NIL; n];
         for i in 0..n {
             let parent = prev.parent[i];
-            in_float[i] = prev.specs[i].layout.float.is_some()
-                || (parent != NIL && in_float[parent as usize]);
+            float_root[i] = if prev.specs[i].layout.float.is_some() {
+                i as u32
+            } else if parent != NIL {
+                float_root[parent as usize]
+            } else {
+                NIL
+            };
         }
-        let mut next_live = [vec![NIL; n + 1], vec![NIL; n + 1]];
+        let mut next_live = vec![NIL; n + 1];
         for j in (0..n).rev() {
-            next_live[0][j] = next_live[0][j + 1];
-            next_live[1][j] = next_live[1][j + 1];
-            if live.contains(&prev.keys[j]) {
-                next_live[in_float[j] as usize][j] = j as u32;
+            next_live[j] = next_live[j + 1];
+            if float_root[j] == NIL && live.contains(&prev.keys[j]) {
+                next_live[j] = j as u32;
             }
         }
         Self {
-            in_float,
+            float_root,
             next_live,
+            live,
+            roots,
         }
     }
 
     /// The place the subtree rooted at `root` of the previous frame painted
-    /// in: its pass, and the node painted right after it in that pass that
-    /// is still here.
-    fn place(&self, prev: &Tree, root: usize) -> Place {
-        let float = self.in_float[root];
-        let after = self.next_live[float as usize][prev.subtree_end(root)];
-        Place {
-            pass: if float { Pass::Float } else { Pass::InFlow },
-            before: (after != NIL).then(|| prev.keys[after as usize]),
+    /// in: its layer, and what was painted right after it there that is
+    /// still here. `stack` is the previous frame's float stack, bottom to
+    /// top — where a departing float finds the layer that was over it.
+    fn place(&self, prev: &Tree, root: usize, stack: &[(Key, u32)]) -> Place {
+        let end = prev.subtree_end(root);
+        let layer = self.float_root[root];
+        if layer == NIL {
+            let after = self.next_live[end];
+            return Place::InFlow {
+                before: (after != NIL).then(|| prev.keys[after as usize]),
+            };
         }
+        if layer as usize != root {
+            // Inside a float: the next live node of the same layer, found
+            // by a scan bounded by that layer's subtree — a departure is
+            // rare and a float is small.
+            let layer_end = prev.subtree_end(layer as usize);
+            let before = (end..layer_end)
+                .find(|&j| self.float_root[j] == layer && self.live.contains(&prev.keys[j]))
+                .map(|j| prev.keys[j]);
+            return Place::InLayer {
+                layer: prev.keys[layer as usize],
+                before,
+            };
+        }
+        // A float root: under the first layer above it in the stack that
+        // is still a float this frame.
+        let key = prev.keys[root];
+        let at = stack.iter().position(|&(k, _)| k == key);
+        let before = at.and_then(|at| {
+            stack[at + 1..]
+                .iter()
+                .map(|&(k, _)| k)
+                .find(|k| self.roots.contains(k))
+        });
+        Place::Layer { before }
     }
 }
 

@@ -626,6 +626,9 @@ pub struct HitRegion {
 #[derive(Clone, Copy, Debug)]
 pub struct ScrollRegion {
     pub key: Key,
+    /// The scroller's index in the frame's tree: what its bars are
+    /// emitted from, at the end of its layer.
+    pub(crate) node: u32,
     pub rect: Rect,
     pub clip: Rect,
     /// Outside the frame's modal scope: the bar still draws, the wheel
@@ -655,6 +658,17 @@ pub struct ScrollbarRegion {
     pub max: f32,
     /// Behind a modal: drawn, but not grabbable.
     pub inert: bool,
+    /// The hit list's length when the bar was painted: every region below
+    /// this index is under the bar, every one at or above it is in a layer
+    /// over it (ADR 0023, decision 4).
+    pub(crate) above: u32,
+}
+
+/// What a press at a point lands on, in paint order: the topmost hit
+/// region, unless a scrollbar painted over it is there too.
+pub(crate) enum Target<'a> {
+    Bar(ScrollbarRegion),
+    Hit(&'a HitRegion),
 }
 
 impl ScrollbarRegion {
@@ -872,14 +886,28 @@ impl Interaction {
         })
     }
 
-    /// Topmost scrollbar whose track contains `p` (scrollbars draw over
-    /// content, so they win hit-testing over it too).
-    pub(crate) fn scrollbar_at(&self, p: Vec2) -> Option<ScrollbarRegion> {
-        self.scrollbars
+    /// What is under `p`, by the paint order and nothing else: the topmost
+    /// hit region there, or the topmost scrollbar there if it was painted
+    /// over that region — a bar wins the content of its own scroller and
+    /// loses to a float over it (ADR 0023, decision 4). The press and the
+    /// cursor shape both ask this, so they cannot disagree. A bar behind a
+    /// modal is drawn and not a target.
+    pub(crate) fn target_at(&self, p: Vec2) -> Option<Target<'_>> {
+        let hit = self
+            .hits
+            .iter()
+            .rposition(|h| h.rect.contains(p) && h.clip.contains(p));
+        let bar = self
+            .scrollbars
             .iter()
             .rev()
-            .find(|b| !b.inert && b.track.contains(p))
-            .copied()
+            .find(|b| !b.inert && b.track.contains(p));
+        match (bar, hit) {
+            (Some(b), Some(h)) if (h as u32) < b.above => Some(Target::Bar(*b)),
+            (Some(b), None) => Some(Target::Bar(*b)),
+            (_, Some(h)) => Some(Target::Hit(&self.hits[h])),
+            (None, None) => None,
+        }
     }
 
     /// Whether this bar is being thumb-dragged (for active styling).
@@ -1077,21 +1105,21 @@ impl Interaction {
                 .and_then(|h| h.cursor)
                 .unwrap_or(CursorShape::Grabbing);
         }
-        // Scrollbars draw over content and win the press, so they win the
-        // shape too — an overlay bar across an editor is not an I-beam.
+        // A bar that would take the press takes the shape too — an
+        // overlay bar across an editor is not an I-beam — and a float
+        // over the bar keeps its own.
         if self.scrollbar_drag.is_some() {
             return CursorShape::Default;
         }
         let Some(p) = self.cursor else {
             return CursorShape::Default;
         };
-        if self.scrollbar_at(p).is_some() {
-            return CursorShape::Default;
+        match self.target_at(p) {
+            Some(Target::Hit(region)) => {
+                region.cursor.unwrap_or_else(|| Self::derived_shape(region))
+            }
+            Some(Target::Bar(_)) | None => CursorShape::Default,
         }
-        let Some(region) = self.hit_at(p) else {
-            return CursorShape::Default;
-        };
-        region.cursor.unwrap_or_else(|| Self::derived_shape(region))
     }
 
     /// The shape a region implies when it declares none.

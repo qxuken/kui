@@ -872,6 +872,19 @@ prose. A page of its own would be that menu with a title; declined until
 a modal-specific behaviour — a nested confirm, the entry-focus precedence
 of ADR 0007 — wants a picture.
 
+## From the paint-order round (2026-09-10)
+
+One bug reported by hand on `features/theme` — right-click the page and
+the drawn menu comes up under the page's scrollbar — turned out to be the
+frame's paint sequence and not the menu's, and
+[ADR 0023](adr/0023-layers-stack-in-the-order-they-open.md) is the answer:
+a frame is a stack of layers ordered by when each opened, chrome paints at
+the end of the layer that owns it, and input reads the same stack. Four
+defects were measured on the tree before it was written; all four were
+one entry, C28, filed and closed the same day — the ADR was built whole
+within the hour, and the entry is in
+[the archive](backlog/closed-2026-09.md#-c28--floats-are-under-scrollbars-and-the-ring-and-stack-in-tree-order--done-2026-09-10).
+
 ## After alpha.10
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -1241,6 +1254,10 @@ move.
 **From an alpha.10 field report (2026-09-09)** — F37, closed the day it was filed, and the first entry to land after the alpha.10 tag
 
 - `~` **F37** — [`<button accent>` is in the changelog, the docs and every binding, and `tsc` rejects it](backlog/closed-2026-09.md#-f37--button-accent-is-in-the-changelog-the-docs-and-every-binding-and-tsc-rejects-it--done-2026-09-09) — done (2026-09-09) — `ButtonProps` is generated from `BUTTON_ROWS_JSX` now, so F24's fix cannot come undone a third time
+
+**From the paint-order round (2026-09-10)** — C28, filed and closed the day ADR 0023 was written and built
+
+- `!` **C28** — [Floats are under scrollbars and the ring, and stack in tree order](backlog/closed-2026-09.md#-c28--floats-are-under-scrollbars-and-the-ring-and-stack-in-tree-order--done-2026-09-10) — done (2026-09-10) — ADR 0023 built whole: layers stack in the order they opened, chrome ends its layer, one `target_at` for the press and the cursor
 
 **From the two alpha.10 upgrade reports (2026-09-09)** — F38–F41, all four built the day they were filed. Three of the four were filed by the apps as their own problem
 

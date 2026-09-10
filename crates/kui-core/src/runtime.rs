@@ -17,7 +17,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::anim::{AnimStore, Slot, Track};
 use crate::atlas::GlyphAtlas;
 use crate::color::Color;
-use crate::depart::{DepartStore, Ghost, GhostContent, Pass, Place, Playback, Replay};
+use crate::depart::{At, DepartStore, Ghost, GhostContent, Place, Playback, Replay};
 use crate::diag::{Diagnostics, Warning};
 use crate::display::{Clip, ClipId, DisplayList, NO_CLIP_ID, Quad, QuadKind};
 use crate::edit::{EditOptions, EditStore};
@@ -212,8 +212,17 @@ pub struct Core {
     /// actually fades.
     opacity: Vec<f32>,
     any_opacity: bool,
-    /// Per-node "inside a floating subtree" marker (only filled when needed).
-    in_float: Vec<bool>,
+    /// Per node, the layer it paints in: the index of its nearest floating
+    /// ancestor-or-self, `NIL` in flow (ADR 0023). Only filled on a frame
+    /// that floats something.
+    float_root: Vec<u32>,
+    /// The float layers as the last frame painted them, bottom to top:
+    /// each root's key and its rank among that frame's float roots in
+    /// tree order. A root the next frame keeps stays where it is, one it
+    /// opens goes on top, one it closes leaves — so the stack is the
+    /// order the layers opened in (ADR 0023, decision 3). Bounded by the
+    /// frame's own float count; nothing to evict.
+    float_stack: Vec<(Key, u32)>,
     any_float: bool,
     /// The context menu this window has open, the keys the stock renderer
     /// gave its rows (so their clicks can be told from the app's), and
@@ -568,7 +577,8 @@ impl Core {
             any_rounded_clip: false,
             opacity: Vec::new(),
             any_opacity: false,
-            in_float: Vec::new(),
+            float_root: Vec::new(),
+            float_stack: Vec::new(),
             menu: None,
             menu_root: None,
             menu_items: Vec::new(),

@@ -471,6 +471,33 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         "#
             )
         }
+        // ADR 0023: the toast is later in the tree than the popover, so it
+        // is over it in phase 0; the popover closes in phase 1 and reopens
+        // in phase 2, which puts it over the toast. The rows overflow so
+        // the page has a bar for the popover to cover.
+        "layers" => format!(
+            r#"
+            local rows = {{ key = "page", width = {{ grow = 1 }}, height = {{ grow = 1 }},
+                           scroll_y = true, bg = 0x101018ff }}
+            for i = 0, {rows} - 1 do
+              rows[#rows + 1] = row {{ key = "row" .. i, width = {{ grow = 1 }}, height = 30,
+                                       bg = i % 2 == 0 and 0x22242cff or 0x30344aff }}
+            end
+            local function at(x, y)
+              return {{ anchor = "viewport", at = {{ "start", "start" }},
+                       self_at = {{ "start", "start" }}, dx = x, dy = y }}
+            end
+            local t = {{ width = {{ grow = 1 }}, height = {{ grow = 1 }}, column(rows) }}
+            if phase ~= 1 then
+              t[#t + 1] = column {{ key = "popover", float = at(200, 40), width = 120, height = 80,
+                                    bg = 0x3b5bd4ff, on_click = {{ kind = "popover" }}, label = "Popover" }}
+            end
+            t[#t + 1] = column {{ key = "toast", float = at(140, 60), width = 120, height = 80,
+                                  bg = 0x73d98cff, on_click = {{ kind = "toast" }}, label = "Toast" }}
+            return column(t)
+        "#,
+            rows = conformance::LAYERS_ROWS,
+        ),
         other => panic!("no Lua scene for {other:?} — every corpus scene needs one"),
     };
     // Every scene also records what the script saw in `env.window`, so the

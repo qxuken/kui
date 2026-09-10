@@ -2936,6 +2936,33 @@ SCENE_TREES.virtual = () =>
     ),
   ]);
 
+// `conformance::build_layers`: two floats over a scroller's bar (ADR 0023).
+// The toast is later in the tree than the popover, so it is over it in
+// phase 0; the popover closes in phase 1 and reopens in phase 2, which puts
+// it over the toast. The rows overflow so the page has a bar to cover.
+SCENE_TREES.layers = (_fx, phase) => {
+  const at = (dx, dy) => ({ anchor: 'viewport', at: ['start', 'start'], self: ['start', 'start'], dx, dy });
+  return root({}, [box({ width: 'grow', height: 'grow' }, [
+    box(
+      { width: 'grow', height: 'grow', scrollY: true, bg: '#101018' },
+      Array.from({ length: LAYERS_ROWS }, (_, i) =>
+        box({ dir: 'row', width: 'grow', height: 30, bg: i % 2 === 0 ? '#22242c' : '#30344a' }, [], `row${i}`),
+      ),
+      'page',
+    ),
+    phase !== 1 && box(
+      { float: at(200, 40), width: 120, height: 80, bg: '#3b5bd4', onClick: { kind: 'popover' }, label: 'Popover' },
+      [],
+      'popover',
+    ),
+    box(
+      { float: at(140, 60), width: 120, height: 80, bg: '#73d98c', onClick: { kind: 'toast' }, label: 'Toast' },
+      [],
+      'toast',
+    ),
+  ].filter(Boolean))]);
+};
+
 // `conformance::build_selection`: a `selectable` card the pointer drags
 // across, so the frame carries the three highlight quads under its glyphs
 // (ADR 0017). One row on the container is the whole declaration — the
@@ -2978,6 +3005,9 @@ const ITEM_KEYS = ['i0', 'i1', 'i2', 'i3', 'i4', 'i5'];
 /** `conformance::VIRTUAL_ROWS`: data indices past what auto-keying could
  *  have reached under five children, so the keys are the view's own. */
 const VIRTUAL_ROWS = [100, 101, 102];
+/** `conformance::LAYERS_ROWS`: enough rows to overflow the viewport, so the
+ *  page has a bar for the popover to cover. */
+const LAYERS_ROWS = 16;
 /** A root box sized like the core's implicit root: `configure_root` with
  *  the same data it already has, so only `title` actually lands. */
 const root = (props, children) => box({ width: 'grow', height: 'grow', ...props }, children);
