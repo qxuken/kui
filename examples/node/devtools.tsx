@@ -1,12 +1,15 @@
-// The harness every Node example runs inside — the twin of
-// examples/harness (Rust) with the same flags, the same chords and the same
+// The devtools every Node example runs inside — the twin of
+// examples/devtools (Rust) with the same flags, the same chords and the same
 // dock (docs/adr/0021, decision 6). An example is one subject; what every
 // example used to carry beside it lives here: the window title, the CLI,
-// the latency graph, and a dock beside the example's tree showing what the
-// runtime is doing — the event stream (every message the example's `update`
-// is handed, as the data it is), the status block (the facts a view can
-// read: `env()`, the theme, focus, the windows, `env().audio`), a small
-// button beside each fact the harness can change, and the key legend.
+// and a dock beside the example's tree showing what the runtime is doing.
+// The dock's header is the example's name, the frame counter and an icon
+// strip (base, accent, native menus, dock); under it three tabs — facts
+// (the latency graph, the status block: `env()`, the theme, focus, the
+// windows, `env().audio`, and the key legend), events (every message the
+// example's `update` is handed, as the data it is, and every warning the
+// core raised), and tree (the last frame's nodes from `win.nodes()`, with
+// an inspector for the one clicked).
 //
 //   --headless              run the example's `headless(app)` self-check
 //   --dock side|bottom|off  where the dock sits
@@ -14,15 +17,15 @@
 //   --accent #rrggbb        the accent, instead of the OS's
 //
 // Chords: Ctrl+Shift+T cycles the base, +A the accent, +M toggles native
-// menus, +D moves the dock, +C clears the stream.
+// menus, +D moves the dock, +C clears the stream, +N the next tab.
 //
 // The dock is a sibling of the example's tree, so the example's root box
-// is a child of the harness's; `title` and `windows` belong on the root and
-// so are the harness's to declare (an example that declares windows passes
+// is a child of the devtools'; `title` and `windows` belong on the root and
+// so are the devtools' to declare (an example that declares windows passes
 // them through `windows`). The dock carries `role="none"`, so neither the
 // Tab ring nor assistive technology sees it. `--dock off` also declares no
 // key sink and takes no focus.
-import { createApp, runWindowed } from '@qxuken/kui';
+import { createApp, runWindowed, withEffects } from '@qxuken/kui';
 import type { App, CoreMsg, KeyMsg, KuiNode, KuiWindow, UiEvent, WindowDecl } from '@qxuken/kui';
 
 export type Dock = 'side' | 'bottom' | 'off';
@@ -108,7 +111,9 @@ export function parseCli(name: string, argv: string[], flags: [string, string][]
   return cli;
 }
 
-type Entry = { frame: number; kind: 'event' | 'note'; text: string };
+type Entry = { frame: number; kind: 'event' | 'note' | 'warning'; text: string };
+type Tab = 'facts' | 'events' | 'tree';
+const TABS: Tab[] = ['facts', 'events', 'tree'];
 type HarnessState = {
   dock: Dock;
   base: 'light' | 'dark' | null;
@@ -117,6 +122,11 @@ type HarnessState = {
   nativeMenus: boolean | null;
   stream: Entry[];
   frames: number;
+  tab: Tab;
+  /** The node the tree tab selected, outlined over the example. */
+  selected: string | null;
+  /** How many of `warningsRaised()` are already in the stream. */
+  warningsSeen: number;
 };
 type HarnessMsg = { kind: '@harness'; what: string };
 type Wrapped<M> = { app: M; h: HarnessState };
@@ -189,6 +199,9 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
     nativeMenus: example.nativeMenus ?? null,
     stream: [],
     frames: 0,
+    tab: 'events',
+    selected: null,
+    warningsSeen: 0,
   });
   const push = (hs: HarnessState, kind: Entry['kind'], text: string) => {
     if (hs.stream.length >= STREAM_CAP) hs.stream.shift();
@@ -230,6 +243,15 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
       case 'clear':
         next.stream = [];
         break;
+      case 'tab':
+        next.tab = TABS[(TABS.indexOf(hs.tab) + 1) % TABS.length];
+        break;
+      default:
+        if (what.startsWith('tab:')) next.tab = what.slice(4) as Tab;
+        else if (what.startsWith('node:')) {
+          const key = what.slice(5);
+          next.selected = hs.selected === key ? null : key;
+        }
     }
     apply(next);
     return next;
@@ -240,7 +262,7 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
     const k = msg as KeyMsg;
     if (k.phase !== 'down' || !k.ctrl || !k.shift || k.alt) return null;
     const c = (k.code || '').toLowerCase();
-    const table: Record<string, string> = { t: 'base', a: 'accent', m: 'menus', d: 'dock', c: 'clear' };
+    const table: Record<string, string> = { t: 'base', a: 'accent', m: 'menus', d: 'dock', c: 'clear', n: 'tab' };
     return table[c] ?? null;
   };
 
@@ -256,27 +278,25 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
     const env = win.env();
     const hex = (c: number | null) => (c === null ? '—' : '#' + (c >>> 8).toString(16).padStart(6, '0'));
     const focus = win.focused();
-    const rows: [string, string, [string, string, string] | null][] = [
-      ['appearance', env.system.appearance, null],
-      ['motion', env.system.motion, null],
-      ['locale', env.system.locale ?? '—', null],
-      ['base', `${t.appearance} · ${hs.base ? 'pinned' : 'derived'}`, ['base', 'cycle', 'Ctrl+Shift+T · follow the OS → light → dark']],
-      ['accent', `${hex(t.accent)} · ${accentName(hs)}`, ['accent', 'cycle', "Ctrl+Shift+A · the OS's, kui's, four the OS might report"]],
-      ['menus', hs.nativeMenus === null ? 'default' : hs.nativeMenus ? 'native' : 'drawn', ['menus', 'toggle', "Ctrl+Shift+M · the platform's own menu, or the core's drawn one"]],
-      ['dock', hs.dock, ['dock', 'move', 'Ctrl+Shift+D · side → bottom → off']],
-      ['window', `#${env.window.id}${env.window.customChrome ? ' custom-chrome' : ''}${env.window.maximized ? ' maximized' : ''} · ${win.windows().join(' ')}`, null],
-      ['viewport', `${Math.round(env.viewport.width)}×${Math.round(env.viewport.height)} @${env.viewport.scale} · ${env.refreshHz ? `${Math.round(env.refreshHz)} Hz` : '—'}`, null],
-      ['keyboard', env.focused ? 'this window' : 'elsewhere', null],
-      ['focus', focus ? `${focus === ROOT_KEY ? 'root' : focus}${win.focusVisible() ? ' · ring' : ''}` : '—', null],
-      ['audio', `${env.audio.device} · ${env.audio.live} live`, null],
+    const rows: [string, string][] = [
+      ['appearance', env.system.appearance],
+      ['motion', env.system.motion],
+      ['locale', env.system.locale ?? '—'],
+      ['base', `${t.appearance} · ${hs.base ? 'pinned' : 'derived'}`],
+      ['accent', `${hex(t.accent)} · ${accentName(hs)}`],
+      ['menus', hs.nativeMenus === null ? 'default' : hs.nativeMenus ? 'native' : 'drawn'],
+      ['window', `#${env.window.id}${env.window.customChrome ? ' custom-chrome' : ''}${env.window.maximized ? ' maximized' : ''} · ${win.windows().join(' ')}`],
+      ['viewport', `${Math.round(env.viewport.width)}×${Math.round(env.viewport.height)} @${env.viewport.scale} · ${env.refreshHz ? `${Math.round(env.refreshHz)} Hz` : '—'}`],
+      ['keyboard', env.focused ? 'this window' : 'elsewhere'],
+      ['focus', focus ? `${focus === ROOT_KEY ? 'root' : focus}${win.focusVisible() ? ' · ring' : ''}` : '—'],
+      ['audio', `${env.audio.device} · ${env.audio.live} live`],
     ];
     return (
       <box width="grow" minHeight="fit" gap={3}>
-        {rows.map(([k, v, control]) => (
+        {rows.map(([k, v]) => (
           <box key={`row-${k}`} dir="row" width="grow" gap={8} crossAlign="center">
             <box width={70}><text size={11} color={t.muted}>{k}</text></box>
-            <box width="grow"><text size={11} color={t.fg} family="mono" wrap="none">{v}</text></box>
-            {control ? small(control[0], control[1], control[2], t) : null}
+            <text size={11} color={t.fg} family="mono" wrap="none">{v}</text>
           </box>
         ))}
       </box>
@@ -285,17 +305,24 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
 
   const streamPanel = (hs: HarnessState, win: KuiWindow, height: 'grow' | number) => {
     const t = win.theme();
+    // The core's warnings since the last frame, into the stream: the
+    // runner drains and prints them, so this reads the log it leaves.
+    const raised = win.warningsRaised();
+    if (raised.length > hs.warningsSeen) {
+      for (const w of raised.slice(hs.warningsSeen)) push(hs, 'warning', `warning [${w.code}] ${w.message}`);
+      hs.warningsSeen = raised.length;
+    }
     return (
       <box width="grow" height={height} minHeight={60} gap={4}>
         <box dir="row" width="grow" minHeight="fit" gap={8} crossAlign="center">
-          <text size={11} color={t.muted}>events</text>
+          <text size={11} color={t.muted}>{`${hs.stream.length} of the last ${STREAM_CAP}`}</text>
           <box width="grow" />
           {small('clear', 'clear', 'Ctrl+Shift+C · empty the stream', t)}
         </box>
         <box key="stream" width="grow" height="grow" minHeight={40} bg={t.sunken} radius={6} pad={6} gap={1} scrollY>
           {hs.stream.length === 0 ? <text size={11} color={t.faint}>events arrive here as data</text> : null}
           {hs.stream.map((e, i) => (
-            <text key={`e${i}`} size={11} family="mono" color={e.kind === 'note' ? t.muted : t.fg}>
+            <text key={`e${i}`} size={11} family="mono" color={e.kind === 'note' ? t.muted : e.kind === 'warning' ? t.warning : t.fg}>
               {`${String(e.frame).padStart(4)} ${e.text}`}
             </text>
           ))}
@@ -319,42 +346,142 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
     );
   };
 
+  /** One glyph in the header's strip, its state in its colour, the chord
+   *  in its tooltip. */
+  const icon = (what: string, glyph: string, color: number, hint: string, t: ReturnType<KuiWindow['theme']>) => (
+    <box key={`i-${what}`} width={22} height={22} center radius={4} hoverBg={t.hover} pressedBg={t.pressed}
+         onClick={{ kind: '@harness', what }} tooltip={hint}>
+      <text size={13} color={color}>{glyph}</text>
+    </box>
+  );
+
   const header = (hs: HarnessState, win: KuiWindow) => {
     const t = win.theme();
+    const base = hs.base === null ? '◐' : hs.base === 'light' ? '☀' : '☾';
+    const dockGlyph = hs.dock === 'side' ? '▐' : hs.dock === 'bottom' ? '▄' : '✕';
+    const menus = hs.nativeMenus === null ? "the platform's default" : hs.nativeMenus ? 'native' : 'drawn';
     return (
-      <box dir="row" width="grow" minHeight="fit" crossAlign="center" gap={8}>
+      <box dir="row" width="grow" minHeight="fit" crossAlign="center" gap={6}>
         <text size={13} color={t.fg}>{example.name}</text>
-        <box width="grow" />
-        <text size={11} color={t.muted} family="mono">
-          {smokeFrames ? `frame ${hs.frames} / ${smokeFrames}` : `frame ${hs.frames}`}
+        <text size={11} color={t.faint} family="mono">
+          {smokeFrames ? `${hs.frames} / ${smokeFrames}` : `${hs.frames}`}
         </text>
+        <box width="grow" />
+        {icon('base', base, t.fg, `base: ${baseName(hs)} · Ctrl+Shift+T cycles follow the OS → light → dark`, t)}
+        {icon('accent', '●', t.accent, `accent: ${accentName(hs)} · Ctrl+Shift+A cycles the OS's, kui's, four the OS might report`, t)}
+        {icon('menus', '☰', hs.nativeMenus === false ? t.accent : t.fg, `menus: ${menus} · Ctrl+Shift+M toggles native and drawn`, t)}
+        {icon('dock', dockGlyph, t.fg, `dock: ${hs.dock} · Ctrl+Shift+D moves it side → bottom → off`, t)}
       </box>
+    );
+  };
+
+  const tabs = (hs: HarnessState, win: KuiWindow) => {
+    const t = win.theme();
+    return (
+      <box dir="row" width="grow" minHeight="fit" gap={2} crossAlign="end">
+        {TABS.map((tab) => {
+          const on = tab === hs.tab;
+          return (
+            <box key={`tab-${tab}`} padX={10} padY={4} radiusTL={5} radiusTR={5} bg={on ? t.sunken : t.surface}
+                 hoverBg={on ? t.sunken : t.hover} onClick={{ kind: '@harness', what: `tab:${tab}` }}
+                 tooltip="Ctrl+Shift+N · the next tab">
+              <text size={11} color={on ? t.fg : t.muted}>{tab}</text>
+            </box>
+          );
+        })}
+      </box>
+    );
+  };
+
+  /** The last frame's nodes (`nodes()`), the selected one in detail, and
+   *  an outline over the example where it was laid out. */
+  const treePanel = (hs: HarnessState, win: KuiWindow) => {
+    const t = win.theme();
+    const all = win.nodes();
+    // The example's nodes only: the dock's own subtree is not what anyone
+    // opened this tab to see.
+    const dock = all.findIndex((n) => n.label === 'dock');
+    let end = all.length;
+    if (dock >= 0) {
+      const d = all[dock].depth;
+      const rest = all.slice(dock + 1).findIndex((n) => n.depth <= d);
+      end = rest < 0 ? all.length : dock + 1 + rest;
+    }
+    const nodes = all.filter((_, i) => !(dock >= 0 && i >= dock && i < end));
+    const selected = nodes.find((n) => n.key === hs.selected) ?? null;
+    const rows: [string, string][] = selected
+      ? [
+          ['key', selected.key],
+          ['kind', selected.kind],
+          ['label', selected.label ?? '—'],
+          ['role', selected.role ?? '—'],
+          ['rect', `${Math.round(selected.rect.x)}, ${Math.round(selected.rect.y)} · ${Math.round(selected.rect.w)}×${Math.round(selected.rect.h)}`],
+          ['size', `${selected.width} × ${selected.height}${selected.float ? ' · float' : ''}`],
+          ['dir', selected.dir],
+          ['bg', (selected.bg & 0xff) === 0 ? 'none' : '#' + (selected.bg >>> 0).toString(16).padStart(8, '0')],
+          ['flags', selected.flags.length ? selected.flags.join(' ') : '—'],
+          ['text', selected.text ?? '—'],
+        ]
+      : [];
+    return (
+      <>
+        <text size={11} color={t.muted}>{`${nodes.length} nodes · click one to inspect it`}</text>
+        <box key="nodes" width="grow" height="grow" minHeight={80} bg={t.sunken} radius={6} pad={4} gap={0} scrollY>
+          {nodes.map((n) => {
+            const on = n.key === hs.selected;
+            const what = n.label ?? (n.text ? `“${n.text}”` : '');
+            const flags = n.flags.length ? ` · ${n.flags.join(' ')}` : '';
+            return (
+              <box key={`node:${n.key}`} dir="row" width="grow" height={18} padX={4} radius={3} crossAlign="center" gap={4}
+                   bg={on ? t.accentSoft : t.sunken} hoverBg={on ? t.accentSoft : t.hover}
+                   onClick={{ kind: '@harness', what: `node:${n.key}` }}>
+                <box width={n.depth * 10} />
+                <text size={11} color={t.accent} family="mono">{n.kind}</text>
+                <text size={11} color={what ? t.fg : t.faint} family="mono" wrap="none">{`${what}${flags}`}</text>
+              </box>
+            );
+          })}
+        </box>
+        {selected ? (
+          <box width="grow" minHeight="fit" gap={2} pad={6} bg={t.raised} radius={6} borderW={1} borderColor={t.border}>
+            {rows.map(([k, v]) => (
+              <box key={`i-${k}`} dir="row" width="grow" gap={8}>
+                <box width={40}><text size={11} color={t.muted}>{k}</text></box>
+                <text size={11} color={t.fg} family="mono">{v}</text>
+              </box>
+            ))}
+          </box>
+        ) : null}
+        {selected ? (
+          <box key="outline" float={{ anchor: 'viewport', at: ['start', 'start'], self: ['start', 'start'], dx: selected.rect.x, dy: selected.rect.y }}
+               width={Math.max(1, selected.rect.w)} height={Math.max(1, selected.rect.h)} borderW={2} borderColor={t.accent}
+               bg={(t.accent & 0xffffff00) | 0x1a} role="none" />
+        ) : null}
+      </>
     );
   };
 
   const dockPanel = (hs: HarnessState, win: KuiWindow) => {
     const t = win.theme();
     const side = hs.dock === 'side';
-    const common = { bg: t.surface, borderW: 1, borderColor: t.border, pad: 10, gap: 10, role: 'none' as const, clip: true };
-    return side ? (
-      <box key="dock" width={DOCK_SIDE_W} height="grow" {...common}>
-        {header(hs, win)}
-        <box width="grow" minHeight="fit"><latencyGraph /></box>
-        {status(hs, win)}
-        {streamPanel(hs, win, 'grow')}
-        {legend(win)}
-      </box>
-    ) : (
-      <box key="dock" dir="row" width="grow" height={DOCK_BOTTOM_H} {...common}>
-        <box width={290} height="grow" gap={8} scrollY>
-          {header(hs, win)}
-          {status(hs, win)}
-        </box>
-        <box width="grow" height="grow" gap={8}>
+    const body =
+      hs.tab === 'facts' ? (
+        <box width="grow" height="grow" gap={10} scrollY>
           <box width="grow" minHeight="fit"><latencyGraph /></box>
-          {streamPanel(hs, win, 'grow')}
+          {status(hs, win)}
           {legend(win)}
         </box>
+      ) : hs.tab === 'events' ? (
+        streamPanel(hs, win, 'grow')
+      ) : (
+        treePanel(hs, win)
+      );
+    return (
+      <box key="dock" width={side ? DOCK_SIDE_W : 'grow'} height={side ? 'grow' : DOCK_BOTTOM_H} bg={t.surface}
+           borderW={1} borderColor={t.border} pad={10} gap={8} role="none" clip>
+        {header(hs, win)}
+        {tabs(hs, win)}
+        {body}
       </box>
     );
   };
@@ -368,7 +495,16 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
       return { app, h: hs };
     },
     update: (m: Wrapped<M>, msg: A | CoreMsg | HarnessMsg, ev: UiEvent<A | CoreMsg | HarnessMsg>, win: KuiWindow): Wrapped<M> | undefined => {
-      if (msg.kind === '@harness') return { ...m, h: act(m.h, (msg as HarnessMsg).what) };
+      if (msg.kind === '@harness') {
+        const what = (msg as HarnessMsg).what;
+        const h = what === 'refresh' ? { ...m.h } : act(m.h, what);
+        // The tree tab reads the frame *before* this one: a window redraws
+        // by re-lowering the tree it was handed, so a snapshot taken at
+        // the end of this frame is seen only by a view that runs after
+        // it — which is what this effect asks for, once.
+        const wants = h.tab === 'tree' && what !== 'refresh';
+        return wants ? (withEffects({ ...m, h }, { kind: '@refresh' }) as unknown as Wrapped<M>) : { ...m, h };
+      }
       const what = chord(msg as CoreMsg);
       if (what) return { ...m, h: act(m.h, what) };
       const h = { ...m.h, stream: [...m.h.stream] };
@@ -400,6 +536,7 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
       // focused, from the second frame so an autofocus of the example's
       // gets the first; the root is never a Tab stop.
       const takeFocus = m.h.frames >= 2 && win.focused() === null;
+      if (m.h.tab === 'tree') win.setInspect(true);
       return (
         <box dir={m.h.dock === 'bottom' ? 'column' : 'row'} width="grow" height="grow" bg={t.bg}
              title={title} windows={windows} onKey={{ kind: '@harness', what: 'sink' }} keyFocus={takeFocus}>
@@ -422,6 +559,9 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
     setup(win) {
       win_ = win;
       example.setup?.(win);
+    },
+    effects(effect: { kind: string }, dispatch: (msg: never) => void) {
+      if (effect.kind === '@refresh') dispatch({ kind: '@harness', what: 'refresh' } as never);
     },
   });
   await done;

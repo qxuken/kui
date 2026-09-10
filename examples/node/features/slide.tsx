@@ -14,7 +14,7 @@
 //   node dist/features/slide.mjs --headless    the same gesture, no window
 //   node dist/features/slide.mjs --trace       print every event the loop gets
 import type { App, CoreMsg, KuiWindow, UiEvent } from '@qxuken/kui';
-import { run } from '../harness.js';
+import { run } from '../devtools.js';
 
 type Card = { id: string; x: number; y: number; label: string };
 type Model = {

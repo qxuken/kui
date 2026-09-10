@@ -38,7 +38,7 @@ use kui::{
     Align, App, Color, Easing, FloatConfig, KeyMods, NodeSpec, Sizing, TextStyle, Theme, Ui,
     UiEvent, Value, WindowCommand,
 };
-use kui_harness::Example;
+use kui_devtools::Example;
 
 const TABBAR_H: f32 = 30.0;
 /// How long a split takes to ease into a new ratio.
@@ -1043,18 +1043,18 @@ impl Example for Splitmux {
         ("⌘-drag", "move a pane"),
     ];
 
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default()
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default()
             .size(1100.0, 720.0)
             .custom_titlebar()
     }
 
-    fn dock(&self) -> kui_harness::Dock {
-        kui_harness::Dock::Bottom
+    fn dock(&self) -> kui_devtools::Dock {
+        kui_devtools::Dock::Bottom
     }
 }
 
-kui_harness::main!(Splitmux::new());
+kui_devtools::main!(Splitmux::new());
 
 #[cfg(test)]
 mod tests {

@@ -19,7 +19,7 @@
 
 use kui::widgets;
 use kui::{Align, App, Color, NodeSpec, Sizing, TextStyle, Theme, Ui, UiEvent, Value};
-use kui_harness::Example;
+use kui_devtools::Example;
 
 /// What the demo buttons post: they are here to be looked at, not to say
 /// anything, and the menu's rows post their own text.
@@ -247,4 +247,4 @@ impl Example for Gallery {
     }
 }
 
-kui_harness::main!(Gallery::default());
+kui_devtools::main!(Gallery::default());

@@ -33,8 +33,8 @@ use kui::{
     Align, App, Core, Extension, Extensions, InputEvent, NodeSpec, OriginId, Size, Sizing,
     TextStyle, Ui, UiEvent, Value, Vec2,
 };
+use kui_devtools::Example;
 use kui_ffi::CExtension;
-use kui_harness::Example;
 
 #[derive(Default)]
 struct Host {
@@ -276,8 +276,8 @@ fn headless(host: &mut Host, core: &mut Core, ext: CExtension) -> i32 {
 }
 
 impl Example for Host {
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default().size(900.0, 600.0)
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default().size(900.0, 600.0)
     }
 
     /// The same namespace in the window as headless: the host decides it.
@@ -319,7 +319,7 @@ fn main() {
             std::process::exit(1);
         }
     };
-    kui_harness::run(
+    kui_devtools::run(
         env!("CARGO_BIN_NAME"),
         Host {
             ext: Some(ext),

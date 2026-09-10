@@ -18,7 +18,7 @@
 //! Run: cargo run -p kui --example hover [-- --headless]
 
 use kui::{Align, App, Core, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
-use kui_harness::{Drive, Example};
+use kui_devtools::{Drive, Example};
 
 const ROWS: [(&str, &str); 3] = [("◆", "inbox"), ("●", "drafts"), ("▲", "sent")];
 
@@ -185,8 +185,8 @@ impl App for Hover {
 }
 
 impl Example for Hover {
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default().size(460.0, 420.0)
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default().size(460.0, 420.0)
     }
 
     /// The pointer moves onto a badge, a group, and away: what the frame
@@ -232,4 +232,4 @@ impl Example for Hover {
     }
 }
 
-kui_harness::main!(Hover::default());
+kui_devtools::main!(Hover::default());

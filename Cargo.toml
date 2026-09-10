@@ -7,9 +7,9 @@ members = [
     "crates/kui-lua",
     "crates/kui-ffi",
     "crates/kui-node",
-    # The examples' harness (docs/adr/0021): a dev-dependency of the crates
+    # The examples' devtools (docs/adr/0021): a dev-dependency of the crates
     # whose examples run inside it, never published.
-    "examples/harness",
+    "examples/devtools",
 ]
 
 [workspace.package]
@@ -25,7 +25,7 @@ kui = { path = "crates/kui", version = "0.1.0-alpha.10", registry = "forgejo" }
 # `default-features = false` here so a member asks for the windowed C entry
 # points explicitly; the cdylib build gets them from kui-ffi's own manifest.
 kui-ffi = { path = "crates/kui-ffi", version = "0.1.0-alpha.10", registry = "forgejo", default-features = false }
-kui-harness = { path = "examples/harness" }
+kui-devtools = { path = "examples/devtools" }
 
 slotmap = "1.1.1"
 rustc-hash = "2"

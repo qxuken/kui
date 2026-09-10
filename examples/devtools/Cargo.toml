@@ -1,10 +1,10 @@
 [package]
-name = "kui-harness"
+name = "kui-devtools"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "The harness every kui example runs inside: a dock, a CLI and a headless drive (docs/adr/0021)"
+description = "The devtools every kui example runs inside: a dock with an event stream and a tree inspector, a CLI and a headless drive (docs/adr/0021)"
 # Development scaffolding for this repository's examples, not a library:
 # it is a dev-dependency of the crates whose examples use it and nothing
 # else, and it never goes to a registry.

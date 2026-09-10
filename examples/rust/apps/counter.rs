@@ -4,8 +4,7 @@
 //! `on_event` as data and moves the model; nothing else happens.
 //!
 //! What every counter holds, so the four stay one shape: the count with
-//! `+1`, `-1` and `reset`; a `name` field whose text the greeting reads
-//! back (`ui.edit_text`); a right-click that declares a `modal` menu on
+//! `+1`, `-1` and `reset`; a right-click that declares a `modal` menu on
 //! the next frame — the core opens nothing, it reports the press and the
 //! view puts a float there — with `+10` and `reset` in it; and a headless
 //! drive that clicks all of it and exits non-zero on a wrong answer.
@@ -13,17 +12,14 @@
 //! Run: cargo run -p kui --example counter [-- --headless]
 
 use kui::widgets;
-use kui::{Align, App, Core, FloatConfig, Key, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
-use kui_harness::{Drive, Example};
+use kui::{Align, App, Core, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
+use kui_devtools::{Drive, Example};
 
 #[derive(Default)]
 struct Counter {
     count: i64,
     /// Where the menu is, in viewport px, while it is open.
     menu: Option<(f32, f32)>,
-    /// The name field's key from the last frame, for the greeting.
-    name: Option<Key>,
-    greeting: String,
 }
 
 impl App for Counter {
@@ -49,16 +45,13 @@ impl App for Counter {
                         .cross_align(Align::Center)
                         .width(Sizing::Fixed(320.0)),
                     |ui| {
-                        ui.text(&self.greeting, TextStyle::new(14.0).color(t.muted));
+                        ui.text("kui counter", TextStyle::new(14.0).color(t.muted));
                         ui.text(&self.count.to_string(), TextStyle::new(56.0));
                         ui.with(NodeSpec::row().gap(12.0), |ui| {
                             widgets::button(ui, "-1", Value::map([("kind", "dec".into())]));
                             widgets::button(ui, "+1", Value::map([("kind", "inc".into())]));
                             widgets::button(ui, "reset", Value::map([("kind", "reset".into())]));
                         });
-                        // The field's text is the core's; the view reads
-                        // it back rather than keeping a copy.
-                        self.name = Some(widgets::text_input(ui, "name", ""));
                     },
                 );
                 ui.text(
@@ -98,14 +91,6 @@ impl App for Counter {
                 },
             );
         }
-        if let Some(name) = self.name {
-            let who = ui.edit_text(name).unwrap_or_default();
-            self.greeting = if who.trim().is_empty() {
-                "kui counter".into()
-            } else {
-                format!("{}'s counter", who.trim())
-            };
-        }
     }
 
     fn on_event(&mut self, ev: UiEvent) {
@@ -138,34 +123,22 @@ impl Example for Counter {
     const KEYS: &'static [(&'static str, &'static str)] =
         &[("right-click", "the modal menu"), ("Esc", "dismiss it")];
 
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default().size(560.0, 400.0)
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default().size(560.0, 400.0)
     }
 
-    /// The Rosetta drive: every counter clicks its buttons by label,
-    /// types into its field, opens and dismisses its menu, and checks the
-    /// model after each.
+    /// The Rosetta drive: every counter clicks its buttons by label, opens
+    /// and dismisses its menu, and checks the model after each.
     fn headless(&mut self, core: &mut Core) -> Result<(), String> {
         let mut d = Drive::new(core, 560.0, 400.0);
         d.frame(self);
         let inc = d.key_of("+1").ok_or("no +1")?;
         let dec = d.key_of("-1").ok_or("no -1")?;
-        let name = d.key_of("name").ok_or("no name field")?;
         d.click_key(self, inc);
         d.click_key(self, inc);
         d.click_key(self, dec);
         d.frame(self);
         d.check(self.count == 1, "two +1 and a -1 count to 1")?;
-
-        // The field: focus it, type, and the greeting reads it back.
-        d.focus(self, name);
-        d.text(self, "Ada");
-        d.frame(self);
-        d.frame(self);
-        d.check(
-            self.greeting == "Ada's counter",
-            "the greeting reads the field back",
-        )?;
 
         // The menu: a secondary press anywhere in the example, then the
         // frame that declares the modal, then its +10.
@@ -207,4 +180,4 @@ impl Example for Counter {
     }
 }
 
-kui_harness::main!(Counter::default());
+kui_devtools::main!(Counter::default());

@@ -4,21 +4,19 @@
 // declared and moves the model; nothing else happens.
 //
 // What every counter holds, so the four stay one shape: the count with
-// +1, -1 and reset; a `name` field whose text the greeting reads back
-// (`win.editText`); a right-click that declares a `modal` menu on the next
+// +1, -1 and reset; a right-click that declares a `modal` menu on the next
 // frame, with +10 and reset in it; and a headless drive that clicks all of
 // it by label and exits non-zero on a wrong answer.
 //
-//   npm run counter                    a window, with the harness dock
+//   npm run counter                    a window, with the devtools dock
 //   node dist/apps/counter.mjs --headless
 import type { App, CoreMsg, KuiWindow, Theme, UiEvent } from '@qxuken/kui';
-import { run } from '../harness.js';
+import { run } from '../devtools.js';
 
 type Model = {
   count: number;
   /** Where the last right-click landed, while its menu is open. */
   menu: { x: number; y: number } | null;
-  greeting: string;
 };
 
 // The payloads this app's own nodes carry, plus the ones the core sends on
@@ -27,9 +25,9 @@ type Model = {
 type CounterMsg = { kind: 'add'; by: number } | { kind: 'reset' };
 type Msg = CounterMsg | CoreMsg;
 
-const init: Model = { count: 0, menu: null, greeting: 'kui counter' };
+const init: Model = { count: 0, menu: null };
 
-function update(model: Model, msg: Msg, ev: UiEvent<Msg>, win: KuiWindow): Model | undefined {
+function update(model: Model, msg: Msg, _ev: UiEvent<Msg>, _win: KuiWindow): Model | undefined {
   switch (msg.kind) {
     case 'add':
       // Either counter button, or the menu's — which closes the menu, the
@@ -37,11 +35,6 @@ function update(model: Model, msg: Msg, ev: UiEvent<Msg>, win: KuiWindow): Model
       return { ...model, count: model.count + msg.by, menu: null };
     case 'reset':
       return { ...model, count: 0, menu: null };
-    case 'changed': {
-      // The field's text is the core's; read it back through the key.
-      const who = (win.editText(ev.key) ?? '').trim();
-      return { ...model, greeting: who ? `${who}'s counter` : 'kui counter' };
-    }
     case 'contextmenu':
       // A right-click: the core opens nothing, the view declares the menu
       // where the press landed.
@@ -76,15 +69,13 @@ const view = (model: Model, win: KuiWindow) => {
   return (
     <box width="grow" height="grow" center gap={24} onContextMenu={{ kind: 'menu' }}>
       <box pad={32} gap={20} bg={t.surface} radius={12} borderW={1} borderColor={t.border} crossAlign="center" width={320}>
-        <text size={14} color={t.muted}>{model.greeting}</text>
+        <text size={14} color={t.muted}>kui counter</text>
         <text size={56} color={t.fg}>{String(model.count)}</text>
         <box dir="row" gap={12}>
           <button onClick={{ kind: 'add', by: -1 }}>-1</button>
           <button onClick={{ kind: 'add', by: 1 }}>+1</button>
           <button onClick={{ kind: 'reset' }}>reset</button>
         </box>
-        <edit key="name" label="name" initial="" size={16} width="grow" padX={10} padY={8}
-              bg={t.sunken} color={t.fg} radius={6} borderW={1} borderColor={t.border} />
       </box>
       <text size={12} color={t.faint}>right-click for a menu · clicks are data: view() never sees a callback</text>
       {model.menu ? <Menu at={model.menu} t={t} /> : null}
@@ -99,9 +90,8 @@ await run<Model, CounterMsg>({
   view,
   keys: [['right-click', 'the modal menu'], ['Esc', 'dismiss it']],
   window: { width: 560, height: 400 },
-  // The Rosetta drive: every counter clicks its buttons by label, types
-  // into its field, opens and dismisses its menu, and checks the model
-  // after each.
+  // The Rosetta drive: every counter clicks its buttons by label, opens
+  // and dismisses its menu, and checks the model after each.
   headless: (app: App<Model, Msg>) => {
     app.render();
     const ok = (cond: boolean, what: string) => {
@@ -112,11 +102,6 @@ await run<Model, CounterMsg>({
     app.access('+1', 'click');
     app.access('-1', 'click');
     ok(app.model.count === 1, 'two +1 and a -1 count to 1');
-
-    app.ctx.focus('name');
-    app.type('Ada');
-    app.render();
-    ok(app.model.greeting === "Ada's counter", 'the greeting reads the field back');
 
     app.rightClick(40, 40);
     ok(app.model.menu !== null, 'a right-click asks for the menu');

@@ -12,7 +12,7 @@
 //! Run: cargo run -p kui --example text
 
 use kui::{Align, App, FontFamily, NodeSpec, Sizing, Span, TextStyle, Theme, Ui};
-use kui_harness::Example;
+use kui_devtools::Example;
 
 struct Text;
 
@@ -121,15 +121,25 @@ impl App for Text {
                         ("serif", FontFamily::Serif),
                         ("mono", FontFamily::Mono),
                     ] {
-                        ui.with(NodeSpec::row().gap(12.0).cross_align(Align::Center), |ui| {
-                            ui.with(NodeSpec::row().width(Sizing::Fixed(44.0)), |ui| {
-                                ui.text(name, TextStyle::new(11.0).color(t.muted));
-                            });
-                            ui.text(
-                                "The quick brown fox jumps over the lazy dog 0123456789",
-                                TextStyle::new(15.0).family(family),
-                            );
-                        });
+                        // The row grows so the run can wrap at the card's
+                        // edge; in a fit row a growing column has no width.
+                        ui.with(
+                            NodeSpec::row()
+                                .width(Sizing::Grow(1.0))
+                                .gap(12.0)
+                                .cross_align(Align::Center),
+                            |ui| {
+                                ui.with(NodeSpec::row().width(Sizing::Fixed(44.0)), |ui| {
+                                    ui.text(name, TextStyle::new(11.0).color(t.muted));
+                                });
+                                ui.with(NodeSpec::column().width(Sizing::Grow(1.0)), |ui| {
+                                    ui.text(
+                                        "The quick brown fox jumps over the lazy dog 0123456789",
+                                        TextStyle::new(15.0).family(family),
+                                    );
+                                });
+                            },
+                        );
                     }
                 });
 
@@ -168,4 +178,4 @@ impl App for Text {
 
 impl Example for Text {}
 
-kui_harness::main!(Text);
+kui_devtools::main!(Text);

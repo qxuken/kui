@@ -60,7 +60,7 @@ use kui::{
     Align, App, EditOptions, FloatConfig, Key, Live, NodeSpec, Role, Sizing, TextStyle, Ui,
     UiEvent, Value,
 };
-use kui_harness::Example;
+use kui_devtools::Example;
 
 const DOC: &str = "hello world\nsecond line";
 
@@ -798,8 +798,8 @@ impl Example for A11y {
     /// Tall enough for most of the controls; the rest are a scroll away,
     /// because the column holding them scrolls (see `view`). Custom
     /// chrome, so the drawn titlebar the audit checks is there.
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default()
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default()
             .size(560.0, 820.0)
             .custom_titlebar()
     }
@@ -807,9 +807,9 @@ impl Example for A11y {
     /// The fixture is the window the audit walks, and nothing else: no
     /// dock, no sink of the harness's, no focus it took. `--dock side`
     /// puts the readout beside it for a look by hand.
-    fn dock(&self) -> kui_harness::Dock {
-        kui_harness::Dock::Off
+    fn dock(&self) -> kui_devtools::Dock {
+        kui_devtools::Dock::Off
     }
 }
 
-kui_harness::main!(A11y::new());
+kui_devtools::main!(A11y::new());

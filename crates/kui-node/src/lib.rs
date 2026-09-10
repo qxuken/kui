@@ -1125,6 +1125,49 @@ fn window_commands_json(cmds: Vec<kui_core::WindowCommand>) -> Json {
 }
 
 /// `{x, y, w, h}` — the shape `scrollGeometry` already returns for a box.
+fn node_info_json(n: &kui_core::NodeInfo) -> Json {
+    let mut o = JsonMap::new();
+    o.insert("key".into(), Json::String(key_str(n.key)));
+    o.insert(
+        "parent".into(),
+        n.parent.map_or(Json::Null, |k| Json::String(key_str(k))),
+    );
+    o.insert("depth".into(), Json::from(n.depth));
+    o.insert("kind".into(), Json::from(n.kind.name()));
+    o.insert(
+        "label".into(),
+        n.label.clone().map_or(Json::Null, Json::String),
+    );
+    o.insert("rect".into(), rect_json(n.rect));
+    o.insert(
+        "dir".into(),
+        Json::from(format!("{:?}", n.dir).to_lowercase()),
+    );
+    let sizing = |s: kui_core::Sizing| match s {
+        kui_core::Sizing::Fit => "fit".to_string(),
+        kui_core::Sizing::Grow(w) => format!("grow({w})"),
+        kui_core::Sizing::Fixed(px) => format!("{px}px"),
+        kui_core::Sizing::Percent(p) => format!("{}%", p * 100.0),
+    };
+    o.insert("width".into(), Json::from(sizing(n.width)));
+    o.insert("height".into(), Json::from(sizing(n.height)));
+    o.insert("bg".into(), Json::from(n.bg.to_hex()));
+    o.insert("float".into(), Json::Bool(n.float));
+    o.insert(
+        "role".into(),
+        n.role.map_or(Json::Null, |r| Json::from(r.name())),
+    );
+    o.insert(
+        "text".into(),
+        n.text.clone().map_or(Json::Null, Json::String),
+    );
+    o.insert(
+        "flags".into(),
+        Json::Array(n.flags.iter().map(|f| Json::from(*f)).collect()),
+    );
+    Json::Object(o)
+}
+
 fn rect_json(r: Rect) -> Json {
     let mut o = JsonMap::new();
     o.insert("x".into(), Json::from(r.x as f64));
@@ -2079,6 +2122,31 @@ macro_rules! core_methods {
             #[napi]
             pub fn set_diagnostics(&mut self, on: bool) {
                 self.$core().set_diagnostics(on);
+            }
+
+            /// Every warning the core has raised so far, drained or not,
+            /// oldest first — the log `warnings()` leaves behind, for a
+            /// reader that is not the driver (a devtools stream).
+            #[napi(ts_return_type = "Warning[]")]
+            pub fn warnings_raised(&mut self) -> Json {
+                warnings_json(self.$core().warnings_raised().to_vec())
+            }
+
+            /// Turns the per-frame node snapshot behind `nodes()` on or off
+            /// (off unless a devtool asked: the copy is O(nodes) a frame).
+            #[napi]
+            pub fn set_inspect(&mut self, on: bool) {
+                self.$core().set_inspect(on);
+            }
+
+            /// The last finished frame's nodes in tree order, each with what
+            /// it is, the label it was opened under, where layout put it,
+            /// and the declarations that explain the rest — what a tree
+            /// view and a node inspector are built from. Empty until
+            /// `setInspect(true)` and a frame after it.
+            #[napi(ts_return_type = "NodeInfo[]")]
+            pub fn nodes(&mut self) -> Json {
+                Json::Array(self.$core().nodes().iter().map(node_info_json).collect())
             }
 
             /// The prop names the encoder threw away while lowering a tree,

@@ -22,12 +22,12 @@ accesskit_winit = { version = "0.34", optional = true }
 # (libdbus), no streaming formats — decoding covers wav/ogg/mp3/flac.
 kira = { version = "0.12", default-features = false, features = ["cpal", "mp3", "ogg", "vorbis", "flac", "wav", "pcm"], optional = true }
 
-# The examples' harness (docs/adr/0021): the dock, the CLI and the
+# The examples' devtools (docs/adr/0021): the dock, the CLI and the
 # headless drive every example under examples/rust runs inside. A
 # dev-dependency, so the published crate carries none of it; the cycle
 # (it depends on this crate) is the kind cargo allows for dev-dependencies.
 [dev-dependencies]
-kui-harness.workspace = true
+kui-devtools.workspace = true
 
 [features]
 default = ["audio", "accesskit"]
@@ -112,10 +112,10 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
 # widget, `features/` one behaviour with the widgets it touches, `tools/`
 # what is registered here for want of a better slot. The target name is the
 # file's basename, since every example binary in the workspace lands in one
-# flat target/debug/examples. Every one runs inside kui-harness
-# (examples/harness); `headless` below lists the ones whose `--headless`
+# flat target/debug/examples. Every one runs inside kui-devtools
+# (examples/devtools); `headless` below lists the ones whose `--headless`
 # is a self-check with an exit code, which scripts/smoke-headless.sh runs
-# and a test in the harness pins to this list.
+# and a test in the devtools crate pins to this list.
 [package.metadata.kui]
 headless = [
     "transition",

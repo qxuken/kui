@@ -36,9 +36,9 @@ runner = ["dep:kui"]
 kui-core.workspace = true
 kui = { workspace = true, optional = true }
 
-# The examples' harness (docs/adr/0021), for the Rust host below.
+# The examples' devtools (docs/adr/0021), for the Rust host below.
 [dev-dependencies]
-kui-harness.workspace = true
+kui-devtools.workspace = true
 
 [package.metadata.kui]
 headless = ["c_panel"]

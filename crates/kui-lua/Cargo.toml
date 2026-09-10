@@ -19,8 +19,8 @@ kui-ffi.workspace = true
 
 [dev-dependencies]
 kui.workspace = true
-# The examples' harness (docs/adr/0021), for the Rust host of the panel.
-kui-harness.workspace = true
+# The examples' devtools (docs/adr/0021), for the Rust host of the panel.
+kui-devtools.workspace = true
 # tests/conformance.rs drives the scene corpus, which kui-core keeps behind a
 # feature; on here only, so the published extension does not carry it.
 kui-core = { workspace = true, features = ["conformance"] }

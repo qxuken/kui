@@ -841,14 +841,21 @@ building found, in order:
   `KuiSpan`, three files short one initializer each). Fixed in passing;
   `build.sh` is warning-free.
 
-Three follow-ups, none blocking:
+A second round by hand on the built thing (2026-09-10) renamed the crate
+`kui-devtools`, put the controls in an icon strip, split the dock into
+facts / events / tree tabs and gave the tree a node inspector over a new
+`Core::set_inspect` / `nodes()` door; it also found the runner showing
+the native *and* the drawn context menu, the root sink keeping Tab and
+the menu-bar choices, a Node `dispatch` from an effect handler that never
+drew, and eight smaller things in the examples (ADR 0021, *What the
+building changed*, 11). E1 closed with it.
 
-### `.` E1 — The Node dock has no warnings in its stream
+Two follow-ups, none blocking, and one closed:
 
-The addon exposes `warnings()` — the drain — and not the log behind it;
-the Rust dock reads `Core::warnings_raised`. A `warningsRaised()` binding
-is ten lines plus a `.d.ts` regeneration; worth it the first time a Node
-field report wants to see a warning on screen rather than in a terminal.
+### `x` E1 — The Node dock has no warnings in its stream
+
+Closed 2026-09-10: `KuiWindow.warningsRaised()` is in the addon beside
+`nodes()` / `setInspect()`, and the Node stream shows warnings.
 
 ### `.` E2 — No C dock
 

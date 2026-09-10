@@ -18,7 +18,7 @@
 # has succeeded, so an example that opens a window and never paints runs
 # out the timeout rather than passing quietly.
 #
-# Every example runs inside the harness (examples/harness, ADR 0021), so
+# Every example runs inside the devtools (examples/devtools, ADR 0021), so
 # `--light` and `--dark` pin the theme base without the example knowing:
 # each one is opened twice, and a literal colour that reads on one base
 # and not the other is opened on both, every run. The dock is on, in its

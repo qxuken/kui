@@ -887,6 +887,34 @@ export interface Env {
   audio: AudioEnv;
 }
 
+/** One node of the last finished frame, as `nodes()` reads it back (after
+ *  `setInspect(true)`): what it is, the label it was opened under, where
+ *  layout put it in logical viewport px, and the declarations that make
+ *  it interactive or special. What a tree view and a node inspector are
+ *  built from. */
+export interface NodeInfo {
+  key: string;
+  parent: string | null;
+  /** Nesting depth; the root is 0. */
+  depth: number;
+  kind: 'box' | 'text' | 'edit' | 'image' | 'line' | 'cells' | 'fragment';
+  label: string | null;
+  rect: Rect;
+  dir: 'row' | 'column';
+  /** `fit`, `grow(n)`, `<n>px` or `<n>%`, as the spec spelled it. */
+  width: string;
+  height: string;
+  /** `0xRRGGBBAA`; 0 alpha is none. */
+  bg: number;
+  float: boolean;
+  role: string | null;
+  /** A text node's content, cut to a line's worth. */
+  text: string | null;
+  /** `click`, `drag`, `key`, `hover`, `hoverable`, `context-menu`, `modal`,
+   *  `selectable`, `focusable`, `disabled`, `scroll`, `clip`, `transition`. */
+  flags: string[];
+}
+
 /** The output device's state and how many playbacks are live, as the
  *  driver reports them each frame. A fact and not a verb — nothing closes
  *  the device from here; the runner does that itself once it has been idle
@@ -1616,6 +1644,25 @@ export declare class Ctx {
    */
   setDiagnostics(on: boolean): void
   /**
+   * Every warning the core has raised so far, drained or not,
+   * oldest first — the log `warnings()` leaves behind, for a
+   * reader that is not the driver (a devtools stream).
+   */
+  warningsRaised(): Warning[]
+  /**
+   * Turns the per-frame node snapshot behind `nodes()` on or off
+   * (off unless a devtool asked: the copy is O(nodes) a frame).
+   */
+  setInspect(on: boolean): void
+  /**
+   * The last finished frame's nodes in tree order, each with what
+   * it is, the label it was opened under, where layout put it,
+   * and the declarations that explain the rest — what a tree
+   * view and a node inspector are built from. Empty until
+   * `setInspect(true)` and a frame after it.
+   */
+  nodes(): NodeInfo[]
+  /**
    * The prop names the encoder threw away while lowering a tree,
    * as `[element, name]` pairs, raised as `unknown-prop` warnings
    * (see `Warning`). A name outside the schema never reaches the
@@ -2284,6 +2331,25 @@ export declare class KuiWindow {
    * turn them off under `NODE_ENV=production`.
    */
   setDiagnostics(on: boolean): void
+  /**
+   * Every warning the core has raised so far, drained or not,
+   * oldest first — the log `warnings()` leaves behind, for a
+   * reader that is not the driver (a devtools stream).
+   */
+  warningsRaised(): Warning[]
+  /**
+   * Turns the per-frame node snapshot behind `nodes()` on or off
+   * (off unless a devtool asked: the copy is O(nodes) a frame).
+   */
+  setInspect(on: boolean): void
+  /**
+   * The last finished frame's nodes in tree order, each with what
+   * it is, the label it was opened under, where layout put it,
+   * and the declarations that explain the rest — what a tree
+   * view and a node inspector are built from. Empty until
+   * `setInspect(true)` and a frame after it.
+   */
+  nodes(): NodeInfo[]
   /**
    * The prop names the encoder threw away while lowering a tree,
    * as `[element, name]` pairs, raised as `unknown-prop` warnings

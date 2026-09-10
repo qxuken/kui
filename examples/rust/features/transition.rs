@@ -3,8 +3,8 @@
 //!
 //! - `transition(ms)`: a value that changes eases to its new one over that
 //!   long — the bar's width follows the buttons;
-//! - `easing`: the curve it takes, one swatch per `Easing`, racing on a
-//!   click;
+//! - `easing`: the curve it takes, one racer per `Easing` — the two
+//!   springs overshoot, `bouncy` more — racing on a click;
 //! - `slide`: a float whose *position* eases too, so a card jumps between
 //!   two anchors along a path rather than appearing at the other;
 //! - `keyframes`: a cycle of stops the node walks by itself — width, colour,
@@ -21,14 +21,15 @@ use kui::{
     Align, App, Core, Easing, FloatConfig, Keyframe, NodeSpec, Repeat, Sizing, TextStyle, Ui,
     UiEvent, Value,
 };
-use kui_harness::{Drive, Example};
+use kui_devtools::{Drive, Example};
 
-const EASINGS: [(&str, Easing); 5] = [
+const EASINGS: [(&str, Easing); 6] = [
     ("linear", Easing::Linear),
     ("ease-out", Easing::EaseOut),
     ("ease-in", Easing::EaseIn),
     ("ease-in-out", Easing::EaseInOut),
     ("spring", Easing::Spring),
+    ("bouncy", Easing::Bouncy),
 ];
 
 #[derive(Default)]
@@ -57,7 +58,11 @@ impl App for Motion {
                 ui.text("transition · the bar eases to whatever the buttons set", TextStyle::new(12.0).color(t.muted));
                 ui.with(NodeSpec::row().gap(8.0).cross_align(Align::Center), |ui| {
                     for (label, level) in [("0%", 0.0), ("40%", 0.4), ("100%", 1.0)] {
-                        kui::widgets::button(ui, label, Value::Float(level));
+                        kui::widgets::button(
+                            ui,
+                            label,
+                            Value::map([("kind", Value::str("level")), ("to", Value::Float(level))]),
+                        );
                     }
                 });
                 ui.with(
@@ -81,7 +86,7 @@ impl App for Motion {
                 );
 
                 // easing: the same travel on five curves.
-                ui.text("easing · click a lane and the five race on their own curves", TextStyle::new(12.0).color(t.muted));
+                ui.text("easing · click a lane and the six race on their own curves", TextStyle::new(12.0).color(t.muted));
                 ui.with_keyed(
                     "lanes",
                     NodeSpec::column()
@@ -219,11 +224,14 @@ impl App for Motion {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match &ev.payload {
-            Value::Float(level) => self.level = *level as f32,
-            Value::Str(s) if s == "race" => self.far = !self.far,
-            Value::Str(s) if s == "flip" => self.right = !self.right,
-            _ => {}
+        match ev.payload.as_str() {
+            Some("race") => self.far = !self.far,
+            Some("flip") => self.right = !self.right,
+            _ => {
+                if let Some(to) = ev.payload.get("to").and_then(Value::as_float) {
+                    self.level = to as f32;
+                }
+            }
         }
     }
 }
@@ -234,8 +242,8 @@ impl Example for Motion {
         ("click the stage", "slide the card"),
     ];
 
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default().size(520.0, 560.0)
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default().size(520.0, 560.0)
     }
 
     /// The bar's width is tweened: one frame after the level changes the
@@ -264,4 +272,4 @@ impl Example for Motion {
     }
 }
 
-kui_harness::main!(Motion::default());
+kui_devtools::main!(Motion::default());

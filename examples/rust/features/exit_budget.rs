@@ -28,7 +28,7 @@
 //! Run: cargo run -p kui --example exit_budget
 
 use kui::{Align, App, Color, Enter, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value, widgets};
-use kui_harness::Example;
+use kui_devtools::Example;
 
 /// Cells per grid. One grid is under the budget; both together are over it.
 const CELLS_PER_ROW: usize = 20;
@@ -161,7 +161,7 @@ impl App for BulkExit {
 
 impl Example for BulkExit {}
 
-kui_harness::main!(BulkExit {
+kui_devtools::main!(BulkExit {
     a: true,
     b: true,
     list: true,

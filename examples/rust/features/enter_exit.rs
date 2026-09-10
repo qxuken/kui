@@ -34,7 +34,7 @@ use kui::{
     Align, App, Color, Easing, Enter, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value,
     widgets,
 };
-use kui_harness::Example;
+use kui_devtools::Example;
 
 const LIFETIME: Duration = Duration::from_millis(3200);
 
@@ -61,7 +61,7 @@ struct Toasts {
 }
 
 impl Toasts {
-    /// The stack: a viewport float pinned to the bottom-right corner, with
+    /// The stack: a float pinned to its parent's bottom-right corner, with
     /// the toasts themselves in ordinary flow inside it.
     fn stack(&self, ui: &mut Ui<'_>) {
         // `t` is taken by the toast in the loop below; the palette is `th`.
@@ -69,10 +69,9 @@ impl Toasts {
         ui.with(
             NodeSpec::column()
                 .float(
-                    FloatConfig::viewport()
+                    FloatConfig::parent()
                         .at(Align::End, Align::End)
-                        .self_at(Align::End, Align::End)
-                        .offset(-24.0, -24.0),
+                        .self_at(Align::End, Align::End),
                 )
                 .gap(10.0)
                 .cross_align(Align::End),
@@ -125,7 +124,7 @@ impl Toasts {
             "panel",
             NodeSpec::column()
                 .float(
-                    FloatConfig::viewport()
+                    FloatConfig::parent()
                         .at(Align::Start, Align::Start)
                         .self_at(Align::Start, Align::Start),
                 )
@@ -167,28 +166,33 @@ impl App for Toasts {
             ui.request_frame();
         }
 
-        ui.window_title("kui — toasts");
-        ui.with(NodeSpec::column().fill().center().gap(20.0), |ui| {
-            ui.text("enter and exit: where a node starts, and where it ends", {
-                TextStyle::new(20.0)
-            });
-            ui.text(
-                "A transition never animates in from nowhere, so a node's first \
+        // The container both floats anchor to (`FloatConfig::parent`), so
+        // the stack and the panel stay in the example's own area rather
+        // than the window's corners.
+        ui.with(
+            NodeSpec::column().fill().center().gap(20.0).pad(24.0),
+            |ui| {
+                ui.text("enter and exit: where a node starts, and where it ends", {
+                    TextStyle::new(20.0)
+                });
+                ui.text(
+                    "A transition never animates in from nowhere, so a node's first \
              sight snaps: `enter` gives it somewhere to come from. Nor out \
              into nowhere — a node the view stops declaring is gone before \
              the frame ends — so `exit` has the core keep a picture of it \
              and play that out instead.",
-                TextStyle::new(13.0).color(t.muted),
-            );
-            ui.with(NodeSpec::row().gap(12.0).cross_align(Align::Center), |ui| {
-                widgets::button(ui, "notify", Value::map([("kind", "notify".into())]));
-                widgets::button(ui, "toggle panel", Value::map([("kind", "panel".into())]));
-                widgets::button(ui, "clear", Value::map([("kind", "clear".into())]));
-            });
+                    TextStyle::new(13.0).color(t.muted),
+                );
+                ui.with(NodeSpec::row().gap(12.0).cross_align(Align::Center), |ui| {
+                    widgets::button(ui, "notify", Value::map([("kind", "notify".into())]));
+                    widgets::button(ui, "toggle panel", Value::map([("kind", "panel".into())]));
+                    widgets::button(ui, "clear", Value::map([("kind", "clear".into())]));
+                });
 
-            self.side_panel(ui);
-            self.stack(ui);
-        });
+                self.side_panel(ui);
+                self.stack(ui);
+            },
+        );
     }
 
     fn on_event(&mut self, ev: UiEvent) {
@@ -211,4 +215,4 @@ impl App for Toasts {
 
 impl Example for Toasts {}
 
-kui_harness::main!(Toasts::default());
+kui_devtools::main!(Toasts::default());

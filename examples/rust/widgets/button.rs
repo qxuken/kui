@@ -17,7 +17,7 @@
 
 use kui::widgets;
 use kui::{Align, App, Color, Core, NodeSpec, TextStyle, Ui, UiEvent, Value};
-use kui_harness::{Drive, Example};
+use kui_devtools::{Drive, Example};
 
 #[derive(Default)]
 struct Buttons {
@@ -124,8 +124,8 @@ impl Example for Buttons {
     const KEYS: &'static [(&'static str, &'static str)] =
         &[("Tab", "the ring"), ("Enter / Space", "press")];
 
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default().size(560.0, 320.0)
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default().size(560.0, 320.0)
     }
 
     /// A click by label presses; a disabled button does not, and is not
@@ -180,4 +180,4 @@ impl Example for Buttons {
     }
 }
 
-kui_harness::main!(Buttons::default());
+kui_devtools::main!(Buttons::default());

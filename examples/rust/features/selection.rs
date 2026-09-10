@@ -23,7 +23,7 @@ use kui::{
     Align, App, Cell, CellGrid, Core, EditOptions, FontFamily, NodeSpec, Sizing, Span, TextStyle,
     Theme, Ui,
 };
-use kui_harness::{Drive, Example};
+use kui_devtools::{Drive, Example};
 
 const LINES: [&str; 4] = [
     "~/kui $ cargo test -p kui-core",
@@ -170,8 +170,8 @@ impl Example for Selection {
         ("⌘C", "copy"),
     ];
 
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default().size(620.0, 620.0)
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default().size(620.0, 620.0)
     }
 
     /// Select All in the article takes all three runs as one; a drag in
@@ -218,4 +218,4 @@ impl Example for Selection {
     }
 }
 
-kui_harness::main!(Selection);
+kui_devtools::main!(Selection);

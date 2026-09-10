@@ -22,7 +22,7 @@ use kui::{
     Align, App, Core, Extensions, InputEvent, NodeSpec, OriginId, Size, Sizing, TextStyle, Ui,
     UiEvent, Value, Vec2,
 };
-use kui_harness::Example;
+use kui_devtools::Example;
 use kui_lua::LuaExtension;
 
 #[derive(Default)]
@@ -137,8 +137,8 @@ fn click(core: &mut Core, at: Vec2) -> Vec<UiEvent> {
 }
 
 impl Example for Host {
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default().size(900.0, 600.0)
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default().size(900.0, 600.0)
     }
 
     fn extensions(&mut self) -> Extensions {
@@ -214,4 +214,4 @@ impl Example for Host {
     }
 }
 
-kui_harness::main!(Host::default());
+kui_devtools::main!(Host::default());

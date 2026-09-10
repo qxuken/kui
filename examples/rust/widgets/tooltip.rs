@@ -19,7 +19,7 @@
 
 use kui::widgets;
 use kui::{Align, App, Core, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
-use kui_harness::{Drive, Example};
+use kui_devtools::{Drive, Example};
 
 #[derive(Default)]
 struct Tooltip {
@@ -92,9 +92,9 @@ impl App for Tooltip {
                         if over {
                             widgets::tooltip_with(ui, |ui| {
                                 ui.with(NodeSpec::column().gap(4.0), |ui| {
-                                    for (k, what) in [("⌘S", "save"), ("⌘R", "run"), ("⌘⇧P", "the palette")] {
+                                    for (k, what) in [("⌘S", "save"), ("⌘R", "run"), ("⌘-Shift-P", "the palette")] {
                                         ui.with(NodeSpec::row().gap(10.0), |ui| {
-                                            ui.with(NodeSpec::row().width(Sizing::Fixed(40.0)), |ui| {
+                                            ui.with(NodeSpec::row().width(Sizing::Fixed(80.0)), |ui| {
                                                 ui.text(k, TextStyle::new(12.0).color(t.accent).mono());
                                             });
                                             ui.text(what, TextStyle::new(12.0).color(t.muted));
@@ -137,8 +137,8 @@ impl App for Tooltip {
 }
 
 impl Example for Tooltip {
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default().size(520.0, 360.0)
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default().size(520.0, 360.0)
     }
 
     /// The badge's tooltip is in the frame until a click, then only while
@@ -181,4 +181,4 @@ impl Example for Tooltip {
     }
 }
 
-kui_harness::main!(Tooltip::default());
+kui_devtools::main!(Tooltip::default());

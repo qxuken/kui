@@ -18,7 +18,7 @@
 //! Run: cargo run -p kui --example fragment
 
 use kui::{App, Color, FragmentId, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value, widgets};
-use kui_harness::Example;
+use kui_devtools::Example;
 
 /// One colour as the four floats a `params` slot is. Fragment parameters
 /// are where a theme meets a shader: the WGSL says *what* a gradient or a
@@ -215,4 +215,4 @@ impl App for Demo {
 
 impl Example for Demo {}
 
-kui_harness::main!(Demo::default());
+kui_devtools::main!(Demo::default());

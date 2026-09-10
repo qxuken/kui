@@ -19,7 +19,7 @@
 
 use kui::widgets;
 use kui::{Align, App, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
-use kui_harness::Example;
+use kui_devtools::Example;
 
 const TABS: [&str; 3] = ["main.rs", "layout.rs", "README"];
 
@@ -53,7 +53,10 @@ impl App for Chrome {
                                     .radius_top(6.0)
                                     .bg(if on { t.bg } else { t.surface })
                                     .hover_bg(if on { t.bg } else { t.hover })
-                                    .on_click(Value::Int(i as i64)),
+                                    .on_click(Value::map([
+                                        ("kind", Value::str("tab")),
+                                        ("name", Value::str(*name)),
+                                    ])),
                                 |ui| {
                                     ui.text(
                                         name,
@@ -111,8 +114,10 @@ impl App for Chrome {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if let Some(i) = ev.payload.as_int() {
-            self.tab = i as usize;
+        if let Some(name) = ev.payload.get("name").and_then(Value::as_str)
+            && let Some(i) = TABS.iter().position(|t| *t == name)
+        {
+            self.tab = i;
         }
     }
 }
@@ -123,16 +128,16 @@ impl Example for Chrome {
         ("double-click it", "maximize (where the platform does)"),
     ];
 
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default()
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default()
             .size(640.0, 360.0)
             .custom_titlebar()
     }
 
     /// The dock below the strip, so the strip stays the window's top edge.
-    fn dock(&self) -> kui_harness::Dock {
-        kui_harness::Dock::Bottom
+    fn dock(&self) -> kui_devtools::Dock {
+        kui_devtools::Dock::Bottom
     }
 }
 
-kui_harness::main!(Chrome::default());
+kui_devtools::main!(Chrome::default());

@@ -149,3 +149,51 @@ fn an_easing_position_reports_every_frame_it_moves() {
     frame(&mut core, 100.0, true, Value::Null, true);
     assert!(rects(&core.take_pending_events()).is_empty(), "settled");
 }
+
+/// The inspector's reading of a frame (`Core::nodes`): off until asked,
+/// then every node with its kind, label, rect and flags, in tree order.
+#[test]
+fn the_inspector_reads_the_frame_back_when_asked() {
+    use kui_core::{NodeKind, TextStyle};
+    let mut core = Core::new();
+    let build = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+        ui.with_keyed(
+            "card",
+            NodeSpec::column().pad(10.0).on_click(Value::str("go")),
+            |ui| {
+                ui.text("hello world", TextStyle::new(12.0));
+            },
+        );
+        ui.finish();
+    };
+    build(&mut core);
+    assert!(
+        core.nodes().is_empty(),
+        "nothing is copied until a tool asks"
+    );
+    core.set_inspect(true);
+    build(&mut core);
+    let nodes = core.nodes();
+    assert_eq!(nodes.len(), 3, "root, card, text");
+    assert_eq!(nodes[0].depth, 0);
+    assert_eq!(nodes[1].label.as_deref(), Some("card"));
+    assert_eq!(nodes[1].depth, 1);
+    assert!(nodes[1].flags.contains(&"click"));
+    assert_eq!(
+        nodes[1].role,
+        Some(kui_core::Role::Button),
+        "the role is the access tree's reading, derived from the click"
+    );
+    assert_eq!(nodes[0].role, Some(kui_core::Role::Window));
+    assert_eq!(nodes[1].parent, Some(nodes[0].key));
+    assert_eq!(nodes[2].kind, NodeKind::Text);
+    assert_eq!(nodes[2].text.as_deref(), Some("hello world"));
+    assert!(
+        nodes[2].rect.x >= 10.0 && nodes[2].rect.w > 0.0,
+        "laid out: {:?}",
+        nodes[2].rect
+    );
+    core.set_inspect(false);
+    assert!(core.nodes().is_empty());
+}

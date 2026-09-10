@@ -37,7 +37,7 @@
 use kui::{
     App, Color, CursorShape, NodeSpec, Rect, Sizing, TextStyle, Ui, UiEvent, Value, WindowConfig,
 };
-use kui_harness::Example;
+use kui_devtools::Example;
 
 /// The list is twelve rows of 24 plus the panel's padding — deliberately
 /// twice the window's height, so "taller than the window" is not a detail
@@ -277,16 +277,16 @@ impl Example for Combo {
 
     /// Small on purpose: the list is twice this tall, so it cannot be an
     /// in-window float however `fit` is asked to place it.
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default().size(360.0, 150.0)
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default().size(360.0, 150.0)
     }
 
     /// No dock unless asked: the point is a list taller than the frame it
     /// opens from, and a dock beside it would make the frame tall enough
     /// to hold it. `--dock side` still works for the readout.
-    fn dock(&self) -> kui_harness::Dock {
-        kui_harness::Dock::Off
+    fn dock(&self) -> kui_devtools::Dock {
+        kui_devtools::Dock::Off
     }
 }
 
-kui_harness::main!(Combo::default());
+kui_devtools::main!(Combo::default());

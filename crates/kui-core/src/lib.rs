@@ -75,6 +75,7 @@ pub use keyframes::Keyframe;
 pub use line::{LineId, LineStore, Stroke};
 pub use menu::{Accel, BarMenu, Menu, MenuAction, MenuBar, MenuItem, MenuRole};
 pub use resources::{FontId, FragmentId, ImageId, Resources, SessionId, SoundId};
+pub use runtime::inspect::{NodeInfo, NodeKind};
 pub use runtime::{Core, Extension};
 pub use scroll::{MAX_UNDECLARED_SCROLLS, ScrollGeometry};
 pub use select::{CellEnd, CellSelection, CopyRequest, Endpoint, Grain, RangeEnd, Selection};

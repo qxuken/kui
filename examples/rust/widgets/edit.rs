@@ -15,7 +15,7 @@
 use kui::{
     Align, App, Core, EditOptions, FontFamily, Key, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value,
 };
-use kui_harness::{Drive, Example};
+use kui_devtools::{Drive, Example};
 
 const INITIAL: &str = "\
 # kui edit
@@ -162,7 +162,7 @@ impl Edit {
 
 impl Example for Edit {
     const KEYS: &'static [(&'static str, &'static str)] = &[
-        ("⇧ arrows", "select"),
+        ("Shift-arrows", "select"),
         ("⌥/⌘ arrows", "word / line motion"),
         ("⌘C ⌘X ⌘V", "clipboard"),
         ("⌘Z", "undo"),
@@ -200,4 +200,4 @@ impl Example for Edit {
     }
 }
 
-kui_harness::main!(Edit::default());
+kui_devtools::main!(Edit::default());

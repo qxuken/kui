@@ -26,7 +26,7 @@ use kui::{
     Align, App, Core, EditOptions, Key, Menu, MenuItem, MenuRole, NodeSpec, Sizing, Span,
     TextStyle, Theme, Ui, UiEvent, Value, Vec2,
 };
-use kui_harness::{Drive, Example};
+use kui_devtools::{Drive, Example};
 
 const ROWS: [&str; 4] = ["alpha", "bravo", "charlie", "delta"];
 
@@ -254,8 +254,8 @@ impl Example for Demo {
     const KEYS: &'static [(&'static str, &'static str)] =
         &[("right-click", "a menu, where one is offered")];
 
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default().size(700.0, 560.0)
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default().size(700.0, 560.0)
     }
 
     /// Drawn menus, so the rows are nodes a drive can click on every host.
@@ -376,4 +376,4 @@ impl Example for Demo {
     }
 }
 
-kui_harness::main!(Demo::default());
+kui_devtools::main!(Demo::default());

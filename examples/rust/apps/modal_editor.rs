@@ -17,7 +17,7 @@ use kui::widgets;
 use kui::{
     Align, App, Color, NodeSpec, Role, Sizing, TextStyle, Theme, Ui, UiEvent, Value, WindowCommand,
 };
-use kui_harness::Example;
+use kui_devtools::Example;
 
 const FONT: f32 = 13.5;
 const LH: f32 = 20.0;
@@ -1007,15 +1007,15 @@ impl Example for ModalEditor {
         (":help", "the rest, in the minibuffer"),
     ];
 
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default()
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default()
             .size(900.0, 700.0)
             .custom_titlebar()
     }
 
-    fn dock(&self) -> kui_harness::Dock {
-        kui_harness::Dock::Bottom
+    fn dock(&self) -> kui_devtools::Dock {
+        kui_devtools::Dock::Bottom
     }
 }
 
-kui_harness::main!(ModalEditor::new());
+kui_devtools::main!(ModalEditor::new());

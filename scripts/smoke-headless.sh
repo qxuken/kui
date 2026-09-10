@@ -7,7 +7,7 @@
 #
 # Who is in it is read, not written: each crate's Cargo.toml lists its
 # examples with a drive under `[package.metadata.kui] headless = [...]`
-# (a test in examples/harness pins every name there to an `[[example]]`),
+# (a test in examples/devtools pins every name there to an `[[example]]`),
 # and examples/node/package.json's `smoke` script is the Node half. An
 # example listed without a drive exits 2 with "no headless drive", so a
 # name added here before its drive goes red rather than passing quietly.

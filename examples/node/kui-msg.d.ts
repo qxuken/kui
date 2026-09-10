@@ -7,7 +7,7 @@
 import type {} from '@qxuken/kui/jsx-runtime';
 
 type AppMessages =
-  // The harness's own (harness.tsx): its dock buttons and its root sink.
+  // The devtools' own (devtools.tsx): its dock buttons and its root sink.
   | { kind: '@harness'; what: string }
   // apps/counter.tsx and features/window.tsx.
   | { kind: 'add'; by: number }

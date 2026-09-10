@@ -139,6 +139,13 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
   const handler = typeof opts.effects === 'function' ? opts.effects : null;
   let pending = [];
   let unread = [];
+  // A model changed since the last frame by a `dispatch` the loop did not
+  // make itself — an effect handler's, or the app's own from a timer or a
+  // promise. `step()` draws on it, the way it draws on an event: without
+  // this a "loaded" message an effect dispatched sat in the model until
+  // the next OS event happened to redraw (the devtools' tree tab asked for
+  // a frame after its own and got none).
+  let dirty = false;
   // Reads what `update` (or `init`) returned: a branded `withEffects` queues
   // its effects and sets the model unless that model is `undefined`, which
   // keeps the current one; anything else but `undefined` is the model.
@@ -152,9 +159,11 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
       }
       if (next.model === undefined) return false;
       model = next.model;
+      dirty = true;
       return true;
     }
     model = next;
+    dirty = true;
     return true;
   }
   // Hands the handler what `update` returned since the last flush. With no
@@ -247,6 +256,7 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
   // `measureText` to size a column to its widest label, `size()` to pick a
   // tier — without the app parking it in a module-level variable.
   function draw() {
+    dirty = false;
     stamp?.(at() / 1000);
     const declared = windows ? windows(model) : undefined;
     for (const name of open()) {
@@ -357,6 +367,7 @@ function createLoop({ init, update, view, tick, windows }, opts, surface, clock)
         drainWarnings();
         redraw = drainEvents();
         if (ticksTo(at(), false)) redraw = true;
+        if (dirty) redraw = true;
         // A tick that returned effects and no model draws nothing, so the
         // step that owed them is what hands them on.
         if (redraw) draw();

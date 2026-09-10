@@ -25,38 +25,45 @@ and `cargo run` needs the right `-p` — the tables below have it. The
 published crates do not carry their examples in the tarball (cargo drops
 a target whose source sits outside the package); read them here.
 
-## The harness
+## The devtools
 
-Every example runs inside [`harness/`](harness) (Rust; `node/harness.tsx`
+Every example runs inside [`devtools/`](devtools) (Rust; `node/devtools.tsx`
 is its twin for Node, and `c/common.h` what the C programs share). It owns
 what is not the subject: the window title, the command line, and a
-**dock** beside the example's tree —
+**dock** beside the example's tree. Its header is the example's name, the
+frame counter (`n / KUI_SMOKE_FRAMES` when one is set) and an icon strip
+— base ◐/☀/☾, accent ●, menus ☰, dock ▐/▄/✕ — each with a tooltip saying
+what it is set to. Under it, three tabs:
 
-- the latency graph and the frame counter (`n / KUI_SMOKE_FRAMES` when
-  one is set);
-- the **event stream**: every `UiEvent` handed to the example, with the
-  frame it arrived on and its payload printed as the data it is, plus
-  every `kui: warning` the core raised;
-- the **status block**: what the runtime believes right now, each row read
-  from the door it comes from — `env.system`, the theme and its source,
-  the window and every open one, the viewport and refresh rate, the
-  focused node, the modifiers, `env.audio` — and, beside each fact the
-  harness can change, a small button that changes it;
-- the **key legend** the example declares.
+- **facts**: the latency graph; the **status block** — what the runtime
+  believes right now, each row read from the door it comes from:
+  `env.system`, the theme and its source, the window and every open one,
+  the viewport and refresh rate, the focused node, the modifiers,
+  `env.audio`; and the **key legend** the example declares;
+- **events**: every `UiEvent` handed to the example, with the frame it
+  arrived on and its payload printed as the data it is, plus every
+  `kui: warning` the core raised;
+- **tree**: the last frame's nodes (`Core::set_inspect` / `nodes()`,
+  `win.nodes()` in Node), indented, each with its label, role and the
+  declarations that make it interactive. Click one: its rect is outlined
+  on the example and an **inspector** opens under the tree — key, kind,
+  label, role, rect, sizing, direction, background, flags, text.
 
 The same flags everywhere: `--headless` runs the example's self-check and
 exits non-zero on a wrong answer; `--dock side|bottom|off` places the
 dock; `--light` / `--dark` pin the theme base and `--accent #rrggbb` the
 accent; `--size WxH` the example's area. The chords are
 `Ctrl+Shift+<letter>` on every platform: `T` cycles the base, `A` the
-accent, `M` toggles native menus, `D` moves the dock, `C` clears the
-stream.
+accent, `M` toggles native menus (the popups *and* the bar — on macOS
+that is how the drawn bar is seen), `D` moves the dock, `N` the tab, `C`
+clears the stream.
 
 Two rules the dock imposes, both what an extension in a slot already lives
 under (ADR 0014): an example addresses its nodes from the key its `open`
 returned, never from `Key::ROOT`, and it opens its own container rather
 than configuring the root. The dock carries `role = none`, so neither the
-Tab ring nor assistive technology sees it.
+Tab ring nor assistive technology sees it; a Tab the devtools' own key
+sink hears is handed on to the ring.
 
 ## The smoke rounds
 
@@ -70,7 +77,7 @@ script reads rather than a list somebody keeps:
 | **headless** | `[package.metadata.kui] headless = [...]` in the crate's `Cargo.toml`; `npm run smoke` for Node; the round in `c/build.sh` | [`scripts/smoke-headless.sh --run`](../scripts/smoke-headless.sh), which CI runs |
 | **by hand** | the *By hand* column below | the round before a tag; results into `### Native verification` in the CHANGELOG |
 
-Two tests in the harness pin the mirrors: every `[[example]]` is linked
+Two tests in the devtools crate pin the mirrors: every `[[example]]` is linked
 from this file, and every `headless` name is an example.
 
 ## Rust — [`rust/`](rust)
@@ -117,7 +124,7 @@ table says so.
 | [`enter_exit.rs`](rust/features/enter_exit.rs) | `enter` / `exit`: toasts that slide in and back out, the departing copy the core keeps | | Windows: drag the title bar mid-spring (W3) |
 | [`exit_budget.rs`](rust/features/exit_budget.rs) | The exit budget at its boundary (ADR 0012): whole or not at all, the newest outranks the old, a virtual list keeps the picture small | | the boundary watch |
 | [`popup.rs`](rust/features/popup.rs) | `WindowKind::Popup`: a combobox whose list is taller than the window; `--dock off` by default so the frame stays small | | press in the owner, drag into the popup, release on an item (ADR 0009) |
-| [`theme.rs`](rust/features/theme.rs) | The token reference: every `Theme` role as a swatch over every stock widget that reads it; the harness's base and accent controls are the switch | | |
+| [`theme.rs`](rust/features/theme.rs) | The token reference: every `Theme` role as a swatch over every stock widget that reads it; the devtools' base and accent icons are the switch | | |
 | [`accessibility.rs`](rust/features/accessibility.rs) | Every accessibility prop in one window, the fixture the platform audit drives; `--dock off` by default | | `scripts/ax-audit.swift` (106 checks) |
 | [`waker.rs`](rust/features/waker.rs) | A thread feeds lines and wakes the parked loop through `kui::Waker`; `KUI_WAKER_LINES=n` closes after n | | `KUI_WAKER_LINES` |
 

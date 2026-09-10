@@ -1647,8 +1647,15 @@ impl<A: App> Shell<A> {
             };
             // Only the main window's menu: a popup window's owner is what
             // a context menu belongs to, and no pane but the main one has
-            // asked for one yet.
-            let Some(i) = self.panes.iter().position(|p| p.core.menu().is_some()) else {
+            // asked for one yet. And only a core that still says the
+            // platform shows menus: an app that opted out with
+            // `set_native_menus(false)` is drawing this one itself, and
+            // presenting it here as well put the two on screen together.
+            let Some(i) = self
+                .panes
+                .iter()
+                .position(|p| p.core.menu().is_some() && p.core.native_menus())
+            else {
                 self.menu_shown = false;
                 return;
             };
@@ -1718,9 +1725,24 @@ impl<A: App> Shell<A> {
                 .or_else(|| self.panes.iter().position(declared));
             if let Some(i) = front {
                 let pane = &self.panes[i];
-                let stamp = (pane.core.env.window.id, pane.core.menu_bar_revision());
+                // A core told to draw the bar itself (`set_native_menu_bar(false)`
+                // — a devtool comparing the two, a test) gets the platform's
+                // taken away rather than both at once: an empty declaration
+                // is how `MacMenuBar` is told there is no bar. Stamped as
+                // revision 0, which a declared bar never is.
+                let drawn = !pane.core.native_menu_bar();
+                let revision = if drawn {
+                    0
+                } else {
+                    pane.core.menu_bar_revision()
+                };
+                let stamp = (pane.core.env.window.id, revision);
                 if self.applied_menu_bar != Some(stamp) {
-                    native.apply(pane.core.menu_bar().expect("checked"));
+                    if drawn {
+                        native.apply(&kui_core::MenuBar::default());
+                    } else {
+                        native.apply(pane.core.menu_bar().expect("checked"));
+                    }
                     self.applied_menu_bar = Some(stamp);
                 }
             }

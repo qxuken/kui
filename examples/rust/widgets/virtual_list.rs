@@ -34,7 +34,7 @@ use kui::{
     Align, App, Color, Core, Key, NodeSpec, Role, Sizing, TextStyle, TextWrap, Theme, Ui, UiEvent,
     Value, widgets,
 };
-use kui_harness::{Drive, Example};
+use kui_devtools::{Drive, Example};
 
 const ROWS: usize = 10_000;
 const ROW_H: f32 = 28.0;
@@ -100,7 +100,10 @@ fn row(ui: &mut Ui<'_>, i: usize, selected: usize) {
             .cross_align(Align::Center)
             .bg(bg)
             .hover_bg(bg.mix(t.accent, 0.12))
-            .on_click(Value::Int(i as i64))
+            .on_click(Value::map([
+                ("kind", Value::str("pick")),
+                ("row", Value::Int(i as i64)),
+            ]))
             .role(Role::ListItem)
             .label(format!("row {i} of {ROWS}")),
         |ui| {
@@ -226,7 +229,10 @@ impl VirtualList {
                         .pad(6.0)
                         .bg(bg)
                         .hover_bg(bg.mix(t.accent, 0.12))
-                        .on_click(Value::Int(i as i64))
+                        .on_click(Value::map([
+                            ("kind", Value::str("pick")),
+                            ("row", Value::Int(i as i64)),
+                        ]))
                         .role(Role::ListItem)
                         .label(format!("row {i} of {ROWS}")),
                     |ui| ui.text(&line_of(i), body(&t)),
@@ -272,9 +278,8 @@ impl App for VirtualList {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        // A row's `on_click` payload arrives verbatim — it is the row's
-        // index, and there is nothing else to decode.
-        if let Some(i) = ev.payload.as_int() {
+        // A row's `on_click` payload arrives verbatim: the row it named.
+        if let Some(i) = ev.payload.get("row").and_then(Value::as_int) {
             self.selected = i as usize;
         }
     }
@@ -293,8 +298,8 @@ impl Example for VirtualList {
     ];
     const KEYS: &'static [(&'static str, &'static str)] = &[("wheel", "scroll 10,000 rows")];
 
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default().size(560.0, 480.0)
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default().size(560.0, 480.0)
     }
 
     /// The same view against a bare `Core`. Two frames, because the first
@@ -367,7 +372,7 @@ fn main() {
     } else {
         Mode::Widget
     };
-    kui_harness::run(
+    kui_devtools::run(
         env!("CARGO_BIN_NAME"),
         VirtualList {
             selected: 0,

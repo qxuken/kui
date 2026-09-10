@@ -9,8 +9,10 @@
 //! Its rows are the rows a context menu has, so View ▸ Wrap checks itself
 //! (`checked`, rebuilt from the model every frame with nothing retained),
 //! View ▸ Clear is `enabled` only when there is something to clear, Edit
-//! ▸ Copy is the same Copy the core performs itself, and every choice —
-//! standard or the app's own — arrives as the same one `menu` event.
+//! ▸ Select All and Copy are the same ones the core performs itself (the
+//! card is a selection scope, so they have something to act on), and
+//! every choice — standard or the app's own — arrives as the same one
+//! `menu` event.
 //!
 //! Run: cargo run -p kui --example menu_bar [-- --headless]
 
@@ -19,7 +21,7 @@ use kui::{
     Align, App, BarMenu, Core, MenuBar, MenuItem, MenuRole, NodeSpec, Sizing, Span, TextStyle,
     TextWrap, Ui, UiEvent, Value,
 };
-use kui_harness::{Drive, Example};
+use kui_devtools::{Drive, Example};
 
 #[derive(Default)]
 struct Demo {
@@ -93,6 +95,9 @@ impl App for Demo {
                     .gap(12.0)
                     .cross_align(Align::Center),
                 |ui| {
+                    // A selection scope, so Edit ▸ Select All and Copy —
+                    // the standard rows the core performs itself — have
+                    // something to act on.
                     ui.with(
                         NodeSpec::column()
                             .width(Sizing::Grow(1.0))
@@ -101,7 +106,8 @@ impl App for Demo {
                             .gap(10.0)
                             .bg(t.surface)
                             .radius(10.0)
-                            .border(1.0, t.border),
+                            .border(1.0, t.border)
+                            .selectable(),
                         |ui| {
                             ui.text(
                                 "View ▸ Wrap the paragraph",
@@ -185,8 +191,8 @@ impl Example for Demo {
     const KEYS: &'static [(&'static str, &'static str)] =
         &[("⌘N", "Demo ▸ Add a note"), ("⌘⇧W", "View ▸ Wrap")];
 
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default().size(640.0, 360.0)
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default().size(640.0, 360.0)
     }
 
     /// Drawn menus, so the strip is in the frame on every host — which
@@ -245,8 +251,48 @@ impl Example for Demo {
         d.check(
             !self.wrap,
             "the platform's report of the same row is the same event",
+        )?;
+
+        // And by pointer, the way a person does it: a press on the View
+        // title opens it, a press on its first row chooses it — and the
+        // paragraph is taller wrapped than not.
+        d.frame(self);
+        let height = |d: &mut Drive<'_>| -> f32 {
+            d.core
+                .access_tree()
+                .nodes
+                .iter()
+                .find(|n| {
+                    n.name
+                        .as_deref()
+                        .is_some_and(|s| s.starts_with("A paragraph whose"))
+                })
+                .map(|n| n.rect.h)
+                .unwrap_or(-1.0)
+        };
+        let unwrapped = height(&mut d);
+        // The titles are keyed under the bar by index, then by the one
+        // title key; View is the third.
+        let bar = d.key_of(widgets::MENU_BAR_KEY).ok_or("no bar")?;
+        let title = bar.index(2).str("kui.menubar.title");
+        let tr = d.rect_of(title).ok_or("the title has no rect")?;
+        d.click(self, tr.x + tr.w / 2.0, tr.y + tr.h / 2.0);
+        d.frame(self);
+        let row = d
+            .key_of("kui.menubar.menu")
+            .ok_or("the click did not open View")?
+            .index(0);
+        let rr = d.rect_of(row).ok_or("the row has no rect")?;
+        d.click(self, rr.x + rr.w / 2.0, rr.y + rr.h / 2.0);
+        d.frame(self);
+        d.check(self.wrap, "a pointer press on the row chooses it")?;
+        let wrapped = height(&mut d);
+        println!("paragraph: {unwrapped} unwrapped, {wrapped} wrapped");
+        d.check(
+            wrapped > unwrapped + 10.0,
+            "and the paragraph wraps onto more lines",
         )
     }
 }
 
-kui_harness::main!(Demo::default());
+kui_devtools::main!(Demo::default());

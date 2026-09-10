@@ -54,6 +54,7 @@ mod dispatch;
 mod emit;
 mod fills;
 mod focus;
+pub mod inspect;
 mod menu_api;
 mod menubar_api;
 mod resources_api;
@@ -162,6 +163,10 @@ pub struct Core {
     /// focus leaving synthesizes the missing releases from it.
     keys_held: Vec<KeyPress>,
     pub(crate) tree: Tree,
+    /// Whether `finish_frame` copies the frame into `inspected` (see
+    /// `runtime/inspect.rs`); off unless a devtool asked.
+    inspect: bool,
+    inspected: Vec<inspect::NodeInfo>,
     /// The previous frame's tree, kept only while a frame declares `exit`
     /// — `begin_frame` swaps the two buffers instead of clearing one, so
     /// the frame that notices a node gone still has the node. Empty (and
@@ -509,6 +514,8 @@ impl Core {
             access_inputs: None,
             access_rebuilds: 0,
             tree: Tree::new(),
+            inspect: false,
+            inspected: Vec::new(),
             prev_tree: Tree::new(),
             lines: Default::default(),
             fragments: Default::default(),

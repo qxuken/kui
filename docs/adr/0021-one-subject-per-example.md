@@ -277,7 +277,8 @@ Fourteen examples call `latency_hud`, nine draw a titlebar, six parse
 `--headless` by hand, every `main` spells its own `kui — <name>` title,
 and exactly one — `theme` — can be flipped to the other base. All of that
 is scaffolding, none of it is a subject, and each copy is a place a
-convention can drift. It moves into `examples/harness`, an unpublished
+convention can drift. It moves into `examples/harness` (now `examples/devtools`, see *What the
+building changed*, 11), an unpublished
 workspace crate that `kui`, `kui-ffi` and `kui-lua` take as a
 dev-dependency, with a `Harness<A: Example>` that implements `App` and
 wraps the example's.
@@ -469,6 +470,51 @@ additions, each found by running it:
     (with `hover_group`), `focus`, `drag`, `titlebar` (with
     `window_buttons`), `tooltip`, `button` — each with a drive, seven
     more names in `headless = [...]`.
+
+11. **A round of the by-hand smoke on the built thing** (2026-09-10)
+    renamed and reshaped the harness. The crate is `examples/devtools`
+    (`kui-devtools`, `kui_devtools::Example`, `devtools.tsx`): it had
+    grown a tree view, so "harness" undersold it. The dock's header is
+    the example's name, the frame counter and an **icon strip** in the
+    top-right — base ◐/☀/☾, accent ●, menus ☰, dock ▐/▄/✕ — each icon's
+    tooltip saying what it is set to and which chord does the same; the
+    small buttons beside the status rows (5) are gone. Under the header,
+    **three tabs** (`Ctrl+Shift+N` cycles them): *facts* is the latency
+    graph, the status block and the key legend; *events* the stream;
+    *tree* the last frame's nodes, indented, with its label, role and
+    flags, and a click on one draws the node's rect on the example and
+    opens an **inspector** below — key, kind, label, role, rect, sizing,
+    direction, background, flags, text. That tab is what
+    `Core::set_inspect` / `Core::nodes()` exist for: a per-frame
+    `NodeInfo` snapshot taken at the end of `finish_frame`, off unless a
+    tool asked (the copy is O(nodes)), with the *derived* role — the
+    access tree's reading, so a box with a click says `button`. It is a
+    `KuiWindow.nodes()` / `setInspect()` / `warningsRaised()` in Node,
+    which gives the Node dock the warnings line *Not done here* had
+    declined. Six things the round found and fixed on the way:
+    - the runner presented the platform's context menu *and* drew the
+      core's — `pump_native_menu` now asks `core.native_menus()` first —
+      and it kept the macOS bar up over a core told to draw its own, so
+      `pump_menu_bar` hands AppKit an empty bar for that core (the
+      devtools' menus toggle sets both `set_native_menus` and
+      `set_native_menu_bar`, which is how the drawn bar is seen on macOS
+      at all);
+    - the harness's root sink kept Tab (a focused sink keeps every key)
+      and swallowed the example's menu-bar choices (root-keyed events
+      were all read as its own): it now owns only events tagged with its
+      sink and `modifiers` on the root, and forwards a Tab it heard to
+      `focus_next` / `focus_prev` on the next view;
+    - a `dispatch` the Node loop did not make itself — an effect
+      handler's, a timer's — changed the model and drew nothing until the
+      next OS event; `step()` now draws on it (`dirty`), which ADR 0013's
+      "lands in the next turn" had implied and never pinned;
+    - `apps/counter` had an `edit` field (that is `widgets/edit`'s
+      subject); `widgets/image` still carried a list; `features/drag`'s
+      card was clamped only at the top-left; `enter_exit`'s toasts floated
+      in the window rather than the example's viewport; `widgets/text`'s
+      mono run overflowed its card; `titlebar` and `virtual_list` posted
+      payloads without a `kind`; `⇧` had no glyph in the UI font
+      (spelled "Shift" now); `transition` gained the `Bouncy` lane.
 
 Two things the drives corrected in the *prose* of this ADR: `on_hover` is
 per node — a `hover_group` lights together, it does not report together —
@@ -662,10 +708,12 @@ Phase 3 — the gaps, in decision 5's order:
   different ADR.
 - No C dock: `common.h` is the whole of the C harness (see *What the
   building changed*, 8).
-- The Node dock has no warnings in its stream: the addon exposes
-  `warnings()` (the drain) and not the log, and adding a binding for
-  `warnings_raised` was not worth a `.d.ts` regeneration for a stream
-  the Rust dock already has. A follow-up if a Node field report wants it.
+- No popup window for the tree view: it is a tab in the dock, which
+  is a column already and shares the example's frame, so the outline
+  it draws on a selected node is ordinary layout in the same tree. A
+  second window would need the snapshot to cross windows; the day an
+  inspector wants to be beside a full-screen example, that is the
+  reason to build it.
 - `features/modal` — the dialog with `initial_focus`, Tab confined,
   `dismiss` — is still shown inside `apps/counter` and `features/focus`
   rather than as its own page; the counter's menu is the Rosetta copy of

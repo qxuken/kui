@@ -19,7 +19,7 @@
 use kui::audio::{blip, wav_pcm16};
 use kui::widgets;
 use kui::{Align, App, AudioSpec, Core, NodeSpec, SoundId, TextStyle, Ui, UiEvent, Value};
-use kui_harness::{Drive, Example};
+use kui_devtools::{Drive, Example};
 
 #[derive(Default)]
 struct Audio {
@@ -147,8 +147,8 @@ impl App for Audio {
 }
 
 impl Example for Audio {
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default().size(520.0, 360.0)
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default().size(520.0, 360.0)
     }
 
     /// A headless core has no device, so what this checks is the data:
@@ -192,4 +192,4 @@ impl Example for Audio {
     }
 }
 
-kui_harness::main!(Audio::default());
+kui_devtools::main!(Audio::default());

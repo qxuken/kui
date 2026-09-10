@@ -10,14 +10,15 @@
 //!
 //! Two things it is for: a **slider** whose value is what it was at the
 //! press plus `dx` over the track, and a **card** whose float offset is
-//! where it was at the press plus the displacement — the cursor says
-//! `grab` over one and `grabbing` during it. A drag that started on the
+//! where it was at the press plus the displacement, kept inside the stage
+//! (its own size from `on_layout`, the stage's from the event's `parent`)
+//! — the cursor says `grab` over one and `grabbing` during it. A drag that started on the
 //! card is the card's until it ends, whatever the pointer crosses.
 //!
 //! Run: cargo run -p kui --example drag [-- --headless]
 
 use kui::{Align, App, Core, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value};
-use kui_harness::{Drive, Example};
+use kui_devtools::{Drive, Example};
 
 const TRACK_W: f32 = 320.0;
 
@@ -29,6 +30,9 @@ struct Drag {
     card: (f32, f32),
     /// What was true at the press, for the displacement to add to.
     at_press: (f32, (f32, f32)),
+    /// The card's own size, from its `on_layout`, so it stays inside the
+    /// stage whose rect the drag event carries.
+    card_size: (f32, f32),
     dragging: Option<String>,
     log: String,
 }
@@ -96,7 +100,8 @@ impl App for Drag {
                                 .bg(if grabbing { t.accent_soft } else { t.raised })
                                 .radius(8.0)
                                 .border(1.0, if grabbing { t.accent } else { t.border })
-                                .on_drag(Value::str("card")),
+                                .on_drag(Value::str("card"))
+                                .on_layout(Value::str("card")),
                             |ui| {
                                 ui.text("drag me", TextStyle::new(14.0));
                                 ui.text(
@@ -113,10 +118,15 @@ impl App for Drag {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if ev.payload.get("kind").and_then(Value::as_str) != Some("drag") {
-            return;
-        }
         let num = |k: &str| ev.payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as f32;
+        match ev.payload.get("kind").and_then(Value::as_str) {
+            Some("layout") => {
+                self.card_size = (num("w"), num("h"));
+                return;
+            }
+            Some("drag") => {}
+            _ => return,
+        }
         let phase = ev
             .payload
             .get("phase")
@@ -142,10 +152,23 @@ impl App for Drag {
                 self.at_press.1 = self.card;
             }
             ("card", "move") => {
-                // The offset at the press plus the displacement: the float
-                // is placed by it on the next frame.
+                // The offset at the press plus the displacement, kept
+                // inside the stage: the event carries the parent's rect,
+                // and the card's own size came from its `on_layout`.
                 let (ox, oy) = self.at_press.1;
-                self.card = ((ox + num("dx")).max(0.0), (oy + num("dy")).max(0.0));
+                let parent = ev.payload.get("parent");
+                let dim = |k: &str| {
+                    parent
+                        .and_then(|p| p.get(k))
+                        .and_then(Value::as_float)
+                        .unwrap_or(0.0) as f32
+                };
+                let max_x = (dim("w") - self.card_size.0).max(0.0);
+                let max_y = (dim("h") - self.card_size.1).max(0.0);
+                self.card = (
+                    (ox + num("dx")).clamp(0.0, max_x),
+                    (oy + num("dy")).clamp(0.0, max_y),
+                );
             }
             ("card", "end") => self.dragging = None,
             _ => {}
@@ -154,8 +177,8 @@ impl App for Drag {
 }
 
 impl Example for Drag {
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default().size(500.0, 380.0)
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default().size(500.0, 380.0)
     }
 
     /// A drag along the track moves the value by the travel over the
@@ -211,15 +234,16 @@ impl Example for Drag {
             (self.card.0 - 60.0).abs() < 1.0 && (self.card.1 - 30.0).abs() < 1.0,
             "a move of 60,30 moves the card by 60,30",
         )?;
-        // Far outside the card and the stage: the capture keeps the drag.
+        // Far outside the card and the stage: the capture keeps the drag,
+        // and the card stops at the stage's edge.
         d.input(
             self,
-            kui::InputEvent::CursorMoved(kui::Vec2::new(x0 + 260.0, y0 + 30.0)),
+            kui::InputEvent::CursorMoved(kui::Vec2::new(x0 + 600.0, y0 + 30.0)),
         );
         d.frame(self);
         d.check(
-            (self.card.0 - 260.0).abs() < 1.0,
-            "the pointer leaving the card does not end the drag",
+            self.card.0 > 200.0 && self.card.0 + self.card_size.0 <= 420.0 + 0.5,
+            "the pointer leaving the card does not end the drag, and the card stops at the edge",
         )?;
         d.input(self, kui::InputEvent::mouse_up());
         d.check(
@@ -229,4 +253,4 @@ impl Example for Drag {
     }
 }
 
-kui_harness::main!(Drag::default());
+kui_devtools::main!(Drag::default());

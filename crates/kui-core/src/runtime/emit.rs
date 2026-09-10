@@ -319,6 +319,7 @@ impl Core {
         self.layout_frame();
         self.emit_frame();
         self.building = false;
+        self.snapshot_nodes();
     }
 
     /// The frame's first half: layout, then everything that resolves

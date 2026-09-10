@@ -1,49 +1,61 @@
-//! The harness every example in this repository runs inside
-//! (`docs/adr/0021-one-subject-per-example.md`, decision 6).
+//! The devtools every example in this repository runs inside
+//! (`docs/adr/0021-one-subject-per-example.md`, decision 6 and *What the
+//! building changed*, 11).
 //!
 //! An example is one subject — a widget, a feature, an app — and nothing
 //! else. What every example used to carry beside its subject lives here
 //! once: the window title, the `--headless` parsing, the latency HUD, the
 //! theme keys one example had, and a **dock** the example never draws
-//! into. The dock shows what the runtime is doing while the example runs:
+//! into. The dock shows what the runtime is doing while the example runs.
+//! Its header is the example's name, the frame counter (`n /
+//! KUI_SMOKE_FRAMES` when one is set, so a smoke run is legible on
+//! screen) and an icon strip — the theme base, the accent, native menus
+//! on or off, where the dock sits — each icon's tooltip saying what it is
+//! set to. Under it, three tabs:
 //!
-//! - the latency graph and the frame counter (`n / KUI_SMOKE_FRAMES` when
-//!   one is set, so a smoke run is legible on screen);
-//! - the **event stream** — every `UiEvent` handed to the example, with
-//!   the frame it arrived on and its payload printed as the data it is,
-//!   plus every `kui: warning` the core raised, marked;
-//! - the **status block** — what the runtime believes right now, each
-//!   row read from the door it comes from: `env.system`, `env.window`,
-//!   the viewport, the focused node and whether its ring shows, the
-//!   modifiers, native menus, every open window, and `env.audio`;
-//! - the **controls** — the theme base and accent, native menus on or
-//!   off, where the dock sits, and clear — the same handler the chords
-//!   below reach;
-//! - the **key legend**, from [`Example::KEYS`].
+//! - **facts**: the latency graph; the **status block** — what the
+//!   runtime believes right now, each row read from the door it comes
+//!   from: `env.system`, `env.window`, the viewport, the focused node and
+//!   whether its ring shows, the modifiers, native menus, every open
+//!   window, and `env.audio`; and the **key legend**, from
+//!   [`Example::KEYS`];
+//! - **events**: every `UiEvent` handed to the example, with the frame it
+//!   arrived on and its payload printed as the data it is, plus every
+//!   `kui: warning` the core raised, marked;
+//! - **tree**: the last frame's nodes ([`Core::nodes`], turned on by
+//!   [`Core::set_inspect`] while the tab is up), indented, each with its
+//!   label, its role and the declarations that make it interactive; a
+//!   click on one outlines it on the example and opens an inspector under
+//!   the tree.
 //!
 //! The chords are `Ctrl+Shift+<letter>` on every platform, a family no
 //! example keymap uses: `T` cycles the base (follow the OS → light →
-//! dark), `A` the accent, `M` toggles native menus, `D` moves the dock
-//! (side → bottom → off), `C` clears the stream.
+//! dark), `A` the accent, `M` toggles native menus (the popups and the
+//! bar), `D` moves the dock (side → bottom → off), `N` the tab, `C`
+//! clears the stream — the same handler the icons reach.
 //!
 //! The dock is a sibling of the example's tree, so the example's root is
-//! a child of the harness's. Two rules follow, and both are what an
+//! a child of the devtools'. Two rules follow, and both are what an
 //! extension in a slot already lives under (ADR 0014): an example
 //! addresses its nodes from the key its `open` returned, never from
 //! `Key::ROOT`; and it opens its own container rather than configuring
-//! the root, which is the harness's. The dock carries `role = none`, so
+//! the root, which is the devtools'. The dock carries `role = none`, so
 //! neither the Tab ring nor assistive technology sees it — the example's
-//! access tree is the example's. `--dock off` also declares no key sink
-//! and takes no focus, which is what the accessibility audit runs under.
+//! access tree is the example's. The root is the devtools' key sink, and
+//! it owns only what lands there tagged as its own (its chords) — a Tab
+//! it hears is handed on to the ring, and everything else on the root (a
+//! menu-bar choice, a resize) is the example's. `--dock off` also
+//! declares no key sink and takes no focus, which is what the
+//! accessibility audit runs under.
 //!
-//! One `main` per example: `kui_harness::main!(Counter::default())`.
+//! One `main` per example: `kui_devtools::main!(Counter::default())`.
 
 use std::collections::VecDeque;
 
 use kui::widgets;
 use kui::{
-    Align, App, Appearance, Chrome, Color, Core, Extensions, Key, Min, NodeSpec, Role, Sizing,
-    TextStyle, Theme, ThemeSource, Ui, UiEvent, Value, Vec2, Waker,
+    Align, App, Appearance, Chrome, Color, Core, Extensions, FloatConfig, Key, Min, NodeSpec, Role,
+    Sizing, TextStyle, Theme, ThemeSource, Ui, UiEvent, Value, Vec2, Waker,
 };
 
 mod drive;
@@ -390,7 +402,7 @@ pub fn run_with<E: Example>(name: &str, mut example: E, cli: Cli) -> i32 {
     }
 }
 
-/// `fn main` for an example: `kui_harness::main!(Counter::default());`.
+/// `fn main` for an example: `kui_devtools::main!(Counter::default());`.
 #[macro_export]
 macro_rules! main {
     ($example:expr) => {
@@ -435,6 +447,44 @@ pub struct Harness<E> {
     /// Whether the stream grew since it was last scrolled to its end.
     stream_dirty: bool,
     smoke_frames: Option<u64>,
+    /// A Tab (`Some(forward)`) that landed on the root sink, to hand to
+    /// the ring on the next frame: a sink that holds focus keeps every
+    /// key, and the harness's must not keep the one that walks the ring.
+    step: Option<bool>,
+    /// Which of the dock's tabs is showing.
+    tab: Tab,
+    /// The node the tree tab has selected, outlined over the example.
+    selected: Option<Key>,
+    /// Whether `Core::set_inspect` has been asked for (once).
+    inspecting: bool,
+}
+
+/// The dock's tabs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Tab {
+    /// The runtime's facts, the latency graph, the key legend.
+    Facts,
+    /// The event stream.
+    #[default]
+    Events,
+    /// The frame's nodes, and the one selected in detail.
+    Tree,
+}
+
+impl Tab {
+    const ALL: [Tab; 3] = [Tab::Facts, Tab::Events, Tab::Tree];
+
+    fn name(self) -> &'static str {
+        match self {
+            Tab::Facts => "facts",
+            Tab::Events => "events",
+            Tab::Tree => "tree",
+        }
+    }
+
+    fn parse(s: &str) -> Option<Tab> {
+        Self::ALL.into_iter().find(|t| t.name() == s)
+    }
 }
 
 impl<E: Example> Harness<E> {
@@ -458,6 +508,10 @@ impl<E: Example> Harness<E> {
             frames: 0,
             warnings_seen: 0,
             stream_dirty: false,
+            step: None,
+            tab: Tab::default(),
+            selected: None,
+            inspecting: false,
             smoke_frames: std::env::var("KUI_SMOKE_FRAMES")
                 .ok()
                 .and_then(|s| s.parse().ok()),
@@ -556,7 +610,21 @@ impl<E: Example> Harness<E> {
             "clear" => {
                 self.stream.clear();
             }
-            _ => return false,
+            "tab" => {
+                let i = Tab::ALL.iter().position(|t| *t == self.tab).unwrap_or(0);
+                self.tab = Tab::ALL[(i + 1) % Tab::ALL.len()];
+            }
+            other => {
+                if let Some(tab) = other.strip_prefix("tab:").and_then(Tab::parse) {
+                    self.tab = tab;
+                } else if let Some(hex) = other.strip_prefix("node:") {
+                    // A tree row: select it, or unselect the selected one.
+                    let key = u64::from_str_radix(hex, 16).ok().map(Key);
+                    self.selected = if self.selected == key { None } else { key };
+                } else {
+                    return false;
+                }
+            }
         }
         true
     }
@@ -588,6 +656,7 @@ impl<E: Example> Harness<E> {
             Some('m') => "menus",
             Some('d') => "dock",
             Some('c') => "clear",
+            Some('n') => "tab",
             _ => return false,
         };
         self.act(what)
@@ -600,79 +669,151 @@ impl<E: Example> Harness<E> {
                 .width(Sizing::Fixed(DOCK_SIDE_W))
                 .height(Sizing::Grow(1.0))
         } else {
-            NodeSpec::row()
+            NodeSpec::column()
                 .width(Sizing::Grow(1.0))
                 .height(Sizing::Fixed(DOCK_BOTTOM_H))
         }
         .bg(t.surface)
         .border(1.0, t.border)
         .pad(10.0)
-        .gap(10.0)
+        .gap(8.0)
+        .clip()
         // Decorative to assistive technology and skipped by the Tab ring,
         // subtree and all: the example's access tree stays the example's.
         .role(Role::None);
-        ui.open_keyed("dock", spec.clip());
-        if side {
-            // Everything but the stream refuses to shrink: when the
-            // window is short the stream gives way, and what is left
-            // is clipped at the dock's bottom rather than overlapped.
-            fixed(ui, |ui| self.header(ui, t));
-            fixed(ui, widgets::latency_graph);
-            self.status(ui, t);
-            self.stream_panel(ui, t, Sizing::Grow(1.0));
-            fixed(ui, |ui| self.legend(ui, t));
-        } else {
-            // Two columns: the facts, then what happens. The stream grows
-            // into whatever width the window has left, which on a narrow
-            // example is most of it.
-            ui.with(
-                NodeSpec::column()
-                    .width(Sizing::Fixed(290.0))
-                    .height(Sizing::Grow(1.0))
-                    .gap(8.0)
-                    .scroll_y(),
-                |ui| {
-                    self.header(ui, t);
-                    self.status(ui, t);
-                },
-            );
-            ui.with(
-                NodeSpec::column()
-                    .width(Sizing::Grow(1.0))
-                    .height(Sizing::Grow(1.0))
-                    .gap(8.0),
-                |ui| {
-                    fixed(ui, widgets::latency_graph);
-                    self.stream_panel(ui, t, Sizing::Grow(1.0));
-                    fixed(ui, |ui| self.legend(ui, t));
-                },
-            );
+        ui.open_keyed("dock", spec);
+        fixed(ui, |ui| self.header(ui, t));
+        fixed(ui, |ui| self.tabs(ui, t));
+        match self.tab {
+            Tab::Facts => {
+                ui.with(
+                    NodeSpec::column()
+                        .width(Sizing::Grow(1.0))
+                        .height(Sizing::Grow(1.0))
+                        .gap(10.0)
+                        .scroll_y(),
+                    |ui| {
+                        fixed(ui, widgets::latency_graph);
+                        self.status(ui, t);
+                        fixed(ui, |ui| self.legend(ui, t));
+                    },
+                );
+            }
+            Tab::Events => self.stream_panel(ui, t, Sizing::Grow(1.0)),
+            Tab::Tree => self.tree_panel(ui, t),
         }
         ui.close();
     }
 
+    /// The name, the frame counter, and the icon strip: one glyph per
+    /// thing the harness can change, each showing its state, with the
+    /// chord in its tooltip.
     fn header(&self, ui: &mut Ui<'_>, t: &Theme) {
         ui.with(
             NodeSpec::row()
                 .width(Sizing::Grow(1.0))
                 .cross_align(Align::Center)
-                .gap(8.0),
+                .gap(6.0),
             |ui| {
                 ui.text(&self.name, TextStyle::new(13.0).color(t.fg));
-                ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
                 let frames = match self.smoke_frames {
-                    Some(n) => format!("frame {} / {n}", self.frames),
-                    None => format!("frame {}", self.frames),
+                    Some(n) => format!("{} / {n}", self.frames),
+                    None => format!("{}", self.frames),
                 };
-                ui.text(&frames, TextStyle::new(11.0).color(t.muted).mono());
+                ui.text(&frames, TextStyle::new(11.0).color(t.faint).mono());
+                ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
+                let base = match self.base {
+                    None => "◐",
+                    Some(Appearance::Light) => "☀",
+                    Some(_) => "☾",
+                };
+                icon(
+                    ui,
+                    t,
+                    "base",
+                    base,
+                    t.fg,
+                    &format!(
+                        "base: {} · Ctrl+Shift+T cycles follow the OS → light → dark",
+                        self.base_name()
+                    ),
+                );
+                icon(
+                    ui,
+                    t,
+                    "accent",
+                    "●",
+                    t.accent,
+                    &format!(
+                        "accent: {} · Ctrl+Shift+A cycles the OS's, kui's, four the OS might report",
+                        self.accent_name()
+                    ),
+                );
+                let menus = match self.native_menus {
+                    Some(true) => "native",
+                    Some(false) => "drawn",
+                    None => "the platform's default",
+                };
+                icon(
+                    ui,
+                    t,
+                    "menus",
+                    "☰",
+                    if self.native_menus == Some(false) { t.accent } else { t.fg },
+                    &format!("menus: {menus} · Ctrl+Shift+M toggles native and drawn"),
+                );
+                let dock = match self.dock {
+                    Dock::Side => "▐",
+                    Dock::Bottom => "▄",
+                    Dock::Off => "✕",
+                };
+                icon(
+                    ui,
+                    t,
+                    "dock",
+                    dock,
+                    t.fg,
+                    &format!("dock: {} · Ctrl+Shift+D moves it side → bottom → off", self.dock.name()),
+                );
             },
         );
     }
 
-    /// The runtime's facts right now, each from the door it comes from —
-    /// and, beside each one the harness can change, the small button that
-    /// changes it (the chord in its tooltip). One row per fact, so a
-    /// control sits next to the thing it controls rather than restating it.
+    fn tabs(&self, ui: &mut Ui<'_>, t: &Theme) {
+        ui.with(
+            NodeSpec::row()
+                .width(Sizing::Grow(1.0))
+                .gap(2.0)
+                .border(1.0, t.border.with_alpha(0.0))
+                .cross_align(Align::End),
+            |ui| {
+                for tab in Tab::ALL {
+                    let on = tab == self.tab;
+                    ui.with_keyed(
+                        &format!("tab-{}", tab.name()),
+                        NodeSpec::row()
+                            .pad_xy(10.0, 4.0)
+                            .radius_top(5.0)
+                            .bg(if on { t.sunken } else { t.surface })
+                            .hover_bg(if on { t.sunken } else { t.hover })
+                            .on_click(Value::map([(
+                                "harness",
+                                Value::str(format!("tab:{}", tab.name())),
+                            )]))
+                            .apply_tooltip("Ctrl+Shift+N · the next tab"),
+                        |ui| {
+                            ui.text(
+                                tab.name(),
+                                TextStyle::new(11.0).color(if on { t.fg } else { t.muted }),
+                            );
+                        },
+                    );
+                }
+            },
+        );
+    }
+
+    /// The runtime's facts right now, each from the door it comes from.
     fn status(&self, ui: &mut Ui<'_>, t: &Theme) {
         let env = ui.env();
         let vp = ui.viewport();
@@ -700,47 +841,18 @@ impl<E: Example> Harness<E> {
         let theme_appearance = ui.theme().appearance.name();
         let opt = |s: Option<String>| s.unwrap_or_else(|| "—".into());
         let hex = |c: Color| format!("#{:06x}", c.to_hex() >> 8);
-        // `(label, value, control)`: the control is the harness action the
-        // small button posts, with its tooltip.
-        let rows: Vec<Row> = vec![
-            ("appearance", env.system.appearance.name().into(), None),
-            ("motion", env.system.motion.name().into(), None),
-            (
-                "locale",
-                opt(env.system.locale.map(|l| l.to_string())),
-                None,
-            ),
-            (
-                "base",
-                format!("{theme_appearance} · {source}"),
-                Some((
-                    "base",
-                    "cycle",
-                    "Ctrl+Shift+T · follow the OS → light → dark",
-                )),
-            ),
+        let rows: Vec<(&str, String)> = vec![
+            ("appearance", env.system.appearance.name().into()),
+            ("motion", env.system.motion.name().into()),
+            ("locale", opt(env.system.locale.map(|l| l.to_string()))),
+            ("base", format!("{theme_appearance} · {source}")),
             (
                 "accent",
                 format!("{} · {}", hex(t.accent), self.accent_name()),
-                Some((
-                    "accent",
-                    "cycle",
-                    "Ctrl+Shift+A · the OS's, kui's, four the OS might report",
-                )),
             ),
             (
                 "menus",
                 if native_menus { "native" } else { "drawn" }.into(),
-                Some((
-                    "menus",
-                    "toggle",
-                    "Ctrl+Shift+M · the platform's own menu, or the core's drawn one",
-                )),
-            ),
-            (
-                "dock",
-                self.dock.name().into(),
-                Some(("dock", "move", "Ctrl+Shift+D · side → bottom → off")),
             ),
             (
                 "window",
@@ -764,7 +876,6 @@ impl<E: Example> Harness<E> {
                     },
                     windows.join(" "),
                 ),
-                None,
             ),
             (
                 "viewport",
@@ -774,7 +885,6 @@ impl<E: Example> Harness<E> {
                     vp.h.round(),
                     opt(env.refresh_hz.map(|hz| format!("{hz:.0} Hz"))),
                 ),
-                None,
             ),
             (
                 "keyboard",
@@ -784,7 +894,6 @@ impl<E: Example> Harness<E> {
                     "elsewhere"
                 }
                 .into(),
-                None,
             ),
             (
                 "focus",
@@ -793,47 +902,39 @@ impl<E: Example> Harness<E> {
                     Some(l) => l,
                     None => "—".into(),
                 },
-                None,
             ),
-            (
-                "modifiers",
-                {
-                    let mut m = Vec::new();
-                    if mods.shift {
-                        m.push("shift");
-                    }
-                    if mods.ctrl {
-                        m.push("ctrl");
-                    }
-                    if mods.alt {
-                        m.push("alt");
-                    }
-                    if mods.super_key {
-                        m.push("super");
-                    }
-                    if m.is_empty() {
-                        "—".into()
-                    } else {
-                        m.join("+")
-                    }
-                },
-                None,
-            ),
+            ("modifiers", {
+                let mut m = Vec::new();
+                if mods.shift {
+                    m.push("shift");
+                }
+                if mods.ctrl {
+                    m.push("ctrl");
+                }
+                if mods.alt {
+                    m.push("alt");
+                }
+                if mods.super_key {
+                    m.push("super");
+                }
+                if m.is_empty() {
+                    "—".into()
+                } else {
+                    m.join("+")
+                }
+            }),
             (
                 "audio",
                 format!("{} · {} live", env.audio.device.name(), env.audio.live),
-                None,
             ),
         ];
         ui.with(
             NodeSpec::column()
                 .width(Sizing::Grow(1.0))
-                // Never squeezed to make room: a fact half-drawn is worse
-                // than a stream a line shorter.
                 .min_height(Min::FIT)
                 .gap(3.0),
             |ui| {
-                for (k, v, control) in rows {
+                for (k, v) in rows {
                     ui.with(
                         NodeSpec::row()
                             .width(Sizing::Grow(1.0))
@@ -843,12 +944,7 @@ impl<E: Example> Harness<E> {
                             ui.with(NodeSpec::row().width(Sizing::Fixed(70.0)), |ui| {
                                 ui.text(k, TextStyle::new(11.0).color(t.muted));
                             });
-                            ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |ui| {
-                                ui.text(&v, TextStyle::new(11.0).color(t.fg).mono().nowrap());
-                            });
-                            if let Some((what, text, hint)) = control {
-                                small_button(ui, t, what, text, hint);
-                            }
+                            ui.text(&v, TextStyle::new(11.0).color(t.fg).mono().nowrap());
                         },
                     );
                 }
@@ -877,7 +973,10 @@ impl<E: Example> Harness<E> {
                 .cross_align(Align::Center)
                 .gap(8.0),
             |ui| {
-                ui.text("events", TextStyle::new(11.0).color(t.muted));
+                ui.text(
+                    &format!("{} of the last {STREAM_CAP}", self.stream.len()),
+                    TextStyle::new(11.0).color(t.muted),
+                );
                 ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
                 small_button(ui, t, "clear", "clear", "Ctrl+Shift+C · empty the stream");
             },
@@ -920,6 +1019,201 @@ impl<E: Example> Harness<E> {
         }
     }
 
+    /// The last frame's nodes as an indented list (`Core::nodes`), the
+    /// selected one in detail below it, and an outline over the example
+    /// where the selected or hovered node was laid out.
+    fn tree_panel(&mut self, ui: &mut Ui<'_>, t: &Theme) {
+        if !self.inspecting {
+            ui.core().set_inspect(true);
+            self.inspecting = true;
+        }
+        // The example's nodes only: the dock's own subtree is under the
+        // `dock` key and is not what anyone opened this tab to see.
+        let nodes: Vec<kui::NodeInfo> = {
+            let all = ui.core().nodes();
+            let dock = all.iter().position(|n| n.label.as_deref() == Some("dock"));
+            let dock_end = dock.map(|d| {
+                let depth = all[d].depth;
+                all[d + 1..]
+                    .iter()
+                    .position(|n| n.depth <= depth)
+                    .map_or(all.len(), |e| d + 1 + e)
+            });
+            all.iter()
+                .enumerate()
+                .filter(
+                    |(i, _)| !matches!((dock, dock_end), (Some(d), Some(e)) if *i >= d && *i < e),
+                )
+                .map(|(_, n)| n.clone())
+                .collect()
+        };
+        let selected = self
+            .selected
+            .and_then(|k| nodes.iter().find(|n| n.key == k).cloned());
+        let hovered_row = nodes
+            .iter()
+            .find(|n| ui.is_hovered(ui.child_key(&format!("node:{:016x}", n.key.0))))
+            .cloned();
+        ui.text(
+            &format!("{} nodes · click one to inspect it", nodes.len()),
+            TextStyle::new(11.0).color(t.muted),
+        );
+        // The list, a screenful at a time: a big frame has thousands of
+        // nodes and this is what the virtual list is for.
+        const ROW_H: f32 = 18.0;
+        let count = nodes.len();
+        widgets::virtual_column(
+            ui,
+            "nodes",
+            NodeSpec::column()
+                .width(Sizing::Grow(1.0))
+                .height(Sizing::Grow(1.0))
+                .min_height(80.0)
+                .bg(t.sunken)
+                .radius(6.0)
+                .pad(4.0),
+            count,
+            ROW_H,
+            |ui, i| {
+                let n = &nodes[i];
+                let on = Some(n.key) == self.selected;
+                let what = match (&n.label, &n.text) {
+                    (Some(l), _) => l.clone(),
+                    (None, Some(txt)) => format!("“{txt}”"),
+                    (None, None) => String::new(),
+                };
+                let flags = if n.flags.is_empty() {
+                    String::new()
+                } else {
+                    format!(" · {}", n.flags.join(" "))
+                };
+                ui.with_keyed(
+                    &format!("node:{:016x}", n.key.0),
+                    NodeSpec::row()
+                        .width(Sizing::Grow(1.0))
+                        .height(Sizing::Grow(1.0))
+                        .pad_xy(4.0, 0.0)
+                        .radius(3.0)
+                        .bg(if on { t.accent_soft } else { t.sunken })
+                        .hover_bg(if on { t.accent_soft } else { t.hover })
+                        .cross_align(Align::Center)
+                        .gap(4.0)
+                        .on_click(Value::map([(
+                            "harness",
+                            Value::str(format!("node:{:016x}", n.key.0)),
+                        )])),
+                    |ui| {
+                        ui.with(
+                            NodeSpec::row().width(Sizing::Fixed(n.depth as f32 * 10.0)),
+                            |_| {},
+                        );
+                        ui.text(n.kind.name(), TextStyle::new(11.0).color(t.accent).mono());
+                        ui.text(
+                            &format!("{what}{flags}"),
+                            TextStyle::new(11.0)
+                                .color(if what.is_empty() { t.faint } else { t.fg })
+                                .mono()
+                                .nowrap(),
+                        );
+                    },
+                );
+            },
+        );
+        if let Some(n) = &selected {
+            let rows: Vec<(&str, String)> = vec![
+                ("key", format!("{:016x}", n.key.0)),
+                ("kind", n.kind.name().into()),
+                ("label", n.label.clone().unwrap_or_else(|| "—".into())),
+                ("role", n.role.map_or("—".into(), |r| r.name().to_string())),
+                (
+                    "rect",
+                    format!(
+                        "{:.0}, {:.0} · {:.0}×{:.0}",
+                        n.rect.x, n.rect.y, n.rect.w, n.rect.h
+                    ),
+                ),
+                (
+                    "size",
+                    format!(
+                        "{} × {}{}",
+                        sizing(n.width),
+                        sizing(n.height),
+                        if n.float { " · float" } else { "" }
+                    ),
+                ),
+                ("dir", format!("{:?}", n.dir).to_lowercase()),
+                (
+                    "bg",
+                    if n.bg.a == 0.0 {
+                        "none".into()
+                    } else {
+                        format!("#{:08x}", n.bg.to_hex())
+                    },
+                ),
+                (
+                    "flags",
+                    if n.flags.is_empty() {
+                        "—".into()
+                    } else {
+                        n.flags.join(" ")
+                    },
+                ),
+                ("text", n.text.clone().unwrap_or_else(|| "—".into())),
+            ];
+            ui.with(
+                NodeSpec::column()
+                    .width(Sizing::Grow(1.0))
+                    .min_height(Min::FIT)
+                    .gap(2.0)
+                    .pad(6.0)
+                    .bg(t.raised)
+                    .radius(6.0)
+                    .border(1.0, t.border),
+                |ui| {
+                    for (k, v) in rows {
+                        ui.with(NodeSpec::row().width(Sizing::Grow(1.0)).gap(8.0), |ui| {
+                            ui.with(NodeSpec::row().width(Sizing::Fixed(40.0)), |ui| {
+                                ui.text(k, TextStyle::new(11.0).color(t.muted));
+                            });
+                            ui.text(&v, TextStyle::new(11.0).color(t.fg).mono());
+                        });
+                    }
+                },
+            );
+        }
+        // The outline over the example: the selected node's rect, and the
+        // hovered row's beside it — viewport floats, since the rects are
+        // viewport px and the example is a sibling.
+        for (n, strong) in [(selected, true), (hovered_row, false)]
+            .into_iter()
+            .filter_map(|(n, s)| n.map(|n| (n, s)))
+        {
+            ui.with_keyed(
+                if strong {
+                    "outline-selected"
+                } else {
+                    "outline-hover"
+                },
+                NodeSpec::row()
+                    .float(
+                        FloatConfig::viewport()
+                            .at(Align::Start, Align::Start)
+                            .self_at(Align::Start, Align::Start)
+                            .offset(n.rect.x, n.rect.y),
+                    )
+                    .width(Sizing::Fixed(n.rect.w.max(1.0)))
+                    .height(Sizing::Fixed(n.rect.h.max(1.0)))
+                    .border(
+                        if strong { 2.0 } else { 1.0 },
+                        t.accent.with_alpha(if strong { 1.0 } else { 0.6 }),
+                    )
+                    .bg(t.accent.with_alpha(if strong { 0.10 } else { 0.05 }))
+                    .role(Role::None),
+                |_| {},
+            );
+        }
+    }
+
     fn legend(&self, ui: &mut Ui<'_>, t: &Theme) {
         if E::KEYS.is_empty() {
             return;
@@ -927,8 +1221,8 @@ impl<E: Example> Harness<E> {
         ui.with(NodeSpec::column().width(Sizing::Grow(1.0)).gap(2.0), |ui| {
             for (keys, what) in E::KEYS {
                 ui.with(NodeSpec::row().width(Sizing::Grow(1.0)).gap(8.0), |ui| {
-                    ui.with(NodeSpec::row().width(Sizing::Fixed(74.0)), |ui| {
-                        ui.text(keys, TextStyle::new(11.0).color(t.accent).mono());
+                    ui.with(NodeSpec::row().width(Sizing::Fixed(90.0)), |ui| {
+                        ui.text(keys, TextStyle::new(11.0).color(t.accent));
                     });
                     ui.text(what, TextStyle::new(11.0).color(t.muted));
                 });
@@ -948,8 +1242,12 @@ impl<E: Example> App for Harness<E> {
         self.frames += 1;
         let os_accent = ui.env().system.accent;
         ui.core().set_theme_source(self.source(os_accent));
+        // Both the popup menus and the bar: on macOS the bar is the
+        // platform's by default and `widgets::menu_bar` draws nothing,
+        // so "drawn" here is how the strip is seen on that host at all.
         if let Some(m) = self.native_menus {
             ui.core().set_native_menus(m);
+            ui.core().set_native_menu_bar(m);
         }
         let t = ui.theme();
         let title = format!("kui — {}", self.name);
@@ -991,6 +1289,13 @@ impl<E: Example> App for Harness<E> {
 
         self.dock_panel(ui, &t);
 
+        // A Tab the root sink was handed: step the ring from here.
+        match self.step.take() {
+            Some(true) => ui.focus_next(),
+            Some(false) => ui.focus_prev(),
+            None => {}
+        }
+
         // Somewhere for the chords to land when the example has nothing
         // focused. From the second frame, so an `initial_focus` of the
         // example's own gets the first; edge-triggered in the core, so a
@@ -1010,13 +1315,27 @@ impl<E: Example> App for Harness<E> {
         if self.chord(&ev) {
             return;
         }
-        // The harness's own sink is the root, so whatever lands on the
-        // root key — a key nothing claimed, a `modifiers` change — is the
-        // harness's: the example declared nothing there and would never
-        // have heard it. Logged as data, and not forwarded.
+        // The harness's own: a key its root sink was handed (tagged), and
+        // the `modifiers` changes that ride on the sink. Everything else
+        // the core posts on the root — a menu-bar choice, a resize, a
+        // system-setting change, a window event — is the example's.
+        let kind = ev.payload.get("kind").and_then(Value::as_str);
         if ev.payload.get("tag").and_then(Value::as_str) == Some(SINK_TAG)
-            || (self.dock != Dock::Off && ev.key == Key::ROOT)
+            || (self.dock != Dock::Off && ev.key == Key::ROOT && kind == Some("modifiers"))
         {
+            // Tab is the ring's, not the sink's: a sink holding focus is
+            // handed every key (ADR 0002), so the harness passes this one
+            // on — the next frame steps the ring, which is what the
+            // example's own Tab would have done had nothing held focus.
+            let p = &ev.payload;
+            if p.get("kind").and_then(Value::as_str) == Some("key")
+                && p.get("phase").and_then(Value::as_str) == Some("down")
+                && p.get("code").and_then(Value::as_str) == Some("tab")
+            {
+                let shift = p.get("shift").and_then(Value::as_bool).unwrap_or(false);
+                self.step = Some(!shift);
+                return;
+            }
             self.push(
                 EntryKind::Note,
                 format!("(root) {}", fmt_value(&ev.payload)),
@@ -1032,14 +1351,6 @@ impl<E: Example> App for Harness<E> {
     }
 }
 
-/// One status row: its label, its value, and the control beside it —
-/// `(action, button text, tooltip)` — where the harness can change it.
-type Row = (
-    &'static str,
-    String,
-    Option<(&'static str, &'static str, &'static str)>,
-);
-
 /// A section of the dock that keeps its height whatever the window's.
 fn fixed(ui: &mut Ui<'_>, f: impl FnOnce(&mut Ui<'_>)) {
     ui.with(
@@ -1048,6 +1359,40 @@ fn fixed(ui: &mut Ui<'_>, f: impl FnOnce(&mut Ui<'_>)) {
             .min_height(Min::FIT),
         f,
     );
+}
+
+/// One glyph in the header's strip: what it controls is in its tooltip,
+/// and its colour says its state.
+fn icon(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: &str, color: Color, hint: &str) {
+    let key = ui.child_key(what);
+    ui.with_keyed(
+        what,
+        NodeSpec::row()
+            .width(Sizing::Fixed(22.0))
+            .height(Sizing::Fixed(22.0))
+            .center()
+            .radius(4.0)
+            .hover_bg(t.hover)
+            .pressed_bg(t.pressed)
+            .on_click(Value::map([("harness", Value::str(what))]))
+            .apply_tooltip(hint),
+        |ui| {
+            ui.text(glyph, TextStyle::new(13.0).color(color));
+            if ui.is_hovered(key) {
+                widgets::tooltip(ui, hint);
+            }
+        },
+    );
+}
+
+/// A `Sizing` the way a spec spells it.
+fn sizing(s: Sizing) -> String {
+    match s {
+        Sizing::Fit => "fit".into(),
+        Sizing::Grow(w) => format!("grow({w})"),
+        Sizing::Fixed(px) => format!("{px:.0}px"),
+        Sizing::Percent(p) => format!("{:.0}%", p * 100.0),
+    }
 }
 
 /// A control the size of the row it sits in: the harness's own, drawn
@@ -1266,22 +1611,54 @@ mod tests {
         h.on_event(chord('M'));
         assert!(h.native_menus.is_some());
         assert!(h.example.events.is_empty(), "no chord reached the example");
-        // A bare key on the root is the harness's too — the root is its
-        // sink, and the example declared nothing there.
+        // A bare key the root sink was handed is the harness's too: it
+        // carries the sink's tag, and the example declared nothing there.
         let mut plain = chord('d');
         if let Value::Map(m) = &mut plain.payload {
             m.retain(|(k, _)| k != "ctrl");
+            m.push(("tag".into(), Value::str(SINK_TAG)));
         }
         h.on_event(plain.clone());
         assert!(
             h.example.events.is_empty(),
-            "a root key is not the example's"
+            "a sink key is not the example's"
         );
         assert!(h.stream.iter().any(|e| e.kind == EntryKind::Note));
-        // The same key from the example's own sink is the example's.
+        // A Tab on the sink is the ring's: handed on, not kept.
+        let mut tab = plain.clone();
+        if let Value::Map(m) = &mut tab.payload {
+            for (k, v) in m.iter_mut() {
+                if k == "code" {
+                    *v = Value::str("tab");
+                }
+            }
+        }
+        h.on_event(tab);
+        assert_eq!(
+            h.step,
+            Some(false),
+            "a Shift-Tab on the sink steps the ring back (the template holds Shift)"
+        );
+        // The same key from the example's own sink is the example's — and
+        // so is what the core posts on the root that is not a key: a
+        // menu-bar choice lands there.
+        if let Value::Map(m) = &mut plain.payload {
+            m.retain(|(k, _)| k != "tag");
+        }
         plain.key = Key::ROOT.str("pane");
         h.on_event(plain);
         assert_eq!(h.example.events.len(), 1);
+        h.on_event(UiEvent {
+            origin: kui::OriginId::HOST,
+            window: kui::WindowId::MAIN,
+            key: Key::ROOT,
+            payload: Value::map([("kind", Value::str("menu")), ("role", Value::str("custom"))]),
+        });
+        assert_eq!(
+            h.example.events.len(),
+            2,
+            "a menu-bar choice on the root reaches the example"
+        );
     }
 
     #[test]

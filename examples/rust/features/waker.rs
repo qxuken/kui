@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use kui::{App, NodeSpec, Sizing, TextStyle, Ui, Waker, WindowCommand};
-use kui_harness::Example;
+use kui_devtools::Example;
 
 struct Feed {
     lines: Arc<Mutex<Vec<String>>>,
@@ -78,12 +78,12 @@ impl App for Feed {
 }
 
 impl Example for Feed {
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default().size(480.0, 260.0)
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default().size(480.0, 260.0)
     }
 }
 
-kui_harness::main!(Feed {
+kui_devtools::main!(Feed {
     lines: Arc::new(Mutex::new(Vec::new())),
     frames: 0,
     limit: std::env::var("KUI_WAKER_LINES")

@@ -16,8 +16,8 @@
 //! Run: cargo run -p kui --example focus [-- --headless]
 
 use kui::widgets;
-use kui::{Align, App, Core, Key, NodeSpec, Role, TextStyle, Ui, UiEvent, Value};
-use kui_harness::{Drive, Example};
+use kui::{Align, App, Core, Key, NodeSpec, Role, Sizing, TextStyle, Ui, UiEvent, Value};
+use kui_devtools::{Drive, Example};
 
 #[derive(Default)]
 struct Focus {
@@ -90,7 +90,9 @@ impl App for Focus {
                     TextStyle::new(12.0).color(t.muted),
                 );
                 ui.with(NodeSpec::row().gap(10.0).cross_align(Align::Center), |ui| {
-                    self.field = Some(widgets::text_input(ui, "field", ""));
+                    ui.with(NodeSpec::row().width(Sizing::Fixed(160.0)), |ui| {
+                        self.field = Some(widgets::text_input(ui, "field", ""));
+                    });
                     let on = self.pressed.as_deref() == Some("mute");
                     ui.with_keyed(
                         "mute",
@@ -177,12 +179,12 @@ impl App for Focus {
 
 impl Example for Focus {
     const KEYS: &'static [(&'static str, &'static str)] = &[
-        ("Tab / ⇧Tab", "walk the ring"),
+        ("Tab / Shift-Tab", "walk the ring"),
         ("Enter / Space", "press the focused control"),
     ];
 
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default().size(760.0, 360.0)
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default().size(760.0, 360.0)
     }
 
     /// Tab walks one, two, four (three is disabled), the field, the
@@ -265,4 +267,4 @@ impl Example for Focus {
     }
 }
 
-kui_harness::main!(Focus::default());
+kui_devtools::main!(Focus::default());

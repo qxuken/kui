@@ -20,7 +20,7 @@ use kui::{
     Align, App, Cell, CellCursor, CellGrid, Core, FontFamily, NodeSpec, Sizing, TextStyle, Theme,
     Ui, UiEvent, Value,
 };
-use kui_harness::{Drive, Example};
+use kui_devtools::{Drive, Example};
 
 /// What a line of the fake session is *for*. A terminal's palette is the
 /// app's, but these three are roles the theme already names — so the
@@ -193,8 +193,8 @@ impl Example for Cells {
         ("⌘C", "copy, trailing blanks trimmed"),
     ];
 
-    fn window(&self) -> kui_harness::Window {
-        kui_harness::Window::default().size(680.0, 300.0)
+    fn window(&self) -> kui_devtools::Window {
+        kui_devtools::Window::default().size(680.0, 300.0)
     }
 
     /// Selects a block by dragging across the grid, then scrolls the
@@ -242,4 +242,4 @@ impl Example for Cells {
     }
 }
 
-kui_harness::main!(Cells::default());
+kui_devtools::main!(Cells::default());

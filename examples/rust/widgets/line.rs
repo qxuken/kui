@@ -11,7 +11,7 @@
 //! Run: cargo run -p kui --example line
 
 use kui::{App, FloatConfig, NodeSpec, Sizing, Stroke, TextStyle, Ui, Vec2};
-use kui_harness::Example;
+use kui_devtools::Example;
 
 struct Card {
     label: &'static str,
@@ -160,4 +160,4 @@ impl App for Map {
 
 impl Example for Map {}
 
-kui_harness::main!(Map::new());
+kui_devtools::main!(Map::new());

@@ -1504,7 +1504,7 @@ dependencies = [
  "arboard",
  "kira",
  "kui-core",
- "kui-harness",
+ "kui-devtools",
  "kui-wgpu",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
@@ -1530,19 +1530,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "kui-devtools"
+version = "0.1.0-alpha.10"
+dependencies = [
+ "kui",
+]
+
+[[package]]
 name = "kui-ffi"
 version = "0.1.0-alpha.10"
 dependencies = [
  "kui",
  "kui-core",
- "kui-harness",
-]
-
-[[package]]
-name = "kui-harness"
-version = "0.1.0-alpha.10"
-dependencies = [
- "kui",
+ "kui-devtools",
 ]
 
 [[package]]
@@ -1551,8 +1551,8 @@ version = "0.1.0-alpha.10"
 dependencies = [
  "kui",
  "kui-core",
+ "kui-devtools",
  "kui-ffi",
- "kui-harness",
  "mlua",
 ]
 

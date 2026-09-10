@@ -17,7 +17,7 @@
 //   node dist/widgets/virtual_list.mjs --headless the same slicing, no window
 import { virtualColumn } from '@qxuken/kui';
 import type { App, CoreMsg, Ctx, KuiWindow, UiEvent } from '@qxuken/kui';
-import { run } from '../harness.js';
+import { run } from '../devtools.js';
 
 const ROWS = 10_000;
 const ROW_H = 28;

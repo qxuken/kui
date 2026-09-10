@@ -73,8 +73,8 @@ field reports).
 - **The root is never a Tab stop.** A root that carried `on_key` was a
   stop, and Tab drew the ring around the whole window; the ring walks
   past index 0 now. A root sink still hears every unclaimed key (ADR 0011)
-  and can be focused outright. Found by the examples' harness, whose sink
-  is the root.
+  and can be focused outright. Found by the examples' devtools, whose
+  sink is the root.
 - **`Env` grew `audio`**, and every binding's reading with it: a view
   that destructures `Env` exhaustively names one more field, and C hosts
   have one more setter to call (or not — zero is closed, which is the
@@ -82,24 +82,36 @@ field reports).
 
 ### Added
 
-- **Every example runs inside a harness, and the harness has a dock**
-  ([ADR 0021](docs/adr/0021-one-subject-per-example.md), decision 6;
-  `examples/harness`, `examples/node/harness.tsx`). Beside the example's
-  tree: the latency graph and the frame counter; the **event stream** —
-  every `UiEvent` the example was handed, as the data it is, with the
-  frame it arrived on, and every warning the core raised; the **status
-  block** — `env.system`, the theme and its source, the window and every
-  open one, the viewport and refresh rate, the focused node by its label
-  and whether its ring shows, the modifiers, native menus, `env.audio` —
-  with a small button beside each fact the harness can change; and the
-  example's key legend. One CLI everywhere: `--headless`, `--dock
-  side|bottom|off`, `--light` / `--dark`, `--accent`, `--size`. Chords
-  `Ctrl+Shift+T/A/M/D/C` cycle the base, the accent, native menus, the
-  dock, and clear the stream. The dock is `role = none`, so neither the
+- **Every example runs inside the devtools, and the devtools have a dock**
+  ([ADR 0021](docs/adr/0021-one-subject-per-example.md), decision 6 and
+  *What the building changed*, 11; `examples/devtools`,
+  `examples/node/devtools.tsx`). Beside the example's tree, a header —
+  the frame counter and an icon strip for the theme base, the accent,
+  native menus and where the dock sits — and three tabs: **facts** (the
+  latency graph; the status block — `env.system`, the theme and its
+  source, the window and every open one, the viewport and refresh rate,
+  the focused node by its label and whether its ring shows, the
+  modifiers, native menus, `env.audio`; the example's key legend),
+  **events** (every `UiEvent` the example was handed, as the data it is,
+  with the frame it arrived on, and every warning the core raised) and
+  **tree** (the last frame's nodes with label, role and flags; click one
+  and it is outlined on the example and an inspector opens: key, kind,
+  label, role, rect, sizing, direction, background, flags, text). One
+  CLI everywhere: `--headless`, `--dock side|bottom|off`, `--light` /
+  `--dark`, `--accent`, `--size`. Chords `Ctrl+Shift+T/A/M/D/N/C` cycle
+  the base, the accent, native menus (popups and bar), the dock, the
+  tab, and clear the stream. The dock is `role = none`, so neither the
   Tab ring nor a screen reader sees it; the accessibility fixture runs
   `--dock off` under the audit and still reads 106/106.
+- **`Core::set_inspect` / `Core::nodes`** — the frame as a list a tool
+  can read back: every node the last finished frame laid out as a
+  `NodeInfo` (key, parent, depth, kind, label, rect, sizing, direction,
+  background, float, the *derived* role — the access tree's reading —
+  and the declarations that make it interactive), taken at the end of
+  `finish_frame` while a tool has asked and never otherwise. In Node,
+  `win.setInspect()` / `win.nodes()`, beside `win.warningsRaised()`.
 - **`--headless` is a contract**: an example that has one drives itself
-  through a bare `Core` (`kui_harness::Drive`) and exits non-zero on a
+  through a bare `Core` (`kui_devtools::Drive`) and exits non-zero on a
   wrong answer — twenty of them now, up from two. Which ones is read from
   `[package.metadata.kui] headless = [...]` in each crate's manifest;
   `scripts/smoke-headless.sh` prints the round and `--run` runs it, which
@@ -128,8 +140,22 @@ field reports).
 - **`Core::warnings_raised`**: every warning a core has raised, drained
   or not — the log `take_warnings` leaves, for a reader that is not the
   driver.
-- **`Example::extensions` / `native_menus`** on the harness trait, and
+- **`Example::extensions` / `native_menus`** on the devtools trait, and
   a `smoke` feature on `kui-node` forwarding to `kui/smoke`.
+
+### Fixed
+
+- **The macOS runner presented the platform's context menu over the
+  core's drawn one** when a core had said `set_native_menus(false)` —
+  both came up at once. `pump_native_menu` asks the core first. And a
+  core told `set_native_menu_bar(false)` had the platform's bar left
+  standing beside the strip it drew; the runner now hands AppKit an
+  empty bar for such a core, so "drawn" on macOS shows one bar.
+- **A Node `dispatch` the loop did not make itself drew nothing.** An
+  effect handler's `dispatch('loaded')` — or the app's own from a timer
+  or a promise — changed the model and waited for the next OS event to
+  be seen. `step()` draws on it now; ADR 0013 said the result "lands in
+  the next turn", and now the next turn is a frame.
 
 - **The C ABI is pinned prototype by prototype, and constant by constant**
   ([ADR 0020](docs/adr/0020-the-surface-the-schema-does-not-cover.md)).

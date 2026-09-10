@@ -16,7 +16,7 @@
 //
 //   npm run window
 import type { CoreMsg, KuiWindow, UiEvent, WindowSize } from '@qxuken/kui';
-import { run } from '../harness.js';
+import { run } from '../devtools.js';
 
 type Model = { size: WindowSize; clicks: number; hum: boolean };
 type AppMsg = { kind: 'hum' } | { kind: 'add'; by: number };

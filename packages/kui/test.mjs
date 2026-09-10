@@ -4398,6 +4398,45 @@ test('an effects handler runs after the frame, its dispatch lands in the next tu
   assert.deepEqual(app.effects(), [{ kind: 'write' }]);
 });
 
+test("a dispatch the loop did not make itself — an effect handler's, a timer's — is a frame on the next step (ADR 0013)", () => {
+  let draws = 0;
+  const app = createApp(
+    {
+      init: { loaded: false, n: 0 },
+      update: (m, msg) => {
+        if (msg === 'go') return withEffects(m, { kind: 'load' });
+        if (msg === 'loaded') return { ...m, loaded: true };
+        if (msg === 'bump') return { ...m, n: m.n + 1 };
+        return undefined;
+      },
+      view: (m) => {
+        draws += 1;
+        return box({ pad: 0 });
+      },
+    },
+    {
+      width: 320,
+      height: 240,
+      effects: (effect, dispatch) => {
+        if (effect.kind === 'load') dispatch('loaded');
+      },
+    },
+  );
+  app.render();
+  assert.equal(app.step(), false, 'a quiet turn');
+  app.dispatch('go');
+  assert.equal(app.step(), true, 'the model the dispatch changed is drawn…');
+  assert.equal(app.model.loaded, true, '…and the effect ran after that frame, dispatching');
+  assert.equal(app.step(), true, "the handler's dispatch is a frame of its own, not a wait for the next OS event");
+  assert.equal(app.step(), false, 'and then it is quiet again');
+  app.dispatch('bump');
+  assert.equal(app.step(), true, "the app's own dispatch from outside the loop (a timer, a promise) draws too");
+  const before = draws;
+  app.dispatch('nothing');
+  assert.equal(app.step(), false, 'an update that returned undefined changed nothing, so no frame');
+  assert.equal(draws, before);
+});
+
 test('step() reports whether the turn drew, which is what paces the windowed driver', () => {
   let t = 0;
   const app = createApp(
