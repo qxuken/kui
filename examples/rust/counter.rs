@@ -49,15 +49,17 @@ struct Sounds {
 /// that caused it. Hover and any tween would go the same way. The key is
 /// what the button *is*; the label is a view of the state it toggles.
 fn sound_button(ui: &mut Ui<'_>, name: &str, label: &str, payload: Value, sound: SoundId) {
-    // `on_accent` rather than white: the label has to be readable on
-    // whatever the button's background is, and under a light OS accent
-    // that is black (`kui::Theme`).
-    let fg = ui.theme().on_accent;
-    ui.with_keyed(
-        name,
-        widgets::button_spec().on_click(payload).click_sound(sound),
-        |ui| ui.text(label, TextStyle::new(widgets::BUTTON_TEXT).color(fg)),
-    );
+    let spec = widgets::button_spec().on_click(payload).click_sound(sound);
+    // Readable on whatever this button's background *is*, which is the
+    // rule `widgets::button_with` applies to the stock one. Not
+    // `theme.on_accent`: that is the label for the accent, and this spec
+    // does not declare `accent`, so its background stays the stock blue
+    // however the OS's accent is set — a light accent's black label
+    // would land on that blue.
+    let fg = widgets::readable_on(spec.style.bg);
+    ui.with_keyed(name, spec, |ui| {
+        ui.text(label, TextStyle::new(widgets::BUTTON_TEXT).color(fg))
+    });
 }
 
 impl App for Counter {

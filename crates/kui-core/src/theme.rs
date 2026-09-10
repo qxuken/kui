@@ -28,6 +28,19 @@
 use crate::color::Color;
 use crate::env::{Appearance, SystemEnv};
 
+/// WCAG's contrast ratio between two opaque colours, 1:1 to 21:1 — the
+/// number "4.5:1" and "3:1" are ratios of. Kept here rather than on
+/// [`Color`] because it is a *palette* question: the roles are checked
+/// against each other, and a view that wants the number has
+/// [`Color::luminance`] to build it from.
+fn contrast(a: Color, b: Color) -> f32 {
+    let (hi, lo) = (
+        a.luminance().max(b.luminance()),
+        a.luminance().min(b.luminance()),
+    );
+    (hi + 0.05) / (lo + 0.05)
+}
+
 /// Every colour the stock widgets and the core's own chrome paint with,
 /// as roles rather than values. Plain data and [`Copy`]: a view reads it
 /// off `ui.theme()` and may keep, mutate or replace its own copy.
@@ -254,14 +267,9 @@ impl Theme {
     /// The shades are [`crate::widgets::button_palette`]'s arithmetic, so
     /// an accent-painted button reads as the same control in a different
     /// colour rather than as a different control. The ring keeps each
-    /// base's habit — lifted toward white on the dark one, where a
-    /// saturated ring disappears into the page; the accent itself on the
-    /// light one, where a lifted one does.
+    /// base's habit and is then held to [`Theme::ring_for`]'s promise.
     pub fn with_accent(self, accent: Color) -> Self {
-        let ring = match self.appearance {
-            Appearance::Light => accent,
-            _ => accent.mix(Color::WHITE, 0.35),
-        };
+        let ring = self.ring_for(accent);
         Self {
             accent,
             accent_hover: accent.mix(Color::WHITE, 0.09),
@@ -277,6 +285,36 @@ impl Theme {
             }),
             focus_ring: ring,
             ..self
+        }
+    }
+
+    /// A focus ring in `accent` that can actually be *seen* on this
+    /// theme's `bg`: the accent moved toward the front of the base —
+    /// white on a dark one, black on a light one — until it clears the
+    /// 3:1 ADR 0002 asks of a focus indicator.
+    ///
+    /// Each base's habit is where it starts: the dark one lifts a
+    /// saturated ring that would otherwise sink into the page, and the
+    /// light one takes the accent as it is, because most accents are
+    /// already dark enough on a near-white page. The loop is what turns
+    /// that from a hope into a promise — a *light* accent on the light
+    /// base is the case it exists for. macOS's yellow taken verbatim is
+    /// 1.49:1 on `#f6f7f9`, which is not a ring, it is a rumour.
+    pub fn ring_for(self, accent: Color) -> Color {
+        let toward = if self.is_dark() {
+            Color::WHITE
+        } else {
+            Color::BLACK
+        };
+        let mut t = if self.is_dark() { 0.35 } else { 0.0 };
+        loop {
+            let ring = accent.mix(toward, t);
+            // `toward` itself always clears 3:1 on its own base, so the
+            // cap is a floor and not a give-up.
+            if t >= 1.0 || contrast(ring, self.bg) >= 3.0 {
+                return ring;
+            }
+            t = (t + 0.05).min(1.0);
         }
     }
 
@@ -369,13 +407,6 @@ mod tests {
     /// body text and 3:1 for large text and UI edges.
     #[test]
     fn every_text_role_is_readable_on_every_surface() {
-        fn contrast(a: Color, b: Color) -> f32 {
-            let (hi, lo) = (
-                a.luminance().max(b.luminance()),
-                a.luminance().min(b.luminance()),
-            );
-            (hi + 0.05) / (lo + 0.05)
-        }
         for t in [Theme::dark(), Theme::light()] {
             let name = if t.is_dark() { "dark" } else { "light" };
             for (sn, surface) in [
@@ -442,6 +473,36 @@ mod tests {
         // Pinned follows nothing at all.
         let pinned = ThemeSource::Pinned(Theme::light());
         assert_eq!(pinned.resolve(&sys).bg, Theme::light().bg);
+    }
+
+    /// The two stock bases are checked above, but the ring is the one
+    /// role that is *derived* from a colour kui does not choose — so it
+    /// has to hold for whatever the OS reports, not only for kui's blue.
+    /// The light base is where a verbatim accent fails: macOS's yellow
+    /// is 1.49:1 on `#f6f7f9`, which no one would find.
+    #[test]
+    fn a_derived_focus_ring_is_visible_whatever_the_accent_is() {
+        for hex in [
+            0x3b5bd4ff, // kui's own
+            0x007affff, // macOS blue
+            0xffc409ff, // macOS yellow — the light one
+            0xf74f9eff, // macOS pink
+            0x2f7d4fff, // a dark brand green
+            0xffffffff, // and the two ends
+            0x000000ff,
+        ] {
+            for appearance in [Appearance::Light, Appearance::Dark, Appearance::Unknown] {
+                let t = Theme::derive(appearance, Some(Color::hex(hex)));
+                let c = contrast(t.focus_ring, t.bg);
+                assert!(c >= 3.0, "{appearance:?} + {hex:08x}: the ring is {c:.2}:1");
+            }
+        }
+        // And the case that used to ship: the ring is no longer the
+        // accent itself here, because the accent itself was invisible.
+        let yellow = Color::hex(0xffc409ff);
+        let light = Theme::derive(Appearance::Light, Some(yellow));
+        assert_ne!(light.focus_ring, yellow);
+        assert!(contrast(yellow, light.bg) < 1.6, "which is why");
     }
 
     /// `raise` is the branch a view would otherwise write by hand.

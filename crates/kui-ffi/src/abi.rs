@@ -14,7 +14,9 @@
 //
 // - **[in]** — the host allocates and fills it, the library reads it:
 //   `KuiSpec`, `KuiSizing`, `KuiKeyframe`, `KuiEnter`, `KuiTextStyle`,
-//   `KuiSpan`, `KuiPlay`, `KuiAudio`, `KuiWindowConfig`. Appending a field is compatible: a
+//   `KuiSpan`, `KuiPlay`, `KuiAudio`, `KuiWindowConfig`, `KuiTheme` (which
+//   `kui_theme_set` reads, and `kui_theme` writes — so it is bound by the
+//   stricter [out] rule below). Appending a field is compatible: a
 //   host that predates it passes the shorter struct, the library reads no
 //   further than the host wrote, and the zeroed tail is the documented
 //   default. `KuiSpec` grew `tooltip` exactly this way. The exception is
@@ -22,7 +24,7 @@
 //   append moves the stride and is a bump (ABI 8).
 // - **[out]** — the host allocates it, the library writes it: `KuiEvent`,
 //   `KuiDrawData`, `KuiTextMetrics`, `KuiScrollGeometry`, `KuiTextHit`,
-//   `KuiCaretRect`, `KuiWindowCommand`. Appending a field
+//   `KuiCaretRect`, `KuiWindowCommand`, `KuiTheme`. Appending a field
 //   here is memory corruption at a host that has not recompiled — it
 //   reserved the shorter struct and the library writes the longer one — so
 //   each of these leads with `size`, which the host sets to its own

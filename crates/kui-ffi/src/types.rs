@@ -741,9 +741,14 @@ unsafe impl OutParam for KuiTextMetrics {
 ///
 /// The roles are `kui_core::schema::THEME_ROLES` field for field, in that
 /// order, and `theme_struct_covers_every_role` pins the two together. A
-/// role added there fails that test until it is appended here — appending
-/// to an [out] struct is the compatible move, so it costs no ABI bump, and
-/// an old host's shorter reservation is simply filled up to its own size.
+/// role added there fails that test until it is appended here — and an
+/// append here **bumps `KUI_ABI_VERSION`**, by the rule in `abi`: the
+/// `size` handshake keeps the append from corrupting a host that sets it
+/// (`write_out` fills only what was reserved), but a host that skipped
+/// `kui_abi_version()` would take the short write unaware, which is what
+/// ABI 4 bumped for. The [in] direction has no handshake at all —
+/// `kui_theme_set` reads the struct the host filled, so an appended field
+/// is read past an old host's shorter one — which is the second reason.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiTheme {

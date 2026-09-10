@@ -21,6 +21,10 @@ use kui::{
     Value,
 };
 
+/// What the demo buttons post: they are here to be looked at, not to say
+/// anything, and the menu's rows post their own text.
+const NOOP: &str = "noop";
+
 /// The accents `a` walks: kui's own, then four the OS might report.
 const ACCENTS: [(&str, u32); 5] = [
     ("kui blue", 0x3b5bd4ff),
@@ -196,12 +200,12 @@ impl App for Gallery {
         ui.with(NodeSpec::row().gap(16.0).width(Sizing::Grow(1.0)), |ui| {
             card(ui, "BUTTONS", |ui| {
                 ui.with(NodeSpec::row().gap(10.0).cross_align(Align::Center), |ui| {
-                    widgets::button(ui, "stock", Value::str("noop"));
+                    widgets::button(ui, "stock", Value::str(NOOP));
                     widgets::button_with(
                         ui,
                         "accented",
                         "accent",
-                        widgets::button_spec().accent().on_click(Value::str("noop")),
+                        widgets::button_spec().accent().on_click(Value::str(NOOP)),
                         Some("bg, hover and pressed all come off the accent"),
                     );
                     widgets::button_with(
@@ -289,14 +293,17 @@ impl App for Gallery {
                 self.menu = Some((at("x"), at("y")));
             }
             Some("dismiss") => self.menu = None,
-            _ => {
-                // Every other payload here is a menu row's own id, which
-                // the stock menu posts as the row's text.
-                if let Some(s) = ev.payload.as_str() {
+            // Every other string payload here is a menu row's own id,
+            // which the stock menu posts as the row's text — except the
+            // one the demo buttons post, which is not a menu choice and
+            // must not be reported as the last one.
+            _ => match ev.payload.as_str() {
+                Some(NOOP) | None => {}
+                Some(s) => {
                     self.said = Some(s.to_string());
                     self.menu = None;
                 }
-            }
+            },
         }
     }
 }

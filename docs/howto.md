@@ -174,7 +174,7 @@ all. Paint your own boxes from the same roles and they agree:
 
 ```tsx
 const t = ctx.theme();
-<box bg={t.surface} radius={10} borderColor={t.border} borderWidth={1}>
+<box bg={t.surface} radius={10} borderColor={t.border} borderW={1}>
   <text color={t.muted}>seventeen items</text>
 </box>
 ```

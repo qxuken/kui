@@ -138,6 +138,13 @@ impl App for A11y {
     fn view(&mut self, ui: &mut Ui<'_>) {
         let t = ui.theme();
         let text = TextStyle::new(14.0).color(t.fg);
+        // The label colour for the hand-built buttons below: readable on
+        // whatever `button_spec` actually carries, which is the rule
+        // `widgets::button_with` applies. Not `t.on_accent` — none of
+        // them declares `accent`, so their background stays the stock
+        // blue however the OS's accent is set, and a light accent's
+        // black label would land on that blue.
+        let on_button = widgets::readable_on(widgets::button_spec().style.bg);
         // No pad or gap on the root: the scrolling column below owns
         // both, so the scrollbar rides the window edge rather than
         // floating inside a margin.
@@ -209,7 +216,7 @@ impl App for A11y {
                             } else {
                                 "▸ Advanced"
                             },
-                            TextStyle::new(widgets::BUTTON_TEXT).color(t.on_accent),
+                            TextStyle::new(widgets::BUTTON_TEXT).color(on_button),
                         )
                     },
                 );
@@ -311,7 +318,7 @@ impl App for A11y {
                     |ui| {
                         ui.text(
                             &format!("count {}", self.presses),
-                            TextStyle::new(widgets::BUTTON_TEXT).color(t.on_accent),
+                            TextStyle::new(widgets::BUTTON_TEXT).color(on_button),
                         )
                     },
                 );
@@ -322,7 +329,7 @@ impl App for A11y {
                     widgets::button_spec()
                         .on_click(Value::str("save"))
                         .label("Save"),
-                    |ui| ui.text("⌘", TextStyle::new(15.0).color(t.on_accent)),
+                    |ui| ui.text("⌘", TextStyle::new(15.0).color(on_button)),
                 );
 
                 // A one-off announcement: nothing on screen says "Copied", and
@@ -621,7 +628,7 @@ impl App for A11y {
                             |ui| {
                                 ui.text(
                                     "Cancel",
-                                    TextStyle::new(widgets::BUTTON_TEXT).color(t.on_accent),
+                                    TextStyle::new(widgets::BUTTON_TEXT).color(on_button),
                                 )
                             },
                         );
