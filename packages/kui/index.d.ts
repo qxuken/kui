@@ -1,6 +1,17 @@
-import type { AppMsg, BoxProps, GeneratedSpecProps, KuiNode, TextProps } from './jsx-runtime.js';
+import type {
+  AppMsg,
+  BoxProps,
+  GeneratedSpecProps,
+  KuiNode,
+  MenuItemInput,
+  TextProps,
+} from './jsx-runtime.js';
 
 export type { KuiNode, KuiElement, Msg, KuiMsg, AppMsg } from './jsx-runtime.js';
+// The menu inputs live beside the other prop types, because `<menuBar/>`
+// takes one; they are re-exported here because `Ctx.openMenu` takes one
+// too, and an app should not have to know which file a type sits in.
+export type { MenuItemInput, MenuInput, MenuBarInput } from './jsx-runtime.js';
 
 // -- the messages the core itself sends ------------------------------------
 // Payload shapes from `EVENTS` in crates/kui-core/src/schema.rs (the table
@@ -449,48 +460,6 @@ export interface TextHit {
   byte: number;
   line: number;
 }
-
-/** One row to put in a context menu (`Ctx.openMenu`). Everything but
- *  `label` is optional, and a standard `role` takes its own wording when
- *  `label` is empty — so `{ role: 'copy' }` is the platform's Copy.
- *  `id` is what the row posts when chosen (its label, when absent). */
-export interface MenuItemInput {
-  label?: string;
-  role?: 'custom' | 'separator' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'lookUp';
-  enabled?: boolean;
-  /** Draws a checkmark beside the row (and sets the platform's own check
-   *  state where a host renders the menu): a setting the row *is*, not a
-   *  command it runs. */
-  checked?: boolean;
-  id?: unknown;
-  /** Display only: the shortcut is the app's or the platform's — except in
-   *  a menu bar the platform draws, where a spelling kui can parse
-   *  (`'mod+s'`, `'⌘S'`, `'Ctrl+Shift+P'`) becomes the real key equivalent.
-   *  A declaration kui can parse is rewritten into the platform's own
-   *  spelling, so `'mod+s'` reads as `⌘S` on macOS and `Ctrl+S` elsewhere. */
-  accel?: string;
-}
-
-/** One menu of the application menu bar (the `<menuBar menu={…}/>`
- *  element's prop): a title and the rows that drop out of it
- *  (`docs/adr/0018-a-menu-bar-the-app-declares.md`). Its rows are the same
- *  `MenuItemInput` a context menu takes, so a standard `role` is performed
- *  by the core here too — an Edit menu's `{ role: 'copy' }` is the
- *  right-click Copy.
- *
- *  On macOS the first menu is the application menu, which the OS titles
- *  with the app's own name whatever `label` says. */
-export interface MenuInput {
-  label: string;
-  items: MenuItemInput[];
-  /** A disabled menu is dimmed and opens nothing. */
-  enabled?: boolean;
-}
-
-/** The whole bar, in order — the `<menuBar menu={…}/>` element's prop.
- *  `[]` takes the menu away; a frame that draws no `<menuBar/>` at all
- *  leaves the last declaration in force. */
-export type MenuBarInput = MenuInput[];
 
 /** The application menu as the core holds it (`Ctx.menuBar()`): what a
  *  host with a menu bar of its own reads after `setNativeMenuBar(true)`.
