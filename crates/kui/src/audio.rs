@@ -14,7 +14,7 @@
 //! logs once and every later command is dropped — the UI keeps running.
 //! Decoded sounds are cached per `SoundId` and dropped on `Unload`.
 
-use kui_core::{AudioCommand, PlaybackId, SharedResources};
+use kui_core::{AudioCommand, AudioDevice, AudioEnv, PlaybackId, SharedResources};
 
 pub use backend::Audio;
 
@@ -390,6 +390,21 @@ mod backend {
                 || !self.refused.is_empty()
                 || !self.truncated.is_empty()
         }
+
+        /// The reading a view gets (`env.audio`): the device's state and
+        /// the playbacks started or waiting. The two readers above, as
+        /// data — what the driver decides by is what the view can see.
+        pub fn env(&self) -> AudioEnv {
+            AudioEnv {
+                device: match self.device {
+                    Device::Closed => AudioDevice::Closed,
+                    Device::Opening(_) => AudioDevice::Opening,
+                    Device::Open(_) => AudioDevice::Open,
+                    Device::Failed => AudioDevice::Failed,
+                },
+                live: (self.playing.len() + self.pending.len()) as u32,
+            }
+        }
     }
 
     /// Linear amplitude to kira's decibels (0 = silence).
@@ -597,6 +612,10 @@ mod backend {
 
         pub fn active(&self) -> bool {
             false
+        }
+
+        pub fn env(&self) -> AudioEnv {
+            AudioEnv::default()
         }
     }
 }

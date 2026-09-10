@@ -1411,6 +1411,8 @@ bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
  *                       controls_w, controls_h       (WindowEnv; the
  *                       controls rect flattened to its extent at the
  *                       window origin, the shape Lua also reads)
+ *   kui_env_set_audio   device, live                (AudioEnv: what the
+ *                       host's output device is doing)
  */
 /* Host facts for views to read (refresh_hz <= 0 = unknown). Survives across
  * frames; set on change or every frame, either works. `focused` going
@@ -1452,6 +1454,27 @@ enum {
  * which is loud. */
 void kui_env_set_system(KuiCtx *ctx, uint32_t appearance, uint32_t accent,
                         uint32_t motion, KuiStr locale);
+/* The host's audio output device, as kui_env_set_audio takes it and Node
+ * and Lua read back as "closed"/"opening"/"open"/"failed". Zero is closed,
+ * which is what a host that never calls the setter - or has no device -
+ * reports. */
+enum {
+    KUI_AUDIO_DEVICE_CLOSED = 0,
+    KUI_AUDIO_DEVICE_OPENING = 1,
+    KUI_AUDIO_DEVICE_OPEN = 2,
+    KUI_AUDIO_DEVICE_FAILED = 3,
+};
+/* What the host's output device is doing, for views to read: a
+ * KUI_AUDIO_DEVICE_*, and how many playbacks are started or waiting on the
+ * open. A fact, not a verb - nothing here closes the device; the host that
+ * opened it does that once it has been idle a while. Worth pushing because
+ * an open stream is a real-time thread whether or not anything plays,
+ * which is the whole of an idle app's CPU once it has held a sound: a
+ * view that shows the device still open long after its last sound is
+ * showing a bug that otherwise only `top` can see. Push it every frame,
+ * or on change; either works. Additive, like kui_env_set_system, and off
+ * KUI_ABI_VERSION for the same reason. */
+void kui_env_set_audio(KuiCtx *ctx, uint32_t device, uint32_t live);
 /* -- Theme --------------------------------------------------------------- */
 /* The colours a view paints with, as roles rather than values, derived from
  * the two facts above: the appearance picks the base, the accent recolours
@@ -2256,7 +2279,7 @@ bool kui_run_with(KuiCtx *ctx, KuiStr title, KuiViewFn view, KuiEventFn on_event
  * library and gives it a share of each frame: it draws into the host's tree,
  * keeps its own state, and gets back the events its own nodes emitted and
  * no others. Same deal a Lua extension gets
- * (examples/lua/panel.lua), and the loader on the host's side is
+ * (examples/lua/features/slots/panel.lua), and the loader on the host's side is
  * kui_ffi::CExtension.
  *
  * YOU define these six; the library only calls them. Two are required -
@@ -2312,7 +2335,7 @@ bool kui_run_with(KuiCtx *ctx, KuiStr title, KuiViewFn view, KuiEventFn on_event
  *      and loads into ANY host that ships it, which is the ordinary Windows
  *      plugin shape (a Python extension imports from python313.dll, not
  *      from python.exe). Prefer this one: it is the plugin you can compile
- *      once and hand to somebody. examples/c/host.c loads a plugin built
+ *      once and hand to somebody. examples/c/features/slots/host.c loads a plugin built
  *      this way, and examples/c/build.ps1 builds it as target/<profile>/panel.dll.
  *
  *   2. link against the *host's* import library - the .lib link.exe writes

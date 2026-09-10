@@ -22,6 +22,13 @@ accesskit_winit = { version = "0.34", optional = true }
 # (libdbus), no streaming formats — decoding covers wav/ogg/mp3/flac.
 kira = { version = "0.12", default-features = false, features = ["cpal", "mp3", "ogg", "vorbis", "flac", "wav", "pcm"], optional = true }
 
+# The examples' harness (docs/adr/0021): the dock, the CLI and the
+# headless drive every example under examples/rust runs inside. A
+# dev-dependency, so the published crate carries none of it; the cycle
+# (it depends on this crate) is the kind cargo allows for dev-dependencies.
+[dev-dependencies]
+kui-harness.workspace = true
+
 [features]
 default = ["audio", "accesskit"]
 # Play sounds through kira/cpal. Off: audio commands are dropped, the UI
@@ -99,57 +106,41 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
 # spelled out because they are outside the package; it also drops them from
 # the published tarball, which is what we want - the repo is where you read
 # them. See examples/README.md.
-[[example]]
-name = "accessibility"
-path = "../../examples/rust/accessibility.rs"
-
-[[example]]
-name = "context_menu"
-path = "../../examples/rust/context_menu.rs"
+#
+# One subject per example, and the subject's kind is the directory
+# (docs/adr/0021): `apps/` compose, `widgets/` show one element or stock
+# widget, `features/` one behaviour with the widgets it touches, `tools/`
+# what is registered here for want of a better slot. The target name is the
+# file's basename, since every example binary in the workspace lands in one
+# flat target/debug/examples. Every one runs inside kui-harness
+# (examples/harness); `headless` below lists the ones whose `--headless`
+# is a self-check with an exit code, which scripts/smoke-headless.sh runs
+# and a test in the harness pins to this list.
+[package.metadata.kui]
+headless = [
+    "transition",
+    "hover",
+    "focus",
+    "drag",
+    "tooltip",
+    "button",
+    "counter",
+    "edit",
+    "audio",
+    "virtual_list",
+    "cells",
+    "menu_bar",
+    "selection",
+    "context_menu",
+]
 
 [[example]]
 name = "counter"
-path = "../../examples/rust/counter.rs"
-
-[[example]]
-name = "editor"
-path = "../../examples/rust/editor.rs"
-
-[[example]]
-name = "virtual_list"
-path = "../../examples/rust/virtual_list.rs"
-
-[[example]]
-name = "waker"
-path = "../../examples/rust/waker.rs"
-
-[[example]]
-name = "fragments"
-path = "../../examples/rust/fragments.rs"
-
-[[example]]
-name = "gallery"
-path = "../../examples/rust/gallery.rs"
-
-[[example]]
-name = "theme"
-path = "../../examples/rust/theme.rs"
-
-[[example]]
-name = "modal_editor"
-path = "../../examples/rust/modal_editor.rs"
-
-[[example]]
-name = "popup"
-path = "../../examples/rust/popup.rs"
-
-[[example]]
-name = "rich_text"
-path = "../../examples/rust/rich_text.rs"
+path = "../../examples/rust/apps/counter.rs"
 
 [[example]]
 name = "splitmux"
-path = "../../examples/rust/splitmux.rs"
+path = "../../examples/rust/apps/splitmux.rs"
 # Splitmux is the one example that owns its whole keyboard *and* draws
 # clickable surfaces inside the sink that owns it, so its chords are where a
 # press stealing the keyboard shows up. `test = true` lets its `mod tests`
@@ -157,17 +148,105 @@ path = "../../examples/rust/splitmux.rs"
 test = true
 
 [[example]]
+name = "modal_editor"
+path = "../../examples/rust/apps/modal_editor.rs"
+
+[[example]]
 name = "syntax_view"
-path = "../../examples/rust/syntax_view.rs"
+path = "../../examples/rust/apps/syntax_view.rs"
 
 [[example]]
-name = "toasts"
-path = "../../examples/rust/toasts.rs"
+name = "edit"
+path = "../../examples/rust/widgets/edit.rs"
 
 [[example]]
-name = "bulk_exit"
-path = "../../examples/rust/bulk_exit.rs"
+name = "text"
+path = "../../examples/rust/widgets/text.rs"
 
 [[example]]
-name = "connectors"
-path = "../../examples/rust/connectors.rs"
+name = "image"
+path = "../../examples/rust/widgets/image.rs"
+
+[[example]]
+name = "line"
+path = "../../examples/rust/widgets/line.rs"
+
+[[example]]
+name = "fragment"
+path = "../../examples/rust/widgets/fragment.rs"
+
+[[example]]
+name = "virtual_list"
+path = "../../examples/rust/widgets/virtual_list.rs"
+
+[[example]]
+name = "context_menu"
+path = "../../examples/rust/widgets/context_menu.rs"
+
+[[example]]
+name = "audio"
+path = "../../examples/rust/features/audio.rs"
+
+[[example]]
+name = "enter_exit"
+path = "../../examples/rust/features/enter_exit.rs"
+
+[[example]]
+name = "exit_budget"
+path = "../../examples/rust/features/exit_budget.rs"
+
+[[example]]
+name = "waker"
+path = "../../examples/rust/features/waker.rs"
+
+[[example]]
+name = "popup"
+path = "../../examples/rust/features/popup.rs"
+
+[[example]]
+name = "theme"
+path = "../../examples/rust/features/theme.rs"
+
+[[example]]
+name = "accessibility"
+path = "../../examples/rust/features/accessibility.rs"
+
+[[example]]
+name = "cells"
+path = "../../examples/rust/widgets/cells.rs"
+
+[[example]]
+name = "menu_bar"
+path = "../../examples/rust/widgets/menu_bar.rs"
+
+[[example]]
+name = "selection"
+path = "../../examples/rust/features/selection.rs"
+
+[[example]]
+name = "transition"
+path = "../../examples/rust/features/transition.rs"
+
+[[example]]
+name = "hover"
+path = "../../examples/rust/features/hover.rs"
+
+[[example]]
+name = "focus"
+path = "../../examples/rust/features/focus.rs"
+
+[[example]]
+name = "drag"
+path = "../../examples/rust/features/drag.rs"
+
+[[example]]
+name = "titlebar"
+path = "../../examples/rust/widgets/titlebar.rs"
+
+[[example]]
+name = "tooltip"
+path = "../../examples/rust/widgets/tooltip.rs"
+
+[[example]]
+name = "button"
+path = "../../examples/rust/widgets/button.rs"

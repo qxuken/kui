@@ -11,6 +11,8 @@
 # anywhere and nothing is written into the source tree:
 #
 #   counter.exe       C as the host, kui as a plain library
+#   surface.exe       the header walk, every prototype called once
+#   conformance.exe   the C adapter over the scene corpus
 #   host.exe          C as the host of a C *extension* (ADR 0014's C half)
 #   panel.dll         the panel, importing from kui_ffi.dll
 #   panel-host.dll    the same panel, importing from the Rust host
@@ -107,7 +109,7 @@ if (-not $cc) {
 }
 Write-Host "compiler: $cc" -ForegroundColor Cyan
 
-# Shared flags. `/D_CRT_SECURE_NO_WARNINGS` because counter.c reads a corpus
+# Shared flags. `/D_CRT_SECURE_NO_WARNINGS` because conformance.c reads a corpus
 # file with fopen/sscanf, which the CRT deprecates and no other platform does.
 # `/utf-8` because the sources are UTF-8 and carry a few characters that say
 # so (panel.c's " · %d left"), and cl reads a BOM-less file in the machine's
@@ -178,14 +180,18 @@ Write-Host "kui.h matches Rust ($fields fields, $enums enum members, $protos pro
 
 # --- the two hosts ----------------------------------------------------------
 
-Build-C examples/c/counter.c "$bin/counter.exe" $ffiLib
-Build-C examples/c/host.c "$bin/host.exe" $ffiLib
+# The counter (the app), the header walk (the surface self-test) and the
+# corpus adapter: three programs over one common.h (docs/adr/0021).
+Build-C examples/c/apps/counter.c "$bin/counter.exe" $ffiLib
+Build-C examples/c/tools/surface.c "$bin/surface.exe" $ffiLib
+Build-C examples/c/tools/conformance.c "$bin/conformance.exe" $ffiLib
+Build-C examples/c/features/slots/host.c "$bin/host.exe" $ffiLib
 
 # --- the panel, in both shapes ----------------------------------------------
 
 # Compiled once: the two DLLs are the same translation unit, and differ only
 # in the import library the link resolves kui_* against.
-Invoke-Cc ($cflags + @('/c', 'examples/c/panel.c', '/Fo:target/panel.obj')) 'panel.obj'
+Invoke-Cc ($cflags + @('/c', 'examples/c/features/slots/panel.c', '/Fo:target/panel.obj')) 'panel.obj'
 Build-C target/panel.obj "$bin/panel.dll" $ffiLib -Dll
 Build-C target/panel.obj "$bin/panel-host.dll" $hostLib -Dll
 
@@ -197,7 +203,7 @@ Build-C target/panel.obj "$bin/panel-host.dll" $hostLib -Dll
 # the refusal; the check here is what makes a filter that stopped matching
 # fail at the mutation instead of at the load.
 $noabi = 'target/panel-noabi.c'
-(Get-Content examples/c/panel.c) |
+(Get-Content examples/c/features/slots/panel.c) |
     Where-Object { $_ -notmatch '^uint32_t kui_ext_abi\(void\)' } |
     Set-Content -Path $noabi -Encoding utf8NoBOM
 if (Select-String -Path $noabi -Pattern 'kui_ext_abi' -Quiet) {
@@ -213,7 +219,10 @@ Build-C $noabi "$bin/panel-noabi.dll" $hostLib -Dll
 # non-zero having said what.
 $round = @(
     @{ Exe = "$bin/counter.exe"; Args = @('--headless')
-        Note = 'C as the host: the FFI self-test'
+        Note = "C as the host: the counter's own drive"
+    }
+    @{ Exe = "$bin/surface.exe"; Args = @()
+        Note = 'the header walk: every prototype in kui.h called once'
     }
     @{ Exe = "$bin/host.exe"; Args = @('--headless')
         Note = 'C on both sides: the slot filled, the click routed, the reply back'

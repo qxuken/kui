@@ -59,6 +59,14 @@ impl LabelIndex {
         self.entries.push((key, start, label.len() as u32));
     }
 
+    /// The label `key` was opened under, if it was opened by label.
+    pub(crate) fn label_of(&self, key: Key) -> Option<&str> {
+        self.entries
+            .iter()
+            .find(|(k, _, _)| *k == key)
+            .map(|(_, start, len)| &self.text[*start as usize..(*start + *len) as usize])
+    }
+
     /// The keys opened under `label`, in tree order.
     pub(crate) fn find<'a>(&'a self, label: &'a str) -> impl Iterator<Item = Key> + 'a {
         self.entries
@@ -85,8 +93,11 @@ mod tests {
         assert_eq!(a, [Key::ROOT.str("a"), Key::ROOT.index(0).str("a")]);
         assert_eq!(idx.find("ab").count(), 1, "a prefix is not a match");
         assert_eq!(idx.find("b").count(), 0);
+        assert_eq!(idx.label_of(Key::ROOT.str("ab")), Some("ab"));
+        assert_eq!(idx.label_of(Key::ROOT.str("zz")), None);
         idx.clear();
         assert_eq!(idx.find("a").count(), 0);
+        assert_eq!(idx.label_of(Key::ROOT.str("ab")), None);
     }
 
     #[test]

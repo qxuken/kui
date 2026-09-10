@@ -883,6 +883,24 @@ export interface Env {
   /** The viewport the current or last frame was begun with. */
   viewport: WindowSize;
   window: WindowEnv;
+  /** What the driver's audio output is doing. */
+  audio: AudioEnv;
+}
+
+/** The output device's state and how many playbacks are live, as the
+ *  driver reports them each frame. A fact and not a verb — nothing closes
+ *  the device from here; the runner does that itself once it has been idle
+ *  a while. Worth reading because an open stream is a real-time thread
+ *  whether or not anything plays, which is the whole of an idle app's CPU
+ *  once it has held a sound: `device: 'open'` with `live: 0` long after the
+ *  last sound is a bug that otherwise only `top` can see. A headless `Ctx`
+ *  reads `'closed'` and 0. */
+export interface AudioEnv {
+  /** `'closed'` (the default), `'opening'` (the ~90 ms open, off-thread),
+   *  `'open'`, or `'failed'` (it refused; commands are dropped). */
+  device: 'closed' | 'opening' | 'open' | 'failed';
+  /** Playbacks started and not yet ended, plus any waiting on the open. */
+  live: number;
 }
 
 /** The palette a frame paints with: one `0xRRGGBBAA` number per role,
@@ -1077,6 +1095,11 @@ export interface EnvInput {
     /** `x` and `y` default to the window origin; a zero-sized rect and null
      *  both mean "nothing is drawn over us". */
     nativeControls?: Partial<Rect> | null;
+  };
+  /** What a driver with a device would report; see `AudioEnv`. */
+  audio?: {
+    device?: 'closed' | 'opening' | 'open' | 'failed';
+    live?: number;
   };
 }
 

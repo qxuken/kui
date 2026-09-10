@@ -63,7 +63,7 @@ pub use diag::Warning;
 pub use display::{Clip, ClipId, DisplayList, FragmentDraw, NO_CLIP, NO_CLIP_ID, Quad, QuadKind};
 pub use edit::{EditOptions, MAX_UNDECLARED_EDITS};
 pub use enter::Enter;
-pub use env::{Appearance, Env, Locale, MotionPref, SystemEnv};
+pub use env::{Appearance, AudioDevice, AudioEnv, Env, Locale, MotionPref, SystemEnv};
 pub use fragment::{FragmentDrawId, FragmentList};
 pub use geom::{Edges, Rect, Size, Vec2};
 pub use input::ScrollAxis;

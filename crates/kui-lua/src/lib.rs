@@ -467,6 +467,13 @@ fn env_table<'scope, 'env: 'scope>(
         wt.set("controls_h", r.y + r.h)?;
     }
     t.set("window", wt)?;
+    // What the host's output device is doing (`env.audio.device`, one of
+    // `schema::AUDIO_DEVICES`) and how many playbacks are live. Both keys
+    // always there: "closed" is a reading, not the absence of one.
+    let at = lua.create_table()?;
+    at.set("device", env.audio.device.name())?;
+    at.set("live", env.audio.live)?;
+    t.set("audio", at)?;
     t.set(
         "edit_text",
         scope.create_function(move |_, key: i64| Ok(ui.borrow().edit_text(Key(key as u64))))?,

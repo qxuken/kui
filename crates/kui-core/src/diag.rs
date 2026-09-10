@@ -615,6 +615,11 @@ const CHECK_EVERY: u64 = 16;
 pub(crate) struct Diagnostics {
     pub(crate) enabled: bool,
     pending: Vec<Warning>,
+    /// Everything that ever reached `pending`, kept after the drain: the
+    /// warnings of a core's whole life, for a reader that is not the
+    /// driver (a dev overlay showing what the runner printed). Bounded
+    /// the way `warned` is, since each (code, key) lands here once.
+    log: Vec<Warning>,
     warned: FxHashSet<(&'static str, Key)>,
     /// Child count at the last check, for parents with an auto-keyed child
     /// that carries a transition.
@@ -627,6 +632,7 @@ impl Default for Diagnostics {
         Self {
             enabled: true,
             pending: Vec::new(),
+            log: Vec::new(),
             warned: FxHashSet::default(),
             child_counts: FxHashMap::default(),
             scratch: Vec::new(),
@@ -637,6 +643,11 @@ impl Default for Diagnostics {
 impl Diagnostics {
     pub(crate) fn take(&mut self) -> Vec<Warning> {
         std::mem::take(&mut self.pending)
+    }
+
+    /// Every warning raised so far, drained or not, oldest first.
+    pub(crate) fn raised(&self) -> &[Warning] {
+        &self.log
     }
 
     /// A warning built elsewhere — by a binding, for what it saw before the
@@ -650,6 +661,7 @@ impl Diagnostics {
         {
             return;
         }
+        self.log.push(w.clone());
         self.pending.push(w);
     }
 
@@ -657,11 +669,13 @@ impl Diagnostics {
         if self.pending.len() >= MAX_PENDING || !self.warned.insert((code, key)) {
             return;
         }
-        self.pending.push(Warning {
+        let w = Warning {
             code,
             key,
             message: message(),
-        });
+        };
+        self.log.push(w.clone());
+        self.pending.push(w);
     }
 
     /// Runs every check over the finished frame's tree, on the frames the
@@ -1027,6 +1041,23 @@ impl Diagnostics {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The drain hands a warning to the driver once; the log keeps it for
+    /// anyone else, and a repeat of the same (code, key) is neither.
+    #[test]
+    fn the_log_outlives_the_drain() {
+        let mut d = Diagnostics::default();
+        let w = Warning {
+            code: "test-code",
+            key: Key::ROOT,
+            message: "once".into(),
+        };
+        d.raise(w.clone());
+        d.raise(w.clone());
+        assert_eq!(d.take(), vec![w.clone()]);
+        assert!(d.take().is_empty(), "drained");
+        assert_eq!(d.raised(), &[w]);
+    }
 
     /// The `pub const NAME: &str = "code";` lines of this file, read back
     /// from the source: a code declared outside the `warnings!` block would

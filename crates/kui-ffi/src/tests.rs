@@ -1026,10 +1026,37 @@ mod env_headless {
         kui_ctx_free(ctx);
     }
 
+    /// The audio row: a host with no device never calls it and reads
+    /// closed; one that does writes the state and the count, and a code
+    /// this build has no name for is closed rather than a guess.
+    #[test]
+    fn the_audio_setter_writes_the_device_state_and_the_live_count() {
+        use kui_core::{AudioDevice, AudioEnv};
+        let ctx = kui_ctx_new();
+        let audio = |ctx: *mut KuiCtx| unsafe { ctx.as_mut() }.unwrap().core().env.audio;
+        assert_eq!(audio(ctx), AudioEnv::default());
+
+        kui_env_set_audio(ctx, AudioDevice::Open.code(), 2);
+        assert_eq!(
+            audio(ctx),
+            AudioEnv {
+                device: AudioDevice::Open,
+                live: 2
+            }
+        );
+        kui_env_set_audio(ctx, 0, 0);
+        assert_eq!(audio(ctx), AudioEnv::default());
+        kui_env_set_audio(ctx, 99, 1);
+        assert_eq!(audio(ctx).device, AudioDevice::Closed);
+        assert_eq!(audio(ctx).live, 1);
+        kui_ctx_free(ctx);
+    }
+
     /// A null context is a no-op, like every other entry point.
     #[test]
     fn a_null_context_is_survivable() {
         kui_env_set_system(std::ptr::null_mut(), 1, 0, 1, ks("en"));
+        kui_env_set_audio(std::ptr::null_mut(), 2, 1);
     }
 }
 

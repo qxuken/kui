@@ -104,7 +104,12 @@ fn the_env_setters_take_exactly_the_documented_fields() {
             .map(|a| a.split_whitespace().last().unwrap().to_string())
             .collect()
     };
-    for setter in ["kui_env_set", "kui_env_set_system", "kui_env_set_window"] {
+    for setter in [
+        "kui_env_set",
+        "kui_env_set_system",
+        "kui_env_set_window",
+        "kui_env_set_audio",
+    ] {
         let documented: Vec<String> = ENV_FIELDS
             .iter()
             .filter_map(|f| f.c.strip_prefix(&format!("`{setter}(")))
@@ -121,7 +126,8 @@ fn the_env_setters_take_exactly_the_documented_fields() {
         assert!(
             f.c.starts_with("`kui_env_set(")
                 || f.c.starts_with("`kui_env_set_system(")
-                || f.c.starts_with("`kui_env_set_window("),
+                || f.c.starts_with("`kui_env_set_window(")
+                || f.c.starts_with("`kui_env_set_audio("),
             "{}: a stored env fact C cannot write",
             f.name
         );

@@ -325,6 +325,17 @@ impl Core {
     /// declared the label. Labels are unique among siblings, not across a
     /// tree, so two nodes may share one under different parents: the
     /// first in tree order wins and an `ambiguous-key` warning says so.
+    /// The inverse of [`Self::key_of`]: the label `key` was opened under
+    /// — in the frame being built so far, else in the last one — or
+    /// `None` for an auto-keyed node or a key no frame has declared. What
+    /// a reader holding a key from an event or from `focus()` turns back
+    /// into the name the view gave it.
+    pub fn label_of(&self, key: Key) -> Option<&str> {
+        self.key_labels
+            .label_of(key)
+            .or_else(|| self.key_labels_last.label_of(key))
+    }
+
     pub fn key_of(&mut self, label: &str) -> Option<Key> {
         let (first, count) = {
             let mut hits = self.key_labels.find(label);

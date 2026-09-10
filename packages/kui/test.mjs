@@ -3892,6 +3892,8 @@ test('env() reports the defaults a headless Ctx starts with', () => {
     fullscreen: false,
     nativeControls: null,
   });
+  // No device and nothing playing, which is the truth for a headless host.
+  assert.deepEqual(env.audio, { device: 'closed', live: 0 });
 });
 
 // `schema::ENV_FIELDS` is the one statement of the env shape; this is
@@ -4038,6 +4040,18 @@ test('setEnv carries the OS settings, each with an unknown of its own', () => {
   assert.equal(ctx.env().system.accent, null, 'a transparent accent is no accent');
   ctx.setEnv({ system: { accent: '#00000000' } });
   assert.equal(ctx.env().system.accent, null, 'however it was spelled');
+});
+
+// The audio row: what a driver with a device would push, by the schema's
+// names, and only what you pass moves.
+test('setEnv carries the audio device state and the live count', () => {
+  const ctx = new Ctx();
+  ctx.setEnv({ audio: { device: 'open', live: 2 } });
+  assert.deepEqual(ctx.env().audio, { device: 'open', live: 2 });
+  ctx.setEnv({ audio: { live: 0 } });
+  assert.deepEqual(ctx.env().audio, { device: 'open', live: 0 }, 'the idle stream the row is for');
+  assert.throws(() => ctx.setEnv({ audio: { device: 'humming' } }), /audio\.device is one of/);
+  assert.throws(() => ctx.setEnv({ audio: { volume: 1 } }), /unknown audio key/);
 });
 
 // ADR 0004's `window` on the event: the id the driver declared, carried out
@@ -4475,7 +4489,7 @@ test('addExtension reports why a library is not a plugin, and keeps nothing', ()
 
 // The whole round trip needs a real plugin, which needs a C compiler, so it
 // runs only where examples/c/build.sh (or build.ps1) has been run. The C
-// half of the same check is examples/c/host.c's --headless, which CI runs.
+// half of the same check is examples/c/features/slots/host.c's --headless, which CI runs.
 test('a C extension fills the slot the view declares, and its reply comes back', (t) => {
   // Where both build scripts leave it, whichever profile was built: on
   // Windows this is the shape that imports kui_ffi.dll rather than a host

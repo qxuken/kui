@@ -66,39 +66,47 @@ terms: `update` returns it beside the model with `withEffects(model,
 handler the app registered, and `app.effects()` is where a test reads it
 back ([ADR 0013](docs/adr/0013-effects-as-data.md)). Rust tests drive `Core` the same way
 ([crates/kui-core/tests](crates/kui-core/tests)), and C runs the same API
-headless (`./target/debug/counter --headless`) — as does a C *extension* inside
+headless (`./target/debug/counter --headless`, the same drive every counter runs) — as does a C *extension* inside
 a Rust host (`cargo run -p kui-ffi --example c_panel -- --headless`, which
 clicks the plugin's list and checks the click reached the plugin and not the
 host).
 
 ## Examples
 
-All of them live under [examples/](examples), one directory per
-language; [examples/README.md](examples/README.md) is the full map.
+All of them live under [examples/](examples), one directory per language
+and, inside it, one per kind — `apps/`, `widgets/`, `features/`, `tools/`
+— with one subject each and the name the repo already uses for it
+([ADR 0021](docs/adr/0021-one-subject-per-example.md));
+[examples/README.md](examples/README.md) is the full map. Every one runs
+inside a harness that puts a dock beside it: the event stream as data, the
+runtime's facts with a small button beside each one it can change, the
+latency graph, the key legend — and `--headless` is a self-check with an
+exit code, `--light` / `--dark` pin the base.
 
 ```bash
-cargo run -p kui --example counter        # pure Rust, Elm-ish flow
-cargo run -p kui --example rich_text      # styled spans in one wrapped paragraph
-cargo run -p kui --example editor         # multiline text editing: caret, selection, clipboard
-./examples/c/build.sh && ./target/debug/counter          # the same app from C (Windows: pwsh examples/c/build.ps1)
-cargo run -p kui-lua --example lua_panel  # Rust host + Lua panel sharing one frame
-./examples/c/build.sh && ./target/debug/counter          # the same app from C
-./target/debug/counter --headless         # C FFI self-test, no window needed
-cargo run -p kui-ffi --example c_panel    # C the other way round: a Rust host + a dlopened C panel
-cargo run -p kui --example modal_editor   # helix-flavored modal editing; the app owns the keymap
-cargo run -p kui --example splitmux       # tmux-style splits, tabs, focus, ⌘-drag pane moves; the pane tree is data
-cargo run -p kui --example syntax_view    # syntax highlighting as coalesced style runs
-cargo run -p kui --example gallery        # registered images: Fit sizing, kept aspect, rounded corners
-cargo run -p kui --example toasts         # enter/exit: toasts that slide in and back out, a panel that springs open
-cargo run -p kui --example bulk_exit      # the exit budget at its boundary: 600 cells in one frame, and a virtual list that fits
-cargo run -p kui --example connectors     # a mind map whose links are `line` nodes: curves between floats, no boxes
+cargo run -p kui --example counter        # apps/: the Elm loop, the one every binding has
+cargo run -p kui --example splitmux       # apps/: tmux-style splits, tabs, ⌘-drag pane moves
+cargo run -p kui --example button         # widgets/: the stock button in every state
+cargo run -p kui --example edit           # widgets/: multiline editing and the single-line field
+cargo run -p kui --example text           # widgets/: spans, decorations, families, wrap
+cargo run -p kui --example cells          # widgets/: a terminal grid that selects in cells
+cargo run -p kui --example focus          # features/: the Tab ring and its verbs
+cargo run -p kui --example transition     # features/: transition, easing, slide, keyframes
+cargo run -p kui --example enter_exit     # features/: toasts that slide in and back out
+cargo run -p kui --example theme          # features/: every Theme role over every stock widget
+cargo run -p kui --example counter -- --headless   # the drive, no window
+./examples/c/build.sh && ./target/debug/counter    # the same app from C (Windows: pwsh examples/c/build.ps1)
+cargo run -p kui-ffi --example c_panel    # a Rust host + a dlopened C panel
+cargo run -p kui-lua --example lua_panel  # a Rust host + a Lua panel sharing one frame
+scripts/smoke-examples.sh                 # every windowed example, 120 frames, both bases
+scripts/smoke-headless.sh --run           # every headless drive, what CI runs
 ```
 
 The same app from Node with JSX — build the addon with
 `cargo build -p kui-node --release`, then in [examples/node](examples/node)
-`npm install && npm start` (headless) or `npm run window` (a real winit +
-wgpu window, its event loop pumped from a timer so it shares the main
-thread with libuv):
+`npm install && npm run counter` (a real winit + wgpu window, its event
+loop pumped from a timer so it shares the main thread with libuv; `node
+dist/apps/counter.mjs --headless` is the drive):
 
 ```tsx
 // tsconfig: "jsx": "react-jsx", "jsxImportSource": "@qxuken/kui"
@@ -172,8 +180,8 @@ view, where every extension drew before slots existed.
 The same functions from C, because the extension contract is the contract
 and the language is a detail — `kui_ffi::CExtension` `dlopen`s a shared
 library and hands it the same share of the frame
-([examples/c/panel.c](examples/c/panel.c),
-[examples/c/panel.rs](examples/c/panel.rs)):
+([examples/c/features/slots/panel.c](examples/c/features/slots/panel.c),
+[examples/c/features/slots/panel.rs](examples/c/features/slots/panel.rs)):
 
 ```c
 static const KuiStr SLOTS[] = {{(const uint8_t *)"panel", 5}};
@@ -776,7 +784,8 @@ has a bar — so the call still says what the menu is, the strip simply is not
 there, and one view is portable. The drawn bar keeps its own open menu, hovers across its
 titles the way a menu bar does, and closes on Escape or a press below it;
 the platform's binds the accelerators its rows declare. `cargo run -p kui
---example context_menu` is both.
+--example menu_bar` is both, and `--example context_menu` the menus a
+right-click gets.
 
 Images: register RGBA pixels once (`resources.add_image`), then `ui.image(id,
 spec)` draws them through the same atlas page and draw call as glyphs (the
@@ -1026,14 +1035,21 @@ leave a run without a result long after `check` and `publish` had finished.
 
 `smoke-windows` does one thing more, and it is the only automated check in the
 repo that opens a window: [scripts/smoke-windows.ps1](scripts/smoke-windows.ps1)
-runs every windowed example on the runner's own GPU for 120 frames apiece and
-fails on a crash or a hang. `KUI_SMOKE_FRAMES=n` is what makes an example
-self-terminating, and any dev build honours it — `KUI_SMOKE_FRAMES=120 cargo
-run -p kui --example fragments` is the same check by hand. A release build
-ignores it unless built with `--features smoke`, so that an app you ship does
-not close its own window over a variable its author never asked about. Run it on Windows before a
-tag: the first round found three crashes and a dead feature that the headless
-suite passes straight through (backlog W3–W6).
+runs every windowed example on the runner's own GPU for 120 frames apiece, on
+both theme bases, and fails on a crash or a hang;
+[scripts/smoke-examples.sh](scripts/smoke-examples.sh) is the same round on a
+unix host, and `--node` adds the Node windows. `KUI_SMOKE_FRAMES=n` is what
+makes an example self-terminating, and any dev build honours it —
+`KUI_SMOKE_FRAMES=120 cargo run -p kui --example fragment` is the same check
+by hand. A release build ignores it unless built with `--features smoke`, so
+that an app you ship does not close its own window over a variable its author
+never asked about. Run it before a tag, on Windows above all: the first round
+found three crashes and a dead feature that the headless suite passes straight
+through (backlog W3–W6). Which example is in which round — windowed,
+headless, by hand — is enrolled from the manifests and the example itself
+rather than a list somebody keeps ([ADR 0021](docs/adr/0021-one-subject-per-example.md));
+[scripts/smoke-headless.sh](scripts/smoke-headless.sh) prints the headless
+round and `--run` runs it, which CI does.
 
 Pushing the tag does not check the commit twice. The push to main and the push
 of the tag that names it share a concurrency group keyed by the commit, and

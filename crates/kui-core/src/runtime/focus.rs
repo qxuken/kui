@@ -81,7 +81,12 @@ impl Core {
                     open.push((self.tree.subtree_end(i), item, chosen));
                 }
             }
-            if crate::access::focusable(&self.tree, i) {
+            // The root is never a stop. It encloses everything, so a sink
+            // on it hears every key nothing below claims (ADR 0011) and a
+            // view may focus it outright — but a Tab stop is a thing the
+            // user acts on, and the whole window is not one. Without this
+            // a root sink drew the ring around the window.
+            if i != 0 && crate::access::focusable(&self.tree, i) {
                 out.push((i, self.tree.keys[i]));
             }
             i += 1;

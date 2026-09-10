@@ -63,5 +63,5 @@ harness = false
 # root, so cargo needs the path.
 [[example]]
 name = "conformance-dump"
-path = "../../examples/rust/conformance-dump.rs"
+path = "../../examples/rust/tools/conformance-dump.rs"
 required-features = ["conformance"]

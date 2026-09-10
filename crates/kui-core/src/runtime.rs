@@ -696,6 +696,15 @@ impl Core {
         self.diag.take()
     }
 
+    /// Every warning this core has raised, drained or not, oldest first —
+    /// for a reader that is not the driver. The runner drains
+    /// [`Self::take_warnings`] after every frame and prints them, so a
+    /// view that wants to *show* them (a development overlay) would
+    /// otherwise never see one; this is the log the drain leaves behind.
+    pub fn warnings_raised(&self) -> &[Warning] {
+        self.diag.raised()
+    }
+
     /// Raises a warning a binding built (see [`crate::diag::unknown_prop`]):
     /// a frontend sees declarations the tree walk cannot, because a prop
     /// name nothing claims never becomes part of a node. Behind the same

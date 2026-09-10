@@ -199,7 +199,7 @@ impl LineStore {
 /// too, though it is not overshoot-free: a spline that must pass *through*
 /// a corner has to lean into it. A shape that should only be *pulled*
 /// towards its middle points is a Bézier, and the caller samples one
-/// (`examples/rust/connectors.rs`).
+/// (`examples/rust/widgets/line.rs`).
 ///
 /// The end knots are not doubled — a repeated knot is a zero-length chord,
 /// which centripetal has no parameter for. Each end gets a mirrored

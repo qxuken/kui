@@ -267,6 +267,10 @@ fn asserts() -> (String, Vec<&'static str>) {
     abi_enum!(o, kui_core::schema::MOTIONS, 0 => [
         "KUI_MOTION_UNKNOWN", "KUI_MOTION_FULL", "KUI_MOTION_REDUCED",
     ]);
+    abi_enum!(o, kui_core::schema::AUDIO_DEVICES, 0 => [
+        "KUI_AUDIO_DEVICE_CLOSED", "KUI_AUDIO_DEVICE_OPENING",
+        "KUI_AUDIO_DEVICE_OPEN", "KUI_AUDIO_DEVICE_FAILED",
+    ]);
     abi_enum!(o, kui_core::schema::EXPANDED, 1 => [
         "KUI_EXPANDED_COLLAPSED", "KUI_EXPANDED_EXPANDED",
     ]);
@@ -869,6 +873,7 @@ fn asserts() -> (String, Vec<&'static str>) {
     abi_fn!(o, n, kui_ctx_free(*mut KuiCtx));
     abi_fn!(o, n, kui_env_set(*mut KuiCtx, f32, bool));
     abi_fn!(o, n, kui_env_set_system(*mut KuiCtx, u32, u32, u32, KuiStr));
+    abi_fn!(o, n, kui_env_set_audio(*mut KuiCtx, u32, u32));
     abi_fn!(
         o,
         n,

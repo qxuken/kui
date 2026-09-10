@@ -54,8 +54,82 @@ field reports).
   base; it is now `theme.accent_soft` over `theme.raised` with `theme.fg`
   on top. Menu colours also consolidated onto the theme's roles, so the
   corpus report changes and `target/conformance.txt` wants regenerating.
+- **The examples moved, and most were renamed** ([ADR 0021](docs/adr/0021-one-subject-per-example.md)).
+  One subject per file, and the kind is the directory:
+  `examples/rust/{apps,widgets,features,tools}`, the same under `c/`,
+  `lua/` and `node/`. The old target names are gone — `gallery` is
+  `image`, `connectors` is `line`, `fragments` is `fragment`, `rich_text`
+  is `text`, `editor` is `edit`, `toasts` is `enter_exit`, `bulk_exit` is
+  `exit_budget`; `context_menu` lost its terminal, its menu bar and its
+  selection to `cells`, `menu_bar` and `selection`; the old `counter`'s
+  sounds are `audio`, and every counter is now the same shape. In C,
+  `counter.c` is three programs — `apps/counter.c`, `tools/surface.c` (the
+  header walk) and `tools/conformance.c` — and the panel trio is under
+  `features/slots/`; `./target/debug/counter --headless` is the counter's
+  drive alone and `./target/debug/surface` the walk. In Node, `npm start`
+  is `npm run counter`, `mindmap` is `slide`, the `.d.ts` fixture is
+  `tools/types.tsx`, and every window closes under `KUI_SMOKE_FRAMES`
+  only with an addon built `--features smoke` (the prebuilds never are).
+- **The root is never a Tab stop.** A root that carried `on_key` was a
+  stop, and Tab drew the ring around the whole window; the ring walks
+  past index 0 now. A root sink still hears every unclaimed key (ADR 0011)
+  and can be focused outright. Found by the examples' harness, whose sink
+  is the root.
+- **`Env` grew `audio`**, and every binding's reading with it: a view
+  that destructures `Env` exhaustively names one more field, and C hosts
+  have one more setter to call (or not — zero is closed, which is the
+  truth for a host with no device).
 
 ### Added
+
+- **Every example runs inside a harness, and the harness has a dock**
+  ([ADR 0021](docs/adr/0021-one-subject-per-example.md), decision 6;
+  `examples/harness`, `examples/node/harness.tsx`). Beside the example's
+  tree: the latency graph and the frame counter; the **event stream** —
+  every `UiEvent` the example was handed, as the data it is, with the
+  frame it arrived on, and every warning the core raised; the **status
+  block** — `env.system`, the theme and its source, the window and every
+  open one, the viewport and refresh rate, the focused node by its label
+  and whether its ring shows, the modifiers, native menus, `env.audio` —
+  with a small button beside each fact the harness can change; and the
+  example's key legend. One CLI everywhere: `--headless`, `--dock
+  side|bottom|off`, `--light` / `--dark`, `--accent`, `--size`. Chords
+  `Ctrl+Shift+T/A/M/D/C` cycle the base, the accent, native menus, the
+  dock, and clear the stream. The dock is `role = none`, so neither the
+  Tab ring nor a screen reader sees it; the accessibility fixture runs
+  `--dock off` under the audit and still reads 106/106.
+- **`--headless` is a contract**: an example that has one drives itself
+  through a bare `Core` (`kui_harness::Drive`) and exits non-zero on a
+  wrong answer — twenty of them now, up from two. Which ones is read from
+  `[package.metadata.kui] headless = [...]` in each crate's manifest;
+  `scripts/smoke-headless.sh` prints the round and `--run` runs it, which
+  CI does, and a test pins every listed name to an example. `lua_panel`
+  is in a round for the first time.
+- **The windowed round runs on every host and on both bases**:
+  `scripts/smoke-examples.sh` is `smoke-windows.ps1`'s unix twin (same
+  contract, 120 frames under `KUI_SMOKE_FRAMES`), both open every example
+  under `--light` and `--dark` — T3's "every example on the palette" as a
+  check rather than a migration — and `--node` adds the four Node windows.
+  A test pins every `[[example]]` in the workspace to a row of
+  `examples/README.md`.
+- **Seven subjects that had no example**: `transition` (with the
+  `keyframes` / `repeat` / `delay` chase that only the C header walk
+  exercised), `hover` (with `hover_group`), `focus` (the Tab ring, who is
+  in it, the verbs), `drag`, `titlebar` (with `window_buttons`, which no
+  Rust example called), `tooltip`, `button` — each with a drive.
+- **`env.audio`** (`docs/adr/0021`, decision 6a): what the driver's output
+  device is doing — `device` closed / opening / open / failed, and `live`
+  playbacks — as a row of `ENV_FIELDS` in every binding (`env.audio` in
+  Lua and Node, `kui_env_set_audio` in C, additive). The reading no app
+  had for the one fact that is an idle app's whole CPU once a session
+  has held a sound.
+- **`Core::label_of`**, the inverse of `key_of`: a key from an event or
+  from `focus()` back to the label it was opened under.
+- **`Core::warnings_raised`**: every warning a core has raised, drained
+  or not — the log `take_warnings` leaves, for a reader that is not the
+  driver.
+- **`Example::extensions` / `native_menus`** on the harness trait, and
+  a `smoke` feature on `kui-node` forwarding to `kui/smoke`.
 
 - **The C ABI is pinned prototype by prototype, and constant by constant**
   ([ADR 0020](docs/adr/0020-the-surface-the-schema-does-not-cover.md)).

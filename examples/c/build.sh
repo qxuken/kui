@@ -70,18 +70,26 @@ cc "$abi" "${cflags[@]}" -fsyntax-only
 # Anchored, so the #define in the prelude is not counted as a row.
 echo "kui.h matches Rust ($(grep -c '^KUI_FIELD' "$abi") fields, $(grep -c '^KUI_ENUM' "$abi") enum members, $(grep -c '^[A-Za-z].* kui_[a-z_0-9]*(.*);$' "$abi") prototypes)"
 
-cc examples/c/counter.c "${cflags[@]}" "${link[@]}" -o "$bin/counter"
+# The counter (the app), the header walk (the surface self-test) and the
+# corpus adapter: three programs over one common.h, each linking kui_ffi
+# as a library. They were one file until docs/adr/0021 split them by what
+# they are.
+cc examples/c/apps/counter.c "${cflags[@]}" "${link[@]}" -o "$bin/counter"
 echo "built $bin/counter"
+cc examples/c/tools/surface.c "${cflags[@]}" "${link[@]}" -o "$bin/surface"
+echo "built $bin/surface"
+cc examples/c/tools/conformance.c "${cflags[@]}" "${link[@]}" -o "$bin/conformance"
+echo "built $bin/conformance"
 
 # C on both sides: a C host that loads the same panel, through
 # kui_ctx_add_extension / kui_run_with (ADR 0014's C half, ABI 10). It links
 # kui_ffi like counter.c does - a host is a host - and the plugin it loads is
 # the same file panel.rs loads, byte for byte.
-cc examples/c/host.c "${cflags[@]}" "${link[@]}" -o "$bin/host"
+cc examples/c/features/slots/host.c "${cflags[@]}" "${link[@]}" -o "$bin/host"
 echo "built $bin/host"
 
 # The other direction: C as an extension inside a host that already owns the
-# window (examples/c/panel.rs). No -lkui_ffi and no rpath - the
+# window (examples/c/features/slots/panel.rs). No -lkui_ffi and no rpath - the
 # plugin leaves every kui_* symbol undefined and resolves it from the host
 # executable at dlopen time, the way a Lua C module resolves lua_*. Apple's
 # linker needs to be told to allow that; ELF leaves undefined symbols in a
@@ -91,7 +99,7 @@ case "$(uname -s)" in
     Darwin) undef=(-Wl,-undefined,dynamic_lookup) ;;
 esac
 
-cc examples/c/panel.c "${cflags[@]}" \
+cc examples/c/features/slots/panel.c "${cflags[@]}" \
     -shared -fPIC "${undef[@]+"${undef[@]}"}" \
     -o "$bin/panel.so"
 echo "built $bin/panel.so"
@@ -104,7 +112,7 @@ echo "built $bin/panel.so"
 # requires the refusal; the grep here is what makes a sed that stopped
 # matching fail at the mutation instead of at the load.
 noabi=target/panel-noabi.c
-sed '/^uint32_t kui_ext_abi(void)/d' examples/c/panel.c > "$noabi"
+sed '/^uint32_t kui_ext_abi(void)/d' examples/c/features/slots/panel.c > "$noabi"
 if grep -q kui_ext_abi "$noabi"; then
     echo "panel-noabi.c still defines kui_ext_abi; the mutation missed" >&2
     exit 1
@@ -121,7 +129,8 @@ echo "built $bin/panel-noabi.so (kui_ext_abi deleted; must be refused)"
 # headless and self-asserting: it exits 0 having checked something, or
 # non-zero having said what.
 round=(
-    "$bin/counter --headless|C as the host: the FFI self-test"
+    "$bin/counter --headless|C as the host: the counter's own drive"
+    "$bin/surface|the header walk: every prototype in kui.h called once"
     "$bin/host --headless|C on both sides: the slot filled, the click routed, the reply back"
     "$bin/examples/c_panel --headless|the Rust host, loading the same plugin from the other side"
 )

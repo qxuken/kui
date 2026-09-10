@@ -103,7 +103,7 @@ virtualColumn(ctx, { key: 'log', rows: lines.length, rowH: 28 }, (i) => (
 ```
 
 [`index` row](props.md#composite-props-hand-written-per-binding) ·
-[`virtual-list.tsx`](../examples/node/virtual-list.tsx)
+[`virtual_list.tsx`](../examples/node/widgets/virtual_list.tsx)
 
 ### How do I do that when the rows are not all the same height?
 
@@ -123,8 +123,8 @@ window starts in back where it was before it re-slices — the frame that
 learns is drawn already corrected. To stay at the end of a growing log, ask
 for it: one `set_scroll(key, huge)` after the widget, every frame.
 
-[`bulk_exit.rs`](../examples/rust/bulk_exit.rs) ·
-[`virtual_list.rs`](../examples/rust/virtual_list.rs)
+[`exit_budget.rs`](../examples/rust/features/exit_budget.rs) ·
+[`virtual_list.rs`](../examples/rust/widgets/virtual_list.rs)
 
 ### How do I draw a terminal's screen?
 
@@ -251,7 +251,7 @@ comparison, and an empty list takes it away.
 
 [`menuBar` element](props.md#elements) ·
 [ADR 0018](adr/0018-a-menu-bar-the-app-declares.md) ·
-[examples/rust/context_menu.rs](../examples/rust/context_menu.rs)
+[examples/rust/widgets/menu_bar.rs](../examples/rust/widgets/menu_bar.rs)
 
 ### How do I have global shortcuts and a Tab ring at once?
 
@@ -415,7 +415,7 @@ any box. `animate` is what a fragment reading `time` needs. It has no
 intrinsic size, so give it one.
 
 [ADR 0015](adr/0015-a-fragment-element-and-the-painter-it-is-not.md) ·
-`cargo run --example fragments`
+`cargo run --example fragment`
 
 ### How do I let an extension draw inside my view?
 

@@ -71,10 +71,10 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 
 use kui_core::{
-    Align, Appearance, Color, Core, DismissReason, Edges, EditKey, EditOptions, Enter, FloatConfig,
-    InputEvent, Key, Keyframe, Locale, Mods, MotionPref, MouseButton, NodeSpec, Rect, Size, Sizing,
-    Span, TextStyle, UiEvent, Value, Vec2, WindowButton, WindowCommand, WindowConfig, WindowId,
-    WindowKind,
+    Align, Appearance, AudioDevice, AudioEnv, Color, Core, DismissReason, Edges, EditKey,
+    EditOptions, Enter, FloatConfig, InputEvent, Key, Keyframe, Locale, Mods, MotionPref,
+    MouseButton, NodeSpec, Rect, Size, Sizing, Span, TextStyle, UiEvent, Value, Vec2, WindowButton,
+    WindowCommand, WindowConfig, WindowId, WindowKind,
 };
 
 // ---------------------------------------------------------------------------
@@ -178,6 +178,24 @@ pub extern "C" fn kui_env_set_system(
             // that pushes the appearance and reads `kui_theme` back before
             // its next frame sees the answer (ADR 0019).
             c.core().refresh_theme();
+        }
+    });
+}
+
+/// What the host's audio output is doing, for views to read (`env.audio`):
+/// `device` a `KUI_AUDIO_DEVICE_*` (0 = closed, so a host with no device
+/// reports honestly by never calling this), `live` the playbacks started
+/// or waiting on the open. A fact, not a verb — nothing here closes the
+/// device. An out-of-range code is ignored rather than folded onto a real
+/// state, the way an unknown appearance is.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_env_set_audio(ptr: *mut KuiCtx, device: u32, live: u32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().env.audio = AudioEnv {
+                device: AudioDevice::from_code(device).unwrap_or_default(),
+                live,
+            };
         }
     });
 }

@@ -230,6 +230,11 @@ pub const APPEARANCES: &[&str] = &["unknown", "light", "dark"];
 /// `MotionPref::ALL` order), `unknown` first for the same reason.
 pub const MOTIONS: &[&str] = &["unknown", "full", "reduced"];
 
+/// The audio output device's state (`crate::env::AudioDevice::name`
+/// spellings, in `AudioDevice::ALL` order), `closed` first so a zeroed C
+/// call reports the default.
+pub const AUDIO_DEVICES: &[&str] = &["closed", "opening", "open", "failed"];
+
 /// The roles no view can declare, because the core derives them itself
 /// ([`crate::access::derived_role`]), with what derives each one. Every
 /// [`Role::ALL`] variant is on this list or in [`ROLES`], and
@@ -1772,6 +1777,22 @@ pub const ENV_FIELDS: &[EnvField] = &[
         doc: "Area (logical px, window coordinates) covered by controls the OS still draws over our content — the macOS traffic lights under custom chrome. Keep out of it. Node hands back the `Rect` the core holds (`{x, y, w, h}`, or `null` for none); Lua and C flatten it to a width and height anchored at the window origin (absent in Lua, `0` in C, for none), which is the shape C's two numbers can express and where the one real instance sits.",
     },
     EnvField {
+        name: "audio.device",
+        from: "`AudioEnv::device`",
+        node: &["audio.device"],
+        lua: &["audio.device"],
+        c: "`kui_env_set_audio(device)`",
+        doc: "What the driver's output device is doing: `\"closed\"` (the default, and a headless driver's answer), `\"opening\"` (the ~90 ms open, on its own thread), `\"open\"`, or `\"failed\"` (it refused, and commands are dropped) — `KUI_AUDIO_DEVICE_*` in C, closed 0. A fact and not a verb: nothing lets a view close it, the driver does that itself once it has been idle a while. Worth reading because an open stream is a real-time thread whether or not anything plays, which is the whole of an idle app's CPU once a session has held a sound.",
+    },
+    EnvField {
+        name: "audio.live",
+        from: "`AudioEnv::live`",
+        node: &["audio.live"],
+        lua: &["audio.live"],
+        c: "`kui_env_set_audio(live)`",
+        doc: "Playbacks started and not yet ended, plus any waiting on the device to open. Zero with the device still `\"open\"` is the idle stream the row above is about.",
+    },
+    EnvField {
         name: "viewport.w",
         from: "`Core::viewport()`, the frame's",
         node: &["viewport.width"],
@@ -2433,14 +2454,16 @@ mod tests {
     /// claim a field that does not exist.
     #[test]
     fn env_fields_restate_env_and_window_env_exactly() {
-        use crate::env::{Env, SystemEnv};
+        use crate::env::{AudioEnv, Env, SystemEnv};
         use crate::window::WindowEnv;
         let Env {
             refresh_hz: _,
             focused: _,
             system,
             window,
+            audio,
         } = Env::default();
+        let AudioEnv { device: _, live: _ } = audio;
         let SystemEnv {
             appearance: _,
             accent: _,
@@ -2466,6 +2489,8 @@ mod tests {
             "window.maximized",
             "window.fullscreen",
             "window.native_controls",
+            "audio.device",
+            "audio.live",
         ];
         // A stored fact's `from` is the struct and the field, spelled the
         // one way; everything else in the column is a call.
@@ -2476,6 +2501,7 @@ mod tests {
                 let (strukt, field) = match f.name.split_once('.') {
                     Some(("window", field)) => ("WindowEnv", field),
                     Some(("system", field)) => ("SystemEnv", field),
+                    Some(("audio", field)) => ("AudioEnv", field),
                     Some((group, _)) => panic!("{}: no struct holds a {group} fact", f.name),
                     None => ("Env", f.name),
                 };

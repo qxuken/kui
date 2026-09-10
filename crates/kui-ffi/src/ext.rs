@@ -439,7 +439,7 @@ pub(crate) mod tests {
     /// runtime. That is the shape of a plugin built against a header from
     /// before ADR 0006 added `kui_ext_abi` - the case the check exists to
     /// refuse - reached without a C compiler in the test. The real mutant,
-    /// `examples/c/panel.c` with its `kui_ext_abi` line deleted, is built by
+    /// `examples/c/features/slots/panel.c` with its `kui_ext_abi` line deleted, is built by
     /// `examples/c/build.sh` and driven through `c_panel --headless` in CI.
     pub(crate) fn a_library_with_no_kui_symbols() -> &'static str {
         if cfg!(target_vendor = "apple") {

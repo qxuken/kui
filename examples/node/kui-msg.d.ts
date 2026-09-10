@@ -7,18 +7,21 @@
 import type {} from '@qxuken/kui/jsx-runtime';
 
 type AppMessages =
+  // The harness's own (harness.tsx): its dock buttons and its root sink.
+  | { kind: '@harness'; what: string }
+  // apps/counter.tsx and features/window.tsx.
   | { kind: 'add'; by: number }
   | { kind: 'reset' }
   | { kind: 'hum' }
   // The context menu's tag: what onContextMenu sends back, and what the
   // menu declares as its modal tag.
   | { kind: 'menu' }
-  // The key sink's tag in counter.tsx: tags are messages too.
+  // The key sink's tag in tools/types.tsx: tags are messages too.
   | { tool: string }
-  // mindmap.tsx: the canvas's drag tag and a card's click payload.
+  // features/slide.tsx: the canvas's drag tag and a card's click payload.
   | { kind: 'pan' }
   | { kind: 'card'; id: string }
-  // virtual-list.tsx: the row a click picked.
+  // widgets/virtual_list.tsx: the row a click picked.
   | { kind: 'pick'; row: number };
 
 declare module '@qxuken/kui/jsx-runtime' {

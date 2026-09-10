@@ -1306,3 +1306,48 @@ fn a_key_acting_on_pointer_focus_shows_it() {
     frame(&mut core, false, false);
     assert_eq!(ring_count(&mut core), 0);
 }
+
+/// The root is never a Tab stop, sink or not: it encloses everything, so
+/// a sink on it hears every key nothing below claims (ADR 0011) and a
+/// view may focus it outright, but the ring walks past it — a stop is a
+/// thing the user acts on, and the whole window is not one. Before this
+/// a root sink drew the ring around the window (found by the examples'
+/// harness, whose sink is the root; ADR 0021).
+#[test]
+fn the_root_is_never_a_tab_stop() {
+    let mut core = Core::new();
+    let mut go = Key::ROOT;
+    let build = |core: &mut Core, go: &mut Key| {
+        let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill().on_key(Value::str("root")));
+        *go = ui.with_keyed(
+            "go",
+            NodeSpec::row()
+                .height(Sizing::Fixed(H))
+                .on_click(Value::str("go")),
+            |_| {},
+        );
+        ui.finish();
+    };
+    build(&mut core, &mut go);
+    tab(&mut core, false);
+    assert_eq!(core.focus(), Some(go));
+    tab(&mut core, false);
+    assert_eq!(
+        core.focus(),
+        Some(go),
+        "one stop: the root is not the other"
+    );
+    // Focused outright it hears the keys the button does not claim.
+    core.set_focus(Some(Key::ROOT));
+    build(&mut core, &mut go);
+    let evs = core.handle_input(InputEvent::KeyDown(kui_core::KeyPress::new(
+        kui_core::KeyCode::Char('x'),
+        Default::default(),
+    )));
+    assert_eq!(
+        evs[0].payload.get("tag").and_then(Value::as_str),
+        Some("root"),
+        "a focused root sink keeps the keyboard"
+    );
+}

@@ -334,7 +334,7 @@ impl Launcher {
     /// environment it was launched from happened to set a variable, and
     /// the app's author never asked for that behaviour. Live in a dev
     /// build, which is where it is used by hand (`KUI_SMOKE_FRAMES=120
-    /// cargo run --example fragments`), and in a release build that asks
+    /// cargo run --example fragment`), and in a release build that asks
     /// for it with `--features smoke` — which is what
     /// `scripts/smoke-windows.ps1` passes when it is not smoking dev, and
     /// the whole reason this is a feature rather than `debug_assertions`
@@ -629,7 +629,7 @@ pub fn run<A: App>(
 /// titlebar. It is also the frame the user actually sees in an app that
 /// only redraws on input, since nothing re-runs a view that nothing asked
 /// a question of (backlog F39).
-fn sync_env(pane: &mut Pane, system: &system_env::Queried, chrome: Chrome) {
+fn sync_env(pane: &mut Pane, system: &system_env::Queried, chrome: Chrome, audio: AudioEnv) {
     let window = &pane.window;
     // Per-frame so it self-corrects when the window moves to another
     // monitor.
@@ -659,6 +659,10 @@ fn sync_env(pane: &mut Pane, system: &system_env::Queried, chrome: Chrome) {
         native_controls: (cfg!(target_os = "macos") && chrome == Chrome::Custom)
             .then_some(MACOS_TRAFFIC_LIGHTS),
     };
+    // One device per app, so every pane reads the same state; per-frame
+    // because the driver opens it off-thread and closes it when idle, and
+    // both of those happen between frames.
+    pane.core.env.audio = audio;
 }
 
 /// A window's OS light/dark setting, as `env.system.appearance`.
@@ -2088,8 +2092,9 @@ impl<A: App> Shell<A> {
         // Before anything can ask: a host that drives its own loop runs
         // its view as soon as the window exists, which is before the
         // first frame (backlog F39).
+        let audio = self.audio.env();
         let pane = self.panes.last_mut().expect("just pushed");
-        sync_env(pane, &self.system, self.chrome);
+        sync_env(pane, &self.system, self.chrome, audio);
     }
 
     /// The attributes every window of this app is created with: the
@@ -2518,12 +2523,13 @@ impl<A: App> Shell<A> {
             chrome,
             epoch,
             system,
+            audio,
             ..
         } = self;
         let pane = &mut panes[i];
         // What the driver knows and the view only reads, refreshed for
         // this frame (it was already filled in when the pane opened).
-        sync_env(pane, system, *chrome);
+        sync_env(pane, system, *chrome, audio.env());
         let window = &pane.window;
         // The core turns a changed viewport into a `resize` event, routed
         // with the rest of the pending events after this frame.

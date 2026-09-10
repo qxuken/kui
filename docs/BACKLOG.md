@@ -809,6 +809,62 @@ holes (`stats()` / `frameStats()` with no C twin, `kui_fragment_source` /
 `kui_set_subpixel_text` with no Node twin) so the first two rows write
 themselves.
 
+## From the examples round (2026-09-10)
+
+The round that produced
+[ADR 0021](adr/0021-one-subject-per-example.md): every example moved,
+most renamed, all put inside a harness with a dock, twenty of them given a
+drive with an exit code, seven subjects given their first example, and
+`env.audio` added across the bindings. Built whole the same day; what the
+building found, in order:
+
+- **A root sink was a Tab stop.** The harness's sink is the root, and the
+  first Tab after the last control put the ring around the whole window.
+  The ring skips index 0 now (`focus_ring`, pinned in `tests/focus.rs`);
+  nothing had depended on reaching it.
+- **`on_hover` is per node; `hover_group` lights together and does not
+  report together.** The `hover` example's drive said otherwise on its
+  first run and was corrected, and the prose of the ADR with it.
+- **A `drag` event's `dx`/`dy` are the displacement since the press**, not
+  the step since the last event — what the Node mindmap's "no delta is
+  ever summed" always meant. The `drag` example's first drive summed them.
+- **The Node addon never closed under `KUI_SMOKE_FRAMES`**: `native.cjs`
+  loads the release cdylib, which ignores the variable by design. So the
+  Node windows had never been in a windowed round; `kui-node` has a
+  `smoke` feature now and `scripts/smoke-examples.sh --node` builds with
+  it. The four `--smoke` timeouts the examples carried instead are gone.
+- **`text_input` without a `label` warns** (`control-without-name`), which
+  two of the split examples did on the first windowed round and the round
+  reported. An example of all things should not produce a warning; the
+  windowed scripts print them for that reason.
+- **The C span initializers had warned since ABI 8** (`bg` appended to
+  `KuiSpan`, three files short one initializer each). Fixed in passing;
+  `build.sh` is warning-free.
+
+Three follow-ups, none blocking:
+
+### `.` E1 — The Node dock has no warnings in its stream
+
+The addon exposes `warnings()` — the drain — and not the log behind it;
+the Rust dock reads `Core::warnings_raised`. A `warningsRaised()` binding
+is ten lines plus a `.d.ts` regeneration; worth it the first time a Node
+field report wants to see a warning on screen rather than in a terminal.
+
+### `.` E2 — No C dock
+
+`examples/c/common.h` is the whole of the C harness: the ABI check and the
+assertion helpers the three programs share. The C counter is one app and
+the other two are tools, and none of them wanted a dock. If a C app
+example ever earns one, the Rust dock's layout is the spec.
+
+### `.` E3 — `features/modal` is still inside two other examples
+
+The dialog with `initial_focus`, Tab confined and `dismiss` is shown by
+`apps/counter`'s menu (the Rosetta copy of it) and by `features/focus`'s
+prose. A page of its own would be that menu with a title; declined until
+a modal-specific behaviour — a nested confirm, the entry-focus precedence
+of ADR 0007 — wants a picture.
+
 ## After alpha.10
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -992,7 +1048,7 @@ Accessibility permission — and remove Lua `env.focus` at 0.2 (P3, R7).
 items are in it because the frame they live in is between a press and a
 release, which no headless assertion reads:
 
-- `npm run mindmap` in `examples/node`, then **drag the empty canvas and
+- `npm run slide` in `examples/node`, then **drag the empty canvas and
   watch it while the button is down** — the map has to follow the cursor,
   cards and connectors together, not jump into place on release. That is
   ~~F15~~, checked for alpha.7 with `screencapture` inside a synthetic drag

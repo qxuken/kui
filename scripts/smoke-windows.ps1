@@ -3,8 +3,9 @@
 #
 #   pwsh scripts/smoke-windows.ps1              # every windowed example
 #   pwsh scripts/smoke-windows.ps1 -Frames 300  # longer, for pacing bugs
-#   pwsh scripts/smoke-windows.ps1 -Only fragments,toasts
+#   pwsh scripts/smoke-windows.ps1 -Only fragment,enter_exit
 #   pwsh scripts/smoke-windows.ps1 -Dev         # the profile `cargo run` uses
+#   pwsh scripts/smoke-windows.ps1 -Base light  # one theme base only
 #
 # Why this exists. The smoke job in .forgejo/workflows/smoke.yml runs
 # `cargo test --workspace` natively, which proves the platform code compiles
@@ -33,6 +34,11 @@
 # failure with the stderr to read. A frame only counts once a present has
 # succeeded, so an example that opens a window and never paints runs out
 # the timeout rather than passing quietly.
+#
+# Every example runs inside the harness (examples/harness, ADR 0021), so
+# `--light` and `--dark` pin the theme base without the example knowing:
+# each one is opened twice, once per base, and a literal colour that reads
+# on one base and not the other is opened on both, every run.
 #
 # The runner honours that variable in a dev build, and in any build asking
 # for `--features smoke`, which is what this script passes when it is not
@@ -65,7 +71,9 @@ param(
     # usually about.
     [switch]$Dev,
     # Skip the build and run whatever is already in target/.
-    [switch]$NoBuild
+    [switch]$NoBuild,
+    # The theme bases to open each example on; both by default.
+    [string[]]$Base = @('light', 'dark')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -74,7 +82,7 @@ Set-Location (Join-Path $PSScriptRoot '..')
 # Every example in crates/kui, read from its manifest so a new one is
 # smoked the day it is added. All of them open a window; the ones that do
 # not (`conformance-dump`, `bench`) and the two `panel` hosts for an
-# extension built by examples/c/build.sh are other crates' examples.
+# extension built by examples/c/build.ps1 are other crates' examples.
 $examples = @(((cargo metadata --format-version 1 --no-deps | ConvertFrom-Json).packages |
     Where-Object name -eq 'kui').targets |
     Where-Object { $_.kind -contains 'example' } |
@@ -83,6 +91,7 @@ $examples = @(((cargo metadata --format-version 1 --no-deps | ConvertFrom-Json).
 # as one element rather than two; split it back rather than making the
 # documented spelling depend on how the script was invoked.
 $Only = @($Only | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
+$Base = @($Base | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 if ($Only.Count -gt 0) {
     $unknown = $Only | Where-Object { $examples -notcontains $_ }
     if ($unknown) { throw "no such example: $($unknown -join ', ')" }
@@ -104,22 +113,24 @@ if (-not $NoBuild) {
 }
 
 Write-Host ""
-Write-Host ("smoke: {0} examples, {1} frames each, {2} profile" -f $examples.Count, $Frames, $profileDir)
+Write-Host ("smoke: {0} examples x ({1}), {2} frames each, {3} profile" -f $examples.Count, ($Base -join ' '), $Frames, $profileDir)
 Write-Host ""
 
 $failed = @()
 $env:KUI_SMOKE_FRAMES = "$Frames"
 foreach ($name in $examples) {
+  foreach ($base in $Base) {
     $exe = Join-Path "target/$profileDir/examples" "$name.exe"
+    $label = "{0,-14} {1,-5}" -f $name, $base
     if (-not (Test-Path $exe)) {
-        Write-Host ("  {0,-14} MISSING  {1}" -f $name, $exe) -ForegroundColor Red
-        $failed += $name
+        Write-Host ("  {0} MISSING  {1}" -f $label, $exe) -ForegroundColor Red
+        $failed += "$name/$base"
         continue
     }
     $err = New-TemporaryFile
     $sw = [Diagnostics.Stopwatch]::StartNew()
     # stdout is nobody's: what an example prints is not what is judged.
-    $p = Start-Process -FilePath $exe -PassThru -NoNewWindow `
+    $p = Start-Process -FilePath $exe -ArgumentList @("--$base") -PassThru -NoNewWindow `
         -RedirectStandardError $err -RedirectStandardOutput NUL
     $done = $p.WaitForExit($TimeoutSec * 1000)
     if (-not $done) {
@@ -136,20 +147,21 @@ foreach ($name in $examples) {
     $warnings = @($stderr -split "`n" | Where-Object { $_ -match '^kui: warning' })
 
     if (-not $done) {
-        Write-Host ("  {0,-14} HUNG     {1}s" -f $name, $TimeoutSec) -ForegroundColor Red
-        $failed += $name
+        Write-Host ("  {0} HUNG     {1}s" -f $label, $TimeoutSec) -ForegroundColor Red
+        $failed += "$name/$base"
     } elseif ($p.ExitCode -ne 0) {
-        Write-Host ("  {0,-14} FAILED   exit {1}" -f $name, $p.ExitCode) -ForegroundColor Red
+        Write-Host ("  {0} FAILED   exit {1}" -f $label, $p.ExitCode) -ForegroundColor Red
         ($stderr -split "`n" | Select-Object -First 12) | ForEach-Object {
-            if ($_.Trim()) { Write-Host "                 $_" -ForegroundColor DarkGray }
+            if ($_.Trim()) { Write-Host "                       $_" -ForegroundColor DarkGray }
         }
-        $failed += $name
+        $failed += "$name/$base"
     } else {
         $note = if ($warnings.Count -gt 0) { " ($($warnings.Count) warning(s))" } else { '' }
-        Write-Host ("  {0,-14} ok       {1:N2}s{2}" -f $name, $sw.Elapsed.TotalSeconds, $note) -ForegroundColor Green
-        $warnings | ForEach-Object { Write-Host "                 $_" -ForegroundColor Yellow }
+        Write-Host ("  {0} ok       {1:N2}s{2}" -f $label, $sw.Elapsed.TotalSeconds, $note) -ForegroundColor Green
+        $warnings | ForEach-Object { Write-Host "                       $_" -ForegroundColor Yellow }
     }
     Remove-Item $err -ErrorAction SilentlyContinue
+  }
 }
 Remove-Item Env:\KUI_SMOKE_FRAMES -ErrorAction SilentlyContinue
 
@@ -158,5 +170,5 @@ if ($failed.Count -gt 0) {
     Write-Host ("FAILED: {0}" -f ($failed -join ', ')) -ForegroundColor Red
     exit 1
 }
-Write-Host ("all {0} examples drew {1} frames and exited cleanly" -f $examples.Count, $Frames) -ForegroundColor Green
+Write-Host ("all {0} examples drew {1} frames on each base and exited cleanly" -f $examples.Count, $Frames) -ForegroundColor Green
 exit 0

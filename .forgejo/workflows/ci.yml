@@ -305,7 +305,9 @@ jobs:
       # printed - so reproducing a failure locally is the line above, and
       # the two cannot drift. What it covers:
       #
-      #  * C as the host, headless: the FFI self-test.
+      #  * C as the host, headless: the counter's own drive, and then the
+      #    header walk (examples/c/tools/surface.c), which calls every
+      #    prototype in kui.h once and checks what comes back.
       #  * The other direction, and the one with a linker requirement rather
       #    than only an API: a Rust host dlopens target/debug/panel.so and
       #    the plugin resolves every kui_* back out of the host executable.
@@ -324,10 +326,10 @@ jobs:
       #
       # The conformance replay is separate because it is the one thing in
       # the round that needs a report built by another step.
-      - name: C example (header ABI check + FFI self-test + the C round)
+      - name: C examples (header ABI check + the header walk + the C round)
         run: |
           ./examples/c/build.sh --run
-          ./target/debug/counter --conformance target/conformance.txt
+          ./target/debug/conformance target/conformance.txt
 
       # npm test covers both the encoder tests and the Node adapter over
       # the corpus, which needs KUI_CONFORMANCE to run (it skips without
@@ -363,22 +365,31 @@ jobs:
           npm run gen
           git diff --exit-code -- jsx-runtime.d.ts index.d.ts ../../docs/props.md
 
-      # The .d.ts is only exercised by a type checker; the example app is
-      # the one that uses every app-facing type (messages, events, props).
-      # It is also a self-checking headless drive - it clicks its own
-      # buttons by hit-testing, types into its editor, opens its context
-      # menu, and exits 1 on "MISMATCH" - so run it too: typechecking alone
-      # let a stale focus assumption sit in it from 0.1.0-alpha.5 (a click
-      # takes the keyboard, so `autofocus` no longer held when it typed)
-      # without anything going red. Only the headless one: counter-window
-      # opens a window and has no display here.
-      - name: Node example typecheck and run
+      # The .d.ts is only exercised by a type checker; the examples are
+      # what uses every app-facing type (messages, events, props), and
+      # examples/node/tools/types.tsx is the one written for that. Running
+      # them is the headless round's, below.
+      - name: Node examples typecheck
         run: |
           cd examples/node
           npm ci
           npm run typecheck
-          npm run build
-          node dist/counter.mjs
+
+      # Every example with a self-check, run with `--headless` and judged
+      # by its exit code (ADR 0021, decision 4): the Rust ones each crate's
+      # Cargo.toml lists under `[package.metadata.kui] headless`, the Lua
+      # and C panel hosts, and `npm run smoke` for Node - the counter
+      # clicks its own buttons by label, types into its field, opens its
+      # menu; the others theirs. Typechecking alone let a stale focus
+      # assumption sit in the Node counter from 0.1.0-alpha.5 (a click
+      # takes the keyboard, so `autofocus` no longer held when it typed)
+      # without anything going red, which is what a drive with an exit
+      # code is for. `--run` for the reason build.sh takes it: the script
+      # prints the round when not running it, so the two cannot drift. The
+      # windowed examples are scripts/smoke-examples.sh's, on a machine
+      # with a display.
+      - name: The headless round
+        run: scripts/smoke-headless.sh --run
 
       # examples/node depends on packages/kui by `file:` path, so its
       # lockfile keeps a copy of that manifest version - and `npm ci` above

@@ -634,7 +634,10 @@ impl Ctx {
             .as_object()
             .ok_or_else(|| err("setEnv() takes an object"))?;
         for name in o.keys() {
-            if !matches!(name.as_str(), "refreshHz" | "focused" | "system" | "window") {
+            if !matches!(
+                name.as_str(),
+                "refreshHz" | "focused" | "system" | "window" | "audio"
+            ) {
                 return Err(err(format!("setEnv(): unknown key {name:?}")));
             }
         }
@@ -673,6 +676,37 @@ impl Ctx {
             // test that sets the appearance and reads `theme()` back
             // without drawing should see the answer, not the last frame's.
             self.core.refresh_theme();
+        }
+        if let Some(a) = o.get("audio") {
+            // What a driver with a device would report: the state by its
+            // schema name, the count as a number. Field by field, like
+            // `system`.
+            let a = a
+                .as_object()
+                .ok_or_else(|| err("setEnv(): audio must be an object"))?;
+            let au = &mut self.core.env.audio;
+            for (name, v) in a {
+                match name.as_str() {
+                    "device" => {
+                        au.device = v
+                            .as_str()
+                            .and_then(kui_core::AudioDevice::parse)
+                            .ok_or_else(|| {
+                                err(format!(
+                                    "setEnv(): audio.device is one of {:?}",
+                                    kui_core::schema::AUDIO_DEVICES
+                                ))
+                            })?
+                    }
+                    "live" => {
+                        au.live = v
+                            .as_u64()
+                            .and_then(|n| u32::try_from(n).ok())
+                            .ok_or_else(|| err("setEnv(): audio.live must be a u32"))?
+                    }
+                    _ => return Err(err(format!("setEnv(): unknown audio key {name:?}"))),
+                }
+            }
         }
         let Some(w) = o.get("window") else {
             return Ok(());
@@ -1154,6 +1188,12 @@ fn env_json(core: &mut Core) -> Json {
             .map_or(Json::Null, |l| Json::from(l.as_str().to_string())),
     );
 
+    // The output device and the live playbacks: both keys always there,
+    // "closed" being a reading rather than the absence of one.
+    let mut au = JsonMap::new();
+    au.insert("device".into(), Json::from(env.audio.device.name()));
+    au.insert("live".into(), Json::from(env.audio.live));
+
     let mut o = JsonMap::new();
     o.insert(
         "refreshHz".into(),
@@ -1168,6 +1208,7 @@ fn env_json(core: &mut Core) -> Json {
     o.insert("system".into(), Json::Object(sy));
     o.insert("viewport".into(), Json::Object(vp));
     o.insert("window".into(), Json::Object(w));
+    o.insert("audio".into(), Json::Object(au));
     Json::Object(o)
 }
 

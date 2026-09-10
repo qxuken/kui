@@ -52,7 +52,7 @@
 use std::fmt::Write as _;
 
 /// Where `[[example]] c_panel` in Cargo.toml points, relative to this crate.
-const EXAMPLE: &str = "../../examples/c/panel.rs";
+const EXAMPLE: &str = "../../examples/c/features/slots/panel.rs";
 
 fn main() {
     println!("cargo::rerun-if-changed=build.rs");

@@ -1,150 +1,194 @@
 # Examples
 
-Every example in the repo lives here, one directory per binding — and a
-binding's directory holds the *whole* example, in whatever languages it takes.
-`c/` is not "the C files", it is the C story: C driving kui as a library, C
-driven as an extension, and the Rust host and build script that make the
-second one run.
+Every example in the repo lives here, one directory per binding, and
+inside a binding one directory per **kind** of example
+([ADR 0021](../docs/adr/0021-one-subject-per-example.md)):
 
 | | |
 |---|---|
-| [`rust/`](rust) | kui from Rust — `kui`, plus `kui-core`'s corpus tool |
-| [`c/`](c) | kui from C, both directions — `kui-ffi` |
-| [`lua/`](lua) | kui from Lua, inside a Rust host — `kui-lua` |
-| [`node/`](node) | kui from Node with JSX — the `kui` npm package |
+| `apps/` | how it composes — an app owning its state, keymap or pane tree, touching whatever it needs |
+| `widgets/` | one element or one stock widget, in every state it has |
+| `features/` | one cross-cutting behaviour, with exactly the widgets it touches |
+| `tools/` | registered as an example for want of a better slot, and not one: a corpus dump, a header walk, a bench |
 
-The Rust files here belong to four different crates but share this one tree,
-so each crate's `Cargo.toml` names its examples with an explicit `path`. Three
-consequences worth knowing. `cargo run` needs the right `-p`, which the tables
-below have. The published crates no longer carry their examples in the tarball
-— cargo drops a target whose source sits outside the package, and says so as a
-warning during `cargo publish`; read them here instead. And two target names
-do not match their filename: `examples/c/panel.rs` is `--example c_panel` and
-`examples/lua/panel.rs` is `--example lua_panel`, because every example binary
-in the workspace lands in one flat `target/debug/examples/`, where two called
-`panel` would collide.
+An example has **one subject**, and the file is named for it with the
+name the repo already uses — the `ELEMENTS` row, the `widgets::` function,
+the `props.md` prop or the ADR's noun. The target name is the file's
+basename (every example binary in the workspace lands in one flat
+`target/debug/examples/`, so `widgets/tooltip.rs` is `--example tooltip`);
+the `c_` and `lua_` prefixes on the two panel hosts keep them from
+colliding.
+
+The Rust files belong to four different crates but share this one tree,
+so each crate's `Cargo.toml` names its examples with an explicit `path`,
+and `cargo run` needs the right `-p` — the tables below have it. The
+published crates do not carry their examples in the tarball (cargo drops
+a target whose source sits outside the package); read them here.
+
+## The harness
+
+Every example runs inside [`harness/`](harness) (Rust; `node/harness.tsx`
+is its twin for Node, and `c/common.h` what the C programs share). It owns
+what is not the subject: the window title, the command line, and a
+**dock** beside the example's tree —
+
+- the latency graph and the frame counter (`n / KUI_SMOKE_FRAMES` when
+  one is set);
+- the **event stream**: every `UiEvent` handed to the example, with the
+  frame it arrived on and its payload printed as the data it is, plus
+  every `kui: warning` the core raised;
+- the **status block**: what the runtime believes right now, each row read
+  from the door it comes from — `env.system`, the theme and its source,
+  the window and every open one, the viewport and refresh rate, the
+  focused node, the modifiers, `env.audio` — and, beside each fact the
+  harness can change, a small button that changes it;
+- the **key legend** the example declares.
+
+The same flags everywhere: `--headless` runs the example's self-check and
+exits non-zero on a wrong answer; `--dock side|bottom|off` places the
+dock; `--light` / `--dark` pin the theme base and `--accent #rrggbb` the
+accent; `--size WxH` the example's area. The chords are
+`Ctrl+Shift+<letter>` on every platform: `T` cycles the base, `A` the
+accent, `M` toggles native menus, `D` moves the dock, `C` clears the
+stream.
+
+Two rules the dock imposes, both what an extension in a slot already lives
+under (ADR 0014): an example addresses its nodes from the key its `open`
+returned, never from `Key::ROOT`, and it opens its own container rather
+than configuring the root. The dock carries `role = none`, so neither the
+Tab ring nor assistive technology sees it.
+
+## The smoke rounds
+
+The examples are the repo's only windowed check and half of its by-hand
+round, and each is in one of three channels, enrolled from something a
+script reads rather than a list somebody keeps:
+
+| Channel | Enrolled by | Run by |
+|---|---|---|
+| **windowed** | being an `[[example]]` of `kui` (`cargo metadata`) | [`scripts/smoke-examples.sh`](../scripts/smoke-examples.sh) on a unix host, [`scripts/smoke-windows.ps1`](../scripts/smoke-windows.ps1) on Windows: 120 frames under `KUI_SMOKE_FRAMES`, on both bases; `--node` adds the Node windows |
+| **headless** | `[package.metadata.kui] headless = [...]` in the crate's `Cargo.toml`; `npm run smoke` for Node; the round in `c/build.sh` | [`scripts/smoke-headless.sh --run`](../scripts/smoke-headless.sh), which CI runs |
+| **by hand** | the *By hand* column below | the round before a tag; results into `### Native verification` in the CHANGELOG |
+
+Two tests in the harness pin the mirrors: every `[[example]]` is linked
+from this file, and every `headless` name is an example.
 
 ## Rust — [`rust/`](rust)
 
-| Example | Run | What it shows |
+Run with `cargo run -p kui --example <name>`; `-- --headless` where the
+table says so.
+
+### `apps/`
+
+| Example | Shows | Headless | By hand |
+|---|---|---|---|
+| [`counter.rs`](rust/apps/counter.rs) | The smallest app that is the whole pattern, and the one every binding has in the same shape: the Elm loop, a button, an `edit` field read back, a right-click that declares a `modal` menu | ✓ the Rosetta drive | |
+| [`splitmux.rs`](rust/apps/splitmux.rs) | tmux-style splits, tabs, focus, ⌘-drag pane moves; the pane tree is data and the app owns the chord keymap | `cargo test` (its `mod tests`) | |
+| [`modal_editor.rs`](rust/apps/modal_editor.rs) | Helix-flavored modal editing; the app owns the document, the keymap and the modes | | |
+| [`syntax_view.rs`](rust/apps/syntax_view.rs) | Syntax highlighting as coalesced style runs; the frame shape the `highlight` bench measures | | |
+
+### `widgets/`
+
+| Example | Shows | Headless | By hand |
+|---|---|---|---|
+| [`button.rs`](rust/widgets/button.rs) | The stock button in every state: rest, hover, pressed, the ring, `accent`, `disabled`; the access rows; a button in the app's own colour off `button_palette` | ✓ | |
+| [`edit.rs`](rust/widgets/edit.rs) | The `edit` element: a multiline document and the single-line `text_input`, `changed` and `submit`, the text read back | ✓ | |
+| [`text.rs`](rust/widgets/text.rs) | The `text` element: spans shaped as one paragraph, decorations, families, `nowrap`, `max_lines` + `ellipsis`, line height | | |
+| [`image.rs`](rust/widgets/image.rs) | The `image` element: Fit sizing, kept aspect, rounded corners, a rounded scroll container clipping its rows | | |
+| [`line.rs`](rust/widgets/line.rs) | The `line` element: a mind map whose links are curves between floats, brightening by transition | | |
+| [`fragment.rs`](rust/widgets/fragment.rs) | The `fragment` element: boxes a WGSL function paints — a gradient, a ring, a shimmer, a card with children | | |
+| [`cells.rs`](rust/widgets/cells.rs) | The `cells` element: a terminal grid with a cursor and an `origin_line`, selecting in cells, copy trimming blanks, the screen scrolled under a selection | ✓ | |
+| [`virtual_list.rs`](rust/widgets/virtual_list.rs) | `widgets::virtual_column`, the same list by hand (`--by-hand`), and `virtual_rows` for rows of no fixed height (`--variable`) | ✓ every mode | |
+| [`context_menu.rs`](rust/widgets/context_menu.rs) | Who gets a context menu: the stock one over a selectable scope, the app's own over a row, the editor's four, nothing over a plain box | ✓ | |
+| [`menu_bar.rs`](rust/widgets/menu_bar.rs) | The application menu bar the frame declares (ADR 0018): a `checked` row, an `enabled` one, and the same `menu` event whoever showed it | ✓ | |
+| [`tooltip.rs`](rust/widgets/tooltip.rs) | The tooltip three ways: the view's float under `is_hovered`, the `apply_tooltip` prop that is also the accessible description, `tooltip_with` around a legend; `fit` near the edge | ✓ | |
+| [`titlebar.rs`](rust/widgets/titlebar.rs) | Custom chrome: `titlebar`, `titlebar_with` (tabs in the strip), `window_buttons`, the inset past the OS's own controls, the window facts read back | | drag the strip, double-click it |
+
+### `features/`
+
+| Example | Shows | Headless | By hand |
+|---|---|---|---|
+| [`hover.rs`](rust/features/hover.rs) | Hover declared, not tracked: `hover_bg`, `hoverable` + `is_hovered`, `hover_group` lighting siblings together, `on_hover` as enter/leave events | ✓ | |
+| [`focus.rs`](rust/features/focus.rs) | Keyboard focus as data (ADR 0002): the Tab ring in tree order, who is in it and who is not, Enter/Space, the ring vs a click, `focus_bg`, the `focus` / `blur` / `focus_next` verbs | ✓ | |
+| [`drag.rs`](rust/features/drag.rs) | `on_drag`: start/move/end with the displacement since the press — a slider by travel, a card moved by its float offset, the pointer captured until the release | ✓ | |
+| [`transition.rs`](rust/features/transition.rs) | Motion as data: `transition`, every `easing` racing, `slide` between anchors, `keyframes` with `repeat` and `delay` as a chase light | ✓ | |
+| [`selection.rs`](rust/features/selection.rs) | Selection as a scope (ADR 0017) over `text`, spans, `cells` and `edit`: one selection per window, read back | ✓ | force-click a word for Look Up |
+| [`audio.rs`](rust/features/audio.rs) | Sound as data: `click_sound`, `hover_sound`, a looped `audio` node declared while on; the dock's `audio` row is the device's side | ✓ the queued commands | the device closes a while after the last sound |
+| [`enter_exit.rs`](rust/features/enter_exit.rs) | `enter` / `exit`: toasts that slide in and back out, the departing copy the core keeps | | Windows: drag the title bar mid-spring (W3) |
+| [`exit_budget.rs`](rust/features/exit_budget.rs) | The exit budget at its boundary (ADR 0012): whole or not at all, the newest outranks the old, a virtual list keeps the picture small | | the boundary watch |
+| [`popup.rs`](rust/features/popup.rs) | `WindowKind::Popup`: a combobox whose list is taller than the window; `--dock off` by default so the frame stays small | | press in the owner, drag into the popup, release on an item (ADR 0009) |
+| [`theme.rs`](rust/features/theme.rs) | The token reference: every `Theme` role as a swatch over every stock widget that reads it; the harness's base and accent controls are the switch | | |
+| [`accessibility.rs`](rust/features/accessibility.rs) | Every accessibility prop in one window, the fixture the platform audit drives; `--dock off` by default | | `scripts/ax-audit.swift` (106 checks) |
+| [`waker.rs`](rust/features/waker.rs) | A thread feeds lines and wakes the parked loop through `kui::Waker`; `KUI_WAKER_LINES=n` closes after n | | `KUI_WAKER_LINES` |
+
+### `tools/`
+
+| Tool | Run | What it is |
 |---|---|---|
-| [`counter.rs`](rust/counter.rs) | `cargo run -p kui --example counter` | Minimal Elm-ish flow: state → tree, clicks back as data. Sound is data too; right-click for a `modal` context menu |
-| [`rich_text.rs`](rust/rich_text.rs) | `cargo run -p kui --example rich_text` | Styled spans shaped and wrapped as one paragraph flow; the card is `selectable`, so a drag selects across all three labels |
-| [`context_menu.rs`](rust/context_menu.rs) | `cargo run -p kui --example context_menu` | The menus a right-click can get: the stock one over selectable text, the app's own over a row that declares `onContextMenu`, a `cells` grid that selects in cells (Alt for a rectangle) and copies lines trimmed, an editor's Cut/Copy/Paste/Select All, and nothing over a plain box — the platform's own `NSMenu` on macOS, the core's drawn one elsewhere, from the same item list. Plus the application **menu bar** the frame declares (ADR 0018): the macOS bar on macOS, a drawn strip everywhere else, and one event from either |
-| [`editor.rs`](rust/editor.rs) | `cargo run -p kui --example editor` | Multiline editing: caret, selection, clipboard, scrolling |
-| [`waker.rs`](rust/waker.rs) | `cargo run -p kui --example waker` | A thread feeds lines and wakes the parked loop through `kui::Waker`; frames with no input |
-| [`modal_editor.rs`](rust/modal_editor.rs) | `cargo run -p kui --example modal_editor` | Helix-flavored modal editing; the app owns the keymap |
-| [`splitmux.rs`](rust/splitmux.rs) | `cargo run -p kui --example splitmux` | tmux-style splits, tabs, focus, ⌘-drag pane moves; the pane tree is data |
-| [`syntax_view.rs`](rust/syntax_view.rs) | `cargo run -p kui --example syntax_view` | Syntax highlighting as coalesced style runs |
-| [`gallery.rs`](rust/gallery.rs) | `cargo run -p kui --example gallery` | Registered images: Fit sizing, kept aspect, rounded corners |
-| [`theme.rs`](rust/theme.rs) | `cargo run -p kui --example theme` | The token reference: every `Theme` role as a swatch over every stock widget, with the base and the accent switchable live (`1`/`2`/`3`, `a`) and the drawn context menu to check a hovered row on both bases |
-| [`virtual_list.rs`](rust/virtual_list.rs) | `cargo run -p kui --example virtual_list` | 10,000 rows for a screenful: `widgets::virtual_column`, the same list unrolled from `scroll_geometry` + `visible_rows` (`--by-hand`), and rows of no fixed height through `widgets::virtual_rows` (`--variable`); `--headless` for any of them |
-| [`toasts.rs`](rust/toasts.rs) | `cargo run -p kui --example toasts` | `enter`/`exit`: toasts that slide in and back out |
-| [`bulk_exit.rs`](rust/bulk_exit.rs) | `cargo run -p kui --example bulk_exit` | the exit budget at its boundary: a removal animates whole or not at all, a new one outranks the old, a virtual list keeps the picture small |
-| [`connectors.rs`](rust/connectors.rs) | `cargo run -p kui --example connectors` | A mind map whose links are `line` nodes: curves between floats, a hovered card's links brighten by transition |
-| [`accessibility.rs`](rust/accessibility.rs) | `cargo run -p kui --example accessibility` | Every accessibility prop in one window; the fixture `scripts/ax-audit.swift` drives |
-| [`conformance-dump.rs`](rust/conformance-dump.rs) | `cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt` | Writes the scene corpus's reference report the other bindings diff against |
+| [`conformance-dump.rs`](rust/tools/conformance-dump.rs) | `cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt` | Writes the scene corpus's reference report the other bindings diff against; generated, never checked in |
 
 ## C — [`c/`](c)
 
-All three directions across the FFI. [`counter.c`](c/counter.c) is C as the
-host with kui as a plain library; [`panel.c`](c/panel.c) is C as an
-*extension*, a `dlopen`ed plugin owning its share of a frame; and
-[`host.c`](c/host.c) is a C host loading that same plugin — in a *slot* the
-host declares, under the namespace the host gave it, with a title passed in
-and a reply coming back (ADR 0014). The plugin does not know which host it
-is in: [`panel.rs`](c/panel.rs) is a Rust one loading the same file.
-[`build.sh`](c/build.sh) checks `kui.h` against the Rust struct layout, then
-builds all of it; [`build.ps1`](c/build.ps1) is the same round on Windows.
+Three programs over one [`common.h`](c/common.h) and the slots story,
+built by [`build.sh`](c/build.sh) (`--run` runs the round it otherwise
+prints, which is what CI does) or [`build.ps1`](c/build.ps1) on Windows.
+Everything lands in `target/<profile>/`, beside the library the hosts link.
 
-Everything lands in `target/<profile>/`, beside the library the hosts link
-and the `c_panel` a plugin is loaded by — so nothing is copied and nothing is
-written into the source tree. Pass `--run` (`-Run`) and the script runs the
-round it otherwise prints, which is what CI does.
+| Example | Shows | Headless |
+|---|---|---|
+| [`apps/counter.c`](c/apps/counter.c) | The counter from C, the same shape as the other three: kui as a plain library under `kui_run` | ✓ `counter --headless`, the Rosetta drive |
+| [`features/slots/panel.c`](c/features/slots/panel.c) | C as the *extension*: a `dlopen`ed plugin filling the slot a host declares (ADR 0014), the same panel as the Lua one | through its hosts |
+| [`features/slots/panel.rs`](c/features/slots/panel.rs) | The Rust host of that plugin: `cargo run -p kui-ffi --example c_panel` | ✓ `c_panel --headless` |
+| [`features/slots/host.c`](c/features/slots/host.c) | C on both sides: a C host loading the same plugin through `kui_ctx_add_extension` | ✓ `host --headless` |
+| [`tools/surface.c`](c/tools/surface.c) | The header walk: every prototype in `kui.h` called once and checked — the FFI self-test, not an example | ✓ `surface` |
+| [`tools/conformance.c`](c/tools/conformance.c) | The C adapter over the scene corpus | ✓ `conformance <report>` |
 
 ```bash
-./examples/c/build.sh                    # ABI check, then the C artifacts
-./examples/c/build.sh --run              # and run the round it prints
+./examples/c/build.sh --run              # ABI check, the artifacts, the round
 ./target/debug/counter                   # the counter app, C as the host
-./target/debug/counter --headless        # FFI self-test, no window needed
 ./target/debug/host                      # a C host with the C panel inside it
-./target/debug/host --headless           # the slot, the click, the reply
 cargo run -p kui-ffi --example c_panel   # the same panel in a Rust host
 ```
 
-```powershell
-pwsh examples/c/build.ps1 -Run           # ABI check, the artifacts, the round
-./target/debug/counter.exe --headless
-./target/debug/host.exe --headless
-cargo run -p kui-ffi --example c_panel -- --headless
-```
-
-Windows asks for three things the unixes do not, and the plugin half is where
-they show. An MSVC-ABI compiler, because that is what the Rust target links
-with. `kui_ffi.dll` beside each host executable, because there is no rpath —
-which is what building into `target/<profile>/` is for. And an import library
-at each link: a DLL may not leave a symbol undefined, so a plugin names the
-module its `kui_*` come from. Which module is a choice, and `build.ps1` builds
-both from one compile of `panel.c` — `panel.dll` imports `kui_ffi.dll` and
-loads into any host shipping it (the shape a plugin you hand to somebody
-wants, and what both hosts load by default), `panel-host.dll` imports the Rust
-host's own executable and loads into that host alone.
-`crates/kui-ffi/build.rs` makes the second possible by exporting the host's
-`kui_*`, and `kui.h` marks the plugin's seven entry points `KUI_EXT_EXPORT`,
-so `panel.c` is the same source everywhere.
-
-Two copies of the library in one process — a statically linked host and a
-plugin importing `kui_ffi.dll` — is fine as of ABI 10, and was not before it:
-`kui_reply`'s sink used to be a `thread_local`, one per copy, so every reply
-landed where nobody was reading. It rides on the event now.
+Windows asks for three things the unixes do not, and the plugin half is
+where they show — an MSVC-ABI compiler, `kui_ffi.dll` beside each host,
+and an import library at each link; `build.ps1`'s header comment is the
+long version, and it builds both plugin shapes from one compile of
+`panel.c`. Two copies of the library in one process is fine as of ABI 10.
 
 ## Lua — [`lua/`](lua)
 
-A Lua extension has no window of its own, so both examples here are a Rust
-host with Lua inside it. [`panel.lua`](lua/panel.lua) is deliberately the same
-panel as [`c/panel.c`](c/panel.c): the extension contract is the contract and
-the language is a detail.
+A Lua extension has no window of its own, so the panel is a Rust host with
+Lua inside it. [`panel.lua`](lua/features/slots/panel.lua) is deliberately
+the same panel as the C one: the extension contract is the contract and
+the language is a detail. A script can be a host too — `env.add_extension`
+opens a C plugin and `fill` places it — so once `c/build.sh` has run, the
+panel is three languages deep.
 
-A script can also be a host: `env.add_extension(namespace, path)` opens a C
-plugin and `fill { name = "ns/slot" }` is where it draws, so `panel.lua` puts
-`panel.c` inside itself when one is built (ADR 0014's amendment). The
-mechanism is C shared libraries and only that — a script does not load
-another script, because a host that wants two scripts loads two.
-
-| Example | Run | What it shows |
-|---|---|---|
-| [`panel.rs`](lua/panel.rs) + [`panel.lua`](lua/panel.lua) | `cargo run -p kui-lua --example lua_panel` | Rust host and Lua panel sharing one frame: the panel fills the slot the host declares as `todos/panel`, reads its title from the params, replies on a toggle; clicks routed by origin. And, once `c/build.ps1` has run, three languages deep — `panel.lua` loads `c/panel.c` itself with `env.add_extension` and places it with `fill` |
-| [`bench.rs`](lua/bench.rs) | `cargo run -p kui-lua --example bench --release` | Frontend-lowering shootout: the same ~900-node view from Rust and from Lua |
+| Example | Run | Shows | Headless |
+|---|---|---|---|
+| [`features/slots/panel.rs`](lua/features/slots/panel.rs) + [`panel.lua`](lua/features/slots/panel.lua) | `cargo run -p kui-lua --example lua_panel` | Rust host and Lua panel sharing one frame: the slot filled, the title from the params, the reply on a toggle, clicks routed by origin | ✓ `lua_panel --headless` |
+| [`tools/bench.rs`](lua/tools/bench.rs) | `cargo run -p kui-lua --example bench --release` | Frontend-lowering shootout: the same ~900-node view from Rust and from Lua | |
 
 ## Node — [`node/`](node)
 
 Build the addon with `cargo build -p kui-node --release`, then in
-[`node/`](node):
+[`node/`](node): `npm install`, `npm run typecheck`, and `npm run <name>`
+opens a window (`npm run smoke` runs every headless drive). A Node example
+exists where Node has a door of its own — the pumped window loop,
+`virtualColumn` and the `index` row, the typed messages — or where a round
+needs it; the corpus already proves the four bindings lower alike.
 
-```bash
-npm install
-npm start        # headless
-npm run window   # a real winit + wgpu window, pumped from a timer
-npm run mindmap  # a canvas of easing floats, panned by dragging it
-npm run virtual-list  # 10,000 rows for a screenful
-npm run bench    # the JSX/Node side of lua/bench.rs
-```
-
-| Example | What it shows |
-|---|---|
-| [`counter.tsx`](node/counter.tsx) | The Elm loop headless, driven by its own hit tests |
-| [`counter-window.tsx`](node/counter-window.tsx) | The same app in a real window, with images, sounds and an editor |
-| [`mindmap.tsx`](node/mindmap.tsx) | A canvas of floats and `line` connectors, all easing, panned by an `onDrag` root |
-| [`virtual-list.tsx`](node/virtual-list.tsx) | `virtualColumn`: 10,000 rows costing a screenful, re-sliced on the wheel with no model change |
+| Example | Shows | Headless |
+|---|---|---|
+| [`apps/counter.tsx`](node/apps/counter.tsx) | The counter in JSX, the same shape as the other three | ✓ `node dist/apps/counter.mjs --headless` |
+| [`features/window.tsx`](node/features/window.tsx) | The Node windowed driver: `init` handed the window, `resize` messages, images and sounds as the window's resources, custom chrome | |
+| [`features/slide.tsx`](node/features/slide.tsx) | `slide`: a canvas of floats and `line` connectors that eases everything or nothing, panned by an `onDrag` root — the by-hand check for F15 | ✓ the model's pan; **by hand:** drag the empty canvas and watch it while the button is down |
+| [`widgets/virtual_list.tsx`](node/widgets/virtual_list.tsx) | `virtualColumn`: 10,000 rows costing a screenful, re-sliced on the wheel with no model change | ✓ |
+| [`tools/types.tsx`](node/tools/types.tsx) | The shipped `.d.ts` exercised: a typed drive over every app-facing type, run as code under `--headless` | ✓ |
+| [`tools/bench.mjs`](node/tools/bench.mjs) | The JSX/Node side of `lua/tools/bench.rs` | |
 
 An extension is a C shared library either way, and the same binary loads
-into a Rust, C or Node host: `<slot name="ns/panel" params={…}/>` places it
-and `ctx.addExtension(ns, path)` (or a window's `extensions` option) loads
-it. There is no script-loads-script path — a Lua extension is loaded by a
-Rust host or not at all.
-
-`mindmap.tsx` is the one to open when a gesture works in a test and not on
-screen. It moves every tween's target on every frame, which is what backlog
-F15 turned out to be — the map panned in the model and stood still in the
-window — so it is a by-hand check (`--headless` only asserts the model, which
-was never the half that broke).
+into a Rust, C or Node host: `<slot name="ns/panel" params={…}/>` places
+it and `ctx.addExtension(ns, path)` (or a window's `extensions` option)
+loads it.

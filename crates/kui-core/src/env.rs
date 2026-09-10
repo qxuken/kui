@@ -29,6 +29,8 @@ pub struct Env {
     pub system: SystemEnv,
     /// Window chrome facts (custom chrome, maximized, native control rect).
     pub window: WindowEnv,
+    /// The output device's state and how many playbacks are live.
+    pub audio: AudioEnv,
 }
 
 impl Default for Env {
@@ -38,6 +40,7 @@ impl Default for Env {
             focused: true,
             system: SystemEnv::default(),
             window: WindowEnv::default(),
+            audio: AudioEnv::default(),
         }
     }
 }
@@ -175,6 +178,72 @@ impl MotionPref {
     }
 }
 
+/// What the driver's audio output is doing, for views to read. A fact,
+/// not a verb: nothing here lets a view close the device, which stays the
+/// driver's decision (it closes an idle one itself, after a while).
+///
+/// Worth a row because an open output stream is a real-time thread that
+/// runs whether or not anything plays — ~94 buffer callbacks a second at
+/// the usual period — which is the whole of an idle app's CPU once a
+/// session has held a sound. A view that shows `device` still `Open` ten
+/// seconds after its last click is showing a bug that otherwise only
+/// `top` can see. Headless drivers leave it at the default, which is the
+/// truth for them: no device, nothing playing.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AudioEnv {
+    /// Whether the output device is open, and so costing something.
+    pub device: AudioDevice,
+    /// Playbacks started and not yet ended, plus the ones waiting on the
+    /// device to open.
+    pub live: u32,
+}
+
+/// The output device's state. `Closed` is the default and what a headless
+/// driver reports; `Opening` is the ~90 ms the open takes on its own
+/// thread; `Failed` is a device that refused to open, after which commands
+/// are dropped.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AudioDevice {
+    #[default]
+    Closed,
+    Opening,
+    Open,
+    Failed,
+}
+
+impl AudioDevice {
+    /// Wire order, as [`Appearance::ALL`]: `closed` is 0, so a zeroed C
+    /// call means what it says.
+    pub const ALL: &'static [AudioDevice] = &[
+        AudioDevice::Closed,
+        AudioDevice::Opening,
+        AudioDevice::Open,
+        AudioDevice::Failed,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            AudioDevice::Closed => "closed",
+            AudioDevice::Opening => "opening",
+            AudioDevice::Open => "open",
+            AudioDevice::Failed => "failed",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|d| d.name() == name)
+    }
+
+    /// The code a C host passes; `closed` is 0.
+    pub fn code(self) -> u32 {
+        Self::ALL.iter().position(|d| *d == self).unwrap() as u32
+    }
+
+    pub fn from_code(code: u32) -> Option<Self> {
+        Self::ALL.get(code as usize).copied()
+    }
+}
+
 /// A language tag as the host reports it — `"en"`, `"en-US"`,
 /// `"zh-Hans-CN"`. Carried inline rather than as a `String` so [`Env`]
 /// stays `Copy`: a view reads `ui.env()` every frame, and a tag that
@@ -265,6 +334,9 @@ mod tests {
         assert_eq!(s.motion, MotionPref::Unknown);
         assert_eq!(s.locale, None);
         assert!(!s.motion.is_reduced(), "unknown is not a request to reduce");
+        // And a headless driver holds no device: closed, nothing live.
+        assert_eq!(Env::default().audio, AudioEnv::default());
+        assert_eq!(AudioEnv::default().device, AudioDevice::Closed);
     }
 
     /// The schema's name lists are the wire order: an index means the same
@@ -276,8 +348,11 @@ mod tests {
         assert_eq!(appearances, crate::schema::APPEARANCES);
         let motions: Vec<&str> = MotionPref::ALL.iter().map(|m| m.name()).collect();
         assert_eq!(motions, crate::schema::MOTIONS);
+        let devices: Vec<&str> = AudioDevice::ALL.iter().map(|d| d.name()).collect();
+        assert_eq!(devices, crate::schema::AUDIO_DEVICES);
         assert_eq!(Appearance::default().code(), 0);
         assert_eq!(MotionPref::default().code(), 0);
+        assert_eq!(AudioDevice::default().code(), 0);
     }
 
     #[test]
@@ -290,8 +365,13 @@ mod tests {
             assert_eq!(MotionPref::from_code(m.code()), Some(*m));
             assert_eq!(MotionPref::parse(m.name()), Some(*m));
         }
+        for d in AudioDevice::ALL {
+            assert_eq!(AudioDevice::from_code(d.code()), Some(*d));
+            assert_eq!(AudioDevice::parse(d.name()), Some(*d));
+        }
         assert_eq!(Appearance::from_code(3), None);
         assert_eq!(MotionPref::from_code(3), None);
+        assert_eq!(AudioDevice::from_code(4), None);
         assert_eq!(Appearance::parse("Dark"), None, "spelling is exact");
     }
 

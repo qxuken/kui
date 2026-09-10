@@ -378,7 +378,7 @@ mod tests {
     }
 
     /// The C loader's refusals, and what it says about them. The happy
-    /// path needs a real plugin and so lives in `examples/c/host.c`'s
+    /// path needs a real plugin and so lives in `examples/c/features/slots/host.c`'s
     /// `--headless`, which the build scripts run; this is the half that
     /// needs no compiler.
     #[test]
@@ -435,7 +435,7 @@ mod tests {
 
     /// A context that borrows a frame refuses a plugin instead of taking
     /// one into a list nothing fills. The path is the one a script would
-    /// take (`examples/lua/panel.lua` loads from its view), so the answer
+    /// take (`examples/lua/features/slots/panel.lua` loads from its view), so the answer
     /// has to be a reason and not a quiet `true`.
     #[test]
     fn a_borrowed_frame_will_not_take_an_extension() {

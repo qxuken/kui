@@ -7,7 +7,16 @@
     "jsxImportSource": "@qxuken/kui",
     "strict": true,
     "noEmit": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["*.tsx", "*.ts"]
+  "include": [
+    "*.tsx",
+    "*.ts",
+    "apps/*.tsx",
+    "features/*.tsx",
+    "widgets/*.tsx",
+    "tools/*.tsx"
+  ]
 }
