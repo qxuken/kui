@@ -720,7 +720,34 @@ typedef struct KuiSpec {
      * ring wherever it sits. Appended after ABI 13 the compatible way; a
      * host that predates it passes the shorter struct and reads as zero. */
     uint32_t focus_region;
+    /* When this node's scrollbars are drawn: KUI_SCROLLBAR_* (the
+     * `scrollbar` row's index plus one), 0 for the default, which is
+     * KUI_SCROLLBAR_VISIBLE. The three after it style the thumb: its
+     * width at rest in logical px (0 = the stock 4; under the pointer or
+     * dragged it is 2 px wider), its colour at rest and under the pointer
+     * as 0xRRGGBBAA (0 = the theme's scrollbar / scrollbar_active roles).
+     * Appended after ABI 13 the compatible way; a host that predates them
+     * passes the shorter struct and reads as zero. */
+    uint32_t scrollbar;
+    float scrollbar_width;
+    uint32_t scrollbar_color;
+    uint32_t scrollbar_active_color;
 } KuiSpec;
+
+/* When a scrolling node's bars are drawn (KuiSpec.scrollbar): the schema
+ * index plus one, so zero is the default. VISIBLE draws the stock overlay
+ * thumb whenever the content overflows; HIDDEN draws none and takes no
+ * press on the track (the wheel, the keyboard, kui_reveal and the caret
+ * still scroll); AUTO shows the bar while the scroll state is changing -
+ * the offset or the extent moved, the pointer is on the track, a thumb is
+ * dragged - and for a second after, then fades it out over a quarter of
+ * one, asking for frames while it fades. AUTO needs the driver's clock
+ * (kui_set_time) and is VISIBLE without one. */
+enum {
+    KUI_SCROLLBAR_VISIBLE = 1,
+    KUI_SCROLLBAR_HIDDEN = 2,
+    KUI_SCROLLBAR_AUTO = 3,
+};
 
 /* Disclosure state (KuiSpec.expanded): the schema index plus one, so zero
  * can mean "this node does not expand". */

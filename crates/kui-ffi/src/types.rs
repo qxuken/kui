@@ -532,6 +532,19 @@ pub struct KuiSpec {
     /// compatible way; a host that predates it passes the shorter struct
     /// and reads as zero.
     pub focus_region: u32,
+    /// When this node's scrollbars are drawn: `KUI_SCROLLBAR_*` (the
+    /// `scrollbar` row's index plus one), 0 for the default, which is
+    /// `KUI_SCROLLBAR_VISIBLE`. Appended after ABI 13 the compatible way,
+    /// like the three below.
+    pub scrollbar: u32,
+    /// The thumb's width at rest, logical px; 0 for the stock 4. Under
+    /// the pointer or dragged it is 2 px wider.
+    pub scrollbar_width: f32,
+    /// The thumb at rest and under the pointer, `0xRRGGBBAA`; 0 (fully
+    /// transparent, like every unset colour) for the theme's `scrollbar`
+    /// and `scrollbar_active`.
+    pub scrollbar_color: u32,
+    pub scrollbar_active_color: u32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -675,6 +688,12 @@ pub(crate) fn orientation_code(o: Option<kui_core::Orientation>) -> u32 {
 /// the node does not expand).
 pub const KUI_EXPANDED_COLLAPSED: u32 = 1;
 pub const KUI_EXPANDED_EXPANDED: u32 = 2;
+
+/// KUI_SCROLLBAR_* is the position in `schema::SCROLLBARS` plus one (0 =
+/// unset, which is the stock visible bar).
+pub const KUI_SCROLLBAR_VISIBLE: u32 = 1;
+pub const KUI_SCROLLBAR_HIDDEN: u32 = 2;
+pub const KUI_SCROLLBAR_AUTO: u32 = 3;
 
 /// KUI_LIVE_* is the position in `schema::LIVE` itself, not the position
 /// plus one: unlike a disclosure, a live region's zero *is* a value —

@@ -144,9 +144,18 @@ pub const P_INDEX: u32 = 89;
 pub const P_SELECTABLE: u32 = 90;
 pub const P_ON_FORCE_CLICK: u32 = 91;
 pub const P_FOCUS_REGION: u32 = 92;
+pub const P_SCROLLBAR: u32 = 93;
+pub const P_SCROLLBAR_WIDTH: u32 = 94;
+pub const P_SCROLLBAR_COLOR: u32 = 95;
+pub const P_SCROLLBAR_ACTIVE_COLOR: u32 = 96;
 
 pub const ALIGNS: &[&str] = &["start", "center", "end"];
 pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
+/// The `scrollbar` row, in `ScrollbarMode::ALL`'s order: the stock
+/// overlay bar, none, or one that fades out when the scroll state has not
+/// changed. C spells it as the index plus one (`KUI_SCROLLBAR_*`), so a
+/// zeroed field is "unset".
+pub const SCROLLBARS: &[&str] = &["visible", "hidden", "auto"];
 pub const FAMILIES: &[&str] = &["sans", "serif", "mono"];
 /// The pointer shapes a view can declare (`CursorShape::name` spellings, in
 /// `CursorShape::ALL` order — a `cursor.rs` test pins the two together).
@@ -662,6 +671,34 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Flag,
         apply: Apply::SpecFlag(|s| s.focus_region()),
         doc: "Makes this node's subtree a focus region: a Tab ring of its own that the ring outside never enters and that never leaves — a devtools dock, an inspector beside the app (`docs/adr/0022-focus-regions.md`). Entered on purpose: `focusRegion(name)` (`Ui::focus_region`, `env.focus_region`, `kui_focus_region`) moves focus in — to the focus the region last held, else its `initialFocus`, else its first stop — and `focusRegion(null)` moves it back to the main ring the same way; a press inside the region, or an explicit focus on a node in it, enters it too. Tab then walks that ring alone, wrapping inside it; with nothing focused, Tab enters the ring of the region in effect (`region()`). A region that stops being declared hands focus back to what the main ring last held. Only the ring is scoped: keys still bubble through the boundary to the sink above (a region that wants its own keymap is an `onKey` sink), the pointer and assistive technology see a plain node, and a `modal` in effect is the ring wherever it sits. Nested regions are skipped by the outer ring the way the main ring skips them.",
+    },
+    PropDef {
+        name: "scrollbar",
+        id: P_SCROLLBAR,
+        kind: Kind::Enum(SCROLLBARS),
+        apply: Apply::SpecEnum(|s, i| s.scrollbar(crate::spec::ScrollbarMode::ALL[i])),
+        doc: "When a scrolling node draws its bars: `visible` (the default — the stock overlay thumb, drawn while the content overflows), `hidden` (no thumb, no track to press; the wheel, the keyboard, `reveal` and the caret still scroll it — for a list that draws its own indicator, or a pane whose bar would sit on a border), or `auto` (shown while the scroll state is changing — the offset or the content's extent moved, the pointer is on the track, a thumb is dragged — and for a second after, then faded out over a quarter of one; a node first seen shows it the same second; what an overlay bar does on macOS). `auto` needs the driver's clock and is `visible` without one. The bars are overlays and take no layout space in any mode; while one is fading the core asks for frames, as it does for any transition.",
+    },
+    PropDef {
+        name: "scrollbarWidth",
+        id: P_SCROLLBAR_WIDTH,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.scrollbar_width(v)),
+        doc: "The thumb's width at rest, logical px (default 4); under the pointer or dragged it is 2 px wider. The grabbable track grows to fit a wide thumb.",
+    },
+    PropDef {
+        name: "scrollbarColor",
+        id: P_SCROLLBAR_COLOR,
+        kind: Kind::Color,
+        apply: Apply::SpecColor(|s, c| s.scrollbar_color(c)),
+        doc: "The thumb at rest; the default is the theme's `scrollbar` role, a translucent wash over whatever it sits on.",
+    },
+    PropDef {
+        name: "scrollbarActiveColor",
+        id: P_SCROLLBAR_ACTIVE_COLOR,
+        kind: Kind::Color,
+        apply: Apply::SpecColor(|s, c| s.scrollbar_active_color(c)),
+        doc: "The thumb under the pointer or while dragged; the default is the theme's `scrollbar_active` role.",
     },
     PropDef {
         name: "disabled",

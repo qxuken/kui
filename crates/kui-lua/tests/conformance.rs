@@ -471,6 +471,38 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         "#
             )
         }
+        // The four scrollbar rows: `scrollbar` is the mode name, the three
+        // beside it the thumb's width and two colours.
+        "scrollbar" => {
+            let items = conformance::ITEM_KEYS
+                .iter()
+                .map(|k| format!("column {{ key = \"{k}\", width = 80, height = 20, bg = 0x30344aff }},"))
+                .collect::<Vec<_>>()
+                .join("\n                ");
+            let list = |key: &str, extra: &str| {
+                format!(
+                    "column {{ key = \"{key}\", width = 90, height = 60, gap = 0, scroll_y = true,
+                       bg = 0x101018ff, {extra}
+                {items}
+              }},"
+                )
+            };
+            format!(
+                r#"
+            return row {{ pad = 10, gap = 10,
+              {hidden}
+              {styled}
+              {auto}
+            }}
+        "#,
+                hidden = list("hidden", "scrollbar = \"hidden\","),
+                styled = list(
+                    "styled",
+                    "scrollbar_width = 8, scrollbar_color = 0x3b5bd4ff, scrollbar_active_color = 0xffcc00ff,"
+                ),
+                auto = list("auto", "scrollbar = \"auto\","),
+            )
+        }
         // ADR 0023: the toast is later in the tree than the popover, so it
         // is over it in phase 0; the popover closes in phase 1 and reopens
         // in phase 2, which puts it over the toast. The rows overflow so

@@ -223,11 +223,19 @@ fn a_press_on_dead_space_under_a_root_sink_still_settles_the_region() {
     };
     let k = frame(&mut core, shape);
     click_at(&mut core, 150.0, 5.0 * H + 10.0);
-    assert_eq!(core.focus(), Some(Key::ROOT), "the press focused the root sink");
+    assert_eq!(
+        core.focus(),
+        Some(Key::ROOT),
+        "the press focused the root sink"
+    );
     assert_eq!(core.region(), Some(k.dock));
     frame(&mut core, shape);
     frame(&mut core, shape);
-    assert_eq!(core.region(), Some(k.dock), "the settle stands while focus sits still");
+    assert_eq!(
+        core.region(),
+        Some(k.dock),
+        "the settle stands while focus sits still"
+    );
     // A sink holding focus hands Tab on itself (ADR 0002): the step it asks
     // for walks the ring under the pointer.
     core.focus_next(true);

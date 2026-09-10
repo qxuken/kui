@@ -817,6 +817,73 @@ pub struct InteractSpec {
     /// paints, takes the pointer and appears in the access tree as before,
     /// and keys bubble through it to the sink above.
     pub focus_region: bool,
+    /// How this node's scrollbars look, when it scrolls (see
+    /// [`Scrollbar`]). Cold: read once per scroller when its layer's
+    /// chrome is emitted, which is why it lives in this box rather than
+    /// beside `scroll_y` on every node.
+    pub scrollbar: Scrollbar,
+}
+
+/// A scrolling node's bars, per node. Every field's default is the stock
+/// bar — the theme's `scrollbar` / `scrollbar_active` colours, 4 px at
+/// rest and 6 px under the pointer, always drawn while the content
+/// overflows — so a binding that sets none of the four rows gets exactly
+/// what it always had. The bars are overlays and take no layout space
+/// whatever their width; the grabbable track is at least as wide as the
+/// active thumb plus its inset.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Scrollbar {
+    /// Whether the bars are drawn at all, and when (see [`ScrollbarMode`]).
+    pub mode: ScrollbarMode,
+    /// The thumb's width at rest, logical px; under the pointer or dragged
+    /// it is 2 px wider. `None` is the stock 4.
+    pub width: Option<f32>,
+    /// The thumb at rest; `None` is `theme.scrollbar`.
+    pub color: Option<Color>,
+    /// The thumb under the pointer or dragged; `None` is
+    /// `theme.scrollbar_active`.
+    pub active_color: Option<Color>,
+}
+
+impl Scrollbar {
+    pub const DEFAULT: Self = Self {
+        mode: ScrollbarMode::Visible,
+        width: None,
+        color: None,
+        active_color: None,
+    };
+}
+
+/// When a scrolling node's bars are drawn. Spelled by the `scrollbar` row
+/// (`crate::schema::SCROLLBARS`, in this order).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ScrollbarMode {
+    /// The stock bar: drawn whenever the content overflows.
+    #[default]
+    Visible,
+    /// No thumb is drawn and no track takes the press. The wheel, the
+    /// keyboard, `reveal` and the caret still scroll the node — a list
+    /// drawing its own indicator, or one whose bar would sit on a border.
+    Hidden,
+    /// The bar shows while the scroll state is changing — the offset or
+    /// the content's extent moved since the last frame, the pointer is on
+    /// its track, or a thumb is being dragged — and for a second after,
+    /// then fades out over a quarter of one. A node first seen shows its
+    /// bar the same second. What an overlay bar does on macOS. Needs the
+    /// driver's clock (`Core::set_time`); without one it is `Visible`,
+    /// since a fade with no clock could never end.
+    Auto,
+}
+
+impl ScrollbarMode {
+    /// Every mode, in the `scrollbar` row's order: what a binding that
+    /// spells modes as numbers indexes (C's `KUI_SCROLLBAR_*` are these
+    /// plus one).
+    pub const ALL: [ScrollbarMode; 3] = [
+        ScrollbarMode::Visible,
+        ScrollbarMode::Hidden,
+        ScrollbarMode::Auto,
+    ];
 }
 
 impl InteractSpec {
@@ -831,6 +898,7 @@ impl InteractSpec {
         focus_bg: None,
         selectable: false,
         focus_region: false,
+        scrollbar: Scrollbar::DEFAULT,
     };
 }
 
@@ -1241,6 +1309,32 @@ impl NodeSpec {
     /// field): a Tab ring of its own, entered on purpose.
     pub fn focus_region(mut self) -> Self {
         self.interact_mut().focus_region = true;
+        self
+    }
+
+    /// When this node's scrollbars are drawn (see [`ScrollbarMode`]).
+    /// Scrolling itself is unchanged whatever the mode.
+    pub fn scrollbar(mut self, mode: ScrollbarMode) -> Self {
+        self.interact_mut().scrollbar.mode = mode;
+        self
+    }
+
+    /// The thumb's width at rest, logical px (see [`Scrollbar::width`]).
+    pub fn scrollbar_width(mut self, w: f32) -> Self {
+        self.interact_mut().scrollbar.width = Some(w);
+        self
+    }
+
+    /// The thumb's colour at rest (see [`Scrollbar::color`]).
+    pub fn scrollbar_color(mut self, c: Color) -> Self {
+        self.interact_mut().scrollbar.color = Some(c);
+        self
+    }
+
+    /// The thumb's colour under the pointer or dragged (see
+    /// [`Scrollbar::active_color`]).
+    pub fn scrollbar_active_color(mut self, c: Color) -> Self {
+        self.interact_mut().scrollbar.active_color = Some(c);
         self
     }
 

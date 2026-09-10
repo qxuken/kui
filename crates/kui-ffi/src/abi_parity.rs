@@ -274,6 +274,9 @@ fn asserts() -> (String, Vec<&'static str>) {
     abi_enum!(o, kui_core::schema::EXPANDED, 1 => [
         "KUI_EXPANDED_COLLAPSED", "KUI_EXPANDED_EXPANDED",
     ]);
+    abi_enum!(o, kui_core::schema::SCROLLBARS, 1 => [
+        "KUI_SCROLLBAR_VISIBLE", "KUI_SCROLLBAR_HIDDEN", "KUI_SCROLLBAR_AUTO",
+    ]);
     abi_enum!(o, kui_core::schema::WINDOW_ROLES, 1 => [
         "KUI_WINDOW_DRAG", "KUI_WINDOW_CLOSE", "KUI_WINDOW_MINIMIZE",
         "KUI_WINDOW_MAXIMIZE",
@@ -620,6 +623,10 @@ fn asserts() -> (String, Vec<&'static str>) {
         selectable: u32 => "uint32_t",
         on_force_click: *const KuiValue => "const KuiValue *",
         focus_region: u32 => "uint32_t",
+        scrollbar: u32 => "uint32_t",
+        scrollbar_width: f32 => "float",
+        scrollbar_color: u32 => "uint32_t",
+        scrollbar_active_color: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {

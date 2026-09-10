@@ -799,3 +799,159 @@ fn variable_rows_keep_their_key_as_the_range_slides() {
     assert_eq!(key, list_key().index(row as u64).index(0));
     assert!(row as usize > built.start, "overscan sits above the window");
 }
+
+/// The bar quads of the last frame: (width, colour) of every solid that
+/// is not a row.
+fn bars(core: &mut Core) -> Vec<(f32, Color)> {
+    let (dl, _) = core.output();
+    dl.quads
+        .iter()
+        .filter(|q| q.kind == kui_core::QuadKind::Solid && q.rect.w < 100.0)
+        .map(|q| (q.rect.w, q.color))
+        .collect()
+}
+
+/// The list frame with a bar style on the scroller.
+fn styled(core: &mut Core, style: impl Fn(NodeSpec) -> NodeSpec) {
+    let mut ui = core.frame(Size::new(400.0, VIEW_H), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with_keyed("list", style(NodeSpec::column().fill().scroll_y()), |ui| {
+        for i in 0..ROWS {
+            ui.with_keyed(
+                &format!("row{i}"),
+                NodeSpec::row()
+                    .width(Sizing::Grow(1.0))
+                    .height(Sizing::Fixed(ROW_H))
+                    .bg(Color::rgb8(40, 40, 60)),
+                |_| {},
+            );
+        }
+    });
+    ui.finish();
+}
+
+fn press(core: &mut Core, at: Vec2) {
+    core.handle_input(InputEvent::CursorMoved(at));
+    core.handle_input(InputEvent::MouseDown {
+        button: kui_core::MouseButton::Primary,
+        clicks: 1,
+    });
+    core.handle_input(InputEvent::MouseUp {
+        button: kui_core::MouseButton::Primary,
+    });
+}
+
+#[test]
+fn a_hidden_scrollbar_draws_nothing_and_takes_no_press() {
+    use kui_core::ScrollbarMode;
+    let mut core = Core::new();
+    styled(&mut core, |s| s.scrollbar(ScrollbarMode::Hidden));
+    assert!(bars(&mut core).is_empty(), "no thumb");
+    let list = core.key_of("list").unwrap();
+    // The track a visible bar would have: a press there is content now.
+    press(&mut core, Vec2::new(396.0, 190.0));
+    styled(&mut core, |s| s.scrollbar(ScrollbarMode::Hidden));
+    assert_eq!(core.scroll_offset(list).y, 0.0, "nothing to jump");
+    // Scrolling itself is untouched.
+    wheel(&mut core, -50.0);
+    styled(&mut core, |s| s.scrollbar(ScrollbarMode::Hidden));
+    assert_eq!(core.scroll_offset(list).y, 50.0);
+    assert!(bars(&mut core).is_empty());
+}
+
+#[test]
+fn a_scrollbar_takes_its_width_and_colours_from_the_node() {
+    const REST: Color = Color {
+        r: 1.0,
+        g: 0.0,
+        b: 0.0,
+        a: 1.0,
+    };
+    const ACTIVE: Color = Color {
+        r: 0.0,
+        g: 1.0,
+        b: 0.0,
+        a: 1.0,
+    };
+    let style = |s: NodeSpec| {
+        s.scrollbar_width(8.0)
+            .scrollbar_color(REST)
+            .scrollbar_active_color(ACTIVE)
+    };
+    let mut core = Core::new();
+    styled(&mut core, style);
+    assert_eq!(bars(&mut core), vec![(8.0, REST)]);
+    // On the track: two wider, in the active colour. The track grew to
+    // hold the wide thumb, so a pointer 11 px in is still on it.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(389.0, 100.0)));
+    styled(&mut core, style);
+    assert_eq!(bars(&mut core), vec![(10.0, ACTIVE)]);
+    // And the press there is the track's: below the thumb, so it pages.
+    let list = core.key_of("list").unwrap();
+    press(&mut core, Vec2::new(389.0, 190.0));
+    styled(&mut core, style);
+    assert!(core.scroll_offset(list).y > 0.0);
+}
+
+#[test]
+fn an_auto_scrollbar_fades_out_when_the_scroll_state_is_quiet() {
+    use kui_core::ScrollbarMode;
+    let auto = |s: NodeSpec| s.scrollbar(ScrollbarMode::Auto);
+    let mut core = Core::new();
+    core.set_time(0.0);
+    styled(&mut core, auto);
+    let first = bars(&mut core);
+    assert_eq!(first.len(), 1, "first seen: shown");
+    assert!(core.animating(), "the hold is running");
+    // Inside the hold: full.
+    core.set_time(0.9);
+    styled(&mut core, auto);
+    assert_eq!(bars(&mut core)[0].1.a, first[0].1.a);
+    // Mid-fade: dimmer.
+    core.set_time(1.125);
+    styled(&mut core, auto);
+    let mid = bars(&mut core);
+    assert_eq!(mid.len(), 1);
+    assert!((mid[0].1.a - first[0].1.a * 0.5).abs() < 1e-3, "{:?}", mid);
+    assert!(core.animating());
+    // Gone, and nothing owed.
+    core.set_time(1.3);
+    styled(&mut core, auto);
+    assert!(bars(&mut core).is_empty());
+    assert!(!core.animating());
+    // A press where the track was is content now.
+    let list = core.key_of("list").unwrap();
+    press(&mut core, Vec2::new(396.0, 190.0));
+    core.set_time(1.31);
+    styled(&mut core, auto);
+    assert_eq!(core.scroll_offset(list).y, 0.0);
+    // A wheel brings it back for another second.
+    wheel(&mut core, -30.0);
+    core.set_time(1.4);
+    styled(&mut core, auto);
+    assert_eq!(bars(&mut core).len(), 1);
+    core.set_time(2.3);
+    styled(&mut core, auto);
+    assert_eq!(bars(&mut core).len(), 1, "quiet since 1.4: still held");
+    core.set_time(2.7);
+    styled(&mut core, auto);
+    assert!(bars(&mut core).is_empty());
+    // The pointer on the track holds it, and asks for no frames.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(396.0, 100.0)));
+    core.set_time(2.8);
+    styled(&mut core, auto);
+    assert_eq!(bars(&mut core).len(), 1);
+    assert!(!core.animating(), "held by the pointer: input ends that");
+    core.set_time(9.0);
+    styled(&mut core, auto);
+    assert_eq!(bars(&mut core).len(), 1);
+}
+
+#[test]
+fn an_auto_scrollbar_without_a_clock_is_visible() {
+    use kui_core::ScrollbarMode;
+    let mut core = Core::new();
+    styled(&mut core, |s| s.scrollbar(ScrollbarMode::Auto));
+    assert_eq!(bars(&mut core).len(), 1);
+    assert!(!core.animating());
+}

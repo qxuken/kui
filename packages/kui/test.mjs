@@ -2536,6 +2536,23 @@ const SCENE_TREES = {
         ),
       ]),
     ]),
+  // `conformance::build_scrollbar`: the four scrollbar rows on three
+  // scrollers of the same list — hidden, styled, auto.
+  scrollbar: () => {
+    const list = (key, extra) =>
+      box(
+        { width: 90, height: 60, gap: 0, scrollY: true, bg: '#101018', ...extra },
+        ITEM_KEYS.map((k) => box({ width: 80, height: 20, bg: '#30344a' }, [], k)),
+        key,
+      );
+    return root({}, [
+      box({ dir: 'row', pad: 10, gap: 10 }, [
+        list('hidden', { scrollbar: 'hidden' }),
+        list('styled', { scrollbarWidth: 8, scrollbarColor: '#3b5bd4', scrollbarActiveColor: '#ffcc00' }),
+        list('auto', { scrollbar: 'auto' }),
+      ]),
+    ]);
+  },
   float: () =>
     root({}, [
       box({ pad: 20, gap: 4 }, [

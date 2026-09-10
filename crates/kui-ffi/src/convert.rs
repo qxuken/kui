@@ -204,6 +204,20 @@ pub(crate) fn spec_of(
     if s.focus_region != 0 {
         spec = spec.focus_region();
     }
+    if s.scrollbar != 0
+        && let Some(mode) = kui_core::ScrollbarMode::ALL.get(s.scrollbar as usize - 1)
+    {
+        spec = spec.scrollbar(*mode);
+    }
+    if s.scrollbar_width != 0.0 {
+        spec = spec.scrollbar_width(s.scrollbar_width);
+    }
+    if s.scrollbar_color != 0 {
+        spec = spec.scrollbar_color(color_of(s.scrollbar_color));
+    }
+    if s.scrollbar_active_color != 0 {
+        spec = spec.scrollbar_active_color(color_of(s.scrollbar_active_color));
+    }
     match s.window_role {
         1 => spec = spec.window_drag(),
         2 => spec = spec.window_button(WindowButton::Close),

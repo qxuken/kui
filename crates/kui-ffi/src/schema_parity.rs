@@ -214,6 +214,10 @@ fn every_schema_prop_has_a_c_counterpart() {
             "accent" => s.accent = 1,
             "selectable" => s.selectable = 1,
             "focusRegion" => s.focus_region = 1,
+            "scrollbar" => s.scrollbar = KUI_SCROLLBAR_HIDDEN,
+            "scrollbarWidth" => s.scrollbar_width = F,
+            "scrollbarColor" => s.scrollbar_color = C,
+            "scrollbarActiveColor" => s.scrollbar_active_color = C,
             "onForceClick" => s.on_force_click = &layout_tag,
             "window" => s.window_role = 2, // KUI_WINDOW_* = schema index + 1
             "transition" => s.transition_ms = F,
@@ -373,6 +377,10 @@ fn fully_populated_spec_matches_the_rust_builder() {
         selectable: 1,
         on_force_click: &menu_tag,
         focus_region: 1,
+        scrollbar: KUI_SCROLLBAR_AUTO,
+        scrollbar_width: 8.0,
+        scrollbar_color: 0x11223344,
+        scrollbar_active_color: 0x55667788,
         window_role: 1,
         transition_ms: 150.0,
         easing: 3,
@@ -479,6 +487,10 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .selectable()
         .on_force_click(Value::str("cm"))
         .focus_region()
+        .scrollbar(kui_core::ScrollbarMode::Auto)
+        .scrollbar_width(8.0)
+        .scrollbar_color(Color::hex(0x11223344))
+        .scrollbar_active_color(Color::hex(0x55667788))
         .window_drag()
         .transition(150.0)
         .easing(kui_core::Easing::EaseInOut)

@@ -15,6 +15,11 @@ const SCROLLBAR_ACTIVE_W: f32 = 6.0;
 const SCROLLBAR_HIT_W: f32 = 10.0;
 const SCROLLBAR_INSET: f32 = 2.0;
 const SCROLLBAR_MIN: f32 = 24.0;
+/// An `auto` bar (`ScrollbarMode::Auto`): how long it stays after the
+/// scroll state last changed, then how long it takes to fade. Seconds of
+/// the driver's clock.
+const SCROLLBAR_HOLD: f64 = 1.0;
+const SCROLLBAR_FADE: f64 = 0.25;
 /// The default focus ring (see `docs/adr/0002-keyboard-focus-as-data.md`):
 /// drawn this far outside the focused node, this thick, when focus is
 /// keyboard-visible and the node styles nothing itself.
@@ -28,15 +33,16 @@ const FOCUS_RING_GAP: f32 = 2.0;
 const FOCUS_RING_W: f32 = 2.0;
 
 impl Core {
-    /// The scrollbar thumb's colour at rest and while hovered or dragged.
-    /// A wash over whatever it sits on rather than a fill, which is why
-    /// it is two translucent colours and not one with an alpha applied.
-    fn thumb_color(&self, active: bool) -> Color {
+    /// The scrollbar thumb's colour at rest and while hovered or dragged:
+    /// the node's own where it declared one, else the theme's. A wash over
+    /// whatever it sits on rather than a fill, which is why the theme's
+    /// are two translucent colours and not one with an alpha applied.
+    fn thumb_color(&self, bar: &crate::spec::Scrollbar, active: bool) -> Color {
         let t = self.theme();
         if active {
-            t.scrollbar_active
+            bar.active_color.unwrap_or(t.scrollbar_active)
         } else {
-            t.scrollbar
+            bar.color.unwrap_or(t.scrollbar)
         }
     }
 
@@ -1284,34 +1290,78 @@ impl Core {
         let above = above as u32;
         for r in regions {
             let i = r.node as usize;
+            // The node's own bar style, if it declared one: hidden means
+            // no thumb and no track, and the wheel still works because the
+            // scroll region is already pushed.
+            let style = self.tree.specs[i].interact().scrollbar;
+            if style.mode == crate::spec::ScrollbarMode::Hidden {
+                continue;
+            }
+            let rest_w = style.width.unwrap_or(SCROLLBAR_W);
+            let active_w = rest_w + (SCROLLBAR_ACTIVE_W - SCROLLBAR_W);
+            // The grabbable gutter: the stock one, or enough for a wide
+            // thumb and its inset.
+            let hit_w = SCROLLBAR_HIT_W.max(active_w + 2.0 * SCROLLBAR_INSET);
             let max = self.tree.scroll_max[i];
             let offset = self.scroll.offset(r.key);
             let clip_id = self.clip_ids.get(i).copied().unwrap_or(NO_CLIP_ID);
-            let opacity = self.opacity.get(i).copied().unwrap_or(1.0);
+            let mut opacity = self.opacity.get(i).copied().unwrap_or(1.0);
+            // The tracks, before either bar: an `auto` bar is held while
+            // the pointer is on either track, and the two tracks share the
+            // one quiet clock.
+            let track_y = Rect::new(
+                r.rect.x + r.rect.w - hit_w,
+                r.rect.y + SCROLLBAR_INSET,
+                hit_w,
+                r.rect.h - 2.0 * SCROLLBAR_INSET,
+            );
+            let track_x = Rect::new(
+                r.rect.x + SCROLLBAR_INSET,
+                r.rect.y + r.rect.h - hit_w,
+                r.rect.w - 2.0 * SCROLLBAR_INSET,
+                hit_w,
+            );
+            if style.mode == crate::spec::ScrollbarMode::Auto
+                && let Some(now) = self.anim.time()
+            {
+                let held = self.interaction.is_scrollbar_dragging(r.key, ScrollAxis::Y)
+                    || self.interaction.is_scrollbar_dragging(r.key, ScrollAxis::X)
+                    || cursor.is_some_and(|p| {
+                        (max.y > 0.0 && track_y.contains(p)) || (max.x > 0.0 && track_x.contains(p))
+                    });
+                let idle = self.scroll.bar_idle(r.key, now, held);
+                let shown = if idle < SCROLLBAR_HOLD {
+                    1.0
+                } else {
+                    (1.0 - (idle - SCROLLBAR_HOLD) / SCROLLBAR_FADE).max(0.0)
+                };
+                if shown <= 0.0 {
+                    continue; // faded out: no thumb, and no track to press
+                }
+                // Something to settle: the hold running out, or the fade.
+                // Not while held — that is input's to end, and a frame a
+                // hover would ask for every 8 ms is the idle CPU C27 fought.
+                if !held {
+                    self.frame_requested = true;
+                }
+                opacity *= shown as f32;
+            }
             if max.y > 0.0 {
                 let track_h = r.rect.h - 2.0 * SCROLLBAR_INSET;
                 let bar_h = (track_h * r.rect.h / (r.rect.h + max.y)).max(SCROLLBAR_MIN);
                 let t = (offset.y / max.y).clamp(0.0, 1.0);
-                let track = Rect::new(
-                    r.rect.x + r.rect.w - SCROLLBAR_HIT_W,
-                    r.rect.y + SCROLLBAR_INSET,
-                    SCROLLBAR_HIT_W,
-                    track_h,
-                );
+                let track = track_y;
                 let active = self.interaction.is_scrollbar_dragging(r.key, ScrollAxis::Y)
                     || cursor.is_some_and(|p| track.contains(p));
-                let w = if active {
-                    SCROLLBAR_ACTIVE_W
-                } else {
-                    SCROLLBAR_W
-                };
+                let w = if active { active_w } else { rest_w };
                 let thumb = Rect::new(
                     r.rect.x + r.rect.w - w - SCROLLBAR_INSET,
                     r.rect.y + SCROLLBAR_INSET + t * (track_h - bar_h),
                     w,
                     bar_h,
                 );
-                let mut bar = scrollbar_quad(thumb, scale, clip_id, self.thumb_color(active));
+                let mut bar =
+                    scrollbar_quad(thumb, scale, clip_id, self.thumb_color(&style, active));
                 bar.color.a *= opacity;
                 self.display.quads.push(bar);
                 scrollbars.push(ScrollbarRegion {
@@ -1329,26 +1379,18 @@ impl Core {
                 let track_w = r.rect.w - 2.0 * SCROLLBAR_INSET;
                 let bar_w = (track_w * r.rect.w / (r.rect.w + max.x)).max(SCROLLBAR_MIN);
                 let t = (offset.x / max.x).clamp(0.0, 1.0);
-                let track = Rect::new(
-                    r.rect.x + SCROLLBAR_INSET,
-                    r.rect.y + r.rect.h - SCROLLBAR_HIT_W,
-                    track_w,
-                    SCROLLBAR_HIT_W,
-                );
+                let track = track_x;
                 let active = self.interaction.is_scrollbar_dragging(r.key, ScrollAxis::X)
                     || cursor.is_some_and(|p| track.contains(p));
-                let w = if active {
-                    SCROLLBAR_ACTIVE_W
-                } else {
-                    SCROLLBAR_W
-                };
+                let w = if active { active_w } else { rest_w };
                 let thumb = Rect::new(
                     r.rect.x + SCROLLBAR_INSET + t * (track_w - bar_w),
                     r.rect.y + r.rect.h - w - SCROLLBAR_INSET,
                     bar_w,
                     w,
                 );
-                let mut bar = scrollbar_quad(thumb, scale, clip_id, self.thumb_color(active));
+                let mut bar =
+                    scrollbar_quad(thumb, scale, clip_id, self.thumb_color(&style, active));
                 bar.color.a *= opacity;
                 self.display.quads.push(bar);
                 scrollbars.push(ScrollbarRegion {

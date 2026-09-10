@@ -60,7 +60,8 @@ use crate::menu::{BarMenu, MenuBar, MenuItem, MenuRole};
 use crate::resources::{ImageId, SoundId};
 use crate::runtime::Core;
 use crate::spec::{
-    Align, Dir, FloatAnchor, FloatConfig, Min, NodeSpec, PadShorthand, Sizing, TextStyle,
+    Align, Dir, FloatAnchor, FloatConfig, Min, NodeSpec, PadShorthand, ScrollbarMode, Sizing,
+    TextStyle,
 };
 use crate::text::Span;
 use crate::tree::{NodeContent, Tree};
@@ -626,6 +627,54 @@ pub const SCENES: &[Scene] = &[
             fragments: 0,
             glyphs_min: 0,
             access: &["0 window ||", "1 scrollView ||"],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+        },
+    },
+    Scene {
+        name: "scrollbar",
+        doc: "The four scrollbar rows on three scrollers of the same \
+              overflowing list: one `hidden` (no thumb, and its track is \
+              content), one styled (an 8 px thumb in its own two colours, \
+              held active by the pointer at the end so the wide active \
+              width and the active colour are what the report carries), \
+              one `auto` — shown when first seen, gone two seconds later, \
+              back on a wheel, and gone again by the last frame, which is \
+              the frame the report keeps.",
+        custom: &["overflow", "key"],
+        elements: &["box"],
+        build: build_scrollbar,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Time(0),
+            Step::Time(2000),
+            // The wheel over the auto scroller: its bar comes back.
+            Step::Cursor(250, 40),
+            Step::Scroll(0, -10),
+            Step::Time(2100),
+            Step::Time(3500),
+            // Onto the styled scroller's track, which grew for the wide thumb.
+            Step::Cursor(195, 40),
+        ],
+        expect: Expect {
+            // Three scrollers, three rows showing in each — four in the
+            // one the wheel moved off a row boundary — and one thumb.
+            solid: 14,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            fragments: 0,
+            glyphs_min: 0,
+            access: &[
+                "0 window ||",
+                "1 scrollView ||",
+                "1 scrollView ||",
+                "1 scrollView ||",
+            ],
             events: &[],
             announcements: &[],
             warnings: &[],
@@ -2014,6 +2063,43 @@ fn build_overflow(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// Item labels as constants: a binding building this scene has to use the
 /// same strings, since keys are hashes of the path.
 pub const ITEM_KEYS: [&str; 6] = ["i0", "i1", "i2", "i3", "i4", "i5"];
+
+/// The `scrollbar` scene's three scrollers, keyed in this order: the
+/// `hidden` one, the styled one, the `auto` one.
+pub const SCROLLBAR_KEYS: [&str; 3] = ["hidden", "styled", "auto"];
+
+fn build_scrollbar(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    ui.with(NodeSpec::row().pad(10.0).gap(10.0), |ui| {
+        for (n, key) in SCROLLBAR_KEYS.iter().enumerate() {
+            let list = NodeSpec::column()
+                .width(Sizing::Fixed(90.0))
+                .height(Sizing::Fixed(60.0))
+                .gap(0.0)
+                .scroll_y()
+                .bg(Color::hex(0x101018ff));
+            let list = match n {
+                0 => list.scrollbar(ScrollbarMode::Hidden),
+                1 => list
+                    .scrollbar_width(8.0)
+                    .scrollbar_color(Color::hex(0x3b5bd4ff))
+                    .scrollbar_active_color(Color::hex(0xffcc00ff)),
+                _ => list.scrollbar(ScrollbarMode::Auto),
+            };
+            ui.with_keyed(key, list, |ui| {
+                for item in ITEM_KEYS {
+                    ui.with_keyed(
+                        item,
+                        NodeSpec::column()
+                            .width(Sizing::Fixed(80.0))
+                            .height(Sizing::Fixed(20.0))
+                            .bg(Color::hex(0x30344aff)),
+                        |_| {},
+                    );
+                }
+            });
+        }
+    });
+}
 
 /// The three runs of the `selection` scene, in order. Short and distinct
 /// so a report shows at a glance which run a highlight belongs to, and

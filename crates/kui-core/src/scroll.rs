@@ -53,6 +53,11 @@ struct Entry {
     /// written at it. Only the budget reads it (see
     /// [`MAX_UNDECLARED_SCROLLS`]).
     last_declared: u64,
+    /// For an `auto` bar: the scroll state (offset, max) the bar was last
+    /// emitted for, and the clock reading it last changed at — or was
+    /// otherwise active — so the bar knows how long it has been quiet.
+    /// `None` until the bar is first emitted.
+    bar: Option<(Vec2, Vec2, f64)>,
 }
 
 /// How many *undeclared* scroll entries the store keeps before the longest
@@ -157,6 +162,24 @@ impl ScrollStore {
         let e = self.entries.entry(key).or_default();
         e.offset = offset;
         e.last_declared = frame_no;
+    }
+
+    /// How long `key`'s scroll state has been quiet, in seconds of the
+    /// driver's clock, as of `now` — zero on the frame the offset or the
+    /// travel moved, on the first frame the bar is asked about, and
+    /// whenever `active` says the pointer or a drag is holding it. What an
+    /// `auto` scrollbar fades by (`crate::spec::ScrollbarMode::Auto`).
+    pub(crate) fn bar_idle(&mut self, key: Key, now: f64, active: bool) -> f64 {
+        let e = self.entries.entry(key).or_default();
+        let max = e.geom.map_or(Vec2::ZERO, |(_, _, m)| m);
+        let state = (e.offset, max);
+        match e.bar {
+            Some((off, m, at)) if !active && (off, m) == state => (now - at).max(0.0),
+            _ => {
+                e.bar = Some((state.0, state.1, now));
+                0.0
+            }
+        }
     }
 
     /// What layout calls on a scroll container: records the geometry it

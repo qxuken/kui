@@ -270,6 +270,43 @@ static void conf_overflow(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_scrollbar: the four scrollbar rows on three scrollers
+ * of the same list - hidden, styled (an 8 px thumb in two colours), auto. */
+static void conf_scrollbar_list(KuiCtx *ui, const char *key, const KuiSpec *list) {
+    kui_open_keyed(ui, KUI_STR(key), list, NULL);
+    KuiSpec item = {.width = {KUI_FIXED, 80}, .height = {KUI_FIXED, 20},
+                    .bg = 0x30344aff};
+    for (int i = 0; i < 6; i++) {
+        char name[8];
+        snprintf(name, sizeof name, "i%d", i);
+        kui_open_keyed(ui, KUI_STR(name), &item, NULL);
+        kui_close(ui);
+    }
+    kui_close(ui);
+}
+
+static void conf_scrollbar(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec outer = {.dir = KUI_ROW, .pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10,
+                     .gap = 10};
+    kui_open(ui, &outer, NULL);
+    KuiSpec hidden = {.width = {KUI_FIXED, 90}, .height = {KUI_FIXED, 60}, .gap = 0,
+                      .overflow = KUI_SCROLL_Y, .bg = 0x101018ff,
+                      .scrollbar = KUI_SCROLLBAR_HIDDEN};
+    conf_scrollbar_list(ui, "hidden", &hidden);
+    KuiSpec styled = {.width = {KUI_FIXED, 90}, .height = {KUI_FIXED, 60}, .gap = 0,
+                      .overflow = KUI_SCROLL_Y, .bg = 0x101018ff,
+                      .scrollbar_width = 8, .scrollbar_color = 0x3b5bd4ff,
+                      .scrollbar_active_color = 0xffcc00ff};
+    conf_scrollbar_list(ui, "styled", &styled);
+    KuiSpec autobar = {.width = {KUI_FIXED, 90}, .height = {KUI_FIXED, 60}, .gap = 0,
+                       .overflow = KUI_SCROLL_Y, .bg = 0x101018ff,
+                       .scrollbar = KUI_SCROLLBAR_AUTO};
+    conf_scrollbar_list(ui, "auto", &autobar);
+    kui_close(ui);
+}
+
 /* The four sizing modes in a parent of known width, so each resolves to a
  * width no other mode gives: 30 fixed, 25% of 200 = 50, fit around a
  * 20-wide child, and grow taking the remaining 100. */
@@ -1118,6 +1155,7 @@ static const ConfScene CONF_SCENES[] = {
     {"menubar", conf_menu_bar},
     {"virtual", conf_virtual},
     {"layers", conf_layers},
+    {"scrollbar", conf_scrollbar},
 };
 
 /* -- driving one scene --------------------------------------------------- */

@@ -61,7 +61,7 @@ use std::collections::VecDeque;
 use kui::widgets;
 use kui::{
     Align, App, Appearance, Chrome, Color, Core, Extensions, FloatConfig, Key, Min, NodeSpec, Role,
-    Sizing, TextStyle, Theme, ThemeSource, Ui, UiEvent, Value, Vec2, Waker,
+    ScrollbarMode, Sizing, TextStyle, Theme, ThemeSource, Ui, UiEvent, Value, Vec2, Waker,
 };
 
 mod drive;
@@ -1043,7 +1043,11 @@ impl<E: Example> Harness<E> {
                 .radius(6.0)
                 .pad(6.0)
                 .gap(1.0)
-                .scroll_y(),
+                .scroll_y()
+                // The stream is where a bar that fades is seen every
+                // frame by every example: it shows while events arrive
+                // and goes a second after they stop.
+                .scrollbar(ScrollbarMode::Auto),
         );
         if self.stream.is_empty() {
             ui.text(
@@ -1698,14 +1702,26 @@ mod tests {
         };
         // The example's dead space: its bottom-left corner.
         click(&mut core, &mut h, 5.0, 590.0);
-        assert_eq!(core.focus(), Some(Key::ROOT), "dead space focuses the root sink");
+        assert_eq!(
+            core.focus(),
+            Some(Key::ROOT),
+            "dead space focuses the root sink"
+        );
         assert_eq!(core.region(), None);
         tab(&mut core, &mut h);
-        assert_eq!(core.focus(), Some(button), "and the Tab it hears walks the example's ring");
+        assert_eq!(
+            core.focus(),
+            Some(button),
+            "and the Tab it hears walks the example's ring"
+        );
         // The dock's dead space: its bottom edge, at the right.
         click(&mut core, &mut h, 795.0, 590.0);
         assert_eq!(core.focus(), Some(Key::ROOT));
-        assert_eq!(core.region(), Some(dock), "a press in the dock settles the region there");
+        assert_eq!(
+            core.region(),
+            Some(dock),
+            "a press in the dock settles the region there"
+        );
         tab(&mut core, &mut h);
         let inside = core.focus().expect("Tab entered the dock");
         assert_ne!(inside, button);

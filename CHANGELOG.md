@@ -108,6 +108,23 @@ field reports).
 
 ### Added
 
+- **Scrollbars are per node: `scrollbar`, `scrollbarWidth`,
+  `scrollbarColor`, `scrollbarActiveColor`** (rows 93–96; Lua
+  `scrollbar`, `scrollbar_width`, …; C `KuiSpec.scrollbar` with
+  `KUI_SCROLLBAR_VISIBLE` / `HIDDEN` / `AUTO`, `scrollbar_width`,
+  `scrollbar_color`, `scrollbar_active_color`, appended after ABI 13 the
+  compatible way). `hidden` draws no thumb and takes no press on the
+  track while the wheel, the keyboard, `reveal` and the caret still
+  scroll; `auto` shows the bar while the scroll state is changing — the
+  offset or the extent moved, the pointer is on the track, a thumb is
+  dragged — and for a second after, then fades it out over a quarter of
+  one, asking for frames only while it fades (a node first seen shows it
+  the same second; without a driver clock it is `visible`). The other
+  three restyle the thumb: its width at rest (the active one is 2 px
+  wider, and the track grows to fit), and its two colours over the
+  theme's `scrollbar` / `scrollbar_active`. `ScrollbarMode` and
+  `NodeSpec::scrollbar{,_width,_color,_active_color}` in Rust; the
+  `scrollbar` corpus scene pins all three modes in four bindings.
 - **Focus regions** ([ADR 0022](docs/adr/0022-focus-regions.md);
   `focusRegion` row, id 92; `Ui::focus_region` / `Ui::region`,
   `ctx.focusRegion(name | null)` / `ctx.region()`,

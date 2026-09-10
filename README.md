@@ -687,7 +687,14 @@ size; text and images shrink in width (rewrap / re-aspect) but never height.
 Overflow: `.clip()` clips children; `.scroll_y()` / `.scroll_x()` make a
 container scrollable (wheel/trackpad, offsets retained across frames by widget
 key, clamped to content). Scrollbars are live: thumbs drag, track presses
-jump, hovered bars widen. An app reaches the same offsets by name:
+jump, hovered bars widen. They are overlays, and per node they are four
+rows: `scrollbar` is `visible` (the default), `hidden` (no thumb, no track
+to press — the wheel still scrolls) or `auto` (shown while the scroll state
+changes or the pointer is on the track, gone a second and a quarter after
+it stops, the way a macOS overlay bar goes; needs the driver's clock);
+`scrollbarWidth`, `scrollbarColor` and `scrollbarActiveColor` restyle the
+thumb, whose defaults are 4 px and the theme's two roles. An app reaches
+the same offsets by name:
 `ui.reveal(key)` scrolls whatever contains a node so the node shows (what Tab
 does to the control it lands on), and `ui.scroll_offset(key)` /
 `ui.set_scroll(key, offset)` read and write a container's offset — the next

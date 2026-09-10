@@ -772,6 +772,11 @@ that is where both the duplication and the accessibility failure were —
 but the argument for a `Metrics` beside `Theme` is the argument that
 document already makes, one axis over.
 
+The scrollbar's are per node now rather than constants — `scrollbarWidth`
+and the two colours (2026-09-10, beside ADR 0023's build) — which is the
+per-node half of this and not the `Metrics`; the inset (2) and the
+minimum thumb (24) stayed constants, since nothing asked.
+
 Two things worth settling before building it: whether a metric scales
 (a density setting is the obvious use, and it interacts with `env`'s scale
 factor, which is the renderer's and not the palette's), and whether the
