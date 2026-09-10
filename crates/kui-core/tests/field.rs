@@ -140,9 +140,10 @@ fn a_field_does_not_wrap_and_a_document_does() {
 
 #[test]
 fn a_field_scrolls_its_text_under_the_caret() {
+    const TEXT: &str = "Throwaway name that is long";
     let mut core = Core::new();
     let (_key, rect) = frame(&mut core, "", false, Some(100.0), 16.0);
-    core.handle_input(InputEvent::Text("Throwaway name that is long".into()));
+    core.handle_input(InputEvent::Text(TEXT.into()));
     frame(&mut core, "", false, Some(100.0), 16.0);
 
     let content_l = rect.x + PAD;
@@ -173,13 +174,24 @@ fn a_field_scrolls_its_text_under_the_caret() {
         rect.x
     );
 
-    // Home brings the head back.
+    // Home brings the head back. Where the head lands is not `content_l`
+    // itself: a quad is a glyph's ink, and how far that ink sits from the
+    // pen is the font's business — the first glyph of this text starts on
+    // the pen in Helvetica Neue and a pixel left of it in DejaVu Sans, so
+    // a tolerance around `content_l` only ever holds on one CI image. The
+    // reference is the same text in a box wide enough never to scroll:
+    // that field's head is where an unscrolled head belongs, whatever the
+    // font drew.
+    let mut unscrolled = Core::new();
+    frame(&mut unscrolled, TEXT, false, Some(360.0), 16.0);
+    let start = glyphs(&mut unscrolled)[0].0.rect.x;
+
     core.handle_input(InputEvent::Key(EditKey::Home, Mods::default()));
     frame(&mut core, "", false, Some(100.0), 16.0);
     let head = glyphs(&mut core)[0].0.rect.x;
     assert!(
-        (head - content_l).abs() < 1.0,
-        "Home should scroll the field back to the start: {head} vs {content_l}"
+        (head - start).abs() < 0.5,
+        "Home should scroll the field back to the start: {head} vs {start}"
     );
 }
 
