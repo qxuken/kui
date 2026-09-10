@@ -577,8 +577,14 @@ fn a_repeated_declaration_takes_focus_once() {
     assert_eq!(core.focus(), None);
 }
 
+/// `autofocus` is an edge (`docs/adr/0022-focus-regions.md`, decision 9):
+/// the editor takes focus on the frame its declaration starts, only while
+/// nothing holds focus, and a blur afterwards stands — an app with an
+/// autofocus field can have nothing focused. Turning the flag on for an
+/// editor that already exists is an edge too, and so is coming back after
+/// a frame without the editor.
 #[test]
-fn autofocus_takes_the_keyboard_only_while_nothing_holds_it() {
+fn autofocus_is_an_edge_that_takes_the_keyboard_only_while_nothing_holds_it() {
     let mut core = Core::new();
     let k = frame(&mut core, false, true);
     assert_eq!(core.focus(), Some(k.name));
@@ -589,7 +595,16 @@ fn autofocus_takes_the_keyboard_only_while_nothing_holds_it() {
     assert_eq!(core.edit.focused(), None);
     core.set_focus(None);
     frame(&mut core, false, true);
-    assert_eq!(core.focus(), Some(k.name), "free again: autofocus takes it");
+    assert_eq!(core.focus(), None, "a blur stands: the flag asked once");
+    // The flag turned off and on again is a new declaration.
+    frame(&mut core, false, false);
+    frame(&mut core, false, true);
+    assert_eq!(core.focus(), Some(k.name), "an edge: autofocus takes it");
+    // And it still never takes focus from something that holds it.
+    core.set_focus(Some(k.go));
+    frame(&mut core, false, false);
+    frame(&mut core, false, true);
+    assert_eq!(core.focus(), Some(k.go));
 }
 
 #[test]

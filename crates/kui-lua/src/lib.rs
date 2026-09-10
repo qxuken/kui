@@ -359,7 +359,8 @@ fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
 /// `system` (what the user set in the OS: `appearance` and `motion` as
 /// strings, always there because "unknown" is one of their readings, and
 /// `accent` (0xRRGGBBAA) / `locale` (a BCP-47 tag) only when the host can
-/// tell), `focus` (the focused *node*'s key), `focus_visible`, `theme`
+/// tell), `focus` (the focused *node*'s key), `focus_visible`, `region`
+/// (the `focus_region` node in effect, nil for the main ring), `theme`
 /// (the palette derived from `system`: one 0xRRGGBBAA number per role in
 /// `schema::THEME_ROLES`, plus `appearance` and `disabled_opacity`),
 /// `viewport_w`/`viewport_h` (logical px), `window` chrome facts, the
@@ -372,7 +373,7 @@ fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
 /// see `key_arg`), the editor verb `set_edit_text(key_or_label, text)` (whose
 /// label spelling reaches an editor this view is about to declare),
 /// `measure_text(s, opts, max_w)` (see `measure_from_lua`), the
-/// focus verbs `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()`
+/// focus verbs `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()` / `focus_region(key)`
 /// and the scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
 /// `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
 /// `caret_rect(key, byte)`, the selection calls `selection_text()` /
@@ -393,7 +394,7 @@ fn env_table<'scope, 'env: 'scope>(
     ui: &'env std::cell::RefCell<&'env mut Ui<'_>>,
     loaded: &'env std::cell::RefCell<Vec<Loaded>>,
 ) -> mlua::Result<Table> {
-    let (env, theme, vp, focus, focus_visible) = {
+    let (env, theme, vp, focus, focus_visible, region) = {
         let ui = ui.borrow();
         (
             ui.env(),
@@ -401,6 +402,7 @@ fn env_table<'scope, 'env: 'scope>(
             ui.viewport(),
             ui.focused(),
             ui.focus_visible(),
+            ui.region(),
         )
     };
     let t = lua.create_table()?;
@@ -452,6 +454,11 @@ fn env_table<'scope, 'env: 'scope>(
     // Whether focus shows — it got there by Tab or assistive technology
     // rather than a click.
     t.set("focus_visible", focus_visible)?;
+    // The `focus_region` node whose ring Tab walks; absent for the main
+    // ring, by the same rule as `focus` (`docs/adr/0022-focus-regions.md`).
+    if let Some(k) = region {
+        t.set("region", k.0 as i64)?;
+    }
     t.set("viewport_w", vp.w)?;
     t.set("viewport_h", vp.h)?;
     let win = env.window;
@@ -578,6 +585,23 @@ fn env_table<'scope, 'env: 'scope>(
         "focus_prev",
         scope.create_function(move |_, ()| {
             ui.borrow_mut().focus_prev();
+            Ok(())
+        })?,
+    )?;
+    // Enters a focus region — `env.focus_region("dock")`, the label or the
+    // integer key of a node declared `focus_region = true` — or the main
+    // ring for nil (`docs/adr/0022-focus-regions.md`). Resolves when this
+    // frame finishes, like `focus_next`, so a script may name the region
+    // it is declaring right now — call it after the region's node.
+    t.set(
+        "focus_region",
+        scope.create_function(move |_, key: mlua::Value| {
+            let mut ui = ui.borrow_mut();
+            let key = match key {
+                mlua::Value::Nil => None,
+                v => Some(key_arg(&mut ui, v)?),
+            };
+            ui.focus_region(key);
             Ok(())
         })?,
     )?;
@@ -3093,6 +3117,9 @@ mod tests {
                   end
                   return column { key = "root",
                     row { key = "a", focusable = true, width = 50, height = 20 },
+                    column { key = "dock", focus_region = true,
+                      row { key = "d", focusable = true, width = 50, height = 20 },
+                    },
                   }
                 end
             "#,
@@ -3101,13 +3128,14 @@ mod tests {
         let mut core = Core::new();
         // Every key that only appears when set: a rate, an accent, a
         // locale, a controls rect, and a focused node (which the ring has
-        // to see a frame first).
+        // to see a frame first) — one inside a region, so the region in
+        // effect is a reading too.
         core.env.refresh_hz = Some(60.0);
         core.env.system.accent = Some(kui_core::Color::hex(0x3b82f6ff));
         core.env.system.locale = kui_core::Locale::new("en-US");
         core.env.window.native_controls = Some(Rect::new(0.0, 0.0, 78.0, 28.0));
         frame(&mut core, &mut ext);
-        core.set_focus(Some(Key::ROOT.str("root").str("a")));
+        core.set_focus(Some(Key::ROOT.str("root").str("dock").str("d")));
         frame(&mut core, &mut ext);
 
         let sorted = |name: &str| -> Vec<String> {
@@ -3151,6 +3179,7 @@ mod tests {
                 "extension_namespaces",
                 "focus_next",
                 "focus_prev",
+                "focus_region",
                 "focus_window",
                 "is_focused",
                 "is_hovered",

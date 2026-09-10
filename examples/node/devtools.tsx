@@ -17,14 +17,19 @@
 //   --accent #rrggbb        the accent, instead of the OS's
 //
 // Chords: Ctrl+Shift+T cycles the base, +A the accent, +M toggles native
-// menus, +D moves the dock, +C clears the stream, +N the next tab.
+// menus, +D moves the dock, +C clears the stream, +N the next tab, +I moves
+// the keyboard into the dock and back out.
 //
 // The dock is a sibling of the example's tree, so the example's root box
 // is a child of the devtools'; `title` and `windows` belong on the root and
 // so are the devtools' to declare (an example that declares windows passes
-// them through `windows`). The dock carries `role="none"`, so neither the
-// Tab ring nor assistive technology sees it. `--dock off` also declares no
-// key sink and takes no focus.
+// them through `windows`). The dock is a `focusRegion` (ADR 0022): the
+// example's Tab ring never enters it, inside it Tab walks the dock's own
+// controls, and Ctrl+Shift+I (or a click) is the way in. The root is the
+// harness's key sink and never takes focus for itself: with nothing focused
+// a root sink hears every key, and with something focused the chord bubbles
+// up. A press on dead space still gives it focus (ADR 0011), and the Tab it
+// then hears is handed on to the ring. `--dock off` declares no key sink.
 import { createApp, runWindowed, withEffects } from '@qxuken/kui';
 import type { App, CoreMsg, KeyMsg, KuiNode, KuiWindow, UiEvent, WindowDecl } from '@qxuken/kui';
 
@@ -246,6 +251,13 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
         next.dock = hs.dock === 'side' ? 'bottom' : hs.dock === 'bottom' ? 'off' : 'side';
         push(next, 'note', `dock: ${next.dock}`);
         break;
+      case 'inspect':
+        // Into the dock, or back out to where the example had the keyboard.
+        // Resolved by the frame this update leads to, so a hidden dock is
+        // brought back and entered in the same turn.
+        if (next.dock === 'off') next.dock = 'side';
+        win_!.focusRegion(win_!.region() !== null ? null : 'dock');
+        break;
       case 'clear':
         next.stream = [];
         break;
@@ -268,7 +280,7 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
     const k = msg as KeyMsg;
     if (k.phase !== 'down' || !k.ctrl || !k.shift || k.alt) return null;
     const c = (k.code || '').toLowerCase();
-    const table: Record<string, string> = { t: 'base', a: 'accent', m: 'menus', d: 'dock', c: 'clear', n: 'tab' };
+    const table: Record<string, string> = { t: 'base', a: 'accent', m: 'menus', d: 'dock', c: 'clear', n: 'tab', i: 'inspect' };
     return table[c] ?? null;
   };
 
@@ -295,6 +307,7 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
       ['viewport', `${Math.round(env.viewport.width)}×${Math.round(env.viewport.height)} @${env.viewport.scale} · ${env.refreshHz ? `${Math.round(env.refreshHz)} Hz` : '—'}`],
       ['keyboard', env.focused ? 'this window' : 'elsewhere'],
       ['focus', focus ? `${focus === ROOT_KEY ? 'root' : focus}${win.focusVisible() ? ' · ring' : ''}` : '—'],
+      ['region', win.region() !== null ? 'dock · Ctrl+Shift+I leaves' : 'main · Ctrl+Shift+I enters the dock'],
       ['audio', `${env.audio.device} · ${env.audio.live} live`],
     ];
     return (
@@ -484,7 +497,7 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
       );
     return (
       <box key="dock" width={side ? DOCK_SIDE_W : 'grow'} height={side ? 'grow' : DOCK_BOTTOM_H} bg={t.surface}
-           borderW={1} borderColor={t.border} pad={10} gap={8} role="none" clip>
+           borderW={1} borderColor={t.border} pad={10} gap={8} focusRegion label="Devtools" clip>
         {header(hs, win)}
         {tabs(hs, win)}
         {body}
@@ -518,6 +531,18 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
       // nothing claimed, a `modifiers` change — is logged and not the
       // example's.
       if (m.h.dock !== 'off' && ev.key === ROOT_KEY) {
+        // Tab is the ring's, not the sink's: a press on dead space gives
+        // focus to the root (ADR 0011), and a sink holding focus is handed
+        // every key (ADR 0002) — so the harness passes this one on. The
+        // step walks the ring in effect: into the dock from its dead space.
+        if (msg.kind === 'key') {
+          const k = msg as KeyMsg;
+          if (k.phase === 'down' && k.code === 'tab' && !k.ctrl && !k.alt && !k.super) {
+            if (k.shift) win.focusPrev();
+            else win.focusNext();
+            return undefined;
+          }
+        }
         push(h, 'note', `(root) ${fmtValue(msg)}`);
         return { ...m, h };
       }
@@ -538,14 +563,13 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
           </box>
         );
       }
-      // Somewhere for the chords to land when the example has nothing
-      // focused, from the second frame so an autofocus of the example's
-      // gets the first; the root is never a Tab stop.
-      const takeFocus = m.h.frames >= 2 && win.focused() === null;
+      // No focus taken for the chords: with nothing focused a root sink
+      // hears every key (ADR 0022, decision 8), and with something focused
+      // the chord bubbles up to it (ADR 0011).
       if (m.h.tab === 'tree') win.setInspect(true);
       return (
         <box dir={m.h.dock === 'bottom' ? 'column' : 'row'} width="grow" height="grow" bg={t.bg}
-             title={title} windows={windows} onKey={{ kind: '@harness', what: 'sink' }} keyFocus={takeFocus}>
+             title={title} windows={windows} onKey={{ kind: '@harness', what: 'sink' }}>
           <box key="example" width="grow" height="grow" clip>
             {example.view(m.app, win)}
           </box>

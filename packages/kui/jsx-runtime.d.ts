@@ -210,6 +210,8 @@ export interface GeneratedSpecProps {
   expanded?: 'collapsed' | 'expanded';
   /** Background while the node holds keyboard-visible focus (moved there by Tab or assistive technology, not a click); replaces the default focus ring. Pressed wins over focus wins over hover; eases with `transition`. */
   focusBg?: ColorProp;
+  /** Makes this node's subtree a focus region: a Tab ring of its own that the ring outside never enters and that never leaves — a devtools dock, an inspector beside the app (`docs/adr/0022-focus-regions.md`). Entered on purpose: `focusRegion(name)` (`Ui::focus_region`, `env.focus_region`, `kui_focus_region`) moves focus in — to the focus the region last held, else its `initialFocus`, else its first stop — and `focusRegion(null)` moves it back to the main ring the same way; a press inside the region, or an explicit focus on a node in it, enters it too. Tab then walks that ring alone, wrapping inside it; with nothing focused, Tab enters the ring of the region in effect (`region()`). A region that stops being declared hands focus back to what the main ring last held. Only the ring is scoped: keys still bubble through the boundary to the sink above (a region that wants its own keymap is an `onKey` sink), the pointer and assistive technology see a plain node, and a `modal` in effect is the ring wherever it sits. Nested regions are skipped by the outer ring the way the main ring skips them. */
+  focusRegion?: boolean;
   /** Reachable by Tab (and focused by a click) without a click payload or a control role — a row that opens on Enter. Editors, key sinks, `onClick` boxes and the control roles are focusable already. */
   focusable?: boolean;
   /** Space between children along the main axis. */
@@ -434,6 +436,9 @@ export interface EditProps extends TextProps, GeneratedSpecProps, CustomSpecProp
   id?: string;
   initial?: string;
   multiline?: boolean;
+  /** Takes focus once, on the frame the flag starts being declared, and only
+   *  while nothing holds focus (ADR 0022, decision 9); a blur afterwards
+   *  stands. `focus(key)` moves it at any other time. */
   autofocus?: boolean;
 }
 

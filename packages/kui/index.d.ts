@@ -562,6 +562,15 @@ export type WarningCode =
    *  tree. Give the node meant a label nothing else declares, or pass the hex
    *  key an event carried. Two nodes with the *same* key are `duplicate-key`. */
   | 'ambiguous-key'
+  /** A `focusRegion(name)` (`Core::focus_region`, `env.focus_region`,
+   *  `kui_focus_region`) named a node the frame after it did not declare as a
+   *  `focusRegion` — no node under the label, or a node without the row — so
+   *  nothing was entered and focus stayed where it was. The call is resolved
+   *  against the frame it lands on, so an `update` that toggles a dock on and
+   *  enters it in one go is fine; this is that call with the view half missing,
+   *  with a name the view spells differently, or naming a node that is not a
+   *  region (`docs/adr/0022-focus-regions.md`, decision 4). */
+  | 'focus-region-without-node'
   /** A `selectable` node inside another `selectable` node. Selection scopes do
    *  not nest: the innermost one owns every run under it, so the outer scope
    *  selects only the text outside the inner one — and a drag that crosses the
@@ -1772,6 +1781,29 @@ export declare class Ctx {
   /** What Shift-Tab does. */
   focusPrev(): void
   /**
+   * Enters a focus region — a box declared `focusRegion`, named by
+   * the label its `key` prop declares or by the hex key an event
+   * carried — or the main ring for `null`
+   * (`docs/adr/0022-focus-regions.md`). Focus lands on what that
+   * ring last held if the node is still there, else its
+   * `initialFocus`, else its first stop, and shows.
+   *
+   * Resolved when the next frame finishes, like `focusNext`, so
+   * the `update` that toggles a dock on may enter it in the same
+   * turn — which is why a label is taken as a name to hold rather
+   * than resolved now: the node need not exist yet. A frame that
+   * then declares no `focusRegion` under the name raises
+   * `focus-region-without-node` and moves nothing.
+   */
+  focusRegion(key?: string | undefined | null): void
+  /**
+   * The focus region in effect — the hex key of the `focusRegion`
+   * node whose ring Tab walks — or `null` for the main ring. What
+   * a chord that toggles between a dock and the app reads to know
+   * which way it is going.
+   */
+  region(): string | null
+  /**
    * Scrolls whatever contains a node so it shows — "scroll to the
    * selected row", which needs the container geometry only the core
    * has. The request resolves against the *next* frame's layout (one
@@ -2459,6 +2491,29 @@ export declare class KuiWindow {
   focusNext(): void
   /** What Shift-Tab does. */
   focusPrev(): void
+  /**
+   * Enters a focus region — a box declared `focusRegion`, named by
+   * the label its `key` prop declares or by the hex key an event
+   * carried — or the main ring for `null`
+   * (`docs/adr/0022-focus-regions.md`). Focus lands on what that
+   * ring last held if the node is still there, else its
+   * `initialFocus`, else its first stop, and shows.
+   *
+   * Resolved when the next frame finishes, like `focusNext`, so
+   * the `update` that toggles a dock on may enter it in the same
+   * turn — which is why a label is taken as a name to hold rather
+   * than resolved now: the node need not exist yet. A frame that
+   * then declares no `focusRegion` under the name raises
+   * `focus-region-without-node` and moves nothing.
+   */
+  focusRegion(key?: string | undefined | null): void
+  /**
+   * The focus region in effect — the hex key of the `focusRegion`
+   * node whose ring Tab walks — or `null` for the main ring. What
+   * a chord that toggles between a dock and the app reads to know
+   * which way it is going.
+   */
+  region(): string | null
   /**
    * Scrolls whatever contains a node so it shows — "scroll to the
    * selected row", which needs the container geometry only the core

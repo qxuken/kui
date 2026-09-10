@@ -619,6 +619,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         accent: u32 => "uint32_t",
         selectable: u32 => "uint32_t",
         on_force_click: *const KuiValue => "const KuiValue *",
+        focus_region: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1100,6 +1101,8 @@ fn asserts() -> (String, Vec<&'static str>) {
     abi_fn!(o, n, kui_focused(*mut KuiCtx) -> u64);
     abi_fn!(o, n, kui_focus_visible(*mut KuiCtx) -> bool);
     abi_fn!(o, n, kui_is_focused(*mut KuiCtx, u64) -> bool);
+    abi_fn!(o, n, kui_focus_region(*mut KuiCtx, u64));
+    abi_fn!(o, n, kui_region(*mut KuiCtx) -> u64);
 
     abi_fn!(o, n, kui_reveal(*mut KuiCtx, u64));
     abi_fn!(o, n, kui_set_scroll(*mut KuiCtx, u64, f32, f32));

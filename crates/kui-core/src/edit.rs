@@ -26,8 +26,10 @@ use crate::tree::OriginId;
 pub struct EditOptions {
     pub style: TextStyle,
     pub multiline: bool,
-    /// Takes keyboard focus whenever nothing else holds it (on creation,
-    /// and again after a blur) — never from a focused control.
+    /// Takes keyboard focus on the frame this declaration starts — a new
+    /// editor, one back after a gap, one whose flag just turned on — and
+    /// only while nothing holds focus: never from a focused control, and
+    /// never again after a blur (`docs/adr/0022`, decision 9).
     pub autofocus: bool,
     /// Selection highlight color. `None` is the theme's `selection`,
     /// which is what a field gets unless the caller says otherwise — so a
@@ -73,6 +75,9 @@ pub(crate) struct EditState {
     redo: VecDeque<EditOp>,
     /// What the top undo op can still absorb (typing bursts, delete runs).
     coalesce: Option<Coalesce>,
+    /// Whether the last declaration carried `autofocus`: with
+    /// `last_declared`, what makes the next one an edge or a repeat.
+    autofocus: bool,
     /// The frame this key was last declared in. Only the budget reads it
     /// (see [`MAX_UNDECLARED_EDITS`]); a state declared every frame never
     /// looks at it again.
@@ -507,7 +512,11 @@ impl EditStore {
 
     /// Ensures state exists for `key`, seeding `initial` on first creation
     /// — or, if a `set_text` for this key arrived before anything declared
-    /// it, that text instead (see [`EditStore::pending`]).
+    /// it, that text instead (see [`EditStore::pending`]). Returns whether
+    /// this declaration is an *autofocus edge*: the key was not declared
+    /// with `autofocus` on the frame before this one — a new editor, one
+    /// back after a gap, or one whose `autofocus` just turned on — which
+    /// is the one frame the flag may act on (`docs/adr/0022`, decision 9).
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn declare(
         &mut self,
@@ -518,8 +527,12 @@ impl EditStore {
         scale: f32,
         fs: &mut FontSystem,
         res: &Resources,
-    ) {
+    ) -> bool {
         let frame_no = self.frame_no;
+        let edge = self
+            .states
+            .get(&key)
+            .is_none_or(|s| s.last_declared + 1 != frame_no || !s.autofocus);
         // Only a creation consumes the seed: a key already declared has
         // no pending text (a `set_text` with state behind it is applied
         // where it is called), and taking one here would drop it.
@@ -576,10 +589,12 @@ impl EditStore {
                 undo: VecDeque::new(),
                 redo: VecDeque::new(),
                 coalesce: None,
+                autofocus: false,
                 last_declared: frame_no,
             }
         });
         state.last_declared = frame_no;
+        state.autofocus = opts.autofocus;
         state.origin = origin;
         state.multiline = opts.multiline;
         state.accent = opts.accent.unwrap_or(crate::select::TINT);
@@ -598,6 +613,7 @@ impl EditStore {
             state.invalidate_measurements();
         }
         // `autofocus` is the core's decision (it owns the one focus).
+        edge
     }
 
     pub fn contains(&self, key: Key) -> bool {

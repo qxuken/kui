@@ -346,3 +346,15 @@ time. The clearing rule is untouched: the next mouse press hides it again.
   they last touched, which is the noise `:focus-visible` exists to
   remove, and the app that reads `focus_visible` for its own styling
   loses the distinction entirely.
+
+## Amendment: rings, not a ring — and the two rules beside them (2026-09-10)
+
+Decision 2 says every control is in *the* Tab ring, and decision 5 says an
+`autofocus` editor "takes focus only while nothing else holds it". The
+first is now "in the ring of the region it is in", and the second is an
+edge rather than a standing claim; a third rule, that a key sink on the
+root hears keys when nothing is focused, closes the gap that made shells
+take focus on the root. All three are
+`docs/adr/0022-focus-regions.md`; decisions 2, 3, 5 and 8 here are
+otherwise unchanged.
+

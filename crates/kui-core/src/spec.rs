@@ -805,6 +805,15 @@ pub struct InteractSpec {
     /// an outer one is warned about (`nested-selection-scope`). An `edit`
     /// is already its own scope and ignores this.
     pub selectable: bool,
+    /// Makes this node's subtree a *focus region*: a Tab ring of its own
+    /// that the ring outside never enters, and that never leaves — a
+    /// devtools dock, an inspector beside the app (see
+    /// `docs/adr/0022-focus-regions.md`). Entered on purpose:
+    /// `Ui::focus_region`, a press inside it, or an explicit focus on a
+    /// node in it. Nothing else about the node changes — it lays out,
+    /// paints, takes the pointer and appears in the access tree as before,
+    /// and keys bubble through it to the sink above.
+    pub focus_region: bool,
 }
 
 impl InteractSpec {
@@ -818,6 +827,7 @@ impl InteractSpec {
         hover_sound: None,
         focus_bg: None,
         selectable: false,
+        focus_region: false,
     };
 }
 
@@ -915,6 +925,9 @@ impl NodeSpec {
                     // A selection scope has to be found under the pointer:
                     // the press that starts a drag-select lands on it.
                     || i.selectable
+                    // So does a focus region: a press on its dead space
+                    // settles the ring there (`docs/adr/0022`, decision 3).
+                    || i.focus_region
             })
     }
 
@@ -1218,6 +1231,13 @@ impl NodeSpec {
     /// the text inside it becomes one selectable run.
     pub fn selectable(mut self) -> Self {
         self.interact_mut().selectable = true;
+        self
+    }
+
+    /// Makes this node's subtree a focus region (see the `focus_region`
+    /// field): a Tab ring of its own, entered on purpose.
+    pub fn focus_region(mut self) -> Self {
+        self.interact_mut().focus_region = true;
         self
     }
 

@@ -315,7 +315,9 @@ enum {
     KUI_KMOD_ALT = 1u << 2,
     KUI_KMOD_SUPER = 1u << 3,
 };
-/* Text edit flags (kui_text_edit) */
+/* Text edit flags (kui_text_edit). AUTOFOCUS asks once: the editor takes
+ * focus on the frame the flag starts being declared, and only while
+ * nothing holds focus (docs/adr/0022-focus-regions.md, decision 9). */
 enum { KUI_EDIT_MULTILINE = 1u << 0, KUI_EDIT_AUTOFOCUS = 1u << 1 };
 /* Float modes (KuiSpec.float_mode). For the named presets the other
  * bindings take ("below", "above", ...), see kui_spec_float_preset. */
@@ -704,6 +706,20 @@ typedef struct KuiSpec {
      * opens; appended after ABI 11 the compatible way, so a host that
      * predates it passes the shorter struct and reads as NULL. */
     const KuiValue *on_force_click;
+    /* Non-zero: this node's subtree is a focus region - a Tab ring of its
+     * own that the ring outside never enters and that never leaves: a
+     * devtools dock, an inspector beside the app
+     * (docs/adr/0022-focus-regions.md). Entered on purpose:
+     * kui_focus_region moves focus in (to what the region last held, else
+     * its initial_focus, else its first stop) and a press inside it, or a
+     * focus on a node in it, enters it too; Tab then walks that ring alone
+     * and wraps inside it. A region that stops being declared hands focus
+     * back to what the main ring last held. Only the ring is scoped: keys
+     * bubble through the boundary to the sink above, the pointer and
+     * assistive technology see a plain node, and a `modal` in effect is the
+     * ring wherever it sits. Appended after ABI 13 the compatible way; a
+     * host that predates it passes the shorter struct and reads as zero. */
+    uint32_t focus_region;
 } KuiSpec;
 
 /* Disclosure state (KuiSpec.expanded): the schema index plus one, so zero
@@ -1805,6 +1821,20 @@ void kui_focus_next(KuiCtx *ctx, bool forward);
  * there by keyboard or assistive technology, not a click). */
 uint64_t kui_focused(KuiCtx *ctx);
 bool kui_focus_visible(KuiCtx *ctx);
+/* Enters the focus region key names - a node declared with focus_region -
+ * or the main ring for 0 (docs/adr/0022-focus-regions.md): focus lands on
+ * what that ring last held if the node is still there, else its
+ * initial_focus, else its first stop, and shows. Deferred to the end of
+ * the frame being built, like kui_focus_next from a view: call it from the
+ * view callback after kui_open on the region (the frame that toggles a dock
+ * on may enter it), or between frames to land on the next one. A key the
+ * frame does not declare as a region raises "focus-region-without-node"
+ * (kui_take_warnings) and moves nothing. */
+void kui_focus_region(KuiCtx *ctx, uint64_t key);
+/* The focus region in effect - the node whose ring Tab walks - or 0 for
+ * the main ring. What a chord that toggles between a dock and the app
+ * reads to know which way it is going. */
+uint64_t kui_region(KuiCtx *ctx);
 /* -- Scrolling ------------------------------------------------------------ */
 /* Scroll offsets are retained per node key and clamped by each layout to
  * that frame's overflow. The wheel, the scrollbars, Tab and the caret move

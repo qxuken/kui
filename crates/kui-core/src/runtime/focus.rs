@@ -1,7 +1,9 @@
 //! Keyboard focus and the Tab ring (`docs/adr/0002-keyboard-focus-as-data.md`),
-//! and the modal scope that narrows both (`docs/adr/0003-modal-surfaces.md`):
-//! the one focus, who is in the ring, what moving it does to the edit store
-//! and the held keys, and the focus a modal displaces and gives back.
+//! the modal scope that narrows both (`docs/adr/0003-modal-surfaces.md`),
+//! and the focus regions that split the ring into rings
+//! (`docs/adr/0022-focus-regions.md`): the one focus, who is in the ring,
+//! what moving it does to the edit store and the held keys, the focus a
+//! modal displaces and gives back, and the region a press or a call enters.
 
 use super::*;
 
@@ -35,7 +37,9 @@ impl Core {
     /// The Tab ring: (tree index, key) of every focusable node of the
     /// last frame in tree order, `role="none"` subtrees skipped whole —
     /// and, when a modal is in effect, of its subtree only (see
-    /// `docs/adr/0003-modal-surfaces.md`).
+    /// `docs/adr/0003-modal-surfaces.md`); otherwise of the region in
+    /// effect, with every region nested in the range skipped whole
+    /// (`docs/adr/0022-focus-regions.md`, decisions 1 and 2).
     ///
     /// A composite contributes **one** stop instead of one per item
     /// (`docs/adr/0007-composite-keyboard-patterns.md`): the walk enters
@@ -48,10 +52,8 @@ impl Core {
     fn focus_ring(&self) -> Vec<(usize, Key)> {
         use crate::access::Role;
         let mut out = Vec::new();
-        let (mut i, end) = match self.modal {
-            Some((start, end, _)) => (start, end),
-            None => (0, self.tree.len()),
-        };
+        let (start, end) = self.ring_range();
+        let mut i = start;
         // The composites enclosing `i`, innermost last: how far each runs,
         // which role its items carry, and the one item that is its stop.
         let mut open: Vec<(usize, Role, Option<usize>)> = Vec::new();
@@ -62,6 +64,13 @@ impl Core {
             }
             let role = self.tree.specs[i].access().role;
             if role == Some(Role::None) {
+                i = self.tree.subtree_end(i);
+                continue;
+            }
+            // A region inside the range is a ring of its own, not a part
+            // of this one — the range's own root excepted, which is the
+            // region being walked.
+            if self.any_region && i != start && self.tree.specs[i].interact().focus_region {
                 i = self.tree.subtree_end(i);
                 continue;
             }
@@ -92,6 +101,240 @@ impl Core {
             i += 1;
         }
         out
+    }
+
+    /// The tree range the ring is made of: the modal's subtree when one is
+    /// in effect (a modal wins, `docs/adr/0022`, decision 6), else the
+    /// region in effect's, else the whole tree. A region the frame no
+    /// longer has falls back to the whole tree; `resolve_regions` is what
+    /// moves the region off it, and runs before any ring is asked for.
+    fn ring_range(&self) -> (usize, usize) {
+        if let Some((start, end, _)) = self.modal {
+            return (start, end);
+        }
+        if let Some(i) = self.region_index() {
+            return (i, self.tree.subtree_end(i));
+        }
+        (0, self.tree.len())
+    }
+
+    /// The region in effect's index in the last frame, if the frame
+    /// declared it as one.
+    fn region_index(&self) -> Option<usize> {
+        if !self.any_region {
+            return None;
+        }
+        let key = self.region?;
+        self.tree
+            .keys
+            .iter()
+            .position(|k| *k == key)
+            .filter(|&i| self.tree.specs[i].interact().focus_region)
+    }
+
+    /// The region enclosing node `i` — the nearest ancestor-or-self
+    /// declaring `focus_region` — or `None` for the main ring.
+    pub(crate) fn region_of(&self, i: usize) -> Option<Key> {
+        if !self.any_region {
+            return None;
+        }
+        let mut n = i as u32;
+        while n != crate::tree::NIL {
+            let j = n as usize;
+            if self.tree.specs[j].interact().focus_region {
+                return Some(self.tree.keys[j]);
+            }
+            n = self.tree.parent[j];
+        }
+        None
+    }
+
+    /// The focus region in effect: the node whose subtree Tab walks, or
+    /// `None` for the main ring (`docs/adr/0022-focus-regions.md`).
+    pub fn region(&self) -> Option<Key> {
+        self.region
+    }
+
+    /// Asks to enter a focus region at the end of the frame being built
+    /// (`None` is the main ring): focus lands on what that region last
+    /// held if the node is still there, else its ring's `initial_focus`,
+    /// else the ring's first stop, and shows. Deferred like
+    /// `request_focus_step`, and for one more reason: the caller that
+    /// toggles a dock on and enters it in one `update` names a node the
+    /// last frame did not build. A key the frame does not declare as a
+    /// region raises `focus-region-without-node` and moves nothing.
+    pub fn focus_region(&mut self, key: Option<Key>) {
+        self.pending_region = Some(match key {
+            Some(k) => RegionTarget::Key(k),
+            None => RegionTarget::Main,
+        });
+        self.request_frame();
+    }
+
+    /// `focus_region` by the label the region's node declares — the
+    /// spelling a caller has for a node that does not exist yet.
+    pub fn focus_region_by_label(&mut self, label: &str) {
+        self.pending_region = Some(RegionTarget::Label(label.to_string()));
+        self.request_frame();
+    }
+
+    /// Settles the region on the one enclosing `key`, for a press that
+    /// focused nothing (dead space, a sink keeping the keyboard): Tab
+    /// afterwards enters the ring under the pointer, not the one focus
+    /// left (`docs/adr/0022`, decision 3). A press on nothing at all is a
+    /// press on the main ring.
+    pub(crate) fn settle_region(&mut self, key: Option<Key>) {
+        if !self.any_region {
+            return;
+        }
+        self.region = key
+            .and_then(|k| self.tree.keys.iter().position(|x| *x == k))
+            .and_then(|i| self.region_of(i));
+        // The press may have focused a sink outside this region (ADR 0011
+        // gives dead space to the enclosing sink); the settle holds over
+        // that focus until it moves.
+        self.region_held = self
+            .focus_index()
+            .is_some_and(|i| self.region_of(i) != self.region);
+    }
+
+    /// Remembers the focus under the region holding it — the one enclosing
+    /// the focused node when the frame has it, else the region in effect
+    /// (a node the frame no longer has is the departed region's) — so
+    /// entering that region again lands there. A blur remembers nothing:
+    /// the last node the region held is still the best place to land.
+    fn remember_region_focus(&mut self) {
+        let Some(focus) = self.focus else { return };
+        let region = match self.focus_index() {
+            Some(i) => self.region_of(i),
+            None => self.region,
+        };
+        match self.region_focus.iter_mut().find(|(r, _)| *r == region) {
+            Some(slot) => slot.1 = Some(focus),
+            None => self.region_focus.push((region, Some(focus))),
+        }
+    }
+
+    /// The focus `region` last held, if that node is in this frame and
+    /// still inside the region.
+    fn remembered_region_focus(&self, region: Option<Key>) -> Option<Key> {
+        let saved = self.region_focus.iter().find(|(r, _)| *r == region)?.1?;
+        let i = self.tree.keys.iter().position(|k| *k == saved)?;
+        (self.region_of(i) == region).then_some(saved)
+    }
+
+    /// Where entering `region` lands with nothing remembered: the ring's
+    /// `initial_focus`, else its first stop — the rule a modal enters by.
+    fn region_entry(&mut self, region: Option<Key>) -> Option<Key> {
+        let before = self.region;
+        self.region = region;
+        let ring = self.focus_ring();
+        self.region = before;
+        ring.iter()
+            .find(|(i, _)| self.tree.specs[*i].initial_focus)
+            .or_else(|| ring.first())
+            .map(|(_, k)| *k)
+    }
+
+    /// The regions' half of the frame's focus bookkeeping, run after the
+    /// modal's and before a pending Tab step
+    /// (`docs/adr/0022-focus-regions.md`):
+    ///
+    /// - a `focus_region` asked for during the frame enters its target
+    ///   (decision 4), remembering what the region being left holds;
+    /// - a region in effect that this frame stopped declaring hands focus
+    ///   back to main's (decision 5);
+    /// - and the region follows a focus the build moved by declaration —
+    ///   `set_focus` learns the region only when the key is in the tree,
+    ///   which during a build it may not be yet (decision 3).
+    pub(crate) fn resolve_regions(&mut self) {
+        let Some(target) = self.pending_region.take() else {
+            if self.any_region || self.region.is_some() {
+                self.follow_region();
+            }
+            return;
+        };
+        let region = match target {
+            RegionTarget::Main => Some(None),
+            RegionTarget::Key(k) => self
+                .tree
+                .keys
+                .iter()
+                .position(|x| *x == k)
+                .filter(|&i| self.any_region && self.tree.specs[i].interact().focus_region)
+                .map(|_| Some(k)),
+            RegionTarget::Label(ref label) => {
+                // The first in tree order, as `key_of` resolves a label,
+                // with the same warning when the name is not unique.
+                let hits: Vec<Key> = self.key_labels.find(label).collect();
+                if let (Some(&first), true) = (hits.first(), hits.len() > 1) {
+                    self.diag
+                        .raise(crate::diag::ambiguous_key(label, first, hits.len()));
+                }
+                hits.first()
+                    .and_then(|k| self.tree.keys.iter().position(|x| x == k))
+                    .filter(|&i| self.any_region && self.tree.specs[i].interact().focus_region)
+                    .map(|i| Some(self.tree.keys[i]))
+            }
+        };
+        let Some(region) = region else {
+            self.diag
+                .raise(crate::diag::focus_region_without_node(&target));
+            self.follow_region();
+            return;
+        };
+        // Under a modal the call still records where the user meant to be;
+        // the ring stays the modal's until it closes, and the restore then
+        // lands focus where the modal was opened from, which decision 3
+        // follows. Nothing to enter now.
+        // A call is a move on purpose, whatever a press settled before it.
+        self.region_held = false;
+        if self.modal.is_some() {
+            self.remember_region_focus();
+            self.region = region;
+            return;
+        }
+        self.remember_region_focus();
+        let landing = self
+            .remembered_region_focus(region)
+            .or_else(|| self.region_entry(region));
+        self.region = region;
+        self.set_focus(landing);
+        self.focus_visible = true;
+        if let Some(i) = self.focus_index() {
+            let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
+            self.scroll_rect_into_view(i, rect, false);
+        }
+    }
+
+    /// The region follows focus, and a region that went away hands focus
+    /// back (decisions 3 and 5).
+    fn follow_region(&mut self) {
+        if let Some(i) = self.focus_index() {
+            // Focus moved during the build to a node that was not in the
+            // tree yet (a declaration), so `set_focus` could not place it;
+            // the region it left keeps the memory it had — this focus was
+            // never that region's to remember. A region a press settled
+            // away from a focus that has not moved since stands.
+            if !self.region_held {
+                self.region = self.region_of(i);
+            }
+            self.remember_region_focus();
+            return;
+        }
+        // Nothing focused, or a focus on a node the frame no longer has:
+        // a region that is gone falls back to main's remembered focus. Its
+        // own memory is kept — a dock toggled off and on again lands where
+        // the user was, and a node that has not come back is checked for
+        // on the way in.
+        if self.region.is_some() && self.region_index().is_none() {
+            // The focus it had on the way out, node or no node: what the
+            // region is entered on if the node comes back with it.
+            self.remember_region_focus();
+            self.region = None;
+            let back = self.remembered_region_focus(None);
+            self.set_focus(back);
+        }
     }
 
     /// Which item of a composite is its Tab stop, in precedence order
@@ -314,6 +557,24 @@ impl Core {
             self.release_held_keys();
             if let Some(k) = edit_key {
                 self.edit.caret_moved = Some(k);
+            }
+        }
+        // The region follows focus (`docs/adr/0022`, decision 3) — when
+        // the key is in the tree; a build declaring focus on a node it has
+        // not pushed yet is caught up by `resolve_regions`. The region
+        // being left remembers what it held first, so entering it again
+        // lands there.
+        if key != self.focus {
+            self.region_held = false;
+        }
+        if self.any_region
+            && let Some(k) = key
+            && let Some(i) = self.tree.keys.iter().position(|x| *x == k)
+        {
+            let region = self.region_of(i);
+            if region != self.region {
+                self.remember_region_focus();
+                self.region = region;
             }
         }
         self.focus = key;

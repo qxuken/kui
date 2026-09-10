@@ -584,6 +584,25 @@ impl<'a> Ui<'a> {
         self.core.request_focus_step(false);
     }
 
+    /// Enters a focus region — the node `key` names, declared
+    /// `focus_region` — or the main ring for `None`
+    /// (`docs/adr/0022-focus-regions.md`): focus lands on what that ring
+    /// last held if the node is still there, else its `initial_focus`,
+    /// else its first stop, and shows. Deferred to `finish` like
+    /// [`Ui::focus_next`], so a view may name the region it is declaring
+    /// right now — the dock this frame toggles on. A key the frame does
+    /// not declare as a region raises `focus-region-without-node`.
+    pub fn focus_region(&mut self, key: Option<Key>) {
+        self.core.focus_region(key);
+    }
+
+    /// The focus region in effect — the node whose ring Tab walks — or
+    /// `None` for the main ring. What a chord that toggles between a dock
+    /// and the app reads to know which way it is going.
+    pub fn region(&self) -> Option<Key> {
+        self.core.region()
+    }
+
     pub fn edit_text(&self, key: Key) -> Option<String> {
         self.core.edit_text(key)
     }

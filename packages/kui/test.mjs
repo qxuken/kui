@@ -560,6 +560,63 @@ test('tab reaches a button and enter presses it', () => {
   assert.equal(ctx.focused(), focused, 'the only stop wraps to itself');
 });
 
+// Focus regions (ADR 0022): a `focusRegion` box is a Tab ring of its own
+// that the app's ring never enters; `focusRegion(name)` enters it — by a
+// label the frame resolves, so the update that toggles a dock on can enter
+// it in the same turn — and `focusRegion(null)` comes back to what the app
+// last held. `region()` says which ring Tab is walking.
+test('a focusRegion is its own Tab ring, entered by name', () => {
+  const btn = (key) => box({ width: 60, height: 20, onClick: { kind: key }, label: key }, [], key);
+  const view = (dock) =>
+    box({ pad: 4 }, [
+      btn('a'),
+      btn('b'),
+      dock ? box({ width: 200, height: 60, focusRegion: true, label: 'Devtools' }, [btn('d1'), btn('d2')], 'dock') : null,
+    ]);
+  const ctx = new Ctx();
+  ctx.frame(320, 240, 1, view(true));
+  assert.equal(ctx.region(), null, 'the main ring to start');
+  const seen = [];
+  for (let i = 0; i < 3; i++) {
+    ctx.key('tab');
+    seen.push(ctx.focused());
+  }
+  assert.deepEqual(seen, [ctx.keyOf('a'), ctx.keyOf('b'), ctx.keyOf('a')], 'Tab wraps over the app and never enters the dock');
+  // Enter by name: deferred to the frame, and it shows.
+  ctx.focusRegion('dock');
+  ctx.frame(320, 240, 1, view(true));
+  assert.equal(ctx.region(), ctx.keyOf('dock'));
+  assert.equal(ctx.focused(), ctx.keyOf('d1'), 'first stop, nothing remembered');
+  assert.ok(ctx.focusVisible());
+  ctx.key('tab');
+  ctx.key('tab');
+  assert.equal(ctx.focused(), ctx.keyOf('d1'), 'inside, Tab wraps over the dock alone');
+  ctx.key('tab');
+  // Back to the app, where `a` was the last focus; the dock remembers d2.
+  ctx.focusRegion(null);
+  ctx.frame(320, 240, 1, view(true));
+  assert.equal(ctx.region(), null);
+  assert.equal(ctx.focused(), ctx.keyOf('a'));
+  ctx.focusRegion(ctx.keyOf('dock'));
+  ctx.frame(320, 240, 1, view(true));
+  assert.equal(ctx.focused(), ctx.keyOf('d2'), 'the hex spelling, and what the dock last held');
+  // The dock toggled off with focus inside it: the app gets its focus back.
+  ctx.frame(320, 240, 1, view(false));
+  assert.equal(ctx.region(), null);
+  assert.equal(ctx.focused(), ctx.keyOf('a'));
+  // Toggled on and entered in one turn: the label names a node the last
+  // frame did not have, and the frame that draws it resolves the call.
+  ctx.focusRegion('dock');
+  ctx.frame(320, 240, 1, view(true));
+  assert.equal(ctx.focused(), ctx.keyOf('d2'));
+  assert.deepEqual(ctx.warnings(), []);
+  // A name no region answers to is a warning, and nothing moves.
+  ctx.focusRegion('inspector');
+  ctx.frame(320, 240, 1, view(true));
+  assert.equal(ctx.focused(), ctx.keyOf('d2'));
+  assert.deepEqual(ctx.warnings().map((w) => w.code), ['focus-region-without-node']);
+});
+
 // Backlog F5: a node the app never interacted with is named by the label
 // its `key` declared. `focus`, `isFocused`, `reveal` and `access` take that
 // spelling beside the hex one, resolved through the last frame — the path

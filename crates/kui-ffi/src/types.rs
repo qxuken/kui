@@ -524,6 +524,14 @@ pub struct KuiSpec {
     /// way; a host that predates it passes the shorter struct and reads
     /// as NULL.
     pub on_force_click: *const KuiValue,
+    /// Non-zero: this node's subtree is a focus region — a Tab ring of its
+    /// own that the ring outside never enters and that never leaves
+    /// (`docs/adr/0022-focus-regions.md`). Entered on purpose:
+    /// `kui_focus_region`, a press inside it, or a focus on a node in it.
+    /// Nothing else about the node changes. Appended after ABI 13 the
+    /// compatible way; a host that predates it passes the shorter struct
+    /// and reads as zero.
+    pub focus_region: u32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a

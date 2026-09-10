@@ -73,6 +73,26 @@ pub extern "C" fn kui_focus_visible(ptr: *mut KuiCtx) -> bool {
     })
 }
 
+/// Enters the focus region `key` names (0: the main ring) at the end of
+/// the frame being built; see `Core::focus_region` and
+/// `docs/adr/0022-focus-regions.md`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_focus_region(ptr: *mut KuiCtx, key: u64) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().focus_region((key != 0).then_some(Key(key)));
+        }
+    });
+}
+
+/// The focus region in effect; 0 for the main ring.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_region(ptr: *mut KuiCtx) -> u64 {
+    guard(0, || {
+        unsafe { ctx(ptr) }.map_or(0, |c| c.core().region().map_or(0, |k| k.0))
+    })
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_is_focused(ptr: *mut KuiCtx, key: u64) -> bool {
     guard(false, || {

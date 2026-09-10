@@ -297,6 +297,25 @@ text with an `edit-text-without-editor` warning.
 [`edit-text-without-editor`](props.md#warnings) ·
 [alpha.10](../CHANGELOG.md#010-alpha10-2026-09-09)
 
+### How do I keep a panel's controls out of my app's Tab ring?
+
+Declare the panel `focusRegion`. Its subtree becomes a Tab ring of its own:
+the app's ring never enters it, and inside it Tab wraps over the panel's
+controls alone. Bind a chord to `focusRegion('panel')` to move the keyboard
+in — it lands on what the panel last held, else its `initialFocus`, else its
+first stop, and shows the ring — and to `focusRegion(null)` to come back; a
+click on the panel enters it too. The call resolves on the next frame, so
+the `update` that turns the panel on may enter it in the same turn, by the
+label the `key` prop declares. Keys still bubble through the boundary to the
+sink above, so the app's own shortcut layer keeps hearing the chord while
+focus is in the panel. Do not reach for `role="none"`: it keeps the panel
+out of the ring by making it invisible to every keyboard and screen-reader
+user.
+
+[ADR 0022](adr/0022-focus-regions.md) ·
+[`focusRegion` row](props.md#container-props) ·
+[`focus-region-without-node`](props.md#warnings)
+
 ### How do I say which control a dialog opens focused?
 
 `initialFocus` on that control: it is where focus lands when the enclosing

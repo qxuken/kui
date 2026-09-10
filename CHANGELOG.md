@@ -79,8 +79,47 @@ field reports).
   that destructures `Env` exhaustively names one more field, and C hosts
   have one more setter to call (or not — zero is closed, which is the
   truth for a host with no device).
+- **`autofocus` is an edge** ([ADR 0022](docs/adr/0022-focus-regions.md),
+  decision 9). An editor takes focus on the frame its `autofocus`
+  declaration starts — a new editor, one back after a gap, one whose flag
+  just turned on — and only while nothing holds focus; it no longer takes
+  it back on every frame nothing is focused. An app that relied on its
+  field retaking focus after a click on the background now sees the blur
+  stand, and calls `focus(key)` when it wants the field back.
+- **A root key sink hears keys when nothing is focused** (ADR 0022,
+  decision 8). A press with no focus used to go nowhere; it now reaches
+  an `onKey` on the root, the way every unclaimed key already bubbled
+  there from a focused control. An app with a root sink that counted on
+  silence with nothing focused hears more than it did; none of the
+  examples did, and the two devtools stop taking focus to get it.
+- **`EditStore::declare` returns a `bool`** (the autofocus edge). Internal
+  to the workspace — `pub(crate)` — and listed for anyone who copied it.
 
 ### Added
+
+- **Focus regions** ([ADR 0022](docs/adr/0022-focus-regions.md);
+  `focusRegion` row, id 92; `Ui::focus_region` / `Ui::region`,
+  `ctx.focusRegion(name | null)` / `ctx.region()`,
+  `env.focus_region(key | nil)` and the `env.region` reading,
+  `kui_focus_region` / `kui_region`, `KuiSpec.focus_region` appended the
+  compatible way). A box declaring `focusRegion` is a Tab ring of its own:
+  the ring outside it never enters it, and inside it Tab wraps over its
+  controls alone. It is entered on purpose — `focusRegion('devtools')`
+  from the chord that toggles a dock, a click on one of its controls or
+  its dead space, an explicit `focus` on a node inside — landing on what
+  the region last held, else its `initialFocus`, else its first stop, and
+  showing the ring; `focusRegion(null)` comes back to what the main ring
+  last held. The call is resolved by the frame it leads to, so the
+  `update` that turns a dock on and enters it is one call, and a label the
+  last frame did not have is fine (`focus-region-without-node` when the
+  frame that follows has no such region either). A region that stops
+  being declared hands focus back to main. Only the ring is scoped: keys
+  bubble through the boundary to the sink above, the pointer and
+  assistive technology see a plain node, and a `modal` is the ring
+  wherever it sits. The devtools dock is the first one: `Ctrl+Shift+I`
+  moves the keyboard into it and back out, Tab inside walks its icons,
+  tabs and tree rows, and a screen reader reaches it as the group
+  "Devtools" — it was `role="none"` before, invisible to both.
 
 - **Every example runs inside the devtools, and the devtools have a dock**
   ([ADR 0021](docs/adr/0021-one-subject-per-example.md), decision 6 and
@@ -1153,6 +1192,23 @@ field reports).
   counter's `+1` carries it now.
 
 ### What you can delete
+
+The `keyFocus` / `take_key_focus` on your root sink whose only job was
+giving chords somewhere to land when nothing was focused, and the
+`frames >= 2` guard in front of it so an editor's `autofocus` got the
+first frame. A root sink hears every unclaimed key with nothing focused,
+so the harness that carried both now carries neither. (Not the "hand Tab
+back to the ring" branch: a press on dead space still gives focus to the
+enclosing sink, ADR 0011, and a sink holding focus still keeps every key,
+Tab included — that hand-off is the one a root sink still owes.) And the
+`role="none"` on a panel
+whose only purpose was keeping its buttons out of the app's Tab ring — it
+also kept them from every keyboard and screen-reader user; `focusRegion`
+keeps the ring out and nothing else.
+
+The guard that kept an `autofocus` editor from retaking focus after a blur
+— a `focused` flag beside the model, a `blur()` in the next frame: the flag
+asks once now.
 
 The `pumpMs` you lowered to make a Node window feel responsive, and any
 timer an app added beside `runWindowed` to keep it awake: the gap is 8 ms

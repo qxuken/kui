@@ -32,21 +32,27 @@
 //! example keymap uses: `T` cycles the base (follow the OS → light →
 //! dark), `A` the accent, `M` toggles native menus (the popups and the
 //! bar), `D` moves the dock (side → bottom → off), `N` the tab, `C`
-//! clears the stream — the same handler the icons reach.
+//! clears the stream — the same handler the icons reach — and `I` moves
+//! the keyboard into the dock and back out.
 //!
 //! The dock is a sibling of the example's tree, so the example's root is
 //! a child of the devtools'. Two rules follow, and both are what an
 //! extension in a slot already lives under (ADR 0014): an example
 //! addresses its nodes from the key its `open` returned, never from
 //! `Key::ROOT`; and it opens its own container rather than configuring
-//! the root, which is the devtools'. The dock carries `role = none`, so
-//! neither the Tab ring nor assistive technology sees it — the example's
-//! access tree is the example's. The root is the devtools' key sink, and
-//! it owns only what lands there tagged as its own (its chords) — a Tab
-//! it hears is handed on to the ring, and everything else on the root (a
-//! menu-bar choice, a resize) is the example's. `--dock off` also
-//! declares no key sink and takes no focus, which is what the
-//! accessibility audit runs under.
+//! the root, which is the devtools'. The dock is a *focus region*
+//! (`docs/adr/0022-focus-regions.md`): the example's Tab ring never enters
+//! it, and inside it Tab walks the dock's own icons, tabs and rows — it is
+//! entered by `Ctrl+Shift+I`, or by a click. Assistive technology sees it
+//! as the group it is, named "Devtools". The root is the devtools' key
+//! sink, and it owns only what lands there tagged as its own (its chords)
+//! — with nothing focused a root sink hears every key (ADR 0022, decision
+//! 8), so the harness never takes focus for itself; a press on dead space
+//! still gives it focus (ADR 0011), and the Tab it then hears is handed
+//! on to the ring. Everything else on the root (a menu-bar choice, a
+//! resize) is the example's. `--dock off`
+//! also declares no key sink, which is what the accessibility audit runs
+//! under.
 //!
 //! One `main` per example: `kui_devtools::main!(Counter::default())`.
 
@@ -447,9 +453,17 @@ pub struct Harness<E> {
     /// Whether the stream grew since it was last scrolled to its end.
     stream_dirty: bool,
     smoke_frames: Option<u64>,
+    /// A `Ctrl+Shift+I` waiting for the next frame: move the keyboard
+    /// into the dock, or back out if it is there. Resolved in `view`,
+    /// where the dock's key and the region in effect are both in hand.
+    toggle_region: bool,
     /// A Tab (`Some(forward)`) that landed on the root sink, to hand to
-    /// the ring on the next frame: a sink that holds focus keeps every
-    /// key, and the harness's must not keep the one that walks the ring.
+    /// the ring on the next frame. The harness never takes focus, but a
+    /// press on dead space gives it to the enclosing sink (ADR 0011), and
+    /// a sink that holds focus keeps every key (ADR 0002) — this one must
+    /// not keep the one that walks the ring. The step walks the ring in
+    /// effect, so a click into the dock's dead space and Tab enters the
+    /// dock (ADR 0022, decision 3).
     step: Option<bool>,
     /// Which of the dock's tabs is showing.
     tab: Tab,
@@ -508,6 +522,7 @@ impl<E: Example> Harness<E> {
             frames: 0,
             warnings_seen: 0,
             stream_dirty: false,
+            toggle_region: false,
             step: None,
             tab: Tab::default(),
             selected: None,
@@ -607,6 +622,14 @@ impl<E: Example> Harness<E> {
                 self.dock = self.dock.next();
                 self.note(format!("dock: {}", self.dock.name()));
             }
+            "inspect" => {
+                // Nothing to enter with the dock off, so a hidden dock
+                // comes back first.
+                if self.dock == Dock::Off {
+                    self.dock = Dock::Side;
+                }
+                self.toggle_region = true;
+            }
             "clear" => {
                 self.stream.clear();
             }
@@ -658,6 +681,7 @@ impl<E: Example> Harness<E> {
             Some('d') => "dock",
             Some('c') => "clear",
             Some('n') => "tab",
+            Some('i') => "inspect",
             _ => return false,
         };
         self.act(what)
@@ -679,10 +703,21 @@ impl<E: Example> Harness<E> {
         .pad(10.0)
         .gap(8.0)
         .clip()
-        // Decorative to assistive technology and skipped by the Tab ring,
-        // subtree and all: the example's access tree stays the example's.
-        .role(Role::None);
-        ui.open_keyed("dock", spec);
+        // A Tab ring of its own that the example's never enters, and a
+        // named group to assistive technology (ADR 0022).
+        .focus_region()
+        .label("Devtools");
+        let dock = ui.open_keyed("dock", spec);
+        // Ctrl+Shift+I: into the dock, or back out to where the example
+        // had the keyboard. Resolved when this frame finishes, so the
+        // frame that brought the dock back enters it.
+        if std::mem::take(&mut self.toggle_region) {
+            ui.focus_region(if ui.region() == Some(dock) {
+                None
+            } else {
+                Some(dock)
+            });
+        }
         fixed(ui, |ui| self.header(ui, t));
         fixed(ui, |ui| self.tabs(ui, t));
         match self.tab {
@@ -827,6 +862,10 @@ impl<E: Example> Harness<E> {
             None => format!("{:08x}", k.0 as u32),
         });
         let focus_visible = core.focus_visible();
+        let region = core.region().map(|k| match core.label_of(k) {
+            Some(l) => l.to_string(),
+            None => format!("{:08x}", k.0 as u32),
+        });
         let mods = core.modifiers();
         let native_menus = core.native_menus();
         let windows: Vec<String> = core
@@ -902,6 +941,13 @@ impl<E: Example> Harness<E> {
                     Some(l) if focus_visible => format!("{l} · ring"),
                     Some(l) => l,
                     None => "—".into(),
+                },
+            ),
+            (
+                "region",
+                match region {
+                    Some(l) => format!("{l} · Ctrl+Shift+I leaves"),
+                    None => "main · Ctrl+Shift+I enters the dock".into(),
                 },
             ),
             ("modifiers", {
@@ -1310,14 +1356,9 @@ impl<E: Example> App for Harness<E> {
             None => {}
         }
 
-        // Somewhere for the chords to land when the example has nothing
-        // focused. From the second frame, so an `initial_focus` of the
-        // example's own gets the first; edge-triggered in the core, so a
-        // Tab or a click afterwards moves it freely, and a blur brings it
-        // back here.
-        if self.frames >= 2 && ui.key_focus().is_none() {
-            ui.take_key_focus(Key::ROOT);
-        }
+        // No focus taken for the chords: with nothing focused, a key sink
+        // on the root hears every key (ADR 0022, decision 8), and with
+        // something focused the chord bubbles up to it (ADR 0011).
     }
 
     fn on_event(&mut self, ev: UiEvent) {
@@ -1339,8 +1380,8 @@ impl<E: Example> App for Harness<E> {
         {
             // Tab is the ring's, not the sink's: a sink holding focus is
             // handed every key (ADR 0002), so the harness passes this one
-            // on — the next frame steps the ring, which is what the
-            // example's own Tab would have done had nothing held focus.
+            // on — the next frame steps the ring, which is what the Tab
+            // would have done had nothing held focus.
             let p = &ev.payload;
             if p.get("kind").and_then(Value::as_str) == Some("key")
                 && p.get("phase").and_then(Value::as_str) == Some("down")
@@ -1553,22 +1594,122 @@ mod tests {
     }
 
     /// The dock builds beside the example, the example's tree is intact,
-    /// and nothing the dock adds is in the access tree or the ring.
+    /// and the dock is a focus region: out of the example's ring, entered
+    /// by Ctrl+Shift+I through the root sink with nothing focused (ADR
+    /// 0022, decision 8), walked by Tab on its own, and left by the same
+    /// chord — which bubbles up from the dock's button to the root.
     #[test]
-    fn the_dock_is_beside_the_example_and_invisible_to_the_ring() {
+    fn the_dock_is_beside_the_example_and_out_of_its_ring() {
         let mut core = Core::new();
         let mut h = Harness::new("blank", Blank::default(), Dock::Side, None, None);
         frame(&mut h, &mut core);
         frame(&mut h, &mut core);
-        assert!(core.key_of("dock").is_some());
+        let dock = core.key_of("dock").unwrap();
         assert!(core.key_of("stream").is_some());
         // The example's button is the only control Tab reaches: the dock's
-        // five buttons are under `role = none`.
+        // buttons are a ring of their own.
         let button = core.key_of("press").unwrap();
         core.focus_next(true);
         assert_eq!(core.focus(), Some(button));
         core.focus_next(true);
         assert_eq!(core.focus(), Some(button), "the ring has one member");
+        assert_eq!(core.region(), None);
+        // Nothing focused, and the chord still lands: the root sink hears
+        // what nothing claims.
+        core.set_focus(None);
+        let chord = kui::KeyPress::new(
+            kui::KeyCode::Char('I'),
+            kui::KeyMods {
+                ctrl: true,
+                shift: true,
+                ..Default::default()
+            },
+        );
+        let press = |core: &mut Core, h: &mut Harness<Blank>| {
+            for ev in core.handle_input(kui::InputEvent::KeyDown(chord.clone())) {
+                h.on_event(ev);
+            }
+            frame(h, core);
+        };
+        press(&mut core, &mut h);
+        assert_eq!(core.region(), Some(dock), "Ctrl+Shift+I enters the dock");
+        let first = core.focus().expect("the dock's first stop is focused");
+        assert!(core.focus_visible(), "and shows it");
+        core.focus_next(true);
+        let second = core.focus().unwrap();
+        assert_ne!(second, first);
+        assert_ne!(second, button, "Tab walks the dock, not the example");
+        assert_eq!(core.region(), Some(dock));
+        // From a focused dock button the chord bubbles to the root sink,
+        // and the way back lands on the example's last focus.
+        core.set_focus(Some(button));
+        core.set_focus(Some(second));
+        press(&mut core, &mut h);
+        assert_eq!(core.region(), None, "Ctrl+Shift+I leaves");
+        assert_eq!(core.focus(), Some(button));
+        // And in again, where the dock last had it.
+        press(&mut core, &mut h);
+        assert_eq!(core.focus(), Some(second));
+        // With the dock off there is no region and no sink: the chord
+        // brings the dock back to have something to enter.
+        h.act("dock");
+        h.act("dock");
+        assert_eq!(h.dock, Dock::Off);
+        frame(&mut h, &mut core);
+        assert_eq!(core.region(), None);
+        h.on_event(UiEvent {
+            origin: kui::OriginId::HOST,
+            window: kui::WindowId::MAIN,
+            key: Key::ROOT,
+            payload: chord.to_value(kui::KeyPhase::Down),
+        });
+        assert_eq!(h.dock, Dock::Side);
+        frame(&mut h, &mut core);
+        assert_eq!(core.region(), Some(core.key_of("dock").unwrap()));
+    }
+
+    /// A press on dead space gives focus to the root sink (ADR 0011), and
+    /// the harness hands the Tab it then hears back to the ring — the ring
+    /// under the pointer: the example's from the example's dead space, the
+    /// dock's from the dock's.
+    #[test]
+    fn a_tab_after_a_dead_space_click_still_walks_the_ring() {
+        let mut core = Core::new();
+        let mut h = Harness::new("blank", Blank::default(), Dock::Side, None, None);
+        frame(&mut h, &mut core);
+        frame(&mut h, &mut core);
+        let button = core.key_of("press").unwrap();
+        let dock = core.key_of("dock").unwrap();
+        let click = |core: &mut Core, h: &mut Harness<Blank>, x: f32, y: f32| {
+            let mut evs = core.handle_input(kui::InputEvent::CursorMoved(kui::Vec2::new(x, y)));
+            evs.extend(core.handle_input(kui::InputEvent::mouse_down(1)));
+            evs.extend(core.handle_input(kui::InputEvent::mouse_up()));
+            for ev in evs {
+                h.on_event(ev);
+            }
+            frame(h, core);
+        };
+        let tab = |core: &mut Core, h: &mut Harness<Blank>| {
+            let press = kui::KeyPress::new(kui::KeyCode::Tab, kui::KeyMods::default());
+            for ev in core.handle_input(kui::InputEvent::KeyDown(press)) {
+                h.on_event(ev);
+            }
+            frame(h, core);
+        };
+        // The example's dead space: its bottom-left corner.
+        click(&mut core, &mut h, 5.0, 590.0);
+        assert_eq!(core.focus(), Some(Key::ROOT), "dead space focuses the root sink");
+        assert_eq!(core.region(), None);
+        tab(&mut core, &mut h);
+        assert_eq!(core.focus(), Some(button), "and the Tab it hears walks the example's ring");
+        // The dock's dead space: its bottom edge, at the right.
+        click(&mut core, &mut h, 795.0, 590.0);
+        assert_eq!(core.focus(), Some(Key::ROOT));
+        assert_eq!(core.region(), Some(dock), "a press in the dock settles the region there");
+        tab(&mut core, &mut h);
+        let inside = core.focus().expect("Tab entered the dock");
+        assert_ne!(inside, button);
+        assert_eq!(core.region(), Some(dock));
     }
 
     /// The tree tab: the example's nodes and not the dock's, a click on a
@@ -1718,21 +1859,12 @@ mod tests {
             "a sink key is not the example's"
         );
         assert!(h.stream.iter().any(|e| e.kind == EntryKind::Note));
-        // A Tab on the sink is the ring's: handed on, not kept.
-        let mut tab = plain.clone();
-        if let Value::Map(m) = &mut tab.payload {
-            for (k, v) in m.iter_mut() {
-                if k == "code" {
-                    *v = Value::str("tab");
-                }
-            }
-        }
-        h.on_event(tab);
-        assert_eq!(
-            h.step,
-            Some(false),
-            "a Shift-Tab on the sink steps the ring back (the template holds Shift)"
-        );
+        // Ctrl+Shift+I asks the next frame to move the keyboard into the
+        // dock (and brings a hidden dock back to have one to enter).
+        h.dock = Dock::Off;
+        h.on_event(chord('I'));
+        assert!(h.toggle_region && h.dock == Dock::Side);
+        h.toggle_region = false;
         // The same key from the example's own sink is the example's — and
         // so is what the core posts on the root that is not a key: a
         // menu-bar choice lands there.

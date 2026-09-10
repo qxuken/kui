@@ -65,6 +65,17 @@ mod windows;
 /// Wheel line-delta to logical px.
 const SCROLL_LINE_PX: f32 = 40.0;
 
+/// What a `Core::focus_region` call asked to enter, held until the frame
+/// finishes (`docs/adr/0022-focus-regions.md`, decision 4): the main ring,
+/// a region by key, or one by the label its node declares — the spelling
+/// a caller has for a node the last frame did not build.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum RegionTarget {
+    Main,
+    Key(Key),
+    Label(String),
+}
+
 pub struct Core {
     /// The caches and registries this window shares with the rest of its
     /// session. Everything a frame needs from it is borrowed inside a
@@ -362,6 +373,32 @@ pub struct Core {
     /// modal scope is resolved, which is what scopes the ring. Last writer
     /// wins, and an applied step beats a `set_focus` from the same frame.
     pending_focus_step: Option<bool>,
+    /// Whether any node this frame declared `focus_region`
+    /// (`docs/adr/0022-focus-regions.md`). Gates the region walk the way
+    /// `any_modal` gates the modal scope, so a frame without one pays a
+    /// bool.
+    any_region: bool,
+    /// The focus region in effect — the key of the node whose subtree Tab
+    /// walks — or `None` for the main ring (the tree minus every region).
+    /// Follows focus: `set_focus` moves it to the region enclosing the
+    /// focused node, a press settles it on the region under the pointer,
+    /// and it is kept across a blur so Tab re-enters where the user was.
+    region: Option<Key>,
+    /// Whether a press settled `region` somewhere other than the focused
+    /// node's own region — dead space in the dock, focus on the root sink
+    /// the press bubbled to — so the region stops following that focus
+    /// until it moves (decision 3's second sentence). Cleared by any
+    /// `set_focus` that changes the focus.
+    region_held: bool,
+    /// The focus each region last held, main (`None`) included: what
+    /// `focus_region` lands on when entering it again, and what main gets
+    /// back when the region in effect stops being declared.
+    region_focus: Vec<(Option<Key>, Option<Key>)>,
+    /// A `focus_region` waiting for the frame to finish, for the reason
+    /// `pending_focus_step` waits: the ring it enters is the finished
+    /// tree's, and the caller may name a node the last frame did not have.
+    /// Last writer wins.
+    pending_region: Option<RegionTarget>,
     /// Silent-misconfiguration detection; see `diag`.
     diag: Diagnostics,
     /// The access tree of the last finished frame, built on demand (see
@@ -572,6 +609,11 @@ impl Core {
             frame_requested: false,
             pending_reveal: None,
             pending_focus_step: None,
+            any_region: false,
+            region: None,
+            region_held: false,
+            region_focus: Vec::new(),
+            pending_region: None,
             ime_rect: None,
             pending: Vec::new(),
             framed: false,
@@ -1011,6 +1053,7 @@ impl Core {
         self.any_opacity = false;
         self.any_float = false;
         self.any_modal = false;
+        self.any_region = false;
         self.any_slide = false;
         self.any_layout = false;
         self.any_exit = false;

@@ -431,6 +431,7 @@ impl Core {
                             Some((key, _, focusable, Some(scope))) => {
                                 let target = self.press_focus(key, focusable);
                                 self.set_focus(target);
+                                self.settle_region(Some(key));
                                 // A grid selects in cells, not in bytes:
                                 // the scope is the grid itself, and Alt
                                 // makes it the rectangular selection every
@@ -496,8 +497,15 @@ impl Core {
                             Some((key, _, focusable, None)) => {
                                 let target = self.press_focus(key, focusable);
                                 self.set_focus(target);
+                                // Whatever the press did to focus, Tab
+                                // afterwards enters the ring under the
+                                // pointer (`docs/adr/0022`, decision 3).
+                                self.settle_region(Some(key));
                             }
-                            None => self.set_focus(None),
+                            None => {
+                                self.set_focus(None);
+                                self.settle_region(None);
+                            }
                         }
                         self.focus_visible = false;
                     }
@@ -992,7 +1000,20 @@ impl Core {
     /// it bubbles whatever the focused control would have done with the
     /// bare key.
     fn key_target(&self, code: KeyCode, chord: bool) -> Option<Key> {
-        let i = self.focus_index()?;
+        // With nothing focused there is nothing to claim, and the sink
+        // that hears every unclaimed key in the tree — one on the root —
+        // hears this one too (`docs/adr/0022`, decision 8). Not under a
+        // modal, where the root is inert like everything outside it. A
+        // shell used to take focus on the root to get this.
+        let Some(i) = self.focus_index() else {
+            // Tab is still the ring's: it enters, and the sink does not
+            // hear it — a chord on it bubbles as any chord does.
+            if self.tree.is_empty() || self.modal.is_some() || (!chord && code == KeyCode::Tab) {
+                return None;
+            }
+            let root = &self.tree.specs[0];
+            return (root.events().on_key.is_some() && !root.disabled).then_some(self.tree.keys[0]);
+        };
         // A sink that holds focus keeps everything, as it always has
         // (`docs/adr/0002`, decision 3).
         if self.tree.specs[i].events().on_key.is_some() {

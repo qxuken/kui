@@ -386,11 +386,15 @@ impl Core {
             None
         };
         self.resolve_modal_focus();
+        // Then the regions: a `focus_region` asked for during the build,
+        // the region following a focus the build declared, and a region
+        // that went away handing focus back (`docs/adr/0022`).
+        self.resolve_regions();
         // The ring exists now: laid out, and scoped to the modal if there
-        // is one. A step asked for during the build lands here, so it wins
-        // over both the modal's own focus move and a same-frame
-        // `set_focus`. Like a real Tab press, the scroll it triggers shows
-        // on the next frame.
+        // is one, else to the region in effect. A step asked for during
+        // the build lands here, so it wins over both the modal's own focus
+        // move and a same-frame `set_focus`. Like a real Tab press, the
+        // scroll it triggers shows on the next frame.
         if let Some(forward) = self.pending_focus_step.take() {
             self.focus_next(forward);
         }

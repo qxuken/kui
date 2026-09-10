@@ -2335,6 +2335,41 @@ macro_rules! core_methods {
                 self.$redraw();
             }
 
+            /// Enters a focus region — a box declared `focusRegion`, named by
+            /// the label its `key` prop declares or by the hex key an event
+            /// carried — or the main ring for `null`
+            /// (`docs/adr/0022-focus-regions.md`). Focus lands on what that
+            /// ring last held if the node is still there, else its
+            /// `initialFocus`, else its first stop, and shows.
+            ///
+            /// Resolved when the next frame finishes, like `focusNext`, so
+            /// the `update` that toggles a dock on may enter it in the same
+            /// turn — which is why a label is taken as a name to hold rather
+            /// than resolved now: the node need not exist yet. A frame that
+            /// then declares no `focusRegion` under the name raises
+            /// `focus-region-without-node` and moves nothing.
+            #[napi]
+            pub fn focus_region(&mut self, key: Option<String>) {
+                let core = self.$core();
+                match key {
+                    None => core.focus_region(None),
+                    Some(s) => match hex_key(&s) {
+                        Some(k) => core.focus_region(Some(k)),
+                        None => core.focus_region_by_label(&s),
+                    },
+                }
+                self.$redraw();
+            }
+
+            /// The focus region in effect — the hex key of the `focusRegion`
+            /// node whose ring Tab walks — or `null` for the main ring. What
+            /// a chord that toggles between a dock and the app reads to know
+            /// which way it is going.
+            #[napi]
+            pub fn region(&mut self) -> Option<String> {
+                self.$core().region().map(key_str)
+            }
+
             // -- Scrolling --------------------------------------------------
 
             /// Scrolls whatever contains a node so it shows — "scroll to the

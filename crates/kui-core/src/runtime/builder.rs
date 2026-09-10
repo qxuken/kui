@@ -425,6 +425,9 @@ impl Core {
                 self.any_layout = true;
             }
         }
+        if spec.interact.as_deref().is_some_and(|i| i.focus_region) {
+            self.any_region = true;
+        }
         if spec.transition.is_some() {
             match spec.anim.as_deref() {
                 Some(anim) => {
@@ -538,7 +541,7 @@ impl Core {
             accent: Some(opts.accent.unwrap_or(self.theme.selection)),
             ..opts.clone()
         };
-        {
+        let edge = {
             let origin = self.origin;
             let scale = self.scale;
             let sess = &mut *self.session.state();
@@ -556,11 +559,14 @@ impl Core {
                 scale,
                 &mut sess.fonts,
                 &sess.resources,
-            );
-        }
+            )
+        };
         // Autofocus takes the keyboard only while nothing holds it — never
-        // from a control Tab landed on.
-        if opts.autofocus && self.focus.is_none() && !spec.disabled {
+        // from a control Tab landed on — and only on the frame the editor
+        // starts being declared (`docs/adr/0022`, decision 9): asked every
+        // frame, it would take focus straight back from every blur, and an
+        // app with an autofocus field could never have nothing focused.
+        if opts.autofocus && edge && self.focus.is_none() && !spec.disabled {
             self.set_focus(Some(key));
         }
         let parent = self.current();

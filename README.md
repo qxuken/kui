@@ -344,6 +344,22 @@ that are hard to reverse and would look arbitrary without their context.
   hears — so a driver sends both, in that order, and a headless test
   presses a key with the one call that does the same (`Core::press`,
   `ctx.press` / `app.press`, `kui_input_press`).
+- **Focus regions are a row**
+  ([ADR 0022](docs/adr/0022-focus-regions.md)). A node declaring
+  `focusRegion` (`focus_region()` in Rust, `focus_region = true` in Lua,
+  `KuiSpec.focus_region` in C) is a Tab ring of its own: the ring outside
+  never enters it, and inside it Tab wraps over its controls alone — a
+  devtools dock, an inspector beside the app. It is entered on purpose:
+  `ui.focus_region(key)` (`ctx.focusRegion('devtools')`,
+  `env.focus_region`, `kui_focus_region`) from the chord that shows it, a
+  click on it, or a focus on a node inside; `focus_region(None)` comes
+  back to what the main ring last held, and a region that goes away hands
+  focus back by itself. Only the ring is scoped — keys bubble through to
+  the sink above, and the pointer and assistive technology see a plain
+  node. Two rules landed beside it: an `autofocus` editor asks once, on
+  the frame its declaration starts, and a key sink on the root hears every
+  key when nothing is focused, so a shell never takes focus to have
+  somewhere for its chords to land.
 - **Modal surfaces are a row**
   ([ADR 0003](docs/adr/0003-modal-surfaces.md)). A node declaring `modal`
   (`modal` in JSX, `modal = true` in Lua, `KuiSpec.modal` in C) is the

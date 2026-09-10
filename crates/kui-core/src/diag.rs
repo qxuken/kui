@@ -115,6 +115,16 @@ warnings! {
     /// pass the hex key an event carried. Two nodes with the *same* key are
     /// `duplicate-key`.
     pub const AMBIGUOUS_KEY: &str = "ambiguous-key";
+    /// A `focusRegion(name)` (`Core::focus_region`, `env.focus_region`,
+    /// `kui_focus_region`) named a node the frame after it did not declare
+    /// as a `focusRegion` — no node under the label, or a node without the
+    /// row — so nothing was entered and focus stayed where it was. The call
+    /// is resolved against the frame it lands on, so an `update` that
+    /// toggles a dock on and enters it in one go is fine; this is that
+    /// call with the view half missing, with a name the view spells
+    /// differently, or naming a node that is not a region
+    /// (`docs/adr/0022-focus-regions.md`, decision 4).
+    pub const FOCUS_REGION_WITHOUT_NODE: &str = "focus-region-without-node";
     /// A `selectable` node inside another `selectable` node. Selection
     /// scopes do not nest: the innermost one owns every run under it, so
     /// the outer scope selects only the text outside the inner one — and
@@ -547,6 +557,27 @@ pub fn unknown_window_kind(name: &str, kind: u32) -> Warning {
             "window `{name}` was declared with kind {kind}, which this build does not have; \
              `KUI_WINDOW_KIND_NORMAL` (0) and `KUI_WINDOW_KIND_POPUP` (1) are the ones there \
              are, so it opened as a normal window"
+        ),
+    }
+}
+
+/// The [`FOCUS_REGION_WITHOUT_NODE`] warning for a `focus_region` the frame
+/// could not resolve. Keyed by the key or the label's hash, so a call
+/// repeated every frame costs one line.
+pub(crate) fn focus_region_without_node(target: &crate::runtime::RegionTarget) -> Warning {
+    use crate::runtime::RegionTarget;
+    let (key, named) = match target {
+        RegionTarget::Main => (Key::ROOT, "the main ring".to_string()),
+        RegionTarget::Key(k) => (*k, format!("key {:016x}", k.0)),
+        RegionTarget::Label(label) => (Key::ROOT.str(label), format!("label {label:?}")),
+    };
+    Warning {
+        code: FOCUS_REGION_WITHOUT_NODE,
+        key,
+        message: format!(
+            "`focus_region` named {named}, and the frame after it declared no `focusRegion` node \
+             there, so nothing was entered; the name is the label the region's `key` prop \
+             declares, on a node that carries the `focusRegion` row"
         ),
     }
 }
