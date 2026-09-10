@@ -50,6 +50,7 @@ use crate::window::{WindowConfig, WindowId};
 // what it holds). Children of this module, so the fields stay private.
 mod builder;
 mod composites;
+pub mod devtools;
 mod dispatch;
 mod emit;
 mod fills;
@@ -178,6 +179,23 @@ pub struct Core {
     /// `runtime/inspect.rs`); off unless a devtool asked.
     inspect: bool,
     inspected: Vec<inspect::NodeInfo>,
+    /// The devtools' hold on this window's frame (`docs/adr/0024`): the
+    /// tree index of the app container the host's tree is wrapped in
+    /// while the panel is docked, whether this core draws the panel's own
+    /// window, and the theme source the host had before the panel
+    /// overrode it.
+    dt_app: Option<usize>,
+    dt_window: bool,
+    dt_saved_theme: Option<ThemeSource>,
+    /// The panel was built at `begin_frame` (a left dock precedes the
+    /// app's container in tree order), so `finish` must not build again.
+    dt_built: bool,
+    /// The host's viewport in window coordinates: the whole window, or
+    /// what the dock leaves of it while the panel is docked (ADR 0024).
+    /// What `Core::viewport` reports, what a `resize` is measured on,
+    /// what the host's viewport floats resolve against, and the origin
+    /// every coordinate the host is handed or hands in is relative to.
+    dt_area: Rect,
     /// The previous frame's tree, kept only while a frame declares `exit`
     /// — `begin_frame` swaps the two buffers instead of clearing one, so
     /// the frame that notices a node gone still has the node. Empty (and
@@ -551,6 +569,11 @@ impl Core {
             slot_labels: LabelIndex::default(),
             ns_depth: usize::MAX,
             ns_key: Key::ROOT,
+            dt_app: None,
+            dt_window: false,
+            dt_saved_theme: None,
+            dt_built: false,
+            dt_area: Rect::new(0.0, 0.0, 0.0, 0.0),
             building: false,
             declared_windows: Vec::new(),
             declared_windows_last: Vec::new(),
@@ -683,7 +706,8 @@ impl Core {
     /// node being declared has no layout yet. A wrapped node answers in
     /// the width it was drawn at.
     pub fn text_hit(&self, key: Key, point: Vec2) -> Option<TextHit> {
-        self.text.hit_at(key, point, self.building)
+        self.text
+            .hit_at(key, point.plus(self.dt_shift()), self.building)
     }
 
     /// The caret rect for byte `byte` of the text node `key` drew: logical
@@ -691,7 +715,10 @@ impl Core {
     /// candidate window or a selection edge goes. `byte` past the content
     /// is the end. Answered from the same frame `text_hit` is.
     pub fn caret_rect(&self, key: Key, byte: usize) -> Option<Rect> {
-        self.text.caret_at(key, byte, self.building)
+        let shift = self.dt_shift();
+        self.text
+            .caret_at(key, byte, self.building)
+            .map(|r| Rect::new(r.x - shift.x, r.y - shift.y, r.w, r.h))
     }
 
     // -- Announcements ---------------------------------------------------
@@ -903,10 +930,13 @@ impl Core {
         f(&mut self.edit, &mut sess.fonts)
     }
 
-    /// The viewport (logical px) the current frame was begun with. Changes
-    /// to it arrive as `resize` events (see `take_pending_events`).
+    /// The viewport (logical px) the current frame was begun with — the
+    /// window, less the devtools' dock while the panel is docked
+    /// (`docs/adr/0024`): what the host lays out into. Changes to it
+    /// arrive as `resize` events (see `take_pending_events`), a dock
+    /// coming, going or resizing among them.
     pub fn viewport(&self) -> Size {
-        self.viewport
+        Size::new(self.dt_area.w, self.dt_area.h)
     }
 
     /// The device pixel ratio the current frame was begun with.
@@ -934,19 +964,26 @@ impl Core {
         // height, scale}` on the root, pending for the driver to route
         // after the frame. The first frame establishes the viewport rather
         // than resizing it.
-        if self.framed && (viewport != self.viewport || scale != self.scale) {
+        // The host's viewport is what the dock leaves of the window
+        // (ADR 0024), so a dock that comes, goes or is dragged is a
+        // resize too.
+        let area = self.devtools_area(viewport);
+        if self.framed
+            && (area.w != self.dt_area.w || area.h != self.dt_area.h || scale != self.scale)
+        {
             self.pending.push(UiEvent {
                 origin: OriginId::HOST,
                 window: WindowId::MAIN,
                 key: Key::ROOT,
                 payload: Value::map([
                     ("kind", Value::str("resize")),
-                    ("width", Value::Float(viewport.w as f64)),
-                    ("height", Value::Float(viewport.h as f64)),
+                    ("width", Value::Float(area.w as f64)),
+                    ("height", Value::Float(area.h as f64)),
                     ("scale", Value::Float(scale as f64)),
                 ]),
             });
         }
+        self.dt_area = area;
         // And what the user set in the OS. A driver that learns of a
         // change writes it into `env` and asks for a redraw — which is
         // enough for a host whose view is a function the runner calls
@@ -1068,6 +1105,7 @@ impl Core {
         self.any_layout = false;
         self.any_exit = false;
         self.frame_requested = false;
+        self.devtools_begin_frame();
     }
 }
 

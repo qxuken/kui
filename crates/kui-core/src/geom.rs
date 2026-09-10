@@ -12,6 +12,16 @@ impl Vec2 {
         Self { x, y }
     }
 
+    /// Component-wise sum.
+    pub fn plus(self, o: Vec2) -> Vec2 {
+        Vec2::new(self.x + o.x, self.y + o.y)
+    }
+
+    /// Component-wise difference.
+    pub fn minus(self, o: Vec2) -> Vec2 {
+        Vec2::new(self.x - o.x, self.y - o.y)
+    }
+
     /// This displacement rounded to a whole number of physical pixels.
     ///
     /// Every offset a *subtree* is moved by goes through here — a `slide`,

@@ -424,6 +424,41 @@ pub extern "C" fn kui_set_diagnostics(ptr: *mut KuiCtx, on: bool) {
     });
 }
 
+/// Turns the core's devtools panel on or off (`docs/adr/0024`): the event
+/// stream, the runtime's facts and the tree, drawn by the core beside the
+/// host's tree in the main window — or where `kui_set_devtools_dock` says
+/// — with its controls and its `Ctrl+Shift+<letter>` chords acted on inside
+/// `kui_input`, so nothing of it reaches the host's events. `KUI_DEVTOOLS=1`
+/// in the environment is the same call made by nobody, for a window
+/// `kui_run` opens; a headless context never reads it.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_devtools(ptr: *mut KuiCtx, on: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_devtools(on);
+        }
+    });
+}
+
+/// Where the devtools panel sits: `"left"`, `"right"`, `"bottom"`, `"window"`
+/// (one of its own, named `kui-devtools`, opened through the ordinary
+/// `KUI_CMD_OPEN`; the host builds nothing into it) or `"off"` (hidden, the
+/// chords still live); `"side"` is the right. Returns false for any other
+/// word.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_devtools_dock(ptr: *mut KuiCtx, dock: KuiStr) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let Some(dock) = kui_core::DevtoolsDock::parse(&kstr(dock)) else {
+            return false;
+        };
+        c.core().set_devtools_dock(dock);
+        true
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Parity with the shared prop schema. `KuiSpec` has to be a static repr(C)
 // layout, so it cannot read `kui_core::schema::PROPS` at runtime the way Lua

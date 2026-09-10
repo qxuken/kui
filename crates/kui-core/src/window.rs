@@ -217,6 +217,12 @@ pub enum WindowCommand {
     /// Give `window` keyboard focus (`Core::focus_window`). Advisory, like
     /// every focus request an app makes of a window manager.
     Focus(WindowId),
+    /// Draw `window` again: something another window's frame or input
+    /// changed is shown there (`docs/adr/0024`, decision 7 — the devtools
+    /// window's row hover outlines a node in the main window, and an event
+    /// the main window logs moves the stream in the devtools window). A
+    /// driver that redraws every window on every event may ignore it.
+    Redraw(WindowId),
 }
 
 impl WindowCommand {
@@ -227,7 +233,8 @@ impl WindowCommand {
             | WindowCommand::Close(w)
             | WindowCommand::Minimize(w)
             | WindowCommand::ToggleMaximize(w)
-            | WindowCommand::Focus(w) => w,
+            | WindowCommand::Focus(w)
+            | WindowCommand::Redraw(w) => w,
             WindowCommand::Open { id, .. } => id,
             WindowCommand::SetSize { window, .. } => window,
         }

@@ -540,11 +540,12 @@ fn distribute_axis(tree: &mut Tree, i: u32, axis: AxisSel, viewport: Size) {
     };
     while c != NIL {
         if let Some(cfg) = tree.specs[c as usize].layout.float {
+            let vp = float_viewport(tree, c, viewport);
             let anchor_dim = match (cfg.anchor, axis) {
                 (FloatAnchor::Parent, AxisSel::Width) => tree.size[i as usize].w,
                 (FloatAnchor::Parent, AxisSel::Height) => tree.size[i as usize].h,
-                (FloatAnchor::Viewport, AxisSel::Width) => viewport.w,
-                (FloatAnchor::Viewport, AxisSel::Height) => viewport.h,
+                (FloatAnchor::Viewport, AxisSel::Width) => vp.w,
+                (FloatAnchor::Viewport, AxisSel::Height) => vp.h,
             };
             match child_sizing(tree, c, axis) {
                 Sizing::Grow(_) => set_axis_clamped(tree, c, axis, anchor_dim),
@@ -745,6 +746,18 @@ fn set_axis_clamped(tree: &mut Tree, c: u32, axis: AxisSel, v: f32) {
     set_axis(tree, c, axis, v);
 }
 
+/// The "viewport" a float of `c` means: the window for the devtools' own
+/// nodes, and for everyone else the host area — the window less the
+/// devtools' dock — when one is set (`Tree::host_area`).
+fn float_viewport(tree: &Tree, c: u32, viewport: Size) -> Rect {
+    let window = Rect::new(0.0, 0.0, viewport.w, viewport.h);
+    if tree.host_area.w <= 0.0 || tree.origins[c as usize] == crate::tree::OriginId::DEVTOOLS {
+        window
+    } else {
+        tree.host_area
+    }
+}
+
 /// Places `c`, which is out of flow, against its anchor.
 fn place_float(
     tree: &mut Tree,
@@ -753,9 +766,10 @@ fn place_float(
     parent: Rect,
     viewport: Size,
 ) {
+    let vp = float_viewport(tree, c, viewport);
     let anchor = match cfg.anchor {
         FloatAnchor::Parent => parent,
-        FloatAnchor::Viewport => Rect::new(0.0, 0.0, viewport.w, viewport.h),
+        FloatAnchor::Viewport => vp,
     };
     let cs = tree.size[c as usize];
     let mut x = attach(
@@ -790,7 +804,7 @@ fn place_float(
             mirror(cfg.self_point.0),
             -cfg.offset.x,
         );
-        if overflow(x, cs.w, viewport.w) > overflow(fx, cs.w, viewport.w) {
+        if overflow(x - vp.x, cs.w, vp.w) > overflow(fx - vp.x, cs.w, vp.w) {
             x = fx;
         }
         let fy = attach(
@@ -801,13 +815,13 @@ fn place_float(
             mirror(cfg.self_point.1),
             -cfg.offset.y,
         );
-        if overflow(y, cs.h, viewport.h) > overflow(fy, cs.h, viewport.h) {
+        if overflow(y - vp.y, cs.h, vp.h) > overflow(fy - vp.y, cs.h, vp.h) {
             y = fy;
         }
     }
     if cfg.fit {
-        x = x.min(viewport.w - cs.w).max(0.0);
-        y = y.min(viewport.h - cs.h).max(0.0);
+        x = x.min(vp.x + vp.w - cs.w).max(vp.x);
+        y = y.min(vp.y + vp.h - cs.h).max(vp.y);
     }
     tree.pos[c as usize] = Vec2::new(x, y);
 }

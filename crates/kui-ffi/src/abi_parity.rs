@@ -816,6 +816,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         ("KUI_CMD_MINIMIZE", KUI_CMD_MINIMIZE),
         ("KUI_CMD_SET_SIZE", KUI_CMD_SET_SIZE),
         ("KUI_CMD_FOCUS", KUI_CMD_FOCUS),
+        ("KUI_CMD_REDRAW", KUI_CMD_REDRAW),
         ("KUI_CMD_TOGGLE_MAXIMIZE", KUI_CMD_TOGGLE_MAXIMIZE),
         ("KUI_CMD_OPEN", KUI_CMD_OPEN),
         ("KUI_WINDOW_KIND_NORMAL", KUI_WINDOW_KIND_NORMAL),
@@ -901,6 +902,8 @@ fn asserts() -> (String, Vec<&'static str>) {
         kui_take_warnings(*mut KuiCtx, *mut KuiWarning, usize) -> usize
     );
     abi_fn!(o, n, kui_set_diagnostics(*mut KuiCtx, bool));
+    abi_fn!(o, n, kui_set_devtools(*mut KuiCtx, bool));
+    abi_fn!(o, n, kui_set_devtools_dock(*mut KuiCtx, KuiStr) -> bool);
 
     abi_fn!(o, n, kui_spec_float_preset(*mut KuiSpec, KuiStr) -> bool);
     abi_fn!(o, n, kui_frame_begin(*mut KuiCtx, f32, f32, f32));

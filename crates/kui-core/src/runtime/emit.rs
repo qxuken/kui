@@ -327,6 +327,7 @@ impl Core {
         self.emit_frame();
         self.building = false;
         self.snapshot_nodes();
+        self.devtools_after_frame();
     }
 
     /// The frame's first half: layout, then everything that resolves
@@ -338,6 +339,7 @@ impl Core {
         self.stack.truncate(1);
         self.counters.truncate(1);
 
+        self.tree.host_area = self.dt_area;
         {
             let sess = &mut *self.session.state();
             let mut measure = Measure {

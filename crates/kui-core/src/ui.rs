@@ -706,9 +706,16 @@ impl<'a> Ui<'a> {
     /// scope and its topmost float (ADR 0017, decision 5).
     pub fn finish(self) {
         let Ui { core, filler } = self;
-        if let Some(filler) = filler {
+        // Not in the devtools' own window: nothing the host or an
+        // extension declares there is built (ADR 0024, decision 6).
+        if let Some(filler) = filler
+            && !core.devtools_window()
+        {
             filler.finish(&mut Ui::new(core));
         }
+        // The panel, after the fills and before the menu: the menu is
+        // the last thing declared and so the topmost float.
+        core.devtools_finish();
         Core::build_menu(&mut Ui::new(core));
         core.finish_frame();
     }

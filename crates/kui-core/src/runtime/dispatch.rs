@@ -13,7 +13,14 @@ impl Core {
     /// Feeds one input event; returns any UI events it resolved to,
     /// hit-tested against the previous frame's layout.
     pub fn handle_input(&mut self, ev: InputEvent) -> Vec<UiEvent> {
-        let mut out = self.route_input(ev);
+        // The devtools' chords are acted on before anything is routed
+        // (ADR 0024, decision 4): the press goes no further, and what
+        // was pending still goes out.
+        let mut out = if self.devtools_intercept(&ev) {
+            std::mem::take(&mut self.pending)
+        } else {
+            self.route_input(ev)
+        };
         // Whatever the event itself made pending — the synthetic key
         // releases a focus move forces — belongs to this batch, not to the
         // next frame's drain.
@@ -29,8 +36,14 @@ impl Core {
         // titles and rows post ordinary clicks, and none of them is the
         // app's (`docs/adr/0018-a-menu-bar-the-app-declares.md`).
         self.consume_menu_bar_events(&mut out);
+        // And the devtools panel's own controls, which are nobody's but
+        // the core's; then everything that is left is logged on its way
+        // out, stamped with its window first (ADR 0024, decision 4).
+        self.devtools_consume(&mut out);
         self.attach_cells(&mut out);
+        self.devtools_translate(&mut out);
         self.stamp(&mut out);
+        self.devtools_log(&out);
         out
     }
 

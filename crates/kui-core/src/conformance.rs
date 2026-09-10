@@ -3615,6 +3615,7 @@ pub fn write_command(cmd: &WindowCommand, out: &mut String) {
             window.0, size.w as i32, size.h as i32
         ),
         WindowCommand::Focus(w) => writeln!(out, "cmd focus {}", w.0),
+        WindowCommand::Redraw(w) => writeln!(out, "cmd redraw {}", w.0),
     };
 }
 

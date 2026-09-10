@@ -71,6 +71,28 @@ a Rust host (`cargo run -p kui-ffi --example c_panel -- --headless`, which
 clicks the plugin's list and checks the click reached the plugin and not the
 host).
 
+## Devtools
+
+Every app has a devtools panel, drawn by the core into its own frame
+([ADR 0024](docs/adr/0024-the-devtools-are-the-cores.md)). Ask for it with
+`kui::app("x").devtools(true)` (or `core.set_devtools(true)`),
+`win.setDevtools(true)` in Node, `kui_set_devtools(ctx, true)` in C — or
+run any of them with `KUI_DEVTOOLS=1` in the environment and it is there
+with no code at all. It docks beside the app's tree (`left`, `right`,
+`bottom` — drag the pane's inner edge to resize it; the app's viewport is
+what the pane leaves, and a change is a `resize`), pops out into a
+window of its own (`window`) or hides with its chords live (`off`); a
+button per placement sits in its header, `Ctrl+Shift+D` walks them,
+`KUI_DEVTOOLS=bottom` starts there. Three tabs: **facts** (what the runtime believes right now — the theme,
+the windows, the viewport, focus, the modifiers, audio), **events** (every
+event the app is handed, from every window, each row opening into its
+payload; filter, pause, follow) and **tree** (the last frame's nodes,
+collapsible and filterable, with a picker — `Ctrl+Shift+P` — that finds
+the node under the pointer over the app and an inspector for the one
+selected). The panel's own clicks and its `Ctrl+Shift+<letter>` chords are
+handled inside the core: nothing of it reaches `on_event` / `update`, the
+app's keys do not move for it, and off it costs one bool per frame.
+
 ## Examples
 
 All of them live under [examples/](examples), one directory per language

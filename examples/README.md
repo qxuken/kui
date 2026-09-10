@@ -29,41 +29,60 @@ a target whose source sits outside the package); read them here.
 
 Every example runs inside [`devtools/`](devtools) (Rust; `node/devtools.tsx`
 is its twin for Node, and `c/common.h` what the C programs share). It owns
-what is not the subject: the window title, the command line, and a
-**dock** beside the example's tree. Its header is the example's name, the
-frame counter (`n / KUI_SMOKE_FRAMES` when one is set) and an icon strip
-— base ◐/☀/☾, accent ●, menus ☰, dock ▐/▄/✕ — each with a tooltip saying
-what it is set to. Under it, three tabs:
+what is not the subject: the window title and the command line — and it
+opens the **core's devtools panel** around the example
+([ADR 0024](../docs/adr/0024-the-devtools-are-the-cores.md)), the same
+panel any app gets from `Core::set_devtools(true)`, `win.setDevtools(true)`,
+`kui_set_devtools` or `KUI_DEVTOOLS=1`. Its header is the window's title,
+the frame counter (`n / KUI_SMOKE_FRAMES` when one is set) and an icon
+strip with a button per placement — left ▌, right ▐, bottom ▄, undock ❐,
+close ✕ — the current one lit; the tab row ends in the app-state toggles
+— base ◐/☀/☾, accent ●, menus ☰ — each with a tooltip saying what it is
+set to. A docked pane's inner edge is a handle that resizes it, and the
+example's viewport is what the pane leaves (a change is a `resize`).
+Under it, three tabs:
 
 - **facts**: the latency graph; the **status block** — what the runtime
   believes right now, each row read from the door it comes from:
   `env.system`, the theme and its source, the window and every open one,
   the viewport and refresh rate, the focused node, the modifiers,
-  `env.audio`; and the **key legend** the example declares;
-- **events**: every `UiEvent` handed to the example, with the frame it
-  arrived on and its payload printed as the data it is, plus every
-  `kui: warning` the core raised;
+  `env.audio`, the node count; and the **key legend** the example declares;
+- **events**: every `UiEvent` handed to the example from any window, as a
+  virtual list — the frame it arrived on, the node by its label, the
+  payload as data — each row opening into the payload as an indented
+  tree; a filter, **pause**, **follow** (a wheel up turns it off) and
+  **clear**; plus every `kui: warning` the core raised;
 - **tree**: the last frame's nodes (`Core::set_inspect` / `nodes()`,
-  `win.nodes()` in Node), indented, each with its label, role and the
-  declarations that make it interactive. Click one: its rect is outlined
-  on the example and an **inspector** opens under the tree — key, kind,
-  label, role, rect, sizing, direction, background, flags, text.
+  `win.nodes()` in Node), collapsible — a disclosure per row, `+N` on a
+  folded one, fold/unfold all — and filterable by label, kind, role,
+  text or flag (a match with its ancestors dimmed). The **picker** (`⊕ pick`,
+  `Ctrl+Shift+P`) outlines and names the node under the pointer over the
+  example; a press selects it and `Escape` leaves. Click a row: its rect
+  is outlined on the example and an **inspector** opens — the node (key,
+  label, kind, role, origin, text, parent, children, layer), its box
+  (rect, sizing, min/max, scroll), layout (direction, padding, gap,
+  alignment), paint (background, border, radius, opacity), every handler
+  with its payload, and its state now — with the parent and every
+  ancestor in the breadcrumb a click away.
 
 The same flags everywhere: `--headless` runs the example's self-check and
-exits non-zero on a wrong answer; `--dock side|bottom|off` places the
-dock; `--light` / `--dark` pin the theme base and `--accent #rrggbb` the
-accent; `--size WxH` the example's area. The chords are
-`Ctrl+Shift+<letter>` on every platform: `T` cycles the base, `A` the
+exits non-zero on a wrong answer; `--dock left|right|bottom|window|off`
+places the panel (`side` still means the right) — `window` opens it in a
+window of its own; `--light` / `--dark`
+pin the theme base and `--accent #rrggbb` the accent; `--size WxH` the
+example's area. The chords are the core's, `Ctrl+Shift+<letter>` on every
+platform: `T` cycles the base (the app's own → light → dark), `A` the
 accent, `M` toggles native menus (the popups *and* the bar — on macOS
-that is how the drawn bar is seen), `D` moves the dock, `N` the tab, `C`
-clears the stream.
+that is how the drawn bar is seen), `D` moves the panel (left → right →
+bottom → window → off), `N` the tab, `C` clears the stream, `I` moves the keyboard
+into the panel and back, `P` picks.
 
-Two rules the dock imposes, both what an extension in a slot already lives
-under (ADR 0014): an example addresses its nodes from the key its `open`
-returned, never from `Key::ROOT`, and it opens its own container rather
-than configuring the root. The dock carries `role = none`, so neither the
-Tab ring nor assistive technology sees it; a Tab the devtools' own key
-sink hears is handed on to the ring.
+The panel is a focus region (ADR 0022): the example's Tab ring never
+enters it, and inside it Tab walks the panel's own controls. While it is
+docked the core wraps the example's root (ADR 0024, decision 2) — the
+example's keys do not move for it, and its `configure_root` still lands
+where it did. `--dock off` draws nothing and keeps the chords live, which
+is what the accessibility audit runs under.
 
 ## The smoke rounds
 

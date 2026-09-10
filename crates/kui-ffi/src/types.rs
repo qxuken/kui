@@ -1141,6 +1141,10 @@ pub const KUI_CMD_OPEN: u32 = 5;
 /// `width`/`height` carry it. `KUI_CMD_FOCUS`: it asked for focus.
 pub const KUI_CMD_SET_SIZE: u32 = 6;
 pub const KUI_CMD_FOCUS: u32 = 7;
+/// `KUI_CMD_REDRAW`: draw `window` again — another window's input changed
+/// what it shows (`docs/adr/0024`, decision 7). A host that redraws every
+/// window on every event may ignore it.
+pub const KUI_CMD_REDRAW: u32 = 8;
 
 /// One window command ([out], `kui_take_window_command`): what a chrome
 /// node asked for, or what the declared window set's diff decided. Plain
@@ -1240,6 +1244,7 @@ pub(crate) fn window_command_to_c(cmd: WindowCommand) -> KuiWindowCommand {
             (KUI_CMD_SET_SIZE, 0, KuiWindowConfig::default())
         }
         WindowCommand::Focus(_) => (KUI_CMD_FOCUS, 0, KuiWindowConfig::default()),
+        WindowCommand::Redraw(_) => (KUI_CMD_REDRAW, 0, KuiWindowConfig::default()),
     };
     KuiWindowCommand {
         kind,

@@ -75,6 +75,9 @@ pub(crate) struct SessionState {
     pub(crate) fonts_rev: u64,
     /// The declared window set and the windows it has opened.
     pub(crate) windows: WindowRegistry,
+    /// The devtools panel's state (`docs/adr/0024`, decision 5): one
+    /// panel for the session, whichever window draws it.
+    pub(crate) devtools: crate::runtime::devtools::State,
 }
 
 impl SessionState {
@@ -87,6 +90,7 @@ impl SessionState {
             audio: AudioStore::default(),
             fonts_rev: 0,
             windows: WindowRegistry::new(),
+            devtools: crate::runtime::devtools::State::default(),
         }
     }
 }

@@ -66,7 +66,12 @@ impl Core {
     /// trip through the app's model, and without firing every time an
     /// enclosing container scrolls the whole list past.
     pub fn scroll_geometry(&self, key: Key) -> Option<crate::scroll::ScrollGeometry> {
-        self.scroll.geometry(key)
+        let shift = self.dt_shift();
+        self.scroll.geometry(key).map(|mut g| {
+            g.rect.x -= shift.x;
+            g.rect.y -= shift.y;
+            g
+        })
     }
 
     /// Sets the container `key`'s retained offset, the way the wheel would.

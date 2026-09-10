@@ -126,6 +126,16 @@ impl Core {
     /// makes an app that never pumps another frame after a right-click a
     /// bug the app can see rather than a menu that appears out of turn.
     pub fn open_menu(&mut self, mut menu: Menu) {
+        // `at` arrives in the host's coordinates (ADR 0024); the menu is
+        // kept in the window's, which the drawn one and the native one
+        // both place by.
+        menu.at = menu.at.plus(self.dt_shift());
+        self.open_menu_raw(menu);
+    }
+
+    /// `open_menu` for a point already in window coordinates — the
+    /// right-click's own.
+    pub(crate) fn open_menu_raw(&mut self, mut menu: Menu) {
         // Whose menu it is, unless the caller said: the node it is about.
         // An extension that opens a menu over its own node hears the rows
         // come back, the way it hears every other event it declared (ADR
@@ -184,7 +194,11 @@ impl Core {
         let Some(menu) = ui.core().menu.clone() else {
             return;
         };
-        let nodes = crate::widgets::context_menu(ui, menu.at, &menu.items);
+        // The widget floats against the host's viewport, whose origin is
+        // the dock's edge under a left dock (ADR 0024): the window point
+        // becomes a host one.
+        let at = menu.at.minus(ui.core().dt_shift());
+        let nodes = crate::widgets::context_menu(ui, at, &menu.items);
         // The keys the rows actually took, reported by the widget rather
         // than recomputed here: a key is a hash of a path, and a second
         // derivation of one is a second thing to keep in step.
@@ -270,7 +284,7 @@ impl Core {
             return;
         }
         let target = editor.or(scope).unwrap_or(key);
-        self.open_menu(Menu::new(target, at, items).origin(origin));
+        self.open_menu_raw(Menu::new(target, at, items).origin(origin));
         // The press told us which editor this is about, which is better
         // than what held focus: a right-click moves no focus (it must
         // leave a selection alone), so the field under the pointer is not

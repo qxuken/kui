@@ -862,12 +862,11 @@ Two follow-ups, none blocking, and one closed:
 Closed 2026-09-10: `KuiWindow.warningsRaised()` is in the addon beside
 `nodes()` / `setInspect()`, and the Node stream shows warnings.
 
-### `.` E2 — No C dock
+### `x` E2 — No C dock
 
-`examples/c/common.h` is the whole of the C harness: the ABI check and the
-assertion helpers the three programs share. The C counter is one app and
-the other two are tools, and none of them wanted a dock. If a C app
-example ever earns one, the Rust dock's layout is the spec.
+Closed 2026-09-11 by [ADR 0024](adr/0024-the-devtools-are-the-cores.md):
+the dock is the core's, and a C program has it with `kui_set_devtools`
+or `KUI_DEVTOOLS=1` in its environment, the same panel as everyone.
 
 ### `.` E3 — `features/modal` is still inside two other examples
 
@@ -876,6 +875,37 @@ The dialog with `initial_focus`, Tab confined and `dismiss` is shown by
 prose. A page of its own would be that menu with a title; declined until
 a modal-specific behaviour — a nested confirm, the entry-focus precedence
 of ADR 0007 — wants a picture.
+
+## From the devtools round (2026-09-11)
+
+The round that produced [ADR 0024](adr/0024-the-devtools-are-the-cores.md):
+the examples' dock moved into `kui-core`, drawn by the core into any
+app's frame with one door per binding, and grew what the brief asked for
+— the events tab as a virtual list with a payload viewer, a collapsible
+and filterable tree, a picker, a fuller inspector, and a window of its
+own. Built whole the same day. One follow-up:
+
+### `.` D1 — The tree rows have no keyboard
+
+Browser inspectors walk the tree with the arrows: Up/Down move the
+selection, Left folds (or goes to the parent), Right unfolds. The panel's
+rows are buttons in a focus region, so Tab reaches them and Enter
+selects, and that is all. A key sink per row is the wrong shape; the
+right one is a sink on the list with a cursor of its own — the composite
+pattern of ADR 0007, with the rows as its items — and it wants that
+reading rather than a special case. Declined in the ADR (*What was
+declined*), to be built when the composite owner grows a virtual list.
+
+### `.` D2 — The panel's buttons are Unicode blocks, not icons
+
+The placement buttons (▌ ▐ ▄ ❐ ✕), the toggles (◐ ☀ ☾ ● ☰) and the
+picker (⊕) are characters from whatever font the platform falls back to,
+and they read as a row of blots. The panel is drawn by the core with the
+core's own vocabulary, so the icons should be too: a small set of
+`line`-stroked glyphs (ADR 0010) or a `fragment` (ADR 0015) per button,
+16 px, in the theme's `muted`/`accent`, with the lit one filled — a
+dock-position icon that *is* a little window with the pane shaded. Wanted
+by the round that added the buttons (2026-09-11); not blocking.
 
 ## From the paint-order round (2026-09-10)
 

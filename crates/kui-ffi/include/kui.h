@@ -353,6 +353,10 @@ enum {
     KUI_CMD_OPEN = 5,
     KUI_CMD_SET_SIZE = 6,
     KUI_CMD_FOCUS = 7,
+    /* Draw cmd.window again: another window's input changed what it shows
+     * (the devtools window hovering a node the main window outlines). A host
+     * that redraws every window on every event may ignore it. */
+    KUI_CMD_REDRAW = 8,
 };
 
 /* [in] */
@@ -2171,6 +2175,19 @@ size_t kui_take_warnings(KuiCtx *ctx, KuiWarning *out, size_t cap);
 /* A standalone context starts with the checks OFF — a development build
  * turns them on; off costs nothing per frame. */
 void kui_set_diagnostics(KuiCtx *ctx, bool on);
+/* -- Devtools (docs/adr/0024-the-devtools-are-the-cores.md) --------------- */
+/* The core's devtools panel: the event stream, the runtime's facts and the
+ * tree, drawn by the core beside the host's tree in the main window and
+ * acted on inside kui_input, so nothing of it reaches the host's events.
+ * KUI_DEVTOOLS=1 in the environment is the same call made by nobody, for a
+ * window kui_run opens; a headless context never reads it. */
+void kui_set_devtools(KuiCtx *ctx, bool on);
+/* Where it sits: "left", "right", "bottom", "window" (one of its own, named
+ * kui-devtools, opened through the ordinary KUI_CMD_OPEN — the host builds
+ * nothing into it, and a KUI_CMD_REDRAW names it when it should be drawn
+ * again) or "off" (hidden, the chords still live). False for any other
+ * word. */
+bool kui_set_devtools_dock(KuiCtx *ctx, KuiStr dock);
 /* -- Accessibility (docs/adr/0001-accessibility-as-data.md) ---------------- */
 /* The access tree of the last finished frame: fills out with up to cap
  * nodes in tree order (root first) and returns the total count, so a short

@@ -11,9 +11,9 @@
 
 use super::*;
 use crate::access::Role;
-use crate::geom::Rect;
-use crate::spec::{Dir, Sizing};
-use crate::tree::NodeContent;
+use crate::geom::{Edges, Rect};
+use crate::spec::{Align, Dir, Sizing};
+use crate::tree::{NIL, NodeContent, OriginId};
 
 /// What kind of node a snapshot row is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -69,6 +69,37 @@ pub struct NodeInfo {
     /// `modal`, `selectable`, `focusable`, `disabled`, `scroll`, `clip`,
     /// `transition`.
     pub flags: Vec<&'static str>,
+    /// The paint layer it is in (ADR 0023): 0 in flow, else the rank of
+    /// its float layer from the bottom, 1 being the first layer over the
+    /// flow. What decides which of two nodes under one point is on top.
+    pub layer: u16,
+    /// Who declared it: the host, an extension, or the devtools.
+    pub origin: OriginId,
+    /// How many children it has.
+    pub children: u32,
+    /// The rest of the layout spec, for the inspector.
+    pub padding: Edges,
+    pub gap: f32,
+    pub main_align: Align,
+    pub cross_align: Align,
+    pub wrap: bool,
+    /// The size floors and ceilings: a floor is `None` for the fit floor
+    /// (`Min::FIT`), and a ceiling `None` when unbounded.
+    pub min_w: Option<f32>,
+    pub min_h: Option<f32>,
+    pub max_w: Option<f32>,
+    pub max_h: Option<f32>,
+    /// The rest of the paint spec.
+    pub radius: [f32; 4],
+    pub border_w: f32,
+    pub border_color: Color,
+    pub opacity: f32,
+    /// A scroller's offset, `None` for a node that does not scroll.
+    pub scroll: Option<Vec2>,
+    /// Every handler it declared, with the payload it would post:
+    /// `click`, `drag`, `key` (the sink's tag), `hover`, `context-menu`,
+    /// `force-click`, `layout`, `modal`.
+    pub events: Vec<(&'static str, Value)>,
 }
 
 const TEXT_CUT: usize = 60;
@@ -98,6 +129,18 @@ impl Core {
         let n = tree.len();
         let mut out = Vec::with_capacity(n);
         let mut depth = vec![0u16; n];
+        // A float root's rank in the paint stack, bottom to top — the stack
+        // `emit_frame` left, which is the order it painted the layers in.
+        let layer_of: rustc_hash::FxHashMap<Key, u16> = self
+            .float_stack
+            .iter()
+            .enumerate()
+            .map(|(pos, &(k, _))| (k, pos as u16 + 1))
+            .collect();
+        let mut children = vec![0u32; n];
+        for i in 1..n {
+            children[tree.parent[i] as usize] += 1;
+        }
         for i in 0..n {
             let parent = if i == 0 {
                 None
@@ -170,7 +213,52 @@ impl Core {
             if spec.transition.is_some() {
                 flags.push("transition");
             }
+            let mut events = Vec::new();
+            for (name, v) in [
+                ("click", &ev.on_click),
+                ("drag", &ev.on_drag),
+                ("key", &ev.on_key),
+                ("hover", &ev.on_hover),
+                ("context-menu", &ev.on_context_menu),
+                ("force-click", &ev.on_force_click),
+                ("layout", &ev.on_layout),
+                ("modal", &ev.modal),
+            ] {
+                if let Some(v) = v {
+                    events.push((name, v.clone()));
+                }
+            }
+            let layer = if self.any_float && self.float_root.len() > i && self.float_root[i] != NIL
+            {
+                layer_of
+                    .get(&tree.keys[self.float_root[i] as usize])
+                    .copied()
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            let floor = |m: crate::spec::Min| (!m.is_fit()).then(|| m.resolved());
+            let ceiling = |v: f32| v.is_finite().then_some(v);
+            let l = &spec.layout;
             out.push(NodeInfo {
+                layer,
+                origin: tree.origins[i],
+                children: children[i],
+                padding: l.padding,
+                gap: l.gap,
+                main_align: l.main_align,
+                cross_align: l.cross_align,
+                wrap: l.wrap,
+                min_w: floor(l.min_w),
+                min_h: floor(l.min_h),
+                max_w: ceiling(l.max_w),
+                max_h: ceiling(l.max_h),
+                radius: spec.style.radius,
+                border_w: spec.style.border_w,
+                border_color: spec.style.border_color,
+                opacity: spec.style.opacity,
+                scroll: (l.scroll_x || l.scroll_y).then(|| self.scroll.offset(tree.keys[i])),
+                events,
                 key: tree.keys[i],
                 parent,
                 depth: depth[i],

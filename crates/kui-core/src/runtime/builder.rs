@@ -68,6 +68,12 @@ impl Core {
     /// Replaces the implicit root's spec (e.g. to make the top level a row).
     /// Root sizing is resolved against the viewport regardless.
     pub fn configure_root(&mut self, mut spec: NodeSpec) {
+        if let Some(app) = self.dt_app {
+            // The host's tree is wrapped for the devtools (ADR 0024,
+            // decision 2): the spec is split between the two nodes.
+            self.devtools_configure_root(app, spec);
+            return;
+        }
         if !self.tree.is_empty() {
             self.ease_spec(Key::ROOT, &mut spec);
             if spec.events().on_layout.is_some() {
@@ -86,7 +92,7 @@ impl Core {
     /// A slot the node's keyframes name is sampled from its cycle instead
     /// of tweened.
     #[inline]
-    fn ease_spec(&mut self, key: Key, spec: &mut NodeSpec) {
+    pub(super) fn ease_spec(&mut self, key: Key, spec: &mut NodeSpec) {
         if let Some(t) = spec.transition {
             self.ease_transitioning(key, spec, t);
         }
@@ -186,7 +192,14 @@ impl Core {
         if self.stack.len() == self.ns_depth {
             self.ns_key
         } else {
-            self.tree.keys[self.current() as usize]
+            // Outside a frame — or in the devtools' own window, where the
+            // root is deferred (ADR 0024, decision 6) — there is no node
+            // to derive from, and the open that follows is a no-op.
+            self.tree
+                .keys
+                .get(self.current() as usize)
+                .copied()
+                .unwrap_or(Key::ROOT)
         }
     }
 
@@ -241,7 +254,10 @@ impl Core {
     pub fn take_pending_events(&mut self) -> Vec<UiEvent> {
         let mut out = std::mem::take(&mut self.pending);
         out.append(&mut self.interaction.take_pending());
+        self.devtools_consume(&mut out);
+        self.devtools_translate(&mut out);
         self.stamp(&mut out);
+        self.devtools_log(&out);
         out
     }
 
@@ -295,6 +311,16 @@ impl Core {
         self.interaction.modifiers()
     }
 
+    /// Where the pointer is, in this window's logical viewport
+    /// coordinates, as of the last `CursorMoved` — `None` once it has
+    /// left the window. What a view that follows the pointer reads (the
+    /// devtools' picker outlines the node under it); a control that wants
+    /// to *react* to the pointer declares `hoverable` or `on_hover` and
+    /// lets the core do the hit test.
+    pub fn cursor(&self) -> Option<Vec2> {
+        self.interaction.cursor().map(|p| p.minus(self.dt_shift()))
+    }
+
     // The open chain is inlined end to end (`Ui::open` → here →
     // `open_with_key` → `Tree::push`): a `NodeSpec` is 224 bytes and moved
     // by value at every step, and each step that is a real call is a copy
@@ -310,6 +336,11 @@ impl Core {
     #[inline]
     pub fn open_keyed(&mut self, label: &str, spec: NodeSpec) -> Key {
         let key = self.child_key(label);
+        if self.tree.is_empty() {
+            // No frame to open into (the same no-op as `open_with_key`),
+            // and so no node for the label to name.
+            return key;
+        }
         self.open_with_key(key, spec);
         self.key_labels.push(key, label);
         key
@@ -375,7 +406,7 @@ impl Core {
     }
 
     #[inline]
-    fn open_with_key(&mut self, key: Key, spec: NodeSpec) {
+    pub(crate) fn open_with_key(&mut self, key: Key, spec: NodeSpec) {
         self.open_content(key, spec, NodeContent::Container);
     }
 

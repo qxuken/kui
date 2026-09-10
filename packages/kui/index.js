@@ -79,6 +79,11 @@ KuiWindow.prototype.setView = function setView(tree, window) {
 // split against, a transition on a positional key, two nodes on one key) as
 // data. The checks run in development only (off under NODE_ENV=production, so
 // a shipped app pays and prints nothing); `diagnostics` overrides either way.
+/** The name of the core's devtools window while the panel is popped out
+ *  (`setDevtoolsDock('window')`): what `windows()` lists it as, and what
+ *  the loop never asks the app to draw. */
+export const DEVTOOLS_WINDOW = 'kui-devtools';
+
 const formatWarning = (w) => `kui: warning [${w.code}] node ${w.key}: ${w.message}`;
 const diagnosticsByDefault = () => process.env.NODE_ENV !== 'production';
 
@@ -93,8 +98,13 @@ function transport(surface, opts) {
   if (typeof surface.setView === 'function') {
     return {
       show: (tree, name) => surface.setView(tree, name),
-      // A surface that cannot say which windows it has, has one.
-      open: () => (typeof surface.windows === 'function' ? surface.windows() : ['main']),
+      // A surface that cannot say which windows it has, has one. The
+      // devtools' own window is the core's: it draws itself, and the app's
+      // `view` is not asked for it (docs/adr/0024, decision 6).
+      open: () =>
+        typeof surface.windows === 'function'
+          ? surface.windows().filter((name) => name !== DEVTOOLS_WINDOW)
+          : ['main'],
     };
   }
   const width = opts.width ?? 800;

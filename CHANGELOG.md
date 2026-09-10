@@ -103,11 +103,59 @@ field reports).
   there from a focused control. An app with a root sink that counted on
   silence with nothing focused hears more than it did; none of the
   examples did, and the two devtools stop taking focus to get it.
+- **`kui_devtools` is a harness, not a panel** ([ADR 0024](docs/adr/0024-the-devtools-are-the-cores.md)).
+  `Harness::new(name, example)` takes two arguments; the dock, its
+  state, `fmt_value` and `STREAM_CAP` moved to `kui_core::devtools`
+  (`kui::devtools`), and `Dock` is `kui::DevtoolsDock` re-exported:
+  `Left | Right | Bottom | Window | Off` — `Side` is `Right` now, and
+  `--dock side` still means it. `examples/node/devtools.tsx` is the same
+  wrapper for Node. `Core::nodes()` lists the panel's nodes too, under
+  `key_of("kui-devtools")`; a reader that wants the app alone skips that
+  subtree. `WindowCommand` gained `Redraw`; a `match` over it names one
+  more arm.
 - **`EditStore::declare` returns a `bool`** (the autofocus edge). Internal
   to the workspace — `pub(crate)` — and listed for anyone who copied it.
 
 ### Added
 
+- **The devtools are the core's: one panel, drawn by the runtime, for
+  every app** ([ADR 0024](docs/adr/0024-the-devtools-are-the-cores.md)).
+  `Core::set_devtools(true)` — `kui::app(..).devtools(true)` in Rust,
+  `win.setDevtools(true)` in Node, `kui_set_devtools` in C, or
+  `KUI_DEVTOOLS=1` in the environment of a program that was never told —
+  and the core draws the panel that was the examples' dock beside the
+  app's own tree, in the main window (`left`, `right`, `bottom` — the
+  pane's inner edge is a handle that resizes it), in a window of its own
+  (`window`) or hidden with the chords live (`off`); a button per
+  placement in the header, `set_devtools_dock`, `Ctrl+Shift+D`. **The
+  app's viewport is what the dock leaves**: `viewport()` says so, a dock
+  coming, moving or being dragged arrives as a `resize`, the app's
+  viewport floats centre and clamp in it, and under a left dock every
+  coordinate the app is handed or hands in is relative to its own
+  origin. The app's `configure_root` is
+  split between the root and an app container the core opens, and the
+  app's keys do not move (`Key::ROOT.str("x")` names what it named). The
+  panel's own clicks and its `Ctrl+Shift+<letter>` chords are acted on
+  inside `handle_input` and never reach the host; every event that does
+  is logged on its way out, from every window. What the round asked for
+  and the dock never had: the **events** tab is a virtual list whose rows
+  open into the payload as an indented tree, with a filter, a pause and
+  a follow toggle; the **tree** tab is collapsible (a disclosure per row,
+  `+N` on a folded one, fold/unfold all), filterable (a match with its
+  ancestors dimmed), and has a **picker** (`Ctrl+Shift+P`, the crosshair)
+  that outlines and names the node under the pointer over the app and
+  selects it on a press; the **inspector** groups the node, its box,
+  layout, paint, events and state, with the parent and every ancestor a
+  click away. `NodeInfo` grew what the inspector reads — `layer`,
+  `origin`, `children`, `padding`, `gap`, the alignments, `wrap`, the
+  size floors and ceilings, `radius`, `border_w`, `border_color`,
+  `opacity`, `scroll`, `events` (each handler with its payload) — and
+  Node's `nodes()` rows the same. `WindowCommand::Redraw(id)`
+  (`KUI_CMD_REDRAW`) is how one window asks another to draw. Behind a
+  `devtools` feature of `kui-core`, on by default; off, the doors stay
+  and do nothing. `Core::cursor()`, `Launcher::setup_core`,
+  `Launcher::devtools`, `Core::set_devtools_theme` /
+  `set_devtools_legend` came with it.
 - **Scrollbars are per node: `scrollbar`, `scrollbarWidth`,
   `scrollbarColor`, `scrollbarActiveColor`** (rows 93–96; Lua
   `scrollbar`, `scrollbar_width`, …; C `KuiSpec.scrollbar` with

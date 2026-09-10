@@ -173,7 +173,7 @@ impl<'c> Drive<'c> {
                 "{:>4} {:08x} {}",
                 self.frame,
                 ev.key.0 as u32,
-                super::fmt_value(&ev.payload)
+                kui::devtools::fmt_value(&ev.payload)
             ));
             app.on_event(ev);
         }

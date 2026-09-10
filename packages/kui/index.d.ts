@@ -157,7 +157,9 @@ export type DismissMsg<T = AppMsg> = {
   id?: number;
 };
 
-/** The viewport changed size or DPI (logical px, delivered on the root);
+/** The viewport changed size or DPI (logical px, delivered on the root) —
+ *  the window's, or what the devtools' dock leaves of it while the panel
+ *  is docked, so a dock coming, moving or being dragged is one too;
  *  `win.size()` queries the same numbers. */
 export type ResizeMsg = {
   kind: 'resize';
@@ -925,7 +927,47 @@ export interface NodeInfo {
   /** `click`, `drag`, `key`, `hover`, `hoverable`, `context-menu`, `modal`,
    *  `selectable`, `focusable`, `disabled`, `scroll`, `clip`, `transition`. */
   flags: string[];
+  /** The paint layer: 0 in flow, else the float layer's rank from the
+   *  bottom (1 is the first layer over the flow). */
+  layer: number;
+  /** Who declared it: 0 the app, 1+ an extension, 65535 the devtools. */
+  origin: number;
+  children: number;
+  padding: { t: number; r: number; b: number; l: number };
+  gap: number;
+  mainAlign: 'start' | 'center' | 'end';
+  crossAlign: 'start' | 'center' | 'end';
+  wrap: boolean;
+  /** Size floors and ceilings in px; a floor is `null` for the fit floor,
+   *  a ceiling `null` when unbounded. */
+  minWidth: number | null;
+  minHeight: number | null;
+  maxWidth: number | null;
+  maxHeight: number | null;
+  /** Per corner: top-left, top-right, bottom-right, bottom-left. */
+  radius: [number, number, number, number];
+  borderWidth: number;
+  /** `0xRRGGBBAA`. */
+  borderColor: number;
+  opacity: number;
+  /** A scroller's offset; `null` for a node that does not scroll. */
+  scroll: { x: number; y: number } | null;
+  /** Every handler it declared with the payload it would post: `click`,
+   *  `drag`, `key` (the sink's tag), `hover`, `context-menu`,
+   *  `force-click`, `layout`, `modal`. */
+  events: Record<string, unknown>;
 }
+
+/** Where the core's devtools panel sits (`setDevtoolsDock`): beside the
+ *  app's tree in the main window (a docked pane's inner edge is a handle
+ *  that resizes it), in a window of its own named `kui-devtools`, or
+ *  hidden with its chords still live. `'side'` is accepted as `'right'`. */
+export type DevtoolsDock = 'left' | 'right' | 'bottom' | 'window' | 'off';
+
+/** The name of the core's devtools window while the panel is popped out
+ *  (`setDevtoolsDock('window')`): what `windows()` lists it as, and what
+ *  `runWindowed` never asks the app's `view` to draw. */
+export declare const DEVTOOLS_WINDOW: 'kui-devtools';
 
 /** The output device's state and how many playbacks are live, as the
  *  driver reports them each frame. A fact and not a verb — nothing closes
@@ -1667,6 +1709,39 @@ export declare class Ctx {
    */
   setInspect(on: boolean): void
   /**
+   * Turns the core's devtools panel on or off
+   * (`docs/adr/0024`): the event stream, the runtime's facts and
+   * the tree, drawn by the core beside the app's own tree in the
+   * main window — or where `setDevtoolsDock` says — with its
+   * controls and its `Ctrl+Shift+<letter>` chords handled inside
+   * the core, so nothing of it reaches `update`. `KUI_DEVTOOLS=1`
+   * in the environment is the same call made by nobody, for a
+   * `KuiWindow`; a headless `Ctx` never reads it.
+   */
+  setDevtools(on: boolean): void
+  /** Whether the devtools panel is on. */
+  devtools(): boolean
+  /**
+   * Where the devtools panel sits: `"left"`, `"right"`,
+   * `"bottom"`, `"window"` (one of its own, named
+   * `kui-devtools`) or `"off"` (hidden, the chords still live);
+   * `"side"` is the right. Throws on any other word.
+   */
+  setDevtoolsDock(dock: DevtoolsDock): void
+  /** Where the devtools panel sits (see `setDevtoolsDock`). */
+  devtoolsDock(): DevtoolsDock
+  /**
+   * Seeds the panel's theme override, what its `T` and `A`
+   * chords cycle from: `base` is `"light"`, `"dark"` or `null`
+   * for the app's own; `accent` an `#rrggbb` string or `null`.
+   */
+  setDevtoolsTheme(base: 'light' | 'dark' | null, accent: string | null): void
+  /**
+   * The key legend the panel's facts tab shows: `[keys, what]`
+   * pairs.
+   */
+  setDevtoolsLegend(legend: [string, string][]): void
+  /**
    * The last finished frame's nodes in tree order, each with what
    * it is, the label it was opened under, where layout put it,
    * and the declarations that explain the rest — what a tree
@@ -2377,6 +2452,39 @@ export declare class KuiWindow {
    * (off unless a devtool asked: the copy is O(nodes) a frame).
    */
   setInspect(on: boolean): void
+  /**
+   * Turns the core's devtools panel on or off
+   * (`docs/adr/0024`): the event stream, the runtime's facts and
+   * the tree, drawn by the core beside the app's own tree in the
+   * main window — or where `setDevtoolsDock` says — with its
+   * controls and its `Ctrl+Shift+<letter>` chords handled inside
+   * the core, so nothing of it reaches `update`. `KUI_DEVTOOLS=1`
+   * in the environment is the same call made by nobody, for a
+   * `KuiWindow`; a headless `Ctx` never reads it.
+   */
+  setDevtools(on: boolean): void
+  /** Whether the devtools panel is on. */
+  devtools(): boolean
+  /**
+   * Where the devtools panel sits: `"left"`, `"right"`,
+   * `"bottom"`, `"window"` (one of its own, named
+   * `kui-devtools`) or `"off"` (hidden, the chords still live);
+   * `"side"` is the right. Throws on any other word.
+   */
+  setDevtoolsDock(dock: DevtoolsDock): void
+  /** Where the devtools panel sits (see `setDevtoolsDock`). */
+  devtoolsDock(): DevtoolsDock
+  /**
+   * Seeds the panel's theme override, what its `T` and `A`
+   * chords cycle from: `base` is `"light"`, `"dark"` or `null`
+   * for the app's own; `accent` an `#rrggbb` string or `null`.
+   */
+  setDevtoolsTheme(base: 'light' | 'dark' | null, accent: string | null): void
+  /**
+   * The key legend the panel's facts tab shows: `[keys, what]`
+   * pairs.
+   */
+  setDevtoolsLegend(legend: [string, string][]): void
   /**
    * The last finished frame's nodes in tree order, each with what
    * it is, the label it was opened under, where layout put it,

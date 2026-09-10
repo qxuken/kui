@@ -1088,6 +1088,11 @@ impl Interaction {
         self.hovered
     }
 
+    /// The node a press is held on, if any.
+    pub fn pressed_key(&self) -> Option<Key> {
+        self.pressed
+    }
+
     /// The pointer shape for where the pointer is now (see
     /// [`crate::cursor`]). Derived from the topmost region under it — the
     /// same region a click would go to — so nothing declares a cursor for

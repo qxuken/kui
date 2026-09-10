@@ -19,6 +19,12 @@ unicode-segmentation = "1"
 unicode-linebreak = "0.1"
 
 [features]
+default = ["devtools"]
+# The devtools panel the core draws into any app's frame when asked
+# (`Core::set_devtools`, `KUI_DEVTOOLS=1`; docs/adr/0024). On by default so
+# every binding's build has it; off for a kiosk build, where the doors
+# stay and do nothing.
+devtools = []
 # The scene corpus (src/conformance.rs): fourteen scene builders, the
 # coverage derivation, the report formatter and the fixture bytes. It is test
 # infrastructure - every binding's adapter rebuilds the scenes and diffs its

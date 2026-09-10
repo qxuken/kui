@@ -14,6 +14,11 @@ pub struct OriginId(pub u16);
 
 impl OriginId {
     pub const HOST: OriginId = OriginId(0);
+    /// The core's own devtools panel (`docs/adr/0024`): a node opened
+    /// under it is the panel's, and an event that carries it is acted on
+    /// inside `handle_input` and never handed out. Reserved at the top of
+    /// the range so no extension list ever reaches it.
+    pub const DEVTOOLS: OriginId = OriginId(u16::MAX);
 }
 
 /// Index into the frame's text list (owned by `TextSystem`).
@@ -109,6 +114,11 @@ pub struct Tree {
     /// scope walk and the off-screen places of tier 2 off those frames
     /// entirely.
     pub any_selectable: bool,
+    /// The box a `FloatConfig::viewport()` float of the host's resolves
+    /// against, in window coordinates: the whole window, or what the
+    /// devtools' dock leaves of it (`docs/adr/0024`). A zero rect means
+    /// the window. The devtools' own nodes always use the window.
+    pub host_area: crate::geom::Rect,
 }
 
 impl Tree {

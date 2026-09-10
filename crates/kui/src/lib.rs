@@ -119,11 +119,15 @@ pub fn app(title: &str) -> Launcher {
         extensions: Extensions::new(),
         text_aa: TextAa::Auto,
         diagnostics: None,
+        setup_core: Vec::new(),
         deferred_events: false,
     }
 }
 
 /// Builder for the windowed runner.
+/// One [`Launcher::setup_core`] step.
+type CoreSetup = Box<dyn FnOnce(&mut Core)>;
+
 pub struct Launcher {
     title: String,
     chrome: Chrome,
@@ -134,6 +138,9 @@ pub struct Launcher {
     max_size: Option<(f64, f64)>,
     extensions: Extensions,
     text_aa: TextAa,
+    /// What to do to the main core before its first frame
+    /// ([`Launcher::setup_core`]).
+    setup_core: Vec<CoreSetup>,
     /// Whether the core's diagnostics run (see `kui_core::diag`); None =
     /// on in debug builds, off in release.
     diagnostics: Option<bool>,
@@ -160,6 +167,24 @@ impl Launcher {
     /// build says why the grow weight did nothing.
     pub fn diagnostics(mut self, on: bool) -> Self {
         self.diagnostics = Some(on);
+        self
+    }
+
+    /// Opens the app inside the core's devtools panel
+    /// (`docs/adr/0024-the-devtools-are-the-cores.md`): the event stream,
+    /// the facts and the tree, docked beside the app's own tree.
+    /// `KUI_DEVTOOLS=1` in the environment is the same ask for an app
+    /// that never made it. Sugar for `setup_core(|c| c.set_devtools(on))`.
+    pub fn devtools(self, on: bool) -> Self {
+        self.setup_core(move |core| core.set_devtools(on))
+    }
+
+    /// Runs `f` on the main window's core before its first frame — the
+    /// place for what a core is *told* rather than declared: the devtools
+    /// doors, a pinned theme, `set_native_menus`. Every call adds one;
+    /// they run in order.
+    pub fn setup_core(mut self, f: impl FnOnce(&mut Core) + 'static) -> Self {
+        self.setup_core.push(Box::new(f));
         self
     }
 
@@ -285,6 +310,13 @@ impl Launcher {
         let session = Session::new();
         let mut core = Core::new_in(&session);
         core.set_diagnostics(diagnostics);
+        // `KUI_DEVTOOLS=1` opens the panel for a program that never asked
+        // (ADR 0024); read here, for a window, and never by a headless
+        // core. What the launcher was told comes after, and wins.
+        core.devtools_from_env();
+        for f in self.setup_core {
+            f(&mut core);
+        }
         Shell {
             title: self.title,
             chrome: self.chrome,
@@ -1881,6 +1913,14 @@ impl<A: App> Shell<A> {
                 WindowCommand::Focus(id) => {
                     if let Some(i) = self.pane_of(id) {
                         self.panes[i].window.focus_window();
+                    }
+                }
+                // Another window's input changed what this one shows
+                // (ADR 0024, decision 7): the same request an event that
+                // reached the app makes of every pane, for one pane.
+                WindowCommand::Redraw(id) => {
+                    if let Some(i) = self.pane_of(id) {
+                        self.panes[i].window.request_redraw();
                     }
                 }
             }

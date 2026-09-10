@@ -30,7 +30,13 @@ impl Core {
     /// to stop and start again — and keeps raising
     /// [`crate::diag::WINDOW_DECLARED_WHILE_CLOSED`] until it does.
     /// `"main"` names the window the launcher opened and is always live.
-    pub fn declare_window(&mut self, name: &str, config: WindowConfig) {
+    pub fn declare_window(&mut self, name: &str, mut config: WindowConfig) {
+        // A popup's anchor is declared in the host's coordinates and
+        // resolved by the driver against the window's (ADR 0024): the
+        // dock's offset goes back on here.
+        let shift = self.dt_shift();
+        config.anchor.x += shift.x;
+        config.anchor.y += shift.y;
         if let Some(d) = self.declared_windows.iter_mut().find(|d| &*d.name == name) {
             // First declaration wins within a frame; a disagreement is
             // remembered for the opening edge to report.

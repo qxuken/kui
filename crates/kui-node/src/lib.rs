@@ -1085,6 +1085,7 @@ fn window_commands_json(cmds: Vec<kui_core::WindowCommand>) -> Json {
                     WindowCommand::Open { .. } => "open",
                     WindowCommand::SetSize { .. } => "setSize",
                     WindowCommand::Focus(_) => "focus",
+                    WindowCommand::Redraw(_) => "redraw",
                 };
                 o.insert("kind".into(), Json::String(kind.into()));
                 o.insert("window".into(), Json::from(cmd.window().0));
@@ -1166,6 +1167,51 @@ fn node_info_json(n: &kui_core::NodeInfo) -> Json {
         "flags".into(),
         Json::Array(n.flags.iter().map(|f| Json::from(*f)).collect()),
     );
+    // ADR 0024, decision 10: the rest of the spec, for an inspector.
+    o.insert("layer".into(), Json::from(n.layer));
+    o.insert("origin".into(), Json::from(n.origin.0));
+    o.insert("children".into(), Json::from(n.children));
+    let mut pad = JsonMap::new();
+    pad.insert("t".into(), Json::from(n.padding.t as f64));
+    pad.insert("r".into(), Json::from(n.padding.r as f64));
+    pad.insert("b".into(), Json::from(n.padding.b as f64));
+    pad.insert("l".into(), Json::from(n.padding.l as f64));
+    o.insert("padding".into(), Json::Object(pad));
+    o.insert("gap".into(), Json::from(n.gap as f64));
+    let align = |a: kui_core::Align| match a {
+        kui_core::Align::Start => "start",
+        kui_core::Align::Center => "center",
+        kui_core::Align::End => "end",
+    };
+    o.insert("mainAlign".into(), Json::from(align(n.main_align)));
+    o.insert("crossAlign".into(), Json::from(align(n.cross_align)));
+    o.insert("wrap".into(), Json::Bool(n.wrap));
+    let opt = |v: Option<f32>| v.map_or(Json::Null, |v| Json::from(v as f64));
+    o.insert("minWidth".into(), opt(n.min_w));
+    o.insert("minHeight".into(), opt(n.min_h));
+    o.insert("maxWidth".into(), opt(n.max_w));
+    o.insert("maxHeight".into(), opt(n.max_h));
+    o.insert(
+        "radius".into(),
+        Json::Array(n.radius.iter().map(|r| Json::from(*r as f64)).collect()),
+    );
+    o.insert("borderWidth".into(), Json::from(n.border_w as f64));
+    o.insert("borderColor".into(), Json::from(n.border_color.to_hex()));
+    o.insert("opacity".into(), Json::from(n.opacity as f64));
+    o.insert(
+        "scroll".into(),
+        n.scroll.map_or(Json::Null, |s| {
+            let mut v = JsonMap::new();
+            v.insert("x".into(), Json::from(s.x as f64));
+            v.insert("y".into(), Json::from(s.y as f64));
+            Json::Object(v)
+        }),
+    );
+    let mut events = JsonMap::new();
+    for (name, v) in &n.events {
+        events.insert((*name).into(), json_of(v));
+    }
+    o.insert("events".into(), Json::Object(events));
     Json::Object(o)
 }
 
@@ -2139,6 +2185,87 @@ macro_rules! core_methods {
             #[napi]
             pub fn set_inspect(&mut self, on: bool) {
                 self.$core().set_inspect(on);
+            }
+
+            /// Turns the core's devtools panel on or off
+            /// (`docs/adr/0024`): the event stream, the runtime's facts and
+            /// the tree, drawn by the core beside the app's own tree in the
+            /// main window — or where `setDevtoolsDock` says — with its
+            /// controls and its `Ctrl+Shift+<letter>` chords handled inside
+            /// the core, so nothing of it reaches `update`. `KUI_DEVTOOLS=1`
+            /// in the environment is the same call made by nobody, for a
+            /// `KuiWindow`; a headless `Ctx` never reads it.
+            #[napi]
+            pub fn set_devtools(&mut self, on: bool) {
+                self.$core().set_devtools(on);
+            }
+
+            /// Whether the devtools panel is on.
+            #[napi]
+            pub fn devtools(&mut self) -> bool {
+                self.$core().devtools()
+            }
+
+            /// Where the devtools panel sits: `"left"`, `"right"`,
+            /// `"bottom"`, `"window"` (one of its own, named
+            /// `kui-devtools`) or `"off"` (hidden, the chords still live);
+            /// `"side"` is the right. Throws on any other word.
+            #[napi(ts_args_type = "dock: DevtoolsDock")]
+            pub fn set_devtools_dock(&mut self, dock: String) -> Result<()> {
+                let dock = kui_core::DevtoolsDock::parse(&dock).ok_or_else(|| {
+                    err(format!(
+                        "setDevtoolsDock(): {dock:?} is not left, right, bottom, window or off"
+                    ))
+                })?;
+                self.$core().set_devtools_dock(dock);
+                Ok(())
+            }
+
+            /// Where the devtools panel sits (see `setDevtoolsDock`).
+            #[napi(ts_return_type = "DevtoolsDock")]
+            pub fn devtools_dock(&mut self) -> String {
+                self.$core().devtools_dock().name().to_string()
+            }
+
+            /// Seeds the panel's theme override, what its `T` and `A`
+            /// chords cycle from: `base` is `"light"`, `"dark"` or `null`
+            /// for the app's own; `accent` an `#rrggbb` string or `null`.
+            #[napi(ts_args_type = "base: 'light' | 'dark' | null, accent: string | null")]
+            pub fn set_devtools_theme(
+                &mut self,
+                base: Option<String>,
+                accent: Option<String>,
+            ) -> Result<()> {
+                let base = match base.as_deref() {
+                    None => None,
+                    Some("light") => Some(kui_core::Appearance::Light),
+                    Some("dark") => Some(kui_core::Appearance::Dark),
+                    Some(other) => {
+                        return Err(err(format!(
+                            "setDevtoolsTheme(): base {other:?} is not light, dark or null"
+                        )));
+                    }
+                };
+                let accent = match accent {
+                    None => None,
+                    Some(s) => Some(
+                        color_hex_str(&s)
+                            .map_err(|e| err(format!("setDevtoolsTheme(): accent {s:?}: {e}")))?,
+                    ),
+                };
+                self.$core().set_devtools_theme(base, accent);
+                Ok(())
+            }
+
+            /// The key legend the panel's facts tab shows: `[keys, what]`
+            /// pairs.
+            #[napi(ts_args_type = "legend: [string, string][]")]
+            pub fn set_devtools_legend(&mut self, legend: Vec<Vec<String>>) {
+                let rows: Vec<(&str, &str)> = legend
+                    .iter()
+                    .filter_map(|r| Some((r.first()?.as_str(), r.get(1)?.as_str())))
+                    .collect();
+                self.$core().set_devtools_legend(&rows);
             }
 
             /// The last finished frame's nodes in tree order, each with what
