@@ -394,45 +394,50 @@ fn env_table<'scope, 'env: 'scope>(
     ui: &'env std::cell::RefCell<&'env mut Ui<'_>>,
     loaded: &'env std::cell::RefCell<Vec<Loaded>>,
 ) -> mlua::Result<Table> {
-    let (env, theme, vp, focus, focus_visible, region) = {
+    let (facts, theme) = {
         let ui = ui.borrow();
-        (
-            ui.env(),
-            ui.theme(),
-            ui.viewport(),
-            ui.focused(),
-            ui.focus_visible(),
-            ui.region(),
-        )
+        (ui.env_facts(), ui.theme())
     };
     let t = lua.create_table()?;
-    if let Some(hz) = env.refresh_hz {
-        t.set("refresh_hz", hz)?;
+    // The facts, one row of `schema::ENV_FIELDS` at a time, read by the
+    // row's own getter and filed under its snake path (`system.appearance`
+    // is `env.system.appearance`). Lua's rule for a fact the host cannot
+    // tell is `refresh_hz`'s: no key rather than a nil-shaped one, so a
+    // `Null` reading is left out. Two facts, one letter apart, are both
+    // here: `focused` is the *window*'s keyboard, `focus` the focused
+    // *node*'s key — Lua cannot converge on Node's `focused()` for the
+    // latter because the former has been `focused` since env existed.
+    //
+    // The one deliberate divergence the table names: `window.native_controls`
+    // is a rect elsewhere and two numbers here, the keep-out extent of the
+    // OS-drawn controls (macOS traffic lights) at the window origin.
+    for row in kui_core::schema::ENV_FIELDS {
+        let value = (row.get)(&facts);
+        if value == Value::Null {
+            continue;
+        }
+        if row.name == "window.native_controls" {
+            let win = t
+                .get::<Option<Table>>("window")?
+                .unwrap_or(lua.create_table()?);
+            let f = |k: &str| value.get(k).and_then(Value::as_float).unwrap_or(0.0) as f32;
+            win.set("controls_w", f("x") + f("w"))?;
+            win.set("controls_h", f("y") + f("h"))?;
+            t.set("window", win)?;
+            continue;
+        }
+        for path in row.lua {
+            let lua_value = value_to_lua(lua, &value)?;
+            match path.split_once('.') {
+                None => t.set(*path, lua_value)?,
+                Some((head, leaf)) => {
+                    let sub = t.get::<Option<Table>>(head)?.unwrap_or(lua.create_table()?);
+                    sub.set(leaf, lua_value)?;
+                    t.set(head, sub)?;
+                }
+            }
+        }
     }
-    t.set("frame_budget_ms", env.frame_budget_ms())?;
-    // Two different facts, one letter apart. `focused` is the *window*'s:
-    // does this window have the keyboard at all. `focus` is the focused
-    // *node*'s key (an integer, as events carry them; nil for none) — what
-    // Node spells `ctx.focused()` and C `kui_focused`. Lua cannot converge
-    // on that name because `focused` is the window fact here, and has been
-    // since env existed; see the module doc.
-    t.set("focused", env.focused)?;
-    // What the user set in the OS. The two enums are always there —
-    // "unknown" is one of their readings — and the two values follow Lua's
-    // rule for a fact the host cannot tell, which is `refresh_hz`'s: no
-    // key rather than a nil-shaped one.
-    let sys = env.system;
-    let st = lua.create_table()?;
-    st.set("appearance", sys.appearance.name())?;
-    if let Some(accent) = sys.accent {
-        // 0xRRGGBBAA, the number a prop takes.
-        st.set("accent", accent.to_hex())?;
-    }
-    st.set("motion", sys.motion.name())?;
-    if let Some(locale) = sys.locale {
-        st.set("locale", locale.as_str())?;
-    }
-    t.set("system", st)?;
     // The palette the core derived from `system`, as roles rather than
     // values (ADR 0019). Every key is a 0xRRGGBBAA number — the same
     // spelling a `color` prop takes — so `bg = env.theme.surface` needs no
@@ -448,39 +453,6 @@ fn env_table<'scope, 'env: 'scope>(
     th.set("appearance", theme.appearance.name())?;
     th.set("disabled_opacity", theme.disabled_opacity)?;
     t.set("theme", th)?;
-    if let Some(k) = focus {
-        t.set("focus", k.0 as i64)?;
-    }
-    // Whether focus shows — it got there by Tab or assistive technology
-    // rather than a click.
-    t.set("focus_visible", focus_visible)?;
-    // The `focus_region` node whose ring Tab walks; absent for the main
-    // ring, by the same rule as `focus` (`docs/adr/0022-focus-regions.md`).
-    if let Some(k) = region {
-        t.set("region", k.0 as i64)?;
-    }
-    t.set("viewport_w", vp.w)?;
-    t.set("viewport_h", vp.h)?;
-    let win = env.window;
-    let wt = lua.create_table()?;
-    // Which window this frame is drawing; 0 until a second one is declared.
-    wt.set("id", win.id.0)?;
-    wt.set("custom_chrome", win.custom_chrome)?;
-    wt.set("maximized", win.maximized)?;
-    wt.set("fullscreen", win.fullscreen)?;
-    if let Some(r) = win.native_controls {
-        // Keep-out extent of OS-drawn controls (macOS traffic lights).
-        wt.set("controls_w", r.x + r.w)?;
-        wt.set("controls_h", r.y + r.h)?;
-    }
-    t.set("window", wt)?;
-    // What the host's output device is doing (`env.audio.device`, one of
-    // `schema::AUDIO_DEVICES`) and how many playbacks are live. Both keys
-    // always there: "closed" is a reading, not the absence of one.
-    let at = lua.create_table()?;
-    at.set("device", env.audio.device.name())?;
-    at.set("live", env.audio.live)?;
-    t.set("audio", at)?;
     t.set(
         "edit_text",
         scope.create_function(move |_, key: i64| Ok(ui.borrow().edit_text(Key(key as u64))))?,

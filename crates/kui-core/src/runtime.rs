@@ -454,6 +454,30 @@ impl Core {
         self.theme = self.theme_source.resolve(&self.env.system);
     }
 
+    /// Writes what the user set in the OS and re-resolves the palette from
+    /// it, so a host that pushes the appearance and reads the theme back
+    /// before its next frame sees the answer (ADR 0019). The one door for
+    /// a binding's env setter: writing `env.system` by hand and forgetting
+    /// the refresh was a decision each of them had to remember.
+    pub fn set_system(&mut self, system: SystemEnv) {
+        self.env.system = system;
+        self.refresh_theme();
+    }
+
+    /// The env reading's inputs (`schema::ENV_FIELDS`): the stored env and
+    /// the frame's own facts — viewport, scale, focus — that ride in the
+    /// same reading.
+    pub fn env_facts(&self) -> crate::schema::EnvFacts {
+        crate::schema::EnvFacts {
+            env: self.env,
+            viewport: self.viewport,
+            scale: self.scale,
+            focus: self.focus(),
+            focus_visible: self.focus_visible(),
+            region: self.region(),
+        }
+    }
+
     /// Whether anyone actually *chose* the accent — the OS reported one,
     /// or the app set or pinned one — as opposed to the palette falling
     /// back to kui's own blue.

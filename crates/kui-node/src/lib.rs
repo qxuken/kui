@@ -475,11 +475,12 @@ impl Ctx {
             let s = s
                 .as_object()
                 .ok_or_else(|| err("setEnv(): system must be an object"))?;
-            system_env(&mut self.core.env.system, s)?;
-            // The palette is a function of what was just written, and a
-            // test that sets the appearance and reads `theme()` back
-            // without drawing should see the answer, not the last frame's.
-            self.core.refresh_theme();
+            // Through `set_system`, which re-resolves the palette from
+            // what was just written: a test that sets the appearance and
+            // reads `theme()` back without drawing sees the answer.
+            let mut sys = self.core.env.system;
+            system_env(&mut sys, s)?;
+            self.core.set_system(sys);
         }
         if let Some(a) = o.get("audio") {
             // What a driver with a device would report: the state by its
@@ -1020,81 +1021,36 @@ fn rect_json(r: Rect) -> Json {
     Json::Object(o)
 }
 
-/// The host facts `env()` hands back, as `{refreshHz, frameBudgetMs, focused,
-/// viewport, window}`. Two places this differs from the same table in Lua,
-/// deliberately:
-///
-/// - `refreshHz` is `null` when the host cannot tell, where Lua leaves the
-///   key out. A stable shape is worth more here than a shorter object: JS
-///   code destructures it, and TypeScript can then say `number | null`.
-/// - `window.nativeControls` is the whole `Rect`, where Lua flattens it to
-///   `controls_w` / `controls_h` (and C's `kui_env_set_window` takes the same
-///   two numbers). That flattening assumes the OS controls sit at the window
-///   origin, which is true of the macOS traffic lights and of nothing in
-///   particular; the core holds a rect, so hand back a rect.
-///
-/// `viewport` is the frame's, not `Env`'s — it is the other host fact a view
-/// wants at the same moment, and Lua carries it in the same table (as
-/// `viewport_w` / `viewport_h`). Node spells it `{width, height, scale}`,
-/// the `WindowSize` shape `runWindowed` already uses.
+/// `ctx.env()`: every row of `schema::ENV_FIELDS` that has a Node key,
+/// read by the row's own getter and filed under its camelCase path —
+/// `system.appearance` is `{system: {appearance}}`. A key is always there:
+/// "the host cannot tell" is `null`, a stable shape to destructure. The
+/// rows Node spells as calls on the context (`focused()`, `region()`) have
+/// no key here and are not in the object.
 fn env_json(core: &mut Core) -> Json {
-    let env = core.env;
-    let mut vp = JsonMap::new();
-    vp.insert("width".into(), Json::from(core.viewport().w as f64));
-    vp.insert("height".into(), Json::from(core.viewport().h as f64));
-    vp.insert("scale".into(), Json::from(core.scale() as f64));
-
-    let win = env.window;
-    let mut w = JsonMap::new();
-    w.insert("id".into(), Json::from(win.id.0));
-    w.insert("customChrome".into(), Json::Bool(win.custom_chrome));
-    w.insert("maximized".into(), Json::Bool(win.maximized));
-    w.insert("fullscreen".into(), Json::Bool(win.fullscreen));
-    w.insert(
-        "nativeControls".into(),
-        win.native_controls.map_or(Json::Null, rect_json),
-    );
-
-    // What the user set in the OS. The two enums always have a key —
-    // "unknown" is one of their readings, not the absence of one — and the
-    // two values are null when the host cannot tell, the shape `refreshHz`
-    // already uses. `accent` comes back as the `0xRRGGBBAA` number a prop
-    // takes, so a view paints with it without converting.
-    let sys = env.system;
-    let mut sy = JsonMap::new();
-    sy.insert("appearance".into(), Json::from(sys.appearance.name()));
-    sy.insert(
-        "accent".into(),
-        sys.accent.map_or(Json::Null, |c| Json::from(c.to_hex())),
-    );
-    sy.insert("motion".into(), Json::from(sys.motion.name()));
-    sy.insert(
-        "locale".into(),
-        sys.locale
-            .map_or(Json::Null, |l| Json::from(l.as_str().to_string())),
-    );
-
-    // The output device and the live playbacks: both keys always there,
-    // "closed" being a reading rather than the absence of one.
-    let mut au = JsonMap::new();
-    au.insert("device".into(), Json::from(env.audio.device.name()));
-    au.insert("live".into(), Json::from(env.audio.live));
-
+    let facts = core.env_facts();
     let mut o = JsonMap::new();
-    o.insert(
-        "refreshHz".into(),
-        env.refresh_hz
-            .map_or(Json::Null, |hz| Json::from(hz as f64)),
-    );
-    o.insert(
-        "frameBudgetMs".into(),
-        Json::from(env.frame_budget_ms() as f64),
-    );
-    o.insert("focused".into(), Json::Bool(env.focused));
-    o.insert("system".into(), Json::Object(sy));
-    o.insert("viewport".into(), Json::Object(vp));
-    o.insert("window".into(), Json::Object(w));
-    o.insert("audio".into(), Json::Object(au));
+    for row in kui_core::schema::ENV_FIELDS {
+        let value = json_of(&(row.get)(&facts));
+        for path in row.node {
+            let (head, tail) = path
+                .split_once('.')
+                .map_or((*path, None), |(h, t)| (h, Some(t)));
+            match tail {
+                None => {
+                    o.insert(head.into(), value.clone());
+                }
+                Some(leaf) => {
+                    let nested = o
+                        .entry(head.to_string())
+                        .or_insert_with(|| Json::Object(JsonMap::new()));
+                    if let Json::Object(m) = nested {
+                        m.insert(leaf.into(), value.clone());
+                    }
+                }
+            }
+        }
+    }
     Json::Object(o)
 }
 
@@ -1150,44 +1106,9 @@ fn theme_from_json(core: &Core, v: &Json) -> Result<kui_core::Theme> {
             return Err(err(format!("setTheme(): no such role {key:?}")));
         };
         let c = color_from_json(v).map_err(|e| err(format!("setTheme(): {key}: {e}")))?;
-        set_role(&mut t, role.name, c);
+        (role.set)(&mut t, c);
     }
     Ok(t)
-}
-
-/// Writes one role by name. The other half of `ThemeRole::get`, kept here
-/// rather than on `Theme` because reading a palette is every binding's
-/// business and writing one is a host's.
-fn set_role(t: &mut kui_core::Theme, name: &str, c: Color) {
-    match name {
-        "bg" => t.bg = c,
-        "surface" => t.surface = c,
-        "raised" => t.raised = c,
-        "sunken" => t.sunken = c,
-        "border" => t.border = c,
-        "border_strong" => t.border_strong = c,
-        "fg" => t.fg = c,
-        "muted" => t.muted = c,
-        "faint" => t.faint = c,
-        "accent" => t.accent = c,
-        "accent_hover" => t.accent_hover = c,
-        "accent_pressed" => t.accent_pressed = c,
-        "on_accent" => t.on_accent = c,
-        "accent_soft" => t.accent_soft = c,
-        "selection" => t.selection = c,
-        "focus_ring" => t.focus_ring = c,
-        "hover" => t.hover = c,
-        "pressed" => t.pressed = c,
-        "success" => t.success = c,
-        "warning" => t.warning = c,
-        "danger" => t.danger = c,
-        "scrollbar" => t.scrollbar = c,
-        "scrollbar_active" => t.scrollbar_active = c,
-        // Unreachable: the caller found `name` in THEME_ROLES, and
-        // `theme_roles_restate_the_theme_exactly` pins that list to the
-        // struct — a role added there fails this arm's own test first.
-        other => debug_assert!(false, "no setter for theme role {other}"),
-    }
 }
 
 /// The palette the core derived from `env.system`, as roles rather than

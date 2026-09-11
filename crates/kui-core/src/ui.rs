@@ -146,6 +146,12 @@ impl<'a> Ui<'a> {
     }
 
     /// Host facts pushed by the frame driver (refresh rate, focus).
+    /// The env reading's inputs, the frame's facts included
+    /// (`Core::env_facts`): what a binding's `env` table is filled from.
+    pub fn env_facts(&self) -> crate::schema::EnvFacts {
+        self.core.env_facts()
+    }
+
     pub fn env(&self) -> Env {
         self.core.env
     }

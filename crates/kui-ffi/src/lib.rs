@@ -73,8 +73,8 @@ use std::rc::Rc;
 use kui_core::{
     Align, Appearance, AudioDevice, AudioEnv, Color, Core, DismissReason, Edges, EditKey,
     EditOptions, Enter, FloatConfig, InputEvent, Key, Keyframe, Locale, Mods, MotionPref,
-    MouseButton, NodeSpec, Rect, Size, Sizing, Span, TextStyle, UiEvent, Value, Vec2, WindowButton,
-    WindowCommand, WindowConfig, WindowId, WindowKind,
+    MouseButton, NodeSpec, Rect, Size, Sizing, Span, SystemEnv, TextStyle, UiEvent, Value, Vec2,
+    WindowButton, WindowCommand, WindowConfig, WindowId, WindowKind,
 };
 
 // ---------------------------------------------------------------------------
@@ -165,18 +165,20 @@ pub extern "C" fn kui_env_set_system(
 ) {
     guard((), || {
         if let Some(c) = unsafe { ctx(ptr) } {
-            let sys = &mut c.core().env.system;
             // An out-of-range code is ignored rather than folded onto a
             // real setting: a host built against a newer header says
             // something this build has no name for.
-            sys.appearance = Appearance::from_code(appearance).unwrap_or_default();
-            sys.motion = MotionPref::from_code(motion).unwrap_or_default();
-            sys.accent = (accent != 0).then(|| Color::hex(accent));
-            sys.locale = opt_str(locale).and_then(|tag| Locale::new(&tag));
-            // The palette is derived from what was just written, so a host
-            // that pushes the appearance and reads `kui_theme` back before
-            // its next frame sees the answer (ADR 0019).
-            c.core().refresh_theme();
+            let sys = SystemEnv {
+                appearance: Appearance::from_code(appearance).unwrap_or_default(),
+                motion: MotionPref::from_code(motion).unwrap_or_default(),
+                accent: (accent != 0).then(|| Color::hex(accent)),
+                locale: opt_str(locale).and_then(|tag| Locale::new(&tag)),
+            };
+            // `set_system` re-resolves the palette from what was just
+            // written, so a host that pushes the appearance and reads
+            // `kui_theme` back before its next frame sees the answer
+            // (ADR 0019).
+            c.core().set_system(sys);
         }
     });
 }

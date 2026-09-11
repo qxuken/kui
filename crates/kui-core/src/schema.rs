@@ -1722,11 +1722,49 @@ pub struct EnvField {
     /// or the call that reads it.
     pub c: &'static str,
     pub doc: &'static str,
+    /// The fact's reading, as plain data: `Null` for "the host cannot
+    /// tell", an enum as its wire name, a key as its integer, a rect as
+    /// `{x, y, w, h}`. What makes the table a reader and not only a pin —
+    /// a binding iterates the rows and asks each for its value, then
+    /// spells the key its own way, so a fact added here reaches every
+    /// reading with no reader restated beside it (the way
+    /// [`ThemeRole::get`] does for the palette).
+    pub get: fn(&EnvFacts) -> Value,
+}
+
+/// Everything an env reading is taken from: the stored [`Env`] and the
+/// frame's own facts beside it (`Core::env_facts`).
+#[derive(Clone, Copy, Debug)]
+pub struct EnvFacts {
+    pub env: crate::env::Env,
+    pub viewport: crate::geom::Size,
+    pub scale: f32,
+    pub focus: Option<crate::key::Key>,
+    pub focus_visible: bool,
+    pub region: Option<crate::key::Key>,
+}
+
+fn key_value(k: Option<crate::key::Key>) -> Value {
+    k.map_or(Value::Null, |k| Value::Int(k.0 as i64))
+}
+
+fn rect_value(r: crate::geom::Rect) -> Value {
+    Value::map([
+        ("x", Value::Float(r.x as f64)),
+        ("y", Value::Float(r.y as f64)),
+        ("w", Value::Float(r.w as f64)),
+        ("h", Value::Float(r.h as f64)),
+    ])
 }
 
 pub const ENV_FIELDS: &[EnvField] = &[
     EnvField {
         name: "refresh_hz",
+        get: |f| {
+            f.env
+                .refresh_hz
+                .map_or(Value::Null, |hz| Value::Float(hz as f64))
+        },
         from: "`Env::refresh_hz`",
         node: &["refreshHz"],
         lua: &["refresh_hz"],
@@ -1735,6 +1773,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
     EnvField {
         name: "frame_budget_ms",
+        get: |f| Value::Float(f.env.frame_budget_ms() as f64),
         from: "`Env::frame_budget_ms()`, derived",
         node: &["frameBudgetMs"],
         lua: &["frame_budget_ms"],
@@ -1743,6 +1782,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
     EnvField {
         name: "focused",
+        get: |f| Value::Bool(f.env.focused),
         from: "`Env::focused`",
         node: &["focused"],
         lua: &["focused"],
@@ -1751,6 +1791,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
     EnvField {
         name: "system.appearance",
+        get: |f| Value::str(f.env.system.appearance.name()),
         from: "`SystemEnv::appearance`",
         node: &["system.appearance"],
         lua: &["system.appearance"],
@@ -1759,6 +1800,12 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
     EnvField {
         name: "system.accent",
+        get: |f| {
+            f.env
+                .system
+                .accent
+                .map_or(Value::Null, |c| Value::Int(c.to_hex() as i64))
+        },
         from: "`SystemEnv::accent`",
         node: &["system.accent"],
         lua: &["system.accent"],
@@ -1767,6 +1814,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
     EnvField {
         name: "system.motion",
+        get: |f| Value::str(f.env.system.motion.name()),
         from: "`SystemEnv::motion`",
         node: &["system.motion"],
         lua: &["system.motion"],
@@ -1775,6 +1823,12 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
     EnvField {
         name: "system.locale",
+        get: |f| {
+            f.env
+                .system
+                .locale
+                .map_or(Value::Null, |l| Value::str(l.as_str()))
+        },
         from: "`SystemEnv::locale`",
         node: &["system.locale"],
         lua: &["system.locale"],
@@ -1783,6 +1837,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
     EnvField {
         name: "window.id",
+        get: |f| Value::Int(f.env.window.id.0 as i64),
         from: "`WindowEnv::id`",
         node: &["window.id"],
         lua: &["window.id"],
@@ -1791,6 +1846,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
     EnvField {
         name: "window.custom_chrome",
+        get: |f| Value::Bool(f.env.window.custom_chrome),
         from: "`WindowEnv::custom_chrome`",
         node: &["window.customChrome"],
         lua: &["window.custom_chrome"],
@@ -1799,6 +1855,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
     EnvField {
         name: "window.maximized",
+        get: |f| Value::Bool(f.env.window.maximized),
         from: "`WindowEnv::maximized`",
         node: &["window.maximized"],
         lua: &["window.maximized"],
@@ -1807,6 +1864,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
     EnvField {
         name: "window.fullscreen",
+        get: |f| Value::Bool(f.env.window.fullscreen),
         from: "`WindowEnv::fullscreen`",
         node: &["window.fullscreen"],
         lua: &["window.fullscreen"],
@@ -1815,6 +1873,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
     EnvField {
         name: "window.native_controls",
+        get: |f| f.env.window.native_controls.map_or(Value::Null, rect_value),
         from: "`WindowEnv::native_controls`",
         node: &["window.nativeControls"],
         lua: &["window.controls_w", "window.controls_h"],
@@ -1823,6 +1882,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
     EnvField {
         name: "audio.device",
+        get: |f| Value::str(f.env.audio.device.name()),
         from: "`AudioEnv::device`",
         node: &["audio.device"],
         lua: &["audio.device"],
@@ -1831,6 +1891,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
     EnvField {
         name: "audio.live",
+        get: |f| Value::Int(f.env.audio.live as i64),
         from: "`AudioEnv::live`",
         node: &["audio.live"],
         lua: &["audio.live"],
@@ -1839,6 +1900,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
     EnvField {
         name: "viewport.w",
+        get: |f| Value::Float(f.viewport.w as f64),
         from: "`Core::viewport()`, the frame's",
         node: &["viewport.width"],
         lua: &["viewport_w"],
@@ -1847,6 +1909,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
     EnvField {
         name: "viewport.h",
+        get: |f| Value::Float(f.viewport.h as f64),
         from: "`Core::viewport()`, the frame's",
         node: &["viewport.height"],
         lua: &["viewport_h"],
@@ -1855,6 +1918,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
     EnvField {
         name: "scale",
+        get: |f| Value::Float(f.scale as f64),
         from: "`Core::scale()`, the frame's",
         node: &["viewport.scale"],
         lua: &[],
@@ -1863,6 +1927,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
     EnvField {
         name: "focus",
+        get: |f| key_value(f.focus),
         from: "`Core::focus()`, the frame's",
         node: &[],
         lua: &["focus"],
@@ -1871,6 +1936,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
     EnvField {
         name: "focus_visible",
+        get: |f| Value::Bool(f.focus_visible),
         from: "`Core::focus_visible()`, the frame's",
         node: &[],
         lua: &["focus_visible"],
@@ -1879,6 +1945,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
     },
     EnvField {
         name: "region",
+        get: |f| key_value(f.region),
         from: "`Core::region()`, the frame's",
         node: &[],
         lua: &["region"],
@@ -1905,6 +1972,9 @@ pub struct ThemeRole {
     pub doc: &'static str,
     /// This role's colour out of a theme.
     pub get: fn(&crate::theme::Theme) -> crate::color::Color,
+    /// The same colour written: what a binding's theme setter uses, so
+    /// writing a palette is the table's business the way reading one is.
+    pub set: fn(&mut crate::theme::Theme, crate::color::Color),
 }
 
 pub const THEME_ROLES: &[ThemeRole] = &[
@@ -1912,138 +1982,161 @@ pub const THEME_ROLES: &[ThemeRole] = &[
         name: "bg",
         node: "bg",
         get: |t| t.bg,
+        set: |t, c| t.bg = c,
         doc: "The window behind everything.",
     },
     ThemeRole {
         name: "surface",
         node: "surface",
         get: |t| t.surface,
+        set: |t, c| t.surface = c,
         doc: "A card, panel or list sitting on `bg`.",
     },
     ThemeRole {
         name: "raised",
         node: "raised",
         get: |t| t.raised,
+        set: |t, c| t.raised = c,
         doc: "A surface floating above content: a menu, a tooltip, a popover. Under a light theme it is no lighter than `surface` — a float on a white page separates by its border.",
     },
     ThemeRole {
         name: "sunken",
         node: "sunken",
         get: |t| t.sunken,
+        set: |t, c| t.sunken = c,
         doc: "A well cut into a surface: a text field, a code block, a track.",
     },
     ThemeRole {
         name: "border",
         node: "border",
         get: |t| t.border,
+        set: |t, c| t.border = c,
         doc: "The hairline between two surfaces.",
     },
     ThemeRole {
         name: "border_strong",
         node: "borderStrong",
         get: |t| t.border_strong,
+        set: |t, c| t.border_strong = c,
         doc: "A border that has to be seen — a float's edge, a focused field.",
     },
     ThemeRole {
         name: "fg",
         node: "fg",
         get: |t| t.fg,
+        set: |t, c| t.fg = c,
         doc: "Body text, and what a `color`-less text run resolves to.",
     },
     ThemeRole {
         name: "muted",
         node: "muted",
         get: |t| t.muted,
+        set: |t, c| t.muted = c,
         doc: "Secondary text: captions, hints, an accelerator beside a label.",
     },
     ThemeRole {
         name: "faint",
         node: "faint",
         get: |t| t.faint,
+        set: |t, c| t.faint = c,
         doc: "Text that is barely there: a placeholder, a gutter number.",
     },
     ThemeRole {
         name: "accent",
         node: "accent",
         get: |t| t.accent,
+        set: |t, c| t.accent = c,
         doc: "The one saturated colour: the OS accent where the host reports one, the app's where it pinned one, kui's blue otherwise. The `accent` prop paints from this.",
     },
     ThemeRole {
         name: "accent_hover",
         node: "accentHover",
         get: |t| t.accent_hover,
+        set: |t, c| t.accent_hover = c,
         doc: "`accent` under a pointer.",
     },
     ThemeRole {
         name: "accent_pressed",
         node: "accentPressed",
         get: |t| t.accent_pressed,
+        set: |t, c| t.accent_pressed = c,
         doc: "`accent` under a press.",
     },
     ThemeRole {
         name: "on_accent",
         node: "onAccent",
         get: |t| t.on_accent,
+        set: |t, c| t.on_accent = c,
         doc: "Black or white — whichever a reader can see on `accent`. What a button's label is.",
     },
     ThemeRole {
         name: "accent_soft",
         node: "accentSoft",
         get: |t| t.accent_soft,
+        set: |t, c| t.accent_soft = c,
         doc: "The accent as a translucent wash rather than a fill: a selected menu row, a chosen tab, a highlighted list item. Keeps `fg` readable over it on both bases, which a fill does not.",
     },
     ThemeRole {
         name: "selection",
         node: "selection",
         get: |t| t.selection,
+        set: |t, c| t.selection = c,
         doc: "What a text selection is painted under, in an editor and over a `selectable` scope alike.",
     },
     ThemeRole {
         name: "focus_ring",
         node: "focusRing",
         get: |t| t.focus_ring,
+        set: |t, c| t.focus_ring = c,
         doc: "The default keyboard focus ring (ADR 0002).",
     },
     ThemeRole {
         name: "hover",
         node: "hover",
         get: |t| t.hover,
+        set: |t, c| t.hover = c,
         doc: "A translucent wash over a hovered neutral control. An overlay, not a fill, so one value works on every surface.",
     },
     ThemeRole {
         name: "pressed",
         node: "pressed",
         get: |t| t.pressed,
+        set: |t, c| t.pressed = c,
         doc: "The same over a pressed one, and the firmer of the two on both bases.",
     },
     ThemeRole {
         name: "success",
         node: "success",
         get: |t| t.success,
+        set: |t, c| t.success = c,
         doc: "A good outcome. Readable on `surface` on both bases, which is why it is not one colour for both.",
     },
     ThemeRole {
         name: "warning",
         node: "warning",
         get: |t| t.warning,
+        set: |t, c| t.warning = c,
         doc: "Something that wants attention.",
     },
     ThemeRole {
         name: "danger",
         node: "danger",
         get: |t| t.danger,
+        set: |t, c| t.danger = c,
         doc: "A destructive action or a failure. The close button's hover, too.",
     },
     ThemeRole {
         name: "scrollbar",
         node: "scrollbar",
         get: |t| t.scrollbar,
+        set: |t, c| t.scrollbar = c,
         doc: "The scrollbar thumb at rest.",
     },
     ThemeRole {
         name: "scrollbar_active",
         node: "scrollbarActive",
         get: |t| t.scrollbar_active,
+        set: |t, c| t.scrollbar_active = c,
         doc: "The thumb while hovered or dragged.",
     },
 ];
