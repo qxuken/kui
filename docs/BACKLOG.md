@@ -2,8 +2,9 @@
 
 From the architecture review of `93169ed` (2026-09-03), after 0.1.0-alpha.5,
 the six rounds that followed it, and the field reports from two apps built on
-alpha.6, alpha.7 and alpha.8 outside this repo (F1–F15 on 2026-09-06,
-F16–F23 and F25–F31 on 2026-09-07). Every item names the
+alpha.6 through alpha.11 outside this repo (F1–F15 on 2026-09-06,
+F16–F23 and F25–F31 on 2026-09-07, F32–F35 on 2026-09-08, F37–F41 on
+2026-09-09, F42–F49 on 2026-09-12). Every item names the
 evidence that produced it, so a task that turns out to be wrong can be argued with rather
 than guessed at.
 
@@ -21,7 +22,13 @@ at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
 
-What is left here: C30, filed 2026-09-12 (always on top — a window level
+What is left here: F42–F49 from the two alpha.11 upgrade reports, filed
+2026-09-12 (two defects — a foreign `dispatch` losing a `setEditText` seed
+to the redraw the call asked for, and `env.viewport` reading the window
+against its own schema row — one gap with no spelling, the label editor,
+and five wishes with their shapes written, two of them carried unanswered
+from alpha.10), T4 the same day (tokens beside the theme — a question
+with the ADR as its deliverable), C30, filed 2026-09-12 (always on top — a window level
 no binding can ask for, with the shape to build it written), C29 from the
 alpha.11 pre-tag round (four unguarded
 bench rows reproducibly slower than alpha.10, filed with the numbers and
@@ -576,6 +583,290 @@ package has and does not document, which is F33's shape again and became a
   their notes say so.
 
 
+## From the two alpha.11 upgrade reports (2026-09-12)
+
+Both apps upgraded to alpha.11 the day after it was tagged and reported
+again: the mind map's `FINDINGS.md` (alpha.10 → alpha.11) and the LCARS
+pomodoro's `docs/kui-alpha-11.md` (wishes 1–5). The bare bump broke
+neither — five byte-identical previews on one side, an
+assertion-for-assertion identical frame on the other — and both reports
+open by correcting their own last one: the mind map that the window was
+testable from app code since alpha.9, the pomodoro that its smoke test's
+chime had mostly never sounded. Every claim below was checked against
+this tree before it became an entry, and two of the eight are sharper
+than the report that raised them: the `dispatch` that drops a
+`setEditText` seed loses it to *the redraw the call itself asked for*
+(F42), and "no reading says what the dock leaves" is one getter reading
+the wrong field against its own schema row (F43).
+
+What is new this round is that both apps found the same seam from
+different sides. A `dispatch` the loop did not make — from `setup`, a
+timer, a promise — runs `update` in one JS turn and its view in the
+`step()` after the next `win.pump()`, and *between* those the runner
+paints. The mind map lost a seed to that paint; the pomodoro's test lost
+a one-frame `<audio>` node to the tick that fired first. F42 is the half
+that is the driver's.
+
+### `!` F42 — A foreign `dispatch` loses the `setEditText` seed to the redraw the call itself asked for
+
+**Symptom** (mind map, "a foreign `dispatch` draws now, and drops what
+`update` held"): dispatching `beginEdit` from outside the loop, then
+reading the tree after each frame — `sync: views=1 field=absent`,
+`frame +1: views=2 field=absent`, `frame +2: field=present` — with
+`edit-text-without-editor` raised between, so a *reopened* editor comes
+back with the abandoned draft over the model's text. The input path is
+unaffected. The report's diagnosis, "a frame painted between them is a
+redraw of the tree the window already had, and that is the frame the
+one-frame hold expires on", is right; what it could not see is which
+frame and why.
+
+**The line.** `KuiWindow::set_edit_text` ends with `self.$redraw()`
+(`crates/kui-node/src/lib.rs`, the `set_edit_text` arm of the shared
+macro): every write, including one the core *held* because nothing had
+declared the name, asks the runner for a redraw. `runWindowed`'s pump is
+`win.pump()` **then** `app.step()` (`packages/kui/index.js`, `runWindowed`),
+and a window's redraw re-lowers the retained tree — `TreeApp::view` lowers
+the bytes the last `setView` stored — through `Ui`, whose build ends in
+`Core::finish_frame`, whose `layout_frame` drains
+`EditStore::take_unclaimed_seeds` and raises the warning. So on the
+dispatch path the order is: `update` (seed held, redraw requested) →
+`win.pump()` paints the **old** tree, which declares no editor, and the
+seed is dropped → `step()` draws the new tree, whose editor seeds from
+`initial`. On the event path `update`, `view` and `setView` share one JS
+turn, so the redraw that follows lowers the new tree and the seed lands.
+The hold's contract — "the view that draws the editor the same `update`
+opened" — is kept by the core for the only frame it can count; the frame
+between is the binding's.
+
+It is not only `setEditText`'s own redraw. Anything that has the runner
+paint inside that `win.pump()` — the caret blink, a pointer crossing a
+hover node, a live resize — lowers the old tree the same way, so removing
+the `$redraw()` on a held seed closes the deterministic case and leaves a
+race the app cannot see.
+
+**Fix**, two halves. (1) In `runWindowed`'s pump, a model the loop has
+not drawn yet (`dirty`) is drawn **before** `win.pump()` — the same
+`update` → frame ordering the event path has, so no runner redraw can
+lower a tree older than the dispatch; the pump-then-step for events stays.
+(2) `set_edit_text` on a seed the core held requests no redraw: nothing on
+screen changed, and the frame that will change it is the app's. Guard:
+the windowed half of `createLoop` is already tested over an injected fake
+surface (D4); give the fake a `pump()` that re-lowers its last tree and
+pin that a `dispatch` + `setEditText` between pumps raises no warning and
+seeds the editor. Not `dispatch` drawing synchronously — an effect handler
+dispatches from inside `flushEffects`, which runs inside `draw()`.
+
+**The pomodoro's half of the same seam is theirs**, and is under "Theirs,
+not ours" below with the mechanism.
+
+### `!` F43 — `env.viewport` is the window, not what the dock leaves, against its own schema row
+
+**Symptom** (pomodoro, "with the devtools docked at launch, the app draws
+for the whole window", wish 2): under `KUI_DEVTOOLS=1` the app is squeezed
+into ~660 px of a 1040 px window with everything `grow` absorbing it;
+`win.size()` says 1040×720 in `init`, `env().viewport` 0×0 there and
+1040×720 three frames later, and no `resize` ever arrives. The changelog
+says "the app's viewport is what the dock leaves: `viewport()` says so".
+
+**The lines.** Three, and the report blamed none of them by name:
+
+- `Core::env_facts()` fills `viewport: self.viewport`
+  (`crates/kui-core/src/runtime.rs`) — the window — while the
+  `ENV_FIELDS` row it feeds says `from: "Core::viewport(), the frame's"`,
+  and `Core::viewport()` returns `dt_area`, the dock-adjusted host area.
+  The schema row and the getter disagree, and the readback test that pins
+  `ENV_FIELDS` against the corpus never has a dock in the tree, so it
+  could not see it. **This is the defect**: fix the getter, and
+  `env().viewport` says ~660 under a right dock, in every binding at once.
+- `KuiWindow::size()` is `runner.window_size()` — the window's inner
+  size, as its doc says — but the `resize` event's schema doc says
+  "`KuiWindow.size()` queries the same numbers", and `begin_frame` puts
+  the dock-adjusted `area` into that event. Under a dock they differ.
+  Either `size()` answers with what the dock leaves (`devtools_area` is
+  computable from the window size and the dock state before any frame, so
+  it can answer in `setup` and `init` too, where `env().viewport` is by
+  design still 0×0) or the doc stops promising. The first is what an app
+  seeding its tiers from `win.size()` in `init` — the README's own advice —
+  needs.
+- A dock present at launch posts no `resize`, by `begin_frame`'s "the
+  first frame establishes the viewport" rule. Right in itself, and moot
+  once the two readings above are the dock's: the app read the right
+  number before its first view.
+
+Rust is unaffected — `ui.viewport()` is `Core::viewport()` — which is why
+the changelog sentence was true where it was written. Guard: a core test
+with `set_devtools(true)` + `set_devtools_dock(Right)` and a
+`begin_frame(1040×720)` asserting `env_facts().viewport.w < 1040`, and
+`size()`'s answer pinned beside it in the Node suite.
+
+### `~` F44 — A field cannot wrap and a document cannot submit: the label editor has no spelling
+
+**Symptom** (mind map, "the rename field is a field now"): F41 made a
+single-line `<edit>` take one line whatever its box, so a rename field
+that declared `wrap="word"` to break where the node's label breaks went
+from 38 px / two lines to 19 px / one line scrolled 62 characters in
+209 px — inside a box the app still sizes to the wrapped draft. Every
+check passed, because the checks asserted containment and the box's
+height. `multiline` wraps it and makes Enter insert (`submitted 0,
+changed 1`, text `"\na considerably…"`); `width="fit"` lays 393 px of
+field through a 231 px box.
+
+**The lines.** `EditStore::apply_key` (`crates/kui-core/src/edit.rs`):
+`EditKey::Enter` inserts on `multiline` and submits otherwise — there is
+no other submit path, no modifier-Enter — and the layout since F41 wraps
+`multiline` editors only. The schema's own sentence is exact and is the
+gap: "a field takes one line whatever its box … while a document wraps to
+its box". Two modes, each carrying its layout *and* its keyboard, and the
+editor the report wants — one paragraph, Enter submits, caret opens at the
+end, folds to a width — is a field's keyboard on a document's layout.
+
+**Fix.** Honour `wrap` on a single-line editor: with it declared, the
+field folds to its width (the `fit_heights` branch that F41 made
+`multiline`-only becomes `multiline || wrap`), still admits no newline
+(`admitted` stays), still submits on Enter, still opens with the caret at
+the end, and does not scroll horizontally. That is the whole reported
+case, and it closes the report's other section too: the field becomes
+`width="fit" maxWidth={MAX_TEXT_W} wrap="word"` — `clamp_w` already
+bounds a `Fit` width — so the core measures the draft on the keystroke
+frame and the "headroom, sideways" margin (below) has nothing left to
+cover. The other half — a `multiline` editor that submits on plain Enter
+and inserts on Shift-Enter, the chat-input shape — is the same kind of
+gap from the other side, has its own users, and is one row
+(`submit="enter"`) when a view asks; not built here on the strength of a
+report that does not want it.
+
+### `.` F45 — `clock` is read by `runWindowed` and absent from its options type
+
+**Symptom** (pomodoro, wish 3): the one line passing `clock` to
+`runWindowed` carries a `@ts-expect-error`, deliberately, so it fails the
+day the type catches up.
+
+**The line.** `runWindowed` reads `opts.clock ?? Date.now`
+(`packages/kui/index.js`); its declared options in `index.d.ts` are
+`WindowOptions & { title, pumpMs, idlePumpMs, quietMs, setup, effects }`
+— no `clock`. `createApp`'s options declare it. F37's class exactly: a
+`.d.ts`-only gap no test in this repo can see, because CI's typecheck of
+`examples/node` is the guard and no example passes it. Fix the type and
+have one example pass a clock — the smoke channel's headless drive is the
+natural one. (`startTime` is also read and rightly absent: under a clock
+it is dead.)
+
+### `.` F46 — `tick.every` is static, so a fast tick pins the idle pump
+
+**Symptom** (pomodoro, wish 1, with the numbers): alpha.11's backoff takes
+the counter from 8.7% to ~3% of a core; the pomodoro's mid tier, with
+nothing moving, stays at 7–8%, because `tick: { every: 16 }` — chosen so a
+second is never drawn late while running — is also its cadence while
+stopped, when its clock matters once a second.
+
+**The line.** `createLoop` reads `every` once
+(`const every = tick?.every > 0 ? tick.every : 0`) and the driver's
+budget is `max(busyMs, min(idleMs, untilTick))` (`[BUDGET]`), so a 16 ms
+tick floors the gap at 16 ms forever. Both correct; the config has no way
+to say the rate depends on the model.
+
+**Fix.** `every: number | ((model) => number)`, re-read after every
+`apply` — `nextTick` moves to `lastTick + every(model)` when the answer
+changes — so `every: (m) => m.endsAt ? 16 : 1000` costs a stopped app a
+pump a second. Headless `advance(ms)` fires the same schedule, so it is
+testable; a function returning `0` or less means no tick, as the number
+does. Node-only, as `tick` is.
+
+### `.` F47 — An override for `env.system` in a window, at the launcher
+
+**Symptom** (pomodoro wish 4, the third ask: alpha.10 wish 2, alpha.11
+wish 4): the reduced-motion half is asserted headless with `setEnv`; a
+window on a machine whose owner did not ask for less motion has nowhere
+to say "as if they had".
+
+**Where it stood.** Declined for alpha.10 with a reason that still holds
+for `setEnv` — the runner writes the real reading every frame, so a push
+is overwritten before the next view — and with the shape that would work
+named in the refusal: "the place for it is the launcher — an app asking
+in its own code, the same line `KUI_SMOKE_FRAMES` draws". Three asks in,
+build the shape. `runWindowed(config, { system: { motion: 'reduced' } })`
+(Rust: `kui::app(..).system(..)`, C: the `kui_env_set_system` it already
+has, made sticky) — a partial `SystemEnv` the shell merges *over* what
+`system_env::query()` returns, in `sync_env`, so it survives every frame
+and a real OS change still arrives for the fields not pinned. The
+`system` event fires for the pinned reading as for any other. Not an
+environment variable: an app you ship should not change its motion
+because of one, which is the same line the smoke frames draw.
+
+### `.` F48 — Whether assistive technology is listening, as an `Env` fact
+
+**Symptom** (pomodoro, alpha.10 wish 4, carried to alpha.11 wish 5 and
+never answered): `motion` reached the view; the reading that would change
+what this app *says* rather than what it draws — whether anything is
+listening — is not in `Env`. "It is the difference between an alert that
+blinks and one that announces."
+
+**The fact exists at the driver.** ADR 0016's own measurement is stated
+"while a screen reader is attached", and the bridge knows: AccessKit
+calls the activation handler when a client asks for the initial tree, and
+the runner derives the tree only from then on. Nothing carries that bit to
+`env`. Fix: a row in `ENV_FIELDS` — `system.assistive: "unknown" |
+"none" | "listening"` beside the four OS readings, with the explicit
+unknown every `system` field has, set by the shell when the bridge is
+first asked and reported through the existing `system` event so a
+retained-tree host hears the change. Two honest limits to write into the
+row: any AX client counts (a probe, an inspector, VoiceOver alike), and on
+macOS nothing says when the client leaves, so the reading rises and does
+not fall for the window's life — Windows and Unix adapters do report
+deactivation, and the row says `none` again there.
+
+### `.` F49 — `<audio finish>`'s cost in the app's units
+
+**Symptom** (pomodoro, alpha.10 wish 3, carried): "the 128-voice number is
+the device's … how many one-shots per second can it release before it
+matters?"
+
+A doc sentence, not code. The arithmetic is `voices held = sound length ×
+release rate`: a 1.4 s chime released at 4 Hz holds 6 of the main track's
+128 at any moment, a 10 s ambience released once a second holds 10, and a
+`refused` `sound` event (F35) is what arriving at 128 sounds like. Write
+it into the `finish` row's doc in `schema.rs` — it is generated into
+`props.md` and `index.d.ts` from there — and `howto.md`'s audio answer.
+
+### Theirs, not ours
+
+- **The headroom, sideways** (mind map). Measured well — fifteen of
+  sixteen keystrokes 0.4–14.4 px past the field for one frame with no
+  margin — and correctly attributed to the echo frame laying out inside
+  the width the *previous* frame declared. It is the app sizing the field
+  because it cannot use `fit` (it wants wrap), which is F44; with F44 the
+  field is `fit` + `maxWidth` + `wrap` and the margin goes. Until then the
+  margin is right.
+- **The chime the smoke test never played** (pomodoro). The app was fine
+  and the test was not, as the report says, and `clock` was the fix. The
+  mechanism, written down once: `step()` is events → ticks → one frame,
+  so a model dispatched between pumps is coalesced with whatever the
+  ticks owed before the frame is built, exactly as two clicks in one pump
+  are — a node declared for one frame needs that frame to exist, and a
+  fake `now` dispatched against a real tick guarantees it does not. That
+  is the loop's design, not a defect; F42 is the different half, where a
+  *runner* frame lands between the dispatch and the step.
+- **Deleting `keyFocus` fixed Tab** (pomodoro). A sink that holds focus
+  keeps every key, Tab included — `key_target`, ADR 0002 decision 3, a
+  terminal owns its keyboard — so a root sink given focus was a ring of
+  one. alpha.11's two rules (the root is never a Tab stop; a root sink
+  hears keys with nothing focused) are the remedy, and the release's
+  deletion line named the line. Nothing to build; the report's "probe a
+  deletion line before and after" is the right advice.
+- **"The release the pin becomes a palette"** (pomodoro, "what to
+  watch"). It already is one: `setTheme` takes role overrides on top of
+  the base — `{ appearance: 'dark', raised: '#000000', fg: '#ffcc99',
+  border_strong: … }` — and the stock tooltip paints `raised`,
+  `border_strong` and `fg`, so an LCARS-black tooltip with peach text is
+  one call today. What the report is reaching for past that is T4.
+- **`autofocus` is an edge** (mind map). Read right, and the app's
+  `keyFocus={selected && editing === null}` is what keeps it firing —
+  written for another reason and load-bearing for this one. Worth their
+  comment; not an entry.
+- **The preview baselines and the windowed smoke** (mind map). Theirs,
+  and their notes say so, for the sixth report.
+
+
 ## From the two virtual-list examples (2026-09-09)
 
 `examples/rust/virtual_list.rs` and `examples/node/virtual-list.tsx` were
@@ -603,7 +894,84 @@ closed the day it was filed); T1, the defect it turned up, closed
 2026-09-11, and T2 — the metrics, the axis the ADR scoped itself out of —
 closed the same day. Both are in
 [the archive](backlog/closed-2026-09.md#from-the-design-system-audit-2026-09-10-the-defect-and-the-axis-it-scoped-out)
-under this heading, and nothing from the round is open.
+under this heading. What is open under it is T4, filed 2026-09-12 out of
+the alpha.11 field reports and a question asked over them — not from the
+audit, but the audit's ADR is what it argues with.
+
+### `.` T4 — Tokens an app declares beside the theme, for the app whose palette is the design
+
+**The question**, raised 2026-09-12 over the alpha.11 reports: the theme
+is a *mechanism* — a value derived once a frame from a source (the OS,
+the OS plus a colour, a pin), readable in four bindings, painted by the
+stock widgets, with a `system` event when the source moves and an
+inspector that can name a role — and only the twenty-three roles ride it.
+An app that is not a conventional desktop app has a vocabulary of its own
+and gets none of the mechanism for it. The LCARS pomodoro is the case in
+hand: "its palette is the design", so it pins the base and paints
+everything else from constants of its own; the mind map gives all fifteen
+text runs a colour by hand. Both are doing what `examples/rust/*` did
+before ADR 0019 — three independent `struct Pal`s — one level up.
+
+**What ADR 0019 already declined, and why this is not that.** Its
+"considered options" reject *a registry of arbitrary named tokens* on
+three grounds: the stock widgets could not read it without agreeing on
+names, a typo is a missing colour at runtime, and no binding could be
+generated from it. All three are answered by keeping `Theme` exactly as
+it is — the closed struct is what the widgets read and the corpus pins —
+and adding an **open map beside it**, not inside it:
+
+- the widgets never read a token; they read roles, and an app that pins
+  `surface` to LCARS black has already made every stock widget follow it
+  (that is what `setTheme`'s role overrides are for, and the pomodoro's
+  "the pin becomes a palette" is reachable today);
+- a name nothing declared is a warning in the family `unknown-prop`
+  already has — `unknown-token`, naming the token and the node — not a
+  silent black;
+- a map of `name → colour` is one shape in every binding (`Value`
+  already carries it across Lua, Node and C), so nothing per token is
+  generated, and the *set* is the app's contract, not the schema's.
+
+**The shape to think about.** `setTheme({ appearance, ...roles,
+tokens: { peach: '#ffcc99', tomato: '#ff5555' } })`, or the same under
+`light`/`dark` keys so a token set can follow the appearance the way the
+roles do and be resolved per frame with them; read back as
+`theme().tokens.peach` (Lua `theme.tokens.peach`, C
+`kui_theme_token(name)`, Rust `ui.theme().token("peach")`); and — the
+part that makes it a mechanism rather than a `const PAL` in the app's own
+file — a colour prop that names a token instead of a value, `bg="$peach"`
+(`color`, `border`, `hoverBg`, the fragment parameters and the rest),
+resolved in the core when the node is opened, so the inspector shows
+*peach* on the node and a token change repaints without the view running.
+On Node's wire a colour is a `u32`; a token reference is a distinct
+encoding — the encoder resolves the name to an index the core hands out
+when the set is declared — so the common path pays nothing.
+
+**What is not obvious, and is the reason to think rather than build:**
+
+- *Is the prop reference worth its wire shape?* Without it the feature is
+  a map the app could hold itself, and for a JS or Lua app it buys only
+  the inspector's name and the cross-frame resolve. With it every colour
+  row grows a second encoding in four bindings and the corpus. Metrics
+  (T2) had the same question and answered it with a closed struct and no
+  prop reference; colour may answer differently because colours are where
+  the duplication was.
+- *Who else reads a host's tokens?* An extension filling a slot (ADR
+  0014) follows the host's *roles* already; a token it wants by name is a
+  contract the two make, which is fine — but the map is then the seam
+  between a host and a guest, and its warning matters more.
+- *Does a token follow the appearance?* The pomodoro's does not and the
+  mind map's does not; a token that does is a role wearing a new name,
+  and the answer may be "add the role" (ADR 0019's `raise` branch is the
+  thing a per-appearance token set would duplicate).
+- *Does the devtools' facts tab list them?* It should if they exist —
+  the panel is where "which peach is this" gets asked.
+
+**Condition:** one view in the repo or the field that wants a token by
+name in a prop — the LCARS app declaring its palette once and writing
+`bg="$peach"` on forty pills would be it — and the answer to the first
+question above written down first. ADR-sized; the ADR is the deliverable,
+and it may decline the prop half and keep the map.
+
 
 ## From the ABI-and-bindings audit (2026-09-10)
 
@@ -902,10 +1270,15 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** Nothing with a written ADR and no code, and nothing filed
-that is not either parked or deliberately unbuilt: after the round of
-2026-09-11 that took V1, D1, D2, T2, C26's last two steps and E3 together,
-the open list is C12, C13, C14, F36, B1 and V2–V8 — every one parked on a
+**Build next.** The alpha.11 field round, filed 2026-09-12: F42 and F43
+first, since both are defects that ship — the pump order in `runWindowed`
+plus the held seed's redraw, and `env_facts().viewport` reading `dt_area`
+with `size()` answering for the dock — then F44 (`wrap` on a single-line
+editor), then F45, F46, F47 and F49 in any order, each a small change with
+its guard named in the entry, and F48 once the bridge's activation signal
+is confirmed to reach the shell on all three platforms. T4 is an ADR to
+write, not code, and it waits for the condition in its entry. Before them
+the open list was C12, C13, C14, F36, B1 and V2–V8 — every one parked on a
 condition — and two entries with work in them: C29, a bisect of four
 bench rows, filed by the alpha.11 pre-tag round, and C30, always on top,
 filed 2026-09-12 as a per-frame fact in `window_title`'s shape with a
