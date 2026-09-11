@@ -115,6 +115,30 @@ field reports).
   more arm.
 - **`EditStore::declare` returns a `bool`** (the autofocus edge). Internal
   to the workspace — `pub(crate)` — and listed for anyone who copied it.
+- **The Node binary frame is version 7**, and `measureText` crosses it.
+  A `windows` entry's `activates` slot gained a third value for "unsaid",
+  so the popup default is the core's (`WindowConfig::of_kind`) and not the
+  encoder's; and `measureText(content, style, maxWidth)` is a method the
+  JS package adds to `Ctx` and `KuiWindow` (like `frame` and `setView`)
+  over the addon's `measureTextBinary` — the text is encoded like a
+  frame's, so a measured label and a drawn one are flattened by the same
+  code. A caller on the class itself calls the same name; only a caller
+  of the raw addon's `measureText` with a JSON tree has to change. The
+  encoder and the addon ship together and the version check says so if
+  they do not.
+- **`Enter` and `Keyframe` deref to `Slots`.** `enter.bg` still reads the
+  slot and the builders are unchanged; code that *constructed* either by
+  struct literal writes `Enter { dx, dy, slots: Slots { bg, .. } }` now.
+  Nothing in the workspace did.
+- **`kui::widgets::context_menu` and `menu_panel` return the root `Key`**
+  rather than a `MenuNodes` with the row keys: the rows are known by
+  `OriginId::MENU` / `OriginId::MENU_BAR` now, the way the devtools' nodes
+  are by `OriginId::DEVTOOLS`, and an extension list can never reach any of
+  the three. A Node menu row with `id: null` posts its label, as a row with
+  no `id` does; it posted `null`.
+- **`KuiSpec.tooltip` is floated by the core**, on `kui_close`, and
+  `MouseButtonName` / `EditKeyName` in `index.d.ts` are generated from
+  `EditKey::ALL` / `MouseButton::NAMED`. Neither changes a call.
 
 ### Added
 
@@ -262,6 +286,22 @@ field reports).
 
 ### Fixed
 
+- **A translucent `image` that was the frame's only fade painted opaque,
+  and a floating `image` inside a clipped box vanished when it was the
+  frame's only float.** The pass-skipping flags (C15) were set by hand at
+  six builder doors and only the box door set all nine — a leaf that was
+  the frame's only user of a feature turned the pass off. `Tree::note`
+  sets them for every push and every root now; pinned in tests/images.rs.
+- **The ghost of a departing `line` filled its box with the stroke
+  colour.** The exit painter was a second copy of the live one, and only
+  the live one knew a stroke's `bg` is its colour (ADR 0010); there is one
+  painter now. Pinned in tests/line.rs.
+- **The text cache's byte budget could not reach a long line's record**
+  (`evict_to_budget` walked one of the two maps). Small — the chunks it
+  shaped were always reachable — and the two maps now evict together.
+- **A keyed `line`'s label resolves through `key_of` / `keyOf`** in every
+  binding, as a box's and a `cells` grid's do; `line_node_keyed` never
+  recorded it.
 - **The drawn context menu came up under the page's scrollbar**, and so
   did every float that reached a scroller's edge; a press on a non-modal
   float over the track jumped the scroller instead of clicking the float;

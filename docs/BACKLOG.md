@@ -20,7 +20,7 @@ at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
 
-What is left here is eight entries: three parked headings — C12, C13 and C14,
+What is left here: three parked headings — C12, C13 and C14,
 each waiting for a view that wants it — the two the design-system audit left
 open on 2026-09-10 (T1, a defect that ships today; T2, the axis ADR 0019
 scoped itself out of; T3 closed the same day, when every example in the repo
@@ -31,7 +31,9 @@ on 2026-09-09 and whose last two wait for a view (C25 beside it closed the day
 it was filed), and F36, which fell out
 of building the last two of the four entries the two alpha.9 field reports and
 the bake-off produced, and which is filed rather than built on purpose (the
-only host driving its own audio device today is the runner). Everything else
+only host driving its own audio device today is the runner) — and AR1–AR6
+from the architecture review of 2026-09-11, four filed with the reason each
+was not built beside it and two small things the building noticed. Everything else
 that has been filed has shipped: F16–F23 from the two alpha.7 field reports
 closed the day they were filed (2026-09-07), F25–F31 from the alpha.8 ones by
 the day after (F27 last, on 2026-09-08), C16–C23 landed whole for alpha.9, and
@@ -906,6 +908,124 @@ core's own vocabulary, so the icons should be too: a small set of
 16 px, in the theme's `muted`/`accent`, with the lit one filled — a
 dock-position icon that *is* a little window with the pane shaded. Wanted
 by the round that added the buttons (2026-09-11); not blocking.
+
+## From the architecture review (2026-09-11)
+
+A review of the tree for duplication — four sub-agents over the bindings,
+the runtime, the stores and the test infrastructure, each claim checked
+against the code — produced thirteen candidates. Ten were built the same
+day, one commit each (the review report itself lives outside the repo):
+the frame's pass flags noted once in `Tree::note` (two defects found on the
+way — a lone translucent `image` painted opaque, a lone floating one
+vanished under its parent's clip); one painter for a live node and its
+ghost (a departing `line` had filled its box); `Core::open_from` so no
+binding decides when a tooltip floats; `measureText` through the encoder
+and the JSON lowering D2 left behind deleted; the three store protocols
+in `retain`; one slot set behind `Enter` and `Keyframe`;
+`kui_core::testing`; the dispatcher's idioms named; menu rows, a menu bar
+and a window declaration read by the core from plain data; the menus known
+by origin like the devtools; the env reading through `ENV_FIELDS::get`;
+one byte↔paragraph conversion in the text cache; the runner in five files;
+one Node smoke roster. Three were filed rather than built, each for a
+reason a future round should have to argue with, and two small things
+noticed on the way are here too.
+
+### `.` AR1 — Readback shapes have no `to_value`
+
+Events cross as `Value` and each binding converts once; queries do not.
+`ScrollGeometry`, `TextHit`, `Rect`, `NodeInfo`, `AccessTree`,
+`WindowCommand`, `Warning`, `AudioCommand` and `TextMetrics` are each
+serialised by hand in Node (~480 lines of `JsonMap::insert`, camelCase)
+and, where Lua exposes them, again in Lua (snake), and the `Sizing`
+display form (`fit`/`grow(w)`/`Npx`/`N%`) is spelled in the devtools and
+again in `node_info_json`. `to_value()` on the readback types in the core,
+with Node doing one mechanical snake→camel pass, would take ~400 lines out
+of kui-node and make the shapes testable without napi. **Filed, not
+built, because Node's key names are public API** hand-typed in
+`index.d.ts` and read widely by test.mjs and the corpus adapter, so the
+move needs a key-set pin written first — a test that the generated key set
+equals today's, per shape — and the few non-mechanical names (`valueNow`
+for `number`, `posInSet`) decided one way. The pin is the first commit of
+whoever builds this.
+
+### `.` AR2 — `abi_parity`'s prototype rows restate the `extern "C" fn`s
+
+Every C entry point exists three times: the `extern "C" fn` in
+`kui-ffi/src/*.rs`, the prose-bearing prototype in `include/kui.h`, and
+the `abi_fn!` row in `abi_parity.rs` (179 rows, ~1,100 lines). The row is
+type-pinned, so it cannot be wrong, only missing, and
+`every_entry_point_is_pinned` catches missing — it works, at one line of
+restatement per function. ADR 0020 rejected cbindgen for the *header*
+(the prose would go); the middle path it did not weigh is emitting the
+*row* from an attribute on the function itself, the way P5 generates
+`index.d.ts`'s addon half from `#[napi]`. **Filed, not built:** it costs
+a proc-macro dependency and a build step in kui-ffi for a list that only
+hurts when it grows, and the safety net it would replace is already
+whole. Build it the round the row count crosses two hundred.
+
+### `.` AR3 — The two selection geometries share their arithmetic by hand
+
+ADR 0017 decision 4 makes a `cells` grid its own scope kind with its own
+coordinate space, so two selection implementations are by design. What is
+not by design: every dispatcher arm asks `cells_id_of_ref(scope).is_some()`
+and then writes the byte version and the cell version of the same control
+flow side by side (`dispatch.rs`: the mouse-down grain arming, the
+cursor-moved fork, the force-click fork), `select.rs`'s `cols_on` and
+`range_in` are the same row-clip over `(row, offset)` pairs, and the two
+`extend_*_grained` bodies in `select_api.rs` share the "which side of the
+anchor decides which edge of each unit" logic with different end types.
+One row-clip helper and one grained-extend taking hit/unit/build as
+closures would fold the three forks. **Filed, not built:** it sits one
+step from re-litigating decision 4 (a merged `Selection` type would), and
+the corpus's `selection`/`cells` scenes plus tests/selection,
+cells_selection and virtual_selection are the pin whoever builds it must
+keep green.
+
+### `.` AR4 — The smoke round is written three times
+
+`smoke-examples.sh` and `smoke-windows.ps1` are the same program in two
+shells (the Windows runner has no bash), and `smoke-headless.sh` is its
+headless half: read `cargo metadata`, build, loop examples × bases, run
+with `KUI_SMOKE_FRAMES`/`--headless`, time out, print `ok|FAILED|HUNG`,
+aggregate. The harness crate already parses the manifests and owns the
+`--headless` contract, so one `cargo run -p kui-devtools --bin smoke --
+[--headless|--windowed] [--frames N] [--base light,dark] [--node]` would
+replace all three and cannot drift between platforms. **Filed, not
+built:** the Windows half cannot be verified on this machine, and a smoke
+round that false-fails on one platform gets disabled — the same reason
+bench-check is not in CI. Build it on a round that has both runners at
+hand; the Node roster half (package.json's `kui.windowed`/`kui.headless`,
+pinned by the harness) landed on 2026-09-11 and is what it would read.
+
+### `.` AR5 — `cells_at` neither eases nor resolves hover
+
+Every other leaf door (`text_edit`, `image_node`, `line_with_key`) calls
+`ease_spec` and `resolve_hover_style` before the push; `cells_at` calls
+neither, so a `cells` grid that declares `transition` and an `opacity`
+change snaps, and one with `hoverBg` does not light. Seen while moving the
+pass flags into `Tree::push` (2026-09-11) and left as it was, because it
+is a behaviour and not a copy. Two lines, plus a test in tests/cells.rs
+that a hovered grid takes its `hoverBg` — and a decision whether a
+terminal's screen should ease at all (the grid is a picture the app
+redraws every frame; a tween over it may be wrong rather than missing).
+
+### `.` AR6 — `text.rs` dispatches on `long` at fifteen sites
+
+Every public text operation opens with `if ft.long { self.long.get(..) }
+else { self.cache.get(..) }`: two maps behind one `bool`, dispatched in
+`content`, `readd`, `add`, `measure`, `emit`, `content_len`,
+`scope_runs`, `long_place`, `hit_at`, `caret_at`, `intrinsic`, `wrapped`
+and the eviction loops (one of which forgot the second map until
+2026-09-11). Not duplicated *algorithm* — the chunked shaping is its own
+code by design (C19) — but duplicated *dispatch*, and it leaks:
+`ScopeText::{Run, Long}` re-derives the enum at `scope_runs`, and `readd`
+probes both maps to rediscover which one it is. One entry enum in one map
+with one `last_used`/`bytes` would make the long/short decision once, at
+`add`. Same cost per node (an enum match for a bool branch; the
+discriminant is per cache entry, not per node). **Filed, not built:** a
+large diff over the pointer-move path for the same behaviour, wanted
+before the next feature that has to be added to both maps rather than
+now.
 
 ## From the paint-order round (2026-09-10)
 

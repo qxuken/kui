@@ -48,7 +48,11 @@ use crate::{Result, err, value_of};
 /// terminal's selection survives a scroll (ADR 0017, decision 4). A slot
 /// in the middle of the cells op rather than a new op, so the bump is what
 /// keeps an older encoder's stream from being read as if it had one.
-pub const VERSION: u32 = 6;
+/// v7: a `windows` entry's `activates` slot is 0/1/2, 2 for "unsaid" — the
+/// kind's own default, decided by the core (`WindowConfig::of_kind`) and
+/// not by the encoder; and `measureText` sends its text as one encoded
+/// element (`measure_binary`) rather than a JSON tree.
+pub const VERSION: u32 = 7;
 
 pub const OP_END: u32 = 0;
 pub const OP_ROOT: u32 = 1;

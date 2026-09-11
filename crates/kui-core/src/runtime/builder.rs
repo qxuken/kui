@@ -801,6 +801,8 @@ impl Core {
         }
         let key = self.child_key(label);
         self.line_with_key(key, points, stroke, spec);
+        // Like every other keyed door: the label `key_of` resolves through.
+        self.key_labels.push(key, label);
     }
 
     /// [`Self::line_node`] under a data index; see [`Self::open_indexed`].
