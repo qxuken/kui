@@ -15,56 +15,26 @@
 //! flattens them per slot into the tracks [`crate::anim::AnimStore::sample`]
 //! walks.
 
-use crate::color::Color;
-use crate::schema::{color_hex_str, color_num, sizing_str};
-use crate::spec::Sizing;
+use crate::slots::{Slots, slot_builders};
 use crate::value::Value;
 
 /// One stop. Every field is optional: `at` resolves by position, and a
-/// slot a stop doesn't name is left to its neighbours.
+/// slot a stop doesn't name is left to its neighbours. Derefs to its
+/// [`Slots`], so `stop.bg` reads the slot.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Keyframe {
     /// Position in the cycle, 0..=1; None spreads evenly.
     pub at: Option<f32>,
-    /// Only the amount animates, in the form the node's own `width`
-    /// declares (a `fit` width never moves).
-    pub width: Option<Sizing>,
-    pub height: Option<Sizing>,
-    pub bg: Option<Color>,
-    /// All four corners.
-    pub radius: Option<f32>,
-    /// Group opacity, 0..=1.
-    pub opacity: Option<f32>,
+    /// Width, height, bg, radius and opacity — the slots an entrance names
+    /// too.
+    pub slots: Slots,
 }
+
+slot_builders!(Keyframe);
 
 impl Keyframe {
     pub fn at(mut self, at: f32) -> Self {
         self.at = Some(at);
-        self
-    }
-
-    pub fn width(mut self, width: Sizing) -> Self {
-        self.width = Some(width);
-        self
-    }
-
-    pub fn height(mut self, height: Sizing) -> Self {
-        self.height = Some(height);
-        self
-    }
-
-    pub fn bg(mut self, bg: Color) -> Self {
-        self.bg = Some(bg);
-        self
-    }
-
-    pub fn radius(mut self, radius: f32) -> Self {
-        self.radius = Some(radius);
-        self
-    }
-
-    pub fn opacity(mut self, opacity: f32) -> Self {
-        self.opacity = Some(opacity.clamp(0.0, 1.0));
         self
     }
 }
@@ -87,6 +57,9 @@ pub fn parse(v: &Value) -> Result<Vec<Keyframe>, String> {
         let mut kf = Keyframe::default();
         for (k, v) in fields {
             let bad = |what: &str| format!("keyframe {i}: {what}");
+            if kf.slots.parse_field(k, v).map_err(|e| bad(&e))? {
+                continue;
+            }
             match k.as_str() {
                 "at" => {
                     let at = v
@@ -102,55 +75,12 @@ pub fn parse(v: &Value) -> Result<Vec<Keyframe>, String> {
                     last_at = at;
                     kf.at = Some(at);
                 }
-                "width" => kf.width = Some(sizing_value(v).map_err(|e| bad(&e))?),
-                "height" => kf.height = Some(sizing_value(v).map_err(|e| bad(&e))?),
-                "bg" => kf.bg = Some(color_value(v).map_err(|e| bad(&e))?),
-                "radius" => {
-                    kf.radius =
-                        Some(v.as_float().ok_or_else(|| bad("radius must be a number"))? as f32)
-                }
-                "opacity" => {
-                    let o = v
-                        .as_float()
-                        .ok_or_else(|| bad("opacity must be a number"))?
-                        as f32;
-                    kf.opacity = Some(o.clamp(0.0, 1.0));
-                }
                 other => return Err(bad(&format!("unknown field {other:?}"))),
             }
         }
         frames.push(kf);
     }
     Ok(frames)
-}
-
-pub(crate) fn sizing_value(v: &Value) -> Result<Sizing, String> {
-    match v {
-        Value::Int(_) | Value::Float(_) => Ok(Sizing::Fixed(v.as_float().unwrap_or(0.0) as f32)),
-        Value::Str(s) => sizing_str(s),
-        Value::Map(_) => {
-            if let Some(g) = v.get("grow").and_then(Value::as_float) {
-                Ok(Sizing::Grow(g as f32))
-            } else if let Some(p) = v.get("percent").and_then(Value::as_float) {
-                Ok(Sizing::Percent(p as f32))
-            } else if let Some(p) = v.get("pct").and_then(Value::as_float) {
-                // The Lua spelling.
-                Ok(Sizing::Percent(p as f32 / 100.0))
-            } else {
-                Err("sizing object needs grow or percent".into())
-            }
-        }
-        _ => Err("bad sizing (fit | grow | number | \"N%\")".into()),
-    }
-}
-
-pub(crate) fn color_value(v: &Value) -> Result<Color, String> {
-    match v {
-        Value::Int(n) => Ok(color_num(*n as u32)),
-        Value::Float(n) => Ok(color_num(*n as u32)),
-        Value::Str(s) => color_hex_str(s),
-        _ => Err("color must be a 0xRRGGBBAA number or \"#hex\" string".into()),
-    }
 }
 
 /// Every stop's position: declared `at`s kept, the rest spread evenly
@@ -222,6 +152,8 @@ pub(crate) fn track(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::color::Color;
+    use crate::spec::Sizing;
 
     fn stop(fields: &[(&'static str, Value)]) -> Value {
         Value::map(fields.iter().cloned())

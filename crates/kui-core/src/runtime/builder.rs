@@ -6,6 +6,7 @@
 use super::*;
 
 use crate::schema::{Identity, PropsOut};
+use crate::slots::one;
 
 /// What a node opened through [`Core::open_from`] holds: a box (left open
 /// for its children), a fragment (likewise), a `cells` grid or a stroke
@@ -31,24 +32,17 @@ impl Tracks {
     fn of(spec: &NodeSpec) -> Self {
         let frames = &spec.anim().keyframes;
         let offsets = keyframes::offsets(frames);
-        let one = |v: f32| [v, 0.0, 0.0, 0.0];
-        let sizing = |base: Sizing, pick: fn(&Keyframe) -> Option<Sizing>| {
-            let base = base.amount()?;
-            keyframes::track(frames, &offsets, one(base), |k| pick(k)?.amount().map(one))
+        // Each slot's stops in lanes, the node's own value at the ends the
+        // stops do not reach; a sizing with no amount (`fit`) has no track.
+        let track = |slot: Slot, base: Option<[f32; 4]>| {
+            keyframes::track(frames, &offsets, base?, |k| k.lanes(slot))
         };
-        let bg = spec.style.bg;
         Tracks {
-            width: sizing(spec.layout.width, |k| k.width),
-            height: sizing(spec.layout.height, |k| k.height),
-            bg: keyframes::track(frames, &offsets, [bg.r, bg.g, bg.b, bg.a], |k| {
-                k.bg.map(|c| [c.r, c.g, c.b, c.a])
-            }),
-            radius: keyframes::track(frames, &offsets, spec.style.radius, |k| {
-                k.radius.map(|r| [r; 4])
-            }),
-            opacity: keyframes::track(frames, &offsets, one(spec.style.opacity), |k| {
-                k.opacity.map(one)
-            }),
+            width: track(Slot::Width, spec.layout.width.amount().map(one)),
+            height: track(Slot::Height, spec.layout.height.amount().map(one)),
+            bg: track(Slot::Bg, Some(spec.style.bg.lanes())),
+            radius: track(Slot::Radius, Some(spec.style.radius)),
+            opacity: track(Slot::Opacity, Some(one(spec.style.opacity))),
         }
     }
 
@@ -114,69 +108,30 @@ impl Core {
         let tracks = (!spec.anim().keyframes.is_empty()).then(|| Tracks::of(spec));
         let track = |slot: Slot| tracks.as_ref().and_then(|k| k.get(slot));
         let enter = spec.anim().enter.unwrap_or_default();
-        let mut sizing = |slot: Slot, s: Sizing, from: Option<Sizing>| {
-            let Some(v) = s.amount() else {
-                return s;
-            };
-            let from = from.and_then(|f| f.amount()).map(|f| [f, 0.0, 0.0, 0.0]);
-            let eased = match track(slot) {
-                Some(track) => anim.sample(track, t).map_or(v, |v| v[0]),
-                None => anim.drive(slot, from, [v, 0.0, 0.0, 0.0], t, true)[0],
-            };
-            s.with_amount(eased)
+        // Each slot: sampled from its track when keyframed, else tweened
+        // toward its declared value from where the entrance says it starts.
+        let mut ease = |slot: Slot, target: [f32; 4]| match track(slot) {
+            Some(track) => anim.sample(track, t).unwrap_or(target),
+            None => anim.drive(slot, enter.lanes(slot), target, t, true),
         };
-        spec.layout.width = sizing(Slot::Width, spec.layout.width, enter.width);
-        spec.layout.height = sizing(Slot::Height, spec.layout.height, enter.height);
-        let mut color = |slot: Slot, c: Color, from: Option<Color>| {
-            let target = [c.r, c.g, c.b, c.a];
-            let from = from.map(|f| [f.r, f.g, f.b, f.a]);
-            let v = match track(slot) {
-                Some(track) => anim.sample(track, t).unwrap_or(target),
-                None => anim.drive(slot, from, target, t, true),
-            };
-            Color {
-                r: v[0],
-                g: v[1],
-                b: v[2],
-                a: v[3],
-            }
+        let mut sizing = |slot: Slot, s: Sizing| match s.amount() {
+            Some(v) => s.with_amount(ease(slot, one(v))[0]),
+            None => s,
         };
-        spec.style.bg = color(Slot::Bg, spec.style.bg, enter.bg);
-        spec.style.border_color = color(Slot::Border, spec.style.border_color, None);
-        spec.style.shadow.color = color(Slot::ShadowColor, spec.style.shadow.color, None);
+        spec.layout.width = sizing(Slot::Width, spec.layout.width);
+        spec.layout.height = sizing(Slot::Height, spec.layout.height);
+        let mut color = |slot: Slot, c: Color| Color::from_lanes(ease(slot, c.lanes()));
+        spec.style.bg = color(Slot::Bg, spec.style.bg);
+        spec.style.border_color = color(Slot::Border, spec.style.border_color);
+        spec.style.shadow.color = color(Slot::ShadowColor, spec.style.shadow.color);
         let sh = spec.style.shadow;
-        let geom = anim.drive(
-            Slot::Shadow,
-            None,
-            [sh.dx, sh.dy, sh.blur, sh.spread],
-            t,
-            true,
-        );
+        let geom = ease(Slot::Shadow, [sh.dx, sh.dy, sh.blur, sh.spread]);
         spec.style.shadow.dx = geom[0];
         spec.style.shadow.dy = geom[1];
         spec.style.shadow.blur = geom[2].max(0.0);
         spec.style.shadow.spread = geom[3];
-        spec.style.opacity = match track(Slot::Opacity) {
-            Some(track) => anim.sample(track, t).map_or(spec.style.opacity, |v| v[0]),
-            None => anim.drive(
-                Slot::Opacity,
-                enter.opacity.map(|o| [o, 0.0, 0.0, 0.0]),
-                [spec.style.opacity, 0.0, 0.0, 0.0],
-                t,
-                true,
-            )[0],
-        }
-        .clamp(0.0, 1.0);
-        spec.style.radius = match track(Slot::Radius) {
-            Some(track) => anim.sample(track, t).unwrap_or(spec.style.radius),
-            None => anim.drive(
-                Slot::Radius,
-                enter.radius.map(|r| [r; 4]),
-                spec.style.radius,
-                t,
-                true,
-            ),
-        };
+        spec.style.opacity = ease(Slot::Opacity, one(spec.style.opacity))[0].clamp(0.0, 1.0);
+        spec.style.radius = ease(Slot::Radius, spec.style.radius);
     }
 
     /// The root node's key — for hover/press queries or `set_key_focus` when

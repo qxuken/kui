@@ -15,29 +15,24 @@
 //! memory of a node it did not draw last frame, which is what a dismissed
 //! and re-shown toast wants).
 
-use crate::color::Color;
-use crate::keyframes::{color_value, sizing_value};
-use crate::spec::Sizing;
+use crate::slots::{Slots, slot_builders};
 use crate::value::Value;
 
 /// Where a node's slots start on first sight. Every field is optional: a
-/// slot `enter` doesn't name simply snaps as it always did.
+/// slot `enter` doesn't name simply snaps as it always did. Derefs to its
+/// [`Slots`], so `enter.bg` reads the slot.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Enter {
     /// Position offset (logical px) the node eases in from — `dx: -300`
     /// slides in from the left.
     pub dx: f32,
     pub dy: f32,
-    /// Only the amount animates, in the form the node's own `width`
-    /// declares (a `fit` width never moves).
-    pub width: Option<Sizing>,
-    pub height: Option<Sizing>,
-    pub bg: Option<Color>,
-    /// All four corners.
-    pub radius: Option<f32>,
-    /// Group opacity: `0` is the fade-in a whole panel wants.
-    pub opacity: Option<f32>,
+    /// Width, height, bg, radius and opacity — the slots a keyframe stop
+    /// names too.
+    pub slots: Slots,
 }
+
+slot_builders!(Enter);
 
 impl Enter {
     /// Slide in from `dx`/`dy` px away.
@@ -52,31 +47,6 @@ impl Enter {
     pub fn offset(mut self, dx: f32, dy: f32) -> Self {
         self.dx = dx;
         self.dy = dy;
-        self
-    }
-
-    pub fn width(mut self, width: Sizing) -> Self {
-        self.width = Some(width);
-        self
-    }
-
-    pub fn height(mut self, height: Sizing) -> Self {
-        self.height = Some(height);
-        self
-    }
-
-    pub fn bg(mut self, bg: Color) -> Self {
-        self.bg = Some(bg);
-        self
-    }
-
-    pub fn radius(mut self, radius: f32) -> Self {
-        self.radius = Some(radius);
-        self
-    }
-
-    pub fn opacity(mut self, opacity: f32) -> Self {
-        self.opacity = Some(opacity.clamp(0.0, 1.0));
         self
     }
 
@@ -97,6 +67,9 @@ pub fn parse(v: &Value) -> Result<Enter, String> {
     let mut e = Enter::default();
     for (k, v) in fields {
         let bad = |what: &str| format!("enter: {what}");
+        if e.slots.parse_field(k, v).map_err(|e| bad(&e))? {
+            continue;
+        }
         let num = |what: &str| {
             v.as_float()
                 .map(|n| n as f32)
@@ -105,11 +78,6 @@ pub fn parse(v: &Value) -> Result<Enter, String> {
         match k.as_str() {
             "dx" => e.dx = num("dx")?,
             "dy" => e.dy = num("dy")?,
-            "width" => e.width = Some(sizing_value(v).map_err(|e| bad(&e))?),
-            "height" => e.height = Some(sizing_value(v).map_err(|e| bad(&e))?),
-            "bg" => e.bg = Some(color_value(v).map_err(|e| bad(&e))?),
-            "radius" => e.radius = Some(num("radius")?),
-            "opacity" => e.opacity = Some(num("opacity")?.clamp(0.0, 1.0)),
             other => return Err(bad(&format!("unknown field {other:?}"))),
         }
     }
@@ -119,6 +87,8 @@ pub fn parse(v: &Value) -> Result<Enter, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::color::Color;
+    use crate::spec::Sizing;
 
     #[test]
     fn parses_prop_shaped_values() {

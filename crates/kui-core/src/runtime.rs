@@ -28,7 +28,7 @@ use crate::input::{
     ScrollAxis, ScrollRegion, ScrollbarRegion, UiEvent,
 };
 use crate::key::{Key, LabelIndex};
-use crate::keyframes::{self, Keyframe};
+use crate::keyframes;
 use crate::layout::{self, TextMeasure};
 use crate::line::Stroke;
 use crate::resources::{FontId, Resources};

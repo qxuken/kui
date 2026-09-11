@@ -239,15 +239,7 @@ impl Ghost {
         let e = &self.exit;
         Some(Playback {
             offset: Vec2::new(e.dx * p, e.dy * p),
-            bg: e.bg.map(|to| {
-                let from = root.style.bg;
-                Color {
-                    r: lerp(from.r, to.r),
-                    g: lerp(from.g, to.g),
-                    b: lerp(from.b, to.b),
-                    a: lerp(from.a, to.a),
-                }
-            }),
+            bg: e.bg.map(|to| root.style.bg.lerp(to, p)),
             radius: e
                 .radius
                 .map(|to| root.style.radius.map(|from| lerp(from, to))),

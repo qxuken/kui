@@ -74,6 +74,31 @@ impl Color {
     /// animation slots already do channel by channel, and the one a view
     /// gets if it lerps two colours itself. `t` outside 0..=1 extrapolates
     /// rather than clamping, so a caller can overshoot on purpose.
+    /// The colour as a tween's four lanes.
+    #[inline]
+    pub(crate) fn lanes(self) -> [f32; 4] {
+        [self.r, self.g, self.b, self.a]
+    }
+
+    /// The inverse of [`Self::lanes`].
+    #[inline]
+    pub(crate) fn from_lanes(v: [f32; 4]) -> Color {
+        Color {
+            r: v[0],
+            g: v[1],
+            b: v[2],
+            a: v[3],
+        }
+    }
+
+    /// Every channel, alpha included, `t` of the way to `other` — what a
+    /// tween does to a colour. [`Self::mix`] keeps this colour's alpha.
+    pub fn lerp(self, other: Color, t: f32) -> Color {
+        Color::from_lanes(std::array::from_fn(|i| {
+            self.lanes()[i] + (other.lanes()[i] - self.lanes()[i]) * t
+        }))
+    }
+
     pub fn mix(self, other: Color, t: f32) -> Color {
         Color {
             r: self.r + (other.r - self.r) * t,

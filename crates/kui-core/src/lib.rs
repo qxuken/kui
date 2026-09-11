@@ -40,6 +40,7 @@ pub mod scroll;
 pub mod select;
 pub mod session;
 pub mod slot;
+pub mod slots;
 pub mod spec;
 pub mod stats;
 pub mod text;

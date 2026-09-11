@@ -211,24 +211,64 @@ struct Tween {
 }
 
 impl Tween {
-    /// Where this tween's current leg stands at `now`, without touching it.
-    /// A settled leg (`start` infinitely far back) reads as its target.
-    fn eased_at(&self, now: f64) -> [f32; 4] {
+    /// A tween at rest on `value`: a leg that began at `start` — `0.0`
+    /// with no clock, infinitely long ago with one, so nothing is owed
+    /// until a retarget.
+    fn settled(value: [f32; 4], start: f64, last_time: f64, t: Transition, frame_no: u64) -> Self {
+        Tween {
+            from: value,
+            to: value,
+            value,
+            start,
+            velocity: [0.0; 4],
+            last_time,
+            duration_ms: t.duration_ms,
+            easing: t.easing,
+            last_used: frame_no,
+        }
+    }
+
+    /// A leg from `from` to `to`, begun `now` on the transition's curve.
+    fn leg(from: [f32; 4], to: [f32; 4], now: f64, t: Transition, frame_no: u64) -> Self {
+        Tween {
+            from,
+            to,
+            value: from,
+            start: now,
+            velocity: [0.0; 4],
+            last_time: now,
+            duration_ms: t.duration_ms,
+            easing: t.easing,
+            last_used: frame_no,
+        }
+    }
+
+    /// How far along its leg the tween is at `now`, 0..=1: complete when
+    /// the leg has no duration or began infinitely long ago.
+    #[inline]
+    fn progress_at(&self, now: f64) -> f32 {
         let dur = self.duration_ms.max(0.0) as f64 / 1000.0;
-        let p = if dur <= 0.0 {
+        if dur <= 0.0 {
             1.0
         } else {
             (((now - self.start) / dur) as f32).clamp(0.0, 1.0)
-        };
+        }
+    }
+
+    /// The leg's value at progress `p`, eased.
+    #[inline]
+    fn at(&self, p: f32) -> [f32; 4] {
         if p >= 1.0 {
             return self.to;
         }
         let e = self.easing.apply(p);
-        let mut v = [0.0; 4];
-        for (i, out) in v.iter_mut().enumerate() {
-            *out = self.from[i] + (self.to[i] - self.from[i]) * e;
-        }
-        v
+        std::array::from_fn(|i| self.from[i] + (self.to[i] - self.from[i]) * e)
+    }
+
+    /// Where this tween's current leg stands at `now`, without touching it.
+    /// A settled leg (`start` infinitely far back) reads as its target.
+    fn eased_at(&self, now: f64) -> [f32; 4] {
+        self.at(self.progress_at(now))
     }
 
     /// Advances a spring toward `to` from `last_time` to `now`; returns
@@ -421,49 +461,25 @@ impl NodeAnim<'_> {
         let entry = &mut self.slots[slot as usize];
         let stale = entry.is_none_or(|t| t.last_used + 1 < frame_no);
         let Some(now) = now else {
-            *entry = Some(Tween {
-                from: target,
-                to: target,
-                value: target,
-                start: 0.0,
-                velocity: [0.0; 4],
-                last_time: 0.0,
-                duration_ms: transition.duration_ms,
-                easing: transition.easing,
-                last_used: frame_no,
-            });
+            *entry = Some(Tween::settled(target, 0.0, 0.0, transition, frame_no));
             return target;
         };
         if stale {
             match enter_from {
                 // The entrance: a leg from the declared start, begun now.
                 Some(from) if from != target => {
-                    *entry = Some(Tween {
-                        from,
-                        to: target,
-                        value: from,
-                        start: now,
-                        velocity: [0.0; 4],
-                        last_time: now,
-                        duration_ms: transition.duration_ms,
-                        easing: transition.easing,
-                        last_used: frame_no,
-                    });
+                    *entry = Some(Tween::leg(from, target, now, transition, frame_no));
                 }
                 // Settled from the start: a leg that began infinitely long
                 // ago is complete, so nothing is owed until a retarget.
                 _ => {
-                    *entry = Some(Tween {
-                        from: target,
-                        to: target,
-                        value: target,
-                        start: f64::NEG_INFINITY,
-                        velocity: [0.0; 4],
-                        last_time: now,
-                        duration_ms: transition.duration_ms,
-                        easing: transition.easing,
-                        last_used: frame_no,
-                    });
+                    *entry = Some(Tween::settled(
+                        target,
+                        f64::NEG_INFINITY,
+                        now,
+                        transition,
+                        frame_no,
+                    ));
                     return target;
                 }
             }
@@ -503,21 +519,11 @@ impl NodeAnim<'_> {
             tw.duration_ms = transition.duration_ms;
             tw.easing = transition.easing;
         }
-        let dur = tw.duration_ms.max(0.0) as f64 / 1000.0;
-        let p = if dur <= 0.0 {
-            1.0
-        } else {
-            (((now - tw.start) / dur) as f32).clamp(0.0, 1.0)
-        };
+        let p = tw.progress_at(now);
         if p < 1.0 {
             *self.active = true;
-            let e = tw.easing.apply(p);
-            for i in 0..4 {
-                tw.value[i] = tw.from[i] + (tw.to[i] - tw.from[i]) * e;
-            }
-        } else {
-            tw.value = tw.to;
         }
+        tw.value = tw.at(p);
         tw.value
     }
 }
