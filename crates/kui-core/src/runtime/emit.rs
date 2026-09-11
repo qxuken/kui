@@ -32,6 +32,22 @@ const SCROLLBAR_FADE: f64 = 0.25;
 const FOCUS_RING_GAP: f32 = 2.0;
 const FOCUS_RING_W: f32 = 2.0;
 
+/// The disjoint borrows one box's paint needs, split off the core field by
+/// field — a macro rather than a method so the tree, the stroke list and a
+/// ghost's points can stay borrowed beside them.
+macro_rules! painter {
+    ($core:expr) => {
+        Painter {
+            display: &mut $core.display,
+            text: &mut $core.text,
+            edit: &mut $core.edit,
+            cells: &mut $core.cells,
+            atlas: &mut $core.atlas,
+            session: &$core.session,
+        }
+    };
+}
+
 impl Core {
     /// The scrollbar thumb's colour at rest and while hovered or dragged:
     /// the node's own where it declared one, else the theme's. A wash over
@@ -55,41 +71,14 @@ impl Core {
         hits: &mut Vec<HitRegion>,
         scroll_regions: &mut Vec<ScrollRegion>,
     ) {
-        let Paint {
-            clip,
-            clip_id,
-            scale,
-            opacity,
-        } = paint;
-        let clip_px = clip.scaled(scale);
+        let Paint { clip, scale, .. } = paint;
         // Behind a modal a node still draws, and stops taking input.
         let interactive = self.interactive(i);
         let spec = &self.tree.specs[i];
         let style = spec.style;
-        let first_quad = self.display.quads.len();
-        // A stroke's `bg` is its colour, not a box to fill, and it emits no
-        // hit region: it takes no input (ADR 0010, decision 7).
+        // A stroke emits no hit region: it takes no input (ADR 0010,
+        // decision 7).
         let is_line = matches!(self.tree.content[i], NodeContent::Line(_));
-        if style.shadow.is_visible() {
-            self.display
-                .quads
-                .push(shadow_quad(&style, rect, clip_id, scale));
-        }
-        if !is_line
-            && (style.bg.is_visible() || (style.border_w > 0.0 && style.border_color.is_visible()))
-        {
-            self.display.quads.push(Quad {
-                rect: rect.scaled(scale),
-                color: style.bg,
-                border_color: style.border_color,
-                radius: style.radius.map(|r| r * scale),
-                border_w: style.border_w * scale,
-                blur: 0.0,
-                kind: QuadKind::Solid,
-                clip: clip_id,
-                uv: [0; 4],
-            });
-        }
         if spec.hover_tracked() && interactive && !is_line {
             let parent = self.tree.parent[i];
             let parent_rect = if parent == NIL {
@@ -134,23 +123,56 @@ impl Core {
                 inert: !interactive,
             });
         }
-        match self.tree.content[i] {
-            NodeContent::Text(tid) => {
-                let sel = self.sel_range(i, tid);
+        if let NodeContent::Edit(key) = self.tree.content[i]
+            && interactive
+        {
+            let pad = spec.layout.padding;
+            let content_origin = Vec2::new(rect.x + pad.l, rect.y + pad.t);
+            let inner_w = (rect.w - pad.x()).max(0.0);
+            // A single-line field scrolls its own text (F41). Resolved
+            // here, where the box is known, and read back by the hit
+            // region and the access runs so all three agree on where the
+            // glyphs are; the painter reads the same stored offset.
+            let offset = {
                 let sess = &mut *self.session.state();
-                self.text.emit(
-                    tid,
-                    self.tree.pos[i],
-                    self.tree.size[i],
-                    clip_px,
-                    clip_id,
-                    &mut self.display.clips,
-                    &sess.resources,
-                    &mut sess.fonts,
-                    &mut self.atlas,
-                    &mut self.display.quads,
-                    sel,
-                );
+                self.edit.line_offset(key, inner_w * scale, &mut sess.fonts)
+            };
+            hits.push(HitRegion {
+                key,
+                origin: self.tree.origins[i],
+                rect,
+                clip: clip.rect,
+                payload: None,
+                drag: None,
+                parent_rect: rect,
+                // Shifted by what the field is scrolled: a click lands on
+                // the character under the pointer.
+                edit_origin: Some(Vec2::new(
+                    content_origin.x - offset / scale,
+                    content_origin.y,
+                )),
+                // An editor is its own selection scope: a press in it
+                // places a caret and drags a selection through the
+                // editor's own path, not the scope's.
+                select_scope: None,
+                key_sink: None,
+                key_up: false,
+                context_menu: None,
+                focusable: !spec.disabled,
+                window: None,
+                hover: None,
+                group: None,
+                click_sound: None,
+                hover_sound: None,
+                // The editor's own node carries any override.
+                cursor: spec.cursor,
+            });
+        }
+        // The content, resolved to what the painter needs — a text node's
+        // selection and its place, an editor's focus — then painted by the
+        // one step a ghost also paints through.
+        let leaf = match self.tree.content[i] {
+            NodeContent::Text(tid) => {
                 // The keys above it, nearest first, so a query by the
                 // `line` row (or a wrapper) finds the runs inside it.
                 let (ancestors, depth) = self.text_ancestors(i);
@@ -162,162 +184,38 @@ impl Core {
                     self.scope_of(i),
                     true,
                 );
+                Leaf::Text {
+                    tid,
+                    sel: self.sel_range(i, tid),
+                }
             }
-            NodeContent::Cells(cid) => {
+            NodeContent::Cells(cid) => Leaf::Cells {
+                cid,
+                at: self.cells_origin(i),
                 // The window's selection, when it is in this very grid.
-                let sel = self
+                sel: self
                     .cell_selection
-                    .filter(|s| s.node == self.tree.keys[i] && !s.is_empty());
-                let at = self.cells_origin(i);
-                let tint = self.theme.selection;
-                let sess = &mut *self.session.state();
-                self.cells.emit(
-                    cid,
-                    at,
-                    clip_px,
-                    clip_id,
-                    &sess.resources,
-                    &mut sess.fonts,
-                    self.text.raster_mut(),
-                    &mut self.atlas,
-                    &mut self.display.quads,
-                    sel.as_ref().map(|s| (s, tint)),
-                );
-            }
-            NodeContent::Edit(key) => {
-                let pad = spec.layout.padding;
-                let content_origin = Vec2::new(rect.x + pad.l, rect.y + pad.t);
-                let inner_w = (rect.w - pad.x()).max(0.0);
-                // A single-line field scrolls its own text (F41). Resolved
-                // here, where the box is known, and read back by the hit
-                // region and the access runs so all three agree on where
-                // the glyphs are.
-                let offset = {
-                    let sess = &mut *self.session.state();
-                    self.edit.line_offset(key, inner_w * scale, &mut sess.fonts)
-                };
-                if interactive {
-                    hits.push(HitRegion {
-                        key,
-                        origin: self.tree.origins[i],
-                        rect,
-                        clip: clip.rect,
-                        payload: None,
-                        drag: None,
-                        parent_rect: rect,
-                        // Shifted by what the field is scrolled: a click
-                        // lands on the character under the pointer.
-                        edit_origin: Some(Vec2::new(
-                            content_origin.x - offset / scale,
-                            content_origin.y,
-                        )),
-                        // An editor is its own selection scope: a press
-                        // in it places a caret and drags a selection
-                        // through the editor's own path, not the scope's.
-                        select_scope: None,
-                        key_sink: None,
-                        key_up: false,
-                        context_menu: None,
-                        focusable: !spec.disabled,
-                        window: None,
-                        hover: None,
-                        group: None,
-                        click_sound: None,
-                        hover_sound: None,
-                        // The editor's own node carries any override.
-                        cursor: spec.cursor,
-                    });
-                }
-                let focused = self.edit.focused() == Some(key);
-                let origin_phys = Vec2::new(
-                    crate::geom::snap_px(content_origin.x * scale),
-                    crate::geom::snap_px(content_origin.y * scale),
-                );
-                // A field bounds its own text horizontally — it is what
-                // makes scrolling one legible rather than a line running
-                // out over its neighbours. Horizontally only: the
-                // ancestors own the vertical clip, and a descender or a
-                // caret is not what a field is trying to cut off.
-                // Narrowing the clip makes a new one, so it needs an entry
-                // of its own; a multiline editor keeps the node's.
-                let (edit_clip, edit_clip_id) = if self.edit.is_multiline(key) {
-                    (clip_px, clip_id)
-                } else {
-                    let narrowed = clip_px.intersect(
-                        Rect::new(
-                            origin_phys.x,
-                            clip_px.rect.y,
-                            inner_w * scale,
-                            clip_px.rect.h,
-                        ),
-                        crate::display::SQUARE,
-                    );
-                    (narrowed, self.display.intern_clip(narrowed))
-                };
-                let sess = &mut *self.session.state();
-                self.edit.emit(
-                    key,
-                    origin_phys,
-                    focused,
-                    edit_clip,
-                    edit_clip_id,
-                    &mut sess.fonts,
-                    &mut self.text,
-                    &mut self.atlas,
-                    &mut self.display.quads,
-                );
-            }
-            NodeContent::Image(id) => {
-                let sess = self.session.state();
-                if let Some(entry) = sess.resources.image(id)
-                    && let Some(slot) =
-                        self.atlas
-                            .get_or_insert_image(id, entry.width, entry.height, &entry.rgba)
-                {
-                    self.display.quads.push(Quad {
-                        rect: rect.scaled(scale),
-                        // White = untinted; radius rounds like a solid.
-                        color: Color::WHITE,
-                        border_color: Color::TRANSPARENT,
-                        radius: spec.style.radius.map(|r| r * scale),
-                        border_w: 0.0,
-                        blur: 0.0,
-                        kind: QuadKind::Image,
-                        clip: clip_id,
-                        uv: [slot.x, slot.y, slot.w, slot.h],
-                    });
-                }
-            }
-            NodeContent::Fragment(id) => {
-                let draw = self.fragments.get(id);
-                push_fragment(
-                    &mut self.display.quads,
-                    &mut self.display.fragments,
-                    &mut self.display.fragment_sources,
-                    &self.session.state().resources,
-                    draw,
-                    rect.scaled(scale),
-                    spec.style.radius.map(|r| r * scale),
-                    clip_id,
-                );
-            }
+                    .as_ref()
+                    .filter(|s| s.node == self.tree.keys[i] && !s.is_empty()),
+                tint: self.theme.selection,
+            },
+            NodeContent::Edit(key) => Leaf::Edit {
+                key,
+                focused: self.edit.focused() == Some(key),
+                pad: self.tree.specs[i].layout.padding,
+            },
+            NodeContent::Image(id) => Leaf::Image(id),
+            NodeContent::Fragment(id) => Leaf::Fragment(self.fragments.get(id)),
             NodeContent::Line(id) => {
                 let (run, points) = self.lines.run(id);
-                push_segments(
-                    &mut self.display.quads,
-                    self.tree.pos[i],
+                Leaf::Line {
                     points,
-                    run.width,
-                    style.bg,
-                    clip_id,
-                    scale,
-                );
+                    width: run.width,
+                }
             }
-            NodeContent::Container => {}
-        }
-        if opacity < 1.0 {
-            fade(&mut self.display.quads[first_quad..], opacity);
-        }
+            NodeContent::Container => Leaf::Container,
+        };
+        painter!(self).paint_box(rect, &style, &paint, leaf);
     }
 
     /// Runs layout and emission into `output()`, and installs this frame's
@@ -1030,144 +928,44 @@ impl Core {
             if visible.w <= 0.0 || visible.h <= 0.0 {
                 continue;
             }
-            let clip_px = clip.scaled(scale);
-            let first_quad = self.display.quads.len();
-            if style.shadow.is_visible() {
-                self.display
-                    .quads
-                    .push(shadow_quad(&style, rect, clip_id, scale));
-            }
-            if style.bg.is_visible() || (style.border_w > 0.0 && style.border_color.is_visible()) {
-                self.display.quads.push(Quad {
-                    rect: rect.scaled(scale),
-                    color: style.bg,
-                    border_color: style.border_color,
-                    radius: style.radius.map(|r| r * scale),
-                    border_w: style.border_w * scale,
-                    blur: 0.0,
-                    kind: QuadKind::Solid,
-                    clip: clip_id,
-                    uv: [0; 4],
-                });
-            }
-            match node.content {
-                GhostContent::Container => {}
+            let leaf = match node.content {
+                GhostContent::Container => Leaf::Container,
+                // None once the shaped buffer has been evicted: a ghost
+                // older than the text cache draws no text rather than
+                // somebody else's. A departing subtree takes no input and
+                // holds no selection; it records no place either.
                 GhostContent::Text { cache_key, color } => {
-                    // None once the shaped buffer has been evicted: a ghost
-                    // older than the text cache draws no text rather than
-                    // somebody else's.
-                    let sess = &mut *self.session.state();
-                    if let Some(tid) = self.text.readd(cache_key, color) {
-                        self.text.emit(
-                            tid,
-                            Vec2::new(rect.x, rect.y),
-                            Size::new(rect.w, rect.h),
-                            clip_px,
-                            clip_id,
-                            &mut self.display.clips,
-                            &sess.resources,
-                            &mut sess.fonts,
-                            &mut self.atlas,
-                            &mut self.display.quads,
-                            // A departing subtree takes no input and
-                            // holds no selection; it records no place
-                            // either, so there is nothing to resolve.
-                            None,
-                        );
+                    match self.text.readd(cache_key, color) {
+                        Some(tid) => Leaf::Text { tid, sel: None },
+                        None => Leaf::Container,
                     }
                 }
-                GhostContent::Edit(key) => {
-                    let pad = node.spec.layout.padding;
-                    let origin = Vec2::new(
-                        crate::geom::snap_px((rect.x + pad.l) * scale),
-                        crate::geom::snap_px((rect.y + pad.t) * scale),
-                    );
-                    // A field leaves scrolled where it was scrolled to, so
-                    // it takes its own horizontal clip with it (F41).
-                    let clip_px = if self.edit.is_multiline(key) {
-                        clip_px
-                    } else {
-                        clip_px.intersect(
-                            Rect::new(
-                                origin.x,
-                                clip_px.rect.y,
-                                (rect.w - pad.x()).max(0.0) * scale,
-                                clip_px.rect.h,
-                            ),
-                            crate::display::SQUARE,
-                        )
-                    };
-                    // Never focused: the departing subtree gave the
-                    // keyboard up the frame it stopped being declared.
-                    let sess = &mut *self.session.state();
-                    self.edit.emit(
-                        key,
-                        origin,
-                        false,
-                        clip_px,
-                        clip_id,
-                        &mut sess.fonts,
-                        &mut self.text,
-                        &mut self.atlas,
-                        &mut self.display.quads,
-                    );
-                }
-                GhostContent::Image(id) => {
-                    let sess = self.session.state();
-                    if let Some(entry) = sess.resources.image(id)
-                        && let Some(slot) = self.atlas.get_or_insert_image(
-                            id,
-                            entry.width,
-                            entry.height,
-                            &entry.rgba,
-                        )
-                    {
-                        self.display.quads.push(Quad {
-                            rect: rect.scaled(scale),
-                            color: Color::WHITE,
-                            border_color: Color::TRANSPARENT,
-                            radius: style.radius.map(|r| r * scale),
-                            border_w: 0.0,
-                            blur: 0.0,
-                            kind: QuadKind::Image,
-                            clip: clip_id,
-                            uv: [slot.x, slot.y, slot.w, slot.h],
-                        });
-                    }
-                }
-                GhostContent::Fragment(draw) => {
-                    // The picture is frozen at departure — the parameters
-                    // are the ones the node last declared — while the box
-                    // eases and the group opacity fades it.
-                    push_fragment(
-                        &mut self.display.quads,
-                        &mut self.display.fragments,
-                        &mut self.display.fragment_sources,
-                        &self.session.state().resources,
-                        draw,
-                        rect.scaled(scale),
-                        style.radius.map(|r| r * scale),
-                        clip_id,
-                    );
-                }
-                GhostContent::Line { first, len, width } => {
-                    // The points are the ghost's own copy; the colour is
-                    // the `bg` slot, which `play.bg` eases on the root.
-                    let points = &g.points[first as usize..(first + len) as usize];
-                    push_segments(
-                        &mut self.display.quads,
-                        Vec2::new(rect.x, rect.y),
-                        points,
-                        width,
-                        style.bg,
-                        clip_id,
-                        scale,
-                    );
-                }
-            }
-            if opacity < 1.0 {
-                fade(&mut self.display.quads[first_quad..], opacity);
-            }
+                // Never focused: the departing subtree gave the keyboard
+                // up the frame it stopped being declared.
+                GhostContent::Edit(key) => Leaf::Edit {
+                    key,
+                    focused: false,
+                    pad: node.spec.layout.padding,
+                },
+                GhostContent::Image(id) => Leaf::Image(id),
+                // The picture is frozen at departure — the parameters are
+                // the ones the node last declared — while the box eases
+                // and the group opacity fades it.
+                GhostContent::Fragment(draw) => Leaf::Fragment(draw),
+                // The points are the ghost's own copy; the colour is the
+                // `bg` slot, which `play.bg` eases on the root.
+                GhostContent::Line { first, len, width } => Leaf::Line {
+                    points: &g.points[first as usize..(first + len) as usize],
+                    width,
+                },
+            };
+            let paint = Paint {
+                clip,
+                clip_id,
+                scale,
+                opacity,
+            };
+            painter!(self).paint_box(rect, &style, &paint, leaf);
         }
     }
 
@@ -1607,6 +1405,216 @@ impl TextMeasure for Measure<'_> {
 /// What a node inherits at emission time: the frame's scale, the clip its
 /// ancestors imposed (logical px), and the group opacity its own `opacity`
 /// and every ancestor's multiply out to.
+#[derive(Clone, Copy)]
+/// What a box holds, resolved to what painting it needs: the live pass
+/// resolves a text node's selection and an editor's focus from the frame,
+/// a ghost resolves nothing (no selection, never focused, its text re-added
+/// from the cache) — and both hand the result here.
+enum Leaf<'a> {
+    Container,
+    Text {
+        tid: crate::tree::TextId,
+        sel: Option<((usize, usize), Color)>,
+    },
+    Cells {
+        cid: crate::cells::CellsId,
+        at: Vec2,
+        sel: Option<&'a crate::select::CellSelection>,
+        tint: Color,
+    },
+    Edit {
+        key: Key,
+        focused: bool,
+        /// The box's padding: the text starts inside it.
+        pad: crate::geom::Edges,
+    },
+    Image(crate::resources::ImageId),
+    Fragment(crate::display::FragmentDraw),
+    Line {
+        points: &'a [Vec2],
+        width: f32,
+    },
+}
+
+/// One box's paint: its shadow, its fill and border, its content, faded by
+/// the group opacity — written once for the live node and the ghost, which
+/// differ in what they *record* (hit regions, scroll regions, a text's
+/// place) and not in what they draw. The two were the same hundred and
+/// twenty lines until F41 had to be fixed in both.
+struct Painter<'a> {
+    display: &'a mut DisplayList,
+    text: &'a mut TextSystem,
+    edit: &'a mut EditStore,
+    cells: &'a mut crate::cells::CellStore,
+    atlas: &'a mut GlyphAtlas,
+    session: &'a Session,
+}
+
+impl Painter<'_> {
+    /// Inlined into its two callers: a call per node with the borrows
+    /// packed into a struct measured +2.5% on `frame_10k_rects` (C15).
+    #[inline(always)]
+    fn paint_box(
+        &mut self,
+        rect: Rect,
+        style: &crate::spec::VisualStyle,
+        paint: &Paint,
+        leaf: Leaf<'_>,
+    ) {
+        let Paint {
+            clip,
+            clip_id,
+            scale,
+            opacity,
+        } = *paint;
+        let clip_px = clip.scaled(scale);
+        let first_quad = self.display.quads.len();
+        if style.shadow.is_visible() {
+            self.display
+                .quads
+                .push(shadow_quad(style, rect, clip_id, scale));
+        }
+        // A stroke's `bg` is its colour, not a box to fill (ADR 0010,
+        // decision 7) — for the ghost of one as much as for the live one.
+        let is_line = matches!(leaf, Leaf::Line { .. });
+        if !is_line
+            && (style.bg.is_visible() || (style.border_w > 0.0 && style.border_color.is_visible()))
+        {
+            self.display.quads.push(Quad {
+                rect: rect.scaled(scale),
+                color: style.bg,
+                border_color: style.border_color,
+                radius: style.radius.map(|r| r * scale),
+                border_w: style.border_w * scale,
+                blur: 0.0,
+                kind: QuadKind::Solid,
+                clip: clip_id,
+                uv: [0; 4],
+            });
+        }
+        match leaf {
+            Leaf::Container => {}
+            Leaf::Text { tid, sel } => {
+                let sess = &mut *self.session.state();
+                self.text.emit(
+                    tid,
+                    Vec2::new(rect.x, rect.y),
+                    Size::new(rect.w, rect.h),
+                    clip_px,
+                    clip_id,
+                    &mut self.display.clips,
+                    &sess.resources,
+                    &mut sess.fonts,
+                    self.atlas,
+                    &mut self.display.quads,
+                    sel,
+                );
+            }
+            Leaf::Cells { cid, at, sel, tint } => {
+                let sess = &mut *self.session.state();
+                self.cells.emit(
+                    cid,
+                    at,
+                    clip_px,
+                    clip_id,
+                    &sess.resources,
+                    &mut sess.fonts,
+                    self.text.raster_mut(),
+                    self.atlas,
+                    &mut self.display.quads,
+                    sel.map(|s| (s, tint)),
+                );
+            }
+            Leaf::Edit { key, focused, pad } => {
+                let origin = Vec2::new(
+                    crate::geom::snap_px((rect.x + pad.l) * scale),
+                    crate::geom::snap_px((rect.y + pad.t) * scale),
+                );
+                // A field bounds its own text horizontally — it is what
+                // makes scrolling one legible rather than a line running
+                // out over its neighbours (F41). Horizontally only: the
+                // ancestors own the vertical clip, and a descender or a
+                // caret is not what a field is trying to cut off.
+                // Narrowing the clip makes a new one, so it needs an entry
+                // of its own; a multiline editor keeps the node's.
+                let (edit_clip, edit_clip_id) = if self.edit.is_multiline(key) {
+                    (clip_px, clip_id)
+                } else {
+                    let narrowed = clip_px.intersect(
+                        Rect::new(
+                            origin.x,
+                            clip_px.rect.y,
+                            (rect.w - pad.x()).max(0.0) * scale,
+                            clip_px.rect.h,
+                        ),
+                        crate::display::SQUARE,
+                    );
+                    (narrowed, self.display.intern_clip(narrowed))
+                };
+                let sess = &mut *self.session.state();
+                self.edit.emit(
+                    key,
+                    origin,
+                    focused,
+                    edit_clip,
+                    edit_clip_id,
+                    &mut sess.fonts,
+                    self.text,
+                    self.atlas,
+                    &mut self.display.quads,
+                );
+            }
+            Leaf::Image(id) => {
+                let sess = self.session.state();
+                if let Some(entry) = sess.resources.image(id)
+                    && let Some(slot) =
+                        self.atlas
+                            .get_or_insert_image(id, entry.width, entry.height, &entry.rgba)
+                {
+                    self.display.quads.push(Quad {
+                        rect: rect.scaled(scale),
+                        // White = untinted; radius rounds like a solid.
+                        color: Color::WHITE,
+                        border_color: Color::TRANSPARENT,
+                        radius: style.radius.map(|r| r * scale),
+                        border_w: 0.0,
+                        blur: 0.0,
+                        kind: QuadKind::Image,
+                        clip: clip_id,
+                        uv: [slot.x, slot.y, slot.w, slot.h],
+                    });
+                }
+            }
+            Leaf::Fragment(draw) => {
+                push_fragment(
+                    &mut self.display.quads,
+                    &mut self.display.fragments,
+                    &mut self.display.fragment_sources,
+                    &self.session.state().resources,
+                    draw,
+                    rect.scaled(scale),
+                    style.radius.map(|r| r * scale),
+                    clip_id,
+                );
+            }
+            Leaf::Line { points, width } => {
+                push_segments(
+                    &mut self.display.quads,
+                    Vec2::new(rect.x, rect.y),
+                    points,
+                    width,
+                    style.bg,
+                    clip_id,
+                    scale,
+                );
+            }
+        }
+        if opacity < 1.0 {
+            fade(&mut self.display.quads[first_quad..], opacity);
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 struct Paint {
     clip: Clip,

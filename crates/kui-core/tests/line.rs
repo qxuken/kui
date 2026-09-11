@@ -305,3 +305,40 @@ fn fewer_than_two_points_draw_nothing() {
     });
     assert!(quads.is_empty());
 }
+
+/// A stroke's `bg` is its colour, not a box to fill — for its ghost too.
+/// The ghost painter used to be a second copy of the live one, and the
+/// copy filled the departing stroke's whole box with the stroke colour.
+#[test]
+fn a_departing_line_leaves_no_box_behind() {
+    let mut core = Core::new();
+    let stroke = Stroke::new(4.0, Color::hex(0x7f9cf5ff));
+    let spec = || {
+        NodeSpec::column()
+            .transition(100.0)
+            .exit(kui_core::Enter::from(20.0, 0.0))
+    };
+    core.set_time(0.0);
+    let mut ui = core.frame(VIEW, 1.0);
+    ui.line_keyed(
+        "l",
+        Vec2::new(10.0, 10.0),
+        Vec2::new(90.0, 70.0),
+        stroke,
+        spec(),
+    );
+    ui.finish();
+    assert_eq!(core.output().0.quads.len(), 1, "live: the segment only");
+
+    // Gone from the view: the ghost is the segment, still, and nothing else.
+    core.set_time(0.05);
+    let ui = core.frame(VIEW, 1.0);
+    ui.finish();
+    let quads = core.output().0.quads.clone();
+    assert_eq!(segments(&quads).len(), 1, "the ghost's stroke");
+    assert!(
+        quads.iter().all(|q| q.kind == QuadKind::Segment),
+        "no box was filled for the departing stroke: {:?}",
+        quads.iter().map(|q| q.kind).collect::<Vec<_>>()
+    );
+}
