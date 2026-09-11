@@ -155,13 +155,6 @@ warnings! {
     /// Declare the range the value is really held to, or clamp where the
     /// view declares it.
     pub const SLIDER_VALUE_OUT_OF_RANGE: &str = "slider-value-out-of-range";
-    /// A `line` declares `onClick`, `onDrag`, `onKey`, `onHover`, `hoverable`
-    /// or `focusable`. A line takes no pointer input and emits no hit
-    /// region — its bounding box is mostly not the stroke, and a
-    /// shape-aware hit test is not built — so the declaration does nothing
-    /// (`docs/adr/0010-a-segment-primitive.md`, decisions 7 and 8). Put the
-    /// interaction on the nodes the line connects.
-    pub const LINE_IGNORES_INPUT: &str = "line-ignores-input";
     /// `Core::add_fragment` was given WGSL that does not compile, so no
     /// handle was minted and nothing will draw. The message carries naga's
     /// own error with the line numbers moved into the app's source
@@ -174,6 +167,11 @@ warnings! {
     /// dropped; pass fewer, or pack what the fragment needs into the
     /// sixteen it has.
     pub const FRAGMENT_PARAMS_TRUNCATED: &str = "fragment-params-truncated";
+    /// A `polygon` declared more than eight points: the stock fragment
+    /// takes eight vertices in the sixteen params it has, so the rest
+    /// were dropped. Two polygons, or the path primitive kui does not have
+    /// (`docs/adr/0025-the-image-is-the-canvas.md`, decision 6).
+    pub const POLYGON_POINTS_TRUNCATED: &str = "polygon-points-truncated";
     /// The frame's modal surface is not in a float, and content painted after
     /// it is drawn on top of it: everything the user can see over the modal is
     /// inert, which looks like inert-behind is broken. A modal that has to

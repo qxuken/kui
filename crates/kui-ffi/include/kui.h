@@ -162,8 +162,16 @@ extern "C" {
  * the first is read from the wrong bytes. Same reason ABI 8 bumped for
  * KuiSpan. Recompile; a zeroed tail is `checked = 0`, which is what every
  * row had before.
+ *
+ * ABI 14 appends `textures` and `texture_count` to KuiDrawData for ADR
+ * 0025's texture-backed images - an [out] append the size handshake
+ * covers, so a host reserving the ABI-13 layout keeps working and never
+ * sees a KUI_QUAD_TEXTURE quad's side entry (it draws that quad as a solid,
+ * wrongly and harmlessly, as a pre-segment host draws a segment). The bump
+ * is for KUI_QUAD_TEXTURE itself: a ninth kind a host's own renderer may
+ * want to refuse by version rather than meet by surprise.
  */
-#define KUI_ABI_VERSION 13u
+#define KUI_ABI_VERSION 14u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -208,9 +216,9 @@ uint32_t kui_abi_version(void);
  *          KuiAccessNode, KuiAccessRun, KuiWarning, KuiAudioCommand,
  *          KuiAnnouncement.
  *
- * [lib]    The library allocates it; you read it. KuiQuad, KuiClip and
- *          KuiFragmentDraw, through KuiDrawData.quads / .clips /
- *          .fragments. The same stride problem mirrored - you walk the
+ * [lib]    The library allocates it; you read it. KuiQuad, KuiClip,
+ *          KuiFragmentDraw and KuiTextureDraw, through KuiDrawData.quads /
+ *          .clips / .fragments / .textures. The same stride problem mirrored - you walk the
  *          array with your sizeof - except read-only, so a mismatch
  *          misreads every element after the first rather than corrupting
  *          anything. Guarded by KUI_ABI_VERSION.
@@ -281,9 +289,25 @@ enum { KUI_START = 0, KUI_CENTER = 1, KUI_END = 2 };
  * zero. Get the WGSL with kui_fragment_source, which wraps the app's
  * function in the prelude and epilogue the core validated it against.
  * (docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md) */
+/* KUI_QUAD_TEXTURE: a registered image drawn from a texture of its own
+ * rather than the atlas - one that did not fit a page, or whose pixels
+ * kui_image_update replaced. `uv[0]` is an index into
+ * KuiDrawData.textures, which carries the handle, the pixels' size and
+ * revision, and the texel rect to show IN THAT TEXTURE; the other three
+ * words are zero. Everything else is what a KUI_QUAD_IMAGE's is: get the
+ * bytes with kui_image_pixels, upload them when `rev` moved, bind that
+ * texture in the atlas's place and draw it as an image. On both image
+ * kinds `border_w` is the `sampling` flag: 0 linear, 1 nearest.
+ * (docs/adr/0025-the-image-is-the-canvas.md) */
 enum { KUI_QUAD_SOLID = 0, KUI_QUAD_GLYPH_MASK = 1, KUI_QUAD_GLYPH_COLOR = 2,
        KUI_QUAD_IMAGE = 3, KUI_QUAD_GLYPH_SUBPIXEL = 4, KUI_QUAD_SHADOW = 5,
-       KUI_QUAD_SEGMENT = 6, KUI_QUAD_FRAGMENT = 7 };
+       KUI_QUAD_SEGMENT = 6, KUI_QUAD_FRAGMENT = 7, KUI_QUAD_TEXTURE = 8 };
+/* How an image's texels are read between pixels (kui_image_with) */
+enum { KUI_SAMPLING_LINEAR = 0, KUI_SAMPLING_NEAREST = 1 };
+/* How an image's pixels meet its box (kui_image_with): stretched, the
+ * largest rect of its aspect that fits (centred), or the box filled and
+ * the rest cropped (centred). The box itself is the same in every mode. */
+enum { KUI_FIT_FILL = 0, KUI_FIT_CONTAIN = 1, KUI_FIT_COVER = 2 };
 /* Font families (KuiTextStyle.family) */
 enum { KUI_FONT_SANS = 0, KUI_FONT_SERIF = 1, KUI_FONT_MONO = 2 };
 /* Line breaking (KuiTextStyle.wrap) */
@@ -1314,6 +1338,19 @@ typedef struct KuiFragmentDraw {
     float params[16];
 } KuiFragmentDraw;
 
+/* [out-array] One KUI_QUAD_TEXTURE's draw, addressed by that quad's uv[0].
+ * `image` is the handle, for kui_image_pixels and for keying a texture
+ * cache; `rev` moves with every kui_image_update, so a renderer that
+ * uploaded this revision has nothing to do; `width`/`height` are the
+ * pixels' size; `uv` is the texel rect to show - the whole image, or the
+ * crop a KUI_FIT_COVER made. Added in ABI 14. */
+typedef struct KuiTextureDraw {
+    uint64_t image;
+    uint32_t rev;
+    uint32_t width, height;
+    uint32_t uv[4];
+} KuiTextureDraw;
+
 /* [out] Everything a renderer needs for the finished frame. */
 typedef struct KuiDrawData {
     uint32_t size;                /* = sizeof(KuiDrawData) in, bytes filled out */
@@ -1335,6 +1372,10 @@ typedef struct KuiDrawData {
      * that drew anything: entry 0 clips nothing. Added in ABI 11. */
     const KuiClip *clips;
     size_t clip_count;
+    /* One per KUI_QUAD_TEXTURE quad, indexed by its uv[0]; NULL and 0 on a
+     * frame that draws none. Added in ABI 14. */
+    const KuiTextureDraw *textures;
+    size_t texture_count;
 } KuiDrawData;
 #define KUI_DRAW_DATA_INIT ((KuiDrawData){ .size = sizeof(KuiDrawData) })
 
@@ -1925,6 +1966,21 @@ void kui_font_remove(KuiCtx *ctx, uint64_t id);
  * failure. Handles are stable until kui_image_remove. */
 uint64_t kui_image_add(KuiCtx *ctx, uint32_t w, uint32_t h, const uint8_t *rgba);
 void kui_image_remove(KuiCtx *ctx, uint64_t id);
+/* Replaces an image's pixels in place (copied): the handle is unchanged, so
+ * every node showing it draws the new pixels next frame; w/h may differ
+ * from the registration. From the first update on the image is drawn from
+ * a texture of its own, as a KUI_QUAD_TEXTURE quad - a video frame, a
+ * camera, a plot the host rasterised itself. A dead or foreign handle warns
+ * `foreign-resource` and changes nothing.
+ * (docs/adr/0025-the-image-is-the-canvas.md) */
+void kui_image_update(KuiCtx *ctx, uint64_t id, uint32_t w, uint32_t h,
+                      const uint8_t *rgba);
+/* The pixels behind an image handle, for a host that renders the draw list
+ * itself and meets a KUI_QUAD_TEXTURE quad: writes w, h and rgba (w*h*4
+ * bytes) and returns true when the handle is live here. The bytes are
+ * borrowed and valid until the next call of this function. */
+bool kui_image_pixels(KuiCtx *ctx, uint64_t id, uint32_t *w, uint32_t *h,
+                      const uint8_t **rgba);
 /* -- Fragments ------------------------------------------------------------ */
 /* Registers a WGSL fragment function for kui_fragment; returns a handle, 0
  * when the source does not compile (with a "fragment-rejected" warning
@@ -1974,6 +2030,12 @@ void kui_audio_ended(KuiCtx *ctx, uint64_t playback);
 /* An image node. Fit sizing = the image's pixel size as logical px; a Fit
  * height against a resolved width keeps the aspect; radius rounds corners. */
 void kui_image(KuiCtx *ctx, uint64_t id, const KuiSpec *spec);
+/* kui_image with its two rows (docs/adr/0025-the-image-is-the-canvas.md):
+ * `sampling` is KUI_SAMPLING_* and `fit` KUI_FIT_*; 0 for either is the
+ * default kui_image gives. The box - its layout, hit region and access
+ * rect - is the same in every mode; only what is painted inside it moves. */
+void kui_image_with(KuiCtx *ctx, uint64_t id, uint32_t sampling, uint32_t fit,
+                    const KuiSpec *spec);
 /* A box the registered WGSL `id` paints (kui_fragment_add). An ordinary node
  * otherwise: it lays out, rounds, clips, fades and takes input like a box.
  * It has NO intrinsic size, so spec must give it one. `params` is up to
@@ -1994,17 +2056,38 @@ void kui_fragment_open(KuiCtx *ctx, KuiStr label, uint64_t id,
  * opacity, on_layout (the bounding box), a label/role, and a declared float
  * anchor (KUI_FLOAT_VIEWPORT reads the points in viewport space). width is the
  * stroke width in logical px (<= 0: 1); color 0xRRGGBBAA (0: the default
- * foreground). Takes no pointer input - interaction on spec warns
- * `line-ignores-input`. spec may be NULL. */
+ * foreground). spec may be NULL. For a stroke that takes input use
+ * kui_polyline, which takes the payloads. */
 void kui_line(KuiCtx *ctx, float x0, float y0, float x1, float y1, float width,
               uint32_t color, const KuiSpec *spec);
 /* The same through `count` points (xy: x0, y0, x1, y1, ...; fewer than two draw
  * nothing): a polyline, or with `curve` a smooth curve through the points,
  * flattened in the core. Consecutive pieces overlap at their round caps.
  * label keys the node (empty = a key from the tree position) so a stroke can
- * transition or exit; kui_line is auto-keyed. */
+ * transition or exit; kui_line is auto-keyed and takes no payloads. The
+ * three payloads are taken as kui_open_with takes them: a stroke with one
+ * is hit by its SHAPE (docs/adr/0026-hit-testing-by-shape.md) - a press
+ * within half its width of any piece (at least 4 px of grab), and a press
+ * elsewhere in its box falls through to what is under. NULL for none. */
 void kui_polyline(KuiCtx *ctx, KuiStr label, const float *xy, size_t count,
-                  float width, uint32_t color, bool curve, const KuiSpec *spec);
+                  float width, uint32_t color, bool curve, const KuiSpec *spec,
+                  KuiValue *on_click, KuiValue *on_drag, KuiValue *on_hover);
+/* A filled polygon through `count` points at xy (x0, y0, x1, y1, ...): at
+ * most eight - more are dropped with `polygon-points-truncated`, fewer than
+ * three draw nothing - the fill in spec->bg (no bg, no fill). Placed like a
+ * stroke: a float sized to its own bounding box, in the parent's box space.
+ * The three payloads are taken as kui_open_with takes them: a fill with one
+ * is hit by its OUTLINE (docs/adr/0026-hit-testing-by-shape.md) - a press
+ * inside it hits, a press in its box past the outline falls through - and
+ * a clickable fill is a button to assistive technology, so name it. The
+ * outline may be concave. On the wire it is one KUI_QUAD_FRAGMENT painted
+ * by a WGSL function the core registers itself, reachable through
+ * kui_fragment_source like any other. label keys the node (empty = a key
+ * from the tree position); spec may be NULL; NULL for a payload is none.
+ * (docs/adr/0025-the-image-is-the-canvas.md, decision 6) */
+void kui_polygon(KuiCtx *ctx, KuiStr label, const float *xy, size_t count,
+                 const KuiSpec *spec, KuiValue *on_click, KuiValue *on_drag,
+                 KuiValue *on_hover);
 void kui_close(KuiCtx *ctx);
 void kui_text(KuiCtx *ctx, KuiStr text, const KuiTextStyle *style);
 void kui_rich_text(KuiCtx *ctx, const KuiSpan *spans, size_t span_count,

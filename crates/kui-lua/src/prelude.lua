@@ -50,6 +50,11 @@ function edit(t)
   return t
 end
 
+-- image { id = handle, width = 16, sampling = "nearest", fit = "contain" }:
+-- a registered image (the host registers it and passes the handle in as a
+-- plain integer). `sampling` is "linear" (default) or "nearest"; `fit` is
+-- "fill" (default), "contain" or "cover" -- how the pixels meet the box,
+-- which is itself the same in every mode (docs/adr/0025).
 function image(t)
   t.type = "image"
   return t
@@ -72,9 +77,21 @@ end
 -- line { points = {{x, y}, ...}, curve = true, ... }: a round-capped stroke
 -- in the parent's box space, never in layout (it floats, sized to its own
 -- bounding box). `width` is the stroke width, `color` the stroke colour;
--- `key`, `transition`, `opacity`, `on_layout` apply, input props do not.
+-- `key`, `transition`, `opacity`, `on_layout` apply, and `on_click`,
+-- `on_drag`, `on_hover`, `hoverable` hit by the stroke (docs/adr/0026).
 function line(t)
   t.type = "line"
+  return t
+end
+
+-- polygon { points = {{x, y}, ...}, bg = 0xd8863bff }: a filled polygon
+-- through up to eight points in the parent's box space, the fill in `bg`,
+-- placed like a line (never in layout; floats, sized to its own bounding
+-- box). The outline may be concave. `key`, `transition`, `opacity`,
+-- `on_layout` apply, and `on_click`, `on_drag`, `on_hover`, `hoverable`
+-- hit by the outline (docs/adr/0025 decision 6, docs/adr/0026).
+function polygon(t)
+  t.type = "polygon"
   return t
 end
 

@@ -16,6 +16,8 @@ pub enum QuadKind {
     GlyphColor,
     /// Registered image blitted into the atlas: atlas rgba tinted by
     /// `color` (white = as-is), rounded by `radius` like a solid.
+    /// `border_w` is the `sampling` flag — 0 linear, 1 nearest (ADR 0025,
+    /// decision 4) — a slot this kind had no other use for; `blur` is 0.
     Image,
     /// LCD subpixel glyph: atlas rgb is per-channel coverage (times
     /// `color.a`), `color.rgb` the text color. Needs per-channel (dual
@@ -52,12 +54,23 @@ pub enum QuadKind {
     /// draw one — anything predating this kind — draws nothing, which is
     /// what a missing handle does too.
     Fragment,
+    /// A registered image drawn from a texture of its own rather than the
+    /// atlas (`docs/adr/0025-the-image-is-the-canvas.md`): one that did
+    /// not fit a page, or whose pixels the app has replaced. `uv[0]`
+    /// indexes [`DisplayList::textures`], which carries the handle and the
+    /// texel rect *in that texture*; the other three words of `uv` are
+    /// zero. Everything else is what an `Image` quad's is — `rect`,
+    /// `radius`, `clip`, `color` as a tint (white = as-is) with the group
+    /// opacity in its alpha, and `border_w` the sampling flag. A backend
+    /// binds the texture in place of the atlas for the run and draws it
+    /// as an `Image`; one that predates the kind draws nothing.
+    Texture,
 }
 
 impl QuadKind {
     /// Every kind, in discriminant order — what the conformance report's
     /// `kinds` line counts and the C header's `KUI_QUAD_*` mirror.
-    pub const ALL: [QuadKind; 8] = [
+    pub const ALL: [QuadKind; 9] = [
         QuadKind::Solid,
         QuadKind::GlyphMask,
         QuadKind::GlyphColor,
@@ -66,6 +79,7 @@ impl QuadKind {
         QuadKind::Shadow,
         QuadKind::Segment,
         QuadKind::Fragment,
+        QuadKind::Texture,
     ];
 }
 
@@ -251,6 +265,31 @@ pub struct FragmentDraw {
     pub params: [f32; 16],
 }
 
+/// What a [`QuadKind::Texture`] quad points at: which registered image,
+/// and the texel rect of it to show (the whole image, or the crop a
+/// `fit="cover"` made). Beside the quads for the reason [`FragmentDraw`]
+/// is: a handle and a rect on every quad would be paid by the 20,000 that
+/// are not one. A frame that draws no texture-backed image leaves the
+/// vector empty.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TextureDraw {
+    pub id: crate::resources::ImageId,
+    /// `[x, y, w, h]` in the texture's own texels.
+    pub uv: [u32; 4],
+}
+
+/// A texture-backed image's pixels as a frame hands them to a backend;
+/// see [`DisplayList::texture_pixels`].
+#[derive(Clone, Debug)]
+pub struct TexturePixels {
+    pub width: u32,
+    pub height: u32,
+    /// Moves with every `update_image`; a backend that uploaded this
+    /// revision has nothing to do.
+    pub rev: u32,
+    pub rgba: std::sync::Arc<Vec<u8>>,
+}
+
 #[derive(Default)]
 pub struct DisplayList {
     pub quads: Vec<Quad>,
@@ -268,6 +307,19 @@ pub struct DisplayList {
     /// `Copy` and digestible; an `Arc` clone per fragment quad is a
     /// refcount bump, and a frame with no fragment has neither vector.
     pub fragment_sources: Vec<std::sync::Arc<str>>,
+    /// One entry per [`QuadKind::Texture`] quad, indexed by its `uv[0]`.
+    /// Empty on a frame that draws none.
+    pub textures: Vec<TextureDraw>,
+    /// The pixels behind each entry of [`Self::textures`], at the same
+    /// index: what a backend uploads the first time it meets a handle, and
+    /// again whenever `rev` has moved. Shared with the resource entry, so
+    /// this is a refcount per texture quad and no copy — the reason
+    /// `fragment_sources` rides here the same way.
+    pub texture_pixels: Vec<TexturePixels>,
+    /// Image handles removed since the last frame whose backing was a
+    /// texture: what a backend drops from its cache. Cleared with the
+    /// quads, so a host that renders one list a frame sees each once.
+    pub dropped_textures: Vec<crate::resources::ImageId>,
     /// Physical pixels.
     pub viewport: Size,
     pub scale: f32,
@@ -284,6 +336,9 @@ impl DisplayList {
         self.clips.clear();
         self.fragments.clear();
         self.fragment_sources.clear();
+        self.textures.clear();
+        self.texture_pixels.clear();
+        self.dropped_textures.clear();
     }
 
     /// The clip a quad names. Out of range — which a well-formed frame

@@ -61,6 +61,11 @@ impl Core {
     /// Forgets a registered fragment. Nodes still naming it draw nothing.
     pub fn remove_fragment(&mut self, id: crate::resources::FragmentId) {
         self.session.state().resources.remove_fragment(id);
+        // The stock polygon's handle, if that is what went: the next
+        // `polygon` node registers it again rather than drawing nothing.
+        if self.stock_polygon == Some(id) {
+            self.stock_polygon = None;
+        }
     }
 
     /// The whole WGSL module behind a fragment handle — the app's source
@@ -355,9 +360,52 @@ impl Core {
         }
     }
 
-    /// Unregisters an image and forgets its atlas slot.
+    /// Replaces an image's pixels in place; see `Resources::update_image`
+    /// (ADR 0025, decision 1). If the image had been drawn from the atlas
+    /// its slot is forgotten — one eviction, once — and from here on it is
+    /// texture-backed. A foreign or removed handle warns and changes
+    /// nothing, and so does a buffer that is not `width × height × 4`
+    /// bytes; the return says whether the pixels were taken.
+    pub fn update_image(
+        &mut self,
+        id: crate::resources::ImageId,
+        width: u32,
+        height: u32,
+        rgba: Vec<u8>,
+    ) -> bool {
+        let taken = self
+            .session
+            .state()
+            .resources
+            .update_image(id, width, height, rgba);
+        if taken {
+            self.atlas.evict_image(id);
+        }
+        taken
+    }
+
+    /// The pixels behind an image handle — its size and a shared handle on
+    /// the bytes — for a host that renders the display list itself and
+    /// meets a `QuadKind::Texture` quad. `None` for a dead or foreign
+    /// handle, which is also noted as a miss.
+    pub fn image_pixels(
+        &self,
+        id: crate::resources::ImageId,
+    ) -> Option<(u32, u32, std::sync::Arc<Vec<u8>>)> {
+        let sess = self.session.state();
+        sess.resources
+            .image(id)
+            .map(|e| (e.width, e.height, e.rgba.clone()))
+    }
+
+    /// Unregisters an image and forgets its atlas slot — or, for a
+    /// texture-backed one, tells the next frame's display list so a
+    /// backend drops the texture.
     pub fn remove_image(&mut self, id: crate::resources::ImageId) {
-        self.session.state().resources.remove_image(id);
+        let entry = self.session.state().resources.remove_image(id);
         self.atlas.evict_image(id);
+        if entry.is_some_and(|e| e.backing == crate::resources::ImageBacking::Texture) {
+            self.dropped_images.push(id);
+        }
     }
 }

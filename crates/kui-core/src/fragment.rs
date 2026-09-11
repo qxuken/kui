@@ -118,6 +118,11 @@ struct FragmentIn {
     time: f32,
     // Physical px per logical px.
     scale: f32,
+    // The quad's colour, straight alpha: white on a `fragment` node, the
+    // `bg` fill on a `polygon` (ADR 0025, decision 6). A fragment that
+    // wants a colour the view chose reads it here rather than spending
+    // four params on one.
+    color: vec4<f32>,
 };
 
 // Half-width of every SDF edge ramp, in physical px. The renderer's `AA`.
@@ -163,6 +168,7 @@ fn kui_fs_fragment(
     kui_in.size = size;
     kui_in.time = kui_globals.time;
     kui_in.scale = kui_globals.scale;
+    kui_in.color = vec4<f32>(color.rgb, 1.0);
     let kui_c = fragment(kui_in, kui_fragment_params.p);
 
     // The node's own rounded box, exactly as a solid gets it.
@@ -184,8 +190,9 @@ fn kui_fs_fragment(
         kui_inside = 1.0 - smoothstep(-KUI_AA, KUI_AA, kui_cd);
     }
 
-    // `color.a` is the group opacity the subtree inherited; `rgb` is unused
-    // on this kind, because the fragment returns its own colour.
+    // `color.a` is the group opacity the subtree inherited, times the fill
+    // alpha on a polygon; `rgb` reached the function as `in.color`, and a
+    // fragment that ignores it returns its own colour as it always did.
     let kui_a = clamp(kui_c.a, 0.0, 1.0) * kui_cov * kui_inside * color.a;
     return vec4<f32>(clamp(kui_c.rgb, vec3<f32>(0.0), vec3<f32>(1.0)) * kui_a, kui_a);
 }
@@ -194,6 +201,54 @@ fn kui_fs_fragment(
 /// The entry point [`EPILOGUE`] declares — what a backend names when it
 /// builds the pipeline.
 pub const ENTRY_POINT: &str = "kui_fs_fragment";
+
+/// How many vertices a `polygon` takes: one `vec2` per pair of the
+/// sixteen params.
+pub const POLYGON_MAX_POINTS: usize = 8;
+
+/// The stock fragment a `polygon` node paints with (ADR 0025, decision
+/// 6): up to eight vertices, one per `vec2` of the sixteen params, each
+/// normalised to the node's box — a polygon's box is its own bounding box
+/// inflated by a pixel, so the vertices span it — the last vertex
+/// repeated to pad, filled in `in.color`. The distance is the polygon
+/// SDF whose sign flips at every edge crossing — even-odd, the same rule
+/// the hit test uses — so a concave outline fills correctly and a
+/// self-intersecting one leaves its overlaps unfilled; a padding edge of
+/// zero length is skipped before it can divide by itself. The edge ramps over one
+/// physical pixel, like a box's. Registered by the core itself, once per
+/// session, through the same idempotent `add_fragment` an app's source
+/// takes, so `kui_fragment_source` hands a C host the function kui
+/// validated.
+pub const POLYGON: &str = r#"
+fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {
+    var v: array<vec2<f32>, 8>;
+    for (var i = 0; i < 4; i++) {
+        v[i * 2] = params[i].xy * in.size;
+        v[i * 2 + 1] = params[i].zw * in.size;
+    }
+    let p = in.local;
+    var d = dot(p - v[0], p - v[0]);
+    var s = 1.0;
+    var j = 7;
+    for (var i = 0; i < 8; i++) {
+        let e = v[j] - v[i];
+        let w = p - v[i];
+        let ee = dot(e, e);
+        if ee > 0.0 {
+            let b = w - e * clamp(dot(w, e) / ee, 0.0, 1.0);
+            d = min(d, dot(b, b));
+            let c = vec3<bool>((p.y >= v[i].y), (p.y < v[j].y), (e.x * w.y > e.y * w.x));
+            if all(c) || all(!c) {
+                s = -s;
+            }
+        }
+        j = i;
+    }
+    let dist = s * sqrt(d);
+    let cov = clamp(0.5 - dist, 0.0, 1.0);
+    return vec4<f32>(in.color.rgb, cov);
+}
+"#;
 
 /// The whole module for an app's source: prelude, the app, epilogue. What
 /// the core validates and what a backend compiles, from one function so
@@ -262,6 +317,23 @@ fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {
     #[test]
     fn a_gradient_validates() {
         validate(GRADIENT).unwrap();
+    }
+
+    /// The stock polygon is validated like any app source — at build,
+    /// here, rather than at the first `polygon` node of a session.
+    #[test]
+    fn the_stock_polygon_validates() {
+        validate(POLYGON).unwrap();
+    }
+
+    /// `in.color` is what the prelude added for it (ADR 0025).
+    #[test]
+    fn the_quad_colour_is_reachable_from_the_app() {
+        let src = "\
+fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {
+    return vec4<f32>(in.color.rgb * params[0].x, 1.0);
+}";
+        validate(src).unwrap();
     }
 
     #[test]

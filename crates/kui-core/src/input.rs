@@ -654,6 +654,48 @@ impl UiEvent {
     }
 }
 
+/// The node whose `on_context_menu` a secondary press on a region opens:
+/// the region's own node or an ancestor's (see `HitRegion::context_menu`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct MenuOwner {
+    pub key: Key,
+    pub origin: OriginId,
+    pub tag: Value,
+}
+
+/// The shape inside a region's rect that a point has to be in to hit it
+/// (`docs/adr/0026-hit-testing-by-shape.md`). The rect is always tested
+/// first, so a shape is evaluated only for the few regions under the
+/// pointer. Inline on the region rather than behind an index: the ADR
+/// priced the twenty bytes at +7% on a 10k-region frame and measured
+/// nothing, so the simpler shape won. Points for a stroke or a fill live
+/// in the interaction's own list, relative to the region's top-left in
+/// logical px, copied at emission because the frame's stores do not
+/// outlive the frame and a press does.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum HitShape {
+    /// The whole rect — every box, and what every region was before.
+    Rect,
+    /// A box with rounded corners: a point in a corner's square but past
+    /// its arc misses. Radii clockwise from the top-left, logical px,
+    /// as the node's `radius` row.
+    Rounded([f32; 4]),
+    /// A round-capped stroke through `len` points from `first`, `width`
+    /// wide: a point within half the width of any piece hits. A hairline
+    /// is hard to hit, so the grab is at least [`MIN_STROKE_GRAB`] wide.
+    Segments { first: u32, len: u32, width: f32 },
+    /// A filled outline through `len` points from `first`: a point inside
+    /// by the even-odd rule hits — the same rule the stock polygon paints
+    /// by, so the hit is the fill exactly, a self-intersecting outline's
+    /// unfilled overlaps included.
+    Polygon { first: u32, len: u32 },
+}
+
+/// The narrowest a stroke's hit target gets, logical px, whatever its
+/// drawn width: a 1 px connector is a 4 px target, the way a 1 px splitter
+/// handle is wider than its line everywhere.
+pub const MIN_STROKE_GRAB: f32 = 4.0;
+
 #[derive(Clone, Debug)]
 pub struct HitRegion {
     pub key: Key,
@@ -662,6 +704,8 @@ pub struct HitRegion {
     pub rect: Rect,
     /// Ancestor clip; a point must be inside both to hit.
     pub clip: Rect,
+    /// The shape inside `rect` a point must also be in, when there is one.
+    pub shape: HitShape,
     /// Click payload; None for hover-only regions (hoverable, edits) — a
     /// click on those emits no `UiEvent`.
     pub payload: Option<Value>,
@@ -688,11 +732,18 @@ pub struct HitRegion {
     /// The sink declared `key_up`: releases reach it too. Without it a
     /// release is dropped at routing, and the sink hears presses only.
     pub key_up: bool,
-    /// Context-menu tag when the node declared `on_context_menu`: a
-    /// secondary-button press emits `{kind="contextmenu", x, y, tag}` on
-    /// it. Like a click, the topmost region under the pointer is the one
-    /// asked — a region that declared none swallows the press.
-    pub context_menu: Option<Value>,
+    /// The context menu a secondary press here opens: the node's own
+    /// `on_context_menu`, or the nearest enclosing one — a container
+    /// offering a menu for everything inside it is the common case, and
+    /// a press on a child that declared none is unclaimed in the sense
+    /// ADR 0011 gave keys, so it reaches the enclosing menu the way an
+    /// unclaimed key reaches the enclosing sink (backlog T1). Resolved at
+    /// emission, where the tree is; the walk stops at the modal boundary
+    /// and skips a disabled node's own. The press emits
+    /// `{kind="contextmenu", x, y, tag}` on the *owner*, not on this node.
+    /// None when nothing encloses this region offers one, and the press
+    /// is swallowed here.
+    pub context_menu: Option<MenuOwner>,
     /// A press on this node moves keyboard focus to it (an editor, a
     /// sink, a control, a `focusable` node — never a disabled one).
     pub focusable: bool,
@@ -712,6 +763,109 @@ pub struct HitRegion {
     /// Pointer shape declared by the node (`NodeSpec::cursor`), overriding
     /// what the rest of this region would derive. None = derive.
     pub cursor: Option<CursorShape>,
+}
+
+/// The points a frame's stroke and fill shapes index, built beside its
+/// regions.
+#[derive(Clone, Debug, Default)]
+pub struct HitShapes {
+    pub points: Vec<Vec2>,
+}
+
+impl HitShapes {
+    /// Adds a stroke's points and returns the shape over them.
+    pub fn segments(&mut self, points: &[Vec2], width: f32) -> HitShape {
+        let first = self.points.len() as u32;
+        self.points.extend_from_slice(points);
+        HitShape::Segments {
+            first,
+            len: points.len() as u32,
+            width,
+        }
+    }
+
+    /// Adds a fill's points and returns the shape over them.
+    pub fn polygon(&mut self, points: &[Vec2]) -> HitShape {
+        let first = self.points.len() as u32;
+        self.points.extend_from_slice(points);
+        HitShape::Polygon {
+            first,
+            len: points.len() as u32,
+        }
+    }
+}
+
+/// Whether `p` (relative to the box's top-left) is inside a `w`×`h` box
+/// with the given corner radii: in the box, and not in a corner's square
+/// past its arc. Radii are clamped to the half extents as the shader
+/// clamps them, so an oversized radius is the pill it draws as.
+pub fn in_rounded_rect(p: Vec2, w: f32, h: f32, radii: [f32; 4]) -> bool {
+    let cap = (w * 0.5).min(h * 0.5).max(0.0);
+    // Corner centres clockwise from the top-left, each with its radius.
+    let corners = [
+        (radii[0].min(cap), radii[0].min(cap), radii[0].min(cap)),
+        (w - radii[1].min(cap), radii[1].min(cap), radii[1].min(cap)),
+        (
+            w - radii[2].min(cap),
+            h - radii[2].min(cap),
+            radii[2].min(cap),
+        ),
+        (radii[3].min(cap), h - radii[3].min(cap), radii[3].min(cap)),
+    ];
+    for (i, &(cx, cy, r)) in corners.iter().enumerate() {
+        if r <= 0.0 {
+            continue;
+        }
+        // Past the centre toward the corner on both axes: in the square.
+        let in_square = match i {
+            0 => p.x < cx && p.y < cy,
+            1 => p.x > cx && p.y < cy,
+            2 => p.x > cx && p.y > cy,
+            _ => p.x < cx && p.y > cy,
+        };
+        if in_square && (p.x - cx).powi(2) + (p.y - cy).powi(2) > r * r {
+            return false;
+        }
+    }
+    true
+}
+
+/// Distance from `p` to the segment `a`–`b`.
+pub fn segment_distance(p: Vec2, a: Vec2, b: Vec2) -> f32 {
+    let (ex, ey) = (b.x - a.x, b.y - a.y);
+    let (wx, wy) = (p.x - a.x, p.y - a.y);
+    let ee = ex * ex + ey * ey;
+    let t = if ee > 0.0 {
+        ((wx * ex + wy * ey) / ee).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let (dx, dy) = (wx - ex * t, wy - ey * t);
+    (dx * dx + dy * dy).sqrt()
+}
+
+/// Whether `p` is inside the outline through `pts` by the even-odd rule
+/// (the crossing test). A point on an edge counts as inside on one side
+/// and outside on the other, which is what every hit test of a shared
+/// edge between two wedges wants: exactly one of them.
+pub fn in_polygon(p: Vec2, pts: &[Vec2]) -> bool {
+    let n = pts.len();
+    if n < 3 {
+        return false;
+    }
+    let mut inside = false;
+    let mut j = n - 1;
+    for i in 0..n {
+        let (a, b) = (pts[i], pts[j]);
+        if (a.y > p.y) != (b.y > p.y) {
+            let x = a.x + (p.y - a.y) / (b.y - a.y) * (b.x - a.x);
+            if p.x < x {
+                inside = !inside;
+            }
+        }
+        j = i;
+    }
+    inside
 }
 
 /// A scroll container's on-screen area, for wheel routing.
@@ -814,6 +968,9 @@ impl DragState {
 pub struct Interaction {
     /// In paint order: later entries are on top.
     pub(crate) hits: Vec<HitRegion>,
+    /// The points the stroke and fill shapes index, rebuilt with the
+    /// hits; empty on a frame of plain boxes.
+    shape_points: Vec<Vec2>,
     /// In paint order: later entries are on top (innermost last).
     pub(crate) scroll_regions: Vec<ScrollRegion>,
     /// This frame's scrollbars, topmost last (they draw over content).
@@ -852,7 +1009,13 @@ pub struct Interaction {
 
 impl Interaction {
     pub fn set_hits(&mut self, hits: Vec<HitRegion>) {
+        self.set_hits_shaped(hits, HitShapes::default());
+    }
+
+    /// `set_hits` with the points the regions' shapes index (ADR 0026).
+    pub fn set_hits_shaped(&mut self, hits: Vec<HitRegion>, shapes: HitShapes) {
         self.hits = hits;
+        self.shape_points = shapes.points;
         let mut out = std::mem::take(&mut self.pending);
         self.refresh_hover(&mut out);
         self.pending = out;
@@ -878,6 +1041,56 @@ impl Interaction {
         hits
     }
 
+    /// The previous frame's point list (cleared), on the same terms.
+    pub fn take_shape_buffer(&mut self) -> HitShapes {
+        let mut shapes = HitShapes {
+            points: std::mem::take(&mut self.shape_points),
+        };
+        shapes.points.clear();
+        shapes
+    }
+
+    /// Whether `p` is in region `h`: inside its rect and its clip, and
+    /// inside its shape when it has one. The rect test is what every
+    /// region pays; the shape is paid by the few under the pointer.
+    #[inline]
+    fn contains(&self, h: &HitRegion, p: Vec2) -> bool {
+        if !(h.rect.contains(p) && h.clip.contains(p)) {
+            return false;
+        }
+        if h.shape == HitShape::Rect {
+            return true;
+        }
+        let local = Vec2::new(p.x - h.rect.x, p.y - h.rect.y);
+        match h.shape {
+            HitShape::Rect => true,
+            HitShape::Rounded(radii) => in_rounded_rect(local, h.rect.w, h.rect.h, radii),
+            // A shape whose points are not here — a region installed
+            // through `set_hits` without its shapes, or one from another
+            // frame — misses rather than panics in the input path.
+            HitShape::Segments { first, len, width } => {
+                let Some(pts) = self
+                    .shape_points
+                    .get(first as usize..(first + len) as usize)
+                else {
+                    return false;
+                };
+                let half = (width * 0.5).max(MIN_STROKE_GRAB * 0.5);
+                pts.windows(2)
+                    .any(|w| segment_distance(local, w[0], w[1]) <= half)
+            }
+            HitShape::Polygon { first, len } => {
+                let Some(pts) = self
+                    .shape_points
+                    .get(first as usize..(first + len) as usize)
+                else {
+                    return false;
+                };
+                in_polygon(local, pts)
+            }
+        }
+    }
+
     pub fn cursor(&self) -> Option<Vec2> {
         self.cursor
     }
@@ -896,10 +1109,7 @@ impl Interaction {
     }
 
     pub(crate) fn hit_at(&self, p: Vec2) -> Option<&HitRegion> {
-        self.hits
-            .iter()
-            .rev()
-            .find(|h| h.rect.contains(p) && h.clip.contains(p))
+        self.hits.iter().rev().find(|h| self.contains(h, p))
     }
 
     /// Topmost scroll container under the cursor, if any.
@@ -916,11 +1126,9 @@ impl Interaction {
     /// leave/enter events when the hovered node changes.
     fn refresh_hover(&mut self, out: &mut Vec<UiEvent>) {
         let before = self.hovered;
-        let idx = self.cursor.and_then(|p| {
-            self.hits
-                .iter()
-                .rposition(|h| h.rect.contains(p) && h.clip.contains(p))
-        });
+        let idx = self
+            .cursor
+            .and_then(|p| self.hits.iter().rposition(|h| self.contains(h, p)));
         let (hovered, group) = match idx {
             Some(i) => (Some(self.hits[i].key), self.hits[i].group),
             None => (None, None),
@@ -949,13 +1157,13 @@ impl Interaction {
     }
 
     fn context_menu_event(region: &HitRegion, p: Vec2) -> Option<UiEvent> {
-        let tag = region.context_menu.as_ref()?;
+        let owner = region.context_menu.as_ref()?;
         let payload = Value::map([
             ("kind", Value::str("contextmenu")),
             ("x", Value::Float(p.x as f64)),
             ("y", Value::Float(p.y as f64)),
         ]);
-        Some(UiEvent::on(region.origin, region.key, payload).tagged(Some(tag)))
+        Some(UiEvent::on(owner.origin, owner.key, payload).tagged(Some(&owner.tag)))
     }
 
     /// What is under `p`, by the paint order and nothing else: the topmost
@@ -965,10 +1173,7 @@ impl Interaction {
     /// cursor shape both ask this, so they cannot disagree. A bar behind a
     /// modal is drawn and not a target.
     pub(crate) fn target_at(&self, p: Vec2) -> Option<Target<'_>> {
-        let hit = self
-            .hits
-            .iter()
-            .rposition(|h| h.rect.contains(p) && h.clip.contains(p));
+        let hit = self.hits.iter().rposition(|h| self.contains(h, p));
         let bar = self
             .scrollbars
             .iter()
@@ -1232,6 +1437,7 @@ mod tests {
             origin: OriginId(origin),
             rect: Rect::new(x, y, w, h),
             clip: Rect::new(-1e9, -1e9, 2e9, 2e9),
+            shape: HitShape::Rect,
             payload: Some(Value::str(tag)),
             drag: None,
             parent_rect: Rect::new(0.0, 0.0, 0.0, 0.0),
@@ -1352,7 +1558,11 @@ mod tests {
         let mut it = Interaction::default();
         let k = Key::ROOT.str("panel");
         let mut r = region(k, 0, 0.0, 0.0, 100.0, 100.0, "click-me");
-        r.context_menu = Some(Value::str("panel-menu"));
+        r.context_menu = Some(MenuOwner {
+            key: k,
+            origin: OriginId::HOST,
+            tag: Value::str("panel-menu"),
+        });
         it.set_hits(vec![r]);
         let evs = drive(
             &mut it,
@@ -1438,7 +1648,11 @@ mod tests {
         let mut it = Interaction::default();
         let k = Key::ROOT.str("panel");
         let mut r = region(k, 0, 0.0, 0.0, 100.0, 100.0, "go");
-        r.context_menu = Some(Value::str("panel-menu"));
+        r.context_menu = Some(MenuOwner {
+            key: k,
+            origin: OriginId::HOST,
+            tag: Value::str("panel-menu"),
+        });
         it.set_hits(vec![r]);
         let evs = drive(
             &mut it,

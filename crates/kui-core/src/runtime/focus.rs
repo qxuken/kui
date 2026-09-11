@@ -531,6 +531,34 @@ impl Core {
         None
     }
 
+    /// The node whose context menu a secondary press on node `i` opens:
+    /// `i` itself when it declares a live `on_context_menu`, else the
+    /// nearest enclosing node that does — the same walk and the same
+    /// modal boundary as `enclosing_sink`, because an unclaimed press is
+    /// unclaimed in the sense ADR 0011 gave keys (backlog T1). A disabled
+    /// node's own menu is skipped like a disabled sink's, so the press
+    /// reaches the container's.
+    pub(crate) fn enclosing_menu(&self, i: usize) -> Option<usize> {
+        let offers = |j: usize| {
+            self.tree.specs[j].events().on_context_menu.is_some() && !self.tree.specs[j].disabled
+        };
+        if offers(i) {
+            return Some(i);
+        }
+        let mut n = self.tree.parent[i];
+        while n != crate::tree::NIL {
+            let j = n as usize;
+            if !self.interactive(j) {
+                return None;
+            }
+            if offers(j) {
+                return Some(j);
+            }
+            n = self.tree.parent[j];
+        }
+        None
+    }
+
     /// The focused node's index in the last frame, if it is there.
     pub(crate) fn focus_index(&self) -> Option<usize> {
         self.tree.index_of(self.focus?)

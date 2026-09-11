@@ -152,3 +152,19 @@ fn a_lone_floating_image_escapes_its_parent_clip() {
     assert_eq!(quads.len(), 1, "a float paints outside the clip it escaped");
     assert_eq!((quads[0].rect.x, quads[0].rect.y), (100.0, 100.0));
 }
+
+/// `update_image` with a buffer that is not `w × h × 4` bytes takes
+/// nothing (a backend would refuse the short upload with a validation
+/// error, which wgpu turns into a panic); the entry keeps its pixels and
+/// its backing (`docs/adr/0025-the-image-is-the-canvas.md`).
+#[test]
+fn an_update_of_the_wrong_length_is_refused() {
+    let mut core = Core::new();
+    let id = core.resources.add_image(4, 4, vec![0xff; 4 * 4 * 4]);
+    assert!(!core.update_image(id, 8, 2, vec![0; 3]));
+    let (w, h, px) = core.image_pixels(id).unwrap();
+    assert_eq!((w, h, px.len()), (4, 4, 64));
+    assert!(core.update_image(id, 8, 2, vec![0x80; 8 * 2 * 4]));
+    let (w, h, _) = core.image_pixels(id).unwrap();
+    assert_eq!((w, h), (8, 2));
+}

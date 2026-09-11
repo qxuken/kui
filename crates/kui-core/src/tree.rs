@@ -43,8 +43,10 @@ pub enum NodeContent {
     Text(TextId),
     /// Editable text; retained state lives in the core's `EditStore`.
     Edit(Key),
-    /// A host-registered image (see `Resources`), drawn via the atlas.
-    Image(crate::resources::ImageId),
+    /// A host-registered image (see `Resources`), drawn from the atlas or
+    /// from a texture of its own as the entry's backing says, met by its
+    /// box as `opts` say (ADR 0025).
+    Image(crate::resources::ImageId, crate::resources::ImageOpts),
     /// A stroke through a run of points: one segment quad per straight
     /// piece (see `crate::line`). The node is a float sized to the
     /// stroke's bounding box, and its `bg` is the stroke colour.
@@ -56,6 +58,11 @@ pub enum NodeContent {
     /// The handle and the sixteen parameters live in the frame's
     /// `FragmentList`; the node carries only where.
     Fragment(crate::fragment::FragmentDrawId),
+    /// A filled polygon (ADR 0025, decision 6): a float sized to its own
+    /// bounding box like a line, painted by the stock polygon fragment
+    /// whose draw sits in the frame's `FragmentList` like any fragment's,
+    /// its `bg` the fill. No hit region, no access row.
+    Polygon(crate::fragment::FragmentDrawId),
 }
 
 impl Tree {
@@ -129,6 +136,10 @@ pub struct Tree {
     /// Whether any node declares `on_layout`, so the rect report can skip
     /// the walk.
     pub any_layout: bool,
+    /// Whether any node declares `on_context_menu`, so a hit region's
+    /// walk for the menu it inherits (backlog T1) is skipped wholesale on
+    /// a frame that offers none.
+    pub any_context_menu: bool,
     /// Whether any node declares a workable `exit` (one under a
     /// transition). Gates the tree swap and the key diff.
     pub any_exit: bool,
@@ -202,6 +213,7 @@ impl Tree {
         self.any_region = false;
         self.any_slide = false;
         self.any_layout = false;
+        self.any_context_menu = false;
         self.any_exit = false;
         self.any_animate = false;
         self.indexed.clear();
@@ -241,6 +253,7 @@ impl Tree {
         if let Some(events) = spec.events.as_deref() {
             self.any_modal |= events.modal.is_some();
             self.any_layout |= events.on_layout.is_some();
+            self.any_context_menu |= events.on_context_menu.is_some();
         }
         if spec.transition.is_some() {
             match spec.anim.as_deref() {

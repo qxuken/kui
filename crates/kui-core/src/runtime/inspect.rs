@@ -25,6 +25,7 @@ pub enum NodeKind {
     Line,
     Cells,
     Fragment,
+    Polygon,
 }
 
 impl NodeKind {
@@ -37,6 +38,7 @@ impl NodeKind {
             NodeKind::Line => "line",
             NodeKind::Cells => "cells",
             NodeKind::Fragment => "fragment",
+            NodeKind::Polygon => "polygon",
         }
     }
 }
@@ -227,10 +229,11 @@ impl Core {
                     (NodeKind::Text, Some(t))
                 }
                 NodeContent::Edit(_) => (NodeKind::Edit, None),
-                NodeContent::Image(_) => (NodeKind::Image, None),
+                NodeContent::Image(..) => (NodeKind::Image, None),
                 NodeContent::Line(_) => (NodeKind::Line, None),
                 NodeContent::Cells(_) => (NodeKind::Cells, None),
                 NodeContent::Fragment(_) => (NodeKind::Fragment, None),
+                NodeContent::Polygon(_) => (NodeKind::Polygon, None),
             };
             let rect = if i == 0 {
                 Rect::new(0.0, 0.0, self.viewport.w, self.viewport.h)

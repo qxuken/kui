@@ -250,11 +250,11 @@ export interface GeneratedSpecProps {
   modal?: AppMsg | null;
   /** Message emitted when clicked (data, not a callback). */
   onClick?: AppMsg;
-  /** Context-menu tag: a secondary-button (right) press emits {kind:"contextmenu", x, y, tag} on the node, at the logical viewport point to open the menu at. The press moves no focus, places no caret and produces no click, so right-clicking a selection keeps it; the topmost node under the pointer is the one asked, as for a click. */
+  /** Context-menu tag: a secondary-button (right) press emits {kind:"contextmenu", x, y, tag} on the node, at the logical viewport point to open the menu at. The press moves no focus, places no caret and produces no click, so right-clicking a selection keeps it. Asked of the topmost node under the pointer, and when that node offers no menu the press reaches the nearest enclosing node that does — a container declaring a menu for everything inside it is the common case — the way an unclaimed key reaches the enclosing sink (`docs/adr/0011`): the event carries the *owner's* key and tag, a nested declaration wins over its ancestor's, a disabled node's own is skipped, and the walk stops at the modal boundary. */
   onContextMenu?: AppMsg | null;
   /** Drag tag: emits {kind:"drag", phase, x, y, dx, dy, parent, tag} events, `dx`/`dy` measured from the press point in every phase. */
   onDrag?: AppMsg | null;
-  /** Force-click tag: a press that deepens past the second stage of a Force Touch trackpad emits {kind:"forceclick", x, y, tag} on the node, at the logical viewport point it happened at (`docs/adr/0017-selection-as-a-scope.md`). Routed like `onContextMenu` — topmost node, no focus moved, no caret placed, no click — and the ordinary click the press is still producing arrives afterwards, as it does on macOS. Text needs none of this: a force click over an `edit` or a `selectable` scope selects the word under it and asks the host for its Look Up panel. macOS-only in practice, and there the user can switch the gesture off, so nothing may declare itself the only way to reach something. */
+  /** Force-click tag: a press that deepens past the second stage of a Force Touch trackpad emits {kind:"forceclick", x, y, tag} on the node, at the logical viewport point it happened at (`docs/adr/0017-selection-as-a-scope.md`). Routed as a secondary press is — no focus moved, no caret placed, no click — but asked of the topmost node only, with no walk to an enclosing declaration — and the ordinary click the press is still producing arrives afterwards, as it does on macOS. Text needs none of this: a force click over an `edit` or a `selectable` scope selects the word under it and asks the host for its Look Up panel. macOS-only in practice, and there the user can switch the gesture off, so nothing may declare itself the only way to reach something. */
   onForceClick?: AppMsg | null;
   /** Hover tag: the pointer entering/leaving emits {kind:"hover", phase:"enter"|"leave", tag} events. */
   onHover?: AppMsg | null;
@@ -475,8 +475,22 @@ export declare namespace JSX {
     /** Styled run inside a rich <text>: bold/italic/color, nestable. */
     span: SpanProps;
     /** A registered image (id from addImage). Fit sizing = pixel size as
-     *  logical px; Fit height against a resolved width keeps the aspect. */
-    image: Omit<BoxProps, 'children'> & { src: string };
+     *  logical px; Fit height against a resolved width keeps the aspect.
+     *  Two rows say how the pixels meet the box
+     *  (docs/adr/0025-the-image-is-the-canvas.md): `sampling` is
+     *  `linear` (default) or `nearest` — pixel art, an emulator, a data
+     *  grid that must stay square under zoom; `fit` is `fill` (default:
+     *  the pixels stretch to the box), `contain` (the largest rect of the
+     *  image's aspect that fits, centred) or `cover` (the box filled and
+     *  the rest cropped, centred). The box itself — layout, hit region,
+     *  access rect — is the same in every mode. The pixels come from the
+     *  atlas, or from a texture of the image's own once `updateImage` has
+     *  replaced them; the node cannot tell and need not. */
+    image: Omit<BoxProps, 'children'> & {
+      src: string;
+      sampling?: 'linear' | 'nearest';
+      fit?: 'fill' | 'contain' | 'cover';
+    };
     /** A box a registered WGSL function paints
      *  (docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md):
      *  gradients, rings, noise, shimmer — anything the paint vocabulary has
@@ -516,15 +530,50 @@ export declare namespace JSX {
      *  its box, so a stroke whose ends all move together slides with them,
      *  while one whose ends move apart resizes at once. A canvas of floats
      *  eases everything or nothing, connectors included.
-     *  Takes no pointer input and has no access row. */
+     *  Hit by its shape (docs/adr/0026-hit-testing-by-shape.md): with
+     *  `onClick`, `onDrag`, `onHover` or `hoverable`, a press within half
+     *  its width of any piece (at least 4 px of grab) hits it and one
+     *  elsewhere in its box falls through; with none it takes no input and
+     *  has no access row, and with input it is a control — name it. */
     line: Keyed &
-      Pick<GeneratedSpecProps, 'opacity' | 'transition' | 'slide' | 'enter' | 'exit' | 'onLayout' | 'label' | 'role'> & {
+      Pick<
+        GeneratedSpecProps,
+        | 'opacity' | 'transition' | 'slide' | 'enter' | 'exit' | 'onLayout' | 'label' | 'role'
+        | 'onClick' | 'onDrag' | 'onHover' | 'hoverable' | 'cursor' | 'description'
+      > & Pick<CustomSpecProps, 'tooltip'> & {
         from?: [number, number];
         to?: [number, number];
         points?: [number, number][];
         curve?: boolean;
         width?: number;
         color?: ColorProp;
+        float?: 'parent' | 'viewport';
+      };
+    /** A filled polygon through up to eight `points`, the fill in `bg`
+     *  (docs/adr/0025-the-image-is-the-canvas.md, decision 6): an arrowhead,
+     *  a pie slice, the area under a curve. Placed as a `line` is — always
+     *  a float in its parent's box space (`float="viewport"` for viewport
+     *  space), sized to its own bounding box a pixel out on each side, so
+     *  it takes no room in a row or column; `transition` eases the fill and,
+     *  with `slide`, its position. The outline may be concave; a
+     *  self-intersecting one fills even-odd, its overlaps unfilled. Hit by
+     *  its outline
+     *  (docs/adr/0026-hit-testing-by-shape.md): with `onClick`, `onDrag`,
+     *  `onHover` or `hoverable`, a press inside the outline hits it and one
+     *  in its box past the outline falls through — a pie's wedges need no
+     *  hit boxes; with none it takes no input and has no access row, and
+     *  with input it is a button — name it. A ninth point and later are
+     *  dropped with `polygon-points-truncated`; fewer than three draw
+     *  nothing; no `bg`, no fill. One `fragment` quad on the wire, painted
+     *  by a WGSL function the core registers itself. */
+    polygon: Keyed &
+      Pick<
+        GeneratedSpecProps,
+        | 'opacity' | 'transition' | 'slide' | 'enter' | 'exit' | 'onLayout' | 'label' | 'role'
+        | 'onClick' | 'onDrag' | 'onHover' | 'hoverable' | 'hoverBg' | 'cursor' | 'description'
+      > & Pick<CustomSpecProps, 'tooltip'> & {
+        points: [number, number][];
+        bg?: ColorProp;
         float?: 'parent' | 'viewport';
       };
     /** Adaptive titlebar (drag strip + window buttons per env facts).

@@ -24,6 +24,8 @@ export function createEncoder(P) {
   // here and another in kui-core.
   const ALIGN = indexOf(P.align);
   const FLOAT_PRESET = indexOf(P.floatPreset);
+  const IMAGE_SAMPLING = indexOf(P.imageSampling);
+  const IMAGE_FIT = indexOf(P.imageFit);
   const PRESET_NAMES = P.floatPreset.join(' | ');
 
   // The allow-list a view is checked against, straight off the protocol: the
@@ -571,10 +573,40 @@ export function createEncoder(P) {
       case 'image': {
         if (typeof p.src !== 'string') throw new Error('<image> needs a src (an id from addImage)');
         const id = BigInt('0x' + p.src);
+        // The two rows that say how the pixels meet the box
+        // (docs/adr/0025-the-image-is-the-canvas.md, decision 4); absent
+        // is the first entry of each table.
+        const sampling = p.sampling == null ? 0 : IMAGE_SAMPLING[p.sampling];
+        if (sampling === undefined) throw new Error(`sampling must be ${P.imageSampling.join(' | ')}`);
+        const fit = p.fit == null ? 0 : IMAGE_FIT[p.fit];
+        if (fit === undefined) throw new Error(`fit must be ${P.imageFit.join(' | ')}`);
+        reserve(6);
         f[fi++] = OP.image;
         f[fi++] = Number(id >> 32n);
         f[fi++] = Number(id & 0xffffffffn);
+        f[fi++] = sampling;
+        f[fi++] = fit;
         props(p, null, false);
+        return;
+      }
+      case 'polygon': {
+        // Up to eight [x, y] pairs; the fill is `bg`, a schema row the
+        // props pass writes into the style, and the core decides the box
+        // (docs/adr/0025-the-image-is-the-canvas.md, decision 6). More
+        // than eight are sent and dropped by the core with its warning.
+        const pts = p.points;
+        if (!Array.isArray(pts) || pts.length < 3) throw new Error('<polygon> needs at least three points');
+        reserve(4 + pts.length * 2);
+        f[fi++] = OP.polygon;
+        f[fi++] = pts.length;
+        for (const pt of pts) {
+          if (!Array.isArray(pt) || pt.length !== 2 || typeof pt[0] !== 'number' || typeof pt[1] !== 'number') {
+            throw new Error(`bad point ${JSON.stringify(pt)} for <polygon> (an [x, y] pair)`);
+          }
+          f[fi++] = pt[0];
+          f[fi++] = pt[1];
+        }
+        props(p, el.key, false);
         return;
       }
       case 'fragment': {

@@ -753,11 +753,12 @@ pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
     match tree.content[i] {
         NodeContent::Text(_) => return Some(Role::StaticText),
         NodeContent::Edit(_) => return Some(Role::TextInput),
-        NodeContent::Image(_) => return Some(Role::Image),
-        // A stroke is decoration and takes no input, so nothing below —
-        // not even an `on_click` it ignores — can make it a control
-        // (`docs/adr/0010-a-segment-primitive.md`, decision 7).
-        NodeContent::Line(_) => return None,
+        NodeContent::Image(..) => return Some(Role::Image),
+        // A stroke or a fill is decoration on its own and elided like
+        // plain structure; one that takes input is hit by its shape (ADR
+        // 0026), so the derivation below reaches it as it reaches a box —
+        // a clickable wedge is a button, a draggable connector a control.
+        NodeContent::Line(_) | NodeContent::Polygon(_) => {}
         NodeContent::Cells(_) => return Some(Role::Terminal),
         // A fragment is paint. On its own it is decoration and is elided
         // like plain structure, but unlike a line it does take input, so

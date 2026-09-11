@@ -32,6 +32,54 @@ field reports).
   it and takes the press there. The corpus report changes (`layers` is a
   new scene, and every scene with a bar or a ring beside a float moves),
   so `target/conformance.txt` wants regenerating.
+- **A `line` or `polygon` that declares input takes it — by shape — and
+  the two `*-ignores-input` warnings are gone**
+  ([ADR 0026](docs/adr/0026-hit-testing-by-shape.md)). `onClick`,
+  `onDrag`, `onHover` and `hoverable` on a stroke or a fill used to be
+  ignored with a warning; now a press within the stroke's width (at
+  least 4 px of grab) or inside the outline hits it, and one in the
+  bounding box off the shape falls through. A match on
+  `'line-ignores-input'` or `'polygon-ignores-input'` no longer
+  compiles, and such a node is in the access tree (a clickable one is a
+  button — name it), so an access-row snapshot grows. A rounded box's
+  dead corners are no longer hits either: a click in the corner of a
+  rounded card reaches what is under it. `HitRegion` gained a `shape`
+  field, so code that constructs one by hand adds `HitShape::Rect`. In
+  C, `kui_polyline` and `kui_polygon` take `on_click`, `on_drag` and
+  `on_hover` as `kui_open_with` does (under the same unreleased ABI 14);
+  `kui_line` is unchanged. The corpus `lines` and `polygon` scenes gain
+  presses on and off the shape and their clickable nodes gain labels, so
+  `target/conformance.txt` wants regenerating.
+- **ABI 14: `KuiDrawData` appends `textures` and `texture_count`, and
+  `KUI_QUAD_TEXTURE = 8` is a ninth quad kind**
+  ([ADR 0025](docs/adr/0025-the-image-is-the-canvas.md)). An [out] append
+  the size handshake covers — a host reserving the ABI-13 layout keeps
+  working and never sees the side entry — so the bump is for the kind: a
+  host's own renderer that predates it draws such a quad as a solid,
+  wrongly and harmlessly, as a pre-segment host draws a segment. A host
+  that renders the list itself reads `KuiDrawData.textures[q.uv[0]]`,
+  fetches the bytes with `kui_image_pixels`, uploads when `rev` moved,
+  binds that texture in the atlas's place and draws the quad as an
+  image; on both image kinds `border_w` is now the `sampling` flag (0
+  linear, 1 nearest), which was always zero before.
+- **The corpus report's `kinds` line has nine columns, and `texture`
+  lines join `fragment` lines.** Every scene's `kinds` moves by a column
+  (`… <fragment> <texture>`), `media` gains three texture quads and a
+  crop line, and `polygon` is a new scene; `target/conformance.txt` wants
+  regenerating, and an adapter that counted eight kinds counts nine
+  (`Expect` gained `textures`).
+- **The `layout` event's payload carries `scale`.** A handler that
+  deep-compares the whole payload sees one more key — `{kind, x, y, w, h,
+  parent, scale, tag}` — which is physical px per logical px at the node,
+  the number a view multiplies `w`/`h` by before `update_image`.
+- **Node's binary protocol is v8.** `<image>` carries its `sampling` and
+  `fit` as two slots before its props and `<polygon>` is a new op; the
+  encoder and the addon ship together in the package, so nothing to do,
+  and an encoder from an older package against this addon is refused
+  by version rather than misread.
+- **`ImageEntry.rgba` is an `Arc<Vec<u8>>`, and `NodeContent::Image`
+  carries `ImageOpts` beside the id.** Rust code that read the bytes
+  derefs one more level; a match on the variant takes two fields.
 - **ABI 13: `KuiMenuItem` grew a `checked` field.** It is an [in] struct,
   whose appends are ordinarily free — but this one travels as an *array*,
   so the append moved the stride and a host that does not recompile reads
@@ -161,6 +209,99 @@ field reports).
 
 ### Added
 
+- **Hit-testing by shape** ([ADR 0026](docs/adr/0026-hit-testing-by-shape.md)).
+  Every hit region carries a `HitShape` — `Rect`, `Rounded(radii)`,
+  `Segments` or `Polygon` — and the one `contains` every input path
+  runs (hover, press, click, drag start, cursor shape, the secondary
+  press) tests the rect first and the shape after, so a pie's wedges
+  are their own hover targets, a connector takes a drag on its stroke,
+  and a rounded card's corners are not hits. A stroke's grab is never
+  under 4 px; a fill is tested even-odd, which for the simple outlines a
+  `polygon` draws is the fill. Measured: two storage variants at
+  `frame_10k_rects_with_text_and_hits` 1.199 vs 1.197 ms against 1.181
+  before — the inline enum the draft priced at +7% cost nothing, and won
+  on simplicity — and a full hover scan over 2,500 shaped regions at 3.6
+  µs (`hover_over_10k_regions`). `tests/hit.rs` pins the geometry and
+  every path; the polygon example deletes its hover boxes.
+- **The image is the canvas**
+  ([ADR 0025](docs/adr/0025-the-image-is-the-canvas.md)) — the answer to
+  "should kui have a canvas, raw GPU commands or a painter callback" is
+  the primitives that make an app not need one, and nine times out of
+  ten *canvas* meant "I will draw it, you show it":
+  - **`update_image(id, w, h, rgba)`** — `Core::update_image`,
+    `surface.updateImage`, `kui_image_update` — replaces an image's
+    pixels in place. The handle is unchanged, so every node showing it
+    draws the new pixels next frame with no view change; the dimensions
+    may change; a dead handle warns `foreign-resource`. A video frame, a
+    camera, an emulator, a plot the app rasterised with whatever it
+    likes: kui composes, clips, rounds, fades and hit-tests the box.
+  - **Two backings, the core decides.** An image is atlas-backed as
+    before until it is updated, or does not fit a 4096 page — then it
+    draws from a texture of its own, as a `QuadKind::Texture` quad whose
+    `uv[0]` indexes `DisplayList::textures` (the handle and the texel
+    rect) beside `texture_pixels` (the bytes, shared by `Arc`, and a
+    revision a backend uploads on). The wgpu renderer caches textures on
+    the shared `Gpu` and splits the instanced draw around a texture quad
+    the way it splits around a fragment, rebinding group 0 with that
+    texture where the atlas was. Consecutive quads of one texture take
+    one bind each, as consecutive fragments take one pipeline set each.
+  - **`sampling` and `fit` on `image`** — `image_with(id, ImageOpts {..},
+    spec)` in Rust, `<image sampling fit>` in JSX, `image { sampling=,
+    fit= }` in Lua, `kui_image_with` in C. `sampling` is `linear` (the
+    default) or `nearest` (pixel art, an emulator, a data grid); `fit` is
+    `fill` (the default, and what every image did), `contain` (the
+    largest rect of the image's aspect, centred; the painted rect
+    shrinks) or `cover` (the box filled, the texels cropped, centred).
+    Both resolved in the core, so the corpus pins them on the quad; the
+    box — its layout, hit region and access rect — is the same in every
+    mode.
+  - **`scale` on the `layout` payload** — physical px per logical px at
+    the node: `w × scale` by `h × scale` is how many pixels to render
+    before `update_image`. The frame's today; where a zoom would compose
+    in. The `image` example runs the loop: `onLayout` on the box,
+    render at the reported size, replace, one frame late.
+  - **`polygon`** — `ui.polygon(&points, spec)`, `<polygon points
+    bg/>`, `polygon { points=, bg= }`, `kui_polygon`: a fill of up to
+    eight points (a ninth warns `polygon-points-truncated`; fewer than
+    three draw nothing; no `bg`, no fill), placed exactly as a `line` is
+    — a float in the parent's box space sized to its own bounding box a
+    pixel out on each side, no room taken, no input
+    (`polygon-ignores-input`), no access row — with the fill in `bg` so
+    `transition`, `enter` and `exit` reach it, and ghosts carry it. On
+    the wire it is one `fragment` quad painted by `fragment::POLYGON`, a
+    polygon-SDF source the core registers once per session through the
+    same idempotent `add_fragment` an app's source takes, so a C host
+    gets it from `kui_fragment_source` like any other; concave outlines
+    fill correctly, self-intersecting ones even-odd (overlaps unfilled),
+    the same rule the hit test uses. The prelude's
+    `FragmentIn` gained `color` for it — the quad's colour, white on a
+    `fragment` and the fill on a `polygon` — which any fragment may read
+    rather than spend four params on one. `cargo run --example polygon`:
+    a pie whose wedges light under a hover box, arrowheads on a graph,
+    the area under a sparkline, a concave star.
+  - **`kui_image_pixels`** for a C host that renders the list itself,
+    `textureDraws()` in Node beside `fragmentDraws()`,
+    `Core::image_pixels` in Rust; `KUI_SAMPLING_*` and `KUI_FIT_*`
+    pinned by the ABI audit; the `media` corpus scene grown by an
+    updated *stream* fixture, `nearest`, `contain` and a `cover` crop the
+    report carries as a `texture` line; `polygon` a new scene pinning
+    five fills' params to the bit in four bindings.
+  - **Measured** (M3 Pro; the tables are in the ADR's status block):
+    `frame_1k_typical` 115 → 122 µs with eight texture-backed images
+    beside it and unchanged without; a thousand six-point polygons 98 µs
+    against 94 µs for the same outlines as closed six-segment strokes —
+    parity, after a per-node session lock the first build had was
+    dropped; `update_image` at 1080p costs the app's own 8 MB copy
+    (~110 µs here) and nothing the core adds measurably; the renderer's
+    split around a texture run ~0.4 µs of CPU, and what the GPU pays at a
+    hundred 320×180 boxes each sampling a 1080p texture is the minified
+    sampling without mips (V6), not the split.
+  - **What it declines, with the condition that reopens each**: a
+    drawing-ops canvas (a view past ~10k primitives from Node, or a fill
+    eight points cannot make), the painter (unchanged: a view a fragment
+    cannot serve), a path primitive, rotation, a core `zoom` row (a
+    second camera app, or UI zoom) — V7 and V8 in the backlog, and V1–V6
+    for what it named and deferred (fragment image input next).
 - **The devtools are the core's: one panel, drawn by the runtime, for
   every app** ([ADR 0024](docs/adr/0024-the-devtools-are-the-cores.md)).
   `Core::set_devtools(true)` — `kui::app(..).devtools(true)` in Rust,
@@ -327,6 +468,32 @@ field reports).
 
 ### Fixed
 
+- **An image larger than the atlas page drew nothing, silently.** A
+  4097-px image was recorded as "does not fit" at emission and no quad
+  was pushed, with no warning; it draws from a texture of its own now
+  (ADR 0025, decision 2), and so does anything the page cannot take.
+- **A secondary press on a node that offered no menu was swallowed, and
+  the app looked like it had none.** `on_context_menu` was read off the
+  topmost hit region alone, so a full-window `onKey` sink — the shell
+  pattern `apps/splitmux` uses — over a root that declared the menu ate
+  every right-click, silently (backlog T1, found building the theme
+  example). Now the press is unclaimed at a node that offers nothing and
+  reaches the nearest enclosing node that does, the rule ADR 0011 settled
+  for keys: the event carries the *owner's* key and tag with the press
+  point, a nested declaration still wins over its ancestor's, a disabled
+  node's own is skipped (a disabled row in a list gets the list's menu —
+  before, it got nothing), and the walk stops at the modal boundary. The
+  owner is resolved at emission, where the tree is — `HitRegion::context_menu`
+  is a `MenuOwner` now, not a bare tag — behind a `Tree::any_context_menu`
+  flag so a frame that offers no menu pays nothing. The corpus `controls`
+  scene gains the press on the button under the panel, so its report
+  moves (one more `contextmenu menu`) and `target/conformance.txt` wants
+  regenerating. `onForceClick` is unchanged and its doc now says so:
+  topmost node only, no walk.
+
+  **What you can delete:** the `onContextMenu` an app moved from its
+  container onto every interactive child, or onto its key sink, to be
+  heard at all.
 - **A `cells` grid's `hoverBg` never lit, and its `transition` snapped.**
   `cells_at` pushed its spec untouched where every other leaf door
   resolves the hover style and eases first (backlog AR5). The tween is
@@ -1374,6 +1541,20 @@ field reports).
   counter's `+1` carries it now.
 
 ### What you can delete
+
+The hover or click box floated over a wedge, a connector or a shape's
+middle to give it a target — the polygon example's own went — and the
+`role="none"` that kept an unpressable "button" out of a screen reader's
+way (ADR 0026).
+
+The `add_image` + `remove_image` pair an app wrote around every streamed
+frame, and the handle it re-threaded through its view each time; the
+"keep it under 4096" check in front of `add_image`, and the blank box an
+app could not explain past it; the aspect arithmetic in front of an
+`image` that wanted `contain`; the three-segment closed `line` that stood
+in for a filled arrowhead, and the eight thin boxes that stood in for a pie
+wedge; and the `env.scale` a view carried into its `layout` handler to
+know how many pixels a box was (ADR 0025).
 
 The `keyFocus` / `take_key_focus` on your root sink whose only job was
 giving chords somewhere to land when nothing was focused, and the

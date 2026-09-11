@@ -16,6 +16,8 @@ pub enum Content<'a> {
     Fragment(crate::resources::FragmentId, &'a [f32]),
     Cells(&'a crate::cells::CellGrid<'a>),
     Line(&'a [Vec2], Stroke),
+    /// A filled polygon (ADR 0025, decision 6); the fill is the spec's `bg`.
+    Polygon(&'a [Vec2]),
 }
 
 /// A node's keyframes flattened per slot for `ease_spec`, built once per
@@ -432,8 +434,9 @@ impl Core {
     /// lowers props, so the identity match, the focus edge and the hint
     /// are not re-derived per binding per element (they were, eight, five
     /// and four times). A box or a fragment is left open for its children;
-    /// a `cells` grid and a `line` are leaves and take no hint, since a
-    /// stroke takes no input and a grid draws its own. Returns the key.
+    /// a `cells` grid, a `line` and a `polygon` are leaves and take no
+    /// hint, since a stroke and a fill take no input and a grid draws its
+    /// own. Returns the key.
     pub fn open_from(&mut self, props: PropsOut, content: Content<'_>) -> Key {
         let PropsOut {
             spec,
@@ -469,6 +472,10 @@ impl Core {
             }
             Content::Line(points, stroke) => {
                 self.line_with_key(key, points, stroke, spec);
+                true
+            }
+            Content::Polygon(points) => {
+                self.polygon_with_key(key, points, spec);
                 true
             }
         };
@@ -636,8 +643,22 @@ impl Core {
     /// A registered image (see `Resources::add_image`). Fit sizing takes
     /// the image's pixel dimensions as logical px; a Fit height against a
     /// resolved width preserves the aspect ratio. `style.radius` rounds the
-    /// corners.
-    pub fn image_node(&mut self, id: crate::resources::ImageId, mut spec: NodeSpec) {
+    /// corners. Linear sampling, stretched to the box: [`Self::image_node_with`]
+    /// takes the two rows that say otherwise.
+    pub fn image_node(&mut self, id: crate::resources::ImageId, spec: NodeSpec) {
+        self.image_node_with(id, crate::resources::ImageOpts::default(), spec);
+    }
+
+    /// [`Self::image_node`] with its `sampling` and `fit` rows (ADR 0025,
+    /// decision 4): how texels are read between pixels, and how the pixels
+    /// meet a box of another aspect. The box — its layout, hit region and
+    /// access rect — is the same in every mode.
+    pub fn image_node_with(
+        &mut self,
+        id: crate::resources::ImageId,
+        opts: crate::resources::ImageOpts,
+        mut spec: NodeSpec,
+    ) {
         if self.tree.is_empty() {
             return;
         }
@@ -646,7 +667,7 @@ impl Core {
         self.ease_spec(key, &mut spec);
         let parent = self.current();
         self.tree
-            .push(parent, key, self.origin, spec, NodeContent::Image(id));
+            .push(parent, key, self.origin, spec, NodeContent::Image(id, opts));
     }
 
     /// A box a registered WGSL function paints
@@ -777,10 +798,12 @@ impl Core {
     /// float), `opacity`, `on_layout` (reports the bounding box), a
     /// declared `float` whose *anchor* is kept (`FloatAnchor::Viewport`
     /// reads the points in viewport space), and `role` / `label`, which are
-    /// honoured like any node's; without them a line has no access row. It
-    /// takes no pointer input: `on_click`, `on_drag`, `on_key`, `on_hover`,
-    /// `hoverable` and `focusable` are ignored, with a
-    /// `line-ignores-input` warning. Fewer than two points draw nothing.
+    /// honoured like any node's; without them a line has no access row —
+    /// unless it takes input, when it derives one as a box would. Input
+    /// is hit by *shape* (ADR 0026): a press within half the stroke's
+    /// width of any piece (at least `MIN_STROKE_GRAB` wide) hits it, and
+    /// a press elsewhere in its box falls through to what is under it.
+    /// Fewer than two points draw nothing.
     ///
     /// Consecutive segments overlap at their round caps, which is the
     /// join: exact for an opaque stroke, and a translucent one
@@ -824,22 +847,6 @@ impl Core {
         let Some((id, rect)) = self.lines.push(points, stroke) else {
             return;
         };
-        let ev = spec.events();
-        if spec.hoverable
-            || spec.focusable
-            || ev.on_click.is_some()
-            || ev.on_drag.is_some()
-            || ev.on_key.is_some()
-            || ev.on_hover.is_some()
-        {
-            self.diag.raise(Warning {
-                code: crate::diag::LINE_IGNORES_INPUT,
-                key,
-                message: "a line takes no pointer input, so the interaction it declares does \
-                          nothing; put it on the nodes the line connects"
-                    .to_string(),
-            });
-        }
         // The stroke colour rides in the slot backgrounds tween through, so
         // `transition`, `enter` and `exit` reach it with no slot of its own;
         // nothing else of the box vocabulary applies to a stroke.
@@ -874,6 +881,139 @@ impl Core {
         let parent = self.current();
         self.tree
             .push(parent, key, self.origin, spec, NodeContent::Line(id));
+    }
+
+    /// A filled polygon through `points` in the parent's box space
+    /// (`docs/adr/0025-the-image-is-the-canvas.md`, decision 6): up to
+    /// eight vertices, the fill in `spec`'s `bg`, painted by the stock
+    /// polygon fragment the core registers itself.
+    ///
+    /// Placed exactly as a line is (ADR 0010, decision 5): never in
+    /// layout, a float sized to the points' bounding box inflated by a
+    /// logical pixel for the edge ramp, so it takes no room in a row or
+    /// column and `spec`'s sizing, clamps, padding, gap and alignment are
+    /// ignored. `transition` eases the fill through the `bg` slot, and
+    /// `slide`, `enter` and `exit` move the float; a declared `float`
+    /// keeps its *anchor*; `role` and `label` are honoured, and without
+    /// them a polygon has no access row unless it takes input, when it
+    /// derives one as a box would (a clickable wedge is a button). Input
+    /// is hit by *shape* (ADR 0026): a press inside the outline hits it,
+    /// one in its box but outside the outline falls through to what is
+    /// under. Fewer than three points draw nothing; a ninth and later are
+    /// dropped with `polygon-points-truncated`. The outline may be
+    /// concave; a self-intersecting one fills even-odd, its overlaps
+    /// unfilled.
+    pub fn polygon_node(&mut self, points: &[Vec2], spec: NodeSpec) {
+        if self.tree.is_empty() {
+            return;
+        }
+        let key = self.auto_key();
+        self.polygon_with_key(key, points, spec);
+    }
+
+    /// [`Self::polygon_node`] under a label key.
+    pub fn polygon_node_keyed(&mut self, label: &str, points: &[Vec2], spec: NodeSpec) {
+        if self.tree.is_empty() {
+            return;
+        }
+        let key = self.child_key(label);
+        self.polygon_with_key(key, points, spec);
+        self.key_labels.push(key, label);
+    }
+
+    /// [`Self::polygon_node`] under a data index; see [`Self::open_indexed`].
+    pub fn polygon_node_indexed(&mut self, i: u64, points: &[Vec2], spec: NodeSpec) {
+        if self.tree.is_empty() {
+            return;
+        }
+        let key = self.child_key_index(i);
+        self.polygon_with_key(key, points, spec);
+    }
+
+    /// The stock polygon fragment's handle, registered on first use and
+    /// again after `remove_fragment` forgot it.
+    fn stock_polygon(&mut self) -> Option<crate::resources::FragmentId> {
+        if let Some(id) = self.stock_polygon {
+            return Some(id);
+        }
+        let id = self.add_fragment(crate::fragment::POLYGON);
+        self.stock_polygon = id;
+        id
+    }
+
+    fn polygon_with_key(&mut self, key: Key, points: &[Vec2], mut spec: NodeSpec) {
+        if points.len() < 3 {
+            return;
+        }
+        if points.len() > crate::fragment::POLYGON_MAX_POINTS {
+            self.diag.raise(Warning {
+                code: crate::diag::POLYGON_POINTS_TRUNCATED,
+                key,
+                message: format!(
+                    "a polygon takes {} points and {} were declared, so the last {} were \
+                     dropped; split it in two",
+                    crate::fragment::POLYGON_MAX_POINTS,
+                    points.len(),
+                    points.len() - crate::fragment::POLYGON_MAX_POINTS
+                ),
+            });
+        }
+        let points = &points[..points.len().min(crate::fragment::POLYGON_MAX_POINTS)];
+        let Some(id) = self.stock_polygon() else {
+            return;
+        };
+        // The box: the points' bounds, a logical pixel out on every side
+        // so the one-pixel edge ramp is never cut by the quad's own edge.
+        let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        for p in points {
+            x0 = x0.min(p.x);
+            y0 = y0.min(p.y);
+            x1 = x1.max(p.x);
+            y1 = y1.max(p.y);
+        }
+        let rect = Rect::new(x0 - 1.0, y0 - 1.0, x1 - x0 + 2.0, y1 - y0 + 2.0);
+        // The vertices, normalised to that box; the last repeated to pad,
+        // which the stock source reads as a zero-length edge and skips.
+        let mut params = [0.0f32; 16];
+        let last = points[points.len() - 1];
+        for i in 0..crate::fragment::POLYGON_MAX_POINTS {
+            let p = points.get(i).copied().unwrap_or(last);
+            params[i * 2] = (p.x - rect.x) / rect.w;
+            params[i * 2 + 1] = (p.y - rect.y) / rect.h;
+        }
+        let draw = self
+            .fragments
+            .push(crate::display::FragmentDraw { id, params });
+        // The fill rides in `bg`, which `transition`, `enter` and `exit`
+        // already ease; nothing else of the box vocabulary applies.
+        spec.style.border_w = 0.0;
+        spec.style.border_color = Color::TRANSPARENT;
+        spec.style.shadow = crate::spec::Shadow::default();
+        self.ease_spec(key, &mut spec);
+        let anchor = spec
+            .layout
+            .float
+            .map_or(crate::spec::FloatAnchor::Parent, |f| f.anchor);
+        spec.layout.float = Some(crate::spec::FloatConfig {
+            anchor,
+            offset: crate::spec::Vec2Offset {
+                x: rect.x,
+                y: rect.y,
+            },
+            ..crate::spec::FloatConfig::default()
+        });
+        spec.layout.width = Sizing::Fixed(rect.w);
+        spec.layout.height = Sizing::Fixed(rect.h);
+        spec.layout.min_w = crate::spec::Min::px(0.0);
+        spec.layout.max_w = f32::INFINITY;
+        spec.layout.min_h = crate::spec::Min::px(0.0);
+        spec.layout.max_h = f32::INFINITY;
+        spec.layout.clip = false;
+        spec.layout.scroll_x = false;
+        spec.layout.scroll_y = false;
+        let parent = self.current();
+        self.tree
+            .push(parent, key, self.origin, spec, NodeContent::Polygon(draw));
     }
 
     /// A paragraph of styled spans, shaped and wrapped as one flow.

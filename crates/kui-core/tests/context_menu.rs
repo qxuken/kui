@@ -1,8 +1,10 @@
 //! The secondary mouse button and `on_context_menu`: a right-click asks
-//! the node under it for a menu and changes nothing else — not focus, not
-//! the caret or its selection, not a scrollbar — and never turns into a
-//! click. The menu itself is an ordinary modal float the app declares, so
-//! this only covers the routing that makes one buildable.
+//! the node under it for a menu — or the nearest enclosing node that
+//! offers one, the way an unclaimed key reaches the enclosing sink
+//! (backlog T1) — and changes nothing else: not focus, not the caret or
+//! its selection, not a scrollbar — and never turns into a click. The
+//! menu itself is an ordinary modal float the app declares, so this only
+//! covers the routing that makes one buildable.
 
 use kui_core::testing::{click_at, kinds};
 use kui_core::{
@@ -102,8 +104,8 @@ fn a_secondary_press_emits_the_menu_where_it_landed() {
     assert_eq!(evs[0].payload.get("y").unwrap().as_float(), Some(20.0));
 }
 
-/// Like a click: the topmost node under the pointer answers, and a
-/// container answers only where no child covers it.
+/// The container answers where no child covers it — and, since T1, where
+/// the child covering it offers nothing of its own (the tests below).
 #[test]
 fn the_panel_answers_where_no_child_does() {
     let mut core = Core::new();
@@ -124,11 +126,100 @@ fn a_secondary_press_is_never_a_click() {
     assert_eq!(kinds(&click_at(&mut core, 30.0, 20.0)), ["open"]);
 }
 
+/// A disabled node's own menu is stripped like its click, and the press
+/// goes on to the enclosing one — as a disabled sink is skipped and the
+/// key goes on to the sink around it. A disabled row in a list still
+/// gets the list's menu.
 #[test]
-fn a_disabled_node_asks_for_nothing() {
+fn a_disabled_node_offers_nothing_and_the_panel_answers() {
     let mut core = Core::new();
-    frame(&mut core);
-    assert!(right_click(&mut core, 30.0, 60.0).is_empty());
+    let k = frame(&mut core);
+    let evs = right_click(&mut core, 30.0, 60.0);
+    assert_eq!(kinds(&evs), ["contextmenu"]);
+    assert_eq!(evs[0].key, k.panel);
+    assert_eq!(evs[0].payload.get("tag").unwrap().as_str(), Some("panel"));
+}
+
+/// T1's shape: a full-window key sink (the shell pattern) over a root
+/// that declared the menu. Before, the sink's region was the topmost hit
+/// and swallowed every secondary press; the app looked like it had no
+/// menu and nothing warned. Now the press is unclaimed at the sink and
+/// reaches the root, carrying the root's key and tag and the press point.
+#[test]
+fn a_child_without_a_menu_reaches_the_enclosing_one() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(W, H), 1.0);
+    ui.configure_root(
+        NodeSpec::column()
+            .fill()
+            .on_context_menu(Value::str("shell")),
+    );
+    let sink = ui.with_keyed(
+        "sink",
+        NodeSpec::column().fill().on_key(Value::str("keys")),
+        |ui| {
+            ui.with_keyed(
+                "button",
+                NodeSpec::row()
+                    .width(Sizing::Fixed(100.0))
+                    .height(Sizing::Fixed(40.0))
+                    .on_click(Value::str("open")),
+                |_| {},
+            );
+        },
+    );
+    ui.finish();
+
+    // On the sink's own body.
+    let evs = right_click(&mut core, 150.0, 150.0);
+    assert_eq!(kinds(&evs), ["contextmenu"]);
+    assert_eq!(evs[0].key, Key::ROOT);
+    assert_eq!(evs[0].payload.get("tag").unwrap().as_str(), Some("shell"));
+    assert_eq!(evs[0].payload.get("x").unwrap().as_float(), Some(150.0));
+    assert_ne!(evs[0].key, sink);
+
+    // Two levels down, on a button that has a click and no menu: the
+    // click stays the button's, the menu is still the root's.
+    let evs = right_click(&mut core, 30.0, 20.0);
+    assert_eq!(kinds(&evs), ["contextmenu"]);
+    assert_eq!(evs[0].key, Key::ROOT);
+    assert_eq!(kinds(&click_at(&mut core, 30.0, 20.0)), ["open"]);
+}
+
+/// The walk stops at the modal boundary, as the key walk does: a dialog
+/// that offers no menu does not hand a press inside it to the app around
+/// it, which is inert while the dialog is up.
+#[test]
+fn the_walk_stops_at_the_modal_boundary() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(W, H), 1.0);
+    ui.configure_root(
+        NodeSpec::column()
+            .fill()
+            .on_context_menu(Value::str("shell")),
+    );
+    ui.with_keyed(
+        "dialog",
+        NodeSpec::column()
+            .float(kui_core::FloatConfig::viewport())
+            .width(Sizing::Fixed(80.0))
+            .height(Sizing::Fixed(40.0))
+            .modal(Value::str("dialog")),
+        |ui| {
+            ui.with_keyed(
+                "ok",
+                NodeSpec::row()
+                    .width(Sizing::Fixed(40.0))
+                    .height(Sizing::Fixed(20.0))
+                    .on_click(Value::str("ok")),
+                |_| {},
+            );
+        },
+    );
+    ui.finish();
+    // On the dialog's button and on its body: nothing, not the shell's.
+    assert!(right_click(&mut core, 10.0, 10.0).is_empty());
+    assert!(right_click(&mut core, 70.0, 35.0).is_empty());
 }
 
 /// The decision this routing rests on: on every platform kui targets, a

@@ -589,13 +589,6 @@ export type WarningCode =
    *  nothing tying them, and this is the tie. Declare the range the value is
    *  really held to, or clamp where the view declares it. */
   | 'slider-value-out-of-range'
-  /** A `line` declares `onClick`, `onDrag`, `onKey`, `onHover`, `hoverable` or
-   *  `focusable`. A line takes no pointer input and emits no hit region — its
-   *  bounding box is mostly not the stroke, and a shape-aware hit test is not
-   *  built — so the declaration does nothing
-   *  (`docs/adr/0010-a-segment-primitive.md`, decisions 7 and 8). Put the
-   *  interaction on the nodes the line connects. */
-  | 'line-ignores-input'
   /** `Core::add_fragment` was given WGSL that does not compile, so no handle
    *  was minted and nothing will draw. The message carries naga's own error
    *  with the line numbers moved into the app's source
@@ -607,6 +600,11 @@ export type WarningCode =
    *  four `vec4<f32>` and no more, so the extra numbers were dropped; pass
    *  fewer, or pack what the fragment needs into the sixteen it has. */
   | 'fragment-params-truncated'
+  /** A `polygon` declared more than eight points: the stock fragment takes
+   *  eight vertices in the sixteen params it has, so the rest were dropped. Two
+   *  polygons, or the path primitive kui does not have
+   *  (`docs/adr/0025-the-image-is-the-canvas.md`, decision 6). */
+  | 'polygon-points-truncated'
   /** The frame's modal surface is not in a float, and content painted after it
    *  is drawn on top of it: everything the user can see over the modal is
    *  inert, which looks like inert-behind is broken. A modal that has to cover
@@ -911,7 +909,7 @@ export interface NodeInfo {
   parent: string | null;
   /** Nesting depth; the root is 0. */
   depth: number;
-  kind: 'box' | 'text' | 'edit' | 'image' | 'line' | 'cells' | 'fragment';
+  kind: 'box' | 'text' | 'edit' | 'image' | 'line' | 'cells' | 'fragment' | 'polygon';
   label: string | null;
   rect: Rect;
   dir: 'row' | 'column';
@@ -1499,6 +1497,17 @@ export declare class Ctx {
   addImage(width: number, height: number, rgba: Buffer): string
   removeImage(id: string): void
   /**
+   * Replaces an image's pixels in place (copied): the id is
+   * unchanged, so every `<image src={id}>` shows the new pixels
+   * next frame with no view change; `width`/`height` may differ
+   * from the registration. From the first update on the image
+   * is drawn from a texture of its own — a video frame, a
+   * camera, a plot the app rasterised itself
+   * (`docs/adr/0025-the-image-is-the-canvas.md`). A dead id warns
+   * `foreign-resource` and changes nothing.
+   */
+  updateImage(id: string, width: number, height: number, rgba: Buffer): void
+  /**
    * Registers a WGSL fragment function; returns its id for
    * `<fragment src={id}>`. Throws when the source does not
    * compile, with the compiler's message in the app's own line
@@ -1629,6 +1638,17 @@ export declare class Ctx {
    * Empty on a frame that draws no fragment.
    */
   fragmentDraws(): Array<number>
+  /**
+   * This frame's texture draws, in the order their quads index
+   * them by `uv[0]`: nine doubles each — the image handle as two
+   * 32-bit halves, the pixels' revision, width and height, and
+   * the texel rect `x, y, w, h` in the image's own texels (the
+   * whole image, or the crop a `fit="cover"` made). The side
+   * list a `quads()` texture quad points at
+   * (`docs/adr/0025-the-image-is-the-canvas.md`, decision 3).
+   * Empty on a frame that draws no texture-backed image.
+   */
+  textureDraws(): Array<number>
   /**
    * Host facts the frame driver pushed in: what the window and the
    * display are doing, as of now (see `Env`). This is the same
@@ -2239,6 +2259,17 @@ export declare class KuiWindow {
   addImage(width: number, height: number, rgba: Buffer): string
   removeImage(id: string): void
   /**
+   * Replaces an image's pixels in place (copied): the id is
+   * unchanged, so every `<image src={id}>` shows the new pixels
+   * next frame with no view change; `width`/`height` may differ
+   * from the registration. From the first update on the image
+   * is drawn from a texture of its own — a video frame, a
+   * camera, a plot the app rasterised itself
+   * (`docs/adr/0025-the-image-is-the-canvas.md`). A dead id warns
+   * `foreign-resource` and changes nothing.
+   */
+  updateImage(id: string, width: number, height: number, rgba: Buffer): void
+  /**
    * Registers a WGSL fragment function; returns its id for
    * `<fragment src={id}>`. Throws when the source does not
    * compile, with the compiler's message in the app's own line
@@ -2369,6 +2400,17 @@ export declare class KuiWindow {
    * Empty on a frame that draws no fragment.
    */
   fragmentDraws(): Array<number>
+  /**
+   * This frame's texture draws, in the order their quads index
+   * them by `uv[0]`: nine doubles each — the image handle as two
+   * 32-bit halves, the pixels' revision, width and height, and
+   * the texel rect `x, y, w, h` in the image's own texels (the
+   * whole image, or the crop a `fit="cover"` made). The side
+   * list a `quads()` texture quad points at
+   * (`docs/adr/0025-the-image-is-the-canvas.md`, decision 3).
+   * Empty on a frame that draws no texture-backed image.
+   */
+  textureDraws(): Array<number>
   /**
    * Host facts the frame driver pushed in: what the window and the
    * display are doing, as of now (see `Env`). This is the same
@@ -3038,8 +3080,11 @@ export interface Quad {
    *  the rect is inflated past the shape being blurred. 0 otherwise. */
   blur: number;
   /** 0 solid, 1 mask glyph, 2 color glyph, 3 image, 4 subpixel glyph,
-   *  5 shadow, 6 segment — `QuadKind` in the core and `KUI_QUAD_*` in
-   *  `include/kui.h`, in the same order. */
+   *  5 shadow, 6 segment, 7 fragment, 8 texture — `QuadKind` in the core
+   *  and `KUI_QUAD_*` in `include/kui.h`, in the same order. A fragment
+   *  quad's `uv[0]` indexes `fragmentDraws()`, a texture quad's
+   *  `textureDraws()`; on both image kinds `borderW` is the `sampling`
+   *  flag (1 = nearest). */
   kind: number;
   uv: [number, number, number, number];
   /** Segment quads (kind 6) only: the stroke's endpoints `x0, y0, x1, y1`

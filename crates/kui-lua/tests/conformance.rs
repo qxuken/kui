@@ -282,12 +282,12 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             pl = lua_numbers(&kui_core::conformance::FRAGMENT_PARAMS_LONG),
         ),
         // docs/adr/0010-a-segment-primitive.md: three strokes and a box in
-        // a 200×120 canvas; the elbow's on_click is the one a line ignores.
+        // a 200×120 canvas; the elbow takes a click, hit by its stroke.
         "lines" => r#"
             return column { width = 200, height = 120, bg = 0x14161eff,
               line { from = {10, 10}, to = {90, 70}, width = 2, color = 0x7f9cf5ff },
               line { points = {{100, 20}, {140, 20}, {140, 60}}, width = 3,
-                     color = 0xd8863bff, on_click = "elbow" },
+                     color = 0xd8863bff, on_click = { kind = "elbow" }, label = "Elbow" },
               line { key = "curve", curve = true, width = 1.5, color = 0x9ad9a0ff,
                      opacity = 0.5,
                      points = {{20, 100}, {60, 80}, {100, 110}, {180, 90}} },
@@ -298,10 +298,17 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         // The two playbacks phase 1 drops are declared in the reference's
         // order, so the ids match: `chime` (2) asks to finish and its
         // removal queues nothing, `blip` (3) is stopped.
+        // ADR 0025: the icon as `contain` in a box twice its aspect, then the
+        // stream fixture — updated in place by `conformance::fixtures`, so
+        // texture-backed — plain, `nearest`, and `cover` in a square box.
         "media" => format!(
             r#"
             return column {{ pad = 6, gap = 4,
               image {{ id = {img}, width = 16, radius = 2 }},
+              image {{ id = {img}, width = 32, height = 16, fit = "contain", label = "Icon" }},
+              image {{ id = {stream}, width = 16, label = "Stream" }},
+              image {{ id = {stream}, width = 16, sampling = "nearest", label = "Crisp" }},
+              image {{ id = {stream}, width = 12, height = 12, fit = "cover", label = "Cropped" }},
               audio {{ key = "music", src = {snd}, volume = 0.5, loop = true }},
               latency_graph(),
               phase == 0 and audio {{ key = "chime", src = {snd}, finish = true }} or nil,
@@ -309,8 +316,26 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }}
         "#,
             img = f.image.to_ffi(),
+            stream = f.stream.to_ffi(),
             snd = f.sound.to_ffi(),
         ),
+        // docs/adr/0025-the-image-is-the-canvas.md, decision 6: five fills
+        // in a 200×120 canvas; the triangle takes a click, hit by its outline
+        // (ADR 0026), the star is keyed, the ninth point is dropped, the quad
+        // fades. Vertices are `conformance::POLYGON_*` to the number.
+        "polygon" => r#"
+            return column { width = 200, height = 120, bg = 0x14161eff,
+              polygon { points = {{10, 10}, {60, 20}, {20, 50}}, bg = 0x7f9cf5ff,
+                        on_click = { kind = "tri" }, label = "Triangle" },
+              polygon { points = {{80, 10}, {130, 30}, {80, 50}, {95, 30}}, bg = 0xd8863bff },
+              polygon { key = "star", bg = 0xf5d67fff,
+                        points = {{170, 10}, {176, 24}, {190, 30}, {176, 36}, {170, 50}, {164, 36}, {150, 30}, {164, 24}} },
+              polygon { bg = 0x9ad9a0ff,
+                        points = {{10, 70}, {30, 65}, {50, 70}, {70, 65}, {90, 70}, {90, 110}, {50, 100}, {10, 110}, {5, 90}} },
+              polygon { points = {{110, 70}, {190, 70}, {180, 110}, {120, 110}}, bg = 0xe07a8aff, opacity = 0.5 },
+            }
+        "#
+        .to_string(),
         // The one scene whose view changes its mind: `phase` is a global
         // the host writes before each frame (see `every_scene_lowers_...`),
         // and the four subtrees it gates are the departures.

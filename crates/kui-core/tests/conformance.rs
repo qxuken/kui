@@ -79,6 +79,7 @@ fn check(scene: &Scene) {
     assert_eq!(out.kinds[3], e.images, "{name}: image quads");
     assert_eq!(out.kinds[6], e.segments, "{name}: segment quads");
     assert_eq!(out.kinds[7], e.fragments, "{name}: fragment quads");
+    assert_eq!(out.kinds[8], e.textures, "{name}: texture quads");
     assert_eq!(
         out.fragments.len(),
         e.fragments,

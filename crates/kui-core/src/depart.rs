@@ -100,7 +100,7 @@ pub(crate) enum GhostContent {
         color: Color,
     },
     Edit(Key),
-    Image(ImageId),
+    Image(ImageId, crate::resources::ImageOpts),
     /// A stroke: `len` points from `first` in the ghost's own point list
     /// (relative to the node's box, like the live run's), drawn `width`
     /// wide in the colour the node's `bg` slot eases to.
@@ -113,6 +113,9 @@ pub(crate) enum GhostContent {
     /// declared. The ghost re-declares them every frame it draws, so the
     /// picture is frozen at departure while the box eases.
     Fragment(crate::display::FragmentDraw),
+    /// A polygon, by value like a fragment; the fill is the colour the
+    /// node's `bg` slot eases to.
+    Polygon(crate::display::FragmentDraw),
 }
 
 pub(crate) struct GhostNode {
@@ -442,7 +445,7 @@ impl DepartStore {
                         GhostContent::Text { cache_key, color }
                     }
                     NodeContent::Edit(k) => GhostContent::Edit(k),
-                    NodeContent::Image(id) => GhostContent::Image(id),
+                    NodeContent::Image(id, opts) => GhostContent::Image(id, opts),
                     // A departing grid is its box: the cells are the
                     // frame's and go with it.
                     NodeContent::Cells(_) => GhostContent::Container,
@@ -455,6 +458,10 @@ impl DepartStore {
                     // tree this ghost is being cut out of.
                     NodeContent::Fragment(id) => match fragments.prev_get(id) {
                         Some(draw) => GhostContent::Fragment(draw),
+                        None => GhostContent::Container,
+                    },
+                    NodeContent::Polygon(id) => match fragments.prev_get(id) {
+                        Some(draw) => GhostContent::Polygon(draw),
                         None => GhostContent::Container,
                     },
                     NodeContent::Line(id) => {
