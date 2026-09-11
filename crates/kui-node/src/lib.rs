@@ -1011,6 +1011,23 @@ fn node_info_json(n: &kui_core::NodeInfo) -> Json {
     Json::Object(o)
 }
 
+/// `{byte, line}`; see `TextHit` in index.d.ts.
+fn text_hit_json(h: kui_core::TextHit) -> Json {
+    let mut o = JsonMap::new();
+    o.insert("byte".into(), Json::from(h.byte as u64));
+    o.insert("line".into(), Json::from(h.line));
+    Json::Object(o)
+}
+
+/// `{width, height, lines}`; see `TextMetrics` in index.d.ts.
+fn text_metrics_json(m: kui_core::TextMetrics) -> Json {
+    let mut o = JsonMap::new();
+    o.insert("width".into(), Json::from(m.width as f64));
+    o.insert("height".into(), Json::from(m.height as f64));
+    o.insert("lines".into(), Json::from(m.lines));
+    Json::Object(o)
+}
+
 /// `{x, y, w, h}` — the shape `scrollGeometry` already returns for a box.
 fn rect_json(r: Rect) -> Json {
     let mut o = JsonMap::new();
@@ -1862,11 +1879,7 @@ macro_rules! core_methods {
                 max_width: Option<f64>,
             ) -> Result<Json> {
                 let m = binary::measure_binary(self.$core(), &stream, &strings, max_width)?;
-                let mut o = JsonMap::new();
-                o.insert("width".into(), Json::from(m.width as f64));
-                o.insert("height".into(), Json::from(m.height as f64));
-                o.insert("lines".into(), Json::from(m.lines));
-                Ok(Json::Object(o))
+                Ok(text_metrics_json(m))
             }
 
             /// Drains the warnings the core raised since the last call
@@ -2282,12 +2295,7 @@ macro_rules! core_methods {
                 Ok(self
                     .$core()
                     .text_hit(key, Vec2::new(x as f32, y as f32))
-                    .map(|h| {
-                        let mut o = JsonMap::new();
-                        o.insert("byte".into(), Json::from(h.byte as u64));
-                        o.insert("line".into(), Json::from(h.line));
-                        Json::Object(o)
-                    }))
+                    .map(text_hit_json))
             }
 
             /// Opens a context menu at `(x, y)` over the node `key`, with
@@ -3185,5 +3193,427 @@ mod frame_stats_tests {
         assert_eq!(o["maxTotalMs"], Json::from(10.5));
         assert_eq!(o["maxWorkMs"], Json::from(6.5));
         assert_eq!(o["avgTotalMs"], Json::from(6.75));
+    }
+}
+
+/// The key set of every readback shape, pinned (backlog AR1). Node's key
+/// names are public API — `index.d.ts` declares them, test.mjs and the
+/// corpus adapter read them — so the serialisers may move (into the core,
+/// as `to_value`, with one snake→camel pass here) only under a test that
+/// says the keys did not. Each shape is built with every optional part
+/// present, so the nested keys are in the set too; a key path is
+/// `a.b[].c`, arrays walked for the union of their elements.
+#[cfg(test)]
+mod readback_pins {
+    use super::*;
+    use kui_core::{
+        AccessAction, AccessRequest, EditOptions, NodeSpec, Role, Sizing, TextPos, TextStyle,
+        WindowCommand, WindowConfig, WindowId, WindowKind, tree::OriginId,
+    };
+    use std::collections::BTreeSet;
+
+    fn key_paths(v: &Json, prefix: &str, out: &mut BTreeSet<String>) {
+        match v {
+            Json::Object(m) => {
+                for (k, v) in m {
+                    let path = if prefix.is_empty() {
+                        k.clone()
+                    } else {
+                        format!("{prefix}.{k}")
+                    };
+                    out.insert(path.clone());
+                    key_paths(v, &path, out);
+                }
+            }
+            Json::Array(a) => {
+                let path = format!("{prefix}[]");
+                for v in a {
+                    key_paths(v, &path, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    #[track_caller]
+    fn assert_keys(shape: &str, v: &Json, expected: &[&str]) {
+        let mut got = BTreeSet::new();
+        key_paths(v, "", &mut got);
+        let want: BTreeSet<String> = expected.iter().map(|s| s.to_string()).collect();
+        assert_eq!(
+            got, want,
+            "{shape}: the key set moved — index.d.ts, test.mjs and the corpus adapter read these names"
+        );
+    }
+
+    /// A frame with one of everything the readbacks describe: a scroller
+    /// over a focused editor with a selection, a slider, a checkbox with a
+    /// hover payload. `set_inspect` on, so `nodes()` fills.
+    fn rich_core() -> (Core, Key) {
+        let mut core = Core::new();
+        core.set_inspect(true);
+        let draw = |core: &mut Core| {
+            let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+            ui.configure_root(NodeSpec::column().fill());
+            let mut doc = Key::ROOT;
+            ui.with_keyed(
+                "scroller",
+                NodeSpec::column()
+                    .scroll_y()
+                    .width(Sizing::Fixed(300.0))
+                    .height(Sizing::Fixed(60.0))
+                    .pad(4.0),
+                |ui| {
+                    doc = ui.text_edit(
+                        "doc",
+                        "hello world\nsecond line\nthird\nfourth\nfifth",
+                        &EditOptions {
+                            multiline: true,
+                            autofocus: true,
+                            ..Default::default()
+                        },
+                        NodeSpec::column().width(Sizing::Fixed(280.0)).label("Doc"),
+                    );
+                },
+            );
+            ui.with_keyed(
+                "vol",
+                NodeSpec::row()
+                    .role(Role::Slider)
+                    .label("Volume")
+                    .value_now(0.4)
+                    .value_min(0.0)
+                    .value_max(1.0)
+                    .on_drag(Value::str("vol")),
+                |_| {},
+            );
+            ui.with_keyed(
+                "remember",
+                NodeSpec::row()
+                    .role(Role::Checkbox)
+                    .checked(true)
+                    .on_click(Value::str("toggle"))
+                    .on_hover(Value::str("hov")),
+                |ui| ui.text("Remember me", TextStyle::new(12.0)),
+            );
+            ui.finish();
+            doc
+        };
+        let doc = draw(&mut core);
+        // A selection in the editor, so `anchor`/`focus` and `selection`
+        // are objects and not nulls.
+        let run = core.access_tree().get(doc).unwrap().runs[0].key;
+        core.handle_input(InputEvent::Access(
+            AccessRequest::new(doc, AccessAction::SetTextSelection)
+                .with_selection(TextPos { run, character: 0 }, TextPos { run, character: 5 }),
+        ));
+        draw(&mut core);
+        (core, doc)
+    }
+
+    #[test]
+    fn scroll_geometry_keys() {
+        let (core, _) = rich_core();
+        let g = core.scroll_geometry(Key::ROOT.str("scroller"));
+        assert!(g.is_some());
+        assert_keys(
+            "ScrollGeometry",
+            &geometry_json(g).unwrap(),
+            &[
+                "x",
+                "y",
+                "w",
+                "h",
+                "contentW",
+                "contentH",
+                "offset",
+                "offset.x",
+                "offset.y",
+                "maxOffset",
+                "maxOffset.x",
+                "maxOffset.y",
+            ],
+        );
+    }
+
+    #[test]
+    fn text_hit_caret_rect_and_metrics_keys() {
+        let (core, _) = rich_core();
+        // The label inside the checkbox row: a text query answers to the
+        // enclosing key (C18).
+        let label = Key::ROOT.str("remember");
+        let r = core.nodes().iter().find(|n| n.key == label).unwrap().rect;
+        let hit = core
+            .text_hit(label, Vec2::new(r.x + 4.0, r.y + r.h / 2.0))
+            .expect("a hit");
+        assert_keys("TextHit", &text_hit_json(hit), &["byte", "line"]);
+        let rect = core.caret_rect(label, 3).expect("a caret");
+        assert_keys("Rect", &rect_json(rect), &["x", "y", "w", "h"]);
+        let m = kui_core::TextMetrics {
+            width: 1.0,
+            height: 2.0,
+            lines: 1,
+        };
+        assert_keys(
+            "TextMetrics",
+            &text_metrics_json(m),
+            &["width", "height", "lines"],
+        );
+        assert_keys(
+            "WindowSize",
+            &size_json(Size::new(1.0, 2.0), 2.0),
+            &["width", "height", "scale"],
+        );
+    }
+
+    #[test]
+    fn node_info_keys() {
+        let (core, _) = rich_core();
+        let all = Json::Array(core.nodes().iter().map(node_info_json).collect());
+        assert!(core.nodes().iter().any(|n| n.scroll.is_some()));
+        assert!(core.nodes().iter().any(|n| !n.events.is_empty()));
+        assert_keys(
+            "NodeInfo",
+            &all,
+            &[
+                "[].key",
+                "[].parent",
+                "[].depth",
+                "[].kind",
+                "[].label",
+                "[].rect",
+                "[].rect.x",
+                "[].rect.y",
+                "[].rect.w",
+                "[].rect.h",
+                "[].dir",
+                "[].width",
+                "[].height",
+                "[].bg",
+                "[].float",
+                "[].role",
+                "[].text",
+                "[].flags",
+                "[].layer",
+                "[].origin",
+                "[].children",
+                "[].padding",
+                "[].padding.t",
+                "[].padding.r",
+                "[].padding.b",
+                "[].padding.l",
+                "[].gap",
+                "[].mainAlign",
+                "[].crossAlign",
+                "[].wrap",
+                "[].minWidth",
+                "[].minHeight",
+                "[].maxWidth",
+                "[].maxHeight",
+                "[].radius",
+                "[].borderWidth",
+                "[].borderColor",
+                "[].opacity",
+                "[].scroll",
+                "[].scroll.x",
+                "[].scroll.y",
+                "[].events",
+                "[].events.click",
+                "[].events.drag",
+                "[].events.hover",
+            ],
+        );
+        // The sizing spelling is part of the shape too.
+        let root = &core.nodes()[0];
+        assert_eq!(node_info_json(root)["width"], Json::from("grow(1)"));
+        let spellings: Vec<String> = core
+            .nodes()
+            .iter()
+            .map(|n| node_info_json(n)["width"].as_str().unwrap().to_string())
+            .collect();
+        assert!(spellings.contains(&"300px".to_string()), "{spellings:?}");
+        assert!(spellings.contains(&"fit".to_string()), "{spellings:?}");
+    }
+
+    #[test]
+    fn access_tree_keys() {
+        let (mut core, doc) = rich_core();
+        let tree = core.access_tree().clone();
+        let node = tree.get(doc).unwrap();
+        assert!(node.anchor.is_some() && node.selection.is_some() && !node.runs.is_empty());
+        assert!(tree.nodes.iter().any(|n| n.scroll.is_some()));
+        assert_keys(
+            "AccessTree",
+            &access_tree_json(&tree),
+            &[
+                "nodes",
+                "focus",
+                "hash",
+                "nodes[].key",
+                "nodes[].parent",
+                "nodes[].origin",
+                "nodes[].role",
+                "nodes[].name",
+                "nodes[].description",
+                "nodes[].rect",
+                "nodes[].rect.x",
+                "nodes[].rect.y",
+                "nodes[].rect.w",
+                "nodes[].rect.h",
+                "nodes[].value",
+                "nodes[].caret",
+                "nodes[].selection",
+                "nodes[].anchor",
+                "nodes[].anchor.run",
+                "nodes[].anchor.character",
+                "nodes[].focus",
+                "nodes[].focus.run",
+                "nodes[].focus.character",
+                "nodes[].runs",
+                "nodes[].runs[].key",
+                "nodes[].runs[].line",
+                "nodes[].runs[].start",
+                "nodes[].runs[].end",
+                "nodes[].runs[].text",
+                "nodes[].runs[].rect",
+                "nodes[].runs[].rect.x",
+                "nodes[].runs[].rect.y",
+                "nodes[].runs[].rect.w",
+                "nodes[].runs[].rect.h",
+                "nodes[].runs[].charLengths",
+                "nodes[].runs[].charPositions",
+                "nodes[].runs[].charWidths",
+                "nodes[].runs[].wordStarts",
+                "nodes[].runs[].rtl",
+                "nodes[].checked",
+                "nodes[].selected",
+                "nodes[].expanded",
+                "nodes[].posInSet",
+                "nodes[].setSize",
+                "nodes[].orientation",
+                "nodes[].live",
+                "nodes[].valueNow",
+                "nodes[].valueMin",
+                "nodes[].valueMax",
+                "nodes[].focused",
+                "nodes[].disabled",
+                "nodes[].modal",
+                "nodes[].scroll",
+                "nodes[].scroll.x",
+                "nodes[].scroll.y",
+                "nodes[].scroll.maxX",
+                "nodes[].scroll.maxY",
+                "nodes[].actions",
+            ],
+        );
+    }
+
+    #[test]
+    fn window_command_keys() {
+        let cmds = vec![
+            WindowCommand::StartDrag(WindowId::MAIN),
+            WindowCommand::Close(WindowId::MAIN),
+            WindowCommand::Minimize(WindowId::MAIN),
+            WindowCommand::ToggleMaximize(WindowId::MAIN),
+            WindowCommand::Open {
+                id: WindowId(1),
+                owner: WindowId::MAIN,
+                origin: OriginId::HOST,
+                config: WindowConfig::of_kind(WindowKind::Popup),
+            },
+            WindowCommand::SetSize {
+                window: WindowId::MAIN,
+                size: Size::new(1.0, 2.0),
+            },
+            WindowCommand::Focus(WindowId::MAIN),
+            WindowCommand::Redraw(WindowId::MAIN),
+        ];
+        assert_keys(
+            "WindowCommand",
+            &window_commands_json(cmds),
+            &[
+                "[].kind",
+                "[].window",
+                "[].width",
+                "[].height",
+                "[].owner",
+                "[].origin",
+                "[].config",
+                "[].config.kind",
+                "[].config.width",
+                "[].config.height",
+                "[].config.activates",
+                "[].config.anchor",
+                "[].config.anchor.x",
+                "[].config.anchor.y",
+                "[].config.anchor.w",
+                "[].config.anchor.h",
+            ],
+        );
+    }
+
+    #[test]
+    fn warning_keys() {
+        let w = kui_core::Warning {
+            code: kui_core::diag::DUPLICATE_KEY,
+            key: Key::ROOT,
+            message: "m".into(),
+        };
+        assert_keys(
+            "Warning",
+            &warnings_json(vec![w]),
+            &["[].code", "[].key", "[].message"],
+        );
+    }
+
+    #[test]
+    fn audio_command_keys() {
+        let pb = PlaybackId(1);
+        let sound = SoundId::from_ffi(7);
+        let cmds = vec![
+            AudioCommand::Play {
+                playback: pb,
+                sound,
+                volume: 1.0,
+                looped: false,
+                fade_in_ms: 0.0,
+            },
+            AudioCommand::Stop {
+                playback: pb,
+                fade_ms: 0.0,
+            },
+            AudioCommand::SetVolume {
+                playback: pb,
+                volume: 1.0,
+                tween_ms: 0.0,
+            },
+            AudioCommand::Pause {
+                playback: pb,
+                fade_ms: 0.0,
+            },
+            AudioCommand::Resume {
+                playback: pb,
+                fade_ms: 0.0,
+            },
+            AudioCommand::MasterVolume {
+                volume: 1.0,
+                tween_ms: 0.0,
+            },
+            AudioCommand::Unload { sound },
+        ];
+        assert_keys(
+            "AudioCommand",
+            &audio_commands_json(cmds),
+            &[
+                "[].kind",
+                "[].playback",
+                "[].sound",
+                "[].volume",
+                "[].loop",
+                "[].fadeIn",
+                "[].fade",
+                "[].tween",
+            ],
+        );
     }
 }
