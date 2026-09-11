@@ -139,6 +139,16 @@ field reports).
 - **`KuiSpec.tooltip` is floated by the core**, on `kui_close`, and
   `MouseButtonName` / `EditKeyName` in `index.d.ts` are generated from
   `EditKey::ALL` / `MouseButton::NAMED`. Neither changes a call.
+- **The three smoke scripts are one program.** `scripts/smoke-examples.sh`,
+  `scripts/smoke-windows.ps1` and `scripts/smoke-headless.sh` are gone;
+  `cargo run -p kui-devtools --bin smoke` is the windowed round and
+  `-- --headless` the headless one, with the flags the scripts took
+  (`--frames`, `--only`, `--base`, `--release`, `--node`; `--headless
+  --list` prints the round). Repo tooling, not API — listed because CI
+  and the README named the scripts.
+- **`TextSystem`'s two maps are one.** Internal (`pub(crate)`), listed
+  for anyone who copied the long-line cache: `Entry::{Run, Long}` in one
+  map, and `FrameText` / `TextPlace` no longer carry a `long` flag.
 
 ### Added
 
@@ -283,9 +293,38 @@ field reports).
   driver.
 - **`Example::extensions` / `native_menus`** on the devtools trait, and
   a `smoke` feature on `kui-node` forwarding to `kui/smoke`.
+- **Every readback shape has a `to_value`** (backlog AR1): `ScrollGeometry`,
+  `TextHit`, `Rect`, `Vec2`, `TextMetrics`, `NodeInfo`, `AccessTree` (and
+  `AccessNode`, `AccessRun`, `TextPos`, `ScrollState`), `WindowCommand`
+  (and `WindowConfig`), `Warning` and `AudioCommand` answer as a `Value`
+  keyed in snake_case, the way an event already crosses. The shapes that
+  hold a handle take a `Handles` — `Handles::HEX` spells a key or a
+  resource id as sixteen hex digits (Node's way), `Handles::INT` as the
+  integer (Lua's, and `ENV_FIELDS`'s). Node's and Lua's readers are one
+  pass over these now; what a Node or Lua caller receives is byte for
+  byte what it received (the key set is pinned per shape in kui-node,
+  and tests/readback.rs pins the shapes in the core). A slider's numbers
+  read as `value_now`/`value_min`/`value_max`, the rows that set them.
+  With it, `Sizing::describe` (`fit`, `grow(1)`, `120px`, `50%` — the one
+  spelling, shared with the devtools' inspector), `Dir::name`,
+  `Align::name`, `WindowCommand::kind_name`, `AudioCommand::kind_name`.
+- **`Core::select_word_under`**: the word under a point in a `selectable`
+  scope, whichever geometry the scope has — what a double click and a
+  force click take (backlog AR3); `Grain::of_clicks` beside it.
+- **`cargo run -p kui-devtools --bin smoke`**, the smoke round as one
+  program on every platform (backlog AR4), and `kui_devtools::manifest`,
+  the rosters it and the pin tests read.
 
 ### Fixed
 
+- **A `cells` grid's `hoverBg` never lit, and its `transition` snapped.**
+  `cells_at` pushed its spec untouched where every other leaf door
+  resolves the hover style and eases first (backlog AR5). The tween is
+  the box's — bg, opacity, size — and the cells inside stay the picture
+  the app redraws. Pinned in tests/cells.rs.
+- **The devtools' inspector rounded a node's sizing to whole px** —
+  `12.5px` read as `12px`, `33.3%` as `33%` — where `nodes()` did not.
+  Both spell it through `Sizing::describe` now.
 - **A translucent `image` that was the frame's only fade painted opaque,
   and a floating `image` inside a clipped box vanished when it was the
   frame's only float.** The pass-skipping flags (C15) were set by hand at

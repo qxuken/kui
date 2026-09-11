@@ -14,8 +14,9 @@ evidence it argued from — are in
 on 2026-09-06, the remaining ten field-report entries followed the same day
 before the alpha.7 tag, W2 went whole on 2026-09-07 when ADR 0009's driver
 half was built, fourteen more cut alpha.9 on 2026-09-08, the fourteen of
-this round — W3, W4–W12 and F32–F35 — went before the alpha.10 tag, and F37
-followed it the next day, filed and closed after the tag. The index
+this round — W3, W4–W12 and F32–F35 — went before the alpha.10 tag, F37
+followed it the next day, filed and closed after the tag, and AR1–AR6 from
+the architecture review of 2026-09-11 went the same day they were filed. The index
 at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
@@ -31,10 +32,11 @@ on 2026-09-09 and whose last two wait for a view (C25 beside it closed the day
 it was filed), and F36, which fell out
 of building the last two of the four entries the two alpha.9 field reports and
 the bake-off produced, and which is filed rather than built on purpose (the
-only host driving its own audio device today is the runner) — and AR1–AR6
-from the architecture review of 2026-09-11, four filed with the reason each
-was not built beside it and two small things the building noticed. Everything else
-that has been filed has shipped: F16–F23 from the two alpha.7 field reports
+only host driving its own audio device today is the runner). Everything else
+that has been filed has shipped: AR1–AR6 from the architecture review of
+2026-09-11 — four filed with the reason each was not built beside it and
+two small things the building noticed — were all built the same day, in
+the archive under their round; F16–F23 from the two alpha.7 field reports
 closed the day they were filed (2026-09-07), F25–F31 from the alpha.8 ones by
 the day after (F27 last, on 2026-09-08), C16–C23 landed whole for alpha.9, and
 W3–W12 and F32–F35 for alpha.10. C15's remainder was the last split entry, and
@@ -299,8 +301,10 @@ real, then the C examples built and run in every direction. Six defects,
 none of which any headless test in the repo could have seen, and two of them
 crashes on the first frame.
 
-The round is a script now — [`scripts/smoke-windows.ps1`](../scripts/smoke-windows.ps1),
-wired into `smoke-windows` in [`.forgejo/workflows/smoke.yml`](../.forgejo/workflows/smoke.yml)
+The round was a script from that day — `scripts/smoke-windows.ps1`, and
+since 2026-09-11 (AR4) the `smoke` binary in `examples/devtools` that
+replaced it and its unix twin — wired into `smoke-windows` in
+[`.forgejo/workflows/smoke.yml`](../.forgejo/workflows/smoke.yml)
 after the `cargo test` step. It leans on `KUI_SMOKE_FRAMES=n`, new in
 `crates/kui/src/lib.rs`: the runner quits once the main window has
 presented n frames, which turns every example into a self-terminating check
@@ -838,7 +842,8 @@ building found, in order:
 - **The Node addon never closed under `KUI_SMOKE_FRAMES`**: `native.cjs`
   loads the release cdylib, which ignores the variable by design. So the
   Node windows had never been in a windowed round; `kui-node` has a
-  `smoke` feature now and `scripts/smoke-examples.sh --node` builds with
+  `smoke` feature now and the windowed round's `--node` (then
+  `scripts/smoke-examples.sh`, since AR4 the `smoke` binary) builds with
   it. The four `--smoke` timeouts the examples carried instead are gone.
 - **`text_input` without a `label` warns** (`control-without-name`), which
   two of the split examples did on the first windowed round and the round
@@ -908,124 +913,6 @@ core's own vocabulary, so the icons should be too: a small set of
 16 px, in the theme's `muted`/`accent`, with the lit one filled — a
 dock-position icon that *is* a little window with the pane shaded. Wanted
 by the round that added the buttons (2026-09-11); not blocking.
-
-## From the architecture review (2026-09-11)
-
-A review of the tree for duplication — four sub-agents over the bindings,
-the runtime, the stores and the test infrastructure, each claim checked
-against the code — produced thirteen candidates. Ten were built the same
-day, one commit each (the review report itself lives outside the repo):
-the frame's pass flags noted once in `Tree::note` (two defects found on the
-way — a lone translucent `image` painted opaque, a lone floating one
-vanished under its parent's clip); one painter for a live node and its
-ghost (a departing `line` had filled its box); `Core::open_from` so no
-binding decides when a tooltip floats; `measureText` through the encoder
-and the JSON lowering D2 left behind deleted; the three store protocols
-in `retain`; one slot set behind `Enter` and `Keyframe`;
-`kui_core::testing`; the dispatcher's idioms named; menu rows, a menu bar
-and a window declaration read by the core from plain data; the menus known
-by origin like the devtools; the env reading through `ENV_FIELDS::get`;
-one byte↔paragraph conversion in the text cache; the runner in five files;
-one Node smoke roster. Three were filed rather than built, each for a
-reason a future round should have to argue with, and two small things
-noticed on the way are here too.
-
-### `.` AR1 — Readback shapes have no `to_value`
-
-Events cross as `Value` and each binding converts once; queries do not.
-`ScrollGeometry`, `TextHit`, `Rect`, `NodeInfo`, `AccessTree`,
-`WindowCommand`, `Warning`, `AudioCommand` and `TextMetrics` are each
-serialised by hand in Node (~480 lines of `JsonMap::insert`, camelCase)
-and, where Lua exposes them, again in Lua (snake), and the `Sizing`
-display form (`fit`/`grow(w)`/`Npx`/`N%`) is spelled in the devtools and
-again in `node_info_json`. `to_value()` on the readback types in the core,
-with Node doing one mechanical snake→camel pass, would take ~400 lines out
-of kui-node and make the shapes testable without napi. **Filed, not
-built, because Node's key names are public API** hand-typed in
-`index.d.ts` and read widely by test.mjs and the corpus adapter, so the
-move needs a key-set pin written first — a test that the generated key set
-equals today's, per shape — and the few non-mechanical names (`valueNow`
-for `number`, `posInSet`) decided one way. The pin is the first commit of
-whoever builds this.
-
-### `.` AR2 — `abi_parity`'s prototype rows restate the `extern "C" fn`s
-
-Every C entry point exists three times: the `extern "C" fn` in
-`kui-ffi/src/*.rs`, the prose-bearing prototype in `include/kui.h`, and
-the `abi_fn!` row in `abi_parity.rs` (179 rows, ~1,100 lines). The row is
-type-pinned, so it cannot be wrong, only missing, and
-`every_entry_point_is_pinned` catches missing — it works, at one line of
-restatement per function. ADR 0020 rejected cbindgen for the *header*
-(the prose would go); the middle path it did not weigh is emitting the
-*row* from an attribute on the function itself, the way P5 generates
-`index.d.ts`'s addon half from `#[napi]`. **Filed, not built:** it costs
-a proc-macro dependency and a build step in kui-ffi for a list that only
-hurts when it grows, and the safety net it would replace is already
-whole. Build it the round the row count crosses two hundred.
-
-### `.` AR3 — The two selection geometries share their arithmetic by hand
-
-ADR 0017 decision 4 makes a `cells` grid its own scope kind with its own
-coordinate space, so two selection implementations are by design. What is
-not by design: every dispatcher arm asks `cells_id_of_ref(scope).is_some()`
-and then writes the byte version and the cell version of the same control
-flow side by side (`dispatch.rs`: the mouse-down grain arming, the
-cursor-moved fork, the force-click fork), `select.rs`'s `cols_on` and
-`range_in` are the same row-clip over `(row, offset)` pairs, and the two
-`extend_*_grained` bodies in `select_api.rs` share the "which side of the
-anchor decides which edge of each unit" logic with different end types.
-One row-clip helper and one grained-extend taking hit/unit/build as
-closures would fold the three forks. **Filed, not built:** it sits one
-step from re-litigating decision 4 (a merged `Selection` type would), and
-the corpus's `selection`/`cells` scenes plus tests/selection,
-cells_selection and virtual_selection are the pin whoever builds it must
-keep green.
-
-### `.` AR4 — The smoke round is written three times
-
-`smoke-examples.sh` and `smoke-windows.ps1` are the same program in two
-shells (the Windows runner has no bash), and `smoke-headless.sh` is its
-headless half: read `cargo metadata`, build, loop examples × bases, run
-with `KUI_SMOKE_FRAMES`/`--headless`, time out, print `ok|FAILED|HUNG`,
-aggregate. The harness crate already parses the manifests and owns the
-`--headless` contract, so one `cargo run -p kui-devtools --bin smoke --
-[--headless|--windowed] [--frames N] [--base light,dark] [--node]` would
-replace all three and cannot drift between platforms. **Filed, not
-built:** the Windows half cannot be verified on this machine, and a smoke
-round that false-fails on one platform gets disabled — the same reason
-bench-check is not in CI. Build it on a round that has both runners at
-hand; the Node roster half (package.json's `kui.windowed`/`kui.headless`,
-pinned by the harness) landed on 2026-09-11 and is what it would read.
-
-### `.` AR5 — `cells_at` neither eases nor resolves hover
-
-Every other leaf door (`text_edit`, `image_node`, `line_with_key`) calls
-`ease_spec` and `resolve_hover_style` before the push; `cells_at` calls
-neither, so a `cells` grid that declares `transition` and an `opacity`
-change snaps, and one with `hoverBg` does not light. Seen while moving the
-pass flags into `Tree::push` (2026-09-11) and left as it was, because it
-is a behaviour and not a copy. Two lines, plus a test in tests/cells.rs
-that a hovered grid takes its `hoverBg` — and a decision whether a
-terminal's screen should ease at all (the grid is a picture the app
-redraws every frame; a tween over it may be wrong rather than missing).
-
-### `.` AR6 — `text.rs` dispatches on `long` at fifteen sites
-
-Every public text operation opens with `if ft.long { self.long.get(..) }
-else { self.cache.get(..) }`: two maps behind one `bool`, dispatched in
-`content`, `readd`, `add`, `measure`, `emit`, `content_len`,
-`scope_runs`, `long_place`, `hit_at`, `caret_at`, `intrinsic`, `wrapped`
-and the eviction loops (one of which forgot the second map until
-2026-09-11). Not duplicated *algorithm* — the chunked shaping is its own
-code by design (C19) — but duplicated *dispatch*, and it leaks:
-`ScopeText::{Run, Long}` re-derives the enum at `scope_runs`, and `readd`
-probes both maps to rediscover which one it is. One entry enum in one map
-with one `last_used`/`bytes` would make the long/short decision once, at
-`add`. Same cost per node (an enum match for a bool branch; the
-discriminant is per cache entry, not per node). **Filed, not built:** a
-large diff over the pointer-move path for the same behaviour, wanted
-before the next feature that has to be added to both maps rather than
-now.
 
 ## From the paint-order round (2026-09-10)
 
@@ -1131,8 +1018,8 @@ first click waiting 92 ms for the audio device to open, and a departing
 list drawing past its own box — are fixed under alpha.9's `### Fixed`.
 
 **Windows (2026-09-08), and what a second platform is worth.** The platform
-ran for the first time and the round is a script: `scripts/smoke-windows.ps1`,
-in `smoke-windows` beside the `cargo test` step, with the C round from
+ran for the first time and the round became a script, `scripts/smoke-windows.ps1`
+(the `smoke` binary since AR4), in `smoke-windows` beside the `cargo test` step, with the C round from
 `examples/c/build.ps1` beside it. W3–W12 all shipped in alpha.10 and are in
 the archive; W7 was the one that wanted a decision rather than a patch, and
 it was settled on 2026-09-09 — a displacement moves a subtree by whole
@@ -1413,6 +1300,15 @@ move.
 **From the paint-order round (2026-09-10)** — C28, filed and closed the day ADR 0023 was written and built
 
 - `!` **C28** — [Floats are under scrollbars and the ring, and stack in tree order](backlog/closed-2026-09.md#-c28--floats-are-under-scrollbars-and-the-ring-and-stack-in-tree-order--done-2026-09-10) — done (2026-09-10) — ADR 0023 built whole: layers stack in the order they opened, chrome ends its layer, one `target_at` for the press and the cursor
+
+**From the architecture review (2026-09-11)** — AR1–AR6, four filed with a reason not to build them and two things noticed; all six built the same day, the reasons argued with in each entry
+
+- `.` **AR1** — [Readback shapes have no `to_value`](backlog/closed-2026-09.md#-ar1--readback-shapes-have-no-to_value--done-2026-09-11) — done (2026-09-11) — the key-set pin first, then `to_value` on nine shapes, `Handles::{HEX, INT}` for the one thing a binding still spells, Node's ~330 lines one `readback` pass
+- `.` **AR2** — [`abi_parity`'s prototype rows restate the `extern "C" fn`s](backlog/closed-2026-09.md#-ar2--abi_paritys-prototype-rows-restate-the-extern-c-fns--done-2026-09-11) — done (2026-09-11) — build.rs reads the signatures and writes the rows; no proc-macro; ADR 0020 amended
+- `.` **AR3** — [The two selection geometries share their arithmetic by hand](backlog/closed-2026-09.md#-ar3--the-two-selection-geometries-share-their-arithmetic-by-hand--done-2026-09-11) — done (2026-09-11) — `clip_to_unit`, `grained_edges`, and three dispatcher forks folded into three select_api doors; no `Selection` merged
+- `.` **AR4** — [The smoke round is written three times](backlog/closed-2026-09.md#-ar4--the-smoke-round-is-written-three-times--done-2026-09-11) — done (2026-09-11) — `cargo run -p kui-devtools --bin smoke`, one program on every platform, the three scripts gone
+- `.` **AR5** — [`cells_at` neither eases nor resolves hover](backlog/closed-2026-09.md#-ar5--cells_at-neither-eases-nor-resolves-hover--done-2026-09-11) — done (2026-09-11) — the box eases and hovers, the cells stay the app's picture
+- `.` **AR6** — [`text.rs` dispatches on `long` at fifteen sites](backlog/closed-2026-09.md#-ar6--textrs-dispatches-on-long-at-fifteen-sites--done-2026-09-11) — done (2026-09-11) — one map of `Entry::{Run, Long}`, the decision made once at `add`
 
 **From the two alpha.10 upgrade reports (2026-09-09)** — F38–F41, all four built the day they were filed. Three of the four were filed by the apps as their own problem
 
