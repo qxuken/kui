@@ -42,6 +42,24 @@ pub struct ScrollGeometry {
     pub max_offset: Vec2,
 }
 
+impl ScrollGeometry {
+    /// `{x, y, w, h, content_w, content_h, offset: {x, y}, max_offset:
+    /// {x, y}}` — the box's rect flattened, its content's size beside it.
+    pub fn to_value(&self) -> crate::value::Value {
+        use crate::value::Value;
+        Value::map([
+            ("x", Value::float(self.rect.x)),
+            ("y", Value::float(self.rect.y)),
+            ("w", Value::float(self.rect.w)),
+            ("h", Value::float(self.rect.h)),
+            ("content_w", Value::float(self.content.w)),
+            ("content_h", Value::float(self.content.h)),
+            ("offset", self.offset.to_value()),
+            ("max_offset", self.max_offset.to_value()),
+        ])
+    }
+}
+
 /// One container's retained state. The offset exists from the moment anything
 /// writes one; the rest only once a layout has resolved the key *as a scroll
 /// container*, which is why it is optional and the offset is not.

@@ -19,6 +19,7 @@ use crate::resources::Resources;
 use crate::retain::Kept;
 use crate::spec::{FontFamily, TextStyle, TextWrap};
 use crate::tree::TextId;
+use crate::value::Value;
 
 /// The glyph rasterizer: cosmic-text's swash cache for plain alpha masks and
 /// color bitmaps, plus our own scaler for LCD subpixel masks (cosmic-text's
@@ -653,6 +654,16 @@ pub struct TextHit {
     pub line: u32,
 }
 
+impl TextHit {
+    /// `{byte, line}`.
+    pub fn to_value(self) -> Value {
+        Value::map([
+            ("byte", Value::Int(self.byte as i64)),
+            ("line", Value::Int(self.line as i64)),
+        ])
+    }
+}
+
 /// What a piece of text measures, in logical px at the current scale —
 /// the same numbers layout uses for a text node with that content and
 /// style, so a view can size a column to its widest label or pick a tier
@@ -663,6 +674,17 @@ pub struct TextMetrics {
     pub height: f32,
     /// Lines after wrapping (capped by `max_lines`).
     pub lines: u32,
+}
+
+impl TextMetrics {
+    /// `{width, height, lines}`.
+    pub fn to_value(self) -> Value {
+        Value::map([
+            ("width", Value::float(self.width)),
+            ("height", Value::float(self.height)),
+            ("lines", Value::Int(self.lines as i64)),
+        ])
+    }
 }
 
 /// The shaping and rasterization state of one window. The font database

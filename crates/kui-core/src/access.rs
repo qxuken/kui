@@ -38,6 +38,7 @@ use crate::scroll::ScrollStore;
 use crate::spec::NodeSpec;
 use crate::text::TextSystem;
 use crate::tree::{NIL, NodeContent, OriginId, Tree};
+use crate::value::{Handles, Value};
 use crate::window::{WindowButton, WindowRole};
 
 /// What a node is to assistive technology. Most of these a view declares
@@ -382,6 +383,16 @@ pub struct TextPos {
     pub character: usize,
 }
 
+impl TextPos {
+    /// `{run, character}`, the run spelled by `h`.
+    pub fn to_value(self, h: Handles) -> Value {
+        Value::map([
+            ("run", (h.key)(self.run)),
+            ("character", Value::Int(self.character as i64)),
+        ])
+    }
+}
+
 /// A request from assistive technology, delivered as
 /// [`crate::InputEvent::Access`].
 #[derive(Clone, Debug, PartialEq)]
@@ -429,6 +440,18 @@ pub struct ScrollState {
     pub max_y: f32,
 }
 
+impl ScrollState {
+    /// `{x, y, max_x, max_y}`.
+    pub fn to_value(self) -> Value {
+        Value::map([
+            ("x", Value::float(self.x)),
+            ("y", Value::float(self.y)),
+            ("max_x", Value::float(self.max_x)),
+            ("max_y", Value::float(self.max_y)),
+        ])
+    }
+}
+
 /// One visual line (or a piece of one) of an editor's text, with what a
 /// screen reader needs to read it by character and word and to place a
 /// caret: every character's byte length, x position and width. A line
@@ -455,6 +478,26 @@ pub struct AccessRun {
     /// Character indices where words start.
     pub word_starts: Vec<u8>,
     pub rtl: bool,
+}
+
+impl AccessRun {
+    /// The run as plain data, its key spelled by `h`.
+    pub fn to_value(&self, h: Handles) -> Value {
+        let bytes = |v: &[u8]| Value::list(v.iter().map(|b| Value::Int(*b as i64)));
+        Value::map([
+            ("key", (h.key)(self.key)),
+            ("line", Value::Int(self.line as i64)),
+            ("start", Value::Int(self.start as i64)),
+            ("end", Value::Int(self.end as i64)),
+            ("text", Value::Str(self.text.clone())),
+            ("rect", self.rect.to_value()),
+            ("char_lengths", bytes(&self.char_lengths)),
+            ("char_positions", Value::floats(&self.char_positions)),
+            ("char_widths", Value::floats(&self.char_widths)),
+            ("word_starts", bytes(&self.word_starts)),
+            ("rtl", Value::Bool(self.rtl)),
+        ])
+    }
 }
 
 /// Longest run, in characters (the platform indexes them in a byte).
@@ -548,6 +591,56 @@ pub struct AccessNode {
 }
 
 impl AccessNode {
+    /// The node as plain data, every field under its snake_case name and
+    /// every key spelled by `h`. The slider's numbers are `value_now`,
+    /// `value_min`, `value_max` — the rows that set them, not the
+    /// fields that hold them (backlog AR1); `actions` is the list of
+    /// action names, `live` and `role` and `orientation` their schema
+    /// names.
+    pub fn to_value(&self, h: Handles) -> Value {
+        Value::map([
+            ("key", (h.key)(self.key)),
+            ("parent", h.opt_key(self.parent)),
+            ("origin", Value::Int(self.origin.0 as i64)),
+            ("role", Value::str(self.role.name())),
+            ("name", Value::opt_str(&self.name)),
+            ("description", Value::opt_str(&self.description)),
+            ("rect", self.rect.to_value()),
+            ("value", Value::opt_str(&self.value)),
+            ("caret", Value::opt_usize(self.caret)),
+            (
+                "selection",
+                Value::opt(self.selection, |(a, b)| {
+                    Value::list([Value::Int(a as i64), Value::Int(b as i64)])
+                }),
+            ),
+            ("anchor", Value::opt(self.anchor, |p| p.to_value(h))),
+            ("focus", Value::opt(self.focus, |p| p.to_value(h))),
+            ("runs", Value::list(self.runs.iter().map(|r| r.to_value(h)))),
+            ("checked", Value::opt_bool(self.checked)),
+            ("selected", Value::opt_bool(self.selected)),
+            ("expanded", Value::opt_bool(self.expanded)),
+            ("pos_in_set", Value::opt_usize(self.pos_in_set)),
+            ("set_size", Value::opt_usize(self.set_size)),
+            (
+                "orientation",
+                Value::opt(self.orientation, |o| Value::str(o.name())),
+            ),
+            ("live", Value::str(self.live.name())),
+            ("value_now", Value::opt_float(self.number)),
+            ("value_min", Value::opt_float(self.min)),
+            ("value_max", Value::opt_float(self.max)),
+            ("focused", Value::Bool(self.focused)),
+            ("disabled", Value::Bool(self.disabled)),
+            ("modal", Value::Bool(self.modal)),
+            ("scroll", Value::opt(self.scroll, ScrollState::to_value)),
+            (
+                "actions",
+                Value::list(self.action_list().into_iter().map(|a| Value::str(a.name()))),
+            ),
+        ])
+    }
+
     pub fn supports(&self, action: AccessAction) -> bool {
         self.actions & action.bit() != 0
     }
@@ -609,6 +702,19 @@ pub struct AccessTree {
 }
 
 impl AccessTree {
+    /// `{nodes, focus, hash}`, every node by [`AccessNode::to_value`],
+    /// the focus key spelled by `h` and the hash as sixteen hex digits.
+    pub fn to_value(&self, h: Handles) -> Value {
+        Value::map([
+            (
+                "nodes",
+                Value::list(self.nodes.iter().map(|n| n.to_value(h))),
+            ),
+            ("focus", h.opt_key(self.focus)),
+            ("hash", Value::Str(format!("{:016x}", self.hash))),
+        ])
+    }
+
     pub fn get(&self, key: Key) -> Option<&AccessNode> {
         self.nodes.iter().find(|n| n.key == key)
     }

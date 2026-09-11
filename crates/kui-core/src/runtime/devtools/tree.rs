@@ -440,7 +440,7 @@ fn inspector(
                 ),
                 (
                     "size",
-                    format!("{} × {}", sizing(n.width), sizing(n.height)),
+                    format!("{} × {}", n.width.describe(), n.height.describe()),
                     None,
                 ),
                 (
@@ -660,16 +660,6 @@ fn inspector(
             }
         },
     );
-}
-
-/// A `Sizing` the way a spec spells it.
-fn sizing(s: Sizing) -> String {
-    match s {
-        Sizing::Fit => "fit".into(),
-        Sizing::Grow(w) => format!("grow({w})"),
-        Sizing::Fixed(px) => format!("{px:.0}px"),
-        Sizing::Percent(p) => format!("{:.0}%", p * 100.0),
-    }
 }
 
 /// The app's area in the main window, in viewport coordinates: what the

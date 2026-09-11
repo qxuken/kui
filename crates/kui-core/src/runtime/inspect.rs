@@ -102,6 +102,71 @@ pub struct NodeInfo {
     pub events: Vec<(&'static str, Value)>,
 }
 
+impl NodeInfo {
+    /// The row as plain data, every field under its snake_case name —
+    /// the key and parent spelled by `h`, sizing as [`Sizing::describe`],
+    /// colours as hex, enums by their schema names, `events` a map of
+    /// handler name to payload (backlog AR1).
+    pub fn to_value(&self, h: crate::value::Handles) -> Value {
+        Value::map([
+            ("key", (h.key)(self.key)),
+            ("parent", h.opt_key(self.parent)),
+            ("depth", Value::Int(self.depth as i64)),
+            ("kind", Value::str(self.kind.name())),
+            ("label", Value::opt_str(&self.label)),
+            ("rect", self.rect.to_value()),
+            ("dir", Value::str(self.dir.name())),
+            ("width", Value::Str(self.width.describe())),
+            ("height", Value::Str(self.height.describe())),
+            ("bg", Value::Int(self.bg.to_hex() as i64)),
+            ("float", Value::Bool(self.float)),
+            ("role", Value::opt(self.role, |r| Value::str(r.name()))),
+            ("text", Value::opt_str(&self.text)),
+            (
+                "flags",
+                Value::list(self.flags.iter().map(|f| Value::str(*f))),
+            ),
+            ("layer", Value::Int(self.layer as i64)),
+            ("origin", Value::Int(self.origin.0 as i64)),
+            ("children", Value::Int(self.children as i64)),
+            (
+                "padding",
+                Value::map([
+                    ("t", Value::float(self.padding.t)),
+                    ("r", Value::float(self.padding.r)),
+                    ("b", Value::float(self.padding.b)),
+                    ("l", Value::float(self.padding.l)),
+                ]),
+            ),
+            ("gap", Value::float(self.gap)),
+            ("main_align", Value::str(self.main_align.name())),
+            ("cross_align", Value::str(self.cross_align.name())),
+            ("wrap", Value::Bool(self.wrap)),
+            ("min_width", Value::opt_float(self.min_w)),
+            ("min_height", Value::opt_float(self.min_h)),
+            ("max_width", Value::opt_float(self.max_w)),
+            ("max_height", Value::opt_float(self.max_h)),
+            ("radius", Value::floats(&self.radius)),
+            ("border_width", Value::float(self.border_w)),
+            (
+                "border_color",
+                Value::Int(self.border_color.to_hex() as i64),
+            ),
+            ("opacity", Value::float(self.opacity)),
+            ("scroll", Value::opt(self.scroll, Vec2::to_value)),
+            (
+                "events",
+                Value::Map(
+                    self.events
+                        .iter()
+                        .map(|(name, v)| (name.to_string(), v.clone()))
+                        .collect(),
+                ),
+            ),
+        ])
+    }
+}
+
 const TEXT_CUT: usize = 60;
 
 impl Core {

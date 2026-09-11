@@ -99,7 +99,7 @@ pub use text::{DEFAULT_TEXT_CACHE_BYTES, LONG_LINE_BYTES, Span, TextHit, TextMet
 pub use theme::{Theme, ThemeSource};
 pub use tree::OriginId;
 pub use ui::Ui;
-pub use value::Value;
+pub use value::{Handles, Value};
 pub use window::{
     DismissReason, WindowButton, WindowCommand, WindowConfig, WindowEnv, WindowId, WindowKind,
     WindowRole,

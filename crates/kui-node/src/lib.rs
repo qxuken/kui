@@ -73,6 +73,45 @@ fn json_of(v: &Value) -> Json {
     }
 }
 
+/// A readback shape as the object Node hands out: the core's `to_value`
+/// form (`kui_core::Handles::HEX`, so a key or a resource id is sixteen
+/// hex digits) with every map key turned from snake_case to camelCase —
+/// `content_w` → `contentW`, `pos_in_set` → `posInSet` — mechanically,
+/// at every depth (backlog AR1). The key set each shape ends up with is
+/// pinned in `readback_pins`. Event payloads never come through here:
+/// they are the app's own data, spelled however the app spelled them.
+fn readback(v: &Value) -> Json {
+    match v {
+        Value::List(items) => Json::Array(items.iter().map(readback).collect()),
+        Value::Map(entries) => Json::Object(
+            entries
+                .iter()
+                .map(|(k, v)| (camel(k), readback(v)))
+                .collect(),
+        ),
+        other => json_of(other),
+    }
+}
+
+/// `snake_case` to `camelCase`; a key with no underscore is unchanged.
+fn camel(k: &str) -> String {
+    let mut out = String::with_capacity(k.len());
+    let mut up = false;
+    for c in k.chars() {
+        if c == '_' {
+            up = true;
+        } else if up {
+            out.extend(c.to_uppercase());
+            up = false;
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+const HEX: kui_core::Handles = kui_core::Handles::HEX;
+
 // ---------------------------------------------------------------------------
 // Plain-object arguments
 //
@@ -187,26 +226,15 @@ fn key_str(key: Key) -> String {
     format!("{:016x}", key.0)
 }
 
-/// A scroll offset as `{x, y}` — the shape `setScroll` takes back.
+/// `ScrollGeometry` as `scrollGeometry()` hands it out; `offset` is the
+/// `{x, y}` `setScroll` takes back.
 fn geometry_json(g: Option<kui_core::ScrollGeometry>) -> Option<Json> {
-    let g = g?;
-    let mut o = JsonMap::new();
-    o.insert("x".into(), Json::from(g.rect.x as f64));
-    o.insert("y".into(), Json::from(g.rect.y as f64));
-    o.insert("w".into(), Json::from(g.rect.w as f64));
-    o.insert("h".into(), Json::from(g.rect.h as f64));
-    o.insert("contentW".into(), Json::from(g.content.w as f64));
-    o.insert("contentH".into(), Json::from(g.content.h as f64));
-    o.insert("offset".into(), offset_json(g.offset));
-    o.insert("maxOffset".into(), offset_json(g.max_offset));
-    Some(Json::Object(o))
+    g.map(|g| readback(&g.to_value()))
 }
 
+/// A scroll offset as `{x, y}` — the shape `setScroll` takes back.
 fn offset_json(off: Vec2) -> Json {
-    let mut o = JsonMap::new();
-    o.insert("x".into(), Json::from(off.x as f64));
-    o.insert("y".into(), Json::from(off.y as f64));
-    Json::Object(o)
+    readback(&off.to_value())
 }
 
 /// One boolean out of a `setEnv` bag, named so the error says which.
@@ -877,165 +905,28 @@ impl Ctx {
 
 /// Window commands as the objects `windowCommands()` hands out.
 fn window_commands_json(cmds: Vec<kui_core::WindowCommand>) -> Json {
-    use kui_core::WindowCommand;
-    Json::Array(
-        cmds.into_iter()
-            .map(|cmd| {
-                let mut o = JsonMap::new();
-                let kind = match cmd {
-                    WindowCommand::StartDrag(_) => "startDrag",
-                    WindowCommand::Close(_) => "close",
-                    WindowCommand::Minimize(_) => "minimize",
-                    WindowCommand::ToggleMaximize(_) => "toggleMaximize",
-                    WindowCommand::Open { .. } => "open",
-                    WindowCommand::SetSize { .. } => "setSize",
-                    WindowCommand::Focus(_) => "focus",
-                    WindowCommand::Redraw(_) => "redraw",
-                };
-                o.insert("kind".into(), Json::String(kind.into()));
-                o.insert("window".into(), Json::from(cmd.window().0));
-                if let WindowCommand::SetSize { size, .. } = cmd {
-                    o.insert("width".into(), Json::from(size.w as f64));
-                    o.insert("height".into(), Json::from(size.h as f64));
-                }
-                if let WindowCommand::Open {
-                    owner,
-                    origin,
-                    config,
-                    ..
-                } = cmd
-                {
-                    o.insert("owner".into(), Json::from(owner.0));
-                    o.insert("origin".into(), Json::from(origin.0));
-                    let mut c = JsonMap::new();
-                    c.insert("kind".into(), Json::String(config.kind.name().into()));
-                    c.insert("width".into(), Json::from(config.size.w as f64));
-                    c.insert("height".into(), Json::from(config.size.h as f64));
-                    c.insert("activates".into(), Json::Bool(config.activates));
-                    c.insert("anchor".into(), rect_json(config.anchor));
-                    o.insert("config".into(), Json::Object(c));
-                }
-                Json::Object(o)
-            })
-            .collect(),
-    )
+    Json::Array(cmds.iter().map(|c| readback(&c.to_value())).collect())
 }
 
 /// One row of `nodes()`: `NodeInfo` with the key as a hex string, sizing
 /// spelled the way `docs/props.md` does, and the role by its schema name.
 fn node_info_json(n: &kui_core::NodeInfo) -> Json {
-    let mut o = JsonMap::new();
-    o.insert("key".into(), Json::String(key_str(n.key)));
-    o.insert(
-        "parent".into(),
-        n.parent.map_or(Json::Null, |k| Json::String(key_str(k))),
-    );
-    o.insert("depth".into(), Json::from(n.depth));
-    o.insert("kind".into(), Json::from(n.kind.name()));
-    o.insert(
-        "label".into(),
-        n.label.clone().map_or(Json::Null, Json::String),
-    );
-    o.insert("rect".into(), rect_json(n.rect));
-    o.insert(
-        "dir".into(),
-        Json::from(format!("{:?}", n.dir).to_lowercase()),
-    );
-    let sizing = |s: kui_core::Sizing| match s {
-        kui_core::Sizing::Fit => "fit".to_string(),
-        kui_core::Sizing::Grow(w) => format!("grow({w})"),
-        kui_core::Sizing::Fixed(px) => format!("{px}px"),
-        kui_core::Sizing::Percent(p) => format!("{}%", p * 100.0),
-    };
-    o.insert("width".into(), Json::from(sizing(n.width)));
-    o.insert("height".into(), Json::from(sizing(n.height)));
-    o.insert("bg".into(), Json::from(n.bg.to_hex()));
-    o.insert("float".into(), Json::Bool(n.float));
-    o.insert(
-        "role".into(),
-        n.role.map_or(Json::Null, |r| Json::from(r.name())),
-    );
-    o.insert(
-        "text".into(),
-        n.text.clone().map_or(Json::Null, Json::String),
-    );
-    o.insert(
-        "flags".into(),
-        Json::Array(n.flags.iter().map(|f| Json::from(*f)).collect()),
-    );
-    // ADR 0024, decision 10: the rest of the spec, for an inspector.
-    o.insert("layer".into(), Json::from(n.layer));
-    o.insert("origin".into(), Json::from(n.origin.0));
-    o.insert("children".into(), Json::from(n.children));
-    let mut pad = JsonMap::new();
-    pad.insert("t".into(), Json::from(n.padding.t as f64));
-    pad.insert("r".into(), Json::from(n.padding.r as f64));
-    pad.insert("b".into(), Json::from(n.padding.b as f64));
-    pad.insert("l".into(), Json::from(n.padding.l as f64));
-    o.insert("padding".into(), Json::Object(pad));
-    o.insert("gap".into(), Json::from(n.gap as f64));
-    let align = |a: kui_core::Align| match a {
-        kui_core::Align::Start => "start",
-        kui_core::Align::Center => "center",
-        kui_core::Align::End => "end",
-    };
-    o.insert("mainAlign".into(), Json::from(align(n.main_align)));
-    o.insert("crossAlign".into(), Json::from(align(n.cross_align)));
-    o.insert("wrap".into(), Json::Bool(n.wrap));
-    let opt = |v: Option<f32>| v.map_or(Json::Null, |v| Json::from(v as f64));
-    o.insert("minWidth".into(), opt(n.min_w));
-    o.insert("minHeight".into(), opt(n.min_h));
-    o.insert("maxWidth".into(), opt(n.max_w));
-    o.insert("maxHeight".into(), opt(n.max_h));
-    o.insert(
-        "radius".into(),
-        Json::Array(n.radius.iter().map(|r| Json::from(*r as f64)).collect()),
-    );
-    o.insert("borderWidth".into(), Json::from(n.border_w as f64));
-    o.insert("borderColor".into(), Json::from(n.border_color.to_hex()));
-    o.insert("opacity".into(), Json::from(n.opacity as f64));
-    o.insert(
-        "scroll".into(),
-        n.scroll.map_or(Json::Null, |s| {
-            let mut v = JsonMap::new();
-            v.insert("x".into(), Json::from(s.x as f64));
-            v.insert("y".into(), Json::from(s.y as f64));
-            Json::Object(v)
-        }),
-    );
-    let mut events = JsonMap::new();
-    for (name, v) in &n.events {
-        events.insert((*name).into(), json_of(v));
-    }
-    o.insert("events".into(), Json::Object(events));
-    Json::Object(o)
+    readback(&n.to_value(HEX))
 }
 
 /// `{byte, line}`; see `TextHit` in index.d.ts.
 fn text_hit_json(h: kui_core::TextHit) -> Json {
-    let mut o = JsonMap::new();
-    o.insert("byte".into(), Json::from(h.byte as u64));
-    o.insert("line".into(), Json::from(h.line));
-    Json::Object(o)
+    readback(&h.to_value())
 }
 
 /// `{width, height, lines}`; see `TextMetrics` in index.d.ts.
 fn text_metrics_json(m: kui_core::TextMetrics) -> Json {
-    let mut o = JsonMap::new();
-    o.insert("width".into(), Json::from(m.width as f64));
-    o.insert("height".into(), Json::from(m.height as f64));
-    o.insert("lines".into(), Json::from(m.lines));
-    Json::Object(o)
+    readback(&m.to_value())
 }
 
 /// `{x, y, w, h}` — the shape `scrollGeometry` already returns for a box.
 fn rect_json(r: Rect) -> Json {
-    let mut o = JsonMap::new();
-    o.insert("x".into(), Json::from(r.x as f64));
-    o.insert("y".into(), Json::from(r.y as f64));
-    o.insert("w".into(), Json::from(r.w as f64));
-    o.insert("h".into(), Json::from(r.h as f64));
-    Json::Object(o)
+    readback(&r.to_value())
 }
 
 /// `ctx.env()`: every row of `schema::ENV_FIELDS` that has a Node key,
@@ -2844,149 +2735,14 @@ fn access_request(key: Key, action: &str, arg: Option<Json>) -> Result<kui_core:
 
 /// `{nodes: [...], focus, hash}`; see `AccessTree` in index.d.ts.
 fn access_tree_json(tree: &kui_core::AccessTree) -> Json {
-    let opt_str = |s: &Option<String>| s.as_ref().map_or(Json::Null, |s| Json::String(s.clone()));
-    let opt_num = |v: Option<f32>| v.map_or(Json::Null, |v| Json::from(v as f64));
-    let nodes = tree
-        .nodes
-        .iter()
-        .map(|n| {
-            let mut o = JsonMap::new();
-            o.insert("key".into(), Json::String(key_str(n.key)));
-            o.insert(
-                "parent".into(),
-                n.parent.map_or(Json::Null, |k| Json::String(key_str(k))),
-            );
-            o.insert("origin".into(), Json::from(n.origin.0));
-            o.insert("role".into(), Json::String(n.role.name().into()));
-            o.insert("name".into(), opt_str(&n.name));
-            o.insert("description".into(), opt_str(&n.description));
-            let mut rect = JsonMap::new();
-            rect.insert("x".into(), Json::from(n.rect.x as f64));
-            rect.insert("y".into(), Json::from(n.rect.y as f64));
-            rect.insert("w".into(), Json::from(n.rect.w as f64));
-            rect.insert("h".into(), Json::from(n.rect.h as f64));
-            o.insert("rect".into(), Json::Object(rect));
-            o.insert("value".into(), opt_str(&n.value));
-            o.insert(
-                "caret".into(),
-                n.caret.map_or(Json::Null, |c| Json::from(c as u64)),
-            );
-            o.insert(
-                "selection".into(),
-                n.selection.map_or(Json::Null, |(a, b)| {
-                    Json::Array(vec![Json::from(a as u64), Json::from(b as u64)])
-                }),
-            );
-            let pos_json = |p: Option<kui_core::TextPos>| {
-                p.map_or(Json::Null, |p| {
-                    let mut o = JsonMap::new();
-                    o.insert("run".into(), Json::String(key_str(p.run)));
-                    o.insert("character".into(), Json::from(p.character as u64));
-                    Json::Object(o)
-                })
-            };
-            o.insert("anchor".into(), pos_json(n.anchor));
-            o.insert("focus".into(), pos_json(n.focus));
-            o.insert(
-                "runs".into(),
-                Json::Array(
-                    n.runs
-                        .iter()
-                        .map(|r| {
-                            let mut o = JsonMap::new();
-                            o.insert("key".into(), Json::String(key_str(r.key)));
-                            o.insert("line".into(), Json::from(r.line as u64));
-                            o.insert("start".into(), Json::from(r.start as u64));
-                            o.insert("end".into(), Json::from(r.end as u64));
-                            o.insert("text".into(), Json::String(r.text.clone()));
-                            let mut rect = JsonMap::new();
-                            rect.insert("x".into(), Json::from(r.rect.x as f64));
-                            rect.insert("y".into(), Json::from(r.rect.y as f64));
-                            rect.insert("w".into(), Json::from(r.rect.w as f64));
-                            rect.insert("h".into(), Json::from(r.rect.h as f64));
-                            o.insert("rect".into(), Json::Object(rect));
-                            let nums = |v: &[f32]| {
-                                Json::Array(v.iter().map(|x| Json::from(*x as f64)).collect())
-                            };
-                            let bytes =
-                                |v: &[u8]| Json::Array(v.iter().map(|x| Json::from(*x)).collect());
-                            o.insert("charLengths".into(), bytes(&r.char_lengths));
-                            o.insert("charPositions".into(), nums(&r.char_positions));
-                            o.insert("charWidths".into(), nums(&r.char_widths));
-                            o.insert("wordStarts".into(), bytes(&r.word_starts));
-                            o.insert("rtl".into(), Json::Bool(r.rtl));
-                            Json::Object(o)
-                        })
-                        .collect(),
-                ),
-            );
-            o.insert("checked".into(), n.checked.map_or(Json::Null, Json::Bool));
-            o.insert("selected".into(), n.selected.map_or(Json::Null, Json::Bool));
-            o.insert("expanded".into(), n.expanded.map_or(Json::Null, Json::Bool));
-            o.insert(
-                "posInSet".into(),
-                n.pos_in_set.map_or(Json::Null, |v| Json::from(v as u64)),
-            );
-            o.insert(
-                "setSize".into(),
-                n.set_size.map_or(Json::Null, |v| Json::from(v as u64)),
-            );
-            o.insert(
-                "orientation".into(),
-                n.orientation
-                    .map_or(Json::Null, |o| Json::String(o.name().to_string())),
-            );
-            o.insert("live".into(), Json::String(n.live.name().into()));
-            o.insert("valueNow".into(), opt_num(n.number));
-            o.insert("valueMin".into(), opt_num(n.min));
-            o.insert("valueMax".into(), opt_num(n.max));
-            o.insert("focused".into(), Json::Bool(n.focused));
-            o.insert("disabled".into(), Json::Bool(n.disabled));
-            o.insert("modal".into(), Json::Bool(n.modal));
-            o.insert(
-                "scroll".into(),
-                n.scroll.map_or(Json::Null, |s| {
-                    let mut sc = JsonMap::new();
-                    sc.insert("x".into(), Json::from(s.x as f64));
-                    sc.insert("y".into(), Json::from(s.y as f64));
-                    sc.insert("maxX".into(), Json::from(s.max_x as f64));
-                    sc.insert("maxY".into(), Json::from(s.max_y as f64));
-                    Json::Object(sc)
-                }),
-            );
-            o.insert(
-                "actions".into(),
-                Json::Array(
-                    n.action_list()
-                        .into_iter()
-                        .map(|a| Json::String(a.name().into()))
-                        .collect(),
-                ),
-            );
-            Json::Object(o)
-        })
-        .collect();
-    let mut o = JsonMap::new();
-    o.insert("nodes".into(), Json::Array(nodes));
-    o.insert(
-        "focus".into(),
-        tree.focus.map_or(Json::Null, |k| Json::String(key_str(k))),
-    );
-    o.insert("hash".into(), Json::String(format!("{:016x}", tree.hash)));
-    Json::Object(o)
+    readback(&tree.to_value(HEX))
 }
 
 fn warnings_json(warnings: Vec<kui_core::Warning>) -> Json {
     Json::Array(
         warnings
-            .into_iter()
-            .map(|w| {
-                let mut o = JsonMap::new();
-                o.insert("code".into(), Json::String(w.code.into()));
-                o.insert("key".into(), Json::String(key_str(w.key)));
-                o.insert("message".into(), Json::String(w.message));
-                Json::Object(o)
-            })
+            .iter()
+            .map(|w| readback(&w.to_value(HEX)))
             .collect(),
     )
 }
@@ -3062,68 +2818,7 @@ fn play_impl(core: &mut Core, sound: &str, opts: Option<&Json>) -> Result<f64> {
 }
 
 fn audio_commands_json(cmds: Vec<AudioCommand>) -> Json {
-    let obj = |pairs: Vec<(&str, Json)>| {
-        let mut o = JsonMap::new();
-        for (k, v) in pairs {
-            o.insert(k.into(), v);
-        }
-        Json::Object(o)
-    };
-    let pb = |p: PlaybackId| Json::from(p.0);
-    Json::Array(
-        cmds.into_iter()
-            .map(|c| match c {
-                AudioCommand::Play {
-                    playback,
-                    sound,
-                    volume,
-                    looped,
-                    fade_in_ms,
-                } => obj(vec![
-                    ("kind", "play".into()),
-                    ("playback", pb(playback)),
-                    ("sound", Json::String(sound_str(sound))),
-                    ("volume", Json::from(volume as f64)),
-                    ("loop", Json::Bool(looped)),
-                    ("fadeIn", Json::from(fade_in_ms as f64)),
-                ]),
-                AudioCommand::Stop { playback, fade_ms } => obj(vec![
-                    ("kind", "stop".into()),
-                    ("playback", pb(playback)),
-                    ("fade", Json::from(fade_ms as f64)),
-                ]),
-                AudioCommand::SetVolume {
-                    playback,
-                    volume,
-                    tween_ms,
-                } => obj(vec![
-                    ("kind", "setVolume".into()),
-                    ("playback", pb(playback)),
-                    ("volume", Json::from(volume as f64)),
-                    ("tween", Json::from(tween_ms as f64)),
-                ]),
-                AudioCommand::Pause { playback, fade_ms } => obj(vec![
-                    ("kind", "pause".into()),
-                    ("playback", pb(playback)),
-                    ("fade", Json::from(fade_ms as f64)),
-                ]),
-                AudioCommand::Resume { playback, fade_ms } => obj(vec![
-                    ("kind", "resume".into()),
-                    ("playback", pb(playback)),
-                    ("fade", Json::from(fade_ms as f64)),
-                ]),
-                AudioCommand::MasterVolume { volume, tween_ms } => obj(vec![
-                    ("kind", "masterVolume".into()),
-                    ("volume", Json::from(volume as f64)),
-                    ("tween", Json::from(tween_ms as f64)),
-                ]),
-                AudioCommand::Unload { sound } => obj(vec![
-                    ("kind", "unload".into()),
-                    ("sound", Json::String(sound_str(sound))),
-                ]),
-            })
-            .collect(),
-    )
+    Json::Array(cmds.iter().map(|c| readback(&c.to_value(HEX))).collect())
 }
 
 fn add_font_impl(core: &mut Core, data: &[u8]) -> Result<String> {

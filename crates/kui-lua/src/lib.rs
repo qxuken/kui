@@ -659,10 +659,7 @@ fn env_table<'scope, 'env: 'scope>(
             let Some(h) = ui.text_hit(key, kui_core::Vec2::new(x, y)) else {
                 return Ok(mlua::Value::Nil);
             };
-            let r = lua.create_table()?;
-            r.set("byte", h.byte)?;
-            r.set("line", h.line)?;
-            Ok(mlua::Value::Table(r))
+            value_to_lua(lua, &h.to_value())
         })?,
     )?;
     // Opens a context menu at (x, y) over a keyed node, its items a list
@@ -781,12 +778,7 @@ fn env_table<'scope, 'env: 'scope>(
             let Some(r) = ui.caret_rect(key, byte) else {
                 return Ok(mlua::Value::Nil);
             };
-            let t = lua.create_table()?;
-            t.set("x", r.x)?;
-            t.set("y", r.y)?;
-            t.set("w", r.w)?;
-            t.set("h", r.h)?;
-            Ok(mlua::Value::Table(t))
+            value_to_lua(lua, &r.to_value())
         })?,
     )?;
     t.set(
@@ -799,22 +791,8 @@ fn env_table<'scope, 'env: 'scope>(
             let Some(g) = ui.scroll_geometry(key) else {
                 return Ok(mlua::Value::Nil);
             };
-            let r = lua.create_table()?;
-            r.set("x", g.rect.x)?;
-            r.set("y", g.rect.y)?;
-            r.set("w", g.rect.w)?;
-            r.set("h", g.rect.h)?;
-            r.set("content_w", g.content.w)?;
-            r.set("content_h", g.content.h)?;
-            let off = lua.create_table()?;
-            off.set("x", g.offset.x)?;
-            off.set("y", g.offset.y)?;
-            r.set("offset", off)?;
-            let max = lua.create_table()?;
-            max.set("x", g.max_offset.x)?;
-            max.set("y", g.max_offset.y)?;
-            r.set("max_offset", max)?;
-            Ok(mlua::Value::Table(r))
+            // The core's shape, whose keys are already Lua's spelling.
+            value_to_lua(lua, &g.to_value())
         })?,
     )?;
     // The wheel's move by hand; the next layout clamps it, so 0,0 is "jump
@@ -857,11 +835,7 @@ fn env_table<'scope, 'env: 'scope>(
             move |lua, (s, opts, max_w): (mlua::Value, Option<Table>, Option<f32>)| {
                 let mut guard = ui.borrow_mut();
                 let m = measure_from_lua(&mut guard, &s, opts.as_ref(), max_w)?;
-                let r = lua.create_table()?;
-                r.set("width", m.width)?;
-                r.set("height", m.height)?;
-                r.set("lines", m.lines)?;
-                Ok(r)
+                value_to_lua(lua, &m.to_value())
             },
         )?,
     )?;

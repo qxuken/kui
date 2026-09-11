@@ -8,6 +8,12 @@ pub struct Vec2 {
 impl Vec2 {
     pub const ZERO: Vec2 = Vec2 { x: 0.0, y: 0.0 };
 
+    /// `{x, y}` — an offset as a readback spells it.
+    pub fn to_value(self) -> crate::value::Value {
+        use crate::value::Value;
+        Value::map([("x", Value::float(self.x)), ("y", Value::float(self.y))])
+    }
+
     pub fn new(x: f32, y: f32) -> Self {
         Self { x, y }
     }
@@ -93,6 +99,18 @@ pub struct Rect {
 }
 
 impl Rect {
+    /// `{x, y, w, h}` — a rect as a readback spells it: a caret, a
+    /// scroller's box, a window's anchor.
+    pub fn to_value(self) -> crate::value::Value {
+        use crate::value::Value;
+        Value::map([
+            ("x", Value::float(self.x)),
+            ("y", Value::float(self.y)),
+            ("w", Value::float(self.w)),
+            ("h", Value::float(self.h)),
+        ])
+    }
+
     pub fn new(x: f32, y: f32, w: f32, h: f32) -> Self {
         Self { x, y, w, h }
     }

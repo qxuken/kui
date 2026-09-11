@@ -145,6 +145,18 @@ pub struct WindowConfig {
 }
 
 impl WindowConfig {
+    /// `{kind, width, height, activates, anchor: {x, y, w, h}}`.
+    pub fn to_value(&self) -> crate::value::Value {
+        use crate::value::Value;
+        Value::map([
+            ("kind", Value::str(self.kind.name())),
+            ("width", Value::float(self.size.w)),
+            ("height", Value::float(self.size.h)),
+            ("activates", Value::Bool(self.activates)),
+            ("anchor", self.anchor.to_value()),
+        ])
+    }
+
     /// The size a declaration that names none gets.
     pub const DEFAULT_SIZE: Size = Size { w: 640.0, h: 480.0 };
 
@@ -308,6 +320,49 @@ pub enum WindowCommand {
 }
 
 impl WindowCommand {
+    /// The command's wire name: `startDrag`, `close`, `minimize`,
+    /// `toggleMaximize`, `open`, `setSize`, `focus`, `redraw`.
+    pub fn kind_name(&self) -> &'static str {
+        match self {
+            WindowCommand::StartDrag(_) => "startDrag",
+            WindowCommand::Close(_) => "close",
+            WindowCommand::Minimize(_) => "minimize",
+            WindowCommand::ToggleMaximize(_) => "toggleMaximize",
+            WindowCommand::Open { .. } => "open",
+            WindowCommand::SetSize { .. } => "setSize",
+            WindowCommand::Focus(_) => "focus",
+            WindowCommand::Redraw(_) => "redraw",
+        }
+    }
+
+    /// `{kind, window}` plus what the variant carries: `width`/`height`
+    /// for `setSize`; `owner`, `origin` and `config` for `open`.
+    pub fn to_value(&self) -> crate::value::Value {
+        use crate::value::Value;
+        let mut out = vec![
+            ("kind".to_string(), Value::str(self.kind_name())),
+            ("window".to_string(), Value::Int(self.window().0 as i64)),
+        ];
+        match self {
+            WindowCommand::SetSize { size, .. } => {
+                out.push(("width".into(), Value::float(size.w)));
+                out.push(("height".into(), Value::float(size.h)));
+            }
+            WindowCommand::Open {
+                owner,
+                origin,
+                config,
+                ..
+            } => {
+                out.push(("owner".into(), Value::Int(owner.0 as i64)));
+                out.push(("origin".into(), Value::Int(origin.0 as i64)));
+                out.push(("config".into(), config.to_value()));
+            }
+            _ => {}
+        }
+        Value::Map(out)
+    }
+
     /// The window the command is about.
     pub fn window(&self) -> WindowId {
         match *self {

@@ -206,6 +206,68 @@ pub enum AudioCommand {
     },
 }
 
+impl AudioCommand {
+    /// The command's wire name: `play`, `stop`, `setVolume`, `pause`,
+    /// `resume`, `masterVolume`, `unload`.
+    pub fn kind_name(&self) -> &'static str {
+        match self {
+            AudioCommand::Play { .. } => "play",
+            AudioCommand::Stop { .. } => "stop",
+            AudioCommand::SetVolume { .. } => "setVolume",
+            AudioCommand::Pause { .. } => "pause",
+            AudioCommand::Resume { .. } => "resume",
+            AudioCommand::MasterVolume { .. } => "masterVolume",
+            AudioCommand::Unload { .. } => "unload",
+        }
+    }
+
+    /// `{kind, ...}` with what the variant carries: `playback` (a small
+    /// counter, an integer), `sound` (a resource id, spelled by `h`),
+    /// `volume`, `loop`, and the durations in ms as `fade_in`, `fade`,
+    /// `tween`.
+    pub fn to_value(&self, h: crate::value::Handles) -> Value {
+        let pb = |p: PlaybackId| Value::Int(p.0 as i64);
+        let mut out = vec![("kind".to_string(), Value::str(self.kind_name()))];
+        let mut push = |k: &str, v: Value| out.push((k.to_string(), v));
+        match *self {
+            AudioCommand::Play {
+                playback,
+                sound,
+                volume,
+                looped,
+                fade_in_ms,
+            } => {
+                push("playback", pb(playback));
+                push("sound", (h.id)(sound.to_ffi()));
+                push("volume", Value::float(volume));
+                push("loop", Value::Bool(looped));
+                push("fade_in", Value::float(fade_in_ms));
+            }
+            AudioCommand::Stop { playback, fade_ms }
+            | AudioCommand::Pause { playback, fade_ms }
+            | AudioCommand::Resume { playback, fade_ms } => {
+                push("playback", pb(playback));
+                push("fade", Value::float(fade_ms));
+            }
+            AudioCommand::SetVolume {
+                playback,
+                volume,
+                tween_ms,
+            } => {
+                push("playback", pb(playback));
+                push("volume", Value::float(volume));
+                push("tween", Value::float(tween_ms));
+            }
+            AudioCommand::MasterVolume { volume, tween_ms } => {
+                push("volume", Value::float(volume));
+                push("tween", Value::float(tween_ms));
+            }
+            AudioCommand::Unload { sound } => push("sound", (h.id)(sound.to_ffi())),
+        }
+        Value::Map(out)
+    }
+}
+
 /// A playback that asked for an `ended` event.
 struct Tagged {
     origin: OriginId,

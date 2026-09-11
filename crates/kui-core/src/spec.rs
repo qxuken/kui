@@ -69,6 +69,17 @@ impl From<f32> for Min {
 }
 
 impl Sizing {
+    /// The sizing the way a spec spells it — `fit`, `grow(1)`, `120px`,
+    /// `50%` — for a reader: the devtools' inspector and a `nodes()` row.
+    pub fn describe(self) -> String {
+        match self {
+            Sizing::Fit => "fit".into(),
+            Sizing::Grow(w) => format!("grow({w})"),
+            Sizing::Fixed(px) => format!("{px}px"),
+            Sizing::Percent(p) => format!("{}%", p * 100.0),
+        }
+    }
+
     /// The animatable number inside: a grow factor, a px size, a fraction.
     /// None for `Fit`, which has nothing to ease.
     pub fn amount(self) -> Option<f32> {
@@ -96,12 +107,29 @@ pub enum Dir {
     Column,
 }
 
+impl Dir {
+    /// The `dir` row's spelling.
+    pub fn name(self) -> &'static str {
+        match self {
+            Dir::Row => "row",
+            Dir::Column => "column",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Align {
     #[default]
     Start,
     Center,
     End,
+}
+
+impl Align {
+    /// The `align` rows' spelling (`schema::ALIGNS`).
+    pub fn name(self) -> &'static str {
+        crate::schema::ALIGNS[self as usize]
+    }
 }
 
 /// What a floating node is positioned against.

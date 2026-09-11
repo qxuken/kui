@@ -69,6 +69,18 @@ pub struct Warning {
     pub message: String,
 }
 
+impl Warning {
+    /// `{code, key, message}`, the key spelled by `h`.
+    pub fn to_value(&self, h: crate::value::Handles) -> crate::value::Value {
+        use crate::value::Value;
+        Value::map([
+            ("code", Value::str(self.code)),
+            ("key", (h.key)(self.key)),
+            ("message", Value::Str(self.message.clone())),
+        ])
+    }
+}
+
 /// One warning code and what it means, for the tables the bindings
 /// generate from the core (`docs/props.md`, the Node `WarningCode` union).
 /// `doc` is the const's own doc comment, so there is one text to edit.
