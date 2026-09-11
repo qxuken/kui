@@ -138,7 +138,10 @@ fn click(core: &mut Core, at: Vec2) -> Vec<UiEvent> {
 
 impl Example for Host {
     fn window(&self) -> kui_devtools::Window {
-        kui_devtools::Window::default().size(900.0, 600.0)
+        // Wide enough for the script's two 300-wide panes beside the
+        // host's column: with the C panel loaded the frame is three
+        // languages deep, and at 900 the third pane sat past the edge.
+        kui_devtools::Window::default().size(1240.0, 640.0)
     }
 
     fn extensions(&mut self) -> Extensions {

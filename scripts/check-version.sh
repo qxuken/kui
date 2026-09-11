@@ -22,6 +22,14 @@ cargo metadata --no-deps --offline --format-version 1 \
         // publishing kui-core 0.1.0-alpha.6. Every other dev-dependency is
         // still checked: kui-lua names two, both with versions.
         if (d.name === p.name) continue;
+        // A dev-dependency that names a path and no version is dropped
+        // from the manifest cargo publishes - `cargo package -p kui` ships
+        // an empty [dev-dependencies] - so it can never be asked for at
+        // the registry and has no version to agree with. That is
+        // kui-devtools, the harness the examples run in (publish = false), which
+        // every crate with an example dev-depends on since ADR 0021, and
+        // which this check refused for alpha.11 as "requires kui-devtools *".
+        if (d.kind === "dev" && d.req === "*" && d.path) continue;
         const req = d.req.replace(/^\^/, "");
         if (req !== want) bad.push(`${p.name} requires ${d.name} ${d.req}`);
       }

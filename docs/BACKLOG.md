@@ -7,7 +7,7 @@ F16–F23 and F25–F31 on 2026-09-07). Every item names the
 evidence that produced it, so a task that turns out to be wrong can be argued with rather
 than guessed at.
 
-**This file is the open list.** The hundred closed entries — each with its
+**This file is the open list.** The hundred and nine closed entries — each with its
 outcome written on top of the original finding, and the tables, profiles and
 evidence it argued from — are in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md); forty-six moved there
@@ -21,7 +21,9 @@ at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
 
-What is left here: V2–V8 from the canvas question of 2026-09-11 (five
+What is left here: C29 from the alpha.11 pre-tag round (four unguarded
+bench rows reproducibly slower than alpha.10, filed with the numbers and
+a bisect to run), V2–V8 from the canvas question of 2026-09-11 (five
 waiting for a view, two declined with a condition — V1, the one with an
 order attached, was built the round after, on 2026-09-11), three parked
 headings — C12, C13 and C14, each waiting for a view that wants it — B1
@@ -41,7 +43,7 @@ from the two alpha.7 field reports closed the day they were filed
 2026-09-08), C16–C23 landed whole for alpha.9, and W3–W12 and F32–F35 for
 alpha.10. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.10".
+Ordered by area, not by priority. What to do next is under "After alpha.11".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -328,7 +330,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.10" below.
+not cover is in "After alpha.11" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -535,53 +537,11 @@ widths, each waiting for a view that asks.
 The round that produced
 [ADR 0019](adr/0019-a-theme-derived-from-appearance-and-accent.md). The
 palette itself is built, and so is every example's migration onto it (T3,
-closed the day it was filed); T1 below is the defect it turned up, closed
+closed the day it was filed); T1, the defect it turned up, closed
 2026-09-11, and T2 — the metrics, the axis the ADR scoped itself out of —
-closed the same day and is in
-[the archive](backlog/closed-2026-09.md#-t2--the-metrics-are-still-constants--done-2026-09-11).
-
-### `x` T1 — `on_context_menu` does not bubble, and keys do — **done (2026-09-11)**
-
-Built as the **Do** below says, with one change of where: the walk is at
-emission rather than in `Interaction`, because the hit stack is paint
-order and not ancestry — a lower *sibling* overlapping under the pressed
-node would have won a stack walk, and "enclosing" has to mean the tree.
-`enclosing_menu` sits beside `enclosing_sink` in `runtime/focus.rs` with
-the same modal stop and the same skip of a disabled node's own;
-`HitRegion::context_menu` carries a `MenuOwner { key, origin, tag }`
-resolved there, behind `Tree::any_context_menu` so a frame offering no
-menu pays no walk. Three pins in `tests/context_menu.rs` (the T1 shape —
-a full-window sink over a menu-declaring root — a disabled row reaching
-the panel's, and the modal boundary, which fails under mutation), the
-`controls` corpus scene gains the press on the button, and the row docs in
-`schema.rs`, `spec.rs`, `props.md` and `jsx-runtime.d.ts` say the rule.
-`onForceClick` was not changed: topmost only, said so now.
-
-The original finding:
-
-Found building `examples/rust/theme.rs`. A secondary press asks
-`Interaction::hit_at` for the **topmost** hit region and reads
-`context_menu` off that one region alone
-(`crates/kui-core/src/input.rs:952`); there is no walk to an ancestor. So a
-full-window node that declares `on_key` — the shell pattern
-`examples/rust/splitmux.rs` uses, and the one the reference page needed —
-sits above a root that declared `on_context_menu` and swallows every
-secondary press, silently. Moving the row onto the sink is the workaround,
-and it is not discoverable: nothing warns, and the app looks like it has no
-menu.
-
-This is exactly the shape ADR 0011 settled for keys — "unclaimed keys
-bubble to the nearest enclosing sink" — decided for keys alone. A press
-that lands on a node with no menu of its own is unclaimed in the same
-sense, and a container offering a menu for everything inside it is the
-common case, not an exotic one.
-
-**Do:** walk the hit stack from the topmost outward for the first region
-carrying a `context_menu` tag, the way `enclosing_sink` walks for keys.
-`hits` is already in paint order and already reversed for the topmost
-lookup, so it is the same iterator without the `.next()`. One corpus step
-(a menu-declaring root under a full-size sink) and one test that a nested
-declaration still wins over its ancestor's.
+closed the same day. Both are in
+[the archive](backlog/closed-2026-09.md#from-the-design-system-audit-2026-09-10-the-defect-and-the-axis-it-scoped-out)
+under this heading, and nothing from the round is open.
 
 ## From the ABI-and-bindings audit (2026-09-10)
 
@@ -654,20 +614,11 @@ the menu-bar choices, a Node `dispatch` from an effect handler that never
 drew, and eight smaller things in the examples (ADR 0021, *What the
 building changed*, 11). E1 closed with it.
 
-Three follow-ups, all closed — E3 last, on 2026-09-11, with
-`features/modal` and its nested confirm, in
-[the archive](backlog/closed-2026-09.md#-e3--featuresmodal-is-still-inside-two-other-examples--done-2026-09-11):
-
-### `x` E1 — The Node dock has no warnings in its stream
-
-Closed 2026-09-10: `KuiWindow.warningsRaised()` is in the addon beside
-`nodes()` / `setInspect()`, and the Node stream shows warnings.
-
-### `x` E2 — No C dock
-
-Closed 2026-09-11 by [ADR 0024](adr/0024-the-devtools-are-the-cores.md):
-the dock is the core's, and a C program has it with `kui_set_devtools`
-or `KUI_DEVTOOLS=1` in its environment, the same panel as everyone.
+Three follow-ups, all closed — E1 with that second round, E2 by ADR 0024
+the next day, and E3 last, on 2026-09-11, with `features/modal` and its
+nested confirm — all three in
+[the archive](backlog/closed-2026-09.md#from-the-examples-round-2026-09-10-the-three-follow-ups)
+under this heading.
 
 ## From the devtools round (2026-09-11)
 
@@ -780,11 +731,65 @@ an op is a box, a segment or a glyph and a fill is the path primitive ADR
 0010 rejected. **Condition:** a view with more than ~10k primitives from
 Node, or a fill eight points cannot make. V1 is the answer for data.
 
-## After alpha.10
+## From the alpha.11 pre-tag round (2026-09-11)
+
+The bench guard was green — all four guarded rows within ±3.1% of
+alpha.10 on a readable run — and four unguarded rows were not, which the
+round reports rather than judges. Filed here so the next performance
+round starts from numbers instead of from a feeling.
+
+### `.` C29 — Four unguarded rows read 4–12% slower than alpha.10, reproducibly
+
+`scripts/bench-check.sh v0.1.0-alpha.10` on 2026-09-11, run alone on the
+M3 Pro, then the four rows again alone (second run in parentheses; every
+row's run-to-run spread was under 3% both times, so these are readings,
+not noise):
+
+| bench | alpha.10 | HEAD | change |
+|---|---|---|---|
+| `frame_10k_segments` | 774 µs | 868 µs | **+12.2%** (+9.3%) |
+| `drop_1k_rows_plain` | 57.6 µs | 61.8 µs | **+7.4%** (+7.6%) |
+| `frame_10k_rects_square_clip` | 769 µs | 820 µs | **+6.7%** (+3.8%) |
+| `frame_10k_rects_rounded_clip` | 802 µs | 853 µs | **+6.3%** (+5.5%) |
+
+What is accounted for: the clip shrink measured itself at **+2.5% on the
+rounded clip and −0.1% on the square one** (CHANGELOG, *Changed*), so
+about half of the rounded row and none of the square one. What is not:
+the rest, which arrived somewhere in the eleven rounds after it — ADR
+0023's float stack (a `line` is a float, so `frame_10k_segments` is ten
+thousand of them; `frame_1k_typical_with_100_floats` was added to price
+exactly that and reads ~30 µs for a hundred, which does not scale to 75
+µs for ten thousand, so it is not the whole story), ADR 0026's `HitShape`
+on every region, ADR 0025's texture side list, ADR 0016's per-node
+access-inputs digest (priced at 0.8% of a frame when built), T1's
+`any_context_menu` walk. `drop_1k_rows_plain` is the odd one: no exit, so
+`depart` has nothing to keep, and 4 µs over a thousand removed rows is
+4 ns a row of something new on the drop path.
+
+The guarded rows moved +0.9%, +1.0%, +3.1% and −2.6%, so it is not a
+per-node cost across the board; it is on the clip path, the float path
+and the removal path. `frame_10k_rects_with_access_tree` went the other
+way, **−23%**, which is ADR 0016 decision 3 landing.
+
+**Do:** bisect each row with `bench-check.sh <commit> <row>` over the
+commits between `v0.1.0-alpha.10` and `v0.1.0-alpha.11` that touch
+`crates/kui-core/src/{runtime,layout,emit,paint}` — the script benches
+any base ref and takes a divan filter, so each probe is one row and a
+few minutes. Then decide per cause as C15 and C24 did: keep it and write
+the number down, or take it back. Guarding a row is the other half: if
+the segment row is what ADR 0023 costs, it belongs on the guarded list
+under the tolerance that fits it, since nothing else in the round would
+have caught a second +10%.
+
+
+## After alpha.11
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
-alpha.9" until 2026-09-09, when the first Windows round it described had
-landed whole for alpha.10 and the heading moved with the tag; "After
+alpha.10" until 2026-09-11, when the eleven rounds between the two tags —
+the paint order, the theme, the examples, the devtools, the canvas, the
+architecture review and the rest — had all landed and the heading moved
+with the tag; "After alpha.9" before that, until the first Windows round
+landed for alpha.10; "After
 alpha.8" before that, until the editor-and-mux round landed for alpha.9;
 "After alpha.7" before that, until ADR 0012's remainder and ADR 0013 landed
 for alpha.8; "After alpha.6" before it went to
@@ -803,7 +808,8 @@ which the archived entry measures and leaves.
 that is not either parked or deliberately unbuilt: after the round of
 2026-09-11 that took V1, D1, D2, T2, C26's last two steps and E3 together,
 the open list is C12, C13, C14, F36, B1 and V2–V8 — every one parked on a
-condition. C27 is parked with its measurements. What that round settled
+condition — and C29, the one entry with work in it: a bisect of four
+bench rows, filed by the alpha.11 pre-tag round. C27 is parked with its measurements. What that round settled
 is on top of each entry in the archive; the two questions worth carrying
 forward are the ones it answered by building: a metric never scales by
 itself and the stock set is the corpus's contract (T2), and the core keeps
@@ -950,14 +956,15 @@ and baseline), C14 (aspect ratio), C5(b) (core-side virtualisation), rounded
 clip nesting. Each says "wait for a view that wants it", and each should keep
 saying it until one does.
 
-**Hygiene.** Archiving is done five times over: the forty-six of
+**Hygiene.** Archiving is done six times over: the forty-six of
 2026-09-06, the ten field-report entries that followed them before the tag —
 so all of F1–F15 sit together — W2 whole on 2026-09-07, once its driver
 half was built, the fourteen of alpha.9's round on 2026-09-08, and the
 fourteen of this one (W3, W4–W12, F32–F35) before the alpha.10 tag, and
 the six of the round of 2026-09-11 (V1, D1, D2, T2, C26 whole, E3) the day
-they were built. This file is now three parked entries, F36, B1, V2–V8 and
-this section.
+they were built, and T1, E1 and E2 — closed in their rounds and left here
+— before the alpha.11 tag. This file is now three parked entries, C27
+with its measurements, C29, F36, B1, V2–V8 and this section.
 Still open, both waiting on something outside the repo: enable `SMOKE_MACOS`
 / `SMOKE_WINDOWS` the day a runner exists (P8) — which has two jobs waiting
 for it now, F13's launch probe beside the AX audit, sharing the one
@@ -986,10 +993,10 @@ release, which no headless assertion reads:
 
 ## Closed — index
 
-A hundred and six entries, all in
+A hundred and nine entries, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim.
 This index is here so an id resolves without opening that file: the open items
-above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.10" and
+above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.11" and
 the hygiene note cite C2, C5(b), P3, R4 and R7, and code comments, ADRs and
 commit messages cite ids of their own. All hundred are whole in the
 archive. **C11**, **W2** and **C15** were each split for a while — an entry
@@ -1154,6 +1161,15 @@ move.
 **From an alpha.10 field report (2026-09-09)** — F37, closed the day it was filed, and the first entry to land after the alpha.10 tag
 
 - `~` **F37** — [`<button accent>` is in the changelog, the docs and every binding, and `tsc` rejects it](backlog/closed-2026-09.md#-f37--button-accent-is-in-the-changelog-the-docs-and-every-binding-and-tsc-rejects-it--done-2026-09-09) — done (2026-09-09) — `ButtonProps` is generated from `BUTTON_ROWS_JSX` now, so F24's fix cannot come undone a third time
+
+**From the design-system audit (2026-09-10)** — T1, the defect the round turned up, closed 2026-09-11 with the walk at emission; T2 is above under the round of 2026-09-11, T3 closed the day it was filed and was never an entry
+
+- `x` **T1** — [`on_context_menu` does not bubble, and keys do](backlog/closed-2026-09.md#x-t1--on_context_menu-does-not-bubble-and-keys-do--done-2026-09-11) — done (2026-09-11) — `enclosing_menu` beside `enclosing_sink`, walked at emission because the hit stack is paint order and not ancestry; three pins, the `controls` scene, `onForceClick` left topmost-only
+
+**From the examples round (2026-09-10)** — E1 and E2, closed 2026-09-10 and 2026-09-11; E3 is above under the round of 2026-09-11
+
+- `x` **E1** — [The Node dock has no warnings in its stream](backlog/closed-2026-09.md#x-e1--the-node-dock-has-no-warnings-in-its-stream--done-2026-09-10) — done (2026-09-10) — `KuiWindow.warningsRaised()` beside `nodes()` / `setInspect()`
+- `x` **E2** — [No C dock](backlog/closed-2026-09.md#x-e2--no-c-dock--done-2026-09-11) — done (2026-09-11) — the dock is the core's (ADR 0024): `kui_set_devtools` or `KUI_DEVTOOLS=1`
 
 **From the paint-order round (2026-09-10)** — C28, filed and closed the day ADR 0023 was written and built
 

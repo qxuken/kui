@@ -4,7 +4,7 @@
 //! behind it.
 
 use kui_core::diag::{ANNOUNCEMENT_REPEATED, LIVE_REGION_WITHOUT_NAME};
-use kui_core::testing::codes;
+use kui_core::testing::{click_at, codes};
 use kui_core::{Core, Live, NodeSpec, Role, Size, TextStyle};
 
 /// A column root holding one `live` box with `text` inside it.
@@ -169,6 +169,46 @@ fn the_same_text_frames_apart_is_not_reported() {
     }
     core.announce("Saved", Live::Polite);
     assert!(core.take_warnings().is_empty());
+}
+
+/// Two presses of Copy in a row, in a window that redraws only on input,
+/// are two consecutive frames — and are not the unguarded case, because
+/// the app was handed an event between them. The macOS audit
+/// (`scripts/ax-audit.swift`, "the same message twice in a row is said
+/// twice") is exactly this, and it raised the warning before the rule read
+/// the events.
+#[test]
+fn the_same_text_after_a_press_is_not_reported() {
+    let mut core = Core::new();
+    core.set_diagnostics(true);
+    let build = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.with_keyed(
+            "copy",
+            NodeSpec::row()
+                .width(kui_core::Sizing::Fixed(80.0))
+                .height(kui_core::Sizing::Fixed(30.0))
+                .on_click(kui_core::Value::str("copy"))
+                .label("Copy"),
+            |_| {},
+        );
+        ui.finish();
+    };
+    build(&mut core);
+    for _ in 0..2 {
+        // The press is the handler's cue, and the announcement follows
+        // it, then the frame it caused.
+        assert_eq!(click_at(&mut core, 10.0, 10.0).len(), 1);
+        core.announce("Copied to clipboard", Live::Polite);
+        build(&mut core);
+    }
+    assert!(core.take_warnings().is_empty());
+    assert_eq!(core.take_announcements().len(), 2);
+    // And a view announcing on the next frame with nothing pressed is
+    // still the reported shape.
+    core.announce("Copied to clipboard", Live::Polite);
+    assert_eq!(codes(&core.take_warnings()), [ANNOUNCEMENT_REPEATED]);
 }
 
 /// `Ui::announce` reaches the same queue, which is the only place three of

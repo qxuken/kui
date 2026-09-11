@@ -14,13 +14,14 @@
 
 slots = { "panel" }
 
--- Where the build scripts leave it, dev before release. On Windows this is
--- the shape that names kui_ffi.dll as the module its imports come from, so
--- it goes into any host that ships that DLL; `panel-host.dll` beside it
--- names c_panel.exe and loads into that and nothing else. On the unixes a
--- plugin leaves its kui_* undefined and takes them from the executable that
--- loaded it, and this example's host does not export them -- so there the
--- message below is the expected outcome, not a fault.
+-- Where `cbuild` leaves it, dev before release. On Windows this is the
+-- shape that names kui_ffi.dll as the module its imports come from, so it
+-- goes into any host that ships that DLL; `panel-host.dll` beside it names
+-- c_panel.exe and loads into that and nothing else. On the unixes a plugin
+-- leaves its kui_* undefined and takes them from the executable that
+-- loaded it, which this example's host exports for it (kui-lua/build.rs,
+-- the same flag kui-ffi's examples get) -- so the message below means the
+-- plugin has not been built, and nothing else.
 -- examples/devtools/src/bin/cbuild.rs's header comment is the long version.
 plugin_paths = {
   "target/debug/panel.dll", "target/debug/panel.so",
@@ -44,7 +45,12 @@ local function load_plugin(env)
       plugin_ns = "native"
       return true
     end
-    plugin_why = err
+    -- Keep the first reason from a file that was there over a later
+    -- "no such file": the debug .so's undefined kui_* is the message
+    -- worth reading, not that the release one was never built.
+    if plugin_why == nil or plugin_why:find("no such file", 1, true) then
+      plugin_why = err
+    end
   end
   return false
 end

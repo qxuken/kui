@@ -43,6 +43,12 @@ impl Core {
         self.devtools_translate(&mut out);
         self.stamp(&mut out);
         self.devtools_log(&out);
+        // An event the app was handed is "the user did something": what
+        // separates a message repeated on purpose from a view announcing
+        // every frame (`announce`).
+        if !out.is_empty() {
+            self.events_answered += 1;
+        }
         out
     }
 

@@ -17,10 +17,45 @@ for the reader deciding whether to upgrade. Earlier sections keep the shape
 they shipped with and are not retrofitted (backlog F31, from the alpha.8
 field reports).
 
-## Unreleased
+## 0.1.0-alpha.11 (2026-09-11)
 
 **What breaks.**
 
+- `KUI_ABI_VERSION` is **15**, over five bumps from alpha.10's 10, and the
+  Node binary frame is **version 9**, over four from 5 (6 `originLine` on
+  `cells`, 7 `measureText`, 8 `sampling`/`fit` on `image`, 9 the fragment
+  image input; the encoder and the addon ship together, so nothing to do
+  unless you own an encoder). Three of the five
+  ABI bumps are appends the size handshake covers (13 `checked` on
+  `KuiMenuItem`, 14 textures on `KuiDrawData`, 15 the image input on
+  `KuiFragmentDraw`; each is a bullet below), and two are not: **ABI 11**
+  moved every field of `KuiQuad` after `kind` — a host that walks the quad
+  array itself must recompile, and reads `dd.clips[q.clip]` where it read
+  `q.clip` and `q.clip_radius` — and **ABI 12** appended `origin_line` to
+  `kui_cells`'s argument list, which is a compile error rather than a
+  misread. Recompile every C host and plugin once against the new header;
+  a plugin binary built against any of ABI 10–14 is refused by the version
+  check rather than handed a frame it would misread.
+- `KUI_ABI_VERSION` is 11, and this one the size handshake cannot absorb.
+  `KuiQuad` lost `clip[4]` and `clip_radius[4]` and gained a `uint32_t clip`
+  in their place: the struct is 96 bytes where it was 124, and every field
+  after `kind` moved. `KuiQuad` travels as an array you stride with your own
+  `sizeof`, so an un-recompiled host reads element 1 at the wrong offset
+  whatever element 0 says — recompile, and read `dd.clips[q.clip]` where you
+  read `q.clip` and `q.clip_radius`. `KuiDrawData` gained `clips` and
+  `clip_count` to point at.
+- `kui_core::Quad::clip` is a `ClipId` (a `u32` index into
+  `DisplayList::clips`) and `Quad::clip_radius` is gone. `DisplayList::clip_of(&quad)`
+  resolves one; `Clip` is unchanged and still carries the rect and the four
+  radii. A backend or a test that read `q.clip.x` reads `dl.clip_of(q).rect.x`.
+- `conformance::quad_digest` takes the clip table as a second argument. The
+  number it produces is unchanged — the clip is digested resolved, so a
+  report from this version compares byte for byte against one from
+  alpha.10 — but a binding mirroring the walk (the C and Node adapters both
+  do) has to follow the index.
+- `decodeQuads` returns `clip` as a number, the index, and no longer returns
+  `clipRadii`. `ctx.clips()` and `decodeClips` are the other half;
+  `clipStride()` sizes them, as `quadStride()` does quads.
 - **Floats stack in the order they opened, not in tree order, and a
   scroller's bars are under the floats over it**
   ([ADR 0023](docs/adr/0023-layers-stack-in-the-order-they-open.md)). A
@@ -624,6 +659,128 @@ field reports).
   the rosters it and the pin tests read; **`--bin cbuild`** beside it, the
   C examples' build and round the same way.
 
+### Changed
+
+- **`Quad` is 96 bytes, down from 124.** The clip — a rect and four corner
+  radii, 32 bytes — was on every quad, and nearly every quad of a frame
+  shares one with its neighbours: a clip is inherited, and only a clipping
+  node makes a new one. It rides in `DisplayList::clips` now with a 4-byte
+  index on the quad, the way a fragment's sixteen parameters have ridden in
+  `DisplayList::fragments` since ADR 0015 and for the same reason. The 28
+  bytes come off the struct emission writes once per quad and then walks
+  again in the fade pass, in the backend's upload, and in the whole previous
+  frame `depart` keeps for a diff.
+
+  What it is worth, measured interleaved against alpha.10 on an M3 Pro. The
+  win is where the quads are, and it is not everywhere: `cells_200x50_warm`,
+  which is 94% `CellStore::emit` and therefore almost entirely quad writes,
+  goes **57.3 µs → 47.6 µs (−17%)** with under 1% run-to-run spread on
+  either side, and `cells_200x50_streaming` **59.0 → 54.0 µs (−11%)**. The
+  frame benches move much less, because emission is about a seventh of what
+  they do: `frame_10k_rects_with_text_and_hits` 1.24 ms → 1.17 ms (−5.7%,
+  against ±3.2% run-to-run), `frame_1k_curves` −4.5% (±3.6%),
+  `frame_1k_typical` −3.6% (±3.4%), and `frame_10k_rects` itself −0.7%,
+  which on a ±1.7% floor is nothing.
+
+  **It costs a rounded clip about 2.5%**, and that is not noise: measured
+  again for the whole branch against `main`, on a quieter machine,
+  `frame_10k_rects_rounded_clip` reads **802 → 821 µs, +2.5% on a ±0.3%
+  run-to-run floor**. It is the one place the change adds work rather than
+  removing it — a frame where every row clips interns a hundred entries and
+  every quad under one carries an index the backend then resolves — and it
+  is the trade the shrink is: 28 bytes off every quad of every frame
+  against a few percent on the frames that clip most. `frame_10k_rects_square_clip`
+  is unchanged (−0.1%), so what costs is the rounding, not the clipping.
+
+  Nothing renders differently. The corpus report — every quad digest of
+  every scene, across all four bindings — is byte-identical to alpha.10's,
+  which is the property the change was built to keep.
+
+  Interning is a constant-time append with a run-length check rather than a
+  real intern, and the callers avoid most of the calls: a node whose clip is
+  its parent's reuses the index the parent interned without comparing
+  anything, so a 10,000-node frame under one clipper interns twice. The
+  alternative — scanning the table — is quadratic on the frame shape that
+  makes many clips, a screen of width-clamped labels, which narrows the clip
+  once per label.
+
+- **A transitioning node hashes its key once a frame, not nine times.**
+  `AnimStore::drive` opened with `tweens.entry(key)`, and
+  `ease_transitioning` calls it seven to nine times in a row for one node —
+  width, height, bg, border, shadow colour, shadow geometry, opacity,
+  radius. `AnimStore::node(key)` does the lookup once and hands back a
+  `NodeAnim` holding the node's slot array, the clock and the store's
+  "another frame is owed" flag; every slot drives through that.
+  `AnimStore::drive` stays as a one-slot wrapper, which is what
+  `ease_positions` wants.
+
+  Worth less than the profile suggested, and the honest number is the small
+  one. `drive` was 31% of `frame_10k_rects_all_transitioning` under
+  `sample`(1) — the largest single entry anywhere — but the lookup was only
+  about a fifth of that, since after the first probe the entry is in L1 and
+  the other eight are a hash and a hit. Interleaved on an M3 Pro:
+  `drop_1k_rows_declaring_exit` **157 → 147 µs (−6.1%** against ±0.8%
+  run-to-run**)**, `drop_500_rows_declaring_exit` 139 → 134 µs (−3.5%,
+  ±0.4%), and `frame_10k_rects_all_transitioning` itself 1.74 → 1.70 ms
+  (−2.6%), which on a ±4.4% floor that row cannot resolve.
+
+- **A `Tween` carries its leg's curve, not a whole `Transition`.** 96 bytes
+  a slot rather than 104, so a transitioning node's nine slots are 864 and
+  not 936. `Transition::repeat` and `delay_ms` belong to the keyframe
+  cycle, which is sampled straight off the clock and never reaches a
+  `Tween`; they were being copied into every slot of every node and read by
+  nobody. A leg keeps `duration_ms` and `easing` alone. `anim.rs` carries a
+  size assertion on `Option<Tween>` now, the way `spec.rs` does on
+  `NodeSpec`, since a field added here is paid nine times per node forever.
+
+  **It is not measurably faster, and the measurement is why the shrink
+  stops here.** Interleaved on an M3 Pro the transitioning frame moves
+  between −7% and −2.5% depending on which of four rounds is read, on a row
+  whose own run-to-run spread reached ±19%: unreadable, which is the honest
+  answer rather than the favourable one. The arithmetic says why. `drive`
+  is about 27% of that frame, but it is called 90,000 times in it — ten
+  thousand nodes by nine slots — which is **~5 ns, about 15 cycles, per
+  call**, for a function that reads and writes a 96-byte struct, branches
+  four or five times and eases four lanes. There is no fat left in it; the
+  cost is the call count.
+
+  So the two hoists that looked obvious from the profile are not available
+  either, and for reasons worth writing down. `last_used` cannot move to
+  the node: a node does not drive all nine slots every frame —
+  `ease_positions` drives `Slot::Pos` alone, and a keyframed slot is
+  sampled instead of driven — so per-slot staleness is what makes a skipped
+  slot snap rather than resume. `transition` cannot move either: what a
+  `Tween` holds is the curve the *running leg* started under, read in
+  `eased_at` one line before the new one replaces it, which is what makes
+  retargeting a live tween continuous. Only the two fields no leg reads
+  were ever redundant.
+
+- **The access tree is derived only when it would come out different**
+  (ADR 0016, decision 3). `Core::access_tree()` rebuilt from scratch on
+  every frame a screen reader was attached — about **480 µs on a
+  10,000-node frame**, +40% on top of it — although most frames change
+  nothing it can see: a pointer crossing hover backgrounds, a colour
+  transition, a caret blink. It now hashes what deriving it reads and keeps
+  the tree it had when the hash matches.
+  `frame_10k_rects_with_access_tree` goes **1.77 ms → 1.39 ms (−21.7%)**
+  against a ±3.0% run-to-run floor, the only row in the table that moved.
+
+  The reason it can be both safe and cheap is that the walk is the cheap
+  quarter of the work: the same traversal calling the same `semantic`,
+  `focusable` and `orientation` costs 105 µs against `build`'s 480, because
+  three quarters of that function is constructing nodes and pushing them.
+  So the hash calls the real helpers rather than reimplementing what they
+  decide, and what could drift is only the fields `build` reads directly —
+  gated by 21 cases in `runtime::dispatch::access_cache`, one per input,
+  each mutating that input alone and asserting the tree was derived again
+  *and* came out different. A view whose editor is a custom one made of
+  `line` children answers "rebuild" rather than a hash, because reading its
+  inputs amounts to building its node.
+
+  Nothing about the tree changes — only how often it is computed. `WindowRole`
+  and `WindowButton` derive `Hash` so that a variant added later is covered
+  without anyone remembering to cover it.
+
 ### Fixed
 
 - **An image larger than the atlas page drew nothing, silently.** A
@@ -871,9 +1028,6 @@ field reports).
   can render menus itself and drain what choosing a row left to do —
   before this, a Copy chosen in a headless Node app queued a clipboard
   write nothing could collect.
-
-### Fixed
-
 - **A checked menu row reads as checked.** `widgets::menu_panel` declared
   it and the access tree kept `checked` for checkbox / radio / switch
   alone, so a reader heard "Wrap" where the gutter drew "✓ Wrap". A
@@ -1328,152 +1482,6 @@ field reports).
   A Rust app can keep reading `env` and ignore it. The runner also asks
   for a redraw when taking focus back finds the settings changed, which is
   the one path that had no event behind it.
-
-- `KUI_ABI_VERSION` is 11, and this one the size handshake cannot absorb.
-  `KuiQuad` lost `clip[4]` and `clip_radius[4]` and gained a `uint32_t clip`
-  in their place: the struct is 96 bytes where it was 124, and every field
-  after `kind` moved. `KuiQuad` travels as an array you stride with your own
-  `sizeof`, so an un-recompiled host reads element 1 at the wrong offset
-  whatever element 0 says — recompile, and read `dd.clips[q.clip]` where you
-  read `q.clip` and `q.clip_radius`. `KuiDrawData` gained `clips` and
-  `clip_count` to point at.
-- `kui_core::Quad::clip` is a `ClipId` (a `u32` index into
-  `DisplayList::clips`) and `Quad::clip_radius` is gone. `DisplayList::clip_of(&quad)`
-  resolves one; `Clip` is unchanged and still carries the rect and the four
-  radii. A backend or a test that read `q.clip.x` reads `dl.clip_of(q).rect.x`.
-- `conformance::quad_digest` takes the clip table as a second argument. The
-  number it produces is unchanged — the clip is digested resolved, so a
-  report from this version compares byte for byte against one from
-  alpha.10 — but a binding mirroring the walk (the C and Node adapters both
-  do) has to follow the index.
-- `decodeQuads` returns `clip` as a number, the index, and no longer returns
-  `clipRadii`. `ctx.clips()` and `decodeClips` are the other half;
-  `clipStride()` sizes them, as `quadStride()` does quads.
-
-### Changed
-
-- **`Quad` is 96 bytes, down from 124.** The clip — a rect and four corner
-  radii, 32 bytes — was on every quad, and nearly every quad of a frame
-  shares one with its neighbours: a clip is inherited, and only a clipping
-  node makes a new one. It rides in `DisplayList::clips` now with a 4-byte
-  index on the quad, the way a fragment's sixteen parameters have ridden in
-  `DisplayList::fragments` since ADR 0015 and for the same reason. The 28
-  bytes come off the struct emission writes once per quad and then walks
-  again in the fade pass, in the backend's upload, and in the whole previous
-  frame `depart` keeps for a diff.
-
-  What it is worth, measured interleaved against alpha.10 on an M3 Pro. The
-  win is where the quads are, and it is not everywhere: `cells_200x50_warm`,
-  which is 94% `CellStore::emit` and therefore almost entirely quad writes,
-  goes **57.3 µs → 47.6 µs (−17%)** with under 1% run-to-run spread on
-  either side, and `cells_200x50_streaming` **59.0 → 54.0 µs (−11%)**. The
-  frame benches move much less, because emission is about a seventh of what
-  they do: `frame_10k_rects_with_text_and_hits` 1.24 ms → 1.17 ms (−5.7%,
-  against ±3.2% run-to-run), `frame_1k_curves` −4.5% (±3.6%),
-  `frame_1k_typical` −3.6% (±3.4%), and `frame_10k_rects` itself −0.7%,
-  which on a ±1.7% floor is nothing.
-
-  **It costs a rounded clip about 2.5%**, and that is not noise: measured
-  again for the whole branch against `main`, on a quieter machine,
-  `frame_10k_rects_rounded_clip` reads **802 → 821 µs, +2.5% on a ±0.3%
-  run-to-run floor**. It is the one place the change adds work rather than
-  removing it — a frame where every row clips interns a hundred entries and
-  every quad under one carries an index the backend then resolves — and it
-  is the trade the shrink is: 28 bytes off every quad of every frame
-  against a few percent on the frames that clip most. `frame_10k_rects_square_clip`
-  is unchanged (−0.1%), so what costs is the rounding, not the clipping.
-
-  Nothing renders differently. The corpus report — every quad digest of
-  every scene, across all four bindings — is byte-identical to alpha.10's,
-  which is the property the change was built to keep.
-
-  Interning is a constant-time append with a run-length check rather than a
-  real intern, and the callers avoid most of the calls: a node whose clip is
-  its parent's reuses the index the parent interned without comparing
-  anything, so a 10,000-node frame under one clipper interns twice. The
-  alternative — scanning the table — is quadratic on the frame shape that
-  makes many clips, a screen of width-clamped labels, which narrows the clip
-  once per label.
-
-- **A transitioning node hashes its key once a frame, not nine times.**
-  `AnimStore::drive` opened with `tweens.entry(key)`, and
-  `ease_transitioning` calls it seven to nine times in a row for one node —
-  width, height, bg, border, shadow colour, shadow geometry, opacity,
-  radius. `AnimStore::node(key)` does the lookup once and hands back a
-  `NodeAnim` holding the node's slot array, the clock and the store's
-  "another frame is owed" flag; every slot drives through that.
-  `AnimStore::drive` stays as a one-slot wrapper, which is what
-  `ease_positions` wants.
-
-  Worth less than the profile suggested, and the honest number is the small
-  one. `drive` was 31% of `frame_10k_rects_all_transitioning` under
-  `sample`(1) — the largest single entry anywhere — but the lookup was only
-  about a fifth of that, since after the first probe the entry is in L1 and
-  the other eight are a hash and a hit. Interleaved on an M3 Pro:
-  `drop_1k_rows_declaring_exit` **157 → 147 µs (−6.1%** against ±0.8%
-  run-to-run**)**, `drop_500_rows_declaring_exit` 139 → 134 µs (−3.5%,
-  ±0.4%), and `frame_10k_rects_all_transitioning` itself 1.74 → 1.70 ms
-  (−2.6%), which on a ±4.4% floor that row cannot resolve.
-
-- **A `Tween` carries its leg's curve, not a whole `Transition`.** 96 bytes
-  a slot rather than 104, so a transitioning node's nine slots are 864 and
-  not 936. `Transition::repeat` and `delay_ms` belong to the keyframe
-  cycle, which is sampled straight off the clock and never reaches a
-  `Tween`; they were being copied into every slot of every node and read by
-  nobody. A leg keeps `duration_ms` and `easing` alone. `anim.rs` carries a
-  size assertion on `Option<Tween>` now, the way `spec.rs` does on
-  `NodeSpec`, since a field added here is paid nine times per node forever.
-
-  **It is not measurably faster, and the measurement is why the shrink
-  stops here.** Interleaved on an M3 Pro the transitioning frame moves
-  between −7% and −2.5% depending on which of four rounds is read, on a row
-  whose own run-to-run spread reached ±19%: unreadable, which is the honest
-  answer rather than the favourable one. The arithmetic says why. `drive`
-  is about 27% of that frame, but it is called 90,000 times in it — ten
-  thousand nodes by nine slots — which is **~5 ns, about 15 cycles, per
-  call**, for a function that reads and writes a 96-byte struct, branches
-  four or five times and eases four lanes. There is no fat left in it; the
-  cost is the call count.
-
-  So the two hoists that looked obvious from the profile are not available
-  either, and for reasons worth writing down. `last_used` cannot move to
-  the node: a node does not drive all nine slots every frame —
-  `ease_positions` drives `Slot::Pos` alone, and a keyframed slot is
-  sampled instead of driven — so per-slot staleness is what makes a skipped
-  slot snap rather than resume. `transition` cannot move either: what a
-  `Tween` holds is the curve the *running leg* started under, read in
-  `eased_at` one line before the new one replaces it, which is what makes
-  retargeting a live tween continuous. Only the two fields no leg reads
-  were ever redundant.
-
-- **The access tree is derived only when it would come out different**
-  (ADR 0016, decision 3). `Core::access_tree()` rebuilt from scratch on
-  every frame a screen reader was attached — about **480 µs on a
-  10,000-node frame**, +40% on top of it — although most frames change
-  nothing it can see: a pointer crossing hover backgrounds, a colour
-  transition, a caret blink. It now hashes what deriving it reads and keeps
-  the tree it had when the hash matches.
-  `frame_10k_rects_with_access_tree` goes **1.77 ms → 1.39 ms (−21.7%)**
-  against a ±3.0% run-to-run floor, the only row in the table that moved.
-
-  The reason it can be both safe and cheap is that the walk is the cheap
-  quarter of the work: the same traversal calling the same `semantic`,
-  `focusable` and `orientation` costs 105 µs against `build`'s 480, because
-  three quarters of that function is constructing nodes and pushing them.
-  So the hash calls the real helpers rather than reimplementing what they
-  decide, and what could drift is only the fields `build` reads directly —
-  gated by 21 cases in `runtime::dispatch::access_cache`, one per input,
-  each mutating that input alone and asserting the tree was derived again
-  *and* came out different. A view whose editor is a custom one made of
-  `line` children answers "rebuild" rather than a hash, because reading its
-  inputs amounts to building its node.
-
-  Nothing about the tree changes — only how often it is computed. `WindowRole`
-  and `WindowButton` derive `Hash` so that a variant added later is covered
-  without anyone remembering to cover it.
-
-### Fixed
-
 - **A click in a Node window paints once, not twice.** Press, and the
   button went down; release, and the button came up in one frame and the
   count moved in the *next* — a two-frame release, plain to see at the
@@ -1698,6 +1706,38 @@ field reports).
   the one check that could have seen the gap had nothing to look at. The
   counter's `+1` carries it now.
 
+- **`lua_panel` loads the C panel on macOS and Linux**, not only on
+  Windows. `examples/README.md` has said since 2026-09-08 that once
+  `cbuild` has run the Lua panel is three languages deep, and on the
+  unixes it never was: the third pane read "no native panel loaded" with
+  `symbol not found '_kui_button'` under it, and the script's own comment
+  called that the expected outcome. It was a missing link arg. A plugin
+  there leaves every `kui_*` undefined and resolves it from the executable
+  that loaded it, and rustc dead-strips an executable's unreferenced
+  functions unless the linker is told to keep them — which is exactly what
+  `kui-ffi/build.rs` passes for `c_panel` (`-export_dynamic`,
+  `--export-dynamic`) and nothing passed for `kui-lua`'s example. So
+  `kui-lua` has a `build.rs` doing the same for its examples, `lua_panel`
+  exports 185 entry points, and the pane shows the panel; the window is
+  1240 wide so the third pane is in it. The pane also reports the *first*
+  real reason a load failed — the `.so` that exists — rather than the last
+  path's "no such file". Windows is untouched: the shape that loads there
+  imports `kui_ffi.dll` by name and needs no export from the host.
+  Found by hand on the pre-tag round — read as a regression, and it was
+  a gap that had been documented as a fact since the day it was written.
+
+- **`announcement-repeated` no longer fires on two real presses in a
+  row.** The rule was "the same text on two consecutive frames", and in a
+  window that redraws only on input two consecutive Copy presses *are* two
+  consecutive frames — `scripts/ax-audit.swift`'s "the same message twice
+  in a row is said twice" check, which presses Copy twice on purpose,
+  raised it on every run, and any app with a Copy button would have too.
+  ADR 0008 always said a message repeated across frames the user did
+  something between is not the case; the core now reads "did something"
+  off the events it handed the app rather than the frame count, so the
+  view-shouting-every-frame shape is still reported and a press between
+  is not. Pinned in `tests/live.rs`, mutation-checked.
+
 ### What you can delete
 
 The hover or click box floated over a wedge, a connector or a shape's
@@ -1798,6 +1838,114 @@ view declares no clip and no tween slot, so the only code either one asks
 to change is a backend or a test reading the clip off a quad — the
 **What breaks** list, rather than a workaround this release made
 unnecessary.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), run before this tag on
+2026-09-11 on `main`. What follows is what executed on what.
+
+**macOS 26.6.2 (arm64), rustc 1.98.0, Node 26.8.1.** `cargo test
+--workspace` passes: **1035 tests over 89 suites, 0 failed** (1 ignored: a
+doc example in the devtools' `drive.rs`), with no display, no installed
+fonts and no GPU. `cargo fmt --all --check` and `cargo clippy --workspace
+--all-targets -- -D warnings` are clean. The scene corpus runs in all four
+adapters against one reference report: **31 scenes** — `anchor`,
+`layers`, `menu`, `menubar`, `polygon`, `scrollbar`, `selection` and `virtual`
+new since alpha.10's 23 — Rust and Lua through `cargo test`, C through
+`target/debug/conformance` (the header at **344 fields, 224 enum members
+and 187 prototypes**, matched against the Rust side by the parity assert,
+and every prototype now redeclared under its Rust signature by the same
+test), Node through `npm test` with `KUI_CONFORMANCE_REQUIRED=1` (**124
+Node tests**, 0 failed, 0 skipped). The C round, `cbuild --run`, passes
+its five checks: the C counter's drive, the header walk, a C host loading
+the C panel, the same plugin in a Rust host, and the plugin with
+`kui_ext_abi` deleted refused against **ABI 15**. `npm run gen` leaves the
+three generated files unchanged; `examples/node` installs, typechecks,
+builds and runs its three headless drives; the headless round
+(`smoke -- --headless`) passes all 22 drives.
+
+**`scripts/check-version.sh 0.1.0-alpha.11` refused the tree first**, and
+was wrong to: `kui`, `kui-lua` and `kui-ffi` dev-depend on `kui-devtools`
+— the examples' harness, `publish = false`, added after alpha.10 — with a
+path and no version, and the check read that as "requires kui-devtools
+\*". `cargo package -p kui` ships an empty `[dev-dependencies]`, since
+cargo strips a path-only dev-dependency, so there is nothing at the
+registry to agree with; the check skips exactly that shape now. The same
+class as alpha.10's `kui-ffi` miss, from the other side: a crate added
+to the workspace that the version tooling had no rule for.
+
+**The windowed round**, `cargo run -p kui-devtools --bin smoke -- --node`:
+**31 Rust examples on both bases and the four Node windows, 120 frames
+each, every one exiting 0 with nothing on stderr** — the round reads the
+warnings, not just the exit code, since alpha.10. The C and Lua hosts are
+not `[[example]]`s of `kui`, so by hand: `target/debug/counter`,
+`target/debug/host`, `c_panel` and `lua_panel` each opened a window under
+`KUI_SMOKE_FRAMES=120` and exited 0, warning-free — **39 windows over five
+hosts.**
+
+**What the hosts' windows found, read rather than counted.** `lua_panel`'s
+third pane said "no native panel loaded", which the file called the
+expected outcome on the unixes and the README called three languages deep.
+It had never loaded on macOS: the host executable exported no `kui_*` —
+`nm` shows 0 against `c_panel`'s 187 — because only `kui-ffi`'s build
+script passed the linker the flag that keeps them. `kui-lua` has the same
+build script now; the pane shows the C panel inside the Lua panel inside
+the Rust host, and an AX press on the host's button counts (**Fixed**
+above). Found by hand, reported as a regression, and a gap since the day
+it was written.
+
+`scripts/ax-audit.swift` against `examples/rust/features/accessibility.rs`
+passes **106/106 checks**, compiled with `swiftc -O` (the README says so
+now, and why). The first run passed 106/106 **and left one warning on the
+fixture's stderr**: `announcement-repeated`, raised by the audit's own
+"the same message twice in a row is said twice" check, which presses Copy
+twice on purpose. The rule was frame-count-based, and in a window that
+redraws only on input two presses are two consecutive frames — a false
+positive any app with a Copy button would have hit. The rule reads the
+events now (**Fixed** above, ADR 0008 amended); the second run is 106/106
+with a clean stderr.
+
+**The gestures on the by-hand list.** `node dist/features/slide.mjs`,
+then a synthetic drag posted through the HID tap with `screencapture` run
+*while the button was down*: at "move pan −22,−14" and "move pan −67,−41"
+the four cards and their connectors had moved together to where the
+cursor was, and at "end pan −90,−55" they sat at the full offset — F15
+still absent. ADR 0009's gesture on `features/popup`: press on the
+field, four legs down into the list, release — the list opened on the
+press, the highlight followed the drag (Cadmium, then Lithium) and the
+release chose Lithium, which the field then read. And new this release,
+a secondary press on `widgets/context_menu`: the row's menu came up as
+the platform's own `NSMenu` with the app's two items over Copy ⌘C /
+Select All ⌘A, the article's as Look Up / Copy (both dimmed with nothing
+selected) / Select All, and the footer's press opened nothing — each as
+the example's own doc says.
+
+**Not run**, and stated: Windows' own round (`smoke-windows.ps1`) — W3 and
+the mixed-DPI popup case stay as alpha.10 left them, since nothing on the
+Windows window path changed here beyond the Win32 context menu, which has
+no round on this machine; and Linux, which alpha.10 ran in docker for the
+`RTLD_GLOBAL` case and this release did not, since `native.cjs`'s dlopen
+flags did not move and the test that pins them ran.
+
+**The bench guard, run alone and on a quiet machine.** `scripts/bench-check.sh
+v0.1.0-alpha.10` reports **all four guarded rows clean** —
+`frame_10k_rects` +0.9%, `frame_10k_rects_with_text_and_hits` +1.0%,
+`frame_1k_typical` +3.1% and `deep_nesting_64_levels` −2.6% — with the
+worst run-to-run spread on a guarded row at 6.8% and no load warning, so
+for the first time since alpha.7 **the README's table is refreshed from
+this run**, HEAD's medians over 2026-09-07's, on the rows both have.
+`frame_10k_rects_with_access_tree` reads **−23.2%**, which is ADR 0016's
+one built decision.
+
+**Four unguarded rows read slower, and they reproduce**: run again alone,
+`frame_10k_segments` +12.2% then +9.3%, `drop_1k_rows_plain` +7.4% then
++7.6%, `frame_10k_rects_square_clip` +6.7% then +3.8%,
+`frame_10k_rects_rounded_clip` +6.3% then +5.5%, each on a spread under
+3%. The clip shrink priced itself at +2.5% on the rounded clip and nothing
+on the square one, so the rest arrived in the rounds after it — a bisect
+over 87 commits, which is not a pre-tag job. Filed as **C29** in the
+backlog with the numbers and the probe to run; the tag ships with them
+stated rather than with a bench that read the same as the last one.
 
 ## 0.1.0-alpha.10 (2026-09-09)
 

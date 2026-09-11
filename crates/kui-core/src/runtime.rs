@@ -370,11 +370,16 @@ pub struct Core {
     /// the core appends, a driver drains, a headless test asserts on what
     /// it drained.
     announcements: Vec<crate::access::Announcement>,
-    /// The last announcement's text and the frame it was queued on: the
-    /// same text on two consecutive frames is what an unguarded
-    /// `ui.announce(...)` in a view looks like, and `announcement-repeated`
-    /// says so.
-    last_announcement: Option<(String, u64)>,
+    /// The last announcement's text, the frame it was queued on and the
+    /// [`Self::events_answered`] reading then: the same text on two
+    /// consecutive frames with no event handed to the app between them is
+    /// what an unguarded `ui.announce(...)` in a view looks like, and
+    /// `announcement-repeated` says so. The event count is what tells a
+    /// window that redraws only on input apart from one shouting every
+    /// frame — two Copy presses in a row are two consecutive frames there.
+    last_announcement: Option<(String, u64, u64)>,
+    /// How many times `handle_input` handed the app at least one event.
+    events_answered: u64,
     /// A `reveal(key)` waiting for a layout to resolve against: the next
     /// `finish_frame` scrolls the node's scrolling ancestor to show it,
     /// then clears this. Last writer wins.
@@ -679,6 +684,7 @@ impl Core {
             layouts: FxHashMap::default(),
             announcements: Vec::new(),
             last_announcement: None,
+            events_answered: 0,
             diag: Diagnostics::default(),
         };
         core.sync_font_names();
@@ -762,13 +768,14 @@ impl Core {
         if live == crate::access::Live::Off || text.is_empty() {
             return;
         }
-        if let Some((last, frame)) = &self.last_announcement
+        if let Some((last, frame, answered)) = &self.last_announcement
             && last == text
             && *frame + 1 >= self.frame_no
+            && *answered == self.events_answered
         {
             self.diag.raise(crate::diag::announcement_repeated(text));
         }
-        self.last_announcement = Some((text.to_string(), self.frame_no));
+        self.last_announcement = Some((text.to_string(), self.frame_no, self.events_answered));
         self.announcements.push(crate::access::Announcement {
             text: text.to_string(),
             live,

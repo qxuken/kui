@@ -4,8 +4,14 @@
 // it only asks the OS what it can see and change.
 //
 //   cargo build -p kui --example accessibility
+//   swiftc -O -o target/ax-audit scripts/ax-audit.swift
 //   ./target/debug/examples/accessibility &
-//   swift scripts/ax-audit.swift $!
+//   target/ax-audit $!
+//
+// Compiled, not `swift scripts/ax-audit.swift`: interpreted, each attribute
+// read waits on the app's run loop and the menu-focus checks fail on timing
+// alone (104/106 and 99/106 on two such runs; 106/106 on every compiled
+// one). One run per launch, too - a run leaves the toggles flipped.
 //
 // The calling terminal needs Accessibility permission (System Settings >
 // Privacy & Security > Accessibility); without it every query fails with

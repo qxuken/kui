@@ -179,10 +179,14 @@ it has no announcement API to call.
      carries a `label` nor has any text in its subtree, so nothing it
      ever does can be announced. Same family as `image-without-label`.
    - `announcement-repeated`: the same text was announced on two
-     consecutive frames. That is what an unguarded `ui.announce(...)` in a
-     view looks like, and it is never what an app means — a message
-     genuinely repeated is repeated across frames the user did something
-     in between. The announcement still goes through; the warning names
+     consecutive frames with no event handed to the app between them.
+     That is what an unguarded `ui.announce(...)` in a view looks like,
+     and it is never what an app means — a message genuinely repeated is
+     repeated across frames the user did something in between, and "did
+     something" is read off the events, not the frame count: a window
+     that redraws only on input makes two Copy presses two consecutive
+     frames (amended 2026-09-11, when the macOS audit's copy-twice check
+     raised it). The announcement still goes through; the warning names
      the frame builder that is shouting.
 9. **The corpus reports announcements, per scene, like warnings.**
    `run()` drains after each step and each frame and `report()` writes an
