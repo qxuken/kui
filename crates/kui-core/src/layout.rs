@@ -248,7 +248,7 @@ fn fit_width(tree: &Tree, i: usize, text: &mut dyn TextMeasure) -> f32 {
     match tree.content[i] {
         NodeContent::Edit(key) => text.edit_intrinsic(key).w + spec.padding.x(),
         // Image pixels as logical px (1:1 at scale 1).
-        NodeContent::Image(id) => text.image_size(id).w,
+        NodeContent::Image(id, _) => text.image_size(id).w,
         NodeContent::Cells(id) => text.cells_size(id).w + spec.padding.x(),
         _ => {
             let mut w = 0.0f32;
@@ -316,7 +316,7 @@ fn fit_height(tree: &Tree, i: usize, text: &mut dyn TextMeasure, edit: Size) -> 
         NodeContent::Edit(_) => edit.h + spec.padding.y(),
         NodeContent::Cells(id) => text.cells_size(id).h + spec.padding.y(),
         // Width is final by now: a Fit height preserves the aspect.
-        NodeContent::Image(id) => {
+        NodeContent::Image(id, _) => {
             let intrinsic = text.image_size(id);
             if intrinsic.w > 0.0 {
                 intrinsic.h * tree.size[i].w / intrinsic.w
@@ -642,7 +642,7 @@ fn shrink_axis(tree: &mut Tree, i: u32, axis: AxisSel, mut deficit: f32, only_li
         if axis == AxisSel::Height
             && matches!(
                 tree.content[c as usize],
-                NodeContent::Text(_) | NodeContent::Edit(_) | NodeContent::Image(_)
+                NodeContent::Text(_) | NodeContent::Edit(_) | NodeContent::Image(..)
             )
         {
             return None;

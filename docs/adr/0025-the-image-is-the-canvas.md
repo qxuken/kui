@@ -1,18 +1,23 @@
 ---
-status: proposed
+status: accepted
 date: 2026-09-11
 ---
 
 # The image is the canvas: pixels an app replaces, a texture of their own, and a polygon
 
-> **Proposed (2026-09-11).** Written out of the question "should kui have
-> a canvas — raw GPU commands, declarative or callback-shaped — and if not,
-> what primitives make an app not need one?" The answer this document
-> gives is that nine times out of ten *canvas* means "I will draw it, you
-> show it", and that is an image whose pixels the app can replace; the
-> tenth time it is data the app wants drawn cheaply, which is the fragment
-> reading that image. Neither needs a command list or a device handle.
-> The four measurements it waits on are at the end, unrun.
+> **Accepted (2026-09-11), built the same day.** Written out of the
+> question "should kui have a canvas — raw GPU commands, declarative or
+> callback-shaped — and if not, what primitives make an app not need
+> one?" The answer this document gives is that nine times out of ten
+> *canvas* means "I will draw it, you show it", and that is an image whose
+> pixels the app can replace; the tenth time it is data the app wants
+> drawn cheaply, which is the fragment reading that image. Neither needs
+> a command list or a device handle. Decisions 1–6 are built in four
+> bindings with the two corpus scenes; decision 7 is filed as backlog V1.
+> The four measurements are run and under *Measurements* at the end, and
+> what the building changed from the draft is under *Amendment* after
+> them — including the per-node lock that made the first polygon cost
+> more than six segments, and the Lua door this draft got wrong.
 
 ## Context
 
@@ -287,41 +292,145 @@ date: 2026-09-11
   every "canvas" this document has heard of is an image the app draws or
   a fragment that reads one.
 
-## Measurements to run before accepting
+## Measurements
 
-1. **`update_image` at 1920×1080 every frame** — the core's copy (Rust
-   `Vec` handoff vs Node `Buffer` → `Vec`) and the renderer's
-   `write_texture`, on the M3 Pro and on the Windows box; the number the
-   doc quotes for "what a stream costs".
-2. **`benches/split.rs` gains texture runs** — 0, 1, 8, 32 texture-backed
-   images among 10k quads, so the split's bill is known for images as it
-   is for fragments.
-3. **`frame_1k_typical` unchanged** with an empty `textures` list, and
-   `frame_1k_typical_with_8_textures` beside it.
-4. **`frame_1k_polygons`** — a thousand six-point polygons declared per
-   frame, against a thousand closed six-point `line`s: the point-store
-   and normalisation cost, and the one split against six segment quads.
+Run on 2026-09-11, M3 Pro, `cargo bench -p kui-core --bench frame` and
+`cargo bench -p kui-wgpu --bench split` (fragments, then `TEX=1`), after
+the amendment's lock fix. Windows is, as for every round, the platform this
+machine cannot run.
 
-## Action items
+**The core** (divan medians, a hundred samples):
 
-1. [ ] `Resources::update_image` + revision; `ImageBacking` decided by the
-   two facts; `remove_image` drops the texture.
-2. [ ] `QuadKind::Texture`, `DisplayList::textures`, emission; the wgpu
-   split, texture cache on `Gpu`, second sampler; `kui-wgpu` conformance
-   transcription untouched (no new SDF).
-3. [ ] `sampling` and `fit` rows in `schema.rs`, resolved in `emit`.
-4. [ ] `scale` on the `layout` payload; `docs/props.md` regenerated.
-5. [ ] `polygon`: `ELEMENTS` row, four lowerings, the stock WGSL in
-   `fragment.rs`, point store reuse, ghosts, the two warnings.
-6. [ ] Doors: `kui_image_update`, `kui_image_pixels`, `kui_polygon`;
-   `updateImage` in Node, `update_image` in Lua; `index.d.ts` regenerated.
-7. [ ] ABI bump; header audit; `abi_parity`.
-8. [ ] Corpus: `media` extended, `polygon` new; `target/conformance.txt`
-   regenerated; the coverage test satisfied.
-9. [ ] Benches 1–4 above; the numbers written into this document's status
-   block.
-10. [ ] `docs/howto.md`: "How do I show a video frame / a plot I drew
-    myself?" and "How many pixels should I render for this box?"
-11. [ ] Backlog: fragment image input, `dash`, `cap`, `backdrop`, `blend`,
-    mipmaps, dirty rects, the core `zoom` row and the drawing-ops canvas,
-    each with its condition.
+| bench | median | what it says |
+|---|---|---|
+| `frame_1k_typical` | 115.3 µs | unchanged from before the branch: an empty side list costs a frame nothing |
+| `frame_1k_typical_with_8_textures` | 122.4 µs | +7 µs for eight texture-backed images — eight float image nodes, eight `fit` resolutions, eight `Arc` clones, eight side entries |
+| `frame_1k_closed_lines` | 94.2 µs | a thousand six-point outlines as closed strokes: 6,000 segment quads |
+| `frame_1k_polygons` | 98.5 µs | the same outlines as fills: 1,000 fragment quads — parity with the stroke, see the amendment |
+| `copy_1080p_frame` | 129.5 µs | the app's own `Vec::clone` of an 8 MB frame, measured alone |
+| `update_image_1080p_and_frame` | 109.2 µs | that copy, the handoff, the revision bump, and a frame that draws it — no slower than the copy alone, so the core's share is inside the copy's own noise |
+
+The two 1080p rows say what a stream costs the core: the app's copy and
+nothing measurable beyond it. The hot path did not move for the two-field
+`NodeContent::Image` or the emission's extra arm: `frame_10k_rects` 714 µs
+against 729 at the base commit and `frame_10k_rects_with_text_and_hits`
+1.18 against 1.21 ms — an interleaved A/B on the same machine, inside
+noise. In Node there is one more copy (`Buffer` →
+`Vec`, decision 1), which is the same memcpy again.
+
+**The renderer** (`split.rs`, 10k quads at 2560×1440 offscreen, 320×180
+split boxes; `cpu_med` is CPU ms per frame, `saturated` GPU ms per frame
+with the queue kept full):
+
+| split quads | fragments: cpu_med | saturated | textures: cpu_med | saturated |
+|---|---|---|---|---|
+| 0 | 0.148 | 0.259 | 0.145 | 0.256 |
+| 1 | 0.151 | 0.259 | 0.140 | 0.265 |
+| 8 | 0.153 | 0.272 | 0.142 | 0.283 |
+| 32 | 0.167 | 0.296 | 0.152 | 0.355 |
+| 100 | 0.212 | 0.360 | 0.184 | 0.590 |
+
+A texture run costs about 0.4 µs of CPU — a bind-group swap under the
+same pipeline, cheaper than a fragment's pipeline swap. The GPU column is
+the one to read carefully: at a hundred boxes the texture case is slower
+than the fragment case not because of the split but because each box
+samples a 1920×1080 texture minified into 320×180 pixels with no mips —
+that is the fill's bill, and the mipmap deferral (V6) is what it argues
+for once a view minifies a large stream. At the sizes an app draws a
+stream (one box, near its own size) the row that matters is 1: within
+noise of no split at all.
+
+## Amendment: what the building changed
+
+- **A polygon cost more than six segments, at first.** The first
+  `frame_1k_polygons` was 108 µs against 95 for the closed stroke — one
+  quad slower than six. The cause was `stock_polygon()` taking the
+  session lock per node to check the cached handle was still registered.
+  The handle is now checked once (registered on first use) and forgotten
+  by `remove_fragment` if a host removes it, which is the only way it can
+  die; that took the bench to 98.5 µs, parity. What remains over a box is
+  the fragment path's own per-quad session lookup in `push_fragment`,
+  shared with `fragment`, and worth hoisting the day a view draws ten
+  thousand of either.
+- **Lua has no `update_image`, because it has no `add_image`.** The draft
+  named `kui.update_image(id, w, h, s)` for Lua; Lua has never registered
+  an image — the host does, and hands the script an integer — so the door
+  belongs beside `kui_image_add` on the host and Lua gets the rows
+  (`sampling`, `fit`) and the element (`polygon`) only. The C host that
+  embeds a Lua panel streams through `kui_image_update` as it always
+  registered through `kui_image_add`.
+- **The fill's colour goes through the quad, not the params.** Decision 6
+  said `bg` rides the quad's `color` slot; building it meant the prelude's
+  `FragmentIn` gaining `color: vec4<f32>` — the quad colour, white on a
+  `fragment` and the fill on a `polygon` — and the epilogue multiplying
+  the fill alpha in with the group opacity it already multiplied. Any
+  fragment may now read `in.color`, which is one more thing a gradient
+  can take from the view without spending params on it; the `fragments`
+  corpus scene did not move, since its quads were white already.
+- **`fit` is the row's name and `"fit"` is a sizing value.** `width="fit"`
+  means the box meets the pixels; `fit="contain"` means the pixels meet
+  the box. The ELEMENTS doc says both in one sentence rather than renaming
+  the row `objectFit`; the collision is between a value and a name, not
+  two names, and every binding spelled it without a clash.
+- **The `cover` crop is whole texels.** A half-texel crop edge samples the
+  neighbour under linear filtering, so the crop's size is rounded and its
+  origin floored; the corpus `media` scene pins the 8×2 stream in a 12×12
+  box as `texture 2 3 0 2 2`.
+- **`scale` on the payload is a `Value` key, not a new struct field**, so
+  no ABI moved for it; the one test that deep-compared a `layout` payload
+  gained the key, which is the "what breaks" line.
+- **The corpus report grew a column and a line, not a scene per row.** The
+  ninth `kinds` column and the `texture <i> <x> <y> <w> <h>` line are what
+  all four adapters mirror; the digest mixes a texture quad's `uv` (the
+  side-list index) as it mixes a segment's endpoints, and the texel rect
+  is pinned by the line rather than the digest, the way a fragment's
+  params are.
+- **The texture is shared across windows; the bind group is not.** The
+  device's `Gpu` caches `ImageTexture`s by handle, as it caches fragment
+  pipelines, and re-uploads when the revision moved or makes a new one
+  when the size changed; each `Renderer` keeps its own group-0 bind group
+  per texture — with a private globals copy whose `atlas_size` is the
+  texture's, rewritten each frame the image is drawn — and rebuilds it
+  when the `Arc` it holds is no longer the cache's. A removal reaches the
+  renderer as `DisplayList::dropped_textures`, carried across frames by
+  the core because `remove_image` can land between them.
+- **Consecutive quads of one texture are not merged into a run.** Each
+  takes a bind and a draw, as consecutive fragments of one handle take a
+  pipeline set each (ADR 0015's amendment says the same); at 0.4 µs a
+  draw it is not the thing to optimise first.
+- **`RenderReport` still does not count runs.** ADR 0015 said it would and
+  it did not either; nothing reads it, so the sentence went rather than
+  the field arriving.
+- **The image example is the loop, with a drive.** `image.rs` gained a
+  plasma stream rendered at the size its `layout` event reports,
+  `nearest` beside `linear`, and the three fits in one box size, and a
+  headless drive that pins the loop closing (no render before the report,
+  one after, the texture at the box's size) and the fits differing in
+  paint and not in box; `polygon.rs` is the element's own example with its
+  drive (every fill one fragment quad, no hit region, a hovered wedge's
+  fill eased to the accent through the `bg` slot).
+
+## Action items — all done 2026-09-11
+
+1. [x] `Resources::update_image` + revision; `ImageBacking` decided by the
+   two facts; `remove_image` drops the texture (via `dropped_textures`).
+2. [x] `QuadKind::Texture`, `DisplayList::textures` + `texture_pixels`,
+   emission; the wgpu split, texture cache on `Gpu`, second sampler.
+3. [x] `sampling` and `fit` as image-own rows, resolved in `emit`
+   (`fit_image`).
+4. [x] `scale` on the `layout` payload; `docs/props.md` regenerated.
+5. [x] `polygon`: `ELEMENTS` row, four lowerings through `Content::Polygon`,
+   `fragment::POLYGON`, ghosts, the two warnings, `FragmentIn::color`.
+6. [x] Doors: `kui_image_update`, `kui_image_pixels`, `kui_image_with`,
+   `kui_polygon`; `updateImage` and `textureDraws` in Node; Lua's rows and
+   element (no `update_image`, see the amendment); `index.d.ts` and
+   `jsx-runtime.d.ts` regenerated / extended.
+7. [x] ABI 14; header audit; `abi_parity` rows for the struct and the two
+   enums.
+8. [x] Corpus: `media` extended (the `stream` fixture), `polygon` new;
+   `target/conformance.txt` regenerated; every adapter replays.
+9. [x] Benches 1–4, run; the tables above.
+10. [x] `docs/howto.md`: three answers (a stream, how many pixels, a fill);
+    README's vocabulary and limits paragraphs.
+11. [x] Backlog V1–V8, filed with the proposal; V1's precondition is now
+    met.

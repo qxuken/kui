@@ -133,6 +133,8 @@ headless = [
     "menu_bar",
     "selection",
     "context_menu",
+    "image",
+    "polygon",
 ]
 
 [[example]]
@@ -171,6 +173,10 @@ path = "../../examples/rust/widgets/image.rs"
 [[example]]
 name = "line"
 path = "../../examples/rust/widgets/line.rs"
+
+[[example]]
+name = "polygon"
+path = "../../examples/rust/widgets/polygon.rs"
 
 [[example]]
 name = "fragment"

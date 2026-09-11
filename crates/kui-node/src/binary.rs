@@ -52,7 +52,10 @@ use crate::{Result, err, value_of};
 /// kind's own default, decided by the core (`WindowConfig::of_kind`) and
 /// not by the encoder; and `measureText` sends its text as one encoded
 /// element (`measure_binary`) rather than a JSON tree.
-pub const VERSION: u32 = 7;
+/// v8: `image` carries its `sampling` and `fit` rows as two slots before
+/// its props, and `polygon` is a new op (ADR 0025) — the slots in the
+/// middle of an existing op are what the bump is for.
+pub const VERSION: u32 = 8;
 
 pub const OP_END: u32 = 0;
 pub const OP_ROOT: u32 = 1;
@@ -73,6 +76,7 @@ pub const OP_CELLS: u32 = 15;
 pub const OP_FRAGMENT: u32 = 16;
 pub const OP_SLOT: u32 = 17;
 pub const OP_MENU_BAR: u32 = 18;
+pub const OP_POLYGON: u32 = 19;
 
 pub fn protocol_json() -> Json {
     let mut o = JsonMap::new();
@@ -100,6 +104,7 @@ pub fn protocol_json() -> Json {
                 ("fragment", OP_FRAGMENT),
                 ("slot", OP_SLOT),
                 ("menuBar", OP_MENU_BAR),
+                ("polygon", OP_POLYGON),
             ]
             .into_iter()
             .map(|(k, v)| (k.to_string(), Json::from(v)))
@@ -492,11 +497,38 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             ui.core().text_edit(label, initial, &opts, p.spec);
             Ok(())
         }
+        // src (hi, lo), sampling, fit, then props (ADR 0025, decision 4).
         OP_IMAGE => {
             let (hi, lo) = (r.f()? as u64, r.f()? as u64);
+            let sampling = r.u()? as usize;
+            let fit = r.u()? as usize;
             let p = read_props(r)?;
+            let opts = kui_core::ImageOpts {
+                sampling: kui_core::Sampling::ALL
+                    .get(sampling)
+                    .copied()
+                    .unwrap_or_default(),
+                fit: kui_core::ImageFit::ALL
+                    .get(fit)
+                    .copied()
+                    .unwrap_or_default(),
+            };
             ui.core()
-                .image_node(ImageId::from_ffi((hi << 32) | lo), p.spec);
+                .image_node_with(ImageId::from_ffi((hi << 32) | lo), opts, p.spec);
+            Ok(())
+        }
+        // n, then n (x, y) pairs, then the prop list — `bg` is the fill,
+        // and the core decides the box (ADR 0025, decision 6).
+        OP_POLYGON => {
+            let n = r.u()? as usize;
+            let mut points = Vec::with_capacity(n);
+            for _ in 0..n {
+                let x = r.f()? as f32;
+                let y = r.f()? as f32;
+                points.push(kui_core::Vec2::new(x, y));
+            }
+            let p = read_props(r)?;
+            ui.core().open_from(p, Content::Polygon(&points));
             Ok(())
         }
         // key?, src (hi, lo), flags (1 loop | 2 paused | 4 finish), volume

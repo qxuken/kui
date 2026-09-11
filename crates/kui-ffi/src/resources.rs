@@ -19,6 +19,62 @@ pub extern "C" fn kui_image_add(ptr: *mut KuiCtx, w: u32, h: u32, rgba: *const u
     })
 }
 
+/// Replaces an image's pixels in place (copied): the handle is unchanged,
+/// so every node showing it draws the new pixels next frame; `w`/`h` may
+/// differ from the registration. From the first update on the image is
+/// drawn from a texture of its own, as a `KUI_QUAD_TEXTURE` quad
+/// (`docs/adr/0025-the-image-is-the-canvas.md`). A dead or foreign handle
+/// warns `foreign-resource` and changes nothing.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_image_update(ptr: *mut KuiCtx, id: u64, w: u32, h: u32, rgba: *const u8) {
+    guard((), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
+        if rgba.is_null() || w == 0 || h == 0 {
+            return;
+        }
+        let data = unsafe { std::slice::from_raw_parts(rgba, (w * h * 4) as usize) }.to_vec();
+        c.core()
+            .update_image(kui_core::ImageId::from_ffi(id), w, h, data);
+    });
+}
+
+/// The pixels behind an image handle, for a host that renders the draw
+/// list itself and meets a `KUI_QUAD_TEXTURE` quad: `w`, `h` and `rgba`
+/// (w×h×4 bytes) are written and true returned when the handle is live
+/// here. The bytes are borrowed and valid until the next call of this
+/// function or `kui_image_update` on the same handle.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_image_pixels(
+    ptr: *mut KuiCtx,
+    id: u64,
+    w: *mut u32,
+    h: *mut u32,
+    rgba: *mut *const u8,
+) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        if w.is_null() || h.is_null() || rgba.is_null() {
+            return false;
+        }
+        let Some((iw, ih, px)) = c.core().image_pixels(kui_core::ImageId::from_ffi(id)) else {
+            return false;
+        };
+        // Kept on the context so the pointer outlives this call — the
+        // `Arc` holds the bytes even if an update replaces the entry's.
+        c.image_pixels = Some(px);
+        unsafe {
+            *w = iw;
+            *h = ih;
+            *rgba = c.image_pixels.as_ref().unwrap().as_ptr();
+        }
+        true
+    })
+}
+
 /// Registers a font from file bytes (TTF/OTF/TTC, copied); returns its
 /// handle for `KuiTextStyle.font`, 0 when the data holds no usable face.
 #[unsafe(no_mangle)]

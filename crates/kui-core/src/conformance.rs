@@ -137,6 +137,22 @@ pub fn image_pixels() -> Vec<u8> {
     vec![0xff; (IMAGE_W * IMAGE_H * 4) as usize]
 }
 
+/// The fixture stream: registered as a copy of the fixture image and then
+/// **updated in place** to 8×2 opaque grey before the first frame, so
+/// every adapter's `update_image` door is exercised — the dimensions
+/// change, the handle does not, and from then on the image is
+/// texture-backed (ADR 0025, decisions 1 and 2).
+pub const STREAM_W: u32 = 8;
+pub const STREAM_H: u32 = 2;
+
+pub fn stream_pixels() -> Vec<u8> {
+    let mut px = vec![0x80; (STREAM_W * STREAM_H * 4) as usize];
+    for a in px.iter_mut().skip(3).step_by(4) {
+        *a = 0xff;
+    }
+    px
+}
+
 /// The fixture sound. Not decodable audio — an `<audio>` node draws nothing
 /// and the corpus never plays it; it only has to be a registrable handle.
 pub const SOUND_BYTES: &[u8] = b"RIFF....WAVE";
@@ -185,6 +201,8 @@ pub const FRAGMENT_PARAMS_LONG: [f32; 18] = [
 #[derive(Clone, Copy)]
 pub struct Fixtures {
     pub image: ImageId,
+    /// See [`stream_pixels`]: an image whose pixels were replaced once.
+    pub stream: ImageId,
     pub sound: SoundId,
     pub fragment: crate::resources::FragmentId,
 }
@@ -192,12 +210,15 @@ pub struct Fixtures {
 /// Registers the corpus fixtures on a fresh core, in this order.
 pub fn fixtures(core: &mut Core) -> Fixtures {
     let image = core.resources.add_image(IMAGE_W, IMAGE_H, image_pixels());
+    let stream = core.resources.add_image(IMAGE_W, IMAGE_H, image_pixels());
+    core.update_image(stream, STREAM_W, STREAM_H, stream_pixels());
     let sound = core.add_sound(SOUND_BYTES.to_vec());
     let fragment = core
         .add_fragment(FRAGMENT_WGSL)
         .expect("the corpus fragment must compile");
     Fixtures {
         image,
+        stream,
         sound,
         fragment,
     }
@@ -428,6 +449,10 @@ pub struct Expect {
     /// its handle. A node whose handle is dead emits none, which is how
     /// the scene pins that too.
     pub fragments: usize,
+    /// Exact texture-quad count: one per `image` node drawn from a texture
+    /// of its own rather than the atlas (ADR 0025) — one that was updated,
+    /// or that no page could hold.
+    pub textures: usize,
     /// Glyph quads are one per rendered glyph — a lower bound keeps a font
     /// that maps a run differently from failing the build.
     pub glyphs_min: usize,
@@ -505,6 +530,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 7,
             access: &[
                 "0 window ||",
@@ -542,6 +568,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 0,
             access: &["0 window ||"],
             events: &[],
@@ -569,6 +596,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 0,
             access: &["0 window ||"],
             events: &[],
@@ -599,6 +627,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 0,
             access: &["0 window ||", "1 scrollView ||"],
             events: &[],
@@ -625,6 +654,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 0,
             access: &["0 window ||", "1 scrollView ||"],
             events: &[],
@@ -668,6 +698,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 0,
             access: &[
                 "0 window ||",
@@ -702,6 +733,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 0,
             access: &["0 window ||"],
             events: &[],
@@ -729,6 +761,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 10,
             access: &[
                 "0 window ||",
@@ -771,6 +804,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 20,
             access: &[
                 "0 window ||",
@@ -814,6 +848,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 3,
             access: &[
                 "0 window kui conformance||",
@@ -861,6 +896,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 3,
             access: &[
                 "0 window kui conformance||",
@@ -917,6 +953,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 11,
             access: &[
                 "0 window ||",
@@ -976,6 +1013,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 0,
             access: &[
                 "0 window ||",
@@ -1027,6 +1065,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 3,
             access: &[
                 "0 window ||",
@@ -1062,6 +1101,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 10,
             access: &["0 window ||", "1 terminal term||hello world"],
             events: &["hit -"],
@@ -1075,9 +1115,15 @@ pub const SCENES: &[Scene] = &[
     Scene {
         name: "media",
         doc: "The non-text leaves: a registered image (deliberately unnamed, \
-              so the diagnostic shows up too), three retained audio \
-              playbacks that draw nothing, and the latency graph's empty \
-              chrome. Phase 1 drops two of the playbacks, which is what \
+              so the diagnostic shows up too), the same image again as \
+              `contain` in a box twice its aspect — the painted rect \
+              shrinks and centres, the box does not — then the *stream* \
+              fixture, an image whose pixels were replaced before the first \
+              frame and so draws from a texture of its own (ADR 0025): \
+              once plain, once `nearest`, once `cover` in a square box, \
+              whose crop is the report's `texture` line. Three retained \
+              audio playbacks that draw nothing, and the latency graph's \
+              empty chrome. Phase 1 drops two of the playbacks, which is what \
               `finish` is about: a removal releases the one that asked for \
               it — no `stop` reaches the driver and the sound plays itself \
               out — and stops the one that did not. The looped playback \
@@ -1091,11 +1137,19 @@ pub const SCENES: &[Scene] = &[
         expect: Expect {
             solid: 2,
             shadows: 0,
-            images: 1,
+            images: 2,
             segments: 0,
             fragments: 0,
+            textures: 3,
             glyphs_min: 20,
-            access: &["0 window ||", "1 image ||"],
+            access: &[
+                "0 window ||",
+                "1 image ||",
+                "1 image Icon||",
+                "1 image Stream||",
+                "1 image Crisp||",
+                "1 image Cropped||",
+            ],
             events: &[],
             announcements: &[],
             warnings: &["image-without-label"],
@@ -1127,11 +1181,46 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 34,
             fragments: 0,
+            textures: 0,
             glyphs_min: 0,
             access: &["0 window ||"],
             events: &[],
             announcements: &[],
             warnings: &["line-ignores-input"],
+            commands: &[],
+            audio: &[],
+            title: None,
+        },
+    },
+    Scene {
+        name: "polygon",
+        doc: "Five fills in a 200×120 canvas (ADR 0025, decision 6): a \
+              triangle that declares a click, which a polygon ignores; a \
+              concave arrowhead; an eight-point star, the most a polygon \
+              takes; a nine-point outline whose ninth is dropped with a \
+              warning; and a faded quad. Each is one `fragment` quad whose \
+              sixteen params are the vertices normalised to the shape's own \
+              padded box — the `fragment` lines of the report pin them to \
+              the bit — painted by the stock source every binding gets from \
+              the core, so no adapter writes WGSL here. No access rows: a \
+              fill is elided like a stroke.",
+        custom: &["key"],
+        elements: &["polygon", "box"],
+        build: build_polygon,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            solid: 1,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            fragments: 5,
+            textures: 0,
+            glyphs_min: 0,
+            access: &["0 window ||"],
+            events: &[],
+            announcements: &[],
+            warnings: &["polygon-ignores-input", "polygon-points-truncated"],
             commands: &[],
             audio: &[],
             title: None,
@@ -1151,6 +1240,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 3,
+            textures: 0,
             glyphs_min: 0,
             access: &["0 window ||"],
             events: &[],
@@ -1228,6 +1318,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 3,
             access: &[
                 "0 window ||",
@@ -1309,6 +1400,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 20,
             access: &[
                 "0 window ||",
@@ -1400,6 +1492,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 3,
             access: &["0 window ||", "1 group A||", "1 group B||"],
             events: &["hit -"],
@@ -1448,6 +1541,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 6,
             access: &["0 window ||", "1 staticText closed||"],
             events: &[
@@ -1504,6 +1598,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 6,
             access: &["0 window ||", "1 staticText closed||"],
             events: &[
@@ -1550,6 +1645,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 8,
             access: &["0 window ||", "1 group 3 results||", "1 group ||"],
             events: &[],
@@ -1590,6 +1686,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 0,
             access: &["0 window ||"],
             events: &[
@@ -1635,6 +1732,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 11,
             access: &[
                 "0 window ||",
@@ -1677,6 +1775,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 11,
             access: &[
                 "0 window ||",
@@ -1717,6 +1816,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 0,
             access: &[
                 "0 window ||",
@@ -1777,6 +1877,7 @@ pub const SCENES: &[Scene] = &[
             images: 0,
             segments: 0,
             fragments: 0,
+            textures: 0,
             glyphs_min: 0,
             access: &[
                 "0 window ||",
@@ -2456,10 +2557,51 @@ fn build_keys(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// `chime` asked to [`AudioSpec::finish`] and leaves no command behind,
 /// `blip` did not and is stopped (backlog F29).
 fn build_media(ui: &mut Ui<'_>, f: &Fixtures, phase: u32) {
+    use crate::resources::{ImageFit, ImageOpts, Sampling};
     ui.with(NodeSpec::column().pad(6.0).gap(4.0), |ui| {
         ui.image(
             f.image,
             NodeSpec::column().width(Sizing::Fixed(16.0)).radius(2.0),
+        );
+        // The 4×4 icon in a 32×16 box: `contain` paints a 16×16 rect,
+        // centred, and the box (the access rect, the hit region) stays 32.
+        ui.image_with(
+            f.image,
+            ImageOpts {
+                fit: ImageFit::Contain,
+                ..ImageOpts::default()
+            },
+            NodeSpec::column()
+                .width(Sizing::Fixed(32.0))
+                .height(Sizing::Fixed(16.0))
+                .label("Icon"),
+        );
+        ui.image(
+            f.stream,
+            NodeSpec::column()
+                .width(Sizing::Fixed(16.0))
+                .label("Stream"),
+        );
+        ui.image_with(
+            f.stream,
+            ImageOpts {
+                sampling: Sampling::Nearest,
+                ..ImageOpts::default()
+            },
+            NodeSpec::column().width(Sizing::Fixed(16.0)).label("Crisp"),
+        );
+        // The 8×2 stream in a 12×12 box: `cover` keeps the box and shows
+        // the middle 2×2 texels — `texture 2 3 0 2 2` in the report.
+        ui.image_with(
+            f.stream,
+            ImageOpts {
+                fit: ImageFit::Cover,
+                ..ImageOpts::default()
+            },
+            NodeSpec::column()
+                .width(Sizing::Fixed(12.0))
+                .height(Sizing::Fixed(12.0))
+                .label("Cropped"),
         );
         ui.audio_keyed("music", AudioSpec::new(f.sound).volume(0.5).looped());
         widgets::latency_graph(ui);
@@ -2471,6 +2613,73 @@ fn build_media(ui: &mut Ui<'_>, f: &Fixtures, phase: u32) {
             ui.audio_keyed("blip", AudioSpec::new(f.sound));
         }
     });
+}
+
+/// The `polygon` scene's outlines, in the canvas's box space, shared so
+/// every adapter draws the same vertices and a typo cannot pass as a
+/// normalisation difference. The last is nine points on purpose.
+pub const POLYGON_TRIANGLE: &[(f32, f32)] = &[(10.0, 10.0), (60.0, 20.0), (20.0, 50.0)];
+pub const POLYGON_ARROW: &[(f32, f32)] = &[(80.0, 10.0), (130.0, 30.0), (80.0, 50.0), (95.0, 30.0)];
+pub const POLYGON_STAR: &[(f32, f32)] = &[
+    (170.0, 10.0),
+    (176.0, 24.0),
+    (190.0, 30.0),
+    (176.0, 36.0),
+    (170.0, 50.0),
+    (164.0, 36.0),
+    (150.0, 30.0),
+    (164.0, 24.0),
+];
+pub const POLYGON_NINE: &[(f32, f32)] = &[
+    (10.0, 70.0),
+    (30.0, 65.0),
+    (50.0, 70.0),
+    (70.0, 65.0),
+    (90.0, 70.0),
+    (90.0, 110.0),
+    (50.0, 100.0),
+    (10.0, 110.0),
+    (5.0, 90.0),
+];
+pub const POLYGON_QUAD: &[(f32, f32)] =
+    &[(110.0, 70.0), (190.0, 70.0), (180.0, 110.0), (120.0, 110.0)];
+
+fn polygon_points(pts: &[(f32, f32)]) -> Vec<Vec2> {
+    pts.iter().map(|&(x, y)| Vec2::new(x, y)).collect()
+}
+
+fn build_polygon(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    ui.with(
+        NodeSpec::column()
+            .width(Sizing::Fixed(200.0))
+            .height(Sizing::Fixed(120.0))
+            .bg(Color::hex(0x14161eff)),
+        |ui| {
+            ui.polygon(
+                &polygon_points(POLYGON_TRIANGLE),
+                NodeSpec::column()
+                    .bg(Color::hex(0x7f9cf5ff))
+                    .on_click(Value::str("tri")),
+            );
+            ui.polygon(
+                &polygon_points(POLYGON_ARROW),
+                NodeSpec::column().bg(Color::hex(0xd8863bff)),
+            );
+            ui.polygon_keyed(
+                "star",
+                &polygon_points(POLYGON_STAR),
+                NodeSpec::column().bg(Color::hex(0xf5d67fff)),
+            );
+            ui.polygon(
+                &polygon_points(POLYGON_NINE),
+                NodeSpec::column().bg(Color::hex(0x9ad9a0ff)),
+            );
+            ui.polygon(
+                &polygon_points(POLYGON_QUAD),
+                NodeSpec::column().bg(Color::hex(0xe07a8aff)).opacity(0.5),
+            );
+        },
+    );
 }
 
 /// The `lines` scene: a 200×120 canvas holding three strokes and one box.
@@ -3156,7 +3365,7 @@ fn observe(core: &Core, cov: &mut Coverage) {
                 cov.elements.insert("edit");
                 cov.custom.insert("size");
             }
-            NodeContent::Image(_) => {
+            NodeContent::Image(..) => {
                 cov.elements.insert("image");
             }
             NodeContent::Line(_) => {
@@ -3164,6 +3373,9 @@ fn observe(core: &Core, cov: &mut Coverage) {
             }
             NodeContent::Fragment(_) => {
                 cov.elements.insert("fragment");
+            }
+            NodeContent::Polygon(_) => {
+                cov.elements.insert("polygon");
             }
         }
 
@@ -3191,12 +3403,16 @@ pub struct Output {
     pub quad_count: usize,
     pub quad_digest: u64,
     /// Per [`QuadKind`], in its discriminant order.
-    pub kinds: [usize; 8],
+    pub kinds: [usize; 9],
     /// Every `FragmentDraw` the frame emitted, in the order the quads
     /// index them. The parameters are not on the quad, so the digest
     /// cannot reach them; the report carries them instead, as bits, so no
     /// adapter has to agree on how a float prints.
     pub fragments: Vec<[f32; 16]>,
+    /// Every `TextureDraw`'s texel rect, in the order the quads index
+    /// them; the handle is minted, not declared, and is skipped as atlas
+    /// `uv` is. What pins a `fit="cover"` crop to the texel.
+    pub textures: Vec<[u32; 4]>,
     pub nodes: Vec<NodeRow>,
     pub events: Vec<(String, String)>,
     /// Everything `announce` queued over the whole scene, in order —
@@ -3297,7 +3513,11 @@ pub fn quad_digest(quads: &[Quad], clips: &[Clip]) -> u64 {
         // the two diagonals of one box would otherwise digest the same.
         // Mixed here, in the struct's word order, so the C and Node
         // mirrors can walk the words in sequence.
-        if q.kind == QuadKind::Segment {
+        // A texture quad's `uv[0]` is an index into a side list whose
+        // entry is declared geometry too (the texel rect a `fit="cover"`
+        // cropped); the index is mixed here and the entry is the report's
+        // `texture` line, so a crop that moved is a report that moved.
+        if q.kind == QuadKind::Segment || q.kind == QuadKind::Texture {
             for v in q.uv {
                 mix(&mut h, v);
             }
@@ -3501,7 +3721,7 @@ pub fn drive(
     let fragment_params: Vec<[f32; 16]> = dl.fragments.iter().map(|f| f.params).collect();
     let quads = &dl.quads;
     let clips = &dl.clips;
-    let mut kinds = [0usize; 8];
+    let mut kinds = [0usize; 9];
     for q in quads.iter() {
         kinds[match q.kind {
             QuadKind::Solid => 0,
@@ -3512,11 +3732,13 @@ pub fn drive(
             QuadKind::Shadow => 5,
             QuadKind::Segment => 6,
             QuadKind::Fragment => 7,
+            QuadKind::Texture => 8,
         }] += 1;
     }
     Output {
         quad_count: quads.len(),
         quad_digest: quad_digest(quads, clips),
+        textures: dl.textures.iter().map(|t| t.uv).collect(),
         kinds,
         fragments: fragment_params,
         nodes,
@@ -3634,7 +3856,9 @@ pub fn write_command(cmd: &WindowCommand, out: &mut String) {
 /// step <...>                 the replayed input, so an adapter need not restate it
 /// title <text|->
 /// quads <count> <digest:016x>
-/// kinds <solid> <glyphMask> <glyphColor> <image> <glyphSubpixel> <shadow> <segment>
+/// kinds <solid> <glyphMask> <glyphColor> <image> <glyphSubpixel> <shadow> <segment> <fragment> <texture>
+/// fragment <i> <16 × params as f32 bits>
+/// texture <i> <x> <y> <w> <h>   the texel rect a texture quad shows
 /// node <depth> <key:016x> <role> <focused> <disabled> <checked> <scroll> <actions> <name> | <description> | <value>
 /// event <kind> <tag>
 /// cmd <verb> <window> [...]  a window command the driver would have applied
@@ -3652,7 +3876,7 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
     let _ = writeln!(s, "quads {} {:016x}", out.quad_count, out.quad_digest);
     let _ = writeln!(
         s,
-        "kinds {} {} {} {} {} {} {} {}",
+        "kinds {} {} {} {} {} {} {} {} {}",
         out.kinds[0],
         out.kinds[1],
         out.kinds[2],
@@ -3660,7 +3884,8 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
         out.kinds[4],
         out.kinds[5],
         out.kinds[6],
-        out.kinds[7]
+        out.kinds[7],
+        out.kinds[8]
     );
     for (i, params) in out.fragments.iter().enumerate() {
         let _ = write!(s, "fragment {i}");
@@ -3668,6 +3893,9 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
             let _ = write!(s, " {:08x}", v.to_bits());
         }
         let _ = writeln!(s);
+    }
+    for (i, uv) in out.textures.iter().enumerate() {
+        let _ = writeln!(s, "texture {i} {} {} {} {}", uv[0], uv[1], uv[2], uv[3]);
     }
     for n in &out.nodes {
         let _ = writeln!(

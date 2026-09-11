@@ -1303,6 +1303,9 @@ test('onLayout reports the rect once and again when it changes', () => {
     kind: 'layout',
     x: 0, y: 0, w: 100, h: 240,
     parent: { x: 0, y: 0, w: 320, h: 240 },
+    // Physical px per logical px at the node: the frame's, until a zoom
+    // composes into it (ADR 0025, decision 5).
+    scale: 1,
     tag: { kind: 'panel' },
   });
   ctx.frame(320, 240, 1, tree(100));
@@ -2784,6 +2787,19 @@ const SCENE_TREES = {
         el('fragment', { src: fx().fragment, params: FRAGMENT_PARAMS_LONG, width: 30, height: 12 }),
       ]),
     ]),
+  // docs/adr/0025-the-image-is-the-canvas.md, decision 6: five fills — the
+  // triangle's onClick is the one a polygon ignores, the star is keyed,
+  // the nine-point outline loses its ninth with a warning, the quad fades.
+  polygon: () =>
+    root({}, [
+      box({ width: 200, height: 120, bg: '#14161e' }, [
+        el('polygon', { points: [[10, 10], [60, 20], [20, 50]], bg: '#7f9cf5', onClick: 'tri' }),
+        el('polygon', { points: [[80, 10], [130, 30], [80, 50], [95, 30]], bg: '#d8863b' }),
+        el('polygon', { points: [[170, 10], [176, 24], [190, 30], [176, 36], [170, 50], [164, 36], [150, 30], [164, 24]], bg: '#f5d67f' }, [], 'star'),
+        el('polygon', { points: [[10, 70], [30, 65], [50, 70], [70, 65], [90, 70], [90, 110], [50, 100], [10, 110], [5, 90]], bg: '#9ad9a0' }),
+        el('polygon', { points: [[110, 70], [190, 70], [180, 110], [120, 110]], bg: '#e07a8a', opacity: 0.5 }),
+      ]),
+    ]),
   // docs/adr/0010-a-segment-primitive.md: three strokes and a box; the
   // elbow's onClick is the one a line ignores.
   lines: () =>
@@ -2799,6 +2815,12 @@ const SCENE_TREES = {
     root({}, [
       box({ pad: 6, gap: 4 }, [
         el('image', { src: fx().image, width: 16, radius: 2 }),
+        // ADR 0025: the icon as `contain` in a box twice its aspect, then
+        // the stream fixture plain, `nearest`, and `cover` in a square box.
+        el('image', { src: fx().image, width: 32, height: 16, fit: 'contain', label: 'Icon' }),
+        el('image', { src: fx().stream, width: 16, label: 'Stream' }),
+        el('image', { src: fx().stream, width: 16, sampling: 'nearest', label: 'Crisp' }),
+        el('image', { src: fx().stream, width: 12, height: 12, fit: 'cover', label: 'Cropped' }),
         el('audio', { src: fx().sound, volume: 0.5, loop: true }, [], 'music'),
         el('latencyGraph'),
         // The two phase 1 drops: `chime` asked to finish, so its removal
@@ -3050,6 +3072,16 @@ const root = (props, children) => box({ width: 'grow', height: 'grow', ...props 
 /** The corpus fixtures, byte-identical to `conformance::image_pixels` /
  *  `SOUND_BYTES` so the handles and the atlas come out the same. */
 const addFixtureImage = (ctx) => ctx.addImage(4, 4, Buffer.alloc(4 * 4 * 4, 0xff));
+/** `conformance::Fixtures::stream`: the image again, then `updateImage`d
+ *  to 8×2 opaque grey before the first frame, so it is texture-backed
+ *  (docs/adr/0025-the-image-is-the-canvas.md). */
+const addFixtureStream = (ctx) => {
+  const id = addFixtureImage(ctx);
+  const px = Buffer.alloc(8 * 2 * 4, 0x80);
+  for (let i = 3; i < px.length; i += 4) px[i] = 0xff;
+  ctx.updateImage(id, 8, 2, px);
+  return id;
+};
 /** `conformance::FRAGMENT_PARAMS` and `FRAGMENT_PARAMS_LONG`. */
 const FRAGMENT_PARAMS = [
   0.85, 0.30, 0.25, 1.0,
@@ -3096,9 +3128,12 @@ function quadDigest(buffer, clipBuffer) {
     }
   };
   for (let off = 0; off + stride <= buffer.byteLength; off += stride) {
-    const segment = view.getUint32(off + KIND_WORD * 4, true) === 6;
+    const kind = view.getUint32(off + KIND_WORD * 4, true);
+    // A segment's `uv` is its endpoints, a texture quad's the index of its
+    // side-list entry: geometry both, mixed like the core mixes them.
+    const geometry = kind === 6 || kind === 8;
     // Word 19 is the clip index, digested through the table below.
-    const words = [...Array(19).keys(), ...(segment ? [20, 21, 22, 23] : [])];
+    const words = [...Array(19).keys(), ...(geometry ? [20, 21, 22, 23] : [])];
     for (const i of words) mix(view.getUint32(off + i * 4, true));
     const clip = view.getUint32(off + 19 * 4, true) * clipStrideBytes;
     for (let i = 0; i < 8; i++) {
@@ -3127,6 +3162,7 @@ function driveScene(env, steps, build) {
   const fx = () =>
     (registered ??= {
       image: addFixtureImage(ctx),
+      stream: addFixtureStream(ctx),
       sound: addFixtureSound(ctx),
       fragment: addFixtureFragment(ctx),
     });
@@ -3229,7 +3265,7 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
   const stride = quadStride();
   const count = quads.byteLength / stride;
   lines.push(`quads ${count} ${quadDigest(quads, Buffer.from(ctx.clips()))}`);
-  const kinds = [0, 0, 0, 0, 0, 0, 0, 0];
+  const kinds = [0, 0, 0, 0, 0, 0, 0, 0, 0];
   for (let off = 0; off < quads.byteLength; off += stride) kinds[quads.readUInt32LE(off + KIND_WORD * 4)]++;
   lines.push(`kinds ${kinds.join(' ')}`);
   // A fragment's parameters ride a side list, not the quad, so the digest
@@ -3242,6 +3278,11 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
       return f32.getUint32(0, true).toString(16).padStart(8, '0');
     });
     lines.push(`fragment ${i} ${params.join(' ')}`);
+  }
+  // A texture quad's texel rect rides its side list the same way.
+  const textures = ctx.textureDraws();
+  for (let i = 0; i * 9 < textures.length; i++) {
+    lines.push(`texture ${i} ${textures.slice(i * 9 + 5, i * 9 + 9).join(' ')}`);
   }
   const depth = new Map();
   for (const n of ctx.accessTree().nodes) {

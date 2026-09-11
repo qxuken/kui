@@ -948,14 +948,16 @@ within the hour, and the entry is in
 ## From the canvas question (2026-09-11)
 
 The round that produced
-[ADR 0025](adr/0025-the-image-is-the-canvas.md) — *proposed*, not built.
-The question was whether kui wants a canvas (raw GPU commands, declarative
-or callback-shaped) and, if not, which primitives make an app not need one.
+[ADR 0025](adr/0025-the-image-is-the-canvas.md) — proposed and **built the
+same day**, its measurements and amendment in the document. The question
+was whether kui wants a canvas (raw GPU commands, declarative or
+callback-shaped) and, if not, which primitives make an app not need one.
 The ADR's answer is an image whose pixels the app replaces, backed by a
 texture of its own past the atlas, `sampling`/`fit` rows, `scale` on the
 `layout` payload, and a `polygon` filled by a stock fragment; what it named
 and did not build is here, each with the condition that builds it. None is
-a defect. V1 is the one with an order attached.
+a defect. V1 is the one with an order attached, and its precondition —
+decisions 1–3 built — is met.
 
 ### `.` V1 — Fragment image input
 
@@ -967,10 +969,11 @@ already has. It is what turns a replaced image into a waveform, a heatmap,
 a 50k-point line and every image effect from one quad — the "many points"
 case the drawing-ops canvas was declined for.
 
-**Order:** the round after ADR 0025's decisions 1–3 are built, so the
-resource-to-resource binding lands on a texture path that exists and the
-removal-order test ADR 0015 asked for (a removed image under a live
-fragment draws the fallback) is one corpus step.
+**Order:** the round after ADR 0025's decisions 1–3 are built — which
+they are, as of 2026-09-11 — so the resource-to-resource binding lands on
+a texture path that exists and the removal-order test ADR 0015 asked for
+(a removed image under a live fragment draws the fallback) is one corpus
+step. Next in line.
 
 ### `.` V2 — `dash` on `line`
 
@@ -1004,7 +1007,11 @@ fragment. **Condition:** a glow that stacks.
 ### `.` V6 — Streaming's two deferrals: dirty rects and mipmaps
 
 ADR 0025 uploads a replaced image whole (`write_texture` of the full
-image, 8 MB at 1080p — its first measurement) and samples without mips.
+image, 8 MB at 1080p) and samples without mips — and its split bench
+shows what the second costs: a hundred 320×180 boxes each sampling a
+1080p texture run the GPU at 0.59 ms against 0.36 for fragments of the
+same size, which is minified sampling with no mip chain and not the
+split.
 A **dirty rect** on `update_image` is an API that grows a rect without
 changing shape; **mipmaps** are what a photo viewer minifying a
 12-megapixel texture needs and an app rendering at `w × scale` does not.
@@ -1156,7 +1163,7 @@ equivalent is smaller and worth naming: the C round (then
 `examples/c/build.sh`, now `cbuild --run`) runs in `check`, and the plugin half of it now has a Node host in the same
 job — that is what caught this one.
 
-**Design, with an ADR proposed.** [`docs/adr/0025-the-image-is-the-canvas.md`](adr/0025-the-image-is-the-canvas.md) (2026-09-11) answers the canvas question: `update_image` and texture-backed images past the atlas (closing the silent drop of an image over 4096 px), `sampling`/`fit` rows, `scale` on the `layout` payload, and a `polygon` filled by a stock fragment — proposed with four measurements to run before accepting, and what it named and did not build is V1–V8 above. **Design, wanting an ADR.** A **painter** — the iced-shaped hatch that ADR 0015 (above) names and does not build: a Rust trait or a C extension's function pointers over the shared `Gpu` and the frame's encoder, under the `PainterId` that has been reserved in `resources.rs` since the first commit, placed by a marker quad the renderer splits around as it splits around a fragment. The first thing in a frame that would not be data, so it waits for a view a fragment cannot serve: a 3D viewport, a simulation, a backdrop a copy cannot make. Otherwise nothing new since ADR 0014 was built on 2026-09-07 and amended on 2026-09-08; of what it left open, a slot for Node (W11), extensions in `kui_run` (W9) and an extension offering slots of its own (W12) are built, and what is left — replies from `view`, name-plus-kind — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
+**Built.** [`docs/adr/0025-the-image-is-the-canvas.md`](adr/0025-the-image-is-the-canvas.md) (proposed, accepted and built 2026-09-11) answers the canvas question: `update_image` and texture-backed images past the atlas (closing the silent drop of an image over 4096 px), `sampling`/`fit` rows, `scale` on the `layout` payload, and a `polygon` filled by a stock fragment — in four bindings with two corpus scenes and two example drives, its four measurements run and its amendment recording what the building changed (a per-node lock that made a fill cost more than six strokes, and a Lua door the draft got wrong). What it named and did not build is V1–V8 above; V1 is next. **Design, wanting an ADR.** A **painter** — the iced-shaped hatch that ADR 0015 (above) names and does not build: a Rust trait or a C extension's function pointers over the shared `Gpu` and the frame's encoder, under the `PainterId` that has been reserved in `resources.rs` since the first commit, placed by a marker quad the renderer splits around as it splits around a fragment. The first thing in a frame that would not be data, so it waits for a view a fragment cannot serve: a 3D viewport, a simulation, a backdrop a copy cannot make. Otherwise nothing new since ADR 0014 was built on 2026-09-07 and amended on 2026-09-08; of what it left open, a slot for Node (W11), extensions in `kui_run` (W9) and an extension offering slots of its own (W12) are built, and what is left — replies from `view`, name-plus-kind — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
 [`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md),
 proposed and then accepted and built on 2026-09-07 — reviewed for alpha.8
 rather than left for a view, and its status block says what outweighed

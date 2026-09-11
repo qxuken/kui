@@ -200,7 +200,96 @@ fn mint() -> MutexGuard<'static, Mint> {
 pub struct ImageEntry {
     pub width: u32,
     pub height: u32,
-    pub rgba: Vec<u8>,
+    /// Shared rather than owned so a frame's display list can hand a
+    /// backend the pixels of a texture-backed image without copying them
+    /// (`DisplayList::texture_pixels`): an update replaces the `Arc`, and
+    /// a backend mid-upload keeps the old one alive until it is done.
+    pub rgba: std::sync::Arc<Vec<u8>>,
+    /// Moves on every [`Resources::update_image`]; a backend re-uploads a
+    /// texture-backed image when the revision it uploaded is behind.
+    pub rev: u32,
+    /// Where the pixels live on the GPU (ADR 0025, decision 2).
+    pub backing: ImageBacking,
+}
+
+/// Where a registered image's pixels are kept for drawing
+/// (`docs/adr/0025-the-image-is-the-canvas.md`, decision 2). The core
+/// decides on the two facts that matter — whether the image fits an atlas
+/// page, and whether its pixels were ever replaced — and the app never
+/// chooses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImageBacking {
+    /// Blitted into the glyph atlas at first draw and drawn as
+    /// [`crate::display::QuadKind::Image`]: icons, thumbnails, anything
+    /// that fits and never changes.
+    Atlas,
+    /// A texture of its own, drawn as [`crate::display::QuadKind::Texture`]
+    /// through an entry in `DisplayList::textures`: an image that does not
+    /// fit a `MAX_ATLAS_SIZE` page, or one that has been updated in place.
+    /// Once here, an image stays here.
+    Texture,
+}
+
+/// How an `image` node meets the pixels it shows — the two per-node rows
+/// ADR 0025 decision 4 gives it. Carried on the node's content rather than
+/// on `NodeSpec`, so a box pays nothing for a row only an image reads.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ImageOpts {
+    pub sampling: Sampling,
+    pub fit: ImageFit,
+}
+
+/// The `sampling` row: how a backend reads texels between pixel centres.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Sampling {
+    /// Bilinear — a photo, a rendered frame (the default).
+    #[default]
+    Linear,
+    /// Nearest texel — pixel art, an emulator, a data grid that must stay
+    /// square under zoom.
+    Nearest,
+}
+
+impl Sampling {
+    /// Every mode, in the order the `sampling` row names them.
+    pub const ALL: [Sampling; 2] = [Sampling::Linear, Sampling::Nearest];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Sampling::Linear => "linear",
+            Sampling::Nearest => "nearest",
+        }
+    }
+}
+
+/// The `fit` row: how the pixels meet the node's box. The box itself —
+/// its layout, its hit region, its access rect — is the same in every
+/// mode; only what is painted inside it moves.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ImageFit {
+    /// The pixels stretch to the box (the default, and what every image
+    /// did before the row existed).
+    #[default]
+    Fill,
+    /// The largest rect of the image's aspect that fits the box, centred;
+    /// the rest of the box shows what is behind it.
+    Contain,
+    /// The box is filled and the pixels that do not fit are cropped,
+    /// centred.
+    Cover,
+}
+
+impl ImageFit {
+    /// Every mode, in the order the `fit` row names them.
+    pub const ALL: [ImageFit; 3] = [ImageFit::Fill, ImageFit::Contain, ImageFit::Cover];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            ImageFit::Fill => "fill",
+            ImageFit::Contain => "contain",
+            ImageFit::Cover => "cover",
+        }
+    }
 }
 
 /// A registered font: the family name shaping resolves it by, and the
@@ -350,10 +439,40 @@ impl Resources {
             ImageEntry {
                 width,
                 height,
-                rgba,
+                rgba: std::sync::Arc::new(rgba),
+                rev: 0,
+                // Past a page it has nowhere to go but its own texture;
+                // before ADR 0025 it was dropped at emission, silently.
+                backing: if width > crate::atlas::MAX_ATLAS_SIZE
+                    || height > crate::atlas::MAX_ATLAS_SIZE
+                {
+                    ImageBacking::Texture
+                } else {
+                    ImageBacking::Atlas
+                },
             },
         );
         id
+    }
+
+    /// Replaces an image's pixels in place (ADR 0025, decision 1): the
+    /// handle is unchanged, so every node declaring it shows the new
+    /// pixels next frame with no view change; the dimensions may change.
+    /// From the first update on the image is texture-backed for life.
+    /// Returns whether the handle was live here — a foreign or removed one
+    /// is noted as a miss and changes nothing.
+    pub fn update_image(&mut self, id: ImageId, width: u32, height: u32, rgba: Vec<u8>) -> bool {
+        debug_assert_eq!(rgba.len(), (width * height * 4) as usize);
+        let Some(entry) = self.images.get_mut(id) else {
+            self.note_miss(ResourceKind::Image, id.to_ffi());
+            return false;
+        };
+        entry.width = width;
+        entry.height = height;
+        entry.rgba = std::sync::Arc::new(rgba);
+        entry.rev = entry.rev.wrapping_add(1);
+        entry.backing = ImageBacking::Texture;
+        true
     }
 
     pub fn remove_image(&mut self, id: ImageId) -> Option<ImageEntry> {

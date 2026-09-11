@@ -37,6 +37,11 @@ pub struct KuiCtx {
     /// This frame's fragment draws, in `KuiFragmentDraw` form, so
     /// `kui_draw_data` can hand out a pointer that outlives the call.
     pub(crate) fragment_draws: Vec<KuiFragmentDraw>,
+    /// `kui_draw_data`'s transcription of the frame's texture draws.
+    pub(crate) texture_draws: Vec<KuiTextureDraw>,
+    /// What `kui_image_pixels` last handed out, so the pointer outlives
+    /// the call.
+    pub(crate) image_pixels: Option<std::sync::Arc<Vec<u8>>>,
     /// Warnings most recently handed out by kui_take_warnings; their strings
     /// stay valid until the next call.
     pub(crate) last_warnings: Vec<kui_core::Warning>,
@@ -124,6 +129,8 @@ impl KuiCtx {
             last_edit_text: None,
             fragment_source: String::new(),
             fragment_draws: Vec::new(),
+            texture_draws: Vec::new(),
+            image_pixels: None,
             last_warnings: Vec::new(),
             last_access: Default::default(),
             last_announcements: Vec::new(),
@@ -1305,6 +1312,24 @@ pub struct KuiFragmentDraw {
     pub params: [f32; 16],
 }
 
+/// One `KUI_QUAD_TEXTURE`'s draw, addressed by that quad's `uv[0]`
+/// (ADR 0025, decision 3).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiTextureDraw {
+    /// The image handle, for `kui_image_pixels` and for keying a
+    /// renderer's texture cache.
+    pub image: u64,
+    /// Moves with every `kui_image_update`; a renderer that uploaded this
+    /// revision has nothing to do.
+    pub rev: u32,
+    pub width: u32,
+    pub height: u32,
+    /// The texel rect to show, `[x, y, w, h]` in the image's own texels —
+    /// the whole image, or the crop a `fit = cover` made.
+    pub uv: [u32; 4],
+}
+
 #[repr(C)]
 pub struct KuiDrawData {
     /// [out] reservation; see `KUI_DRAW_DATA_INIT`.
@@ -1331,6 +1356,10 @@ pub struct KuiDrawData {
     /// ABI 11.
     pub clips: *const KuiClip,
     pub clip_count: usize,
+    /// One per `KUI_QUAD_TEXTURE` quad, indexed by its `uv[0]`; null and
+    /// zero on a frame that draws none. Added in ABI 14.
+    pub textures: *const KuiTextureDraw,
+    pub texture_count: usize,
 }
 
 impl Default for KuiDrawData {
@@ -1351,6 +1380,8 @@ impl Default for KuiDrawData {
             time: 0.0,
             clips: std::ptr::null(),
             clip_count: 0,
+            textures: std::ptr::null(),
+            texture_count: 0,
         }
     }
 }

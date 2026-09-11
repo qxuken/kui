@@ -56,7 +56,7 @@ struct FragmentParams {
 /// The clip is resolved out of the frame's table here rather than read off
 /// the quad: it rides as an index (`kui_core::ClipId`) so the display list
 /// carries it once per distinct clip instead of once per quad.
-fn instance_of(q: &Quad, clips: &[Clip]) -> Instance {
+fn instance_of(q: &Quad, clips: &[Clip], textures: &[kui_core::display::TextureDraw]) -> Instance {
     let clip = clips.get(q.clip as usize).copied().unwrap_or(Clip::NONE);
     let kind = match q.kind {
         QuadKind::Solid => 0.0,
@@ -67,11 +67,18 @@ fn instance_of(q: &Quad, clips: &[Clip]) -> Instance {
         QuadKind::Shadow => 5.0,
         QuadKind::Segment => 6.0,
         QuadKind::Fragment => 7.0,
+        // Drawn by the image branch with its own texture bound in the
+        // atlas's place (ADR 0025, decision 3).
+        QuadKind::Texture => 3.0,
     };
-    // `uv` is atlas texels on every kind but one; a segment carries its
-    // endpoints there as f32 bits, and the shader wants them as floats.
+    // `uv` is atlas texels on every kind but two: a segment carries its
+    // endpoints there as f32 bits, and a texture quad an index into the
+    // side list whose entry holds the texel rect. The shader wants floats.
     let uv = if q.kind == QuadKind::Segment {
         q.segment_ends()
+    } else if q.kind == QuadKind::Texture {
+        let uv = textures.get(q.uv[0] as usize).map_or([0; 4], |t| t.uv);
+        [uv[0] as f32, uv[1] as f32, uv[2] as f32, uv[3] as f32]
     } else {
         [
             q.uv[0] as f32,
@@ -122,6 +129,24 @@ struct GpuInner {
     fragment_pipelines: std::sync::Mutex<
         std::collections::HashMap<(u64, wgpu::TextureFormat), wgpu::RenderPipeline>,
     >,
+    /// One texture per texture-backed image, uploaded the first time a
+    /// frame on this device draws it and again when its revision moves,
+    /// shared by every window like the pipelines above, dropped when the
+    /// core says the handle is gone (ADR 0025, decisions 2 and 3).
+    textures: std::sync::Mutex<std::collections::HashMap<u64, std::sync::Arc<ImageTexture>>>,
+}
+
+/// A texture-backed image on the device: the texture, and what was
+/// uploaded into it. A new `Arc` is made when the size changes, which is
+/// what tells a renderer its bind group is stale.
+struct ImageTexture {
+    texture: wgpu::Texture,
+    view: wgpu::TextureView,
+    width: u32,
+    height: u32,
+    /// The revision the pixels in the texture came from, behind a lock
+    /// because the texture is shared and the upload is per device.
+    rev: std::sync::Mutex<u32>,
 }
 
 impl Gpu {
@@ -162,6 +187,7 @@ impl Gpu {
             queue,
             dual_source,
             fragment_pipelines: Default::default(),
+            textures: Default::default(),
         }));
         Ok((gpu, surface))
     }
@@ -195,6 +221,68 @@ impl Gpu {
     /// draw with per-channel coverage rather than their union.
     pub fn dual_source(&self) -> bool {
         self.0.dual_source
+    }
+
+    /// The texture for one texture-backed image, uploaded on first sight
+    /// and whenever `rev` has moved past what the texture holds; a size
+    /// change makes a new texture. `None` for a degenerate size, which
+    /// draws nothing.
+    fn image_texture(
+        &self,
+        id: u64,
+        px: &kui_core::display::TexturePixels,
+    ) -> Option<std::sync::Arc<ImageTexture>> {
+        if px.width == 0 || px.height == 0 {
+            return None;
+        }
+        let mut cache = self.0.textures.lock().unwrap_or_else(|e| e.into_inner());
+        let fresh = match cache.get(&id) {
+            Some(t) if t.width == px.width && t.height == px.height => {
+                let mut rev = t.rev.lock().unwrap_or_else(|e| e.into_inner());
+                if *rev != px.rev {
+                    upload_image(&self.0.queue, &t.texture, px);
+                    *rev = px.rev;
+                }
+                return Some(t.clone());
+            }
+            _ => {
+                let texture = self.0.device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("kui.image"),
+                    size: wgpu::Extent3d {
+                        width: px.width,
+                        height: px.height,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                    view_formats: &[],
+                });
+                upload_image(&self.0.queue, &texture, px);
+                let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+                std::sync::Arc::new(ImageTexture {
+                    texture,
+                    view,
+                    width: px.width,
+                    height: px.height,
+                    rev: std::sync::Mutex::new(px.rev),
+                })
+            }
+        };
+        cache.insert(id, fresh.clone());
+        Some(fresh)
+    }
+
+    /// Forgets a removed image's texture; the GPU frees it once no bind
+    /// group holds it.
+    fn drop_image_texture(&self, id: u64) {
+        self.0
+            .textures
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&id);
     }
 
     /// The pipeline for one registered fragment, built on first sight and
@@ -311,6 +399,14 @@ pub struct Renderer {
     globals_buf: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
     bind_layout: wgpu::BindGroupLayout,
+    /// The two samplers every group-0 bind group carries: linear at
+    /// binding 2, nearest at 3 (ADR 0025, decision 4).
+    samplers: Samplers,
+    /// Per texture-backed image this window has drawn: the device's
+    /// texture, and a bind group of this window's own — group 0 with that
+    /// texture in the atlas's place and a globals copy whose `atlas_size`
+    /// is the texture's, rewritten each frame the image is drawn.
+    texture_binds: std::collections::HashMap<u64, TextureBind>,
     atlas_tex: wgpu::Texture,
     atlas_size: u32,
     atlas_epoch: u64,
@@ -332,6 +428,43 @@ pub struct Renderer {
     /// Scratch for one frame's padded parameter slots.
     fragment_bytes: Vec<u8>,
     pub clear_color: wgpu::Color,
+}
+
+struct Samplers {
+    linear: wgpu::Sampler,
+    nearest: wgpu::Sampler,
+}
+
+struct TextureBind {
+    texture: std::sync::Arc<ImageTexture>,
+    globals: wgpu::Buffer,
+    bind: wgpu::BindGroup,
+}
+
+fn upload_image(
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+    px: &kui_core::display::TexturePixels,
+) {
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        &px.rgba,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(px.width * 4),
+            rows_per_image: Some(px.height),
+        },
+        wgpu::Extent3d {
+            width: px.width,
+            height: px.height,
+            depth_or_array_layers: 1,
+        },
+    );
 }
 
 /// Picks the `//DUAL:` or `//SINGLE:` lines of the shader template.
@@ -470,6 +603,12 @@ impl Renderer {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
             ],
         });
 
@@ -515,7 +654,23 @@ impl Renderer {
 
         let atlas_size = kui_core::atlas::ATLAS_SIZE;
         let atlas_tex = create_atlas_texture(device, atlas_size);
-        let bind_group = create_bind_group(device, &bind_layout, &globals_buf, &atlas_tex);
+        let samplers = Samplers {
+            linear: device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("kui.linear"),
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                ..Default::default()
+            }),
+            nearest: device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("kui.nearest"),
+                mag_filter: wgpu::FilterMode::Nearest,
+                min_filter: wgpu::FilterMode::Nearest,
+                ..Default::default()
+            }),
+        };
+        let atlas_view = atlas_tex.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group =
+            create_bind_group(device, &bind_layout, &globals_buf, &atlas_view, &samplers);
 
         let instance_cap = 4096;
         let instance_buf = create_instance_buffer(device, instance_cap);
@@ -571,6 +726,8 @@ impl Renderer {
             globals_buf,
             bind_group,
             bind_layout,
+            samplers,
+            texture_binds: Default::default(),
             atlas_tex,
             atlas_size,
             atlas_epoch: u64::MAX,
@@ -621,11 +778,15 @@ impl Renderer {
         if atlas.size != self.atlas_size {
             self.atlas_size = atlas.size;
             self.atlas_tex = create_atlas_texture(self.gpu.device(), atlas.size);
+            let view = self
+                .atlas_tex
+                .create_view(&wgpu::TextureViewDescriptor::default());
             self.bind_group = create_bind_group(
                 self.gpu.device(),
                 &self.bind_layout,
                 &self.globals_buf,
-                &self.atlas_tex,
+                &view,
+                &self.samplers,
             );
             self.atlas_epoch = u64::MAX;
         }
@@ -662,8 +823,11 @@ impl Renderer {
         self.sync_atlas(atlas);
 
         self.instances.clear();
-        self.instances
-            .extend(dl.quads.iter().map(|q| instance_of(q, &dl.clips)));
+        self.instances.extend(
+            dl.quads
+                .iter()
+                .map(|q| instance_of(q, &dl.clips, &dl.textures)),
+        );
         if self.instances.len() > self.instance_cap {
             self.instance_cap = self.instances.len().next_power_of_two();
             self.instance_buf = create_instance_buffer(self.gpu.device(), self.instance_cap);
@@ -685,6 +849,64 @@ impl Renderer {
         self.gpu
             .queue()
             .write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(&globals));
+
+        // Texture-backed images (ADR 0025, decision 3): drop what the core
+        // removed, upload what moved, and give each one drawn this frame
+        // a group-0 bind group of its own with a globals copy whose
+        // `atlas_size` is the texture's. All skipped on a frame that
+        // draws none.
+        for id in &dl.dropped_textures {
+            self.texture_binds.remove(&id.to_ffi());
+            self.gpu.drop_image_texture(id.to_ffi());
+        }
+        let mut texture_binds: Vec<Option<u64>> = Vec::new();
+        if !dl.textures.is_empty() {
+            texture_binds.reserve(dl.textures.len());
+            for (draw, px) in dl.textures.iter().zip(&dl.texture_pixels) {
+                let id = draw.id.to_ffi();
+                let Some(texture) = self.gpu.image_texture(id, px) else {
+                    texture_binds.push(None);
+                    continue;
+                };
+                let stale = self
+                    .texture_binds
+                    .get(&id)
+                    .is_none_or(|b| !std::sync::Arc::ptr_eq(&b.texture, &texture));
+                if stale {
+                    let device = self.gpu.device();
+                    let globals_buf = device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some("kui.image.globals"),
+                        size: std::mem::size_of::<Globals>() as u64,
+                        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                        mapped_at_creation: false,
+                    });
+                    let bind = create_bind_group(
+                        device,
+                        &self.bind_layout,
+                        &globals_buf,
+                        &texture.view,
+                        &self.samplers,
+                    );
+                    self.texture_binds.insert(
+                        id,
+                        TextureBind {
+                            texture: texture.clone(),
+                            globals: globals_buf,
+                            bind,
+                        },
+                    );
+                }
+                let b = &self.texture_binds[&id];
+                let mine = Globals {
+                    atlas_size: [texture.width as f32, texture.height as f32],
+                    ..globals
+                };
+                self.gpu
+                    .queue()
+                    .write_buffer(&b.globals, 0, bytemuck::bytes_of(&mine));
+                texture_binds.push(Some(id));
+            }
+        }
 
         // Each fragment's parameters into its own slot, and its pipeline
         // built if this device has not seen the handle before. Both are
@@ -770,24 +992,26 @@ impl Renderer {
             });
             if !self.instances.is_empty() {
                 pass.set_vertex_buffer(0, self.instance_buf.slice(..));
-                if fragment_pipelines.is_empty() {
+                if fragment_pipelines.is_empty() && texture_binds.is_empty() {
                     // The whole frame in one instanced draw, as it has
                     // always been. Nothing below runs.
                     pass.set_pipeline(&self.pipeline);
                     pass.set_bind_group(0, &self.bind_group, &[]);
                     pass.draw(0..6, 0..self.instances.len() as u32);
                 } else {
-                    // A fragment interrupts the run: draw what came
-                    // before with the über-pipeline, then that one quad
-                    // with its own, then carry on
-                    // (`docs/adr/0015-…`, decision 5). Consecutive
-                    // fragment quads of the same handle still take one
-                    // pipeline set each, which is the 0.6 us the ADR
-                    // measured; runs of ordinary quads are unbroken.
+                    // A fragment or a texture-backed image interrupts the
+                    // run: draw what came before with the über-pipeline,
+                    // then that one quad with its own pipeline (a
+                    // fragment) or its own group 0 (a texture), then
+                    // carry on (`docs/adr/0015-…` decision 5, ADR 0025
+                    // decision 3). Consecutive quads of the same handle
+                    // still take one set each, which is the 0.6 us the
+                    // first ADR measured; runs of ordinary quads are
+                    // unbroken.
                     let mut run_start = 0u32;
                     let mut on_quads = false;
                     for (i, q) in dl.quads.iter().enumerate() {
-                        if q.kind != QuadKind::Fragment {
+                        if q.kind != QuadKind::Fragment && q.kind != QuadKind::Texture {
                             continue;
                         }
                         let i = i as u32;
@@ -800,9 +1024,19 @@ impl Renderer {
                             pass.draw(0..6, run_start..i);
                         }
                         // `uv[0]` is the index into the side list, which
-                        // is also this fragment's parameter slot.
+                        // is also this fragment's parameter slot, or this
+                        // texture's bind.
                         let slot = q.uv[0] as usize;
-                        if let Some(pipeline) = fragment_pipelines.get(slot) {
+                        if q.kind == QuadKind::Texture {
+                            if let Some(Some(id)) = texture_binds.get(slot)
+                                && let Some(b) = self.texture_binds.get(id)
+                            {
+                                pass.set_pipeline(&self.pipeline);
+                                pass.set_bind_group(0, &b.bind, &[]);
+                                on_quads = false;
+                                pass.draw(0..6, i..i + 1);
+                            }
+                        } else if let Some(pipeline) = fragment_pipelines.get(slot) {
                             pass.set_pipeline(pipeline);
                             pass.set_bind_group(0, &self.bind_group, &[]);
                             pass.set_bind_group(
@@ -879,19 +1113,15 @@ fn create_atlas_texture(device: &wgpu::Device, size: u32) -> wgpu::Texture {
     })
 }
 
+/// Group 0: the globals, a texture — the atlas, or a texture-backed image
+/// in its place — and the two samplers.
 fn create_bind_group(
     device: &wgpu::Device,
     layout: &wgpu::BindGroupLayout,
     globals: &wgpu::Buffer,
-    atlas: &wgpu::Texture,
+    view: &wgpu::TextureView,
+    samplers: &Samplers,
 ) -> wgpu::BindGroup {
-    let view = atlas.create_view(&wgpu::TextureViewDescriptor::default());
-    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-        label: Some("kui.atlas"),
-        mag_filter: wgpu::FilterMode::Linear,
-        min_filter: wgpu::FilterMode::Linear,
-        ..Default::default()
-    });
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("kui"),
         layout,
@@ -902,11 +1132,15 @@ fn create_bind_group(
             },
             wgpu::BindGroupEntry {
                 binding: 1,
-                resource: wgpu::BindingResource::TextureView(&view),
+                resource: wgpu::BindingResource::TextureView(view),
             },
             wgpu::BindGroupEntry {
                 binding: 2,
-                resource: wgpu::BindingResource::Sampler(&sampler),
+                resource: wgpu::BindingResource::Sampler(&samplers.linear),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: wgpu::BindingResource::Sampler(&samplers.nearest),
             },
         ],
     })

@@ -1,11 +1,19 @@
 //! The `image` element: host-registered RGBA pixels drawn through the
 //! same atlas and draw call as everything else. Shows intrinsic (Fit)
-//! sizing, aspect-preserving responsive width, rounded corners, and alpha.
+//! sizing, aspect-preserving responsive width, rounded corners, and alpha
+//! — and, since ADR 0025 (`docs/adr/0025-the-image-is-the-canvas.md`),
+//! the image as the canvas: a *stream* whose pixels the app replaces
+//! every frame with `update_image`, rendered at exactly the pixel count
+//! the `layout` event's `scale` says the box covers, shown `nearest`
+//! beside `linear`; and `contain` / `cover` against a box of another
+//! aspect.
 //!
-//! Run: cargo run -p kui --example image
+//! Run: cargo run -p kui --example image [-- --headless]
 
-use kui::{App, ImageId, NodeSpec, Sizing, TextStyle, Ui};
-use kui_devtools::Example;
+use kui::{
+    App, Core, ImageFit, ImageId, ImageOpts, NodeSpec, Sampling, Sizing, TextStyle, Ui, UiEvent,
+};
+use kui_devtools::{Drive, Example};
 
 /// A procedural "photo": vertical sky gradient with a sun disc.
 fn sky(w: u32, h: u32) -> Vec<u8> {
@@ -46,9 +54,41 @@ fn checker(w: u32, h: u32) -> Vec<u8> {
     px
 }
 
+/// A frame of plasma at `w`×`h`, `phase` along: what a video decoder, a
+/// camera or a plot library would hand back — pixels the app made.
+fn plasma(w: u32, h: u32, phase: f32, out: &mut Vec<u8>) {
+    out.clear();
+    out.reserve((w * h * 4) as usize);
+    for y in 0..h {
+        for x in 0..w {
+            let (u, v) = (x as f32 / w as f32, y as f32 / h as f32);
+            let a = ((u * 6.0 + phase).sin()
+                + (v * 5.0 - phase * 0.7).sin()
+                + ((u + v) * 4.0 + phase * 1.3).sin())
+                / 3.0;
+            out.push((128.0 + 100.0 * a) as u8);
+            out.push((128.0 + 100.0 * (a + 2.1).sin()) as u8);
+            out.push((128.0 + 100.0 * (a + 4.2).sin()) as u8);
+            out.push(0xff);
+        }
+    }
+}
+
 struct Gallery {
     sky: Option<ImageId>,
     checker: Option<ImageId>,
+    /// The stream: registered once at a token size, then replaced every
+    /// frame at the size the layout event last reported.
+    stream: Option<ImageId>,
+    /// Physical pixels the stream's box covers, from `on_layout`'s `w`,
+    /// `h` and `scale`: what the next frame renders to. Zero until the
+    /// first layout arrives, which is the frame model — one frame late.
+    stream_px: (u32, u32),
+    phase: f32,
+    pixels: Vec<u8>,
+    /// How many frames were rendered at the reported size — the
+    /// headless drive's evidence that the loop closed.
+    rendered: u32,
 }
 
 impl App for Gallery {
@@ -62,6 +102,20 @@ impl App for Gallery {
         let checker_id = *self
             .checker
             .get_or_insert_with(|| ui.core().resources.add_image(96, 96, checker(96, 96)));
+        let stream_id = *self
+            .stream
+            .get_or_insert_with(|| ui.core().resources.add_image(16, 9, vec![0; 16 * 9 * 4]));
+        // The loop: render at the size the box covers, replace the pixels,
+        // keep the handle. Before the first `layout` event the token
+        // 16×9 shows, stretched — one frame.
+        let (pw, ph) = self.stream_px;
+        if pw > 0 && ph > 0 {
+            plasma(pw, ph, self.phase, &mut self.pixels);
+            ui.core()
+                .update_image(stream_id, pw, ph, self.pixels.clone());
+            self.rendered += 1;
+        }
+        self.phase += 0.04;
 
         ui.with(
             NodeSpec::column().fill().pad(24.0).gap(16.0).scroll_y(),
@@ -109,14 +163,166 @@ impl App for Gallery {
                         ui.text("same image, intrinsic and stretched", muted);
                     },
                 );
+
+                ui.text(
+                    "A stream: pixels replaced every frame at the size the box covers (`layout.scale`), linear and nearest",
+                    muted,
+                );
+                ui.with(NodeSpec::row().gap(16.0), |ui| {
+                    // The box that reports its size; the stream node
+                    // itself sits inside it so the report is the box's.
+                    ui.with_keyed(
+                        "stream-box",
+                        NodeSpec::column()
+                            .width(Sizing::Fixed(240.0))
+                            .height(Sizing::Fixed(135.0))
+                            .on_layout(kui::Value::str("stream"))
+                            .animate(),
+                        |ui| {
+                            ui.image_with(
+                                stream_id,
+                                ImageOpts::default(),
+                                NodeSpec::column().fill().radius(8.0).label("a plasma, rendered at the box's size"),
+                            );
+                        },
+                    );
+                    // The same pixels through `nearest`, at a size the
+                    // texels are bigger than the pixels: each one a square.
+                    ui.image_with(
+                        stream_id,
+                        ImageOpts {
+                            sampling: Sampling::Nearest,
+                            ..ImageOpts::default()
+                        },
+                        NodeSpec::column()
+                            .width(Sizing::Fixed(240.0))
+                            .height(Sizing::Fixed(135.0))
+                            .radius(8.0)
+                            .label("the same stream, nearest-sampled"),
+                    );
+                });
+
+                ui.text(
+                    "The 16:9 sky in a square box: `contain` letterboxes, `cover` crops, the box is the same",
+                    muted,
+                );
+                ui.with(NodeSpec::row().gap(16.0), |ui| {
+                    for (fit, label) in [
+                        (ImageFit::Fill, "fill: stretched"),
+                        (ImageFit::Contain, "contain: letterboxed"),
+                        (ImageFit::Cover, "cover: cropped"),
+                    ] {
+                        ui.with(
+                            NodeSpec::column()
+                                .width(Sizing::Fixed(140.0))
+                                .height(Sizing::Fixed(140.0))
+                                .bg(t.surface)
+                                .border(1.0, t.border)
+                                .radius(10.0),
+                            |ui| {
+                                ui.image_with(
+                                    sky_id,
+                                    ImageOpts {
+                                        fit,
+                                        ..ImageOpts::default()
+                                    },
+                                    NodeSpec::column().fill().radius(10.0).label(label),
+                                );
+                            },
+                        );
+                    }
+                });
             },
         );
     }
+
+    fn on_event(&mut self, ev: UiEvent) {
+        if ev.payload.get("kind").and_then(|v| v.as_str()) == Some("layout")
+            && ev.payload.get("tag").and_then(|v| v.as_str()) == Some("stream")
+        {
+            let f = |k: &str| ev.payload.get(k).and_then(|v| v.as_float()).unwrap_or(0.0);
+            // `scale` is the number the ADR put on the payload for exactly
+            // this multiply: physical px per logical px at the node.
+            self.stream_px = (
+                (f("w") * f("scale")).round() as u32,
+                (f("h") * f("scale")).round() as u32,
+            );
+        }
+    }
 }
 
-impl Example for Gallery {}
+impl Example for Gallery {
+    /// The loop closes: after the first frame's layout report the stream
+    /// is re-rendered at the box's pixel count and drawn from a texture
+    /// of its own; the three fits share one box size and differ in what
+    /// is painted.
+    fn headless(&mut self, core: &mut Core) -> Result<(), String> {
+        // Tall enough that the scrolling page culls nothing.
+        let mut d = Drive::new(core, 900.0, 1100.0);
+        d.frame(self);
+        d.check(
+            self.rendered == 0,
+            "before the layout report nothing is rendered",
+        )?;
+        d.check(
+            self.stream_px == (240, 135),
+            "the report says how many pixels the box covers",
+        )?;
+        d.frame(self);
+        d.check(
+            self.rendered == 1,
+            "the frame after renders once at that size",
+        )?;
+        // Read everything off the frame first; `check` wants the drive.
+        let (textures, size, nearest, sky) = {
+            let dl = &d.core.output().0;
+            let texture = |q: &&kui::Quad| q.kind == kui::QuadKind::Texture;
+            (
+                dl.quads.iter().filter(texture).count(),
+                dl.texture_pixels.first().map(|p| (p.width, p.height)),
+                dl.quads
+                    .iter()
+                    .filter(texture)
+                    .filter(|q| q.border_w == 1.0)
+                    .count(),
+                dl.quads
+                    .iter()
+                    .filter(|q| q.kind == kui::QuadKind::Image && q.rect.w >= 100.0)
+                    .copied()
+                    .collect::<Vec<_>>(),
+            )
+        };
+        d.check(
+            textures == 2,
+            "the stream draws from a texture of its own, twice",
+        )?;
+        d.check(
+            size == Some((240, 135)),
+            "and the texture is the box's size",
+        )?;
+        d.check(nearest == 1, "one of the two is nearest-sampled")?;
+        // The sky three ways: same box, `contain` paints a shorter rect,
+        // `cover` shows fewer texels.
+        d.check(sky.len() == 4, "the sky is drawn four times as an image")?;
+        let fits = &sky[1..];
+        d.check(
+            fits[0].rect.h > fits[1].rect.h,
+            "contain paints a shorter rect than fill",
+        )?;
+        d.check(
+            fits[2].uv[2] < fits[0].uv[2],
+            "cover shows fewer texels than fill",
+        )?;
+        Ok(())
+    }
+}
 
 kui_devtools::main!(Gallery {
     sky: None,
     checker: None,
+    stream: None,
+    stream_px: (0, 0),
+    phase: 0.0,
+    pixels: Vec::new(),
+    rendered: 0,
 });

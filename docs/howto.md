@@ -417,6 +417,53 @@ whether or not a handler ran.
 [ADR 0013](adr/0013-effects-as-data.md) ·
 [alpha.8](../CHANGELOG.md#010-alpha8-2026-09-07)
 
+### How do I show a video frame, a camera, or a plot I drew myself?
+
+Make it an image and replace its pixels. Register once (`add_image` /
+`addImage` / `kui_image_add`), then each time you have a new frame call
+`update_image(id, w, h, rgba)` (`updateImage`, `kui_image_update`): the
+handle is unchanged, so every `<image src={id}>` shows the new pixels next
+frame with no view change, and from the first update on the image draws
+from a texture of its own rather than the glyph atlas — as does one too big
+for a page, which used to draw nothing. `sampling="nearest"` keeps an
+emulator's or a pixel-art texel square; `fit="contain"` or `"cover"` meets
+a box of another aspect without stretching. kui composes, clips, rounds,
+fades and hit-tests the box; what is inside it is yours, rasterised with
+whatever you like. At 1080p the cost is your own 8 MB copy of the frame and
+the upload; the core adds nothing measurable.
+
+[`image` element](props.md#elements) ·
+[ADR 0025](adr/0025-the-image-is-the-canvas.md) ·
+`cargo run --example image`
+
+### How many pixels should I render for this box?
+
+`w × scale` by `h × scale`, from the `layout` event: put `onLayout` on the
+box, and its payload carries the logical rect and `scale`, the physical px
+per logical px at that node. Render that many pixels, `update_image`, and
+the next frame shows them one texel per pixel — the loop the `image`
+example runs. It is one frame late, which is the frame model: until the
+first report the previous pixels show, stretched. `scale` is the frame's
+today, and where a zoom would compose in if the core ever takes one.
+
+[`layout` event](props.md#events) ·
+[ADR 0025](adr/0025-the-image-is-the-canvas.md)
+
+### How do I fill a shape — an arrowhead, a pie wedge, the area under a curve?
+
+`<polygon points={[[x, y], …]} bg/>`: up to eight points in the parent's
+box space, filled with `bg`, placed like a `line` (a float sized to its
+own bounding box, taking no room and no input). Concave outlines fill
+correctly; a shape with more than eight vertices is two polygons (a pie is
+wedges, an area chart is a strip of quads); a stroked outline is a closed
+`line` over it. `transition` eases the fill, and with `slide` the position.
+On the wire it is one `fragment` quad painted by a source the core
+registers itself, so it costs what a fragment costs and no shader of yours.
+
+[`polygon` element](props.md#elements) ·
+[ADR 0025](adr/0025-the-image-is-the-canvas.md) ·
+`cargo run --example polygon`
+
 ### How do I draw a gradient, a ring, or anything the paint props cannot?
 
 Write a fragment. `add_fragment(wgsl)` validates one WGSL function and hands

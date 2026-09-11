@@ -50,6 +50,11 @@ function edit(t)
   return t
 end
 
+-- image { id = handle, width = 16, sampling = "nearest", fit = "contain" }:
+-- a registered image (the host registers it and passes the handle in as a
+-- plain integer). `sampling` is "linear" (default) or "nearest"; `fit` is
+-- "fill" (default), "contain" or "cover" -- how the pixels meet the box,
+-- which is itself the same in every mode (docs/adr/0025).
 function image(t)
   t.type = "image"
   return t
@@ -75,6 +80,16 @@ end
 -- `key`, `transition`, `opacity`, `on_layout` apply, input props do not.
 function line(t)
   t.type = "line"
+  return t
+end
+
+-- polygon { points = {{x, y}, ...}, bg = 0xd8863bff }: a filled polygon
+-- through up to eight points in the parent's box space, the fill in `bg`,
+-- placed like a line (never in layout; floats, sized to its own bounding
+-- box). The outline may be concave. `key`, `transition`, `opacity`,
+-- `on_layout` apply, input props do not (docs/adr/0025, decision 6).
+function polygon(t)
+  t.type = "polygon"
   return t
 end
 

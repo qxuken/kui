@@ -412,6 +412,17 @@ impl<'a> Ui<'a> {
         self.core.image_node(id, spec);
     }
 
+    /// [`Self::image`] with its `sampling` and `fit` rows; see
+    /// `Core::image_node_with`.
+    pub fn image_with(
+        &mut self,
+        id: crate::resources::ImageId,
+        opts: crate::resources::ImageOpts,
+        spec: NodeSpec,
+    ) {
+        self.core.image_node_with(id, opts, spec);
+    }
+
     /// A box a registered WGSL function paints; see `Core::fragment_node`
     /// for what it is, and `Core::add_fragment` for where the handle comes
     /// from. It has no intrinsic size, so give it one.
@@ -498,6 +509,23 @@ impl<'a> Ui<'a> {
 
     pub fn polyline_keyed(&mut self, label: &str, points: &[Vec2], stroke: Stroke, spec: NodeSpec) {
         self.core.line_node_keyed(label, points, stroke, spec);
+    }
+
+    /// A filled polygon through `points` in the parent's box space, the
+    /// fill in `spec`'s `bg`; see `Core::polygon_node` for what it is and
+    /// is not (ADR 0025, decision 6).
+    pub fn polygon(&mut self, points: &[Vec2], spec: NodeSpec) {
+        self.core.polygon_node(points, spec);
+    }
+
+    /// [`Self::polygon`] under a label key.
+    pub fn polygon_keyed(&mut self, label: &str, points: &[Vec2], spec: NodeSpec) {
+        self.core.polygon_node_keyed(label, points, spec);
+    }
+
+    /// [`Self::polygon`] under a data index; see [`Self::open_indexed`].
+    pub fn polygon_indexed(&mut self, i: u64, points: &[Vec2], spec: NodeSpec) {
+        self.core.polygon_node_indexed(i, points, spec);
     }
 
     /// An `audio` node: a playback retained for as long as the view keeps

@@ -206,6 +206,18 @@ pub struct Core {
     /// previous frame's kept alongside on the same terms as `prev_tree`.
     pub(crate) lines: crate::line::LineStore,
     pub(crate) fragments: crate::fragment::FragmentList,
+    /// The stock polygon fragment's handle, once a `polygon` node has
+    /// asked for it this session (ADR 0025, decision 6). Forgotten by
+    /// `remove_fragment` if a host removes it, so the next node registers
+    /// it again rather than drawing nothing — and not re-checked per node,
+    /// which was a session lock per polygon and cost more than the six
+    /// segment quads a closed stroke of the same outline emits.
+    pub(crate) stock_polygon: Option<crate::resources::FragmentId>,
+    /// Texture-backed images removed since the last frame began, handed
+    /// to the next display list as `dropped_textures` so a backend frees
+    /// them; kept here because a removal can land between frames, after
+    /// the list was cleared.
+    pub(crate) dropped_images: Vec<crate::resources::ImageId>,
     pub(crate) display: DisplayList,
     pub(crate) viewport: Size,
     pub(crate) scale: f32,
@@ -586,6 +598,8 @@ impl Core {
             prev_tree: Tree::new(),
             lines: Default::default(),
             fragments: Default::default(),
+            stock_polygon: None,
+            dropped_images: Vec::new(),
             display: DisplayList::default(),
             viewport: Size::ZERO,
             scale: 1.0,
@@ -1051,6 +1065,9 @@ impl Core {
         }
         self.tree.clear();
         self.display.clear();
+        self.display
+            .dropped_textures
+            .append(&mut self.dropped_images);
         // The text list goes with the tree: a kept frame's text nodes carry
         // that frame's `TextId`s, and nothing else can resolve them.
         self.text

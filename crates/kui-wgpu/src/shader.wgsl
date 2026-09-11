@@ -16,17 +16,24 @@ struct Globals {
 };
 
 @group(0) @binding(0) var<uniform> globals: Globals;
+// The atlas — or, for the run of a texture-backed image, that image's own
+// texture bound in its place with `atlas_size` set to its size, so the
+// same divide in `vs_main` and the same branch below draw both (ADR 0025).
 @group(0) @binding(1) var atlas_tex: texture_2d<f32>;
 @group(0) @binding(2) var atlas_smp: sampler;
+// Nearest-texel sampling for an image whose `sampling` row asked for it.
+@group(0) @binding(3) var nearest_smp: sampler;
 
 struct Instance {
     @location(0) pos: vec2<f32>,
     @location(1) size: vec2<f32>,
     @location(2) color: vec4<f32>,
     @location(3) border_color: vec4<f32>,
-    // blur (shadows), border_w (also the stroke width of a segment), kind
-    // (0 solid / 1 mask glyph / 2 color glyph / 3 image / 4 subpixel glyph
-    // / 5 shadow / 6 segment), unused
+    // blur (shadows), border_w (also the stroke width of a segment, and the
+    // sampling flag of an image: 1 = nearest), kind (0 solid / 1 mask
+    // glyph / 2 color glyph / 3 image / 4 subpixel glyph / 5 shadow /
+    // 6 segment; a texture quad arrives as 3 with its own texture bound),
+    // unused
     @location(4) params: vec4<f32>,
     // atlas texels: x, y, w, h — or, for a segment, its two endpoints in
     // physical px: x0, y0, x1, y1 (the Rust side decodes the bits)
@@ -192,8 +199,12 @@ fn shade(in: VsOut) -> Shaded {
     let coverage = 1.0 - smoothstep(-AA, AA, d);
 
     if kind == 3u {
-        // Registered image tinted by color (white = as-is).
-        let t = textureSample(atlas_tex, atlas_smp, in.uv);
+        // Registered image tinted by color (white = as-is). Both samplers
+        // are read so sampling stays in uniform control flow; the flag
+        // picks one.
+        let lin = textureSample(atlas_tex, atlas_smp, in.uv);
+        let near = textureSample(atlas_tex, nearest_smp, in.uv);
+        let t = select(lin, near, in.params.y > 0.5);
         return Shaded(t.rgb * in.color.rgb, vec3<f32>(t.a * in.color.a * coverage * inside));
     }
 

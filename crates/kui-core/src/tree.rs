@@ -43,8 +43,10 @@ pub enum NodeContent {
     Text(TextId),
     /// Editable text; retained state lives in the core's `EditStore`.
     Edit(Key),
-    /// A host-registered image (see `Resources`), drawn via the atlas.
-    Image(crate::resources::ImageId),
+    /// A host-registered image (see `Resources`), drawn from the atlas or
+    /// from a texture of its own as the entry's backing says, met by its
+    /// box as `opts` say (ADR 0025).
+    Image(crate::resources::ImageId, crate::resources::ImageOpts),
     /// A stroke through a run of points: one segment quad per straight
     /// piece (see `crate::line`). The node is a float sized to the
     /// stroke's bounding box, and its `bg` is the stroke colour.
@@ -56,6 +58,11 @@ pub enum NodeContent {
     /// The handle and the sixteen parameters live in the frame's
     /// `FragmentList`; the node carries only where.
     Fragment(crate::fragment::FragmentDrawId),
+    /// A filled polygon (ADR 0025, decision 6): a float sized to its own
+    /// bounding box like a line, painted by the stock polygon fragment
+    /// whose draw sits in the frame's `FragmentList` like any fragment's,
+    /// its `bg` the fill. No hit region, no access row.
+    Polygon(crate::fragment::FragmentDrawId),
 }
 
 impl Tree {

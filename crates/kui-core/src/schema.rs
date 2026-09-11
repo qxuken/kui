@@ -1411,14 +1411,26 @@ pub const ELEMENTS: &[ElementDef] = &[
     },
     ElementDef {
         name: "image",
-        jsx_own: &["src"],
-        lua_own: &["id"],
+        jsx_own: &["src", "sampling", "fit"],
+        lua_own: &["id", "sampling", "fit"],
         jsx_rows: None,
         lua_rows: None,
-        jsx: "`<image src={id}>`",
-        lua: "`image { id= }`",
-        c: "`kui_image`",
-        doc: "A registered RGBA image; `fit` takes the pixel size, a fit height against a resolved width keeps the aspect, radius rounds it.",
+        jsx: "`<image src={id} sampling fit>`",
+        lua: "`image { id=, sampling=, fit= }`",
+        c: "`kui_image`, `kui_image_with`",
+        doc: "A registered RGBA image. Sizing: `width=\"fit\"` takes the pixel size, a fit height against a resolved width keeps the aspect, `radius` rounds it. Two rows say how the pixels meet the box (`docs/adr/0025-the-image-is-the-canvas.md`): `sampling` is `linear` (the default) or `nearest` — pixel art, an emulator, a data grid that must stay square under zoom; `fit` is `fill` (the default: the pixels stretch to the box), `contain` (the largest rect of the image's aspect that fits, centred, the rest of the box showing what is behind) or `cover` (the box filled and the pixels that do not fit cropped, centred). The box — its layout, its hit region, its access rect — is the same in every mode. The pixels come from the atlas, or from a texture of the image's own once `updateImage` has replaced them or when no atlas page could hold them; the node cannot tell and need not.",
+    },
+    ElementDef {
+        name: "polygon",
+        // `bg` is a schema row already; on a polygon it is the fill.
+        jsx_own: &["points"],
+        lua_own: &["points"],
+        jsx_rows: None,
+        lua_rows: None,
+        jsx: "`<polygon points={[[x,y],…]} bg/>`",
+        lua: "`polygon { points={{x,y},…}, bg= }`",
+        c: "`kui_polygon`",
+        doc: "A filled polygon through up to eight `points`, the fill in `bg` (`docs/adr/0025-the-image-is-the-canvas.md`, decision 6): an arrowhead, a pie slice, the area under a curve. Placed as a `line` is — always a float in its parent's box space (`float=\"viewport\"` for viewport space), sized to its own bounding box a pixel out on each side, so it takes no room in a row or column; `transition` eases the fill and, with `slide`, its position. The outline may be concave; a self-intersecting one fills by winding. Takes no pointer input and has no access row, like a line. A ninth point and later are dropped with `polygon-points-truncated`; fewer than three draw nothing; no `bg`, no fill. On the wire it is one `fragment` quad painted by a WGSL function the core registers itself, so a host that draws the list gets its source from `kui_fragment_source` like any other; what it costs is that quad and one pipeline switch per run of polygons. A stroked outline is a closed `line` over it.",
     },
     ElementDef {
         name: "fragment",
@@ -1587,8 +1599,8 @@ pub const EVENTS: &[EventDef] = &[
     },
     EventDef {
         kind: "layout",
-        payload: "`{ kind: \"layout\", x, y, w, h, parent: { x, y, w, h }, tag }`",
-        doc: "The rect layout gave an `onLayout` node (logical px, viewport coords, after scrolling and easing): on its first frame and whenever it changes, never on a frame that left it alone.",
+        payload: "`{ kind: \"layout\", x, y, w, h, parent: { x, y, w, h }, scale, tag }`",
+        doc: "The rect layout gave an `onLayout` node (logical px, viewport coords, after scrolling and easing): on its first frame and whenever it changes, never on a frame that left it alone. `scale` is physical px per logical px at the node — `w × scale` by `h × scale` is how many pixels to render for it before `updateImage` (the frame's scale today; where a zoom would compose in).",
     },
     EventDef {
         kind: "resize",

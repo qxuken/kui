@@ -118,10 +118,76 @@ pub extern "C" fn kui_open_indexed(
 /// Fit height against a resolved width keeps the aspect. radius rounds it.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_image(ptr: *mut KuiCtx, id: u64, spec: *const KuiSpec) {
+    kui_image_with(ptr, id, 0, 0, spec);
+}
+
+/// `kui_image` with its two rows (ADR 0025, decision 4): `sampling` is
+/// `KUI_SAMPLING_LINEAR` (0, the default) or `KUI_SAMPLING_NEAREST`; `fit`
+/// is `KUI_FIT_FILL` (0, the default), `KUI_FIT_CONTAIN` or
+/// `KUI_FIT_COVER`. An index past the table reads as the default.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_image_with(
+    ptr: *mut KuiCtx,
+    id: u64,
+    sampling: u32,
+    fit: u32,
+    spec: *const KuiSpec,
+) {
     guard((), || {
         if let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) {
             let spec = spec_of(s, NONE, NONE, NONE, NONE);
-            c.core().image_node(kui_core::ImageId::from_ffi(id), spec);
+            let opts = kui_core::ImageOpts {
+                sampling: kui_core::Sampling::ALL
+                    .get(sampling as usize)
+                    .copied()
+                    .unwrap_or_default(),
+                fit: kui_core::ImageFit::ALL
+                    .get(fit as usize)
+                    .copied()
+                    .unwrap_or_default(),
+            };
+            c.core()
+                .image_node_with(kui_core::ImageId::from_ffi(id), opts, spec);
+        }
+    });
+}
+
+/// A filled polygon through `count` points at `xy` (x0, y0, x1, y1, ...),
+/// at most eight — more are dropped with `polygon-points-truncated`, fewer
+/// than three draw nothing — the fill in `spec`'s `bg`. Placed like a
+/// stroke: a float sized to its own bounding box, in the parent's box
+/// space. `label` keys the node (empty = a key from the tree position).
+/// See `Core::polygon_node` (ADR 0025, decision 6). `spec` may be NULL,
+/// which is a polygon with no fill and so nothing drawn.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_polygon(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    xy: *const f32,
+    count: usize,
+    spec: *const KuiSpec,
+) {
+    guard((), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
+        if xy.is_null() || count < 3 {
+            return;
+        }
+        let floats = unsafe { std::slice::from_raw_parts(xy, count * 2) };
+        let points: Vec<kui_core::Vec2> = floats
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|p| kui_core::Vec2::new(p[0], p[1]))
+            .collect();
+        let spec = match unsafe { spec.as_ref() } {
+            Some(s) => spec_of(s, NONE, NONE, NONE, NONE),
+            None => kui_core::NodeSpec::column(),
+        };
+        match opt_str(label) {
+            Some(label) => c.core().polygon_node_keyed(&label, &points, spec),
+            None => c.core().polygon_node(&points, spec),
         }
     });
 }
@@ -726,6 +792,25 @@ pub extern "C" fn kui_draw_data(ptr: *mut KuiCtx, out: *mut KuiDrawData) -> bool
         c.fragment_draws = fragments;
         let fragment_draws = c.fragment_draws.as_ptr();
         let fragment_count = c.fragment_draws.len();
+        // The texture draws likewise: `TextureDraw` holds an `ImageId`,
+        // and the pixels' revision and size ride from the parallel list.
+        let textures: Vec<KuiTextureDraw> = {
+            let (dl, _) = c.core().output();
+            dl.textures
+                .iter()
+                .zip(&dl.texture_pixels)
+                .map(|(t, px)| KuiTextureDraw {
+                    image: t.id.to_ffi(),
+                    rev: px.rev,
+                    width: px.width,
+                    height: px.height,
+                    uv: t.uv,
+                })
+                .collect()
+        };
+        c.texture_draws = textures;
+        let texture_draws = c.texture_draws.as_ptr();
+        let texture_count = c.texture_draws.len();
         let (dl, atlas) = c.core().output();
         let data = KuiDrawData {
             quads: dl.quads.as_ptr().cast(),
@@ -742,6 +827,8 @@ pub extern "C" fn kui_draw_data(ptr: *mut KuiCtx, out: *mut KuiDrawData) -> bool
             fragments: fragment_draws,
             fragment_count,
             time: dl.time,
+            textures: texture_draws,
+            texture_count,
             ..Default::default()
         };
         atlas.dirty = false;

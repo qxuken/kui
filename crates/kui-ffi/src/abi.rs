@@ -162,7 +162,15 @@
 /// first is read from the wrong bytes. The same exception `KuiSpan` is,
 /// for the same reason (ABI 8). A recompiled host's zeroed tail is
 /// `checked = 0`, which is what every row had before.
-pub const KUI_ABI_VERSION: u32 = 13;
+///
+/// ABI 14 appends `textures` and `texture_count` to `KuiDrawData` for
+/// ADR 0025's texture-backed images — an [out] append the size handshake
+/// covers, so a host reserving the ABI-13 layout keeps working and never
+/// sees a `KUI_QUAD_TEXTURE` quad's side entry (it draws that quad as a
+/// solid, wrongly and harmlessly, as a pre-segment host draws a segment).
+/// The bump is for `KUI_QUAD_TEXTURE` itself: a ninth kind a host's own
+/// renderer may want to refuse by version rather than meet by surprise.
+pub const KUI_ABI_VERSION: u32 = 14;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its

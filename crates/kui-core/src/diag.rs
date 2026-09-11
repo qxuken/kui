@@ -174,6 +174,16 @@ warnings! {
     /// dropped; pass fewer, or pack what the fragment needs into the
     /// sixteen it has.
     pub const FRAGMENT_PARAMS_TRUNCATED: &str = "fragment-params-truncated";
+    /// A `polygon` declared more than eight points: the stock fragment
+    /// takes eight vertices in the sixteen params it has, so the rest
+    /// were dropped. Two polygons, or the path primitive kui does not have
+    /// (`docs/adr/0025-the-image-is-the-canvas.md`, decision 6).
+    pub const POLYGON_POINTS_TRUNCATED: &str = "polygon-points-truncated";
+    /// A `polygon` declared `on_click`, `on_drag`, `on_key`, `on_hover`,
+    /// `hoverable` or `focusable`. Like a line, a polygon emits no hit
+    /// region — its box is mostly not the shape, and a shape-aware hit
+    /// test is not built — so the declaration does nothing.
+    pub const POLYGON_IGNORES_INPUT: &str = "polygon-ignores-input";
     /// The frame's modal surface is not in a float, and content painted after
     /// it is drawn on top of it: everything the user can see over the modal is
     /// inert, which looks like inert-behind is broken. A modal that has to

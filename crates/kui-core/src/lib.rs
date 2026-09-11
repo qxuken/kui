@@ -80,7 +80,10 @@ pub use key::Key;
 pub use keyframes::Keyframe;
 pub use line::{LineId, LineStore, Stroke};
 pub use menu::{Accel, BarMenu, Menu, MenuAction, MenuBar, MenuItem, MenuRole};
-pub use resources::{FontId, FragmentId, ImageId, Resources, SessionId, SoundId};
+pub use resources::{
+    FontId, FragmentId, ImageBacking, ImageFit, ImageId, ImageOpts, Resources, Sampling, SessionId,
+    SoundId,
+};
 pub use runtime::devtools;
 pub use runtime::devtools::Dock as DevtoolsDock;
 pub use runtime::inspect::{NodeInfo, NodeKind};

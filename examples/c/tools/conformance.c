@@ -53,7 +53,8 @@ static void repf(Rep *r, const char *fmt, ...) {
 
 /* FNV-1a over each quad's words 0..18 - KuiQuad without its uv, which
  * follows glyph insertion order, and without the clip index - plus the uv
- * of a KUI_QUAD_SEGMENT, where it is the endpoints, and then the eight
+ * of a KUI_QUAD_SEGMENT, where it is the endpoints, or of a
+ * KUI_QUAD_TEXTURE, where it is the side-list index, and then the eight
  * words of the clip that index names. The clip is digested resolved, not
  * as the index, so the number says what a backend clips by and not how the
  * frame interned it. Mirrors conformance::quad_digest. */
@@ -78,7 +79,9 @@ static uint64_t quad_digest(const KuiQuad *quads, size_t count,
         uint32_t w[24];
         memcpy(w, &quads[i], sizeof w);
         digest_words(&h, w, 19); /* x..kind; word 19 is the clip index */
-        if (quads[i].kind == KUI_QUAD_SEGMENT) digest_words(&h, w + 20, 4);
+        if (quads[i].kind == KUI_QUAD_SEGMENT || quads[i].kind == KUI_QUAD_TEXTURE) {
+            digest_words(&h, w + 20, 4);
+        }
         uint32_t c[8] = {0};
         if (quads[i].clip < clip_count) memcpy(c, &clips[quads[i].clip], sizeof c);
         digest_words(&h, c, 8);
@@ -110,6 +113,9 @@ static const char *ACTION_NAMES[] = {
  * so the handles - and the atlas the image lands in - come out the same. */
 typedef struct Fixtures {
     uint64_t image;
+    /* conformance::Fixtures::stream: a copy of the image, updated in place
+     * to 8x2 grey before the first frame, so it is texture-backed. */
+    uint64_t stream;
     uint64_t sound;
     uint64_t fragment;
 } Fixtures;
@@ -141,6 +147,10 @@ static Fixtures conf_fixtures(KuiCtx *ctx) {
     memset(rgba, 0xff, sizeof rgba);
     Fixtures f;
     f.image = kui_image_add(ctx, 4, 4, rgba);
+    f.stream = kui_image_add(ctx, 4, 4, rgba);
+    uint8_t grey[8 * 2 * 4];
+    for (int i = 0; i < 8 * 2 * 4; i++) grey[i] = (i % 4 == 3) ? 0xff : 0x80;
+    kui_image_update(ctx, f.stream, 8, 2, grey);
     f.sound = kui_sound_add(ctx, (const uint8_t *)"RIFF....WAVE", 12);
     f.fragment = kui_fragment_add(ctx, KUI_STR(CONF_FRAGMENT_WGSL));
     return f;
@@ -487,6 +497,18 @@ static void conf_media(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_open(ui, &outer, NULL);
     KuiSpec img = {.width = {KUI_FIXED, 16}, .radius = 2};
     kui_image(ui, f->image, &img);
+    /* ADR 0025: the icon as `contain` in a box twice its aspect, then the
+     * stream fixture plain, `nearest`, and `cover` in a square box. */
+    KuiSpec icon = {.width = {KUI_FIXED, 32}, .height = {KUI_FIXED, 16},
+                    .label = KUI_STR("Icon")};
+    kui_image_with(ui, f->image, KUI_SAMPLING_LINEAR, KUI_FIT_CONTAIN, &icon);
+    KuiSpec stream = {.width = {KUI_FIXED, 16}, .label = KUI_STR("Stream")};
+    kui_image(ui, f->stream, &stream);
+    KuiSpec crisp = {.width = {KUI_FIXED, 16}, .label = KUI_STR("Crisp")};
+    kui_image_with(ui, f->stream, KUI_SAMPLING_NEAREST, KUI_FIT_FILL, &crisp);
+    KuiSpec cropped = {.width = {KUI_FIXED, 12}, .height = {KUI_FIXED, 12},
+                       .label = KUI_STR("Cropped")};
+    kui_image_with(ui, f->stream, KUI_SAMPLING_LINEAR, KUI_FIT_COVER, &cropped);
     KuiAudio music = {.src = f->sound, .volume = 0.5f, .looped = 1};
     kui_audio(ui, KUI_STR("music"), &music, NULL);
     kui_latency_graph(ui);
@@ -499,6 +521,35 @@ static void conf_media(KuiCtx *ui, const Fixtures *f, int phase) {
         KuiAudio blip = KUI_AUDIO_INIT(f->sound);
         kui_audio(ui, KUI_STR("blip"), &blip, NULL);
     }
+    kui_close(ui);
+}
+
+/* docs/adr/0025-the-image-is-the-canvas.md, decision 6: five fills in a
+ * 200x120 canvas - the triangle declares the one input prop the spec
+ * carries, which a polygon ignores; the star is keyed; the nine-point
+ * outline loses its ninth with a warning; the quad is faded. The vertices
+ * are conformance::POLYGON_* to the number. */
+static void conf_polygon(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec canvas = {.width = {KUI_FIXED, 200}, .height = {KUI_FIXED, 120},
+                      .bg = 0x14161eff};
+    kui_open(ui, &canvas, NULL);
+    float tri[] = {10, 10, 60, 20, 20, 50};
+    KuiSpec blue = {.bg = 0x7f9cf5ff, .hoverable = 1};
+    kui_polygon(ui, KUI_STR(""), tri, 3, &blue);
+    float arrow[] = {80, 10, 130, 30, 80, 50, 95, 30};
+    KuiSpec orange = {.bg = 0xd8863bff};
+    kui_polygon(ui, KUI_STR(""), arrow, 4, &orange);
+    float star[] = {170, 10, 176, 24, 190, 30, 176, 36, 170, 50, 164, 36, 150, 30, 164, 24};
+    KuiSpec yellow = {.bg = 0xf5d67fff};
+    kui_polygon(ui, KUI_STR("star"), star, 8, &yellow);
+    float nine[] = {10, 70, 30, 65, 50, 70, 70, 65, 90, 70, 90, 110, 50, 100, 10, 110, 5, 90};
+    KuiSpec green = {.bg = 0x9ad9a0ff};
+    kui_polygon(ui, KUI_STR(""), nine, 9, &green);
+    float quad[] = {110, 70, 190, 70, 180, 110, 120, 110};
+    KuiSpec pink = {.bg = 0xe07a8aff, .opacity_set = 1, .opacity = 0.5f};
+    kui_polygon(ui, KUI_STR(""), quad, 4, &pink);
     kui_close(ui);
 }
 
@@ -1140,6 +1191,7 @@ static const ConfScene CONF_SCENES[] = {
     {"cells", conf_cells},
     {"media", conf_media},
     {"lines", conf_lines},
+    {"polygon", conf_polygon},
     {"fragments", conf_fragments},
     {"modal", conf_modal},
     {"composite", conf_composite},
@@ -1407,12 +1459,12 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
     repf(out, "quads %zu %016llx\n", dd.quad_count,
          (unsigned long long)quad_digest(dd.quads, dd.quad_count, dd.clips,
                                          dd.clip_count));
-    size_t kinds[8] = {0};
+    size_t kinds[9] = {0};
     for (size_t i = 0; i < dd.quad_count; i++) {
-        if (dd.quads[i].kind < 8) kinds[dd.quads[i].kind]++;
+        if (dd.quads[i].kind < 9) kinds[dd.quads[i].kind]++;
     }
-    repf(out, "kinds %zu %zu %zu %zu %zu %zu %zu %zu\n", kinds[0], kinds[1], kinds[2],
-         kinds[3], kinds[4], kinds[5], kinds[6], kinds[7]);
+    repf(out, "kinds %zu %zu %zu %zu %zu %zu %zu %zu %zu\n", kinds[0], kinds[1], kinds[2],
+         kinds[3], kinds[4], kinds[5], kinds[6], kinds[7], kinds[8]);
     /* A fragment's parameters ride a side list, not the quad, so the digest
      * cannot reach them; the report carries them as bits, like the core's. */
     for (size_t i = 0; i < dd.fragment_count; i++) {
@@ -1423,6 +1475,11 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
             repf(out, " %08x", bits);
         }
         repf(out, "\n");
+    }
+    /* A texture quad's texel rect rides the side list the same way. */
+    for (size_t i = 0; i < dd.texture_count; i++) {
+        repf(out, "texture %zu %u %u %u %u\n", i, dd.textures[i].uv[0], dd.textures[i].uv[1],
+             dd.textures[i].uv[2], dd.textures[i].uv[3]);
     }
 
     KuiAccessNode nodes[128];

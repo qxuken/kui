@@ -97,6 +97,8 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             last_edit_text: None,
             fragment_source: String::new(),
             fragment_draws: Vec::new(),
+            texture_draws: Vec::new(),
+            image_pixels: None,
             last_warnings: Vec::new(),
             last_access: Default::default(),
             last_announcements: Vec::new(),

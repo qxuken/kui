@@ -78,7 +78,12 @@ impl Core {
         let style = spec.style;
         // A stroke emits no hit region: it takes no input (ADR 0010,
         // decision 7).
-        let is_line = matches!(self.tree.content[i], NodeContent::Line(_));
+        // A stroke or a fill emits no hit region: neither takes input
+        // (ADR 0010 decision 7; ADR 0025 decision 6).
+        let is_line = matches!(
+            self.tree.content[i],
+            NodeContent::Line(_) | NodeContent::Polygon(_)
+        );
         if spec.hover_tracked() && interactive && !is_line {
             let parent = self.tree.parent[i];
             let parent_rect = if parent == NIL {
@@ -219,8 +224,9 @@ impl Core {
                 focused: self.edit.focused() == Some(key),
                 pad: self.tree.specs[i].layout.padding,
             },
-            NodeContent::Image(id) => Leaf::Image(id),
+            NodeContent::Image(id, opts) => Leaf::Image(id, opts),
             NodeContent::Fragment(id) => Leaf::Fragment(self.fragments.get(id)),
+            NodeContent::Polygon(id) => Leaf::Polygon(self.fragments.get(id)),
             NodeContent::Line(id) => {
                 let (run, points) = self.lines.run(id);
                 Leaf::Line {
@@ -962,11 +968,12 @@ impl Core {
                     focused: false,
                     pad: node.spec.layout.padding,
                 },
-                GhostContent::Image(id) => Leaf::Image(id),
+                GhostContent::Image(id, opts) => Leaf::Image(id, opts),
                 // The picture is frozen at departure — the parameters are
                 // the ones the node last declared — while the box eases
                 // and the group opacity fades it.
                 GhostContent::Fragment(draw) => Leaf::Fragment(draw),
+                GhostContent::Polygon(draw) => Leaf::Polygon(draw),
                 // The points are the ghost's own copy; the colour is the
                 // `bg` slot, which `play.bg` eases on the root.
                 GhostContent::Line { first, len, width } => Leaf::Line {
@@ -1031,7 +1038,8 @@ impl Core {
 
     /// After layout: every `on_layout` node whose rect differs from the one
     /// last reported for its key — or that was not seen last frame — posts
-    /// `{kind="layout", x, y, w, h, parent, tag}`, pending like a `resize`.
+    /// `{kind="layout", x, y, w, h, parent, scale, tag}`, pending like a
+    /// `resize`.
     /// A frame that leaves a node where it was posts nothing, so a view
     /// that stores the rect in its model and redraws does not loop.
     fn emit_layout_events(&mut self) {
@@ -1072,6 +1080,11 @@ impl Core {
                 ("w", Value::Float(rect.w as f64)),
                 ("h", Value::Float(rect.h as f64)),
                 ("parent", rect_value(parent_rect)),
+                // Physical px per logical px at this node — the number a
+                // view multiplies `w`/`h` by to know how many pixels to
+                // render before `update_image` (ADR 0025, decision 5).
+                // The frame's today; where a zoom would compose in.
+                ("scale", Value::Float(self.scale as f64)),
             ]);
             self.pending
                 .push(UiEvent::on(self.tree.origins[i], key, payload).tagged(Some(tag)));
@@ -1443,8 +1456,11 @@ enum Leaf<'a> {
         /// The box's padding: the text starts inside it.
         pad: crate::geom::Edges,
     },
-    Image(crate::resources::ImageId),
+    Image(crate::resources::ImageId, crate::resources::ImageOpts),
     Fragment(crate::display::FragmentDraw),
+    /// A polygon's draw; the fill is the node's `bg`, put through the
+    /// fragment quad's colour rather than a box under it.
+    Polygon(crate::display::FragmentDraw),
     Line {
         points: &'a [Vec2],
         width: f32,
@@ -1490,8 +1506,9 @@ impl Painter<'_> {
                 .push(shadow_quad(style, rect, clip_id, scale));
         }
         // A stroke's `bg` is its colour, not a box to fill (ADR 0010,
-        // decision 7) — for the ghost of one as much as for the live one.
-        let is_line = matches!(leaf, Leaf::Line { .. });
+        // decision 7), and a polygon's is its fill (ADR 0025, decision 6)
+        // — for the ghost of one as much as for the live one.
+        let is_line = matches!(leaf, Leaf::Line { .. } | Leaf::Polygon(_));
         if !is_line
             && (style.bg.is_visible() || (style.border_w > 0.0 && style.border_color.is_visible()))
         {
@@ -1579,24 +1596,65 @@ impl Painter<'_> {
                     &mut self.display.quads,
                 );
             }
-            Leaf::Image(id) => {
+            Leaf::Image(id, opts) => {
                 let sess = self.session.state();
-                if let Some(entry) = sess.resources.image(id)
-                    && let Some(slot) =
-                        self.atlas
-                            .get_or_insert_image(id, entry.width, entry.height, &entry.rgba)
-                {
+                if let Some(entry) = sess.resources.image(id) {
+                    // Atlas-backed unless the entry says otherwise — or
+                    // unless the atlas cannot take it after all, which
+                    // used to draw nothing (ADR 0025, decision 2).
+                    let slot =
+                        match entry.backing {
+                            crate::resources::ImageBacking::Atlas => self
+                                .atlas
+                                .get_or_insert_image(id, entry.width, entry.height, &entry.rgba),
+                            crate::resources::ImageBacking::Texture => None,
+                        };
+                    let (kind, uv) = match slot {
+                        Some(slot) => (QuadKind::Image, [slot.x, slot.y, slot.w, slot.h]),
+                        None => (
+                            QuadKind::Texture,
+                            [self.display.textures.len() as u32, 0, 0, 0],
+                        ),
+                    };
+                    let mut uv = uv;
+                    let (rect, tex_uv) = fit_image(
+                        opts.fit,
+                        rect,
+                        Size::new(entry.width as f32, entry.height as f32),
+                        [0, 0, entry.width, entry.height],
+                    );
+                    if kind == QuadKind::Image {
+                        // The crop, if any, applied inside the atlas slot.
+                        uv = [uv[0] + tex_uv[0], uv[1] + tex_uv[1], tex_uv[2], tex_uv[3]];
+                    } else {
+                        self.display
+                            .textures
+                            .push(crate::display::TextureDraw { id, uv: tex_uv });
+                        self.display
+                            .texture_pixels
+                            .push(crate::display::TexturePixels {
+                                width: entry.width,
+                                height: entry.height,
+                                rev: entry.rev,
+                                rgba: entry.rgba.clone(),
+                            });
+                    }
                     self.display.quads.push(Quad {
                         rect: rect.scaled(scale),
                         // White = untinted; radius rounds like a solid.
                         color: Color::WHITE,
                         border_color: Color::TRANSPARENT,
                         radius: style.radius.map(|r| r * scale),
-                        border_w: 0.0,
+                        // The sampling flag rides the slot an image never
+                        // had a border in (decision 4).
+                        border_w: match opts.sampling {
+                            crate::resources::Sampling::Linear => 0.0,
+                            crate::resources::Sampling::Nearest => 1.0,
+                        },
                         blur: 0.0,
-                        kind: QuadKind::Image,
+                        kind,
                         clip: clip_id,
-                        uv: [slot.x, slot.y, slot.w, slot.h],
+                        uv,
                     });
                 }
             }
@@ -1610,7 +1668,23 @@ impl Painter<'_> {
                     rect.scaled(scale),
                     style.radius.map(|r| r * scale),
                     clip_id,
+                    Color::WHITE,
                 );
+            }
+            Leaf::Polygon(draw) => {
+                if style.bg.is_visible() {
+                    push_fragment(
+                        &mut self.display.quads,
+                        &mut self.display.fragments,
+                        &mut self.display.fragment_sources,
+                        &self.session.state().resources,
+                        draw,
+                        rect.scaled(scale),
+                        crate::display::SQUARE,
+                        clip_id,
+                        style.bg,
+                    );
+                }
             }
             Leaf::Line { points, width } => {
                 push_segments(
@@ -1879,6 +1953,69 @@ fn scrollbar_quad(bar: Rect, scale: f32, clip_id: ClipId, color: Color) -> Quad 
 /// pass then multiplies into; the shader reads that alpha and nothing else
 /// of the colour, because a fragment returns its own.
 #[allow(clippy::too_many_arguments)]
+/// Resolves the `fit` row: the rect the pixels paint into (logical px)
+/// and the texel rect of the image they come from. `fill` stretches the
+/// whole image to the box; `contain` shrinks the painted rect to the
+/// image's aspect, centred; `cover` keeps the box and crops the texels,
+/// centred (ADR 0025, decision 4). A zero-sized image or box falls back to
+/// `fill`, which paints nothing visible either way.
+pub(crate) fn fit_image(
+    fit: crate::resources::ImageFit,
+    rect: Rect,
+    image: Size,
+    texels: [u32; 4],
+) -> (Rect, [u32; 4]) {
+    use crate::resources::ImageFit;
+    if image.w <= 0.0 || image.h <= 0.0 || rect.w <= 0.0 || rect.h <= 0.0 {
+        return (rect, texels);
+    }
+    let box_aspect = rect.w / rect.h;
+    let image_aspect = image.w / image.h;
+    match fit {
+        ImageFit::Fill => (rect, texels),
+        ImageFit::Contain => {
+            let (w, h) = if image_aspect > box_aspect {
+                (rect.w, rect.w / image_aspect)
+            } else {
+                (rect.h * image_aspect, rect.h)
+            };
+            (
+                Rect::new(
+                    rect.x + (rect.w - w) * 0.5,
+                    rect.y + (rect.h - h) * 0.5,
+                    w,
+                    h,
+                ),
+                texels,
+            )
+        }
+        ImageFit::Cover => {
+            // Whole texels: a crop is a rect on the texture, and a
+            // half-texel edge would sample the neighbour.
+            let (w, h) = if image_aspect > box_aspect {
+                ((image.h * box_aspect).round().max(1.0), image.h)
+            } else {
+                (image.w, (image.w / box_aspect).round().max(1.0))
+            };
+            let x = ((image.w - w) * 0.5).floor();
+            let y = ((image.h - h) * 0.5).floor();
+            (
+                rect,
+                [
+                    texels[0] + x as u32,
+                    texels[1] + y as u32,
+                    w as u32,
+                    h as u32,
+                ],
+            )
+        }
+    }
+}
+
+/// One fragment quad and its side entry: the draw, the source a backend
+/// compiles, and the colour the function reads as `in.color` — white for
+/// a `fragment`, the fill for a `polygon` (ADR 0025).
+#[allow(clippy::too_many_arguments)]
 fn push_fragment(
     quads: &mut Vec<Quad>,
     fragments: &mut Vec<crate::display::FragmentDraw>,
@@ -1888,6 +2025,7 @@ fn push_fragment(
     rect: Rect,
     radius: [f32; 4],
     clip_id: ClipId,
+    color: Color,
 ) {
     let Some(source) = resources.fragment(draw.id) else {
         return;
@@ -1897,9 +2035,11 @@ fn push_fragment(
     sources.push(source.clone());
     quads.push(Quad {
         rect,
-        // `rgb` is unused on this kind; `a` is the group opacity, which
+        // White on a `fragment` — the function returns its own colour and
+        // reads this as `in.color` if it wants one — and the fill on a
+        // `polygon`; `a` is the fill's alpha times the group opacity, which
         // the fade pass multiplies in after the node's quads are pushed.
-        color: Color::WHITE,
+        color,
         border_color: Color::TRANSPARENT,
         radius,
         border_w: 0.0,

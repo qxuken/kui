@@ -475,8 +475,22 @@ export declare namespace JSX {
     /** Styled run inside a rich <text>: bold/italic/color, nestable. */
     span: SpanProps;
     /** A registered image (id from addImage). Fit sizing = pixel size as
-     *  logical px; Fit height against a resolved width keeps the aspect. */
-    image: Omit<BoxProps, 'children'> & { src: string };
+     *  logical px; Fit height against a resolved width keeps the aspect.
+     *  Two rows say how the pixels meet the box
+     *  (docs/adr/0025-the-image-is-the-canvas.md): `sampling` is
+     *  `linear` (default) or `nearest` — pixel art, an emulator, a data
+     *  grid that must stay square under zoom; `fit` is `fill` (default:
+     *  the pixels stretch to the box), `contain` (the largest rect of the
+     *  image's aspect that fits, centred) or `cover` (the box filled and
+     *  the rest cropped, centred). The box itself — layout, hit region,
+     *  access rect — is the same in every mode. The pixels come from the
+     *  atlas, or from a texture of the image's own once `updateImage` has
+     *  replaced them; the node cannot tell and need not. */
+    image: Omit<BoxProps, 'children'> & {
+      src: string;
+      sampling?: 'linear' | 'nearest';
+      fit?: 'fill' | 'contain' | 'cover';
+    };
     /** A box a registered WGSL function paints
      *  (docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md):
      *  gradients, rings, noise, shimmer — anything the paint vocabulary has
@@ -525,6 +539,24 @@ export declare namespace JSX {
         curve?: boolean;
         width?: number;
         color?: ColorProp;
+        float?: 'parent' | 'viewport';
+      };
+    /** A filled polygon through up to eight `points`, the fill in `bg`
+     *  (docs/adr/0025-the-image-is-the-canvas.md, decision 6): an arrowhead,
+     *  a pie slice, the area under a curve. Placed as a `line` is — always
+     *  a float in its parent's box space (`float="viewport"` for viewport
+     *  space), sized to its own bounding box a pixel out on each side, so
+     *  it takes no room in a row or column; `transition` eases the fill and,
+     *  with `slide`, its position. The outline may be concave; a
+     *  self-intersecting one fills by winding. Takes no pointer input and
+     *  has no access row, like a line. A ninth point and later are dropped
+     *  with `polygon-points-truncated`; fewer than three draw nothing; no
+     *  `bg`, no fill. One `fragment` quad on the wire, painted by a WGSL
+     *  function the core registers itself. */
+    polygon: Keyed &
+      Pick<GeneratedSpecProps, 'opacity' | 'transition' | 'slide' | 'enter' | 'exit' | 'onLayout' | 'label' | 'role'> & {
+        points: [number, number][];
+        bg?: ColorProp;
         float?: 'parent' | 'viewport';
       };
     /** Adaptive titlebar (drag strip + window buttons per env facts).

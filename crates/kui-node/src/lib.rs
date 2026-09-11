@@ -1416,6 +1416,26 @@ macro_rules! core_methods {
                 Ok(())
             }
 
+            /// Replaces an image's pixels in place (copied): the id is
+            /// unchanged, so every `<image src={id}>` shows the new pixels
+            /// next frame with no view change; `width`/`height` may differ
+            /// from the registration. From the first update on the image
+            /// is drawn from a texture of its own — a video frame, a
+            /// camera, a plot the app rasterised itself
+            /// (`docs/adr/0025-the-image-is-the-canvas.md`). A dead id warns
+            /// `foreign-resource` and changes nothing.
+            #[napi]
+            pub fn update_image(
+                &mut self,
+                id: String,
+                width: u32,
+                height: u32,
+                rgba: Buffer,
+            ) -> Result<()> {
+                let id = ImageId::from_ffi(parse_u64(&id)?);
+                update_image_impl(self.$core(), id, width, height, &rgba)
+            }
+
             // -- Resources: fragments -------------------------------------
 
             /// Registers a WGSL fragment function; returns its id for
@@ -1694,6 +1714,30 @@ macro_rules! core_methods {
                     out.push((raw >> 32) as f64);
                     out.push((raw & 0xffff_ffff) as f64);
                     out.extend(f.params.iter().map(|v| *v as f64));
+                }
+                out
+            }
+
+            /// This frame's texture draws, in the order their quads index
+            /// them by `uv[0]`: nine doubles each — the image handle as two
+            /// 32-bit halves, the pixels' revision, width and height, and
+            /// the texel rect `x, y, w, h` in the image's own texels (the
+            /// whole image, or the crop a `fit="cover"` made). The side
+            /// list a `quads()` texture quad points at
+            /// (`docs/adr/0025-the-image-is-the-canvas.md`, decision 3).
+            /// Empty on a frame that draws no texture-backed image.
+            #[napi]
+            pub fn texture_draws(&mut self) -> Vec<f64> {
+                let (dl, _) = self.$core().output();
+                let mut out = Vec::with_capacity(dl.textures.len() * 9);
+                for (t, px) in dl.textures.iter().zip(&dl.texture_pixels) {
+                    let raw = t.id.to_ffi();
+                    out.push((raw >> 32) as f64);
+                    out.push((raw & 0xffff_ffff) as f64);
+                    out.push(px.rev as f64);
+                    out.push(px.width as f64);
+                    out.push(px.height as f64);
+                    out.extend(t.uv.iter().map(|v| *v as f64));
                 }
                 out
             }
@@ -2854,6 +2898,24 @@ fn add_fragment_impl(core: &mut Core, wgsl: &str) -> Result<String> {
             Err(err(why))
         }
     }
+}
+
+fn update_image_impl(
+    core: &mut Core,
+    id: ImageId,
+    width: u32,
+    height: u32,
+    rgba: &[u8],
+) -> Result<()> {
+    let expected = (width as usize) * (height as usize) * 4;
+    if width == 0 || height == 0 || rgba.len() != expected {
+        return Err(err(format!(
+            "rgba must be width*height*4 = {expected} bytes, got {}",
+            rgba.len()
+        )));
+    }
+    core.update_image(id, width, height, rgba.to_vec());
+    Ok(())
 }
 
 fn add_image_impl(core: &mut Core, width: u32, height: u32, rgba: &[u8]) -> Result<String> {

@@ -285,6 +285,142 @@ fn frame_1k_curves(bencher: divan::Bencher) {
     bencher.bench_local(|| run_curves(&mut core, 1000));
 }
 
+// -- Fills and textures (ADR 0025) -----------------------------------------
+// A `polygon` is a float sized to its own box that emits one fragment quad
+// painted by the stock source; the first pair below is a thousand six-point
+// fills against a thousand closed six-point strokes, so the difference is
+// the fill's bill (the point normalisation, the fragment list entry) against
+// six segment quads. The second pair is `frame_1k_typical` with eight
+// texture-backed images beside it: what the side list and the pixel `Arc`
+// clones cost a frame that draws one, and nothing to a frame that draws
+// none (the plain bench is unchanged, which is the point).
+
+fn hexagon(i: usize, out: &mut [Vec2; 6]) {
+    let cx = 20.0 + (i % 40) as f32 * 48.0;
+    let cy = 20.0 + (i / 40) as f32 * 40.0;
+    for (k, p) in out.iter_mut().enumerate() {
+        let a = k as f32 / 6.0 * std::f32::consts::TAU;
+        *p = Vec2::new(cx + 16.0 * a.cos(), cy + 16.0 * a.sin());
+    }
+}
+
+fn run_polygons(core: &mut Core, n: usize) -> usize {
+    let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let mut pts = [Vec2::ZERO; 6];
+    for i in 0..n {
+        hexagon(i, &mut pts);
+        ui.polygon(
+            &pts,
+            NodeSpec::column().bg(Color::rgb8((i % 255) as u8, 120, 200)),
+        );
+    }
+    ui.finish();
+    let (dl, _) = core.output();
+    dl.quads.len()
+}
+
+fn run_closed_lines(core: &mut Core, n: usize) -> usize {
+    let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let mut pts = [Vec2::ZERO; 7];
+    let mut hex = [Vec2::ZERO; 6];
+    for i in 0..n {
+        hexagon(i, &mut hex);
+        pts[..6].copy_from_slice(&hex);
+        pts[6] = hex[0];
+        ui.polyline(
+            &pts,
+            Stroke::new(1.0, Color::rgb8((i % 255) as u8, 120, 200)),
+            NodeSpec::column(),
+        );
+    }
+    ui.finish();
+    let (dl, _) = core.output();
+    dl.quads.len()
+}
+
+/// 1,000 six-point fills, one fragment quad each.
+#[divan::bench]
+fn frame_1k_polygons(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    run_polygons(&mut core, 1000);
+    bencher.bench_local(|| run_polygons(&mut core, 1000));
+}
+
+/// The same thousand outlines as closed strokes: six segment quads each.
+#[divan::bench]
+fn frame_1k_closed_lines(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    run_closed_lines(&mut core, 1000);
+    bencher.bench_local(|| run_closed_lines(&mut core, 1000));
+}
+
+fn run_typical_with_textures(core: &mut Core, g: Grid, images: &[kui_core::ImageId]) -> usize {
+    let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
+    grid(&mut ui, g);
+    for (i, id) in images.iter().enumerate() {
+        ui.image(
+            *id,
+            NodeSpec::column()
+                .float(kui_core::FloatConfig::parent().offset(20.0 + i as f32 * 60.0, 900.0))
+                .width(Sizing::Fixed(48.0))
+                .height(Sizing::Fixed(48.0)),
+        );
+    }
+    ui.finish();
+    let (dl, _) = core.output();
+    dl.quads.len()
+}
+
+/// `frame_1k_typical` plus eight texture-backed images — registered once
+/// and updated once, so each is its own texture and a side-list entry.
+#[divan::bench]
+fn frame_1k_typical_with_8_textures(bencher: divan::Bencher) {
+    let g = Grid::new(32, 32).text().clicks();
+    let mut core = Core::new();
+    let images: Vec<_> = (0..8)
+        .map(|_| {
+            let id = core.resources.add_image(64, 64, vec![0x80; 64 * 64 * 4]);
+            core.update_image(id, 64, 64, vec![0x90; 64 * 64 * 4]);
+            id
+        })
+        .collect();
+    run_typical_with_textures(&mut core, g, &images);
+    bencher.bench_local(|| run_typical_with_textures(&mut core, g, &images));
+}
+
+/// What replacing a 1080p frame costs the core: the `Vec` handoff and the
+/// revision bump, then the frame that draws it (the pixel `Arc` clone and
+/// the side entry). The app's own copy of the frame is measured beside it
+/// (`copy_1080p_frame`), so the core's share is the difference; the
+/// upload is the backend's and is `benches/split.rs` in kui-wgpu under
+/// `TEX=1`.
+#[divan::bench]
+fn copy_1080p_frame(bencher: divan::Bencher) {
+    let frame = vec![0x40u8; 1920 * 1080 * 4];
+    bencher.bench_local(|| frame.clone());
+}
+
+#[divan::bench]
+fn update_image_1080p_and_frame(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    let (w, h) = (1920u32, 1080u32);
+    let id = core
+        .resources
+        .add_image(w, h, vec![0; (w * h * 4) as usize]);
+    let frame = vec![0x40u8; (w * h * 4) as usize];
+    bencher.bench_local(|| {
+        // The app's frame is a fresh buffer each time, as a decoder's is.
+        core.update_image(id, w, h, frame.clone());
+        let mut ui = core.frame(Size::new(1920.0, 1080.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.image(id, NodeSpec::column().fill());
+        ui.finish();
+        core.output().0.quads.len()
+    });
+}
+
 // -- Clipping ---------------------------------------------------------------
 // A clipping node with a radius rounds what it clips, which is four more
 // floats on `Quad` and a per-corner intersect for every node under a

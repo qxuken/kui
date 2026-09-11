@@ -261,8 +261,8 @@ that are hard to reverse and would look arbitrary without their context.
   simple prop is one row (+ `npm run gen`); the composites (`pad`, `border`,
   overflow, `float`) keep per-binding shapes on purpose. Elements are the
   same set everywhere too: containers, text and rich spans, editors, images,
-  fragments (a box a WGSL function paints),
-  lines (segments, polylines and curves), buttons, titlebar (plain or with
+  fragments (a box a WGSL function paints), polygons (a fill of up to eight
+  points), lines (segments, polylines and curves), buttons, titlebar (plain or with
   custom content), window buttons, latency graph/HUD, and tooltips — Lua
   reaches them through the prelude (`edit`, `line`, `tooltip`,
   `window_buttons`, `latency_hud`, ...), C through `kui_*`
@@ -844,7 +844,20 @@ Images: register RGBA pixels once (`resources.add_image`), then `ui.image(id,
 spec)` draws them through the same atlas page and draw call as glyphs (the
 page doubles up to 4096² when needed). `Fit` takes the pixel size, a `Fit`
 height against a resolved width keeps aspect, and `style.radius` (all four
-corners, or per corner) rounds them.
+corners, or per corner) rounds them. **The image is the canvas**
+([ADR 0025](docs/adr/0025-the-image-is-the-canvas.md)): `update_image(id,
+w, h, rgba)` replaces the pixels in place — a video frame, a camera, a plot
+the app rasterised — and from then on the image draws from a texture of its
+own, as does one too big for a page; `ui.image_with(id, ImageOpts { sampling,
+fit }, spec)` says how the pixels meet the box (`nearest` for pixel art,
+`contain` / `cover` for another aspect), and the `layout` event's `scale`
+says how many pixels to render for it.
+
+Polygons: `ui.polygon(&points, spec)` fills an outline of up to eight points
+with the spec's `bg`, placed like a line — a float in the parent's box space
+— and painted as one `fragment` quad by a stock WGSL source the core
+registers itself, so an arrowhead, a pie wedge or the area under a curve is
+one node ([ADR 0025](docs/adr/0025-the-image-is-the-canvas.md), decision 6).
 
 Lines: `ui.line(from, to, Stroke::new(width, color), spec)` draws a
 round-capped segment, `ui.polyline(&points, stroke, spec)` a polyline, and
@@ -1188,11 +1201,16 @@ are not a paint prop's worth of work — write a fragment, or use an image),
 no inset or
 multiple shadows, and the single shadow is not knocked out of the middle of
 the shape, so a translucent background shows it through. There are **no
-paths, fills, dashes or arrowheads**: a line is segments and nothing else, a
+paths, dashes or arrowhead caps**: a line is segments and nothing else, a
 translucent polyline double-blends where its caps overlap at a join, its
 width does not tween (its colour does), and it takes no pointer input — a
 shape-aware hit test is the same unbuilt change rounded hit-testing below
-waits on, and a `line` that declares one warns. Opacity is a per-quad
+waits on, and a `line` that declares one warns. A fill is a `polygon` of at
+most eight points ([ADR 0025](docs/adr/0025-the-image-is-the-canvas.md)):
+concave is fine, more vertices is two polygons, and a stroked outline is a
+closed line over it. A raster the app made — a frame of video, a plot, a
+page — is an `image` whose pixels it replaces; there is no drawing-command
+canvas and no callback over the GPU. Opacity is a per-quad
 alpha multiply rather than an offscreen composite, so overlapping pieces of one
 faded subtree show their seams. There is no z-index: floats stack in tree order.
 A fragment is one draw call of its own, so a hundred of them is about 0.7% of

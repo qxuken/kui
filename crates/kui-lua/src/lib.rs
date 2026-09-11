@@ -1118,10 +1118,46 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
         }
         "image" => {
             // Handle from the host (kui_image_add / Resources::add_image),
-            // passed to scripts as a plain integer.
+            // passed to scripts as a plain integer. `sampling` and `fit`
+            // are the rows ADR 0025 gives the element, by name.
             let id: i64 = t.get("id")?;
             let spec = parse_props(t, false)?.spec;
-            ui.image(kui_core::ImageId::from_ffi(id as u64), spec);
+            let named = |row: &str, names: &[&str]| -> mlua::Result<usize> {
+                match t.get::<Option<String>>(row)? {
+                    None => Ok(0),
+                    Some(s) => names
+                        .iter()
+                        .position(|n| *n == s)
+                        .ok_or_else(|| bad(format!("{row} must be one of {}", names.join(", ")))),
+                }
+            };
+            let sampling_names: Vec<&str> =
+                kui_core::Sampling::ALL.iter().map(|s| s.name()).collect();
+            let fit_names: Vec<&str> = kui_core::ImageFit::ALL.iter().map(|f| f.name()).collect();
+            let opts = kui_core::ImageOpts {
+                sampling: kui_core::Sampling::ALL[named("sampling", &sampling_names)?],
+                fit: kui_core::ImageFit::ALL[named("fit", &fit_names)?],
+            };
+            ui.image_with(kui_core::ImageId::from_ffi(id as u64), opts, spec);
+            Ok(())
+        }
+        "polygon" => {
+            // `points`, each a `{x, y}` pair; the fill is the `bg` row, read
+            // by parse_props like any node's (ADR 0025, decision 6).
+            let p = parse_props(t, false)?;
+            let Some(list) = t.get::<Option<Table>>("points")? else {
+                return Err(bad("polygon needs points"));
+            };
+            let points: Vec<kui_core::Vec2> = list
+                .sequence_values::<mlua::Value>()
+                .map(|v| {
+                    let mlua::Value::Table(pt) = v? else {
+                        return Err(bad("a polygon point is a {x, y} table"));
+                    };
+                    Ok(kui_core::Vec2::new(pt.get(1)?, pt.get(2)?))
+                })
+                .collect::<mlua::Result<_>>()?;
+            ui.core().open_from(p, Content::Polygon(&points));
             Ok(())
         }
         "fragment" => {

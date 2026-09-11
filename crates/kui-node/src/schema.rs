@@ -175,6 +175,26 @@ pub fn protocol_tables() -> Vec<(&'static str, Json)> {
         // every role a tree can report, every request a node can take,
         // every role a menu row can carry. The generator writes the
         // unions from these, so a list that grows reaches the types.
+        // The two `image` rows' value lists (ADR 0025, decision 4), in the
+        // order the decoder indexes them.
+        (
+            "imageSampling",
+            Json::Array(
+                kui_core::Sampling::ALL
+                    .iter()
+                    .map(|s| Json::String(s.name().into()))
+                    .collect(),
+            ),
+        ),
+        (
+            "imageFit",
+            Json::Array(
+                kui_core::ImageFit::ALL
+                    .iter()
+                    .map(|f| Json::String(f.name().into()))
+                    .collect(),
+            ),
+        ),
         (
             "accessRoles",
             Json::Array(

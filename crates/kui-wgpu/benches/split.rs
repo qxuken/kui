@@ -18,6 +18,10 @@
 //!   FRAG=small cargo bench -p kui-wgpu --bench split   # 8x8: the split alone
 //!   COMPILE=1 cargo bench -p kui-wgpu --bench split    # first-sight cost
 //!   cargo bench -p kui-wgpu --bench split -- 1000      # a 1k-quad frame
+//!   TEX=1 cargo bench -p kui-wgpu --bench split        # ADR 0025: texture-backed
+//!                                                      # images instead of fragments —
+//!                                                      # the split is a group-0 swap
+//!                                                      # under the same pipeline
 
 use std::time::Instant;
 
@@ -142,9 +146,19 @@ fn frag_size() -> (f32, f32) {
 
 fn fragment_instance(i: usize) -> Instance {
     let (fw, fh) = frag_size();
+    // Under `TEX=1` the split quad is an image (kind 3) showing the whole
+    // 1080p texture, so the sampling is paid too.
+    let textures = std::env::var("TEX").is_ok();
     Instance {
         pos: [((i * 137) % 2000) as f32, ((i * 219) % 1200) as f32],
         size: [fw, fh],
+        color: [1.0; 4],
+        params: [0.0, 0.0, if textures { 3.0 } else { 0.0 }, 0.0],
+        uv: if textures {
+            [0.0, 0.0, 1920.0, 1080.0]
+        } else {
+            [0.0; 4]
+        },
         clip: [0.0, 0.0, W as f32, H as f32],
         radii: [8.0; 4],
         ..Default::default()
@@ -210,6 +224,11 @@ struct Bench {
     format: wgpu::TextureFormat,
     bind0: wgpu::BindGroup,
     bind1: wgpu::BindGroup,
+    /// Group 0 with a 1080p texture in the atlas's place (`TEX=1`).
+    bind_tex: wgpu::BindGroup,
+    /// Whether a split quad is a texture run (bind swap) rather than a
+    /// fragment (pipeline swap).
+    textures: bool,
     instance_buf: wgpu::Buffer,
     align: u32,
 }
@@ -314,6 +333,12 @@ impl Bench {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
             ],
         });
         let layout1 = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -384,9 +409,17 @@ impl Bench {
             &vbuf,
         );
 
+        // Under `TEX=1` the "atlas" of the split runs is the 1080p texture,
+        // so the uv divide has to be by its size; the bench has one globals
+        // buffer, and the atlas is never sampled in that mode.
+        let textures = std::env::var("TEX").is_ok();
         let globals = Globals {
             viewport: [W as f32, H as f32],
-            atlas_size: [1024.0, 1024.0],
+            atlas_size: if textures {
+                [1920.0, 1080.0]
+            } else {
+                [1024.0, 1024.0]
+            },
             time: 0.0,
             scale: 1.0,
             _pad: [0.0; 2],
@@ -418,24 +451,75 @@ impl Bench {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        let bind0 = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("kui"),
-            layout: &layout0,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: globals_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&atlas_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
+        let nearest = device.create_sampler(&wgpu::SamplerDescriptor {
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
         });
+        let group0 = |view: &wgpu::TextureView| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("kui"),
+                layout: &layout0,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: globals_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Sampler(&sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::Sampler(&nearest),
+                    },
+                ],
+            })
+        };
+        let bind0 = group0(&atlas_view);
+        // A second texture, the size of a 1080p stream, for the `TEX=1`
+        // mode: the split there is this bind group in place of `bind0`.
+        let stream = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("stream"),
+            size: wgpu::Extent3d {
+                width: 1920,
+                height: 1080,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        // Solid orange, so `verify` can tell the texture was sampled.
+        let orange: Vec<u8> = [0xd8u8, 0x86, 0x3b, 0xff].repeat(1920 * 1080);
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &stream,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &orange,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(1920 * 4),
+                rows_per_image: Some(1080),
+            },
+            wgpu::Extent3d {
+                width: 1920,
+                height: 1080,
+                depth_or_array_layers: 1,
+            },
+        );
+        let stream_view = stream.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_tex = group0(&stream_view);
 
         // One params slot per fragment, padded to the device's alignment.
         let slots = 128u32;
@@ -483,6 +567,8 @@ impl Bench {
             format,
             bind0,
             bind1,
+            bind_tex,
+            textures,
             instance_buf,
             align,
         }
@@ -499,6 +585,14 @@ impl Bench {
                         pass.set_bind_group(0, &self.bind0, &[]);
                         on_quads = true;
                     }
+                    pass.draw(0..6, run.range.clone());
+                }
+                Some(_) if self.textures => {
+                    // ADR 0025, decision 3: the quad pipeline stays, group
+                    // 0 changes to the image's own texture.
+                    pass.set_pipeline(&self.quad_pipeline);
+                    pass.set_bind_group(0, &self.bind_tex, &[]);
+                    on_quads = false;
                     pass.draw(0..6, run.range.clone());
                 }
                 Some(i) => {
@@ -589,6 +683,14 @@ impl Bench {
         let inst = Instance {
             size: [W as f32, H as f32],
             clip: [0.0, 0.0, W as f32, H as f32],
+            // Under `TEX=1`: the whole orange texture as one image quad.
+            color: [1.0; 4],
+            params: [0.0, 0.0, if self.textures { 3.0 } else { 0.0 }, 0.0],
+            uv: if self.textures {
+                [0.0, 0.0, 1920.0, 1080.0]
+            } else {
+                [0.0; 4]
+            },
             ..Default::default()
         };
         self.frame(
@@ -642,6 +744,17 @@ impl Bench {
             (data[o + 2], data[o + 1], data[o])
         };
         let (top, bottom) = (px(W / 2, 2), px(W / 2, H - 3));
+        if self.textures {
+            // Orange, top and bottom: the texture was bound and sampled.
+            for p in [top, bottom] {
+                assert!(
+                    p.0 > 200 && p.1 > 110 && p.1 < 150 && p.2 < 90,
+                    "the texture was not sampled: {p:?}"
+                );
+            }
+            eprintln!("verify: the 1080p texture reads {top:?}, orange");
+            return;
+        }
         assert!(
             top.0 > 200 && top.2 < 90,
             "fragment did not paint the top: {top:?}"
@@ -766,7 +879,12 @@ fn main() {
         .find_map(|s| s.parse().ok())
         .unwrap_or(10_000);
     let (fw, fh) = frag_size();
-    println!("\n{n_quads} quads, {W}x{H}, offscreen; fragment boxes {fw}x{fh}\n");
+    let what = if bench.textures {
+        "texture"
+    } else {
+        "fragment"
+    };
+    println!("\n{n_quads} quads, {W}x{H}, offscreen; {what} boxes {fw}x{fh}\n");
     println!(
         "{:>9} {:>7} {:>10} {:>10} {:>12} {:>12} {:>11}",
         "fragments", "draws", "cpu_best", "cpu_med", "frame_best", "frame_med", "saturated"
