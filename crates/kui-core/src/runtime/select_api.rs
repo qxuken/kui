@@ -73,7 +73,7 @@ impl Core {
         // box, and only a built frame has one. Which is also why this one
         // reads the drawn frame rather than `building` — nothing hit-tests
         // a frame that is still being declared.
-        let i = self.tree.keys.iter().position(|k| *k == key)?;
+        let i = self.tree.index_of(key)?;
         let crate::tree::NodeContent::Cells(id) = self.tree.content[i] else {
             return None;
         };
@@ -332,7 +332,7 @@ impl Core {
         if self.tree.indexed.is_empty() {
             return None;
         }
-        let mut i = self.tree.keys.iter().position(|k| *k == node)?;
+        let mut i = self.tree.index_of(node)?;
         loop {
             if let Some(&(_, row)) = self.tree.indexed.iter().find(|(n, _)| *n as usize == i) {
                 return Some(row);

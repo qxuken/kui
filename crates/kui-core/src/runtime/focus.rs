@@ -22,16 +22,32 @@ impl Core {
         let at = self
             .focus
             .and_then(|cur| ring.iter().position(|(_, k)| *k == cur));
-        let (i, key) = match at {
+        let (i, _) = match at {
             Some(p) if forward => ring[(p + 1) % ring.len()],
             Some(p) => ring[(p + ring.len() - 1) % ring.len()],
             None if forward => ring[0],
             None => ring[ring.len() - 1],
         };
-        self.set_focus(Some(key));
+        self.land_focus(i);
+    }
+
+    /// Puts keyboard focus on node `i` of the last frame the way a Tab
+    /// step does: shown, and scrolled into view.
+    pub(crate) fn land_focus(&mut self, i: usize) {
+        self.set_focus(Some(self.tree.keys[i]));
         self.focus_visible = true;
         let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
         self.scroll_rect_into_view(i, rect, false);
+    }
+
+    /// Where a ring is entered with nothing remembered: its
+    /// `initial_focus`, else its first stop — the rule a modal and a
+    /// region both enter by.
+    fn ring_entry(&self, ring: &[(usize, Key)]) -> Option<Key> {
+        ring.iter()
+            .find(|(i, _)| self.tree.specs[*i].initial_focus)
+            .or_else(|| ring.first())
+            .map(|(_, k)| *k)
     }
 
     /// The Tab ring: (tree index, key) of every focusable node of the
@@ -188,7 +204,7 @@ impl Core {
             return;
         }
         self.region = key
-            .and_then(|k| self.tree.keys.iter().position(|x| *x == k))
+            .and_then(|k| self.tree.index_of(k))
             .and_then(|i| self.region_of(i));
         // The press may have focused a sink outside this region (ADR 0011
         // gives dead space to the enclosing sink); the settle holds over
@@ -219,7 +235,7 @@ impl Core {
     /// still inside the region.
     fn remembered_region_focus(&self, region: Option<Key>) -> Option<Key> {
         let saved = self.region_focus.iter().find(|(r, _)| *r == region)?.1?;
-        let i = self.tree.keys.iter().position(|k| *k == saved)?;
+        let i = self.tree.index_of(saved)?;
         (self.region_of(i) == region).then_some(saved)
     }
 
@@ -230,10 +246,7 @@ impl Core {
         self.region = region;
         let ring = self.focus_ring();
         self.region = before;
-        ring.iter()
-            .find(|(i, _)| self.tree.specs[*i].initial_focus)
-            .or_else(|| ring.first())
-            .map(|(_, k)| *k)
+        self.ring_entry(&ring)
     }
 
     /// The regions' half of the frame's focus bookkeeping, run after the
@@ -272,7 +285,7 @@ impl Core {
                         .raise(crate::diag::ambiguous_key(label, first, hits.len()));
                 }
                 hits.first()
-                    .and_then(|k| self.tree.keys.iter().position(|x| x == k))
+                    .and_then(|k| self.tree.index_of(*k))
                     .filter(|&i| self.tree.any_region && self.tree.specs[i].interact().focus_region)
                     .map(|i| Some(self.tree.keys[i]))
             }
@@ -299,11 +312,12 @@ impl Core {
             .remembered_region_focus(region)
             .or_else(|| self.region_entry(region));
         self.region = region;
-        self.set_focus(landing);
-        self.focus_visible = true;
-        if let Some(i) = self.focus_index() {
-            let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
-            self.scroll_rect_into_view(i, rect, false);
+        match landing.and_then(|k| self.tree.index_of(k)) {
+            Some(i) => self.land_focus(i),
+            None => {
+                self.set_focus(landing);
+                self.focus_visible = true;
+            }
         }
     }
 
@@ -453,11 +467,7 @@ impl Core {
         // focus where it handed it back.
         if self.modal.is_some() && !self.focus.is_some_and(|k| self.within_modal(k)) {
             let ring = self.focus_ring();
-            let entry = ring
-                .iter()
-                .find(|(i, _)| self.tree.specs[*i].initial_focus)
-                .or_else(|| ring.first())
-                .map(|(_, k)| *k);
+            let entry = self.ring_entry(&ring);
             self.set_focus(entry);
         }
     }
@@ -477,7 +487,7 @@ impl Core {
     /// An editor or a nested sink is its own keyboard owner and still
     /// takes focus (the editor through the caret arm above).
     pub(crate) fn press_focus(&self, key: Key, focusable: bool) -> Option<Key> {
-        let Some(i) = self.tree.keys.iter().position(|k| *k == key) else {
+        let Some(i) = self.tree.index_of(key) else {
             return focusable.then_some(key);
         };
         // Window chrome belongs to the platform, not to the app (decision
@@ -523,8 +533,7 @@ impl Core {
 
     /// The focused node's index in the last frame, if it is there.
     pub(crate) fn focus_index(&self) -> Option<usize> {
-        let key = self.focus?;
-        self.tree.keys.iter().position(|k| *k == key)
+        self.tree.index_of(self.focus?)
     }
 
     /// Whether `key` holds keyboard focus — any node (see `focus`).
@@ -569,7 +578,7 @@ impl Core {
         }
         if self.tree.any_region
             && let Some(k) = key
-            && let Some(i) = self.tree.keys.iter().position(|x| *x == k)
+            && let Some(i) = self.tree.index_of(k)
         {
             let region = self.region_of(i);
             if region != self.region {

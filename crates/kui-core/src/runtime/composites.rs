@@ -47,9 +47,7 @@ impl Core {
             // shows, but nothing moved and nothing is activated again.
             return;
         }
-        self.set_focus(Some(self.tree.keys[j]));
-        let rect = Rect::from_pos_size(self.tree.pos[j], self.tree.size[j]);
-        self.scroll_rect_into_view(j, rect, false);
+        self.land_focus(j);
         // `radio` and `tab` define selection as following focus, and the
         // event is the one Enter already emits — so an app that handles
         // clicks on its tabs handles arrows on them with no new code.
@@ -273,18 +271,13 @@ impl Core {
         if self.tree.specs[i].disabled {
             return;
         }
-        let mut entries = vec![
-            ("kind".to_string(), Value::str("access")),
-            ("action".to_string(), Value::str(action.name())),
-        ];
-        if let Some(tag) = self.access_tag(i) {
-            entries.push(("tag".to_string(), tag));
-        }
-        out.push(UiEvent {
-            origin: self.tree.origins[i],
-            window: WindowId::MAIN,
-            key: self.tree.keys[i],
-            payload: Value::Map(entries),
-        });
+        let payload = Value::map([
+            ("kind", Value::str("access")),
+            ("action", Value::str(action.name())),
+        ]);
+        out.push(
+            UiEvent::on(self.tree.origins[i], self.tree.keys[i], payload)
+                .tagged(self.access_tag(i).as_ref()),
+        );
     }
 }

@@ -399,6 +399,27 @@ pub fn protocol_tables() -> Vec<(&'static str, Json)> {
                     .collect(),
             ),
         ),
+        // And the two `ctx.key` / `ctx.mouse` spellings, for the same
+        // reason: `EditKeyName` was the last hand-written union.
+        (
+            "editKeys",
+            Json::Array(
+                kui_core::EditKey::ALL
+                    .iter()
+                    .map(|k| Json::String(k.name().into()))
+                    .collect(),
+            ),
+        ),
+        (
+            "mouseButtons",
+            Json::Array(
+                kui_core::MouseButton::NAMED
+                    .iter()
+                    .filter_map(|b| b.name())
+                    .map(|n| Json::String(n.into()))
+                    .collect(),
+            ),
+        ),
         // The env reading, with the per-binding key paths as arrays: the
         // docs generator lays them out, and test.mjs reads `node` back to
         // check `ctx.env()` against it key for key.

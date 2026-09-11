@@ -6,18 +6,29 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Key(pub u64);
 
-const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+/// The FNV-1a basis every hash in the core starts from — keys, the text
+/// cache's identities, the access tree's digest, the corpus digest.
+pub const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+pub const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+/// FNV-1a over `bytes`, continuing from `h`. The one spelling of the
+/// mixer: a digest that must stay bit-stable across versions (the text
+/// cache key, the access tree's change detector) is stable because it is
+/// this function and nothing else.
+#[inline]
+pub fn fnv(mut h: u64, bytes: &[u8]) -> u64 {
+    for &b in bytes {
+        h ^= b as u64;
+        h = h.wrapping_mul(FNV_PRIME);
+    }
+    h
+}
 
 impl Key {
     pub const ROOT: Key = Key(FNV_OFFSET);
 
-    fn mix_bytes(mut h: u64, bytes: &[u8]) -> u64 {
-        for &b in bytes {
-            h ^= b as u64;
-            h = h.wrapping_mul(FNV_PRIME);
-        }
-        h
+    fn mix_bytes(h: u64, bytes: &[u8]) -> u64 {
+        fnv(h, bytes)
     }
 
     /// Child key derived from a string label.

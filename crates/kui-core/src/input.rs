@@ -141,16 +141,29 @@ impl MouseButton {
         }
     }
 
-    /// The three named buttons by name, for bindings that spell them as
-    /// strings (`"primary"`, `"secondary"`, `"middle"`). `Other` has no
+    /// The three buttons that have a name, in code order. `Other` has no
     /// name: a binding that needs one takes a [`MouseButton::code`].
-    pub fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "primary" => Some(MouseButton::Primary),
-            "secondary" => Some(MouseButton::Secondary),
-            "middle" => Some(MouseButton::Middle),
-            _ => None,
+    pub const NAMED: [MouseButton; 3] = [
+        MouseButton::Primary,
+        MouseButton::Secondary,
+        MouseButton::Middle,
+    ];
+
+    /// The wire name of a named button (`"primary"`, `"secondary"`,
+    /// `"middle"`); `None` for an `Other`.
+    pub fn name(self) -> Option<&'static str> {
+        match self {
+            MouseButton::Primary => Some("primary"),
+            MouseButton::Secondary => Some("secondary"),
+            MouseButton::Middle => Some("middle"),
+            MouseButton::Other(_) => None,
         }
+    }
+
+    /// The three named buttons by name, for bindings that spell them as
+    /// strings: the inverse of [`Self::name`].
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::NAMED.into_iter().find(|b| b.name() == Some(name))
     }
 }
 
@@ -194,6 +207,59 @@ pub enum EditKey {
     Undo,
     Redo,
     Escape,
+}
+
+impl EditKey {
+    /// Every editing key, in declaration order — the list a binding's
+    /// name table and a generated type union are checked against, so a
+    /// key added here reaches C, Node and TypeScript or fails a build
+    /// (ADR 0020, decision 9, the same way `Role::ALL` did).
+    pub const ALL: [EditKey; 16] = [
+        EditKey::Left,
+        EditKey::Right,
+        EditKey::Up,
+        EditKey::Down,
+        EditKey::Home,
+        EditKey::End,
+        EditKey::PageUp,
+        EditKey::PageDown,
+        EditKey::Backspace,
+        EditKey::Delete,
+        EditKey::Enter,
+        EditKey::Tab,
+        EditKey::SelectAll,
+        EditKey::Undo,
+        EditKey::Redo,
+        EditKey::Escape,
+    ];
+
+    /// The wire name a binding spells the key as (`"pageup"`,
+    /// `"selectall"`: lower case, no separator).
+    pub fn name(self) -> &'static str {
+        match self {
+            EditKey::Left => "left",
+            EditKey::Right => "right",
+            EditKey::Up => "up",
+            EditKey::Down => "down",
+            EditKey::Home => "home",
+            EditKey::End => "end",
+            EditKey::PageUp => "pageup",
+            EditKey::PageDown => "pagedown",
+            EditKey::Backspace => "backspace",
+            EditKey::Delete => "delete",
+            EditKey::Enter => "enter",
+            EditKey::Tab => "tab",
+            EditKey::SelectAll => "selectall",
+            EditKey::Undo => "undo",
+            EditKey::Redo => "redo",
+            EditKey::Escape => "escape",
+        }
+    }
+
+    /// The key a wire name spells: the inverse of [`Self::name`].
+    pub fn from_name(name: &str) -> Option<EditKey> {
+        Self::ALL.into_iter().find(|k| k.name() == name)
+    }
 }
 
 /// Modifier state for editing keys. `word` is Alt/Option (word-wise motion),
@@ -562,6 +628,32 @@ pub struct UiEvent {
     pub payload: Value,
 }
 
+impl UiEvent {
+    /// An event as a producer builds it: the window is left [`WindowId::MAIN`]
+    /// for the core to stamp on the way out (see [`UiEvent::window`]).
+    pub fn on(origin: OriginId, key: Key, payload: Value) -> Self {
+        Self {
+            origin,
+            window: WindowId::MAIN,
+            key,
+            payload,
+        }
+    }
+
+    /// Merges the node's tag into a map payload. A `Null` tag declares the
+    /// behaviour and names nothing, so it is the one value left out — the
+    /// rule every row with a tag reads by, stated once.
+    pub fn tagged(mut self, tag: Option<&Value>) -> Self {
+        if let Some(tag) = tag
+            && *tag != Value::Null
+            && let Value::Map(entries) = &mut self.payload
+        {
+            entries.push(("tag".to_string(), tag.clone()));
+        }
+        self
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct HitRegion {
     pub key: Key,
@@ -852,38 +944,18 @@ impl Interaction {
 
     fn hover_event(region: &HitRegion, phase: &str) -> Option<UiEvent> {
         let tag = region.hover.as_ref()?;
-        let mut payload = Value::map([("kind", Value::str("hover")), ("phase", Value::str(phase))]);
-        if *tag != Value::Null
-            && let Value::Map(entries) = &mut payload
-        {
-            entries.push(("tag".to_string(), tag.clone()));
-        }
-        Some(UiEvent {
-            origin: region.origin,
-            window: WindowId::MAIN,
-            key: region.key,
-            payload,
-        })
+        let payload = Value::map([("kind", Value::str("hover")), ("phase", Value::str(phase))]);
+        Some(UiEvent::on(region.origin, region.key, payload).tagged(Some(tag)))
     }
 
     fn context_menu_event(region: &HitRegion, p: Vec2) -> Option<UiEvent> {
         let tag = region.context_menu.as_ref()?;
-        let mut payload = Value::map([
+        let payload = Value::map([
             ("kind", Value::str("contextmenu")),
             ("x", Value::Float(p.x as f64)),
             ("y", Value::Float(p.y as f64)),
         ]);
-        if *tag != Value::Null
-            && let Value::Map(entries) = &mut payload
-        {
-            entries.push(("tag".to_string(), tag.clone()));
-        }
-        Some(UiEvent {
-            origin: region.origin,
-            window: WindowId::MAIN,
-            key: region.key,
-            payload,
-        })
+        Some(UiEvent::on(region.origin, region.key, payload).tagged(Some(tag)))
     }
 
     /// What is under `p`, by the paint order and nothing else: the topmost
@@ -917,7 +989,7 @@ impl Interaction {
 
     fn drag_event(state: &DragState, phase: &str, p: Vec2, d: Vec2) -> UiEvent {
         let pr = state.parent_rect;
-        let mut payload = Value::map([
+        let payload = Value::map([
             ("kind", Value::str("drag")),
             ("phase", Value::str(phase)),
             ("x", Value::Float(p.x as f64)),
@@ -934,17 +1006,7 @@ impl Interaction {
                 ]),
             ),
         ]);
-        if state.tag != Value::Null
-            && let Value::Map(entries) = &mut payload
-        {
-            entries.push(("tag".to_string(), state.tag.clone()));
-        }
-        UiEvent {
-            origin: state.origin,
-            window: WindowId::MAIN,
-            key: state.key,
-            payload,
-        }
+        UiEvent::on(state.origin, state.key, payload).tagged(Some(&state.tag))
     }
 
     pub fn handle(&mut self, ev: InputEvent, out: &mut Vec<UiEvent>) {

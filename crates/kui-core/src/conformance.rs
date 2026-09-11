@@ -3247,14 +3247,11 @@ pub struct NodeRow {
 /// adapter hashes the same words, so a geometry difference is one
 /// mismatched hex string, and a mirror of `KuiQuad` that missed a field
 /// mismatches on every scene rather than on none.
-pub const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-pub const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+pub const FNV_OFFSET: u64 = crate::key::FNV_OFFSET;
+pub const FNV_PRIME: u64 = crate::key::FNV_PRIME;
 
 fn mix(h: &mut u64, word: u32) {
-    for b in word.to_le_bytes() {
-        *h ^= b as u64;
-        *h = h.wrapping_mul(FNV_PRIME);
-    }
+    *h = crate::key::fnv(*h, &word.to_le_bytes());
 }
 
 /// The clip is digested resolved rather than as the index it now rides as

@@ -1453,13 +1453,8 @@ pub(crate) fn runs_of_buffer(
 }
 
 fn hash_of(tree: &AccessTree) -> u64 {
-    let mut h = 0xcbf2_9ce4_8422_2325u64;
-    let mut mix = |bytes: &[u8]| {
-        for &b in bytes {
-            h ^= b as u64;
-            h = h.wrapping_mul(0x0000_0100_0000_01b3);
-        }
-    };
+    let mut h = crate::key::FNV_OFFSET;
+    let mut mix = |bytes: &[u8]| h = crate::key::fnv(h, bytes);
     let mix_str = |mix: &mut dyn FnMut(&[u8]), s: &Option<String>| match s {
         Some(s) => {
             mix(&[1]);

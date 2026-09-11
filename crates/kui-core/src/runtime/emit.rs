@@ -1252,23 +1252,16 @@ impl Core {
                     ("h", Value::Float(r.h as f64)),
                 ])
             };
-            let mut entries = vec![
-                ("kind".to_string(), Value::str("layout")),
-                ("x".to_string(), Value::Float(rect.x as f64)),
-                ("y".to_string(), Value::Float(rect.y as f64)),
-                ("w".to_string(), Value::Float(rect.w as f64)),
-                ("h".to_string(), Value::Float(rect.h as f64)),
-                ("parent".to_string(), rect_value(parent_rect)),
-            ];
-            if *tag != Value::Null {
-                entries.push(("tag".to_string(), tag.clone()));
-            }
-            self.pending.push(UiEvent {
-                origin: self.tree.origins[i],
-                window: WindowId::MAIN,
-                key,
-                payload: Value::Map(entries),
-            });
+            let payload = Value::map([
+                ("kind", Value::str("layout")),
+                ("x", Value::Float(rect.x as f64)),
+                ("y", Value::Float(rect.y as f64)),
+                ("w", Value::Float(rect.w as f64)),
+                ("h", Value::Float(rect.h as f64)),
+                ("parent", rect_value(parent_rect)),
+            ]);
+            self.pending
+                .push(UiEvent::on(self.tree.origins[i], key, payload).tagged(Some(tag)));
         }
     }
 
@@ -1346,60 +1339,29 @@ impl Core {
                 }
                 opacity *= shown as f32;
             }
-            if max.y > 0.0 {
-                let track_h = r.rect.h - 2.0 * SCROLLBAR_INSET;
-                let bar_h = (track_h * r.rect.h / (r.rect.h + max.y)).max(SCROLLBAR_MIN);
-                let t = (offset.y / max.y).clamp(0.0, 1.0);
-                let track = track_y;
-                let active = self.interaction.is_scrollbar_dragging(r.key, ScrollAxis::Y)
+            for (axis, track) in [(ScrollAxis::Y, track_y), (ScrollAxis::X, track_x)] {
+                let (max_a, offset_a) = match axis {
+                    ScrollAxis::Y => (max.y, offset.y),
+                    ScrollAxis::X => (max.x, offset.x),
+                };
+                if max_a <= 0.0 {
+                    continue;
+                }
+                let active = self.interaction.is_scrollbar_dragging(r.key, axis)
                     || cursor.is_some_and(|p| track.contains(p));
                 let w = if active { active_w } else { rest_w };
-                let thumb = Rect::new(
-                    r.rect.x + r.rect.w - w - SCROLLBAR_INSET,
-                    r.rect.y + SCROLLBAR_INSET + t * (track_h - bar_h),
-                    w,
-                    bar_h,
-                );
+                let (thumb, bar_len) = thumb_along(axis, r.rect, track, max_a, offset_a, w);
                 let mut bar =
                     scrollbar_quad(thumb, scale, clip_id, self.thumb_color(&style, active));
                 bar.color.a *= opacity;
                 self.display.quads.push(bar);
                 scrollbars.push(ScrollbarRegion {
                     key: r.key,
-                    axis: ScrollAxis::Y,
+                    axis,
                     thumb,
                     track,
-                    bar_len: bar_h,
-                    max: max.y,
-                    inert: r.inert,
-                    above,
-                });
-            }
-            if max.x > 0.0 {
-                let track_w = r.rect.w - 2.0 * SCROLLBAR_INSET;
-                let bar_w = (track_w * r.rect.w / (r.rect.w + max.x)).max(SCROLLBAR_MIN);
-                let t = (offset.x / max.x).clamp(0.0, 1.0);
-                let track = track_x;
-                let active = self.interaction.is_scrollbar_dragging(r.key, ScrollAxis::X)
-                    || cursor.is_some_and(|p| track.contains(p));
-                let w = if active { active_w } else { rest_w };
-                let thumb = Rect::new(
-                    r.rect.x + SCROLLBAR_INSET + t * (track_w - bar_w),
-                    r.rect.y + r.rect.h - w - SCROLLBAR_INSET,
-                    bar_w,
-                    w,
-                );
-                let mut bar =
-                    scrollbar_quad(thumb, scale, clip_id, self.thumb_color(&style, active));
-                bar.color.a *= opacity;
-                self.display.quads.push(bar);
-                scrollbars.push(ScrollbarRegion {
-                    key: r.key,
-                    axis: ScrollAxis::X,
-                    thumb,
-                    track,
-                    bar_len: bar_w,
-                    max: max.x,
+                    bar_len,
+                    max: max_a,
                     inert: r.inert,
                     above,
                 });
@@ -1828,6 +1790,45 @@ fn fade(quads: &mut [Quad], opacity: f32) {
     for q in quads {
         q.color.a *= opacity;
         q.border_color.a *= opacity;
+    }
+}
+
+/// The thumb of a scrollbar along `axis`, inset from the far edge of the
+/// scroller's `rect`, `w` thick, and its length along the track: the
+/// track's share of the content that is visible, never shorter than
+/// `SCROLLBAR_MIN`, placed by how far the content has scrolled. One
+/// geometry for both bars — the Y bar and the X bar were the same thirty
+/// lines with the axes swapped.
+fn thumb_along(
+    axis: ScrollAxis,
+    rect: Rect,
+    track: Rect,
+    max: f32,
+    offset: f32,
+    w: f32,
+) -> (Rect, f32) {
+    let t = (offset / max).clamp(0.0, 1.0);
+    match axis {
+        ScrollAxis::Y => {
+            let bar = (track.h * rect.h / (rect.h + max)).max(SCROLLBAR_MIN);
+            let thumb = Rect::new(
+                rect.x + rect.w - w - SCROLLBAR_INSET,
+                track.y + t * (track.h - bar),
+                w,
+                bar,
+            );
+            (thumb, bar)
+        }
+        ScrollAxis::X => {
+            let bar = (track.w * rect.w / (rect.w + max)).max(SCROLLBAR_MIN);
+            let thumb = Rect::new(
+                track.x + t * (track.w - bar),
+                rect.y + rect.h - w - SCROLLBAR_INSET,
+                bar,
+                w,
+            );
+            (thumb, bar)
+        }
     }
 }
 

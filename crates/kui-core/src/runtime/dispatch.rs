@@ -56,7 +56,7 @@ impl Core {
             return;
         }
         for ev in out.iter_mut() {
-            let Some(i) = self.tree.keys.iter().position(|k| *k == ev.key) else {
+            let Some(i) = self.tree.index_of(ev.key) else {
                 continue;
             };
             let NodeContent::Cells(id) = self.tree.content[i] else {
@@ -660,22 +660,12 @@ impl Core {
         }
         // Not text: the node's own event, if it asked for one.
         let Some(tag) = tag else { return };
-        let mut payload = Value::map([
+        let payload = Value::map([
             ("kind", Value::str("forceclick")),
             ("x", Value::Float(p.x as f64)),
             ("y", Value::Float(p.y as f64)),
         ]);
-        if tag != Value::Null
-            && let Value::Map(entries) = &mut payload
-        {
-            entries.push(("tag".to_string(), tag));
-        }
-        out.push(UiEvent {
-            origin,
-            window: WindowId::MAIN,
-            key,
-            payload,
-        });
+        out.push(UiEvent::on(origin, key, payload).tagged(Some(&tag)));
     }
 
     /// Resolves a request from assistive technology against the last
@@ -684,7 +674,7 @@ impl Core {
     fn handle_access(&mut self, req: crate::access::AccessRequest, out: &mut Vec<UiEvent>) {
         use crate::access::AccessAction;
         let key = req.key;
-        let idx = self.tree.keys.iter().position(|k| *k == key);
+        let idx = self.tree.index_of(key);
         match req.action {
             AccessAction::Click => self.click_node(key, out),
             AccessAction::Focus => {
@@ -712,23 +702,15 @@ impl Core {
                     && crate::access::is_custom_editor(&self.tree, i)
                 {
                     // The app owns the text: hand the request over as data.
-                    let mut entries = vec![
-                        ("kind".to_string(), Value::str("access")),
-                        ("action".to_string(), Value::str(req.action.name())),
-                        (
-                            "text".to_string(),
-                            Value::str(req.value.unwrap_or_default()),
-                        ),
-                    ];
-                    if let Some(tag) = self.access_tag(i) {
-                        entries.push(("tag".to_string(), tag));
-                    }
-                    out.push(UiEvent {
-                        origin: self.tree.origins[i],
-                        window: WindowId::MAIN,
-                        key,
-                        payload: Value::Map(entries),
-                    });
+                    let payload = Value::map([
+                        ("kind", Value::str("access")),
+                        ("action", Value::str(req.action.name())),
+                        ("text", Value::str(req.value.unwrap_or_default())),
+                    ]);
+                    out.push(
+                        UiEvent::on(self.tree.origins[i], key, payload)
+                            .tagged(self.access_tag(i).as_ref()),
+                    );
                 }
             }
             AccessAction::Increment | AccessAction::Decrement => {
@@ -796,15 +778,10 @@ impl Core {
                         .clone()
                         .or_else(|| ev.on_drag.clone())
                         .or_else(|| ev.on_key.clone());
-                    if let Some(tag) = tag.filter(|t| *t != Value::Null) {
-                        entries.push(("tag".to_string(), tag));
-                    }
-                    out.push(UiEvent {
-                        origin: self.tree.origins[i],
-                        window: WindowId::MAIN,
-                        key,
-                        payload: Value::Map(entries),
-                    });
+                    out.push(
+                        UiEvent::on(self.tree.origins[i], key, Value::Map(entries))
+                            .tagged(tag.as_ref()),
+                    );
                 }
             }
             AccessAction::ScrollIntoView => {
@@ -893,35 +870,34 @@ impl Core {
         else {
             return false;
         };
-        let Some(h) = self
-            .interaction
-            .hits
-            .iter()
-            .rev()
-            .find(|h| h.key == target && h.key_sink.is_some())
-        else {
-            return false;
-        };
         // A sink hears releases only by asking (`key_up`): press-only is
         // the keymap case, and a keymap handed both halves runs every
         // binding twice. The key is still tracked as held either way, so
         // a sink that opts in mid-hold hears the release it is owed.
-        if phase == KeyPhase::Up && !h.key_up {
+        if phase == KeyPhase::Up && !self.sink_region(target).is_some_and(|h| h.key_up) {
             return false;
         }
-        let mut payload = kp.to_value(phase);
-        if let Some(tag) = &h.key_sink
-            && *tag != Value::Null
-            && let Value::Map(entries) = &mut payload
-        {
-            entries.push(("tag".to_string(), tag.clone()));
-        }
-        out.push(UiEvent {
-            origin: h.origin,
-            window: WindowId::MAIN,
-            key: h.key,
-            payload,
-        });
+        self.deliver_to_sink(target, kp.to_value(phase), out)
+    }
+
+    /// The hit region of the sink `key` names — a node with `on_key` that
+    /// the last frame tracked.
+    fn sink_region(&self, key: Key) -> Option<&HitRegion> {
+        self.interaction
+            .hits
+            .iter()
+            .rev()
+            .find(|h| h.key == key && h.key_sink.is_some())
+    }
+
+    /// Hands `payload` to the sink `target` names with the sink's tag
+    /// merged in — the one delivery both key channels end in. False when
+    /// the last frame tracked no such sink.
+    fn deliver_to_sink(&self, target: Key, payload: Value, out: &mut Vec<UiEvent>) -> bool {
+        let Some(h) = self.sink_region(target) else {
+            return false;
+        };
+        out.push(UiEvent::on(h.origin, h.key, payload).tagged(h.key_sink.as_ref()));
         true
     }
 
@@ -930,7 +906,7 @@ impl Core {
     /// with the sink's tag merged in, the way a `key` event is. A
     /// composition is never a control's to claim, so unlike `route_key`
     /// nothing is asked about the key. False with no sink to hear it.
-    fn sink_event(&mut self, mut payload: Value, out: &mut Vec<UiEvent>) -> bool {
+    fn sink_event(&mut self, payload: Value, out: &mut Vec<UiEvent>) -> bool {
         let Some(i) = self.focus_index() else {
             return false;
         };
@@ -942,28 +918,7 @@ impl Core {
                 None => return false,
             }
         };
-        let Some(h) = self
-            .interaction
-            .hits
-            .iter()
-            .rev()
-            .find(|h| h.key == target && h.key_sink.is_some())
-        else {
-            return false;
-        };
-        if let Some(tag) = &h.key_sink
-            && *tag != Value::Null
-            && let Value::Map(entries) = &mut payload
-        {
-            entries.push(("tag".to_string(), tag.clone()));
-        }
-        out.push(UiEvent {
-            origin: h.origin,
-            window: WindowId::MAIN,
-            key: h.key,
-            payload,
-        });
-        true
+        self.deliver_to_sink(target, payload, out)
     }
 
     /// Lets go of every key the focused sink is holding, as if the user
@@ -1150,27 +1105,17 @@ impl Core {
     /// node; what happens next is the app's, since only it can stop
     /// declaring the node (see `docs/adr/0003-modal-surfaces.md`).
     fn dismiss(&mut self, key: Key, reason: &str, out: &mut Vec<UiEvent>) {
-        let Some(i) = self.tree.keys.iter().position(|k| *k == key) else {
+        let Some(i) = self.tree.index_of(key) else {
             return;
         };
-        let mut entries = vec![
-            ("kind".to_string(), Value::str("dismiss")),
-            ("reason".to_string(), Value::str(reason)),
-        ];
-        if let Some(tag) = self.tree.specs[i]
-            .events()
-            .modal
-            .clone()
-            .filter(|t| *t != Value::Null)
-        {
-            entries.push(("tag".to_string(), tag));
-        }
-        out.push(UiEvent {
-            origin: self.tree.origins[i],
-            window: WindowId::MAIN,
-            key,
-            payload: Value::Map(entries),
-        });
+        let payload = Value::map([
+            ("kind", Value::str("dismiss")),
+            ("reason", Value::str(reason)),
+        ]);
+        out.push(
+            UiEvent::on(self.tree.origins[i], key, payload)
+                .tagged(self.tree.specs[i].events().modal.as_ref()),
+        );
     }
 
     fn push_edit_event(&self, key: Key, kind: &str, out: &mut Vec<UiEvent>) {

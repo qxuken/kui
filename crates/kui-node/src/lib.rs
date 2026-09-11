@@ -493,25 +493,7 @@ fn system_env(sys: &mut SystemEnv, o: &JsonMap<String, Json>) -> Result<()> {
 }
 
 fn edit_key_of(name: &str) -> Result<EditKey> {
-    Ok(match name {
-        "left" => EditKey::Left,
-        "right" => EditKey::Right,
-        "up" => EditKey::Up,
-        "down" => EditKey::Down,
-        "home" => EditKey::Home,
-        "end" => EditKey::End,
-        "pageup" => EditKey::PageUp,
-        "pagedown" => EditKey::PageDown,
-        "backspace" => EditKey::Backspace,
-        "delete" => EditKey::Delete,
-        "enter" => EditKey::Enter,
-        "tab" => EditKey::Tab,
-        "selectall" => EditKey::SelectAll,
-        "escape" => EditKey::Escape,
-        "undo" => EditKey::Undo,
-        "redo" => EditKey::Redo,
-        other => return Err(err(format!("unknown key {other:?}"))),
-    })
+    EditKey::from_name(name).ok_or_else(|| err(format!("unknown key {name:?}")))
 }
 
 /// A headless kui core: build frames from JSX trees, feed input, poll events.

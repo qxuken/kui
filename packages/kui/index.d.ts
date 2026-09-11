@@ -1201,13 +1201,17 @@ export interface KeySinkMods {
   super?: boolean;
 }
 
-export type MouseButtonName = 'primary' | 'secondary' | 'middle';
+// -- generated from the core's input lists; edit EditKey::ALL / MouseButton::NAMED in crates/kui-core/src/input.rs, then `npm run gen` --
+/** The buttons `ctx.mouse` takes by name; anything else is a code. */
+export type MouseButtonName =
+  | 'primary' | 'secondary' | 'middle';
 
+/** The editing keys `ctx.key` takes, the spelling the corpus steps use. */
 export type EditKeyName =
-  | 'left' | 'right' | 'up' | 'down'
-  | 'home' | 'end' | 'pageup' | 'pagedown'
-  | 'backspace' | 'delete' | 'enter' | 'tab'
-  | 'selectall' | 'escape' | 'undo' | 'redo';
+  | 'left' | 'right' | 'up' | 'down' | 'home' | 'end' | 'pageup' | 'pagedown'
+  | 'backspace' | 'delete' | 'enter' | 'tab' | 'selectall' | 'undo' | 'redo'
+  | 'escape';
+// -- end generated --
 
 /** A scroll container's retained offset, in logical px: positive means the
  *  content has moved up / left inside it. */

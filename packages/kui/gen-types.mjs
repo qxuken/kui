@@ -42,8 +42,10 @@ try {
 }
 
 const native = createRequire(import.meta.url)('./native.cjs');
-const { prop, elements, events, resources, warnings, env, theme, accessRoles, accessActions, menuRoles } =
-  native.protocol();
+const {
+  prop, elements, events, resources, warnings, env, theme,
+  accessRoles, accessActions, menuRoles, editKeys, mouseButtons,
+} = native.protocol();
 
 const TS_BY_KIND = {
   f32: 'number',
@@ -357,6 +359,22 @@ const accessRe = /\/\/ -- generated from the core's access lists[\s\S]*?\/\/ -- 
 if (!accessRe.test(indexSrc)) throw new Error('access-list markers not found in index.d.ts');
 indexSrc = indexSrc.replace(accessRe, accessBlock);
 console.log(`index.d.ts: ${accessRoles.length} access roles, ${accessActions.length} access actions generated`);
+
+const inputBlock = [
+  "// -- generated from the core's input lists; edit EditKey::ALL / MouseButton::NAMED in crates/kui-core/src/input.rs, then `npm run gen` --",
+  '/** The buttons `ctx.mouse` takes by name; anything else is a code. */',
+  `export type MouseButtonName =
+${union(mouseButtons)};`,
+  '',
+  '/** The editing keys `ctx.key` takes, the spelling the corpus steps use. */',
+  `export type EditKeyName =
+${union(editKeys)};`,
+  '// -- end generated --',
+].join('\n');
+const inputRe = /\/\/ -- generated from the core's input lists[\s\S]*?\/\/ -- end generated --/;
+if (!inputRe.test(indexSrc)) throw new Error('input-list markers not found in index.d.ts');
+indexSrc = indexSrc.replace(inputRe, inputBlock);
+console.log(`index.d.ts: ${editKeys.length} edit keys, ${mouseButtons.length} mouse buttons generated`);
 
 const menuBlock = [
   "// -- generated from the core's menu roles; edit MenuRole::ALL in crates/kui-core/src/menu.rs, then `npm run gen` --",

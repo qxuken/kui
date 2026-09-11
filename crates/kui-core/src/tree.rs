@@ -158,6 +158,13 @@ impl Tree {
         self.keys.is_empty()
     }
 
+    /// The index of the node `key` names in this frame, if it is here. A
+    /// linear scan: the one place to swap it for a map if a profile asks.
+    #[inline]
+    pub fn index_of(&self, key: Key) -> Option<usize> {
+        self.keys.iter().position(|k| *k == key)
+    }
+
     /// Clears contents but keeps allocations for the next frame.
     pub fn clear(&mut self) {
         self.keys.clear();

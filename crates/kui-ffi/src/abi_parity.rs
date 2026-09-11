@@ -1372,6 +1372,27 @@ fn writes_the_c_abi_asserts() {
     std::fs::write(&path, text).expect("write kui-abi-assert.c");
 }
 
+/// `KUI_EDIT_KEYS` restates `EditKey` in the header's order, which is not
+/// the enum's: so the table is checked against `EditKey::ALL` both ways —
+/// every key has a C name, no C name is a key twice — and a variant added
+/// to the enum fails here until the header gets its constant.
+#[test]
+fn every_edit_key_has_one_c_constant() {
+    use std::collections::BTreeSet;
+    let table: Vec<kui_core::EditKey> = KUI_EDIT_KEYS.iter().map(|(_, k)| *k).collect();
+    for k in kui_core::EditKey::ALL {
+        assert_eq!(
+            table.iter().filter(|t| **t == k).count(),
+            1,
+            "{k:?} ({}) must appear in KUI_EDIT_KEYS exactly once",
+            k.name()
+        );
+    }
+    assert_eq!(table.len(), kui_core::EditKey::ALL.len());
+    let names: BTreeSet<&str> = KUI_EDIT_KEYS.iter().map(|(n, _)| *n).collect();
+    assert_eq!(names.len(), KUI_EDIT_KEYS.len(), "a C name is repeated");
+}
+
 /// The prototype rows above are only a pin for the functions they list,
 /// so this holds the list to the two places a function can otherwise
 /// appear: every `kui_*` the header declares (which is what a C host can

@@ -842,13 +842,8 @@ impl TextSystem {
 
     pub(crate) fn style_key(content: &str, style: &TextStyle, scale: f32) -> u64 {
         // FNV over content + shaping-relevant style bits (color excluded).
-        let mut h = 0xcbf2_9ce4_8422_2325u64;
-        let mut mix = |bytes: &[u8]| {
-            for &b in bytes {
-                h ^= b as u64;
-                h = h.wrapping_mul(0x0000_0100_0000_01b3);
-            }
-        };
+        let mut h = crate::key::FNV_OFFSET;
+        let mut mix = |bytes: &[u8]| h = crate::key::fnv(h, bytes);
         mix(content.as_bytes());
         mix(&style.size.to_bits().to_le_bytes());
         mix(&style.line_height.to_bits().to_le_bytes());
@@ -1253,12 +1248,7 @@ impl TextSystem {
     ) -> u64 {
         let mut key = Self::style_key("", base, self.scale) ^ 0x9e37_79b9_7f4a_7c15;
         for s in spans {
-            let mut mix = |bytes: &[u8]| {
-                for &b in bytes {
-                    key ^= b as u64;
-                    key = key.wrapping_mul(0x0000_0100_0000_01b3);
-                }
-            };
+            let mut mix = |bytes: &[u8]| key = crate::key::fnv(key, bytes);
             mix(s.text.as_bytes());
             mix(&[
                 s.bold as u8,
