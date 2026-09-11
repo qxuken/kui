@@ -356,8 +356,77 @@ impl<'a> Span<'a> {
 struct FrameText {
     cache_key: u64,
     color: Color,
-    /// The key names a [`LongLine`] rather than a `CachedText`.
-    long: bool,
+}
+
+/// One entry of the text cache: a shaped run, or a long line whose chunks
+/// are runs of their own in the same map (backlog C19). Whether a text is
+/// long is decided once, at [`TextSystem::add`], and lives here as the
+/// variant; every operation after it asks the entry rather than carrying
+/// a flag beside the key (AR6). A long line joins a selection scope's
+/// concatenation like any run: being long is how it was shaped, not
+/// something a reader dragging across it should feel (ADR 0017).
+pub(crate) enum Entry {
+    Run(CachedText),
+    Long(LongLine),
+}
+
+impl Entry {
+    pub(crate) fn content(&self) -> &str {
+        match self {
+            Entry::Run(e) => &e.content,
+            Entry::Long(l) => &l.content,
+        }
+    }
+
+    fn last_used(&self) -> u64 {
+        match self {
+            Entry::Run(e) => e.last_used,
+            Entry::Long(l) => l.last_used,
+        }
+    }
+
+    fn touch(&mut self, frame_no: u64) {
+        match self {
+            Entry::Run(e) => e.last_used = frame_no,
+            Entry::Long(l) => l.last_used = frame_no,
+        }
+    }
+
+    /// What the entry costs the budget.
+    fn bytes(&self) -> usize {
+        match self {
+            Entry::Run(e) => e.bytes,
+            Entry::Long(l) => l.bytes,
+        }
+    }
+
+    fn run(&self) -> Option<&CachedText> {
+        match self {
+            Entry::Run(e) => Some(e),
+            Entry::Long(_) => None,
+        }
+    }
+
+    fn run_mut(&mut self) -> Option<&mut CachedText> {
+        match self {
+            Entry::Run(e) => Some(e),
+            Entry::Long(_) => None,
+        }
+    }
+
+    fn long(&self) -> Option<&LongLine> {
+        match self {
+            Entry::Long(l) => Some(l),
+            Entry::Run(_) => None,
+        }
+    }
+
+    fn long_mut(&mut self) -> Option<&mut LongLine> {
+        match self {
+            Entry::Long(l) => Some(l),
+            Entry::Run(_) => None,
+        }
+    }
 }
 
 /// One chunk of a long line: its byte range in the content, the cache key
@@ -531,8 +600,6 @@ pub(crate) struct TextPlace {
     ancestors: [Key; PLACE_ANCESTORS],
     depth: u8,
     cache_key: u64,
-    /// `cache_key` names a [`LongLine`].
-    long: bool,
     /// The node's origin, logical viewport px.
     origin: Vec2,
     /// The innermost `selectable` node above this run, when there is one
@@ -562,26 +629,9 @@ impl TextPlace {
 /// offset means the same thing whoever asks for it.
 pub(crate) struct ScopeRun<'a> {
     pub place: &'a TextPlace,
-    pub text: ScopeText<'a>,
+    /// The run's entry, whichever way it was shaped.
+    pub text: &'a Entry,
     pub base: usize,
-}
-
-/// A scoped run's text, whichever way it was shaped. A long line
-/// (backlog C19) joins the concatenation like any other run: being long
-/// is how it was shaped, not something a reader dragging across it
-/// should be able to feel (ADR 0017 decides this).
-pub(crate) enum ScopeText<'a> {
-    Run(&'a CachedText),
-    Long(&'a LongLine),
-}
-
-impl<'a> ScopeText<'a> {
-    pub(crate) fn content(&self) -> &'a str {
-        match *self {
-            ScopeText::Run(e) => &e.content,
-            ScopeText::Long(l) => &l.content,
-        }
-    }
 }
 
 impl ScopeRun<'_> {
@@ -624,10 +674,10 @@ pub struct TextMetrics {
 /// packed against, and the frame lists are what `TextId` indexes.
 pub struct TextSystem {
     raster: Raster,
-    cache: FxHashMap<u64, CachedText>,
-    /// Non-wrapping texts past `LONG_LINE_BYTES`, by their salted key;
-    /// their chunks are in `cache` (backlog C19).
-    long: FxHashMap<u64, LongLine>,
+    /// Every shaped run and every long line, by key — a long line's key
+    /// is salted (`LONG_SALT`) and its chunks are runs beside it (backlog
+    /// C19).
+    entries: FxHashMap<u64, Entry>,
     /// The sum of the entries' `bytes`, kept exact against inserts and
     /// removals so a frame inside its budget costs one comparison.
     bytes: usize,
@@ -678,8 +728,7 @@ impl TextSystem {
     pub fn new() -> Self {
         Self {
             raster: Raster::new(),
-            cache: FxHashMap::default(),
-            long: FxHashMap::default(),
+            entries: FxHashMap::default(),
             bytes: 0,
             budget: DEFAULT_TEXT_CACHE_BYTES,
             frame: Kept::default(),
@@ -726,16 +775,16 @@ impl TextSystem {
     /// How many shaped texts the cache holds (a long line's chunks each
     /// count; the line itself does not).
     pub fn len(&self) -> usize {
-        self.cache.len()
+        self.entries.len() - self.long_lines()
     }
 
     /// How many long lines are held (backlog C19).
     pub fn long_lines(&self) -> usize {
-        self.long.len()
+        self.entries.values().filter(|e| e.long().is_some()).count()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.cache.is_empty()
+        self.len() == 0
     }
 
     /// Evicts the least recently used entries until the cache is under
@@ -750,32 +799,22 @@ impl TextSystem {
         }
         let floor = self.budget / EVICT_TO_DENOMINATOR * EVICT_TO_NUMERATOR;
         let drawn_last_frame = self.frame_no.saturating_sub(1);
-        // Both maps, oldest first across the two: a long line's record is
+        // Oldest first, runs and long lines alike: a long line's record is
         // charged to `bytes` like any entry (its shaped chunks are entries
-        // of `cache` in their own right), so the budget reaches it too
-        // rather than leaving the records to the 300-frame sweep alone.
-        let mut order: Vec<(u64, u64, bool)> = self
-            .cache
+        // in their own right), so the budget reaches it too rather than
+        // leaving the records to the 300-frame sweep alone.
+        let mut order: Vec<(u64, u64)> = self
+            .entries
             .iter()
-            .filter(|(_, e)| e.last_used < drawn_last_frame)
-            .map(|(k, e)| (e.last_used, *k, false))
-            .chain(
-                self.long
-                    .iter()
-                    .filter(|(_, l)| l.last_used < drawn_last_frame)
-                    .map(|(k, l)| (l.last_used, *k, true)),
-            )
+            .filter(|(_, e)| e.last_used() < drawn_last_frame)
+            .map(|(k, e)| (e.last_used(), *k))
             .collect();
         order.sort_unstable();
-        for (_, key, long) in order {
+        for (_, key) in order {
             if self.bytes <= floor {
                 break;
             }
-            let freed = if long {
-                self.long.remove(&key).map(|l| l.bytes)
-            } else {
-                self.cache.remove(&key).map(|e| e.bytes)
-            };
+            let freed = self.entries.remove(&key).map(|e| e.bytes());
             self.bytes -= freed.unwrap_or(0);
         }
         // The words those entries shaped are still in cosmic-text's
@@ -795,8 +834,7 @@ impl TextSystem {
     pub(crate) fn begin_frame(&mut self, fs: &mut FontSystem, scale: f32, keep_prev: bool) {
         // Scale change invalidates every physical-px measurement.
         if (scale - self.scale).abs() > f32::EPSILON {
-            self.cache.clear();
-            self.long.clear();
+            self.entries.clear();
             self.bytes = 0;
         }
         self.scale = scale;
@@ -807,17 +845,10 @@ impl TextSystem {
         self.frame_no += 1;
         if let Some(cutoff) = crate::retain::sweep_cutoff(self.frame_no) {
             let mut freed = 0usize;
-            self.cache.retain(|_, e| {
-                let keep = e.last_used >= cutoff;
+            self.entries.retain(|_, e| {
+                let keep = e.last_used() >= cutoff;
                 if !keep {
-                    freed += e.bytes;
-                }
-                keep
-            });
-            self.long.retain(|_, l| {
-                let keep = l.last_used >= cutoff;
-                if !keep {
-                    freed += l.bytes;
+                    freed += e.bytes();
                 }
                 keep
             });
@@ -832,12 +863,30 @@ impl TextSystem {
         self.evict_to_budget(fs);
     }
 
-    /// Inserts a freshly shaped entry, charging it to the budget.
-    fn insert(&mut self, key: u64, entry: CachedText) {
-        self.bytes += entry.bytes;
-        if let Some(old) = self.cache.insert(key, entry) {
-            self.bytes -= old.bytes;
+    /// Inserts a fresh entry, charging it to the budget.
+    fn insert(&mut self, key: u64, entry: Entry) {
+        self.bytes += entry.bytes();
+        if let Some(old) = self.entries.insert(key, entry) {
+            self.bytes -= old.bytes();
         }
+    }
+
+    /// The shaped run under `key`, if the entry there is one.
+    fn run(&self, key: u64) -> Option<&CachedText> {
+        self.entries.get(&key)?.run()
+    }
+
+    fn run_mut(&mut self, key: u64) -> Option<&mut CachedText> {
+        self.entries.get_mut(&key)?.run_mut()
+    }
+
+    /// The long line under `key`, if the entry there is one.
+    fn long(&self, key: u64) -> Option<&LongLine> {
+        self.entries.get(&key)?.long()
+    }
+
+    fn long_mut(&mut self, key: u64) -> Option<&mut LongLine> {
+        self.entries.get_mut(&key)?.long_mut()
     }
 
     pub(crate) fn style_key(content: &str, style: &TextStyle, scale: f32) -> u64 {
@@ -881,7 +930,7 @@ impl TextSystem {
         let key = Self::style_key(content, style, self.scale);
         let frame_no = self.frame_no;
         let scale = self.scale;
-        if !self.cache.contains_key(&key) {
+        if !self.entries.contains_key(&key) {
             let mut buffer = new_buffer(fs, style, scale);
             buffer.set_text(
                 content,
@@ -899,23 +948,19 @@ impl TextSystem {
                 fs,
                 frame_no,
             );
-            self.insert(key, entry);
+            self.insert(key, Entry::Run(entry));
         }
-        self.cache.get_mut(&key).expect("just inserted").last_used = frame_no;
+        self.entries
+            .get_mut(&key)
+            .expect("just inserted")
+            .touch(frame_no);
         key
     }
 
     /// The content of one of this frame's texts (spans concatenated).
     pub(crate) fn content(&self, id: TextId) -> &str {
-        let FrameText {
-            cache_key, long, ..
-        } = self.frame[id.0 as usize];
-        if long {
-            return self.long.get(&cache_key).map_or("", |l| l.content.as_str());
-        }
-        self.cache
-            .get(&cache_key)
-            .map_or("", |e| e.content.as_str())
+        let key = self.frame[id.0 as usize].cache_key;
+        self.entries.get(&key).map_or("", |e| e.content())
     }
 
     /// Reads one of this frame's laid-out buffers (the access tree walks
@@ -924,10 +969,7 @@ impl TextSystem {
     /// document's off-screen lines are not.
     pub(crate) fn with_buffer<T>(&self, id: TextId, f: impl FnOnce(&Buffer) -> T) -> Option<T> {
         let ft = self.frame.get(id.0 as usize)?;
-        if ft.long {
-            return None;
-        }
-        self.cache.get(&ft.cache_key).map(|e| f(&e.buffer))
+        self.run(ft.cache_key).map(|e| f(&e.buffer))
     }
 
     /// The cache key and colour behind one of the *previous* frame's texts
@@ -949,18 +991,8 @@ impl TextSystem {
     /// long as something still draws it.
     pub(crate) fn readd(&mut self, cache_key: u64, color: Color) -> Option<TextId> {
         let frame_no = self.frame_no;
-        let long = if let Some(entry) = self.cache.get_mut(&cache_key) {
-            entry.last_used = frame_no;
-            false
-        } else {
-            self.long.get_mut(&cache_key)?.last_used = frame_no;
-            true
-        };
-        self.frame.push(FrameText {
-            cache_key,
-            color,
-            long,
-        });
+        self.entries.get_mut(&cache_key)?.touch(frame_no);
+        self.frame.push(FrameText { cache_key, color });
         Some(TextId((self.frame.len() - 1) as u32))
     }
 
@@ -972,8 +1004,9 @@ impl TextSystem {
         res: &Resources,
         fs: &mut FontSystem,
     ) -> TextId {
-        let long = is_long(content, style);
-        let key = if long {
+        // The one place the long/short decision is made: the entry's
+        // variant carries it from here.
+        let key = if is_long(content, style) {
             self.intern_long(content, style, res, fs)
         } else {
             self.intern(content, style, res, fs)
@@ -981,7 +1014,6 @@ impl TextSystem {
         self.frame.push(FrameText {
             cache_key: key,
             color: style.color_or_default(),
-            long,
         });
         TextId((self.frame.len() - 1) as u32)
     }
@@ -998,7 +1030,7 @@ impl TextSystem {
     ) -> u64 {
         let key = Self::style_key(content, style, self.scale) ^ LONG_SALT;
         let frame_no = self.frame_no;
-        if let Some(line) = self.long.get_mut(&key) {
+        if let Some(line) = self.long_mut(key) {
             line.last_used = frame_no;
             return key;
         }
@@ -1022,7 +1054,7 @@ impl TextSystem {
         let (w0, line_h) = match chunks.first() {
             Some(c) => {
                 let k = self.intern(&content[c.start..c.end], style, res, fs);
-                let e = &self.cache[&k];
+                let e = self.run(k).expect("just interned");
                 (e.intrinsic.w, e.buffer.metrics().line_height)
             }
             None => (0.0, style.line_height * self.scale),
@@ -1048,8 +1080,7 @@ impl TextSystem {
         }
         line.reprefix();
         line.bytes = ENTRY_BASE_BYTES + line.content.len() + line.chunks.len() * 48;
-        self.bytes += line.bytes;
-        self.long.insert(key, line);
+        self.insert(key, Entry::Long(line));
         key
     }
 
@@ -1058,7 +1089,7 @@ impl TextSystem {
     /// shaped now — what tells a wrapped line its rows need breaking.
     fn ensure_chunk(&mut self, key: u64, i: usize, res: &Resources, fs: &mut FontSystem) -> bool {
         let (text, style, chunk_key, known) = {
-            let line = &self.long[&key];
+            let line = self.long(key).expect("a long line");
             let c = &line.chunks[i];
             (
                 line.content[c.start..c.end].to_string(),
@@ -1067,13 +1098,16 @@ impl TextSystem {
                 c.width,
             )
         };
-        if known.is_some() && self.cache.contains_key(&chunk_key) {
-            self.cache.get_mut(&chunk_key).expect("checked").last_used = self.frame_no;
+        let frame_no = self.frame_no;
+        if known.is_some()
+            && let Some(e) = self.run_mut(chunk_key)
+        {
+            e.last_used = frame_no;
             return false;
         }
         let k = self.intern(&text, &style, res, fs);
-        let w = self.cache[&k].intrinsic.w;
-        let line = self.long.get_mut(&key).expect("just read");
+        let w = self.run(k).expect("just interned").intrinsic.w;
+        let line = self.long_mut(key).expect("just read");
         line.chunks[i].key = k;
         if line.chunks[i].width != Some(w) {
             line.chunks[i].width = Some(w);
@@ -1090,39 +1124,54 @@ impl TextSystem {
     /// `prefix` is, so the height the scrollbar sees can move a little as
     /// chunks fill in.
     fn relayout_long(&mut self, key: u64, w: Option<f32>) {
-        let line = self.long.get_mut(&key).expect("a long line");
-        line.wrap_w = w;
-        line.starts.clear();
         let Some(w) = w else {
+            let line = self.long_mut(key).expect("a long line");
+            line.wrap_w = None;
+            line.starts.clear();
             for c in &mut line.chunks {
                 c.rows.clear();
             }
             return;
         };
         let w = w.max(1.0);
-        line.starts.push((0, 0.0));
+        // Read every chunk's rows off its shaped run first — the runs and
+        // the line are entries of one map — then write them back.
+        let line = self.long(key).expect("a long line");
+        let mut starts = Vec::with_capacity(line.chunks.len() + 1);
+        starts.push((0, 0.0));
         let (mut row, mut x) = (0u32, 0.0f32);
-        for c in &mut line.chunks {
-            let shaped = c.width.and_then(|_| self.cache.get(&c.key));
-            match shaped {
-                Some(e) => {
-                    let text = &line.content[c.start..c.end];
-                    let (rows, end) = break_rows(&e.buffer, text, line.wrap, w, x);
-                    row += rows.len() as u32 - 1;
-                    x = end;
-                    c.rows = rows;
-                }
-                None => {
-                    c.rows.clear();
-                    let est = x + c
-                        .width
-                        .unwrap_or_else(|| (c.end - c.start) as f32 * line.avg);
-                    let added = (est / w).floor();
-                    row += added as u32;
-                    x = est - added * w;
-                }
-            }
-            line.starts.push((row, x));
+        let rows: Vec<Vec<RowStart>> = line
+            .chunks
+            .iter()
+            .map(|c| {
+                let shaped = c.width.and_then(|_| self.run(c.key));
+                let rows = match shaped {
+                    Some(e) => {
+                        let text = &line.content[c.start..c.end];
+                        let (rows, end) = break_rows(&e.buffer, text, line.wrap, w, x);
+                        row += rows.len() as u32 - 1;
+                        x = end;
+                        rows
+                    }
+                    None => {
+                        let est = x + c
+                            .width
+                            .unwrap_or_else(|| (c.end - c.start) as f32 * line.avg);
+                        let added = (est / w).floor();
+                        row += added as u32;
+                        x = est - added * w;
+                        Vec::new()
+                    }
+                };
+                starts.push((row, x));
+                rows
+            })
+            .collect();
+        let line = self.long_mut(key).expect("a long line");
+        line.wrap_w = Some(w);
+        line.starts = starts;
+        for (c, rows) in line.chunks.iter_mut().zip(rows) {
+            c.rows = rows;
         }
     }
 
@@ -1131,7 +1180,7 @@ impl TextSystem {
     /// to it. Returns the physical size and the row count.
     fn long_size(&mut self, key: u64, max_w: Option<f32>) -> (Size, u32) {
         let (wrap, width, line_h, cur) = {
-            let l = &self.long[&key];
+            let l = self.long(key).expect("a long line");
             (l.wrap, l.width(), l.line_h, l.wrap_w)
         };
         let target = match max_w {
@@ -1148,7 +1197,7 @@ impl TextSystem {
         }
         match target {
             Some(w) => {
-                let rows = self.long[&key].rows();
+                let rows = self.long(key).expect("a long line").rows();
                 (Size::new(w, rows as f32 * line_h), rows)
             }
             None => (Size::new(max_w.map_or(width, |m| width.min(m)), line_h), 1),
@@ -1176,7 +1225,7 @@ impl TextSystem {
             let (size, lines) = match max_w {
                 Some(m) => self.long_size(key, Some(m * scale)),
                 None => {
-                    let line = &self.long[&key];
+                    let line = self.long(key).expect("just interned");
                     (Size::new(line.width(), line.line_h), 1)
                 }
             };
@@ -1205,7 +1254,7 @@ impl TextSystem {
 
     fn measure_key(&mut self, key: u64, fs: &mut FontSystem, max_w: Option<f32>) -> TextMetrics {
         let scale = self.scale;
-        let entry = self.cache.get_mut(&key).expect("just interned");
+        let entry = self.run_mut(key).expect("just interned");
         let target = wrap_target(entry, max_w, scale);
         wrap_entry(entry, fs, target);
         let (mut m, lines) = measure_buffer(&entry.buffer, entry.max_lines);
@@ -1234,7 +1283,6 @@ impl TextSystem {
         self.frame.push(FrameText {
             cache_key: key,
             color: base.color_or_default(),
-            long: false,
         });
         TextId((self.frame.len() - 1) as u32)
     }
@@ -1267,7 +1315,7 @@ impl TextSystem {
         }
         let frame_no = self.frame_no;
         let scale = self.scale;
-        if !self.cache.contains_key(&key) {
+        if !self.entries.contains_key(&key) {
             let mut buffer = new_buffer(fs, base, scale);
             let family = res.family_of(base.family);
             let features = cosmic_features(&base.features);
@@ -1294,29 +1342,25 @@ impl TextSystem {
                 })
                 .collect();
             let entry = CachedText::new(buffer, content, base, decos, fs, frame_no);
-            self.insert(key, entry);
+            self.insert(key, Entry::Run(entry));
         }
-        self.cache.get_mut(&key).expect("just inserted").last_used = frame_no;
+        self.entries
+            .get_mut(&key)
+            .expect("just inserted")
+            .touch(frame_no);
         key
     }
 
+    /// The shaped run behind one of this frame's texts; callers have
+    /// already taken the long line's path when it is one.
     fn entry_mut(&mut self, id: TextId) -> &mut CachedText {
         let key = self.frame[id.0 as usize].cache_key;
-        self.cache
-            .get_mut(&key)
-            .expect("frame text missing from cache")
+        self.run_mut(key).expect("frame text missing from cache")
     }
 
     fn ensure_wrap(&mut self, id: TextId, max_w_logical: f32, fs: &mut FontSystem) {
-        if self.frame[id.0 as usize].long {
-            return;
-        }
         let scale = self.scale;
-        let key = self.frame[id.0 as usize].cache_key;
-        let entry = self
-            .cache
-            .get_mut(&key)
-            .expect("frame text missing from cache");
+        let entry = self.entry_mut(id);
         let target = wrap_target(entry, Some(max_w_logical), scale);
         wrap_entry(entry, fs, target);
     }
@@ -1346,7 +1390,6 @@ impl TextSystem {
         let FrameText {
             cache_key: key,
             color,
-            long,
         } = self.frame[id.0 as usize];
         let scale = self.scale;
         let ox = crate::geom::snap_px(origin.x * scale);
@@ -1354,7 +1397,7 @@ impl TextSystem {
         // A long line owns its box the way a no-wrap line does, and draws
         // the chunks inside the clip plus one either side, shaping them
         // now if this is the first time they show (backlog C19).
-        if long {
+        if let Some(line) = self.long(key) {
             let own = Rect::new(ox, oy, (node.w * scale).ceil(), (node.h * scale).ceil());
             let clip = clip.intersect(own, crate::display::SQUARE);
             if clip.rect.w <= 0.0 || clip.rect.h <= 0.0 {
@@ -1362,15 +1405,14 @@ impl TextSystem {
             }
             let clip_id = crate::display::intern_clip(clips, clip);
             if let Some(((from, to), tint)) = sel {
-                let rects = self.long_highlight(&self.long[&key], from, to);
+                let rects = self.long_highlight(line, from, to);
                 push_highlight(&rects, ox, oy, tint, clip_id, out);
             }
-            if let Some(w) = self.long[&key].wrap_w {
+            if let Some(w) = line.wrap_w {
                 self.emit_long_rows(key, w, ox, oy, color, clip, clip_id, res, fs, atlas, out);
                 return;
             }
             let (first, last) = {
-                let line = &self.long[&key];
                 if line.chunks.is_empty() {
                     return;
                 }
@@ -1382,14 +1424,19 @@ impl TextSystem {
             for i in first..=last {
                 self.ensure_chunk(key, i, res, fs);
             }
-            self.long.get_mut(&key).expect("checked").last_used = self.frame_no;
+            let frame_no = self.frame_no;
+            self.long_mut(key).expect("checked").last_used = frame_no;
             for i in first..=last {
                 let (chunk_key, x) = {
-                    let line = &self.long[&key];
+                    let line = self.long(key).expect("checked");
                     (line.chunks[i].key, line.prefix[i])
                 };
                 let raster = &mut self.raster;
-                let entry = self.cache.get_mut(&chunk_key).expect("just ensured");
+                let entry = self
+                    .entries
+                    .get_mut(&chunk_key)
+                    .and_then(Entry::run_mut)
+                    .expect("just ensured");
                 emit_entry(
                     entry,
                     ox + x,
@@ -1408,8 +1455,9 @@ impl TextSystem {
         self.ensure_wrap(id, node.w, fs);
         let raster = &mut self.raster;
         let entry = self
-            .cache
+            .entries
             .get_mut(&key)
+            .and_then(Entry::run_mut)
             .expect("frame text missing from cache");
 
         // Overflowing modes own their box: a line that runs past the node's
@@ -1474,7 +1522,7 @@ impl TextSystem {
         out: &mut Vec<Quad>,
     ) {
         let (first, last) = {
-            let line = &self.long[&key];
+            let line = self.long(key).expect("a long line");
             let ra = ((clip.rect.y - oy) / line.line_h).floor().max(0.0) as u32;
             let rb = ((clip.rect.y + clip.rect.h - oy) / line.line_h)
                 .floor()
@@ -1492,16 +1540,24 @@ impl TextSystem {
             // A chunk shaped now moves every row after it.
             self.relayout_long(key, Some(w));
         }
-        self.long.get_mut(&key).expect("checked").last_used = self.frame_no;
+        let frame_no = self.frame_no;
+        self.long_mut(key).expect("checked").last_used = frame_no;
         for i in first..=last {
-            let line = &self.long[&key];
+            let chunk_key = self.long(key).expect("checked").chunks[i].key;
+            // The line and the chunk's run are two entries of one map, so
+            // the pair is borrowed together; a chunk's key is never the
+            // line's own (`LONG_SALT`).
+            let [Some(Entry::Long(line)), Some(Entry::Run(entry))] =
+                self.entries.get_disjoint_mut([&key, &chunk_key])
+            else {
+                continue;
+            };
             let (row0, head_x) = line.starts[i];
             let chunk = &line.chunks[i];
             if chunk.rows.is_empty() {
                 continue;
             }
             let raster = &mut self.raster;
-            let entry = self.cache.get_mut(&chunk.key).expect("just ensured");
             emit_entry_rows(
                 entry,
                 ox,
@@ -1898,9 +1954,7 @@ impl TextSystem {
         scope: Option<Key>,
         drawn: bool,
     ) {
-        let FrameText {
-            cache_key, long, ..
-        } = self.frame[id.0 as usize];
+        let cache_key = self.frame[id.0 as usize].cache_key;
         let mut anc = [Key::ROOT; PLACE_ANCESTORS];
         let depth = ancestors.len().min(PLACE_ANCESTORS);
         anc[..depth].copy_from_slice(&ancestors[..depth]);
@@ -1909,7 +1963,6 @@ impl TextSystem {
             ancestors: anc,
             depth: depth as u8,
             cache_key,
-            long,
             origin,
             scope,
             drawn,
@@ -1927,11 +1980,9 @@ impl TextSystem {
         };
         let mut base = 0usize;
         let mut out = Vec::new();
-        for place in list
-            .iter()
-            .filter(|p| p.drawn && p.answers_to(key) && !p.long)
-        {
-            let Some(entry) = self.cache.get(&place.cache_key) else {
+        for place in list.iter().filter(|p| p.drawn && p.answers_to(key)) {
+            // A long line answers alone, through `long_place`.
+            let Some(entry) = self.run(place.cache_key) else {
                 continue;
             };
             out.push((place, entry, base));
@@ -1943,14 +1994,8 @@ impl TextSystem {
     /// How many bytes of content this frame's text `id` holds — what a
     /// selection range over it is measured against.
     pub(crate) fn content_len(&self, id: TextId) -> usize {
-        let FrameText {
-            cache_key, long, ..
-        } = self.frame[id.0 as usize];
-        if long {
-            self.long.get(&cache_key).map_or(0, |l| l.content.len())
-        } else {
-            self.cache.get(&cache_key).map_or(0, |e| e.content.len())
-        }
+        let key = self.frame[id.0 as usize].cache_key;
+        self.entries.get(&key).map_or(0, |e| e.content().len())
     }
 
     /// Every run inside the selection scope `scope`, in emission order —
@@ -1970,16 +2015,8 @@ impl TextSystem {
         let mut base = 0usize;
         let mut out = Vec::new();
         for place in list.iter().filter(|p| p.scope == Some(scope)) {
-            let text = if place.long {
-                match self.long.get(&place.cache_key) {
-                    Some(l) => ScopeText::Long(l),
-                    None => continue,
-                }
-            } else {
-                match self.cache.get(&place.cache_key) {
-                    Some(e) => ScopeText::Run(e),
-                    None => continue,
-                }
+            let Some(text) = self.entries.get(&place.cache_key) else {
+                continue;
             };
             let len = text.content().len();
             out.push(ScopeRun { place, text, base });
@@ -2016,8 +2053,8 @@ impl TextSystem {
     fn scope_box(&self, run: &ScopeRun<'_>) -> Rect {
         let (ox, oy) = self.physical_origin(run.place);
         match run.text {
-            ScopeText::Run(e) => self.physical_box(run.place, e),
-            ScopeText::Long(l) => Rect::new(ox, oy, l.width(), l.line_h * l.rows() as f32),
+            Entry::Run(e) => self.physical_box(run.place, e),
+            Entry::Long(l) => Rect::new(ox, oy, l.width(), l.line_h * l.rows() as f32),
         }
     }
 
@@ -2025,8 +2062,8 @@ impl TextSystem {
     /// that run's own content.
     fn hit_in_run(&self, run: &ScopeRun<'_>, point: Vec2) -> Option<usize> {
         match run.text {
-            ScopeText::Long(l) => Some(self.long_hit(run.place, l, point)?.byte),
-            ScopeText::Run(e) => {
+            Entry::Long(l) => Some(self.long_hit(run.place, l, point)?.byte),
+            Entry::Run(e) => {
                 let (ox, oy) = self.physical_origin(run.place);
                 let cursor = e
                     .buffer
@@ -2110,8 +2147,8 @@ impl TextSystem {
             match run.text {
                 // A long line is shaped in chunks and holds one style
                 // throughout, so its selection is plain escaped text.
-                ScopeText::Long(_) => escape_into(&content[lo..hi], &mut out),
-                ScopeText::Run(entry) => html_of_run(entry, lo, hi, &mut out),
+                Entry::Long(_) => escape_into(&content[lo..hi], &mut out),
+                Entry::Run(entry) => html_of_run(entry, lo, hi, &mut out),
             }
             prev_run = Some(run);
         }
@@ -2145,12 +2182,12 @@ impl TextSystem {
             let hi = floor_boundary(content, (to - start).min(content.len()));
             let (ox, oy) = self.physical_origin(run.place);
             match run.text {
-                ScopeText::Run(e) => {
+                Entry::Run(e) => {
                     if let Some((x, base)) = Self::run_anchor(e, lo, hi) {
                         return Some(Vec2::new((ox + x) / self.scale, (oy + base) / self.scale));
                     }
                 }
-                ScopeText::Long(l) => {
+                Entry::Long(l) => {
                     if let Some((x, y)) = self.long_caret_local(l, lo) {
                         // A long line holds one style, so its baseline is
                         // the row's height less the descender the metrics
@@ -2210,8 +2247,8 @@ impl TextSystem {
             // is what a reader sees as the popover pointing at nothing.
             let (ox, oy) = self.physical_origin(run.place);
             let rects = match run.text {
-                ScopeText::Long(l) => self.long_highlight(l, lo, hi),
-                ScopeText::Run(e) => Self::run_highlight(e, lo, hi),
+                Entry::Long(l) => self.long_highlight(l, lo, hi),
+                Entry::Run(e) => Self::run_highlight(e, lo, hi),
             };
             for r in rects {
                 let r = Rect::new(
@@ -2273,12 +2310,10 @@ impl TextSystem {
         } else {
             &self.places
         };
-        let place = list
-            .iter()
+        list.iter()
             .rev()
-            .find(|p| p.drawn && p.answers_to(key) && p.long)?;
-        let line = self.long.get(&place.cache_key)?;
-        Some((place, line))
+            .filter(|p| p.drawn && p.answers_to(key))
+            .find_map(|p| Some((p, self.long(p.cache_key)?)))
     }
 
     /// `hit_at` for a long line: the chunk under the point answers through
@@ -2303,7 +2338,7 @@ impl TextSystem {
         let i = line.chunk_at(px.max(0.0));
         let c = &line.chunks[i];
         let local = px - line.prefix[i];
-        let byte = match self.cache.get(&c.key) {
+        let byte = match self.run(c.key) {
             Some(e) if c.width.is_some() => {
                 let cursor = e.buffer.hit(local, py.clamp(0.0, line.line_h - 0.01))?;
                 c.start + cursor.index.min(c.end - c.start)
@@ -2342,7 +2377,7 @@ impl TextSystem {
         let c = &line.chunks[i];
         let (row0, head_x) = line.starts[i];
         let r = (row - row0) as usize;
-        let byte = match self.cache.get(&c.key) {
+        let byte = match self.run(c.key) {
             Some(e) if r < c.rows.len() => {
                 let rs = c.rows[r];
                 let local_x = px - if r == 0 { head_x } else { 0.0 } + rs.x;
@@ -2396,7 +2431,7 @@ impl TextSystem {
             let c = &line.chunks[i];
             let local = byte - c.start;
             let (row0, head_x) = line.starts[i];
-            let (r, x) = match self.cache.get(&c.key) {
+            let (r, x) = match self.run(c.key) {
                 Some(e) if !c.rows.is_empty() => {
                     let r = c.rows.partition_point(|rs| rs.byte as usize <= local) - 1;
                     let run = e.buffer.layout_runs().next()?;
@@ -2418,7 +2453,7 @@ impl TextSystem {
             let i = line.chunk_of_byte(byte);
             let c = &line.chunks[i];
             let local = byte - c.start;
-            match self.cache.get(&c.key) {
+            match self.run(c.key) {
                 Some(e) if c.width.is_some() => {
                     let run = e.buffer.layout_runs().next()?;
                     line.prefix[i] + caret_x(&run, local.min(c.end - c.start))
@@ -2950,11 +2985,7 @@ impl TextSystem {
 
     /// The long line behind one of this frame's texts, if it is one.
     fn long_of(&self, id: TextId) -> Option<&LongLine> {
-        let ft = &self.frame[id.0 as usize];
-        if !ft.long {
-            return None;
-        }
-        self.long.get(&ft.cache_key)
+        self.long(self.frame[id.0 as usize].cache_key)
     }
 
     pub(crate) fn wrapped(&mut self, id: TextId, max_w: f32, fs: &mut FontSystem) -> Size {
