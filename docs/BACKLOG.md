@@ -21,7 +21,9 @@ at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
 
-What is left here: C29 from the alpha.11 pre-tag round (four unguarded
+What is left here: C30, filed 2026-09-12 (always on top — a window level
+no binding can ask for, with the shape to build it written), C29 from the
+alpha.11 pre-tag round (four unguarded
 bench rows reproducibly slower than alpha.10, filed with the numbers and
 a bisect to run), V2–V8 from the canvas question of 2026-09-11 (five
 waiting for a view, two declined with a condition — V1, the one with an
@@ -179,6 +181,66 @@ best of the three.** `idlePumpMs` is a real dial — 8 ms is 34 ms a click and
   Node. That is Electron's shape and it is not worth an idle 3%.
 - **Nobody minding.** The most likely, and the reason this is parked rather
   than open. A Rust window idles at 0.00%; a Node one at ~3% with a knob.
+
+### `~` C30 — Always on top
+
+Filed 2026-09-12. A window an app wants kept above every other app's
+windows — a floating palette, a picture-in-picture player, a timer, a
+pinned note — has no way to ask for it: the OS level is
+`WindowLevel::Normal` for every surface the runner opens except a popup,
+which is *already* `AlwaysOnTop` by construction
+(`crates/kui/src/windows.rs:131`), so the driver seam exists and is
+exercised on every combobox; what is missing is the row, the doors and
+the decision of where it lives. Nothing in four bindings reaches it, and
+a `Popup` is not a workaround — non-activating, undecorated, closed with
+its owner.
+
+**Where it lives.** Two shapes are on the table and the title settles
+which:
+
+- **On the opening edge, as a `WindowConfig` field** beside `kind`,
+  `size`, `activates`, `anchor`. Wrong for the thing every app that wants
+  this draws next: a pin button, which is a *toggle*. `WindowConfig` is
+  read once and never again by design ("the user owns a window's geometry
+  once it exists"), and a level is not geometry the user owns — it is
+  state the app owns, so the opening-edge rule does not apply to it.
+- **As a per-frame fact the way `window_title` is** —
+  `Core::set_window_title` (`runtime/windows.rs:263`) is a value the
+  frame declares and the driver applies when it differs from the last
+  frame's. A `Core::set_always_on_top(bool)` in the same shape, defaulted
+  to false, read by the runner after each frame and applied through
+  `winit::Window::set_window_level` on change, is a toggle for free and
+  costs a frame nothing when it does not change. **This is the one to
+  build.** The main window gets it from the same door, so the `Launcher`
+  needs no builder method — though `Launcher::always_on_top()` for a
+  Rust app that never toggles is one line and harmless.
+
+**Doors.** The title's doors are the template: the `window_title` row in
+Node's window options / `setWindowTitle`, Lua's `title`, and C's
+`kui_set_window_title` — one each, spelled `alwaysOnTop` /
+`always_on_top` / `kui_set_always_on_top(ctx, bool)`. The C door is a
+new prototype, so the generated TU pins it (`abi_fn!`) and
+`KUI_ABI_VERSION` moves from 15 to 16; the size handshake absorbs nothing
+here because no struct grows. `env.window` should report it back the
+way it reports `maximized`, so a pin button draws its state from the
+window and not from the app's guess — the OS can refuse or drop the
+level (a fullscreen space on macOS, a tiling manager on X11), and a
+report keeps one frame.
+
+**What the platforms do with it.** `NSWindowLevel` floating on macOS,
+`HWND_TOPMOST` on Windows, `_NET_WM_STATE_ABOVE` on X11 and nothing on
+Wayland (winit 0.30 documents `WindowLevel` as unsupported there, and every level as "just a hint to the OS") — so the Wayland
+build is the case where the report matters: the app asks, the window
+does not move, `env.window` says so. A popup's level must stay what it
+is regardless of its owner's; an owner pinned above everything with a
+dropdown open under it is the visible defect a naive "apply to every
+window" would ship, and the corpus cannot see it (a headless `Ctx` draws
+only main) — it goes on the by-hand round beside the popup drag.
+
+**Test.** A `runtime::windows` pin that the fact round-trips per window
+and defaults false; the `ENV_FIELDS` readback for the new `env.window`
+field across Lua/Node/C; a runner check that a toggled fact reaches
+`set_window_level` once per change and not per frame.
 
 ## From two alpha.7 field reports (2026-09-07)
 
@@ -844,8 +906,10 @@ which the archived entry measures and leaves.
 that is not either parked or deliberately unbuilt: after the round of
 2026-09-11 that took V1, D1, D2, T2, C26's last two steps and E3 together,
 the open list is C12, C13, C14, F36, B1 and V2–V8 — every one parked on a
-condition — and C29, the one entry with work in it: a bisect of four
-bench rows, filed by the alpha.11 pre-tag round. C27 is parked with its measurements. What that round settled
+condition — and two entries with work in them: C29, a bisect of four
+bench rows, filed by the alpha.11 pre-tag round, and C30, always on top,
+filed 2026-09-12 as a per-frame fact in `window_title`'s shape with a
+door per binding and a readback in `env.window`. C27 is parked with its measurements. What that round settled
 is on top of each entry in the archive; the two questions worth carrying
 forward are the ones it answered by building: a metric never scales by
 itself and the stock set is the corpus's contract (T2), and the core keeps
@@ -1000,7 +1064,7 @@ fourteen of this one (W3, W4–W12, F32–F35) before the alpha.10 tag, and
 the six of the round of 2026-09-11 (V1, D1, D2, T2, C26 whole, E3) the day
 they were built, and T1, E1 and E2 — closed in their rounds and left here
 — before the alpha.11 tag. This file is now three parked entries, C27
-with its measurements, C29, F36, B1, V2–V8 and this section.
+with its measurements, C29, C30, F36, B1, V2–V8 and this section.
 Still open, both waiting on something outside the repo: enable `SMOKE_MACOS`
 / `SMOKE_WINDOWS` the day a runner exists (P8) — which has two jobs waiting
 for it now, F13's launch probe beside the AX audit, sharing the one
