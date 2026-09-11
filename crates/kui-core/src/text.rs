@@ -16,6 +16,7 @@ use crate::display::{Clip, ClipId, Quad, QuadKind};
 use crate::geom::{Rect, Size, Vec2};
 use crate::key::Key;
 use crate::resources::Resources;
+use crate::retain::Kept;
 use crate::spec::{FontFamily, TextStyle, TextWrap};
 use crate::tree::TextId;
 
@@ -146,9 +147,6 @@ pub(crate) fn glyph_kind(slot: &crate::atlas::GlyphSlot) -> QuadKind {
         QuadKind::GlyphMask
     }
 }
-
-/// Evict cache entries unused for this many frames.
-const EVICT_AFTER_FRAMES: u64 = 300;
 
 /// The default byte budget for the shaped-text cache (backlog C16). Sized
 /// so a screenful of code never meets it — two panes of 55 highlighted
@@ -634,17 +632,15 @@ pub struct TextSystem {
     /// removals so a frame inside its budget costs one comparison.
     bytes: usize,
     budget: usize,
-    frame: Vec<FrameText>,
-    /// The previous frame's list, kept the same way and on the same
-    /// condition as `Core`'s previous tree: a departing subtree's text
-    /// nodes carry that frame's `TextId`s, and this is what they index
-    /// (see [`Self::prev_frame_text`]).
-    prev_frame: Vec<FrameText>,
+    /// This frame's text nodes, and the previous frame's kept the same way
+    /// and on the same condition as `Core`'s previous tree: a departing
+    /// subtree's text nodes carry that frame's `TextId`s, and this is what
+    /// they index (see [`Self::prev_frame_text`]).
+    frame: Kept<FrameText>,
     /// Where this frame's text nodes were drawn, and where the last
-    /// frame's were: a query during a build answers from the frame that
-    /// finished, which is the layout a click was made against.
-    places: Vec<TextPlace>,
-    prev_places: Vec<TextPlace>,
+    /// frame's were — always kept: a query during a build answers from the
+    /// frame that finished, which is the layout a click was made against.
+    places: Kept<TextPlace>,
     scale: f32,
     frame_no: u64,
 }
@@ -686,10 +682,8 @@ impl TextSystem {
             long: FxHashMap::default(),
             bytes: 0,
             budget: DEFAULT_TEXT_CACHE_BYTES,
-            frame: Vec::new(),
-            prev_frame: Vec::new(),
-            places: Vec::new(),
-            prev_places: Vec::new(),
+            frame: Kept::default(),
+            places: Kept::default(),
             scale: 1.0,
             frame_no: 0,
         }
@@ -793,19 +787,12 @@ impl TextSystem {
             self.bytes = 0;
         }
         self.scale = scale;
-        if keep_prev {
-            std::mem::swap(&mut self.frame, &mut self.prev_frame);
-        } else {
-            self.prev_frame.clear();
-        }
-        self.frame.clear();
-        // Always kept, unlike `prev_frame`: a query while this frame builds
+        self.frame.begin(keep_prev);
+        // Always kept, unlike `frame`: a query while this frame builds
         // answers from the last one, and this is what it answers from.
-        std::mem::swap(&mut self.places, &mut self.prev_places);
-        self.places.clear();
+        self.places.begin(true);
         self.frame_no += 1;
-        if self.frame_no.is_multiple_of(240) {
-            let cutoff = self.frame_no.saturating_sub(EVICT_AFTER_FRAMES);
+        if let Some(cutoff) = crate::retain::sweep_cutoff(self.frame_no) {
             let mut freed = 0usize;
             self.cache.retain(|_, e| {
                 let keep = e.last_used >= cutoff;
@@ -936,7 +923,7 @@ impl TextSystem {
     /// previous frame's tree, so this is the list its ids belong to (see
     /// [`crate::depart`]).
     pub(crate) fn prev_frame_text(&self, id: TextId) -> (u64, Color) {
-        match self.prev_frame.get(id.0 as usize) {
+        match self.frame.prev().get(id.0 as usize) {
             Some(t) => (t.cache_key, t.color),
             None => (0, Color::TRANSPARENT),
         }
@@ -1921,7 +1908,7 @@ impl TextSystem {
     /// frame that finished (`prev`) or the one being emitted.
     fn runs_of(&self, key: Key, prev: bool) -> Vec<(&TextPlace, &CachedText, usize)> {
         let list = if prev {
-            &self.prev_places
+            self.places.prev()
         } else {
             &self.places
         };
@@ -1963,7 +1950,7 @@ impl TextSystem {
     /// it scrolled away (ADR 0017, tier 2).
     pub(crate) fn scope_runs(&self, scope: Key, prev: bool) -> Vec<ScopeRun<'_>> {
         let list = if prev {
-            &self.prev_places
+            self.places.prev()
         } else {
             &self.places
         };
@@ -2277,7 +2264,7 @@ impl TextSystem {
     /// concatenation.
     fn long_place(&self, key: Key, prev: bool) -> Option<(&TextPlace, &LongLine)> {
         let list = if prev {
-            &self.prev_places
+            self.places.prev()
         } else {
             &self.places
         };

@@ -47,20 +47,14 @@ pub struct FragmentDrawId(pub u32);
 /// filled. A frame with no departure pays one `clear`.
 #[derive(Default)]
 pub struct FragmentList {
-    draws: Vec<crate::display::FragmentDraw>,
-    prev: Vec<crate::display::FragmentDraw>,
+    draws: crate::retain::Kept<crate::display::FragmentDraw>,
 }
 
 impl FragmentList {
     /// Starts a frame. `keep_prev` retains the list just finished so a
     /// departing fragment can copy its draw out of it.
     pub(crate) fn begin_frame(&mut self, keep_prev: bool) {
-        if keep_prev {
-            std::mem::swap(&mut self.draws, &mut self.prev);
-        } else {
-            self.prev.clear();
-        }
-        self.draws.clear();
+        self.draws.begin(keep_prev);
     }
 
     /// Records a draw and returns where it went.
@@ -79,7 +73,7 @@ impl FragmentList {
     /// swap did not expect; it draws nothing rather than something else's
     /// picture.
     pub(crate) fn prev_get(&self, id: FragmentDrawId) -> Option<crate::display::FragmentDraw> {
-        self.prev.get(id.0 as usize).copied()
+        self.draws.prev().get(id.0 as usize).copied()
     }
 }
 

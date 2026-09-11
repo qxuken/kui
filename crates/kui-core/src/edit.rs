@@ -485,29 +485,19 @@ impl EditStore {
     fn evict(&mut self, declared_at: u64) {
         let focused = self.focused;
         let dragging = self.dragging.map(|(k, _)| k);
-        let mut undeclared: Vec<(u64, Key)> = self
-            .states
-            .iter()
-            .filter(|(k, s)| {
-                s.last_declared < declared_at && Some(**k) != focused && Some(**k) != dragging
-            })
-            .map(|(k, s)| (s.last_declared, *k))
-            .collect();
-        let Some(excess) = undeclared.len().checked_sub(MAX_UNDECLARED_EDITS) else {
-            return;
-        };
-        if excess == 0 {
-            return;
-        }
-        // Oldest first, and by key inside a frame so the same view evicts
-        // the same states whatever order the map iterated in.
-        undeclared.sort_unstable();
-        for (_, key) in &undeclared[..excess] {
-            self.states.remove(key);
-            if self.caret_moved == Some(*key) {
-                self.caret_moved = None;
-            }
-        }
+        let caret_moved = &mut self.caret_moved;
+        crate::retain::evict_undeclared(
+            &mut self.states,
+            MAX_UNDECLARED_EDITS,
+            declared_at,
+            |s| s.last_declared,
+            |k| Some(k) == focused || Some(k) == dragging,
+            |k| {
+                if *caret_moved == Some(k) {
+                    *caret_moved = None;
+                }
+            },
+        );
     }
 
     /// Ensures state exists for `key`, seeding `initial` on first creation

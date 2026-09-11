@@ -41,7 +41,7 @@
 //! A ghost is dropped when its transition ends, when the same key comes
 //! back (the live node wins immediately, so a toast dismissed and re-shown
 //! does not double), when it has not been replayed for
-//! [`EVICT_AFTER_FRAMES`] frames, and — the part that makes this safe for a
+//! [`crate::retain::KEEP_FOR`] frames, and — the part that makes this safe for a
 //! list — when a later frame's removal needs the room it is taking. The
 //! store holds at most [`MAX_NODES`] nodes, and the budget is applied to a
 //! frame's removal *whole*: the diff counts what the frame wants to add
@@ -87,11 +87,6 @@ pub(crate) fn can_depart(spec: &NodeSpec) -> bool {
             .as_ref()
             .is_some_and(|t| t.duration_ms > 0.0)
 }
-
-/// Evict a ghost not replayed for this many frames — the same backstop
-/// `AnimStore` keeps, for a driver whose clock stops moving while frames
-/// keep coming.
-const EVICT_AFTER_FRAMES: u64 = 300;
 
 /// A departing node's content. Same leaves a live node has, in the forms
 /// that outlive the frame that made them: a `TextId` indexes the frame's
@@ -301,8 +296,12 @@ impl DepartStore {
     pub(crate) fn begin_frame(&mut self) {
         self.frame_no += 1;
         self.active = false;
-        if !self.ghosts.is_empty() && self.frame_no.is_multiple_of(240) {
-            let cutoff = self.frame_no.saturating_sub(EVICT_AFTER_FRAMES);
+        // A ghost not replayed for a while goes — the same backstop the
+        // anim store keeps, for a driver whose clock stops moving while
+        // frames keep coming (`retain::sweep_cutoff`).
+        if !self.ghosts.is_empty()
+            && let Some(cutoff) = crate::retain::sweep_cutoff(self.frame_no)
+        {
             self.drop_where(|g| g.last_used < cutoff);
         }
     }

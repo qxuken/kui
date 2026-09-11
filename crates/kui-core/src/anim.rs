@@ -263,9 +263,6 @@ impl Tween {
     }
 }
 
-/// Evict tweens not driven for this many frames.
-const EVICT_AFTER_FRAMES: u64 = 300;
-
 #[derive(Default)]
 pub struct AnimStore {
     tweens: FxHashMap<Key, [Option<Tween>; SLOTS]>,
@@ -296,8 +293,10 @@ impl AnimStore {
     pub(crate) fn begin_frame(&mut self) {
         self.frame_no += 1;
         self.active = false;
-        if !self.tweens.is_empty() && self.frame_no.is_multiple_of(240) {
-            let cutoff = self.frame_no.saturating_sub(EVICT_AFTER_FRAMES);
+        // Tweens nothing has driven for a while go (`retain::sweep_cutoff`).
+        if !self.tweens.is_empty()
+            && let Some(cutoff) = crate::retain::sweep_cutoff(self.frame_no)
+        {
             self.tweens
                 .retain(|_, slots| slots.iter().flatten().any(|t| t.last_used >= cutoff));
         }

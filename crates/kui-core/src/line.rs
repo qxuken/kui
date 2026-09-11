@@ -11,6 +11,7 @@
 
 use crate::color::Color;
 use crate::geom::{Rect, Vec2};
+use crate::retain::Kept;
 
 /// Index into the frame's line list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -62,10 +63,8 @@ pub(crate) struct Run {
 /// The frame's strokes, and the previous frame's while an `exit` needs it.
 #[derive(Default)]
 pub struct LineStore {
-    runs: Vec<Run>,
-    points: Vec<Vec2>,
-    prev_runs: Vec<Run>,
-    prev_points: Vec<Vec2>,
+    runs: Kept<Run>,
+    points: Kept<Vec2>,
 }
 
 /// How far a stroke's box extends past its points: half the width, plus
@@ -88,15 +87,8 @@ impl LineStore {
     /// Starts a frame. `keep_prev` retains the list just finished so a
     /// departing line's ghost can copy its points out of it.
     pub(crate) fn begin_frame(&mut self, keep_prev: bool) {
-        if keep_prev {
-            std::mem::swap(&mut self.runs, &mut self.prev_runs);
-            std::mem::swap(&mut self.points, &mut self.prev_points);
-        } else {
-            self.prev_runs.clear();
-            self.prev_points.clear();
-        }
-        self.runs.clear();
-        self.points.clear();
+        self.runs.begin(keep_prev);
+        self.points.begin(keep_prev);
     }
 
     /// Adds a stroke through `points` (parent-box coordinates): flattens a
@@ -156,10 +148,10 @@ impl LineStore {
     /// frame does not have, which cannot happen while `begin_frame` keeps
     /// the two in step.
     pub(crate) fn prev_run(&self, id: LineId) -> (Run, &[Vec2]) {
-        match self.prev_runs.get(id.0 as usize) {
+        match self.runs.prev().get(id.0 as usize) {
             Some(run) => (
                 *run,
-                &self.prev_points[run.first as usize..(run.first + run.len) as usize],
+                &self.points.prev()[run.first as usize..(run.first + run.len) as usize],
             ),
             None => (
                 Run {

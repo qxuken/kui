@@ -103,22 +103,14 @@ impl ScrollStore {
     }
 
     fn evict(&mut self, declared_at: u64) {
-        let mut undeclared: Vec<(u64, Key)> = self
-            .entries
-            .iter()
-            .filter(|(_, e)| e.last_declared < declared_at)
-            .map(|(k, e)| (e.last_declared, *k))
-            .collect();
-        let Some(excess) = undeclared.len().checked_sub(MAX_UNDECLARED_SCROLLS) else {
-            return;
-        };
-        if excess == 0 {
-            return;
-        }
-        undeclared.sort_unstable();
-        for (_, key) in &undeclared[..excess] {
-            self.entries.remove(key);
-        }
+        crate::retain::evict_undeclared(
+            &mut self.entries,
+            MAX_UNDECLARED_SCROLLS,
+            declared_at,
+            |e| e.last_declared,
+            |_| false,
+            |_| {},
+        );
     }
 
     pub fn offset(&self, key: Key) -> Vec2 {

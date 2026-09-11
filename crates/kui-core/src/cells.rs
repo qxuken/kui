@@ -173,8 +173,9 @@ fn variant(flags: u8) -> usize {
 /// that reads the selection from inside its own `view` is asking about a
 /// frame that has not been built yet.
 pub struct CellStore {
-    frame: Vec<Entry>,
-    prev: Vec<Entry>,
+    /// This frame's grids and the frame before's — always kept, the way
+    /// the text store keeps its places (`retain::Kept`).
+    frame: crate::retain::Kept<Entry>,
     tables: FxHashMap<u64, StyleTable>,
     scale: f32,
 }
@@ -188,8 +189,7 @@ impl Default for CellStore {
 impl CellStore {
     pub fn new() -> Self {
         Self {
-            frame: Vec::new(),
-            prev: Vec::new(),
+            frame: Default::default(),
             tables: FxHashMap::default(),
             scale: 1.0,
         }
@@ -200,8 +200,7 @@ impl CellStore {
             self.tables.clear();
         }
         self.scale = scale;
-        std::mem::swap(&mut self.frame, &mut self.prev);
-        self.frame.clear();
+        self.frame.begin(true);
     }
 
     /// The grid `key` drew, in this frame or the one before it.
@@ -213,7 +212,7 @@ impl CellStore {
     }
 
     fn list(&self, prev: bool) -> &[Entry] {
-        if prev { &self.prev } else { &self.frame }
+        if prev { self.frame.prev() } else { &self.frame }
     }
 
     fn entry(&self, id: CellsId, prev: bool) -> &Entry {
