@@ -244,8 +244,6 @@ pub struct Core {
     /// what choosing one left for the host to do. See
     /// `docs/adr/0017-selection-as-a-scope.md`, decision 5.
     menu: Option<crate::menu::Menu>,
-    menu_root: Option<Key>,
-    menu_items: Vec<Key>,
     menu_actions: Vec<crate::menu::MenuAction>,
     /// The editor that held focus when the menu opened, since the menu's
     /// own rows take focus from it — what Cut, Copy and Select All act on.
@@ -262,16 +260,11 @@ pub struct Core {
     /// Who declared it, and so who hears the events its items post — the
     /// host, or the extension whose view declared the bar.
     menu_bar_origin: OriginId,
-    /// Which of the drawn bar's menus is open, and the nodes it built:
-    /// the root a dismissal arrives on, one key per title, and one per row
-    /// of the open menu.
+    /// Which of the drawn bar's menus is open, and the bar's root this
+    /// frame — where a menu-bar event lands. Its titles and rows are known
+    /// by their origin (`OriginId::MENU_BAR`), not by key.
     menu_bar_open: Option<usize>,
     menu_bar_root: Option<Key>,
-    menu_bar_rows: Vec<Key>,
-    /// The titles the drawn bar built this frame, in menu order: what
-    /// tells a press on `File` from a press in the app, the way
-    /// `menu_items` does for the open menu's rows.
-    menu_bar_titles: Vec<Key>,
     /// Whether the platform owns the menu bar (`set_native_menu_bar`), in
     /// which case the drawn one draws nothing and the driver hands the
     /// declaration over instead.
@@ -582,8 +575,6 @@ impl Core {
             float_stack: Vec::new(),
             hints: Vec::new(),
             menu: None,
-            menu_root: None,
-            menu_items: Vec::new(),
             menu_actions: Vec::new(),
             menu_editor: None,
             native_menus: false,
@@ -592,8 +583,6 @@ impl Core {
             menu_bar_origin: OriginId::HOST,
             menu_bar_open: None,
             menu_bar_root: None,
-            menu_bar_rows: Vec::new(),
-            menu_bar_titles: Vec::new(),
             native_menu_bar: false,
             lookup_available: false,
             selection: None,
@@ -1005,12 +994,10 @@ impl Core {
         self.viewport = viewport;
         self.scale = scale;
         self.window_title = None;
-        // The drawn menu bar's nodes are this frame's: a view that stops
-        // calling `widgets::menu_bar` leaves no keys behind for the next
-        // click to be taken back by. Re-recorded while the widget builds.
+        // The drawn menu bar's root is this frame's: a view that stops
+        // calling `widgets::menu_bar` leaves nothing behind for the next
+        // event to land on. Re-recorded while the widget builds.
         self.menu_bar_root = None;
-        self.menu_bar_titles.clear();
-        self.menu_bar_rows.clear();
         // Last frame's focus declarations are what this frame's are
         // compared against (see `set_key_focus`).
         std::mem::swap(&mut self.declared_focus, &mut self.declared_focus_last);

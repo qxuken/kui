@@ -19,6 +19,18 @@ impl OriginId {
     /// inside `handle_input` and never handed out. Reserved at the top of
     /// the range so no extension list ever reaches it.
     pub const DEVTOOLS: OriginId = OriginId(u16::MAX);
+    /// The core's own context menu (`docs/adr/0017`, decision 5) and the
+    /// menu bar it draws (`docs/adr/0018`): the same isolation the
+    /// devtools have — a node opened under one of these is the surface's,
+    /// its events are taken back inside `handle_input` and never handed
+    /// out, and no key list has to remember which nodes those were.
+    pub const MENU: OriginId = OriginId(u16::MAX - 1);
+    pub const MENU_BAR: OriginId = OriginId(u16::MAX - 2);
+
+    /// Whether nodes of this origin are one of the core's own surfaces.
+    pub fn is_core_surface(self) -> bool {
+        matches!(self, Self::DEVTOOLS | Self::MENU | Self::MENU_BAR)
+    }
 }
 
 /// Index into the frame's text list (owned by `TextSystem`).

@@ -384,7 +384,7 @@ impl Core {
                             || h.key_sink.is_some()
                             || h.window.is_some();
                         let scope = h.select_scope.filter(|_| !claimed);
-                        (h.key, h.edit_origin, h.focusable, scope)
+                        (h.key, h.edit_origin, h.focusable, scope, h.origin)
                     });
                     // While a modal is up, a press outside it never
                     // touches focus: one that finds no region asks the
@@ -393,9 +393,7 @@ impl Core {
                     // only live thing out there — window chrome — is the
                     // platform's business, not the app's.
                     if let Some(key) = self.modal()
-                        && !hit
-                            .as_ref()
-                            .is_some_and(|(k, _, _, _)| self.within_modal(*k))
+                        && !hit.as_ref().is_some_and(|(k, ..)| self.within_modal(*k))
                     {
                         if hit.is_none() {
                             self.dismiss(key, "outside", &mut out);
@@ -418,8 +416,9 @@ impl Core {
                         // The menu bar's Edit menu is about the selection
                         // for the same reason, so a press in it is spared
                         // the same way.
-                        let in_bar = hit.as_ref().is_some_and(|(k, ..)| self.in_menu_bar(*k));
-                        if !hit.as_ref().is_some_and(|(k, ..)| self.in_menu(*k)) && !in_bar {
+                        let origin = hit.as_ref().map(|(.., o)| *o);
+                        let in_bar = origin == Some(OriginId::MENU_BAR);
+                        if origin != Some(OriginId::MENU) && !in_bar {
                             self.clear_selection();
                         }
                         // And the field a menu-bar menu will be about: this
@@ -433,7 +432,7 @@ impl Core {
                             self.note_menu_bar_editor();
                         }
                         match hit {
-                            Some((key, Some(origin), true, _)) => {
+                            Some((key, Some(origin), true, _, _)) => {
                                 self.set_focus(Some(key));
                                 let local = Vec2::new(p.x - origin.x, p.y - origin.y);
                                 self.edit_with_fonts(|edit, fs| edit.click(key, local, clicks, fs));
@@ -443,7 +442,7 @@ impl Core {
                             // claiming the press: start a drag-select.
                             // One click places both ends together, two
                             // take the word, three the whole run.
-                            Some((key, _, focusable, Some(scope))) => {
+                            Some((key, _, focusable, Some(scope), _)) => {
                                 let target = self.press_focus(key, focusable);
                                 self.set_focus(target);
                                 self.settle_region(Some(key));
@@ -509,7 +508,7 @@ impl Core {
                             }
                             // Everything else: a plain node, and a
                             // disabled editor (no caret to place).
-                            Some((key, _, focusable, None)) => {
+                            Some((key, _, focusable, None, _)) => {
                                 let target = self.press_focus(key, focusable);
                                 self.set_focus(target);
                                 // Whatever the press did to focus, Tab

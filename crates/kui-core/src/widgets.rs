@@ -11,6 +11,7 @@ use crate::menu::{MenuBar, MenuItem, MenuRole};
 use crate::spec::{Align, FloatConfig, NodeSpec, Sizing, TextStyle};
 use crate::stats::{FrameSample, STATS_CAPACITY};
 use crate::theme::Theme;
+use crate::tree::OriginId;
 use crate::ui::Ui;
 use crate::value::Value;
 use crate::window::WindowButton;
@@ -591,15 +592,6 @@ pub const MENU_TEXT: f32 = 13.0;
 /// to post whatever it likes from its own items.
 pub const MENU_KEY: &str = "kui.menu";
 
-/// The nodes [`context_menu`] built: the root a `modal` dismissal arrives
-/// on, and one key per item in the order they were given, separators
-/// included, so an index into the item list is an index into this.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MenuNodes {
-    pub root: Key,
-    pub rows: Vec<Key>,
-}
-
 /// Draws a context menu at `at` (logical viewport px) and returns the key
 /// of its root. A float anchored to the viewport rather than to a parent,
 /// because a context menu belongs at the pointer and not under whatever
@@ -616,9 +608,13 @@ pub struct MenuNodes {
 ///
 /// Each chosen row posts the item's `id`, or its label when it declares
 /// none. A `Separator` posts nothing and takes no focus.
-pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> MenuNodes {
+pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> Key {
     let t = ui.theme();
-    menu_panel(
+    // The menu's nodes are the core's, not the host's: opened under their
+    // own origin, so the core takes their events back by it.
+    let saved = ui.origin();
+    ui.set_origin(OriginId::MENU);
+    let root = menu_panel(
         ui,
         MENU_KEY,
         menu_panel_spec(&t)
@@ -636,7 +632,9 @@ pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> MenuNodes 
             .modal(Value::str(MENU_KEY))
             .label("Menu"),
         items,
-    )
+    );
+    ui.set_origin(saved);
+    root
 }
 
 /// The panel every menu is: a fixed-width column of rows, in the palette
@@ -661,7 +659,7 @@ pub fn menu_panel_spec(t: &Theme) -> NodeSpec {
 /// Builds the rows of one menu into `spec`, keyed under `label`, and
 /// reports the keys they took. The one place a menu's rows are drawn:
 /// both menus kui has are this function with a different container.
-pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuItem]) -> MenuNodes {
+pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuItem]) -> Key {
     let t = ui.theme();
     // A wash rather than a fill, so a row's label stays readable on both
     // bases without the view guessing a frame ahead of the core — see
@@ -672,28 +670,28 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
     // with a setting in it keeps every label on the same left edge whether
     // the setting is on or off.
     let gutter = items.iter().any(|i| i.checked);
-    let mut rows = Vec::with_capacity(items.len());
-    let root = ui.with_keyed(label, spec, |ui| {
+    ui.with_keyed(label, spec, |ui| {
         let mut first = true;
         for (i, item) in items.iter().enumerate() {
             if item.role == MenuRole::Separator {
-                rows.push(
-                    ui.with_indexed(
-                        i as u64,
-                        NodeSpec::row()
-                            .width(Sizing::Grow(1.0))
-                            .height(Sizing::Fixed(1.0))
-                            .bg(t.border)
-                            // Not a row anything reads out: a divider is
-                            // paint, and a screen reader hearing "separator"
-                            // between every pair of items is noise.
-                            .role(Role::None),
-                        |_| {},
-                    ),
+                ui.with_indexed(
+                    i as u64,
+                    NodeSpec::row()
+                        .width(Sizing::Grow(1.0))
+                        .height(Sizing::Fixed(1.0))
+                        .bg(t.border)
+                        // Not a row anything reads out: a divider is
+                        // paint, and a screen reader hearing "separator"
+                        // between every pair of items is noise.
+                        .role(Role::None),
+                    |_| {},
                 );
                 continue;
             }
-            let payload = item.id.clone().unwrap_or_else(|| Value::str(item.text()));
+            // The row posts which item it is; the core takes the event back
+            // by origin, performs the item, and what the app hears is the
+            // item's own `id` on the node the menu was about.
+            let payload = menu_row_tag(i);
             let mut spec = NodeSpec::row()
                 .role(Role::MenuItem)
                 .label(item.text())
@@ -721,7 +719,7 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
             } else {
                 spec = spec.disabled(true).opacity(t.disabled_opacity);
             }
-            rows.push(ui.with_indexed(i as u64, spec, |ui| {
+            ui.with_indexed(i as u64, spec, |ui| {
                 if gutter {
                     ui.with(NodeSpec::row().width(Sizing::Fixed(MENU_CHECK_W)), |ui| {
                         if item.checked {
@@ -737,10 +735,20 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
                     ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
                     ui.text(accel, TextStyle::new(MENU_TEXT).color(t.muted));
                 }
-            }));
+            });
         }
-    });
-    MenuNodes { root, rows }
+    })
+}
+
+/// What a menu row's click carries: its index in the menu's items, for
+/// the core to read back (`Core::menu_row_of`). The title of a menu-bar
+/// menu carries its index the same way, under `title`.
+fn menu_row_tag(i: usize) -> Value {
+    Value::map([("row", Value::Int(i as i64))])
+}
+
+fn menu_title_tag(i: usize) -> Value {
+    Value::map([("title", Value::Int(i as i64))])
 }
 
 /// The reserved label the drawn menu bar is keyed under, the way
@@ -802,8 +810,10 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
     let t = ui.theme();
     let accent = t.accent_soft;
     let mut open = ui.core().menu_bar_open();
-    let mut titles = Vec::with_capacity(bar.menus.len());
-    let mut rows = Vec::new();
+    // The bar's nodes are the core's, opened under their own origin (see
+    // `OriginId::MENU_BAR`), so the core takes their events back by it.
+    let saved = ui.origin();
+    ui.set_origin(OriginId::MENU_BAR);
     let mut spec = NodeSpec::row()
         .width(Sizing::Grow(1.0))
         .height(Sizing::Fixed(MENU_BAR_H))
@@ -850,12 +860,10 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
                     .radius(4.0)
                     .cross_align(Align::Center);
                 if live {
-                    // The payload never reaches the app — the core takes
-                    // the event back by key — but a title that posts its
-                    // own name is what a host driving the bar by hand
-                    // would expect to see if it ever did.
+                    // Which title this is: the core takes the event back
+                    // by origin and opens or closes the `i`th menu.
                     spec = spec
-                        .on_click(Value::str(m.label.as_str()))
+                        .on_click(menu_title_tag(i))
                         .hover_group(&group_name(i))
                         .hover_bg(accent)
                         .focus_bg(accent);
@@ -865,13 +873,13 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
                 } else {
                     spec = spec.disabled(true).opacity(t.disabled_opacity);
                 }
-                titles.push(ui.with_keyed(MENU_BAR_TITLE_KEY, spec, |ui| {
+                ui.with_keyed(MENU_BAR_TITLE_KEY, spec, |ui| {
                     ui.text(m.label.as_str(), TextStyle::new(MENU_TEXT).color(t.fg));
-                }));
+                });
                 if is_open {
                     // Out of the title's bottom-left corner, and `fit` to
                     // slide back in at the right-hand end of the bar.
-                    let nodes = menu_panel(
+                    menu_panel(
                         ui,
                         MENU_BAR_PANEL_KEY,
                         menu_panel_spec(&t).label(m.label.as_str()).float(
@@ -883,12 +891,12 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
                         ),
                         &m.items,
                     );
-                    rows = nodes.rows;
                 }
             });
         }
     });
-    ui.core().set_menu_bar_nodes(root, titles, rows);
+    ui.set_origin(saved);
+    ui.core().set_menu_bar_root(root);
 }
 
 /// The checkmark gutter's width, logical px.

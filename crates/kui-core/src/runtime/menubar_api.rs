@@ -20,7 +20,7 @@ use crate::input::UiEvent;
 use crate::key::Key;
 use crate::menu::{MenuBar, MenuItem};
 use crate::runtime::Core;
-use crate::value::Value;
+use crate::tree::OriginId;
 
 impl Core {
     /// Declares the application menu for this frame.
@@ -165,14 +165,11 @@ impl Core {
         self.menu_bar_root.unwrap_or(Key::ROOT)
     }
 
-    /// The drawn bar reports the nodes it built this frame
-    /// (`widgets::menu_bar`), so their clicks can be told from the app's.
-    /// Recorded rather than recomputed: a key is a hash of a path, and a
-    /// second derivation of one is a second thing to keep in step.
-    pub(crate) fn set_menu_bar_nodes(&mut self, root: Key, titles: Vec<Key>, rows: Vec<Key>) {
+    /// The drawn bar reports its root this frame (`widgets::menu_bar`):
+    /// where a menu-bar event lands (`menu_bar_target`). Its titles and
+    /// rows are known by their origin, not by key.
+    pub(crate) fn set_menu_bar_root(&mut self, root: Key) {
         self.menu_bar_root = Some(root);
-        self.menu_bar_titles = titles;
-        self.menu_bar_rows = rows;
     }
 
     /// Filters the events one input produced: anything belonging to the
@@ -187,28 +184,11 @@ impl Core {
         if self.menu_bar_root.is_none() {
             return;
         }
-        let root = self.menu_bar_root;
-        let mut title: Option<usize> = None;
-        let mut row: Option<usize> = None;
-        let mut dismissed = false;
-        out.retain(|ev| {
-            if Some(ev.key) == root {
-                // The bar's own dismissal: Escape, or a press outside it
-                // while a menu is open (the bar is the modal scope then,
-                // so its titles stay live and the app below does not).
-                dismissed |= ev.payload.get("kind").and_then(Value::as_str) == Some("dismiss");
-                return false;
-            }
-            if let Some(i) = self.menu_bar_titles.iter().position(|k| *k == ev.key) {
-                title = Some(i);
-                return false;
-            }
-            if let Some(i) = self.menu_bar_rows.iter().position(|k| *k == ev.key) {
-                row = Some(i);
-                return false;
-            }
-            true
-        });
+        // A `dismiss` is the bar's own: Escape, or a press outside it while
+        // a menu is open (the bar is the modal scope then, so its titles
+        // stay live and the app below does not).
+        let taken = Self::take_surface_events(out, OriginId::MENU_BAR);
+        let (title, row, dismissed) = (taken.title, taken.row, taken.dismissed);
         if let Some(i) = title {
             // A press on the open menu's own title closes it, which is
             // what every menu bar does and what makes the title a toggle.
@@ -242,15 +222,6 @@ impl Core {
     /// earlier menu was about.
     pub(crate) fn note_menu_bar_editor(&mut self) {
         self.menu_editor = self.edit.focused();
-    }
-
-    /// Whether `key` is a node of the drawn bar — its root, a title or a
-    /// row. What tells a press inside the bar kui drew from a press in the
-    /// app, the way `in_menu` does for the open context menu.
-    pub(crate) fn in_menu_bar(&self, key: Key) -> bool {
-        Some(key) == self.menu_bar_root
-            || self.menu_bar_titles.contains(&key)
-            || self.menu_bar_rows.contains(&key)
     }
 }
 

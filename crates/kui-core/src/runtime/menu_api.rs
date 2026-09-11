@@ -25,6 +25,7 @@ use crate::input::UiEvent;
 use crate::key::Key;
 use crate::menu::{Menu, MenuAction, MenuItem, MenuRole};
 use crate::runtime::Core;
+use crate::tree::OriginId;
 use crate::ui::Ui;
 use crate::value::Value;
 use crate::window::WindowId;
@@ -111,13 +112,6 @@ impl Core {
         Some(MenuAction::LookUp { text, at })
     }
 
-    /// Whether `key` is a node of the stock menu — its root or one of its
-    /// rows. What tells a press inside the core's own menu from a press in
-    /// the app.
-    pub(crate) fn in_menu(&self, key: Key) -> bool {
-        Some(key) == self.menu_root || self.menu_items.contains(&key)
-    }
-
     /// Opens one. A second replaces the first: a window has one menu, the
     /// way it has one selection and one focus.
     ///
@@ -159,15 +153,14 @@ impl Core {
         // (they have to be — the arrow keys are the composite's), so by
         // the time Copy runs, focus has moved off the field the user
         // right-clicked. The window's *selection* survives the press
-        // (see `in_menu`), but an editor's lives with its focus.
+        // (a press under `OriginId::MENU` is spared), but an editor's
+        // lives with its focus.
         self.menu_editor = self.edit.focused();
         self.menu = Some(menu);
-        self.menu_items.clear();
     }
 
     /// Closes it. Returns whether one was open.
     pub fn close_menu(&mut self) -> bool {
-        self.menu_items.clear();
         self.menu.take().is_some()
     }
 
@@ -185,10 +178,9 @@ impl Core {
     /// frame's modal scope and its topmost float.
     pub(crate) fn build_menu(ui: &mut Ui<'_>) {
         if ui.core().native_menus {
-            // The host is showing it. Nothing is drawn, and the rows the
-            // stock renderer would have keyed are not there to be clicked
-            // — which is why `menu_items` stays empty and
-            // `consume_menu_events` finds nothing to take back.
+            // The host is showing it. Nothing is drawn, so there are no
+            // rows to click and `consume_menu_events` finds nothing to
+            // take back.
             return;
         }
         let Some(menu) = ui.core().menu.clone() else {
@@ -196,15 +188,10 @@ impl Core {
         };
         // The widget floats against the host's viewport, whose origin is
         // the dock's edge under a left dock (ADR 0024): the window point
-        // becomes a host one.
+        // becomes a host one. Its nodes are opened under `OriginId::MENU`,
+        // which is how `consume_menu_events` knows them.
         let at = menu.at.minus(ui.core().dt_shift());
-        let nodes = crate::widgets::context_menu(ui, at, &menu.items);
-        // The keys the rows actually took, reported by the widget rather
-        // than recomputed here: a key is a hash of a path, and a second
-        // derivation of one is a second thing to keep in step.
-        let core = ui.core();
-        core.menu_root = Some(nodes.root);
-        core.menu_items = nodes.rows;
+        crate::widgets::context_menu(ui, at, &menu.items);
     }
 
     /// The stock items for a right-click on `region`, or none when there
@@ -302,28 +289,39 @@ impl Core {
         if self.menu.is_none() {
             return;
         }
-        let root = self.menu_root;
-        let mut chosen: Option<usize> = None;
-        let mut dismissed = false;
-        out.retain(|ev| {
-            if Some(ev.key) == root {
-                // The modal's own dismissal (a press outside, Escape).
-                dismissed |= ev.payload.get("kind").and_then(Value::as_str) == Some("dismiss");
-                return false;
-            }
-            match self.menu_items.iter().position(|k| *k == ev.key) {
-                Some(i) => {
-                    chosen = Some(i);
-                    false
-                }
-                None => true,
-            }
-        });
-        if let Some(i) = chosen {
+        let taken = Self::take_surface_events(out, OriginId::MENU);
+        if let Some(i) = taken.row {
             self.choose_menu_item(i, out);
-        } else if dismissed {
+        } else if taken.dismissed {
             self.close_menu();
         }
+    }
+
+    /// Takes every event of one of the core's own surfaces out of `out`
+    /// and reads what they said: a `dismiss` on the surface's modal root,
+    /// a click on the `row`th item (its payload is `{row}`, the message
+    /// `widgets::menu_row_tag` gave it, whether the pointer or Enter
+    /// clicked it), a click on the `title`th menu of the bar (`{title}`).
+    /// The one filter both menus consume through, so what a surface's
+    /// nodes post is read in one place. Hover, focus and the rest of a
+    /// surface's own events are taken with them: none of it is the app's.
+    pub(crate) fn take_surface_events(out: &mut Vec<UiEvent>, origin: OriginId) -> Taken {
+        let mut taken = Taken::default();
+        let index = |v: &Value, name: &str| v.get(name).and_then(Value::as_int).map(|i| i as usize);
+        out.retain(|ev| {
+            if ev.origin != origin {
+                return true;
+            }
+            if ev.payload.get("kind").and_then(Value::as_str) == Some("dismiss") {
+                taken.dismissed = true;
+            } else if let Some(i) = index(&ev.payload, "row") {
+                taken.row = Some(i);
+            } else if let Some(i) = index(&ev.payload, "title") {
+                taken.title = Some(i);
+            }
+            false
+        });
+        taken
     }
 
     /// Performs one item and closes the menu. A standard role the core can
@@ -439,4 +437,12 @@ impl Core {
             ]),
         });
     }
+}
+
+/// What one input said to one of the core's surfaces (`Core::take_surface_events`).
+#[derive(Default)]
+pub(crate) struct Taken {
+    pub dismissed: bool,
+    pub row: Option<usize>,
+    pub title: Option<usize>,
 }
