@@ -386,6 +386,12 @@ pub struct LayoutSpec {
     /// across frames in the core, keyed by this node's `Key`.
     pub scroll_x: bool,
     pub scroll_y: bool,
+    /// Scroll anchoring (backlog C26 step 3, CSS's `overflow-anchor`): the
+    /// first child in view keeps its place on screen when the content
+    /// before it changes size — a chat that prepends history, a log that
+    /// inserts above the viewport, a row whose estimate was corrected.
+    /// On the scroll axis that is the container's main axis only.
+    pub anchor: bool,
     /// Out-of-flow positioning; see [`FloatConfig`].
     pub float: Option<FloatConfig>,
 }
@@ -409,6 +415,7 @@ impl Default for LayoutSpec {
             clip: false,
             scroll_x: false,
             scroll_y: false,
+            anchor: false,
             float: None,
         }
     }
@@ -1110,6 +1117,15 @@ impl NodeSpec {
     /// Horizontal scrolling (and clipping) for overflowing content.
     pub fn scroll_x(mut self) -> Self {
         self.layout.scroll_x = true;
+        self
+    }
+
+    /// Scroll anchoring on this container (see [`LayoutSpec::anchor`]):
+    /// the first child in view stays where it is on screen when the
+    /// content before it changes size. Needs `scroll_y` on a column or
+    /// `scroll_x` on a row.
+    pub fn anchor(mut self) -> Self {
+        self.layout.anchor = true;
         self
     }
 

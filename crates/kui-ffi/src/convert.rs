@@ -218,6 +218,9 @@ pub(crate) fn spec_of(
     if s.scrollbar_active_color != 0 {
         spec = spec.scrollbar_active_color(color_of(s.scrollbar_active_color));
     }
+    if s.anchor != 0 {
+        spec = spec.anchor();
+    }
     match s.window_role {
         1 => spec = spec.window_drag(),
         2 => spec = spec.window_button(WindowButton::Close),

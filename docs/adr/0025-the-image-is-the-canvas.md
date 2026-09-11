@@ -13,7 +13,9 @@ date: 2026-09-11
 > pixels the app can replace; the tenth time it is data the app wants
 > drawn cheaply, which is the fragment reading that image. Neither needs
 > a command list or a device handle. Decisions 1–6 are built in four
-> bindings with the two corpus scenes; decision 7 is filed as backlog V1.
+> bindings with the two corpus scenes; decision 7 was filed as backlog V1
+> and **built the round after (2026-09-11)** — the amendment's last
+> entry says what changed from its paragraph.
 > The four measurements are run and under *Measurements* at the end, and
 > what the building changed from the draft is under *Amendment* after
 > them — including the per-node lock that made the first polygon cost
@@ -192,7 +194,9 @@ date: 2026-09-11
    changes. A stroked polygon is a closed `line`; a polygon with more
    than eight vertices is two polygons, which the app can see, or the
    path primitive this document does not build.
-7. **Fragment image input is the next step, named and not built here.**
+7. **Fragment image input is the next step, named and not built here** —
+   *built 2026-09-11 as backlog V1; the amendment's last entry says what
+   changed from this paragraph.*
    `image={id}` on `fragment`; the prelude exposes `FragmentIn::image`
    (the texel rect) and a `sample(uv)` helper; a texture-backed image
    binds through decision 3's split, an atlas-backed one through the
@@ -413,6 +417,35 @@ noise of no split at all.
   paint and not in box; `polygon.rs` is the element's own example with its
   drive (every fill one fragment quad, no hit region, a hovered wedge's
   fill eased to the accent through the `bg` slot).
+
+- **Decision 7 was built the round after, and two things moved.** The
+  helpers are `kui_sample(uv)` and `kui_sample_nearest(uv)`, not
+  `sample(uv)`: the prelude's rule is that everything it declares is
+  `kui_`-prefixed except the two names the app writes, and
+  `kui_sd_rounded_box` was the precedent for a helper. The texel rect
+  reaches the shader in the draw's own uniform slot — `KuiFragmentParams`
+  gained an `image: vec4<f32>` after the sixteen floats, 80 bytes a slot
+  — and a module-private `kui_image_rect` the epilogue sets, so the helper
+  takes no rect argument. The prelude now declares group 0's atlas and
+  both samplers, so a fragment pipeline binds the quad pipeline's group 0
+  as it is; for a texture-backed image the renderer binds that image's
+  group 0 (the texture in the atlas's place, `atlas_size` its size —
+  decision 3's bind, reused) for the one quad, and the function never
+  knows which it reads. The wire form is `FragmentDraw.image`, a
+  `FragmentImage` — `None`, `Atlas(uv)`, `Texture { index, uv }` — with
+  `KuiFragmentDraw` gaining three fields under **ABI 15** (an array
+  element, so the stride moves), Node's `fragmentDraws()` six words and
+  its protocol v9, and the corpus a `fragment-image` line per draw that
+  has one. The removal-order test ADR 0015 asked for is both orders in
+  `tests/images.rs` — image gone under a live function, function gone
+  under a live image — and the corpus pins the live-nowhere case with
+  raw handle 1, because 0 means "no image" at three of the four doors.
+  What it cost the core, interleaved against the base commit: the
+  guarded rows +1.2–1.7% inside a ±0.4–0.9% spread (`frame_1k_typical`
+  115 → 117 µs), and `frame_1k_polygons` 96.1 → 101 µs (+4.9%, ±1.1%) —
+  the draw grew by the image's slot on both sides of the wire, and a
+  polygon is a fragment draw; the per-quad session lookup this amendment
+  already names is where that comes back.
 
 ## Action items — all done 2026-09-11
 

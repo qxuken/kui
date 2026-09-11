@@ -613,8 +613,16 @@ that are hard to reverse and would look arbitrary without their context.
   look unlike a kui node. It lays out, takes input and holds children,
   which paint over it. Sixteen positional floats go in, the frame clock and
   the node's size come with them, and `animate` asks for a frame every
-  frame. What it cannot do — multi-pass, geometry, compute, reading what is
-  behind it — is the `painter` the ADR names and does not build.
+  frame. It reads an **image** too — `<fragment image={id}>`,
+  `id.with_image(img)`, `kui_fragment_with` — through `kui_sample(uv)` and
+  `kui_sample_nearest(uv)`, with the texel rect in `in.image`
+  ([ADR 0025](docs/adr/0025-the-image-is-the-canvas.md) decision 7): a
+  data texture the app replaces with `update_image` is a spectrogram, a
+  heatmap or a 50k-point line from one quad, and any registered image is
+  an effect's input; the core binds the atlas or the image's own texture,
+  whichever holds it. What it cannot do — multi-pass, geometry, compute,
+  reading what is behind it — is the `painter` the ADR names and does not
+  build.
 - **Fonts are registered resources.** Beyond the generic sans / serif /
   mono families, `Core::load_fonts_dir("fonts")` / `load_font_file(path)` /
   `add_font_data(bytes)` load TTF/OTF/TTC files into the font database and
@@ -1254,6 +1262,18 @@ before there were themes — so a host that reports nothing sees no change. What
 this is **not** is a cascade: there is no inherited colour, no `var()`, no
 numbered ramp. A role is read off `ui` and put in a `bg`, and an app's own
 non-role colours — a highlighter's keywords, a chart's series — stay the app's.
+
+**Metrics.** The palette's other axis: the sizes the stock widgets are built
+from — a button's padding and text, every stock surface's radius, a menu's
+width, the titlebar's height — as sixteen roles in one `Metrics`, read as
+`ui.metrics()` / `env.metrics` / `ctx.metrics()` / `kui_metrics` and set with
+`set_metrics` (the [Metrics table](docs/props.md#metrics) has every one with
+its stock and compact value). An app's own control that reads `m.radius`
+agrees with the stock button at every density. A metric never scales by
+itself — it is logical px before `env.scale`, which is the renderer's — and
+density is the app's to choose (`Metrics::compact()`, `scaled(f)`); the
+default is the constants the widgets always had, which is what the corpus
+pins.
 
 **Layout.** Wrapping is rows only, for the pass-order reason above: a
 **column** that outgrows its height is still one line, so it shrinks its `Fit`

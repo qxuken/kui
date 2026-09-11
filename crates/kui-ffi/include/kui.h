@@ -170,8 +170,17 @@ extern "C" {
  * wrongly and harmlessly, as a pre-segment host draws a segment). The bump
  * is for KUI_QUAD_TEXTURE itself: a ninth kind a host's own renderer may
  * want to refuse by version rather than meet by surprise.
+ *
+ * ABI 15 appends image_source, image_texture and image_uv to
+ * KuiFragmentDraw, for the fragment image input (kui_fragment_with). An
+ * ARRAY element again, so the append moves the stride - the KuiSpan and
+ * KuiMenuItem exception, for the same reason. Recompile; a host that never
+ * reads `fragments` has nothing to change, and one that does now has a
+ * texture to bind for a draw whose image_source says so. The same version
+ * adds KuiMetrics with kui_metrics / kui_metrics_set (a new [out] struct,
+ * no bump of its own).
  */
-#define KUI_ABI_VERSION 14u
+#define KUI_ABI_VERSION 15u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -203,7 +212,7 @@ uint32_t kui_abi_version(void);
  *          a loop that reuses one struct.
  *          KuiEvent, KuiDrawData, KuiTextMetrics, KuiScrollGeometry,
  *          KuiWindowCommand, KuiMenuAction, KuiTextHit, KuiCaretRect,
- *          KuiTheme.
+ *          KuiLayoutRect, KuiTheme, KuiMetrics.
  *
  * [out[]]  You allocate an ARRAY; the library fills up to `cap` elements.
  *          A `size` field cannot help here: the library strides by its own
@@ -760,6 +769,14 @@ typedef struct KuiSpec {
     float scrollbar_width;
     uint32_t scrollbar_color;
     uint32_t scrollbar_active_color;
+    /* Non-zero: scroll anchoring on a scrolling node (CSS's overflow-anchor):
+     * the first child in view keeps its place on screen when the content
+     * before it changes size - a chat that prepends history, a log that
+     * inserts above the viewport. The child is found by key, so give the
+     * rows stable keys; on the scroll axis that is the node's main axis
+     * only. Appended after ABI 14 the compatible way; a host that predates
+     * it passes the shorter struct and reads as zero. */
+    uint32_t anchor;
 } KuiSpec;
 
 /* When a scrolling node's bars are drawn (KuiSpec.scrollbar): the schema
@@ -1329,13 +1346,27 @@ typedef struct KuiClip {
     float radius[4];
 } KuiClip;
 
+/* Where a KuiFragmentDraw's `image` is (backlog V1): none, the atlas, or a
+ * texture of its own named by `image_texture`. */
+enum { KUI_FRAGMENT_IMAGE_NONE = 0, KUI_FRAGMENT_IMAGE_ATLAS = 1,
+       KUI_FRAGMENT_IMAGE_TEXTURE = 2 };
+
 /* [out-array] One KUI_QUAD_FRAGMENT's draw, addressed by that quad's uv[0].
  * `params` is what the node declared, zero-padded to sixteen; the shader
  * reads them as four vec4<f32>. `fragment` is the handle, for
- * kui_fragment_source and for keying a pipeline cache. */
+ * kui_fragment_source and for keying a pipeline cache. `image_source` says
+ * where the draw's image (kui_fragment_with) is: KUI_FRAGMENT_IMAGE_NONE,
+ * _ATLAS - bind the atlas at group 0, as for any fragment - or _TEXTURE -
+ * bind the texture `textures[image_texture]` names in the atlas's place,
+ * exactly as a KUI_QUAD_TEXTURE quad asks. `image_uv` is the texel rect
+ * the shader is given as FragmentIn::image, in whichever is bound; zero
+ * with none. The three were appended in ABI 15. */
 typedef struct KuiFragmentDraw {
     uint64_t fragment;
     float params[16];
+    uint32_t image_source;
+    uint32_t image_texture;
+    uint32_t image_uv[4];
 } KuiFragmentDraw;
 
 /* [out-array] One KUI_QUAD_TEXTURE's draw, addressed by that quad's uv[0].
@@ -1634,6 +1665,47 @@ void kui_theme_set_accent(KuiCtx *ctx, uint32_t accent);
  * fresh struct - a zeroed role is transparent, not "leave it alone". */
 void kui_theme_set(KuiCtx *ctx, const KuiTheme *theme);
 
+/* The sizes the stock widgets are built from - the palette's other axis
+ * (kui_core::metrics, backlog T2): kui_core::schema::METRIC_ROLES field for
+ * field and in that order; kui-ffi's tests hold this struct to that table.
+ * Logical px, before the scale factor, which the renderer applies after.
+ * Read it so a control of your own agrees with the stock ones:
+ *
+ *   KuiMetrics m = KUI_METRICS_INIT;
+ *   kui_metrics(ctx, &m);
+ *   spec.radius = m.radius; spec.pad_l = m.control_pad_x;
+ */
+typedef struct KuiMetrics {
+    uint32_t size; /* = sizeof(KuiMetrics) in, bytes filled out */
+    float control_text;   /* a button's label */
+    float chrome_text;    /* a menu row, a menu-bar title, the titlebar's title */
+    float hint_text;      /* a tooltip */
+    float radius;         /* every stock surface's corner */
+    float radius_inner;   /* a row inside one: a menu row, a menu-bar title */
+    float control_pad_x;  /* a button's padding */
+    float control_pad_y;
+    float field_pad_x;    /* a text field's */
+    float field_pad_y;
+    float hint_pad_x;     /* a tooltip's */
+    float hint_pad_y;
+    float menu_pad_x;     /* a menu row's; a menu-bar title's is 2 px shorter */
+    float menu_pad_y;
+    float menu_width;     /* a menu panel's width */
+    float menu_bar_h;     /* the drawn menu bar's height */
+    float titlebar_h;     /* the platform's caption height: 32 on Windows, 34 elsewhere */
+} KuiMetrics;
+#define KUI_METRICS_INIT ((KuiMetrics){ .size = sizeof(KuiMetrics) })
+
+/* The metrics in effect. False for a bad context, a NULL out, or a
+ * reservation below the ABI-1 layout. */
+bool kui_metrics(KuiCtx *ctx, KuiMetrics *out);
+/* Make these the frame's: every stock widget from the next node on is
+ * built from them. NULL restores the stock set. Read one with kui_metrics
+ * and change the fields you mean to change rather than zeroing a fresh
+ * struct - a zeroed metric is zero, not "leave it alone". Density is the
+ * host's to choose; nothing in the OS is followed. */
+void kui_metrics_set(KuiCtx *ctx, const KuiMetrics *metrics);
+
 /* The frame clock for transitions (monotonic seconds, any origin). Set before
  * each kui_frame_begin; never setting it makes transitions snap. */
 void kui_set_time(KuiCtx *ctx, double now_secs);
@@ -1930,6 +2002,19 @@ void kui_set_scroll(KuiCtx *ctx, uint64_t key, float x, float y);
 /* Reads it back as the last layout clamped it — the number to persist and
  * restore. 0,0 for a node that never scrolled; either pointer may be NULL. */
 void kui_scroll_offset(KuiCtx *ctx, uint64_t key, float *x, float *y);
+/* [out] The rect a node was laid out at (kui_layout_of): logical px in
+ * viewport coordinates - the `layout` event's numbers without the event. */
+typedef struct KuiLayoutRect {
+    uint32_t size; /* = sizeof(KuiLayoutRect) in, bytes filled out */
+    float x, y, w, h;
+} KuiLayoutRect;
+#define KUI_LAYOUT_RECT_INIT ((KuiLayoutRect){ .size = sizeof(KuiLayoutRect) })
+/* The rect the last frame laid `key` out at, for a node that declared
+ * on_layout - the same numbers its `layout` event carries, read back during
+ * the next build with no event. False for any other key, a bad context, a
+ * NULL out or a short reservation. Read during a build it describes the
+ * previous frame, like kui_scroll_geometry. */
+bool kui_layout_of(KuiCtx *ctx, uint64_t key, KuiLayoutRect *out);
 /* Everything the last layout resolved for a container: its box, its content
  * size and that offset. False (leaving out untouched) for a key no layout
  * has resolved as a scroll container.
@@ -2049,6 +2134,19 @@ void kui_fragment(KuiCtx *ctx, uint64_t id, const float *params, size_t count,
  * kui_close. An empty label is the unkeyed form. */
 void kui_fragment_open(KuiCtx *ctx, KuiStr label, uint64_t id,
                        const float *params, size_t count, const KuiSpec *spec);
+/* kui_fragment reading `image` - a handle from kui_image_add, 0 for none -
+ * through the prelude's kui_sample(uv) / kui_sample_nearest(uv), with the
+ * texel rect in FragmentIn::image (backlog V1, ADR 0025 decision 7). A
+ * waveform, a heatmap, an image effect: the image is data the function
+ * reads. An image that is not live draws nothing, as a dead `id` does.
+ * label keys the node (empty = a key from the tree position). */
+void kui_fragment_with(KuiCtx *ctx, KuiStr label, uint64_t id, uint64_t image,
+                       const float *params, size_t count, const KuiSpec *spec);
+/* kui_fragment_with as a parent: its children paint over it. Balance with
+ * kui_close. */
+void kui_fragment_open_with(KuiCtx *ctx, KuiStr label, uint64_t id,
+                            uint64_t image, const float *params, size_t count,
+                            const KuiSpec *spec);
 /* A round-capped stroke from (x0, y0) to (x1, y1), in the parent's box space
  * (docs/adr/0010-a-segment-primitive.md). Never in layout: the node is a float
  * sized to the stroke's bounding box, so spec's sizing, padding and alignment

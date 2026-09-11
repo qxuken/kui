@@ -21,26 +21,25 @@ at the bottom of this file names every one of them, so an id cited by an open
 item, a code comment or a commit message can be resolved without opening the
 archive. Nothing was renumbered in any of those moves, and nothing ever is.
 
-What is left here: V1–V8 from the canvas question of 2026-09-11 (one ordered, five waiting for a view, two declined with a condition), three parked headings — C12, C13 and C14,
-each waiting for a view that wants it — the one the design-system audit left
-open on 2026-09-10 (T2, the axis ADR 0019 scoped itself out of; T1, the
-defect, closed on 2026-09-11 and T3 the day it was filed, when every example
-in the repo went onto the theme), B1 from the same day's ABI-and-bindings audit (a table
-declined with the condition that would build it) —
-C26, whose first two steps were built
-on 2026-09-09 and whose last two wait for a view (C25 beside it closed the day
-it was filed), and F36, which fell out
-of building the last two of the four entries the two alpha.9 field reports and
-the bake-off produced, and which is filed rather than built on purpose (the
-only host driving its own audio device today is the runner). Everything else
-that has been filed has shipped: AR1–AR6 from the architecture review of
-2026-09-11 — four filed with the reason each was not built beside it and
-two small things the building noticed — were all built the same day, in
-the archive under their round; F16–F23 from the two alpha.7 field reports
-closed the day they were filed (2026-09-07), F25–F31 from the alpha.8 ones by
-the day after (F27 last, on 2026-09-08), C16–C23 landed whole for alpha.9, and
-W3–W12 and F32–F35 for alpha.10. C15's remainder was the last split entry, and
-it closed on 2026-09-07.
+What is left here: V2–V8 from the canvas question of 2026-09-11 (five
+waiting for a view, two declined with a condition — V1, the one with an
+order attached, was built the round after, on 2026-09-11), three parked
+headings — C12, C13 and C14, each waiting for a view that wants it — B1
+from the ABI-and-bindings audit of 2026-09-10 (a table declined with the
+condition that would build it), and F36, which fell out of building the
+last two of the four entries the two alpha.9 field reports and the
+bake-off produced, and which is filed rather than built on purpose (the
+only host driving its own audio device today is the runner). Everything
+else that has been filed has shipped: the six the round of 2026-09-11 took
+together — V1, D1, D2, T2, C26's last two steps and E3, each in the
+archive under its round with what the building settled on top; the
+design-system audit's T1 (the defect) and T2 (the axis ADR 0019 scoped
+itself out of) are both closed now, T3 the day it was filed; AR1–AR6 from
+the architecture review of 2026-09-11 were all built the same day; F16–F23
+from the two alpha.7 field reports closed the day they were filed
+(2026-09-07), F25–F31 from the alpha.8 ones by the day after (F27 last, on
+2026-09-08), C16–C23 landed whole for alpha.9, and W3–W12 and F32–F35 for
+alpha.10. C26 was the last split entry, and it closed on 2026-09-11.
 
 Ordered by area, not by priority. What to do next is under "After alpha.10".
 
@@ -525,222 +524,21 @@ built). The JSX one works too, but only after three things the Rust one never ha
 do, and the third of them was a list that silently freezes. **C25, which was
 those three, closed the day it was filed** and is in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md#-c25--a-virtual-list-in-jsx-needs-a-sentinel-a-hand-written-key-and-a-guard-make-it-one-call--done-2026-09-09)
-whole. What stays here is C26.
-
-### `.` C26 — Rows of varying height — **steps 0 and 1 built (2026-09-09); 2 and 3 open**
-
-**Built the day this was filed, and the plan below survived it with two
-corrections.** `widgets::RowHeights` and `widgets::virtual_rows` are steps 0
-and 1 together — there was no reason to ship known heights without the
-estimate, since the same `measure` callback serves both — with the tests the
-step list asked for (`crates/kui-core/tests/scroll.rs`: the anchoring one is
-`the_row_under_the_pointer_stays_there_while_the_estimate_moves`) and the
-bench (`list_10k_rows_variable*`). `examples/rust/virtual_list.rs
---variable` is a wrapped log through it.
-
-**Correction 1: the anchor is an in-frame correction, not a cross-frame
-one.** The plan had the widget remembering the row its last slice started at
-and correcting on the *next* frame. It does not need to: it takes the
-anchor row and the fraction scrolled into it *before* it measures, and puts
-that pair back *after*, in the same frame — so there is no stored anchor,
-nothing to invalidate when the data changes under it, and the corrected
-frame is the first one drawn. `set_scroll` from inside a view landing on the
-frame being built is the fact that makes it work, and it held exactly as the
-plan claimed.
-
-**Correction 2: sources 2 and 3 are not both needed, and 3 is not needed at
-all here.** Because what `measure` returns is the height the row *gets* (the
-row's node is fixed to it), the measurement is authoritative and the layout
-cannot disagree with it. That removes the reason for step 2's `layout_of`
-query in this design — a row whose height is not text says what it is in
-`measure` like any other — and leaves step 3 standing on its own merits,
-which are not about virtual lists.
-
-**On the perf question this was filed with** (*keep it a separate widget
-unless the general one costs nothing where a stride is known*): at one
-height it costs what `virtual_column` costs. Holding the built rows equal —
-`list_10k_rows_variable_at_one_height`, the variable widget told row by row
-that every row is 24px, against `list_10k_rows_virtual`, the same 38 rows
-through the stride — it is **16.79 µs against 16.22 µs**, and three runs of
-these benches move their own medians by up to 10%, so that gap is not a
-reading. It stays separate anyway, for a reason the frame time does not
-show: `virtual_rows` needs a `RowHeights` the app owns, one allocation per
-row, and a `set_len` whenever the list changes length. The cost is the
-state, not the frame, and a caller who can name the stride should carry
-none of it.
-
-**Read the frame totals per row or they mislead.** Every virtualised bench
-here costs 427–455 ns a row and a naive row costs 393 ns, so the 242×
-against `list_10k_rows_naive` (3.93 ms) is entirely "38 rows instead of ten
-thousand" and not a cheaper row. It is also why `list_10k_rows_variable`
-reads *under* the uniform bench (13.66 µs): its rows average 32px against
-24px, so eight fewer fit the window. Only the at-one-height pair holds that
-equal, which is what it is for.
-
-**What the lazy prefix sums and the galloping search were worth.** The first
-cut rebuilt the sums whole on every change and bisected `0..len`. Both
-changes were needed — laziness alone buys nothing, because a bisection
-probes the midpoint first and fills everything under it — and the same
-benches run against both implementations say so:
-
-| | first cut | shipped |
-|---|---|---|
-| learns nothing, 10k | 14.41 µs | 13.66 µs |
-| learns a row it is looking at, 10k | 21.24 µs | **13.20 µs** |
-| the same at 100k | 84.43 µs | **13.31 µs** |
-| a row nowhere near the window, 10k | 28.08 µs | 18.83 µs |
-
-Learning a row's height is now free and flat in the length of the list,
-where at 100k rows it used to be six times the steady cost. The Fenwick
-tree the plan named is unbuilt and now has nothing to buy. The one case
-that still pays is a list told about a row nowhere near its window — a list
-whose data changed under it — which pays for the distance between that row
-and the window, and is the honest cost of a prefix sum.
-
-**What is still open**, and what the original plan said about each:
-
-- **Step 2, a measured-size query** (`Core::layout_of(key)`). Not needed by
-  `virtual_rows` any more (correction 2), and worth building only if
-  something else wants the rect the core already keeps for an `on_layout`
-  key without the event.
-- **Step 3, anchoring in the core** (`anchor` on a scroll container, CSS's
-  `overflow-anchor`). Untouched, and the argument for it is unchanged and
-  not about virtual lists: a chat that prepends history and a log that
-  inserts above the viewport want it with no virtualisation at all. If it
-  is built, this is the part of C5(b) that was worth building — not the
-  core skipping rows.
-- **A JS/Lua `virtualRows`.** The bindings got the *uniform* widget in C25.
-  The variable one needs the height cache to live in the app's model there,
-  which is a different shape from Rust's `&mut RowHeights` and wants a view
-  that has asked for it.
-- **Variable widths, and heights that depend on scroll position.** Still
-  nobody has asked.
-
-The plan as filed follows, unchanged.
-
----
-
-`virtual_column` takes one number and every row must come out that tall;
-C5's close said in so many words that rows of *varying* height are the one
-case (a) does not serve and the one that would justify (b). This entry is
-the plan for them, written before any of it is built so that the core-side
-part can be argued from a view-side attempt rather than guessed. Nothing
-here is scheduled; the first view that is a chat history, a log with wrapped
-lines or a feed of mixed cards is what starts it.
-
-**What breaks without a stride.** Three things `virtual_column` does with
-`i * row_h` have no closed form: the lead spacer (the height of every row
-above the range), the search from `offset.y` to the first visible row, and
-`set_scroll(i * row_h)` as "scroll to row `i`". All three need a prefix sum
-over heights the view does not have for rows it has never built.
-
-**Where a height can come from, in kui.** Three sources, and the design is
-which of them a row uses:
-
-1. *Known from the data.* A `kind` per row with a height per kind, a fixed
-   thumbnail size. Exact and free; the prefix sum is over the data.
-2. *Measured before layout.* `measure_text(content, style, Some(width))`
-   is what layout would give the text node, wrap and `max_lines` included,
-   shaped through the same cache — so measuring a row and then drawing it
-   shapes once (`runtime.rs`, "Measurement"). The width is
-   `scroll_geometry(key).rect.w` less the row's own padding, from the frame
-   before, and a resize changes it for every row at once. Exact for text
-   rows, which is most of the case; the catch is that measuring the *unbuilt*
-   rows is the cost virtualisation exists to avoid, so it has to be lazy and
-   cached per `(row, width)`, and rows never measured need an estimate.
-3. *Reported after layout.* `on_layout` on each built row posts its rect
-   when it changes — the only source for a row whose height is not text (a
-   `Fit` image, a nested layout). It is an event, it is one frame late, and
-   it is the shape C5 called wrong for the container; for rows it is the
-   right shape only when 2 cannot answer.
-
-**The design that follows** (the one every browser-side virtualiser
-converged on — estimate, measure, prefix sums, anchor — in kui's terms):
-
-- The view keeps `heights: Vec<Option<f32>>` (measured or known) and one
-  `estimate` (the running mean of the measured ones, or the caller's guess
-  before any). A row's height is `heights[i].unwrap_or(estimate)`. Prefix
-  sums over that: a Fenwick tree for O(log n) point updates when 3 is in
-  play, a plain cumulative array rebuilt on change when only 1 and 2 are —
-  measure before choosing; 10,000 rows is a 40 KB array and a rebuild is a
-  microsecond-scale loop.
-- Slicing: binary-search the prefix sum for the first row whose bottom is
-  past `offset.y`, build until a row's top is past `offset.y + rect.h`, plus
-  overscan **in rows**, not pixels. Lead spacer = prefix[first]; tail =
-  total − prefix[last]. Rows are opened with `with_indexed(i)` and are
-  `Fit`-height (they measure themselves); the stride assumption is gone.
-- **Anchoring is the whole difficulty.** The retained offset is a pixel
-  count (`ScrollStore`, `resolve` clamps it and nothing else), so when a row
-  *above* the range gets measured and differs from its estimate by Δ, the
-  lead spacer grows by Δ and everything on screen jumps by Δ. Correction:
-  the frame that learns Δ for rows above `first` calls
-  `set_scroll(key, offset + Δ)` in the same view. `positions` reads the store
-  at `finish_frame`, after the view has run, so a write from inside `view`
-  lands on the frame being built — the same fact `reveal`'s doc comment
-  states for itself — and the screen never shows the uncorrected frame.
-  **Pin that with a test before anything else**; if it turns out to be one
-  frame late in any binding, the jitter is the argument for the core doing
-  it (below). Two boundary cases the test suite needs: at
-  `offset == max_offset` (tailing a log) a shrinking estimate must keep the
-  view at the end, and "scroll to row `i`" is
-  `set_scroll(prefix[i])` followed by the correction loop converging over
-  the next frame or two as the rows around `i` measure — the scrollbar thumb
-  drifts a little while it does, as it does in a browser.
-- Node/JSX: the same, with C25's `virtualColumn` grown a `rowH: (i) =>
-  number | undefined` — the height cache lives in the model because source
-  3 arrives through `update` there, and source 2 is `ctx.measureText`.
-
-**Steps, each with its gate, each usable on its own:**
-
-0. **Known heights** — `widgets::virtual_rows(ui, label, spec, rows, |i|
-   height, |ui, i| row)`: source 1 only, prefix sums, `visible_range` from
-   a binary search. `virtual_column` becomes the `|_| row_h` case of it (or
-   stays as the fast path; measure whether the search costs anything at
-   10k). Gate: a `scroll.rs` test with heights `20, 40, 60, …` that builds
-   only what shows and where `set_scroll(prefix[i])` lands row `i` at the
-   top. This alone is the chat history whose rows are `measure_text`-able:
-   the view measures the rows it builds and the rows the search touches,
-   caches them, and hands `virtual_rows` the cached number.
-1. **Estimate and correct** — the height cache, the estimate, and the
-   anchoring write. Gate: a test with an estimate wrong by 2× where the row
-   at the top of the window stays at the top across the frame that measures
-   the rows above it; the tailing case; the jump-to-row convergence within N
-   frames. Bench: `list_10k_rows_variable` beside `list_10k_rows_virtual`
-   (~19 µs); the budget is a prefix-sum search and a handful of
-   `measure_text` hits per frame.
-2. **A measured-size query, if 3 turns out to matter** — the core keeps the
-   last rect per `on_layout` key already (`layouts`, for the edge trigger).
-   `Core::layout_of(key) -> Option<Rect>` reads it back during the next
-   build with no event, no tag and no model field — the query shape C5
-   preferred over the event, for a row this time. Only if step 1 shows the
-   event traffic (one per built row per scroll frame, ~15 at a screenful)
-   costing something a profile can see, or the JSX model plumbing being the
-   bulk of the widget.
-3. **Anchoring in the core, if step 1's correction is late** — `anchor`
-   on a scroll container (a row id naming a child key), meaning "keep this
-   node's top where it was when content above it changes size": the core
-   has the previous frame's rect for any `on_layout` key and this frame's
-   layout, so it is a subtraction in `positions` before `resolve` clamps.
-   This is CSS `overflow-anchor`, and it is bigger than virtual lists — a
-   chat that prepends history and a log that inserts above the viewport
-   want it with no virtualisation at all. If it is built, this is the part
-   of C5(b) that was worth building: **not the core skipping rows, which
-   breaks tree-as-data in every binding (Node encodes the tree whole; a
-   layout pass cannot call back into a view), but the core keeping a row
-   still.** Corpus scene, since it is a one-frame property once the
-   previous frame is given.
-
-**Not this:** the core building rows lazily (above); variable *widths*
-(a horizontal list is the same plan turned sideways, and nobody has asked);
-heights that depend on the row's own scroll position; a `virtual` flag.
+whole. **C26 followed it there on 2026-09-11**, when its last two steps
+landed — scroll anchoring in the core (`anchor`, CSS's `overflow-anchor`)
+and `layout_of(key)`; its first two had been built the day it was filed.
+What it leaves open is not an entry: a JS/Lua `virtualRows` and variable
+widths, each waiting for a view that asks.
 
 ## From the design-system audit (2026-09-10)
 
 The round that produced
 [ADR 0019](adr/0019-a-theme-derived-from-appearance-and-accent.md). The
 palette itself is built, and so is every example's migration onto it (T3,
-closed the day it was filed); these are the two the audit turned up and
-did not close.
+closed the day it was filed); T1 below is the defect it turned up, closed
+2026-09-11, and T2 — the metrics, the axis the ADR scoped itself out of —
+closed the same day and is in
+[the archive](backlog/closed-2026-09.md#-t2--the-metrics-are-still-constants--done-2026-09-11).
 
 ### `x` T1 — `on_context_menu` does not bubble, and keys do — **done (2026-09-11)**
 
@@ -784,30 +582,6 @@ carrying a `context_menu` tag, the way `enclosing_sink` walks for keys.
 lookup, so it is the same iterator without the `.next()`. One corpus step
 (a menu-declaring root under a full-size sink) and one test that a nested
 declaration still wins over its ancestor's.
-
-### `.` T2 — The metrics are still constants
-
-`BUTTON_TEXT` 15, `MENU_TEXT` 13, `MENU_WIDTH` 200, `TITLEBAR_H`, every
-`pad_xy(14.0, 8.0)` and every `radius(6.0)` in
-`crates/kui-core/src/widgets.rs` are hard-coded the way the colours were,
-and the same three examples that each grew a `Pal` also each picked their
-own row height and gutter. ADR 0019 scoped itself to colour on purpose —
-that is where both the duplication and the accessibility failure were —
-but the argument for a `Metrics` beside `Theme` is the argument that
-document already makes, one axis over.
-
-The scrollbar's are per node now rather than constants — `scrollbarWidth`
-and the two colours (2026-09-10, beside ADR 0023's build) — which is the
-per-node half of this and not the `Metrics`; the inset (2) and the
-minimum thumb (24) stayed constants, since nothing asked.
-
-Two things worth settling before building it: whether a metric scales
-(a density setting is the obvious use, and it interacts with `env`'s scale
-factor, which is the renderer's and not the palette's), and whether the
-stock widgets' geometry is a *contract* the corpus pins — changing
-`MENU_WIDTH` today changes the corpus report, which is the cheap kind of
-break, but changing it per app changes what a conformance scene means.
-
 
 ## From the ABI-and-bindings audit (2026-09-10)
 
@@ -880,7 +654,9 @@ the menu-bar choices, a Node `dispatch` from an effect handler that never
 drew, and eight smaller things in the examples (ADR 0021, *What the
 building changed*, 11). E1 closed with it.
 
-Two follow-ups, none blocking, and one closed:
+Three follow-ups, all closed — E3 last, on 2026-09-11, with
+`features/modal` and its nested confirm, in
+[the archive](backlog/closed-2026-09.md#-e3--featuresmodal-is-still-inside-two-other-examples--done-2026-09-11):
 
 ### `x` E1 — The Node dock has no warnings in its stream
 
@@ -893,14 +669,6 @@ Closed 2026-09-11 by [ADR 0024](adr/0024-the-devtools-are-the-cores.md):
 the dock is the core's, and a C program has it with `kui_set_devtools`
 or `KUI_DEVTOOLS=1` in its environment, the same panel as everyone.
 
-### `.` E3 — `features/modal` is still inside two other examples
-
-The dialog with `initial_focus`, Tab confined and `dismiss` is shown by
-`apps/counter`'s menu (the Rosetta copy of it) and by `features/focus`'s
-prose. A page of its own would be that menu with a title; declined until
-a modal-specific behaviour — a nested confirm, the entry-focus precedence
-of ADR 0007 — wants a picture.
-
 ## From the devtools round (2026-09-11)
 
 The round that produced [ADR 0024](adr/0024-the-devtools-are-the-cores.md):
@@ -908,29 +676,10 @@ the examples' dock moved into `kui-core`, drawn by the core into any
 app's frame with one door per binding, and grew what the brief asked for
 — the events tab as a virtual list with a payload viewer, a collapsible
 and filterable tree, a picker, a fuller inspector, and a window of its
-own. Built whole the same day. One follow-up:
-
-### `.` D1 — The tree rows have no keyboard
-
-Browser inspectors walk the tree with the arrows: Up/Down move the
-selection, Left folds (or goes to the parent), Right unfolds. The panel's
-rows are buttons in a focus region, so Tab reaches them and Enter
-selects, and that is all. A key sink per row is the wrong shape; the
-right one is a sink on the list with a cursor of its own — the composite
-pattern of ADR 0007, with the rows as its items — and it wants that
-reading rather than a special case. Declined in the ADR (*What was
-declined*), to be built when the composite owner grows a virtual list.
-
-### `.` D2 — The panel's buttons are Unicode blocks, not icons
-
-The placement buttons (▌ ▐ ▄ ❐ ✕), the toggles (◐ ☀ ☾ ● ☰) and the
-picker (⊕) are characters from whatever font the platform falls back to,
-and they read as a row of blots. The panel is drawn by the core with the
-core's own vocabulary, so the icons should be too: a small set of
-`line`-stroked glyphs (ADR 0010) or a `fragment` (ADR 0015) per button,
-16 px, in the theme's `muted`/`accent`, with the lit one filled — a
-dock-position icon that *is* a little window with the pane shaded. Wanted
-by the round that added the buttons (2026-09-11); not blocking.
+own. Built whole the same day. Its two follow-ups — D1, the tree's
+keyboard, and D2, the panel's icons — were built the same day they were
+filed and are in
+[the archive](backlog/closed-2026-09.md#from-the-devtools-round-2026-09-11-the-two-follow-ups).
 
 ## From the paint-order round (2026-09-10)
 
@@ -956,24 +705,10 @@ The ADR's answer is an image whose pixels the app replaces, backed by a
 texture of its own past the atlas, `sampling`/`fit` rows, `scale` on the
 `layout` payload, and a `polygon` filled by a stock fragment; what it named
 and did not build is here, each with the condition that builds it. None is
-a defect. V1 is the one with an order attached, and its precondition —
-decisions 1–3 built — is met.
-
-### `.` V1 — Fragment image input
-
-ADR 0015 decision 9's first deferral, restated as ADR 0025 decision 7:
-`image={id}` on `fragment`, `FragmentIn::image` and a `sample(uv)` helper
-in the prelude, a texture-backed image bound through the same split a
-texture quad takes, an atlas-backed one through the atlas the fragment
-already has. It is what turns a replaced image into a waveform, a heatmap,
-a 50k-point line and every image effect from one quad — the "many points"
-case the drawing-ops canvas was declined for.
-
-**Order:** the round after ADR 0025's decisions 1–3 are built — which
-they are, as of 2026-09-11 — so the resource-to-resource binding lands on
-a texture path that exists and the removal-order test ADR 0015 asked for
-(a removed image under a live fragment draws the fallback) is one corpus
-step. Next in line.
+a defect. V1, the one with an order attached, was built the round after —
+the fragment image input, in
+[the archive](backlog/closed-2026-09.md#-v1--fragment-image-input--done-2026-09-11)
+— so what stays is V2–V8.
 
 ### `.` V2 — `dash` on `line`
 
@@ -1065,12 +800,14 @@ the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
 **Build next.** Nothing with a written ADR and no code, and nothing filed
-that is not either parked or deliberately unbuilt: after alpha.10 the open
-list is C12, C13, C14, F36, T2, B1, V1–V8 and C26's last two steps — T1, the
-only defect among them, closed on 2026-09-11 — a measured-size query
-nothing needs since `virtual_rows` measures its own rows, and core-side
-scroll anchoring, which is CSS's `overflow-anchor` and is wanted by lists
-that are not virtual at all. C27 is parked with its measurements.
+that is not either parked or deliberately unbuilt: after the round of
+2026-09-11 that took V1, D1, D2, T2, C26's last two steps and E3 together,
+the open list is C12, C13, C14, F36, B1 and V2–V8 — every one parked on a
+condition. C27 is parked with its measurements. What that round settled
+is on top of each entry in the archive; the two questions worth carrying
+forward are the ones it answered by building: a metric never scales by
+itself and the stock set is the corpus's contract (T2), and the core keeps
+a row still rather than skipping rows (C26).
 [`docs/adr/0016-caching-against-the-last-frame.md`](adr/0016-caching-against-the-last-frame.md)
 was **proposed and its one yes built on 2026-09-09** out of the performance round that shipped the quad
 shrink and closed C24, and it is written to be mostly declined: no general
@@ -1163,7 +900,7 @@ equivalent is smaller and worth naming: the C round (then
 `examples/c/build.sh`, now `cbuild --run`) runs in `check`, and the plugin half of it now has a Node host in the same
 job — that is what caught this one.
 
-**Built.** [`docs/adr/0025-the-image-is-the-canvas.md`](adr/0025-the-image-is-the-canvas.md) (proposed, accepted and built 2026-09-11) answers the canvas question: `update_image` and texture-backed images past the atlas (closing the silent drop of an image over 4096 px), `sampling`/`fit` rows, `scale` on the `layout` payload, and a `polygon` filled by a stock fragment — in four bindings with two corpus scenes and two example drives, its four measurements run and its amendment recording what the building changed (a per-node lock that made a fill cost more than six strokes, and a Lua door the draft got wrong). What it named and did not build is V1–V8 above; V1 is next. **Design, wanting an ADR.** A **painter** — the iced-shaped hatch that ADR 0015 (above) names and does not build: a Rust trait or a C extension's function pointers over the shared `Gpu` and the frame's encoder, under the `PainterId` that has been reserved in `resources.rs` since the first commit, placed by a marker quad the renderer splits around as it splits around a fragment. The first thing in a frame that would not be data, so it waits for a view a fragment cannot serve: a 3D viewport, a simulation, a backdrop a copy cannot make. Otherwise nothing new since ADR 0014 was built on 2026-09-07 and amended on 2026-09-08; of what it left open, a slot for Node (W11), extensions in `kui_run` (W9) and an extension offering slots of its own (W12) are built, and what is left — replies from `view`, name-plus-kind — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
+**Built.** [`docs/adr/0025-the-image-is-the-canvas.md`](adr/0025-the-image-is-the-canvas.md) (proposed, accepted and built 2026-09-11) answers the canvas question: `update_image` and texture-backed images past the atlas (closing the silent drop of an image over 4096 px), `sampling`/`fit` rows, `scale` on the `layout` payload, and a `polygon` filled by a stock fragment — in four bindings with two corpus scenes and two example drives, its four measurements run and its amendment recording what the building changed (a per-node lock that made a fill cost more than six strokes, and a Lua door the draft got wrong). What it named and did not build is V2–V8 above; V1 was built the round after. **Design, wanting an ADR.** A **painter** — the iced-shaped hatch that ADR 0015 (above) names and does not build: a Rust trait or a C extension's function pointers over the shared `Gpu` and the frame's encoder, under the `PainterId` that has been reserved in `resources.rs` since the first commit, placed by a marker quad the renderer splits around as it splits around a fragment. The first thing in a frame that would not be data, so it waits for a view a fragment cannot serve: a 3D viewport, a simulation, a backdrop a copy cannot make. Otherwise nothing new since ADR 0014 was built on 2026-09-07 and amended on 2026-09-08; of what it left open, a slot for Node (W11), extensions in `kui_run` (W9) and an extension offering slots of its own (W12) are built, and what is left — replies from `view`, name-plus-kind — waits for a view. Two instances of one extension are answered: the host namespaces them. Effects an app defines (F23) is
 [`docs/adr/0013-effects-as-data.md`](adr/0013-effects-as-data.md),
 proposed and then accepted and built on 2026-09-07 — reviewed for alpha.8
 rather than left for a view, and its status block says what outweighed
@@ -1217,9 +954,10 @@ saying it until one does.
 2026-09-06, the ten field-report entries that followed them before the tag —
 so all of F1–F15 sit together — W2 whole on 2026-09-07, once its driver
 half was built, the fourteen of alpha.9's round on 2026-09-08, and the
-fourteen of this one (W3, W4–W12, F32–F35) before the alpha.10 tag. This
-file is now three parked entries, F36, and this section — the shortest it
-has been since it was written.
+fourteen of this one (W3, W4–W12, F32–F35) before the alpha.10 tag, and
+the six of the round of 2026-09-11 (V1, D1, D2, T2, C26 whole, E3) the day
+they were built. This file is now three parked entries, F36, B1, V2–V8 and
+this section.
 Still open, both waiting on something outside the repo: enable `SMOKE_MACOS`
 / `SMOKE_WINDOWS` the day a runner exists (P8) — which has two jobs waiting
 for it now, F13's launch probe beside the AX audit, sharing the one
@@ -1248,7 +986,7 @@ release, which no headless assertion reads:
 
 ## Closed — index
 
-A hundred entries, all in
+A hundred and six entries, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim.
 This index is here so an id resolves without opening that file: the open items
 above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.10" and
@@ -1420,6 +1158,15 @@ move.
 **From the paint-order round (2026-09-10)** — C28, filed and closed the day ADR 0023 was written and built
 
 - `!` **C28** — [Floats are under scrollbars and the ring, and stack in tree order](backlog/closed-2026-09.md#-c28--floats-are-under-scrollbars-and-the-ring-and-stack-in-tree-order--done-2026-09-10) — done (2026-09-10) — ADR 0023 built whole: layers stack in the order they opened, chrome ends its layer, one `target_at` for the press and the cursor
+
+**From the round of 2026-09-11** — six entries from five rounds, built together the day after the canvas question and archived under their own rounds
+
+- `.` **V1** — [Fragment image input](backlog/closed-2026-09.md#-v1--fragment-image-input--done-2026-09-11) — done (2026-09-11) — `image` on `fragment`, `kui_sample` / `kui_sample_nearest`, the atlas or the image's own texture bound by the core, ABI 15, the removal order pinned both ways
+- `.` **D1** — [The tree rows have no keyboard](backlog/closed-2026-09.md#-d1--the-tree-rows-have-no-keyboard--done-2026-09-11) — done (2026-09-11) — the list is the sink with a cursor of its own; Left folds, Right unfolds, built in the panel and not as a fifth composite pair
+- `.` **D2** — [The panel's buttons are Unicode blocks, not icons](backlog/closed-2026-09.md#-d2--the-panels-buttons-are-unicode-blocks-not-icons--done-2026-09-11) — done (2026-09-11) — `icons.rs`, a `line` per stroke and a `polygon` per fill
+- `.` **T2** — [The metrics are still constants](backlog/closed-2026-09.md#-t2--the-metrics-are-still-constants--done-2026-09-11) — done (2026-09-11) — `Metrics` beside `Theme` in four bindings; a metric never scales by itself, the stock set is the corpus's contract
+- `.` **C26** — [Rows of varying height](backlog/closed-2026-09.md#-c26--rows-of-varying-height--steps-0-and-1-built-2026-09-09-2-and-3-built-2026-09-11) — steps 0 and 1 built (2026-09-09), 2 and 3 built (2026-09-11) — `anchor` (CSS's `overflow-anchor`) in the core with a corpus scene, and `layout_of(key)`
+- `.` **E3** — [`features/modal` is still inside two other examples](backlog/closed-2026-09.md#-e3--featuresmodal-is-still-inside-two-other-examples--done-2026-09-11) — done (2026-09-11) — the dialog, the nested confirm, Escape by tag, focus restored; with a drive
 
 **From the architecture review (2026-09-11)** — AR1–AR6, four filed with a reason not to build them and two things noticed; all six built the same day, the reasons argued with in each entry
 

@@ -112,10 +112,10 @@ pub(crate) enum GhostContent {
     /// A fragment, by value: the handle and the parameters the node last
     /// declared. The ghost re-declares them every frame it draws, so the
     /// picture is frozen at departure while the box eases.
-    Fragment(crate::display::FragmentDraw),
+    Fragment(crate::fragment::Draw),
     /// A polygon, by value like a fragment; the fill is the colour the
     /// node's `bg` slot eases to.
-    Polygon(crate::display::FragmentDraw),
+    Polygon(crate::fragment::Draw),
 }
 
 pub(crate) struct GhostNode {

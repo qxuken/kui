@@ -1092,6 +1092,54 @@ export interface ThemeOverrides {
   disabledOpacity?: number;
 }
 
+/** The sizes the stock widgets are built from — the palette's other axis
+ *  (backlog T2). Logical px, before the scale factor the renderer applies.
+ *  Read it so a control of your own agrees with `<button>`, the field and
+ *  the menus on a radius and a padding: `<box radius={metrics.radius}>`.
+ *  The stock set is the constants the widgets always had; `setMetrics`
+ *  changes it, and nothing in the OS is followed. */
+export interface Metrics {
+  /** A stock control's label: the button's text size. */
+  controlText: number;
+  /** The chrome's text: a menu row, a menu-bar title, the titlebar's title. */
+  chromeText: number;
+  /** A tooltip's text. */
+  hintText: number;
+  /** The corner of every stock surface: a button, a field, a menu, a tooltip. */
+  radius: number;
+  /** The corner of a row inside one: a menu row, a menu-bar title. */
+  radiusInner: number;
+  /** A button's padding. */
+  controlPadX: number;
+  controlPadY: number;
+  /** A text field's padding. */
+  fieldPadX: number;
+  fieldPadY: number;
+  /** A tooltip's padding. */
+  hintPadX: number;
+  hintPadY: number;
+  /** A menu row's padding; a menu-bar title's is two px shorter. */
+  menuPadX: number;
+  menuPadY: number;
+  /** A menu panel's width. */
+  menuWidth: number;
+  /** The drawn menu bar's height. */
+  menuBarH: number;
+  /** The titlebar's height: the platform's caption height, 32 on Windows
+   *  and 34 elsewhere. */
+  titlebarH: number;
+}
+
+/** `setMetrics`'s argument: overrides on top of the set in effect, or on
+ *  top of `base` — `'comfortable'` is the stock set, `'compact'` a dense
+ *  tool's (smaller text, shallower padding, sharper corners, the titlebar
+ *  unchanged) — then `scale` multiplying every length: a density slider.
+ *  An unknown key throws rather than doing nothing. */
+export interface MetricsOverrides extends Partial<Metrics> {
+  base?: 'comfortable' | 'compact';
+  scale?: number;
+}
+
 /** The OS settings on `Env` — appearance, accent, motion, locale — as the
  *  host reported them. Every one of them can be "the host cannot tell", and
  *  that is the default: a `KuiWindow` asks the OS for all four on macOS and
@@ -1629,11 +1677,13 @@ export declare class Ctx {
   clips(): Buffer
   /**
    * This frame's fragment draws, in the order their quads index
-   * them by `uv[0]`: seventeen doubles each, the handle as two
-   * 32-bit halves and then the sixteen parameters. The
-   * parameters ride a side list rather than the quad, so
-   * `quads()` alone cannot show them and a corpus adapter
-   * needs this to compare them
+   * them by `uv[0]`: twenty-four doubles each — the handle as
+   * two 32-bit halves, the sixteen parameters, then where the
+   * draw's `image` is (0 none, 1 the atlas, 2 a texture of its
+   * own), the `textureDraws` index when it is 2, and the texel
+   * rect `x, y, w, h` (backlog V1). The parameters ride a side
+   * list rather than the quad, so `quads()` alone cannot show
+   * them and a corpus adapter needs this to compare them
    * (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
    * Empty on a frame that draws no fragment.
    */
@@ -1693,6 +1743,22 @@ export declare class Ctx {
    * the selection tint) are recomputed unless named too.
    */
   setTheme(theme: ThemeOverrides): void
+  /**
+   * The sizes the stock widgets are built from — the palette's
+   * other axis: one number per metric, logical px before the
+   * scale factor. Read it so a control of your own agrees with
+   * `<button>` on a radius and a padding: `<box radius={metrics.radius}>`.
+   */
+  metrics(): Metrics
+  /**
+   * Makes these the frame's metrics: overrides on top of the
+   * set in effect, or on top of `base: "comfortable"` (the
+   * stock set) / `"compact"` (a dense tool's), then `scale`
+   * multiplying every length — a density slider. `null`
+   * restores the stock set. Density is the app's to choose;
+   * nothing in the OS is followed.
+   */
+  setMetrics(metrics: MetricsOverrides | null): void
   /**
    * `measureText`'s door (index.js adds `measureText` itself):
    * one `<text>` element as `encoder.encodeText` writes it, and
@@ -1936,6 +2002,15 @@ export declare class Ctx {
    * frame late — render a row or two extra at each end.
    */
   scrollGeometry(key: string): ScrollGeometry | null
+  /**
+   * The rect the last frame laid `key` out at, `{x, y, w, h}`
+   * in logical viewport px, for a node that declared `onLayout`
+   * — the `layout` event's numbers, read back during the next
+   * build with no event and no model field (backlog C26 step
+   * 2); `null` for any other key. Read while building, it
+   * describes the previous frame, like `scrollGeometry`.
+   */
+  layoutOf(key: string): { x: number, y: number, w: number, h: number } | null
   /**
    * Where a point lands in the text a keyed node drew: a byte
    * offset into its text and the visual line, or null for a key
@@ -2391,11 +2466,13 @@ export declare class KuiWindow {
   clips(): Buffer
   /**
    * This frame's fragment draws, in the order their quads index
-   * them by `uv[0]`: seventeen doubles each, the handle as two
-   * 32-bit halves and then the sixteen parameters. The
-   * parameters ride a side list rather than the quad, so
-   * `quads()` alone cannot show them and a corpus adapter
-   * needs this to compare them
+   * them by `uv[0]`: twenty-four doubles each — the handle as
+   * two 32-bit halves, the sixteen parameters, then where the
+   * draw's `image` is (0 none, 1 the atlas, 2 a texture of its
+   * own), the `textureDraws` index when it is 2, and the texel
+   * rect `x, y, w, h` (backlog V1). The parameters ride a side
+   * list rather than the quad, so `quads()` alone cannot show
+   * them and a corpus adapter needs this to compare them
    * (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
    * Empty on a frame that draws no fragment.
    */
@@ -2455,6 +2532,22 @@ export declare class KuiWindow {
    * the selection tint) are recomputed unless named too.
    */
   setTheme(theme: ThemeOverrides): void
+  /**
+   * The sizes the stock widgets are built from — the palette's
+   * other axis: one number per metric, logical px before the
+   * scale factor. Read it so a control of your own agrees with
+   * `<button>` on a radius and a padding: `<box radius={metrics.radius}>`.
+   */
+  metrics(): Metrics
+  /**
+   * Makes these the frame's metrics: overrides on top of the
+   * set in effect, or on top of `base: "comfortable"` (the
+   * stock set) / `"compact"` (a dense tool's), then `scale`
+   * multiplying every length — a density slider. `null`
+   * restores the stock set. Density is the app's to choose;
+   * nothing in the OS is followed.
+   */
+  setMetrics(metrics: MetricsOverrides | null): void
   /**
    * `measureText`'s door (index.js adds `measureText` itself):
    * one `<text>` element as `encoder.encodeText` writes it, and
@@ -2698,6 +2791,15 @@ export declare class KuiWindow {
    * frame late — render a row or two extra at each end.
    */
   scrollGeometry(key: string): ScrollGeometry | null
+  /**
+   * The rect the last frame laid `key` out at, `{x, y, w, h}`
+   * in logical viewport px, for a node that declared `onLayout`
+   * — the `layout` event's numbers, read back during the next
+   * build with no event and no model field (backlog C26 step
+   * 2); `null` for any other key. Read while building, it
+   * describes the previous frame, like `scrollGeometry`.
+   */
+  layoutOf(key: string): { x: number, y: number, w: number, h: number } | null
   /**
    * Where a point lands in the text a keyed node drew: a byte
    * offset into its text and the visual line, or null for a key

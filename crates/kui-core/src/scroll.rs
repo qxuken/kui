@@ -76,6 +76,10 @@ struct Entry {
     /// otherwise active — so the bar knows how long it has been quiet.
     /// `None` until the bar is first emitted.
     bar: Option<(Vec2, Vec2, f64)>,
+    /// For an `anchor` container: the child first in view at the last
+    /// layout and where its leading edge was in the content, on the main
+    /// axis (backlog C26 step 3). What the next layout keeps still.
+    anchor: Option<(Key, f32)>,
 }
 
 /// How many *undeclared* scroll entries the store keeps before the longest
@@ -190,6 +194,18 @@ impl ScrollStore {
                 0.0
             }
         }
+    }
+
+    /// The anchor the last layout recorded for `key`: the child first in
+    /// view and its leading edge's content position on the main axis.
+    pub(crate) fn anchor(&self, key: Key) -> Option<(Key, f32)> {
+        self.entries.get(&key).and_then(|e| e.anchor)
+    }
+
+    /// Records this layout's anchor for `key` (see [`Self::anchor`]);
+    /// `None` when the container had nothing in view.
+    pub(crate) fn set_anchor(&mut self, key: Key, anchor: Option<(Key, f32)>) {
+        self.entries.entry(key).or_default().anchor = anchor;
     }
 
     /// What layout calls on a scroll container: records the geometry it

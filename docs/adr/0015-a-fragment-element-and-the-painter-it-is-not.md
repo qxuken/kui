@@ -168,7 +168,10 @@ is listed with the reason, and the painter is what would do it.
    data visuals once decision 9's image input lands, and composition with
    text and controls as children.
 9. **Deferred, with the shape of each.**
-   - **An image input.** `image={id}` on the element; the prelude exposes
+   - **An image input.** *Built 2026-09-11 (backlog V1, ADR 0025
+     decision 7): `image={id}`, `FragmentIn::image`, `kui_sample(uv)` and
+     `kui_sample_nearest(uv)`; the removal order is pinned both ways.*
+     `image={id}` on the element; the prelude exposes
      the atlas and the image's texel rect as `FragmentIn::image` and a
      `sample(uv)` helper. This is what turns a fragment into an image
      effect and a data texture into a waveform or a heatmap. It is deferred

@@ -80,13 +80,10 @@ fn an_accent_button_repaints_its_whole_palette() {
     let palette = |core: &mut Core, accent: Option<Color>| -> (Color, Color, Color) {
         core.env.system.accent = accent;
         let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
-        widgets::button_with(
-            &mut ui,
-            "ok",
-            "OK",
-            widgets::button_spec().accent().on_click(Value::str("ok")),
-            None,
-        );
+        let spec = widgets::button_spec(&ui.metrics())
+            .accent()
+            .on_click(Value::str("ok"));
+        widgets::button_with(&mut ui, "ok", "OK", spec, None);
         ui.finish();
         let (list, _) = core.output();
         // The button's own quad, then its label's first glyph.

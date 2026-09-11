@@ -394,9 +394,9 @@ fn env_table<'scope, 'env: 'scope>(
     ui: &'env std::cell::RefCell<&'env mut Ui<'_>>,
     loaded: &'env std::cell::RefCell<Vec<Loaded>>,
 ) -> mlua::Result<Table> {
-    let (facts, theme) = {
+    let (facts, theme, metrics) = {
         let ui = ui.borrow();
-        (ui.env_facts(), ui.theme())
+        (ui.env_facts(), ui.theme(), ui.metrics())
     };
     let t = lua.create_table()?;
     // The facts, one row of `schema::ENV_FIELDS` at a time, read by the
@@ -453,6 +453,15 @@ fn env_table<'scope, 'env: 'scope>(
     th.set("appearance", theme.appearance.name())?;
     th.set("disabled_opacity", theme.disabled_opacity)?;
     t.set("theme", th)?;
+    // The sizes the stock widgets are built from (backlog T2), generated
+    // from `schema::METRIC_ROLES` the same way: `radius = env.metrics.radius`
+    // makes a script's control agree with the host's button. Read-only for
+    // the same reason the theme is.
+    let mt = lua.create_table()?;
+    for role in kui_core::schema::METRIC_ROLES {
+        mt.set(role.name, (role.get)(&metrics))?;
+    }
+    t.set("metrics", mt)?;
     t.set(
         "edit_text",
         scope.create_function(move |_, key: i64| Ok(ui.borrow().edit_text(Key(key as u64))))?,
@@ -793,6 +802,21 @@ fn env_table<'scope, 'env: 'scope>(
             };
             // The core's shape, whose keys are already Lua's spelling.
             value_to_lua(lua, &g.to_value())
+        })?,
+    )?;
+    // The rect the last frame laid an `on_layout` node out at — the
+    // `layout` event's numbers without the event (backlog C26 step 2).
+    t.set(
+        "layout_of",
+        scope.create_function(move |lua, key: mlua::Value| {
+            let mut ui = ui.borrow_mut();
+            let Some(key) = key_query(&mut ui, key)? else {
+                return Ok(mlua::Value::Nil);
+            };
+            let Some(r) = ui.layout_of(key) else {
+                return Ok(mlua::Value::Nil);
+            };
+            value_to_lua(lua, &r.to_value())
         })?,
     )?;
     // The wheel's move by hand; the next layout clamps it, so 0,0 is "jump
@@ -1162,15 +1186,23 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
         }
         "fragment" => {
             // Handle from the host (kui_fragment_add / Core::add_fragment),
-            // passed to scripts as a plain integer, like an image's.
+            // passed to scripts as a plain integer, like an image's — and
+            // `image`, the image handle the function samples (backlog V1),
+            // absent or 0 for none.
             let id: i64 = t.get("id")?;
+            let image: Option<i64> = t.get("image")?;
             let params: Vec<f32> = match t.get::<Option<Table>>("params")? {
                 Some(list) => list.sequence_values::<f32>().collect::<mlua::Result<_>>()?,
                 None => Vec::new(),
             };
             let p = parse_props(t, false)?;
-            let id = kui_core::FragmentId::from_ffi(id as u64);
-            ui.core().open_from(p, Content::Fragment(id, &params));
+            let frag = kui_core::FragmentRef {
+                id: kui_core::FragmentId::from_ffi(id as u64),
+                image: image
+                    .filter(|i| *i != 0)
+                    .map(|i| kui_core::ImageId::from_ffi(i as u64)),
+            };
+            ui.core().open_from(p, Content::Fragment(frag, &params));
             build_children(ui, t)?;
             ui.close();
             Ok(())
@@ -1392,7 +1424,7 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
                 None => Value::Null,
             };
             let mut out = PropsOut::new();
-            out.spec = widgets::button_spec()
+            out.spec = widgets::button_spec(&ui.metrics())
                 .on_click(payload)
                 .label(label.as_str());
             if let Some(hint) = t.get::<Option<String>>("tooltip")? {
@@ -3044,11 +3076,18 @@ mod tests {
         );
         documented.push("theme.appearance".into());
         documented.push("theme.disabled_opacity".into());
+        // And the metrics beside it (backlog T2), pinned to
+        // `schema::METRIC_ROLES` the same way.
+        documented.extend(
+            kui_core::schema::METRIC_ROLES
+                .iter()
+                .map(|r| format!("metrics.{}", r.name)),
+        );
         documented.sort();
         assert_eq!(
             sorted("values"),
             documented,
-            "env's value keys and schema::ENV_FIELDS + THEME_ROLES disagree"
+            "env's value keys and schema::ENV_FIELDS + THEME_ROLES + METRIC_ROLES disagree"
         );
         assert_eq!(
             sorted("calls"),
@@ -3069,6 +3108,7 @@ mod tests {
                 "is_focused",
                 "is_hovered",
                 "is_pressed",
+                "layout_of",
                 "measure_text",
                 "open_menu",
                 "request_copy",

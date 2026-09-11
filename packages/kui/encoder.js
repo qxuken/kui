@@ -620,10 +620,17 @@ export function createEncoder(P) {
           if (typeof n !== 'number' || !Number.isFinite(n)) throw new Error(`<fragment> bad param ${JSON.stringify(n)}`);
         }
         const id = BigInt('0x' + p.src);
-        reserve(4 + params.length);
+        // The image the function samples through `kui_sample` (backlog V1,
+        // docs/adr/0025-the-image-is-the-canvas.md decision 7); absent is
+        // two zero words.
+        if (p.image != null && typeof p.image !== 'string') throw new Error('<fragment> image must be an id from addImage');
+        const image = p.image == null ? 0n : BigInt('0x' + p.image);
+        reserve(6 + params.length);
         f[fi++] = OP.fragment;
         f[fi++] = Number(id >> 32n);
         f[fi++] = Number(id & 0xffffffffn);
+        f[fi++] = Number(image >> 32n);
+        f[fi++] = Number(image & 0xffffffffn);
         f[fi++] = params.length;
         for (const n of params) f[fi++] = n;
         props(p, el.key, false);

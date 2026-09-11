@@ -170,7 +170,13 @@
 /// solid, wrongly and harmlessly, as a pre-segment host draws a segment).
 /// The bump is for `KUI_QUAD_TEXTURE` itself: a ninth kind a host's own
 /// renderer may want to refuse by version rather than meet by surprise.
-pub const KUI_ABI_VERSION: u32 = 14;
+///
+/// ABI 15 appends `image_source`, `image_texture` and `image_uv` to
+/// `KuiFragmentDraw` for the fragment image input (backlog V1, ADR 0025
+/// decision 7). An *array* element again, so the append moves the stride
+/// — the `KuiSpan` and `KuiMenuItem` exception, for the same reason.
+/// Recompile; a host that never reads `fragments` has nothing to change.
+pub const KUI_ABI_VERSION: u32 = 15;
 
 /// The ABI version this library implements, for a host to compare against
 /// the `KUI_ABI_VERSION` of the header it compiled against, before its

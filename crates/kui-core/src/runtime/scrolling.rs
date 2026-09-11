@@ -74,6 +74,25 @@ impl Core {
         })
     }
 
+    /// The rect the last frame laid `key` out at, in logical viewport px —
+    /// for a node that declared `on_layout`, whose rect the core keeps for
+    /// the event's edge trigger anyway (backlog C26 step 2). The query
+    /// shape of the `layout` event: the same numbers, read during the next
+    /// build with no event, no tag and no model field. `None` for a key
+    /// that did not declare `on_layout` last frame; read during a build it
+    /// describes the previous frame, like [`Self::scroll_geometry`].
+    pub fn layout_of(&self, key: Key) -> Option<Rect> {
+        let shift = self.dt_shift();
+        // "Last frame" is the one before this build while a build is on,
+        // and the one just finished between two — `frame_no` has already
+        // moved on in the first case and not in the second.
+        let last = self.frame_no - u64::from(self.building);
+        self.layouts
+            .get(&key)
+            .filter(|(_, seen)| *seen == last)
+            .map(|(r, _)| Rect::new(r.x - shift.x, r.y - shift.y, r.w, r.h))
+    }
+
     /// Sets the container `key`'s retained offset, the way the wheel would.
     /// Takes effect on the next frame, whose layout clamps it to that
     /// frame's overflow: `Vec2::ZERO` is "jump to the top", and a large

@@ -145,7 +145,7 @@ impl App for A11y {
         // them declares `accent`, so their background stays the stock
         // blue however the OS's accent is set, and a light accent's
         // black label would land on that blue.
-        let on_button = widgets::readable_on(widgets::button_spec().style.bg);
+        let on_button = widgets::readable_on(widgets::button_spec(&ui.metrics()).style.bg);
         // No pad or gap on the root: the scrolling column below owns
         // both, so the scrollbar rides the window edge rather than
         // floating inside a margin.
@@ -208,7 +208,7 @@ impl App for A11y {
                 // "collapsed" rather than nothing at all when it is shut.
                 ui.with_keyed(
                     "advanced",
-                    widgets::button_spec()
+                    widgets::button_spec(&ui.metrics())
                         .expanded(self.advanced)
                         .on_click(Value::str("advanced"))
                         .label("Advanced"),
@@ -317,7 +317,7 @@ impl App for A11y {
                 // exists.
                 ui.with_keyed(
                     "count",
-                    widgets::button_spec().on_click(Value::str("press")),
+                    widgets::button_spec(&ui.metrics()).on_click(Value::str("press")),
                     |ui| {
                         ui.text(
                             &format!("count {}", self.presses),
@@ -329,7 +329,7 @@ impl App for A11y {
                 // An icon button: nothing to read inside, so it needs a label.
                 ui.with_keyed(
                     "save",
-                    widgets::button_spec()
+                    widgets::button_spec(&ui.metrics())
                         .on_click(Value::str("save"))
                         .label("Save"),
                     |ui| ui.text("⌘", TextStyle::new(15.0).color(on_button)),
@@ -623,7 +623,7 @@ impl App for A11y {
                         // to keep true by hand.
                         ui.with_keyed(
                             "Cancel",
-                            widgets::button_spec()
+                            widgets::button_spec(&ui.metrics())
                                 .on_click(Value::str("cancel"))
                                 .initial_focus(),
                             |ui| {

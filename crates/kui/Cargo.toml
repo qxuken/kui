@@ -135,6 +135,9 @@ headless = [
     "context_menu",
     "image",
     "polygon",
+    "fragment",
+    "metrics",
+    "modal",
 ]
 
 [[example]]
@@ -213,6 +216,14 @@ path = "../../examples/rust/features/popup.rs"
 [[example]]
 name = "theme"
 path = "../../examples/rust/features/theme.rs"
+
+[[example]]
+name = "metrics"
+path = "../../examples/rust/features/metrics.rs"
+
+[[example]]
+name = "modal"
+path = "../../examples/rust/features/modal.rs"
 
 [[example]]
 name = "accessibility"

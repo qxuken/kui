@@ -32,6 +32,7 @@ pub mod keyframes;
 pub mod layout;
 pub mod line;
 pub mod menu;
+pub mod metrics;
 pub mod resources;
 pub(crate) mod retain;
 pub mod runtime;
@@ -66,11 +67,13 @@ pub use color::Color;
 pub use cursor::CursorShape;
 pub use depart::DepartStore;
 pub use diag::Warning;
-pub use display::{Clip, ClipId, DisplayList, FragmentDraw, NO_CLIP, NO_CLIP_ID, Quad, QuadKind};
+pub use display::{
+    Clip, ClipId, DisplayList, FragmentDraw, FragmentImage, NO_CLIP, NO_CLIP_ID, Quad, QuadKind,
+};
 pub use edit::{EditOptions, MAX_UNDECLARED_EDITS};
 pub use enter::Enter;
 pub use env::{Appearance, AudioDevice, AudioEnv, Env, Locale, MotionPref, SystemEnv};
-pub use fragment::{FragmentDrawId, FragmentList};
+pub use fragment::{FragmentDrawId, FragmentList, FragmentRef};
 pub use geom::{Edges, Rect, Size, Vec2};
 pub use input::ScrollAxis;
 pub use input::{
@@ -80,6 +83,7 @@ pub use key::Key;
 pub use keyframes::Keyframe;
 pub use line::{LineId, LineStore, Stroke};
 pub use menu::{Accel, BarMenu, Menu, MenuAction, MenuBar, MenuItem, MenuRole};
+pub use metrics::Metrics;
 pub use resources::{
     FontId, FragmentId, ImageBacking, ImageFit, ImageId, ImageOpts, Resources, Sampling, SessionId,
     SoundId,

@@ -353,7 +353,10 @@ date: 2026-09-11
     windowed paths go through the same launcher.
 16. **The header holds the placements; the tab row the toggles; the
     picker sits before the find field**, as `⊕ pick`. Real icons for all
-    of them are backlog D2.
+    of them were backlog D2, built 2026-09-11: `runtime/devtools/icons.rs`
+    draws each from the core's own vocabulary — a `line` per stroke, a
+    `polygon` per fill, a zero-length segment for a dot — in a 16-px box
+    in the theme's colours, the lit placement's pane filled in the accent.
 17. **`kui_devtools::Harness::new` takes two arguments**, and the crate
     is 630 lines from 2,048; `examples/node/devtools.tsx` is 203 from
     599. The four Rust examples that returned `Dock::Off` / `Bottom`

@@ -42,14 +42,14 @@ impl App for Buttons {
                         ui,
                         "accent",
                         "accent",
-                        widgets::button_spec().accent().on_click(Value::str("accent")),
+                        widgets::button_spec(&ui.metrics()).accent().on_click(Value::str("accent")),
                         None,
                     );
                     widgets::button_with(
                         ui,
                         "disabled",
                         "disabled",
-                        widgets::button_spec().disabled(true).on_click(Value::str("disabled")),
+                        widgets::button_spec(&ui.metrics()).disabled(true).on_click(Value::str("disabled")),
                         None,
                     );
                 });
@@ -61,7 +61,7 @@ impl App for Buttons {
                         ui,
                         "add",
                         "＋",
-                        widgets::button_spec().on_click(Value::str("add")).label("add a row"),
+                        widgets::button_spec(&ui.metrics()).on_click(Value::str("add")).label("add a row"),
                         None,
                     );
                     // A `description` is what a reader says after the
@@ -71,7 +71,7 @@ impl App for Buttons {
                         ui,
                         "delete",
                         "delete",
-                        widgets::button_spec()
+                        widgets::button_spec(&ui.metrics())
                             .on_click(Value::str("delete"))
                             .apply_tooltip("removes the row for good — no undo"),
                         Some("removes the row for good — no undo"),
@@ -86,7 +86,7 @@ impl App for Buttons {
                         ("sand", Color::hex(0xe0c070ff)),
                     ] {
                         let (rest, hover, pressed) = widgets::button_palette(base);
-                        let spec = widgets::button_spec()
+                        let spec = widgets::button_spec(&ui.metrics())
                             .bg(rest)
                             .hover_bg(hover)
                             .pressed_bg(pressed)

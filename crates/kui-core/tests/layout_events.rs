@@ -197,3 +197,61 @@ fn the_inspector_reads_the_frame_back_when_asked() {
     core.set_inspect(false);
     assert!(core.nodes().is_empty());
 }
+
+/// The query shape of the event (backlog C26 step 2): `layout_of(key)`
+/// reads the rect the last frame laid an `on_layout` node out at, during
+/// the next build, with no event — the same numbers the event carries,
+/// answered for that frame only, and for no other node.
+#[test]
+fn layout_of_reads_the_last_frames_rect_without_the_event() {
+    let mut core = Core::new();
+    assert_eq!(
+        core.layout_of(Key::ROOT.str("panel")),
+        None,
+        "nothing laid out yet"
+    );
+    let key = frame(&mut core, 120.0, true, Value::str("p"), false);
+    let evs = core.take_pending_events();
+    assert_eq!(rects(&evs), vec![(50.0, 0.0, 120.0, 300.0)]);
+    let r = core.layout_of(key).expect("kept for the on_layout key");
+    assert_eq!((r.x, r.y, r.w, r.h), (50.0, 0.0, 120.0, 300.0));
+    assert_eq!(
+        core.layout_of(Key::ROOT.str("spacer")),
+        None,
+        "no on_layout, no rect"
+    );
+    // A frame that leaves it in place posts nothing and still answers;
+    // one that moves it answers the new rect; and the answer is readable
+    // during a build, describing the previous frame.
+    frame(&mut core, 120.0, true, Value::str("p"), false);
+    assert!(rects(&core.take_pending_events()).is_empty());
+    assert_eq!(core.layout_of(key).map(|r| r.x), Some(50.0));
+    frame(&mut core, 120.0, false, Value::str("p"), false);
+    assert_eq!(core.layout_of(key).map(|r| r.x), Some(0.0));
+    // A frame that stops declaring `on_layout` is the last frame as soon
+    // as it is finished: during its build the answer is still the frame
+    // before's; read between frames after it — where an event handler
+    // reads — the node is gone, and it stays gone.
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    assert_eq!(
+        ui.layout_of(key).map(|r| r.x),
+        Some(0.0),
+        "during the build it is the frame before"
+    );
+    ui.with_keyed(
+        "panel",
+        NodeSpec::column().width(Sizing::Fixed(10.0)),
+        |_| {},
+    );
+    ui.finish();
+    assert_eq!(core.layout_of(key), None, "gone once that frame finished");
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    assert_eq!(ui.layout_of(key), None);
+    ui.with_keyed(
+        "panel",
+        NodeSpec::column().width(Sizing::Fixed(10.0)),
+        |_| {},
+    );
+    ui.finish();
+    assert_eq!(core.layout_of(key), None);
+}

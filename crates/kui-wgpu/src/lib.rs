@@ -44,13 +44,18 @@ struct Globals {
     _pad: [f32; 2],
 }
 
-/// One fragment's parameters as the shader takes them, padded out to the
-/// device's dynamic-offset alignment so a frame's draws can share one
-/// buffer and pick their slot by offset.
+/// One fragment's parameters as the shader takes them — the sixteen
+/// floats and the texel rect of its `image`, laid out as the epilogue's
+/// `KuiFragmentParams` — padded out to the device's dynamic-offset
+/// alignment so a frame's draws can share one buffer and pick their slot
+/// by offset.
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct FragmentParams {
     params: [f32; 16],
+    /// `FragmentIn::image`: `[x, y, w, h]` in the texture bound at group 0
+    /// for this draw — the atlas, or the image's own; zero with none.
+    image: [f32; 4],
 }
 
 /// The clip is resolved out of the frame's table here rather than read off
@@ -958,8 +963,10 @@ impl Renderer {
             self.fragment_bytes.clear();
             self.fragment_bytes.resize(dl.fragments.len() * align, 0);
             for (i, draw) in dl.fragments.iter().enumerate() {
+                let uv = draw.image.uv();
                 let slot = FragmentParams {
                     params: draw.params,
+                    image: [uv[0] as f32, uv[1] as f32, uv[2] as f32, uv[3] as f32],
                 };
                 let at = i * align;
                 self.fragment_bytes[at..at + std::mem::size_of::<FragmentParams>()]
@@ -1065,8 +1072,26 @@ impl Renderer {
                                 pass.draw(0..6, i..i + 1);
                             }
                         } else if let Some(pipeline) = fragment_pipelines.get(slot) {
+                            // A fragment reading a texture-backed image
+                            // takes that image's group 0 — the texture in
+                            // the atlas's place, `atlas_size` its size —
+                            // exactly as a texture quad does; one reading
+                            // the atlas, or nothing, takes the frame's.
+                            // A texture the device could not make (a
+                            // degenerate or oversized image) draws the
+                            // fragment against the atlas with a zero rect,
+                            // which `kui_sample` reads as no image.
+                            let group0 = match draw_image_texture(&dl.fragments[slot]) {
+                                Some(index) => texture_binds
+                                    .get(index)
+                                    .copied()
+                                    .flatten()
+                                    .and_then(|id| self.texture_binds.get(&id))
+                                    .map_or(&self.bind_group, |b| &b.bind),
+                                None => &self.bind_group,
+                            };
                             pass.set_pipeline(pipeline);
-                            pass.set_bind_group(0, &self.bind_group, &[]);
+                            pass.set_bind_group(0, group0, &[]);
                             pass.set_bind_group(
                                 1,
                                 &self.fragment_bind,
@@ -1091,6 +1116,15 @@ impl Renderer {
         self.gpu.queue().submit([encoder.finish()]);
         self.gpu.queue().present(frame);
         Ok(RenderReport { vsync_wait_ms })
+    }
+}
+
+/// The `textures` entry a fragment draw reads its image from, if its
+/// image has a texture of its own.
+fn draw_image_texture(draw: &kui_core::FragmentDraw) -> Option<usize> {
+    match draw.image {
+        kui_core::FragmentImage::Texture { index, .. } => Some(index as usize),
+        _ => None,
     }
 }
 
@@ -1254,6 +1288,45 @@ mod tests {
         // vec2 + vec2 + f32 + f32 + vec2 = 32 bytes, and a uniform's size
         // must be a multiple of sixteen, which is what `_pad` is for.
         assert_eq!(std::mem::size_of::<Globals>(), 32);
+    }
+
+    /// The fragment parameter slot is the other buffer two declarations
+    /// read: `FragmentParams` here and `KuiFragmentParams` in the
+    /// epilogue. Sixteen floats then the image's rect, 80 bytes.
+    #[test]
+    fn fragment_params_layout_matches() {
+        assert_eq!(std::mem::size_of::<FragmentParams>(), 80);
+        assert_eq!(std::mem::offset_of!(FragmentParams, image), 64);
+        let epilogue = kui_core::fragment::EPILOGUE;
+        assert!(
+            epilogue
+                .contains("struct KuiFragmentParams { p: array<vec4<f32>, 4>, image: vec4<f32> };"),
+            "the epilogue's params struct moved without this test being told"
+        );
+    }
+
+    /// The bindings the prelude declares at group 0 are this crate's, by
+    /// number and kind, since a fragment pipeline binds the quad
+    /// pipeline's group 0 layout as it is.
+    #[test]
+    fn prelude_bindings_match_group_zero() {
+        let prelude = kui_core::fragment::PRELUDE;
+        for line in [
+            "@group(0) @binding(0) var<uniform> kui_globals: KuiGlobals;",
+            "@group(0) @binding(1) var kui_atlas: texture_2d<f32>;",
+            "@group(0) @binding(2) var kui_sampler: sampler;",
+            "@group(0) @binding(3) var kui_sampler_nearest: sampler;",
+        ] {
+            assert!(prelude.contains(line), "prelude lacks `{line}`");
+        }
+        let quads = include_str!("shader.wgsl");
+        for line in [
+            "@group(0) @binding(1) var atlas_tex: texture_2d<f32>;",
+            "@group(0) @binding(2) var atlas_smp: sampler;",
+            "@group(0) @binding(3) var nearest_smp: sampler;",
+        ] {
+            assert!(quads.contains(line), "shader.wgsl lacks `{line}`");
+        }
     }
 
     /// Both preprocessed variants of the shader must parse and validate

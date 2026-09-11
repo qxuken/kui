@@ -218,6 +218,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "scrollbarWidth" => s.scrollbar_width = F,
             "scrollbarColor" => s.scrollbar_color = C,
             "scrollbarActiveColor" => s.scrollbar_active_color = C,
+            "anchor" => s.anchor = 1,
             "onForceClick" => s.on_force_click = &layout_tag,
             "window" => s.window_role = 2, // KUI_WINDOW_* = schema index + 1
             "transition" => s.transition_ms = F,
@@ -381,6 +382,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         scrollbar_width: 8.0,
         scrollbar_color: 0x11223344,
         scrollbar_active_color: 0x55667788,
+        anchor: 1,
         window_role: 1,
         transition_ms: 150.0,
         easing: 3,
@@ -491,6 +493,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .scrollbar_width(8.0)
         .scrollbar_color(Color::hex(0x11223344))
         .scrollbar_active_color(Color::hex(0x55667788))
+        .anchor()
         .window_drag()
         .transition(150.0)
         .easing(kui_core::Easing::EaseInOut)
@@ -551,6 +554,32 @@ fn fully_populated_spec_matches_the_rust_builder() {
         msg("h".into()),
     );
     assert_eq!(got, expected);
+}
+
+/// `KuiMetrics` restates `schema::METRIC_ROLES` the way `KuiTheme` restates
+/// the theme's, through `KuiMetrics::of` / `to_core` — which walk the
+/// table by name and panic on a name the struct lacks, so a role added in
+/// the core reaches C or fails here. The round trip is the check that
+/// every field is read and written by its own row.
+#[test]
+fn metrics_struct_covers_every_role() {
+    use crate::types::KuiMetrics;
+    let m = kui_core::Metrics::compact().scaled(1.5);
+    let c = KuiMetrics::of(&m);
+    assert_eq!(c.to_core(), m);
+    assert_eq!(
+        kui_core::schema::METRIC_ROLES.len(),
+        (std::mem::size_of::<KuiMetrics>() - std::mem::size_of::<u32>())
+            / std::mem::size_of::<f32>(),
+        "a metric role has no KuiMetrics field, or the struct has a field with no role"
+    );
+    // A change to one field reaches exactly that field.
+    for role in kui_core::schema::METRIC_ROLES {
+        let mut one = m;
+        (role.set)(&mut one, 99.0);
+        let c = KuiMetrics::of(&one);
+        assert_eq!(c.to_core(), one, "{} does not round-trip", role.name);
+    }
 }
 
 /// `KuiTheme` restates `schema::THEME_ROLES`, and the header restates

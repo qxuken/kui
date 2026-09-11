@@ -8,6 +8,7 @@ use crate::edit::EditOptions;
 use crate::geom::{Edges, Vec2};
 use crate::key::Key;
 use crate::menu::{MenuBar, MenuItem, MenuRole};
+use crate::metrics::Metrics;
 use crate::spec::{Align, FloatConfig, NodeSpec, Sizing, TextStyle};
 use crate::stats::{FrameSample, STATS_CAPACITY};
 use crate::theme::Theme;
@@ -27,7 +28,7 @@ pub fn latency_hud_at(ui: &mut Ui<'_>, x: Align, y: Align) {
     // Under custom chrome the top of the viewport is the app's titlebar;
     // keep the HUD below it.
     let top_inset = if ui.env().window.custom_chrome {
-        TITLEBAR_H
+        ui.metrics().titlebar_h
     } else {
         0.0
     };
@@ -248,20 +249,22 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
 /// viewport bottom is too close and slides sideways off window edges.
 /// Typical use: `if ui.is_hovered(key) { widgets::tooltip(ui, "..."); }`
 pub fn tooltip(ui: &mut Ui<'_>, text: &str) {
+    let size = ui.metrics().hint_text;
     tooltip_with(ui, |ui| {
-        ui.text(text, TextStyle::new(12.0));
+        ui.text(text, TextStyle::new(size));
     });
 }
 
 /// [`tooltip`] chrome around arbitrary content (legends, shortcut hints, …).
 pub fn tooltip_with(ui: &mut Ui<'_>, content: impl FnOnce(&mut Ui<'_>)) {
     let t = ui.theme();
+    let m = ui.metrics();
     ui.with(
         NodeSpec::column()
             .float(crate::spec::FloatConfig::below().fit())
-            .pad_xy(10.0, 6.0)
+            .pad_xy(m.hint_pad_x, m.hint_pad_y)
             .bg(t.raised)
-            .radius(6.0)
+            .radius(m.radius)
             .border(1.0, t.border_strong),
         content,
     );
@@ -279,6 +282,7 @@ pub fn label(ui: &mut Ui<'_>, text: &str) {
 pub fn text_input(ui: &mut Ui<'_>, label: &str, initial: &str) -> Key {
     let key = ui.child_key(label);
     let t = ui.theme();
+    let m = ui.metrics();
     let border = if ui.is_focused(key) {
         t.accent
     } else {
@@ -293,9 +297,9 @@ pub fn text_input(ui: &mut Ui<'_>, label: &str, initial: &str) -> Key {
         },
         NodeSpec::column()
             .width(Sizing::Grow(1.0))
-            .pad_xy(10.0, 8.0)
+            .pad_xy(m.field_pad_x, m.field_pad_y)
             .bg(t.sunken)
-            .radius(6.0)
+            .radius(m.radius)
             .border(1.0, border)
             .clip()
             .label(label),
@@ -304,12 +308,11 @@ pub fn text_input(ui: &mut Ui<'_>, label: &str, initial: &str) -> Key {
 
 /// Default titlebar height, logical px. Follows platform conventions (as
 /// measured by gpui): 32 on Windows (the native caption height), 34
-/// elsewhere.
-pub const TITLEBAR_H: f32 = if cfg!(target_os = "windows") {
-    32.0
-} else {
-    34.0
-};
+/// elsewhere. The stock [`Metrics`] carries the same number as
+/// `titlebar_h`, and the titlebar draws from *that*, so an app that set
+/// its own metrics lays out against `ui.metrics().titlebar_h` rather
+/// than this constant.
+pub const TITLEBAR_H: f32 = Metrics::comfortable().titlebar_h;
 
 /// A cross-platform titlebar: a full-width drag strip with the window title
 /// left-aligned next to the window controls. Reads `env.window` and adapts
@@ -326,13 +329,14 @@ pub fn titlebar(ui: &mut Ui<'_>, title: &str) {
     titlebar_with(ui, move |ui| {
         // A background window's title recedes; the OS does the same.
         let t = ui.theme();
+        let size = ui.metrics().chrome_text;
         let color = if focused { t.fg } else { t.faint };
         ui.with(
             NodeSpec::row()
                 .width(Sizing::Grow(1.0))
                 .height(Sizing::Grow(1.0))
                 .cross_align(Align::Center),
-            |ui| ui.text(&title, TextStyle::new(13.0).color(color).ellipsis()),
+            |ui| ui.text(&title, TextStyle::new(size).color(color).ellipsis()),
         );
     });
 }
@@ -343,11 +347,12 @@ pub fn titlebar(ui: &mut Ui<'_>, title: &str) {
 /// hit-testing, so buttons in a titlebar just work.
 pub fn titlebar_with(ui: &mut Ui<'_>, content: impl FnOnce(&mut Ui<'_>)) {
     let win = ui.env().window;
+    let h = ui.metrics().titlebar_h;
     ui.with_keyed(
         "kui:titlebar",
         NodeSpec::row()
             .width(Sizing::Grow(1.0))
-            .height(Sizing::Fixed(TITLEBAR_H))
+            .height(Sizing::Fixed(h))
             .cross_align(Align::Center)
             .window_drag(),
         |ui| {
@@ -471,14 +476,17 @@ fn window_button(ui: &mut Ui<'_>, button: WindowButton, maximized: bool) {
 ///
 /// The three colours are hand-picked rather than derived from the first, so
 /// that the stock button paints exactly what it has always painted; the
-/// derivation for any *other* base is [`button_palette`].
-pub fn button_spec() -> NodeSpec {
+/// derivation for any *other* base is [`button_palette`]. Takes the
+/// metrics rather than reading them, as [`menu_panel_spec`] takes the
+/// palette: `widgets::button_spec(&ui.metrics())` is the idiom, and the
+/// stock numbers are `button_spec(&Metrics::default())`.
+pub fn button_spec(m: &Metrics) -> NodeSpec {
     NodeSpec::row()
-        .pad_xy(14.0, 8.0)
+        .pad_xy(m.control_pad_x, m.control_pad_y)
         .bg(Color::rgb8(0x3b, 0x5b, 0xd4))
         .hover_bg(Color::rgb8(0x47, 0x6c, 0xe0))
         .pressed_bg(Color::rgb8(0x2f, 0x54, 0xc4))
-        .radius(6.0)
+        .radius(m.radius)
         .center()
 }
 
@@ -513,7 +521,9 @@ pub fn readable_on(bg: Color) -> Color {
     }
 }
 
-pub const BUTTON_TEXT: f32 = 15.0;
+/// The stock button's text size — [`Metrics::default`]'s `control_text`;
+/// the widget itself reads `ui.metrics()`.
+pub const BUTTON_TEXT: f32 = Metrics::comfortable().control_text;
 /// What a disabled stock button's opacity is multiplied by. The core makes
 /// it inert and drops its hover and pressed backgrounds, and nothing else
 /// would show a sighted user the state a reader is told.
@@ -523,7 +533,14 @@ pub const BUTTON_DISABLED_OPACITY: f32 = 0.5;
 /// the node — a new node, so it loses keyboard focus and a screen reader's
 /// cursor; declare such a button with [`button_with`] and a key of its own.
 pub fn button(ui: &mut Ui<'_>, text: &str, payload: impl Into<Value>) {
-    button_with(ui, text, text, button_spec().on_click(payload.into()), None);
+    let m = ui.metrics();
+    button_with(
+        ui,
+        text,
+        text,
+        button_spec(&m).on_click(payload.into()),
+        None,
+    );
 }
 
 /// [`button`] with its spec in the caller's hands: `spec` is [`button_spec`]
@@ -564,9 +581,10 @@ pub fn button_with(ui: &mut Ui<'_>, key: &str, text: &str, spec: NodeSpec, hint:
     // Whatever the background ended up being: white on the stock blue as
     // it has always been, black on an accent light enough to need it.
     let label = readable_on(spec.style.bg);
+    let size = ui.metrics().control_text;
     let node = ui.child_key(key);
     ui.with_keyed(key, spec, |ui| {
-        ui.text(text, TextStyle::new(BUTTON_TEXT).color(label));
+        ui.text(text, TextStyle::new(size).color(label));
         if let Some(hint) = hint
             && ui.is_hovered(node)
         {
@@ -585,8 +603,8 @@ pub fn button_with(ui: &mut Ui<'_>, key: &str, text: &str, spec: NodeSpec, hint:
 
 /// Menu chrome, in one place so a native renderer's absence still looks
 /// deliberate rather than improvised.
-pub const MENU_WIDTH: f32 = 200.0;
-pub const MENU_TEXT: f32 = 13.0;
+pub const MENU_WIDTH: f32 = Metrics::comfortable().menu_width;
+pub const MENU_TEXT: f32 = Metrics::comfortable().chrome_text;
 /// The reserved label the stock menu is keyed under. A menu the core
 /// opened is found by key, not by guessing at payloads, so an app is free
 /// to post whatever it likes from its own items.
@@ -610,6 +628,7 @@ pub const MENU_KEY: &str = "kui.menu";
 /// none. A `Separator` posts nothing and takes no focus.
 pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> Key {
     let t = ui.theme();
+    let m = ui.metrics();
     // The menu's nodes are the core's, not the host's: opened under their
     // own origin, so the core takes their events back by it.
     let saved = ui.origin();
@@ -617,7 +636,7 @@ pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> Key {
     let root = menu_panel(
         ui,
         MENU_KEY,
-        menu_panel_spec(&t)
+        menu_panel_spec(&t, &m)
             .float(
                 FloatConfig::viewport()
                     // Top-left of the menu at the top-left of the
@@ -642,18 +661,19 @@ pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> Key {
 /// scope it belongs to — a context menu floats at the pointer and declares
 /// its own `modal`; the menu bar's drops out of its title and lives inside
 /// the bar's (`docs/adr/0018-a-menu-bar-the-app-declares.md`, decision 5).
-/// Takes the palette rather than reading it, because a caller that has a
-/// `Ui` in one hand cannot lend it to this and to `menu_panel` in the
-/// same expression — `let t = ui.theme();` first is the idiom (ADR 0019).
-pub fn menu_panel_spec(t: &Theme) -> NodeSpec {
+/// Takes the palette and the metrics rather than reading them, because a
+/// caller that has a `Ui` in one hand cannot lend it to this and to
+/// `menu_panel` in the same expression — `let t = ui.theme();` first is
+/// the idiom (ADR 0019).
+pub fn menu_panel_spec(t: &Theme, m: &Metrics) -> NodeSpec {
     NodeSpec::column()
         .role(Role::Menu)
-        .width(Sizing::Fixed(MENU_WIDTH))
+        .width(Sizing::Fixed(m.menu_width))
         .pad(4.0)
         .gap(1.0)
         .bg(t.raised)
         .border(1.0, t.border_strong)
-        .radius(6.0)
+        .radius(m.radius)
 }
 
 /// Builds the rows of one menu into `spec`, keyed under `label`, and
@@ -661,6 +681,7 @@ pub fn menu_panel_spec(t: &Theme) -> NodeSpec {
 /// both menus kui has are this function with a different container.
 pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuItem]) -> Key {
     let t = ui.theme();
+    let m = ui.metrics();
     // A wash rather than a fill, so a row's label stays readable on both
     // bases without the view guessing a frame ahead of the core — see
     // `Theme::accent_soft`.
@@ -696,9 +717,9 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
                 .role(Role::MenuItem)
                 .label(item.text())
                 .width(Sizing::Grow(1.0))
-                .pad_xy(8.0, 5.0)
+                .pad_xy(m.menu_pad_x, m.menu_pad_y)
                 .gap(8.0)
-                .radius(4.0)
+                .radius(m.radius_inner)
                 .main_align(Align::Start)
                 .cross_align(Align::Center);
             if item.checked {
@@ -723,17 +744,17 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
                 if gutter {
                     ui.with(NodeSpec::row().width(Sizing::Fixed(MENU_CHECK_W)), |ui| {
                         if item.checked {
-                            ui.text("\u{2713}", TextStyle::new(MENU_TEXT).color(t.fg));
+                            ui.text("\u{2713}", TextStyle::new(m.chrome_text).color(t.fg));
                         }
                     });
                 }
-                ui.text(item.text(), TextStyle::new(MENU_TEXT).color(t.fg));
+                ui.text(item.text(), TextStyle::new(m.chrome_text).color(t.fg));
                 if let Some(accel) = item.accel_text() {
                     // Pushed to the right edge by a grow spacer, so the label
                     // stays where the eye expects it whatever the
                     // accelerator is.
                     ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
-                    ui.text(accel, TextStyle::new(MENU_TEXT).color(t.muted));
+                    ui.text(accel, TextStyle::new(m.chrome_text).color(t.muted));
                 }
             });
         }
@@ -766,7 +787,7 @@ fn group_name(i: usize) -> String {
 }
 /// The bar's height, logical px — a little under a titlebar's, which is
 /// what every platform that draws one in the window does.
-pub const MENU_BAR_H: f32 = 26.0;
+pub const MENU_BAR_H: f32 = Metrics::comfortable().menu_bar_h;
 
 /// The application menu: `bar` is what the app's menu *is*, and calling
 /// this is where its titles go when they have to be drawn in the window
@@ -808,6 +829,7 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
         return;
     }
     let t = ui.theme();
+    let m = ui.metrics();
     let accent = t.accent_soft;
     let mut open = ui.core().menu_bar_open();
     // The bar's nodes are the core's, opened under their own origin (see
@@ -816,7 +838,7 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
     ui.set_origin(OriginId::MENU_BAR);
     let mut spec = NodeSpec::row()
         .width(Sizing::Grow(1.0))
-        .height(Sizing::Fixed(MENU_BAR_H))
+        .height(Sizing::Fixed(m.menu_bar_h))
         .cross_align(Align::Center)
         .pad_xy(4.0, 0.0)
         .gap(2.0)
@@ -837,16 +859,16 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
         // asked by *group* rather than by key, since a title's key is
         // inside a wrapper this loop has not opened yet.
         if open.is_some() {
-            for (i, m) in bar.menus.iter().enumerate() {
+            for (i, menu) in bar.menus.iter().enumerate() {
                 let hovered = ui.is_group_hovered(NodeSpec::hover_group_id(&group_name(i)));
-                if open != Some(i) && m.enabled && !m.items.is_empty() && hovered {
+                if open != Some(i) && menu.enabled && !menu.items.is_empty() && hovered {
                     open = Some(i);
                     ui.core().set_menu_bar_open(open);
                 }
             }
         }
-        for (i, m) in bar.menus.iter().enumerate() {
-            let live = m.enabled && !m.items.is_empty();
+        for (i, menu) in bar.menus.iter().enumerate() {
+            let live = menu.enabled && !menu.items.is_empty();
             let is_open = open == Some(i);
             // A wrapper the menu drops out of, so the panel is a *sibling*
             // of the title and not a child of it: a `menuItem` is a
@@ -855,9 +877,11 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
             ui.with_indexed(i as u64, NodeSpec::row(), |ui| {
                 let mut spec = NodeSpec::row()
                     .role(Role::MenuItem)
-                    .label(m.label.as_str())
-                    .pad_xy(8.0, 3.0)
-                    .radius(4.0)
+                    .label(menu.label.as_str())
+                    // Two px shorter than a row's, so the bar's height and
+                    // not the title's padding decides the strip.
+                    .pad_xy(m.menu_pad_x, (m.menu_pad_y - 2.0).max(0.0))
+                    .radius(m.radius_inner)
                     .cross_align(Align::Center);
                 if live {
                     // Which title this is: the core takes the event back
@@ -874,7 +898,10 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
                     spec = spec.disabled(true).opacity(t.disabled_opacity);
                 }
                 ui.with_keyed(MENU_BAR_TITLE_KEY, spec, |ui| {
-                    ui.text(m.label.as_str(), TextStyle::new(MENU_TEXT).color(t.fg));
+                    ui.text(
+                        menu.label.as_str(),
+                        TextStyle::new(m.chrome_text).color(t.fg),
+                    );
                 });
                 if is_open {
                     // Out of the title's bottom-left corner, and `fit` to
@@ -882,14 +909,14 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
                     menu_panel(
                         ui,
                         MENU_BAR_PANEL_KEY,
-                        menu_panel_spec(&t).label(m.label.as_str()).float(
+                        menu_panel_spec(&t, &m).label(menu.label.as_str()).float(
                             FloatConfig::parent()
                                 .at(Align::Start, Align::End)
                                 .self_at(Align::Start, Align::Start)
                                 .offset(0.0, 2.0)
                                 .fit(),
                         ),
-                        &m.items,
+                        &menu.items,
                     );
                 }
             });

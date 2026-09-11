@@ -1,6 +1,7 @@
 //! The panel's frame: the dock (or the window) with its header, its tab
 //! strip and the tab in view, and the small controls every tab shares.
 
+use super::icons::{self, Icon};
 use super::{DEVTOOLS_KEY, Dock, Place, State, Tab, action, stream, tree};
 use crate::color::Color;
 use crate::env::Appearance;
@@ -187,11 +188,11 @@ fn header(ui: &mut Ui<'_>, st: &State, t: &Theme) {
             ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
             for dock in Dock::ALL {
                 let (glyph, what) = match dock {
-                    Dock::Left => ("▌", "dock on the left"),
-                    Dock::Right => ("▐", "dock on the right"),
-                    Dock::Bottom => ("▄", "dock at the bottom"),
-                    Dock::Window => ("❐", "undock into a window"),
-                    Dock::Off => ("✕", "close · Ctrl+Shift+D brings it back"),
+                    Dock::Left => (Icon::DockLeft, "dock on the left"),
+                    Dock::Right => (Icon::DockRight, "dock on the right"),
+                    Dock::Bottom => (Icon::DockBottom, "dock at the bottom"),
+                    Dock::Window => (Icon::DockWindow, "undock into a window"),
+                    Dock::Off => (Icon::Close, "close · Ctrl+Shift+D brings it back"),
                 };
                 icon_lit(
                     ui,
@@ -239,9 +240,9 @@ fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
             // menus — at the end of the tab row.
             ui.with(NodeSpec::row().width(Sizing::Grow(1.0)), |_| {});
             let base = match st.base {
-                None => "◐",
-                Some(Appearance::Light) => "☀",
-                Some(_) => "☾",
+                None => Icon::BaseAuto,
+                Some(Appearance::Light) => Icon::BaseLight,
+                Some(_) => Icon::BaseDark,
             };
             icon(
                 ui,
@@ -258,7 +259,7 @@ fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                 ui,
                 t,
                 "accent",
-                "●",
+                Icon::Accent,
                 t.accent,
                 &format!(
                     "accent: {} · Ctrl+Shift+A cycles the app's, kui's, four the OS might report",
@@ -274,7 +275,7 @@ fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                 ui,
                 t,
                 "menus",
-                "☰",
+                Icon::Menus,
                 if st.native_menus == Some(false) {
                     t.accent
                 } else {
@@ -338,9 +339,9 @@ pub(super) fn fixed(ui: &mut Ui<'_>, f: impl FnOnce(&mut Ui<'_>)) {
     );
 }
 
-/// One glyph in the header's strip: what it controls is in its tooltip,
+/// One icon in the header's strip: what it controls is in its tooltip,
 /// and its colour says its state.
-pub(super) fn icon(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: &str, color: Color, hint: &str) {
+pub(super) fn icon(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: Icon, color: Color, hint: &str) {
     let label = format!("kui-devtools/{what}");
     let key = ui.child_key(&label);
     ui.with_keyed(
@@ -356,7 +357,7 @@ pub(super) fn icon(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: &str, color: C
             .label(what)
             .apply_tooltip(hint),
         |ui| {
-            ui.text(glyph, TextStyle::new(13.0).color(color));
+            icons::draw(ui, glyph, color, color.with_alpha(0.35));
             if ui.is_hovered(key) {
                 widgets::tooltip(ui, hint);
             }
@@ -364,8 +365,10 @@ pub(super) fn icon(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: &str, color: C
     );
 }
 
-/// [`icon`] for a choice among several: `on` paints it as the one chosen.
-fn icon_lit(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: &str, on: bool, hint: &str) {
+/// [`icon`] for a choice among several: `on` paints it as the one chosen
+/// — the strokes in the accent and the pane filled with it, against the
+/// muted outline and a faint pane of the others.
+fn icon_lit(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: Icon, on: bool, hint: &str) {
     let label = format!("kui-devtools/{what}");
     let key = ui.child_key(&label);
     ui.with_keyed(
@@ -384,9 +387,12 @@ fn icon_lit(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: &str, on: bool, hint:
             .label(hint.split(" · ").next().unwrap_or(what))
             .apply_tooltip(hint),
         |ui| {
-            ui.text(
+            let color = if on { t.accent } else { t.muted };
+            icons::draw(
+                ui,
                 glyph,
-                TextStyle::new(13.0).color(if on { t.accent } else { t.muted }),
+                color,
+                color.with_alpha(if on { 0.9 } else { 0.3 }),
             );
             if ui.is_hovered(key) {
                 widgets::tooltip(ui, hint);
@@ -425,6 +431,44 @@ pub(super) fn small_button(
                 text,
                 TextStyle::new(10.0).color(if on { t.accent } else { t.fg }),
             );
+            if ui.is_hovered(key) {
+                widgets::tooltip(ui, hint);
+            }
+        },
+    );
+}
+
+/// [`small_button`] with an icon before its text — the picker's
+/// crosshair. The icon is drawn small to sit on the text's line.
+pub(super) fn small_button_iconed(
+    ui: &mut Ui<'_>,
+    t: &Theme,
+    what: &str,
+    glyph: Icon,
+    text: &str,
+    hint: &str,
+    on: bool,
+) {
+    let label = format!("kui-devtools/{what}");
+    let key = ui.child_key(&label);
+    ui.with_keyed(
+        &label,
+        NodeSpec::row()
+            .pad_xy(6.0, 1.0)
+            .gap(3.0)
+            .radius(4.0)
+            .cross_align(Align::Center)
+            .bg(if on { t.accent_soft } else { t.raised })
+            .hover_bg(if on { t.accent_soft } else { t.hover })
+            .pressed_bg(t.pressed)
+            .border(1.0, if on { t.accent } else { t.border })
+            .on_click(action(what))
+            .label(text)
+            .apply_tooltip(hint),
+        |ui| {
+            let color = if on { t.accent } else { t.fg };
+            icons::draw(ui, glyph, color, color.with_alpha(0.35));
+            ui.text(text, TextStyle::new(10.0).color(color));
             if ui.is_hovered(key) {
                 widgets::tooltip(ui, hint);
             }

@@ -321,5 +321,36 @@ pub fn protocol_tables() -> Vec<(&'static str, Json)> {
                     .collect(),
             ),
         ),
+        // The metrics (backlog T2): one row per size the stock widgets are
+        // built from, with the stock and the compact value beside the
+        // doc, the way the palette carries its two bases.
+        (
+            "metrics",
+            Json::Array(
+                kui_core::schema::METRIC_ROLES
+                    .iter()
+                    .map(|r| {
+                        Json::Object(
+                            [
+                                ("name", Json::String(r.name.into())),
+                                ("node", Json::String(r.node.into())),
+                                ("doc", Json::String(r.doc.into())),
+                                (
+                                    "stock",
+                                    Json::from((r.get)(&kui_core::Metrics::default()) as f64),
+                                ),
+                                (
+                                    "compact",
+                                    Json::from((r.get)(&kui_core::Metrics::compact()) as f64),
+                                ),
+                            ]
+                            .into_iter()
+                            .map(|(k, v)| (k.to_string(), v))
+                            .collect(),
+                        )
+                    })
+                    .collect(),
+            ),
+        ),
     ]
 }

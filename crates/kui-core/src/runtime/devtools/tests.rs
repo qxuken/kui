@@ -429,6 +429,100 @@ fn the_tree_tab_lists_the_app_and_outlines_what_is_picked() {
     assert!(core.key_of(&format!("node:{:016x}", hello.0)).is_none());
 }
 
+/// The tree's keyboard (backlog D1): the list is one sink with a cursor
+/// of its own. Down walks the rows from the top, Enter selects the row the
+/// cursor is on, Left folds it (and then goes to its parent), Right
+/// unfolds it, Home and End go to the ends, and the keys reach nobody
+/// else — the app under it hears nothing.
+#[test]
+fn the_tree_walks_by_keyboard_through_the_list_s_own_cursor() {
+    let mut core = on();
+    core.handle_input(chord('N'));
+    frame(&mut core);
+    frame(&mut core);
+    let list = core.key_of("kui-devtools/nodes").expect("the list");
+    core.set_focus(Some(list));
+    frame(&mut core);
+    assert!(core.is_focused(list));
+    let rows = |core: &Core| -> Vec<Key> {
+        core.nodes()
+            .iter()
+            .filter(|n| n.label.as_deref().is_some_and(|l| l.starts_with("node:")))
+            .map(|n| n.key)
+            .collect()
+    };
+    let key = |core: &mut Core, code: KeyCode| {
+        let evs = core.handle_input(InputEvent::KeyDown(KeyPress::new(code, KeyMods::default())));
+        core.handle_input(InputEvent::KeyUp(KeyPress::new(code, KeyMods::default())));
+        frame(core);
+        evs
+    };
+    let row_of = |core: &mut Core, k: Key| core.key_of(&format!("node:{:016x}", k.0));
+    // Nothing selected, no cursor: the first Down lands on the first row.
+    assert_eq!(state(&core, |s| s.tree_cursor), None);
+    assert!(
+        key(&mut core, KeyCode::Down).is_empty(),
+        "the app hears nothing"
+    );
+    let first = state(&core, |s| s.tree_cursor).expect("a cursor");
+    assert_eq!(row_of(&mut core, first), Some(rows(&core)[0]));
+    key(&mut core, KeyCode::Down);
+    key(&mut core, KeyCode::Down);
+    let third = state(&core, |s| s.tree_cursor).unwrap();
+    assert_eq!(row_of(&mut core, third), Some(rows(&core)[2]));
+    // Enter selects it, as a click would, and the inspector opens.
+    assert_eq!(state(&core, |s| s.selected), None);
+    key(&mut core, KeyCode::Enter);
+    assert_eq!(state(&core, |s| s.selected), Some(third));
+    assert!(core.key_of("kui-devtools/inspector").is_some());
+    // Up to the app's column, Left folds it: its rows go and the cursor
+    // stays on it; Left again goes to its parent; Right on the folded
+    // column unfolds it.
+    key(&mut core, KeyCode::Up);
+    let column = state(&core, |s| s.tree_cursor).unwrap();
+    let before = rows(&core).len();
+    key(&mut core, KeyCode::Left);
+    assert!(state(&core, |s| s.collapsed.contains(&column)));
+    assert!(rows(&core).len() < before, "folded away");
+    assert_eq!(state(&core, |s| s.tree_cursor), Some(column));
+    key(&mut core, KeyCode::Left);
+    let parent = state(&core, |s| s.tree_cursor).unwrap();
+    assert_ne!(parent, column);
+    key(&mut core, KeyCode::Down);
+    assert_eq!(state(&core, |s| s.tree_cursor), Some(column));
+    key(&mut core, KeyCode::Right);
+    assert!(!state(&core, |s| s.collapsed.contains(&column)));
+    assert_eq!(rows(&core).len(), before);
+    // End and Home.
+    key(&mut core, KeyCode::End);
+    let last = *rows(&core).last().unwrap();
+    let at = state(&core, |s| s.tree_cursor).unwrap();
+    assert_eq!(row_of(&mut core, at), Some(last));
+    key(&mut core, KeyCode::Home);
+    assert_eq!(state(&core, |s| s.tree_cursor), Some(first));
+    // A chord bubbles to the list like any other (ADR 0011) and is not a
+    // bare arrow: Cmd+Down and Ctrl+Down each leave the cursor alone.
+    for mods in [
+        KeyMods {
+            super_key: true,
+            ..Default::default()
+        },
+        KeyMods {
+            ctrl: true,
+            ..Default::default()
+        },
+    ] {
+        core.handle_input(InputEvent::KeyDown(KeyPress::new(KeyCode::Down, mods)));
+        core.handle_input(InputEvent::KeyUp(KeyPress::new(KeyCode::Down, mods)));
+        frame(&mut core);
+        assert_eq!(
+            state(&core, |s| s.tree_cursor),
+            Some(first),
+            "a chord is not an arrow"
+        );
+    }
+}
+
 /// The picker: an overlay over the app's area, the node under the pointer
 /// outlined and named, a press selecting it and reaching nobody else, and
 /// Escape leaving.

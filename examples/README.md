@@ -35,10 +35,13 @@ opens the **core's devtools panel** around the example
 panel any app gets from `Core::set_devtools(true)`, `win.setDevtools(true)`,
 `kui_set_devtools` or `KUI_DEVTOOLS=1`. Its header is the window's title,
 the frame counter (`n / KUI_SMOKE_FRAMES` when one is set) and an icon
-strip with a button per placement — left ▌, right ▐, bottom ▄, undock ❐,
-close ✕ — the current one lit; the tab row ends in the app-state toggles
-— base ◐/☀/☾, accent ●, menus ☰ — each with a tooltip saying what it is
-set to. A docked pane's inner edge is a handle that resizes it, and the
+strip with a button per placement — a little window with its left, right
+or bottom pane shaded, two windows for undock, a cross for close — the
+current one lit; the tab row ends in the app-state toggles — a half disc,
+a sun or a crescent for the base, a dot in the accent, three bars for the
+menus — each with a tooltip saying what it is set to. The icons are drawn
+by the core from its own `line` and `polygon` elements, not glyphs from
+a fallback font, so they are the same on every platform. A docked pane's inner edge is a handle that resizes it, and the
 example's viewport is what the pane leaves (a change is a `resize`).
 Under it, three tabs:
 
@@ -55,7 +58,7 @@ Under it, three tabs:
 - **tree**: the last frame's nodes (`Core::set_inspect` / `nodes()`,
   `win.nodes()` in Node), collapsible — a disclosure per row, `+N` on a
   folded one, fold/unfold all — and filterable by label, kind, role,
-  text or flag (a match with its ancestors dimmed). The **picker** (`⊕ pick`,
+  text or flag (a match with its ancestors dimmed). The **picker** (the crosshair `pick` button,
   `Ctrl+Shift+P`) outlines and names the node under the pointer over the
   example; a press selects it and `Escape` leaves. Click a row: its rect
   is outlined on the example and an **inspector** opens — the node (key,
@@ -125,7 +128,7 @@ table says so.
 | [`image.rs`](rust/widgets/image.rs) | The `image` element: Fit sizing, kept aspect, rounded corners; a stream replaced every frame at the size `layout.scale` says (`update_image`), `nearest` beside `linear`, `contain` / `cover` (ADR 0025) | ✓ | |
 | [`line.rs`](rust/widgets/line.rs) | The `line` element: a mind map whose links are curves between floats, brightening by transition | | |
 | [`polygon.rs`](rust/widgets/polygon.rs) | The `polygon` element: a pie whose wedges light under a hover box, arrowheads on a graph's links, the area under a sparkline, a concave star | ✓ | |
-| [`fragment.rs`](rust/widgets/fragment.rs) | The `fragment` element: boxes a WGSL function paints — a gradient, a ring, a shimmer, a card with children | | |
+| [`fragment.rs`](rust/widgets/fragment.rs) | The `fragment` element: boxes a WGSL function paints — a gradient, a ring, a shimmer, a card with children; a heatmap reading a data texture the app replaces every frame and a ripple over an atlas-backed icon, the `image` input (V1) | ✓ | |
 | [`cells.rs`](rust/widgets/cells.rs) | The `cells` element: a terminal grid with a cursor and an `origin_line`, selecting in cells, copy trimming blanks, the screen scrolled under a selection | ✓ | |
 | [`virtual_list.rs`](rust/widgets/virtual_list.rs) | `widgets::virtual_column`, the same list by hand (`--by-hand`), and `virtual_rows` for rows of no fixed height (`--variable`) | ✓ every mode | |
 | [`context_menu.rs`](rust/widgets/context_menu.rs) | Who gets a context menu: the stock one over a selectable scope, the app's own over a row, the editor's four, nothing over a plain box | ✓ | |
@@ -147,6 +150,8 @@ table says so.
 | [`exit_budget.rs`](rust/features/exit_budget.rs) | The exit budget at its boundary (ADR 0012): whole or not at all, the newest outranks the old, a virtual list keeps the picture small | | the boundary watch |
 | [`popup.rs`](rust/features/popup.rs) | `WindowKind::Popup`: a combobox whose list is taller than the window; `--dock off` by default so the frame stays small | | press in the owner, drag into the popup, release on an item (ADR 0009) |
 | [`theme.rs`](rust/features/theme.rs) | The token reference: every `Theme` role as a swatch over every stock widget that reads it; the devtools' base and accent icons are the switch | | |
+| [`modal.rs`](rust/features/modal.rs) | `modal` (ADR 0003): a dialog over a form opening on its `initial_focus`, Tab confined to it, a confirm nested inside it that makes the dialog inert, Escape routed by tag and answered by the app, focus restored to the opener | ✓ | |
+| [`metrics.rs`](rust/features/metrics.rs) | The palette's other axis (T2): the stock set, `compact` and a scaled set switched by a click, the stock widgets rebuilt from each, and a card of the app's own that reads `ui.metrics()` for its radius and padding | ✓ | |
 | [`accessibility.rs`](rust/features/accessibility.rs) | Every accessibility prop in one window, the fixture the platform audit drives; `--dock off` by default | | `scripts/ax-audit.swift` (106 checks) |
 | [`waker.rs`](rust/features/waker.rs) | A thread feeds lines and wakes the parked loop through `kui::Waker`; `KUI_WAKER_LINES=n` closes after n | | `KUI_WAKER_LINES` |
 

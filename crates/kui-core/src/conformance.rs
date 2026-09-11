@@ -192,6 +192,21 @@ pub const FRAGMENT_PARAMS: [f32; 16] = [
     1.0, 1.0, 1.0, 1.0, // params[3]: the ring's colour
 ];
 
+/// The corpus's second fragment source, one that reads its `image`
+/// (backlog V1, ADR 0025 decision 7): the image stretched over the box
+/// through `kui_sample`, tinted by the first param, with the image's
+/// texel size — `in.image.zw` — folded into the alpha so a source that
+/// reads the rect is validated and not just one that samples.
+pub const FRAGMENT_IMAGE_WGSL: &str = "\
+fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {
+    let uv = in.local / max(in.size, vec2<f32>(1.0));
+    let c = kui_sample(uv) * params[0];
+    return vec4<f32>(c.rgb, c.a * step(1.0, in.image.z));
+}";
+
+/// The `fragments` scene's tint for the two image-reading fragments.
+pub const FRAGMENT_IMAGE_PARAMS: [f32; 4] = [1.0, 0.5, 0.25, 1.0];
+
 /// Eighteen numbers, so the last two are dropped with a warning.
 pub const FRAGMENT_PARAMS_LONG: [f32; 18] = [
     0.1, 0.2, 0.3, 1.0, 0.4, 0.5, 0.6, 1.0, 4.0, 1.0, 0.0, 0.0, 0.9, 0.9, 0.2, 1.0, 7.0, 8.0,
@@ -205,6 +220,8 @@ pub struct Fixtures {
     pub stream: ImageId,
     pub sound: SoundId,
     pub fragment: crate::resources::FragmentId,
+    /// See [`FRAGMENT_IMAGE_WGSL`]: the one that samples its `image`.
+    pub sampler: crate::resources::FragmentId,
 }
 
 /// Registers the corpus fixtures on a fresh core, in this order.
@@ -216,11 +233,15 @@ pub fn fixtures(core: &mut Core) -> Fixtures {
     let fragment = core
         .add_fragment(FRAGMENT_WGSL)
         .expect("the corpus fragment must compile");
+    let sampler = core
+        .add_fragment(FRAGMENT_IMAGE_WGSL)
+        .expect("the corpus image fragment must compile");
     Fixtures {
         image,
         stream,
         sound,
         fragment,
+        sampler,
     }
 }
 
@@ -657,6 +678,46 @@ pub const SCENES: &[Scene] = &[
             textures: 0,
             glyphs_min: 0,
             access: &["0 window ||", "1 scrollView ||"],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+        },
+    },
+    Scene {
+        name: "anchor",
+        doc: "Scroll anchoring (backlog C26 step 3): two scrollers of the \
+              same six rows, wheeled to the same offset, one declared \
+              `anchor`; phase 1 prepends a taller row to both. The anchored \
+              list keeps the row that was at its top at its top — the offset \
+              moved by the new row's height — and the other shows its content \
+              slid down under an offset that stayed. One frame is the whole \
+              property, once the frame before is given.",
+        custom: &["overflow", "key"],
+        elements: &["box"],
+        build: build_anchor,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Cursor(50, 40),
+            Step::Scroll(0, -40),
+            Step::Cursor(150, 40),
+            Step::Scroll(0, -40),
+            Step::Phase(1),
+        ],
+        expect: Expect {
+            // Two scroller boxes and two thumbs; the anchored list shows
+            // three rows (offset 70 of a 150 content in 60), the other
+            // four (offset 40, two of them partial).
+            solid: 11,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 0,
+            access: &["0 window ||", "1 scrollView ||", "1 scrollView ||"],
             events: &[],
             announcements: &[],
             warnings: &[],
@@ -1247,7 +1308,21 @@ pub const SCENES: &[Scene] = &[
     },
     Scene {
         name: "fragments",
-        doc: "A box a registered WGSL function paints               (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`):               a plain gradient, a rounded and faded one with a child painted               over it, one whose handle is dead — which draws nothing, the               documented fallback for every resource — and one that declares               eighteen params, so the truncation warning is pinned. The               parameters ride a side list, not the quad, so the report               carries them as bits on their own lines.",
+        doc: "A box a registered WGSL function paints \
+              (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`): \
+              a plain gradient, a rounded and faded one with a child painted \
+              over it, one whose handle is dead — which draws nothing, the \
+              documented fallback for every resource — and one that declares \
+              eighteen params, so the truncation warning is pinned. Then the \
+              image input (backlog V1, ADR 0025 decision 7): the sampling \
+              fixture reading the atlas-backed icon, the same reading the \
+              texture-backed stream — which takes the frame's one `texture` \
+              entry, as an `image` node of it would — and the same naming an \
+              image that is live in no session, which draws nothing: the \
+              removal order ADR 0015 asked to see pinned. The parameters ride \
+              a side list, not the quad, so the report carries them as bits \
+              on their own lines, and a draw's image as a `fragment-image` \
+              line naming where its texels are.",
         custom: &["key"],
         elements: &["box", "fragment"],
         build: build_fragments,
@@ -1258,7 +1333,9 @@ pub const SCENES: &[Scene] = &[
             shadows: 0,
             images: 0,
             segments: 0,
-            fragments: 3,
+            fragments: 5,
+            // The stream's side entry is there (the `texture 0` line); no
+            // texture *quad* is, since the fragment's quad is what draws.
             textures: 0,
             glyphs_min: 0,
             access: &["0 window ||"],
@@ -2228,6 +2305,41 @@ fn build_scrollbar(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     });
 }
 
+/// The `anchor` scene's two scrollers, by key: the anchored one and the
+/// control.
+pub const ANCHOR_KEYS: [&str; 2] = ["anchored", "plain"];
+
+fn build_anchor(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
+    ui.with(NodeSpec::row().pad(10.0).gap(10.0), |ui| {
+        for (n, key) in ANCHOR_KEYS.iter().enumerate() {
+            let list = NodeSpec::column()
+                .width(Sizing::Fixed(90.0))
+                .height(Sizing::Fixed(60.0))
+                .scroll_y()
+                .bg(Color::hex(0x101018ff));
+            let list = if n == 0 { list.anchor() } else { list };
+            ui.with_keyed(key, list, |ui| {
+                let row = |ui: &mut Ui<'_>, key: &str, h: f32| {
+                    ui.with_keyed(
+                        key,
+                        NodeSpec::column()
+                            .width(Sizing::Fixed(80.0))
+                            .height(Sizing::Fixed(h))
+                            .bg(Color::hex(0x30344aff)),
+                        |_| {},
+                    );
+                };
+                if phase >= 1 {
+                    row(ui, "new", 30.0);
+                }
+                for item in ITEM_KEYS {
+                    row(ui, item, 20.0);
+                }
+            });
+        }
+    });
+}
+
 /// The three runs of the `selection` scene, in order. Short and distinct
 /// so a report shows at a glance which run a highlight belongs to, and
 /// three of them so the drag has a run to cover *whole* between its two
@@ -2421,7 +2533,7 @@ fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             ui,
             "go",
             "go",
-            widgets::button_spec()
+            widgets::button_spec(&ui.metrics())
                 .on_click(Value::map([("kind", Value::str("go"))]))
                 .description("Starts the run"),
             None,
@@ -2437,7 +2549,7 @@ fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             ui,
             "stop",
             "stop",
-            widgets::button_spec()
+            widgets::button_spec(&ui.metrics())
                 .on_click(Value::map([("kind", Value::str("stop"))]))
                 .label("Stop the run")
                 .disabled(true)
@@ -2816,6 +2928,34 @@ fn build_fragments(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
                     .width(Sizing::Fixed(30.0))
                     .height(Sizing::Fixed(12.0)),
             );
+            // The image input: the atlas-backed icon, the texture-backed
+            // stream, and an image live in no session (draws nothing).
+            ui.with(NodeSpec::row().gap(4.0), |ui| {
+                ui.fragment(
+                    f.sampler.with_image(f.image),
+                    &FRAGMENT_IMAGE_PARAMS,
+                    NodeSpec::column()
+                        .width(Sizing::Fixed(24.0))
+                        .height(Sizing::Fixed(24.0)),
+                );
+                ui.fragment(
+                    f.sampler.with_image(f.stream),
+                    &FRAGMENT_IMAGE_PARAMS,
+                    NodeSpec::column()
+                        .width(Sizing::Fixed(32.0))
+                        .height(Sizing::Fixed(8.0)),
+                );
+                // Raw 1 — index 1 at version 0, which no live slot ever
+                // has — rather than 0, because 0 is "no image" at the
+                // C, Lua and Node doors and the four have to agree.
+                ui.fragment(
+                    f.sampler.with_image(ImageId::from_ffi(1)),
+                    &FRAGMENT_IMAGE_PARAMS,
+                    NodeSpec::column()
+                        .width(Sizing::Fixed(24.0))
+                        .height(Sizing::Fixed(24.0)),
+                );
+            });
         },
     );
 }
@@ -3431,6 +3571,12 @@ pub struct Output {
     /// cannot reach them; the report carries them instead, as bits, so no
     /// adapter has to agree on how a float prints.
     pub fragments: Vec<[f32; 16]>,
+    /// Beside each entry of [`Self::fragments`], where its `image` is:
+    /// `None` for a draw with no image (the line is omitted), an atlas
+    /// texel rect, or the index of the `texture` entry it reads and the
+    /// rect in that texture. What pins a fragment's binding to the texel
+    /// (backlog V1).
+    pub fragment_images: Vec<crate::display::FragmentImage>,
     /// Every `TextureDraw`'s texel rect, in the order the quads index
     /// them; the handle is minted, not declared, and is skipped as atlas
     /// `uv` is. What pins a `fit="cover"` crop to the texel.
@@ -3741,6 +3887,7 @@ pub fn drive(
     let nodes = rows(core.access_tree());
     let dl = core.output().0;
     let fragment_params: Vec<[f32; 16]> = dl.fragments.iter().map(|f| f.params).collect();
+    let fragment_images = dl.fragments.iter().map(|f| f.image).collect();
     let quads = &dl.quads;
     let clips = &dl.clips;
     let mut kinds = [0usize; 9];
@@ -3763,6 +3910,7 @@ pub fn drive(
         textures: dl.textures.iter().map(|t| t.uv).collect(),
         kinds,
         fragments: fragment_params,
+        fragment_images,
         nodes,
         events,
         announcements,
@@ -3880,6 +4028,8 @@ pub fn write_command(cmd: &WindowCommand, out: &mut String) {
 /// quads <count> <digest:016x>
 /// kinds <solid> <glyphMask> <glyphColor> <image> <glyphSubpixel> <shadow> <segment> <fragment> <texture>
 /// fragment <i> <16 × params as f32 bits>
+/// fragment-image <i> <atlas|texture> <texture index|-> <x> <y> <w> <h>
+///                            where a fragment's `image` is; omitted with none
 /// texture <i> <x> <y> <w> <h>   the texel rect a texture quad shows
 /// node <depth> <key:016x> <role> <focused> <disabled> <checked> <scroll> <actions> <name> | <description> | <value>
 /// event <kind> <tag>
@@ -3915,6 +4065,19 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
             let _ = write!(s, " {:08x}", v.to_bits());
         }
         let _ = writeln!(s);
+    }
+    for (i, image) in out.fragment_images.iter().enumerate() {
+        use crate::display::FragmentImage;
+        let (from, index, uv) = match *image {
+            FragmentImage::None => continue,
+            FragmentImage::Atlas(uv) => ("atlas", "-".to_string(), uv),
+            FragmentImage::Texture { index, uv } => ("texture", index.to_string(), uv),
+        };
+        let _ = writeln!(
+            s,
+            "fragment-image {i} {from} {index} {} {} {} {}",
+            uv[0], uv[1], uv[2], uv[3]
+        );
     }
     for (i, uv) in out.textures.iter().enumerate() {
         let _ = writeln!(s, "texture {i} {} {} {} {}", uv[0], uv[1], uv[2], uv[3]);

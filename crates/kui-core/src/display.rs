@@ -263,6 +263,39 @@ pub struct FragmentDraw {
     /// Positional, app-defined; the view's `params` zero-padded to
     /// sixteen. The shader reads them as four `vec4<f32>`.
     pub params: [f32; 16],
+    /// The image the function samples through `kui_sample`, resolved to
+    /// where its texels are this frame (backlog V1, ADR 0025 decision 7).
+    pub image: FragmentImage,
+}
+
+/// Where a fragment's `image` row lands for one frame: nowhere, in the
+/// glyph atlas the fragment pipeline already has bound, or in a texture
+/// of the image's own that the backend binds in the atlas's place for
+/// that one quad — the same swap a [`QuadKind::Texture`] quad asks for.
+/// The core decides between the last two on the image's backing, so a
+/// backend meets the same two cases it already draws.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FragmentImage {
+    /// No `image` row: `kui_sample` returns transparent black.
+    #[default]
+    None,
+    /// The image sits in the atlas at this texel rect, `[x, y, w, h]`.
+    Atlas([u32; 4]),
+    /// The image has a texture of its own: `index` names the entry of
+    /// [`DisplayList::textures`] (and `texture_pixels`) that carries it,
+    /// `uv` is the texel rect in that texture — the whole image.
+    Texture { index: u32, uv: [u32; 4] },
+}
+
+impl FragmentImage {
+    /// The texel rect the shader reads as `FragmentIn::image`; zero with
+    /// no image.
+    pub fn uv(self) -> [u32; 4] {
+        match self {
+            FragmentImage::None => [0; 4],
+            FragmentImage::Atlas(uv) | FragmentImage::Texture { uv, .. } => uv,
+        }
+    }
 }
 
 /// What a [`QuadKind::Texture`] quad points at: which registered image,

@@ -264,7 +264,10 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         .to_string(),
         // docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md:
         // four fragments, one of them with a dead handle and one with too
-        // many params. The handle is the fixture's, as an integer.
+        // many params — then the image input (backlog V1): the sampling
+        // fixture over the icon, over the stream, and over an image live
+        // nowhere (1: 0 would mean "no image"). The handles are the
+        // fixtures', as integers.
         "fragments" => format!(
             r#"
             return column {{ width = 200, height = 120, gap = 4, bg = 0x14161eff,
@@ -275,10 +278,19 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
               }},
               fragment {{ id = 0, params = {{{p}}}, width = 20, height = 10 }},
               fragment {{ id = {frag}, params = {{{pl}}}, width = 30, height = 12 }},
+              row {{ gap = 4,
+                fragment {{ id = {sampler}, image = {image}, params = {{{ip}}}, width = 24, height = 24 }},
+                fragment {{ id = {sampler}, image = {stream}, params = {{{ip}}}, width = 32, height = 8 }},
+                fragment {{ id = {sampler}, image = 1, params = {{{ip}}}, width = 24, height = 24 }},
+              }},
             }}
         "#,
             frag = f.fragment.to_ffi(),
+            sampler = f.sampler.to_ffi(),
+            image = f.image.to_ffi(),
+            stream = f.stream.to_ffi(),
             p = lua_numbers(&kui_core::conformance::FRAGMENT_PARAMS),
+            ip = lua_numbers(&kui_core::conformance::FRAGMENT_IMAGE_PARAMS),
             pl = lua_numbers(&kui_core::conformance::FRAGMENT_PARAMS_LONG),
         ),
         // docs/adr/0010-a-segment-primitive.md: three strokes and a box in
@@ -493,6 +505,33 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                 {rows}
               column {{ key = "tail", width = "grow", height = 100 }},
             }}
+        "#
+            )
+        }
+        // Scroll anchoring (backlog C26 step 3): two scrollers of the same
+        // rows, one with `anchor`; phase 1 prepends a taller row to both.
+        // The prepended row goes first, so the children are appended to
+        // the table one by one rather than written with a `nil` hole.
+        "anchor" => {
+            let items = conformance::ITEM_KEYS
+                .iter()
+                .map(|k| format!("\"{k}\""))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                r#"
+            local function list(key, anchor)
+              local t = {{ key = key, width = 90, height = 60, scroll_y = true,
+                          bg = 0x101018ff, anchor = anchor }}
+              if phase >= 1 then
+                t[#t + 1] = column {{ key = "new", width = 80, height = 30, bg = 0x30344aff }}
+              end
+              for _, k in ipairs({{ {items} }}) do
+                t[#t + 1] = column {{ key = k, width = 80, height = 20, bg = 0x30344aff }}
+              end
+              return column(t)
+            end
+            return row {{ pad = 10, gap = 10, list("anchored", true), list("plain", false) }}
         "#
             )
         }
