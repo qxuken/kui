@@ -39,6 +39,17 @@
 //! Examples only — nothing about the cdylib or a staticlib consumer wants
 //! it. A host outside this crate passes its own equivalent.
 //!
+//! **The second job** (backlog AR2) reads the same set one level deeper —
+//! each entry point's parameter and return types, as the source spells
+//! them — and writes `abi_rows.rs` into `OUT_DIR`: one `abi_fn!` row per
+//! function, which `src/abi_parity.rs` includes. The row used to be typed
+//! by hand beside the function and the header, one line of restatement
+//! per entry point; it is derived now, and the pin it carries is unchanged
+//! — the row coerces the function to the signature it spells, so a
+//! misread here is a compile error in the test build, never a wrong
+//! prototype in the generated C. A file whose module is `#[cfg]`-gated in
+//! lib.rs (`run.rs` behind `runner`) has its rows gated the same way.
+//!
 //! Nothing here fails loudly if it stops working: a host whose symbols are
 //! not exported still builds, and the plugin only fails to load. The CI step
 //! that runs `--example c_panel -- --headless` is the check.
@@ -60,6 +71,8 @@ fn main() {
     println!("cargo::rerun-if-changed=src");
 
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
+    let entries = entry_points(&manifest_dir);
+    write_abi_rows(&manifest_dir, &entries);
     if !std::path::Path::new(&manifest_dir).join(EXAMPLE).is_file() {
         return;
     }
@@ -67,7 +80,7 @@ fn main() {
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let flag = match target_os.as_str() {
         "macos" | "ios" => "-Wl,-export_dynamic".to_string(),
-        "windows" => match export_def(&manifest_dir) {
+        "windows" => match export_def(&entries) {
             Some(def) => format!("/DEF:{def}"),
             // No list, no flag: the host still builds and only the plugin
             // fails to load, which is what the paragraph above promises.
@@ -78,33 +91,195 @@ fn main() {
     println!("cargo::rustc-link-arg-examples={flag}");
 }
 
-/// Writes a module-definition file naming every `kui_*` this crate exports,
-/// and answers where it went. The set is read from the sources because that
-/// is where it is decided; `dumpbin /exports` on the cdylib agrees with it,
-/// which is how it was checked.
-fn export_def(manifest_dir: &str) -> Option<String> {
+/// One `pub extern "C" fn kui_*` of the sources: which file, its name,
+/// its parameter types and its return type, spelled as the source does.
+struct Entry {
+    file: String,
+    name: String,
+    params: Vec<String>,
+    ret: Option<String>,
+}
+
+/// Every entry point, read from the sources because that is where the set
+/// is decided; `dumpbin /exports` on the cdylib agrees with it, which is
+/// how it was checked. Every file, whatever feature it sits behind:
+/// `run.rs` is only compiled with `runner`, but so is the example the
+/// export list is for (`required-features`), and the rows it yields are
+/// gated by `write_abi_rows`.
+fn entry_points(manifest_dir: &str) -> Vec<Entry> {
     let src = std::path::Path::new(manifest_dir).join("src");
-    let mut names: Vec<String> = Vec::new();
-    for entry in std::fs::read_dir(&src).ok()? {
-        let path = entry.ok()?.path();
-        if path.extension().is_none_or(|e| e != "rs") {
+    let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(&src)
+        .map(|d| {
+            d.filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| p.extension().is_some_and(|e| e == "rs"))
+                .collect()
+        })
+        .unwrap_or_default();
+    files.sort();
+    let mut out = Vec::new();
+    for path in files {
+        let Ok(text) = std::fs::read_to_string(&path) else {
             continue;
-        }
-        // Every file, whatever feature it sits behind: `run.rs` is only
-        // compiled with `runner`, but so is the example this flag is for
-        // (`required-features`), so a build without the feature has no
-        // host to link and nothing reads the list.
-        let text = std::fs::read_to_string(&path).ok()?;
-        for rest in text.split("pub extern \"C\" fn ").skip(1) {
-            let name: String = rest
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-                .collect();
-            if name.starts_with("kui_") {
-                names.push(name);
+        };
+        let file = path.file_name().unwrap().to_string_lossy().to_string();
+        // Line comments go first: one parameter list carries a comment
+        // (`kui_cells`), and a comment may quote a signature.
+        let text: String = text
+            .lines()
+            .map(|l| l.split("//").next().unwrap_or(""))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for marker in ["pub extern \"C\" fn ", "pub unsafe extern \"C\" fn "] {
+            for rest in text.split(marker).skip(1) {
+                let name: String = rest
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+                if !name.starts_with("kui_") {
+                    continue;
+                }
+                let after = rest[name.len()..].trim_start();
+                let Some(after) = after.strip_prefix('(') else {
+                    continue;
+                };
+                // The parameter list, to its matching paren.
+                let mut depth = 1usize;
+                let mut end = 0;
+                for (i, c) in after.char_indices() {
+                    match c {
+                        '(' | '<' | '[' => depth += 1,
+                        ')' | '>' | ']' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = i;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let list = &after[..end];
+                let tail = after[end + 1..].split('{').next().unwrap_or("");
+                let ret = tail
+                    .trim()
+                    .strip_prefix("->")
+                    .map(|r| r.split_whitespace().collect::<Vec<_>>().join(" "));
+                let params = split_top(list)
+                    .into_iter()
+                    .filter_map(|p| {
+                        // `name: Type`; the first `:` that is not a `::`.
+                        let bytes = p.as_bytes();
+                        let colon = (0..bytes.len()).find(|&i| {
+                            bytes[i] == b':'
+                                && bytes.get(i + 1) != Some(&b':')
+                                && (i == 0 || bytes[i - 1] != b':')
+                        })?;
+                        Some(
+                            p[colon + 1..]
+                                .split_whitespace()
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                        )
+                    })
+                    .collect();
+                out.push(Entry {
+                    file: file.clone(),
+                    name,
+                    params,
+                    ret,
+                });
             }
         }
     }
+    out
+}
+
+/// A comma-separated list split at its top level: a `<`, `(` or `[` keeps
+/// the commas inside it.
+fn split_top(list: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut depth = 0usize;
+    let mut cur = String::new();
+    for c in list.chars() {
+        match c {
+            '<' | '(' | '[' => depth += 1,
+            '>' | ')' | ']' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                out.push(std::mem::take(&mut cur));
+                continue;
+            }
+            _ => {}
+        }
+        cur.push(c);
+    }
+    if !cur.trim().is_empty() {
+        out.push(cur);
+    }
+    out.into_iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// The `#[cfg(...)]` a `mod x;` in lib.rs sits behind, by file name.
+fn module_cfgs(manifest_dir: &str) -> Vec<(String, String)> {
+    let lib = std::path::Path::new(manifest_dir).join("src/lib.rs");
+    let text = std::fs::read_to_string(lib).unwrap_or_default();
+    let mut out = Vec::new();
+    let mut pending: Option<String> = None;
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(cfg) = line
+            .strip_prefix("#[cfg(")
+            .and_then(|l| l.strip_suffix(")]"))
+        {
+            pending = Some(cfg.to_string());
+            continue;
+        }
+        if let Some(name) = line.strip_prefix("mod ").and_then(|l| l.strip_suffix(';'))
+            && let Some(cfg) = pending.take()
+        {
+            out.push((format!("{name}.rs"), cfg));
+            continue;
+        }
+        pending = None;
+    }
+    out
+}
+
+/// `OUT_DIR/abi_rows.rs`: one `abi_fn!(o, n, name(types) -> ret);` per
+/// entry point, as one block expression so `include!` takes it whole.
+fn write_abi_rows(manifest_dir: &str, entries: &[Entry]) {
+    let Ok(out_dir) = std::env::var("OUT_DIR") else {
+        return;
+    };
+    let cfgs = module_cfgs(manifest_dir);
+    let mut rows = String::from(
+        "// Generated by build.rs from the `pub extern \"C\" fn kui_*` signatures in\n\
+         // src/ (backlog AR2); `src/abi_parity.rs` includes it. Not committed.\n{\n",
+    );
+    for e in entries {
+        if let Some((_, cfg)) = cfgs.iter().find(|(f, _)| *f == e.file) {
+            let _ = writeln!(rows, "    #[cfg({cfg})]");
+        }
+        let ret = e.ret.as_ref().map_or(String::new(), |r| format!(" -> {r}"));
+        let _ = writeln!(
+            rows,
+            "    abi_fn!(o, n, {}({}){});",
+            e.name,
+            e.params.join(", "),
+            ret
+        );
+    }
+    rows.push_str("}\n");
+    let path = std::path::Path::new(&out_dir).join("abi_rows.rs");
+    let _ = std::fs::write(path, rows);
+}
+
+/// Writes a module-definition file naming every `kui_*` this crate exports,
+/// and answers where it went.
+fn export_def(entries: &[Entry]) -> Option<String> {
+    let mut names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
     if names.is_empty() {
         return None;
     }

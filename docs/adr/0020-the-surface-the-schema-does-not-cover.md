@@ -319,3 +319,27 @@ nothing that worked.
   truthiness writes it.
 - **The Windows runner has no native context menu**, so decision 5's
   macOS half has no twin to keep in step there yet.
+
+## Amendment: the rows are read off the functions (2026-09-11)
+
+Decision 1's row was typed by hand — 178 of them, one line of restatement
+per entry point beside the `extern "C" fn` and the header's prototype. The
+type pin meant a row could never be wrong, only missing, and
+`every_entry_point_is_pinned` caught missing; the review of 2026-09-11
+(backlog AR2) named the cost and the middle path this ADR had not weighed:
+not generating the *header* (the prose would go, as above) but the *row*,
+from the function itself, the way P5 generates `index.d.ts`'s addon half.
+
+Built without a proc-macro. `build.rs` already read the sources for the
+`kui_*` names Windows' export list needs; it reads one level deeper now —
+each function's parameter and return types, as the source spells them —
+and writes `OUT_DIR/abi_rows.rs`, one `abi_fn!` row each, which
+`abi_parity` includes. A file whose module is `#[cfg]`-gated in `lib.rs`
+(`run.rs` behind `runner`) has its rows gated the same way. The pin is
+unchanged: the row still coerces the function to the signature it spells,
+so a misread by the build script is a compile error in the test build and
+never a wrong prototype in the generated C; and the name check still holds
+the row set to the header's prototypes, which is now the only way a row
+can be missing — a function the sources export is a row by construction.
+What the row does not carry is the header's prose, which is why the header
+stays hand-written.
