@@ -213,6 +213,7 @@ needs it; the corpus already proves the four bindings lower alike.
 | [`widgets/virtual_list.tsx`](node/widgets/virtual_list.tsx) | `virtualColumn`: 10,000 rows costing a screenful, re-sliced on the wheel with no model change | ✓ |
 | [`tools/types.tsx`](node/tools/types.tsx) | The shipped `.d.ts` exercised: a typed drive over every app-facing type, run as code under `--headless` | ✓ |
 | [`tools/bench.mjs`](node/tools/bench.mjs) | The JSX/Node side of `lua/tools/bench.rs` | |
+| [`tools/smoke.mjs`](node/tools/smoke.mjs) | `npm run smoke`: every example in package.json's `kui.headless` roster, driven `--headless` in turn — the one list the shell round reads too | |
 
 An extension is a C shared library either way, and the same binary loads
 into a Rust, C or Node host: `<slot name="ns/panel" params={…}/>` places

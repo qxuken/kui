@@ -9,8 +9,12 @@
     "slide": "npm run build && node dist/features/slide.mjs",
     "virtual_list": "npm run build && node dist/widgets/virtual_list.mjs",
     "typecheck": "tsc --noEmit",
-    "smoke": "npm run build && node dist/apps/counter.mjs --headless && node dist/features/slide.mjs --headless && node dist/widgets/virtual_list.mjs --headless && node dist/tools/types.mjs --headless",
+    "smoke": "npm run build && node tools/smoke.mjs",
     "bench": "node tools/bench.mjs"
+  },
+  "kui": {
+    "windowed": ["apps/counter", "features/window", "features/slide", "widgets/virtual_list"],
+    "headless": ["apps/counter", "features/slide", "widgets/virtual_list", "tools/types"]
   },
   "dependencies": {
     "@qxuken/kui": "file:../../packages/kui"

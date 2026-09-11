@@ -164,9 +164,11 @@ if [ "$node" = 1 ]; then
     echo "node: building the addon with kui-node's smoke feature, then the examples..."
     cargo build -p kui-node --release --features smoke || exit 1
     (cd examples/node && npm run build >/dev/null 2>&1) || exit 1
-    # The windowed Node examples, by the path `npm run <name>` opens; the
-    # headless-only tool is not a window.
-    for entry in apps/counter features/window features/slide widgets/virtual_list; do
+    # The windowed Node examples, from the one roster package.json keeps
+    # (`kui.windowed`; the headless-only tool is not a window and is in
+    # `kui.headless` instead, which `npm run smoke` reads).
+    node_windowed=$(node -p "require('./examples/node/package.json').kui.windowed.join(' ')")
+    for entry in $node_windowed; do
         for base in $bases; do
             smoke "node:${entry#*/}" "$base" node "examples/node/dist/$entry.mjs"
         done

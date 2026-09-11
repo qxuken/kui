@@ -636,7 +636,38 @@ mod pins {
                         "examples/README.md has no link to `node/{dir}/{name}`"
                     );
                 }
+                // And every example is in a smoke roster (`kui.windowed`
+                // or `kui.headless`), so a new one cannot be left out of a
+                // round by forgetting a second list; `bench.mjs` is a
+                // tool run by hand, not an example.
+                if let Some(stem) = name.strip_suffix(".tsx") {
+                    assert!(
+                        pkg.contains(&format!("\"{dir}/{stem}\"")),
+                        "examples/node/package.json's `kui` roster does not name {dir}/{stem}"
+                    );
+                }
             }
+        }
+        // And the roster names nothing that is not there: every quoted
+        // `<dir>/<name>` in the file (the rosters are the only place one
+        // appears without a glob or a scheme).
+        for quoted in pkg.split('"').skip(1).step_by(2) {
+            let Some((dir, stem)) = quoted.split_once('/') else {
+                continue;
+            };
+            if !["apps", "features", "widgets", "tools"].contains(&dir)
+                || stem.contains(['*', '.', '/'])
+            {
+                continue;
+            }
+            assert!(
+                root()
+                    .join("examples/node")
+                    .join(dir)
+                    .join(format!("{stem}.tsx"))
+                    .exists(),
+                "package.json's kui roster names `{dir}/{stem}`, which does not exist"
+            );
         }
     }
 }
