@@ -2018,9 +2018,7 @@ impl TextSystem {
                 let cursor = e
                     .buffer
                     .hit(point.x * self.scale - ox, point.y * self.scale - oy)?;
-                let starts = line_starts(&e.buffer, &e.content);
-                let byte = starts.get(cursor.line).copied().unwrap_or(0) + cursor.index;
-                Some(byte.min(e.content.len()))
+                Some(e.byte_of(cursor))
             }
         }
     }
@@ -2158,13 +2156,7 @@ impl TextSystem {
     /// The x and baseline of the first row of `lo..hi` inside one run,
     /// physical px from the run's origin.
     fn run_anchor(entry: &CachedText, lo: usize, hi: usize) -> Option<(f32, f32)> {
-        let starts = line_starts(&entry.buffer, &entry.content);
-        let cursor = |byte: usize| {
-            let li = starts.iter().rposition(|&s| s <= byte).unwrap_or(0);
-            let index = (byte - starts[li]).min(entry.buffer.lines[li].text().len());
-            cosmic_text::Cursor::new(li, index)
-        };
-        let (a, b) = (cursor(lo), cursor(hi));
+        let (a, b) = (entry.cursor_of(lo), entry.cursor_of(hi));
         for run in entry.buffer.layout_runs() {
             if run.line_i < a.line || run.line_i > b.line {
                 continue;
@@ -2458,13 +2450,7 @@ impl TextSystem {
     /// (`crates/kui-core/src/edit.rs`), so a selection over a label and
     /// one over a field are the same shape.
     fn run_highlight(entry: &CachedText, from: usize, to: usize) -> Vec<Rect> {
-        let starts = line_starts(&entry.buffer, &entry.content);
-        let cursor = |byte: usize| {
-            let li = starts.iter().rposition(|&s| s <= byte).unwrap_or(0);
-            let index = (byte - starts[li]).min(entry.buffer.lines[li].text().len());
-            cosmic_text::Cursor::new(li, index)
-        };
-        let (a, b) = (cursor(from), cursor(to));
+        let (a, b) = (entry.cursor_of(from), entry.cursor_of(to));
         let mut out = Vec::new();
         for run in entry.buffer.layout_runs() {
             if run.line_i < a.line || run.line_i > b.line {
@@ -2531,11 +2517,9 @@ impl TextSystem {
             .copied()?;
         let (ox, oy) = self.physical_origin(place);
         let cursor = entry.buffer.hit(px - ox, py - oy)?;
-        let starts = line_starts(&entry.buffer, &entry.content);
-        let byte = starts.get(cursor.line).copied().unwrap_or(0) + cursor.index;
         let line = visual_line(&entry.buffer, cursor.line, cursor.index).map_or(0, |(l, _)| l);
         Some(TextHit {
-            byte: base + byte.min(entry.content.len()),
+            byte: base + entry.byte_of(cursor),
             line: line as u32,
         })
     }
@@ -2557,14 +2541,10 @@ impl TextSystem {
             .copied()?;
         let (ox, oy) = self.physical_origin(place);
         let byte = (byte - base).min(entry.content.len());
-        let starts = line_starts(&entry.buffer, &entry.content);
-        // The paragraph the byte is in: the last one starting at or
-        // before it, and its offset inside that paragraph's text.
-        let line_i = starts.iter().rposition(|&s| s <= byte).unwrap_or(0);
-        let index = (byte - starts[line_i]).min(entry.buffer.lines[line_i].text().len());
-        let (_, run_no) = visual_line(&entry.buffer, line_i, index)?;
+        let cursor = entry.cursor_of(byte);
+        let (_, run_no) = visual_line(&entry.buffer, cursor.line, cursor.index)?;
         let run = entry.buffer.layout_runs().nth(run_no)?;
-        let x = caret_x(&run, index);
+        let x = caret_x(&run, cursor.index);
         let scale = self.scale;
         Some(Rect::new(
             (ox + x) / scale,
@@ -2730,10 +2710,18 @@ fn floor_boundary(s: &str, i: usize) -> usize {
 }
 
 fn line_starts(buffer: &Buffer, content: &str) -> Vec<usize> {
-    let mut starts = Vec::with_capacity(buffer.lines.len());
+    paragraph_starts(buffer, content).collect()
+}
+
+/// Where each of `buffer`'s paragraphs starts in `content`, in order.
+/// cosmic-text splits the text at line endings and keeps the pieces, so
+/// the ending bytes between two paragraphs are found again in `content`
+/// — any of the four spellings — and skipped. No allocation: the two
+/// conversions below walk this once and stop.
+fn paragraph_starts<'a>(buffer: &'a Buffer, content: &'a str) -> impl Iterator<Item = usize> + 'a {
     let mut at = 0usize;
-    for line in &buffer.lines {
-        starts.push(at.min(content.len()));
+    buffer.lines.iter().map(move |line| {
+        let start = at.min(content.len());
         at += line.text().len();
         let rest = &content[at.min(content.len())..];
         for ending in ["\r\n", "\n\r", "\n", "\r"] {
@@ -2742,8 +2730,8 @@ fn line_starts(buffer: &Buffer, content: &str) -> Vec<usize> {
                 break;
             }
         }
-    }
-    starts
+        start
+    })
 }
 
 /// The visual line (0-based over every wrapped line of the buffer) that
@@ -2802,13 +2790,21 @@ fn wrap_target(entry: &CachedText, max_w_logical: Option<f32>, scale: f32) -> Op
 
 /// Re-lays the entry's buffer out at `target` (physical px) if it is not
 /// already there.
-fn wrap_entry(entry: &mut CachedText, fs: &mut FontSystem, target: Option<f32>) {
-    let differs = match (entry.wrap, target) {
+/// Whether a buffer laid out at `current` needs laying out again for
+/// `target`: a wrap width that moved by half a physical pixel or less is
+/// the same wrap, which is what keeps a box that jitters by float error
+/// from reshaping its text every frame. The one rule for the text cache
+/// and the editors alike.
+pub(crate) fn wrap_differs(current: Option<f32>, target: Option<f32>) -> bool {
+    match (current, target) {
         (None, None) => false,
         (Some(a), Some(b)) => (a - b).abs() > 0.5,
         _ => true,
-    };
-    if differs {
+    }
+}
+
+fn wrap_entry(entry: &mut CachedText, fs: &mut FontSystem, target: Option<f32>) {
+    if wrap_differs(entry.wrap, target) {
         entry.buffer.set_size(target, None);
         entry.buffer.shape_until_scroll(fs, false);
         entry.wrap = target;
@@ -2816,6 +2812,34 @@ fn wrap_entry(entry: &mut CachedText, fs: &mut FontSystem, target: Option<f32>) 
 }
 
 impl CachedText {
+    /// The byte offset in `content` that `cursor` (a paragraph and an
+    /// index into it) names, clamped to the content.
+    fn byte_of(&self, cursor: cosmic_text::Cursor) -> usize {
+        let start = paragraph_starts(&self.buffer, &self.content)
+            .nth(cursor.line)
+            .unwrap_or(0);
+        (start + cursor.index).min(self.content.len())
+    }
+
+    /// The cursor at `byte`: the paragraph starting at or before it — the
+    /// last one that does — and the offset inside that paragraph's own
+    /// text, clamped to it. The inverse of [`Self::byte_of`]; the one
+    /// place the byte ↔ paragraph arithmetic lives, where three copies
+    /// used to (`run_anchor`, `run_highlight`, `caret_at`).
+    fn cursor_of(&self, byte: usize) -> cosmic_text::Cursor {
+        let mut li = 0;
+        let mut start = 0;
+        for (i, s) in paragraph_starts(&self.buffer, &self.content).enumerate() {
+            if s <= byte {
+                (li, start) = (i, s);
+            } else {
+                break;
+            }
+        }
+        let len = self.buffer.lines.get(li).map_or(0, |l| l.text().len());
+        cosmic_text::Cursor::new(li, (byte - start).min(len))
+    }
+
     fn new(
         mut buffer: Buffer,
         content: String,
@@ -2885,7 +2909,10 @@ fn line_cap(max_lines: usize) -> usize {
 
 /// Physical size of the laid-out buffer plus its line count (both capped
 /// by the line budget).
-fn measure_buffer(buffer: &Buffer, max_lines: usize) -> (Size, u32) {
+/// The widest laid-out line and the line count of `buffer`, up to
+/// `max_lines` of them (0 = all), as physical px: what a text node and an
+/// editor both measure themselves by.
+pub(crate) fn measure_buffer(buffer: &Buffer, max_lines: usize) -> (Size, u32) {
     let mut w = 0.0f32;
     let mut lines = 0u32;
     for run in buffer.layout_runs().take(line_cap(max_lines)) {

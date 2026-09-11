@@ -1193,14 +1193,11 @@ impl EditStore {
         s.editor.with_buffer_mut(|b| b.set_size(None, None));
         s.wrap = None;
         s.editor.shape_as_needed(fs, false);
+        // The same measurement a text node takes of itself, except that an
+        // empty editor is still one line tall.
         let (w, h) = s.editor.with_buffer(|b| {
-            let mut w = 0.0f32;
-            let mut lines = 0u32;
-            for run in b.layout_runs() {
-                w = w.max(run.line_w);
-                lines += 1;
-            }
-            (w, lines.max(1) as f32 * b.metrics().line_height)
+            let (size, lines) = crate::text::measure_buffer(b, 0);
+            (size.w, lines.max(1) as f32 * b.metrics().line_height)
         });
         // Caret margin so the cursor at line end isn't clipped.
         let size = Size::new((w + 2.0 * s.scale) / s.scale, h / s.scale);
@@ -1236,11 +1233,7 @@ impl EditStore {
             return Size::new(max_w, line / s.scale);
         }
         let target = (max_w * s.scale).max(1.0);
-        let differs = match s.wrap {
-            Some(a) => (a - target).abs() > 0.5,
-            None => true,
-        };
-        if differs {
+        if crate::text::wrap_differs(s.wrap, Some(target)) {
             s.editor.with_buffer_mut(|b| b.set_size(Some(target), None));
             s.wrap = Some(target);
         }
@@ -1252,10 +1245,7 @@ impl EditStore {
         }
         s.editor.shape_as_needed(fs, false);
         let h = s.editor.with_buffer(|b| {
-            let mut lines = 0u32;
-            for _ in b.layout_runs() {
-                lines += 1;
-            }
+            let (_, lines) = crate::text::measure_buffer(b, 0);
             lines.max(1) as f32 * b.metrics().line_height
         });
         let size = Size::new(max_w, h / s.scale);
