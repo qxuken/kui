@@ -43,6 +43,10 @@ pub mod slot;
 pub mod slots;
 pub mod spec;
 pub mod stats;
+/// The headless driver the crate's own tests use. Test infrastructure,
+/// behind the `conformance` feature like the corpus.
+#[cfg(feature = "conformance")]
+pub mod testing;
 pub mod text;
 pub mod theme;
 pub mod tree;

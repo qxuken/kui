@@ -1,8 +1,9 @@
 //! Window chrome as data: drag/button roles on nodes turn input into
 //! `WindowCommand`s for the driver, never `UiEvent`s — through a live `Core`.
 
+use kui_core::testing::{click_at, drive};
 use kui_core::{
-    Core, InputEvent, NodeSpec, Size, Sizing, UiEvent, Vec2, WindowButton, WindowCommand, WindowId,
+    Core, InputEvent, NodeSpec, Size, Sizing, Vec2, WindowButton, WindowCommand, WindowId,
 };
 
 /// Builds a custom-chrome-ish frame: a 40px drag strip with min/max/close
@@ -42,22 +43,6 @@ fn frame(core: &mut Core) {
     ui.finish();
 }
 
-fn drive(core: &mut Core, events: &[InputEvent]) -> Vec<UiEvent> {
-    let mut out = Vec::new();
-    for ev in events {
-        out.extend(core.handle_input(ev.clone()));
-    }
-    out
-}
-
-fn click_at(x: f32, y: f32) -> [InputEvent; 3] {
-    [
-        InputEvent::CursorMoved(Vec2::new(x, y)),
-        InputEvent::mouse_down(1),
-        InputEvent::mouse_up(),
-    ]
-}
-
 #[test]
 fn press_on_drag_strip_emits_start_drag_and_no_ui_event() {
     let mut core = Core::new();
@@ -84,9 +69,9 @@ fn window_buttons_emit_their_commands_on_click() {
     let mut core = Core::new();
     frame(&mut core);
     // Buttons occupy x 280..320 (min), 320..360 (max), 360..400 (close).
-    let mut evs = drive(&mut core, &click_at(300.0, 20.0));
-    evs.extend(drive(&mut core, &click_at(340.0, 20.0)));
-    evs.extend(drive(&mut core, &click_at(380.0, 20.0)));
+    let mut evs = click_at(&mut core, 300.0, 20.0);
+    evs.extend(click_at(&mut core, 340.0, 20.0));
+    evs.extend(click_at(&mut core, 380.0, 20.0));
     assert!(
         evs.is_empty(),
         "chrome nodes must not emit UiEvents, got {evs:?}"
@@ -106,7 +91,7 @@ fn buttons_win_over_the_drag_strip_below_them() {
     let mut core = Core::new();
     frame(&mut core);
     // A full click on the close button: the press must not also start a drag.
-    drive(&mut core, &click_at(380.0, 20.0));
+    click_at(&mut core, 380.0, 20.0);
     assert_eq!(
         core.take_window_commands(),
         vec![WindowCommand::Close(WindowId::MAIN)]
@@ -133,7 +118,7 @@ fn press_then_drag_off_a_button_emits_nothing() {
 fn commands_drain_once() {
     let mut core = Core::new();
     frame(&mut core);
-    drive(&mut core, &click_at(380.0, 20.0));
+    click_at(&mut core, 380.0, 20.0);
     assert_eq!(core.take_window_commands().len(), 1);
     assert!(core.take_window_commands().is_empty());
 }
@@ -148,7 +133,7 @@ fn size_and_focus_requests_queue_in_order_with_chrome_commands() {
     let mut core = Core::new();
     frame(&mut core);
     core.set_window_size(WindowId::MAIN, Size::new(640.0, 480.0));
-    drive(&mut core, &click_at(300.0, 20.0)); // minimize
+    click_at(&mut core, 300.0, 20.0); // minimize
     core.focus_window(WindowId::MAIN);
     assert_eq!(
         core.take_window_commands(),
@@ -189,7 +174,7 @@ fn size_and_focus_requests_queue_in_order_with_chrome_commands() {
 fn plain_on_click_nodes_are_unaffected() {
     let mut core = Core::new();
     frame(&mut core);
-    let evs = drive(&mut core, &click_at(50.0, 60.0));
+    let evs = click_at(&mut core, 50.0, 60.0);
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].payload.as_str(), Some("content-click"));
     assert!(core.take_window_commands().is_empty());
@@ -209,7 +194,7 @@ fn titlebar_widget_declares_chrome_from_env() {
     widgets::titlebar(&mut ui, "app");
     ui.finish();
     // Close button sits rightmost in the 46px-wide cluster.
-    drive(&mut core, &click_at(400.0 - 23.0, 20.0));
+    click_at(&mut core, 400.0 - 23.0, 20.0);
     assert_eq!(
         core.take_window_commands(),
         vec![WindowCommand::Close(WindowId::MAIN)]
@@ -286,7 +271,7 @@ fn titlebar_insets_past_the_native_controls() {
 fn events_carry_the_window_the_driver_declared() {
     let mut core = Core::new();
     frame(&mut core);
-    let evs = drive(&mut core, &click_at(50.0, 60.0));
+    let evs = click_at(&mut core, 50.0, 60.0);
     assert_eq!(evs.len(), 1);
     assert_eq!(
         evs[0].window,
@@ -316,7 +301,7 @@ fn events_carry_the_window_the_driver_declared() {
     // And the other way out. This batch carries both kinds — the click, and
     // the resize back to the original viewport that rode along with it.
     frame(&mut core);
-    let evs = drive(&mut core, &click_at(50.0, 60.0));
+    let evs = click_at(&mut core, 50.0, 60.0);
     assert!(evs.len() > 1, "click and resize: {evs:?}");
     assert!(evs.iter().all(|ev| ev.window == WindowId(7)), "{evs:?}");
 }

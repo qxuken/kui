@@ -4,6 +4,7 @@
 //! click. The menu itself is an ordinary modal float the app declares, so
 //! this only covers the routing that makes one buildable.
 
+use kui_core::testing::{click_at, kinds};
 use kui_core::{
     Core, EditOptions, InputEvent, Key, MouseButton, NodeSpec, Size, Sizing, TextStyle, UiEvent,
     Value, Vec2,
@@ -31,22 +32,6 @@ fn right_click(core: &mut Core, x: f32, y: f32) -> Vec<UiEvent> {
     out.extend(core.handle_input(secondary_down()));
     out.extend(core.handle_input(secondary_up()));
     out
-}
-
-fn left_click(core: &mut Core, x: f32, y: f32) -> Vec<UiEvent> {
-    let mut out = core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
-    out.extend(core.handle_input(InputEvent::mouse_down(1)));
-    out.extend(core.handle_input(InputEvent::mouse_up()));
-    out
-}
-
-fn kinds(evs: &[UiEvent]) -> Vec<&str> {
-    evs.iter()
-        .map(|e| match e.payload.get("kind").and_then(Value::as_str) {
-            Some(k) => k,
-            None => e.payload.as_str().unwrap_or("?"),
-        })
-        .collect()
 }
 
 struct Keys {
@@ -136,7 +121,7 @@ fn a_secondary_press_is_never_a_click() {
     let mut core = Core::new();
     frame(&mut core);
     assert_eq!(kinds(&right_click(&mut core, 30.0, 20.0)), ["contextmenu"]);
-    assert_eq!(kinds(&left_click(&mut core, 30.0, 20.0)), ["open"]);
+    assert_eq!(kinds(&click_at(&mut core, 30.0, 20.0)), ["open"]);
 }
 
 #[test]
@@ -181,7 +166,7 @@ fn a_secondary_press_moves_neither_focus_nor_the_caret() {
     assert_eq!(core.copy_selection(), selected);
 
     // Where a left-click on the panel does both.
-    left_click(&mut core, 30.0, 180.0);
+    click_at(&mut core, 30.0, 180.0);
     assert_eq!(core.focus(), None);
 }
 

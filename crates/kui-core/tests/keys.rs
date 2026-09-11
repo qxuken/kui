@@ -2,6 +2,7 @@
 //! the key-focused sink receives presses as data — the path an app that owns
 //! its own text model (a modal editor, a terminal) binds against.
 
+use kui_core::testing::{click_at, drive};
 use kui_core::{
     Align, Core, EditKey, EditOptions, FloatConfig, InputEvent, Key, KeyCode, KeyMods, KeyPress,
     Mods, NodeSpec, Size, Sizing, UiEvent, Value, Vec2,
@@ -57,14 +58,6 @@ fn keys(evs: &[UiEvent]) -> Vec<(String, String)> {
             (at("phase"), at("code"))
         })
         .collect()
-}
-
-fn drive(core: &mut Core, events: &[InputEvent]) -> Vec<UiEvent> {
-    let mut out = Vec::new();
-    for ev in events {
-        out.extend(core.handle_input(ev.clone()));
-    }
-    out
 }
 
 #[test]
@@ -665,20 +658,12 @@ fn multiplexer(core: &mut Core) -> (Key, Key) {
     (sink, pane.unwrap())
 }
 
-fn click_at(x: f32, y: f32) -> [InputEvent; 3] {
-    [
-        InputEvent::CursorMoved(Vec2::new(x, y)),
-        InputEvent::mouse_down(1),
-        InputEvent::mouse_up(),
-    ]
-}
-
 #[test]
 fn a_click_inside_a_sink_leaves_the_keyboard_on_the_sink() {
     let mut core = Core::new();
     let (sink, pane) = multiplexer(&mut core);
     // The click still reaches the pane as a click...
-    let evs = drive(&mut core, &click_at(200.0, 150.0));
+    let evs = click_at(&mut core, 200.0, 150.0);
     assert!(
         evs.iter().any(
             |e| e.key == pane && e.payload.get("kind").and_then(Value::as_str) == Some("focus")
@@ -712,7 +697,7 @@ fn an_editor_inside_a_sink_still_takes_the_keyboard() {
     let edit = edit.unwrap();
     // A sink owns its keyboard, but not against a real editor it drew: the
     // caret has to land where the user clicked.
-    drive(&mut core, &click_at(200.0, 150.0));
+    click_at(&mut core, 200.0, 150.0);
     assert_eq!(core.key_focus(), Some(edit));
 }
 
@@ -736,7 +721,7 @@ fn pressing_window_chrome_leaves_the_keyboard_where_it_was() {
     ui.finish();
     // Grabbing the window to move it is the platform's business; the app
     // does not lose its chords over it.
-    drive(&mut core, &click_at(200.0, 20.0));
+    click_at(&mut core, 200.0, 20.0);
     assert_eq!(core.key_focus(), Some(sink));
 }
 

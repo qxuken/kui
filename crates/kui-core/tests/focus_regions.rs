@@ -6,9 +6,10 @@
 //! back — and, from the same round, a root sink hears what nothing claims
 //! when nothing is focused.
 
+use kui_core::testing::{click_at, tab};
 use kui_core::{
     Core, EditKey, InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, NodeSpec, Size, Sizing,
-    UiEvent, Value, Vec2,
+    UiEvent, Value,
 };
 
 const H: f32 = 20.0;
@@ -105,23 +106,6 @@ const WITH_DOCK: Shape = Shape {
     root_sink: false,
     modal: false,
 };
-
-fn tab(core: &mut Core, shift: bool) {
-    core.handle_input(InputEvent::Key(
-        EditKey::Tab,
-        Mods {
-            shift,
-            ..Default::default()
-        },
-    ));
-}
-
-fn click_at(core: &mut Core, x: f32, y: f32) -> Vec<UiEvent> {
-    let mut out = core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
-    out.extend(core.handle_input(InputEvent::mouse_down(1)));
-    out.extend(core.handle_input(InputEvent::mouse_up()));
-    out
-}
 
 /// A raw press, the channel a key sink hears.
 fn press(core: &mut Core, c: char, mods: KeyMods) -> Vec<UiEvent> {

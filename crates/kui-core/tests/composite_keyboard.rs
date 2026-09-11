@@ -9,6 +9,7 @@
 //! for `menuItem` and `listItem`, orientation, and a composite inside a
 //! modal.
 
+use kui_core::testing::tab;
 use kui_core::{
     Align, Core, EditKey, FloatConfig, InputEvent, Key, Mods, NodeSpec, Role, Size, TextStyle, Ui,
     Value,
@@ -79,10 +80,6 @@ fn typed(core: &mut Core, s: &str) -> Vec<String> {
         .collect()
 }
 
-fn tab(core: &mut Core) {
-    core.handle_input(InputEvent::Key(EditKey::Tab, Mods::default()));
-}
-
 /// The whole point: three tabs are one Tab stop, not three, and the stop
 /// is the selected one — so Tab, Tab leaves the composite entirely.
 #[test]
@@ -95,10 +92,10 @@ fn a_composite_is_one_tab_stop() {
         &["General", "Network", "About"],
         1,
     );
-    tab(&mut core);
+    tab(&mut core, false);
     // Entry is the selected item, not the first.
     assert_eq!(core.focus(), Some(tabs[1]));
-    tab(&mut core);
+    tab(&mut core, false);
     assert_eq!(core.focus(), Some(after));
     // And back: the stop is where the user was, so Shift-Tab returns to
     // the item focus left from rather than to the selected one.
@@ -118,7 +115,7 @@ fn only_the_four_pairs_collapse() {
     let mut core = Core::new();
     let (items, after) = frame(&mut core, Role::Group, Role::Button, &["a", "b", "c"], 0);
     for (n, want) in items.iter().chain([&after]).enumerate() {
-        tab(&mut core);
+        tab(&mut core, false);
         assert_eq!(core.focus(), Some(*want), "stop {n}");
     }
 }
@@ -145,7 +142,7 @@ fn a_list_is_a_composite_only_when_its_rows_are_focusable() {
     });
     ui.finish();
     for (n, want) in links.iter().enumerate() {
-        tab(&mut core);
+        tab(&mut core, false);
         assert_eq!(core.focus(), Some(*want), "link {n}");
     }
 }
@@ -157,7 +154,7 @@ fn a_list_is_a_composite_only_when_its_rows_are_focusable() {
 fn both_arrow_pairs_move_inside_a_composite() {
     let mut core = Core::new();
     let (t, _) = frame(&mut core, Role::TabList, Role::Tab, &["a", "b", "c"], 0);
-    tab(&mut core);
+    tab(&mut core, false);
     assert_eq!(core.focus(), Some(t[0]));
     press(&mut core, EditKey::Right);
     assert_eq!(core.focus(), Some(t[1]));
@@ -174,7 +171,7 @@ fn both_arrow_pairs_move_inside_a_composite() {
 fn home_and_end_reach_the_ends() {
     let mut core = Core::new();
     let (t, _) = frame(&mut core, Role::TabList, Role::Tab, &["a", "b", "c"], 1);
-    tab(&mut core);
+    tab(&mut core, false);
     press(&mut core, EditKey::End);
     assert_eq!(core.focus(), Some(t[2]));
     press(&mut core, EditKey::Home);
@@ -187,7 +184,7 @@ fn home_and_end_reach_the_ends() {
 fn a_choice_wraps_and_a_sequence_clamps() {
     let mut core = Core::new();
     let (t, _) = frame(&mut core, Role::TabList, Role::Tab, &["a", "b", "c"], 0);
-    tab(&mut core);
+    tab(&mut core, false);
     press(&mut core, EditKey::Left);
     assert_eq!(core.focus(), Some(t[2]), "a tab list wraps");
     press(&mut core, EditKey::Right);
@@ -195,7 +192,7 @@ fn a_choice_wraps_and_a_sequence_clamps() {
 
     let mut core = Core::new();
     let (r, _) = frame(&mut core, Role::List, Role::ListItem, &["a", "b", "c"], 0);
-    tab(&mut core);
+    tab(&mut core, false);
     press(&mut core, EditKey::Up);
     assert_eq!(core.focus(), Some(r[0]), "a list clamps");
     press(&mut core, EditKey::End);
@@ -216,7 +213,7 @@ fn motion_activates_only_where_selection_follows_focus() {
     ] {
         let mut core = Core::new();
         let (items, _) = frame(&mut core, container, item, &["a", "b", "c"], 0);
-        tab(&mut core);
+        tab(&mut core, false);
         let events = press(&mut core, EditKey::Right);
         assert_eq!(core.focus(), Some(items[1]), "{item:?} moved");
         assert_eq!(
@@ -240,7 +237,7 @@ fn motion_activates_only_where_selection_follows_focus() {
 fn the_core_never_writes_selected() {
     let mut core = Core::new();
     let (t, _) = frame(&mut core, Role::TabList, Role::Tab, &["a", "b", "c"], 0);
-    tab(&mut core);
+    tab(&mut core, false);
     press(&mut core, EditKey::Right);
     // The view still says `a`, and the access tree still says `a`.
     frame(&mut core, Role::TabList, Role::Tab, &["a", "b", "c"], 0);
@@ -307,7 +304,7 @@ fn type_ahead_extends_and_ages() {
     core.set_time(0.0);
     let rows = &["Inbox", "Drafts", "Sent"];
     let (r, _) = frame(&mut core, Role::List, Role::ListItem, rows, 0);
-    tab(&mut core);
+    tab(&mut core, false);
     assert_eq!(core.focus(), Some(r[0]));
     typed(&mut core, "d");
     assert_eq!(core.focus(), Some(r[1]));
@@ -335,7 +332,7 @@ fn type_ahead_without_a_clock_starts_fresh() {
         &["Inbox", "Drafts", "Sent"],
         0,
     );
-    tab(&mut core);
+    tab(&mut core, false);
     typed(&mut core, "d");
     assert_eq!(core.focus(), Some(r[1]));
     // Not "ds" (which names nothing) — "s".
@@ -352,7 +349,7 @@ fn space_presses_or_extends() {
     core.set_time(0.0);
     let rows = &["Inbox", "New mail", "Sent"];
     let (r, _) = frame(&mut core, Role::List, Role::ListItem, rows, 0);
-    tab(&mut core);
+    tab(&mut core, false);
     assert_eq!(typed(&mut core, " "), vec!["Inbox".to_string()]);
     // A search under way: Space is part of the name, not a press.
     typed(&mut core, "n");
@@ -400,7 +397,7 @@ fn a_wrapped_container_moves_by_line() {
         },
     );
     ui.finish();
-    tab(&mut core);
+    tab(&mut core, false);
     assert_eq!(core.focus(), Some(keys[0]));
     press(&mut core, EditKey::Down);
     assert_eq!(core.focus(), Some(keys[2]), "a line down from a");
@@ -456,9 +453,9 @@ fn a_composite_inside_a_modal_collapses_too() {
     // Focus entered the dialog on its ring's first stop: the tab list's
     // one stop, not its first tab as one of two.
     assert_eq!(core.focus(), Some(tabs[0]));
-    tab(&mut core);
+    tab(&mut core, false);
     assert_eq!(core.focus(), Some(ok));
-    tab(&mut core);
+    tab(&mut core, false);
     assert_eq!(core.focus(), Some(tabs[0]), "the ring is two stops");
     press(&mut core, EditKey::Right);
     assert_eq!(core.focus(), Some(tabs[1]));
@@ -502,7 +499,7 @@ fn focusable_inside_an_item_is_reported_and_beside_one_is_not() {
     assert_eq!(codes, [kui_core::diag::FOCUSABLE_INSIDE_ITEM]);
     assert_eq!(warnings[0].key, buried);
     // And the "+" keeps its own Tab stop, beside the composite's one.
-    tab(&mut core);
-    tab(&mut core);
+    tab(&mut core, false);
+    tab(&mut core, false);
     assert_eq!(core.focus(), Some(plus));
 }

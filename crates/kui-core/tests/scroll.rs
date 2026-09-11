@@ -519,6 +519,7 @@ fn visible_rows_covers_the_band_and_no_more() {
 // measured, and the prefix sums over both are what the spacers and the search
 // are made of.
 
+use kui_core::testing::click;
 use kui_core::widgets::RowHeights;
 
 const VAR_ROWS: usize = 1_000;
@@ -830,17 +831,6 @@ fn styled(core: &mut Core, style: impl Fn(NodeSpec) -> NodeSpec) {
     ui.finish();
 }
 
-fn press(core: &mut Core, at: Vec2) {
-    core.handle_input(InputEvent::CursorMoved(at));
-    core.handle_input(InputEvent::MouseDown {
-        button: kui_core::MouseButton::Primary,
-        clicks: 1,
-    });
-    core.handle_input(InputEvent::MouseUp {
-        button: kui_core::MouseButton::Primary,
-    });
-}
-
 #[test]
 fn a_hidden_scrollbar_draws_nothing_and_takes_no_press() {
     use kui_core::ScrollbarMode;
@@ -849,7 +839,7 @@ fn a_hidden_scrollbar_draws_nothing_and_takes_no_press() {
     assert!(bars(&mut core).is_empty(), "no thumb");
     let list = core.key_of("list").unwrap();
     // The track a visible bar would have: a press there is content now.
-    press(&mut core, Vec2::new(396.0, 190.0));
+    click(&mut core, Vec2::new(396.0, 190.0));
     styled(&mut core, |s| s.scrollbar(ScrollbarMode::Hidden));
     assert_eq!(core.scroll_offset(list).y, 0.0, "nothing to jump");
     // Scrolling itself is untouched.
@@ -888,7 +878,7 @@ fn a_scrollbar_takes_its_width_and_colours_from_the_node() {
     assert_eq!(bars(&mut core), vec![(10.0, ACTIVE)]);
     // And the press there is the track's: below the thumb, so it pages.
     let list = core.key_of("list").unwrap();
-    press(&mut core, Vec2::new(389.0, 190.0));
+    click(&mut core, Vec2::new(389.0, 190.0));
     styled(&mut core, style);
     assert!(core.scroll_offset(list).y > 0.0);
 }
@@ -921,7 +911,7 @@ fn an_auto_scrollbar_fades_out_when_the_scroll_state_is_quiet() {
     assert!(!core.animating());
     // A press where the track was is content now.
     let list = core.key_of("list").unwrap();
-    press(&mut core, Vec2::new(396.0, 190.0));
+    click(&mut core, Vec2::new(396.0, 190.0));
     core.set_time(1.31);
     styled(&mut core, auto);
     assert_eq!(core.scroll_offset(list).y, 0.0);

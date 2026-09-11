@@ -2,6 +2,7 @@
 //! decision 5): what the core draws when one is open, what choosing a row
 //! does, and what an app hears about either.
 
+use kui_core::testing::click;
 use kui_core::{
     Core, InputEvent, Key, Menu, MenuAction, MenuItem, MenuRole, MouseButton, NodeSpec, Size,
     Sizing, TextStyle, Value, Vec2,
@@ -57,17 +58,6 @@ fn menu_rect(core: &mut Core) -> Option<kui_core::Rect> {
         .iter()
         .find(|n| n.role == kui_core::Role::Menu)
         .map(|n| n.rect)
-}
-
-fn click(core: &mut Core, at: Vec2) -> Vec<kui_core::UiEvent> {
-    core.handle_input(InputEvent::CursorMoved(at));
-    core.handle_input(InputEvent::MouseDown {
-        button: MouseButton::Primary,
-        clicks: 1,
-    });
-    core.handle_input(InputEvent::MouseUp {
-        button: MouseButton::Primary,
-    })
 }
 
 #[test]

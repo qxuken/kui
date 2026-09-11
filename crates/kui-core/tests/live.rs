@@ -4,11 +4,8 @@
 //! behind it.
 
 use kui_core::diag::{ANNOUNCEMENT_REPEATED, LIVE_REGION_WITHOUT_NAME};
-use kui_core::{Core, Live, NodeSpec, Role, Size, TextStyle, Warning};
-
-fn codes(ws: &[Warning]) -> Vec<&'static str> {
-    ws.iter().map(|w| w.code).collect()
-}
+use kui_core::testing::codes;
+use kui_core::{Core, Live, NodeSpec, Role, Size, TextStyle};
 
 /// A column root holding one `live` box with `text` inside it.
 fn region(core: &mut Core, live: Live, text: &str) {

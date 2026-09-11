@@ -1,6 +1,7 @@
 //! Dragging through a live `Core`: on_drag nodes (pointer capture, click
 //! suppression, payload shape) and scrollbar thumb/track interaction.
 
+use kui_core::testing::click_at;
 use kui_core::{Core, InputEvent, NodeSpec, Size, Sizing, UiEvent, Value, Vec2};
 
 fn drag_frame(core: &mut Core) {
@@ -194,9 +195,7 @@ fn scrollbar_track_press_jumps() {
     let key = scroll_frame(&mut core);
 
     // Press the bottom of the track, far from the thumb.
-    core.handle_input(InputEvent::CursorMoved(Vec2::new(395.0, 95.0)));
-    core.handle_input(InputEvent::mouse_down(1));
-    core.handle_input(InputEvent::mouse_up());
+    click_at(&mut core, 395.0, 95.0);
     let max = 20.0 * 30.0 - 100.0;
     let y = core.scroll.offset(key).y;
     assert!(

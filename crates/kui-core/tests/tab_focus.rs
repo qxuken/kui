@@ -3,15 +3,9 @@
 //! ring confined to a modal subtree
 //! (`docs/adr/0003-modal-surfaces.md`).
 
+use kui_core::testing::tab;
 use kui_core::{
-    Align, Core, EditKey, EditOptions, FloatConfig, InputEvent, Key, Mods, NodeSpec, Size, Sizing,
-    Value,
-};
-
-const SHIFT: Mods = Mods {
-    shift: true,
-    word: false,
-    doc: false,
+    Align, Core, EditOptions, FloatConfig, InputEvent, Key, NodeSpec, Size, Sizing, Value,
 };
 
 /// Three single-line fields and one multiline, in order.
@@ -35,25 +29,21 @@ fn frame(core: &mut Core, autofocus_first: bool) -> Vec<Key> {
     keys
 }
 
-fn tab(core: &mut Core, mods: Mods) {
-    core.handle_input(InputEvent::Key(EditKey::Tab, mods));
-}
-
 #[test]
 fn tab_cycles_and_shift_tab_reverses() {
     let mut core = Core::new();
     let keys = frame(&mut core, true);
     assert_eq!(core.edit.focused(), Some(keys[0]));
 
-    tab(&mut core, Mods::default());
+    tab(&mut core, false);
     assert_eq!(core.edit.focused(), Some(keys[1]));
-    tab(&mut core, Mods::default());
+    tab(&mut core, false);
     assert_eq!(core.edit.focused(), Some(keys[2]));
-    tab(&mut core, SHIFT);
+    tab(&mut core, true);
     assert_eq!(core.edit.focused(), Some(keys[1]));
     // Backwards past the first wraps to the last (the multiline).
-    tab(&mut core, SHIFT);
-    tab(&mut core, SHIFT);
+    tab(&mut core, true);
+    tab(&mut core, true);
     assert_eq!(core.edit.focused(), Some(keys[3]));
 }
 
@@ -62,7 +52,7 @@ fn multiline_keeps_tab_as_indentation() {
     let mut core = Core::new();
     let keys = frame(&mut core, false);
     core.set_focus(Some(keys[3]));
-    tab(&mut core, Mods::default());
+    tab(&mut core, false);
     assert_eq!(core.edit.focused(), Some(keys[3]), "focus stays");
     assert!(
         core.edit_text(keys[3]).unwrap().contains("    "),
@@ -75,10 +65,10 @@ fn tab_with_no_focus_enters_the_ring() {
     let mut core = Core::new();
     let keys = frame(&mut core, false);
     assert_eq!(core.edit.focused(), None);
-    tab(&mut core, Mods::default());
+    tab(&mut core, false);
     assert_eq!(core.edit.focused(), Some(keys[0]));
     core.set_focus(None);
-    tab(&mut core, SHIFT);
+    tab(&mut core, true);
     assert_eq!(
         core.edit.focused(),
         Some(keys[3]),
@@ -97,7 +87,7 @@ fn key_sink_owns_tab_when_no_edit_is_focused() {
     ui.take_key_focus(sink);
     ui.finish();
 
-    tab(&mut core, Mods::default());
+    tab(&mut core, false);
     assert_eq!(core.edit.focused(), None, "the sink keeps the keyboard");
 }
 
@@ -204,11 +194,11 @@ fn tab_stays_inside_the_modal() {
     assert!(!core.focus_visible());
 
     // The ring is the modal's subtree, and it wraps inside it.
-    tab(&mut core, Mods::default());
+    tab(&mut core, false);
     assert_eq!(core.focus(), Some(cancel));
-    tab(&mut core, Mods::default());
+    tab(&mut core, false);
     assert_eq!(core.focus(), Some(ok), "the ring wraps inside the modal");
-    tab(&mut core, SHIFT);
+    tab(&mut core, true);
     assert_eq!(core.focus(), Some(cancel), "backwards wraps too");
     assert!(core.focus_visible(), "a Tab press shows");
 
@@ -228,7 +218,7 @@ fn the_innermost_modal_is_the_one_in_effect() {
     let (ok, cancel) = (k[3], k[4]);
     assert_eq!(core.modal(), Some(Key::ROOT.str("dialog").str("confirm")));
     assert_eq!(core.focus(), Some(yes), "the confirm takes focus");
-    tab(&mut core, Mods::default());
+    tab(&mut core, false);
     assert_eq!(
         core.focus(),
         Some(yes),
@@ -240,7 +230,7 @@ fn the_innermost_modal_is_the_one_in_effect() {
     let k2 = modal_frame(&mut core, true, false);
     assert_eq!(core.modal(), Some(k2[2]));
     assert_eq!(core.focus(), Some(ok));
-    tab(&mut core, Mods::default());
+    tab(&mut core, false);
     assert_eq!(core.focus(), Some(cancel), "the dialog's ring is back");
 }
 
@@ -261,7 +251,7 @@ fn focus_returns_where_the_modal_found_it() {
     // ring is reachable again.
     modal_frame(&mut core, false, false);
     assert_eq!(core.focus(), Some(open));
-    tab(&mut core, Mods::default());
+    tab(&mut core, false);
     assert_eq!(core.focus(), Some(other));
 
     // A modal that displaced nothing gives nothing back.
@@ -296,7 +286,7 @@ fn a_modal_with_no_controls_holds_focus_by_holding_none() {
         None,
         "nothing focusable inside: nothing holds"
     );
-    tab(&mut core, Mods::default());
+    tab(&mut core, false);
     assert_eq!(core.focus(), None, "and Tab cannot leave");
 }
 
@@ -306,7 +296,7 @@ fn a_dialog_opened_from_the_keyboard_shows_its_ring_at_once() {
     // shows the ring on the first control, a click shows none until Tab.
     let mut core = Core::new();
     modal_frame(&mut core, false, false);
-    tab(&mut core, Mods::default());
+    tab(&mut core, false);
     assert!(core.focus_visible(), "Tab showed the ring on `open`");
     let k = modal_frame(&mut core, true, false);
     assert_eq!(core.focus(), Some(k[3]));
@@ -344,9 +334,9 @@ fn a_dialog_opens_on_the_control_that_asks_for_it() {
     );
     // Everything else about the scope is unchanged: the ring is still the
     // whole subtree, in tree order, wrapping.
-    tab(&mut core, Mods::default());
+    tab(&mut core, false);
     assert_eq!(core.focus(), Some(ok));
-    tab(&mut core, Mods::default());
+    tab(&mut core, false);
     assert_eq!(core.focus(), Some(cancel));
 }
 
@@ -377,7 +367,7 @@ fn the_entry_is_read_once_and_not_re_taken_while_the_dialog_stays_up() {
 
     // The user moves off it. The dialog is declared again — every frame,
     // the same declaration — and focus stays where they left it.
-    tab(&mut core, Mods::default());
+    tab(&mut core, false);
     assert_eq!(core.focus(), Some(ok));
     modal_frame_with(&mut core, true, false, Entry::Cancel);
     assert_eq!(core.focus(), Some(ok), "a redeclaration is not an entry");
@@ -409,7 +399,7 @@ fn the_entry_does_not_disturb_the_focus_the_modal_gives_back() {
         Some(open),
         "back to the button that opened it"
     );
-    tab(&mut core, Mods::default());
+    tab(&mut core, false);
     assert_eq!(core.focus(), Some(other));
 }
 
@@ -425,7 +415,7 @@ fn a_confirm_closing_does_not_re_enter_the_dialog() {
         Key::ROOT.str("dialog").str("cancel"),
     );
     assert_eq!(core.focus(), Some(cancel));
-    tab(&mut core, Mods::default());
+    tab(&mut core, false);
     assert_eq!(core.focus(), Some(ok));
 
     let yes = Key::ROOT.str("dialog").str("confirm").str("yes");

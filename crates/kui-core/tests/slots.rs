@@ -12,9 +12,10 @@ use std::rc::Rc;
 use kui_core::diag::{
     DUPLICATE_SLOT, EXTENSION_VIEW_ERROR, RECURSIVE_SLOT, UNBALANCED_EXTENSION, UNKNOWN_SLOT,
 };
+use kui_core::testing::codes;
 use kui_core::{
     Core, Extension, Extensions, Key, NodeSpec, OriginId, Size, Sizing, Slot, Ui, UiEvent, Value,
-    Warning, split_name,
+    split_name,
 };
 
 /// A stand-in extension: opens one keyed, focusable cell (so it is in the
@@ -83,10 +84,6 @@ fn ext(name: &'static str, slots: &[&str]) -> Box<dyn Extension> {
 /// Under their own names as namespaces.
 fn load(exts: Vec<Box<dyn Extension>>) -> Extensions {
     Extensions::try_from(exts).unwrap()
-}
-
-fn codes(ws: &[Warning]) -> Vec<&'static str> {
-    ws.iter().map(|w| w.code).collect()
 }
 
 /// A payload's `kind`, which is all the routing tests care about.

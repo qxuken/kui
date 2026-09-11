@@ -4,14 +4,11 @@
 //! reports missing names as warnings.
 
 use kui_core::diag::{CONTROL_WITHOUT_NAME, IMAGE_WITHOUT_LABEL, SLIDER_VALUE_OUT_OF_RANGE};
+use kui_core::testing::codes;
 use kui_core::{
     AccessAction, AccessRequest, AccessTree, Core, EditOptions, InputEvent, Key, NodeSpec, Role,
-    Size, Sizing, TextStyle, UiEvent, Value, Warning, WindowButton, WindowCommand,
+    Size, Sizing, TextStyle, UiEvent, Value, WindowButton, WindowCommand,
 };
-
-fn codes(ws: &[Warning]) -> Vec<&'static str> {
-    ws.iter().map(|w| w.code).collect()
-}
 
 fn kinds(evs: &[UiEvent]) -> Vec<String> {
     evs.iter()

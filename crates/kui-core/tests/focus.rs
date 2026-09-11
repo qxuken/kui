@@ -7,6 +7,7 @@
 //! `docs/adr/0003-modal-surfaces.md`: a modal surface containing focus,
 //! making everything outside it inert, and asking to be dismissed.
 
+use kui_core::testing::{click_at, tab};
 use kui_core::{
     AccessAction, AccessRequest, Align, Color, Core, EditKey, EditOptions, FloatConfig, InputEvent,
     Key, Mods, NodeSpec, Role, Size, Sizing, TextStyle, UiEvent, Value, Vec2, WindowButton,
@@ -149,25 +150,8 @@ fn frame(core: &mut Core, declare_pane: bool, autofocus_edit: bool) -> Keys {
     }
 }
 
-fn tab(core: &mut Core, shift: bool) -> Vec<UiEvent> {
-    core.handle_input(InputEvent::Key(
-        EditKey::Tab,
-        Mods {
-            shift,
-            ..Default::default()
-        },
-    ))
-}
-
 fn key(core: &mut Core, k: EditKey) -> Vec<UiEvent> {
     core.handle_input(InputEvent::Key(k, Mods::default()))
-}
-
-fn click_at(core: &mut Core, x: f32, y: f32) -> Vec<UiEvent> {
-    let mut out = core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
-    out.extend(core.handle_input(InputEvent::mouse_down(1)));
-    out.extend(core.handle_input(InputEvent::mouse_up()));
-    out
 }
 
 fn payloads(evs: &[UiEvent]) -> Vec<String> {

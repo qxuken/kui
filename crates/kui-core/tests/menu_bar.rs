@@ -3,9 +3,10 @@
 //! declares, what the drawn bar does with it, and what an app hears from
 //! either path.
 
+use kui_core::testing::click;
 use kui_core::{
-    BarMenu, Core, EditOptions, InputEvent, Key, MenuBar, MenuItem, MenuRole, MouseButton,
-    NodeSpec, Role, Size, Sizing, TextStyle, Value, Vec2,
+    BarMenu, Core, EditOptions, InputEvent, Key, MenuBar, MenuItem, MenuRole, NodeSpec, Role, Size,
+    Sizing, TextStyle, Value, Vec2,
 };
 
 fn bar() -> MenuBar {
@@ -65,17 +66,6 @@ fn named(core: &mut Core, role: Role, name: &str) -> bool {
     tree.nodes
         .iter()
         .any(|n| n.role == role && n.name.as_deref() == Some(name))
-}
-
-fn click(core: &mut Core, at: Vec2) -> Vec<kui_core::UiEvent> {
-    core.handle_input(InputEvent::CursorMoved(at));
-    core.handle_input(InputEvent::MouseDown {
-        button: MouseButton::Primary,
-        clicks: 1,
-    });
-    core.handle_input(InputEvent::MouseUp {
-        button: MouseButton::Primary,
-    })
 }
 
 #[test]

@@ -2,11 +2,8 @@
 //! warnings a driver drains — each once — and the stock widgets raise none.
 
 use kui_core::diag::{DUPLICATE_KEY, GROW_WEIGHT_IGNORED, TRANSITION_AUTO_KEY};
-use kui_core::{Core, Key, NodeSpec, Size, Sizing, Value, Warning, widgets};
-
-fn codes(ws: &[Warning]) -> Vec<&'static str> {
-    ws.iter().map(|w| w.code).collect()
-}
+use kui_core::testing::codes;
+use kui_core::{Core, Key, NodeSpec, Size, Sizing, Value, widgets};
 
 /// A row root with the given children specs (auto-keyed).
 fn row_of(core: &mut Core, children: &[NodeSpec]) -> Vec<Key> {

@@ -11,8 +11,9 @@ use kui_core::key::Key;
 use kui_core::layout::{TextMeasure, compute};
 use kui_core::scroll::ScrollStore;
 use kui_core::spec::{Align, NodeSpec, Sizing};
+use kui_core::testing::codes;
 use kui_core::tree::{NIL, NodeContent, OriginId, TextId, Tree};
-use kui_core::{Core, Size, Vec2, Warning};
+use kui_core::{Core, Size, Vec2};
 
 /// The same stub `layout.rs`'s own tests use: a text is `10px * chars`
 /// wide and wraps into 20px lines, with the char count encoded in the id.
@@ -446,10 +447,6 @@ fn a_scrolling_main_axis_lays_out_as_if_the_flag_were_absent() {
 }
 
 // ------------------------------------------------------------- warnings --
-
-fn codes(ws: &[Warning]) -> Vec<&'static str> {
-    ws.iter().map(|w| w.code).collect()
-}
 
 fn frame(core: &mut Core, root: NodeSpec) {
     let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
