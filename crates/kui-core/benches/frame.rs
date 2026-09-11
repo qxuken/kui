@@ -186,6 +186,33 @@ fn frame_10k_rects_with_access_tree(bencher: divan::Bencher) {
     });
 }
 
+// -- Hit-testing (ADR 0026) --------------------------------------------------
+// A pointer move re-resolves the hovered region: a scan of every hit
+// region, rect first, and the shape past it for the ones under the
+// pointer. `frame_10k_rects_with_text_and_hits` above is where the
+// regions are *built* (2,500 of them, every one rounded, so every one
+// carries a shape); this is where they are *read*, once per input event.
+
+/// The cursor moving between two cells of the 10k-region frame, so the
+/// hovered node changes every move and the scan runs to its end.
+#[divan::bench]
+fn hover_over_10k_regions(bencher: divan::Bencher) {
+    let g = Grid::new(100, 100).clicks();
+    let mut core = Core::new();
+    run_frame(&mut core, g);
+    let mut flip = false;
+    bencher.bench_local(|| {
+        flip = !flip;
+        let p = if flip {
+            Vec2::new(30.0, 20.0)
+        } else {
+            Vec2::new(1800.0, 1000.0)
+        };
+        core.handle_input(kui_core::InputEvent::CursorMoved(p))
+            .len()
+    });
+}
+
 #[divan::bench]
 fn frame_1k_typical(bencher: divan::Bencher) {
     let g = Grid::new(32, 32).text().clicks();

@@ -1168,13 +1168,23 @@ pub const SCENES: &[Scene] = &[
               and a faded curve through four knots — 8, 9 and 14 pieces by \
               the core's flattening, so the segment count pins it — beside \
               a box, which the lines paint over because a line is a float. \
-              Every line is elided from the access tree and takes no input; \
-              the elbow declares a click anyway, and the warning says so.",
+              A line with no input is elided from the access tree; the \
+              elbow declares a click and a label, so it is a button, and \
+              it is hit by its stroke and not its box (ADR 0026): a press \
+              on the horizontal piece clicks it, a press inside its \
+              bounding box but off the stroke reaches nothing.",
         custom: &["key"],
         elements: &["box", "line"],
         build: build_lines,
         env: NATIVE_CHROME,
-        steps: &[],
+        steps: &[
+            Step::Cursor(120, 20),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::Cursor(110, 50),
+            Step::MouseDown,
+            Step::MouseUp,
+        ],
         expect: Expect {
             solid: 2,
             shadows: 0,
@@ -1183,10 +1193,10 @@ pub const SCENES: &[Scene] = &[
             fragments: 0,
             textures: 0,
             glyphs_min: 0,
-            access: &["0 window ||"],
-            events: &[],
+            access: &["0 window ||", "1 button Elbow||"],
+            events: &["elbow -"],
             announcements: &[],
-            warnings: &["line-ignores-input"],
+            warnings: &[],
             commands: &[],
             audio: &[],
             title: None,
@@ -1195,20 +1205,29 @@ pub const SCENES: &[Scene] = &[
     Scene {
         name: "polygon",
         doc: "Five fills in a 200×120 canvas (ADR 0025, decision 6): a \
-              triangle that declares a click, which a polygon ignores; a \
-              concave arrowhead; an eight-point star, the most a polygon \
-              takes; a nine-point outline whose ninth is dropped with a \
-              warning; and a faded quad. Each is one `fragment` quad whose \
-              sixteen params are the vertices normalised to the shape's own \
-              padded box — the `fragment` lines of the report pin them to \
-              the bit — painted by the stock source every binding gets from \
-              the core, so no adapter writes WGSL here. No access rows: a \
-              fill is elided like a stroke.",
+              triangle that declares a click and a label, so it is a button \
+              hit by its outline and not its box (ADR 0026) — a press inside \
+              it clicks, a press in its bounding box past the hypotenuse \
+              reaches nothing; a concave arrowhead; an eight-point star, the \
+              most a polygon takes; a nine-point outline whose ninth is \
+              dropped with a warning; and a faded quad. Each is one \
+              `fragment` quad whose sixteen params are the vertices \
+              normalised to the shape's own padded box — the `fragment` \
+              lines of the report pin them to the bit — painted by the stock \
+              source every binding gets from the core, so no adapter writes \
+              WGSL here. A fill with no input is elided like a stroke.",
         custom: &["key"],
         elements: &["polygon", "box"],
         build: build_polygon,
         env: NATIVE_CHROME,
-        steps: &[],
+        steps: &[
+            Step::Cursor(28, 26),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::Cursor(55, 45),
+            Step::MouseDown,
+            Step::MouseUp,
+        ],
         expect: Expect {
             solid: 1,
             shadows: 0,
@@ -1217,10 +1236,10 @@ pub const SCENES: &[Scene] = &[
             fragments: 5,
             textures: 0,
             glyphs_min: 0,
-            access: &["0 window ||"],
-            events: &[],
+            access: &["0 window ||", "1 button Triangle||"],
+            events: &["tri -"],
             announcements: &[],
-            warnings: &["polygon-ignores-input", "polygon-points-truncated"],
+            warnings: &["polygon-points-truncated"],
             commands: &[],
             audio: &[],
             title: None,
@@ -2659,7 +2678,8 @@ fn build_polygon(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 &polygon_points(POLYGON_TRIANGLE),
                 NodeSpec::column()
                     .bg(Color::hex(0x7f9cf5ff))
-                    .on_click(Value::str("tri")),
+                    .on_click(Value::map([("kind", Value::str("tri"))]))
+                    .label("Triangle"),
             );
             ui.polygon(
                 &polygon_points(POLYGON_ARROW),
@@ -2707,7 +2727,9 @@ fn build_lines(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                     Vec2::new(140.0, 60.0),
                 ],
                 Stroke::new(3.0, Color::hex(0xd8863bff)),
-                NodeSpec::column().on_click(Value::str("elbow")),
+                NodeSpec::column()
+                    .on_click(Value::map([("kind", Value::str("elbow"))]))
+                    .label("Elbow"),
             );
             ui.polyline_keyed(
                 "curve",

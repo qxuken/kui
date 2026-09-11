@@ -157,8 +157,10 @@ pub extern "C" fn kui_image_with(
 /// than three draw nothing — the fill in `spec`'s `bg`. Placed like a
 /// stroke: a float sized to its own bounding box, in the parent's box
 /// space. `label` keys the node (empty = a key from the tree position).
-/// See `Core::polygon_node` (ADR 0025, decision 6). `spec` may be NULL,
-/// which is a polygon with no fill and so nothing drawn.
+/// The three payloads are taken as `kui_open_with` takes them; a fill
+/// with one is hit by its outline (ADR 0026). See `Core::polygon_node`
+/// (ADR 0025, decision 6). `spec` may be NULL, which is a polygon with no
+/// fill and so nothing drawn.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_polygon(
     ptr: *mut KuiCtx,
@@ -166,6 +168,9 @@ pub extern "C" fn kui_polygon(
     xy: *const f32,
     count: usize,
     spec: *const KuiSpec,
+    on_click: *mut KuiValue,
+    on_drag: *mut KuiValue,
+    on_hover: *mut KuiValue,
 ) {
     guard((), || {
         let Some(c) = (unsafe { ctx(ptr) }) else {
@@ -182,7 +187,7 @@ pub extern "C" fn kui_polygon(
             .map(|p| kui_core::Vec2::new(p[0], p[1]))
             .collect();
         let spec = match unsafe { spec.as_ref() } {
-            Some(s) => spec_of(s, NONE, NONE, NONE, NONE),
+            Some(s) => spec_of(s, on_click, on_drag, NONE, on_hover),
             None => kui_core::NodeSpec::column(),
         };
         match opt_str(label) {
@@ -276,13 +281,27 @@ pub extern "C" fn kui_line(
         ptr: std::ptr::null(),
         len: 0,
     };
-    kui_polyline(ptr, none, xy.as_ptr(), 2, width, color, false, spec);
+    kui_polyline(
+        ptr,
+        none,
+        xy.as_ptr(),
+        2,
+        width,
+        color,
+        false,
+        spec,
+        NONE,
+        NONE,
+        NONE,
+    );
 }
 
 /// A stroke through `count` points at `xy` (x0, y0, x1, y1, ...): a
 /// polyline, or with `curve` a smooth curve through them, flattened in the
 /// core. `label` keys the node (empty = a key from the tree position), for
-/// a stroke that transitions or exits. See `Core::line_node`.
+/// a stroke that transitions or exits. The three payloads are taken as
+/// `kui_open_with` takes them; a stroke with one is hit by its shape
+/// (ADR 0026). See `Core::line_node`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_polyline(
     ptr: *mut KuiCtx,
@@ -293,6 +312,9 @@ pub extern "C" fn kui_polyline(
     color: u32,
     curve: bool,
     spec: *const KuiSpec,
+    on_click: *mut KuiValue,
+    on_drag: *mut KuiValue,
+    on_hover: *mut KuiValue,
 ) {
     guard((), || {
         let Some(c) = (unsafe { ctx(ptr) }) else {
@@ -309,7 +331,7 @@ pub extern "C" fn kui_polyline(
             .map(|p| kui_core::Vec2::new(p[0], p[1]))
             .collect();
         let spec = match unsafe { spec.as_ref() } {
-            Some(s) => spec_of(s, NONE, NONE, NONE, NONE),
+            Some(s) => spec_of(s, on_click, on_drag, NONE, on_hover),
             None => kui_core::NodeSpec::column(),
         };
         // A stroke with no colour of its own is the theme's foreground,

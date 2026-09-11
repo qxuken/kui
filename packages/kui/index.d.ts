@@ -589,13 +589,6 @@ export type WarningCode =
    *  nothing tying them, and this is the tie. Declare the range the value is
    *  really held to, or clamp where the view declares it. */
   | 'slider-value-out-of-range'
-  /** A `line` declares `onClick`, `onDrag`, `onKey`, `onHover`, `hoverable` or
-   *  `focusable`. A line takes no pointer input and emits no hit region — its
-   *  bounding box is mostly not the stroke, and a shape-aware hit test is not
-   *  built — so the declaration does nothing
-   *  (`docs/adr/0010-a-segment-primitive.md`, decisions 7 and 8). Put the
-   *  interaction on the nodes the line connects. */
-  | 'line-ignores-input'
   /** `Core::add_fragment` was given WGSL that does not compile, so no handle
    *  was minted and nothing will draw. The message carries naga's own error
    *  with the line numbers moved into the app's source
@@ -612,11 +605,6 @@ export type WarningCode =
    *  polygons, or the path primitive kui does not have
    *  (`docs/adr/0025-the-image-is-the-canvas.md`, decision 6). */
   | 'polygon-points-truncated'
-  /** A `polygon` declared `on_click`, `on_drag`, `on_key`, `on_hover`,
-   *  `hoverable` or `focusable`. Like a line, a polygon emits no hit region —
-   *  its box is mostly not the shape, and a shape-aware hit test is not built —
-   *  so the declaration does nothing. */
-  | 'polygon-ignores-input'
   /** The frame's modal surface is not in a float, and content painted after it
    *  is drawn on top of it: everything the user can see over the modal is
    *  inert, which looks like inert-behind is broken. A modal that has to cover

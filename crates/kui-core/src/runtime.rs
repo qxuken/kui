@@ -218,6 +218,10 @@ pub struct Core {
     /// them; kept here because a removal can land between frames, after
     /// the list was cleared.
     pub(crate) dropped_images: Vec<crate::resources::ImageId>,
+    /// The hit shapes the frame being emitted builds beside its regions
+    /// (ADR 0026), handed to `interaction` with them at the end of
+    /// emission; the previous frame's buffers, cleared, in between.
+    pub(crate) hit_shapes: crate::input::HitShapes,
     pub(crate) display: DisplayList,
     pub(crate) viewport: Size,
     pub(crate) scale: f32,
@@ -600,6 +604,7 @@ impl Core {
             fragments: Default::default(),
             stock_polygon: None,
             dropped_images: Vec::new(),
+            hit_shapes: Default::default(),
             display: DisplayList::default(),
             viewport: Size::ZERO,
             scale: 1.0,

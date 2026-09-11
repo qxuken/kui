@@ -5,6 +5,11 @@ date: 2026-09-06
 
 # A segment primitive: lines, polylines and curves as capsule quads
 
+> **Decisions 7 and 8 are superseded by
+> [ADR 0026](0026-hit-testing-by-shape.md) (2026-09-11):** a line that
+> declares input is hit by its stroke and derives an access role as a box
+> would; the `line-ignores-input` warning is gone. The rest stands.
+
 `QuadKind` is six rounded-rect variants, and the only thing a view can draw
 is a box. That is enough for a control and not for a diagram: the mind map
 in the second field report (backlog F12) draws every connector as **three

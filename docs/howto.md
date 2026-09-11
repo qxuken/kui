@@ -37,8 +37,9 @@ frame's count.
 `<line from={[x, y]} to={[x, y]} width color/>` is one round-capped stroke,
 `<line points={[[x, y], …]} curve/>` a polyline or a smooth curve through
 the points; a line is always a float in its parent's box space, sized to its
-own bounding box, so it takes no room in a row or column and takes no
-pointer input. Budget its quads: one per segment, and a curve is flattened
+own bounding box, so it takes no room in a row or column. With `onClick`,
+`onDrag` or `hoverable` it is hit by its stroke, at least 4 px wide
+([ADR 0026](adr/0026-hit-testing-by-shape.md)). Budget its quads: one per segment, and a curve is flattened
 in the core at one piece per 6 logical px of chord, at most 32 per span — so
 a nine-point curve over ~50 px spans is ~60 quads.
 
@@ -457,8 +458,13 @@ own bounding box, taking no room and no input). Concave outlines fill
 correctly; a shape with more than eight vertices is two polygons (a pie is
 wedges, an area chart is a strip of quads); a stroked outline is a closed
 `line` over it. `transition` eases the fill, and with `slide` the position.
-On the wire it is one `fragment` quad painted by a source the core
-registers itself, so it costs what a fragment costs and no shader of yours.
+It is hit by its outline ([ADR 0026](adr/0026-hit-testing-by-shape.md)):
+give a wedge `onClick` or `hoverable` and a press inside it is its own, one
+in its bounding box past the arc is the neighbour's — no hit boxes — and
+a clickable wedge is a button to a screen reader, so give it a `label`. A
+`line` is the same by its stroke, with at least 4 px of grab. On the wire
+a polygon is one `fragment` quad painted by a source the core registers
+itself, so it costs what a fragment costs and no shader of yours.
 
 [`polygon` element](props.md#elements) ·
 [ADR 0025](adr/0025-the-image-is-the-canvas.md) ·

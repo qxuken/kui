@@ -536,20 +536,22 @@ static void conf_polygon(KuiCtx *ui, const Fixtures *f, int phase) {
                       .bg = 0x14161eff};
     kui_open(ui, &canvas, NULL);
     float tri[] = {10, 10, 60, 20, 20, 50};
-    KuiSpec blue = {.bg = 0x7f9cf5ff, .hoverable = 1};
-    kui_polygon(ui, KUI_STR(""), tri, 3, &blue);
+    KuiSpec blue = {.bg = 0x7f9cf5ff, .label = KUI_STR("Triangle")};
+    KuiValue *tri_click = kui_value_map();
+    kui_value_map_set(tri_click, KUI_STR("kind"), kui_value_str(KUI_STR("tri")));
+    kui_polygon(ui, KUI_STR(""), tri, 3, &blue, tri_click, NULL, NULL);
     float arrow[] = {80, 10, 130, 30, 80, 50, 95, 30};
     KuiSpec orange = {.bg = 0xd8863bff};
-    kui_polygon(ui, KUI_STR(""), arrow, 4, &orange);
+    kui_polygon(ui, KUI_STR(""), arrow, 4, &orange, NULL, NULL, NULL);
     float star[] = {170, 10, 176, 24, 190, 30, 176, 36, 170, 50, 164, 36, 150, 30, 164, 24};
     KuiSpec yellow = {.bg = 0xf5d67fff};
-    kui_polygon(ui, KUI_STR("star"), star, 8, &yellow);
+    kui_polygon(ui, KUI_STR("star"), star, 8, &yellow, NULL, NULL, NULL);
     float nine[] = {10, 70, 30, 65, 50, 70, 70, 65, 90, 70, 90, 110, 50, 100, 10, 110, 5, 90};
     KuiSpec green = {.bg = 0x9ad9a0ff};
-    kui_polygon(ui, KUI_STR(""), nine, 9, &green);
+    kui_polygon(ui, KUI_STR(""), nine, 9, &green, NULL, NULL, NULL);
     float quad[] = {110, 70, 190, 70, 180, 110, 120, 110};
     KuiSpec pink = {.bg = 0xe07a8aff, .opacity_set = 1, .opacity = 0.5f};
-    kui_polygon(ui, KUI_STR(""), quad, 4, &pink);
+    kui_polygon(ui, KUI_STR(""), quad, 4, &pink, NULL, NULL, NULL);
     kui_close(ui);
 }
 
@@ -594,14 +596,16 @@ static void conf_lines(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_open(ui, &canvas, NULL);
     kui_line(ui, 10, 10, 90, 70, 2, 0x7f9cf5ff, NULL);
     float elbow[] = {100, 20, 140, 20, 140, 60};
-    /* The interaction a line ignores: kui_polyline takes no on_click, so the
-     * C scene declares the same intent through the one input prop the spec
-     * carries, and the warning is the same. */
-    KuiSpec hover = {.hoverable = 1};
-    kui_polyline(ui, KUI_STR(""), elbow, 3, 3, 0xd8863bff, false, &hover);
+    /* The elbow takes a click, and is hit by its stroke (ADR 0026). */
+    KuiSpec elbow_spec = {.label = KUI_STR("Elbow")};
+    KuiValue *elbow_click = kui_value_map();
+    kui_value_map_set(elbow_click, KUI_STR("kind"), kui_value_str(KUI_STR("elbow")));
+    kui_polyline(ui, KUI_STR(""), elbow, 3, 3, 0xd8863bff, false, &elbow_spec, elbow_click,
+                 NULL, NULL);
     float curve[] = {20, 100, 60, 80, 100, 110, 180, 90};
     KuiSpec faded = {.opacity_set = 1, .opacity = 0.5f};
-    kui_polyline(ui, KUI_STR("curve"), curve, 4, 1.5f, 0x9ad9a0ff, true, &faded);
+    kui_polyline(ui, KUI_STR("curve"), curve, 4, 1.5f, 0x9ad9a0ff, true, &faded, NULL, NULL,
+                 NULL);
     KuiSpec box = {.width = {KUI_FIXED, 40}, .height = {KUI_FIXED, 20}, .bg = 0x202030ff};
     kui_open(ui, &box, NULL);
     kui_close(ui);

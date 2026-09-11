@@ -8,9 +8,10 @@
 //! star. Every one is a `fragment` quad on the wire, painted by the stock
 //! source the core registers itself.
 //!
-//! A polygon takes no input, so the pie's hover is a `hoverable` box under
-//! each wedge — the same answer a `line` gives, and the row `on_hover`
-//! reports it through is the box's.
+//! A polygon is hit by its outline (`docs/adr/0026-hit-testing-by-shape.md`):
+//! the wedges are `hoverable` themselves, and a pointer in one wedge's
+//! bounding box but past its arc is over the neighbour, not it. Before
+//! that ADR this example floated a hover box over each wedge's middle.
 //!
 //! Run: cargo run -p kui --example polygon [-- --headless]
 
@@ -62,8 +63,8 @@ impl App for Demo {
                 muted,
             );
             ui.with(NodeSpec::row().gap(24.0), |ui| {
-                // The pie: a hoverable box under each wedge carries the
-                // hover, and the wedge's fill eases toward the accent.
+                // The pie: each wedge is hoverable in its own outline, and
+                // its fill eases toward the accent.
                 let pie = NodeSpec::column()
                     .width(Sizing::Fixed(220.0))
                     .height(Sizing::Fixed(220.0))
@@ -74,7 +75,7 @@ impl App for Demo {
                     let center = Vec2::new(110.0, 110.0);
                     let mut from = 0.0;
                     for (i, &(label, frac, color)) in self.slices.iter().enumerate() {
-                        let key = ui.child_key(&format!("hit{i}"));
+                        let key = ui.child_key(&format!("wedge{i}"));
                         let lit = ui.is_hovered(key);
                         wedge(center, 80.0, from, frac, &mut self.points);
                         ui.polygon_keyed(
@@ -83,20 +84,8 @@ impl App for Demo {
                             NodeSpec::column()
                                 .bg(if lit { t.accent } else { color })
                                 .transition(160.0)
+                                .hoverable()
                                 .label(label),
-                        );
-                        // The hover target: a box over the wedge's middle,
-                        // since a fill itself takes no input.
-                        let mid = (from + frac * 0.5) * std::f32::consts::TAU;
-                        let at = Vec2::new(center.x + 50.0 * mid.cos(), center.y + 50.0 * mid.sin());
-                        ui.with_keyed(
-                            &format!("hit{i}"),
-                            NodeSpec::column()
-                                .float(FloatConfig::parent().offset(at.x - 18.0, at.y - 18.0))
-                                .width(Sizing::Fixed(36.0))
-                                .height(Sizing::Fixed(36.0))
-                                .hoverable(),
-                            |_| {},
                         );
                         from += frac;
                     }
@@ -200,8 +189,9 @@ impl Example for Demo {
         kui_devtools::Window::default().size(760.0, 320.0)
     }
 
-    /// Every fill is one fragment quad and none is a hit region; hovering
-    /// the box under a wedge moves that wedge's fill toward the accent.
+    /// Every fill is one fragment quad; a wedge is hit by its outline, so a
+    /// pointer inside it lights it and one in its bounding box past its
+    /// arc lights the neighbour instead (ADR 0026).
     fn headless(&mut self, core: &mut Core) -> Result<(), String> {
         let mut d = Drive::new(core, 760.0, 320.0);
         d.frame(self);
@@ -216,33 +206,60 @@ impl Example for Demo {
         // 4 wedges + 4 arrowheads + 9 area quads + the star.
         let fills = count(d.core, QuadKind::Fragment);
         d.check(fills == 18, "every fill is one fragment quad")?;
-        d.check(
-            d.core.interaction.hits().iter().all(|h| {
+        let wedges = d
+            .core
+            .interaction
+            .hits()
+            .iter()
+            .filter(|h| {
                 d.core
                     .label_of(h.key)
-                    .is_none_or(|l| !l.starts_with("wedge"))
-            }),
-            "a polygon emits no hit region",
-        )?;
+                    .is_some_and(|l| l.starts_with("wedge"))
+            })
+            .count();
+        d.check(wedges == 4, "each wedge is a hit region of its own")?;
         let before = count(d.core, QuadKind::Fragment);
-        let hit = d
-            .key_of("hit1")
-            .ok_or("no hover box under the second wedge")?;
-        d.hover(self, hit);
-        // The frame that sees the hover starts the tween; the next, half
-        // a second on, is past its end.
+        let w1 = d.key_of("wedge1").ok_or("no second wedge")?;
+        let r = d.rect_of(w1).ok_or("the wedge has no region")?;
+        // Where the pie's centre is on the page: the wedge's region is its
+        // outline's bounding box a pixel out, and the outline is what
+        // `wedge` computes, so the panel's origin follows from the two.
+        let (from, frac) = (self.slices[0].1, self.slices[1].1);
+        let mut pts = Vec::new();
+        wedge(Vec2::new(110.0, 110.0), 80.0, from, frac, &mut pts);
+        let (min_x, min_y) = pts
+            .iter()
+            .fold((f32::MAX, f32::MAX), |(x, y), p| (x.min(p.x), y.min(p.y)));
+        let c = kui::Vec2::new(r.x - (min_x - 1.0) + 110.0, r.y - (min_y - 1.0) + 110.0);
+        let mid_angle = (from + frac * 0.5) * std::f32::consts::TAU;
+        // Halfway out along the wedge's middle: inside it. Past the rim
+        // along the same line, still inside its bounding box: not it.
+        let inside = kui::Vec2::new(c.x + 50.0 * mid_angle.cos(), c.y + 50.0 * mid_angle.sin());
+        let outside = kui::Vec2::new(c.x + 84.0 * mid_angle.cos(), c.y + 84.0 * mid_angle.sin());
+        d.input(self, kui::InputEvent::CursorMoved(inside));
+        d.check(
+            d.core.is_hovered(w1),
+            "a pointer inside the wedge hovers it",
+        )?;
+        d.input(self, kui::InputEvent::CursorMoved(outside));
+        d.check(
+            !d.core.is_hovered(w1),
+            "a pointer in its box past its arc does not",
+        )?;
+        // Back inside: the fill eases to the accent, and stays one quad.
+        d.input(self, kui::InputEvent::CursorMoved(inside));
         d.frame(self);
         d.advance(0.5);
         d.frame(self);
         let accent = d.core.theme().accent;
-        let accent = d
+        let lit = d
             .core
             .output()
             .0
             .quads
             .iter()
             .any(|q| q.kind == QuadKind::Fragment && q.color == accent);
-        d.check(accent, "a hovered wedge's fill is the accent")?;
+        d.check(lit, "a hovered wedge's fill is the accent")?;
         let after = count(d.core, QuadKind::Fragment);
         d.check(after == before, "and it is still one quad")?;
         Ok(())

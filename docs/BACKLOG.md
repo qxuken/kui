@@ -1177,9 +1177,11 @@ not change, and the boundary is what was wrong — a 1000-row list gets its
 first 512 rows sliding out and the rest blinking away. It also found the
 two things this entry used to say that the code disagreed with: the
 `exit-budget` warning has existed since C8, and `mindmap.tsx` removes
-nothing. Still wanting an ADR: rounded hit-testing, which
-ADR 0010 declined to settle and Status / next names: `HitRegion.clip` is a
-`Rect`, so a hit near a rounded corner is a hit. Two things ADR 0008 left
+nothing. Rounded hit-testing, which ADR 0010 declined to settle, is
+[ADR 0026](adr/0026-hit-testing-by-shape.md) (built 2026-09-11): a region
+carries its shape — rounded corners, a stroke's pieces, a fill's outline —
+and one `contains` evaluates it after the rect; two storage variants were
+measured and the inline one won on simplicity at no cost. Two things ADR 0008 left
 open and did not think worth a row yet: `aria-atomic`, and asking AccessKit
 upstream for a real announcement in `TreeUpdate` — two of the three platforms
 have the API behind it, and AccessKit's whole event surface is a tree diff.

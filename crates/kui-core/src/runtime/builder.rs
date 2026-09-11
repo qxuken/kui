@@ -798,10 +798,12 @@ impl Core {
     /// float), `opacity`, `on_layout` (reports the bounding box), a
     /// declared `float` whose *anchor* is kept (`FloatAnchor::Viewport`
     /// reads the points in viewport space), and `role` / `label`, which are
-    /// honoured like any node's; without them a line has no access row. It
-    /// takes no pointer input: `on_click`, `on_drag`, `on_key`, `on_hover`,
-    /// `hoverable` and `focusable` are ignored, with a
-    /// `line-ignores-input` warning. Fewer than two points draw nothing.
+    /// honoured like any node's; without them a line has no access row —
+    /// unless it takes input, when it derives one as a box would. Input
+    /// is hit by *shape* (ADR 0026): a press within half the stroke's
+    /// width of any piece (at least `MIN_STROKE_GRAB` wide) hits it, and
+    /// a press elsewhere in its box falls through to what is under it.
+    /// Fewer than two points draw nothing.
     ///
     /// Consecutive segments overlap at their round caps, which is the
     /// join: exact for an opaque stroke, and a translucent one
@@ -845,22 +847,6 @@ impl Core {
         let Some((id, rect)) = self.lines.push(points, stroke) else {
             return;
         };
-        let ev = spec.events();
-        if spec.hoverable
-            || spec.focusable
-            || ev.on_click.is_some()
-            || ev.on_drag.is_some()
-            || ev.on_key.is_some()
-            || ev.on_hover.is_some()
-        {
-            self.diag.raise(Warning {
-                code: crate::diag::LINE_IGNORES_INPUT,
-                key,
-                message: "a line takes no pointer input, so the interaction it declares does \
-                          nothing; put it on the nodes the line connects"
-                    .to_string(),
-            });
-        }
         // The stroke colour rides in the slot backgrounds tween through, so
         // `transition`, `enter` and `exit` reach it with no slot of its own;
         // nothing else of the box vocabulary applies to a stroke.
@@ -909,10 +895,13 @@ impl Core {
     /// ignored. `transition` eases the fill through the `bg` slot, and
     /// `slide`, `enter` and `exit` move the float; a declared `float`
     /// keeps its *anchor*; `role` and `label` are honoured, and without
-    /// them a polygon has no access row. It takes no pointer input
-    /// (`polygon-ignores-input`). Fewer than three points draw nothing; a
-    /// ninth and later are dropped with `polygon-points-truncated`. The
-    /// outline may be concave; a self-intersecting one fills by winding.
+    /// them a polygon has no access row unless it takes input, when it
+    /// derives one as a box would (a clickable wedge is a button). Input
+    /// is hit by *shape* (ADR 0026): a press inside the outline hits it,
+    /// one in its box but outside the outline falls through to what is
+    /// under. Fewer than three points draw nothing; a ninth and later are
+    /// dropped with `polygon-points-truncated`. The outline may be
+    /// concave; a self-intersecting one fills by winding.
     pub fn polygon_node(&mut self, points: &[Vec2], spec: NodeSpec) {
         if self.tree.is_empty() {
             return;
@@ -969,22 +958,6 @@ impl Core {
             });
         }
         let points = &points[..points.len().min(crate::fragment::POLYGON_MAX_POINTS)];
-        let ev = spec.events();
-        if spec.hoverable
-            || spec.focusable
-            || ev.on_click.is_some()
-            || ev.on_drag.is_some()
-            || ev.on_key.is_some()
-            || ev.on_hover.is_some()
-        {
-            self.diag.raise(Warning {
-                code: crate::diag::POLYGON_IGNORES_INPUT,
-                key,
-                message: "a polygon takes no pointer input, so the interaction it declares does \
-                          nothing; put it on a box under or over it"
-                    .to_string(),
-            });
-        }
         let Some(id) = self.stock_polygon() else {
             return;
         };

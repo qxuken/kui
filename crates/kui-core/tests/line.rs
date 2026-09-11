@@ -1,7 +1,9 @@
 //! The `line` element (`docs/adr/0010-a-segment-primitive.md`): one
 //! `QuadKind::Segment` per straight piece, endpoints in `uv`, the node a
-//! float sized to the stroke's box, and nothing else — no hit region, no
-//! access row, no place in its parent's flow.
+//! float sized to the stroke's box, and nothing else — no place in its
+//! parent's flow, and no hit region or access row unless it takes input,
+//! when it is hit by its stroke (`docs/adr/0026-hit-testing-by-shape.md`;
+//! the shape tests themselves are in `tests/hit.rs`).
 
 use kui_core::line::{CURVE_STEP, flatten_curve};
 use kui_core::{
@@ -194,15 +196,22 @@ fn a_viewport_anchor_reads_the_points_in_viewport_space() {
     let _ = FloatAnchor::Viewport;
 }
 
+/// A line with a click is hit by its stroke: on the diagonal the line
+/// answers, in the corner of its bounding box the box under it does
+/// (ADR 0026). No warning either way.
 #[test]
-fn a_line_takes_no_input_and_says_so_once() {
+fn a_line_with_input_is_hit_by_its_stroke() {
     let mut core = Core::new();
     let build = |ui: &mut kui_core::Ui<'_>| {
         ui.with(
+            // A group, not the button its click would make it: a button
+            // folds its children into its name, and the point here is
+            // the line's own row.
             NodeSpec::column()
                 .width(Sizing::Fixed(100.0))
                 .height(Sizing::Fixed(100.0))
                 .on_click(Value::str("under"))
+                .role(kui_core::Role::Group)
                 .label("under"),
             |ui| {
                 ui.line_keyed(
@@ -210,34 +219,38 @@ fn a_line_takes_no_input_and_says_so_once() {
                     Vec2::new(0.0, 0.0),
                     Vec2::new(100.0, 100.0),
                     Stroke::new(8.0, Color::WHITE),
-                    NodeSpec::column().on_click(Value::str("line")),
+                    NodeSpec::column()
+                        .on_click(Value::str("line"))
+                        .label("the diagonal"),
                 );
             },
         );
     };
     frame(&mut core, 1.0, build);
-    let warnings = core.take_warnings();
-    assert_eq!(warnings.len(), 1);
-    assert_eq!(warnings[0].code, "line-ignores-input");
-    // A press right on the stroke reaches the box under it.
-    core.handle_input(InputEvent::CursorMoved(Vec2::new(50.0, 50.0)));
-    core.handle_input(InputEvent::MouseDown {
-        button: MouseButton::Primary,
-        clicks: 1,
-    });
-    let events = core.handle_input(InputEvent::MouseUp {
-        button: MouseButton::Primary,
-    });
+    assert!(core.take_warnings().is_empty());
+    let click = |core: &mut Core, x: f32, y: f32| {
+        core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
+        core.handle_input(InputEvent::MouseDown {
+            button: MouseButton::Primary,
+            clicks: 1,
+        });
+        core.handle_input(InputEvent::MouseUp {
+            button: MouseButton::Primary,
+        })
+    };
+    // On the stroke: the line.
+    let events = click(&mut core, 50.0, 50.0);
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].payload, Value::str("line"));
+    // In its box, off the stroke: the box under it.
+    let events = click(&mut core, 90.0, 10.0);
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].payload, Value::str("under"));
-    // Once: the same frame again raises nothing new.
-    frame(&mut core, 1.0, build);
-    assert!(core.take_warnings().is_empty());
-    // And it is not in the access tree.
+    // And it is a control to assistive technology now.
     assert_eq!(
         core.access_tree().nodes.len(),
-        2,
-        "the window and the button"
+        3,
+        "the window, the box and the line"
     );
 }
 

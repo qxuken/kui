@@ -2788,12 +2788,13 @@ const SCENE_TREES = {
       ]),
     ]),
   // docs/adr/0025-the-image-is-the-canvas.md, decision 6: five fills — the
-  // triangle's onClick is the one a polygon ignores, the star is keyed,
-  // the nine-point outline loses its ninth with a warning, the quad fades.
+  // triangle takes a click, hit by its outline (ADR 0026), the star is
+  // keyed, the nine-point outline loses its ninth with a warning, the quad
+  // fades.
   polygon: () =>
     root({}, [
       box({ width: 200, height: 120, bg: '#14161e' }, [
-        el('polygon', { points: [[10, 10], [60, 20], [20, 50]], bg: '#7f9cf5', onClick: 'tri' }),
+        el('polygon', { points: [[10, 10], [60, 20], [20, 50]], bg: '#7f9cf5', onClick: { kind: 'tri' }, label: 'Triangle' }),
         el('polygon', { points: [[80, 10], [130, 30], [80, 50], [95, 30]], bg: '#d8863b' }),
         el('polygon', { points: [[170, 10], [176, 24], [190, 30], [176, 36], [170, 50], [164, 36], [150, 30], [164, 24]], bg: '#f5d67f' }, [], 'star'),
         el('polygon', { points: [[10, 70], [30, 65], [50, 70], [70, 65], [90, 70], [90, 110], [50, 100], [10, 110], [5, 90]], bg: '#9ad9a0' }),
@@ -2801,12 +2802,12 @@ const SCENE_TREES = {
       ]),
     ]),
   // docs/adr/0010-a-segment-primitive.md: three strokes and a box; the
-  // elbow's onClick is the one a line ignores.
+  // elbow takes a click, hit by its stroke (ADR 0026).
   lines: () =>
     root({}, [
       box({ width: 200, height: 120, bg: '#14161e' }, [
         el('line', { from: [10, 10], to: [90, 70], width: 2, color: '#7f9cf5' }),
-        el('line', { points: [[100, 20], [140, 20], [140, 60]], width: 3, color: '#d8863b', onClick: 'elbow' }),
+        el('line', { points: [[100, 20], [140, 20], [140, 60]], width: 3, color: '#d8863b', onClick: { kind: 'elbow' }, label: 'Elbow' }),
         el('line', { points: [[20, 100], [60, 80], [100, 110], [180, 90]], curve: true, width: 1.5, color: '#9ad9a0', opacity: 0.5 }, [], 'curve'),
         box({ width: 40, height: 20, bg: '#202030' }),
       ]),

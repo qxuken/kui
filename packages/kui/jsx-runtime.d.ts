@@ -530,9 +530,17 @@ export declare namespace JSX {
      *  its box, so a stroke whose ends all move together slides with them,
      *  while one whose ends move apart resizes at once. A canvas of floats
      *  eases everything or nothing, connectors included.
-     *  Takes no pointer input and has no access row. */
+     *  Hit by its shape (docs/adr/0026-hit-testing-by-shape.md): with
+     *  `onClick`, `onDrag`, `onHover` or `hoverable`, a press within half
+     *  its width of any piece (at least 4 px of grab) hits it and one
+     *  elsewhere in its box falls through; with none it takes no input and
+     *  has no access row, and with input it is a control — name it. */
     line: Keyed &
-      Pick<GeneratedSpecProps, 'opacity' | 'transition' | 'slide' | 'enter' | 'exit' | 'onLayout' | 'label' | 'role'> & {
+      Pick<
+        GeneratedSpecProps,
+        | 'opacity' | 'transition' | 'slide' | 'enter' | 'exit' | 'onLayout' | 'label' | 'role'
+        | 'onClick' | 'onDrag' | 'onHover' | 'hoverable' | 'cursor' | 'description'
+      > & Pick<CustomSpecProps, 'tooltip'> & {
         from?: [number, number];
         to?: [number, number];
         points?: [number, number][];
@@ -548,13 +556,21 @@ export declare namespace JSX {
      *  space), sized to its own bounding box a pixel out on each side, so
      *  it takes no room in a row or column; `transition` eases the fill and,
      *  with `slide`, its position. The outline may be concave; a
-     *  self-intersecting one fills by winding. Takes no pointer input and
-     *  has no access row, like a line. A ninth point and later are dropped
-     *  with `polygon-points-truncated`; fewer than three draw nothing; no
-     *  `bg`, no fill. One `fragment` quad on the wire, painted by a WGSL
-     *  function the core registers itself. */
+     *  self-intersecting one fills by winding. Hit by its outline
+     *  (docs/adr/0026-hit-testing-by-shape.md): with `onClick`, `onDrag`,
+     *  `onHover` or `hoverable`, a press inside the outline hits it and one
+     *  in its box past the outline falls through — a pie's wedges need no
+     *  hit boxes; with none it takes no input and has no access row, and
+     *  with input it is a button — name it. A ninth point and later are
+     *  dropped with `polygon-points-truncated`; fewer than three draw
+     *  nothing; no `bg`, no fill. One `fragment` quad on the wire, painted
+     *  by a WGSL function the core registers itself. */
     polygon: Keyed &
-      Pick<GeneratedSpecProps, 'opacity' | 'transition' | 'slide' | 'enter' | 'exit' | 'onLayout' | 'label' | 'role'> & {
+      Pick<
+        GeneratedSpecProps,
+        | 'opacity' | 'transition' | 'slide' | 'enter' | 'exit' | 'onLayout' | 'label' | 'role'
+        | 'onClick' | 'onDrag' | 'onHover' | 'hoverable' | 'hoverBg' | 'cursor' | 'description'
+      > & Pick<CustomSpecProps, 'tooltip'> & {
         points: [number, number][];
         bg?: ColorProp;
         float?: 'parent' | 'viewport';

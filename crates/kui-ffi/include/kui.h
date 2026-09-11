@@ -2056,29 +2056,38 @@ void kui_fragment_open(KuiCtx *ctx, KuiStr label, uint64_t id,
  * opacity, on_layout (the bounding box), a label/role, and a declared float
  * anchor (KUI_FLOAT_VIEWPORT reads the points in viewport space). width is the
  * stroke width in logical px (<= 0: 1); color 0xRRGGBBAA (0: the default
- * foreground). Takes no pointer input - interaction on spec warns
- * `line-ignores-input`. spec may be NULL. */
+ * foreground). spec may be NULL. For a stroke that takes input use
+ * kui_polyline, which takes the payloads. */
 void kui_line(KuiCtx *ctx, float x0, float y0, float x1, float y1, float width,
               uint32_t color, const KuiSpec *spec);
 /* The same through `count` points (xy: x0, y0, x1, y1, ...; fewer than two draw
  * nothing): a polyline, or with `curve` a smooth curve through the points,
  * flattened in the core. Consecutive pieces overlap at their round caps.
  * label keys the node (empty = a key from the tree position) so a stroke can
- * transition or exit; kui_line is auto-keyed. */
+ * transition or exit; kui_line is auto-keyed and takes no payloads. The
+ * three payloads are taken as kui_open_with takes them: a stroke with one
+ * is hit by its SHAPE (docs/adr/0026-hit-testing-by-shape.md) - a press
+ * within half its width of any piece (at least 4 px of grab), and a press
+ * elsewhere in its box falls through to what is under. NULL for none. */
 void kui_polyline(KuiCtx *ctx, KuiStr label, const float *xy, size_t count,
-                  float width, uint32_t color, bool curve, const KuiSpec *spec);
+                  float width, uint32_t color, bool curve, const KuiSpec *spec,
+                  KuiValue *on_click, KuiValue *on_drag, KuiValue *on_hover);
 /* A filled polygon through `count` points at xy (x0, y0, x1, y1, ...): at
  * most eight - more are dropped with `polygon-points-truncated`, fewer than
  * three draw nothing - the fill in spec->bg (no bg, no fill). Placed like a
- * stroke: a float sized to its own bounding box, in the parent's box space,
- * taking no pointer input (interaction on spec warns
- * `polygon-ignores-input`). The outline may be concave. On the wire it is
- * one KUI_QUAD_FRAGMENT painted by a WGSL function the core registers
- * itself, reachable through kui_fragment_source like any other. label keys
- * the node (empty = a key from the tree position); spec may be NULL.
+ * stroke: a float sized to its own bounding box, in the parent's box space.
+ * The three payloads are taken as kui_open_with takes them: a fill with one
+ * is hit by its OUTLINE (docs/adr/0026-hit-testing-by-shape.md) - a press
+ * inside it hits, a press in its box past the outline falls through - and
+ * a clickable fill is a button to assistive technology, so name it. The
+ * outline may be concave. On the wire it is one KUI_QUAD_FRAGMENT painted
+ * by a WGSL function the core registers itself, reachable through
+ * kui_fragment_source like any other. label keys the node (empty = a key
+ * from the tree position); spec may be NULL; NULL for a payload is none.
  * (docs/adr/0025-the-image-is-the-canvas.md, decision 6) */
 void kui_polygon(KuiCtx *ctx, KuiStr label, const float *xy, size_t count,
-                 const KuiSpec *spec);
+                 const KuiSpec *spec, KuiValue *on_click, KuiValue *on_drag,
+                 KuiValue *on_hover);
 void kui_close(KuiCtx *ctx);
 void kui_text(KuiCtx *ctx, KuiStr text, const KuiTextStyle *style);
 void kui_rich_text(KuiCtx *ctx, const KuiSpan *spans, size_t span_count,

@@ -32,6 +32,24 @@ field reports).
   it and takes the press there. The corpus report changes (`layers` is a
   new scene, and every scene with a bar or a ring beside a float moves),
   so `target/conformance.txt` wants regenerating.
+- **A `line` or `polygon` that declares input takes it — by shape — and
+  the two `*-ignores-input` warnings are gone**
+  ([ADR 0026](docs/adr/0026-hit-testing-by-shape.md)). `onClick`,
+  `onDrag`, `onHover` and `hoverable` on a stroke or a fill used to be
+  ignored with a warning; now a press within the stroke's width (at
+  least 4 px of grab) or inside the outline hits it, and one in the
+  bounding box off the shape falls through. A match on
+  `'line-ignores-input'` or `'polygon-ignores-input'` no longer
+  compiles, and such a node is in the access tree (a clickable one is a
+  button — name it), so an access-row snapshot grows. A rounded box's
+  dead corners are no longer hits either: a click in the corner of a
+  rounded card reaches what is under it. `HitRegion` gained a `shape`
+  field, so code that constructs one by hand adds `HitShape::Rect`. In
+  C, `kui_polyline` and `kui_polygon` take `on_click`, `on_drag` and
+  `on_hover` as `kui_open_with` does (under the same unreleased ABI 14);
+  `kui_line` is unchanged. The corpus `lines` and `polygon` scenes gain
+  presses on and off the shape and their clickable nodes gain labels, so
+  `target/conformance.txt` wants regenerating.
 - **ABI 14: `KuiDrawData` appends `textures` and `texture_count`, and
   `KUI_QUAD_TEXTURE = 8` is a ninth quad kind**
   ([ADR 0025](docs/adr/0025-the-image-is-the-canvas.md)). An [out] append
@@ -191,6 +209,20 @@ field reports).
 
 ### Added
 
+- **Hit-testing by shape** ([ADR 0026](docs/adr/0026-hit-testing-by-shape.md)).
+  Every hit region carries a `HitShape` — `Rect`, `Rounded(radii)`,
+  `Segments` or `Polygon` — and the one `contains` every input path
+  runs (hover, press, click, drag start, cursor shape, the secondary
+  press) tests the rect first and the shape after, so a pie's wedges
+  are their own hover targets, a connector takes a drag on its stroke,
+  and a rounded card's corners are not hits. A stroke's grab is never
+  under 4 px; a fill is tested even-odd, which for the simple outlines a
+  `polygon` draws is the fill. Measured: two storage variants at
+  `frame_10k_rects_with_text_and_hits` 1.199 vs 1.197 ms against 1.181
+  before — the inline enum the draft priced at +7% cost nothing, and won
+  on simplicity — and a full hover scan over 2,500 shaped regions at 3.6
+  µs (`hover_over_10k_regions`). `tests/hit.rs` pins the geometry and
+  every path; the polygon example deletes its hover boxes.
 - **The image is the canvas**
   ([ADR 0025](docs/adr/0025-the-image-is-the-canvas.md)) — the answer to
   "should kui have a canvas, raw GPU commands or a painter callback" is
@@ -1508,6 +1540,11 @@ field reports).
   counter's `+1` carries it now.
 
 ### What you can delete
+
+The hover or click box floated over a wedge, a connector or a shape's
+middle to give it a target — the polygon example's own went — and the
+`role="none"` that kept an unpressable "button" out of a screen reader's
+way (ADR 0026).
 
 The `add_image` + `remove_image` pair an app wrote around every streamed
 frame, and the handle it re-threaded through its view each time; the

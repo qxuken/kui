@@ -78,13 +78,7 @@ impl Core {
         let style = spec.style;
         // A stroke emits no hit region: it takes no input (ADR 0010,
         // decision 7).
-        // A stroke or a fill emits no hit region: neither takes input
-        // (ADR 0010 decision 7; ADR 0025 decision 6).
-        let is_line = matches!(
-            self.tree.content[i],
-            NodeContent::Line(_) | NodeContent::Polygon(_)
-        );
-        if spec.hover_tracked() && interactive && !is_line {
+        if spec.hover_tracked() && interactive {
             let parent = self.tree.parent[i];
             let parent_rect = if parent == NIL {
                 Rect::new(0.0, 0.0, self.viewport.w, self.viewport.h)
@@ -110,11 +104,33 @@ impl Core {
             } else {
                 None
             };
+            // The shape past the rect (ADR 0026): a stroke's pieces, a
+            // fill's outline, a rounded box's corners; a plain box none.
+            let shape = match self.tree.content[i] {
+                NodeContent::Line(id) => {
+                    let (run, points) = self.lines.run(id);
+                    self.hit_shapes.segments(points, run.width)
+                }
+                NodeContent::Polygon(id) => {
+                    let draw = self.fragments.get(id);
+                    let mut pts = [Vec2::ZERO; crate::fragment::POLYGON_MAX_POINTS];
+                    for (k, p) in pts.iter_mut().enumerate() {
+                        *p =
+                            Vec2::new(draw.params[k * 2] * rect.w, draw.params[k * 2 + 1] * rect.h);
+                    }
+                    self.hit_shapes.polygon(&pts)
+                }
+                _ if style.radius != crate::display::SQUARE => {
+                    crate::input::HitShape::Rounded(style.radius)
+                }
+                _ => crate::input::HitShape::Rect,
+            };
             hits.push(HitRegion {
                 key: self.tree.keys[i],
                 origin: self.tree.origins[i],
                 rect,
                 clip: clip.rect,
+                shape,
                 payload: spec.events().on_click.clone().filter(|_| live),
                 drag: spec.events().on_drag.clone().filter(|_| live),
                 parent_rect,
@@ -162,6 +178,12 @@ impl Core {
                 origin: self.tree.origins[i],
                 rect,
                 clip: clip.rect,
+                // A field's corners round its hit too (ADR 0026).
+                shape: if spec.style.radius != crate::display::SQUARE {
+                    crate::input::HitShape::Rounded(spec.style.radius)
+                } else {
+                    crate::input::HitShape::Rect
+                },
                 payload: None,
                 drag: None,
                 parent_rect: rect,
@@ -438,6 +460,7 @@ impl Core {
     fn emit_frame(&mut self) {
         let scale = self.scale;
         let mut hits: Vec<HitRegion> = self.interaction.take_hit_buffer();
+        self.hit_shapes = self.interaction.take_shape_buffer();
         let mut scroll_regions: Vec<ScrollRegion> = Vec::new();
         self.display.viewport = Size::new(self.viewport.w * scale, self.viewport.h * scale);
         self.display.scale = scale;
@@ -748,7 +771,8 @@ impl Core {
             self.depart.end_replay(replay);
         }
 
-        self.interaction.set_hits(hits);
+        let shapes = std::mem::take(&mut self.hit_shapes);
+        self.interaction.set_hits_shaped(hits, shapes);
         // A new frame can move a hover-sound node under a still cursor.
         self.flush_sound_requests();
         self.session.state().audio.reconcile();

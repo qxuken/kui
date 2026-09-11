@@ -170,7 +170,9 @@ date: 2026-09-11
    (`float="viewport"` for viewport space), no room taken in a row or
    column; `slide`, `enter`, `exit` move it as a float. Like a line it
    takes **no input** and has **no access row** (`polygon-ignores-input`
-   for the same six keys, a `role` and `label` honoured if declared), and
+   for the same six keys, a `role` and `label` honoured if declared) —
+   *superseded the same day by [ADR 0026](0026-hit-testing-by-shape.md):
+   a polygon with input is hit by its outline and is a control* — and
    ghosts carry its points through the point store the line's use. On
    the wire it is a **`Fragment` quad** — no new kind, no ABI change —
    whose fragment is a WGSL source the core ships and registers once per

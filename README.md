@@ -1202,13 +1202,15 @@ no inset or
 multiple shadows, and the single shadow is not knocked out of the middle of
 the shape, so a translucent background shows it through. There are **no
 paths, dashes or arrowhead caps**: a line is segments and nothing else, a
-translucent polyline double-blends where its caps overlap at a join, its
-width does not tween (its colour does), and it takes no pointer input — a
-shape-aware hit test is the same unbuilt change rounded hit-testing below
-waits on, and a `line` that declares one warns. A fill is a `polygon` of at
+translucent polyline double-blends where its caps overlap at a join, and its
+width does not tween (its colour does). A fill is a `polygon` of at
 most eight points ([ADR 0025](docs/adr/0025-the-image-is-the-canvas.md)):
 concave is fine, more vertices is two polygons, and a stroked outline is a
-closed line over it. A raster the app made — a frame of video, a plot, a
+closed line over it. Both take input **by shape**
+([ADR 0026](docs/adr/0026-hit-testing-by-shape.md)): a press within a
+stroke's width (at least 4 px of grab) or inside an outline hits it, one in
+the bounding box off the shape falls through, and a stroke or fill with a
+click is a button to a screen reader, so name it. A raster the app made — a frame of video, a plot, a
 page — is an `image` whose pixels it replaces; there is no drawing-command
 canvas and no callback over the GPU. Opacity is a per-quad
 alpha multiply rather than an offscreen composite, so overlapping pieces of one
@@ -1230,8 +1232,9 @@ A `radius` on a node that clips or scrolls rounds the clip too, so a rounded
 card's children stay inside its corners. What that gives up is nesting (the
 inherited clip is one rect and four radii, so a corner both clippers round
 takes the tighter of the two, and a corner an ancestor's straight edge crosses
-goes square) and hit-testing, which stays rectangular — a click in the corner
-of a rounded scroll container still reaches the row under it.
+goes square). Hit-testing follows the corners since
+[ADR 0026](docs/adr/0026-hit-testing-by-shape.md): a click in the dead corner
+of a rounded card reaches what is under it, as it looks like it should.
 
 **Theme.** The colours a view paints with are named roles, derived from the
 two facts the OS reports — the appearance picks a base, the accent recolours
