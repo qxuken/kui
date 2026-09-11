@@ -137,14 +137,14 @@ machine (M3 Pro, `cargo bench -p kui-core --bench frame`):
   paint does; the analytic corner test is the same set to within the
   antialiasing ramp and needs no transcription to keep in sync. A
   stroke's capsule *is* the segment distance, so that one is the SDF.
-- **Winding instead of even-odd for the fill.** The paint fills by
-  winding (the stock WGSL), so a self-intersecting outline paints its
-  overlaps and the even-odd test would miss them. Even-odd was chosen
-  anyway: it is the cheaper test, the polygons kui draws are simple
-  (a wedge, an arrow, a strip of the area under a curve), and for a
-  simple outline the two agree exactly. If a view ever wants the
-  overlaps of a self-intersecting fill to be hittable, the crossing
-  test takes a winding counter in place of a boolean.
+- **Winding instead of even-odd for the fill.** This draft believed the
+  paint filled by winding and argued even-odd was an acceptable
+  mismatch; the review after the build read the stock WGSL again — its
+  sign flips on *every* edge crossing, which is parity — so the paint is
+  even-odd too, and the hit test is the fill exactly, a self-intersecting
+  outline's unfilled overlaps included. Had they differed, the crossing
+  test would have taken a winding counter in place of a boolean; they do
+  not, and it does not.
 - **Copying points versus referencing the frame's stores.** The line
   store and the fragment list are the frame's and are swapped at the
   next `begin_frame`; input arrives between frames. Referencing them

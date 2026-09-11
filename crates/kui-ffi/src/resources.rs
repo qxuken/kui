@@ -14,7 +14,8 @@ pub extern "C" fn kui_image_add(ptr: *mut KuiCtx, w: u32, h: u32, rgba: *const u
         if rgba.is_null() || w == 0 || h == 0 {
             return 0;
         }
-        let data = unsafe { std::slice::from_raw_parts(rgba, (w * h * 4) as usize) }.to_vec();
+        let data =
+            unsafe { std::slice::from_raw_parts(rgba, w as usize * h as usize * 4) }.to_vec();
         c.core().resources.add_image(w, h, data).to_ffi()
     })
 }
@@ -34,7 +35,8 @@ pub extern "C" fn kui_image_update(ptr: *mut KuiCtx, id: u64, w: u32, h: u32, rg
         if rgba.is_null() || w == 0 || h == 0 {
             return;
         }
-        let data = unsafe { std::slice::from_raw_parts(rgba, (w * h * 4) as usize) }.to_vec();
+        let data =
+            unsafe { std::slice::from_raw_parts(rgba, w as usize * h as usize * 4) }.to_vec();
         c.core()
             .update_image(kui_core::ImageId::from_ffi(id), w, h, data);
     });

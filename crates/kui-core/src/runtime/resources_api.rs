@@ -364,22 +364,24 @@ impl Core {
     /// (ADR 0025, decision 1). If the image had been drawn from the atlas
     /// its slot is forgotten — one eviction, once — and from here on it is
     /// texture-backed. A foreign or removed handle warns and changes
-    /// nothing.
+    /// nothing, and so does a buffer that is not `width × height × 4`
+    /// bytes; the return says whether the pixels were taken.
     pub fn update_image(
         &mut self,
         id: crate::resources::ImageId,
         width: u32,
         height: u32,
         rgba: Vec<u8>,
-    ) {
-        let live = self
+    ) -> bool {
+        let taken = self
             .session
             .state()
             .resources
             .update_image(id, width, height, rgba);
-        if live {
+        if taken {
             self.atlas.evict_image(id);
         }
+        taken
     }
 
     /// The pixels behind an image handle — its size and a shared handle on

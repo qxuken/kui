@@ -180,9 +180,11 @@ date: 2026-09-11
    `add_fragment`, so `kui_fragment_source` hands a C host the same
    function kui validated. Its sixteen params are the eight points
    normalised to the node's box, the last point repeated to pad; the
-   function is the winding-number polygon SDF (concave and simple
-   polygons fill correctly, a self-intersecting one fills by winding,
-   which is defined and harmless), zero-length padding edges skipped,
+   function is the polygon SDF whose sign flips at each edge crossing —
+   even-odd (concave and simple polygons fill correctly, a
+   self-intersecting one leaves its overlaps unfilled, which is defined
+   and harmless; *this draft said "winding", and the review after the
+   build corrected it*), zero-length padding edges skipped,
    the distance in physical px so the edge is the same one-pixel ramp
    every box gets, and the colour is the quad's `color` — which is what
    puts `bg` through the fragment's `color` slot rather than `params`, so

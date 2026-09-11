@@ -161,7 +161,7 @@ impl App for Demo {
                     });
                 });
 
-                // A concave outline fills correctly: the winding SDF, not
+                // A concave outline fills correctly: the polygon SDF, not
                 // a convex hull.
                 let card = NodeSpec::column()
                     .width(Sizing::Fixed(120.0))

@@ -685,9 +685,9 @@ pub enum HitShape {
     /// is hard to hit, so the grab is at least [`MIN_STROKE_GRAB`] wide.
     Segments { first: u32, len: u32, width: f32 },
     /// A filled outline through `len` points from `first`: a point inside
-    /// by the even-odd rule hits, which for the simple outlines a
-    /// `polygon` draws is the fill, and for a self-intersecting one is
-    /// what the winding fill's alternate holes are.
+    /// by the even-odd rule hits — the same rule the stock polygon paints
+    /// by, so the hit is the fill exactly, a self-intersecting outline's
+    /// unfilled overlaps included.
     Polygon { first: u32, len: u32 },
 }
 
@@ -1065,14 +1065,27 @@ impl Interaction {
         match h.shape {
             HitShape::Rect => true,
             HitShape::Rounded(radii) => in_rounded_rect(local, h.rect.w, h.rect.h, radii),
+            // A shape whose points are not here — a region installed
+            // through `set_hits` without its shapes, or one from another
+            // frame — misses rather than panics in the input path.
             HitShape::Segments { first, len, width } => {
-                let pts = &self.shape_points[first as usize..(first + len) as usize];
+                let Some(pts) = self
+                    .shape_points
+                    .get(first as usize..(first + len) as usize)
+                else {
+                    return false;
+                };
                 let half = (width * 0.5).max(MIN_STROKE_GRAB * 0.5);
                 pts.windows(2)
                     .any(|w| segment_distance(local, w[0], w[1]) <= half)
             }
             HitShape::Polygon { first, len } => {
-                let pts = &self.shape_points[first as usize..(first + len) as usize];
+                let Some(pts) = self
+                    .shape_points
+                    .get(first as usize..(first + len) as usize)
+                else {
+                    return false;
+                };
                 in_polygon(local, pts)
             }
         }

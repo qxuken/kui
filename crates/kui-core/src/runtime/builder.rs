@@ -901,7 +901,8 @@ impl Core {
     /// one in its box but outside the outline falls through to what is
     /// under. Fewer than three points draw nothing; a ninth and later are
     /// dropped with `polygon-points-truncated`. The outline may be
-    /// concave; a self-intersecting one fills by winding.
+    /// concave; a self-intersecting one fills even-odd, its overlaps
+    /// unfilled.
     pub fn polygon_node(&mut self, points: &[Vec2], spec: NodeSpec) {
         if self.tree.is_empty() {
             return;

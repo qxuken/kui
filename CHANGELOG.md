@@ -269,10 +269,11 @@ field reports).
     (`polygon-ignores-input`), no access row — with the fill in `bg` so
     `transition`, `enter` and `exit` reach it, and ghosts carry it. On
     the wire it is one `fragment` quad painted by `fragment::POLYGON`, a
-    winding-SDF source the core registers once per session through the
+    polygon-SDF source the core registers once per session through the
     same idempotent `add_fragment` an app's source takes, so a C host
     gets it from `kui_fragment_source` like any other; concave outlines
-    fill correctly, self-intersecting ones by winding. The prelude's
+    fill correctly, self-intersecting ones even-odd (overlaps unfilled),
+    the same rule the hit test uses. The prelude's
     `FragmentIn` gained `color` for it — the quad's colour, white on a
     `fragment` and the fill on a `polygon` — which any fragment may read
     rather than spend four params on one. `cargo run --example polygon`:

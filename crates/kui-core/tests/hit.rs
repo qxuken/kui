@@ -399,3 +399,33 @@ fn shapes_are_the_frames_own() {
     assert_eq!(tag(&click_at(&mut core, 100.0, 100.0)), ["box"]);
     let _ = HitShape::Rect;
 }
+
+/// A region whose shape indexes points the interaction does not hold —
+/// installed through `set_hits` without its shapes — misses rather than
+/// panics on the next pointer move.
+#[test]
+fn a_shape_without_its_points_misses() {
+    use kui_core::input::{HitRegion, Interaction};
+    let mut it = Interaction::default();
+    let mut hits = Vec::new();
+    // Built the way a host mirroring regions would: every field spelled.
+    let base = {
+        let mut core = Core::new();
+        frame(&mut core, |ui| {
+            ui.with(
+                NodeSpec::column().fill().on_click(Value::str("box")),
+                |_| {},
+            );
+        });
+        core.interaction.hits()[0].clone()
+    };
+    hits.push(HitRegion {
+        shape: HitShape::Polygon { first: 40, len: 8 },
+        ..base
+    });
+    it.set_hits(hits);
+    let mut out = Vec::new();
+    it.handle(InputEvent::CursorMoved(Vec2::new(10.0, 10.0)), &mut out);
+    assert!(out.is_empty());
+    assert!(it.hovered().is_none(), "a shape with no points is a miss");
+}

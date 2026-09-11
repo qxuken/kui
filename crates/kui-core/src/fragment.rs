@@ -210,10 +210,11 @@ pub const POLYGON_MAX_POINTS: usize = 8;
 /// 6): up to eight vertices, one per `vec2` of the sixteen params, each
 /// normalised to the node's box — a polygon's box is its own bounding box
 /// inflated by a pixel, so the vertices span it — the last vertex
-/// repeated to pad, filled in `in.color`. The distance is the winding
-/// polygon SDF, so a concave outline fills correctly and a
-/// self-intersecting one fills by winding; a padding edge of zero length
-/// is skipped before it can divide by itself. The edge ramps over one
+/// repeated to pad, filled in `in.color`. The distance is the polygon
+/// SDF whose sign flips at every edge crossing — even-odd, the same rule
+/// the hit test uses — so a concave outline fills correctly and a
+/// self-intersecting one leaves its overlaps unfilled; a padding edge of
+/// zero length is skipped before it can divide by itself. The edge ramps over one
 /// physical pixel, like a box's. Registered by the core itself, once per
 /// session, through the same idempotent `add_fragment` an app's source
 /// takes, so `kui_fragment_source` hands a C host the function kui

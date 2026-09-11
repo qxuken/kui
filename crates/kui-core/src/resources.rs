@@ -459,10 +459,16 @@ impl Resources {
     /// handle is unchanged, so every node declaring it shows the new
     /// pixels next frame with no view change; the dimensions may change.
     /// From the first update on the image is texture-backed for life.
-    /// Returns whether the handle was live here — a foreign or removed one
-    /// is noted as a miss and changes nothing.
+    /// Returns whether the pixels were taken: false for a foreign or
+    /// removed handle (noted as a miss), and for a buffer that is not
+    /// `width × height × 4` bytes, which changes nothing rather than
+    /// handing a backend a short upload it would refuse with a validation
+    /// error — the doors that take bytes from an app check the length
+    /// first and say so; this is the guard behind them.
     pub fn update_image(&mut self, id: ImageId, width: u32, height: u32, rgba: Vec<u8>) -> bool {
-        debug_assert_eq!(rgba.len(), (width * height * 4) as usize);
+        if rgba.len() != width as usize * height as usize * 4 {
+            return false;
+        }
         let Some(entry) = self.images.get_mut(id) else {
             self.note_miss(ResourceKind::Image, id.to_ffi());
             return false;

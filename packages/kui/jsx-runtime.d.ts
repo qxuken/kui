@@ -556,7 +556,8 @@ export declare namespace JSX {
      *  space), sized to its own bounding box a pixel out on each side, so
      *  it takes no room in a row or column; `transition` eases the fill and,
      *  with `slide`, its position. The outline may be concave; a
-     *  self-intersecting one fills by winding. Hit by its outline
+     *  self-intersecting one fills even-odd, its overlaps unfilled. Hit by
+     *  its outline
      *  (docs/adr/0026-hit-testing-by-shape.md): with `onClick`, `onDrag`,
      *  `onHover` or `hoverable`, a press inside the outline hits it and one
      *  in its box past the outline falls through — a pie's wedges need no

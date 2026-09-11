@@ -232,7 +232,13 @@ impl Gpu {
         id: u64,
         px: &kui_core::display::TexturePixels,
     ) -> Option<std::sync::Arc<ImageTexture>> {
-        if px.width == 0 || px.height == 0 {
+        // Degenerate, or past what this device can hold in one texture
+        // (8192 on many adapters, 16384 on Metal): draws nothing, which is
+        // what the core says a texture-backed image that cannot be backed
+        // does, rather than a validation error the device turns into a
+        // panic.
+        let max = self.0.device.limits().max_texture_dimension_2d;
+        if px.width == 0 || px.height == 0 || px.width > max || px.height > max {
             return None;
         }
         let mut cache = self.0.textures.lock().unwrap_or_else(|e| e.into_inner());
@@ -283,6 +289,20 @@ impl Gpu {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .remove(&id);
+    }
+
+    /// Whether the cache still holds exactly this texture for `id` — what
+    /// a renderer asks before keeping a bind group over it, since a
+    /// removal reaches the cache through whichever window's frame carried
+    /// it and the other windows' bind groups would otherwise hold the
+    /// texture for as long as they live.
+    fn holds_image_texture(&self, id: u64, texture: &std::sync::Arc<ImageTexture>) -> bool {
+        self.0
+            .textures
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&id)
+            .is_some_and(|t| std::sync::Arc::ptr_eq(t, texture))
     }
 
     /// The pipeline for one registered fragment, built on first sight and
@@ -858,6 +878,14 @@ impl Renderer {
         for id in &dl.dropped_textures {
             self.texture_binds.remove(&id.to_ffi());
             self.gpu.drop_image_texture(id.to_ffi());
+        }
+        // A drop another window's frame carried: the cache no longer
+        // holds the texture this bind group does. One lock per frame,
+        // and only for a window that has ever drawn a texture.
+        if !self.texture_binds.is_empty() {
+            let gpu = &self.gpu;
+            self.texture_binds
+                .retain(|id, b| gpu.holds_image_texture(*id, &b.texture));
         }
         let mut texture_binds: Vec<Option<u64>> = Vec::new();
         if !dl.textures.is_empty() {
